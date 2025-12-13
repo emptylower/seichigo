@@ -1,6 +1,8 @@
 import { getAnimeById } from '@/lib/anime/getAllAnime'
-import { getAllPosts } from '@/lib/mdx/getAllPosts'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import Link from 'next/link'
+
+export const dynamic = 'force-dynamic'
 
 export async function generateStaticParams() {
   // Pre-render any anime JSON present
@@ -10,7 +12,7 @@ export async function generateStaticParams() {
 export default async function AnimePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const anime = await getAnimeById(id)
-  const posts = (await getAllPosts('zh')).filter((p) => p.animeId === id)
+  const posts = (await getAllPublicPosts('zh')).filter((p) => p.animeId === id)
   if (!anime) return <div className="text-gray-500">未找到该作品。</div>
   return (
     <div className="space-y-4">

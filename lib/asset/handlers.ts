@@ -86,7 +86,8 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
     const headers = new Headers()
     headers.set('content-type', asset.contentType || 'application/octet-stream')
     headers.set('cache-control', 'public, max-age=31536000, immutable')
-    return new Response(asset.bytes, { status: 200, headers })
+    const bytes = asset.bytes
+    const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    return new Response(body, { status: 200, headers })
   }
 }
-

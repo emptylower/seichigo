@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { InMemoryArticleRepo } from '@/lib/article/repoMemory'
 import type { ArticleApiDeps } from '@/lib/article/api'
 
-import { createHandlers as createArticlesHandlers } from '@/app/api/articles/route'
-import { createHandlers as createArticleHandlers } from '@/app/api/articles/[id]/route'
-import { createHandlers as createSubmitHandlers } from '@/app/api/articles/[id]/submit/route'
-import { createHandlers as createWithdrawHandlers } from '@/app/api/articles/[id]/withdraw/route'
-import { createHandlers as createAdminReviewListHandlers } from '@/app/api/admin/review/articles/route'
-import { createHandlers as createAdminApproveHandlers } from '@/app/api/admin/review/articles/[id]/approve/route'
-import { createHandlers as createAdminRejectHandlers } from '@/app/api/admin/review/articles/[id]/reject/route'
+import { createHandlers as createArticlesHandlers } from '@/lib/article/handlers/articles'
+import { createHandlers as createArticleHandlers } from '@/lib/article/handlers/articleById'
+import { createHandlers as createSubmitHandlers } from '@/lib/article/handlers/submit'
+import { createHandlers as createWithdrawHandlers } from '@/lib/article/handlers/withdraw'
+import { createHandlers as createAdminReviewListHandlers } from '@/lib/article/handlers/adminReviewList'
+import { createHandlers as createAdminApproveHandlers } from '@/lib/article/handlers/adminApprove'
+import { createHandlers as createAdminRejectHandlers } from '@/lib/article/handlers/adminReject'
 
 function jsonReq(url: string, method: string, body?: any): Request {
   return new Request(url, {

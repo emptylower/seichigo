@@ -1,10 +1,11 @@
 import { getServerAuthSession } from '@/lib/auth/session'
-import SubmitCenterClient from './ui'
+import NewArticleClient from './ui'
 
-export const metadata = { title: '创作中心' }
+export const metadata = { title: '新建文章' }
 
-export default async function SubmitCenterPage() {
+export default async function NewArticlePage() {
   const session = await getServerAuthSession()
   const user = session?.user?.id ? { id: session.user.id, email: session.user.email } : null
-  return <SubmitCenterClient user={user} />
+  return <NewArticleClient user={user} />
 }
+

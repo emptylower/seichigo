@@ -1,9 +1,11 @@
 import type { MetadataRoute } from 'next'
-import { getAllPosts } from '@/lib/mdx/getAllPosts'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+
+export const revalidate = 0
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = process.env.SITE_URL || 'http://localhost:3000'
-  const posts = await getAllPosts('zh')
+  const posts = await getAllPublicPosts('zh')
   const items: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${base}/about`, changeFrequency: 'yearly', priority: 0.3 },
@@ -14,4 +16,3 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
   return items
 }
-

@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
-import { getAllPosts } from '@/lib/mdx/getAllPosts'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 
 export const metadata = { title: '作品索引' }
+export const dynamic = 'force-dynamic'
 
 export default async function AnimeIndexPage() {
-  const [anime, posts] = await Promise.all([getAllAnime(), getAllPosts('zh')])
+  const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])
   const counts = posts.reduce<Record<string, number>>((acc, p) => {
     acc[p.animeId] = (acc[p.animeId] || 0) + 1
     return acc
@@ -25,4 +26,3 @@ export default async function AnimeIndexPage() {
     </div>
   )
 }
-

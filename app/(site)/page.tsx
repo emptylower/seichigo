@@ -1,8 +1,10 @@
-import { getAllPosts } from '@/lib/mdx/getAllPosts'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import PostList from '@/components/blog/PostList'
 
+export const dynamic = 'force-dynamic'
+
 export default async function HomePage() {
-  const posts = await getAllPosts('zh')
+  const posts = await getAllPublicPosts('zh')
   return (
     <div className="space-y-8">
       <section className="space-y-2">
@@ -18,4 +20,3 @@ export default async function HomePage() {
     </div>
   )
 }
-

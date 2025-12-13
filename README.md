@@ -45,5 +45,6 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 
 **Notes**
 - Email sign-in: in development, if no SMTP is configured, a sign-in link is logged to server console.
-- Submissions API has basic anti-abuse (per-user/IP per day). Tune with env vars.
-- Admin UI is not included in v1; we can add later.
+- Author center: `/submit` (drafts + richtext editor + submit/withdraw).
+- Admin review: `/admin/review` (approve/reject in_review articles).
+- Legacy submissions API: `/api/submissions` has basic anti-abuse (per-user/IP per day). Tune with env vars.

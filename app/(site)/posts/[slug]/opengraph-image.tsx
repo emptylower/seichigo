@@ -1,14 +1,20 @@
 import { ImageResponse } from 'next/og'
-import { getPostBySlug } from '@/lib/mdx/getPostBySlug'
+import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 
+export const dynamic = 'force-dynamic'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const post = await getPostBySlug(slug, 'zh')
-  const title = post?.frontmatter.title || 'SeichiGo'
-  const subtitle = [post?.frontmatter.animeId, post?.frontmatter.city].filter(Boolean).join(' · ')
+  const found = await getPublicPostBySlug(slug, 'zh')
+  const title = found?.source === 'mdx' ? found.post.frontmatter.title : found?.source === 'db' ? found.article.title : 'SeichiGo'
+  const subtitle =
+    found?.source === 'mdx'
+      ? [found.post.frontmatter.animeId, found.post.frontmatter.city].filter(Boolean).join(' · ')
+      : found?.source === 'db'
+        ? [found.article.animeId, found.article.city].filter(Boolean).join(' · ')
+        : ''
   return new ImageResponse(
     (
       <div

@@ -8,7 +8,8 @@
   - 首页：最新文章列表（无内容时显示占位）
   - 文章详情：MDX 渲染 + OG Image + Giscus 评论
   - 作品页：作品列表与作品详情（关联相关文章）
-  - 投稿页：登录后提交投稿内容（写入 DB）
+  - 作者中心：`/submit`（草稿箱 + 新建/编辑 + 自动保存 + 提交审核/撤回）
+  - 管理员审核：`/admin/review`（待审列表 + 详情预览 + 同意/拒绝）
   - 关于页：占位文案
 - **内容系统（自研）**
   - 本地 MDX 内容目录：`content/zh/posts/*.mdx`
@@ -21,9 +22,8 @@
   - **当前优先可用：管理员帐密登录（仅管理员）**
 - **数据层**
   - Prisma + Postgres
-  - 投稿写入 `Submission` 表
-- **基础防滥用（投稿接口）**
-  - 按“用户/IP/天”做简单限流（可通过环境变量调整）
+  - 文章与媒体：`Article` / `Asset`
+  - 旧投稿接口（保留）：`Submission`（`/api/submissions`，带简单限流）
 
 ## 本地启动（推荐流程）
 1. 准备 Postgres（本地 Docker 或其它 Postgres 实例）
@@ -60,5 +60,4 @@
 ## 已知问题 / 待办
 - **企业邮箱 SMTP（腾讯企业邮箱）当前认证失败**：NextAuth Email Provider 报 `535 authentication failed`，需要到邮箱侧开启 SMTP/客户端授权码、确认服务器与端口、以及是否需要 SSL/TLS/STARTTLS（后续再排）。
 - **Docker 本地 DB**：当前仓库未内置 `docker-compose.yml`（可按 README 用 `docker run` 启动，或后续补 compose）。
-- **管理后台**：目前仅有管理员登录与强制改密页，暂无投稿审核/文章管理 UI。
-
+- **作者/审核体验**：富文本编辑器与审核流程已打通，可继续优化交互细节（例如保存状态、错误提示、字段校验等）。
