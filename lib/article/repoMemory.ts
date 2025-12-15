@@ -28,7 +28,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
       authorId: input.authorId,
       slug,
       title: input.title,
-      animeId: input.animeId ?? null,
+      animeIds: input.animeIds ?? [],
       city: input.city ?? null,
       routeLength: input.routeLength ?? null,
       tags: input.tags ?? [],
@@ -85,7 +85,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
     }
 
     if (input.title != null) existing.title = input.title
-    if (input.animeId !== undefined) existing.animeId = input.animeId ?? null
+    if (input.animeIds !== undefined) existing.animeIds = input.animeIds ?? []
     if (input.city !== undefined) existing.city = input.city ?? null
     if (input.routeLength !== undefined) existing.routeLength = input.routeLength ?? null
     if (input.tags !== undefined) existing.tags = input.tags ?? []
@@ -108,5 +108,16 @@ export class InMemoryArticleRepo implements ArticleRepo {
     existing.updatedAt = this.now()
     this.byId.set(id, { ...existing })
     return this.byId.get(id) ?? null
+  }
+
+  async delete(id: string): Promise<Article | null> {
+    const existing = this.byId.get(id)
+    if (!existing) return null
+
+    this.byId.delete(id)
+    if (this.bySlug.get(existing.slug) === id) {
+      this.bySlug.delete(existing.slug)
+    }
+    return existing
   }
 }

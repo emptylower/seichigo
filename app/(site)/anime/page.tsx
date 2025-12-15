@@ -8,7 +8,9 @@ export const dynamic = 'force-dynamic'
 export default async function AnimeIndexPage() {
   const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])
   const counts = posts.reduce<Record<string, number>>((acc, p) => {
-    acc[p.animeId] = (acc[p.animeId] || 0) + 1
+    for (const id of p.animeIds || []) {
+      acc[id] = (acc[id] || 0) + 1
+    }
     return acc
   }, {})
   return (
@@ -17,7 +19,7 @@ export default async function AnimeIndexPage() {
       <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {anime.map((a) => (
           <li key={a.id} className="card">
-            <Link href={`/anime/${a.id}`} className="font-semibold">{a.name}</Link>
+            <Link href={`/anime/${encodeURIComponent(a.id)}`} className="font-semibold">{a.name}</Link>
             <p className="text-sm text-gray-600">已发布文章：{counts[a.id] || 0}</p>
           </li>
         ))}

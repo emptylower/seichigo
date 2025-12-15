@@ -1,4 +1,4 @@
-import '@/styles/globals.css'
+import '../styles/globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   },
   description: '用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划。',
   metadataBase: new URL(process.env.SITE_URL || 'http://localhost:3000'),
+  icons: {
+    icon: '/brand/app-logo.png',
+    apple: '/brand/app-logo.png',
+  },
   openGraph: {
     siteName: 'SeichiGo',
     type: 'website',

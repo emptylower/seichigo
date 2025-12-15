@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { submit, type Actor } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 
+function countPlainText(html: string): number {
+  if (!html) return 0
+  const withoutTags = html.replace(/<[^>]*>/g, ' ')
+  const collapsed = withoutTags.replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim()
+  return collapsed.length
+}
+
 export function createHandlers(deps: ArticleApiDeps) {
   return {
     async POST(_req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -27,8 +34,21 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: r.error.message }, { status })
       }
 
-      if (await deps.mdxSlugExists(existing.slug)) {
-        return NextResponse.json({ error: 'slug 与现有 MDX 文章冲突' }, { status: 409 })
+      const title = String(existing.title || '').trim()
+      if (!title || title === '未命名') {
+        return NextResponse.json({ error: '请先填写标题' }, { status: 400 })
+      }
+
+      const animeIds = Array.isArray((existing as any).animeIds)
+        ? (existing as any).animeIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+        : []
+      if (!animeIds.length) {
+        return NextResponse.json({ error: '请至少选择一个作品' }, { status: 400 })
+      }
+
+      const bodyLen = countPlainText(String(existing.contentHtml || ''))
+      if (bodyLen <= 100) {
+        return NextResponse.json({ error: '正文内容至少需要 100 字' }, { status: 400 })
       }
 
       const updated = await deps.repo.updateState(id, { status: 'in_review', rejectReason: null, publishedAt: null })
@@ -40,4 +60,3 @@ export function createHandlers(deps: ArticleApiDeps) {
     },
   }
 }
-

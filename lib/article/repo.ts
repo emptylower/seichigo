@@ -5,7 +5,7 @@ export type Article = {
   authorId: string
   slug: string
   title: string
-  animeId: string | null
+  animeIds: string[]
   city: string | null
   routeLength: string | null
   tags: string[]
@@ -22,7 +22,7 @@ export type CreateDraftInput = {
   authorId: string
   slug: string
   title: string
-  animeId?: string | null
+  animeIds?: string[]
   city?: string | null
   routeLength?: string | null
   tags?: string[]
@@ -46,6 +46,7 @@ export interface ArticleRepo {
   listByStatus(status: ArticleStatus): Promise<Article[]>
   updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null>
   updateState(id: string, input: UpdateStateInput): Promise<Article | null>
+  delete(id: string): Promise<Article | null>
 }
 
 export class ArticleSlugExistsError extends Error {

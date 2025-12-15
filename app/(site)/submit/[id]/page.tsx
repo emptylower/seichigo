@@ -1,8 +1,9 @@
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
-import ArticleEditorClient from './ui'
+import SubmitEditClient from './ui'
 
 export const metadata = { title: '编辑文章' }
+export const dynamic = 'force-dynamic'
 
 export default async function SubmitEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -28,12 +29,11 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <ArticleEditorClient
+    <SubmitEditClient
       initial={{
         id: article.id,
-        slug: article.slug,
         title: article.title,
-        animeId: article.animeId,
+        animeIds: article.animeIds,
         city: article.city,
         routeLength: article.routeLength,
         tags: article.tags,
@@ -46,4 +46,3 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
     />
   )
 }
-

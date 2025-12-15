@@ -45,7 +45,7 @@ describe('article api', () => {
     const { deps } = makeDeps()
     const articles = createArticlesHandlers(deps)
 
-    const r1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'a', title: 'A' }))
+    const r1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     expect(r1.status).toBe(401)
 
     const r2 = await articles.GET(jsonReq('http://localhost/api/articles?scope=mine', 'GET'))
@@ -60,7 +60,6 @@ describe('article api', () => {
     const articles = createArticlesHandlers(deps)
     const createRes = await articles.POST(
       jsonReq('http://localhost/api/articles', 'POST', {
-        slug: 'my-article',
         title: 'My Article',
         contentHtml: '<p>hi</p>',
       })
@@ -84,6 +83,26 @@ describe('article api', () => {
     expect(list2.items).toHaveLength(0)
   })
 
+  it('auto-generates slug when not provided', async () => {
+    const fixedNow = new Date('2025-01-01T00:00:00.000Z')
+    const { deps } = makeDeps({
+      now: fixedNow,
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+
+    const r1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'My First Article' }))
+    expect(r1.status).toBe(200)
+    const j1 = await r1.json()
+    expect(j1.article.slug).toBe('my-first-article')
+
+    const r2 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'My First Article' }))
+    expect(r2.status).toBe(200)
+    const j2 = await r2.json()
+    expect(j2.article.slug).toBe('my-first-article-2')
+  })
+
   it('detail is visible to author or admin only', async () => {
     const { deps, setSession } = makeDeps({
       session: { user: { id: 'user-1', isAdmin: false } },
@@ -91,7 +110,7 @@ describe('article api', () => {
     const articles = createArticlesHandlers(deps)
     const articleIdHandlers = createArticleHandlers(deps)
 
-    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'a', title: 'A' }))
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
     const id = created.article.id as string
 
@@ -114,17 +133,22 @@ describe('article api', () => {
     const articleIdHandlers = createArticleHandlers(deps)
     const submit = createSubmitHandlers(deps)
 
-    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'a', title: 'A' }))
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
     const id = created.article.id as string
 
     const patchRes = await articleIdHandlers.PATCH(
-      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { title: 'A2' }),
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', {
+        title: 'A2',
+        animeIds: ['btr'],
+        contentHtml: `<p>${'x'.repeat(120)}</p>`,
+      }),
       { params: Promise.resolve({ id }) }
     )
     expect(patchRes.status).toBe(200)
     const patched = await patchRes.json()
     expect(patched.article.title).toBe('A2')
+    expect(patched.article.slug).toBe('a2')
 
     const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
       params: Promise.resolve({ id }),
@@ -146,6 +170,51 @@ describe('article api', () => {
     expect(patchRes3.status).toBe(403)
   })
 
+  it('allows author to delete draft; disallows delete after submit', async () => {
+    const { deps, setSession } = makeDeps({
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+    const articleIdHandlers = createArticleHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    const delRes = await articleIdHandlers.DELETE(jsonReq('http://localhost/api/articles/' + id, 'DELETE'), { params: Promise.resolve({ id }) })
+    expect(delRes.status).toBe(200)
+
+    const listRes = await articles.GET(jsonReq('http://localhost/api/articles?scope=mine', 'GET'))
+    const list = await listRes.json()
+    expect(list.items).toHaveLength(0)
+
+    // Create again and submit to in_review
+    const createRes2 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'B' }))
+    const created2 = await createRes2.json()
+    const id2 = created2.article.id as string
+
+    const patchReady = await articleIdHandlers.PATCH(
+      jsonReq('http://localhost/api/articles/' + id2, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id: id2 }) }
+    )
+    expect(patchReady.status).toBe(200)
+
+    const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id2 + '/submit', 'POST'), {
+      params: Promise.resolve({ id: id2 }),
+    })
+    expect(submitRes.status).toBe(200)
+
+    const delAfterSubmit = await articleIdHandlers.DELETE(jsonReq('http://localhost/api/articles/' + id2, 'DELETE'), { params: Promise.resolve({ id: id2 }) })
+    expect(delAfterSubmit.status).toBe(409)
+
+    // other user cannot delete
+    setSession({ user: { id: 'user-2', isAdmin: false } })
+    const delForbidden = await articleIdHandlers.DELETE(jsonReq('http://localhost/api/articles/' + id2, 'DELETE'), { params: Promise.resolve({ id: id2 }) })
+    expect(delForbidden.status).toBe(403)
+  })
+
   it('submit/withdraw/reject/approve transitions follow workflow rules', async () => {
     const fixedNow = new Date('2025-01-01T00:00:00.000Z')
     const { deps, setSession } = makeDeps({
@@ -160,9 +229,15 @@ describe('article api', () => {
     const adminReject = createAdminRejectHandlers(deps)
     const adminApprove = createAdminApproveHandlers(deps)
 
-    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'a', title: 'A' }))
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
     const id = created.article.id as string
+
+    const patchReady = await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(patchReady.status).toBe(200)
 
     // submit -> in_review
     const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
@@ -227,63 +302,43 @@ describe('article api', () => {
     expect(approved.article.publishedAt).toBe(fixedNow.toISOString())
   })
 
-  it('validates slug uniqueness against DB and MDX (create/patch/submit/approve)', async () => {
-    const { deps, setSession, mdxSlugs } = makeDeps({
+  it('disallows manual slug and keeps slug unique on title changes', async () => {
+    const { deps } = makeDeps({
       session: { user: { id: 'user-1', isAdmin: false } },
     })
+
     const articles = createArticlesHandlers(deps)
     const articleIdHandlers = createArticleHandlers(deps)
-    const submit = createSubmitHandlers(deps)
-    const adminApprove = createAdminApproveHandlers(deps)
 
-    // MDX conflict on create
-    mdxSlugs.add('mdx')
-    const mdxCreate = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'mdx', title: 'A' }))
-    expect(mdxCreate.status).toBe(409)
-    mdxSlugs.delete('mdx')
+    const manualCreate = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'manual', title: 'Hello' }))
+    expect(manualCreate.status).toBe(400)
 
-    // DB conflict on create
-    const c1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'dup', title: 'A' }))
-    expect(c1.status).toBe(200)
-    const c2 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'dup', title: 'B' }))
-    expect(c2.status).toBe(409)
-
-    // DB conflict on patch
-    const a1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'a', title: 'A' }))
+    const a1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'Hello' }))
+    expect(a1.status).toBe(200)
     const a1j = await a1.json()
     const id1 = a1j.article.id as string
-    const b1 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { slug: 'b', title: 'B' }))
-    const b1j = await b1.json()
-    const id2 = b1j.article.id as string
+    expect(a1j.article.slug).toBe('hello')
 
-    const patchDup = await articleIdHandlers.PATCH(
-      jsonReq('http://localhost/api/articles/' + id1, 'PATCH', { slug: 'b' }),
-      { params: Promise.resolve({ id: id1 }) }
-    )
-    expect(patchDup.status).toBe(409)
+    const a2 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'World' }))
+    expect(a2.status).toBe(200)
+    const a2j = await a2.json()
+    const id2 = a2j.article.id as string
+    expect(a2j.article.slug).toBe('world')
 
-    // MDX conflict on submit (dynamic)
-    mdxSlugs.add('a')
-    const submitConflict = await submit.POST(jsonReq('http://localhost/api/articles/' + id1 + '/submit', 'POST'), {
-      params: Promise.resolve({ id: id1 }),
+    const manualPatch = await articleIdHandlers.PATCH(jsonReq('http://localhost/api/articles/' + id2, 'PATCH', { slug: 'hack' }), {
+      params: Promise.resolve({ id: id2 }),
     })
-    expect(submitConflict.status).toBe(409)
-    mdxSlugs.delete('a')
+    expect(manualPatch.status).toBe(400)
 
-    // Submit ok then MDX conflict on approve
-    const submitOk = await submit.POST(jsonReq('http://localhost/api/articles/' + id1 + '/submit', 'POST'), {
-      params: Promise.resolve({ id: id1 }),
+    const patchTitle = await articleIdHandlers.PATCH(jsonReq('http://localhost/api/articles/' + id2, 'PATCH', { title: 'Hello' }), {
+      params: Promise.resolve({ id: id2 }),
     })
-    expect(submitOk.status).toBe(200)
+    expect(patchTitle.status).toBe(200)
+    const patched = await patchTitle.json()
+    expect(patched.article.title).toBe('Hello')
+    expect(patched.article.slug).toBe('hello-2')
 
-    setSession({ user: { id: 'admin-1', isAdmin: true } })
-    mdxSlugs.add('a')
-    const approveConflict = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id1 + '/approve', 'POST'), {
-      params: Promise.resolve({ id: id1 }),
-    })
-    expect(approveConflict.status).toBe(409)
-
-    // unrelated: ensure other article exists
-    expect(id2).toBeTruthy()
+    // sanity: id1 exists
+    expect(id1).toBeTruthy()
   })
 })

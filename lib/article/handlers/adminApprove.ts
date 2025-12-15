@@ -28,10 +28,6 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: r.error.message }, { status: 409 })
       }
 
-      if (await deps.mdxSlugExists(existing.slug)) {
-        return NextResponse.json({ error: 'slug 与现有 MDX 文章冲突' }, { status: 409 })
-      }
-
       const updated = await deps.repo.updateState(id, { status: 'published', rejectReason: null, publishedAt: deps.now() })
       if (!updated) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
@@ -41,4 +37,3 @@ export function createHandlers(deps: ArticleApiDeps) {
     },
   }
 }
-

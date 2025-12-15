@@ -10,3 +10,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const deps = await getArticleApiDeps()
   return createHandlers(deps).PATCH(req, ctx)
 }
+
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const deps = await getArticleApiDeps()
+  return createHandlers(deps).DELETE(req, ctx)
+}

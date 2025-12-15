@@ -3,11 +3,11 @@ import { z } from 'zod'
 import { ArticleSlugExistsError } from '@/lib/article/repo'
 import type { ArticleStatus } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
+import { generateSlugFromTitle } from '@/lib/article/slug'
 
 const createSchema = z.object({
-  slug: z.string().min(1),
-  title: z.string().min(1),
-  animeId: z.string().nullable().optional(),
+  title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }),
+  animeIds: z.array(z.string()).optional(),
   city: z.string().nullable().optional(),
   routeLength: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
@@ -25,7 +25,7 @@ function toListItem(a: any) {
     id: a.id,
     slug: a.slug,
     title: a.title,
-    animeId: a.animeId,
+    animeIds: a.animeIds,
     city: a.city,
     routeLength: a.routeLength,
     tags: a.tags,
@@ -46,40 +46,41 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       const body = await req.json().catch(() => null)
+      if (body && typeof body === 'object' && 'slug' in (body as any)) {
+        return NextResponse.json({ error: 'slug 不支持自定义' }, { status: 400 })
+      }
       const parsed = createSchema.safeParse(body)
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
-      const slug = parsed.data.slug.trim()
-      if (!slug) {
-        return NextResponse.json({ error: 'slug 不能为空' }, { status: 400 })
-      }
-      if (await deps.mdxSlugExists(slug)) {
-        return NextResponse.json({ error: 'slug 与现有 MDX 文章冲突' }, { status: 409 })
-      }
-
+      const baseSlug = generateSlugFromTitle(parsed.data.title, deps.now())
       const contentHtml = parsed.data.contentHtml ? deps.sanitizeHtml(parsed.data.contentHtml) : ''
 
-      try {
-        const created = await deps.repo.createDraft({
-          authorId: session.user.id,
-          slug,
-          title: parsed.data.title,
-          animeId: parsed.data.animeId,
-          city: parsed.data.city,
-          routeLength: parsed.data.routeLength,
-          tags: parsed.data.tags,
-          contentJson: parsed.data.contentJson ?? null,
-          contentHtml,
-        })
-        return NextResponse.json({ ok: true, article: toListItem(created) })
-      } catch (err) {
-        if (err instanceof ArticleSlugExistsError) {
-          return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
+      const maxAttempts = 20
+      for (let i = 0; i < maxAttempts; i++) {
+        const suffix = i === 0 ? '' : `-${i + 1}`
+        const candidate = `${baseSlug}${suffix}`
+        try {
+          const created = await deps.repo.createDraft({
+            authorId: session.user.id,
+            slug: candidate,
+            title: parsed.data.title,
+            animeIds: parsed.data.animeIds,
+            city: parsed.data.city,
+            routeLength: parsed.data.routeLength,
+            tags: parsed.data.tags,
+            contentJson: parsed.data.contentJson ?? null,
+            contentHtml,
+          })
+          return NextResponse.json({ ok: true, article: toListItem(created) })
+        } catch (err) {
+          if (err instanceof ArticleSlugExistsError) continue
+          throw err
         }
-        throw err
       }
+
+      return NextResponse.json({ error: '无法生成唯一 slug，请稍后重试' }, { status: 409 })
     },
 
     async GET(req: Request) {
@@ -109,4 +110,3 @@ export function createHandlers(deps: ArticleApiDeps) {
     },
   }
 }
-

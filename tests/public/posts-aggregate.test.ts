@@ -34,7 +34,7 @@ describe('public posts aggregation', () => {
     const mdx = makeMdxProvider({ all: [] })
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
 
-    expect(list.map((x) => x.slug)).toEqual(['db-1'])
+    expect(list.map((x) => x.path)).toEqual([`/posts/${created.id}-db-1`])
     expect(list[0]?.source).toBe('db')
   })
 
@@ -58,7 +58,7 @@ describe('public posts aggregation', () => {
     })
 
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
-    expect(list.map((x) => x.slug)).toEqual(['db-1', 'mdx-1'])
+    expect(list.map((x) => x.path)).toEqual([`/posts/${created.id}-db-1`, '/posts/mdx-1'])
   })
 
   it('getPublicPostBySlug: slug exists in MDX -> returns MDX (priority)', async () => {
@@ -97,4 +97,3 @@ describe('public posts aggregation', () => {
     expect(found).toBe(null)
   })
 })
-

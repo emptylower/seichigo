@@ -5,13 +5,12 @@ export type PublicPost = { source: 'mdx'; post: Post } | { source: 'db'; article
 
 export type PublicPostListItem = {
   source: 'mdx' | 'db'
-  slug: string
+  path: string
   title: string
-  animeId: string
+  animeIds: string[]
   city: string
   routeLength?: string
   tags: string[]
   publishDate?: string
   publishedAt?: string
 }
-

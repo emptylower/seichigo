@@ -1,32 +1,9 @@
 import type { NextAuthOptions } from 'next-auth'
-import EmailProvider from 'next-auth/providers/email'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { PrismaAdapter } from '@next-auth/prisma-adapter'
 import { prisma } from '@/lib/db/prisma'
-import nodemailer from 'nodemailer'
 import { ADMIN_DEFAULT_PASSWORD, hashPassword, isAdminEmail, verifyPassword } from '@/lib/auth/admin'
-
-const emailFrom = process.env.EMAIL_FROM || 'no-reply@example.com'
-
-const smtpHost = process.env.EMAIL_SERVER_HOST
-const smtpPort = process.env.EMAIL_SERVER_PORT ? Number(process.env.EMAIL_SERVER_PORT) : undefined
-const smtpUser = process.env.EMAIL_SERVER_USER
-const smtpPass = process.env.EMAIL_SERVER_PASSWORD
-
-const emailServer =
-  smtpHost && smtpPort && smtpUser && smtpPass
-    ? {
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
-        auth: { user: smtpUser, pass: smtpPass },
-      }
-    : process.env.EMAIL_SERVER
-
-function buildTransport() {
-  if (!emailServer) return null
-  return nodemailer.createTransport(emailServer)
-}
+import { hashEmailOtpCode, normalizeEmail, resolveOtpSecret, timingSafeEqualHex } from '@/lib/auth/emailOtp'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -56,25 +33,88 @@ export const authOptions: NextAuthOptions = {
 
       // 强制改密需要实时读取 DB（避免 JWT 里值过期造成循环/失效）
       let mustChangePassword = Boolean(token.mustChangePassword)
+      let needsPasswordSetup = false
       if (id) {
         try {
           const u = await prisma.user.findUnique({
             where: { id: String(id) },
-            select: { mustChangePassword: true },
+            select: { mustChangePassword: true, passwordHash: true },
           })
-          if (u) mustChangePassword = u.mustChangePassword
+          if (u) {
+            mustChangePassword = u.mustChangePassword
+            needsPasswordSetup = !u.passwordHash
+          }
         } catch {
           // ignore (e.g. DB not ready in early boot)
         }
       }
       session.user.mustChangePassword = mustChangePassword
+      session.user.needsPasswordSetup = needsPasswordSetup
 
       return session
     },
   },
   providers: [
     CredentialsProvider({
-      name: '管理员账号',
+      id: 'email-code',
+      name: '邮箱验证码',
+      credentials: {
+        email: { label: '邮箱', type: 'email' },
+        code: { label: '验证码', type: 'text' },
+      },
+      async authorize(credentials) {
+        if (!process.env.DATABASE_URL) return null
+
+        const email = normalizeEmail(String(credentials?.email || ''))
+        const code = String(credentials?.code || '').trim()
+        if (!email || !code) return null
+
+        const now = new Date()
+        const record = await prisma.emailOtp.findFirst({
+          where: { email, usedAt: null, expiresAt: { gt: now } },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, salt: true, codeHash: true, attempts: true },
+        })
+        if (!record) return null
+
+        const maxAttempts = 5
+        if ((record.attempts || 0) >= maxAttempts) {
+          await prisma.emailOtp.update({ where: { id: record.id }, data: { usedAt: now } }).catch(() => null)
+          return null
+        }
+
+        const candidate = hashEmailOtpCode({ code, salt: record.salt, secret: resolveOtpSecret() })
+        const ok = timingSafeEqualHex(record.codeHash, candidate)
+        if (!ok) {
+          await prisma.emailOtp
+            .update({
+              where: { id: record.id },
+              data: { attempts: { increment: 1 } },
+            })
+            .catch(() => null)
+          return null
+        }
+
+        await prisma.emailOtp.update({ where: { id: record.id }, data: { usedAt: now } }).catch(() => null)
+
+        const name = email.split('@')[0] || 'user'
+        const user = await prisma.user.upsert({
+          where: { email },
+          update: { emailVerified: now, name: undefined },
+          create: { email, emailVerified: now, name },
+          select: { id: true, email: true, name: true, mustChangePassword: true },
+        })
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          mustChangePassword: user.mustChangePassword,
+        } as any
+      },
+    }),
+    CredentialsProvider({
+      name: '账号密码',
       credentials: {
         email: { label: '邮箱', type: 'email' },
         password: { label: '密码', type: 'password' },
@@ -83,10 +123,10 @@ export const authOptions: NextAuthOptions = {
         const email = String(credentials?.email || '').trim().toLowerCase()
         const password = String(credentials?.password || '')
         if (!email || !password) return null
-        if (!isAdminEmail(email)) return null
 
         const existing = await prisma.user.findUnique({ where: { email } })
         if (!existing) {
+          if (!isAdminEmail(email)) return null
           if (password !== ADMIN_DEFAULT_PASSWORD) return null
           const created = await prisma.user.create({
             data: {
@@ -107,6 +147,7 @@ export const authOptions: NextAuthOptions = {
 
         if (!existing.passwordHash) {
           // Bootstrap admin from default password if password hash wasn't set yet.
+          if (!isAdminEmail(email)) return null
           if (password !== ADMIN_DEFAULT_PASSWORD) return null
           const updated = await prisma.user.update({
             where: { id: existing.id },
@@ -127,45 +168,6 @@ export const authOptions: NextAuthOptions = {
           name: existing.name,
           mustChangePassword: existing.mustChangePassword,
         } as any
-      },
-    }),
-    EmailProvider({
-      server: emailServer,
-      from: emailFrom,
-      async sendVerificationRequest({ identifier, url, provider }) {
-        const transport = buildTransport()
-        const site = new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000').host
-        if (!transport) {
-          console.log(`[DEV EMAIL] Sign in link for ${identifier}:\n${url}`)
-          return
-        }
-        try {
-          await transport.sendMail({
-            to: identifier,
-            from: provider.from,
-            subject: `登录到 ${site}`,
-            text: `点击以下链接完成登录：\n${url}\n（有效期 24 小时）`,
-            html:
-              `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto">` +
-              `<h2 style="color:#db2777">SeichiGo 登录</h2>` +
-              `<p>点击以下按钮完成登录：</p>` +
-              `<p><a href="${url}" style="display:inline-block;background:#ec4899;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">登录</a></p>` +
-              `<p style="color:#6b7280">如果不是你本人操作，可忽略本邮件。</p>` +
-              `</div>`,
-          })
-        } catch (err: any) {
-          console.error('SMTP send failed', {
-            code: err?.code,
-            command: err?.command,
-            response: err?.response,
-            responseCode: err?.responseCode,
-          })
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`[DEV EMAIL FALLBACK] Sign in link for ${identifier}:\n${url}`)
-            return
-          }
-          throw err
-        }
       },
     }),
   ],

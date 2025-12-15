@@ -6,6 +6,7 @@ declare module 'next-auth' {
       id: string
       isAdmin?: boolean
       mustChangePassword?: boolean
+      needsPasswordSetup?: boolean
     } & DefaultSession['user']
   }
 }

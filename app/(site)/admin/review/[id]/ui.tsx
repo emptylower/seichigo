@@ -8,7 +8,7 @@ type ArticleDetail = {
   id: string
   slug: string
   title: string
-  animeId: string | null
+  animeIds: string[]
   city: string | null
   routeLength: string | null
   tags: string[]
@@ -141,10 +141,10 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
               <span className="font-medium text-gray-900">状态：</span>
               <span>{article.status}</span>
             </div>
-            {article.animeId ? (
+            {article.animeIds?.length ? (
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">作品：</span>
-                <span>{article.animeId}</span>
+                <span>{article.animeIds.join('、')}</span>
               </div>
             ) : null}
             {article.city ? (

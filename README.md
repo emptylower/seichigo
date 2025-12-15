@@ -6,7 +6,8 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Next.js (App Router, TypeScript)
 - Tailwind CSS (pink theme)
 - MDX content (self-built content layer)
-- Auth.js (NextAuth) with Email provider + Prisma
+- Rich text editor (TipTap, Feishu-like bubble/block menus)
+- Auth.js (NextAuth) with Email OTP + Prisma
 - Supabase Postgres (via `DATABASE_URL`)
 - Giscus comments
 - SEO: sitemap/robots + dynamic OG
@@ -16,7 +17,7 @@ Code-first Next.js App Router blog for anime pilgrimage content.
   - `SITE_URL`
   - `DATABASE_URL` (Postgres connection string)
   - `NEXTAUTH_URL`, `NEXTAUTH_SECRET`
-  - Email SMTP: either `EMAIL_SERVER` or host/port/user/pass
+  - Email: `RESEND_API_KEY` (recommended) or SMTP (`EMAIL_SERVER` / host+port+user+pass)
   - Giscus public envs
   - `ADMIN_EMAILS` (管理员邮箱白名单)
 - Prisma CLI reads `.env` by default. For local dev, you can:
@@ -44,7 +45,8 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - See template and components in `content/zh/posts/README.md`.
 
 **Notes**
-- Email sign-in: in development, if no SMTP is configured, a sign-in link is logged to server console.
+- Email sign-in: in development, if neither Resend nor SMTP is configured, the OTP email content is logged to server console.
+- Accounts created via email OTP without a password are redirected to `/auth/set-password` on first login.
 - Author center: `/submit` (drafts + richtext editor + submit/withdraw).
 - Admin review: `/admin/review` (approve/reject in_review articles).
 - Legacy submissions API: `/api/submissions` has basic anti-abuse (per-user/IP per day). Tune with env vars.

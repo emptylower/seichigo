@@ -13,7 +13,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
     found?.source === 'mdx'
       ? [found.post.frontmatter.animeId, found.post.frontmatter.city].filter(Boolean).join(' · ')
       : found?.source === 'db'
-        ? [found.article.animeId, found.article.city].filter(Boolean).join(' · ')
+        ? [found.article.animeIds?.[0], found.article.city].filter(Boolean).join(' · ')
         : ''
   return new ImageResponse(
     (

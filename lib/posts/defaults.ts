@@ -1,6 +1,6 @@
 import type { ArticleRepo } from '@/lib/article/repo'
 
-export type PublicArticleRepo = Pick<ArticleRepo, 'findBySlug' | 'listByStatus'>
+export type PublicArticleRepo = Pick<ArticleRepo, 'findById' | 'findBySlug' | 'listByStatus'>
 
 let cachedRepo: PublicArticleRepo | null | undefined
 
@@ -14,4 +14,3 @@ export async function getDefaultPublicArticleRepo(): Promise<PublicArticleRepo |
   cachedRepo = new PrismaArticleRepo()
   return cachedRepo
 }
-

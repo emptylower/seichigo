@@ -17,7 +17,7 @@ export class PrismaArticleRepo implements ArticleRepo {
           authorId: input.authorId,
           slug: input.slug,
           title: input.title,
-          animeId: input.animeId ?? undefined,
+          animeIds: input.animeIds ?? undefined,
           city: input.city ?? undefined,
           routeLength: input.routeLength ?? undefined,
           tags: input.tags ?? undefined,
@@ -61,7 +61,7 @@ export class PrismaArticleRepo implements ArticleRepo {
         data: {
           slug: input.slug ?? undefined,
           title: input.title ?? undefined,
-          animeId: input.animeId === undefined ? undefined : input.animeId,
+          animeIds: input.animeIds === undefined ? undefined : input.animeIds,
           city: input.city === undefined ? undefined : input.city,
           routeLength: input.routeLength === undefined ? undefined : input.routeLength,
           tags: input.tags === undefined ? undefined : input.tags,
@@ -90,6 +90,18 @@ export class PrismaArticleRepo implements ArticleRepo {
         },
       })
       return toArticle(updated)
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2025') return null
+      }
+      throw err
+    }
+  }
+
+  async delete(id: string): Promise<Article | null> {
+    try {
+      const deleted = await prisma.article.delete({ where: { id } })
+      return toArticle(deleted)
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError) {
         if (err.code === 'P2025') return null

@@ -21,6 +21,10 @@
   - slug 唯一：repo 层统一抛 `ArticleSlugExistsError`，API 映射为 409
   - slug 不得与 MDX 冲突：创建/改 slug/提交审核/同意发布均校验（通过可注入 `mdxSlugExists`）
   - `in_review` 不可编辑：`PATCH` 返回 409
+  - 提交审核前置校验（`POST /submit`）：
+    - 标题不能为空/不能为“未命名”
+    - `animeIds` 至少 1 个
+    - 正文纯文本长度至少 100 字
   - 非管理员访问审核 API：403；未登录作者 API：401
 - 单测先行并覆盖鉴权、CRUD、状态流转、slug 冲突（DB + MDX）等场景。
 
@@ -45,4 +49,3 @@
 ## 验收方式（独立可测）
 - 运行：`npm run test`
 - 预期：`tests/article/api.test.ts` 全绿，且全量测试保持全绿
-

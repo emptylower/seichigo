@@ -10,7 +10,18 @@ type MdxProvider = {
 
 export type GetPublicPostBySlugOptions = {
   mdx?: MdxProvider
-  articleRepo?: Pick<ArticleRepo, 'findBySlug'> | PublicArticleRepo
+  articleRepo?: Pick<ArticleRepo, 'findById' | 'findBySlug'> | PublicArticleRepo
+}
+
+function extractArticleIdFromPostKey(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+  const idx = trimmed.indexOf('-')
+  const candidate = idx === -1 ? trimmed : trimmed.slice(0, idx)
+  const id = candidate.trim()
+  if (!id) return null
+  if (id.length < 8) return null
+  return id
 }
 
 export async function getPublicPostBySlug(
@@ -28,9 +39,16 @@ export async function getPublicPostBySlug(
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
   if (!repo) return null
 
+  const id = extractArticleIdFromPostKey(target)
+  if (id && 'findById' in repo) {
+    const found = await repo.findById(id).catch(() => null)
+    if (found && found.status === 'published') {
+      return { source: 'db', article: found }
+    }
+  }
+
   const article = await repo.findBySlug(target).catch(() => null)
   if (!article) return null
   if (article.status !== 'published') return null
   return { source: 'db', article }
 }
-

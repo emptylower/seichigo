@@ -4,7 +4,10 @@ import { getServerAuthSession } from '@/lib/auth/session'
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerAuthSession()
-  if (session?.user?.mustChangePassword) {
+  if (session?.user?.needsPasswordSetup) {
+    redirect('/auth/set-password')
+  }
+  if (session?.user?.isAdmin && session?.user?.mustChangePassword) {
     redirect('/auth/change-password')
   }
   return <SiteShell>{children}</SiteShell>

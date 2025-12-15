@@ -54,5 +54,29 @@ describe('submit center ui', () => {
 
     expect(await screen.findByText('已提交审核')).toBeInTheDocument()
   })
-})
 
+  it('calls delete API when clicking “删除”', async () => {
+    ;(window as any).confirm = vi.fn(() => true)
+
+    const now = new Date().toISOString()
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: 'a1', slug: 'my-slug', title: 'My Title', status: 'draft', rejectReason: null, updatedAt: now }],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+
+    render(<SubmitCenterClient user={{ id: 'user-1' }} />)
+
+    const button = await screen.findByRole('button', { name: '删除' })
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/articles/a1', { method: 'DELETE' })
+    })
+
+    expect(await screen.findByText('已删除')).toBeInTheDocument()
+  })
+})

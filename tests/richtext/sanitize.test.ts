@@ -32,8 +32,15 @@ describe('richtext sanitize', () => {
   })
 
   it('enforces color palette whitelist', () => {
-    const allowed = sanitizeRichTextHtml('<span style="color:#db2777">x</span>')
-    expect(allowed).toContain('style="color:#db2777"')
+    const allowed = sanitizeRichTextHtml('<span style="color:#3b82f6">x</span>')
+    expect(allowed).toContain('style="color:#3b82f6"')
+
+    const allowedBg = sanitizeRichTextHtml('<span style="background-color:#fecaca">x</span>')
+    expect(allowedBg).toContain('style="background-color:#fecaca"')
+
+    const allowedBoth = sanitizeRichTextHtml('<span style="color:#3b82f6; background-color:#fecaca">x</span>')
+    expect(allowedBoth).toContain('color:#3b82f6')
+    expect(allowedBoth).toContain('background-color:#fecaca')
 
     const badExpr = sanitizeRichTextHtml('<span style="color:expression(alert(1))">x</span>')
     expect(badExpr).toContain('<span>x</span>')
@@ -44,6 +51,29 @@ describe('richtext sanitize', () => {
     expect(badHex).toContain('<span>x</span>')
     expect(badHex).not.toContain('#ff0000')
     expect(badHex).not.toContain('style=')
+  })
+
+  it('preserves align/indent data attributes (whitelist + clamp)', () => {
+    const ok = sanitizeRichTextHtml('<p data-align="center" data-indent="2">x</p>')
+    expect(ok).toContain('<p data-align="center" data-indent="2">x</p>')
+
+    const clamp = sanitizeRichTextHtml('<p data-indent="99">x</p>')
+    expect(clamp).toContain('data-indent="6"')
+
+    const bad = sanitizeRichTextHtml('<p data-align="evil" data-indent="-1">x</p>')
+    expect(bad).toContain('<p>x</p>')
+    expect(bad).not.toContain('data-align')
+    expect(bad).not.toContain('data-indent')
+
+    const img = sanitizeRichTextHtml('<img src="https://example.com/a.jpg" data-align="right" data-indent="3" />')
+    expect(img).toContain('data-align="right"')
+    expect(img).toContain('data-indent="3"')
+  })
+
+  it('preserves strikethrough tags', () => {
+    const out = sanitizeRichTextHtml('<p><s>gone</s> <del>gone2</del></p>')
+    expect(out).toContain('<s>gone</s>')
+    expect(out).toContain('<del>gone2</del>')
   })
 
   it('enforces font-family whitelist', () => {
@@ -85,4 +115,3 @@ describe('richtext sanitize', () => {
     expect(dataOut).not.toContain('data:')
   })
 })
-

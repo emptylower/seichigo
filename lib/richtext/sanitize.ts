@@ -12,6 +12,8 @@ const ALLOWED_TAGS = [
   'strong',
   'em',
   'u',
+  's',
+  'del',
   'code',
   'span',
   'ul',
@@ -30,7 +32,16 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   a: ['href'],
-  img: ['src', 'alt'],
+  img: ['src', 'alt', 'data-align', 'data-indent'],
+  p: ['data-align', 'data-indent'],
+  h1: ['data-align', 'data-indent'],
+  h2: ['data-align', 'data-indent'],
+  h3: ['data-align', 'data-indent'],
+  blockquote: ['data-align', 'data-indent'],
+  pre: ['data-align', 'data-indent'],
+  ul: ['data-align', 'data-indent'],
+  ol: ['data-align', 'data-indent'],
+  li: ['data-align', 'data-indent'],
   span: ['style'],
   th: ['colspan', 'rowspan'],
   td: ['colspan', 'rowspan'],
@@ -76,6 +87,7 @@ function formatFontFamily(normalized: string): string {
 function sanitizeSpanStyle(style?: string): string | null {
   if (!style) return null
   let color: string | null = null
+  let backgroundColor: string | null = null
   let fontFamily: string | null = null
 
   for (const chunk of style.split(';')) {
@@ -93,6 +105,12 @@ function sanitizeSpanStyle(style?: string): string | null {
       continue
     }
 
+    if (prop === 'background-color') {
+      const normalized = normalizeHexColor(rawValue)
+      if (normalized && allowedColors.has(normalized)) backgroundColor = normalized
+      continue
+    }
+
     if (prop === 'font-family') {
       const normalized = sanitizeFontFamily(rawValue)
       if (normalized) fontFamily = normalized
@@ -101,6 +119,7 @@ function sanitizeSpanStyle(style?: string): string | null {
 
   const parts: string[] = []
   if (color) parts.push(`color:${color}`)
+  if (backgroundColor) parts.push(`background-color:${backgroundColor}`)
   if (fontFamily) parts.push(`font-family:${fontFamily}`)
   return parts.length ? parts.join(';') : null
 }
@@ -145,6 +164,15 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       return false
     },
     transformTags: {
+      h1: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      h2: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      h3: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      p: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      blockquote: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      pre: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      ul: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      ol: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      li: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       a: (tagName, attribs) => {
         const next = { ...attribs }
         const href = sanitizeAnchorHref(attribs.href)
@@ -153,7 +181,7 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
         return { tagName, attribs: next }
       },
       img: (tagName, attribs) => {
-        const next: Record<string, string> = {}
+        const next: Record<string, string> = sanitizeBlockAttrs(attribs)
         if (attribs.src) next.src = attribs.src.trim()
         if (attribs.alt) next.alt = String(attribs.alt)
         return { tagName, attribs: next }
@@ -169,3 +197,26 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
   })
 }
 
+function sanitizeAlign(value: unknown): string | null {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (!raw || raw === 'left') return null
+  if (raw === 'center' || raw === 'right') return raw
+  return null
+}
+
+function sanitizeIndent(value: unknown): string | null {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw || !/^\d+$/.test(raw)) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return String(Math.min(6, Math.trunc(n)))
+}
+
+function sanitizeBlockAttrs(attribs: Record<string, string | undefined>): Record<string, string> {
+  const next: Record<string, string> = {}
+  const align = sanitizeAlign(attribs['data-align'])
+  if (align) next['data-align'] = align
+  const indent = sanitizeIndent(attribs['data-indent'])
+  if (indent) next['data-indent'] = indent
+  return next
+}

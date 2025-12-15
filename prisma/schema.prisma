@@ -58,6 +58,21 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model EmailOtp {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String   @db.Text
+  salt      String   @db.Text
+  ipHash    String?
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([email, createdAt])
+  @@index([expiresAt])
+}
+
 model Submission {
   id              String   @id @default(cuid())
   userId          String
@@ -84,7 +99,7 @@ model Article {
   authorId    String
   slug        String   @unique
   title       String
-  animeId     String?
+  animeIds    String[] @default([])
   city        String?
   routeLength String?
   tags        String[] @default([])
@@ -100,6 +115,17 @@ model Article {
 
   @@index([authorId])
   @@index([status])
+}
+
+model Anime {
+  id        String   @id
+  name      String
+  alias     String[] @default([])
+  year      Int?
+  summary   String?
+  cover     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Asset {

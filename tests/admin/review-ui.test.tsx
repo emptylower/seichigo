@@ -64,18 +64,18 @@ describe('admin review ui', () => {
       const url = String(input)
       const method = String(init?.method || 'GET').toUpperCase()
 
-      if (url === '/api/articles/a1' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          article: {
-            id: 'a1',
-            slug: 'hello',
-            title: 'Hello Article',
-            animeId: 'btr',
-            city: 'Tokyo',
-            routeLength: null,
-            tags: ['shimokitazawa'],
-            contentHtml: '<p>Preview</p>',
+	      if (url === '/api/articles/a1' && method === 'GET') {
+	        return jsonResponse({
+	          ok: true,
+	          article: {
+	            id: 'a1',
+	            slug: 'hello',
+	            title: 'Hello Article',
+	            animeIds: ['btr'],
+	            city: 'Tokyo',
+	            routeLength: null,
+	            tags: ['shimokitazawa'],
+	            contentHtml: '<p>Preview</p>',
             status: 'in_review',
             rejectReason: null,
             publishedAt: null,
@@ -119,18 +119,18 @@ describe('admin review ui', () => {
       const url = String(input)
       const method = String(init?.method || 'GET').toUpperCase()
 
-      if (url === '/api/articles/a1' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          article: {
-            id: 'a1',
-            slug: 'hello',
-            title: 'Hello Article',
-            animeId: null,
-            city: null,
-            routeLength: null,
-            tags: [],
-            contentHtml: '<p>Preview</p>',
+	      if (url === '/api/articles/a1' && method === 'GET') {
+	        return jsonResponse({
+	          ok: true,
+	          article: {
+	            id: 'a1',
+	            slug: 'hello',
+	            title: 'Hello Article',
+	            animeIds: [],
+	            city: null,
+	            routeLength: null,
+	            tags: [],
+	            contentHtml: '<p>Preview</p>',
             status: 'in_review',
             rejectReason: null,
             publishedAt: null,

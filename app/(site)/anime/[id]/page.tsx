@@ -12,7 +12,7 @@ export async function generateStaticParams() {
 export default async function AnimePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const anime = await getAnimeById(id)
-  const posts = (await getAllPublicPosts('zh')).filter((p) => p.animeId === id)
+  const posts = (await getAllPublicPosts('zh')).filter((p) => (p.animeIds || []).includes(id))
   if (!anime) return <div className="text-gray-500">未找到该作品。</div>
   return (
     <div className="space-y-4">
@@ -22,7 +22,7 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
         <h2 className="text-xl font-semibold">相关文章</h2>
         <ul className="list-disc pl-6">
           {posts.map((p) => (
-            <li key={p.slug}><Link href={`/posts/${p.slug}`}>{p.title}</Link></li>
+            <li key={p.path}><Link href={p.path}>{p.title}</Link></li>
           ))}
           {!posts.length && <li className="text-gray-500 list-none pl-0">暂无文章。</li>}
         </ul>

@@ -19,6 +19,7 @@ type Props = {
 }
 
 type Filter = 'all' | 'draftbox' | 'in_review' | 'published'
+type Action = 'submit' | 'withdraw' | 'delete'
 
 function formatStatus(status: ArticleListItem['status']) {
   if (status === 'draft') return '草稿'
@@ -27,13 +28,28 @@ function formatStatus(status: ArticleListItem['status']) {
   return '已发布'
 }
 
+function formatDateTime(input: string) {
+  const d = new Date(input)
+  if (Number.isNaN(d.getTime())) return input
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  }).format(d)
+}
+
 export default function SubmitCenterClient({ user }: Props) {
   const [items, setItems] = useState<ArticleListItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('draftbox')
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
+  const [actionLoading, setActionLoading] = useState<Record<string, Action | null>>({})
 
   const filtered = useMemo(() => {
     if (filter === 'all') return items
@@ -67,9 +83,9 @@ export default function SubmitCenterClient({ user }: Props) {
   async function submit(id: string) {
     setFlash(null)
     setError(null)
-    setActionLoading((m) => ({ ...m, [id]: true }))
+    setActionLoading((m) => ({ ...m, [id]: 'submit' }))
     const res = await fetch(`/api/articles/${id}/submit`, { method: 'POST' })
-    setActionLoading((m) => ({ ...m, [id]: false }))
+    setActionLoading((m) => ({ ...m, [id]: null }))
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
       setError(j.error || '提交失败')
@@ -82,15 +98,32 @@ export default function SubmitCenterClient({ user }: Props) {
   async function withdraw(id: string) {
     setFlash(null)
     setError(null)
-    setActionLoading((m) => ({ ...m, [id]: true }))
+    setActionLoading((m) => ({ ...m, [id]: 'withdraw' }))
     const res = await fetch(`/api/articles/${id}/withdraw`, { method: 'POST' })
-    setActionLoading((m) => ({ ...m, [id]: false }))
+    setActionLoading((m) => ({ ...m, [id]: null }))
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
       setError(j.error || '撤回失败')
       return
     }
     setFlash('已撤回到草稿')
+    await load()
+  }
+
+  async function deleteDraft(id: string) {
+    setFlash(null)
+    setError(null)
+    if (!window.confirm('确定删除这篇草稿吗？此操作不可撤销。')) return
+
+    setActionLoading((m) => ({ ...m, [id]: 'delete' }))
+    const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' })
+    setActionLoading((m) => ({ ...m, [id]: null }))
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setError(j.error || '删除失败')
+      return
+    }
+    setFlash('已删除')
     await load()
   }
 
@@ -152,9 +185,7 @@ export default function SubmitCenterClient({ user }: Props) {
                   <span className="rounded bg-pink-100 px-2 py-0.5 text-xs text-pink-800">{formatStatus(a.status)}</span>
                 </div>
                 <div className="mt-1 text-xs text-gray-500">
-                  <span>slug：{a.slug}</span>
-                  <span> · </span>
-                  <span>更新：{new Date(a.updatedAt).toLocaleString()}</span>
+                  <span>更新：{formatDateTime(a.updatedAt)}</span>
                 </div>
                 {a.status === 'rejected' && a.rejectReason ? (
                   <div className="mt-2 rounded-md bg-amber-50 p-2 text-sm text-amber-900">
@@ -165,13 +196,24 @@ export default function SubmitCenterClient({ user }: Props) {
 
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 {a.status === 'draft' || a.status === 'rejected' ? (
-                  <Button type="button" disabled={actionLoading[a.id]} onClick={() => submit(a.id)}>
-                    {actionLoading[a.id] ? '提交中…' : '提交审核'}
-                  </Button>
+                  <>
+                    <Button type="button" disabled={actionLoading[a.id] != null} onClick={() => submit(a.id)}>
+                      {actionLoading[a.id] === 'submit' ? '提交中…' : '提交审核'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                      disabled={actionLoading[a.id] != null}
+                      onClick={() => deleteDraft(a.id)}
+                    >
+                      {actionLoading[a.id] === 'delete' ? '删除中…' : '删除'}
+                    </Button>
+                  </>
                 ) : null}
                 {a.status === 'in_review' ? (
-                  <Button type="button" variant="ghost" disabled={actionLoading[a.id]} onClick={() => withdraw(a.id)}>
-                    {actionLoading[a.id] ? '撤回中…' : '撤回'}
+                  <Button type="button" variant="ghost" disabled={actionLoading[a.id] != null} onClick={() => withdraw(a.id)}>
+                    {actionLoading[a.id] === 'withdraw' ? '撤回中…' : '撤回'}
                   </Button>
                 ) : null}
               </div>
@@ -182,4 +224,3 @@ export default function SubmitCenterClient({ user }: Props) {
     </div>
   )
 }
-
