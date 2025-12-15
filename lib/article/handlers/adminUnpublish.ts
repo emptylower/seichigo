@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { reject } from '@/lib/article/workflow'
+import { unpublish } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 
 const schema = z.object({
@@ -34,7 +34,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
 
-      const r = reject(
+      const r = unpublish(
         { status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason },
         { userId: session.user.id, isAdmin: true },
         parsed.data.reason
@@ -43,7 +43,11 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: r.error.message }, { status: 409 })
       }
 
-      const updated = await deps.repo.updateState(id, { status: 'rejected', rejectReason: parsed.data.reason.trim(), needsRevision: true, publishedAt: null })
+      const updated = await deps.repo.updateState(id, {
+        status: 'rejected',
+        rejectReason: parsed.data.reason.trim(),
+        needsRevision: true,
+      })
       if (!updated) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
@@ -52,3 +56,4 @@ export function createHandlers(deps: ArticleApiDeps) {
     },
   }
 }
+

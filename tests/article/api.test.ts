@@ -9,6 +9,7 @@ import { createHandlers as createWithdrawHandlers } from '@/lib/article/handlers
 import { createHandlers as createAdminReviewListHandlers } from '@/lib/article/handlers/adminReviewList'
 import { createHandlers as createAdminApproveHandlers } from '@/lib/article/handlers/adminApprove'
 import { createHandlers as createAdminRejectHandlers } from '@/lib/article/handlers/adminReject'
+import { createHandlers as createAdminUnpublishHandlers } from '@/lib/article/handlers/adminUnpublish'
 
 function jsonReq(url: string, method: string, body?: any): Request {
   return new Request(url, {
@@ -228,6 +229,7 @@ describe('article api', () => {
     const adminList = createAdminReviewListHandlers(deps)
     const adminReject = createAdminRejectHandlers(deps)
     const adminApprove = createAdminApproveHandlers(deps)
+    const adminUnpublish = createAdminUnpublishHandlers(deps)
 
     const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
@@ -284,8 +286,19 @@ describe('article api', () => {
     expect(rejected.article.status).toBe('rejected')
     expect(rejected.article.rejectReason).toBe('needs more detail')
 
-    // author can edit + resubmit after rejection
+    // author must edit before resubmitting after rejection
     setSession({ user: { id: 'user-1', isAdmin: false } })
+    const submitAfterRejectBlocked = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(submitAfterRejectBlocked.status).toBe(409)
+
+    const patchAfterReject = await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { tags: ['edited'] }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(patchAfterReject.status).toBe(200)
+
     const submitAfterReject = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
       params: Promise.resolve({ id }),
     })
@@ -300,6 +313,29 @@ describe('article api', () => {
     const approved = await approveRes.json()
     expect(approved.article.status).toBe('published')
     expect(approved.article.publishedAt).toBe(fixedNow.toISOString())
+
+    // admin can unpublish published article with reason; must edit again before resubmitting
+    const unpublishBad = await adminUnpublish.POST(
+      jsonReq('http://localhost/api/admin/review/articles/' + id + '/unpublish', 'POST', { reason: '' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(unpublishBad.status).toBe(400)
+
+    const unpublishRes = await adminUnpublish.POST(
+      jsonReq('http://localhost/api/admin/review/articles/' + id + '/unpublish', 'POST', { reason: 'policy update' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(unpublishRes.status).toBe(200)
+    const unpublished = await unpublishRes.json()
+    expect(unpublished.article.status).toBe('rejected')
+    expect(unpublished.article.rejectReason).toBe('policy update')
+
+    // author blocked until edit
+    setSession({ user: { id: 'user-1', isAdmin: false } })
+    const submitAfterUnpublishBlocked = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(submitAfterUnpublishBlocked.status).toBe(409)
   })
 
   it('disallows manual slug and keeps slug unique on title changes', async () => {

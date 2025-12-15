@@ -36,6 +36,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
       contentHtml: input.contentHtml ?? '',
       status: 'draft',
       rejectReason: null,
+      needsRevision: false,
       publishedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -91,6 +92,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
     if (input.tags !== undefined) existing.tags = input.tags ?? []
     if (input.contentJson !== undefined) existing.contentJson = input.contentJson ?? null
     if (input.contentHtml !== undefined) existing.contentHtml = input.contentHtml ?? ''
+    if (input.needsRevision !== undefined) existing.needsRevision = Boolean(input.needsRevision)
 
     existing.updatedAt = this.now()
     this.byId.set(id, { ...existing })
@@ -103,6 +105,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
 
     if (input.status != null) existing.status = input.status
     if (input.rejectReason !== undefined) existing.rejectReason = input.rejectReason ?? null
+    if (input.needsRevision !== undefined) existing.needsRevision = Boolean(input.needsRevision)
     if (input.publishedAt !== undefined) existing.publishedAt = input.publishedAt ?? null
 
     existing.updatedAt = this.now()

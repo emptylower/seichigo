@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approve, canEdit, reject, submit, withdraw, type Actor, type ArticleState } from '@/lib/article/workflow'
+import { approve, canEdit, reject, submit, unpublish, withdraw, type Actor, type ArticleState } from '@/lib/article/workflow'
 
 const author: Actor = { userId: 'user-1', isAdmin: false }
 const otherUser: Actor = { userId: 'user-2', isAdmin: false }
@@ -92,5 +92,25 @@ describe('article workflow', () => {
     expect(r4.ok).toBe(false)
     if (!r4.ok) expect(r4.error.code).toBe('FORBIDDEN')
   })
-})
 
+  it('unpublish: published -> rejected with reason (admin only)', () => {
+    const r1 = unpublish(article('published'), admin, ' violation ')
+    expect(r1.ok).toBe(true)
+    if (r1.ok) {
+      expect(r1.value.status).toBe('rejected')
+      expect(r1.value.rejectReason).toBe('violation')
+    }
+
+    const r2 = unpublish(article('published'), admin, '')
+    expect(r2.ok).toBe(false)
+    if (!r2.ok) expect(r2.error.code).toBe('MISSING_REASON')
+
+    const r3 = unpublish(article('in_review'), admin, 'x')
+    expect(r3.ok).toBe(false)
+    if (!r3.ok) expect(r3.error.code).toBe('INVALID_STATUS')
+
+    const r4 = unpublish(article('published'), author, 'x')
+    expect(r4.ok).toBe(false)
+    if (!r4.ok) expect(r4.error.code).toBe('FORBIDDEN')
+  })
+})

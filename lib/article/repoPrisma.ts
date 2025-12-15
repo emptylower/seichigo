@@ -67,6 +67,7 @@ export class PrismaArticleRepo implements ArticleRepo {
           tags: input.tags === undefined ? undefined : input.tags,
           contentJson: input.contentJson === undefined ? undefined : (input.contentJson as any),
           contentHtml: input.contentHtml === undefined ? undefined : input.contentHtml,
+          needsRevision: input.needsRevision === undefined ? undefined : Boolean(input.needsRevision),
         },
       })
       return toArticle(updated)
@@ -86,6 +87,7 @@ export class PrismaArticleRepo implements ArticleRepo {
         data: {
           status: input.status ?? undefined,
           rejectReason: input.rejectReason === undefined ? undefined : input.rejectReason,
+          needsRevision: input.needsRevision === undefined ? undefined : Boolean(input.needsRevision),
           publishedAt: input.publishedAt === undefined ? undefined : input.publishedAt,
         },
       })

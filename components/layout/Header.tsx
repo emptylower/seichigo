@@ -30,7 +30,7 @@ export default async function Header() {
           <Link href="/anime" className="hover:text-brand-600">作品</Link>
           <Link href="/about" className="hover:text-brand-600">关于</Link>
           <Link href="/submit" className="hover:text-brand-600">投稿</Link>
-          {session?.user?.isAdmin ? <Link href="/admin/review" className="hover:text-brand-600">审核</Link> : null}
+          {session?.user?.isAdmin ? <Link href="/admin/panel" className="hover:text-brand-600">管理员面板</Link> : null}
           {session?.user ? (
             <a href="/api/auth/signout" className="rounded-md border px-2 py-1 text-gray-600 hover:bg-gray-50">退出</a>
           ) : (

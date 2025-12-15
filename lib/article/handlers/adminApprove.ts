@@ -28,7 +28,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: r.error.message }, { status: 409 })
       }
 
-      const updated = await deps.repo.updateState(id, { status: 'published', rejectReason: null, publishedAt: deps.now() })
+      const updated = await deps.repo.updateState(id, { status: 'published', rejectReason: null, needsRevision: false, publishedAt: deps.now() })
       if (!updated) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }

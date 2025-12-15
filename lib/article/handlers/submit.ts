@@ -27,6 +27,10 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
 
+      if (existing.status === 'rejected' && existing.needsRevision) {
+        return NextResponse.json({ error: '请先修改后再提交审核' }, { status: 409 })
+      }
+
       const actor: Actor = { userId: session.user.id, isAdmin: Boolean(session.user.isAdmin) }
       const r = submit({ status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason }, actor)
       if (!r.ok) {

@@ -13,6 +13,7 @@ export type Article = {
   contentHtml: string
   status: ArticleStatus
   rejectReason: string | null
+  needsRevision: boolean
   publishedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -30,11 +31,14 @@ export type CreateDraftInput = {
   contentHtml?: string
 }
 
-export type UpdateDraftInput = Partial<Omit<CreateDraftInput, 'authorId'>>
+export type UpdateDraftInput = Partial<Omit<CreateDraftInput, 'authorId'>> & {
+  needsRevision?: boolean
+}
 
 export type UpdateStateInput = {
   status?: ArticleStatus
   rejectReason?: string | null
+  needsRevision?: boolean
   publishedAt?: Date | null
 }
 

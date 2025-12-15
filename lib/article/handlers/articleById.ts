@@ -17,6 +17,25 @@ const patchSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需要更新一个字段' })
 
+function arrayShallowEqual(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function hasMeaningfulEdit(existing: any, update: { title?: string; contentHtml?: string; animeIds?: unknown; city?: unknown; routeLength?: unknown; tags?: unknown }): boolean {
+  if (update.title !== undefined && update.title !== existing.title) return true
+  if (update.contentHtml !== undefined && update.contentHtml !== existing.contentHtml) return true
+  if (update.animeIds !== undefined && !arrayShallowEqual(update.animeIds, existing.animeIds)) return true
+  if (update.tags !== undefined && !arrayShallowEqual(update.tags, existing.tags)) return true
+  if (update.city !== undefined && update.city !== existing.city) return true
+  if (update.routeLength !== undefined && update.routeLength !== existing.routeLength) return true
+  return false
+}
+
 function toDetail(a: any) {
   return {
     id: a.id,
@@ -104,6 +123,18 @@ export function createHandlers(deps: ArticleApiDeps) {
       const nextTitle = parsed.data.title != null ? parsed.data.title.trim() : undefined
       if (nextTitle !== undefined) {
         updateInput.title = nextTitle
+      }
+
+      const edited = hasMeaningfulEdit(existing, {
+        title: nextTitle,
+        contentHtml: updateInput.contentHtml,
+        animeIds: parsed.data.animeIds,
+        city: parsed.data.city,
+        routeLength: parsed.data.routeLength,
+        tags: parsed.data.tags,
+      })
+      if (existing.status === 'rejected' && existing.needsRevision && edited) {
+        updateInput.needsRevision = false
       }
 
       if (typeof nextTitle !== 'string' || nextTitle === existing.title) {

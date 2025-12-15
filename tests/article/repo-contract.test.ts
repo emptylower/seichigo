@@ -10,6 +10,7 @@ describe('article repo contract (in-memory)', () => {
       title: 'My First Article',
     })
     expect(created.status).toBe('draft')
+    expect(created.needsRevision).toBe(false)
     expect(created.slug).toBe('my-first-article')
     expect(created.authorId).toBe('user-1')
   })
@@ -39,4 +40,3 @@ describe('article repo contract (in-memory)', () => {
     expect(fetched?.title).toBe('A2')
   })
 })
-

@@ -57,6 +57,10 @@ export function canReject(article: ArticleState, actor: Actor): boolean {
   return isAdmin(actor) && article.status === 'in_review'
 }
 
+export function canUnpublish(article: ArticleState, actor: Actor): boolean {
+  return isAdmin(actor) && article.status === 'published'
+}
+
 export function submit(article: ArticleState, actor: Actor): WorkflowResult<ArticleState> {
   if (!isAuthor(article, actor)) return err('FORBIDDEN', '无权限')
   if (article.status !== 'draft' && article.status !== 'rejected') return err('INVALID_STATUS', '状态不允许提交审核')
@@ -83,3 +87,10 @@ export function reject(article: ArticleState, actor: Actor, reason: string): Wor
   return ok({ ...article, status: 'rejected', rejectReason: cleaned })
 }
 
+export function unpublish(article: ArticleState, actor: Actor, reason: string): WorkflowResult<ArticleState> {
+  if (!isAdmin(actor)) return err('FORBIDDEN', '无权限')
+  if (article.status !== 'published') return err('INVALID_STATUS', '当前状态不可下架')
+  const cleaned = reason.trim()
+  if (!cleaned) return err('MISSING_REASON', '必须填写下架原因')
+  return ok({ ...article, status: 'rejected', rejectReason: cleaned })
+}
