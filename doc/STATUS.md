@@ -42,6 +42,7 @@
   - `NEXTAUTH_SECRET`：随机字符串
 - **数据库**
   - `DATABASE_URL`：Postgres 连接串，如 `postgresql://postgres:postgres@localhost:5432/seichigo?schema=public`
+  - `DATABASE_URL_UNPOOLED`：可选但推荐（用于 Prisma 迁移的直连/非连接池 URL；在 Vercel/Neon 集成里通常会自动提供）
 - **管理员登录（仅管理员）**
   - `ADMIN_EMAILS`：管理员邮箱白名单，逗号分隔（仅这些邮箱可用帐密登录）
   - `ADMIN_DEFAULT_PASSWORD`：可选，默认 `112233`

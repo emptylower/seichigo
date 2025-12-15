@@ -16,6 +16,7 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Copy `.env.example` to `.env.local` and fill:
   - `SITE_URL`
   - `DATABASE_URL` (Postgres connection string)
+  - `DATABASE_URL_UNPOOLED` (optional but recommended; direct/non-pooling URL for Prisma migrations)
   - `NEXTAUTH_URL`, `NEXTAUTH_SECRET`
   - Email: `RESEND_API_KEY` (recommended) or SMTP (`EMAIL_SERVER` / host+port+user+pass)
   - Giscus public envs

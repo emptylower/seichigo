@@ -5,6 +5,9 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Use a direct (non-pooling) connection for Prisma migrations/introspection.
+  // On Vercel/Neon this is typically provided as DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
