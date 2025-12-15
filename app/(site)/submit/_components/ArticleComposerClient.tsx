@@ -81,6 +81,7 @@ export default function ArticleComposerClient({ initial }: Props) {
   }, [content.html, content.json, title])
 
   const lastSaved = useRef<string>('')
+  const draftCreateInFlight = useRef(false)
   useEffect(() => {
     if (!editable) return
     if (!id) return
@@ -90,21 +91,33 @@ export default function ArticleComposerClient({ initial }: Props) {
 
     setSaveState('saving')
     setSaveError(null)
-    const handle = window.setTimeout(async () => {
-      const res = await fetch(`/api/articles/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        setSaveError(j.error || '保存失败')
-        setSaveState('error')
-        return
-      }
-      lastSaved.current = next
-      setSaveState('saved')
-      window.setTimeout(() => setSaveState('idle'), 1200)
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        const controller = new AbortController()
+        const timeout = window.setTimeout(() => controller.abort(), 15_000)
+        try {
+          const res = await fetch(`/api/articles/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            setSaveError(j.error || '保存失败')
+            setSaveState('error')
+            return
+          }
+          lastSaved.current = next
+          setSaveState('saved')
+          window.setTimeout(() => setSaveState('idle'), 1200)
+        } catch (err: any) {
+          setSaveError(err?.message || '保存失败')
+          setSaveState('error')
+        } finally {
+          window.clearTimeout(timeout)
+        }
+      })()
     }, 800)
 
     return () => window.clearTimeout(handle)
@@ -117,38 +130,55 @@ export default function ArticleComposerClient({ initial }: Props) {
     if (!editable) return
     const hasBody = countPlainText(content.html) > 0
     if (!hasBody) return
-    if (saveState === 'creating') return
+    if (draftCreateInFlight.current) return
 
     setSaveState('creating')
     setSaveError(null)
     const snapshot = { ...payload }
 
-    const handle = window.setTimeout(async () => {
-      const res = await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(snapshot),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        setSaveError(j.error || '创建失败')
-        setSaveState('error')
-        return
-      }
-      const j = await res.json().catch(() => null)
-      const nextId = j?.article?.id ? String(j.article.id) : null
-      if (!nextId) {
-        setSaveError('创建失败（响应异常）')
-        setSaveState('error')
-        return
-      }
-      setId(nextId)
-      router.replace(`/submit/${nextId}`)
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        if (draftCreateInFlight.current) return
+        draftCreateInFlight.current = true
+        const controller = new AbortController()
+        const timeout = window.setTimeout(() => controller.abort(), 15_000)
+        let succeeded = false
+        try {
+          const res = await fetch('/api/articles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(snapshot),
+            signal: controller.signal,
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            setSaveError(j.error || '创建失败')
+            setSaveState('error')
+            return
+          }
+          const j = await res.json().catch(() => null)
+          const nextId = j?.article?.id ? String(j.article.id) : null
+          if (!nextId) {
+            setSaveError('创建失败（响应异常）')
+            setSaveState('error')
+            return
+          }
+          succeeded = true
+          setId(nextId)
+          router.replace(`/submit/${nextId}`)
+        } catch (err: any) {
+          setSaveError(err?.message || '创建失败')
+          setSaveState('error')
+        } finally {
+          window.clearTimeout(timeout)
+          if (!succeeded) draftCreateInFlight.current = false
+        }
+      })()
     }, 400)
 
     return () => window.clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content.html, editable, id, initial, payload, router, saveState])
+  }, [content.html, editable, id, initial, payload, router])
 
   const displayTitle = title === '未命名' ? '' : title
 
@@ -483,4 +513,3 @@ export default function ArticleComposerClient({ initial }: Props) {
     </div>
   )
 }
-
