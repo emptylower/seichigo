@@ -51,6 +51,9 @@ export async function sendMail(input: SendMailInput): Promise<void> {
 
   const smtp = buildSmtpConfig()
   if (!smtp) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Email provider is not configured (set RESEND_API_KEY or SMTP EMAIL_SERVER*)')
+    }
     console.log(`[DEV EMAIL] To: ${to}\nSubject: ${subject}\n\n${text}`)
     return
   }
@@ -58,4 +61,3 @@ export async function sendMail(input: SendMailInput): Promise<void> {
   const transport = nodemailer.createTransport(smtp)
   await transport.sendMail({ to, from, subject, text, html })
 }
-
