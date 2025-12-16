@@ -49,7 +49,9 @@ function FigureImageView({ node, selected, editor, getPos, HTMLAttributes }: Nod
         onMouseDown={(e) => {
           e.preventDefault()
           if (!editor || !pos) return
-          editor.commands.setNodeSelection(pos())
+          const at = pos()
+          if (typeof at !== 'number') return
+          editor.commands.setNodeSelection(at)
         }}
       />
 
@@ -60,7 +62,9 @@ function FigureImageView({ node, selected, editor, getPos, HTMLAttributes }: Nod
           if (!editor || !pos) return
           if (!selected || !empty) return
           e.preventDefault()
-          editor.chain().setTextSelection(pos() + 1).focus(undefined, { scrollIntoView: false }).run()
+          const at = pos()
+          if (typeof at !== 'number') return
+          editor.chain().setTextSelection(at + 1).focus(undefined, { scrollIntoView: false }).run()
         }}
       >
         <NodeViewContent

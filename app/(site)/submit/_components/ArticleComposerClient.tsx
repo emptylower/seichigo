@@ -85,15 +85,15 @@ export default function ArticleComposerClient({ initial }: Props) {
   const pendingSave = useRef<string | null>(null)
   const saveInFlight = useRef(false)
   const lastChangeAt = useRef<number>(0)
-  const debounceTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null)
-  const retryTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null)
-  const idleTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const debounceTimer = useRef<number | null>(null)
+  const retryTimer = useRef<number | null>(null)
+  const idleTimer = useRef<number | null>(null)
   const retryDelayMs = useRef<number>(0)
   const saveAbort = useRef<AbortController | null>(null)
   const mounted = useRef(true)
   const draftCreateInFlight = useRef(false)
 
-  function clearTimer(ref: { current: ReturnType<typeof window.setTimeout> | null }) {
+  function clearTimer(ref: { current: number | null }) {
     if (ref.current != null) {
       window.clearTimeout(ref.current)
       ref.current = null
