@@ -4,13 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
-import Link from '@tiptap/extension-link'
-import Image from '@tiptap/extension-image'
 import Placeholder from '@tiptap/extension-placeholder'
 import { BlockLayout, type BlockAlign } from '@/components/editor/extensions/BlockLayout'
 import { TextBackground } from '@/components/editor/extensions/TextBackground'
 import { TextColor } from '@/components/editor/extensions/TextColor'
+import { FigureImage } from '@/components/editor/extensions/FigureImage'
 
 export type RichTextValue = {
   json: unknown | null
@@ -24,6 +22,7 @@ type Props = {
 }
 
 type UploadResult = { id: string; url: string } | { error: string }
+type LinkPreviewResult = { ok: true; imageUrl: string } | { error: string }
 
 type BlockHandle = { top: number; pos: number; source: 'hover' | 'selection' }
 
@@ -67,6 +66,19 @@ function isValidHref(input: string): boolean {
   if (!schemeMatch) return false
   const scheme = schemeMatch[1]!.toLowerCase()
   return scheme === 'http' || scheme === 'https' || scheme === 'mailto'
+}
+
+function normalizePastedHttpUrl(input: string): string | null {
+  const trimmed = String(input || '').trim()
+  if (!trimmed) return null
+  if (/\s/.test(trimmed)) return null
+  try {
+    const url = new URL(trimmed)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return url.toString()
+  } catch {
+    return null
+  }
 }
 
 function ToolButton({
@@ -204,19 +216,15 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
         StarterKit.configure({
           horizontalRule: false,
           heading: { levels: [1, 2, 3] },
+          link: {
+            openOnClick: false,
+            autolink: false,
+            linkOnPaste: true,
+          },
         }),
-        Underline,
         TextColor,
         TextBackground,
-        Link.configure({
-          openOnClick: false,
-          autolink: false,
-          linkOnPaste: true,
-        }),
-        Image.configure({
-          inline: false,
-          allowBase64: false,
-        }),
+        FigureImage,
         BlockLayout,
         Placeholder.configure({
           placeholder: '开始写作…',
@@ -253,28 +261,81 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     }
   }, [editor])
 
-  async function uploadImage(file: File) {
+  async function uploadImages(files: File[]) {
     setError(null)
     setUploading(true)
     try {
-      const form = new FormData()
-      form.set('file', file)
-      const res = await fetch('/api/assets', { method: 'POST', body: form })
-      const data = (await res.json().catch(() => ({}))) as UploadResult
-      if (!res.ok || 'error' in data) {
-        setError(('error' in data && data.error) || '上传失败')
+      const urls: string[] = []
+      let failedCount = 0
+      for (const file of files) {
+        try {
+          const form = new FormData()
+          form.set('file', file)
+          const res = await fetch('/api/assets', { method: 'POST', body: form })
+          const data = (await res.json().catch(() => ({}))) as UploadResult
+          if (!res.ok || 'error' in data) {
+            failedCount += 1
+            continue
+          }
+          urls.push(data.url)
+        } catch {
+          failedCount += 1
+        }
+      }
+
+      if (!urls.length) {
+        if (failedCount) setError('上传失败')
         return
       }
-      const url = data.url
       if (editor) {
-        editor.chain().focus().setImage({ src: url, alt: '' }).run()
+        editor
+          .chain()
+          .focus()
+          .insertContent(urls.map((url) => ({ type: 'figureImage', attrs: { src: url, alt: '' } })))
+          .run()
       } else {
-        const nextHtml = `${value.html || ''}\n<p><img src="${url}" alt="" /></p>\n`
+        const nextHtml = `${value.html || ''}\n${urls.map((url) => `<p><img src="${url}" alt="" /></p>`).join('\n')}\n`
         onChange({ json: null, html: nextHtml })
+      }
+
+      if (failedCount) {
+        setError(`有 ${failedCount} 张图片上传失败，已插入其余 ${urls.length} 张。`)
       }
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  async function insertLinkPreviewImage(url: string) {
+    setError(null)
+    setUploading(true)
+    try {
+      const res = await fetch('/api/link-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const data = (await res.json().catch(() => ({}))) as LinkPreviewResult
+      if (!res.ok || 'error' in data) {
+        setError(('error' in data && data.error) || '预览图获取失败')
+        return
+      }
+
+      const imageUrl = String((data as any).imageUrl || '').trim()
+      if (!imageUrl) {
+        setError('预览图获取失败')
+        return
+      }
+
+      if (editor) {
+        editor.chain().focus().insertContent([{ type: 'figureImage', attrs: { src: imageUrl, alt: '' } }]).run()
+      } else {
+        const nextHtml = `${value.html || ''}\n<p><img src="${imageUrl}" alt="" /></p>\n`
+        onChange({ json: null, html: nextHtml })
+      }
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -320,7 +381,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     if (editor.isActive('orderedList')) return '有序列表'
     if (editor.isActive('blockquote')) return '引用'
     if (editor.isActive('codeBlock')) return '代码块'
-    if (editor.isActive('image')) return '图片'
+    if (editor.isActive('figureImage')) return '图片'
     return '正文'
   }
 
@@ -371,7 +432,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     const { from } = editor.state.selection
     const domAt = editor.view.domAtPos(from)
     const base = domAt.node.nodeType === Node.TEXT_NODE ? (domAt.node.parentElement as HTMLElement | null) : (domAt.node as HTMLElement | null)
-    const block = base?.closest?.('p, h1, h2, h3, blockquote, pre, img, li') as HTMLElement | null
+    const block = base?.closest?.('p, h1, h2, h3, blockquote, pre, figure, img, li') as HTMLElement | null
     if (!block) return
 
     const next = computeHandleFromDom(block, 'selection')
@@ -392,7 +453,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
       return
     }
 
-    const block = target.closest('p, h1, h2, h3, blockquote, pre, img, li') as HTMLElement | null
+    const block = target.closest('p, h1, h2, h3, blockquote, pre, figure, img, li') as HTMLElement | null
     if (!block) return
 
     const next = computeHandleFromDom(block, 'hover')
@@ -727,7 +788,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) void uploadImage(f)
+            if (f) void uploadImages([f])
           }}
         />
 
@@ -740,7 +801,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                 if (!editor.isEditable) return false
                 if (!editor.view.hasFocus()) return false
                 if (!state.selection.empty) return true
-                return editor.isActive('image')
+                return editor.isActive('figureImage')
               }}
             >
               <Toolbar />
@@ -785,13 +846,28 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                 if (editor.view.hasFocus()) updateSelectionHandle()
                 else setBlockHandle(null)
               }}
+              onPaste={(e) => {
+                const files = Array.from(e.clipboardData?.files || []).filter((f) => String(f?.type || '').startsWith('image/'))
+                if (files.length) {
+                  e.preventDefault()
+                  void uploadImages(files)
+                  return
+                }
+
+                const text = String(e.clipboardData?.getData('text/plain') || '')
+                const url = normalizePastedHttpUrl(text)
+                if (!url) return
+
+                e.preventDefault()
+                void insertLinkPreviewImage(url)
+              }}
             >
               <EditorContent editor={editor} />
             </div>
           </>
         ) : (
           <div className="rounded-md border bg-white px-3 py-2 text-sm text-gray-500">编辑器加载中…</div>
-        )}
+        )}        
       </div>
     </div>
   )

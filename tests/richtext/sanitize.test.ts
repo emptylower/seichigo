@@ -114,4 +114,18 @@ describe('richtext sanitize', () => {
     expect(dataOut).not.toContain('<img')
     expect(dataOut).not.toContain('data:')
   })
+
+  it('preserves figure/figcaption structure for image captions', () => {
+    const html =
+      '<figure data-align="center" data-indent="2">' +
+      '<img src="/assets/abc123" alt="x" />' +
+      '<figcaption><strong>图 1</strong> 说明 <a href="https://example.com">link</a></figcaption>' +
+      '</figure>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('<figure data-align="center" data-indent="2">')
+    expect(out).toContain('<img src="/assets/abc123" alt="x"')
+    expect(out).toContain('<figcaption>')
+    expect(out).toContain('<strong>图 1</strong>')
+    expect(out).toContain('<a href="https://example.com">link</a>')
+  })
 })

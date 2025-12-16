@@ -26,6 +26,20 @@ function jsonResponse(body: any, status: number = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+const baseInitial = {
+  id: 'a1',
+  title: 'My Title',
+  animeIds: [],
+  city: null,
+  routeLength: null,
+  tags: [],
+  contentJson: null,
+  contentHtml: '',
+  status: 'draft' as const,
+  rejectReason: null,
+  updatedAt: new Date('2025-01-01T00:00:00.000Z').toISOString(),
+}
+
 describe('submit/new article composer', () => {
   beforeEach(() => {
     fetchMock.mockReset()
@@ -59,5 +73,107 @@ describe('submit/new article composer', () => {
     expect(init?.method).toBe('POST')
     expect(replaceMock).toHaveBeenCalledWith('/submit/a1')
   })
-})
 
+  it('auto-saves latest content after debounce (no extra saves)', async () => {
+    vi.useFakeTimers()
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, article: { updatedAt: new Date().toISOString() } }))
+
+    render(<ArticleComposerClient initial={baseInitial} />)
+
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(801)
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as any[]
+    expect(url).toBe('/api/articles/a1')
+    expect(init?.method).toBe('PATCH')
+    expect(init?.body).toBe(JSON.stringify({ title: 'My Title', contentJson: null, contentHtml: 'B' }))
+  })
+
+  it('queues saves while one request is in flight (prevents stale overwrite)', async () => {
+    vi.useFakeTimers()
+
+    let resolveFirst: ((resp: Response) => void) | null = null
+    fetchMock
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          resolveFirst = resolve
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true, article: { updatedAt: new Date().toISOString() } }))
+
+    render(<ArticleComposerClient initial={baseInitial} />)
+
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(801)
+      await Promise.resolve()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(801)
+      await Promise.resolve()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveFirst?.(jsonResponse({ ok: true, article: { updatedAt: new Date().toISOString() } }))
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(1)
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [url2, init2] = fetchMock.mock.calls[1] as any[]
+    expect(url2).toBe('/api/articles/a1')
+    expect(init2?.method).toBe('PATCH')
+    expect(init2?.body).toBe(JSON.stringify({ title: 'My Title', contentJson: null, contentHtml: 'B' }))
+  })
+
+  it('shows retry when autosave fails and allows manual retry', async () => {
+    vi.useFakeTimers()
+
+    let rejectFirst: ((err: any) => void) | null = null
+    fetchMock
+      .mockReturnValueOnce(
+        new Promise<Response>((_resolve, reject) => {
+          rejectFirst = reject
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true, article: { updatedAt: new Date().toISOString() } }))
+
+    render(<ArticleComposerClient initial={baseInitial} />)
+
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(801)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      rejectFirst?.(new Error('Network down'))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('Network down')).toBeInTheDocument()
+    const retry = screen.getByRole('button', { name: '重试保存' })
+
+    await act(async () => {
+      fireEvent.click(retry)
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('已保存')).toBeInTheDocument()
+  })
+})

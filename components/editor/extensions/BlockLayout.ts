@@ -64,8 +64,8 @@ export const BlockLayout = Extension.create<Options>({
 
   addOptions() {
     return {
-      alignTypes: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'image'],
-      indentTypes: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'image'],
+      alignTypes: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'image', 'figureImage'],
+      indentTypes: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'image', 'figureImage'],
     }
   },
 
@@ -180,4 +180,3 @@ export const BlockLayout = Extension.create<Options>({
     }
   },
 })
-

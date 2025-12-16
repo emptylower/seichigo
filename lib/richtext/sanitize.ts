@@ -28,11 +28,14 @@ const ALLOWED_TAGS = [
   'td',
   'pre',
   'img',
+  'figure',
+  'figcaption',
 ]
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   a: ['href'],
   img: ['src', 'alt', 'data-align', 'data-indent'],
+  figure: ['data-align', 'data-indent'],
   p: ['data-align', 'data-indent'],
   h1: ['data-align', 'data-indent'],
   h2: ['data-align', 'data-indent'],
@@ -173,6 +176,8 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       ul: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       ol: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       li: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      figure: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      figcaption: (tagName) => ({ tagName, attribs: {} }),
       a: (tagName, attribs) => {
         const next = { ...attribs }
         const href = sanitizeAnchorHref(attribs.href)
