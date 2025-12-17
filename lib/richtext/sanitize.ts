@@ -16,6 +16,7 @@ const ALLOWED_TAGS = [
   'del',
   'code',
   'span',
+  'div',
   'ul',
   'ol',
   'li',
@@ -34,8 +35,22 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   a: ['href'],
-  img: ['src', 'alt', 'data-align', 'data-indent'],
+  img: [
+    'src',
+    'alt',
+    'data-align',
+    'data-indent',
+    'data-rotate',
+    'data-flip-x',
+    'data-flip-y',
+    'data-crop-x',
+    'data-crop-y',
+    'data-natural-w',
+    'data-natural-h',
+    'style',
+  ],
   figure: ['data-align', 'data-indent'],
+  div: ['data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style'],
   p: ['data-align', 'data-indent'],
   h1: ['data-align', 'data-indent'],
   h2: ['data-align', 'data-indent'],
@@ -127,6 +142,124 @@ function sanitizeSpanStyle(style?: string): string | null {
   return parts.length ? parts.join(';') : null
 }
 
+function sanitizeFrameStyle(style?: string): string | null {
+  if (!style) return null
+  let width: string | null = null
+  let height: string | null = null
+  let aspectRatio: string | null = null
+
+  for (const chunk of style.split(';')) {
+    const part = chunk.trim()
+    if (!part) continue
+    const idx = part.indexOf(':')
+    if (idx === -1) continue
+    const prop = part.slice(0, idx).trim().toLowerCase()
+    const rawValue = part.slice(idx + 1).trim()
+    if (!rawValue) continue
+
+    if (prop === 'width') {
+      const m = /^(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n)) continue
+      const clamped = Math.max(10, Math.min(100, n))
+      width = `${Math.round(clamped)}%`
+      continue
+    }
+
+    if (prop === 'height') {
+      const m = /^(\d+)px$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n) || n <= 0) continue
+      const clamped = Math.max(80, Math.min(2400, n))
+      height = `${Math.trunc(clamped)}px`
+      continue
+    }
+
+    if (prop === 'aspect-ratio') {
+      const m = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(rawValue)
+      if (!m) continue
+      const a = Number(m[1])
+      const b = Number(m[2])
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) continue
+      aspectRatio = `${a} / ${b}`
+    }
+  }
+
+  const parts: string[] = []
+  if (width) parts.push(`width:${width}`)
+  if (height) parts.push(`height:${height}`)
+  if (aspectRatio) parts.push(`aspect-ratio:${aspectRatio}`)
+  return parts.length ? parts.join(';') : null
+}
+
+function sanitizeImageVars(style?: string): string | null {
+  if (!style) return null
+
+  const allowedKeys = new Set([
+    '--seichi-rot',
+    '--seichi-flip-x',
+    '--seichi-flip-y',
+    '--seichi-w',
+    '--seichi-h',
+    '--seichi-pos',
+  ])
+
+  const out: Record<string, string> = {}
+
+  for (const chunk of style.split(';')) {
+    const part = chunk.trim()
+    if (!part) continue
+    const idx = part.indexOf(':')
+    if (idx === -1) continue
+    const prop = part.slice(0, idx).trim().toLowerCase()
+    const rawValue = part.slice(idx + 1).trim()
+    if (!rawValue) continue
+    if (!allowedKeys.has(prop)) continue
+
+    if (prop === '--seichi-rot') {
+      const v = rawValue.toLowerCase()
+      if (v === '0deg' || v === '90deg' || v === '180deg' || v === '270deg') out[prop] = v
+      continue
+    }
+
+    if (prop === '--seichi-flip-x' || prop === '--seichi-flip-y') {
+      const v = rawValue.trim()
+      if (v === '1' || v === '-1') out[prop] = v
+      continue
+    }
+
+    if (prop === '--seichi-w' || prop === '--seichi-h') {
+      const m = /^(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n) || n <= 0) continue
+      const clamped = Math.max(1, Math.min(800, n))
+      out[prop] = `${Math.round(clamped)}%`
+      continue
+    }
+
+    if (prop === '--seichi-pos') {
+      const m = /^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const x = Number(m[1])
+      const y = Number(m[2])
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      const cx = Math.max(0, Math.min(100, x))
+      const cy = Math.max(0, Math.min(100, y))
+      out[prop] = `${Math.round(cx)}% ${Math.round(cy)}%`
+    }
+  }
+
+  const parts: string[] = []
+  for (const key of ['--seichi-rot', '--seichi-flip-x', '--seichi-flip-y', '--seichi-w', '--seichi-h', '--seichi-pos']) {
+    const value = out[key]
+    if (value) parts.push(`${key}:${value}`)
+  }
+  return parts.length ? parts.join(';') : null
+}
+
 function isAllowedImageSrc(src: string): boolean {
   const trimmed = src.trim()
   if (/^https?:\/\//i.test(trimmed)) return true
@@ -164,6 +297,10 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       if (frame.tag === 'img') {
         return !isAllowedImageSrc(frame.attribs?.src || '')
       }
+      if (frame.tag === 'div') {
+        const marker = String(frame.attribs?.['data-figure-image-frame'] || '').trim().toLowerCase()
+        return marker !== 'true'
+      }
       return false
     },
     transformTags: {
@@ -178,6 +315,23 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       li: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       figure: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       figcaption: (tagName) => ({ tagName, attribs: {} }),
+      div: (tagName, attribs) => {
+        const next: Record<string, string> = {}
+        next['data-figure-image-frame'] = 'true'
+
+        const mode = String(attribs['data-mode'] || '').trim().toLowerCase()
+        if (mode === 'plain' || mode === 'transform') next['data-mode'] = mode
+
+        const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
+        if (widthPct) next['data-width-pct'] = widthPct
+
+        const cropH = sanitizePercentInt(attribs['data-crop-h'], 80, 2400)
+        if (cropH) next['data-crop-h'] = cropH
+
+        const style = sanitizeFrameStyle(attribs.style)
+        if (style) next.style = style
+        return { tagName, attribs: next }
+      },
       a: (tagName, attribs) => {
         const next = { ...attribs }
         const href = sanitizeAnchorHref(attribs.href)
@@ -189,6 +343,12 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
         const next: Record<string, string> = sanitizeBlockAttrs(attribs)
         if (attribs.src) next.src = attribs.src.trim()
         if (attribs.alt) next.alt = String(attribs.alt)
+        for (const key of ['data-rotate', 'data-flip-x', 'data-flip-y', 'data-crop-x', 'data-crop-y', 'data-natural-w', 'data-natural-h']) {
+          const v = String((attribs as any)[key] || '').trim()
+          if (v) next[key] = v
+        }
+        const style = sanitizeImageVars(attribs.style)
+        if (style) next.style = style
         return { tagName, attribs: next }
       },
       span: (tagName, attribs) => {
@@ -215,6 +375,14 @@ function sanitizeIndent(value: unknown): string | null {
   const n = Number(raw)
   if (!Number.isFinite(n) || n <= 0) return null
   return String(Math.min(6, Math.trunc(n)))
+}
+
+function sanitizePercentInt(value: unknown, min: number, max: number): string | null {
+  const raw = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+  if (!raw || !/^\d+$/.test(raw)) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < min || n > max) return null
+  return String(Math.trunc(n))
 }
 
 function sanitizeBlockAttrs(attribs: Record<string, string | undefined>): Record<string, string> {

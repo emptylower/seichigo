@@ -53,6 +53,42 @@ a {
   display: block;
 }
 
+:where(.ProseMirror, .prose) [data-figure-image-frame] {
+  display: inline-block;
+  max-width: 100%;
+}
+
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="plain"] > img {
+  position: static;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] > img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--seichi-w, 100%);
+  height: var(--seichi-h, 100%);
+  max-width: none;
+  max-height: none;
+  transform: translate(-50%, -50%) rotate(var(--seichi-rot, 0deg)) scaleX(var(--seichi-flip-x, 1)) scaleY(var(--seichi-flip-y, 1));
+  transform-origin: center;
+  object-fit: contain;
+  object-position: var(--seichi-pos, 50% 50%);
+}
+
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"][data-crop-h] > img {
+  object-fit: cover;
+}
+
 :where(.ProseMirror, .prose) figure[data-align="center"] img {
   margin-left: auto;
   margin-right: auto;

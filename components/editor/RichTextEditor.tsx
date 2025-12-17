@@ -81,6 +81,14 @@ function normalizePastedHttpUrl(input: string): string | null {
   }
 }
 
+function safeHasFocus(editor: any): boolean {
+  try {
+    return Boolean(editor?.view?.hasFocus?.())
+  } catch {
+    return false
+  }
+}
+
 function ToolButton({
   active,
   disabled,
@@ -423,7 +431,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
   function updateSelectionHandle() {
     if (!editor || !wrapperRef.current) return
     if (!editor.isEditable) return
-    if (!editor.view.hasFocus()) return
+    if (!safeHasFocus(editor)) return
     if (editor.state.selection.empty && !blockMenuOpenRef.current) {
       if (blockHandleRef.current?.source === 'selection') setBlockHandle(null)
       return
@@ -477,7 +485,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     const onBlur = () => {
       setBlockMenuOpen(false)
       setTimeout(() => {
-        if (!editor.view.hasFocus()) setBlockHandle(null)
+        if (!safeHasFocus(editor)) setBlockHandle(null)
       }, 0)
     }
     editor.on('blur', onBlur)
@@ -798,10 +806,14 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
               editor={editor}
               options={{ placement: 'top', offset: 8 }}
               shouldShow={({ editor, state }) => {
-                if (!editor.isEditable) return false
-                if (!editor.view.hasFocus()) return false
-                if (!state.selection.empty) return true
-                return editor.isActive('figureImage')
+                try {
+                  if (!editor.isEditable) return false
+                  if (!safeHasFocus(editor)) return false
+                  if (!state.selection.empty) return true
+                  return editor.isActive('figureImage')
+                } catch {
+                  return false
+                }
               }}
             >
               <Toolbar />
@@ -843,7 +855,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
               }}
               onMouseLeave={() => {
                 if (blockMenuOpen) return
-                if (editor.view.hasFocus()) updateSelectionHandle()
+                if (safeHasFocus(editor)) updateSelectionHandle()
                 else setBlockHandle(null)
               }}
               onPaste={(e) => {

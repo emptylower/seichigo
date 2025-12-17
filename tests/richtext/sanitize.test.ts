@@ -128,4 +128,28 @@ describe('richtext sanitize', () => {
     expect(out).toContain('<strong>图 1</strong>')
     expect(out).toContain('<a href="https://example.com">link</a>')
   })
+
+  it('preserves figure image transform wrapper with safe styles', () => {
+    const html =
+      '<figure data-align="center">' +
+      '<div data-figure-image-frame="true" data-width-pct="80" data-crop-h="240" style="width:80%; height:240px; aspect-ratio: 16 / 9; position:fixed">' +
+      '<img src="/assets/abc123" alt="x" style="--seichi-rot:90deg; --seichi-flip-x:-1; --seichi-w:200%; --seichi-h:50%; --seichi-pos:40% 60%; color:red" />' +
+      '</div>' +
+      '<figcaption>cap</figcaption>' +
+      '</figure>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('data-figure-image-frame="true"')
+    expect(out).toContain('data-width-pct="80"')
+    expect(out).toContain('data-crop-h="240"')
+    expect(out).toContain('width:80%')
+    expect(out).toContain('height:240px')
+    expect(out).toContain('aspect-ratio')
+    expect(out).not.toContain('position:fixed')
+    expect(out).toContain('--seichi-rot:90deg')
+    expect(out).toContain('--seichi-flip-x:-1')
+    expect(out).toContain('--seichi-w:200%')
+    expect(out).toContain('--seichi-h:50%')
+    expect(out).toContain('--seichi-pos:40% 60%')
+    expect(out).not.toContain('color:red')
+  })
 })
