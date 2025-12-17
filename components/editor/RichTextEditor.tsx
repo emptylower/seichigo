@@ -110,6 +110,112 @@ function safeHasFocus(editor: any): boolean {
   }
 }
 
+function resolveClientAssetMaxBytes(): number {
+  // Vercel Functions reject large payloads before route handlers run.
+  // Keep this below the platform limit to avoid "FUNCTION_PAYLOAD_TOO_LARGE" (413).
+  const fallback = 4 * 1024 * 1024
+  const raw = process.env.NEXT_PUBLIC_ASSET_MAX_BYTES
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.floor(parsed)
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0B'
+  const kb = 1024
+  const mb = kb * 1024
+  if (bytes >= mb) return `${(bytes / mb).toFixed(1)}MB`
+  if (bytes >= kb) return `${Math.round(bytes / kb)}KB`
+  return `${Math.round(bytes)}B`
+}
+
+function replaceFileExt(name: string, extWithDot: string): string {
+  const base = name.trim() || 'image'
+  const dot = base.lastIndexOf('.')
+  if (dot <= 0) return `${base}${extWithDot}`
+  return `${base.slice(0, dot)}${extWithDot}`
+}
+
+function fileNameForMime(originalName: string, mime: string): string {
+  if (mime === 'image/webp') return replaceFileExt(originalName, '.webp')
+  if (mime === 'image/jpeg') return replaceFileExt(originalName, '.jpg')
+  if (mime === 'image/png') return replaceFileExt(originalName, '.png')
+  return replaceFileExt(originalName, '')
+}
+
+async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = new Image()
+    img.decoding = 'async'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('无法读取图片'))
+      img.src = url
+    })
+    return img
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      canvas.toBlob((blob) => resolve(blob), mime, quality)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+async function compressImageIfNeeded(file: File, maxBytes: number): Promise<File> {
+  if (file.size <= maxBytes) return file
+  if (!file.type.startsWith('image/')) return file
+  if (file.type === 'image/gif') {
+    throw new Error(`GIF 过大（${formatBytes(file.size)}），请先压缩后再上传`)
+  }
+
+  const img = await loadImageFromFile(file)
+  const srcW = img.naturalWidth || img.width
+  const srcH = img.naturalHeight || img.height
+  if (!srcW || !srcH) throw new Error('无法读取图片尺寸')
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('无法创建画布')
+
+  // Progressive downscale + quality adjustment until under the limit.
+  let maxDim = 2560
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
+    const dstW = Math.max(1, Math.round(srcW * scale))
+    const dstH = Math.max(1, Math.round(srcH * scale))
+    canvas.width = dstW
+    canvas.height = dstH
+    ctx.clearRect(0, 0, dstW, dstH)
+    ctx.drawImage(img, 0, 0, dstW, dstH)
+
+    // Prefer WebP when available; fall back to JPEG.
+    const mimeCandidates = ['image/webp', 'image/jpeg'] as const
+    for (const mime of mimeCandidates) {
+      for (let q = 0.9; q >= 0.55; q -= 0.1) {
+        const blob = await canvasToBlob(canvas, mime, q)
+        if (!blob) continue
+        if (blob.size <= maxBytes) {
+          const name = fileNameForMime(file.name || 'image', blob.type || mime)
+          return new File([blob], name, { type: blob.type || mime, lastModified: file.lastModified })
+        }
+      }
+    }
+
+    maxDim = Math.max(800, Math.floor(maxDim * 0.82))
+  }
+
+  throw new Error(`图片过大（${formatBytes(file.size)}），压缩后仍超过 ${formatBytes(maxBytes)}`)
+}
+
 function resolveImageInsertPos(editor: any): number {
   try {
     const sel = editor?.state?.selection as any
@@ -325,16 +431,29 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     setError(null)
     setUploading(true)
     try {
+      const maxBytes = resolveClientAssetMaxBytes()
       const urls: string[] = []
       let failedCount = 0
+      let firstError: string | null = null
       for (const file of files) {
         try {
+          const normalized = await compressImageIfNeeded(file, maxBytes).catch((err: any) => {
+            const message = String(err?.message || '').trim()
+            if (message) firstError = firstError ?? message
+            throw err
+          })
+
           const form = new FormData()
-          form.set('file', file)
+          form.set('file', normalized)
           const res = await fetch('/api/assets', { method: 'POST', body: form })
           const data = (await res.json().catch(() => ({}))) as UploadResult
           if (!res.ok || 'error' in data) {
             failedCount += 1
+            if (res.status === 413) {
+              firstError = firstError ?? `图片过大，请控制在 ${formatBytes(maxBytes)} 以内`
+            } else if ('error' in data && data.error) {
+              firstError = firstError ?? String(data.error)
+            }
             continue
           }
           urls.push(data.url)
@@ -344,7 +463,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
       }
 
       if (!urls.length) {
-        if (failedCount) setError('上传失败')
+        if (failedCount) setError(firstError || '上传失败')
         return
       }
       if (editor) {
@@ -362,7 +481,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
       }
 
       if (failedCount) {
-        setError(`有 ${failedCount} 张图片上传失败，已插入其余 ${urls.length} 张。`)
+        setError(firstError ? `${firstError}（有 ${failedCount} 张上传失败，已插入其余 ${urls.length} 张。）` : `有 ${failedCount} 张图片上传失败，已插入其余 ${urls.length} 张。`)
       }
     } finally {
       setUploading(false)
