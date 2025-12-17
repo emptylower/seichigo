@@ -90,9 +90,10 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
   const hasTransforms = cropEnabled || rotate !== 0 || flipX || flipY
   const mode: 'plain' | 'transform' = hasTransforms ? 'transform' : 'plain'
 
+  const captionEnabled = parseBool((node.attrs as any)?.caption)
   const captionText = String(node.textContent || '').trim()
   const empty = captionText.length === 0
-  const hidden = empty && !selected
+  const showCaption = captionEnabled || !empty
 
   const pos = typeof getPos === 'function' ? getPos : null
   const figureRef = useRef<HTMLElement | null>(null)
@@ -103,7 +104,7 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     if (!editor || !pos) return
     const at = pos()
     if (typeof at !== 'number') return
-    editor.commands.setNodeSelection(at)
+    editor.chain().setNodeSelection(at).focus(undefined, { scrollIntoView: false }).run()
   }, [editor, pos])
 
   const frameStyle = useMemo(() => {
@@ -202,47 +203,6 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     [widthPct]
   )
 
-  const toggleCrop = useCallback(() => {
-    if (cropEnabled) {
-      updateAttributes({ cropHeight: null })
-      setNodeSelection()
-      return
-    }
-
-    const frame = frameRef.current
-    const rect = frame?.getBoundingClientRect()
-    const baseHeight = rect?.height || 0
-    const suggested = baseHeight > 0 ? Math.round(baseHeight * 0.7) : 320
-    const nextHeight = clampInt(suggested, 120, 2400, 320)
-    updateAttributes({ cropHeight: nextHeight, cropX: cropX ?? 50, cropY: cropY ?? 50 })
-    setNodeSelection()
-  }, [cropEnabled, cropX, cropY, setNodeSelection, updateAttributes])
-
-  const rotate90 = useCallback(() => {
-    const next = (rotate + 90) % 360
-    updateAttributes({ rotate: next })
-    setNodeSelection()
-  }, [rotate, setNodeSelection, updateAttributes])
-
-  const toggleFlipX = useCallback(() => {
-    updateAttributes({ flipX: !flipX })
-    setNodeSelection()
-  }, [flipX, setNodeSelection, updateAttributes])
-
-  const toggleFlipY = useCallback(() => {
-    updateAttributes({ flipY: !flipY })
-    setNodeSelection()
-  }, [flipY, setNodeSelection, updateAttributes])
-
-  const setAlign = useCallback(
-    (value: 'left' | 'center' | 'right') => {
-      const next = value === 'left' ? null : value
-      updateAttributes({ align: next })
-      setNodeSelection()
-    },
-    [setNodeSelection, updateAttributes]
-  )
-
   useEffect(() => {
     if (naturalWidth && naturalHeight) return
     const img = imgRef.current
@@ -311,81 +271,36 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
         />
 
         {selected ? (
-          <>
-            <div
-              data-figure-image-toolbar
-              className="absolute left-2 top-2 flex items-center gap-1 rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-xs text-gray-700 shadow-sm backdrop-blur"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setNodeSelection()
-              }}
-            >
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片左对齐" onClick={() => setAlign('left')}>
-                左
-              </button>
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片居中对齐" onClick={() => setAlign('center')}>
-                中
-              </button>
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片右对齐" onClick={() => setAlign('right')}>
-                右
-              </button>
-              <span className="mx-1 h-3 w-px bg-gray-200" />
-              <button
-                type="button"
-                className="px-1.5 py-0.5 hover:text-gray-900"
-                aria-label="图片裁剪"
-                onClick={toggleCrop}
-                title={cropEnabled ? '取消裁剪' : '裁剪'}
-              >
-                {cropEnabled ? '取消裁剪' : '裁剪'}
-              </button>
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片旋转 90°" onClick={rotate90}>
-                旋转
-              </button>
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片水平翻转" onClick={toggleFlipX}>
-                翻转X
-              </button>
-              <button type="button" className="px-1.5 py-0.5 hover:text-gray-900" aria-label="图片垂直翻转" onClick={toggleFlipY}>
-                翻转Y
-              </button>
-            </div>
-
-            <button
-              type="button"
-              aria-label="调整图片宽度"
-              className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border border-gray-300 bg-white shadow-sm"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setNodeSelection()
-                startResizeDrag(e)
-              }}
-            />
-          </>
+          <button
+            type="button"
+            aria-label="调整图片宽度"
+            className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border border-gray-300 bg-white shadow-sm"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setNodeSelection()
+              startResizeDrag(e)
+            }}
+          />
         ) : null}
       </div>
 
-      <figcaption
-        className="mt-2 text-sm text-gray-600"
-        hidden={hidden}
-        onMouseDown={(e) => {
-          if (!editor || !pos) return
-          if (!selected || !empty) return
-          e.preventDefault()
-          const at = pos()
-          if (typeof at !== 'number') return
-          editor.chain().setTextSelection(at + 1).focus(undefined, { scrollIntoView: false }).run()
-        }}
-      >
-        <NodeViewContent
-          as="div"
-          data-figure-caption
-          data-placeholder="写说明…"
-          data-empty={empty ? 'true' : undefined}
-          className="outline-none"
-        />
-      </figcaption>
+      {showCaption ? (
+        <figcaption className="mt-2 text-sm text-gray-600">
+          <NodeViewContent
+            as="div"
+            data-figure-caption
+            data-placeholder="写说明…"
+            data-empty={empty ? 'true' : undefined}
+            className="outline-none"
+            onBlur={() => {
+              if (!captionEnabled) return
+              if (!empty) return
+              updateAttributes({ caption: false })
+            }}
+          />
+        </figcaption>
+      ) : null}
     </NodeViewWrapper>
   )
 }
@@ -520,6 +435,11 @@ export const FigureImage = Node.create({
         },
         renderHTML: () => ({}),
       },
+      caption: {
+        default: false,
+        parseHTML: () => false,
+        renderHTML: () => ({}),
+      },
     }
   },
 
@@ -594,9 +514,10 @@ export const FigureImage = Node.create({
       `--seichi-pos:${formatPct(cropX)} ${formatPct(cropY)}`,
     ]
 
-    return [
-      'figure',
-      mergeAttributes(HTMLAttributes),
+    const captionText = String(node.textContent || '').trim()
+    const hasCaption = captionText.length > 0
+
+    const children: any[] = [
       [
         'div',
         {
@@ -623,7 +544,13 @@ export const FigureImage = Node.create({
           },
         ],
       ],
-      ['figcaption', 0],
+    ]
+    if (hasCaption) children.push(['figcaption', 0])
+
+    return [
+      'figure',
+      mergeAttributes(HTMLAttributes),
+      ...children,
     ]
   },
 

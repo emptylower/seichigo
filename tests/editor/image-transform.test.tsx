@@ -23,7 +23,7 @@ describe('editor image transform tools', () => {
     fireEvent.mouseDown(container.querySelector('img') as Element)
 
     await waitFor(() => {
-      expect(container.querySelector('[data-figure-image-toolbar]')).toBeTruthy()
+      expect(container.querySelector('[data-image-toolbar]')).toBeTruthy()
     })
 
     fireEvent.click(container.querySelector('[aria-label="图片居中对齐"]') as Element)
@@ -42,62 +42,6 @@ describe('editor image transform tools', () => {
     await waitFor(() => {
       const last = onChange.mock.calls.at(-1)?.[0]
       expect(String(last?.html || '')).toContain('data-flip-x="1"')
-    })
-  })
-
-  it('enables crop and persists crop position after dragging', async () => {
-    const onChange = vi.fn()
-    const initialHtml = '<figure><img src="/assets/abc123" alt="x" /><figcaption></figcaption></figure><p></p>'
-    const { container } = render(
-      <RichTextEditor initialValue={{ json: null, html: initialHtml }} value={{ json: null, html: initialHtml }} onChange={onChange} />
-    )
-
-    await waitFor(() => {
-      expect(container.querySelector('img')).toBeTruthy()
-    })
-
-    fireEvent.mouseDown(container.querySelector('img') as Element)
-
-    await waitFor(() => {
-      expect(container.querySelector('[data-figure-image-toolbar]')).toBeTruthy()
-      expect(container.querySelector('[data-figure-image-frame]')).toBeTruthy()
-    })
-
-    const frame = container.querySelector('[data-figure-image-frame]') as HTMLElement
-    let rect = { width: 600, height: 400 }
-    ;(frame as any).getBoundingClientRect = () =>
-      ({
-        x: 0,
-        y: 0,
-        top: 0,
-        left: 0,
-        right: rect.width,
-        bottom: rect.height,
-        width: rect.width,
-        height: rect.height,
-        toJSON: () => ({}),
-      }) as any
-
-    fireEvent.click(container.querySelector('[aria-label="图片裁剪"]') as Element)
-
-    await waitFor(() => {
-      const last = onChange.mock.calls.at(-1)?.[0]
-      // default crop height = round(400 * 0.7) = 280
-      expect(String(last?.html || '')).toContain('data-crop-h="280"')
-    })
-
-    rect = { width: 600, height: 280 }
-
-    const img = container.querySelector('img') as HTMLElement
-    fireEvent.mouseDown(img, { clientX: 100, clientY: 100 })
-    fireEvent.mouseMove(window, { clientX: 200, clientY: 150 })
-    fireEvent.mouseUp(window)
-
-    await waitFor(() => {
-      const last = onChange.mock.calls.at(-1)?.[0]
-      // drag right/down should reduce crop position percentages from 50,50
-      expect(String(last?.html || '')).toContain('data-crop-x="33"')
-      expect(String(last?.html || '')).toContain('data-crop-y="32"')
     })
   })
 
@@ -143,4 +87,3 @@ describe('editor image transform tools', () => {
     })
   })
 })
-

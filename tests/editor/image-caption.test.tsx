@@ -12,7 +12,7 @@ describe('editor image caption', () => {
     vi.stubGlobal('fetch', fetchMock as any)
   })
 
-  it('shows caption editor when image is selected and persists caption html', async () => {
+  it('adds caption via image toolbar and persists caption html', async () => {
     const onChange = vi.fn()
     const initialHtml = '<figure><img src="/assets/abc123" alt="" /><figcaption></figcaption></figure><p></p>'
     const { container } = render(
@@ -24,17 +24,22 @@ describe('editor image caption', () => {
       expect(container.querySelector('img')).toBeTruthy()
     })
 
-    // Caption editor should be hidden when empty and not selected.
-    const captionEditor = container.querySelector('[data-figure-caption]') as HTMLElement | null
-    expect(captionEditor).toBeTruthy()
-    expect(captionEditor?.closest('figcaption')?.hasAttribute('hidden')).toBe(true)
+    // Caption editor should not exist until user explicitly enables it.
+    expect(container.querySelector('[data-figure-caption]')).toBeFalsy()
 
-    // Select image -> caption editor appears.
+    // Select image -> image toolbar appears, caption still hidden.
     fireEvent.mouseDown(container.querySelector('img') as Element)
-    fireEvent.click(container.querySelector('img') as Element)
 
     await waitFor(() => {
-      expect(container.querySelector('[data-figure-caption]')?.closest('figcaption')?.hasAttribute('hidden')).toBe(false)
+      expect(container.querySelector('[data-image-toolbar]')).toBeTruthy()
+    })
+
+    expect(container.querySelector('[data-figure-caption]')).toBeFalsy()
+
+    fireEvent.click(container.querySelector('[aria-label="图片图注"]') as Element)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-figure-caption]')).toBeTruthy()
     })
 
     // Paste caption text (should not trigger url-preview handler).
@@ -51,6 +56,39 @@ describe('editor image caption', () => {
       const last = onChange.mock.calls.at(-1)?.[0]
       expect(String(last?.html || '')).toContain('图 1：测试图注')
       expect(String(last?.html || '')).toContain('<figcaption')
+    })
+  })
+
+  it('removes caption row when it is left empty', async () => {
+    const onChange = vi.fn()
+    const initialHtml = '<figure><img src="/assets/abc123" alt="" /><figcaption></figcaption></figure><p></p>'
+    const { container } = render(
+      <RichTextEditor initialValue={{ json: null, html: initialHtml }} value={{ json: null, html: initialHtml }} onChange={onChange} />
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector('img')).toBeTruthy()
+    })
+
+    fireEvent.mouseDown(container.querySelector('img') as Element)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-image-toolbar]')).toBeTruthy()
+    })
+
+    fireEvent.click(container.querySelector('[aria-label="图片图注"]') as Element)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-figure-caption]')).toBeTruthy()
+    })
+
+    const caption = container.querySelector('[data-figure-caption]') as HTMLElement
+    fireEvent.blur(caption)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-figure-caption]')).toBeFalsy()
+      const last = onChange.mock.calls.at(-1)?.[0]
+      expect(String(last?.html || '')).not.toContain('<figcaption')
     })
   })
 })

@@ -738,6 +738,150 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
   function Toolbar() {
     if (!editor) return null
 
+    const selection = editor.state.selection as any
+    const selectionNode = selection?.node
+    const selectionFrom = typeof selection?.from === 'number' ? selection.from : null
+    const $from = selection?.$from
+
+    const resolveActiveFigureImage = () => {
+      if (selectionNode?.type?.name === 'figureImage' && selectionFrom != null) {
+        return { node: selectionNode, pos: selectionFrom }
+      }
+
+      if (!$from) return null
+      for (let depth = $from.depth; depth > 0; depth--) {
+        const node = $from.node(depth)
+        if (node?.type?.name !== 'figureImage') continue
+        try {
+          return { node, pos: $from.before(depth) }
+        } catch {
+          return { node, pos: null }
+        }
+      }
+      return null
+    }
+
+    const activeImage = resolveActiveFigureImage()
+
+    if (activeImage) {
+      const pos = activeImage.pos ?? 0
+      const rotate = Number((activeImage.node?.attrs as any)?.rotate ?? 0) || 0
+      const flipX = Boolean((activeImage.node?.attrs as any)?.flipX)
+      const flipY = Boolean((activeImage.node?.attrs as any)?.flipY)
+      const cropHeight = (activeImage.node?.attrs as any)?.cropHeight ?? null
+      const cropEnabled = cropHeight != null
+
+      return (
+        <div
+          data-image-toolbar
+          className="flex items-center rounded-xl border border-gray-200 bg-white/95 px-2 py-1 shadow-lg backdrop-blur"
+          onMouseDown={(e) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest?.('input, textarea')) return
+            e.preventDefault()
+          }}
+        >
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片左对齐"
+              onClick={() => editor.chain().focus().setBlockAlign('left').run()}
+            >
+              左
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片居中对齐"
+              onClick={() => editor.chain().focus().setBlockAlign('center').run()}
+            >
+              中
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片右对齐"
+              onClick={() => editor.chain().focus().setBlockAlign('right').run()}
+            >
+              右
+            </button>
+          </div>
+
+          <Divider />
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片裁剪"
+              onClick={() => {
+                if (cropEnabled) {
+                  const chain = editor.chain().focus().updateAttributes('figureImage', { cropHeight: null })
+                  if (activeImage.pos != null) chain.setNodeSelection(pos)
+                  chain.run()
+                  return
+                }
+                const chain = editor.chain().focus().updateAttributes('figureImage', { cropHeight: 320, cropX: 50, cropY: 50 })
+                if (activeImage.pos != null) chain.setNodeSelection(pos)
+                chain.run()
+              }}
+              title={cropEnabled ? '取消裁剪' : '裁剪'}
+            >
+              {cropEnabled ? '取消裁剪' : '裁剪'}
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片旋转 90°"
+              onClick={() => {
+                const next = (rotate + 90) % 360
+                const chain = editor.chain().focus().updateAttributes('figureImage', { rotate: next })
+                if (activeImage.pos != null) chain.setNodeSelection(pos)
+                chain.run()
+              }}
+            >
+              旋转
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片水平翻转"
+              onClick={() => {
+                const chain = editor.chain().focus().updateAttributes('figureImage', { flipX: !flipX })
+                if (activeImage.pos != null) chain.setNodeSelection(pos)
+                chain.run()
+              }}
+            >
+              翻转X
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片垂直翻转"
+              onClick={() => {
+                const chain = editor.chain().focus().updateAttributes('figureImage', { flipY: !flipY })
+                if (activeImage.pos != null) chain.setNodeSelection(pos)
+                chain.run()
+              }}
+            >
+              翻转Y
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="图片图注"
+              onClick={() => {
+                editor.chain().focus().updateAttributes('figureImage', { caption: true }).setTextSelection(pos + 1).run()
+              }}
+            >
+              图注
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div
         className="flex items-center rounded-xl border border-gray-200 bg-white/95 px-2 py-1 shadow-lg backdrop-blur"
