@@ -462,7 +462,13 @@ export const FigureImage = Node.create({
     return [
       {
         tag: 'figure',
-        contentElement: 'figcaption',
+        contentElement: (element) => {
+          if (!(element instanceof HTMLElement)) return element as any
+          const caption = element.querySelector('figcaption')
+          if (caption) return caption
+          const doc = element.ownerDocument || document
+          return doc.createElement('figcaption')
+        },
         getAttrs: (element) => {
           if (!(element instanceof HTMLElement)) return false
           const img = element.querySelector('img')
