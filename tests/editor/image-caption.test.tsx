@@ -24,6 +24,9 @@ describe('editor image caption', () => {
       expect(container.querySelector('img')).toBeTruthy()
     })
 
+    // FigureImage keeps a stable contentDOM even when caption is not enabled.
+    expect(container.querySelector('figcaption [data-node-view-content]')).toBeTruthy()
+
     // Caption editor should not exist until user explicitly enables it.
     expect(container.querySelector('[data-figure-caption]')).toBeFalsy()
 

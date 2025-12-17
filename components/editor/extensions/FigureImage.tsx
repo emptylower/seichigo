@@ -107,6 +107,23 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     editor.chain().setNodeSelection(at).focus(undefined, { scrollIntoView: false }).run()
   }, [editor, pos])
 
+  const lastCaptionEnabled = useRef(captionEnabled)
+  useEffect(() => {
+    if (!editor || !pos) {
+      lastCaptionEnabled.current = captionEnabled
+      return
+    }
+
+    if (captionEnabled && !lastCaptionEnabled.current) {
+      const at = pos()
+      if (typeof at === 'number') {
+        editor.chain().setTextSelection(at + 1).focus(undefined, { scrollIntoView: false }).run()
+      }
+    }
+
+    lastCaptionEnabled.current = captionEnabled
+  }, [captionEnabled, editor, pos])
+
   const frameStyle = useMemo(() => {
     const style: Record<string, string> = { width: `${widthPct}%` }
     if (cropEnabled && cropHeight) {
@@ -285,22 +302,20 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
         ) : null}
       </div>
 
-      {showCaption ? (
-        <figcaption className="mt-2 text-sm text-gray-600">
-          <NodeViewContent
-            as="div"
-            data-figure-caption
-            data-placeholder="写说明…"
-            data-empty={empty ? 'true' : undefined}
-            className="outline-none"
-            onBlur={() => {
-              if (!captionEnabled) return
-              if (!empty) return
-              updateAttributes({ caption: false })
-            }}
-          />
-        </figcaption>
-      ) : null}
+      <figcaption className="mt-2 text-sm text-gray-600" hidden={!showCaption}>
+        <NodeViewContent
+          as="div"
+          data-figure-caption={showCaption ? 'true' : undefined}
+          data-placeholder={showCaption ? '写说明…' : undefined}
+          data-empty={showCaption && empty ? 'true' : undefined}
+          className="outline-none"
+          onBlur={() => {
+            if (!captionEnabled) return
+            if (!empty) return
+            updateAttributes({ caption: false })
+          }}
+        />
+      </figcaption>
     </NodeViewWrapper>
   )
 }
