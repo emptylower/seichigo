@@ -9,6 +9,7 @@ import { BlockLayout, type BlockAlign } from '@/components/editor/extensions/Blo
 import { TextBackground } from '@/components/editor/extensions/TextBackground'
 import { TextColor } from '@/components/editor/extensions/TextColor'
 import { FigureImage } from '@/components/editor/extensions/FigureImage'
+import { InlineCode } from '@/components/editor/extensions/InlineCode'
 
 export type RichTextValue = {
   json: unknown | null
@@ -379,12 +380,14 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
         StarterKit.configure({
           horizontalRule: false,
           heading: { levels: [1, 2, 3] },
+          code: false,
           link: {
             openOnClick: false,
             autolink: false,
             linkOnPaste: true,
           },
         }),
+        InlineCode,
         TextColor,
         TextBackground,
         FigureImage,
