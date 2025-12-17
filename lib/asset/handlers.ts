@@ -12,7 +12,7 @@ function json(data: unknown, init: ResponseInit = {}) {
 }
 
 function resolveMaxBytes() {
-  const fallback = 4 * 1024 * 1024
+  const fallback = 3_500_000
   const raw = process.env.ASSET_MAX_BYTES
   if (!raw) return fallback
   const parsed = Number(raw)

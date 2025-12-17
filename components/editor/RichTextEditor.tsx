@@ -114,7 +114,8 @@ function safeHasFocus(editor: any): boolean {
 function resolveClientAssetMaxBytes(): number {
   // Vercel Functions reject large payloads before route handlers run.
   // Keep this below the platform limit to avoid "FUNCTION_PAYLOAD_TOO_LARGE" (413).
-  const fallback = 4 * 1024 * 1024
+  // Use a decimal-ish budget to leave room for multipart overhead and platform variance.
+  const fallback = 3_500_000
   const raw = process.env.NEXT_PUBLIC_ASSET_MAX_BYTES
   if (!raw) return fallback
   const parsed = Number(raw)
@@ -446,20 +447,31 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
             throw err
           })
 
-          const form = new FormData()
-          form.set('file', normalized)
-          const res = await fetch('/api/assets', { method: 'POST', body: form })
-          const data = (await res.json().catch(() => ({}))) as UploadResult
-          if (!res.ok || 'error' in data) {
-            failedCount += 1
-            if (res.status === 413) {
-              firstError = firstError ?? `图片过大，请控制在 ${formatBytes(maxBytes)} 以内`
-            } else if ('error' in data && data.error) {
-              firstError = firstError ?? String(data.error)
+          let candidate = normalized
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const form = new FormData()
+            form.set('file', candidate)
+            const res = await fetch('/api/assets', { method: 'POST', body: form })
+            if (res.status === 413 && attempt === 0) {
+              // Platform rejected the payload; compress harder and retry once.
+              const tighter = Math.max(1_500_000, Math.floor(maxBytes * 0.72))
+              candidate = await compressImageIfNeeded(candidate, tighter)
+              continue
             }
-            continue
+
+            const data = (await res.json().catch(() => ({}))) as UploadResult
+            if (!res.ok || 'error' in data) {
+              failedCount += 1
+              if (res.status === 413) {
+                firstError = firstError ?? `图片过大，请控制在 ${formatBytes(maxBytes)} 以内`
+              } else if ('error' in data && data.error) {
+                firstError = firstError ?? String(data.error)
+              }
+              break
+            }
+            urls.push(data.url)
+            break
           }
-          urls.push(data.url)
         } catch {
           failedCount += 1
         }
