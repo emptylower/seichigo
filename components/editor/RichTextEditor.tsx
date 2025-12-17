@@ -25,6 +25,7 @@ type UploadResult = { id: string; url: string } | { error: string }
 type LinkPreviewResult = { ok: true; imageUrl: string } | { error: string }
 
 type BlockHandle = { top: number; pos: number; source: 'hover' | 'selection' }
+type TextSelectionRange = { from: number; to: number }
 
 const TEXT_COLORS: Array<{ label: string; value: string | null; swatch: string }> = [
   { label: '默认', value: null, swatch: '#111827' },
@@ -68,6 +69,26 @@ function isValidHref(input: string): boolean {
   return scheme === 'http' || scheme === 'https' || scheme === 'mailto'
 }
 
+function normalizeHref(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('//')) return null
+  if (trimmed.startsWith('/') || trimmed.startsWith('#')) return trimmed
+
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(trimmed)
+  if (schemeMatch) {
+    const scheme = schemeMatch[1]!.toLowerCase()
+    if (scheme === 'http' || scheme === 'https' || scheme === 'mailto') return trimmed
+    return null
+  }
+
+  // Common input like "example.com" -> normalize to https://example.com
+  if (!/\s/.test(trimmed) && (trimmed.includes('.') || trimmed.includes(':'))) {
+    return `https://${trimmed}`
+  }
+  return null
+}
+
 function normalizePastedHttpUrl(input: string): string | null {
   const trimmed = String(input || '').trim()
   if (!trimmed) return null
@@ -86,6 +107,32 @@ function safeHasFocus(editor: any): boolean {
     return Boolean(editor?.view?.hasFocus?.())
   } catch {
     return false
+  }
+}
+
+function resolveImageInsertPos(editor: any): number {
+  try {
+    const sel = editor?.state?.selection as any
+    if (!sel) return 0
+
+    if (sel?.node?.type?.name === 'figureImage') {
+      return typeof sel.to === 'number' ? sel.to : 0
+    }
+
+    const $from = sel?.$from
+    if ($from) {
+      for (let depth = $from.depth; depth > 0; depth--) {
+        const node = $from.node(depth)
+        if (node?.type?.name !== 'figureImage') continue
+        try {
+          return $from.after(depth)
+        } catch {}
+      }
+    }
+
+    return typeof sel.to === 'number' ? sel.to : 0
+  } catch {
+    return 0
   }
 }
 
@@ -207,10 +254,12 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const blockMenuRef = useRef<HTMLDivElement | null>(null)
+  const bubbleMenuRef = useRef<HTMLDivElement | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [linkEditing, setLinkEditing] = useState(false)
   const [linkValue, setLinkValue] = useState('')
+  const linkSelectionRef = useRef<TextSelectionRange | null>(null)
   const [blockHandle, setBlockHandle] = useState<BlockHandle | null>(null)
   const blockHandleRef = useRef<BlockHandle | null>(null)
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
@@ -262,7 +311,10 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
 
   useEffect(() => {
     if (!editor) return
-    const close = () => setLinkEditing(false)
+    const close = () => {
+      setLinkEditing(false)
+      linkSelectionRef.current = null
+    }
     editor.on('selectionUpdate', close)
     return () => {
       editor.off('selectionUpdate', close)
@@ -299,7 +351,10 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
         editor
           .chain()
           .focus()
-          .insertContent(urls.map((url) => ({ type: 'figureImage', attrs: { src: url, alt: '' } })))
+          .insertContentAt(
+            resolveImageInsertPos(editor),
+            urls.map((url) => ({ type: 'figureImage', attrs: { src: url, alt: '' } }))
+          )
           .run()
       } else {
         const nextHtml = `${value.html || ''}\n${urls.map((url) => `<p><img src="${url}" alt="" /></p>`).join('\n')}\n`
@@ -347,32 +402,50 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     }
   }
 
+  function closeLinkEditor() {
+    setLinkEditing(false)
+    linkSelectionRef.current = null
+  }
+
   function openLinkEditor() {
     if (!editor) return
     setError(null)
+    linkSelectionRef.current = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    }
     setLinkValue(String(editor.getAttributes('link')?.href || ''))
     setLinkEditing(true)
   }
 
   function unsetLink() {
     if (!editor) return
-    editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    const selection = linkSelectionRef.current
+    const chain = editor.chain().focus()
+    if (selection) chain.setTextSelection(selection)
+    chain.extendMarkRange('link').unsetLink().run()
   }
 
   function applyLink() {
     if (!editor) return
-    const href = linkValue.trim()
-    if (!href) {
+    const raw = linkValue.trim()
+    if (!raw) {
       unsetLink()
-      setLinkEditing(false)
+      closeLinkEditor()
       return
     }
-    if (!isValidHref(href)) {
+
+    const href = normalizeHref(raw)
+    if (!href || !isValidHref(href)) {
       setError('链接格式不合法（仅允许 http/https/mailto 或站内相对路径）。')
       return
     }
-    editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
-    setLinkEditing(false)
+
+    const selection = linkSelectionRef.current
+    const chain = editor.chain().focus()
+    if (selection) chain.setTextSelection(selection)
+    chain.extendMarkRange('link').setLink({ href }).run()
+    closeLinkEditor()
   }
 
   function focusAt(pos: number) {
@@ -555,7 +628,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
             />
             <ToolButton label="保存" onClick={applyLink} />
             <ToolButton label="移除" onClick={unsetLink} />
-            <ToolButton label="取消" onClick={() => setLinkEditing(false)} />
+            <ToolButton label="取消" onClick={closeLinkEditor} />
           </div>
         ) : (
           <>
@@ -808,15 +881,18 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
               shouldShow={({ editor, state }) => {
                 try {
                   if (!editor.isEditable) return false
-                  if (!safeHasFocus(editor)) return false
+                  const menuHasFocus = bubbleMenuRef.current?.contains(document.activeElement) ?? false
+                  if (!safeHasFocus(editor) && !menuHasFocus) return false
                   if (!state.selection.empty) return true
-                  return editor.isActive('figureImage')
+                  return linkEditing || editor.isActive('figureImage')
                 } catch {
                   return false
                 }
               }}
             >
-              <Toolbar />
+              <div ref={bubbleMenuRef}>
+                <Toolbar />
+              </div>
             </BubbleMenu>
 
             {blockHandle ? (
