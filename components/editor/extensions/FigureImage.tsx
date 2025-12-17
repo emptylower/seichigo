@@ -44,6 +44,13 @@ function parseBool(value: unknown): boolean {
   return v === '1' || v === 'true' || v === 'yes'
 }
 
+function parseAlign(value: unknown): 'left' | 'center' | 'right' {
+  const v = String(value ?? '').trim().toLowerCase()
+  if (v === 'center') return 'center'
+  if (v === 'right') return 'right'
+  return 'left'
+}
+
 function formatPct(value: number): string {
   return `${Math.round(value)}%`
 }
@@ -96,7 +103,6 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
   const showCaption = captionEnabled || !empty
 
   const pos = typeof getPos === 'function' ? getPos : null
-  const figureRef = useRef<HTMLElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
 
@@ -123,10 +129,6 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
 
     lastCaptionEnabled.current = captionEnabled
   }, [captionEnabled, editor, pos])
-
-  const containerStyle = useMemo(() => {
-    return { width: `${widthPct}%` }
-  }, [widthPct])
 
   const frameStyle = useMemo(() => {
     const style: Record<string, string> = {}
@@ -216,12 +218,11 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
 
   const startResizeDrag = useCallback(
     (e: ReactMouseEvent) => {
-      const figure = figureRef.current
-      const rect = figure?.getBoundingClientRect()
+      const rect = editor?.view?.dom?.getBoundingClientRect?.()
       const containerW = rect?.width || 800
       dragState.current = { type: 'resize', startX: e.clientX, startWidthPct: widthPct, containerW }
     },
-    [widthPct]
+    [editor, widthPct]
   )
 
   useEffect(() => {
@@ -246,19 +247,21 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
   return (
     <NodeViewWrapper
       as="figure"
-      ref={(el: HTMLElement | null) => {
-        figureRef.current = el
-      }}
-      className="my-3"
+      className="my-0"
+      data-figure-image="true"
+      data-width-pct={String(widthPct)}
       {...HTMLAttributes}
     >
-      <div data-figure-image-container data-width-pct={String(widthPct)} style={containerStyle as any} className="max-w-full">
+      <div data-figure-image-container data-width-pct={String(widthPct)} className="max-w-full">
         <div
           ref={frameRef}
           data-figure-image-frame
           data-mode={mode}
           data-crop-h={cropEnabled && cropHeight ? String(cropHeight) : undefined}
           style={frameStyle as any}
+          onMouseDown={() => {
+            setNodeSelection()
+          }}
           className={[
             'relative w-full',
             'rounded-lg',
@@ -272,6 +275,7 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
             alt={alt}
             draggable
             contentEditable={false}
+            data-drag-handle
             data-rotate={String(rotate)}
             data-flip-x={flipX ? '1' : '0'}
             data-flip-y={flipY ? '1' : '0'}
@@ -358,6 +362,8 @@ export const FigureImage = Node.create({
         default: 100,
         parseHTML: (element) => {
           if (!(element instanceof HTMLElement)) return 100
+          const self = element.getAttribute?.('data-width-pct')
+          if (self) return clampInt(self, 10, 100, 100)
           const container = element.matches('div')
             ? element
             : element.querySelector('[data-figure-image-container]') || element.querySelector('[data-figure-image-frame]')
@@ -522,7 +528,7 @@ export const FigureImage = Node.create({
     const hasTransforms = cropEnabled || rotate !== 0 || flipX || flipY
     const mode = hasTransforms ? 'transform' : 'plain'
 
-    const containerStyleParts: string[] = [`width:${widthPct}%`]
+    const figureStyleParts: string[] = [`width:${widthPct}%`]
 
     const frameStyleParts: string[] = []
     if (cropEnabled && cropHeight) {
@@ -547,13 +553,16 @@ export const FigureImage = Node.create({
 
     return [
       'figure',
-      mergeAttributes(HTMLAttributes),
+      mergeAttributes(HTMLAttributes, {
+        'data-figure-image': 'true',
+        'data-width-pct': String(widthPct),
+        style: figureStyleParts.join(';'),
+      }),
       [
         'div',
         {
           'data-figure-image-container': 'true',
           'data-width-pct': String(widthPct),
-          style: containerStyleParts.join(';'),
         },
         [
           'div',
@@ -599,6 +608,29 @@ export const FigureImage = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(FigureImageView)
+    return ReactNodeViewRenderer(FigureImageView, {
+      attrs: ({ node }) => {
+        const widthPct = clampInt((node.attrs as any)?.widthPct, 10, 100, 100)
+        const align = parseAlign((node.attrs as any)?.align)
+        const marginY = '0.75rem'
+        const gutter = '0.75rem'
+
+        if (align === 'center') {
+          return {
+            style: [`width:${widthPct}%`, 'display:block', `margin:${marginY} auto`].join(';'),
+          }
+        }
+
+        if (align === 'right') {
+          return {
+            style: [`width:${widthPct}%`, 'display:block', `margin:${marginY} 0 ${marginY} auto`].join(';'),
+          }
+        }
+
+        return {
+          style: [`width:${widthPct}%`, 'display:inline-block', 'vertical-align:top', `margin:${marginY} ${gutter} ${marginY} 0`].join(';'),
+        }
+      },
+    })
   },
 })

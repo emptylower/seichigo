@@ -49,7 +49,7 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
     'data-natural-h',
     'style',
   ],
-  figure: ['data-align', 'data-indent'],
+  figure: ['data-align', 'data-indent', 'data-figure-image', 'data-width-pct', 'style'],
   div: ['data-figure-image-container', 'data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style'],
   p: ['data-align', 'data-indent'],
   h1: ['data-align', 'data-indent'],
@@ -340,7 +340,22 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       ul: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       ol: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       li: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      figure: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      figure: (tagName, attribs) => {
+        const next = sanitizeBlockAttrs(attribs)
+
+        const marker = String(attribs['data-figure-image'] || '').trim().toLowerCase()
+        if (marker !== 'true') return { tagName, attribs: next }
+
+        next['data-figure-image'] = 'true'
+
+        const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
+        if (widthPct) next['data-width-pct'] = widthPct
+
+        const style = sanitizeContainerStyle(attribs.style) || (widthPct ? `width:${widthPct}%` : null)
+        if (style) next.style = style
+
+        return { tagName, attribs: next }
+      },
       figcaption: (tagName) => ({ tagName, attribs: {} }),
       div: (tagName, attribs) => {
         const next: Record<string, string> = {}

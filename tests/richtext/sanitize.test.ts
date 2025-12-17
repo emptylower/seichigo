@@ -168,4 +168,20 @@ describe('richtext sanitize', () => {
     expect(out).toContain('width:80%')
     expect(out).not.toContain('position:fixed')
   })
+
+  it('preserves figure image marker + safe width on figure', () => {
+    const html =
+      '<figure data-figure-image="true" data-width-pct="60" data-align="center" style="width:60%; position:fixed">' +
+      '<div data-figure-image-container="true">' +
+      '<div data-figure-image-frame="true" data-mode="plain">' +
+      '<img src="/assets/abc123" alt="x" />' +
+      '</div>' +
+      '</div>' +
+      '</figure>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('data-figure-image="true"')
+    expect(out).toContain('data-width-pct="60"')
+    expect(out).toMatch(/<figure[^>]*style="[^"]*width:\s*60%/i)
+    expect(out).not.toContain('position:fixed')
+  })
 })

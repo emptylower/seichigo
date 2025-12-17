@@ -86,6 +86,8 @@ describe('editor image transform tools', () => {
     await waitFor(() => {
       const last = onChange.mock.calls.at(-1)?.[0]
       expect(String(last?.html || '')).toContain('data-width-pct="88"')
+      expect(String(last?.html || '')).toContain('data-figure-image="true"')
+      expect(String(last?.html || '')).toMatch(/<figure[^>]*style="[^"]*width:\s*88%/i)
       expect(String(last?.html || '')).toContain('data-figure-image-container="true"')
     })
   })
