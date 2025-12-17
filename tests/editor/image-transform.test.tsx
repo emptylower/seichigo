@@ -24,6 +24,7 @@ describe('editor image transform tools', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[data-image-toolbar]')).toBeTruthy()
+      expect(container.querySelector('[data-figure-image-container]')).toBeTruthy()
     })
 
     fireEvent.click(container.querySelector('[aria-label="图片居中对齐"]') as Element)
@@ -74,6 +75,7 @@ describe('editor image transform tools', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[aria-label="调整图片宽度"]')).toBeTruthy()
+      expect(container.querySelector('[data-figure-image-container]')).toBeTruthy()
     })
 
     const handle = container.querySelector('[aria-label="调整图片宽度"]') as HTMLElement
@@ -84,6 +86,7 @@ describe('editor image transform tools', () => {
     await waitFor(() => {
       const last = onChange.mock.calls.at(-1)?.[0]
       expect(String(last?.html || '')).toContain('data-width-pct="88"')
+      expect(String(last?.html || '')).toContain('data-figure-image-container="true"')
     })
   })
 })

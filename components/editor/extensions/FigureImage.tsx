@@ -124,8 +124,12 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     lastCaptionEnabled.current = captionEnabled
   }, [captionEnabled, editor, pos])
 
+  const containerStyle = useMemo(() => {
+    return { width: `${widthPct}%` }
+  }, [widthPct])
+
   const frameStyle = useMemo(() => {
-    const style: Record<string, string> = { width: `${widthPct}%` }
+    const style: Record<string, string> = {}
     if (cropEnabled && cropHeight) {
       style.height = `${cropHeight}px`
       return style
@@ -135,7 +139,7 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
       style['aspect-ratio'] = ratio
     }
     return style
-  }, [cropEnabled, cropHeight, mode, naturalHeight, naturalWidth, rotate, widthPct])
+  }, [cropEnabled, cropHeight, mode, naturalHeight, naturalWidth, rotate])
 
   const imgVars = useMemo(() => {
     const { w, h } = computeRotatedSizeVars({ rotate, crop: cropEnabled, naturalWidth, naturalHeight })
@@ -245,77 +249,76 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
       ref={(el: HTMLElement | null) => {
         figureRef.current = el
       }}
-      className={[
-        'my-3',
-        'rounded-lg',
-        selected ? 'ring-2 ring-brand-200' : '',
-      ].join(' ')}
+      className="my-3"
       {...HTMLAttributes}
     >
-      <div
-        ref={frameRef}
-        data-figure-image-frame
-        data-mode={mode}
-        data-width-pct={String(widthPct)}
-        data-crop-h={cropEnabled && cropHeight ? String(cropHeight) : undefined}
-        style={frameStyle as any}
-        className="relative inline-block max-w-full"
-      >
-        <img
-          ref={imgRef}
-          src={src}
-          alt={alt}
-          draggable
-          contentEditable={false}
-          data-rotate={String(rotate)}
-          data-flip-x={flipX ? '1' : '0'}
-          data-flip-y={flipY ? '1' : '0'}
-          data-crop-x={String(cropX)}
-          data-crop-y={String(cropY)}
-          data-natural-w={naturalWidth ? String(naturalWidth) : undefined}
-          data-natural-h={naturalHeight ? String(naturalHeight) : undefined}
-          style={imgVars}
+      <div data-figure-image-container data-width-pct={String(widthPct)} style={containerStyle as any} className="max-w-full">
+        <div
+          ref={frameRef}
+          data-figure-image-frame
+          data-mode={mode}
+          data-crop-h={cropEnabled && cropHeight ? String(cropHeight) : undefined}
+          style={frameStyle as any}
           className={[
-            mode === 'transform' ? 'absolute left-1/2 top-1/2 max-w-none' : 'block h-auto w-full',
+            'relative w-full',
             'rounded-lg',
+            'max-w-full',
+            selected ? 'ring-2 ring-brand-200' : '',
           ].join(' ')}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setNodeSelection()
-            startCropDrag(e)
-          }}
-        />
-
-        {selected ? (
-          <button
-            type="button"
-            aria-label="调整图片宽度"
-            className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border border-gray-300 bg-white shadow-sm"
+        >
+          <img
+            ref={imgRef}
+            src={src}
+            alt={alt}
+            draggable
+            contentEditable={false}
+            data-rotate={String(rotate)}
+            data-flip-x={flipX ? '1' : '0'}
+            data-flip-y={flipY ? '1' : '0'}
+            data-crop-x={String(cropX)}
+            data-crop-y={String(cropY)}
+            data-natural-w={naturalWidth ? String(naturalWidth) : undefined}
+            data-natural-h={naturalHeight ? String(naturalHeight) : undefined}
+            style={imgVars}
+            className={[mode === 'transform' ? 'absolute left-1/2 top-1/2 max-w-none' : 'block h-auto w-full', 'rounded-lg'].join(' ')}
             onMouseDown={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
               setNodeSelection()
-              startResizeDrag(e)
+              if (!cropEnabled) return
+              e.preventDefault()
+              startCropDrag(e)
             }}
           />
-        ) : null}
-      </div>
 
-      <figcaption className="mt-2 text-sm text-gray-600" hidden={!showCaption}>
-        <NodeViewContent
-          as="div"
-          data-figure-caption={showCaption ? 'true' : undefined}
-          data-placeholder={showCaption ? '写说明…' : undefined}
-          data-empty={showCaption && empty ? 'true' : undefined}
-          className="outline-none"
-          onBlur={() => {
-            if (!captionEnabled) return
-            if (!empty) return
-            updateAttributes({ caption: false })
-          }}
-        />
-      </figcaption>
+          {selected ? (
+            <button
+              type="button"
+              aria-label="调整图片宽度"
+              className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border border-gray-300 bg-white shadow-sm"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setNodeSelection()
+                startResizeDrag(e)
+              }}
+            />
+          ) : null}
+        </div>
+
+        <figcaption className="mt-2 text-sm text-gray-600" hidden={!showCaption}>
+          <NodeViewContent
+            as="div"
+            data-figure-caption={showCaption ? 'true' : undefined}
+            data-placeholder={showCaption ? '写说明…' : undefined}
+            data-empty={showCaption && empty ? 'true' : undefined}
+            className="outline-none"
+            onBlur={() => {
+              if (!captionEnabled) return
+              if (!empty) return
+              updateAttributes({ caption: false })
+            }}
+          />
+        </figcaption>
+      </div>
     </NodeViewWrapper>
   )
 }
@@ -355,8 +358,10 @@ export const FigureImage = Node.create({
         default: 100,
         parseHTML: (element) => {
           if (!(element instanceof HTMLElement)) return 100
-          const frame = element.matches('div') ? element : element.querySelector('[data-figure-image-frame]')
-          const raw = (frame as HTMLElement | null)?.getAttribute?.('data-width-pct')
+          const container = element.matches('div')
+            ? element
+            : element.querySelector('[data-figure-image-container]') || element.querySelector('[data-figure-image-frame]')
+          const raw = (container as HTMLElement | null)?.getAttribute?.('data-width-pct')
           return clampInt(raw, 10, 100, 100)
         },
         renderHTML: () => ({}),
@@ -517,7 +522,9 @@ export const FigureImage = Node.create({
     const hasTransforms = cropEnabled || rotate !== 0 || flipX || flipY
     const mode = hasTransforms ? 'transform' : 'plain'
 
-    const frameStyleParts: string[] = [`width:${widthPct}%`]
+    const containerStyleParts: string[] = [`width:${widthPct}%`]
+
+    const frameStyleParts: string[] = []
     if (cropEnabled && cropHeight) {
       frameStyleParts.push(`height:${cropHeight}px`)
     } else if (mode === 'transform' && naturalWidth && naturalHeight) {
@@ -538,40 +545,43 @@ export const FigureImage = Node.create({
     const captionText = String(node.textContent || '').trim()
     const hasCaption = captionText.length > 0
 
-    const children: any[] = [
-      [
-        'div',
-        {
-          'data-figure-image-frame': 'true',
-          'data-mode': mode,
-          'data-width-pct': String(widthPct),
-          'data-crop-h': cropEnabled && cropHeight ? String(cropHeight) : undefined,
-          style: frameStyleParts.join(';'),
-        },
-        [
-          'img',
-          {
-            src,
-            alt,
-            draggable: 'true',
-            'data-rotate': String(rotate),
-            'data-flip-x': flipX ? '1' : '0',
-            'data-flip-y': flipY ? '1' : '0',
-            'data-crop-x': String(cropX),
-            'data-crop-y': String(cropY),
-            'data-natural-w': naturalWidth ? String(naturalWidth) : undefined,
-            'data-natural-h': naturalHeight ? String(naturalHeight) : undefined,
-            style: imgStyleParts.join(';'),
-          },
-        ],
-      ],
-    ]
-    if (hasCaption) children.push(['figcaption', 0])
-
     return [
       'figure',
       mergeAttributes(HTMLAttributes),
-      ...children,
+      [
+        'div',
+        {
+          'data-figure-image-container': 'true',
+          'data-width-pct': String(widthPct),
+          style: containerStyleParts.join(';'),
+        },
+        [
+          'div',
+          {
+            'data-figure-image-frame': 'true',
+            'data-mode': mode,
+            'data-crop-h': cropEnabled && cropHeight ? String(cropHeight) : undefined,
+            style: frameStyleParts.join(';'),
+          },
+          [
+            'img',
+            {
+              src,
+              alt,
+              draggable: 'true',
+              'data-rotate': String(rotate),
+              'data-flip-x': flipX ? '1' : '0',
+              'data-flip-y': flipY ? '1' : '0',
+              'data-crop-x': String(cropX),
+              'data-crop-y': String(cropY),
+              'data-natural-w': naturalWidth ? String(naturalWidth) : undefined,
+              'data-natural-h': naturalHeight ? String(naturalHeight) : undefined,
+              style: imgStyleParts.join(';'),
+            },
+          ],
+        ],
+        ...(hasCaption ? [['figcaption', 0]] : []),
+      ],
     ]
   },
 

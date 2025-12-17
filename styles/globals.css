@@ -89,6 +89,20 @@ a {
   object-fit: cover;
 }
 
+:where(.ProseMirror, .prose) [data-figure-image-container] {
+  max-width: 100%;
+}
+
+:where(.ProseMirror, .prose) figure[data-align="center"] > [data-figure-image-container] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+:where(.ProseMirror, .prose) figure[data-align="right"] > [data-figure-image-container] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
 :where(.ProseMirror, .prose) figure[data-align="center"] img {
   margin-left: auto;
   margin-right: auto;

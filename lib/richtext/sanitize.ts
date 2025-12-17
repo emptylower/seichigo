@@ -50,7 +50,7 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
     'style',
   ],
   figure: ['data-align', 'data-indent'],
-  div: ['data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style'],
+  div: ['data-figure-image-container', 'data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style'],
   p: ['data-align', 'data-indent'],
   h1: ['data-align', 'data-indent'],
   h2: ['data-align', 'data-indent'],
@@ -194,6 +194,32 @@ function sanitizeFrameStyle(style?: string): string | null {
   return parts.length ? parts.join(';') : null
 }
 
+function sanitizeContainerStyle(style?: string): string | null {
+  if (!style) return null
+  let width: string | null = null
+
+  for (const chunk of style.split(';')) {
+    const part = chunk.trim()
+    if (!part) continue
+    const idx = part.indexOf(':')
+    if (idx === -1) continue
+    const prop = part.slice(0, idx).trim().toLowerCase()
+    const rawValue = part.slice(idx + 1).trim()
+    if (!rawValue) continue
+
+    if (prop === 'width') {
+      const m = /^(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n)) continue
+      const clamped = Math.max(10, Math.min(100, n))
+      width = `${Math.round(clamped)}%`
+    }
+  }
+
+  return width ? `width:${width}` : null
+}
+
 function sanitizeImageVars(style?: string): string | null {
   if (!style) return null
 
@@ -298,8 +324,9 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
         return !isAllowedImageSrc(frame.attribs?.src || '')
       }
       if (frame.tag === 'div') {
-        const marker = String(frame.attribs?.['data-figure-image-frame'] || '').trim().toLowerCase()
-        return marker !== 'true'
+        const isFrame = String(frame.attribs?.['data-figure-image-frame'] || '').trim().toLowerCase() === 'true'
+        const isContainer = String(frame.attribs?.['data-figure-image-container'] || '').trim().toLowerCase() === 'true'
+        return !isFrame && !isContainer
       }
       return false
     },
@@ -317,6 +344,23 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       figcaption: (tagName) => ({ tagName, attribs: {} }),
       div: (tagName, attribs) => {
         const next: Record<string, string> = {}
+
+        const markerContainer = String(attribs['data-figure-image-container'] || '').trim().toLowerCase()
+        if (markerContainer === 'true') {
+          next['data-figure-image-container'] = 'true'
+          const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
+          if (widthPct) next['data-width-pct'] = widthPct
+
+          const style = sanitizeContainerStyle(attribs.style) || (widthPct ? `width:${widthPct}%` : null)
+          if (style) next.style = style
+          return { tagName, attribs: next }
+        }
+
+        const markerFrame = String(attribs['data-figure-image-frame'] || '').trim().toLowerCase()
+        if (markerFrame !== 'true') {
+          return { tagName, attribs: {} }
+        }
+
         next['data-figure-image-frame'] = 'true'
 
         const mode = String(attribs['data-mode'] || '').trim().toLowerCase()

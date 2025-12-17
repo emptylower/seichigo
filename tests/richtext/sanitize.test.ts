@@ -152,4 +152,20 @@ describe('richtext sanitize', () => {
     expect(out).toContain('--seichi-pos:40% 60%')
     expect(out).not.toContain('color:red')
   })
+
+  it('preserves figure image container wrapper with safe width styles', () => {
+    const html =
+      '<figure data-align="center">' +
+      '<div data-figure-image-container="true" data-width-pct="80" style="width:80%; position:fixed">' +
+      '<div data-figure-image-frame="true" data-mode="plain">' +
+      '<img src="/assets/abc123" alt="x" />' +
+      '</div>' +
+      '</div>' +
+      '</figure>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('data-figure-image-container="true"')
+    expect(out).toContain('data-width-pct="80"')
+    expect(out).toContain('width:80%')
+    expect(out).not.toContain('position:fixed')
+  })
 })
