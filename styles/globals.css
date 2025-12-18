@@ -105,10 +105,18 @@ a {
   transform: translate(-50%, -50%) rotate(var(--seichi-rot, 0deg)) scaleX(var(--seichi-flip-x, 1)) scaleY(var(--seichi-flip-y, 1));
   transform-origin: center;
   object-fit: contain;
-  object-position: var(--seichi-pos, 50% 50%);
+  object-position: center;
 }
 
-:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"][data-crop-h] > img {
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] > img[data-crop-l],
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] > img[data-crop-t],
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] > img[data-crop-r],
+:where(.ProseMirror, .prose) [data-figure-image-frame][data-mode="transform"] > img[data-crop-b] {
+  top: var(--seichi-crop-top, 0%);
+  left: var(--seichi-crop-left, 0%);
+  width: var(--seichi-crop-width, 100%);
+  height: var(--seichi-crop-height, 100%);
+  transform: rotate(var(--seichi-rot, 0deg)) scaleX(var(--seichi-flip-x, 1)) scaleY(var(--seichi-flip-y, 1));
   object-fit: cover;
 }
 
@@ -140,6 +148,14 @@ a {
   font-size: 0.875rem;
   line-height: 1.25rem;
   color: #6b7280; /* gray-500 */
+}
+
+:where(.ProseMirror, .prose) figure[data-align="center"] figcaption {
+  text-align: center;
+}
+
+:where(.ProseMirror, .prose) figure[data-align="right"] figcaption {
+  text-align: right;
 }
 
 :where(.ProseMirror) [data-figure-caption][data-empty="true"]::before {

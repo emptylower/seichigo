@@ -62,6 +62,28 @@ function formatDeg(value: number): string {
   return `${normalizeRotate(value)}deg`
 }
 
+function computeCropVars(opts: { cropL: number; cropT: number; cropR: number; cropB: number }) {
+  const l = clampInt(opts.cropL, 0, 95, 0)
+  const t = clampInt(opts.cropT, 0, 95, 0)
+  const r = clampInt(opts.cropR, 0, 95, 0)
+  const b = clampInt(opts.cropB, 0, 95, 0)
+
+  const fracW = Math.max(1, 100 - l - r)
+  const fracH = Math.max(1, 100 - t - b)
+
+  const left = Math.round((-100 * l / fracW) * 100) / 100
+  const top = Math.round((-100 * t / fracH) * 100) / 100
+  const width = Math.round((10000 / fracW) * 100) / 100
+  const height = Math.round((10000 / fracH) * 100) / 100
+
+  return {
+    left: `${left}%`,
+    top: `${top}%`,
+    width: `${width}%`,
+    height: `${height}%`,
+  }
+}
+
 function computeRotatedSizeVars(opts: { rotate: number; naturalWidth: number | null; naturalHeight: number | null }) {
   if (opts.rotate !== 90 && opts.rotate !== 270) return { w: '100%', h: '100%' }
   const nw = opts.naturalWidth ?? null
@@ -135,27 +157,35 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
 
   const frameStyle = useMemo(() => {
     const style: Record<string, string> = {}
-    if (cropEnabled && cropHeight) {
-      style.height = `${cropHeight}px`
-      return style
-    }
     if (mode === 'transform' && naturalWidth && naturalHeight) {
-      const ratio = rotate === 90 || rotate === 270 ? `${naturalHeight} / ${naturalWidth}` : `${naturalWidth} / ${naturalHeight}`
+      const fracW = Math.max(1, 100 - cropL - cropR)
+      const fracH = Math.max(1, 100 - cropT - cropB)
+      const w = naturalWidth * fracW
+      const h = naturalHeight * fracH
+      const ratio = rotate === 90 || rotate === 270 ? `${h} / ${w}` : `${w} / ${h}`
       style['aspect-ratio'] = ratio
     }
     return style
-  }, [mode, naturalHeight, naturalWidth, rotate])
+  }, [cropB, cropL, cropR, cropT, mode, naturalHeight, naturalWidth, rotate])
 
   const imgVars = useMemo(() => {
     const { w, h } = computeRotatedSizeVars({ rotate, naturalWidth, naturalHeight })
-    return {
+    const vars: Record<string, string> = {
       '--seichi-rot': formatDeg(rotate),
       '--seichi-flip-x': String(flipX ? -1 : 1),
       '--seichi-flip-y': String(flipY ? -1 : 1),
       '--seichi-w': w,
       '--seichi-h': h,
-    } as any
-  }, [flipX, flipY, naturalHeight, naturalWidth, rotate])
+    }
+    if (cropEnabled) {
+      const cropVars = computeCropVars({ cropL, cropT, cropR, cropB })
+      vars['--seichi-crop-left'] = cropVars.left
+      vars['--seichi-crop-top'] = cropVars.top
+      vars['--seichi-crop-width'] = cropVars.width
+      vars['--seichi-crop-height'] = cropVars.height
+    }
+    return vars as any
+  }, [cropB, cropEnabled, cropL, cropR, cropT, flipX, flipY, naturalHeight, naturalWidth, rotate])
 
   const cropSession = useRef<{ l: number; t: number; r: number; b: number } | null>(null)
   useEffect(() => {
@@ -656,7 +686,11 @@ export const FigureImage = Node.create({
 
     const frameStyleParts: string[] = []
     if (mode === 'transform' && naturalWidth && naturalHeight) {
-      const ratio = rotate === 90 || rotate === 270 ? `${naturalHeight} / ${naturalWidth}` : `${naturalWidth} / ${naturalHeight}`
+      const fracW = Math.max(1, 100 - cropL - cropR)
+      const fracH = Math.max(1, 100 - cropT - cropB)
+      const wEff = naturalWidth * fracW
+      const hEff = naturalHeight * fracH
+      const ratio = rotate === 90 || rotate === 270 ? `${hEff} / ${wEff}` : `${wEff} / ${hEff}`
       frameStyleParts.push(`aspect-ratio:${ratio}`)
     }
 
@@ -668,6 +702,13 @@ export const FigureImage = Node.create({
       `--seichi-w:${w}`,
       `--seichi-h:${h}`,
     ]
+    if (cropEnabled) {
+      const cropVars = computeCropVars({ cropL, cropT, cropR, cropB })
+      imgStyleParts.push(`--seichi-crop-left:${cropVars.left}`)
+      imgStyleParts.push(`--seichi-crop-top:${cropVars.top}`)
+      imgStyleParts.push(`--seichi-crop-width:${cropVars.width}`)
+      imgStyleParts.push(`--seichi-crop-height:${cropVars.height}`)
+    }
 
     const captionText = String(node.textContent || '').trim()
     const hasCaption = captionText.length > 0
