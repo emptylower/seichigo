@@ -169,6 +169,25 @@ describe('richtext sanitize', () => {
     expect(out).not.toContain('color:red')
   })
 
+  it('preserves image crop insets and crop vars', () => {
+    const html =
+      '<figure data-align="center">' +
+      '<div data-figure-image-frame="true" data-mode="transform">' +
+      '<img src="/assets/abc123" alt="x" data-crop-l="5" data-crop-t="6" data-crop-r="10" data-crop-b="12" ' +
+      'style="--seichi-rot:0deg; --seichi-flip-x:1; --seichi-flip-y:1; --seichi-crop-left:-5%; --seichi-crop-top:-6%; --seichi-crop-width:111%; --seichi-crop-height:114%;" />' +
+      '</div>' +
+      '</figure>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('data-crop-l="5"')
+    expect(out).toContain('data-crop-t="6"')
+    expect(out).toContain('data-crop-r="10"')
+    expect(out).toContain('data-crop-b="12"')
+    expect(out).toContain('--seichi-crop-left:-5%')
+    expect(out).toContain('--seichi-crop-top:-6%')
+    expect(out).toContain('--seichi-crop-width:111%')
+    expect(out).toContain('--seichi-crop-height:114%')
+  })
+
   it('preserves figure image container wrapper with safe width styles', () => {
     const html =
       '<figure data-align="center">' +

@@ -43,8 +43,10 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
     'data-rotate',
     'data-flip-x',
     'data-flip-y',
-    'data-crop-x',
-    'data-crop-y',
+    'data-crop-l',
+    'data-crop-t',
+    'data-crop-r',
+    'data-crop-b',
     'data-natural-w',
     'data-natural-h',
     'style',
@@ -230,6 +232,10 @@ function sanitizeImageVars(style?: string): string | null {
     '--seichi-w',
     '--seichi-h',
     '--seichi-pos',
+    '--seichi-crop-left',
+    '--seichi-crop-top',
+    '--seichi-crop-width',
+    '--seichi-crop-height',
   ])
 
   const out: Record<string, string> = {}
@@ -276,10 +282,40 @@ function sanitizeImageVars(style?: string): string | null {
       const cy = Math.max(0, Math.min(100, y))
       out[prop] = `${Math.round(cx)}% ${Math.round(cy)}%`
     }
+
+    if (prop === '--seichi-crop-left' || prop === '--seichi-crop-top') {
+      const m = /^-?(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(rawValue.replace('%', ''))
+      if (!Number.isFinite(n)) continue
+      const clamped = Math.max(-2000, Math.min(2000, n))
+      out[prop] = `${Math.round(clamped)}%`
+      continue
+    }
+
+    if (prop === '--seichi-crop-width' || prop === '--seichi-crop-height') {
+      const m = /^(\d+(?:\.\d+)?)%$/.exec(rawValue)
+      if (!m) continue
+      const n = Number(m[1])
+      if (!Number.isFinite(n) || n <= 0) continue
+      const clamped = Math.max(1, Math.min(2000, n))
+      out[prop] = `${Math.round(clamped)}%`
+    }
   }
 
   const parts: string[] = []
-  for (const key of ['--seichi-rot', '--seichi-flip-x', '--seichi-flip-y', '--seichi-w', '--seichi-h', '--seichi-pos']) {
+  for (const key of [
+    '--seichi-rot',
+    '--seichi-flip-x',
+    '--seichi-flip-y',
+    '--seichi-w',
+    '--seichi-h',
+    '--seichi-pos',
+    '--seichi-crop-left',
+    '--seichi-crop-top',
+    '--seichi-crop-width',
+    '--seichi-crop-height',
+  ]) {
     const value = out[key]
     if (value) parts.push(`${key}:${value}`)
   }
@@ -408,10 +444,24 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
         const next: Record<string, string> = sanitizeBlockAttrs(attribs)
         if (attribs.src) next.src = attribs.src.trim()
         if (attribs.alt) next.alt = String(attribs.alt)
-        for (const key of ['data-rotate', 'data-flip-x', 'data-flip-y', 'data-crop-x', 'data-crop-y', 'data-natural-w', 'data-natural-h']) {
-          const v = String((attribs as any)[key] || '').trim()
-          if (v) next[key] = v
-        }
+        const rotate = sanitizePercentInt(attribs['data-rotate'], 0, 360)
+        if (rotate) next['data-rotate'] = rotate
+        const flipX = sanitizePercentInt(attribs['data-flip-x'], 0, 1)
+        if (flipX) next['data-flip-x'] = flipX
+        const flipY = sanitizePercentInt(attribs['data-flip-y'], 0, 1)
+        if (flipY) next['data-flip-y'] = flipY
+        const cropL = sanitizePercentInt(attribs['data-crop-l'], 0, 95)
+        if (cropL) next['data-crop-l'] = cropL
+        const cropT = sanitizePercentInt(attribs['data-crop-t'], 0, 95)
+        if (cropT) next['data-crop-t'] = cropT
+        const cropR = sanitizePercentInt(attribs['data-crop-r'], 0, 95)
+        if (cropR) next['data-crop-r'] = cropR
+        const cropB = sanitizePercentInt(attribs['data-crop-b'], 0, 95)
+        if (cropB) next['data-crop-b'] = cropB
+        const naturalW = sanitizePercentInt(attribs['data-natural-w'], 0, 200000)
+        if (naturalW) next['data-natural-w'] = naturalW
+        const naturalH = sanitizePercentInt(attribs['data-natural-h'], 0, 200000)
+        if (naturalH) next['data-natural-h'] = naturalH
         const style = sanitizeImageVars(attribs.style)
         if (style) next.style = style
         return { tagName, attribs: next }
