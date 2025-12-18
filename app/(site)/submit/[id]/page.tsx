@@ -1,6 +1,7 @@
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SubmitEditClient from './ui'
+import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 
 export const metadata = { title: '编辑文章' }
 export const dynamic = 'force-dynamic'
@@ -38,7 +39,7 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
         routeLength: article.routeLength,
         tags: article.tags,
         contentJson: article.contentJson,
-        contentHtml: article.contentHtml,
+        contentHtml: sanitizeRichTextHtml(article.contentHtml || ''),
         status: article.status as any,
         rejectReason: article.rejectReason,
         updatedAt: article.updatedAt.toISOString(),

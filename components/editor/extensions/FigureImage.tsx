@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react'
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
+import { NodeSelection, Plugin } from '@tiptap/pm/state'
 
 type FigureImageAttrs = {
   src: string
   alt?: string
 }
+
+type CropHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -59,8 +62,7 @@ function formatDeg(value: number): string {
   return `${normalizeRotate(value)}deg`
 }
 
-function computeRotatedSizeVars(opts: { rotate: number; crop: boolean; naturalWidth: number | null; naturalHeight: number | null }) {
-  if (opts.crop) return { w: '100%', h: '100%' }
+function computeRotatedSizeVars(opts: { rotate: number; naturalWidth: number | null; naturalHeight: number | null }) {
   if (opts.rotate !== 90 && opts.rotate !== 270) return { w: '100%', h: '100%' }
   const nw = opts.naturalWidth ?? null
   const nh = opts.naturalHeight ?? null
@@ -77,10 +79,11 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
   const alt = String((node.attrs as any)?.alt || '')
 
   const widthPct = clampInt((node.attrs as any)?.widthPct, 10, 100, 100)
-  const cropHeightRaw = (node.attrs as any)?.cropHeight
-  const cropHeight = cropHeightRaw == null ? null : clampInt(cropHeightRaw, 80, 2400, 320)
-  const cropX = clampInt((node.attrs as any)?.cropX, 0, 100, 50)
-  const cropY = clampInt((node.attrs as any)?.cropY, 0, 100, 50)
+  const cropL = clampInt((node.attrs as any)?.cropL, 0, 95, 0)
+  const cropT = clampInt((node.attrs as any)?.cropT, 0, 95, 0)
+  const cropR = clampInt((node.attrs as any)?.cropR, 0, 95, 0)
+  const cropB = clampInt((node.attrs as any)?.cropB, 0, 95, 0)
+  const cropEditing = parseBool((node.attrs as any)?.cropEditing)
   const rotate = normalizeRotate((node.attrs as any)?.rotate)
   const flipX = parseBool((node.attrs as any)?.flipX)
   const flipY = parseBool((node.attrs as any)?.flipY)
@@ -93,8 +96,8 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     return v > 0 ? v : null
   })()
 
-  const cropEnabled = cropHeight != null
-  const hasTransforms = cropEnabled || rotate !== 0 || flipX || flipY
+  const cropEnabled = cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0
+  const hasTransforms = cropEnabled || cropEditing || rotate !== 0 || flipX || flipY
   const mode: 'plain' | 'transform' = hasTransforms ? 'transform' : 'plain'
 
   const captionEnabled = parseBool((node.attrs as any)?.caption)
@@ -141,22 +144,32 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
       style['aspect-ratio'] = ratio
     }
     return style
-  }, [cropEnabled, cropHeight, mode, naturalHeight, naturalWidth, rotate])
+  }, [mode, naturalHeight, naturalWidth, rotate])
 
   const imgVars = useMemo(() => {
-    const { w, h } = computeRotatedSizeVars({ rotate, crop: cropEnabled, naturalWidth, naturalHeight })
+    const { w, h } = computeRotatedSizeVars({ rotate, naturalWidth, naturalHeight })
     return {
       '--seichi-rot': formatDeg(rotate),
       '--seichi-flip-x': String(flipX ? -1 : 1),
       '--seichi-flip-y': String(flipY ? -1 : 1),
       '--seichi-w': w,
       '--seichi-h': h,
-      '--seichi-pos': `${formatPct(cropX)} ${formatPct(cropY)}`,
     } as any
-  }, [cropEnabled, cropX, cropY, flipX, flipY, naturalHeight, naturalWidth, rotate])
+  }, [flipX, flipY, naturalHeight, naturalWidth, rotate])
+
+  const cropSession = useRef<{ l: number; t: number; r: number; b: number } | null>(null)
+  useEffect(() => {
+    if (!cropEditing) {
+      cropSession.current = null
+      return
+    }
+    if (!cropSession.current) {
+      cropSession.current = { l: cropL, t: cropT, r: cropR, b: cropB }
+    }
+  }, [cropB, cropEditing, cropL, cropR, cropT])
 
   const dragState = useRef<
-    | { type: 'crop'; startX: number; startY: number; startCropX: number; startCropY: number; rectW: number; rectH: number }
+    | { type: 'crop'; handle: CropHandle; startX: number; startY: number; startCrop: { l: number; t: number; r: number; b: number }; rectW: number; rectH: number }
     | { type: 'resize'; startX: number; startWidthPct: number; containerW: number }
     | null
   >(null)
@@ -167,13 +180,32 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
       if (!state) return
 
       if (state.type === 'crop') {
-        const dx = e.clientX - state.startX
-        const dy = e.clientY - state.startY
         const rectW = state.rectW || 1
         const rectH = state.rectH || 1
-        const nextX = clampInt(Math.round(state.startCropX + (-dx / rectW) * 100), 0, 100, state.startCropX)
-        const nextY = clampInt(Math.round(state.startCropY + (-dy / rectH) * 100), 0, 100, state.startCropY)
-        updateAttributes({ cropX: nextX, cropY: nextY })
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        const deltaL = Math.round((dx / rectW) * 100)
+        const deltaR = Math.round((-dx / rectW) * 100)
+        const deltaT = Math.round((dy / rectH) * 100)
+        const deltaB = Math.round((-dy / rectH) * 100)
+
+        const minRemaining = 5
+        const clampInset = (value: number, opposite: number) => {
+          const max = Math.max(0, 100 - minRemaining - opposite)
+          return clampInt(value, 0, max, 0)
+        }
+
+        let nextL = state.startCrop.l
+        let nextT = state.startCrop.t
+        let nextR = state.startCrop.r
+        let nextB = state.startCrop.b
+
+        if (state.handle.includes('w')) nextL = clampInset(state.startCrop.l + deltaL, state.startCrop.r)
+        if (state.handle.includes('e')) nextR = clampInset(state.startCrop.r + deltaR, nextL)
+        if (state.handle.includes('n')) nextT = clampInset(state.startCrop.t + deltaT, state.startCrop.b)
+        if (state.handle.includes('s')) nextB = clampInset(state.startCrop.b + deltaB, nextT)
+
+        updateAttributes({ cropL: nextL, cropT: nextT, cropR: nextR, cropB: nextB })
         return
       }
 
@@ -197,23 +229,23 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     }
   }, [updateAttributes])
 
-  const startCropDrag = useCallback(
-    (e: ReactMouseEvent) => {
-      if (!cropEnabled) return
+  const startCropHandleDrag = useCallback(
+    (e: ReactMouseEvent, handle: CropHandle) => {
+      if (!cropEditing) return
       const frame = frameRef.current
       if (!frame) return
       const rect = frame.getBoundingClientRect()
       dragState.current = {
         type: 'crop',
+        handle,
         startX: e.clientX,
         startY: e.clientY,
-        startCropX: cropX,
-        startCropY: cropY,
+        startCrop: { l: cropL, t: cropT, r: cropR, b: cropB },
         rectW: rect.width || 1,
         rectH: rect.height || 1,
       }
     },
-    [cropEnabled, cropX, cropY]
+    [cropB, cropEditing, cropL, cropR, cropT]
   )
 
   const startResizeDrag = useCallback(
@@ -244,6 +276,43 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
     }
   }, [naturalHeight, naturalWidth, updateAttributes])
 
+  useEffect(() => {
+    if (!cropEditing) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const session = cropSession.current
+      updateAttributes({
+        cropEditing: false,
+        cropL: session?.l ?? 0,
+        cropT: session?.t ?? 0,
+        cropR: session?.r ?? 0,
+        cropB: session?.b ?? 0,
+      })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [cropEditing, updateAttributes])
+
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return
+
+    const wrapper = frame.closest('.node-figureImage') as HTMLElement | null
+    if (!wrapper) return
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.target !== wrapper) return
+      setNodeSelection()
+    }
+
+    wrapper.addEventListener('mousedown', onMouseDown)
+    return () => {
+      wrapper.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [setNodeSelection])
+
   return (
     <NodeViewWrapper
       as="figure"
@@ -257,7 +326,6 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
           ref={frameRef}
           data-figure-image-frame
           data-mode={mode}
-          data-crop-h={cropEnabled && cropHeight ? String(cropHeight) : undefined}
           style={frameStyle as any}
           onMouseDown={() => {
             setNodeSelection()
@@ -273,25 +341,67 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
             ref={imgRef}
             src={src}
             alt={alt}
-            draggable
+            draggable={!cropEditing}
             contentEditable={false}
             data-drag-handle
             data-rotate={String(rotate)}
             data-flip-x={flipX ? '1' : '0'}
             data-flip-y={flipY ? '1' : '0'}
-            data-crop-x={String(cropX)}
-            data-crop-y={String(cropY)}
+            data-crop-l={cropL ? String(cropL) : undefined}
+            data-crop-t={cropT ? String(cropT) : undefined}
+            data-crop-r={cropR ? String(cropR) : undefined}
+            data-crop-b={cropB ? String(cropB) : undefined}
             data-natural-w={naturalWidth ? String(naturalWidth) : undefined}
             data-natural-h={naturalHeight ? String(naturalHeight) : undefined}
             style={imgVars}
             className={[mode === 'transform' ? 'absolute left-1/2 top-1/2 max-w-none' : 'block h-auto w-full', 'rounded-lg'].join(' ')}
             onMouseDown={(e) => {
               setNodeSelection()
-              if (!cropEnabled) return
-              e.preventDefault()
-              startCropDrag(e)
             }}
           />
+
+          {cropEditing ? (
+            <div data-image-crop-overlay className="absolute inset-0 z-10">
+              <div
+                className="absolute rounded-md border border-white/80 border-dashed"
+                style={{
+                  left: `${cropL}%`,
+                  top: `${cropT}%`,
+                  right: `${cropR}%`,
+                  bottom: `${cropB}%`,
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
+                }}
+              >
+                {(
+                  [
+                    { handle: 'nw', left: '0%', top: '0%', cursor: 'nwse-resize' },
+                    { handle: 'n', left: '50%', top: '0%', cursor: 'ns-resize' },
+                    { handle: 'ne', left: '100%', top: '0%', cursor: 'nesw-resize' },
+                    { handle: 'e', left: '100%', top: '50%', cursor: 'ew-resize' },
+                    { handle: 'se', left: '100%', top: '100%', cursor: 'nwse-resize' },
+                    { handle: 's', left: '50%', top: '100%', cursor: 'ns-resize' },
+                    { handle: 'sw', left: '0%', top: '100%', cursor: 'nesw-resize' },
+                    { handle: 'w', left: '0%', top: '50%', cursor: 'ew-resize' },
+                  ] as Array<{ handle: CropHandle; left: string; top: string; cursor: string }>
+                ).map((cfg) => (
+                  <button
+                    key={cfg.handle}
+                    type="button"
+                    data-image-crop-handle={cfg.handle}
+                    aria-label={`裁剪控制点 ${cfg.handle}`}
+                    className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white shadow"
+                    style={{ left: cfg.left, top: cfg.top, cursor: cfg.cursor }}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setNodeSelection()
+                      startCropHandleDrag(e, cfg.handle)
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {selected ? (
             <button
@@ -372,35 +482,49 @@ export const FigureImage = Node.create({
         },
         renderHTML: () => ({}),
       },
-      cropHeight: {
-        default: null,
+      cropL: {
+        default: 0,
         parseHTML: (element) => {
-          if (!(element instanceof HTMLElement)) return null
-          const frame = element.matches('div') ? element : element.querySelector('[data-figure-image-frame]')
-          const raw = (frame as HTMLElement | null)?.getAttribute?.('data-crop-h')
-          if (!raw) return null
-          return clampInt(raw, 80, 2400, 320)
+          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-l'), 0, 95, 0)
+          if (!(element instanceof HTMLElement)) return 0
+          const img = element.querySelector('img')
+          return clampInt(img?.getAttribute('data-crop-l'), 0, 95, 0)
         },
         renderHTML: () => ({}),
       },
-      cropX: {
-        default: 50,
+      cropT: {
+        default: 0,
         parseHTML: (element) => {
-          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-x'), 0, 100, 50)
-          if (!(element instanceof HTMLElement)) return 50
+          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-t'), 0, 95, 0)
+          if (!(element instanceof HTMLElement)) return 0
           const img = element.querySelector('img')
-          return clampInt(img?.getAttribute('data-crop-x'), 0, 100, 50)
+          return clampInt(img?.getAttribute('data-crop-t'), 0, 95, 0)
         },
         renderHTML: () => ({}),
       },
-      cropY: {
-        default: 50,
+      cropR: {
+        default: 0,
         parseHTML: (element) => {
-          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-y'), 0, 100, 50)
-          if (!(element instanceof HTMLElement)) return 50
+          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-r'), 0, 95, 0)
+          if (!(element instanceof HTMLElement)) return 0
           const img = element.querySelector('img')
-          return clampInt(img?.getAttribute('data-crop-y'), 0, 100, 50)
+          return clampInt(img?.getAttribute('data-crop-r'), 0, 95, 0)
         },
+        renderHTML: () => ({}),
+      },
+      cropB: {
+        default: 0,
+        parseHTML: (element) => {
+          if (element instanceof HTMLImageElement) return clampInt(element.getAttribute('data-crop-b'), 0, 95, 0)
+          if (!(element instanceof HTMLElement)) return 0
+          const img = element.querySelector('img')
+          return clampInt(img?.getAttribute('data-crop-b'), 0, 95, 0)
+        },
+        renderHTML: () => ({}),
+      },
+      cropEditing: {
+        default: false,
+        parseHTML: () => false,
         renderHTML: () => ({}),
       },
       rotate: {
@@ -508,11 +632,11 @@ export const FigureImage = Node.create({
     if (!src) return ['p', 0]
 
     const widthPct = clampInt((node.attrs as any)?.widthPct, 10, 100, 100)
-    const cropHeightRaw = (node.attrs as any)?.cropHeight
-    const cropHeight = cropHeightRaw == null ? null : clampInt(cropHeightRaw, 80, 2400, 320)
-    const cropEnabled = cropHeight != null
-    const cropX = clampInt((node.attrs as any)?.cropX, 0, 100, 50)
-    const cropY = clampInt((node.attrs as any)?.cropY, 0, 100, 50)
+    const cropL = clampInt((node.attrs as any)?.cropL, 0, 95, 0)
+    const cropT = clampInt((node.attrs as any)?.cropT, 0, 95, 0)
+    const cropR = clampInt((node.attrs as any)?.cropR, 0, 95, 0)
+    const cropB = clampInt((node.attrs as any)?.cropB, 0, 95, 0)
+    const cropEnabled = cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0
     const rotate = normalizeRotate((node.attrs as any)?.rotate)
     const flipX = parseBool((node.attrs as any)?.flipX)
     const flipY = parseBool((node.attrs as any)?.flipY)
@@ -531,21 +655,18 @@ export const FigureImage = Node.create({
     const figureStyleParts: string[] = [`width:${widthPct}%`]
 
     const frameStyleParts: string[] = []
-    if (cropEnabled && cropHeight) {
-      frameStyleParts.push(`height:${cropHeight}px`)
-    } else if (mode === 'transform' && naturalWidth && naturalHeight) {
+    if (mode === 'transform' && naturalWidth && naturalHeight) {
       const ratio = rotate === 90 || rotate === 270 ? `${naturalHeight} / ${naturalWidth}` : `${naturalWidth} / ${naturalHeight}`
       frameStyleParts.push(`aspect-ratio:${ratio}`)
     }
 
-    const { w, h } = computeRotatedSizeVars({ rotate, crop: cropEnabled, naturalWidth, naturalHeight })
+    const { w, h } = computeRotatedSizeVars({ rotate, naturalWidth, naturalHeight })
     const imgStyleParts = [
       `--seichi-rot:${formatDeg(rotate)}`,
       `--seichi-flip-x:${flipX ? -1 : 1}`,
       `--seichi-flip-y:${flipY ? -1 : 1}`,
       `--seichi-w:${w}`,
       `--seichi-h:${h}`,
-      `--seichi-pos:${formatPct(cropX)} ${formatPct(cropY)}`,
     ]
 
     const captionText = String(node.textContent || '').trim()
@@ -569,7 +690,6 @@ export const FigureImage = Node.create({
           {
             'data-figure-image-frame': 'true',
             'data-mode': mode,
-            'data-crop-h': cropEnabled && cropHeight ? String(cropHeight) : undefined,
             style: frameStyleParts.join(';'),
           },
           [
@@ -581,8 +701,10 @@ export const FigureImage = Node.create({
               'data-rotate': String(rotate),
               'data-flip-x': flipX ? '1' : '0',
               'data-flip-y': flipY ? '1' : '0',
-              'data-crop-x': String(cropX),
-              'data-crop-y': String(cropY),
+              'data-crop-l': cropL ? String(cropL) : undefined,
+              'data-crop-t': cropT ? String(cropT) : undefined,
+              'data-crop-r': cropR ? String(cropR) : undefined,
+              'data-crop-b': cropB ? String(cropB) : undefined,
               'data-natural-w': naturalWidth ? String(naturalWidth) : undefined,
               'data-natural-h': naturalHeight ? String(naturalHeight) : undefined,
               style: imgStyleParts.join(';'),
@@ -605,6 +727,46 @@ export const FigureImage = Node.create({
           return chain().insertContent({ type: this.name, attrs: { src, alt } }).run()
         },
     }
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleDOMEvents: {
+            mousedown(view, event) {
+              try {
+                const target = event.target
+                if (!(target instanceof HTMLElement)) return false
+                const wrapper = target.closest('.node-figureImage') as HTMLElement | null
+                if (!wrapper) return false
+                if (wrapper !== target) return false
+
+                let posFromDom = view.posAtDOM(wrapper, 0)
+                const resolved = view.state.doc.resolve(posFromDom)
+                for (let depth = resolved.depth; depth > 0; depth--) {
+                  const node = resolved.node(depth)
+                  if (node.type.name !== 'figureImage') continue
+                  try {
+                    posFromDom = resolved.before(depth)
+                    break
+                  } catch {}
+                }
+
+                const nextSel = NodeSelection.create(view.state.doc, posFromDom)
+                if (!view.state.selection.eq(nextSel)) {
+                  view.dispatch(view.state.tr.setSelection(nextSel))
+                }
+                view.focus()
+                return true
+              } catch {
+                return false
+              }
+            },
+          },
+        },
+      }),
+    ]
   },
 
   addNodeView() {

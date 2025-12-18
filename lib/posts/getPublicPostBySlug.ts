@@ -3,6 +3,7 @@ import type { Post } from '@/lib/mdx/types'
 import { getPostBySlug as getMdxPostBySlug } from '@/lib/mdx/getPostBySlug'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
 import type { PublicPost } from './types'
+import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 
 type MdxProvider = {
   getPostBySlug: (slug: string, language: string) => Promise<Post | null>
@@ -43,12 +44,12 @@ export async function getPublicPostBySlug(
   if (id && 'findById' in repo) {
     const found = await repo.findById(id).catch(() => null)
     if (found && found.status === 'published') {
-      return { source: 'db', article: found }
+      return { source: 'db', article: { ...found, contentHtml: sanitizeRichTextHtml(found.contentHtml || '') } }
     }
   }
 
   const article = await repo.findBySlug(target).catch(() => null)
   if (!article) return null
   if (article.status !== 'published') return null
-  return { source: 'db', article }
+  return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '') } }
 }

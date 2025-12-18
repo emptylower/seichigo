@@ -126,7 +126,23 @@ describe('richtext sanitize', () => {
     expect(out).toContain('<img src="/assets/abc123" alt="x"')
     expect(out).toContain('<figcaption>')
     expect(out).toContain('<strong>图 1</strong>')
-    expect(out).toContain('<a href="https://example.com">link</a>')
+    expect(out).toMatch(/<a[^>]*href="https:\/\/example\.com"[^>]*>link<\/a>/)
+    expect(out).toContain('target="_blank"')
+    expect(out).toContain('rel="noopener noreferrer"')
+  })
+
+  it('opens external links in new tab (target+rel)', () => {
+    const out = sanitizeRichTextHtml('<p><a href="https://example.com">x</a></p>')
+    expect(out).toMatch(/<a[^>]*href="https:\/\/example\.com"[^>]*>x<\/a>/)
+    expect(out).toContain('target="_blank"')
+    expect(out).toContain('rel="noopener noreferrer"')
+  })
+
+  it('opens internal links in new tab', () => {
+    const out = sanitizeRichTextHtml('<p><a href="/about">x</a></p>')
+    expect(out).toContain('href="/about"')
+    expect(out).toContain('target="_blank"')
+    expect(out).toContain('rel="noopener noreferrer"')
   })
 
   it('preserves figure image transform wrapper with safe styles', () => {

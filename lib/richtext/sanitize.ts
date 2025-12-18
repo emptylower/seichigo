@@ -34,7 +34,7 @@ const ALLOWED_TAGS = [
 ]
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
-  a: ['href'],
+  a: ['href', 'target', 'rel'],
   img: [
     'src',
     'alt',
@@ -392,10 +392,16 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
         return { tagName, attribs: next }
       },
       a: (tagName, attribs) => {
-        const next = { ...attribs }
         const href = sanitizeAnchorHref(attribs.href)
-        if (href) next.href = href
-        else delete next.href
+        const next: Record<string, string> = {}
+        if (href) {
+          next.href = href
+          const openInNewTab = /^https?:\/\//i.test(href) || href.startsWith('/')
+          if (openInNewTab) {
+            next.target = '_blank'
+            next.rel = 'noopener noreferrer'
+          }
+        }
         return { tagName, attribs: next }
       },
       img: (tagName, attribs) => {

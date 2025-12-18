@@ -36,7 +36,7 @@ function hasMeaningfulEdit(existing: any, update: { title?: string; contentHtml?
   return false
 }
 
-function toDetail(a: any) {
+function toDetail(a: any, sanitizeHtml: (html: string) => string) {
   return {
     id: a.id,
     authorId: a.authorId,
@@ -47,7 +47,7 @@ function toDetail(a: any) {
     routeLength: a.routeLength,
     tags: a.tags,
     contentJson: a.contentJson,
-    contentHtml: a.contentHtml,
+    contentHtml: sanitizeHtml(String(a.contentHtml || '')),
     status: a.status,
     rejectReason: a.rejectReason,
     publishedAt: a.publishedAt,
@@ -79,7 +79,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '无权限' }, { status: 403 })
       }
 
-      return NextResponse.json({ ok: true, article: toDetail(found) })
+      return NextResponse.json({ ok: true, article: toDetail(found, deps.sanitizeHtml) })
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -141,7 +141,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         try {
           const updated = await deps.repo.updateDraft(id, updateInput)
           if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
-          return NextResponse.json({ ok: true, article: toDetail(updated) })
+          return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
         } catch (err) {
           if (err instanceof ArticleSlugExistsError) {
             return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
@@ -158,7 +158,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         try {
           const updated = await deps.repo.updateDraft(id, { ...updateInput, slug: candidate })
           if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
-          return NextResponse.json({ ok: true, article: toDetail(updated) })
+          return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
         } catch (err) {
           if (err instanceof ArticleSlugExistsError) continue
           throw err

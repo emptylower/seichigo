@@ -111,6 +111,41 @@ function safeHasFocus(editor: any): boolean {
   }
 }
 
+function resolveActiveFigureImageFromState(state: any): { node: any; pos: number | null } | null {
+  try {
+    const selection = state?.selection as any
+    const selectionNode = selection?.node
+    const selectionFrom = typeof selection?.from === 'number' ? selection.from : null
+    const $from = selection?.$from
+
+    if (selectionNode?.type?.name === 'figureImage' && selectionFrom != null) {
+      return { node: selectionNode, pos: selectionFrom }
+    }
+
+    if (!$from) return null
+    for (let depth = $from.depth; depth > 0; depth--) {
+      const node = $from.node(depth)
+      if (node?.type?.name !== 'figureImage') continue
+      try {
+        return { node, pos: $from.before(depth) }
+      } catch {
+        return { node, pos: null }
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function createVirtualElementFromDom(el: Element | null) {
+  if (!el || !(el instanceof HTMLElement)) return null
+  return {
+    getBoundingClientRect: () => el.getBoundingClientRect(),
+    getClientRects: () => [el.getBoundingClientRect()],
+  }
+}
+
 function resolveClientAssetMaxBytes(): number {
   // Vercel Functions reject large payloads before route handlers run.
   // Keep this below the platform limit to avoid "FUNCTION_PAYLOAD_TOO_LARGE" (413).
@@ -367,6 +402,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
   const [error, setError] = useState<string | null>(null)
   const [linkEditing, setLinkEditing] = useState(false)
   const [linkValue, setLinkValue] = useState('')
+  const [, forceEditorRerender] = useState(0)
   const linkSelectionRef = useRef<TextSelectionRange | null>(null)
   const [blockHandle, setBlockHandle] = useState<BlockHandle | null>(null)
   const blockHandleRef = useRef<BlockHandle | null>(null)
@@ -428,6 +464,17 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     editor.on('selectionUpdate', close)
     return () => {
       editor.off('selectionUpdate', close)
+    }
+  }, [editor])
+
+  useEffect(() => {
+    if (!editor) return
+    const bump = () => forceEditorRerender((v) => v + 1)
+    editor.on('selectionUpdate', bump)
+    editor.on('transaction', bump)
+    return () => {
+      editor.off('selectionUpdate', bump)
+      editor.off('transaction', bump)
     }
   }, [editor])
 
@@ -768,8 +815,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
       const rotate = Number((activeImage.node?.attrs as any)?.rotate ?? 0) || 0
       const flipX = Boolean((activeImage.node?.attrs as any)?.flipX)
       const flipY = Boolean((activeImage.node?.attrs as any)?.flipY)
-      const cropHeight = (activeImage.node?.attrs as any)?.cropHeight ?? null
-      const cropEnabled = cropHeight != null
+      const cropEditing = Boolean((activeImage.node?.attrs as any)?.cropEditing)
 
       return (
         <div
@@ -816,19 +862,13 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
               className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
               aria-label="图片裁剪"
               onClick={() => {
-                if (cropEnabled) {
-                  const chain = editor.chain().focus().updateAttributes('figureImage', { cropHeight: null })
-                  if (activeImage.pos != null) chain.setNodeSelection(pos)
-                  chain.run()
-                  return
-                }
-                const chain = editor.chain().focus().updateAttributes('figureImage', { cropHeight: 320, cropX: 50, cropY: 50 })
+                const chain = editor.chain().focus().updateAttributes('figureImage', { cropEditing: !cropEditing })
                 if (activeImage.pos != null) chain.setNodeSelection(pos)
                 chain.run()
               }}
-              title={cropEnabled ? '取消裁剪' : '裁剪'}
+              title={cropEditing ? '完成裁剪' : '裁剪'}
             >
-              {cropEnabled ? '取消裁剪' : '裁剪'}
+              {cropEditing ? '完成' : '裁剪'}
             </button>
             <button
               type="button"
@@ -1156,6 +1196,20 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
             <BubbleMenu
               editor={editor}
               options={{ placement: 'top', offset: 8 }}
+              getReferencedVirtualElement={() => {
+                try {
+                  if (!editor) return null
+                  const active = resolveActiveFigureImageFromState(editor.state)
+                  if (!active?.pos && active?.pos !== 0) return null
+                  if (active.pos == null) return null
+                  const dom = editor.view.nodeDOM(active.pos) as HTMLElement | null
+                  if (!dom) return null
+                  const frame = dom.querySelector('[data-figure-image-frame]') || dom.querySelector('img')
+                  return createVirtualElementFromDom(frame)
+                } catch {
+                  return null
+                }
+              }}
               shouldShow={({ editor, state }) => {
                 try {
                   if (!editor.isEditable) return false
