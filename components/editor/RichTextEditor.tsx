@@ -409,7 +409,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
   const blockMenuOpenRef = useRef(false)
 
-  const initialHtml = value.html || initialValue.html || ''
+  const initialContent = value.json ?? initialValue.json ?? value.html ?? initialValue.html ?? ''
   const editor = useEditor(
     {
       immediatelyRender: false,
@@ -433,7 +433,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
           placeholder: '开始写作…',
         }),
       ],
-      content: initialHtml || '<p></p>',
+      content: initialContent || '<p></p>',
       onUpdate({ editor }) {
         onChange({ json: editor.getJSON(), html: editor.getHTML() })
       },

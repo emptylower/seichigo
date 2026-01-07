@@ -31,7 +31,7 @@ describe('richtext sanitize', () => {
     expect(out).not.toContain('javascript:')
   })
 
-  it('enforces color palette whitelist', () => {
+  it('preserves safe hex color styles', () => {
     const allowed = sanitizeRichTextHtml('<span style="color:#3b82f6">x</span>')
     expect(allowed).toContain('style="color:#3b82f6"')
 
@@ -47,10 +47,8 @@ describe('richtext sanitize', () => {
     expect(badExpr).not.toContain('expression')
     expect(badExpr).not.toContain('style=')
 
-    const badHex = sanitizeRichTextHtml('<span style="color:#ff0000">x</span>')
-    expect(badHex).toContain('<span>x</span>')
-    expect(badHex).not.toContain('#ff0000')
-    expect(badHex).not.toContain('style=')
+    const anyHex = sanitizeRichTextHtml('<span style="color:#ff0000">x</span>')
+    expect(anyHex).toContain('style="color:#ff0000"')
   })
 
   it('preserves align/indent data attributes (whitelist + clamp)', () => {
@@ -188,7 +186,7 @@ describe('richtext sanitize', () => {
     expect(out).toContain('--seichi-crop-height:114%')
   })
 
-  it('preserves figure image container wrapper with safe width styles', () => {
+  it('drops width styles from figure image container wrapper', () => {
     const html =
       '<figure data-align="center">' +
       '<div data-figure-image-container="true" data-width-pct="80" style="width:80%; position:fixed">' +
@@ -200,7 +198,7 @@ describe('richtext sanitize', () => {
     const out = sanitizeRichTextHtml(html)
     expect(out).toContain('data-figure-image-container="true"')
     expect(out).toContain('data-width-pct="80"')
-    expect(out).toContain('width:80%')
+    expect(out).not.toContain('width:80%')
     expect(out).not.toContain('position:fixed')
   })
 

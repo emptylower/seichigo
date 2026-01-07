@@ -1,5 +1,4 @@
 import sanitizeHtml from 'sanitize-html'
-import { RICH_TEXT_ALLOWED_COLORS } from './palette'
 import { RICH_TEXT_ALLOWED_FONT_FAMILIES } from './fonts'
 
 const ALLOWED_TAGS = [
@@ -67,7 +66,6 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   td: ['colspan', 'rowspan'],
 }
 
-const allowedColors = new Set(RICH_TEXT_ALLOWED_COLORS.map((c) => c.toLowerCase()))
 const allowedFonts = new Set(RICH_TEXT_ALLOWED_FONT_FAMILIES.map((f) => normalizeFontFamily(f)))
 
 function normalizeHexColor(value: string): string | null {
@@ -121,13 +119,13 @@ function sanitizeSpanStyle(style?: string): string | null {
 
     if (prop === 'color') {
       const normalized = normalizeHexColor(rawValue)
-      if (normalized && allowedColors.has(normalized)) color = normalized
+      if (normalized) color = normalized
       continue
     }
 
     if (prop === 'background-color') {
       const normalized = normalizeHexColor(rawValue)
-      if (normalized && allowedColors.has(normalized)) backgroundColor = normalized
+      if (normalized) backgroundColor = normalized
       continue
     }
 
@@ -401,9 +399,6 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
           next['data-figure-image-container'] = 'true'
           const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
           if (widthPct) next['data-width-pct'] = widthPct
-
-          const style = sanitizeContainerStyle(attribs.style) || (widthPct ? `width:${widthPct}%` : null)
-          if (style) next.style = style
           return { tagName, attribs: next }
         }
 
