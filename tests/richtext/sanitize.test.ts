@@ -38,6 +38,12 @@ describe('richtext sanitize', () => {
     const allowedBg = sanitizeRichTextHtml('<span style="background-color:#fecaca">x</span>')
     expect(allowedBg).toContain('style="background-color:#fecaca"')
 
+    const rgb = sanitizeRichTextHtml('<span style="color: rgb(245, 158, 11)">x</span>')
+    expect(rgb).toContain('style="color:#f59e0b"')
+
+    const rgba = sanitizeRichTextHtml('<span style="background-color: rgba(254, 202, 202, 1)">x</span>')
+    expect(rgba).toContain('style="background-color:#fecaca"')
+
     const allowedBoth = sanitizeRichTextHtml('<span style="color:#3b82f6; background-color:#fecaca">x</span>')
     expect(allowedBoth).toContain('color:#3b82f6')
     expect(allowedBoth).toContain('background-color:#fecaca')

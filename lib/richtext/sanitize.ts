@@ -68,7 +68,16 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 
 const allowedFonts = new Set(RICH_TEXT_ALLOWED_FONT_FAMILIES.map((f) => normalizeFontFamily(f)))
 
-function normalizeHexColor(value: string): string | null {
+function clampByte(input: number): number {
+  if (!Number.isFinite(input)) return 0
+  return Math.max(0, Math.min(255, Math.round(input)))
+}
+
+function toHex2(n: number): string {
+  return n.toString(16).padStart(2, '0')
+}
+
+function normalizeCssColorToHex(value: string): string | null {
   const trimmed = value.trim().toLowerCase()
   if (/^#[0-9a-f]{6}$/.test(trimmed)) return trimmed
   if (!/^#[0-9a-f]{3}$/.test(trimmed)) return null
@@ -76,6 +85,28 @@ function normalizeHexColor(value: string): string | null {
   const g = trimmed[2]!
   const b = trimmed[3]!
   return `#${r}${r}${g}${g}${b}${b}`
+}
+
+function normalizeCssColor(value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  const hex = normalizeCssColorToHex(trimmed)
+  if (hex) return hex
+
+  const comma = /^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*([0-9.]+%?))?\s*\)$/.exec(trimmed)
+  const space = /^rgba?\(\s*([0-9]{1,3})\s+([0-9]{1,3})\s+([0-9]{1,3})(?:\s*\/\s*([0-9.]+%?))?\s*\)$/.exec(trimmed)
+  const match = comma || space
+  if (!match) return null
+
+  const alphaRaw = match[4]
+  if (alphaRaw) {
+    const a = alphaRaw.endsWith('%') ? Number(alphaRaw.slice(0, -1)) / 100 : Number(alphaRaw)
+    if (!Number.isFinite(a) || a < 1) return null
+  }
+
+  const r = clampByte(Number(match[1]))
+  const g = clampByte(Number(match[2]))
+  const b = clampByte(Number(match[3]))
+  return `#${toHex2(r)}${toHex2(g)}${toHex2(b)}`
 }
 
 function normalizeFontFamily(value: string): string {
@@ -118,13 +149,13 @@ function sanitizeSpanStyle(style?: string): string | null {
     if (!rawValue) continue
 
     if (prop === 'color') {
-      const normalized = normalizeHexColor(rawValue)
+      const normalized = normalizeCssColor(rawValue)
       if (normalized) color = normalized
       continue
     }
 
     if (prop === 'background-color') {
-      const normalized = normalizeHexColor(rawValue)
+      const normalized = normalizeCssColor(rawValue)
       if (normalized) backgroundColor = normalized
       continue
     }
