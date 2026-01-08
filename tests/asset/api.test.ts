@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryAssetRepo } from '@/lib/asset/repoMemory'
 import { createGetAssetHandler, createPostAssetsHandler } from '@/lib/asset/handlers'
+import sharp from 'sharp'
 
 function makeImageFile(bytes: Uint8Array, opts?: { name?: string; type?: string }) {
   return new File([bytes], opts?.name ?? 'image.png', { type: opts?.type ?? 'image/png' })
@@ -69,6 +70,41 @@ describe('asset api', () => {
     expect(Array.from(out)).toEqual(Array.from(bytes))
   })
 
+  it('serves a resized WebP variant when w query param is provided', async () => {
+    const repo = new InMemoryAssetRepo()
+    const post = createPostAssetsHandler({
+      assetRepo: repo,
+      getSession: async () => ({ user: { id: 'user-1' } }),
+    })
+    const get = createGetAssetHandler({ assetRepo: repo })
+
+    const png = await sharp({
+      create: {
+        width: 120,
+        height: 80,
+        channels: 3,
+        background: { r: 255, g: 0, b: 0 },
+      },
+    })
+      .png()
+      .toBuffer()
+
+    const form = new FormData()
+    form.set('file', new File([png], 'a.png', { type: 'image/png' }))
+    const uploadRes = await post(new Request('http://localhost/api/assets', { method: 'POST', body: form }))
+    const { id } = (await uploadRes.json()) as { id: string; url: string }
+
+    const res = await get(new Request(`http://localhost/assets/${id}?w=50&q=60`), { params: Promise.resolve({ id }) })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/webp')
+    expect(res.headers.get('cache-control')).toContain('immutable')
+
+    const out = Buffer.from(await res.arrayBuffer())
+    const meta = await sharp(out).metadata()
+    expect(typeof meta.width).toBe('number')
+    expect(meta.width as number).toBeLessThanOrEqual(50)
+  })
+
   it('rejects files larger than ASSET_MAX_BYTES (413)', async () => {
     const prev = process.env.ASSET_MAX_BYTES
     process.env.ASSET_MAX_BYTES = '2'
@@ -91,4 +127,3 @@ describe('asset api', () => {
     }
   })
 })
-

@@ -50,4 +50,5 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Accounts created via email OTP without a password are redirected to `/auth/set-password` on first login.
 - Author center: `/submit` (drafts + richtext editor + submit/withdraw).
 - Admin review: `/admin/review` (approve/reject in_review articles).
+- Images: `/assets/:id` supports `?w=<width>&q=<quality>` to serve resized WebP variants; public posts use progressive loading (blur → ~480p → ~720p) and load original only on click.
 - Legacy submissions API: `/api/submissions` has basic anti-abuse (per-user/IP per day). Tune with env vars.

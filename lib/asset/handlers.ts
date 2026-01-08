@@ -84,10 +84,77 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
     if (!asset) return new Response('Not found', { status: 404 })
 
     const headers = new Headers()
+
+    const requestUrl = (() => {
+      try {
+        return new URL(_req.url)
+      } catch {
+        return null
+      }
+    })()
+
+    const variant = requestUrl ? parseImageVariantRequest(requestUrl) : null
+    const hasVariant = Boolean(variant)
+    const isImage = (asset.contentType || '').startsWith('image/')
+    const canTransform = isImage && !isSvg(asset.contentType) && !isGif(asset.contentType)
+
+    if (hasVariant && canTransform) {
+      try {
+        const rendered = await renderWebpVariant(asset.bytes, variant!)
+        headers.set('content-type', 'image/webp')
+        headers.set('cache-control', 'public, max-age=31536000, immutable')
+        return new Response(toArrayBuffer(rendered), { status: 200, headers })
+      } catch {
+        // Fallback to original bytes (compat over failure).
+      }
+    }
+
     headers.set('content-type', asset.contentType || 'application/octet-stream')
     headers.set('cache-control', 'public, max-age=31536000, immutable')
-    const bytes = asset.bytes
-    const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-    return new Response(body, { status: 200, headers })
+    return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
   }
+}
+
+function isSvg(contentType: string | null | undefined): boolean {
+  const v = String(contentType || '').trim().toLowerCase()
+  return v === 'image/svg+xml'
+}
+
+function isGif(contentType: string | null | undefined): boolean {
+  const v = String(contentType || '').trim().toLowerCase()
+  return v === 'image/gif'
+}
+
+function parsePositiveInt(value: string | null, opts: { min: number; max: number }): number | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (!/^\d+$/.test(trimmed)) return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  const m = Math.trunc(n)
+  if (m < opts.min || m > opts.max) return null
+  return m
+}
+
+function parseImageVariantRequest(url: URL): { width: number; quality: number } | null {
+  const width = parsePositiveInt(url.searchParams.get('w'), { min: 16, max: 4096 })
+  if (!width) return null
+  const quality = parsePositiveInt(url.searchParams.get('q'), { min: 20, max: 95 }) ?? 75
+  return { width, quality }
+}
+
+async function renderWebpVariant(bytes: Uint8Array, variant: { width: number; quality: number }): Promise<Uint8Array> {
+  const { default: sharp } = await import('sharp')
+  const input = Buffer.from(bytes)
+  const out = await sharp(input, { failOnError: false })
+    .rotate()
+    .resize({ width: variant.width, withoutEnlargement: true })
+    .webp({ quality: variant.quality })
+    .toBuffer()
+  return new Uint8Array(out)
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 }

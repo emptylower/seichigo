@@ -44,12 +44,12 @@ export async function getPublicPostBySlug(
   if (id && 'findById' in repo) {
     const found = await repo.findById(id).catch(() => null)
     if (found && found.status === 'published') {
-      return { source: 'db', article: { ...found, contentHtml: sanitizeRichTextHtml(found.contentHtml || '') } }
+      return { source: 'db', article: { ...found, contentHtml: sanitizeRichTextHtml(found.contentHtml || '', { imageMode: 'progressive' }) } }
     }
   }
 
   const article = await repo.findBySlug(target).catch(() => null)
   if (!article) return null
   if (article.status !== 'published') return null
-  return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '') } }
+  return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' }) } }
 }

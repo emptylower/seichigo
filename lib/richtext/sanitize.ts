@@ -1,6 +1,10 @@
 import sanitizeHtml from 'sanitize-html'
 import { RICH_TEXT_ALLOWED_FONT_FAMILIES } from './fonts'
 
+export type SanitizeRichTextOptions = {
+  imageMode?: 'default' | 'progressive'
+}
+
 const ALLOWED_TAGS = [
   'h1',
   'h2',
@@ -37,6 +41,8 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   img: [
     'src',
     'alt',
+    'loading',
+    'decoding',
     'data-align',
     'data-indent',
     'data-rotate',
@@ -48,6 +54,10 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
     'data-crop-b',
     'data-natural-w',
     'data-natural-h',
+    'data-seichi-full',
+    'data-seichi-sd',
+    'data-seichi-hd',
+    'data-seichi-blur',
     'style',
   ],
   figure: ['data-align', 'data-indent', 'data-figure-image', 'data-width-pct', 'style'],
@@ -354,7 +364,24 @@ function sanitizeImageVars(style?: string): string | null {
 function isAllowedImageSrc(src: string): boolean {
   const trimmed = src.trim()
   if (/^https?:\/\//i.test(trimmed)) return true
-  return /^\/assets\/[a-zA-Z0-9_-]+$/.test(trimmed)
+
+  const match = /^\/assets\/[a-zA-Z0-9_-]+(?:\?.*)?$/.exec(trimmed)
+  if (!match) return false
+  if (!trimmed.includes('?')) return true
+
+  try {
+    const url = new URL(trimmed, 'https://example.com')
+    for (const key of url.searchParams.keys()) {
+      if (key !== 'w' && key !== 'q') return false
+    }
+    const w = url.searchParams.get('w')
+    const q = url.searchParams.get('q')
+    if (w && !/^\d+$/.test(w)) return false
+    if (q && !/^\d+$/.test(q)) return false
+    return true
+  } catch {
+    return false
+  }
 }
 
 function sanitizeAnchorHref(href?: string): string | null {
@@ -374,7 +401,7 @@ function sanitizeAnchorHref(href?: string): string | null {
   return null
 }
 
-export function sanitizeRichTextHtml(inputHtml: string): string {
+export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTextOptions): string {
   if (!inputHtml) return ''
 
   return sanitizeHtml(inputHtml, {
@@ -468,7 +495,21 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       },
       img: (tagName, attribs) => {
         const next: Record<string, string> = sanitizeBlockAttrs(attribs)
-        if (attribs.src) next.src = attribs.src.trim()
+        const src = typeof attribs.src === 'string' ? attribs.src.trim() : ''
+        if (src) {
+          const rewrite = rewriteAssetImageSrc(src, options)
+          if (rewrite) {
+            next.src = rewrite.placeholder
+            next['data-seichi-full'] = rewrite.full
+            next['data-seichi-sd'] = rewrite.sd
+            next['data-seichi-hd'] = rewrite.hd
+            next['data-seichi-blur'] = 'true'
+            next.loading = 'lazy'
+            next.decoding = 'async'
+          } else {
+            next.src = src
+          }
+        }
         if (attribs.alt) next.alt = String(attribs.alt)
         const rotate = sanitizePercentInt(attribs['data-rotate'], 0, 360)
         if (rotate) next['data-rotate'] = rotate
@@ -501,6 +542,22 @@ export function sanitizeRichTextHtml(inputHtml: string): string {
       },
     },
   })
+}
+
+function rewriteAssetImageSrc(
+  src: string,
+  options?: SanitizeRichTextOptions
+): null | { full: string; placeholder: string; sd: string; hd: string } {
+  if (options?.imageMode !== 'progressive') return null
+  const trimmed = src.trim()
+  if (!/^\/assets\/[a-zA-Z0-9_-]+$/.test(trimmed)) return null
+  const full = trimmed
+  return {
+    full,
+    placeholder: `${full}?w=32&q=20`,
+    sd: `${full}?w=854&q=70`,
+    hd: `${full}?w=1280&q=80`,
+  }
 }
 
 function sanitizeAlign(value: unknown): string | null {

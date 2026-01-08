@@ -88,6 +88,25 @@ describe('public posts aggregation', () => {
     expect(found && found.source === 'db' ? found.article.title : null).toBe('DB Only')
   })
 
+  it('getPublicPostBySlug: DB contentHtml rewrites internal images progressively', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({
+      authorId: 'u1',
+      slug: 'db-img',
+      title: 'DB Img',
+      contentHtml: '<p><img src="/assets/abc123" alt="x" /></p>',
+    })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug('db-img', 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+
+    const html = found && found.source === 'db' ? found.article.contentHtml : ''
+    expect(html).toContain('data-seichi-full="/assets/abc123"')
+    expect(html).toContain('src="/assets/abc123?w=32&amp;q=20"')
+  })
+
   it('getPublicPostBySlug: slug only in DB(draft/review) -> returns null', async () => {
     const repo = new InMemoryArticleRepo()
     await repo.createDraft({ authorId: 'u1', slug: 'draft-only', title: 'Draft Only' })

@@ -76,6 +76,21 @@ a {
   display: block;
 }
 
+:where(.ProseMirror, .prose) img[data-seichi-full] {
+  cursor: zoom-in;
+}
+
+:where(.ProseMirror, .prose) img[data-seichi-blur="true"] {
+  filter: blur(18px);
+  transform: scale(1.02);
+  transition: filter 200ms ease, transform 200ms ease;
+}
+
+:where(.ProseMirror, .prose) img[data-seichi-blur="false"] {
+  filter: none;
+  transform: none;
+}
+
 :where(.ProseMirror, .prose) [data-figure-image-frame] {
   display: inline-block;
   max-width: 100%;

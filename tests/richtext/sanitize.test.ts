@@ -223,4 +223,23 @@ describe('richtext sanitize', () => {
     expect(out).toMatch(/<figure[^>]*style="[^"]*width:\s*60%/i)
     expect(out).not.toContain('position:fixed')
   })
+
+  it('rewrites internal /assets images for progressive loading when enabled', () => {
+    const html = '<p><img src="/assets/abc123" alt="x" /></p>'
+    const out = sanitizeRichTextHtml(html, { imageMode: 'progressive' })
+    expect(out).toContain('data-seichi-full="/assets/abc123"')
+    expect(out).toContain('data-seichi-sd="/assets/abc123?w=854&amp;q=70"')
+    expect(out).toContain('data-seichi-hd="/assets/abc123?w=1280&amp;q=80"')
+    expect(out).toContain('src="/assets/abc123?w=32&amp;q=20"')
+    expect(out).toContain('loading="lazy"')
+    expect(out).toContain('decoding="async"')
+    expect(out).toContain('data-seichi-blur="true"')
+  })
+
+  it('does not rewrite external images in progressive mode', () => {
+    const html = '<p><img src="https://example.com/a.jpg" alt="x" /></p>'
+    const out = sanitizeRichTextHtml(html, { imageMode: 'progressive' })
+    expect(out).toContain('src="https://example.com/a.jpg"')
+    expect(out).not.toContain('data-seichi-full=')
+  })
 })

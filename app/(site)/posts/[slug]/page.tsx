@@ -3,6 +3,7 @@ import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNotice'
 import PostMeta from '@/components/blog/PostMeta'
 import GiscusComments from '@/components/GiscusComments'
+import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
@@ -79,7 +80,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   const giscusTerm = found.source === 'db' ? found.article.id : found.post.frontmatter.slug
   return (
-    <article className="prose prose-pink max-w-none">
+    <article className="prose prose-pink max-w-none" data-seichi-article-content="true">
       <h1>{title}</h1>
       <PostMeta animeIds={animeIds} city={city} routeLength={routeLength} publishDate={publishDate} />
       <div className="mt-6" />
@@ -88,6 +89,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       ) : (
         <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
       )}
+      <ProgressiveImagesRuntime />
       <div className="mt-12" />
       <GiscusComments term={giscusTerm} />
     </article>
