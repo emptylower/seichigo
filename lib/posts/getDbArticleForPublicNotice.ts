@@ -1,6 +1,8 @@
 import type { ArticleRepo } from '@/lib/article/repo'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from '@/lib/posts/defaults'
 
+type RepoWithFindBySlug = Pick<ArticleRepo, 'findBySlug'>
+
 function extractArticleIdFromPostKey(input: string): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
@@ -13,6 +15,10 @@ function extractArticleIdFromPostKey(input: string): string | null {
   if (!id) return null
   if (id.length < 8) return null
   return id
+}
+
+function hasFindBySlug(repo: unknown): repo is RepoWithFindBySlug {
+  return typeof (repo as any)?.findBySlug === 'function'
 }
 
 export type GetDbArticleForPublicNoticeOptions = {
@@ -32,7 +38,7 @@ export async function getDbArticleForPublicNotice(postKey: string, options?: Get
     if (found) return found
   }
 
-  if ('findBySlug' in repo) {
+  if (hasFindBySlug(repo)) {
     return await repo.findBySlug(target).catch(() => null)
   }
 
