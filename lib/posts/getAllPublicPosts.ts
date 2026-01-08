@@ -44,7 +44,7 @@ function normalizeDb(article: any): PublicPostListItem {
   return {
     source: 'db',
     title: String(article?.title || ''),
-    path: `/posts/${String(article?.id || '')}-${String(article?.slug || '')}`.replace(/\/posts\/-/, '/posts/'),
+    path: `/posts/${String(article?.slug || '')}`.replace(/\/posts\/$/, '/posts'),
     animeIds: Array.isArray(article?.animeIds) ? article.animeIds : [],
     city: String(article?.city || ''),
     routeLength: article?.routeLength ?? undefined,
@@ -72,6 +72,7 @@ export async function getAllPublicPosts(language: string = 'zh', options?: GetAl
   for (const a of dbPublished as any[]) {
     const item = normalizeDb(a)
     if (!item.path || !item.title) continue
+    if (byPath.has(item.path)) continue
     byPath.set(item.path, item)
   }
 

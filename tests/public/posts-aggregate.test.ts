@@ -34,7 +34,7 @@ describe('public posts aggregation', () => {
     const mdx = makeMdxProvider({ all: [] })
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
 
-    expect(list.map((x) => x.path)).toEqual([`/posts/${created.id}-db-1`])
+    expect(list.map((x) => x.path)).toEqual([`/posts/db-1`])
     expect(list[0]?.source).toBe('db')
   })
 
@@ -58,7 +58,7 @@ describe('public posts aggregation', () => {
     })
 
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
-    expect(list.map((x) => x.path)).toEqual([`/posts/${created.id}-db-1`, '/posts/mdx-1'])
+    expect(list.map((x) => x.path)).toEqual([`/posts/db-1`, '/posts/mdx-1'])
   })
 
   it('getPublicPostBySlug: slug exists in MDX -> returns MDX (priority)', async () => {
@@ -76,6 +76,31 @@ describe('public posts aggregation', () => {
     expect(found?.source).toBe('mdx')
   })
 
+  it('getAllPublicPosts: keeps MDX when path collides', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'same', title: 'DB Same' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider({
+      all: [
+        {
+          title: 'MDX Same',
+          slug: 'same',
+          animeId: 'btr',
+          city: '东京',
+          publishDate: '2025-01-02',
+          status: 'published',
+          tags: [],
+        },
+      ],
+    })
+
+    const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
+    expect(list).toHaveLength(1)
+    expect(list[0]?.path).toBe('/posts/same')
+    expect(list[0]?.source).toBe('mdx')
+  })
+
   it('getPublicPostBySlug: slug only in DB(published) -> returns DB', async () => {
     const repo = new InMemoryArticleRepo()
     const created = await repo.createDraft({ authorId: 'u1', slug: 'db-only', title: 'DB Only' })
@@ -86,6 +111,23 @@ describe('public posts aggregation', () => {
 
     expect(found?.source).toBe('db')
     expect(found && found.source === 'db' ? found.article.title : null).toBe('DB Only')
+  })
+
+  it('getPublicPostBySlug: id-only and id-slug key both resolve DB', async () => {
+    const repo = new InMemoryArticleRepo({
+      idFactory: () => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    })
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'db-only', title: 'DB Only' })
+    expect(created.id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+
+    const byId = await getPublicPostBySlug(created.id, 'zh', { mdx, articleRepo: repo })
+    expect(byId?.source).toBe('db')
+
+    const byIdSlug = await getPublicPostBySlug(`${created.id}-legacy`, 'zh', { mdx, articleRepo: repo })
+    expect(byIdSlug?.source).toBe('db')
   })
 
   it('getPublicPostBySlug: DB contentHtml rewrites internal images progressively', async () => {

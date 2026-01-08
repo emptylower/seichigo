@@ -4,6 +4,9 @@ import { getDefaultPublicArticleRepo, type PublicArticleRepo } from '@/lib/posts
 function extractArticleIdFromPostKey(input: string): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
+  const uuid = trimmed.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)
+  if (uuid) return uuid[0]
+
   const idx = trimmed.indexOf('-')
   const candidate = idx === -1 ? trimmed : trimmed.slice(0, idx)
   const id = candidate.trim()
@@ -21,12 +24,17 @@ export async function getDbArticleForPublicNotice(postKey: string, options?: Get
   if (!target) return null
 
   const id = extractArticleIdFromPostKey(target)
-  if (!id) return null
-
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
-  if (!repo || !('findById' in repo)) return null
+  if (!repo) return null
 
-  const found = await repo.findById(id).catch(() => null)
-  return found
+  if (id && 'findById' in repo) {
+    const found = await repo.findById(id).catch(() => null)
+    if (found) return found
+  }
+
+  if ('findBySlug' in repo) {
+    return await repo.findBySlug(target).catch(() => null)
+  }
+
+  return null
 }
-

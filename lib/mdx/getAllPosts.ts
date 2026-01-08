@@ -23,9 +23,12 @@ export async function getAllPosts(language: string = 'zh'): Promise<PostFrontmat
     if (!fm.title || !fm.slug || fm.status === 'draft') continue
     posts.push({
       title: fm.title,
+      seoTitle: fm.seoTitle,
+      description: fm.description,
       slug: fm.slug!,
       animeId: fm.animeId || 'unknown',
       city: fm.city || '',
+      areas: Array.isArray((fm as any).areas) ? ((fm as any).areas as any[]).map((x) => String(x || '').trim()).filter(Boolean) : undefined,
       routeLength: fm.routeLength,
       language: fm.language || language,
       tags: fm.tags || [],
@@ -37,4 +40,3 @@ export async function getAllPosts(language: string = 'zh'): Promise<PostFrontmat
   // Newest first by publishDate if present
   return posts.sort((a, b) => (b.publishDate || '').localeCompare(a.publishDate || ''))
 }
-

@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { ArticleSlugExistsError } from '@/lib/article/repo'
 import { canEdit, type Actor } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
-import { generateSlugFromTitle } from '@/lib/article/slug'
 
 const patchSchema = z
   .object({
@@ -154,35 +153,16 @@ export function createHandlers(deps: ArticleApiDeps) {
         updateInput.needsRevision = false
       }
 
-      if (typeof nextTitle !== 'string' || nextTitle === existing.title) {
-        try {
-          const updated = await deps.repo.updateDraft(id, updateInput)
-          if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
-          return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
-        } catch (err) {
-          if (err instanceof ArticleSlugExistsError) {
-            return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
-          }
-          throw err
+      try {
+        const updated = await deps.repo.updateDraft(id, updateInput)
+        if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+        return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
+      } catch (err) {
+        if (err instanceof ArticleSlugExistsError) {
+          return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
         }
+        throw err
       }
-
-      const baseSlug = generateSlugFromTitle(nextTitle, deps.now())
-      const maxAttempts = 20
-      for (let i = 0; i < maxAttempts; i++) {
-        const suffix = i === 0 ? '' : `-${i + 1}`
-        const candidate = `${baseSlug}${suffix}`
-        try {
-          const updated = await deps.repo.updateDraft(id, { ...updateInput, slug: candidate })
-          if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
-          return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
-        } catch (err) {
-          if (err instanceof ArticleSlugExistsError) continue
-          throw err
-        }
-      }
-
-      return NextResponse.json({ error: '无法生成唯一 slug，请稍后重试' }, { status: 409 })
     },
 
     async DELETE(_req: Request, ctx: { params?: Promise<{ id: string }> }) {

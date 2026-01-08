@@ -17,6 +17,9 @@ export type GetPublicPostBySlugOptions = {
 function extractArticleIdFromPostKey(input: string): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
+  const uuid = trimmed.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)
+  if (uuid) return uuid[0]
+
   const idx = trimmed.indexOf('-')
   const candidate = idx === -1 ? trimmed : trimmed.slice(0, idx)
   const id = candidate.trim()

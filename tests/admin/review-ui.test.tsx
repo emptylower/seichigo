@@ -157,4 +157,54 @@ describe('admin review ui', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/approve', { method: 'POST' })
     expect(await screen.findByText('已同意发布。')).toBeInTheDocument()
   })
+
+  it('allows admin to update article slug before approving', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      const method = String(init?.method || 'GET').toUpperCase()
+
+	      if (url === '/api/articles/a1' && method === 'GET') {
+	        return jsonResponse({
+	          ok: true,
+	          article: {
+	            id: 'a1',
+	            slug: 'hello',
+	            title: 'Hello Article',
+	            animeIds: ['btr'],
+	            city: null,
+	            routeLength: null,
+	            tags: [],
+	            contentHtml: '<p>Preview</p>',
+            status: 'in_review',
+            rejectReason: null,
+            publishedAt: null,
+            updatedAt: '2025-01-01T00:00:00.000Z',
+          },
+        })
+      }
+
+      if (url === '/api/admin/review/articles/a1' && method === 'PATCH') {
+        return jsonResponse({ ok: true, article: { id: 'a1', slug: 'btr-hello' } })
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'a1' }) }))
+
+    expect(await screen.findByText('Hello Article')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('slug（必填）'), { target: { value: 'btr-hello' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存 slug' }))
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'btr-hello' }),
+    })
+  })
 })

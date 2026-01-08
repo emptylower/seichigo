@@ -10,6 +10,7 @@ import { createHandlers as createAdminReviewListHandlers } from '@/lib/article/h
 import { createHandlers as createAdminApproveHandlers } from '@/lib/article/handlers/adminApprove'
 import { createHandlers as createAdminRejectHandlers } from '@/lib/article/handlers/adminReject'
 import { createHandlers as createAdminUnpublishHandlers } from '@/lib/article/handlers/adminUnpublish'
+import { createHandlers as createAdminReviewArticleHandlers } from '@/lib/article/handlers/adminReviewArticle'
 
 function jsonReq(url: string, method: string, body?: any): Request {
   return new Request(url, {
@@ -149,7 +150,7 @@ describe('article api', () => {
     expect(patchRes.status).toBe(200)
     const patched = await patchRes.json()
     expect(patched.article.title).toBe('A2')
-    expect(patched.article.slug).toBe('a2')
+    expect(patched.article.slug).toBe('a')
 
     const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
       params: Promise.resolve({ id }),
@@ -338,7 +339,7 @@ describe('article api', () => {
     expect(submitAfterUnpublishBlocked.status).toBe(409)
   })
 
-  it('disallows manual slug and keeps slug unique on title changes', async () => {
+  it('disallows manual slug and keeps slug stable on title changes', async () => {
     const { deps } = makeDeps({
       session: { user: { id: 'user-1', isAdmin: false } },
     })
@@ -372,9 +373,98 @@ describe('article api', () => {
     expect(patchTitle.status).toBe(200)
     const patched = await patchTitle.json()
     expect(patched.article.title).toBe('Hello')
-    expect(patched.article.slug).toBe('hello-2')
+    expect(patched.article.slug).toBe('world')
 
     // sanity: id1 exists
     expect(id1).toBeTruthy()
+  })
+
+  it('blocks approve when slug conflicts with MDX', async () => {
+    const fixedNow = new Date('2025-01-01T00:00:00.000Z')
+    const { deps, setSession, mdxSlugs } = makeDeps({
+      now: fixedNow,
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    mdxSlugs.add('a')
+
+    const articles = createArticlesHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+    const adminApprove = createAdminApproveHandlers(deps)
+
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    const patchReady = await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(patchReady.status).toBe(200)
+
+    const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(submitRes.status).toBe(200)
+
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const approveRes = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(approveRes.status).toBe(409)
+  })
+
+  it('allows admin to update slug during in_review with conflict checks', async () => {
+    const { deps, setSession, mdxSlugs } = makeDeps({
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+    const adminReviewArticle = createAdminReviewArticleHandlers(deps)
+
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    const patchReady = await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(patchReady.status).toBe(200)
+
+    const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(submitRes.status).toBe(200)
+
+    // non-admin forbidden
+    const patchForbidden = await adminReviewArticle.PATCH(jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-a' }), {
+      params: Promise.resolve({ id }),
+    })
+    expect(patchForbidden.status).toBe(403)
+
+    // admin can update slug
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const patchRes = await adminReviewArticle.PATCH(jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-a' }), {
+      params: Promise.resolve({ id }),
+    })
+    expect(patchRes.status).toBe(200)
+    const patched = await patchRes.json()
+    expect(patched.article.slug).toBe('btr-a')
+
+    // mdx conflict
+    mdxSlugs.add('btr-conflict')
+    const conflictRes = await adminReviewArticle.PATCH(
+      jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-conflict' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(conflictRes.status).toBe(409)
+
+    // invalid slug
+    const badRes = await adminReviewArticle.PATCH(jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: '中文' }), {
+      params: Promise.resolve({ id }),
+    })
+    expect(badRes.status).toBe(400)
   })
 })

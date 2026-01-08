@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 
+function isValidSlug(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  if (trimmed.length > 128) return false
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)
+}
+
 export function createHandlers(deps: ArticleApiDeps) {
   return {
     async POST(_req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -21,6 +28,15 @@ export function createHandlers(deps: ArticleApiDeps) {
       const existing = await deps.repo.findById(id)
       if (!existing) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+      }
+
+      const slug = String((existing as any).slug || '').trim()
+      if (!isValidSlug(slug)) {
+        return NextResponse.json({ error: 'slug 格式无效' }, { status: 400 })
+      }
+      const conflictMdx = await deps.mdxSlugExists(slug).catch(() => false)
+      if (conflictMdx) {
+        return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
       }
 
       const r = approve({ status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason }, { userId: session.user.id, isAdmin: true })
