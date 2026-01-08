@@ -5,6 +5,7 @@ type Props = {
   city?: string | null
   routeLength?: string | null
   publishDate?: string | null
+  cover?: string | null
   variant?: 'shelf' | 'featured'
 }
 
@@ -28,14 +29,18 @@ function formatMeta(meta: { city?: string | null; routeLength?: string | null; p
   return parts.join(' · ')
 }
 
-export default function BookCover({ path, title, animeIds, city, routeLength, publishDate, variant = 'shelf' }: Props) {
+export default function BookCover({ path, title, animeIds, city, routeLength, publishDate, cover, variant = 'shelf' }: Props) {
   const label = animeIds?.length && animeIds[0] !== 'unknown' ? animeIds[0]! : 'SeichiGo'
   const meta = formatMeta({ city, routeLength, publishDate })
   const titleClass = variant === 'featured' ? 'text-xl' : 'text-sm'
+  const coverSrc = typeof cover === 'string' && cover.trim() ? cover.trim() : null
 
   return (
     <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-black/5 shadow-sm">
       <div className="absolute inset-0" style={{ background: coverGradient(path) }} />
+      {coverSrc ? (
+        <img src={coverSrc} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" />
+      ) : null}
       <div className="absolute inset-y-0 right-0 w-6 bg-white/10" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/0" />
 

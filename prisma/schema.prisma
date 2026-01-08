@@ -106,6 +106,7 @@ model Article {
   city        String?
   routeLength String?
   tags        String[] @default([])
+  cover       String?
   contentJson Json?
   contentHtml String   @db.Text @default("")
   status      String   @default("draft")

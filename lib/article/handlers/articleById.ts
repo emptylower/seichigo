@@ -12,6 +12,12 @@ const patchSchema = z
     city: z.string().nullable().optional(),
     routeLength: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
+    cover: z
+      .string()
+      .max(512)
+      .nullable()
+      .optional()
+      .refine((v) => v == null || /^\/assets\/[a-zA-Z0-9_-]+$/.test(v), { message: '封面地址无效' }),
     contentJson: z.unknown().nullable().optional(),
     contentHtml: z.string().optional(),
   })
@@ -26,13 +32,17 @@ function arrayShallowEqual(a: unknown, b: unknown): boolean {
   return true
 }
 
-function hasMeaningfulEdit(existing: any, update: { title?: string; contentHtml?: string; animeIds?: unknown; city?: unknown; routeLength?: unknown; tags?: unknown }): boolean {
+function hasMeaningfulEdit(
+  existing: any,
+  update: { title?: string; contentHtml?: string; animeIds?: unknown; city?: unknown; routeLength?: unknown; tags?: unknown; cover?: unknown }
+): boolean {
   if (update.title !== undefined && update.title !== existing.title) return true
   if (update.contentHtml !== undefined && update.contentHtml !== existing.contentHtml) return true
   if (update.animeIds !== undefined && !arrayShallowEqual(update.animeIds, existing.animeIds)) return true
   if (update.tags !== undefined && !arrayShallowEqual(update.tags, existing.tags)) return true
   if (update.city !== undefined && update.city !== existing.city) return true
   if (update.routeLength !== undefined && update.routeLength !== existing.routeLength) return true
+  if (update.cover !== undefined && update.cover !== existing.cover) return true
   return false
 }
 
@@ -46,6 +56,7 @@ function toDetail(a: any, sanitizeHtml: (html: string) => string) {
     city: a.city,
     routeLength: a.routeLength,
     tags: a.tags,
+    cover: a.cover ?? null,
     contentJson: a.contentJson,
     contentHtml: sanitizeHtml(String(a.contentHtml || '')),
     status: a.status,
@@ -125,6 +136,11 @@ export function createHandlers(deps: ArticleApiDeps) {
         updateInput.title = nextTitle
       }
 
+      const nextCover = parsed.data.cover !== undefined ? (parsed.data.cover == null ? null : parsed.data.cover.trim() || null) : undefined
+      if (nextCover !== undefined) {
+        updateInput.cover = nextCover
+      }
+
       const edited = hasMeaningfulEdit(existing, {
         title: nextTitle,
         contentHtml: updateInput.contentHtml,
@@ -132,6 +148,7 @@ export function createHandlers(deps: ArticleApiDeps) {
         city: parsed.data.city,
         routeLength: parsed.data.routeLength,
         tags: parsed.data.tags,
+        cover: nextCover,
       })
       if (existing.status === 'rejected' && existing.needsRevision && edited) {
         updateInput.needsRevision = false

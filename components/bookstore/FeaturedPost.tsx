@@ -21,6 +21,7 @@ export default function FeaturedPost({ item }: { item: PublicPostListItem }) {
             city={item.city}
             routeLength={item.routeLength}
             publishDate={item.publishDate}
+            cover={item.cover}
             variant="featured"
           />
         </div>

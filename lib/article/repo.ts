@@ -9,6 +9,7 @@ export type Article = {
   city: string | null
   routeLength: string | null
   tags: string[]
+  cover: string | null
   contentJson: unknown | null
   contentHtml: string
   status: ArticleStatus
@@ -27,6 +28,7 @@ export type CreateDraftInput = {
   city?: string | null
   routeLength?: string | null
   tags?: string[]
+  cover?: string | null
   contentJson?: unknown | null
   contentHtml?: string
 }

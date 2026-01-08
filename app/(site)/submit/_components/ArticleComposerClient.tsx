@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/shared/Button'
 import RichTextEditor, { type RichTextValue } from '@/components/editor/RichTextEditor'
+import CoverField from './CoverField'
 
 type ArticleStatus = 'draft' | 'in_review' | 'rejected' | 'published'
 
@@ -14,6 +15,7 @@ export type ArticleComposerInitial = {
   city: string | null
   routeLength: string | null
   tags: string[]
+  cover: string | null
   contentJson: any | null
   contentHtml: string
   status: ArticleStatus
@@ -330,6 +332,8 @@ export default function ArticleComposerClient({ initial }: Props) {
   const [city, setCity] = useState(initial?.city ?? '')
   const [routeLength, setRouteLength] = useState(initial?.routeLength ?? '')
   const [tagsText, setTagsText] = useState((initial?.tags ?? []).join(', '))
+  const [cover, setCover] = useState<string | null>(initial?.cover ?? null)
+  const [coverBusy, setCoverBusy] = useState(false)
 
   const [submitLoading, setSubmitLoading] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
@@ -563,7 +567,7 @@ export default function ArticleComposerClient({ initial }: Props) {
               <button
                 className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
                 onClick={() => setSettingsOpen(false)}
-                disabled={submitLoading}
+                disabled={submitLoading || coverBusy}
               >
                 关闭
               </button>
@@ -627,6 +631,16 @@ export default function ArticleComposerClient({ initial }: Props) {
                 </div>
               </div>
 
+              {id ? (
+                <CoverField
+                  articleId={id}
+                  value={cover}
+                  onChange={setCover}
+                  onBusyChange={setCoverBusy}
+                  disabled={submitLoading}
+                />
+              ) : null}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium">城市（可选）</label>
@@ -645,11 +659,11 @@ export default function ArticleComposerClient({ initial }: Props) {
               {settingsError ? <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{settingsError}</div> : null}
 
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading}>
+                <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading || coverBusy}>
                   取消
                 </Button>
-                <Button type="button" onClick={submitForReview} disabled={submitLoading}>
-                  {submitLoading ? '提交中…' : '确认提交'}
+                <Button type="button" onClick={submitForReview} disabled={submitLoading || coverBusy}>
+                  {coverBusy ? '封面处理中…' : submitLoading ? '提交中…' : '确认提交'}
                 </Button>
               </div>
             </div>

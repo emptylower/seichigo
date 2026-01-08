@@ -74,6 +74,7 @@ export default async function HomePage() {
                     city={p.city}
                     routeLength={p.routeLength}
                     publishDate={p.publishDate}
+                    cover={p.cover}
                   />
                 </div>
                 <div className="min-w-0 space-y-1">

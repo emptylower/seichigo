@@ -32,6 +32,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
       city: input.city ?? null,
       routeLength: input.routeLength ?? null,
       tags: input.tags ?? [],
+      cover: input.cover ?? null,
       contentJson: input.contentJson ?? null,
       contentHtml: input.contentHtml ?? '',
       status: 'draft',
@@ -90,6 +91,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
     if (input.city !== undefined) existing.city = input.city ?? null
     if (input.routeLength !== undefined) existing.routeLength = input.routeLength ?? null
     if (input.tags !== undefined) existing.tags = input.tags ?? []
+    if (input.cover !== undefined) existing.cover = input.cover ?? null
     if (input.contentJson !== undefined) existing.contentJson = input.contentJson ?? null
     if (input.contentHtml !== undefined) existing.contentHtml = input.contentHtml ?? ''
     if (input.needsRevision !== undefined) existing.needsRevision = Boolean(input.needsRevision)

@@ -38,6 +38,7 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
         city: article.city,
         routeLength: article.routeLength,
         tags: article.tags,
+        cover: article.cover,
         contentJson: article.contentJson,
         contentHtml: sanitizeRichTextHtml(article.contentHtml || ''),
         status: article.status as any,

@@ -28,6 +28,7 @@ function normalizeMdx(post: PostFrontmatter, fallbackAnimeId: string): PublicPos
     city: post.city || '',
     routeLength: post.routeLength,
     tags: post.tags || [],
+    cover: null,
     publishDate: post.publishDate,
   }
 }
@@ -48,6 +49,7 @@ function normalizeDb(article: any): PublicPostListItem {
     city: String(article?.city || ''),
     routeLength: article?.routeLength ?? undefined,
     tags: Array.isArray(article?.tags) ? article.tags : [],
+    cover: article?.cover ?? null,
     publishDate: publishedAtIso ? publishedAtIso.slice(0, 10) : undefined,
     publishedAt: publishedAtIso,
   }

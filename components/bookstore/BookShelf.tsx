@@ -42,6 +42,7 @@ function BookTile({ item }: { item: PublicPostListItem }) {
         city={item.city}
         routeLength={item.routeLength}
         publishDate={item.publishDate}
+        cover={item.cover}
       />
       <div className="mt-2 space-y-1">
         <div className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900 group-hover:text-brand-700">
