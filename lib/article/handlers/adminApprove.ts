@@ -1,14 +1,7 @@
 import { NextResponse } from 'next/server'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
-import { isFallbackHashSlug } from '@/lib/article/slug'
-
-function isValidSlug(input: string): boolean {
-  const trimmed = input.trim()
-  if (!trimmed) return false
-  if (trimmed.length > 128) return false
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)
-}
+import { isFallbackHashSlug, isValidArticleSlug } from '@/lib/article/slug'
 
 function hasAnimePrefix(slug: string, animeIds: string[]): boolean {
   const cleaned = slug.trim()
@@ -39,7 +32,7 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       const slug = String((existing as any).slug || '').trim()
-      if (!isValidSlug(slug)) {
+      if (!isValidArticleSlug(slug)) {
         return NextResponse.json({ error: 'slug 格式无效' }, { status: 400 })
       }
       if (isFallbackHashSlug(slug)) {

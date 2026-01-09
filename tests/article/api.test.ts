@@ -488,6 +488,56 @@ describe('article api', () => {
     expect(badRes.status).toBe(400)
   })
 
+  it('allows unicode slugs and normalizes admin input to lowercase', async () => {
+    const { deps, setSession } = makeDeps({
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+    const adminReviewArticle = createAdminReviewArticleHandlers(deps)
+    const adminApprove = createAdminApproveHandlers(deps)
+
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    const patchReady = await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', {
+        animeIds: ['btr', '你的名字'],
+        contentHtml: `<p>${'x'.repeat(120)}</p>`,
+      }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(patchReady.status).toBe(200)
+
+    const submitRes = await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), { params: Promise.resolve({ id }) })
+    expect(submitRes.status).toBe(200)
+
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+
+    const upperRes = await adminReviewArticle.PATCH(
+      jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'BTR-HELLO' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(upperRes.status).toBe(200)
+    const upper = await upperRes.json()
+    expect(upper.article.slug).toBe('btr-hello')
+
+    const cnRes = await adminReviewArticle.PATCH(
+      jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: '你的名字-your-name-tokyo-shinjuku' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(cnRes.status).toBe(200)
+    const cn = await cnRes.json()
+    expect(cn.article.slug).toBe('你的名字-your-name-tokyo-shinjuku')
+
+    const approveRes = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(approveRes.status).toBe(200)
+  })
+
   it('blocks approve when slug is missing anime prefix or is fallback hash', async () => {
     const fixedNow = new Date('2025-01-01T00:00:00.000Z')
     const { deps, setSession } = makeDeps({

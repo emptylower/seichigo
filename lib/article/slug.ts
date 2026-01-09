@@ -1,5 +1,7 @@
 import crypto from 'node:crypto'
 
+const READABLE_SLUG_RE = /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u
+
 function slugifyAscii(input: string): string {
   return input
     .trim()
@@ -20,6 +22,18 @@ export function generateSlugFromTitle(title: string, now: Date): string {
   void now
   const ascii = slugifyAscii(title)
   return ascii || fallbackSlug(title)
+}
+
+export function normalizeArticleSlug(input: string): string {
+  return input.trim().normalize('NFKC').toLowerCase()
+}
+
+export function isValidArticleSlug(slug: string): boolean {
+  const trimmed = slug.trim()
+  if (!trimmed) return false
+  if (trimmed.length > 128) return false
+  if (trimmed !== trimmed.toLowerCase()) return false
+  return READABLE_SLUG_RE.test(trimmed)
 }
 
 export function isFallbackHashSlug(slug: string): boolean {

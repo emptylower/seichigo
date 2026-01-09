@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { ArticleSlugExistsError } from '@/lib/article/repo'
 import type { ArticleApiDeps } from '@/lib/article/api'
-import { isFallbackHashSlug } from '@/lib/article/slug'
+import { isFallbackHashSlug, isValidArticleSlug, normalizeArticleSlug } from '@/lib/article/slug'
 
 const patchSchema = z
   .object({
@@ -10,8 +10,7 @@ const patchSchema = z
       .string()
       .min(1)
       .max(128)
-      .refine((v) => v.trim().length > 0, { message: 'slug 不能为空' })
-      .refine((v) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim()), { message: 'slug 格式无效' }),
+      .refine((v) => v.trim().length > 0, { message: 'slug 不能为空' }),
   })
   .strict()
 
@@ -68,7 +67,10 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
-      const nextSlug = parsed.data.slug.trim()
+      const nextSlug = normalizeArticleSlug(parsed.data.slug)
+      if (!isValidArticleSlug(nextSlug)) {
+        return NextResponse.json({ error: 'slug 格式无效' }, { status: 400 })
+      }
       if (isFallbackHashSlug(nextSlug)) {
         return NextResponse.json({ error: 'slug 不够可读，请设置为“作品前缀-文章后缀”形式' }, { status: 400 })
       }
