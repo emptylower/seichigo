@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
+import { isFallbackHashSlug } from '@/lib/article/slug'
 
 function isValidSlug(input: string): boolean {
   const trimmed = input.trim()
   if (!trimmed) return false
   if (trimmed.length > 128) return false
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)
+}
+
+function hasAnimePrefix(slug: string, animeIds: string[]): boolean {
+  const cleaned = slug.trim()
+  if (!cleaned) return false
+  const prefixes = animeIds.map((id) => `${id}-`).filter((x) => x.length > 1)
+  return prefixes.some((p) => cleaned.startsWith(p) && cleaned.length > p.length)
 }
 
 export function createHandlers(deps: ArticleApiDeps) {
@@ -34,6 +42,20 @@ export function createHandlers(deps: ArticleApiDeps) {
       if (!isValidSlug(slug)) {
         return NextResponse.json({ error: 'slug 格式无效' }, { status: 400 })
       }
+      if (isFallbackHashSlug(slug)) {
+        return NextResponse.json({ error: 'slug 不够可读，请在发布前设置为“作品前缀-文章后缀”形式' }, { status: 400 })
+      }
+
+      const animeIds = Array.isArray((existing as any).animeIds)
+        ? (existing as any).animeIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+        : []
+      if (!animeIds.length) {
+        return NextResponse.json({ error: '请至少选择一个作品' }, { status: 400 })
+      }
+      if (!hasAnimePrefix(slug, animeIds)) {
+        return NextResponse.json({ error: `slug 必须以作品前缀开头（例如：${animeIds[0]}-xxx）` }, { status: 400 })
+      }
+
       const conflictMdx = await deps.mdxSlugExists(slug).catch(() => false)
       if (conflictMdx) {
         return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })

@@ -4,6 +4,7 @@ import { getPostBySlug as getMdxPostBySlug } from '@/lib/mdx/getPostBySlug'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
 import type { PublicPost } from './types'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
+import { generateSlugFromTitle, isFallbackHashSlug } from '@/lib/article/slug'
 
 type MdxProvider = {
   getPostBySlug: (slug: string, language: string) => Promise<Post | null>
@@ -12,6 +13,11 @@ type MdxProvider = {
 export type GetPublicPostBySlugOptions = {
   mdx?: MdxProvider
   articleRepo?: Pick<ArticleRepo, 'findById' | 'findBySlug'> | PublicArticleRepo
+}
+
+type RepoWithListByStatus = Pick<ArticleRepo, 'listByStatus'>
+function hasListByStatus(repo: unknown): repo is RepoWithListByStatus {
+  return typeof (repo as any)?.listByStatus === 'function'
 }
 
 function extractArticleIdFromPostKey(input: string): string | null {
@@ -52,7 +58,24 @@ export async function getPublicPostBySlug(
   }
 
   const article = await repo.findBySlug(target).catch(() => null)
-  if (!article) return null
-  if (article.status !== 'published') return null
-  return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' }) } }
+  if (article) {
+    if (article.status !== 'published') return null
+    return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' }) } }
+  }
+
+  // Legacy support: resolve old fallback hash slug (post-<sha1>) by scanning published articles.
+  // This enables redirecting old slugs after an admin upgrades them to a readable slug.
+  if (isFallbackHashSlug(target) && hasListByStatus(repo)) {
+    const published = await repo.listByStatus('published').catch(() => [])
+    for (const a of published as any[]) {
+      const title = String(a?.title || '')
+      if (!title) continue
+      const legacy = generateSlugFromTitle(title, new Date('2025-01-01T00:00:00.000Z'))
+      if (legacy !== target) continue
+      if (a?.status !== 'published') continue
+      return { source: 'db', article: { ...a, contentHtml: sanitizeRichTextHtml(a.contentHtml || '', { imageMode: 'progressive' }) } }
+    }
+  }
+
+  return null
 }

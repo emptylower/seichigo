@@ -231,6 +231,7 @@ describe('article api', () => {
     const adminReject = createAdminRejectHandlers(deps)
     const adminApprove = createAdminApproveHandlers(deps)
     const adminUnpublish = createAdminUnpublishHandlers(deps)
+    const adminReviewArticle = createAdminReviewArticleHandlers(deps)
 
     const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
@@ -307,6 +308,12 @@ describe('article api', () => {
 
     // admin approve -> published with publishedAt
     setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const setSlugRes = await adminReviewArticle.PATCH(
+      jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-a' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(setSlugRes.status).toBe(200)
+
     const approveRes = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), {
       params: Promise.resolve({ id }),
     })
@@ -386,11 +393,10 @@ describe('article api', () => {
       session: { user: { id: 'user-1', isAdmin: false } },
     })
 
-    mdxSlugs.add('a')
-
     const articles = createArticlesHandlers(deps)
     const submit = createSubmitHandlers(deps)
     const adminApprove = createAdminApproveHandlers(deps)
+    const adminReviewArticle = createAdminReviewArticleHandlers(deps)
 
     const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
     const created = await createRes.json()
@@ -408,6 +414,14 @@ describe('article api', () => {
     expect(submitRes.status).toBe(200)
 
     setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const setSlugRes = await adminReviewArticle.PATCH(
+      jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-a' }),
+      { params: Promise.resolve({ id }) }
+    )
+    expect(setSlugRes.status).toBe(200)
+
+    // Simulate MDX slug appearing after admin set slug, before approving.
+    mdxSlugs.add('btr-a')
     const approveRes = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), {
       params: Promise.resolve({ id }),
     })
@@ -453,6 +467,12 @@ describe('article api', () => {
     const patched = await patchRes.json()
     expect(patched.article.slug).toBe('btr-a')
 
+    // slug must start with anime prefix
+    const badPrefixRes = await adminReviewArticle.PATCH(jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'other-a' }), {
+      params: Promise.resolve({ id }),
+    })
+    expect(badPrefixRes.status).toBe(400)
+
     // mdx conflict
     mdxSlugs.add('btr-conflict')
     const conflictRes = await adminReviewArticle.PATCH(
@@ -466,5 +486,50 @@ describe('article api', () => {
       params: Promise.resolve({ id }),
     })
     expect(badRes.status).toBe(400)
+  })
+
+  it('blocks approve when slug is missing anime prefix or is fallback hash', async () => {
+    const fixedNow = new Date('2025-01-01T00:00:00.000Z')
+    const { deps, setSession } = makeDeps({
+      now: fixedNow,
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+    const adminApprove = createAdminApproveHandlers(deps)
+
+    // missing anime prefix
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+    await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id }) }
+    )
+    await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), { params: Promise.resolve({ id }) })
+
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const approveMissingPrefix = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), {
+      params: Promise.resolve({ id }),
+    })
+    expect(approveMissingPrefix.status).toBe(400)
+
+    // fallback hash (non-ascii title)
+    setSession({ user: { id: 'user-1', isAdmin: false } })
+    const createRes2 = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: '宇治一日游' }))
+    const created2 = await createRes2.json()
+    const id2 = created2.article.id as string
+    await createArticleHandlers(deps).PATCH(
+      jsonReq('http://localhost/api/articles/' + id2, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id: id2 }) }
+    )
+    await submit.POST(jsonReq('http://localhost/api/articles/' + id2 + '/submit', 'POST'), { params: Promise.resolve({ id: id2 }) })
+
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    const approveFallback = await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id2 + '/approve', 'POST'), {
+      params: Promise.resolve({ id: id2 }),
+    })
+    expect(approveFallback.status).toBe(400)
   })
 })

@@ -21,3 +21,7 @@ export function generateSlugFromTitle(title: string, now: Date): string {
   const ascii = slugifyAscii(title)
   return ascii || fallbackSlug(title)
 }
+
+export function isFallbackHashSlug(slug: string): boolean {
+  return /^post-[0-9a-f]{10}$/.test(slug.trim())
+}

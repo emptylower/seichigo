@@ -32,6 +32,11 @@ export default function AdminPanelArticleClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [slugDraft, setSlugDraft] = useState('')
+  const [slugSaving, setSlugSaving] = useState(false)
+  const [slugError, setSlugError] = useState<string | null>(null)
+  const [slugSuccess, setSlugSuccess] = useState<string | null>(null)
+
   const [rejectReason, setRejectReason] = useState('')
   const [unpublishReason, setUnpublishReason] = useState('')
   const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | 'unpublish' | null>(null)
@@ -53,6 +58,7 @@ export default function AdminPanelArticleClient({ id }: { id: string }) {
       return
     }
     setArticle(data.article)
+    setSlugDraft(data.article.slug || '')
     setLoading(false)
   }
 
@@ -148,6 +154,32 @@ export default function AdminPanelArticleClient({ id }: { id: string }) {
     )
   }
 
+  async function onSaveSlug() {
+    const cleaned = slugDraft.trim()
+    setSlugError(null)
+    setSlugSuccess(null)
+    if (!cleaned) {
+      setSlugError('slug 不能为空')
+      return
+    }
+    setSlugSaving(true)
+    const res = await fetch(`/api/admin/review/articles/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: cleaned }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { ok?: true; article?: { slug?: string }; error?: string }
+    setSlugSaving(false)
+    if (!res.ok || !data?.ok) {
+      setSlugError(data?.error || '保存失败')
+      return
+    }
+    const nextSlug = String(data.article?.slug || cleaned)
+    setSlugDraft(nextSlug)
+    setArticle((prev) => (prev ? { ...prev, slug: nextSlug } : prev))
+    setSlugSuccess('已更新 slug。')
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -187,9 +219,26 @@ export default function AdminPanelArticleClient({ id }: { id: string }) {
       {article && !loading && !error ? (
         <div className="space-y-6">
           <section className="card space-y-1">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium text-gray-900">slug：</span>
-              <span>{article.slug}</span>
+            <div className="space-y-2">
+              <label htmlFor="article-slug" className="block text-sm font-medium text-gray-700">
+                slug（必填）
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  id="article-slug"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  value={slugDraft}
+                  onChange={(e) => setSlugDraft(e.target.value)}
+                  placeholder={article.animeIds?.[0] ? `${article.animeIds[0]}-xxx` : 'your-slug'}
+                  disabled={slugSaving || actionLoading != null}
+                />
+                <Button onClick={onSaveSlug} disabled={slugSaving || actionLoading != null}>
+                  {slugSaving ? '保存中…' : '保存 slug'}
+                </Button>
+              </div>
+              {article.animeIds?.[0] ? <div className="text-xs text-gray-500">建议格式：{article.animeIds[0]}-xxx（作品前缀 + 文章后缀）</div> : null}
+              {slugError ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{slugError}</div> : null}
+              {slugSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{slugSuccess}</div> : null}
             </div>
             <div className="text-sm text-gray-600">
               <span className="font-medium text-gray-900">状态：</span>

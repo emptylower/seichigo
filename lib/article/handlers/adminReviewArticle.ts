@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { ArticleSlugExistsError } from '@/lib/article/repo'
 import type { ArticleApiDeps } from '@/lib/article/api'
+import { isFallbackHashSlug } from '@/lib/article/slug'
 
 const patchSchema = z
   .object({
@@ -13,6 +14,21 @@ const patchSchema = z
       .refine((v) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim()), { message: 'slug 格式无效' }),
   })
   .strict()
+
+function hasAnimePrefix(slug: string, animeIds: string[]): boolean {
+  const cleaned = slug.trim()
+  if (!cleaned) return false
+  const prefixes = animeIds.map((id) => `${id}-`).filter((x) => x.length > 1)
+  return prefixes.some((p) => cleaned.startsWith(p) && cleaned.length > p.length)
+}
+
+function canEditSlugInStatus(existing: { status: string; slug: string }, animeIds: string[]): boolean {
+  if (existing.status === 'in_review') return true
+  if (existing.status !== 'published') return false
+  // Allow fixing legacy/bad slugs for already-published articles, but keep "good slugs" stable.
+  if (isFallbackHashSlug(existing.slug)) return true
+  return !hasAnimePrefix(existing.slug, animeIds)
+}
 
 export function createHandlers(deps: ArticleApiDeps) {
   return {
@@ -35,7 +51,14 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
 
-      if (existing.status !== 'in_review') {
+      const animeIds = Array.isArray((existing as any).animeIds)
+        ? (existing as any).animeIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+        : []
+      if (!animeIds.length) {
+        return NextResponse.json({ error: '请至少选择一个作品' }, { status: 400 })
+      }
+
+      if (!canEditSlugInStatus({ status: String((existing as any).status || ''), slug: String((existing as any).slug || '') }, animeIds)) {
         return NextResponse.json({ error: '当前状态不可修改 slug' }, { status: 409 })
       }
 
@@ -46,6 +69,13 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       const nextSlug = parsed.data.slug.trim()
+      if (isFallbackHashSlug(nextSlug)) {
+        return NextResponse.json({ error: 'slug 不够可读，请设置为“作品前缀-文章后缀”形式' }, { status: 400 })
+      }
+      if (!hasAnimePrefix(nextSlug, animeIds)) {
+        return NextResponse.json({ error: `slug 必须以作品前缀开头（例如：${animeIds[0]}-xxx）` }, { status: 400 })
+      }
+
       const conflictMdx = await deps.mdxSlugExists(nextSlug).catch(() => false)
       if (conflictMdx) {
         return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
@@ -64,4 +94,3 @@ export function createHandlers(deps: ArticleApiDeps) {
     },
   }
 }
-

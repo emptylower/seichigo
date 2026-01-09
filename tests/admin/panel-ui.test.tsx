@@ -130,5 +130,54 @@ describe('admin panel ui', () => {
 
     expect(await screen.findByText('已下架。')).toBeInTheDocument()
   })
-})
 
+  it('allows admin to update slug on published article page', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      const method = String(init?.method || 'GET').toUpperCase()
+
+      if (url === '/api/articles/a1' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          article: {
+            id: 'a1',
+            slug: 'post-2562e8439a',
+            title: 'Hello Article',
+            animeIds: ['btr'],
+            city: 'Tokyo',
+            routeLength: null,
+            tags: [],
+            contentHtml: '<p>Preview</p>',
+            status: 'published',
+            rejectReason: null,
+            publishedAt: '2025-01-02T00:00:00.000Z',
+            updatedAt: '2025-01-02T00:00:00.000Z',
+          },
+        })
+      }
+
+      if (url === '/api/admin/review/articles/a1' && method === 'PATCH') {
+        return jsonResponse({ ok: true, article: { id: 'a1', slug: 'btr-hello' } })
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const AdminPanelArticlePage = (await import('@/app/(site)/admin/panel/articles/[id]/page')).default
+    render(await AdminPanelArticlePage({ params: Promise.resolve({ id: 'a1' }) }))
+
+    expect(await screen.findByText('Hello Article')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('slug（必填）'), { target: { value: 'btr-hello' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存 slug' }))
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'btr-hello' }),
+    })
+  })
+})

@@ -3,6 +3,7 @@ import { InMemoryArticleRepo } from '@/lib/article/repoMemory'
 import type { Post, PostFrontmatter } from '@/lib/mdx/types'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
+import { generateSlugFromTitle } from '@/lib/article/slug'
 
 type MdxProvider = {
   getAllPosts: (language: string) => Promise<PostFrontmatter[]>
@@ -128,6 +129,20 @@ describe('public posts aggregation', () => {
 
     const byIdSlug = await getPublicPostBySlug(`${created.id}-legacy`, 'zh', { mdx, articleRepo: repo })
     expect(byIdSlug?.source).toBe('db')
+  })
+
+  it('getPublicPostBySlug: legacy fallback hash slug resolves DB and can redirect to current slug', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'btr-uji-day1', title: '宇治一日游' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const legacy = generateSlugFromTitle(created.title, new Date('2025-01-01T00:00:00.000Z'))
+    expect(legacy).toMatch(/^post-[0-9a-f]{10}$/)
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug(legacy, 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+    expect(found && found.source === 'db' ? found.article.slug : null).toBe('btr-uji-day1')
   })
 
   it('getPublicPostBySlug: DB contentHtml rewrites internal images progressively', async () => {
