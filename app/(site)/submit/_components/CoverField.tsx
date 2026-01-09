@@ -438,15 +438,15 @@ export default function CoverField({ articleId, value, disabled, onChange, onBus
       />
 
       {cropOpen ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold">裁剪封面</h3>
                 <p className="mt-1 text-sm text-gray-600">拖动图片调整位置，使用滑块缩放，裁剪结果为 3:4。</p>
               </div>
               <button
-                className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+                className="shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
                 onClick={closeCrop}
                 disabled={uploading}
               >
@@ -454,66 +454,73 @@ export default function CoverField({ articleId, value, disabled, onChange, onBus
               </button>
             </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-[1fr,260px] md:items-start">
-              <div className="rounded-lg border bg-gray-50 p-3">
-                <div
-                  ref={cropFrameRef}
-                  className="relative mx-auto aspect-[3/4] w-full max-w-[380px] overflow-hidden rounded-md bg-black"
-                  onPointerDown={onCropPointerDown}
-                  onPointerMove={onCropPointerMove}
-                  onPointerUp={onCropPointerUp}
-                  onPointerCancel={onCropPointerUp}
-                >
-                  {cropPreviewUrl ? (
-                    <img
-                      src={cropPreviewUrl}
-                      alt="crop"
-                      className="absolute left-1/2 top-1/2 max-w-none select-none"
-                      draggable={false}
-                      style={{
-                        transform: `translate(-50%, -50%) translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${scale})`,
-                        transformOrigin: 'center',
-                        willChange: 'transform',
-                      }}
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-4 md:grid-cols-[1fr,260px] md:items-start">
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div
+                    ref={cropFrameRef}
+                    className="relative mx-auto aspect-[3/4] w-full max-w-[380px] overflow-hidden rounded-md bg-black"
+                    onPointerDown={onCropPointerDown}
+                    onPointerMove={onCropPointerMove}
+                    onPointerUp={onCropPointerUp}
+                    onPointerCancel={onCropPointerUp}
+                  >
+                    {cropPreviewUrl ? (
+                      <img
+                        src={cropPreviewUrl}
+                        alt="crop"
+                        className="absolute left-1/2 top-1/2 max-w-none select-none"
+                        draggable={false}
+                        style={{
+                          transform: `translate(-50%, -50%) translate(${cropOffset.x}px, ${cropOffset.y}px) scale(${scale})`,
+                          transformOrigin: 'center',
+                          willChange: 'transform',
+                        }}
+                      />
+                    ) : null}
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-white/60" />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium">缩放</label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={3}
+                      step={0.01}
+                      value={cropZoom}
+                      onChange={(e) => setCropZoom(Number(e.target.value))}
+                      disabled={uploading}
+                      className="mt-2 w-full"
                     />
-                  ) : null}
-                  <div className="pointer-events-none absolute inset-0 ring-1 ring-white/60" />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setCropZoom(1)} disabled={uploading}>
+                      重置缩放
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setCropOffset({ x: 0, y: 0 })}
+                      disabled={uploading}
+                    >
+                      重置位置
+                    </Button>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium">缩放</label>
-                  <input
-                    type="range"
-                    min={1}
-                    max={3}
-                    step={0.01}
-                    value={cropZoom}
-                    onChange={(e) => setCropZoom(Number(e.target.value))}
-                    disabled={uploading}
-                    className="mt-2 w-full"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="ghost" onClick={() => setCropZoom(1)} disabled={uploading}>
-                    重置缩放
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={() => setCropOffset({ x: 0, y: 0 })} disabled={uploading}>
-                    重置位置
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" onClick={closeCrop} disabled={uploading}>
-                    取消
-                  </Button>
-                  <Button type="button" onClick={confirmCrop} disabled={uploading}>
-                    {uploading ? '处理中…' : '确认裁剪并上传'}
-                  </Button>
-                </div>
-              </div>
+            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+              <Button type="button" variant="ghost" onClick={closeCrop} disabled={uploading}>
+                取消
+              </Button>
+              <Button type="button" onClick={confirmCrop} disabled={uploading}>
+                {uploading ? '处理中…' : '确认裁剪并上传'}
+              </Button>
             </div>
           </div>
         </div>

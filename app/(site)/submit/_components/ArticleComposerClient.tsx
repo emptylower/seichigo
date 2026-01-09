@@ -557,15 +557,15 @@ export default function ArticleComposerClient({ initial }: Props) {
       </div>
 
       {settingsOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold">发布信息</h2>
                 <p className="mt-1 text-sm text-gray-600">提交审核前，请补充作品信息（必填）与可选的发布字段。</p>
               </div>
               <button
-                className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+                className="shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
                 onClick={() => setSettingsOpen(false)}
                 disabled={submitLoading || coverBusy}
               >
@@ -573,99 +573,101 @@ export default function ArticleComposerClient({ initial }: Props) {
               </button>
             </div>
 
-            <div className="mt-4 space-y-5">
-              <div>
-                <label className="block text-sm font-medium">作品（必填，可多选）</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedAnime.map((a) => (
-                    <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-3 py-1 text-sm text-pink-800">
-                      <span className="max-w-[16rem] truncate">{a.name && a.name !== a.id ? `${a.name}（${a.id}）` : a.id}</span>
-                      <button
-                        type="button"
-                        className="ml-1 text-pink-800/70 hover:text-pink-900"
-                        onClick={() => removeAnime(a.id)}
-                        disabled={submitLoading}
-                        aria-label={`移除作品 ${a.id}`}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  {!selectedAnime.length ? <span className="text-sm text-gray-500">尚未选择作品</span> : null}
-                </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium">作品（必填，可多选）</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedAnime.map((a) => (
+                      <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-3 py-1 text-sm text-pink-800">
+                        <span className="max-w-[16rem] truncate">{a.name && a.name !== a.id ? `${a.name}（${a.id}）` : a.id}</span>
+                        <button
+                          type="button"
+                          className="ml-1 text-pink-800/70 hover:text-pink-900"
+                          onClick={() => removeAnime(a.id)}
+                          disabled={submitLoading}
+                          aria-label={`移除作品 ${a.id}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {!selectedAnime.length ? <span className="text-sm text-gray-500">尚未选择作品</span> : null}
+                  </div>
 
-                <div className="mt-3">
-                  <input
-                    className="w-full rounded-md border px-3 py-2"
-                    placeholder="搜索或输入作品名，Enter 选择/创建"
-                    value={animeQuery}
-                    onChange={(e) => setAnimeQuery(e.target.value)}
-                    onKeyDown={onAnimeKeyDown}
-                    disabled={submitLoading}
-                  />
-                  <div className="mt-2 rounded-md border bg-white">
-                    <div className="px-3 py-2 text-xs text-gray-500">
-                      {animeLoading ? '加载中…' : animeOptions.length ? '选择一个匹配项（或继续输入）' : animeQuery.trim() ? '未找到匹配项，按 Enter 创建' : '输入关键词开始搜索'}
+                  <div className="mt-3">
+                    <input
+                      className="w-full rounded-md border px-3 py-2"
+                      placeholder="搜索或输入作品名，Enter 选择/创建"
+                      value={animeQuery}
+                      onChange={(e) => setAnimeQuery(e.target.value)}
+                      onKeyDown={onAnimeKeyDown}
+                      disabled={submitLoading}
+                    />
+                    <div className="mt-2 rounded-md border bg-white">
+                      <div className="px-3 py-2 text-xs text-gray-500">
+                        {animeLoading ? '加载中…' : animeOptions.length ? '选择一个匹配项（或继续输入）' : animeQuery.trim() ? '未找到匹配项，按 Enter 创建' : '输入关键词开始搜索'}
+                      </div>
+                      {animeOptions.length ? (
+                        <ul className="max-h-48 overflow-auto border-t">
+                          {animeOptions.map((a) => (
+                            <li key={a.id}>
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-pink-50"
+                                onClick={() => {
+                                  if (!selectedAnime.some((x) => x.id === a.id)) setSelectedAnime((prev) => [...prev, a])
+                                  setAnimeQuery('')
+                                }}
+                                disabled={submitLoading}
+                              >
+                                <span className="truncate">{a.name && a.name !== a.id ? a.name : a.id}</span>
+                                <span className="shrink-0 text-xs text-gray-500">{a.id}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
-                    {animeOptions.length ? (
-                      <ul className="max-h-48 overflow-auto border-t">
-                        {animeOptions.map((a) => (
-                          <li key={a.id}>
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-pink-50"
-                              onClick={() => {
-                                if (!selectedAnime.some((x) => x.id === a.id)) setSelectedAnime((prev) => [...prev, a])
-                                setAnimeQuery('')
-                              }}
-                              disabled={submitLoading}
-                            >
-                              <span className="truncate">{a.name && a.name !== a.id ? a.name : a.id}</span>
-                              <span className="shrink-0 text-xs text-gray-500">{a.id}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
                   </div>
                 </div>
-              </div>
 
-              {id ? (
-                <CoverField
-                  articleId={id}
-                  value={cover}
-                  onChange={setCover}
-                  onBusyChange={setCoverBusy}
-                  disabled={submitLoading}
-                />
-              ) : null}
+                {id ? (
+                  <CoverField
+                    articleId={id}
+                    value={cover}
+                    onChange={setCover}
+                    onBusyChange={setCoverBusy}
+                    disabled={submitLoading}
+                  />
+                ) : null}
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium">城市（可选）</label>
-                  <input className="mt-2 w-full rounded-md border px-3 py-2" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitLoading} />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium">城市（可选）</label>
+                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitLoading} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium">用时（可选）</label>
+                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={routeLength} onChange={(e) => setRouteLength(e.target.value)} disabled={submitLoading} placeholder="半日 / 一日" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium">标签（可选，逗号分隔）</label>
+                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={tagsText} onChange={(e) => setTagsText(e.target.value)} disabled={submitLoading} placeholder="下北泽, 河堤" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium">用时（可选）</label>
-                  <input className="mt-2 w-full rounded-md border px-3 py-2" value={routeLength} onChange={(e) => setRouteLength(e.target.value)} disabled={submitLoading} placeholder="半日 / 一日" />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium">标签（可选，逗号分隔）</label>
-                  <input className="mt-2 w-full rounded-md border px-3 py-2" value={tagsText} onChange={(e) => setTagsText(e.target.value)} disabled={submitLoading} placeholder="下北泽, 河堤" />
-                </div>
-              </div>
 
-              {settingsError ? <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{settingsError}</div> : null}
-
-              <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading || coverBusy}>
-                  取消
-                </Button>
-                <Button type="button" onClick={submitForReview} disabled={submitLoading || coverBusy}>
-                  {coverBusy ? '封面处理中…' : submitLoading ? '提交中…' : '确认提交'}
-                </Button>
+                {settingsError ? <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{settingsError}</div> : null}
               </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+              <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading || coverBusy}>
+                取消
+              </Button>
+              <Button type="button" onClick={submitForReview} disabled={submitLoading || coverBusy}>
+                {coverBusy ? '封面处理中…' : submitLoading ? '提交中…' : '确认提交'}
+              </Button>
             </div>
           </div>
         </div>
