@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { submit, type Actor } from '@/lib/article/workflow'
-import type { ArticleApiDeps } from '@/lib/article/api'
+import { submitRevision, type Actor } from '@/lib/articleRevision/workflow'
+import type { ArticleRevisionApiDeps } from '@/lib/articleRevision/api'
 
 function countPlainText(html: string): number {
   if (!html) return 0
@@ -9,7 +9,7 @@ function countPlainText(html: string): number {
   return collapsed.length
 }
 
-export function createHandlers(deps: ArticleApiDeps) {
+export function createHandlers(deps: ArticleRevisionApiDeps) {
   return {
     async POST(_req: Request, ctx: { params?: Promise<{ id: string }> }) {
       const session = await deps.getSession()
@@ -22,17 +22,21 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '缺少 id' }, { status: 400 })
       }
 
-      const existing = await deps.repo.findById(id)
+      const existing = await deps.revisionRepo.findById(id)
       if (!existing) {
-        return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+        return NextResponse.json({ error: '未找到更新稿' }, { status: 404 })
       }
 
-      if (existing.status === 'rejected' && existing.needsRevision) {
-        return NextResponse.json({ error: '请先修改后再提交审核' }, { status: 409 })
+      const article = await deps.articleRepo.findById(existing.articleId)
+      if (!article) {
+        return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+      }
+      if (article.status !== 'published') {
+        return NextResponse.json({ error: '当前文章未发布，无法提交更新审核' }, { status: 409 })
       }
 
       const actor: Actor = { userId: session.user.id, isAdmin: Boolean(session.user.isAdmin) }
-      const r = submit({ status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason }, actor)
+      const r = submitRevision({ status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason }, actor)
       if (!r.ok) {
         const status = r.error.code === 'FORBIDDEN' ? 403 : 409
         return NextResponse.json({ error: r.error.message }, { status })
@@ -55,12 +59,13 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '正文内容至少需要 100 字' }, { status: 400 })
       }
 
-      const updated = await deps.repo.updateState(id, { status: 'in_review', rejectReason: null })
+      const updated = await deps.revisionRepo.updateState(id, { status: 'in_review', rejectReason: null })
       if (!updated) {
-        return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+        return NextResponse.json({ error: '未找到更新稿' }, { status: 404 })
       }
 
-      return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status } })
+      return NextResponse.json({ ok: true, revision: { id: updated.id, status: updated.status } })
     },
   }
 }
+

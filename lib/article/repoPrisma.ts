@@ -6,6 +6,7 @@ function toArticle(record: PrismaArticle): Article {
   return {
     ...record,
     status: record.status as Article['status'],
+    lastApprovedAt: record.lastApprovedAt,
   }
 }
 
@@ -91,6 +92,7 @@ export class PrismaArticleRepo implements ArticleRepo {
           rejectReason: input.rejectReason === undefined ? undefined : input.rejectReason,
           needsRevision: input.needsRevision === undefined ? undefined : Boolean(input.needsRevision),
           publishedAt: input.publishedAt === undefined ? undefined : input.publishedAt,
+          lastApprovedAt: input.lastApprovedAt === undefined ? undefined : input.lastApprovedAt,
         },
       })
       return toArticle(updated)

@@ -24,8 +24,9 @@ function makeDeps(options?: {
   session?: any
   mdxSlugs?: Set<string>
   now?: Date
-}): { deps: ArticleApiDeps; setSession: (s: any) => void; mdxSlugs: Set<string> } {
-  const now = options?.now ?? new Date('2025-01-01T00:00:00.000Z')
+  sanitizeHtml?: (html: string) => string
+}): { deps: ArticleApiDeps; setSession: (s: any) => void; setNow: (d: Date) => void; mdxSlugs: Set<string> } {
+  let now = options?.now ?? new Date('2025-01-01T00:00:00.000Z')
   const repo = new InMemoryArticleRepo({ now: () => now })
 
   let currentSession: any = options?.session ?? null
@@ -35,14 +36,46 @@ function makeDeps(options?: {
     repo,
     getSession: async () => currentSession,
     mdxSlugExists: async (slug) => mdxSlugs.has(slug),
-    sanitizeHtml: (html) => `sanitized:${html}`,
+    sanitizeHtml: options?.sanitizeHtml ?? ((html) => `sanitized:${html}`),
     now: () => now,
   }
 
-  return { deps, setSession: (s) => (currentSession = s), mdxSlugs }
+  return { deps, setSession: (s) => (currentSession = s), setNow: (d) => (now = d), mdxSlugs }
 }
 
 describe('article api', () => {
+  it('detail renders seichi-route embeds from contentJson', async () => {
+    const { deps } = makeDeps({
+      session: { user: { id: 'user-1', isAdmin: false } },
+      sanitizeHtml: (html) => html,
+    })
+    const articles = createArticlesHandlers(deps)
+    const articleIdHandlers = createArticleHandlers(deps)
+
+    const createRes = await articles.POST(
+      jsonReq('http://localhost/api/articles', 'POST', {
+        title: 'A',
+        contentHtml: '<p>hi</p><seichi-route data-id="r1"></seichi-route>',
+        contentJson: {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: 'hi' }] },
+            { type: 'seichiRoute', attrs: { id: 'r1', data: { version: 1, spots: [{ name_zh: 'A' }, { name_zh: 'B' }] } } },
+          ],
+        },
+      })
+    )
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    const detailRes = await articleIdHandlers.GET(jsonReq('http://localhost/api/articles/' + id, 'GET'), { params: Promise.resolve({ id }) })
+    const detail = await detailRes.json()
+    expect(detail.ok).toBe(true)
+    expect(detail.article.contentHtml).not.toContain('<seichi-route')
+    expect(detail.article.contentHtml).toContain('<svg')
+    expect(detail.article.contentHtml).toContain('<table')
+  })
+
   it('requires auth for author endpoints', async () => {
     const { deps } = makeDeps()
     const articles = createArticlesHandlers(deps)
@@ -321,6 +354,8 @@ describe('article api', () => {
     const approved = await approveRes.json()
     expect(approved.article.status).toBe('published')
     expect(approved.article.publishedAt).toBe(fixedNow.toISOString())
+    const approvedInRepo = await deps.repo.findById(id)
+    expect(approvedInRepo?.lastApprovedAt?.toISOString()).toBe(fixedNow.toISOString())
 
     // admin can unpublish published article with reason; must edit again before resubmitting
     const unpublishBad = await adminUnpublish.POST(
@@ -344,6 +379,61 @@ describe('article api', () => {
       params: Promise.resolve({ id }),
     })
     expect(submitAfterUnpublishBlocked.status).toBe(409)
+  })
+
+  it('keeps publishedAt on re-approve and updates lastApprovedAt', async () => {
+    const t1 = new Date('2025-01-01T00:00:00.000Z')
+    const t2 = new Date('2025-02-01T00:00:00.000Z')
+    const { deps, setSession, setNow } = makeDeps({
+      now: t1,
+      session: { user: { id: 'user-1', isAdmin: false } },
+    })
+
+    const articles = createArticlesHandlers(deps)
+    const articleIdHandlers = createArticleHandlers(deps)
+    const submit = createSubmitHandlers(deps)
+    const adminReviewArticle = createAdminReviewArticleHandlers(deps)
+    const adminApprove = createAdminApproveHandlers(deps)
+    const adminUnpublish = createAdminUnpublishHandlers(deps)
+
+    const createRes = await articles.POST(jsonReq('http://localhost/api/articles', 'POST', { title: 'A' }))
+    const created = await createRes.json()
+    const id = created.article.id as string
+
+    await articleIdHandlers.PATCH(
+      jsonReq('http://localhost/api/articles/' + id, 'PATCH', { animeIds: ['btr'], contentHtml: `<p>${'x'.repeat(120)}</p>` }),
+      { params: Promise.resolve({ id }) }
+    )
+
+    await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), { params: Promise.resolve({ id }) })
+
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    await adminReviewArticle.PATCH(jsonReq('http://localhost/api/admin/review/articles/' + id, 'PATCH', { slug: 'btr-a' }), {
+      params: Promise.resolve({ id }),
+    })
+
+    await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), { params: Promise.resolve({ id }) })
+
+    const published = await deps.repo.findById(id)
+    expect(published?.publishedAt?.toISOString()).toBe(t1.toISOString())
+    expect(published?.lastApprovedAt?.toISOString()).toBe(t1.toISOString())
+
+    // take down + re-approve later
+    await adminUnpublish.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/unpublish', 'POST', { reason: 'policy' }), {
+      params: Promise.resolve({ id }),
+    })
+
+    setSession({ user: { id: 'user-1', isAdmin: false } })
+    await articleIdHandlers.PATCH(jsonReq('http://localhost/api/articles/' + id, 'PATCH', { tags: ['edited'] }), { params: Promise.resolve({ id }) })
+    await submit.POST(jsonReq('http://localhost/api/articles/' + id + '/submit', 'POST'), { params: Promise.resolve({ id }) })
+
+    setNow(t2)
+    setSession({ user: { id: 'admin-1', isAdmin: true } })
+    await adminApprove.POST(jsonReq('http://localhost/api/admin/review/articles/' + id + '/approve', 'POST'), { params: Promise.resolve({ id }) })
+
+    const republished = await deps.repo.findById(id)
+    expect(republished?.publishedAt?.toISOString()).toBe(t1.toISOString())
+    expect(republished?.lastApprovedAt?.toISOString()).toBe(t2.toISOString())
   })
 
   it('disallows manual slug and keeps slug stable on title changes', async () => {

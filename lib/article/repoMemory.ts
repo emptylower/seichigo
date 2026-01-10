@@ -39,6 +39,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
       rejectReason: null,
       needsRevision: false,
       publishedAt: null,
+      lastApprovedAt: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -109,6 +110,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
     if (input.rejectReason !== undefined) existing.rejectReason = input.rejectReason ?? null
     if (input.needsRevision !== undefined) existing.needsRevision = Boolean(input.needsRevision)
     if (input.publishedAt !== undefined) existing.publishedAt = input.publishedAt ?? null
+    if (input.lastApprovedAt !== undefined) existing.lastApprovedAt = input.lastApprovedAt ?? null
 
     existing.updatedAt = this.now()
     this.byId.set(id, { ...existing })

@@ -16,6 +16,7 @@ export type Article = {
   rejectReason: string | null
   needsRevision: boolean
   publishedAt: Date | null
+  lastApprovedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -42,6 +43,7 @@ export type UpdateStateInput = {
   rejectReason?: string | null
   needsRevision?: boolean
   publishedAt?: Date | null
+  lastApprovedAt?: Date | null
 }
 
 export interface ArticleRepo {

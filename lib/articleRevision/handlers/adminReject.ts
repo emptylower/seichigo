@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { reject } from '@/lib/article/workflow'
-import type { ArticleApiDeps } from '@/lib/article/api'
+import { rejectRevision } from '@/lib/articleRevision/workflow'
+import type { ArticleRevisionApiDeps } from '@/lib/articleRevision/api'
 
 const schema = z.object({
   reason: z.string().min(1),
 })
 
-export function createHandlers(deps: ArticleApiDeps) {
+export function createHandlers(deps: ArticleRevisionApiDeps) {
   return {
     async POST(req: Request, ctx: { params?: Promise<{ id: string }> }) {
       const session = await deps.getSession()
@@ -29,13 +29,13 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
-      const existing = await deps.repo.findById(id)
-      if (!existing) {
-        return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+      const revision = await deps.revisionRepo.findById(id)
+      if (!revision) {
+        return NextResponse.json({ error: '未找到更新稿' }, { status: 404 })
       }
 
-      const r = reject(
-        { status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason },
+      const r = rejectRevision(
+        { status: revision.status, authorId: revision.authorId, rejectReason: revision.rejectReason },
         { userId: session.user.id, isAdmin: true },
         parsed.data.reason
       )
@@ -43,12 +43,13 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: r.error.message }, { status: 409 })
       }
 
-      const updated = await deps.repo.updateState(id, { status: 'rejected', rejectReason: parsed.data.reason.trim(), needsRevision: true })
+      const updated = await deps.revisionRepo.updateState(id, { status: 'rejected', rejectReason: parsed.data.reason.trim() })
       if (!updated) {
-        return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+        return NextResponse.json({ error: '未找到更新稿' }, { status: 404 })
       }
 
-      return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, rejectReason: updated.rejectReason } })
+      return NextResponse.json({ ok: true, revision: { id: updated.id, status: updated.status, rejectReason: updated.rejectReason } })
     },
   }
 }
+

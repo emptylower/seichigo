@@ -22,7 +22,9 @@ model User {
   sessions      Session[]
   submissions   Submission[]
   articles      Article[]
+  articleRevisions ArticleRevision[]
   assets        Asset[]
+  favorites     Favorite[]
 }
 
 model Account {
@@ -113,13 +115,56 @@ model Article {
   rejectReason String? @db.Text
   needsRevision Boolean @default(false)
   publishedAt DateTime?
+  lastApprovedAt DateTime?
+  favorites   Favorite[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  revisions ArticleRevision[]
 
   @@index([authorId])
   @@index([status])
+}
+
+model Favorite {
+  userId    String
+  articleId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+}
+
+model ArticleRevision {
+  id          String   @id @default(cuid())
+  articleId   String
+  authorId    String
+  title       String
+  animeIds    String[] @default([])
+  city        String?
+  routeLength String?
+  tags        String[] @default([])
+  cover       String?
+  contentJson Json?
+  contentHtml String   @db.Text @default("")
+  status      String   @default("draft")
+  activeKey   String?
+  rejectReason String? @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([authorId])
+  @@index([status])
+  @@unique([articleId, activeKey])
 }
 
 model Anime {
