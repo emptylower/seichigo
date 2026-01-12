@@ -42,19 +42,37 @@ describe('admin review ui', () => {
   it('renders in_review list for admin (mock API)', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        ok: true,
-        items: [{ id: 'a1', slug: 'hello', title: 'Hello Article', status: 'in_review', updatedAt: '2025-01-01T00:00:00.000Z' }],
-      })
-    )
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      const method = String(init?.method || 'GET').toUpperCase()
+
+      if (url === '/api/admin/review/articles?status=in_review' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          items: [{ id: 'a1', slug: 'hello', title: 'Hello Article', status: 'in_review', updatedAt: '2025-01-01T00:00:00.000Z' }],
+        })
+      }
+
+      if (url === '/api/admin/review/revisions?status=in_review' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          items: [
+            { id: 'r1', articleId: 'a2', authorId: 'user-2', title: 'Updated Article', status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z' },
+          ],
+        })
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 })
+    })
     vi.stubGlobal('fetch', fetchMock as any)
 
     const AdminReviewPage = (await import('@/app/(site)/admin/review/page')).default
     render(await AdminReviewPage())
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
+    expect(await screen.findByText('Updated Article')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles?status=in_review', { method: 'GET' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions?status=in_review', { method: 'GET' })
   })
 
   it('reject requires reason and posts to reject endpoint', async () => {
@@ -206,5 +224,59 @@ describe('admin review ui', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug: 'btr-hello' }),
     })
+  })
+
+  it('supports approving a revision in the same review detail page', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      const method = String(init?.method || 'GET').toUpperCase()
+
+      if (url === '/api/articles/r1' && method === 'GET') {
+        return jsonResponse({ error: 'not found' }, { status: 404 })
+      }
+
+      if (url === '/api/revisions/r1' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          revision: {
+            id: 'r1',
+            articleId: 'a1',
+            authorId: 'user-1',
+            title: 'Updated Article',
+            animeIds: ['btr'],
+            city: null,
+            routeLength: null,
+            tags: [],
+            cover: null,
+            contentJson: null,
+            contentHtml: '<p>Updated Preview</p>',
+            status: 'in_review',
+            rejectReason: null,
+            createdAt: '2025-01-01T00:00:00.000Z',
+            updatedAt: '2025-01-03T00:00:00.000Z',
+          },
+        })
+      }
+
+      if (url === '/api/admin/review/revisions/r1/approve' && method === 'POST') {
+        return jsonResponse({ ok: true, revision: { id: 'r1', status: 'approved' } })
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'r1' }) }))
+
+    expect(await screen.findByText('Updated Article')).toBeInTheDocument()
+    expect(screen.queryByLabelText('slug（必填）')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '同意发布' }))
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions/r1/approve', { method: 'POST' })
+    expect(await screen.findByText('已同意发布。')).toBeInTheDocument()
   })
 })

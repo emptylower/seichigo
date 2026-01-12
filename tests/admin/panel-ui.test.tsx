@@ -53,6 +53,15 @@ describe('admin panel ui', () => {
         })
       }
 
+      if (url === '/api/admin/review/revisions?status=in_review' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          items: [
+            { id: 'r1', articleId: 'a2', authorId: 'user-2', title: 'Updated Article', status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z' },
+          ],
+        })
+      }
+
       if (url === '/api/admin/review/articles?status=published' && method === 'GET') {
         return jsonResponse({
           ok: true,
@@ -68,7 +77,9 @@ describe('admin panel ui', () => {
     render(await AdminPanelPage())
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
+    expect(await screen.findByText('Updated Article')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles?status=in_review', { method: 'GET' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions?status=in_review', { method: 'GET' })
 
     fireEvent.click(screen.getByRole('button', { name: '已发布' }))
 

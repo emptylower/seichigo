@@ -19,16 +19,35 @@ type ArticleDetail = {
   updatedAt: string
 }
 
-type DetailApiResponse =
-  | { ok: true; article: ArticleDetail }
-  | { error: string }
+type RevisionDetail = {
+  id: string
+  articleId: string
+  authorId: string
+  title: string
+  animeIds: string[]
+  city: string | null
+  routeLength: string | null
+  tags: string[]
+  contentHtml: string
+  status: 'draft' | 'in_review' | 'rejected' | 'approved'
+  rejectReason: string | null
+  updatedAt: string
+}
+
+type DetailApiResponse = { ok: true; article: ArticleDetail } | { error: string }
+type RevisionApiResponse = { ok: true; revision: RevisionDetail } | { error: string }
+
+type ReviewDetail =
+  | { kind: 'article'; article: ArticleDetail }
+  | { kind: 'revision'; revision: RevisionDetail }
 
 type ActionApiResponse =
   | { ok: true; article: { id: string; status: string; rejectReason?: string | null; publishedAt?: string | null } }
+  | { ok: true; revision: { id: string; status: string; rejectReason?: string | null } }
   | { error: string }
 
 export default function AdminReviewDetailClient({ id }: { id: string }) {
-  const [article, setArticle] = useState<ArticleDetail | null>(null)
+  const [detail, setDetail] = useState<ReviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [slugDraft, setSlugDraft] = useState('')
@@ -40,22 +59,42 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
 
-  const isInReview = article?.status === 'in_review'
+  const article = detail?.kind === 'article' ? detail.article : null
+  const revision = detail?.kind === 'revision' ? detail.revision : null
 
-  const previewHtml = useMemo(() => article?.contentHtml || '', [article?.contentHtml])
+  const isInReview = article?.status === 'in_review' || revision?.status === 'in_review'
+
+  const previewHtml = useMemo(() => article?.contentHtml || revision?.contentHtml || '', [article?.contentHtml, revision?.contentHtml])
 
   async function load() {
     setLoading(true)
     setError(null)
     const res = await fetch(`/api/articles/${id}`, { method: 'GET' })
     const data = (await res.json().catch(() => ({}))) as DetailApiResponse
-    if (!res.ok || 'error' in data) {
+
+    if (res.ok && !('error' in data)) {
+      setDetail({ kind: 'article', article: data.article })
+      setSlugDraft(data.article.slug || '')
+      setLoading(false)
+      return
+    }
+
+    if (res.status !== 404) {
       setError(('error' in data && data.error) || '加载失败')
       setLoading(false)
       return
     }
-    setArticle(data.article)
-    setSlugDraft(data.article.slug || '')
+
+    const revRes = await fetch(`/api/revisions/${id}`, { method: 'GET' })
+    const revData = (await revRes.json().catch(() => ({}))) as RevisionApiResponse
+    if (!revRes.ok || 'error' in revData) {
+      setError(('error' in revData && revData.error) || '加载失败')
+      setLoading(false)
+      return
+    }
+
+    setDetail({ kind: 'revision', revision: revData.revision })
+    setSlugDraft('')
     setLoading(false)
   }
 
@@ -67,7 +106,8 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     setActionError(null)
     setActionSuccess(null)
     setActionLoading('approve')
-    const res = await fetch(`/api/admin/review/articles/${id}/approve`, { method: 'POST' })
+    const url = detail?.kind === 'revision' ? `/api/admin/review/revisions/${id}/approve` : `/api/admin/review/articles/${id}/approve`
+    const res = await fetch(url, { method: 'POST' })
     const data = (await res.json().catch(() => ({}))) as ActionApiResponse
     setActionLoading(null)
     if (!res.ok || 'error' in data) {
@@ -75,7 +115,17 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
       return
     }
     setActionSuccess('已同意发布。')
-    setArticle((prev) => (prev ? { ...prev, status: 'published', publishedAt: data.article.publishedAt ?? prev.publishedAt } : prev))
+    if ('article' in data) {
+      setDetail((prev) =>
+        prev?.kind === 'article'
+          ? { kind: 'article', article: { ...prev.article, status: 'published', publishedAt: data.article.publishedAt ?? prev.article.publishedAt } }
+          : prev
+      )
+      return
+    }
+    if ('revision' in data) {
+      setDetail((prev) => (prev?.kind === 'revision' ? { kind: 'revision', revision: { ...prev.revision, status: 'approved' } } : prev))
+    }
   }
 
   async function onReject() {
@@ -87,7 +137,8 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
       return
     }
     setActionLoading('reject')
-    const res = await fetch(`/api/admin/review/articles/${id}/reject`, {
+    const url = detail?.kind === 'revision' ? `/api/admin/review/revisions/${id}/reject` : `/api/admin/review/articles/${id}/reject`
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: cleaned }),
@@ -99,19 +150,40 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
       return
     }
     setActionSuccess('已拒绝。')
-    setArticle((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: 'rejected',
-            rejectReason: data.article.rejectReason ?? cleaned,
-            publishedAt: null,
-          }
-        : prev
-    )
+    if ('article' in data) {
+      setDetail((prev) =>
+        prev?.kind === 'article'
+          ? {
+              kind: 'article',
+              article: {
+                ...prev.article,
+                status: 'rejected',
+                rejectReason: data.article.rejectReason ?? cleaned,
+                publishedAt: null,
+              },
+            }
+          : prev
+      )
+      return
+    }
+    if ('revision' in data) {
+      setDetail((prev) =>
+        prev?.kind === 'revision'
+          ? {
+              kind: 'revision',
+              revision: {
+                ...prev.revision,
+                status: 'rejected',
+                rejectReason: data.revision.rejectReason ?? cleaned,
+              },
+            }
+          : prev
+      )
+    }
   }
 
   async function onSaveSlug() {
+    if (detail?.kind !== 'article') return
     const cleaned = slugDraft.trim()
     setSlugError(null)
     setSlugSuccess(null)
@@ -133,7 +205,7 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     }
     const nextSlug = String(data.article?.slug || cleaned)
     setSlugDraft(nextSlug)
-    setArticle((prev) => (prev ? { ...prev, slug: nextSlug } : prev))
+    setDetail((prev) => (prev?.kind === 'article' ? { kind: 'article', article: { ...prev.article, slug: nextSlug } } : prev))
     setSlugSuccess('已更新 slug。')
   }
 
@@ -141,7 +213,7 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold">{article?.title || '审核详情'}</h1>
+          <h1 className="text-2xl font-bold">{article?.title || revision?.title || '审核详情'}</h1>
           <p className="mt-1 text-sm text-gray-600">
             <Link href="/admin/review" className="hover:underline">
               返回待审列表
@@ -161,50 +233,52 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
       {loading ? <div className="text-gray-600">加载中…</div> : null}
       {error ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div> : null}
 
-      {article && !loading && !error ? (
+      {(article || revision) && !loading && !error ? (
         <div className="space-y-6">
           <section className="card space-y-1">
-            <div className="space-y-2">
-              <label htmlFor="article-slug" className="block text-sm font-medium text-gray-700">
-                slug（必填）
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  id="article-slug"
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                  value={slugDraft}
-                  onChange={(e) => setSlugDraft(e.target.value)}
-                  placeholder={article.animeIds?.[0] ? `${article.animeIds[0]}-xxx` : 'your-slug'}
-                  disabled={!isInReview || slugSaving}
-                />
-                <Button onClick={onSaveSlug} disabled={!isInReview || slugSaving}>
-                  {slugSaving ? '保存中…' : '保存 slug'}
-                </Button>
+            {article ? (
+              <div className="space-y-2">
+                <label htmlFor="article-slug" className="block text-sm font-medium text-gray-700">
+                  slug（必填）
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    id="article-slug"
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    value={slugDraft}
+                    onChange={(e) => setSlugDraft(e.target.value)}
+                    placeholder={article.animeIds?.[0] ? `${article.animeIds[0]}-xxx` : 'your-slug'}
+                    disabled={!isInReview || slugSaving}
+                  />
+                  <Button onClick={onSaveSlug} disabled={!isInReview || slugSaving}>
+                    {slugSaving ? '保存中…' : '保存 slug'}
+                  </Button>
+                </div>
+                {article.animeIds?.[0] ? <div className="text-xs text-gray-500">建议格式：{article.animeIds[0]}-xxx（作品前缀 + 文章后缀）</div> : null}
+                {slugError ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{slugError}</div> : null}
+                {slugSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{slugSuccess}</div> : null}
               </div>
-              {article.animeIds?.[0] ? <div className="text-xs text-gray-500">建议格式：{article.animeIds[0]}-xxx（作品前缀 + 文章后缀）</div> : null}
-              {slugError ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{slugError}</div> : null}
-              {slugSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{slugSuccess}</div> : null}
-            </div>
+            ) : null}
             <div className="text-sm text-gray-600">
               <span className="font-medium text-gray-900">状态：</span>
-              <span>{article.status}</span>
+              <span>{article?.status || revision?.status}</span>
             </div>
-            {article.animeIds?.length ? (
+            {(article?.animeIds?.length || revision?.animeIds?.length) ? (
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">作品：</span>
-                <span>{article.animeIds.join('、')}</span>
+                <span>{(article?.animeIds || revision?.animeIds || []).join('、')}</span>
               </div>
             ) : null}
-            {article.city ? (
+            {article?.city || revision?.city ? (
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">城市：</span>
-                <span>{article.city}</span>
+                <span>{article?.city || revision?.city}</span>
               </div>
             ) : null}
-            {article.tags?.length ? (
+            {(article?.tags?.length || revision?.tags?.length) ? (
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">标签：</span>
-                <span>{article.tags.join('、')}</span>
+                <span>{(article?.tags || revision?.tags || []).join('、')}</span>
               </div>
             ) : null}
           </section>
@@ -233,9 +307,9 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
             />
             {actionError ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{actionError}</div> : null}
             {actionSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{actionSuccess}</div> : null}
-            {article.rejectReason ? (
+            {(article?.rejectReason || revision?.rejectReason) ? (
               <div className="text-sm text-gray-600">
-                当前记录的拒绝原因：<span className="text-gray-900">{article.rejectReason}</span>
+                当前记录的拒绝原因：<span className="text-gray-900">{article?.rejectReason || revision?.rejectReason}</span>
               </div>
             ) : null}
           </section>

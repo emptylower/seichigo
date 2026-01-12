@@ -8,15 +8,29 @@ type Tab = 'in_review' | 'published'
 
 type PanelListItem = {
   id: string
-  slug: string
+  slug?: string
   title: string
   status: string
   updatedAt?: string
 }
 
-type ApiResponse =
-  | { ok: true; items: PanelListItem[] }
-  | { error: string }
+type ArticleListResponse = { ok: true; items: PanelListItem[] } | { error: string }
+
+type RevisionListItem = {
+  id: string
+  articleId: string
+  authorId: string
+  title: string
+  status: string
+  updatedAt?: string
+}
+
+type RevisionListResponse = { ok: true; items: RevisionListItem[] } | { error: string }
+
+function toTimeMs(value: string | undefined): number {
+  const ms = value ? Date.parse(value) : NaN
+  return Number.isFinite(ms) ? ms : 0
+}
 
 export default function AdminPanelClient() {
   const [tab, setTab] = useState<Tab>('in_review')
@@ -27,8 +41,47 @@ export default function AdminPanelClient() {
   async function load(nextTab: Tab) {
     setLoading(true)
     setError(null)
+    if (nextTab === 'in_review') {
+      const [articlesRes, revisionsRes] = await Promise.all([
+        fetch('/api/admin/review/articles?status=in_review', { method: 'GET' }),
+        fetch('/api/admin/review/revisions?status=in_review', { method: 'GET' }),
+      ])
+
+      const articlesData = (await articlesRes.json().catch(() => ({}))) as ArticleListResponse
+      const revisionsData = (await revisionsRes.json().catch(() => ({}))) as RevisionListResponse
+
+      if (!articlesRes.ok || 'error' in articlesData) {
+        setError(('error' in articlesData && articlesData.error) || '加载失败')
+        setItems([])
+        setLoading(false)
+        return
+      }
+
+      if (!revisionsRes.ok || 'error' in revisionsData) {
+        setError(('error' in revisionsData && revisionsData.error) || '加载失败')
+        setItems([])
+        setLoading(false)
+        return
+      }
+
+      const revisionItems: PanelListItem[] = (revisionsData.items || []).map((r) => ({
+        id: r.id,
+        title: r.title,
+        status: r.status,
+        updatedAt: r.updatedAt,
+      }))
+
+      const combined: PanelListItem[] = [...(articlesData.items || []), ...revisionItems].sort(
+        (a, b) => toTimeMs(b.updatedAt) - toTimeMs(a.updatedAt)
+      )
+
+      setItems(combined)
+      setLoading(false)
+      return
+    }
+
     const res = await fetch(`/api/admin/review/articles?status=${nextTab}`, { method: 'GET' })
-    const data = (await res.json().catch(() => ({}))) as ApiResponse
+    const data = (await res.json().catch(() => ({}))) as ArticleListResponse
     if (!res.ok || 'error' in data) {
       setError(('error' in data && data.error) || '加载失败')
       setItems([])
@@ -66,10 +119,10 @@ export default function AdminPanelClient() {
         <ul className="space-y-3">
           {items.map((a) => (
             <li key={a.id} className="card">
-              <Link href={`/admin/panel/articles/${a.id}`} className="font-semibold">
+              <Link href={tab === 'in_review' ? `/admin/review/${a.id}` : `/admin/panel/articles/${a.id}`} className="font-semibold">
                 {a.title}
               </Link>
-              <div className="mt-1 text-sm text-gray-600">slug：{a.slug}</div>
+              {a.slug ? <div className="mt-1 text-sm text-gray-600">slug：{a.slug}</div> : null}
             </li>
           ))}
           {!items.length ? <li className="text-gray-500">暂无内容。</li> : null}
@@ -78,4 +131,3 @@ export default function AdminPanelClient() {
     </div>
   )
 }
-
