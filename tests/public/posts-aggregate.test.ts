@@ -191,6 +191,20 @@ describe('public posts aggregation', () => {
     expect(html).toContain('<table')
   })
 
+  it('getPublicPostBySlug: percent-encoded unicode slug resolves DB', async () => {
+    const repo = new InMemoryArticleRepo()
+    const slug = '你的名字-your-name-seichigo-tokyo-shinjuku'
+    const created = await repo.createDraft({ authorId: 'u1', slug, title: 'Your Name' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const encoded = '%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97-your-name-seichigo-tokyo-shinjuku'
+    const found = await getPublicPostBySlug(encoded, 'zh', { mdx, articleRepo: repo })
+
+    expect(found?.source).toBe('db')
+    expect(found && found.source === 'db' ? found.article.slug : null).toBe(slug)
+  })
+
   it('getPublicPostBySlug: slug only in DB(draft/review) -> returns null', async () => {
     const repo = new InMemoryArticleRepo()
     await repo.createDraft({ authorId: 'u1', slug: 'draft-only', title: 'Draft Only' })

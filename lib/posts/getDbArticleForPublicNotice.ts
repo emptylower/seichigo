@@ -1,5 +1,6 @@
 import type { ArticleRepo } from '@/lib/article/repo'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from '@/lib/posts/defaults'
+import { normalizeArticleSlug } from '@/lib/article/slug'
 
 type RepoWithFindBySlug = Pick<ArticleRepo, 'findBySlug'>
 
@@ -21,15 +22,39 @@ function hasFindBySlug(repo: unknown): repo is RepoWithFindBySlug {
   return typeof (repo as any)?.findBySlug === 'function'
 }
 
+function safeDecodeURIComponent(input: string): string {
+  if (!/%[0-9a-fA-F]{2}/.test(input)) return input
+  try {
+    return decodeURIComponent(input)
+  } catch {
+    return input
+  }
+}
+
+function uniqueNonEmpty(list: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of list) {
+    const value = String(item ?? '')
+    if (!value) continue
+    if (seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
+  }
+  return out
+}
+
 export type GetDbArticleForPublicNoticeOptions = {
   articleRepo?: Pick<ArticleRepo, 'findById'> | PublicArticleRepo
 }
 
 export async function getDbArticleForPublicNotice(postKey: string, options?: GetDbArticleForPublicNoticeOptions) {
-  const target = postKey.trim()
-  if (!target) return null
+  const raw = String(postKey ?? '')
+  const decoded = safeDecodeURIComponent(raw)
+  const trimmed = decoded.trim()
+  if (!trimmed) return null
 
-  const id = extractArticleIdFromPostKey(target)
+  const id = extractArticleIdFromPostKey(trimmed)
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
   if (!repo) return null
 
@@ -39,7 +64,10 @@ export async function getDbArticleForPublicNotice(postKey: string, options?: Get
   }
 
   if (hasFindBySlug(repo)) {
-    return await repo.findBySlug(target).catch(() => null)
+    for (const candidate of uniqueNonEmpty([decoded, trimmed, normalizeArticleSlug(decoded)])) {
+      const found = await repo.findBySlug(candidate).catch(() => null)
+      if (found) return found
+    }
   }
 
   return null

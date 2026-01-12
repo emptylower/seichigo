@@ -24,5 +24,13 @@ describe('getDbArticleForPublicNotice', () => {
     const found = await getDbArticleForPublicNotice(`${created.id}-anything`, { articleRepo: repo })
     expect(found?.id).toBe(created.id)
   })
-})
 
+  it('decodes percent-encoded unicode slug', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: '你的名字-your-name-seichigo-tokyo-shinjuku', title: 'Your Name' })
+    await repo.updateState(created.id, { status: 'rejected', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const found = await getDbArticleForPublicNotice('%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97-your-name-seichigo-tokyo-shinjuku', { articleRepo: repo })
+    expect(found?.id).toBe(created.id)
+  })
+})

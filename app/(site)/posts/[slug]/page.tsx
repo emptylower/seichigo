@@ -27,6 +27,19 @@ function getSiteOrigin(): string {
   return String(process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 }
 
+function safeDecodeURIComponent(input: string): string {
+  if (!/%[0-9a-fA-F]{2}/.test(input)) return input
+  try {
+    return decodeURIComponent(input)
+  } catch {
+    return input
+  }
+}
+
+function encodeSlugForPath(slug: string): string {
+  return encodeURIComponent(slug)
+}
+
 export async function generateStaticParams() {
   const posts = await getAllPosts('zh')
   return posts.map((p) => ({ slug: p.slug }))
@@ -62,13 +75,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title,
     description,
     alternates: {
-      canonical: `/posts/${frontmatter.slug}`,
+      canonical: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
     },
     openGraph: {
       type: 'article',
       title,
       description,
-      url: `/posts/${frontmatter.slug}`,
+      url: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
     },
   }
 }
@@ -118,8 +131,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   if (found.source === 'db') {
     const canonical = found.article.slug
-    if (slug !== canonical) {
-      permanentRedirect(`/posts/${canonical}`)
+    const requestedKey = safeDecodeURIComponent(String(slug || '')).trim()
+    if (requestedKey !== canonical) {
+      permanentRedirect(`/posts/${encodeSlugForPath(canonical)}`)
     }
   }
 
@@ -147,7 +161,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   const giscusTerm = found.source === 'db' ? found.article.id : found.post.frontmatter.slug
   const canonicalSlug = found.source === 'mdx' ? found.post.frontmatter.slug : found.article.slug
-  const canonicalUrl = `${getSiteOrigin()}/posts/${canonicalSlug}`
+  const canonicalUrl = `${getSiteOrigin()}/posts/${encodeSlugForPath(canonicalSlug)}`
   const seoTitle = found.source === 'mdx' ? String((found.post.frontmatter as any).seoTitle || title) : title
   const description =
     found.source === 'mdx'
