@@ -86,9 +86,6 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
       if (existing.authorId !== actor.userId) {
         return NextResponse.json({ error: '无权限' }, { status: 403 })
       }
-      if (actor.isAdmin) {
-        return NextResponse.json({ error: '无权限' }, { status: 403 })
-      }
       if (!canEditRevision({ status: existing.status, authorId: existing.authorId, rejectReason: existing.rejectReason }, actor)) {
         return NextResponse.json({ error: '当前状态不可编辑' }, { status: 409 })
       }
@@ -123,4 +120,3 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
     },
   }
 }
-

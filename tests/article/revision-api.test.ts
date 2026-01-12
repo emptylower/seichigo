@@ -131,6 +131,13 @@ describe('article revision api', () => {
     const patched = await patchRes.json()
     expect(patched.revision.title).toBe('Hello v2')
 
+    // author who is also admin can still patch
+    setSession({ user: { id: 'user-1', isAdmin: true } })
+    const patchResAdminAuthor = await revision.PATCH(jsonReq('http://localhost/api/revisions/' + revisionId, 'PATCH', { title: 'Hello v2 admin' }), {
+      params: Promise.resolve({ id: revisionId }),
+    })
+    expect(patchResAdminAuthor.status).toBe(200)
+
     const submitRes = await submit.POST(jsonReq('http://localhost/api/revisions/' + revisionId + '/submit', 'POST'), { params: Promise.resolve({ id: revisionId }) })
     expect(submitRes.status).toBe(200)
 
