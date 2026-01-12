@@ -11,6 +11,8 @@ export default async function Header() {
   } catch (e) {
     console.warn('Auth unavailable (is DATABASE_URL configured?)')
   }
+  const userLabel = String(session?.user?.name || session?.user?.email || '用户').trim() || '用户'
+  const avatarLetter = userLabel.slice(0, 1).toUpperCase()
   return (
     <header className="border-b border-pink-100 bg-white/70 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
@@ -32,7 +34,22 @@ export default async function Header() {
           <Link href="/submit" className="hover:text-brand-600">投稿</Link>
           {session?.user?.isAdmin ? <Link href="/admin/panel" className="hover:text-brand-600">管理员面板</Link> : null}
           {session?.user ? (
-            <a href="/api/auth/signout" className="rounded-md border px-2 py-1 text-gray-600 hover:bg-gray-50">退出</a>
+            <details className="relative">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border px-2 py-1 text-gray-700 hover:bg-gray-50">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pink-100 text-xs font-semibold text-pink-700">
+                  {avatarLetter}
+                </span>
+                <span className="max-w-28 truncate">{userLabel}</span>
+              </summary>
+              <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                <a href="/me/favorites" className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  我的收藏
+                </a>
+                <a href="/api/auth/signout" className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  退出
+                </a>
+              </div>
+            </details>
           ) : (
             <Link href="/auth/signin" className="btn-primary">登录</Link>
           )}

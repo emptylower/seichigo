@@ -194,6 +194,85 @@ a {
   color: #374151; /* gray-700 */
 }
 
+/* Seichi route embed */
+.seichi-route {
+  @apply my-6 rounded-xl border border-pink-100 bg-pink-50/60 p-4 shadow-sm;
+}
+
+.seichi-route__map {
+  @apply flex justify-center;
+}
+
+.seichi-route__svg {
+  @apply h-auto w-full max-w-sm;
+}
+
+.seichi-route__list {
+  @apply mt-4 overflow-x-auto;
+}
+
+.seichi-route__table {
+  @apply w-full border-collapse text-sm;
+}
+
+.seichi-route__table th,
+.seichi-route__table td {
+  @apply border-b border-pink-100 px-3 py-2 align-top;
+}
+
+.seichi-route__table th {
+  @apply bg-white/60 text-left font-semibold text-gray-700;
+}
+
+.seichi-route__table td:first-child {
+  @apply whitespace-nowrap text-gray-500;
+}
+
+/* Seichi route editor node */
+.seichi-route-node__toolbar {
+  @apply mb-2 flex items-center gap-2;
+}
+
+.seichi-route-node__btn {
+  @apply rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.seichi-route-node__btn--primary {
+  @apply border-brand-500 bg-brand-500 text-white hover:bg-brand-600;
+}
+
+.seichi-route-node__preview {
+  @apply cursor-pointer;
+}
+
+.seichi-route-node__modal {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4;
+}
+
+.seichi-route-node__modal-card {
+  @apply w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-4 shadow-xl;
+}
+
+.seichi-route-node__modal-title {
+  @apply text-sm font-semibold text-gray-900;
+}
+
+.seichi-route-node__textarea {
+  @apply mt-3 h-64 w-full rounded-md border border-gray-200 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-brand-400;
+}
+
+.seichi-route-node__error {
+  @apply mt-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700;
+}
+
+.seichi-route-node__hint {
+  @apply mt-2 text-xs text-gray-500;
+}
+
+.seichi-route-node__modal-actions {
+  @apply mt-3 flex justify-end gap-2;
+}
+
 /* Rich text typography (Notion/Feishu-ish) */
 :where(.ProseMirror, .prose) h1 {
   font-size: 1.875rem; /* text-3xl */

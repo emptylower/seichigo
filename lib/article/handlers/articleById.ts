@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { ArticleSlugExistsError } from '@/lib/article/repo'
 import { canEdit, type Actor } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
+import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
 
 const patchSchema = z
   .object({
@@ -46,6 +47,8 @@ function hasMeaningfulEdit(
 }
 
 function toDetail(a: any, sanitizeHtml: (html: string) => string) {
+  const sanitized = sanitizeHtml(String(a.contentHtml || ''))
+  const rendered = renderRichTextEmbeds(sanitized, a.contentJson)
   return {
     id: a.id,
     authorId: a.authorId,
@@ -57,7 +60,7 @@ function toDetail(a: any, sanitizeHtml: (html: string) => string) {
     tags: a.tags,
     cover: a.cover ?? null,
     contentJson: a.contentJson,
-    contentHtml: sanitizeHtml(String(a.contentHtml || '')),
+    contentHtml: rendered,
     status: a.status,
     rejectReason: a.rejectReason,
     publishedAt: a.publishedAt,

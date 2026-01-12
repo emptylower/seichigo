@@ -101,6 +101,15 @@ describe('richtext sanitize', () => {
     expect(out).toContain('<pre><code>const x = 1;</code></pre>')
   })
 
+  it('preserves seichi-route placeholder with safe attributes', () => {
+    const html = '<p>hi</p><seichi-route data-id="r1" onclick="alert(1)"></seichi-route>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('<p>hi</p>')
+    expect(out).toContain('<seichi-route data-id="r1"></seichi-route>')
+    expect(out).not.toContain('onclick')
+    expect(out).not.toContain('alert(1)')
+  })
+
   it('allows external images via http(s)', () => {
     const httpsOut = sanitizeRichTextHtml('<img src="https://example.com/a.jpg" alt="a" />')
     expect(httpsOut).toContain('src="https://example.com/a.jpg"')

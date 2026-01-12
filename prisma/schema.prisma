@@ -25,6 +25,7 @@ model User {
   articleRevisions ArticleRevision[]
   assets        Asset[]
   favorites     Favorite[]
+  mdxFavorites  MdxFavorite[]
 }
 
 model Account {
@@ -138,6 +139,17 @@ model Favorite {
   @@id([userId, articleId])
   @@index([userId])
   @@index([articleId])
+}
+
+model MdxFavorite {
+  userId    String
+  slug      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, slug])
+  @@index([userId])
 }
 
 model ArticleRevision {

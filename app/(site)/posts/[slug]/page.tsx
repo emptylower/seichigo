@@ -5,6 +5,7 @@ import { getAnimeById } from '@/lib/anime/getAllAnime'
 import PostMeta from '@/components/blog/PostMeta'
 import GiscusComments from '@/components/GiscusComments'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
+import FavoriteButton from '@/components/content/FavoriteButton'
 import type { Metadata } from 'next'
 import { permanentRedirect } from 'next/navigation'
 
@@ -83,6 +84,38 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     return <div className="text-gray-500">文章未找到。</div>
   }
 
+  const favoritesEnabled = Boolean(process.env.DATABASE_URL)
+  let session: any = null
+  let initialFavorited = false
+  if (favoritesEnabled) {
+    try {
+      const { getServerAuthSession } = await import('@/lib/auth/session')
+      session = await getServerAuthSession()
+    } catch {
+      session = null
+    }
+    if (session?.user?.id) {
+      try {
+        const { prisma } = await import('@/lib/db/prisma')
+        if (found.source === 'db') {
+          const hit = await prisma.favorite.findUnique({
+            where: { userId_articleId: { userId: session.user.id, articleId: found.article.id } },
+            select: { userId: true },
+          })
+          initialFavorited = Boolean(hit)
+        } else {
+          const hit = await (prisma as any).mdxFavorite.findUnique({
+            where: { userId_slug: { userId: session.user.id, slug: found.post.frontmatter.slug } },
+            select: { userId: true },
+          })
+          initialFavorited = Boolean(hit)
+        }
+      } catch {
+        initialFavorited = false
+      }
+    }
+  }
+
   if (found.source === 'db') {
     const canonical = found.article.slug
     if (slug !== canonical) {
@@ -155,6 +188,15 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       <article className="prose prose-pink max-w-none" data-seichi-article-content="true">
         <h1>{title}</h1>
         <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
+        {favoritesEnabled ? (
+          <div className="not-prose mt-3 flex justify-end">
+            <FavoriteButton
+              target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
+              initialFavorited={initialFavorited}
+              loggedIn={Boolean(session?.user?.id)}
+            />
+          </div>
+        ) : null}
         <div className="mt-6" />
         {found.source === 'mdx' ? (
           found.post.content

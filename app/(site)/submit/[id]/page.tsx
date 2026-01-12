@@ -2,6 +2,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SubmitEditClient from './ui'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
+import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
 
 export const metadata = { title: '编辑文章' }
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,9 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
     return <div className="text-gray-600">无权限访问该文章。</div>
   }
 
+  const sanitized = sanitizeRichTextHtml(article.contentHtml || '')
+  const rendered = renderRichTextEmbeds(sanitized, article.contentJson)
+
   return (
     <SubmitEditClient
       initial={{
@@ -40,7 +44,7 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
         tags: article.tags,
         cover: article.cover,
         contentJson: article.contentJson,
-        contentHtml: sanitizeRichTextHtml(article.contentHtml || ''),
+        contentHtml: rendered,
         status: article.status as any,
         rejectReason: article.rejectReason,
         updatedAt: article.updatedAt.toISOString(),

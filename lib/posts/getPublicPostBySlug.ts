@@ -5,6 +5,7 @@ import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
 import type { PublicPost } from './types'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 import { generateSlugFromTitle, isFallbackHashSlug } from '@/lib/article/slug'
+import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
 
 type MdxProvider = {
   getPostBySlug: (slug: string, language: string) => Promise<Post | null>
@@ -53,14 +54,18 @@ export async function getPublicPostBySlug(
   if (id && 'findById' in repo) {
     const found = await repo.findById(id).catch(() => null)
     if (found && found.status === 'published') {
-      return { source: 'db', article: { ...found, contentHtml: sanitizeRichTextHtml(found.contentHtml || '', { imageMode: 'progressive' }) } }
+      const sanitized = sanitizeRichTextHtml(found.contentHtml || '', { imageMode: 'progressive' })
+      const contentHtml = renderRichTextEmbeds(sanitized, (found as any).contentJson)
+      return { source: 'db', article: { ...found, contentHtml } }
     }
   }
 
   const article = await repo.findBySlug(target).catch(() => null)
   if (article) {
     if (article.status !== 'published') return null
-    return { source: 'db', article: { ...article, contentHtml: sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' }) } }
+    const sanitized = sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' })
+    const contentHtml = renderRichTextEmbeds(sanitized, (article as any).contentJson)
+    return { source: 'db', article: { ...article, contentHtml } }
   }
 
   // Legacy support: resolve old fallback hash slug (post-<sha1>) by scanning published articles.
@@ -73,7 +78,9 @@ export async function getPublicPostBySlug(
       const legacy = generateSlugFromTitle(title, new Date('2025-01-01T00:00:00.000Z'))
       if (legacy !== target) continue
       if (a?.status !== 'published') continue
-      return { source: 'db', article: { ...a, contentHtml: sanitizeRichTextHtml(a.contentHtml || '', { imageMode: 'progressive' }) } }
+      const sanitized = sanitizeRichTextHtml(a.contentHtml || '', { imageMode: 'progressive' })
+      const contentHtml = renderRichTextEmbeds(sanitized, (a as any).contentJson)
+      return { source: 'db', article: { ...a, contentHtml } }
     }
   }
 

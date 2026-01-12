@@ -10,6 +10,7 @@ import { TextBackground } from '@/components/editor/extensions/TextBackground'
 import { TextColor } from '@/components/editor/extensions/TextColor'
 import { FigureImage } from '@/components/editor/extensions/FigureImage'
 import { InlineCode } from '@/components/editor/extensions/InlineCode'
+import { SeichiRoute } from '@/components/editor/extensions/SeichiRoute'
 
 export type RichTextValue = {
   json: unknown | null
@@ -428,6 +429,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
         TextColor,
         TextBackground,
         FigureImage,
+        SeichiRoute,
         BlockLayout,
         Placeholder.configure({
           placeholder: '开始写作…',
@@ -1024,6 +1026,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                       <div className="my-1 h-px bg-gray-100" />
                       <BlockDropdownItem icon="链" label="链接…" active={editor.isActive('link')} onClick={openLinkEditor} />
                       {editor.isActive('link') ? <BlockDropdownItem icon="链" label="移除链接" onClick={unsetLink} /> : null}
+                      <BlockDropdownItem icon="路" label="插入路线图/清单…" onClick={() => editor.chain().focus().insertSeichiRoute().run()} />
                       <BlockDropdownItem
                         icon="图"
                         label={uploading ? '上传中…' : '插入图片…'}

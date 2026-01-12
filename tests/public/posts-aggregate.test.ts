@@ -164,6 +164,33 @@ describe('public posts aggregation', () => {
     expect(html).toContain('src="/assets/abc123?w=32&amp;q=20"')
   })
 
+  it('getPublicPostBySlug: renders seichi-route embed for DB content', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({
+      authorId: 'u1',
+      slug: 'db-route',
+      title: 'DB Route',
+      contentHtml: '<p>hi</p><seichi-route data-id="r1"></seichi-route>',
+      contentJson: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'seichiRoute', attrs: { id: 'r1', data: { version: 1, spots: [{ name_zh: 'A' }, { name_zh: 'B' }] } } },
+        ],
+      },
+    })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug('db-route', 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+
+    const html = found && found.source === 'db' ? found.article.contentHtml : ''
+    expect(html).not.toContain('<seichi-route')
+    expect(html).toContain('<svg')
+    expect(html).toContain('<table')
+  })
+
   it('getPublicPostBySlug: slug only in DB(draft/review) -> returns null', async () => {
     const repo = new InMemoryArticleRepo()
     await repo.createDraft({ authorId: 'u1', slug: 'draft-only', title: 'Draft Only' })
