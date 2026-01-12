@@ -23,7 +23,7 @@ describe('editor seichiRoute block', () => {
 
     await waitFor(() => {
       expect(container.querySelector('.seichi-route')).toBeTruthy()
-      expect(container.querySelector('.seichi-route svg')).toBeTruthy()
+      expect(container.querySelector('.seichi-route img, .seichi-route svg')).toBeTruthy()
       expect(container.querySelector('.seichi-route table')).toBeTruthy()
     })
   })
@@ -62,4 +62,3 @@ describe('editor seichiRoute block', () => {
     })
   })
 })
-

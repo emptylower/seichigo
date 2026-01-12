@@ -95,8 +95,9 @@ function SeichiRouteView({ node, editor, getPos, updateAttributes, selected }: N
     setJsonError(null)
   }
 
-  function handlePreviewClick() {
+  function handlePreviewClick(e: React.MouseEvent) {
     if (!editor?.isEditable) return
+    e.preventDefault()
     const pos = typeof getPos === 'function' ? getPos() : null
     if (typeof pos === 'number') {
       editor.chain().focus(undefined, { scrollIntoView: false }).setNodeSelection(pos).run()

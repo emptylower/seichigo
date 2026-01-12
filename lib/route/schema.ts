@@ -8,6 +8,8 @@ export type SeichiRouteSpotV1 = {
   nearestStation_ja?: string
   animeScene?: string
   googleMapsUrl?: string
+  lat?: number
+  lng?: number
   photoTip?: string
   note?: string
 }
@@ -31,6 +33,44 @@ const spotSchema: z.ZodType<SeichiRouteSpotV1> = z
     nearestStation_ja: z.string().optional(),
     animeScene: z.string().optional(),
     googleMapsUrl: z.string().optional(),
+    lat: z
+      .preprocess(
+        (v) => {
+          if (typeof v === 'string') {
+            const trimmed = v.trim()
+            if (!trimmed) return undefined
+            const n = Number(trimmed)
+            return Number.isFinite(n) ? n : v
+          }
+          return v
+        },
+        z
+          .number()
+          .finite()
+          .min(-90, { message: 'lat 必须在 -90 ~ 90' })
+          .max(90, { message: 'lat 必须在 -90 ~ 90' })
+          .optional()
+      )
+      .optional(),
+    lng: z
+      .preprocess(
+        (v) => {
+          if (typeof v === 'string') {
+            const trimmed = v.trim()
+            if (!trimmed) return undefined
+            const n = Number(trimmed)
+            return Number.isFinite(n) ? n : v
+          }
+          return v
+        },
+        z
+          .number()
+          .finite()
+          .min(-180, { message: 'lng 必须在 -180 ~ 180' })
+          .max(180, { message: 'lng 必须在 -180 ~ 180' })
+          .optional()
+      )
+      .optional(),
     photoTip: z.string().optional(),
     note: z.string().optional(),
   })
@@ -50,6 +90,12 @@ function normalizeOptionalString(input: unknown): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
+function normalizeOptionalNumber(input: unknown): number | undefined {
+  if (typeof input !== 'number') return undefined
+  if (!Number.isFinite(input)) return undefined
+  return input
+}
+
 function normalizeSpot(input: SeichiRouteSpotV1): SeichiRouteSpotV1 {
   return {
     name: normalizeOptionalString(input.name),
@@ -59,6 +105,8 @@ function normalizeSpot(input: SeichiRouteSpotV1): SeichiRouteSpotV1 {
     nearestStation_ja: normalizeOptionalString(input.nearestStation_ja),
     animeScene: normalizeOptionalString(input.animeScene),
     googleMapsUrl: normalizeOptionalString(input.googleMapsUrl),
+    lat: normalizeOptionalNumber(input.lat),
+    lng: normalizeOptionalNumber(input.lng),
     photoTip: normalizeOptionalString(input.photoTip),
     note: normalizeOptionalString(input.note),
   }
@@ -74,4 +122,3 @@ export function parseSeichiRouteEmbedV1(input: unknown): ParseSeichiRouteEmbedRe
   const spots = parsed.data.spots.map(normalizeSpot)
   return { ok: true, value: { version: 1, title, spots } }
 }
-

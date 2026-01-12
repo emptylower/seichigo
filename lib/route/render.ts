@@ -1,4 +1,5 @@
 import type { SeichiRouteEmbedV1, SeichiRouteSpotV1 } from './schema'
+import { buildGoogleMapsDirectionsUrls, buildGoogleStaticMapUrl, extractLatLngFromGoogleMapsUrl, type LatLng } from './google'
 
 function escapeHtml(input: string): string {
   return input
@@ -78,6 +79,77 @@ export function renderRouteMapSvg(spots: SeichiRouteSpotV1[]): string {
   )
 }
 
+function getGoogleStaticMapApiKey(): string | null {
+  const key =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.GOOGLE_MAPS_STATIC_API_KEY ||
+    ''
+  const trimmed = String(key || '').trim()
+  return trimmed ? trimmed : null
+}
+
+function formatLatLng(p: LatLng): string {
+  return `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`
+}
+
+function resolveSpotLatLng(spot: SeichiRouteSpotV1): LatLng | null {
+  if (typeof spot.lat === 'number' && typeof spot.lng === 'number') {
+    return { lat: spot.lat, lng: spot.lng }
+  }
+  const fromUrl = extractLatLngFromGoogleMapsUrl(String(spot.googleMapsUrl || ''))
+  return fromUrl
+}
+
+function renderRouteMapCard(spots: SeichiRouteSpotV1[]): string {
+  const points = spots.map(resolveSpotLatLng)
+  const resolved = points.filter((p): p is LatLng => Boolean(p))
+  const apiKey = getGoogleStaticMapApiKey()
+
+  if (!apiKey || resolved.length < 1) {
+    return renderRouteMapSvg(spots)
+  }
+
+  const staticMapUrl = buildGoogleStaticMapUrl(resolved, { apiKey, width: 640, height: 360, scale: 2 })
+  if (!staticMapUrl) return renderRouteMapSvg(spots)
+
+  const allHaveCoords = points.length === resolved.length
+  const routeUrls = allHaveCoords && resolved.length >= 2 ? buildGoogleMapsDirectionsUrls(resolved) : []
+
+  const primaryHref =
+    routeUrls[0] ||
+    sanitizeHttpUrl(spots.find((s) => typeof s.googleMapsUrl === 'string' && s.googleMapsUrl.trim())?.googleMapsUrl) ||
+    (resolved[0] ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formatLatLng(resolved[0]))}` : null)
+
+  const img =
+    `<img class="seichi-route__map-img" src="${escapeAttr(staticMapUrl)}" alt="路线地图预览" loading="lazy" decoding="async">`
+
+  const primaryLink = primaryHref
+    ? `<a class="seichi-route__map-primary" href="${escapeAttr(primaryHref)}" target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开"></a>`
+    : ''
+
+  const segments =
+    routeUrls.length > 1
+      ? `<div class="seichi-route__map-segments" aria-label="路线分段链接">` +
+        routeUrls
+          .map((u, i) => {
+            const label = `路线 ${i + 1}/${routeUrls.length}`
+            return `<a class="seichi-route__map-segment" href="${escapeAttr(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
+          })
+          .join('') +
+        `</div>`
+      : ''
+
+  return (
+    `<div class="seichi-route__map-card">` +
+    img +
+    primaryLink +
+    `<div class="seichi-route__map-cta" aria-hidden="true">在 Google 地图打开</div>` +
+    segments +
+    `</div>`
+  )
+}
+
 function renderRouteTable(spots: SeichiRouteSpotV1[]): string {
   const header =
     '<thead><tr>' +
@@ -108,11 +180,11 @@ function renderRouteTable(spots: SeichiRouteSpotV1[]): string {
 
 export function renderSeichiRouteEmbedHtml(route: SeichiRouteEmbedV1, options?: { id?: string }): string {
   const idAttr = options?.id ? ` data-id="${escapeAttr(options.id)}"` : ''
-  const svg = renderRouteMapSvg(route.spots)
+  const map = renderRouteMapCard(route.spots)
   const table = renderRouteTable(route.spots)
   return (
     `<section class="seichi-route"${idAttr}>` +
-    `<div class="seichi-route__map">${svg}</div>` +
+    `<div class="seichi-route__map">${map}</div>` +
     `<div class="seichi-route__list">${table}</div>` +
     `</section>`
   )
