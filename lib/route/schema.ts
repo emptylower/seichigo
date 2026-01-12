@@ -24,7 +24,7 @@ export type ParseSeichiRouteEmbedResult =
   | { ok: true; value: SeichiRouteEmbedV1 }
   | { ok: false; error: string }
 
-const spotSchema: z.ZodType<SeichiRouteSpotV1> = z
+const spotSchema: z.ZodType<SeichiRouteSpotV1, z.ZodTypeDef, unknown> = z
   .object({
     name: z.string().optional(),
     name_zh: z.string().optional(),
@@ -76,7 +76,7 @@ const spotSchema: z.ZodType<SeichiRouteSpotV1> = z
   })
   .passthrough()
 
-const routeSchema: z.ZodType<SeichiRouteEmbedV1> = z
+const routeSchema: z.ZodType<SeichiRouteEmbedV1, z.ZodTypeDef, unknown> = z
   .object({
     version: z.literal(1),
     title: z.string().optional(),
