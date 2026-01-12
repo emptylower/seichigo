@@ -176,4 +176,51 @@ describe('submit/new article composer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(screen.getByText('已保存')).toBeInTheDocument()
   })
+
+  it('starts revision from published article', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, revision: { id: 'r1' } }))
+
+    render(<ArticleComposerClient initial={{ ...baseInitial, status: 'published' as const }} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '发起更新' }))
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/articles/a1/revision', { method: 'POST' })
+    expect(replaceMock).toHaveBeenCalledWith('/submit/revisions/r1')
+  })
+})
+
+describe('revision composer', () => {
+  beforeEach(() => {
+    fetchMock.mockReset()
+    replaceMock.mockReset()
+    refreshMock.mockReset()
+    ;(globalThis as any).fetch = fetchMock
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllTimers()
+  })
+
+  it('auto-saves to revision endpoint', async () => {
+    vi.useFakeTimers()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+
+    render(<ArticleComposerClient initial={baseInitial as any} mode="revision" />)
+
+    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(801)
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as any[]
+    expect(url).toBe('/api/revisions/a1')
+    expect(init?.method).toBe('PATCH')
+  })
 })

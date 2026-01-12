@@ -7,6 +7,7 @@ import RichTextEditor, { type RichTextValue } from '@/components/editor/RichText
 import CoverField from './CoverField'
 
 type ArticleStatus = 'draft' | 'in_review' | 'rejected' | 'published'
+type ComposerMode = 'article' | 'revision'
 
 export type ArticleComposerInitial = {
   id: string
@@ -18,7 +19,7 @@ export type ArticleComposerInitial = {
   cover: string | null
   contentJson: any | null
   contentHtml: string
-  status: ArticleStatus
+  status: ArticleStatus | 'approved'
   rejectReason: string | null
   updatedAt: string
 }
@@ -27,6 +28,7 @@ type AnimeOption = { id: string; name?: string | null }
 
 type Props = {
   initial: ArticleComposerInitial | null
+  mode?: ComposerMode
 }
 
 type SaveState = 'idle' | 'creating' | 'saving' | 'saved' | 'error'
@@ -46,10 +48,11 @@ function countPlainText(html: string): number {
   return collapsed.length
 }
 
-function formatStatus(status: ArticleStatus) {
+function formatStatus(status: ArticleStatus | 'approved') {
   if (status === 'draft') return '草稿'
   if (status === 'rejected') return '被拒'
   if (status === 'in_review') return '审核中'
+  if (status === 'approved') return '已通过'
   return '已发布'
 }
 
@@ -57,11 +60,11 @@ function normalizeAnimeOption(a: any): AnimeOption {
   return { id: String(a?.id || '').trim(), name: a?.name ?? null }
 }
 
-export default function ArticleComposerClient({ initial }: Props) {
+export default function ArticleComposerClient({ initial, mode = 'article' }: Props) {
   const router = useRouter()
 
   const [id, setId] = useState<string | null>(initial?.id ?? null)
-  const [status, setStatus] = useState<ArticleStatus>(initial?.status ?? 'draft')
+  const [status, setStatus] = useState<ArticleStatus | 'approved'>(initial?.status ?? 'draft')
   const [rejectReason, setRejectReason] = useState<string | null>(initial?.rejectReason ?? null)
 
   const [title, setTitle] = useState(initial?.title ?? '未命名')
@@ -74,6 +77,7 @@ export default function ArticleComposerClient({ initial }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const editable = status === 'draft' || status === 'rejected'
+  const apiBase = mode === 'revision' ? '/api/revisions' : '/api/articles'
 
   const payload = useMemo(() => {
     return {
@@ -144,7 +148,7 @@ export default function ArticleComposerClient({ initial }: Props) {
     saveAbort.current = controller
     const timeout = window.setTimeout(() => controller.abort(), 15_000)
     try {
-      const res = await fetch(`/api/articles/${id}`, {
+      const res = await fetch(`${apiBase}/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: snapshot,
@@ -253,6 +257,7 @@ export default function ArticleComposerClient({ initial }: Props) {
 
   // Lazy create draft when body has any content
   useEffect(() => {
+    if (mode !== 'article') return
     if (initial) return
     if (id) return
     if (!editable) return
@@ -338,6 +343,7 @@ export default function ArticleComposerClient({ initial }: Props) {
   const [submitLoading, setSubmitLoading] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
+  const [reviseLoading, setReviseLoading] = useState(false)
 
   async function loadAnimeOptions(q: string) {
     setAnimeLoading(true)
@@ -428,7 +434,7 @@ export default function ArticleComposerClient({ initial }: Props) {
     }
 
     setSubmitLoading(true)
-    const patchRes = await fetch(`/api/articles/${id}`, {
+    const patchRes = await fetch(`${apiBase}/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -445,7 +451,7 @@ export default function ArticleComposerClient({ initial }: Props) {
       return
     }
 
-    const res = await fetch(`/api/articles/${id}/submit`, { method: 'POST' })
+    const res = await fetch(`${apiBase}/${id}/submit`, { method: 'POST' })
     setSubmitLoading(false)
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
@@ -464,7 +470,7 @@ export default function ArticleComposerClient({ initial }: Props) {
     if (!id) return
     setFlash(null)
     setSaveError(null)
-    const res = await fetch(`/api/articles/${id}/withdraw`, { method: 'POST' })
+    const res = await fetch(`${apiBase}/${id}/withdraw`, { method: 'POST' })
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
       setSaveError(j.error || '撤回失败')
@@ -474,6 +480,29 @@ export default function ArticleComposerClient({ initial }: Props) {
     setFlash('已撤回到草稿')
     setStatus('draft')
     router.refresh()
+  }
+
+  async function startRevision() {
+    if (mode !== 'article') return
+    if (!id) return
+    setFlash(null)
+    setSaveError(null)
+    setReviseLoading(true)
+    const res = await fetch(`/api/articles/${id}/revision`, { method: 'POST' })
+    setReviseLoading(false)
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok || !j?.ok) {
+      setSaveError(j.error || '发起更新失败')
+      setSaveState('error')
+      return
+    }
+    const revisionId = j?.revision?.id ? String(j.revision.id) : ''
+    if (!revisionId) {
+      setSaveError('发起更新失败（响应异常）')
+      setSaveState('error')
+      return
+    }
+    router.replace(`/submit/revisions/${revisionId}`)
   }
 
   return (
@@ -530,7 +559,7 @@ export default function ArticleComposerClient({ initial }: Props) {
           {editable ? (
             <span>提示：写作内容会自动保存；提交审核时再填写作品/标签等发布信息。</span>
           ) : (
-            <span>当前状态不可编辑。</span>
+            <span>{mode === 'article' && status === 'published' ? '已发布文章不可直接编辑，可发起更新后重新提交审核。' : '当前状态不可编辑。'}</span>
           )}
         </div>
 
@@ -538,6 +567,11 @@ export default function ArticleComposerClient({ initial }: Props) {
           {status === 'in_review' ? (
             <Button type="button" variant="ghost" onClick={withdraw} disabled={saveState === 'creating'}>
               撤回
+            </Button>
+          ) : null}
+          {mode === 'article' && status === 'published' ? (
+            <Button type="button" onClick={startRevision} disabled={!id || reviseLoading}>
+              {reviseLoading ? '处理中…' : '发起更新'}
             </Button>
           ) : null}
           {editable ? (
@@ -635,6 +669,7 @@ export default function ArticleComposerClient({ initial }: Props) {
                 {id ? (
                   <CoverField
                     articleId={id}
+                    apiBase={apiBase}
                     value={cover}
                     onChange={setCover}
                     onBusyChange={setCoverBusy}

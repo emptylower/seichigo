@@ -7,6 +7,7 @@ type UploadResult = { id: string; url: string } | { error: string }
 
 type Props = {
   articleId: string
+  apiBase?: string
   value: string | null
   disabled?: boolean
   onChange: (next: string | null) => void
@@ -139,7 +140,7 @@ function isImageFile(file: File | null): file is File {
   return Boolean(file && file.type && file.type.startsWith('image/'))
 }
 
-export default function CoverField({ articleId, value, disabled, onChange, onBusyChange }: Props) {
+export default function CoverField({ articleId, apiBase, value, disabled, onChange, onBusyChange }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const [error, setError] = useState<string | null>(null)
@@ -209,7 +210,8 @@ export default function CoverField({ articleId, value, disabled, onChange, onBus
   }, [cropPreviewUrl])
 
   async function patchCover(next: string | null) {
-    const res = await fetch(`/api/articles/${articleId}`, {
+    const base = String(apiBase || '/api/articles').replace(/\/$/, '')
+    const res = await fetch(`${base}/${articleId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cover: next }),

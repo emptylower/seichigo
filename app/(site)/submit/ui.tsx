@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Button from '@/components/shared/Button'
 
 type User = { id: string; email?: string | null }
@@ -19,7 +20,7 @@ type Props = {
 }
 
 type Filter = 'all' | 'draftbox' | 'in_review' | 'published'
-type Action = 'submit' | 'withdraw' | 'delete'
+type Action = 'submit' | 'withdraw' | 'delete' | 'revise'
 
 function formatStatus(status: ArticleListItem['status']) {
   if (status === 'draft') return '草稿'
@@ -44,6 +45,7 @@ function formatDateTime(input: string) {
 }
 
 export default function SubmitCenterClient({ user }: Props) {
+  const router = useRouter()
   const [items, setItems] = useState<ArticleListItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -125,6 +127,25 @@ export default function SubmitCenterClient({ user }: Props) {
     }
     setFlash('已删除')
     await load()
+  }
+
+  async function startRevision(articleId: string) {
+    setFlash(null)
+    setError(null)
+    setActionLoading((m) => ({ ...m, [articleId]: 'revise' }))
+    const res = await fetch(`/api/articles/${articleId}/revision`, { method: 'POST' })
+    setActionLoading((m) => ({ ...m, [articleId]: null }))
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok || !j?.ok) {
+      setError(j.error || '发起更新失败')
+      return
+    }
+    const revisionId = j?.revision?.id ? String(j.revision.id) : ''
+    if (!revisionId) {
+      setError('发起更新失败（响应异常）')
+      return
+    }
+    router.push(`/submit/revisions/${revisionId}`)
   }
 
   if (!user) {
@@ -214,6 +235,11 @@ export default function SubmitCenterClient({ user }: Props) {
                 {a.status === 'in_review' ? (
                   <Button type="button" variant="ghost" disabled={actionLoading[a.id] != null} onClick={() => withdraw(a.id)}>
                     {actionLoading[a.id] === 'withdraw' ? '撤回中…' : '撤回'}
+                  </Button>
+                ) : null}
+                {a.status === 'published' ? (
+                  <Button type="button" disabled={actionLoading[a.id] != null} onClick={() => startRevision(a.id)}>
+                    {actionLoading[a.id] === 'revise' ? '处理中…' : '发起更新'}
                   </Button>
                 ) : null}
               </div>
