@@ -818,6 +818,18 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
       const flipX = Boolean((activeImage.node?.attrs as any)?.flipX)
       const flipY = Boolean((activeImage.node?.attrs as any)?.flipY)
       const cropEditing = Boolean((activeImage.node?.attrs as any)?.cropEditing)
+      const widthPct = (() => {
+        const n = Number((activeImage.node?.attrs as any)?.widthPct ?? 100)
+        if (!Number.isFinite(n)) return 100
+        return Math.max(10, Math.min(100, Math.round(n)))
+      })()
+
+      const setWidthPct = (next: number) => {
+        const v = Math.max(10, Math.min(100, Math.round(next)))
+        const chain = editor.chain().focus().updateAttributes('figureImage', { widthPct: v })
+        if (activeImage.pos != null) chain.setNodeSelection(pos)
+        chain.run()
+      }
 
       return (
         <div
@@ -853,6 +865,30 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
               onClick={() => editor.chain().focus().setBlockAlign('right').run()}
             >
               右
+            </button>
+          </div>
+
+          <Divider />
+
+          <div className="flex items-center gap-1">
+            <span className="px-2 py-1 text-xs tabular-nums text-gray-500" aria-label={`图片宽度 ${widthPct}%`}>
+              {widthPct}%
+            </span>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="设置图片宽度 50%"
+              onClick={() => setWidthPct(50)}
+            >
+              50%
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="设置图片宽度 100%"
+              onClick={() => setWidthPct(100)}
+            >
+              100%
             </button>
           </div>
 

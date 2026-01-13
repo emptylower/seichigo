@@ -91,4 +91,30 @@ describe('editor image transform tools', () => {
       expect(String(last?.html || '')).toContain('data-figure-image-container="true"')
     })
   })
+
+  it('sets image width via preset buttons', async () => {
+    const onChange = vi.fn()
+    const initialHtml = '<figure><img src="/assets/abc123" alt="x" /><figcaption></figcaption></figure><p></p>'
+    const { container } = render(
+      <RichTextEditor initialValue={{ json: null, html: initialHtml }} value={{ json: null, html: initialHtml }} onChange={onChange} />
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector('img')).toBeTruthy()
+    })
+
+    fireEvent.mouseDown(container.querySelector('img') as Element)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-image-toolbar]')).toBeTruthy()
+      expect(container.querySelector('[aria-label="设置图片宽度 50%"]')).toBeTruthy()
+    })
+
+    fireEvent.click(container.querySelector('[aria-label="设置图片宽度 50%"]') as Element)
+    await waitFor(() => {
+      const last = onChange.mock.calls.at(-1)?.[0]
+      expect(String(last?.html || '')).toContain('data-width-pct="50"')
+      expect(String(last?.html || '')).toMatch(/<figure[^>]*style="[^"]*width:\s*50%/i)
+    })
+  })
 })

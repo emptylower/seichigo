@@ -49,11 +49,31 @@ a {
   margin: 0.75rem 0;
 }
 
+:where(.prose) {
+  --seichi-inline-figure-gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  :where(.prose) {
+    --seichi-inline-figure-gap: 0.5rem;
+  }
+}
+
 :where(.prose) figure[data-figure-image="true"] {
   display: inline-block;
   vertical-align: top;
   max-width: 100%;
-  margin: 0.75rem 0.75rem 0.75rem 0;
+  margin: 0.75rem var(--seichi-inline-figure-gap) 0.75rem 0;
+}
+
+:where(.prose) figure[data-figure-image="true"][data-width-pct]:not([data-width-pct="100"]):not([data-align="center"]):not([data-align="right"]) {
+  width: max(0px, calc(var(--seichi-width-pct, 100) * 1% - var(--seichi-inline-figure-gap))) !important;
+}
+
+:where(.prose) figure[data-figure-image="true"][data-width-pct="100"] {
+  display: block;
+  width: 100% !important;
+  margin-right: 0;
 }
 
 :where(.prose) figure[data-figure-image="true"][data-align="center"],

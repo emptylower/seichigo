@@ -406,7 +406,7 @@ function sanitizeAnchorHref(href?: string): string | null {
 export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTextOptions): string {
   if (!inputHtml) return ''
 
-  return sanitizeHtml(inputHtml, {
+  const sanitized = sanitizeHtml(inputHtml, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
     allowedSchemes: ['http', 'https', 'mailto'],
@@ -442,11 +442,16 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
 
         next['data-figure-image'] = 'true'
 
-        const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
-        if (widthPct) next['data-width-pct'] = widthPct
-
-        const style = sanitizeContainerStyle(attribs.style) || (widthPct ? `width:${widthPct}%` : null)
-        if (style) next.style = style
+        const widthPctFromAttr = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
+        const widthPctFromStyle = (() => {
+          const style = sanitizeContainerStyle(attribs.style)
+          if (!style) return null
+          const m = /\bwidth\s*:\s*(\d+)%/i.exec(style)
+          return m ? String(Math.max(10, Math.min(100, Number(m[1])))) : null
+        })()
+        const widthPct = widthPctFromAttr || widthPctFromStyle || '100'
+        next['data-width-pct'] = widthPct
+        next.style = `--seichi-width-pct:${widthPct};width:${widthPct}%`
 
         return { tagName, attribs: next }
       },
@@ -544,6 +549,10 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
       },
     },
   })
+
+  // Remove whitespace text nodes between adjacent figure blocks so inline-block figure images
+  // don't create an extra "space gap" that can unexpectedly force wrapping on narrow screens.
+  return sanitized.replace(/<\/figure>\s+<figure\b/gi, '</figure><figure')
 }
 
 function rewriteAssetImageSrc(
