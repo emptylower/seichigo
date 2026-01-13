@@ -877,8 +877,19 @@ export const FigureImage = Node.create({
           }
         }
 
+        if (widthPct >= 100) {
+          return {
+            style: ['width:100%', 'display:inline-block', 'vertical-align:top', `margin:${marginY} 0`].join(';'),
+          }
+        }
+
         return {
-          style: [`width:${widthPct}%`, 'display:inline-block', 'vertical-align:top', `margin:${marginY} ${gutter} ${marginY} 0`].join(';'),
+          style: [
+            `width:max(0px, calc(${widthPct}% - ${gutter}))`,
+            'display:inline-block',
+            'vertical-align:top',
+            `margin:${marginY} ${gutter} ${marginY} 0`,
+          ].join(';'),
         }
       },
     })
