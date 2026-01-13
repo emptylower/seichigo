@@ -3,9 +3,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
+const pushMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock, replace: pushMock, refresh: vi.fn() }),
+  redirect: (_url: string) => {},
 }))
 
 vi.mock('next/link', () => ({
@@ -27,6 +33,7 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
 describe('admin review ui', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
+    pushMock.mockReset()
     vi.unstubAllGlobals()
   })
 

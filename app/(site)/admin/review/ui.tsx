@@ -33,6 +33,20 @@ export default function AdminReviewListClient() {
   const [items, setItems] = useState<ReviewListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      const msg = window.sessionStorage?.getItem('seichigo.adminReview.flash') || ''
+      if (!msg) return
+      window.sessionStorage?.removeItem('seichigo.adminReview.flash')
+      setFlash(msg)
+      const t = window.setTimeout(() => setFlash(null), 2500)
+      return () => window.clearTimeout(t)
+    } catch {
+      return
+    }
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -83,6 +97,7 @@ export default function AdminReviewListClient() {
         <p className="mt-1 text-sm text-gray-600">仅展示状态为 in_review 的稿件（投稿/更新）。</p>
       </div>
 
+      {flash ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{flash}</div> : null}
       {loading ? <div className="text-gray-600">加载中…</div> : null}
       {error ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div> : null}
 

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
 
@@ -47,6 +48,7 @@ type ActionApiResponse =
   | { error: string }
 
 export default function AdminReviewDetailClient({ id }: { id: string }) {
+  const router = useRouter()
   const [detail, setDetail] = useState<ReviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -115,6 +117,10 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
       return
     }
     setActionSuccess('已同意发布。')
+    try {
+      window.sessionStorage?.setItem('seichigo.adminReview.flash', '已同意发布。')
+    } catch {}
+    router.push('/admin/review')
     if ('article' in data) {
       setDetail((prev) =>
         prev?.kind === 'article'
