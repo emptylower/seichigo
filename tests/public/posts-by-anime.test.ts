@@ -40,5 +40,15 @@ describe('getPostsByAnimeId', () => {
     const list = await getPostsByAnimeId('btr', 'zh', { mdx, articleRepo: repo })
     expect(list.map((x) => x.path)).toEqual(['/posts/db-1', '/posts/mdx-1', '/posts/db-2'])
   })
-})
 
+  it('decodes percent-encoded unicode anime id', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'db-1', title: 'DB 1', animeIds: ['你的名字'] as any })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider({ all: [] })
+    const encoded = '%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97'
+    const list = await getPostsByAnimeId(encoded, 'zh', { mdx, articleRepo: repo })
+    expect(list.map((x) => x.path)).toEqual(['/posts/db-1'])
+  })
+})
