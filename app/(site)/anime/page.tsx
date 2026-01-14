@@ -1,8 +1,13 @@
 import Link from 'next/link'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '作品索引' }
+export const metadata: Metadata = {
+  title: '作品索引',
+  description: '按作品浏览已发布的圣地巡礼路线与文章。',
+  alternates: { canonical: '/anime' },
+}
 export const dynamic = 'force-dynamic'
 
 export default async function AnimeIndexPage() {

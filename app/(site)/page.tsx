@@ -5,6 +5,13 @@ import BookShelf from '@/components/bookstore/BookShelf'
 import Image from 'next/image'
 import Link from 'next/link'
 import BookCover from '@/components/bookstore/BookCover'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: { absolute: 'SeichiGo — 动漫圣地巡礼攻略' },
+  description: '用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划。',
+  alternates: { canonical: '/' },
+}
 
 export const dynamic = 'force-dynamic'
 

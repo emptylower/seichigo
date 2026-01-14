@@ -1,8 +1,13 @@
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import ChangePasswordForm from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '修改密码' }
+export const metadata: Metadata = {
+  title: '修改密码',
+  description: '修改账号密码。',
+  alternates: { canonical: '/auth/change-password' },
+}
 
 export default async function ChangePasswordPage() {
   const session = await getServerAuthSession()

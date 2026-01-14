@@ -1,7 +1,12 @@
 import { getServerAuthSession } from '@/lib/auth/session'
 import FavoritesClient from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '我的收藏' }
+export const metadata: Metadata = {
+  title: '我的收藏',
+  description: '查看你收藏的路线与文章（需要登录）。',
+  alternates: { canonical: '/me/favorites' },
+}
 export const dynamic = 'force-dynamic'
 
 export default async function FavoritesPage() {
@@ -28,4 +33,3 @@ export default async function FavoritesPage() {
 
   return <FavoritesClient />
 }
-

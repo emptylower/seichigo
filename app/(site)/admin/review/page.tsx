@@ -1,8 +1,13 @@
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import AdminReviewListClient from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '审核' }
+export const metadata: Metadata = {
+  title: '审核',
+  description: '管理员审核投稿文章。',
+  alternates: { canonical: '/admin/review' },
+}
 
 export default async function AdminReviewPage() {
   const session = await getServerAuthSession()
@@ -12,4 +17,3 @@ export default async function AdminReviewPage() {
   }
   return <AdminReviewListClient />
 }
-

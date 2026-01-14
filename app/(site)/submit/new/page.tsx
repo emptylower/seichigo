@@ -1,7 +1,12 @@
 import { getServerAuthSession } from '@/lib/auth/session'
 import ArticleComposerClient from '../_components/ArticleComposerClient'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '新建文章' }
+export const metadata: Metadata = {
+  title: '新建文章',
+  description: '创建一篇新的圣地巡礼攻略文章。',
+  alternates: { canonical: '/submit/new' },
+}
 export const dynamic = 'force-dynamic'
 
 export default async function NewArticlePage() {

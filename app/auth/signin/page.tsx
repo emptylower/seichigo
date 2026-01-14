@@ -1,7 +1,12 @@
 import { Suspense } from 'react'
 import SignInClient from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '登录' }
+export const metadata: Metadata = {
+  title: '登录',
+  description: '使用邮箱验证码或密码登录 SeichiGo。',
+  alternates: { canonical: '/auth/signin' },
+}
 
 export default function SignInPage() {
   return (

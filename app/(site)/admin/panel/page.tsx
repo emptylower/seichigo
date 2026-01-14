@@ -1,8 +1,13 @@
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import AdminPanelClient from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '管理员面板' }
+export const metadata: Metadata = {
+  title: '管理员面板',
+  description: '管理员后台：内容与数据管理。',
+  alternates: { canonical: '/admin/panel' },
+}
 
 export default async function AdminPanelPage() {
   const session = await getServerAuthSession()
@@ -12,4 +17,3 @@ export default async function AdminPanelPage() {
   }
   return <AdminPanelClient />
 }
-

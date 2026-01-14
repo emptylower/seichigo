@@ -2,8 +2,13 @@ import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SetPasswordClient from './ui'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '设置密码' }
+export const metadata: Metadata = {
+  title: '设置密码',
+  description: '为你的账号设置密码，便于后续登录。',
+  alternates: { canonical: '/auth/set-password' },
+}
 
 export default async function SetPasswordPage() {
   const session = await getServerAuthSession()
@@ -21,4 +26,3 @@ export default async function SetPasswordPage() {
 
   return <SetPasswordClient email={session.user.email} />
 }
-

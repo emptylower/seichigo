@@ -3,9 +3,33 @@ import { prisma } from '@/lib/db/prisma'
 import SubmitEditClient from './ui'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
+import type { Metadata } from 'next'
 
-export const metadata = { title: '编辑文章' }
 export const dynamic = 'force-dynamic'
+
+function safeDecodeURIComponent(input: string): string {
+  if (!/%[0-9a-fA-F]{2}/.test(input)) return input
+  try {
+    return decodeURIComponent(input)
+  } catch {
+    return input
+  }
+}
+
+function encodeIdForPath(id: string): string {
+  return encodeURIComponent(id)
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const decoded = safeDecodeURIComponent(String(id || '')).trim()
+  const canonicalId = decoded || String(id || '')
+  return {
+    title: '编辑文章',
+    description: '编辑你的文章草稿并提交审核。',
+    alternates: { canonical: `/submit/${encodeIdForPath(canonicalId)}` },
+  }
+}
 
 export default async function SubmitEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
