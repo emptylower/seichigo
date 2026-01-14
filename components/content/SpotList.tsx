@@ -1,5 +1,6 @@
 "use client"
 import React from 'react'
+import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 
 export type Spot = {
   id?: string
@@ -12,6 +13,8 @@ export type Spot = {
   nearestStation_ja?: string
   animeScene?: string
   googleMapsUrl?: string
+  lat?: number
+  lng?: number
   photoTip?: string
   etiquette?: string
   tags?: string[]
@@ -31,12 +34,19 @@ export default function SpotList({ spots }: { spots: Spot[] }) {
             const label = nameZh || fallback || `Spot ${s.order}`
             const nameJa = typeof s.name_ja === 'string' && s.name_ja.trim() ? s.name_ja.trim() : ''
             const fullName = nameJa ? `${label}（${nameJa}）` : label
-            const anchor = `#spot-${s.order}`
+            const coords =
+              typeof s.lat === 'number' && Number.isFinite(s.lat) && typeof s.lng === 'number' && Number.isFinite(s.lng)
+                ? { lat: s.lat, lng: s.lng }
+                : extractLatLngFromGoogleMapsUrl(String(s.googleMapsUrl || ''))
             return {
               '@type': 'ListItem',
               position: s.order,
-              name: fullName,
-              url: s.googleMapsUrl || anchor,
+              item: {
+                '@type': 'Place',
+                name: fullName,
+                ...(coords ? { geo: { '@type': 'GeoCoordinates', latitude: coords.lat, longitude: coords.lng } } : {}),
+                ...(s.googleMapsUrl ? { url: s.googleMapsUrl } : {}),
+              },
             }
           }),
         }

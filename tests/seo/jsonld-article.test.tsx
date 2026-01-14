@@ -26,7 +26,7 @@ describe('post json-ld', () => {
     getDbArticleForPublicNoticeMock.mockReset()
   })
 
-  it('renders Article JSON-LD once', async () => {
+  it('renders BlogPosting JSON-LD once', async () => {
     getPublicPostBySlugMock.mockResolvedValueOnce({
       source: 'mdx',
       post: {
@@ -60,8 +60,10 @@ describe('post json-ld', () => {
       })
       .filter(Boolean) as any[]
 
-    const articles = parsed.filter((x) => x['@type'] === 'Article')
-    expect(articles).toHaveLength(1)
+    const posts = parsed.filter((x) => x['@type'] === 'BlogPosting')
+    expect(posts).toHaveLength(1)
+
+    const breadcrumbs = parsed.filter((x) => x['@type'] === 'BreadcrumbList')
+    expect(breadcrumbs).toHaveLength(1)
   })
 })
-

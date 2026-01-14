@@ -2,6 +2,8 @@ import { getAllPosts } from '@/lib/mdx/getAllPosts'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNotice'
 import { getAnimeById } from '@/lib/anime/getAllAnime'
+import { extractSeichiRouteEmbedsFromTipTapJson } from '@/lib/route/extract'
+import { buildBlogPostingJsonLd, buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
 import PostMeta from '@/components/blog/PostMeta'
 import GiscusComments from '@/components/GiscusComments'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
@@ -25,6 +27,17 @@ function extractTextExcerptFromHtml(html: string, maxLen: number = 160): string 
 
 function getSiteOrigin(): string {
   return String(process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+}
+
+function toAbsoluteUrl(input: string | null | undefined, base: string): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+  if (raw.startsWith('//')) return null
+  try {
+    return new URL(raw, base).toString()
+  } catch {
+    return null
+  }
 }
 
 function safeDecodeURIComponent(input: string): string {
@@ -161,7 +174,8 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   const giscusTerm = found.source === 'db' ? found.article.id : found.post.frontmatter.slug
   const canonicalSlug = found.source === 'mdx' ? found.post.frontmatter.slug : found.article.slug
-  const canonicalUrl = `${getSiteOrigin()}/posts/${encodeSlugForPath(canonicalSlug)}`
+  const siteOrigin = getSiteOrigin()
+  const canonicalUrl = `${siteOrigin}/posts/${encodeSlugForPath(canonicalSlug)}`
   const seoTitle = found.source === 'mdx' ? String((found.post.frontmatter as any).seoTitle || title) : title
   const description =
     found.source === 'mdx'
@@ -181,24 +195,58 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         ? new Date(found.post.frontmatter.updatedDate).toISOString()
         : datePublished
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Article',
-    headline: seoTitle,
+  const coverUrl = found.source === 'db' ? toAbsoluteUrl(found.article.cover, siteOrigin) : null
+
+  const tags =
+    found.source === 'mdx'
+      ? (Array.isArray(found.post.frontmatter.tags) ? found.post.frontmatter.tags : [])
+      : (Array.isArray(found.article.tags) ? found.article.tags : [])
+
+  const keywords = [...anime.map((a) => a.label), city, ...tags].map((x) => String(x || '').trim()).filter(Boolean)
+
+  const blogPostingJsonLd = buildBlogPostingJsonLd({
+    url: canonicalUrl,
+    title: seoTitle,
     description,
+    siteName: 'SeichiGo',
+    siteUrl: siteOrigin,
+    imageUrl: coverUrl,
     datePublished,
     dateModified,
-    url: canonicalUrl,
-    mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
+    inLanguage: 'zh',
+    keywords,
     about: [
-      ...anime.map((a) => ({ '@type': 'CreativeWork', name: a.label })),
-      ...(city ? [{ '@type': 'Place', name: city }] : []),
+      ...anime.map((a) => ({ type: 'CreativeWork' as const, name: a.label })),
+      ...(city ? [{ type: 'Place' as const, name: city }] : []),
     ],
-  }
+  })
+
+  const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
+    { name: '首页', url: `${siteOrigin}/` },
+    { name: '作品', url: `${siteOrigin}/anime` },
+    { name: seoTitle, url: canonicalUrl },
+  ])
+
+  const routeEmbeds =
+    found.source === 'db'
+      ? extractSeichiRouteEmbedsFromTipTapJson(found.article.contentJson)
+      : []
+
+  const routeItemLists = routeEmbeds
+    .map((r) => buildRouteItemListJsonLd(r.route.spots, { name: r.route.title || '路线点位' }))
+    .filter(Boolean)
+
+  const jsonLds = [blogPostingJsonLd, breadcrumbJsonLd, ...routeItemLists].filter(Boolean) as any[]
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {jsonLds.map((obj, idx) => (
+        <script
+          key={`${String(obj['@type'] || 'jsonld')}-${idx}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
+        />
+      ))}
       <article className="prose prose-pink max-w-none" data-seichi-article-content="true">
         <h1>{title}</h1>
         <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
