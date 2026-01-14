@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 
+export const runtime = 'nodejs'
 export const revalidate = 0
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
