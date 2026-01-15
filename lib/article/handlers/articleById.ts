@@ -8,6 +8,8 @@ import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
 const patchSchema = z
   .object({
     title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }).optional(),
+    seoTitle: z.string().max(120).nullable().optional(),
+    description: z.string().max(320).nullable().optional(),
     animeIds: z.array(z.string()).optional(),
     city: z.string().nullable().optional(),
     routeLength: z.string().nullable().optional(),
@@ -34,9 +36,21 @@ function arrayShallowEqual(a: unknown, b: unknown): boolean {
 
 function hasMeaningfulEdit(
   existing: any,
-  update: { title?: string; contentHtml?: string; animeIds?: unknown; city?: unknown; routeLength?: unknown; tags?: unknown; cover?: unknown }
+  update: {
+    title?: string
+    seoTitle?: string | null
+    description?: string | null
+    contentHtml?: string
+    animeIds?: unknown
+    city?: unknown
+    routeLength?: unknown
+    tags?: unknown
+    cover?: unknown
+  }
 ): boolean {
   if (update.title !== undefined && update.title !== existing.title) return true
+  if (update.seoTitle !== undefined && update.seoTitle !== existing.seoTitle) return true
+  if (update.description !== undefined && update.description !== existing.description) return true
   if (update.contentHtml !== undefined && update.contentHtml !== existing.contentHtml) return true
   if (update.animeIds !== undefined && !arrayShallowEqual(update.animeIds, existing.animeIds)) return true
   if (update.tags !== undefined && !arrayShallowEqual(update.tags, existing.tags)) return true
@@ -54,6 +68,8 @@ function toDetail(a: any, sanitizeHtml: (html: string) => string) {
     authorId: a.authorId,
     slug: a.slug,
     title: a.title,
+    seoTitle: a.seoTitle ?? null,
+    description: a.description ?? null,
     animeIds: a.animeIds,
     city: a.city,
     routeLength: a.routeLength,
@@ -138,6 +154,18 @@ export function createHandlers(deps: ArticleApiDeps) {
         updateInput.title = nextTitle
       }
 
+      const nextSeoTitle =
+        parsed.data.seoTitle !== undefined ? (parsed.data.seoTitle == null ? null : parsed.data.seoTitle.trim() || null) : undefined
+      if (nextSeoTitle !== undefined) {
+        updateInput.seoTitle = nextSeoTitle
+      }
+
+      const nextDescription =
+        parsed.data.description !== undefined ? (parsed.data.description == null ? null : parsed.data.description.trim() || null) : undefined
+      if (nextDescription !== undefined) {
+        updateInput.description = nextDescription
+      }
+
       const nextCover = parsed.data.cover !== undefined ? (parsed.data.cover == null ? null : parsed.data.cover.trim() || null) : undefined
       if (nextCover !== undefined) {
         updateInput.cover = nextCover
@@ -145,6 +173,8 @@ export function createHandlers(deps: ArticleApiDeps) {
 
       const edited = hasMeaningfulEdit(existing, {
         title: nextTitle,
+        seoTitle: nextSeoTitle,
+        description: nextDescription,
         contentHtml: updateInput.contentHtml,
         animeIds: parsed.data.animeIds,
         city: parsed.data.city,

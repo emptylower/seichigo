@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next'
+import { getSiteOrigin } from '@/lib/seo/site'
 
 export default function robots(): MetadataRoute.Robots {
-  const base = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+  const base = getSiteOrigin()
   return {
     rules: {
       userAgent: '*',

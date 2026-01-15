@@ -56,6 +56,8 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
       articleId: article.id,
       authorId: article.authorId,
       title: article.title,
+      seoTitle: article.seoTitle ?? null,
+      description: article.description ?? null,
       animeIds: Array.isArray(article.animeIds) ? [...article.animeIds] : [],
       city: article.city ?? null,
       routeLength: article.routeLength ?? null,
@@ -91,6 +93,8 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
     if (!existing) return null
 
     if (input.title != null) existing.title = input.title
+    if (input.seoTitle !== undefined) existing.seoTitle = input.seoTitle ?? null
+    if (input.description !== undefined) existing.description = input.description ?? null
     if (input.animeIds !== undefined) existing.animeIds = input.animeIds ?? []
     if (input.city !== undefined) existing.city = input.city ?? null
     if (input.routeLength !== undefined) existing.routeLength = input.routeLength ?? null
@@ -129,4 +133,3 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
     return this.byId.get(id) ?? null
   }
 }
-

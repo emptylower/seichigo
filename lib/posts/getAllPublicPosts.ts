@@ -30,6 +30,7 @@ function normalizeMdx(post: PostFrontmatter, fallbackAnimeId: string): PublicPos
     tags: post.tags || [],
     cover: null,
     publishDate: post.publishDate,
+    updatedAt: post.updatedDate || post.publishDate,
   }
 }
 
@@ -39,6 +40,12 @@ function normalizeDb(article: any): PublicPostListItem {
       ? article.publishedAt.toISOString()
       : typeof article?.publishedAt === 'string'
         ? article.publishedAt
+        : undefined
+  const updatedAtIso =
+    article?.updatedAt instanceof Date
+      ? article.updatedAt.toISOString()
+      : typeof article?.updatedAt === 'string'
+        ? article.updatedAt
         : undefined
 
   return {
@@ -52,6 +59,7 @@ function normalizeDb(article: any): PublicPostListItem {
     cover: article?.cover ?? null,
     publishDate: publishedAtIso ? publishedAtIso.slice(0, 10) : undefined,
     publishedAt: publishedAtIso,
+    updatedAt: updatedAtIso,
   }
 }
 

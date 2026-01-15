@@ -14,4 +14,5 @@ export type PublicPostListItem = {
   cover?: string | null
   publishDate?: string
   publishedAt?: string
+  updatedAt?: string
 }

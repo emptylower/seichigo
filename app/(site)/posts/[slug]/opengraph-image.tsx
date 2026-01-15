@@ -8,7 +8,12 @@ export const contentType = 'image/png'
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const found = await getPublicPostBySlug(slug, 'zh')
-  const title = found?.source === 'mdx' ? found.post.frontmatter.title : found?.source === 'db' ? found.article.title : 'SeichiGo'
+  const title =
+    found?.source === 'mdx'
+      ? found.post.frontmatter.seoTitle || found.post.frontmatter.title
+      : found?.source === 'db'
+        ? found.article.seoTitle || found.article.title
+        : 'SeichiGo'
   const subtitle =
     found?.source === 'mdx'
       ? [found.post.frontmatter.animeId, found.post.frontmatter.city].filter(Boolean).join(' · ')

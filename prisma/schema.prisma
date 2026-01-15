@@ -105,6 +105,8 @@ model Article {
   authorId    String
   slug        String   @unique
   title       String
+  seoTitle    String?  @db.Text
+  description String?  @db.Text
   animeIds    String[] @default([])
   city        String?
   routeLength String?
@@ -157,6 +159,8 @@ model ArticleRevision {
   articleId   String
   authorId    String
   title       String
+  seoTitle    String?  @db.Text
+  description String?  @db.Text
   animeIds    String[] @default([])
   city        String?
   routeLength String?

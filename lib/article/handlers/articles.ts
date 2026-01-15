@@ -7,6 +7,8 @@ import { generateSlugFromTitle } from '@/lib/article/slug'
 
 const createSchema = z.object({
   title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }),
+  seoTitle: z.string().max(120).nullable().optional(),
+  description: z.string().max(320).nullable().optional(),
   animeIds: z.array(z.string()).optional(),
   city: z.string().nullable().optional(),
   routeLength: z.string().nullable().optional(),
@@ -25,6 +27,8 @@ function toListItem(a: any) {
     id: a.id,
     slug: a.slug,
     title: a.title,
+    seoTitle: a.seoTitle ?? null,
+    description: a.description ?? null,
     animeIds: a.animeIds,
     city: a.city,
     routeLength: a.routeLength,
@@ -56,6 +60,8 @@ export function createHandlers(deps: ArticleApiDeps) {
 
       const baseSlug = generateSlugFromTitle(parsed.data.title, deps.now())
       const contentHtml = parsed.data.contentHtml ? deps.sanitizeHtml(parsed.data.contentHtml) : ''
+      const seoTitle = parsed.data.seoTitle == null ? null : parsed.data.seoTitle.trim() || null
+      const description = parsed.data.description == null ? null : parsed.data.description.trim() || null
 
       const maxAttempts = 20
       for (let i = 0; i < maxAttempts; i++) {
@@ -66,6 +72,8 @@ export function createHandlers(deps: ArticleApiDeps) {
             authorId: session.user.id,
             slug: candidate,
             title: parsed.data.title,
+            seoTitle,
+            description,
             animeIds: parsed.data.animeIds,
             city: parsed.data.city,
             routeLength: parsed.data.routeLength,

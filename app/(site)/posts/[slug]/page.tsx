@@ -4,12 +4,14 @@ import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNo
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { extractSeichiRouteEmbedsFromTipTapJson } from '@/lib/route/extract'
 import { buildBlogPostingJsonLd, buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
+import { getSiteOrigin } from '@/lib/seo/site'
 import PostMeta from '@/components/blog/PostMeta'
 import GiscusComments from '@/components/GiscusComments'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import type { Metadata } from 'next'
-import { permanentRedirect } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,10 +25,6 @@ function extractTextExcerptFromHtml(html: string, maxLen: number = 160): string 
   if (!collapsed) return ''
   if (collapsed.length <= maxLen) return collapsed
   return `${collapsed.slice(0, maxLen - 1).trimEnd()}…`
-}
-
-function getSiteOrigin(): string {
-  return String(process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 }
 
 function toAbsoluteUrl(input: string | null | undefined, base: string): string | null {
@@ -53,6 +51,10 @@ function encodeSlugForPath(slug: string): string {
   return encodeURIComponent(slug)
 }
 
+function encodeAnimeIdForPath(id: string): string {
+  return encodeURIComponent(id)
+}
+
 export async function generateStaticParams() {
   const posts = await getAllPosts('zh')
   return posts.map((p) => ({ slug: p.slug }))
@@ -64,15 +66,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)
     if (article && article.status !== 'published' && article.publishedAt) {
-      return { title: '文章已下架' }
+      return { title: '文章已下架', robots: { index: false, follow: false } }
     }
-    return { title: '未找到文章' }
+    return { title: '未找到文章', robots: { index: false, follow: false } }
   }
   const frontmatter =
     found.source === 'mdx'
       ? found.post.frontmatter
       : {
           title: found.article.title,
+          seoTitle: found.article.seoTitle ?? undefined,
+          description: found.article.description ?? undefined,
           slug: found.article.slug,
           animeId: found.article.animeIds?.[0] || 'unknown',
           city: found.article.city || '',
@@ -96,6 +100,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description,
       url: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
     },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
   }
 }
 
@@ -105,9 +114,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)
     if (article && article.status !== 'published' && article.publishedAt) {
-      return <div className="text-gray-500">文章已下架。</div>
+      return notFound()
     }
-    return <div className="text-gray-500">文章未找到。</div>
+    return notFound()
   }
 
   const favoritesEnabled = Boolean(process.env.DATABASE_URL)
@@ -176,11 +185,16 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   const canonicalSlug = found.source === 'mdx' ? found.post.frontmatter.slug : found.article.slug
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/posts/${encodeSlugForPath(canonicalSlug)}`
-  const seoTitle = found.source === 'mdx' ? String((found.post.frontmatter as any).seoTitle || title) : title
+  const seoTitle =
+    found.source === 'mdx'
+      ? String((found.post.frontmatter as any).seoTitle || title)
+      : String(found.article.seoTitle || title)
   const description =
     found.source === 'mdx'
       ? String((found.post.frontmatter as any).description || '').trim()
-      : extractTextExcerptFromHtml(found.article.contentHtml || '') || `${animeIds[0] || 'unknown'} · ${city || ''}`.trim()
+      : String(found.article.description || '').trim() ||
+        extractTextExcerptFromHtml(found.article.contentHtml || '') ||
+        `${animeIds[0] || 'unknown'} · ${city || ''}`.trim()
 
   const datePublished =
     found.source === 'db'
@@ -221,11 +235,21 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     ],
   })
 
-  const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  const primaryAnime = anime[0] || null
+  const breadcrumbItemsForJsonLd = [
     { name: '首页', url: `${siteOrigin}/` },
     { name: '作品', url: `${siteOrigin}/anime` },
+    ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, url: canonicalUrl },
-  ])
+  ]
+  const breadcrumbJsonLd = buildBreadcrumbListJsonLd(breadcrumbItemsForJsonLd)
+
+  const breadcrumbItems = [
+    { name: '首页', href: '/' },
+    { name: '作品', href: '/anime' },
+    ...(primaryAnime ? [{ name: primaryAnime.label, href: `/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
+    { name: seoTitle, href: `/posts/${encodeSlugForPath(canonicalSlug)}` },
+  ]
 
   const routeEmbeds =
     found.source === 'db'
@@ -248,6 +272,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         />
       ))}
       <article className="prose prose-pink max-w-none" data-seichi-article-content="true">
+        <div className="not-prose">
+          <Breadcrumbs items={breadcrumbItems} />
+        </div>
         <h1>{title}</h1>
         <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
         {favoritesEnabled ? (

@@ -28,6 +28,8 @@ export class InMemoryArticleRepo implements ArticleRepo {
       authorId: input.authorId,
       slug,
       title: input.title,
+      seoTitle: input.seoTitle ?? null,
+      description: input.description ?? null,
       animeIds: input.animeIds ?? [],
       city: input.city ?? null,
       routeLength: input.routeLength ?? null,
@@ -88,6 +90,8 @@ export class InMemoryArticleRepo implements ArticleRepo {
     }
 
     if (input.title != null) existing.title = input.title
+    if (input.seoTitle !== undefined) existing.seoTitle = input.seoTitle ?? null
+    if (input.description !== undefined) existing.description = input.description ?? null
     if (input.animeIds !== undefined) existing.animeIds = input.animeIds ?? []
     if (input.city !== undefined) existing.city = input.city ?? null
     if (input.routeLength !== undefined) existing.routeLength = input.routeLength ?? null

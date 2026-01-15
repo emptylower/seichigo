@@ -6,6 +6,8 @@ import type { ArticleRevisionApiDeps } from '@/lib/articleRevision/api'
 const patchSchema = z
   .object({
     title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }).optional(),
+    seoTitle: z.string().max(120).nullable().optional(),
+    description: z.string().max(320).nullable().optional(),
     animeIds: z.array(z.string()).optional(),
     city: z.string().nullable().optional(),
     routeLength: z.string().nullable().optional(),
@@ -27,6 +29,8 @@ function toDetail(r: any, sanitizeHtml: (html: string) => string) {
     articleId: r.articleId,
     authorId: r.authorId,
     title: r.title,
+    seoTitle: r.seoTitle ?? null,
+    description: r.description ?? null,
     animeIds: r.animeIds,
     city: r.city,
     routeLength: r.routeLength,
@@ -104,6 +108,18 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
       const nextTitle = parsed.data.title != null ? parsed.data.title.trim() : undefined
       if (nextTitle !== undefined) {
         updateInput.title = nextTitle
+      }
+
+      const nextSeoTitle =
+        parsed.data.seoTitle !== undefined ? (parsed.data.seoTitle == null ? null : parsed.data.seoTitle.trim() || null) : undefined
+      if (nextSeoTitle !== undefined) {
+        updateInput.seoTitle = nextSeoTitle
+      }
+
+      const nextDescription =
+        parsed.data.description !== undefined ? (parsed.data.description == null ? null : parsed.data.description.trim() || null) : undefined
+      if (nextDescription !== undefined) {
+        updateInput.description = nextDescription
       }
 
       const nextCover = parsed.data.cover !== undefined ? (parsed.data.cover == null ? null : parsed.data.cover.trim() || null) : undefined

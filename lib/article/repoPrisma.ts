@@ -18,6 +18,8 @@ export class PrismaArticleRepo implements ArticleRepo {
           authorId: input.authorId,
           slug: input.slug,
           title: input.title,
+          seoTitle: input.seoTitle ?? undefined,
+          description: input.description ?? undefined,
           animeIds: input.animeIds ?? undefined,
           city: input.city ?? undefined,
           routeLength: input.routeLength ?? undefined,
@@ -63,6 +65,8 @@ export class PrismaArticleRepo implements ArticleRepo {
         data: {
           slug: input.slug ?? undefined,
           title: input.title ?? undefined,
+          seoTitle: input.seoTitle === undefined ? undefined : input.seoTitle,
+          description: input.description === undefined ? undefined : input.description,
           animeIds: input.animeIds === undefined ? undefined : input.animeIds,
           city: input.city === undefined ? undefined : input.city,
           routeLength: input.routeLength === undefined ? undefined : input.routeLength,

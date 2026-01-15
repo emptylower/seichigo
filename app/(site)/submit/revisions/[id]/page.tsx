@@ -62,6 +62,8 @@ export default async function RevisionEditPage({ params }: { params: Promise<{ i
       initial={{
         id: revision.id,
         title: revision.title,
+        seoTitle: revision.seoTitle ?? null,
+        description: revision.description ?? null,
         animeIds: revision.animeIds,
         city: revision.city,
         routeLength: revision.routeLength,

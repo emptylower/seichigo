@@ -41,6 +41,8 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
 
       const applied = await deps.articleRepo.updateDraft(article.id, {
         title: revision.title,
+        seoTitle: revision.seoTitle,
+        description: revision.description,
         animeIds: revision.animeIds,
         city: revision.city,
         routeLength: revision.routeLength,

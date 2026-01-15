@@ -62,6 +62,8 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
       initial={{
         id: article.id,
         title: article.title,
+        seoTitle: article.seoTitle ?? null,
+        description: article.description ?? null,
         animeIds: article.animeIds,
         city: article.city,
         routeLength: article.routeLength,

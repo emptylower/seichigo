@@ -5,6 +5,8 @@ export type Article = {
   authorId: string
   slug: string
   title: string
+  seoTitle: string | null
+  description: string | null
   animeIds: string[]
   city: string | null
   routeLength: string | null
@@ -25,6 +27,8 @@ export type CreateDraftInput = {
   authorId: string
   slug: string
   title: string
+  seoTitle?: string | null
+  description?: string | null
   animeIds?: string[]
   city?: string | null
   routeLength?: string | null

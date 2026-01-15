@@ -44,6 +44,8 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
           articleId: article.id,
           authorId: article.authorId,
           title: article.title,
+          seoTitle: article.seoTitle ?? undefined,
+          description: article.description ?? undefined,
           animeIds: article.animeIds ?? undefined,
           city: article.city ?? undefined,
           routeLength: article.routeLength ?? undefined,
@@ -82,6 +84,8 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
         where: { id },
         data: {
           title: input.title ?? undefined,
+          seoTitle: input.seoTitle === undefined ? undefined : input.seoTitle,
+          description: input.description === undefined ? undefined : input.description,
           animeIds: input.animeIds === undefined ? undefined : input.animeIds,
           city: input.city === undefined ? undefined : input.city,
           routeLength: input.routeLength === undefined ? undefined : input.routeLength,
@@ -124,4 +128,3 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
     }
   }
 }
-

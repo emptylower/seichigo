@@ -3,7 +3,7 @@ import type { ArticleRevisionStatus } from './workflow'
 
 export type ArticleSnapshot = Pick<
   Article,
-  'id' | 'authorId' | 'title' | 'animeIds' | 'city' | 'routeLength' | 'tags' | 'cover' | 'contentJson' | 'contentHtml'
+  'id' | 'authorId' | 'title' | 'seoTitle' | 'description' | 'animeIds' | 'city' | 'routeLength' | 'tags' | 'cover' | 'contentJson' | 'contentHtml'
 >
 
 export type ArticleRevision = {
@@ -11,6 +11,8 @@ export type ArticleRevision = {
   articleId: string
   authorId: string
   title: string
+  seoTitle: string | null
+  description: string | null
   animeIds: string[]
   city: string | null
   routeLength: string | null
@@ -24,7 +26,17 @@ export type ArticleRevision = {
   updatedAt: Date
 }
 
-type MutableDraftFields = 'title' | 'animeIds' | 'city' | 'routeLength' | 'tags' | 'cover' | 'contentJson' | 'contentHtml'
+type MutableDraftFields =
+  | 'title'
+  | 'seoTitle'
+  | 'description'
+  | 'animeIds'
+  | 'city'
+  | 'routeLength'
+  | 'tags'
+  | 'cover'
+  | 'contentJson'
+  | 'contentHtml'
 
 export type UpdateArticleRevisionDraftInput = Partial<Pick<ArticleRevision, MutableDraftFields>>
 
@@ -42,4 +54,3 @@ export interface ArticleRevisionRepo {
   updateDraft(id: string, input: UpdateArticleRevisionDraftInput): Promise<ArticleRevision | null>
   updateState(id: string, input: UpdateArticleRevisionStateInput): Promise<ArticleRevision | null>
 }
-

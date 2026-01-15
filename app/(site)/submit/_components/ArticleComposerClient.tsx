@@ -12,6 +12,8 @@ type ComposerMode = 'article' | 'revision'
 export type ArticleComposerInitial = {
   id: string
   title: string
+  seoTitle: string | null
+  description: string | null
   animeIds: string[]
   city: string | null
   routeLength: string | null
@@ -337,6 +339,8 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   const [city, setCity] = useState(initial?.city ?? '')
   const [routeLength, setRouteLength] = useState(initial?.routeLength ?? '')
   const [tagsText, setTagsText] = useState((initial?.tags ?? []).join(', '))
+  const [seoTitle, setSeoTitle] = useState(initial?.seoTitle ?? '')
+  const [metaDescription, setMetaDescription] = useState(initial?.description ?? '')
   const [cover, setCover] = useState<string | null>(initial?.cover ?? null)
   const [coverBusy, setCoverBusy] = useState(false)
 
@@ -442,6 +446,8 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
         city: city.trim() || null,
         routeLength: routeLength.trim() || null,
         tags: parseTags(tagsText),
+        seoTitle: seoTitle.trim() || null,
+        description: metaDescription.trim() || null,
       }),
     })
     if (!patchRes.ok) {
@@ -689,6 +695,33 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium">标签（可选，逗号分隔）</label>
                     <input className="mt-2 w-full rounded-md border px-3 py-2" value={tagsText} onChange={(e) => setTagsText(e.target.value)} disabled={submitLoading} placeholder="下北泽, 河堤" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium">SEO 标题（可选）</label>
+                    <input
+                      className="mt-2 w-full rounded-md border px-3 py-2"
+                      value={seoTitle}
+                      onChange={(e) => setSeoTitle(e.target.value)}
+                      disabled={submitLoading}
+                      placeholder="用于搜索结果标题（建议包含：作品 + 地点 + 圣地巡礼/路线等关键词）"
+                      maxLength={120}
+                    />
+                    <div className="mt-1 text-xs text-gray-500">留空则默认使用文章标题。</div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium">摘要（meta description，可选）</label>
+                    <textarea
+                      className="mt-2 min-h-24 w-full resize-y rounded-md border px-3 py-2"
+                      value={metaDescription}
+                      onChange={(e) => setMetaDescription(e.target.value)}
+                      disabled={submitLoading}
+                      placeholder="用于搜索结果摘要（建议 80–160 字，突出：路线点位数量/用时/地图导航/机位建议/时间戳）"
+                      maxLength={320}
+                    />
+                    <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                      <span>留空则从正文自动提取摘要。</span>
+                      <span>{metaDescription.trim().length}/320</span>
+                    </div>
                   </div>
                 </div>
 
