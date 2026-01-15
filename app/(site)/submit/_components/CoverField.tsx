@@ -14,7 +14,7 @@ type Props = {
   onBusyChange?: (busy: boolean) => void
 }
 
-const TARGET_ASPECT = 3 / 4
+const TARGET_ASPECT = 16 / 9
 const RATIO_TOLERANCE = 0.015
 const MAX_OUTPUT_WIDTH = 900
 
@@ -391,7 +391,7 @@ export default function CoverField({ articleId, apiBase, value, disabled, onChan
       <div className="flex items-end justify-between gap-3">
         <div>
           <label className="block text-sm font-medium">封面（可选）</label>
-          <div className="mt-1 text-xs text-gray-500">用于首页书封展示，比例固定为 3:4</div>
+          <div className="mt-1 text-xs text-gray-500">用于首页明信片展示，比例固定为 16:9</div>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" onClick={openFileDialog} disabled={Boolean(disabled || uploading)}>
@@ -412,8 +412,8 @@ export default function CoverField({ articleId, apiBase, value, disabled, onChan
       </div>
 
       <div className="flex gap-4">
-        <div className="w-28 shrink-0">
-          <div className="relative aspect-[3/4] overflow-hidden rounded-lg border bg-gray-50">
+        <div className="w-40 shrink-0">
+          <div className="relative aspect-video overflow-hidden rounded-lg border bg-gray-50">
             {value ? <img src={value} alt="cover preview" className="absolute inset-0 h-full w-full object-cover" /> : null}
             <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/10 to-transparent" />
             {!value ? <div className="absolute inset-0 grid place-items-center text-xs text-gray-400">暂无封面</div> : null}
@@ -421,7 +421,7 @@ export default function CoverField({ articleId, apiBase, value, disabled, onChan
         </div>
         <div className="min-w-0 flex-1 text-sm text-gray-600">
           <div>建议：主体居中、边缘留白，避免关键内容被裁剪。</div>
-          <div className="mt-1">如果图片比例不符合，会弹窗让你裁剪到 3:4。</div>
+          <div className="mt-1">如果图片比例不符合，会弹窗让你裁剪到 16:9。</div>
         </div>
       </div>
 
@@ -445,7 +445,7 @@ export default function CoverField({ articleId, apiBase, value, disabled, onChan
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold">裁剪封面</h3>
-                <p className="mt-1 text-sm text-gray-600">拖动图片调整位置，使用滑块缩放，裁剪结果为 3:4。</p>
+                <p className="mt-1 text-sm text-gray-600">拖动图片调整位置，使用滑块缩放，裁剪结果为 16:9。</p>
               </div>
               <button
                 className="shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
@@ -461,7 +461,7 @@ export default function CoverField({ articleId, apiBase, value, disabled, onChan
                 <div className="rounded-lg border bg-gray-50 p-3">
                   <div
                     ref={cropFrameRef}
-                    className="relative mx-auto aspect-[3/4] w-full max-w-[380px] overflow-hidden rounded-md bg-black"
+                    className="relative mx-auto aspect-video w-full max-w-[560px] overflow-hidden rounded-md bg-black"
                     onPointerDown={onCropPointerDown}
                     onPointerMove={onCropPointerMove}
                     onPointerUp={onCropPointerUp}
