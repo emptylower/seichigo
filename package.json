@@ -9,6 +9,7 @@
     "lint": "eslint . --ext .ts,.tsx || true",
     "test": "vitest run",
     "test:watch": "vitest",
+    "seo:audit": "node scripts/seo-audit.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

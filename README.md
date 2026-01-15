@@ -45,6 +45,13 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Place Chinese articles at `content/zh/posts/*.mdx`.
 - See template and components in `content/zh/posts/README.md`.
 
+**SEO Audit**
+- Audit deployed site (auto-discover URLs from sitemap):
+  - `npm run seo:audit -- --base-url https://seichigo.com`
+- Audit local dev server:
+  - `npm run dev -- -p 3000`
+  - `npm run seo:audit -- --base-url http://localhost:3000 --include-private`
+
 **Notes**
 - Email sign-in: in development, if neither Resend nor SMTP is configured, the OTP email content is logged to server console.
 - Accounts created via email OTP without a password are redirected to `/auth/set-password` on first login.
