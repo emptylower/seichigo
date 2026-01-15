@@ -11,22 +11,22 @@ function formatLine(item: Pick<PublicPostListItem, 'animeIds' | 'city'>): string
 function SkeletonTile({ seed }: { seed: number }) {
   const hue = (seed * 47) % 360
   return (
-    <div className="w-36 shrink-0">
+    <div className="w-72 shrink-0">
       <div
-        className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-black/5 shadow-sm"
+        className="relative aspect-video w-full overflow-hidden rounded-xl bg-gray-100 shadow-sm"
         style={{
-          background: `linear-gradient(135deg, hsl(${hue} 40% 92%), hsl(${(hue + 28) % 360} 50% 86%))`,
+          background: `linear-gradient(135deg, hsl(${hue} 20% 96%), hsl(${(hue + 28) % 360} 30% 92%))`,
         }}
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-black/0 to-black/0" />
-        <div className="absolute inset-x-3 bottom-3 space-y-2">
-          <div className="h-3 w-3/4 rounded bg-white/60" />
-          <div className="h-2 w-2/3 rounded bg-white/50" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/5 via-transparent to-transparent" />
+        <div className="absolute inset-x-4 bottom-4 space-y-2">
+          <div className="h-4 w-3/4 rounded bg-white/60" />
+          <div className="h-3 w-1/2 rounded bg-white/50" />
         </div>
       </div>
-      <div className="mt-2 space-y-1">
-        <div className="h-4 w-11/12 rounded bg-gray-100" />
-        <div className="h-3 w-2/3 rounded bg-gray-100" />
+      <div className="mt-3 space-y-1 px-1">
+        <div className="h-5 w-11/12 rounded bg-gray-100" />
+        <div className="h-4 w-2/3 rounded bg-gray-50" />
       </div>
     </div>
   )
@@ -34,7 +34,7 @@ function SkeletonTile({ seed }: { seed: number }) {
 
 function BookTile({ item }: { item: PublicPostListItem }) {
   return (
-    <Link href={item.path} className="group w-36 shrink-0 no-underline hover:no-underline">
+    <Link href={item.path} className="group w-72 shrink-0 no-underline hover:no-underline">
       <BookCover
         path={item.path}
         title={item.title}
@@ -44,8 +44,8 @@ function BookTile({ item }: { item: PublicPostListItem }) {
         publishDate={item.publishDate}
         cover={item.cover}
       />
-      <div className="mt-2 space-y-1">
-        <div className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900 group-hover:text-brand-700">
+      <div className="mt-3 px-1 space-y-1">
+        <div className="line-clamp-2 text-base font-bold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
           {item.title}
         </div>
         <div className="text-xs text-gray-500">{formatLine(item) || '—'}</div>

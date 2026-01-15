@@ -11,26 +11,35 @@ function formatMeta(item: Pick<PublicPostListItem, 'animeIds' | 'city' | 'routeL
 
 export default function FeaturedPost({ item }: { item: PublicPostListItem }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm">
-      <div className="grid gap-6 p-6 md:grid-cols-[240px,1fr]">
-        <div className="mx-auto w-44 md:w-full">
-          <BookCover
-            path={item.path}
-            title={item.title}
-            animeIds={item.animeIds}
-            city={item.city}
-            routeLength={item.routeLength}
-            publishDate={item.publishDate}
-            cover={item.cover}
-            variant="featured"
-          />
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 transition-all hover:shadow-md">
+      <div className="grid gap-6 md:grid-cols-2 md:items-center">
+        <div className="relative w-full">
+          {/* Cover Image Container - full width/height on mobile, specific aspect on desktop if needed, but BookCover handles aspect */}
+          <div className="p-4 md:p-6 md:pr-0">
+             <BookCover
+              path={item.path}
+              title={item.title}
+              animeIds={item.animeIds}
+              city={item.city}
+              routeLength={item.routeLength}
+              publishDate={item.publishDate}
+              cover={item.cover}
+              variant="featured"
+            />
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <div className="text-xs font-medium text-brand-700">本周精选</div>
-            <h2 className="text-2xl font-bold leading-snug">{item.title}</h2>
-            <div className="text-sm text-gray-600">{formatMeta(item) || '—'}</div>
+        <div className="space-y-4 p-6 pt-0 md:p-8 md:pl-0">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
+                本周精选
+              </span>
+            </div>
+            <h2 className="text-2xl font-bold leading-tight tracking-tight text-gray-900 md:text-3xl">
+              {item.title}
+            </h2>
+            <div className="text-sm text-gray-500">{formatMeta(item) || '—'}</div>
           </div>
 
           {item.tags?.length ? (

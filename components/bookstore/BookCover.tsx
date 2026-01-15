@@ -36,23 +36,24 @@ export default function BookCover({ path, title, animeIds, city, routeLength, pu
   const coverSrc = typeof cover === 'string' && cover.trim() ? cover.trim() : null
 
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-black/5 shadow-sm">
-      <div className="absolute inset-0" style={{ background: coverGradient(path) }} />
+    <div className="group relative aspect-video w-full overflow-hidden rounded-xl bg-gray-200 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105" style={{ background: coverGradient(path) }} />
       {coverSrc ? (
-        <img src={coverSrc} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" />
+        <img src={coverSrc} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" decoding="async" />
       ) : null}
-      <div className="absolute inset-y-0 right-0 w-6 bg-white/10" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/0" />
+      
+      {/* Gradient Overlay: only visible at bottom for text readability */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 transition-opacity group-hover:opacity-70" />
 
-      <div className="relative flex h-full flex-col justify-between p-3 text-white">
+      <div className="relative flex h-full flex-col justify-between p-4 text-white">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 text-[10px] font-semibold tracking-widest opacity-90">{label}</div>
-          {city ? <div className="shrink-0 text-[10px] opacity-85">{city}</div> : null}
+          <div className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">{label}</div>
+          {city ? <div className="text-[10px] font-medium opacity-90 shadow-sm">{city}</div> : null}
         </div>
 
         <div className="space-y-1">
-          <div className={`line-clamp-3 font-semibold leading-snug drop-shadow-sm ${titleClass}`}>{title}</div>
-          {meta ? <div className="text-[10px] opacity-85">{meta}</div> : null}
+          <div className={`line-clamp-2 font-bold leading-tight drop-shadow-md ${titleClass}`}>{title}</div>
+          {meta ? <div className="line-clamp-1 text-[10px] opacity-80 mix-blend-screen">{meta}</div> : null}
         </div>
       </div>
     </div>

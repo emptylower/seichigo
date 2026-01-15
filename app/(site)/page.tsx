@@ -32,77 +32,96 @@ export default async function HomePage() {
   const posts = await getAllPublicPosts('zh')
   const featured = posts[0] || null
   const latestShelf = posts.slice(1, 13)
-  const more = posts.slice(13, 21)
+  const more = posts.slice(13, 25)
 
   return (
-    <div className="space-y-12">
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold">书城</h1>
-            <p className="text-sm text-gray-600">
-              用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划。
+    <div className="space-y-16 pb-12">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-600 to-purple-700 opacity-90" />
+        <div className="absolute inset-0 bg-[url('/brand/grid-pattern.svg')] opacity-10" />
+        <div className="relative px-6 py-16 sm:px-12 sm:py-24">
+          <div className="max-w-2xl space-y-6">
+            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
+              出发，<br />
+              去见证那个风景。
+            </h1>
+            <p className="max-w-lg text-lg text-brand-100 sm:text-xl">
+              用好读的长文、精致排版和实用的地点列表，帮你规划从屏幕到现实的每一次巡礼。
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/anime" className="btn-primary no-underline hover:no-underline">
-              浏览作品
-            </Link>
-            <Link href="/submit" className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700 no-underline hover:bg-gray-50 hover:no-underline">
-              去投稿
-            </Link>
+            <div className="flex flex-wrap gap-4 pt-4">
+              <Link
+                href="/anime"
+                className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-50"
+              >
+                浏览作品索引
+              </Link>
+              <Link
+                href="/submit"
+                className="rounded-full border border-white/30 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+              >
+                投稿你的巡礼
+              </Link>
+            </div>
           </div>
         </div>
-
-        {featured ? (
-          <FeaturedPost item={featured} />
-        ) : (
-          <FeaturedEmpty />
-        )}
       </section>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-bold">最新上架</h2>
-          <Link href="/anime" className="text-sm text-gray-600 no-underline hover:text-brand-700 hover:underline">
+      {/* Featured Post */}
+      {featured ? (
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 px-1">
+             <h2 className="text-2xl font-bold tracking-tight text-gray-900">本周精选</h2>
+          </div>
+          <FeaturedPost item={featured} />
+        </section>
+      ) : null}
+
+      {/* Latest Shelf */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900">最新上架</h2>
+          <Link href="/anime" className="text-sm font-medium text-brand-600 hover:text-brand-700">
             查看全部作品 →
           </Link>
         </div>
-        <BookShelf items={latestShelf} />
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+          <BookShelf items={latestShelf} />
+        </div>
       </section>
 
+      {/* More Posts Grid */}
       {more.length ? (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-bold">继续逛逛</h2>
-            <Link href="/anime" className="text-sm text-gray-600 no-underline hover:text-brand-700 hover:underline">
+        <section className="space-y-6">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-2xl font-bold tracking-tight text-gray-900">继续探索</h2>
+            <Link href="/anime" className="text-sm font-medium text-brand-600 hover:text-brand-700">
               去作品索引 →
             </Link>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {more.map((p) => (
               <Link
                 key={p.path}
                 href={p.path}
-                className="group flex gap-4 rounded-2xl border border-pink-100 bg-white p-4 shadow-sm no-underline hover:no-underline"
+                className="group flex flex-col gap-3 no-underline hover:no-underline"
               >
-                <div className="w-20 shrink-0">
-                  <BookCover
-                    path={p.path}
-                    title={p.title}
-                    animeIds={p.animeIds}
-                    city={p.city}
-                    routeLength={p.routeLength}
-                    publishDate={p.publishDate}
-                    cover={p.cover}
-                  />
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <div className="text-xs text-gray-500">{[p.animeIds?.length ? p.animeIds.join('、') : 'unknown', p.city].filter(Boolean).join(' · ') || '—'}</div>
-                  <div className="line-clamp-2 text-base font-semibold leading-snug text-gray-900 group-hover:text-brand-700">
+                <BookCover
+                  path={p.path}
+                  title={p.title}
+                  animeIds={p.animeIds}
+                  city={p.city}
+                  routeLength={p.routeLength}
+                  publishDate={p.publishDate}
+                  cover={p.cover}
+                />
+                <div className="space-y-1 px-1">
+                  <div className="line-clamp-2 text-lg font-bold leading-snug text-gray-900 group-hover:text-brand-600">
                     {p.title}
                   </div>
-                  {p.publishDate ? <div className="text-xs text-gray-400">发布：{p.publishDate}</div> : null}
+                  <div className="text-sm text-gray-500">
+                    {[p.animeIds?.length ? p.animeIds.join('、') : 'unknown', p.city].filter(Boolean).join(' · ') || '—'}
+                  </div>
                 </div>
               </Link>
             ))}
@@ -110,22 +129,29 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      <section className="space-y-2">
-        <h2 className="text-xl font-bold">SeichiGo App 预告</h2>
-        <p className="text-gray-600">未来将提供“在 App 中打开本路线”等能力。欢迎订阅/关注我们的更新。</p>
-        <div className="card grid gap-6 md:grid-cols-[1fr,360px] md:items-center">
-          <div className="space-y-2">
-            <div className="text-sm text-gray-700">把这些路线装进口袋：收藏、离线、打开导航、轻量打卡。</div>
-            <div className="text-sm text-gray-600">Mock: 订阅入口（稍后替换成真实外部链接）</div>
+      {/* App Promo */}
+      <section className="relative overflow-hidden rounded-2xl bg-gray-50 px-6 py-12 sm:px-12">
+        <div className="grid gap-8 md:grid-cols-2 md:items-center">
+          <div className="space-y-4">
+            <h2 className="text-3xl font-bold tracking-tight text-gray-900">把圣地装进口袋</h2>
+            <p className="text-lg text-gray-600">
+              SeichiGo App 正在开发中。未来你将可以直接在 App 中打开这些路线，一键导航到每一个巡礼点位。
+            </p>
+            <div className="pt-2">
+              <span className="inline-flex items-center rounded-md bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700">
+                Coming Soon
+              </span>
+            </div>
           </div>
-          <Image
-            src="/brand/app-logo.png"
-            alt="SeichiGo App"
-            width={640}
-            height={640}
-            className="mx-auto h-auto w-full max-w-sm rounded-lg bg-white object-cover"
-            sizes="(min-width: 1024px) 360px, 100vw"
-          />
+          <div className="relative mx-auto w-full max-w-xs md:max-w-sm">
+             <Image
+              src="/brand/app-logo.png"
+              alt="SeichiGo App"
+              width={640}
+              height={640}
+              className="mx-auto h-auto w-48 rounded-2xl shadow-2xl md:w-64"
+            />
+          </div>
         </div>
       </section>
     </div>

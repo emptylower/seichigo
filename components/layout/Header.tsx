@@ -14,7 +14,7 @@ export default async function Header() {
   const userLabel = String(session?.user?.name || session?.user?.email || '用户').trim() || '用户'
   const avatarLetter = userLabel.slice(0, 1).toUpperCase()
   return (
-    <header className="border-b border-pink-100 bg-white/70 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2">
           <Image
