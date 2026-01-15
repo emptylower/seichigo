@@ -5,8 +5,21 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: '作品索引',
-  description: '按作品浏览已发布的圣地巡礼路线与文章。',
+  description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
   alternates: { canonical: '/anime' },
+  openGraph: {
+    type: 'website',
+    url: '/anime',
+    title: '作品索引',
+    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    images: ['/opengraph-image'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '作品索引',
+    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    images: ['/twitter-image'],
+  },
 }
 export const dynamic = 'force-dynamic'
 

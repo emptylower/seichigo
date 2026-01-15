@@ -4,6 +4,19 @@ export const metadata: Metadata = {
   title: '关于 SeichiGo',
   description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，强调精致排版和可执行的地点清单。',
   alternates: { canonical: '/about' },
+  openGraph: {
+    type: 'website',
+    url: '/about',
+    title: '关于 SeichiGo',
+    description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，强调精致排版和可执行的地点清单。',
+    images: ['/opengraph-image'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '关于 SeichiGo',
+    description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，强调精致排版和可执行的地点清单。',
+    images: ['/twitter-image'],
+  },
 }
 
 export default function AboutPage() {

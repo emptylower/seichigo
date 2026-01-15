@@ -37,7 +37,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '未找到作品', robots: { index: false, follow: false } }
   }
   const title = anime?.name || canonicalId
-  const description = anime?.summary || `${title} · 作品聚合（${posts.length} 篇文章）`
+  const summary = String(anime?.summary || '').trim()
+  const fallback = `${title} 圣地巡礼作品聚合页，汇总相关路线与文章（${posts.length} 篇），提供地图导航与点位清单。`
+  const description = summary ? `${summary} ${fallback}` : fallback
   return {
     title,
     description,
@@ -49,11 +51,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title,
       description,
       url: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
+      images: ['/opengraph-image'],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      images: ['/twitter-image'],
     },
   }
 }
