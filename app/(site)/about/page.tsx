@@ -107,19 +107,19 @@ export default function AboutPage() {
       <section className="mx-auto max-w-4xl px-6">
         <div className="overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
           <div className="grid md:grid-cols-2">
-            <div className="bg-brand-600 p-10 md:p-12">
-              <h3 className="text-2xl font-bold">未来愿景</h3>
-              <p className="mt-4 text-brand-100 leading-relaxed">
+            <div className="bg-brand-600 p-10 md:p-12 text-white">
+              <h3 className="text-2xl font-bold text-white">未来愿景</h3>
+              <p className="mt-4 text-white/90 leading-relaxed">
                 我们正在开发移动端 App，计划支持离线地图、一键导航与巡礼打卡功能。
                 <br /><br />
                 我们的目标是把所有圣地装进口袋，成为你打破次元壁最可靠的伙伴。
               </p>
-              <div className="mt-8 inline-block rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
+              <div className="mt-8 inline-block rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm border border-white/20">
                 Coming Soon
               </div>
             </div>
-            <div className="bg-gray-800 p-10 md:p-12">
-              <h3 className="text-2xl font-bold">联系我们</h3>
+            <div className="bg-gray-800 p-10 md:p-12 text-white">
+              <h3 className="text-2xl font-bold text-white">联系我们</h3>
               <p className="mt-4 text-gray-300 leading-relaxed">
                 无论是发现数据错误、投稿你的巡礼故事，还是有商务合作意向，我们都非常期待听到你的声音。
               </p>
