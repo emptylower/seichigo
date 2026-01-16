@@ -155,13 +155,13 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Text Info */}
-            <div className="flex-1 space-y-4 text-center md:text-left">
+            <div className="flex-1 space-y-4 text-center md:text-left text-white">
               <div>
-                <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-5xl text-shadow-sm">
+                <h1 className="text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl drop-shadow-md">
                   {display.name}
                 </h1>
                 {display.alias?.length ? (
-                  <p className="mt-2 text-sm text-gray-300 md:text-base">
+                  <p className="mt-2 text-sm text-gray-200 md:text-base drop-shadow-sm">
                     {display.alias.join(' / ')}
                   </p>
                 ) : null}
@@ -169,21 +169,21 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
 
               <div className="flex flex-wrap items-center justify-center gap-3 md:justify-start">
                 {display.year ? (
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium backdrop-blur-md">
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
                     {display.year}
                   </span>
                 ) : null}
-                <span className="rounded-full bg-brand-500/80 px-3 py-1 text-xs font-medium text-white backdrop-blur-md">
+                <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
                   {posts.length} 篇文章
                 </span>
               </div>
 
               {display.summary ? (
-                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-200/90 md:mx-0 md:text-base">
+                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-100 md:mx-0 md:text-base drop-shadow-sm">
                   {display.summary}
                 </p>
               ) : (
-                <p className="text-sm italic text-gray-400">暂无简介</p>
+                <p className="text-sm italic text-gray-300">暂无简介</p>
               )}
             </div>
           </div>
