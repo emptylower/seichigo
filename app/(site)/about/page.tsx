@@ -27,7 +27,7 @@ export default function AboutPage() {
       <h2>App 愿景</h2>
       <p>未来的 App 将支持路线打开、离线、收藏与轻度社交等体验。</p>
       <h2>联系我们</h2>
-      <p>暂无固定渠道，以下为占位：mock@seichigo.app</p>
+      <p>如有任何建议或合作意向，欢迎联系：<a href="mailto:ljj231428@gmail.com" className="hover:underline text-brand-600">ljj231428@gmail.com</a></p>
     </div>
   )
 }
