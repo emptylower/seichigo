@@ -1,4 +1,5 @@
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getAllAnime } from '@/lib/anime/getAllAnime'
 import FeaturedPost from '@/components/bookstore/FeaturedPost'
 import FeaturedEmpty from '@/components/bookstore/FeaturedEmpty'
 import BookShelf from '@/components/bookstore/BookShelf'
@@ -28,23 +29,33 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-const STATIC_HERO_COVERS = [
-  'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop', // Tokyo Tower / City (Placeholder for Your Name)
-  'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop', // Tokyo Street
-  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop', // Kyoto / Shrine
+const STATIC_FALLBACK_COVERS = [
+  'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop',
 ]
 
 export default async function HomePage() {
-  const posts = await getAllPublicPosts('zh')
+  const [posts, animeList] = await Promise.all([
+    getAllPublicPosts('zh'),
+    getAllAnime()
+  ])
+  
   const featured = posts[0] || null
   const latestShelf = posts.slice(1, 13)
   const more = posts.slice(13, 25)
   
-  // Use first post cover as the main one if available, otherwise fallback
-  const mainCover = posts[0]?.cover || STATIC_HERO_COVERS[0]
-  
-  // Construct the display array: [Main Cover, Static 2, Static 3]
-  const heroDisplay = [mainCover, STATIC_HERO_COVERS[1], STATIC_HERO_COVERS[2]]
+  // Get valid covers from anime list (works are guaranteed to be poster format 3:4)
+  const validAnimeCovers = animeList
+    .filter((a) => a.cover)
+    .map((a) => a.cover!)
+    .slice(0, 3)
+
+  // Fill up with static fallbacks if we have fewer than 3 anime covers
+  const heroDisplay = [...validAnimeCovers]
+  while (heroDisplay.length < 3) {
+    heroDisplay.push(STATIC_FALLBACK_COVERS[heroDisplay.length % 3])
+  }
 
   return (
     <div className="space-y-16 pb-12">

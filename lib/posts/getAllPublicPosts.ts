@@ -57,8 +57,6 @@ function normalizeDb(article: any): PublicPostListItem {
         ? article.updatedAt
         : undefined
 
-  // For public ordering, prefer approval times (publish/approve revision).
-  // `updatedAt` may drift due to internal updates, so we don't rely on it.
   const effectiveUpdatedAtIso = lastApprovedAtIso || publishedAtIso || recordUpdatedAtIso
 
   return {
