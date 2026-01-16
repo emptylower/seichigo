@@ -59,7 +59,7 @@ describe('public posts aggregation', () => {
     })
 
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
-    expect(list.map((x) => x.path)).toEqual(['/posts/mdx-1', `/posts/db-1`])
+    expect(list.map((x) => x.path)).toEqual([`/posts/db-1`, '/posts/mdx-1'])
   })
 
   it('getPublicPostBySlug: slug exists in MDX -> returns MDX (priority)', async () => {

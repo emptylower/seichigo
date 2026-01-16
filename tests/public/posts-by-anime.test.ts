@@ -21,7 +21,7 @@ function makeMdxProvider(options?: { all?: PostFrontmatter[] }): MdxProvider {
 }
 
 describe('getPostsByAnimeId', () => {
-  it('filters and keeps publishDate/publishedAt desc', async () => {
+  it('filters and keeps updatedAt/publishedAt/publishDate desc', async () => {
     const repo = new InMemoryArticleRepo()
     const a1 = await repo.createDraft({ authorId: 'u1', slug: 'db-1', title: 'DB 1', animeIds: ['btr'] as any })
     const a2 = await repo.createDraft({ authorId: 'u1', slug: 'db-2', title: 'DB 2', animeIds: ['btr'] as any })

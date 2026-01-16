@@ -42,13 +42,14 @@ export default async function HomePage() {
   ])
   
   const featured = posts[0] || null
-  const latestShelf = posts.slice(1, 13)
-  const more = posts.slice(13, 25)
+  const latestShelf = posts.slice(0, 12)
+  const more = posts.slice(12, 24)
   
   // Get valid covers from anime list (works are guaranteed to be poster format 3:4)
   const validAnimeCovers = animeList
     .filter((a) => a.cover)
     .map((a) => a.cover!)
+    .sort(() => Math.random() - 0.5)
     .slice(0, 3)
 
   // Fill up with static fallbacks if we have fewer than 3 anime covers
