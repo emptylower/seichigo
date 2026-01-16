@@ -110,6 +110,9 @@ export default function AdminPanelClient() {
         <Button variant={tab === 'published' ? 'primary' : 'ghost'} type="button" onClick={() => setTab('published')}>
           已发布
         </Button>
+        <Link href="/admin/panel/anime">
+          <Button variant="ghost" type="button">作品管理</Button>
+        </Link>
       </div>
 
       {loading ? <div className="text-gray-600">加载中…</div> : null}

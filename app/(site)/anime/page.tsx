@@ -1,6 +1,6 @@
-import Link from 'next/link'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -31,18 +31,41 @@ export default async function AnimeIndexPage() {
     }
     return acc
   }, {})
+
+  const coverFallback = new Map<string, string>()
+  for (const p of posts) {
+    if (!p.cover) continue
+    for (const id of p.animeIds || []) {
+      if (!coverFallback.has(id)) {
+        coverFallback.set(id, p.cover)
+      }
+    }
+  }
+
+  const sorted = [...anime].sort((a, b) => {
+    const ca = counts[a.id] || 0
+    const cb = counts[b.id] || 0
+    if (ca !== cb) return cb - ca
+    const ya = a.year || 0
+    const yb = b.year || 0
+    if (ya !== yb) return yb - ya
+    return a.name.localeCompare(b.name)
+  })
+
   return (
     <div>
       <h1 className="text-2xl font-bold">作品</h1>
-      <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {anime.map((a) => (
-          <li key={a.id} className="card">
-            <Link href={`/anime/${encodeURIComponent(a.id)}`} className="font-semibold">{a.name}</Link>
-            <p className="text-sm text-gray-600">已发布文章：{counts[a.id] || 0}</p>
-          </li>
+      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {sorted.map((a) => (
+          <AnimeCard
+            key={a.id}
+            anime={a}
+            postCount={counts[a.id] || 0}
+            cover={a.cover || coverFallback.get(a.id) || null}
+          />
         ))}
-        {!anime.length && <li className="text-gray-500">暂无作品元数据。</li>}
-      </ul>
+      </div>
+      {!sorted.length && <div className="mt-8 text-gray-500">暂无作品元数据。</div>}
     </div>
   )
 }

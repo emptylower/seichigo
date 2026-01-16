@@ -190,6 +190,7 @@ model Anime {
   year      Int?
   summary   String?
   cover     String?
+  hidden    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
