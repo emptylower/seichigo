@@ -28,7 +28,11 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-const STATIC_HERO_IMAGE = 'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop' // Fallback until we extract the real one from your screenshot or you provide a permanent URL
+const STATIC_HERO_COVERS = [
+  'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop', // Tokyo Tower / City (Placeholder for Your Name)
+  'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop', // Tokyo Street
+  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop', // Kyoto / Shrine
+]
 
 export default async function HomePage() {
   const posts = await getAllPublicPosts('zh')
@@ -36,11 +40,11 @@ export default async function HomePage() {
   const latestShelf = posts.slice(1, 13)
   const more = posts.slice(13, 25)
   
-  // Use the first post's cover if available, otherwise fallback
-  // This effectively "pins" the visual style to whatever the latest "Your Name" article cover is, 
-  // OR we can hardcode the specific URL if you share it. 
-  // Based on your request "just keep current one", I'll try to use the first post cover but render it as a SINGLE static card.
-  const heroImage = posts[0]?.cover || STATIC_HERO_IMAGE
+  // Use first post cover as the main one if available, otherwise fallback
+  const mainCover = posts[0]?.cover || STATIC_HERO_COVERS[0]
+  
+  // Construct the display array: [Main Cover, Static 2, Static 3]
+  const heroDisplay = [mainCover, STATIC_HERO_COVERS[1], STATIC_HERO_COVERS[2]]
 
   return (
     <div className="space-y-16 pb-12">
@@ -74,15 +78,29 @@ export default async function HomePage() {
           </div>
 
           <div className="relative hidden lg:block h-[400px]">
-            {/* Single Fixed Hero Image */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 aspect-[3/4] rotate-6 hover:rotate-0 transition-transform duration-700 ease-out">
-              <div className="relative h-full w-full overflow-hidden rounded-xl shadow-2xl bg-white ring-1 ring-black/5">
-                <img 
-                  src={heroImage} 
-                  alt="Hero Poster" 
-                  className="h-full w-full object-cover"
-                />
-              </div>
+            {/* Dynamic Cover Gallery - Fan Stack Effect */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md h-80">
+              {heroDisplay.map((src, i) => (
+                <div 
+                  key={i}
+                  className={`absolute top-0 w-64 aspect-[3/4] rounded-xl shadow-2xl transition-transform hover:scale-105 duration-500 ease-out`}
+                  style={{
+                    left: `${50 + (i - 1) * 25}%`,
+                    top: `${(i - 1) * 20}px`,
+                    transform: `translateX(-50%) rotate(${(i - 1) * 12}deg)`,
+                    zIndex: 3 - i,
+                  }}
+                >
+                  <div className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
+                    <img 
+                      src={src} 
+                      alt="" 
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-30" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

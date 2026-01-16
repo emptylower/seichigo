@@ -42,12 +42,24 @@ function normalizeDb(article: any): PublicPostListItem {
       : typeof article?.publishedAt === 'string'
         ? article.publishedAt
         : undefined
-  const updatedAtIso =
+
+  const lastApprovedAtIso =
+    article?.lastApprovedAt instanceof Date
+      ? article.lastApprovedAt.toISOString()
+      : typeof article?.lastApprovedAt === 'string'
+        ? article.lastApprovedAt
+        : undefined
+
+  const recordUpdatedAtIso =
     article?.updatedAt instanceof Date
       ? article.updatedAt.toISOString()
       : typeof article?.updatedAt === 'string'
         ? article.updatedAt
         : undefined
+
+  // For public ordering, prefer approval times (publish/approve revision).
+  // `updatedAt` may drift due to internal updates, so we don't rely on it.
+  const effectiveUpdatedAtIso = lastApprovedAtIso || publishedAtIso || recordUpdatedAtIso
 
   return {
     source: 'db',
@@ -60,7 +72,7 @@ function normalizeDb(article: any): PublicPostListItem {
     cover: article?.cover ?? null,
     publishDate: publishedAtIso ? publishedAtIso.slice(0, 10) : undefined,
     publishedAt: publishedAtIso,
-    updatedAt: updatedAtIso,
+    updatedAt: effectiveUpdatedAtIso,
   }
 }
 
