@@ -3,6 +3,7 @@ import { getPostsByAnimeId } from '@/lib/posts/getPostsByAnimeId'
 import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
@@ -22,8 +23,22 @@ function encodeAnimeIdForPath(id: string): string {
   return encodeURIComponent(id)
 }
 
+function hash32(input: string): number {
+  let h = 0
+  for (let i = 0; i < input.length; i++) {
+    h = (h * 31 + input.charCodeAt(i)) >>> 0
+  }
+  return h
+}
+
+function getGradient(id: string) {
+  const seed = hash32(id)
+  const hue1 = seed % 360
+  const hue2 = (hue1 + 40) % 360
+  return `linear-gradient(135deg, hsl(${hue1} 40% 30%), hsl(${hue2} 50% 20%))`
+}
+
 export async function generateStaticParams() {
-  // Pre-render any anime JSON present
   return []
 }
 
@@ -33,13 +48,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const anime = await getAnimeById(requestedId).catch(() => null)
   const canonicalId = anime?.id || requestedId || String(id || '')
   const posts = await getPostsByAnimeId(canonicalId, 'zh')
+  
   if (!anime && posts.length === 0) {
     return { title: '未找到作品', robots: { index: false, follow: false } }
   }
+
   const title = anime?.name || canonicalId
   const summary = String(anime?.summary || '').trim()
   const fallback = `${title} 圣地巡礼作品聚合页，汇总相关路线与文章（${posts.length} 篇），提供地图导航与点位清单。`
   const description = summary ? `${summary} ${fallback}` : fallback
+
   return {
     title,
     description,
@@ -67,27 +85,39 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   const requestedId = safeDecodeURIComponent(String(id || '')).trim()
   const anime = await getAnimeById(requestedId).catch(() => null)
   const canonicalId = anime?.id || requestedId || String(id || '')
+
   if (requestedId && canonicalId && requestedId !== canonicalId) {
     permanentRedirect(`/anime/${encodeAnimeIdForPath(canonicalId)}`)
   }
+
   const posts = await getPostsByAnimeId(canonicalId, 'zh')
+
   if (!anime && posts.length === 0) {
     return notFound()
   }
-  const display = anime ?? { id: canonicalId, name: canonicalId }
+
+  const display = anime ?? { id: canonicalId, name: canonicalId, alias: [], summary: '', year: undefined, cover: undefined }
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/anime/${encodeAnimeIdForPath(canonicalId)}`
+  
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: '首页', url: `${siteOrigin}/` },
     { name: '作品', url: `${siteOrigin}/anime` },
     { name: display.name, url: canonicalUrl },
   ])
+
+  // Cover Strategy: Anime Cover > First Post Cover > Gradient
+  const heroCover = display.cover || posts.find(p => p.cover)?.cover || null
+  const bgGradient = getGradient(canonicalId)
+
   return (
     <>
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       ) : null}
-      <div className="space-y-4">
+
+      <div className="space-y-8">
+        {/* Navigation */}
         <Breadcrumbs
           items={[
             { name: '首页', href: '/' },
@@ -95,20 +125,99 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
             { name: display.name, href: `/anime/${encodeAnimeIdForPath(canonicalId)}` },
           ]}
         />
-        <h1 className="text-2xl font-bold">{display.name}</h1>
-        {anime?.alias?.length ? <p className="text-sm text-gray-600">别名：{anime.alias.join(' / ')}</p> : null}
-        {anime?.summary ? <p className="text-gray-700">{anime.summary}</p> : null}
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold">相关文章</h2>
-          <ul className="list-disc pl-6">
-            {posts.map((p) => (
-              <li key={p.path}>
-                <Link href={p.path}>{p.title}</Link>
-              </li>
-            ))}
-            {!posts.length && <li className="text-gray-500 list-none pl-0">暂无文章。</li>}
-          </ul>
+
+        {/* Hero Section */}
+        <div className="relative w-full overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
+          {/* Background Layer */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center opacity-40 blur-2xl scale-110 transition-transform duration-1000"
+            style={{ 
+              backgroundImage: heroCover ? `url(${heroCover})` : 'none',
+              background: heroCover ? undefined : bgGradient
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
+
+          {/* Content Layer */}
+          <div className="relative z-10 flex flex-col gap-6 p-6 md:flex-row md:items-start md:p-10">
+            {/* Poster Card */}
+            <div className="shrink-0 mx-auto md:mx-0">
+              <div className="relative aspect-[3/4] w-40 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/20 md:w-52">
+                <div className="absolute inset-0" style={{ background: bgGradient }} />
+                {heroCover ? (
+                  <img 
+                    src={heroCover} 
+                    alt={display.name} 
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            {/* Text Info */}
+            <div className="flex-1 space-y-4 text-center md:text-left">
+              <div>
+                <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-5xl text-shadow-sm">
+                  {display.name}
+                </h1>
+                {display.alias?.length ? (
+                  <p className="mt-2 text-sm text-gray-300 md:text-base">
+                    {display.alias.join(' / ')}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-3 md:justify-start">
+                {display.year ? (
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium backdrop-blur-md">
+                    {display.year}
+                  </span>
+                ) : null}
+                <span className="rounded-full bg-brand-500/80 px-3 py-1 text-xs font-medium text-white backdrop-blur-md">
+                  {posts.length} 篇文章
+                </span>
+              </div>
+
+              {display.summary ? (
+                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-200/90 md:mx-0 md:text-base">
+                  {display.summary}
+                </p>
+              ) : (
+                <p className="text-sm italic text-gray-400">暂无简介</p>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Posts Grid Section */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <h2 className="text-2xl font-bold text-gray-900">相关文章</h2>
+          </div>
+          
+          {posts.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {posts.map((p) => (
+                <Link key={p.path} href={p.path} className="block transition-transform hover:-translate-y-1">
+                  <BookCover
+                    title={p.title}
+                    path={p.path} // seed for gradient
+                    animeIds={p.animeIds}
+                    city={p.city}
+                    routeLength={p.routeLength}
+                    publishDate={p.publishDate}
+                    cover={p.cover}
+                    variant="shelf"
+                  />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
+              <p className="text-gray-500">该作品下暂无相关文章。</p>
+            </div>
+          )}
+        </section>
       </div>
     </>
   )
