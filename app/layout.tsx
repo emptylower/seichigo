@@ -1,5 +1,6 @@
 import '../styles/globals.css'
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { getSiteUrl } from '@/lib/seo/site'
 
 export const metadata: Metadata = {
@@ -36,7 +37,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh">
-      <body>{children}</body>
+      <body>
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-F7E894BEWR');`}
+        </Script>
+        {children}
+      </body>
     </html>
   )
 }
