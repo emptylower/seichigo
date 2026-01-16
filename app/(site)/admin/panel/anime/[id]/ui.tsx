@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Button from '@/components/shared/Button'
 import SharedCoverField from '@/components/shared/CoverField'
@@ -14,6 +15,7 @@ type AnimeDetail = {
 }
 
 export default function AdminAnimeDetailClient({ id }: { id: string }) {
+  const router = useRouter()
   const [anime, setAnime] = useState<AnimeDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,6 +23,10 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const [summary, setSummary] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showFailureModal, setShowFailureModal] = useState(false)
+  const [failureMessage, setFailureMessage] = useState('')
 
   async function load() {
     setLoading(true)
@@ -41,7 +47,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     void load()
   }, [id])
 
-  async function updateField(field: Partial<AnimeDetail>) {
+  async function updateField(field: Partial<AnimeDetail>, refreshSummary = true) {
     setSaveMessage(null)
     const res = await fetch(`/api/admin/anime/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -53,7 +59,9 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       throw new Error(data.error || '更新失败')
     }
     setAnime(data.anime)
-    setSummary(data.anime.summary || '')
+    if (refreshSummary) {
+      setSummary(data.anime.summary || '')
+    }
     setSaveMessage('已保存')
     setTimeout(() => setSaveMessage(null), 2000)
   }
@@ -62,8 +70,10 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     setSaving(true)
     try {
       await updateField({ summary })
+      setShowSuccessModal(true)
     } catch (err: any) {
-      alert(err.message)
+      setFailureMessage(err.message)
+      setShowFailureModal(true)
     } finally {
       setSaving(false)
     }
@@ -125,7 +135,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
             value={anime.cover ?? null}
             onChange={(next) => setAnime((prev) => (prev ? { ...prev, cover: next ?? undefined } : prev))}
             onSave={async (url) => {
-              await updateField({ cover: url ?? null })
+              await updateField({ cover: url ?? null }, false)
             }}
             aspectRatio={3 / 4}
             label="作品海报"
@@ -137,15 +147,16 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
           <h2 className="font-semibold text-gray-900">简介</h2>
           <div className="space-y-2">
             <textarea
-              className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               placeholder="请输入作品简介…"
+              disabled={saving}
             />
             <div className="flex items-center justify-between">
               <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
               <Button onClick={onSaveSummary} disabled={saving}>
-                保存简介
+                {saving ? '保存中…' : '保存简介'}
               </Button>
             </div>
           </div>
@@ -172,6 +183,56 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
           </div>
         </section>
       </div>
+
+      {showSuccessModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="px-6 py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">保存成功</h3>
+              <p className="mt-2 text-sm text-gray-600">作品简介已更新。</p>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4">
+              <Button 
+                className="w-full justify-center" 
+                onClick={() => router.push('/admin/panel')}
+              >
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showFailureModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="px-6 py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">保存失败</h3>
+              <p className="mt-2 text-sm text-gray-600">{failureMessage || '发生未知错误'}</p>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4">
+              <Button 
+                variant="ghost" 
+                className="w-full justify-center" 
+                onClick={() => setShowFailureModal(false)}
+              >
+                关闭
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
+
