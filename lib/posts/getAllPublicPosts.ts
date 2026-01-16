@@ -14,6 +14,7 @@ export type GetAllPublicPostsOptions = {
 }
 
 function toTimestamp(p: PublicPostListItem): number {
+  if (p.updatedAt) return Date.parse(p.updatedAt) || 0
   if (p.publishedAt) return Date.parse(p.publishedAt) || 0
   if (p.publishDate) return Date.parse(p.publishDate) || 0
   return 0

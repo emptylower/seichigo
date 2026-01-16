@@ -39,7 +39,7 @@ describe('public posts aggregation', () => {
     expect(list[0]?.source).toBe('db')
   })
 
-  it('getAllPublicPosts: merges and sorts by publishDate/publishedAt desc', async () => {
+  it('getAllPublicPosts: merges and sorts by updatedAt/publishedAt/publishDate desc', async () => {
     const repo = new InMemoryArticleRepo()
     const created = await repo.createDraft({ authorId: 'u1', slug: 'db-1', title: 'DB 1' })
     await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-03T00:00:00.000Z') })
@@ -59,7 +59,7 @@ describe('public posts aggregation', () => {
     })
 
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
-    expect(list.map((x) => x.path)).toEqual([`/posts/db-1`, '/posts/mdx-1'])
+    expect(list.map((x) => x.path)).toEqual(['/posts/mdx-1', `/posts/db-1`])
   })
 
   it('getPublicPostBySlug: slug exists in MDX -> returns MDX (priority)', async () => {
