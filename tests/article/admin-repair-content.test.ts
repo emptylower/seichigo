@@ -3,7 +3,7 @@ import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
 
 describe('admin repair: render contentHtml from contentJson', () => {
-  it('renders figureImage wrapper with explicit marker attributes', () => {
+  it('renders figureImage wrapper with explicit marker attributes (server-safe extensions)', () => {
     const doc = {
       type: 'doc',
       content: [

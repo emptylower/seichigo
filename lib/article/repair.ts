@@ -4,10 +4,9 @@ import { generateHTML } from '@tiptap/html'
 import { InlineCode } from '@/components/editor/extensions/InlineCode'
 import { TextColor } from '@/components/editor/extensions/TextColor'
 import { TextBackground } from '@/components/editor/extensions/TextBackground'
-import { FigureImage } from '@/components/editor/extensions/FigureImage'
-import { SeichiRoute } from '@/components/editor/extensions/SeichiRoute'
-import { SeichiCallout } from '@/components/editor/extensions/SeichiCallout'
 import { BlockLayout } from '@/components/editor/extensions/BlockLayout'
+
+import { FigureImageServer, SeichiCalloutServer, SeichiRouteServer } from '@/lib/article/repairExtensions'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 
 export function renderArticleContentHtmlFromJson(contentJson: unknown): string {
@@ -28,9 +27,9 @@ export function renderArticleContentHtmlFromJson(contentJson: unknown): string {
     InlineCode,
     TextColor,
     TextBackground,
-    FigureImage,
-    SeichiRoute,
-    SeichiCallout,
+    FigureImageServer,
+    SeichiRouteServer,
+    SeichiCalloutServer,
     BlockLayout,
   ])
 
