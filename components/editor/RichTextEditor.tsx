@@ -1064,19 +1064,24 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                       <div className="my-1 h-px bg-gray-100" />
                        <BlockDropdownItem icon="链" label="链接…" active={editor.isActive('link')} onClick={openLinkEditor} />
                        {editor.isActive('link') ? <BlockDropdownItem icon="链" label="移除链接" onClick={unsetLink} /> : null}
-                       <BlockDropdownItem icon="泡" label="插入气泡提示…" onClick={() => editor.chain().focus().insertSeichiCallout().run()} />
-                       <BlockDropdownItem
-                         icon="泡"
-                         label={editor.isActive('seichiCallout') ? '取消气泡提示' : '选中内容包裹气泡'}
-                         active={editor.isActive('seichiCallout')}
-                         onClick={() => {
-                           if (editor.isActive('seichiCallout')) {
-                             editor.chain().focus().unsetSeichiCallout().run()
-                           } else {
-                             editor.chain().focus().wrapInSeichiCallout().run()
-                           }
-                         }}
-                       />
+                      <BlockDropdownItem
+                        icon="泡"
+                        label={editor.isActive('seichiCallout') ? '取消气泡提示' : '气泡提示'}
+                        active={editor.isActive('seichiCallout')}
+                        onClick={() => {
+                          const chain = editor.chain().focus()
+                          if (editor.isActive('seichiCallout')) {
+                            chain.unsetSeichiCallout().run()
+                            return
+                          }
+                          if (editor.state.selection.empty) {
+                            chain.insertSeichiCallout().run()
+                            return
+                          }
+                          chain.wrapInSeichiCallout().run()
+                        }}
+                      />
+
                        <BlockDropdownItem icon="路" label="插入路线图/清单…" onClick={() => editor.chain().focus().insertSeichiRoute().run()} />
                        <BlockDropdownItem
                          icon="图"
