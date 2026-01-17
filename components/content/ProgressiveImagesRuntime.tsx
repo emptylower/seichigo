@@ -107,6 +107,27 @@ export default function ProgressiveImagesRuntime({ rootSelector = '[data-seichi-
       img.addEventListener('click', onClick)
     }
 
+    const scanNearViewport = () => {
+      for (const img of images) {
+        if (!img.isConnected) continue
+        if (img.getAttribute('data-seichi-stage')) continue
+        if (!isNearViewport(img, 250)) continue
+        upgradeToSd(img)
+      }
+    }
+
+    let scanTimer: number | null = null
+    const requestScan = () => {
+      if (scanTimer != null) return
+      scanTimer = window.setTimeout(() => {
+        scanTimer = null
+        scanNearViewport()
+      }, 80)
+    }
+
+    window.addEventListener('scroll', requestScan, { passive: true })
+    window.addEventListener('resize', requestScan)
+
     let observer: IntersectionObserver | null = null
     if (typeof IntersectionObserver === 'function') {
       observer = new IntersectionObserver(
@@ -120,20 +141,14 @@ export default function ProgressiveImagesRuntime({ rootSelector = '[data-seichi-
         { rootMargin: '200px 0px', threshold: 0.01 }
       )
       for (const img of images) observer.observe(img)
-
-      scheduleIdle(() => {
-        for (const img of images) {
-          if (!img.isConnected) continue
-          if (img.getAttribute('data-seichi-stage')) continue
-          if (!isNearViewport(img, 250)) continue
-          upgradeToSd(img)
-        }
-      })
-    } else {
-      for (const img of images) upgradeToSd(img)
     }
 
+    scheduleIdle(() => requestScan())
+
     return () => {
+      window.removeEventListener('scroll', requestScan)
+      window.removeEventListener('resize', requestScan)
+      if (scanTimer != null) window.clearTimeout(scanTimer)
       for (const [img, onClick] of clickHandlers.entries()) {
         img.removeEventListener('click', onClick)
       }
