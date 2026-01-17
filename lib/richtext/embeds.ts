@@ -35,13 +35,18 @@ export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | n
   if (!routes.size) return html
 
   return html.replace(SEICHI_ROUTE_TAG_RE, (tag) => {
-    const id = extractDataIdFromTag(tag)
-    if (!id) return ''
-    const raw = routes.get(id)
-    const parsed = parseSeichiRouteEmbedV1(raw)
-    if (!parsed.ok) {
-      return `<section class="seichi-route seichi-route--invalid" data-id="${id}">路线数据格式错误：${parsed.error}</section>`
-    }
+     const id = extractDataIdFromTag(tag)
+     if (!id) {
+       return '<section class="seichi-route seichi-route--invalid" data-id="">路线数据缺少 data-id（请发起更新并重新发布）。</section>'
+     }
+     const raw = routes.get(id)
+     if (raw === undefined) {
+       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">路线数据未找到（请发起更新并重新发布）。</section>`
+     }
+     const parsed = parseSeichiRouteEmbedV1(raw)
+     if (!parsed.ok) {
+       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">路线数据格式错误：${parsed.error}</section>`
+     }
     return renderSeichiRouteEmbedHtml(parsed.value, { id })
   })
 }

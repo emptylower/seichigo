@@ -388,6 +388,12 @@ function isAllowedImageSrc(src: string): boolean {
   }
 }
 
+function isTruthyMarker(value: unknown): boolean {
+  if (value == null) return false
+  const s = String(value).trim().toLowerCase()
+  return s === 'true' || s === ''
+}
+
 function sanitizeAnchorHref(href?: string): string | null {
   if (!href) return null
   const trimmed = href.trim()
@@ -420,8 +426,8 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
         return !isAllowedImageSrc(frame.attribs?.src || '')
       }
       if (frame.tag === 'div') {
-        const isFrame = String(frame.attribs?.['data-figure-image-frame'] || '').trim().toLowerCase() === 'true'
-        const isContainer = String(frame.attribs?.['data-figure-image-container'] || '').trim().toLowerCase() === 'true'
+        const isFrame = isTruthyMarker(frame.attribs?.['data-figure-image-frame'])
+        const isContainer = isTruthyMarker(frame.attribs?.['data-figure-image-container'])
         return !isFrame && !isContainer
       }
       return false
@@ -439,8 +445,7 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
       figure: (tagName, attribs) => {
         const next = sanitizeBlockAttrs(attribs)
 
-        const marker = String(attribs['data-figure-image'] || '').trim().toLowerCase()
-        if (marker !== 'true') return { tagName, attribs: next }
+        if (!isTruthyMarker(attribs['data-figure-image'])) return { tagName, attribs: next }
 
         next['data-figure-image'] = 'true'
 
@@ -461,16 +466,14 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
       div: (tagName, attribs) => {
         const next: Record<string, string> = {}
 
-        const markerContainer = String(attribs['data-figure-image-container'] || '').trim().toLowerCase()
-        if (markerContainer === 'true') {
+        if (isTruthyMarker(attribs['data-figure-image-container'])) {
           next['data-figure-image-container'] = 'true'
           const widthPct = sanitizePercentInt(attribs['data-width-pct'], 10, 100)
           if (widthPct) next['data-width-pct'] = widthPct
           return { tagName, attribs: next }
         }
 
-        const markerFrame = String(attribs['data-figure-image-frame'] || '').trim().toLowerCase()
-        if (markerFrame !== 'true') {
+        if (!isTruthyMarker(attribs['data-figure-image-frame'])) {
           return { tagName, attribs: {} }
         }
 
