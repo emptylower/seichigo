@@ -1030,7 +1030,6 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                         label="有序列表"
                         active={editor.isActive('orderedList')}
                         onClick={() => {
-                          if (editor.isActive('orderedList')) return
                           editor.chain().focus().toggleOrderedList().run()
                         }}
                       />
@@ -1039,7 +1038,6 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                         label="无序列表"
                         active={editor.isActive('bulletList')}
                         onClick={() => {
-                          if (editor.isActive('bulletList')) return
                           editor.chain().focus().toggleBulletList().run()
                         }}
                       />
@@ -1048,7 +1046,6 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                         label="代码块"
                         active={editor.isActive('codeBlock')}
                         onClick={() => {
-                          if (editor.isActive('codeBlock')) return
                           editor.chain().focus().toggleCodeBlock().run()
                         }}
                       />
@@ -1057,7 +1054,6 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                         label="引用"
                         active={editor.isActive('blockquote')}
                         onClick={() => {
-                          if (editor.isActive('blockquote')) return
                           editor.chain().focus().toggleBlockquote().run()
                         }}
                       />
