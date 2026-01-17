@@ -180,46 +180,63 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* App Promo - Minimalist & Light */}
+      {/* App Promo - Dark Premium Style */}
       <section className="max-w-7xl mx-auto px-6">
-        <div className="rounded-3xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white px-6 py-10 sm:px-12">
-          <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
-            <div className="flex-1 space-y-3 text-center md:text-left">
-              <div className="flex items-center justify-center gap-3 md:justify-start">
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
+        <div className="relative overflow-hidden rounded-3xl bg-gray-900 px-6 py-12 shadow-2xl sm:px-12 md:py-16">
+          {/* 背景装饰光效 - 使用品牌色营造氛围 */}
+          <div className="absolute top-0 right-0 -mt-20 -mr-20 h-80 w-80 rounded-full bg-brand-500 opacity-20 blur-3xl" />
+          <div className="absolute bottom-0 left-0 -mb-20 -ml-20 h-80 w-80 rounded-full bg-purple-500 opacity-20 blur-3xl" />
+
+          <div className="relative z-10 flex flex-col items-center justify-between gap-8 md:flex-row">
+            <div className="flex-1 space-y-6 text-center md:text-left">
+              <div className="flex flex-col items-center gap-5 md:flex-row md:items-start">
+                {/* Logo 容器 - 增加发光和磨砂效果 */}
+                <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/10 shadow-inner ring-1 ring-white/20 backdrop-blur-md">
                   <Image
                     src="/brand/app-logo.png"
-                    alt="Logo"
-                    width={32}
-                    height={32}
-                    className="rounded-lg"
+                    alt="SeichiGo App Logo"
+                    width={56}
+                    height={56}
+                    className="rounded-xl shadow-lg"
                   />
                 </span>
-                <h2 className="text-xl font-bold text-gray-900">SeichiGo App</h2>
-                <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-600">
-                  Coming Soon
-                </span>
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-center gap-3 md:justify-start">
+                    <h2 className="text-3xl font-bold text-white tracking-tight">SeichiGo App</h2>
+                    <span className="rounded-full bg-brand-500/20 px-3 py-1 text-xs font-bold text-brand-300 ring-1 ring-brand-500/50 backdrop-blur-md">
+                      Coming Soon
+                    </span>
+                  </div>
+                  <p className="max-w-lg text-base leading-relaxed text-gray-300">
+                    未来将支持<span className="text-white font-medium">离线圣地地图</span>与<span className="text-white font-medium">一键巡礼导航</span>。
+                    <br className="hidden sm:block" />
+                    把二次元的感动装进口袋，随时出发。
+                  </p>
+                </div>
               </div>
-              <p className="max-w-md text-sm leading-relaxed text-gray-500">
-                我们正在开发移动端应用，未来将支持离线地图与一键导航。
-                <br className="hidden sm:block" />
-                把所有圣地装进口袋，随时出发。
-              </p>
             </div>
 
-            <div className="flex shrink-0 items-center gap-3">
-              <button disabled className="group flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-400 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed">
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+            {/* 按钮组 - 即使禁用也要做得像“敬请期待”的高级徽章 */}
+            <div className="flex shrink-0 flex-col gap-4 sm:flex-row">
+              <button disabled className="group relative flex h-14 items-center gap-3 rounded-xl bg-white/5 px-6 pr-8 text-left ring-1 ring-white/10 transition-all hover:bg-white/10 disabled:cursor-not-allowed">
+                <svg className="h-7 w-7 text-white opacity-90" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-.69-.32-1.54-.32-2.19 0-1.04.56-2.15.56-3.14-.43-1.8-1.79-2.92-5.15-1.21-8.1 1.1-1.9 3.09-2.8 4.75-2.73 1.16.05 2.03.62 2.67.62.63 0 1.76-.66 3.07-.56 1.05.08 2.02.51 2.76 1.44-2.52 1.5-2.07 5.23.47 6.27-.54 1.35-1.22 2.67-2.3 4.18-.76 1.05-1.55 2.08-2.69 1.95-.76-.08-1.55-.53-2.69-.53-1.14 0-1.92.45-2.69.53-1.14.13-1.93-.9-2.69-1.95-.56-.78-1.08-1.63-1.55-2.52 1.5-2.52 3.8-2.8 5.6-1.05.65.63 1.33 1.18 2.05 1.63.72.45 1.48.83 2.28 1.13.8.3 1.63.53 2.48.68.85.15 1.73.23 2.63.23h.1z"/>
                   <path d="M12.03 7.24c-.13-2.3 1.73-4.3 3.97-4.5.25 2.5-2.45 4.75-3.97 4.5z"/>
                 </svg>
-                <span>App Store</span>
+                <div className="flex flex-col leading-none">
+                  <span className="text-[10px] uppercase text-gray-400">Download on the</span>
+                  <span className="text-sm font-bold text-white">App Store</span>
+                </div>
               </button>
-              <button disabled className="group flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-400 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed">
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              
+              <button disabled className="group relative flex h-14 items-center gap-3 rounded-xl bg-white/5 px-6 pr-8 text-left ring-1 ring-white/10 transition-all hover:bg-white/10 disabled:cursor-not-allowed">
+                <svg className="h-6 w-6 text-white opacity-90" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M3.609 1.814L13.792 12 3.61 22.186a2.048 2.048 0 01-2.02-3.12l1.64-7.066-1.64-7.066a2.048 2.048 0 012.02-3.12zM15.5 12c0 .133-.006.265-.018.396l-7.066 7.066c-.63.63-1.72.184-1.72-.707V5.245c0-.89 1.09-1.337 1.72-.707l7.066 7.066c.012.131.018.263.018.396z"/>
                 </svg>
-                <span>Google Play</span>
+                <div className="flex flex-col leading-none">
+                  <span className="text-[10px] uppercase text-gray-400">Get it on</span>
+                  <span className="text-sm font-bold text-white">Google Play</span>
+                </div>
               </button>
             </div>
           </div>
