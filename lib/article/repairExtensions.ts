@@ -1,3 +1,4 @@
+import Code from '@tiptap/extension-code'
 import { Node, mergeAttributes } from '@tiptap/core'
 
 function normalizeSrc(value: unknown): string | null {
@@ -64,6 +65,10 @@ function computeRotatedSizeVars(opts: { rotate: number; naturalWidth: number | n
   const h = `${Math.round((1 / ar) * 100)}%`
   return { w, h }
 }
+
+export const InlineCodeServer = Code.extend({
+  excludes: 'bold italic underline strike textColor textBackground',
+})
 
 export const FigureImageServer = Node.create({
   name: 'figureImage',
