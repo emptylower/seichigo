@@ -33,6 +33,18 @@ function preloadImage(src: string, onDone: () => void) {
   }
 }
 
+function isNearViewport(el: Element, marginPx: number): boolean {
+  try {
+    const rect = (el as HTMLElement).getBoundingClientRect?.()
+    if (!rect) return false
+    const top = rect.top
+    const bottom = rect.bottom
+    return bottom >= -marginPx && top <= window.innerHeight + marginPx
+  } catch {
+    return false
+  }
+}
+
 function upgradeToSd(img: HTMLImageElement) {
   const sd = img.getAttribute('data-seichi-sd') || ''
   if (!sd) return
@@ -108,6 +120,15 @@ export default function ProgressiveImagesRuntime({ rootSelector = '[data-seichi-
         { rootMargin: '200px 0px', threshold: 0.01 }
       )
       for (const img of images) observer.observe(img)
+
+      scheduleIdle(() => {
+        for (const img of images) {
+          if (!img.isConnected) continue
+          if (img.getAttribute('data-seichi-stage')) continue
+          if (!isNearViewport(img, 250)) continue
+          upgradeToSd(img)
+        }
+      })
     } else {
       for (const img of images) upgradeToSd(img)
     }
