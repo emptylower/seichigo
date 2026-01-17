@@ -11,6 +11,7 @@ import { TextColor } from '@/components/editor/extensions/TextColor'
 import { FigureImage } from '@/components/editor/extensions/FigureImage'
 import { InlineCode } from '@/components/editor/extensions/InlineCode'
 import { SeichiRoute } from '@/components/editor/extensions/SeichiRoute'
+import { SeichiCallout } from '@/components/editor/extensions/SeichiCallout'
 
 export type RichTextValue = {
   json: unknown | null
@@ -430,6 +431,7 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
         TextBackground,
         FigureImage,
         SeichiRoute,
+        SeichiCallout,
         BlockLayout,
         Placeholder.configure({
           placeholder: '开始写作…',
@@ -1060,14 +1062,28 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
                         }}
                       />
                       <div className="my-1 h-px bg-gray-100" />
-                      <BlockDropdownItem icon="链" label="链接…" active={editor.isActive('link')} onClick={openLinkEditor} />
-                      {editor.isActive('link') ? <BlockDropdownItem icon="链" label="移除链接" onClick={unsetLink} /> : null}
-                      <BlockDropdownItem icon="路" label="插入路线图/清单…" onClick={() => editor.chain().focus().insertSeichiRoute().run()} />
-                      <BlockDropdownItem
-                        icon="图"
-                        label={uploading ? '上传中…' : '插入图片…'}
-                        onClick={() => fileRef.current?.click()}
-                      />
+                       <BlockDropdownItem icon="链" label="链接…" active={editor.isActive('link')} onClick={openLinkEditor} />
+                       {editor.isActive('link') ? <BlockDropdownItem icon="链" label="移除链接" onClick={unsetLink} /> : null}
+                       <BlockDropdownItem icon="泡" label="插入气泡提示…" onClick={() => editor.chain().focus().insertSeichiCallout().run()} />
+                       <BlockDropdownItem
+                         icon="泡"
+                         label={editor.isActive('seichiCallout') ? '取消气泡提示' : '选中内容包裹气泡'}
+                         active={editor.isActive('seichiCallout')}
+                         onClick={() => {
+                           if (editor.isActive('seichiCallout')) {
+                             editor.chain().focus().unsetSeichiCallout().run()
+                           } else {
+                             editor.chain().focus().wrapInSeichiCallout().run()
+                           }
+                         }}
+                       />
+                       <BlockDropdownItem icon="路" label="插入路线图/清单…" onClick={() => editor.chain().focus().insertSeichiRoute().run()} />
+                       <BlockDropdownItem
+                         icon="图"
+                         label={uploading ? '上传中…' : '插入图片…'}
+                         onClick={() => fileRef.current?.click()}
+                       />
+
                     </div>
                   </div>
                 </div>

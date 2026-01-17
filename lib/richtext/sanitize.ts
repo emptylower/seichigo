@@ -35,6 +35,7 @@ const ALLOWED_TAGS = [
   'figure',
   'figcaption',
   'seichi-route',
+  'seichi-callout',
 ]
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
@@ -76,6 +77,7 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   th: ['colspan', 'rowspan'],
   td: ['colspan', 'rowspan'],
   'seichi-route': ['data-id'],
+  'seichi-callout': [],
 }
 
 const allowedFonts = new Set(RICH_TEXT_ALLOWED_FONT_FAMILIES.map((f) => normalizeFontFamily(f)))

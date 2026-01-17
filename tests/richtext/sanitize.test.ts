@@ -110,6 +110,15 @@ describe('richtext sanitize', () => {
     expect(out).not.toContain('alert(1)')
   })
 
+  it('preserves seichi-callout and drops unsafe attributes', () => {
+    const html = '<seichi-callout onclick="alert(1)"><p>hi</p></seichi-callout>'
+    const out = sanitizeRichTextHtml(html)
+    expect(out).toContain('<seichi-callout>')
+    expect(out).toContain('<p>hi</p>')
+    expect(out).not.toContain('onclick')
+    expect(out).not.toContain('alert(1)')
+  })
+
   it('allows external images via http(s)', () => {
     const httpsOut = sanitizeRichTextHtml('<img src="https://example.com/a.jpg" alt="a" />')
     expect(httpsOut).toContain('src="https://example.com/a.jpg"')
