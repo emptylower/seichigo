@@ -272,12 +272,14 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
         />
       ))}
-      <div className="mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-12 px-6 lg:grid-cols-[280px_1fr] xl:grid-cols-[280px_1fr_280px]">
-        <div className="hidden lg:block">
-          <ArticleToc />
-        </div>
-        <div className="min-w-0">
-          <article className="prose prose-pink mx-auto w-full max-w-3xl" data-seichi-article-content="true">
+      <div className="mx-auto flex w-full max-w-[1920px] items-start gap-12 px-6 lg:px-12">
+        <aside className="hidden lg:block w-72 shrink-0">
+          <div className="sticky top-24">
+            <ArticleToc />
+          </div>
+        </aside>
+        <main className="min-w-0 flex-1">
+          <article className="prose prose-pink max-w-none w-full" data-seichi-article-content="true">
             <div className="not-prose">
               <Breadcrumbs items={breadcrumbItems} />
             </div>
@@ -302,8 +304,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             <div className="mt-12" />
             <GiscusComments term={giscusTerm} />
           </article>
-        </div>
-        <div className="hidden xl:block" aria-hidden="true" />
+        </main>
       </div>
     </>
   )
