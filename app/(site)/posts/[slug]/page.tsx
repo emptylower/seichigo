@@ -272,35 +272,38 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
         />
       ))}
-      <div className="mx-auto flex w-full max-w-5xl gap-8">
-        <div className="hidden lg:block shrink-0">
+      <div className="mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-12 px-6 lg:grid-cols-[280px_1fr] xl:grid-cols-[280px_1fr_280px]">
+        <div className="hidden lg:block">
           <ArticleToc />
         </div>
-        <article className="prose prose-pink max-w-none flex-1 min-w-0" data-seichi-article-content="true">
-          <div className="not-prose">
-            <Breadcrumbs items={breadcrumbItems} />
-          </div>
-          <h1>{title}</h1>
-          <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
-          {favoritesEnabled ? (
-            <div className="not-prose mt-3 flex justify-end">
-              <FavoriteButton
-                target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
-                initialFavorited={initialFavorited}
-                loggedIn={Boolean(session?.user?.id)}
-              />
+        <div className="min-w-0">
+          <article className="prose prose-pink mx-auto w-full max-w-3xl" data-seichi-article-content="true">
+            <div className="not-prose">
+              <Breadcrumbs items={breadcrumbItems} />
             </div>
-          ) : null}
-          <div className="mt-6" />
-          {found.source === 'mdx' ? (
-            found.post.content
-          ) : (
-            <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
-          )}
-          <ProgressiveImagesRuntime />
-          <div className="mt-12" />
-          <GiscusComments term={giscusTerm} />
-        </article>
+            <h1>{title}</h1>
+            <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
+            {favoritesEnabled ? (
+              <div className="not-prose mt-3 flex justify-end">
+                <FavoriteButton
+                  target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
+                  initialFavorited={initialFavorited}
+                  loggedIn={Boolean(session?.user?.id)}
+                />
+              </div>
+            ) : null}
+            <div className="mt-6" />
+            {found.source === 'mdx' ? (
+              found.post.content
+            ) : (
+              <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
+            )}
+            <ProgressiveImagesRuntime />
+            <div className="mt-12" />
+            <GiscusComments term={giscusTerm} />
+          </article>
+        </div>
+        <div className="hidden xl:block" aria-hidden="true" />
       </div>
     </>
   )
