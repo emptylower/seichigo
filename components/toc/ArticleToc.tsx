@@ -71,7 +71,7 @@ export default function ArticleToc() {
   return (
     <>
       <div
-        className={`hidden lg:flex flex-col sticky top-8 transition-all duration-300 ease-in-out overflow-hidden ${
+        className={`hidden lg:flex flex-col relative transition-all duration-300 ease-in-out overflow-hidden ${
           isCollapsed ? 'w-10' : 'w-64'
         }`}
       >
