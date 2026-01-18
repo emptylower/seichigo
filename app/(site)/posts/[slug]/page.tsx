@@ -272,7 +272,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
         />
       ))}
-      <div className="mx-auto w-full max-w-7xl px-6 lg:px-10" data-layout-wide="true">
+      <div key={canonicalSlug} className="mx-auto w-full max-w-7xl px-6 lg:px-10" data-layout-wide="true">
         <div className="flex items-start gap-12">
           <aside className="hidden lg:block lg:sticky lg:top-[var(--site-header-h,60px)] lg:shrink-0 lg:w-72 lg:pt-1 xl:fixed xl:left-4 xl:top-[var(--site-header-h,60px)] xl:z-30 2xl:left-10">
             <ArticleToc />

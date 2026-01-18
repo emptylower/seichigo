@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
 type Props = {
   rootSelector?: string
@@ -49,11 +50,34 @@ function upgradeToSd(img: HTMLImageElement) {
   const sd = img.getAttribute('data-seichi-sd') || ''
   if (!sd) return
   const current = img.getAttribute('src') || ''
+
+  if (img.getAttribute('data-seichi-stage') === 'hd') return
+
+  const stage = img.getAttribute('data-seichi-stage')
+  const blurred = img.getAttribute('data-seichi-blur')
+
+  if ((current === sd || stage === 'sd') && blurred === 'true') {
+    if (img.complete && img.naturalWidth > 0) {
+      img.setAttribute('data-seichi-stage', 'sd')
+      img.setAttribute('data-seichi-blur', 'false')
+      scheduleHd(img)
+    }
+    return
+  }
+
   if (current === sd) return
-  if (img.getAttribute('data-seichi-stage') === 'sd' || img.getAttribute('data-seichi-stage') === 'hd') return
+  if (stage === 'sd') return
 
   img.setAttribute('data-seichi-stage', 'sd')
   img.setAttribute('data-seichi-blur', 'true')
+  img.setAttribute('src', sd)
+
+  if (img.complete && img.naturalWidth > 0) {
+    img.setAttribute('data-seichi-blur', 'false')
+    scheduleHd(img)
+    return
+  }
+
   img.addEventListener(
     'load',
     () => {
@@ -63,7 +87,6 @@ function upgradeToSd(img: HTMLImageElement) {
     },
     { once: true }
   )
-  img.setAttribute('src', sd)
 }
 
 function scheduleHd(img: HTMLImageElement) {
@@ -84,6 +107,7 @@ function scheduleHd(img: HTMLImageElement) {
 
 export default function ProgressiveImagesRuntime({ rootSelector = '[data-seichi-article-content="true"]' }: Props) {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null)
+  const pathname = usePathname()
 
   const selector = useMemo(() => rootSelector.trim(), [rootSelector])
 
@@ -154,7 +178,7 @@ export default function ProgressiveImagesRuntime({ rootSelector = '[data-seichi-
       }
       observer?.disconnect()
     }
-  }, [selector])
+  }, [selector, pathname])
 
   useEffect(() => {
     if (!lightbox) return

@@ -1,6 +1,11 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
+
+vi.mock('next/navigation', () => ({
+  usePathname: vi.fn(() => '/posts/test'),
+}))
+
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 
 class MockIntersectionObserver {
@@ -117,5 +122,79 @@ describe('ProgressiveImagesRuntime', () => {
     expect(dialog).toBeInTheDocument()
     const full = within(dialog).getByRole('img', { name: 'x' }) as HTMLImageElement
     expect(full.getAttribute('src')).toBe('/assets/abc123')
+  })
+
+  it('re-initializes on pathname change (client navigation)', async () => {
+    const nav = await import('next/navigation')
+    const usePathnameMock = nav.usePathname as unknown as ReturnType<typeof vi.fn>
+    usePathnameMock.mockReturnValue('/posts/a')
+    const { container, rerender } = render(
+      <div data-seichi-article-content="true">
+        <img
+          alt="a"
+          src="/assets/a?w=32&q=20"
+          data-seichi-full="/assets/a"
+          data-seichi-sd="/assets/a?w=854&q=70"
+          data-seichi-hd="/assets/a?w=1280&q=80"
+          data-seichi-blur="true"
+        />
+        <ProgressiveImagesRuntime rootSelector='[data-seichi-article-content="true"]' />
+      </div>
+    )
+
+    const imgA = container.querySelector('img') as HTMLImageElement
+    fireEvent.click(imgA)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('dialog'))
+
+    usePathnameMock.mockReturnValue('/posts/b')
+
+    rerender(
+      <div data-seichi-article-content="true">
+        <img
+          alt="b"
+          src="/assets/b?w=32&q=20"
+          data-seichi-full="/assets/b"
+          data-seichi-sd="/assets/b?w=854&q=70"
+          data-seichi-hd="/assets/b?w=1280&q=80"
+          data-seichi-blur="true"
+        />
+        <ProgressiveImagesRuntime rootSelector='[data-seichi-article-content="true"]' />
+      </div>
+    )
+
+    const imgB = container.querySelector('img') as HTMLImageElement
+    fireEvent.click(imgB)
+    const dialog = screen.getByRole('dialog')
+    const full = within(dialog).getByRole('img', { name: 'b' }) as HTMLImageElement
+    expect(full.getAttribute('src')).toBe('/assets/b')
+
+    expect(MockIntersectionObserver.instances.length).toBeGreaterThan(1)
+  })
+
+  it('clears blur when image is already complete at sd', async () => {
+    const { container } = render(
+      <div data-testid="root" data-seichi-article-content="true">
+        <img
+          alt="x"
+          src="/assets/abc123?w=32&q=20"
+          data-seichi-full="/assets/abc123"
+          data-seichi-sd="/assets/abc123?w=854&q=70"
+          data-seichi-hd="/assets/abc123?w=1280&q=80"
+          data-seichi-blur="true"
+        />
+        <ProgressiveImagesRuntime rootSelector='[data-seichi-article-content="true"]' />
+      </div>
+    )
+
+    const img = container.querySelector('img') as HTMLImageElement
+    Object.defineProperty(img, 'complete', { value: true })
+    Object.defineProperty(img, 'naturalWidth', { value: 100 })
+
+    const observer = MockIntersectionObserver.instances[0]!
+    observer.trigger(img, true)
+
+    expect(img.getAttribute('data-seichi-blur')).toBe('false')
   })
 })

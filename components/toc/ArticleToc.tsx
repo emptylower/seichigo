@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import TocPanel from './TocPanel'
 import TocDrawer from './TocDrawer'
 import { useTocObserver } from './useTocObserver'
@@ -28,6 +29,7 @@ export default function ArticleToc() {
   const activeId = useTocObserver(headings, SCROLL_OFFSET)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const pathname = usePathname()
 
   useEffect(() => {
     const root = document.querySelector(TOC_ROOT_SELECTOR)
@@ -57,7 +59,7 @@ export default function ArticleToc() {
     })
 
     setHeadings(nextHeadings)
-  }, [])
+  }, [pathname])
 
   const handleHeadingClick = (h: TocHeading) => {
     const el = document.getElementById(h.id)
