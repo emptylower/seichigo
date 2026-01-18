@@ -541,7 +541,25 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
         if (naturalW) next['data-natural-w'] = naturalW
         const naturalH = sanitizePercentInt(attribs['data-natural-h'], 0, 200000)
         if (naturalH) next['data-natural-h'] = naturalH
-        const style = sanitizeImageVars(attribs.style)
+        let style = sanitizeImageVars(attribs.style)
+
+        const hasCropAttr = Boolean(attribs['data-crop-l'] || attribs['data-crop-t'] || attribs['data-crop-r'] || attribs['data-crop-b'])
+        if (hasCropAttr) {
+          const hasCropVars = Boolean(
+            style &&
+              style.includes('--seichi-crop-left:') &&
+              style.includes('--seichi-crop-top:') &&
+              style.includes('--seichi-crop-width:') &&
+              style.includes('--seichi-crop-height:')
+          )
+          if (!hasCropVars) {
+            delete next['data-crop-l']
+            delete next['data-crop-t']
+            delete next['data-crop-r']
+            delete next['data-crop-b']
+          }
+        }
+
         if (style) next.style = style
         return { tagName, attribs: next }
       },
