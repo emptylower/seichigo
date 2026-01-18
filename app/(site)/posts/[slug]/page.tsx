@@ -272,14 +272,12 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
         />
       ))}
-      <div className="mx-auto flex w-full max-w-[1920px] items-start gap-12 px-6 lg:px-12">
-        <aside className="hidden lg:block w-72 shrink-0">
-          <div className="sticky top-24">
-            <ArticleToc />
-          </div>
+      <div className="flex w-full gap-8" data-layout-wide="true">
+        <aside className="hidden lg:block shrink-0 w-72 pt-4 pl-4 xl:pl-8">
+          <ArticleToc />
         </aside>
-        <main className="min-w-0 flex-1">
-          <article className="prose prose-pink max-w-none w-full" data-seichi-article-content="true">
+        <main className="min-w-0 flex-1 px-4 lg:px-8 xl:px-12 pb-24">
+          <article className="prose prose-pink max-w-6xl w-full mx-auto" data-seichi-article-content="true">
             <div className="not-prose">
               <Breadcrumbs items={breadcrumbItems} />
             </div>
