@@ -10,6 +10,7 @@ import GiscusComments from '@/components/GiscusComments'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import ArticleToc from '@/components/toc/ArticleToc'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
@@ -271,31 +272,36 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
         />
       ))}
-      <article className="prose prose-pink max-w-none" data-seichi-article-content="true">
-        <div className="not-prose">
-          <Breadcrumbs items={breadcrumbItems} />
+      <div className="mx-auto flex w-full max-w-5xl gap-8">
+        <div className="hidden lg:block shrink-0">
+          <ArticleToc />
         </div>
-        <h1>{title}</h1>
-        <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
-        {favoritesEnabled ? (
-          <div className="not-prose mt-3 flex justify-end">
-            <FavoriteButton
-              target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
-              initialFavorited={initialFavorited}
-              loggedIn={Boolean(session?.user?.id)}
-            />
+        <article className="prose prose-pink max-w-none flex-1 min-w-0" data-seichi-article-content="true">
+          <div className="not-prose">
+            <Breadcrumbs items={breadcrumbItems} />
           </div>
-        ) : null}
-        <div className="mt-6" />
-        {found.source === 'mdx' ? (
-          found.post.content
-        ) : (
-          <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
-        )}
-        <ProgressiveImagesRuntime />
-        <div className="mt-12" />
-        <GiscusComments term={giscusTerm} />
-      </article>
+          <h1>{title}</h1>
+          <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
+          {favoritesEnabled ? (
+            <div className="not-prose mt-3 flex justify-end">
+              <FavoriteButton
+                target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
+                initialFavorited={initialFavorited}
+                loggedIn={Boolean(session?.user?.id)}
+              />
+            </div>
+          ) : null}
+          <div className="mt-6" />
+          {found.source === 'mdx' ? (
+            found.post.content
+          ) : (
+            <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
+          )}
+          <ProgressiveImagesRuntime />
+          <div className="mt-12" />
+          <GiscusComments term={giscusTerm} />
+        </article>
+      </div>
     </>
   )
 }

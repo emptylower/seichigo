@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from 'react'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { EditorContent, type Editor, useEditor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -22,6 +22,7 @@ type Props = {
   initialValue: RichTextValue
   value: RichTextValue
   onChange: (next: RichTextValue) => void
+  onEditorReady?: (editor: Editor) => void
 }
 
 type UploadResult = { id: string; url: string } | { error: string }
@@ -395,7 +396,7 @@ function Divider() {
   return <div className="mx-1 h-5 w-px bg-gray-200" />
 }
 
-export default function RichTextEditor({ initialValue, value, onChange }: Props) {
+export default function RichTextEditor({ initialValue, value, onChange, onEditorReady }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const blockMenuRef = useRef<HTMLDivElement | null>(null)
@@ -450,6 +451,12 @@ export default function RichTextEditor({ initialValue, value, onChange }: Props)
     },
     []
   )
+
+  useEffect(() => {
+    if (editor && onEditorReady) {
+      onEditorReady(editor)
+    }
+  }, [editor, onEditorReady])
 
   useEffect(() => {
     blockHandleRef.current = blockHandle

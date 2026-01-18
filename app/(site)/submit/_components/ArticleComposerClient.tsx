@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Editor } from '@tiptap/react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/shared/Button'
 import RichTextEditor, { type RichTextValue } from '@/components/editor/RichTextEditor'
+import EditorToc from '@/components/toc/EditorToc'
 import CoverField from './CoverField'
 
 type ArticleStatus = 'draft' | 'in_review' | 'rejected' | 'published'
@@ -329,6 +331,7 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   const displayTitle = title === '未命名' ? '' : title
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editor, setEditor] = useState<Editor | null>(null)
   const [selectedAnime, setSelectedAnime] = useState<AnimeOption[]>(
     (initial?.animeIds ?? []).map((x) => ({ id: x, name: null }))
   )
@@ -512,234 +515,240 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-10">
-      <div className="flex items-center justify-between gap-4">
-        <a href="/submit" className="text-sm text-gray-500 hover:text-gray-700">
-          返回草稿箱
-        </a>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>{formatStatus(status)}</span>
-          {saveState === 'creating' ? <span>创建中…</span> : null}
-          {saveState === 'saving' ? <span>保存中…</span> : null}
-          {saveState === 'saved' ? <span className="text-emerald-700">已保存</span> : null}
-        </div>
+    <div className="mx-auto flex w-full max-w-5xl gap-8 px-4 py-10">
+      <div className="hidden lg:block shrink-0">
+        <EditorToc editor={editor} />
       </div>
-
-      {status === 'rejected' && rejectReason ? (
-        <div className="mt-6 rounded-md bg-amber-50 p-3 text-sm text-amber-900">拒绝原因：{rejectReason}</div>
-      ) : null}
-      {flash ? <div className="mt-6 rounded-md bg-emerald-50 p-3 text-sm text-emerald-700">{flash}</div> : null}
-      {saveState === 'error' && saveError ? (
-        <div className="mt-6 flex flex-col gap-2 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
-          <div>{saveError}</div>
-          <div>
-            <Button type="button" variant="ghost" disabled={!editable || !id || saveInFlight.current} onClick={() => void flushSave('retry')}>
-              重试保存
-            </Button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-4">
+          <a href="/submit" className="text-sm text-gray-500 hover:text-gray-700">
+            返回草稿箱
+          </a>
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span>{formatStatus(status)}</span>
+            {saveState === 'creating' ? <span>创建中…</span> : null}
+            {saveState === 'saving' ? <span>保存中…</span> : null}
+            {saveState === 'saved' ? <span className="text-emerald-700">已保存</span> : null}
           </div>
         </div>
-      ) : null}
 
-      <input
-        className="mt-10 w-full bg-transparent text-4xl font-bold tracking-tight text-gray-900 outline-none placeholder:text-gray-300"
-        placeholder="未命名"
-        value={displayTitle}
-        onChange={(e) => setTitle(e.target.value)}
-        disabled={!editable || saveState === 'creating'}
-      />
+        {status === 'rejected' && rejectReason ? (
+          <div className="mt-6 rounded-md bg-amber-50 p-3 text-sm text-amber-900">拒绝原因：{rejectReason}</div>
+        ) : null}
+        {flash ? <div className="mt-6 rounded-md bg-emerald-50 p-3 text-sm text-emerald-700">{flash}</div> : null}
+        {saveState === 'error' && saveError ? (
+          <div className="mt-6 flex flex-col gap-2 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
+            <div>{saveError}</div>
+            <div>
+              <Button type="button" variant="ghost" disabled={!editable || !id || saveInFlight.current} onClick={() => void flushSave('retry')}>
+                重试保存
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
-      <div className="mt-8">
-        {editable ? (
-          <RichTextEditor
-            initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
-            value={content}
-            onChange={setContent}
-          />
-        ) : (
-          <div className="prose prose-pink max-w-none" dangerouslySetInnerHTML={{ __html: initial?.contentHtml || '' }} />
-        )}
-      </div>
+        <input
+          className="mt-10 w-full bg-transparent text-4xl font-bold tracking-tight text-gray-900 outline-none placeholder:text-gray-300"
+          placeholder="未命名"
+          value={displayTitle}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={!editable || saveState === 'creating'}
+        />
 
-      <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-gray-500">
+        <div className="mt-8">
           {editable ? (
-            <span>提示：写作内容会自动保存；提交审核时再填写作品/标签等发布信息。</span>
+            <RichTextEditor
+              initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
+              value={content}
+              onChange={setContent}
+              onEditorReady={setEditor}
+            />
           ) : (
-            <span>{mode === 'article' && status === 'published' ? '已发布文章不可直接编辑，可发起更新后重新提交审核。' : '当前状态不可编辑。'}</span>
+            <div className="prose prose-pink max-w-none" dangerouslySetInnerHTML={{ __html: initial?.contentHtml || '' }} />
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {status === 'in_review' ? (
-            <Button type="button" variant="ghost" onClick={withdraw} disabled={saveState === 'creating'}>
-              撤回
-            </Button>
-          ) : null}
-          {mode === 'article' && status === 'published' ? (
-            <Button type="button" onClick={startRevision} disabled={!id || reviseLoading}>
-              {reviseLoading ? '处理中…' : '发起更新'}
-            </Button>
-          ) : null}
-          {editable ? (
-            <Button
-              type="button"
-              onClick={() => {
-                setSettingsError(null)
-                setSettingsOpen(true)
-                setAnimeQuery('')
-              }}
-              disabled={!id || saveState === 'creating'}
-            >
-              提交审核
-            </Button>
-          ) : null}
-        </div>
-      </div>
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-gray-500">
+            {editable ? (
+              <span>提示：写作内容会自动保存；提交审核时再填写作品/标签等发布信息。</span>
+            ) : (
+              <span>{mode === 'article' && status === 'published' ? '已发布文章不可直接编辑，可发起更新后重新提交审核。' : '当前状态不可编辑。'}</span>
+            )}
+          </div>
 
-      {settingsOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-              <div>
-                <h2 className="text-lg font-semibold">发布信息</h2>
-                <p className="mt-1 text-sm text-gray-600">提交审核前，请补充作品信息（必填）与可选的发布字段。</p>
-              </div>
-              <button
-                className="shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
-                onClick={() => setSettingsOpen(false)}
-                disabled={submitLoading || coverBusy}
+          <div className="flex items-center gap-2">
+            {status === 'in_review' ? (
+              <Button type="button" variant="ghost" onClick={withdraw} disabled={saveState === 'creating'}>
+                撤回
+              </Button>
+            ) : null}
+            {mode === 'article' && status === 'published' ? (
+              <Button type="button" onClick={startRevision} disabled={!id || reviseLoading}>
+                {reviseLoading ? '处理中…' : '发起更新'}
+              </Button>
+            ) : null}
+            {editable ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  setSettingsError(null)
+                  setSettingsOpen(true)
+                  setAnimeQuery('')
+                }}
+                disabled={!id || saveState === 'creating'}
               >
-                关闭
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium">作品（必填，可多选）</label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedAnime.map((a) => (
-                      <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-3 py-1 text-sm text-pink-800">
-                        <span className="max-w-[16rem] truncate">{a.name && a.name !== a.id ? `${a.name}（${a.id}）` : a.id}</span>
-                        <button
-                          type="button"
-                          className="ml-1 text-pink-800/70 hover:text-pink-900"
-                          onClick={() => removeAnime(a.id)}
-                          disabled={submitLoading}
-                          aria-label={`移除作品 ${a.id}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                    {!selectedAnime.length ? <span className="text-sm text-gray-500">尚未选择作品</span> : null}
-                  </div>
-
-                  <div className="mt-3">
-                    <input
-                      className="w-full rounded-md border px-3 py-2"
-                      placeholder="搜索或输入作品名，Enter 选择/创建"
-                      value={animeQuery}
-                      onChange={(e) => setAnimeQuery(e.target.value)}
-                      onKeyDown={onAnimeKeyDown}
-                      disabled={submitLoading}
-                    />
-                    <div className="mt-2 rounded-md border bg-white">
-                      <div className="px-3 py-2 text-xs text-gray-500">
-                        {animeLoading ? '加载中…' : animeOptions.length ? '选择一个匹配项（或继续输入）' : animeQuery.trim() ? '未找到匹配项，按 Enter 创建' : '输入关键词开始搜索'}
-                      </div>
-                      {animeOptions.length ? (
-                        <ul className="max-h-48 overflow-auto border-t">
-                          {animeOptions.map((a) => (
-                            <li key={a.id}>
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-pink-50"
-                                onClick={() => {
-                                  if (!selectedAnime.some((x) => x.id === a.id)) setSelectedAnime((prev) => [...prev, a])
-                                  setAnimeQuery('')
-                                }}
-                                disabled={submitLoading}
-                              >
-                                <span className="truncate">{a.name && a.name !== a.id ? a.name : a.id}</span>
-                                <span className="shrink-0 text-xs text-gray-500">{a.id}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-
-                {id ? (
-                  <CoverField
-                    articleId={id}
-                    apiBase={apiBase}
-                    value={cover}
-                    onChange={setCover}
-                    onBusyChange={setCoverBusy}
-                    disabled={submitLoading}
-                  />
-                ) : null}
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium">城市（可选）</label>
-                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitLoading} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium">用时（可选）</label>
-                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={routeLength} onChange={(e) => setRouteLength(e.target.value)} disabled={submitLoading} placeholder="半日 / 一日" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium">标签（可选，逗号分隔）</label>
-                    <input className="mt-2 w-full rounded-md border px-3 py-2" value={tagsText} onChange={(e) => setTagsText(e.target.value)} disabled={submitLoading} placeholder="下北泽, 河堤" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium">SEO 标题（可选）</label>
-                    <input
-                      className="mt-2 w-full rounded-md border px-3 py-2"
-                      value={seoTitle}
-                      onChange={(e) => setSeoTitle(e.target.value)}
-                      disabled={submitLoading}
-                      placeholder="用于搜索结果标题（建议包含：作品 + 地点 + 圣地巡礼/路线等关键词）"
-                      maxLength={120}
-                    />
-                    <div className="mt-1 text-xs text-gray-500">留空则默认使用文章标题。</div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium">摘要（meta description，可选）</label>
-                    <textarea
-                      className="mt-2 min-h-24 w-full resize-y rounded-md border px-3 py-2"
-                      value={metaDescription}
-                      onChange={(e) => setMetaDescription(e.target.value)}
-                      disabled={submitLoading}
-                      placeholder="用于搜索结果摘要（建议 80–160 字，突出：路线点位数量/用时/地图导航/机位建议/时间戳）"
-                      maxLength={320}
-                    />
-                    <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-                      <span>留空则从正文自动提取摘要。</span>
-                      <span>{metaDescription.trim().length}/320</span>
-                    </div>
-                  </div>
-                </div>
-
-                {settingsError ? <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{settingsError}</div> : null}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
-              <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading || coverBusy}>
-                取消
+                提交审核
               </Button>
-              <Button type="button" onClick={submitForReview} disabled={submitLoading || coverBusy}>
-                {coverBusy ? '封面处理中…' : submitLoading ? '提交中…' : '确认提交'}
-              </Button>
-            </div>
+            ) : null}
           </div>
         </div>
-      ) : null}
+
+        {settingsOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold">发布信息</h2>
+                  <p className="mt-1 text-sm text-gray-600">提交审核前，请补充作品信息（必填）与可选的发布字段。</p>
+                </div>
+                <button
+                  className="shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+                  onClick={() => setSettingsOpen(false)}
+                  disabled={submitLoading || coverBusy}
+                >
+                  关闭
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium">作品（必填，可多选）</label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedAnime.map((a) => (
+                        <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-pink-100 px-3 py-1 text-sm text-pink-800">
+                          <span className="max-w-[16rem] truncate">{a.name && a.name !== a.id ? `${a.name}（${a.id}）` : a.id}</span>
+                          <button
+                            type="button"
+                            className="ml-1 text-pink-800/70 hover:text-pink-900"
+                            onClick={() => removeAnime(a.id)}
+                            disabled={submitLoading}
+                            aria-label={`移除作品 ${a.id}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {!selectedAnime.length ? <span className="text-sm text-gray-500">尚未选择作品</span> : null}
+                    </div>
+
+                    <div className="mt-3">
+                      <input
+                        className="w-full rounded-md border px-3 py-2"
+                        placeholder="搜索或输入作品名，Enter 选择/创建"
+                        value={animeQuery}
+                        onChange={(e) => setAnimeQuery(e.target.value)}
+                        onKeyDown={onAnimeKeyDown}
+                        disabled={submitLoading}
+                      />
+                      <div className="mt-2 rounded-md border bg-white">
+                        <div className="px-3 py-2 text-xs text-gray-500">
+                          {animeLoading ? '加载中…' : animeOptions.length ? '选择一个匹配项（或继续输入）' : animeQuery.trim() ? '未找到匹配项，按 Enter 创建' : '输入关键词开始搜索'}
+                        </div>
+                        {animeOptions.length ? (
+                          <ul className="max-h-48 overflow-auto border-t">
+                            {animeOptions.map((a) => (
+                              <li key={a.id}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-pink-50"
+                                  onClick={() => {
+                                    if (!selectedAnime.some((x) => x.id === a.id)) setSelectedAnime((prev) => [...prev, a])
+                                    setAnimeQuery('')
+                                  }}
+                                  disabled={submitLoading}
+                                >
+                                  <span className="truncate">{a.name && a.name !== a.id ? a.name : a.id}</span>
+                                  <span className="shrink-0 text-xs text-gray-500">{a.id}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {id ? (
+                    <CoverField
+                      articleId={id}
+                      apiBase={apiBase}
+                      value={cover}
+                      onChange={setCover}
+                      onBusyChange={setCoverBusy}
+                      disabled={submitLoading}
+                    />
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium">城市（可选）</label>
+                      <input className="mt-2 w-full rounded-md border px-3 py-2" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitLoading} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">用时（可选）</label>
+                      <input className="mt-2 w-full rounded-md border px-3 py-2" value={routeLength} onChange={(e) => setRouteLength(e.target.value)} disabled={submitLoading} placeholder="半日 / 一日" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium">标签（可选，逗号分隔）</label>
+                      <input className="mt-2 w-full rounded-md border px-3 py-2" value={tagsText} onChange={(e) => setTagsText(e.target.value)} disabled={submitLoading} placeholder="下北泽, 河堤" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium">SEO 标题（可选）</label>
+                      <input
+                        className="mt-2 w-full rounded-md border px-3 py-2"
+                        value={seoTitle}
+                        onChange={(e) => setSeoTitle(e.target.value)}
+                        disabled={submitLoading}
+                        placeholder="用于搜索结果标题（建议包含：作品 + 地点 + 圣地巡礼/路线等关键词）"
+                        maxLength={120}
+                      />
+                      <div className="mt-1 text-xs text-gray-500">留空则默认使用文章标题。</div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium">摘要（meta description，可选）</label>
+                      <textarea
+                        className="mt-2 min-h-24 w-full resize-y rounded-md border px-3 py-2"
+                        value={metaDescription}
+                        onChange={(e) => setMetaDescription(e.target.value)}
+                        disabled={submitLoading}
+                        placeholder="用于搜索结果摘要（建议 80–160 字，突出：路线点位数量/用时/地图导航/机位建议/时间戳）"
+                        maxLength={320}
+                      />
+                      <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                        <span>留空则从正文自动提取摘要。</span>
+                        <span>{metaDescription.trim().length}/320</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {settingsError ? <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">{settingsError}</div> : null}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+                <Button type="button" variant="ghost" onClick={() => setSettingsOpen(false)} disabled={submitLoading || coverBusy}>
+                  取消
+                </Button>
+                <Button type="button" onClick={submitForReview} disabled={submitLoading || coverBusy}>
+                  {coverBusy ? '封面处理中…' : submitLoading ? '提交中…' : '确认提交'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
