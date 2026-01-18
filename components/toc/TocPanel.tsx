@@ -5,32 +5,39 @@ export default function TocPanel({ headings, activeId, onHeadingClick, className
 
   return (
     <nav className={`text-sm ${className}`} aria-label="Table of Contents">
-      <ul className="space-y-1">
-        {headings.map((heading) => {
-          const isActive = heading.id === activeId
-          return (
-            <li
-              key={heading.id}
-              style={{ paddingLeft: `${(heading.level - 1) * 12}px` }}
-            >
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  onHeadingClick(heading)
-                }}
-                className={`block w-full text-left truncate py-1 px-2 rounded-md transition-colors duration-200 ${
-                  isActive
-                    ? 'text-brand-600 bg-brand-50 font-medium'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-                title={heading.text}
-              >
-                {heading.text}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="relative border-l border-gray-100 ml-0.5">
+        <ul className="space-y-0.5">
+          {headings.map((heading) => {
+            const isActive = heading.id === activeId
+            const paddingLeft = (Math.max(1, heading.level) - 1) * 12 + 12
+
+            return (
+              <li key={heading.id}>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onHeadingClick(heading)
+                  }}
+                  className={`
+                    group relative flex w-full text-left py-1.5 pr-2 -ml-px border-l-2 transition-all duration-200
+                    ${
+                      isActive
+                        ? 'border-brand-600 text-brand-600 bg-gradient-to-r from-brand-50/50 to-transparent font-medium'
+                        : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
+                    }
+                  `}
+                  style={{ paddingLeft: `${paddingLeft}px` }}
+                  title={heading.text}
+                >
+                  <span className="block line-clamp-2 leading-relaxed">
+                    {heading.text}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
     </nav>
   )
 }

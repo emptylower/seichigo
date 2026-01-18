@@ -72,28 +72,28 @@ export default function ArticleToc() {
     <>
       <div
         className={`hidden lg:flex flex-col sticky top-24 transition-all duration-300 ease-in-out overflow-hidden ${
-          isCollapsed ? 'w-8' : 'w-64'
+          isCollapsed ? 'w-10' : 'w-64'
         }`}
       >
-        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} mb-3 h-6 shrink-0`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} mb-4 h-8 shrink-0`}>
           {!isCollapsed && (
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider whitespace-nowrap">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">
               目录
             </h3>
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-0.5 rounded text-gray-400 hover:text-pink-600 hover:bg-pink-50 transition-colors"
+            className="p-1.5 rounded-md text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
             title={isCollapsed ? '展开目录' : '收起目录'}
             aria-label={isCollapsed ? '展开目录' : '收起目录'}
           >
             {isCollapsed ? (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             ) : (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
               </svg>
             )}
           </button>
