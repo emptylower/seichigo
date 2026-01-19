@@ -51,7 +51,10 @@ export default async function Header() {
               </div>
             </details>
           ) : (
-            <Link href="/auth/signin" className="btn-primary">登录</Link>
+            <div className="flex items-center gap-2">
+              <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">登录</Link>
+              <Link href="/auth/signup" className="btn-primary">注册</Link>
+            </div>
           )}
         </nav>
       </div>

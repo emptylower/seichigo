@@ -284,6 +284,13 @@ export default function SignInClient() {
           <div className="mt-6 text-xs text-gray-500">
             登录即表示你同意我们对账号信息进行必要的存储与处理，用于投稿与审核流程。
           </div>
+
+          <div className="mt-4 text-center text-sm text-gray-500">
+            还没有账号？{' '}
+            <a href="/auth/signup" className="text-brand-600 hover:underline">
+              立即注册
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,6 @@
-export function renderSeichigoOtpEmail(code: string): { subject: string; text: string; html: string } {
+export type SeichigoOtpEmail = { subject: string; text: string; html: string }
+
+export function renderSignupOtpEmail(code: string): SeichigoOtpEmail {
   const cleaned = String(code || '').trim()
   const subject = '✨和seichigo一起启程'
 
@@ -28,4 +30,35 @@ export function renderSeichigoOtpEmail(code: string): { subject: string; text: s
 
   return { subject, text, html }
 }
+
+export function renderSigninOtpEmail(code: string): SeichigoOtpEmail {
+  const cleaned = String(code || '').trim()
+  const subject = '🌸欢迎回来，继续巡礼'
+
+  const text =
+    `欢迎回来，巡礼者。\n\n` +
+    `那些走过的圣地，那些留在心底的画面，\n` +
+    `正在等你继续书写。\n\n` +
+    `本次登录验证码是：\n` +
+    `${cleaned}\n\n` +
+    `输入验证码，即可继续这一程。\n\n` +
+    `—— 愿这一段旅途，依旧有风景与回忆相伴。`
+
+  const html =
+    `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto;line-height:1.6;color:#111827">` +
+    `<p>欢迎回来，巡礼者。</p>` +
+    `<p>` +
+    `那些走过的圣地，那些留在心底的画面，<br/>` +
+    `正在等你继续书写。` +
+    `</p>` +
+    `<p style="margin:16px 0 6px">本次登录验证码是：</p>` +
+    `<div style="font-size:28px;font-weight:700;letter-spacing:6px;color:#db2777;margin:0 0 16px">${cleaned}</div>` +
+    `<p>输入验证码，即可继续这一程。</p>` +
+    `<p style="color:#6b7280;margin-top:18px">—— 愿这一段旅途，依旧有风景与回忆相伴。</p>` +
+    `</div>`
+
+  return { subject, text, html }
+}
+
+export const renderSeichigoOtpEmail = renderSignupOtpEmail
 

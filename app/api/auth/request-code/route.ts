@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { sendMail } from '@/lib/email/sender'
-import { renderSeichigoOtpEmail } from '@/lib/email/templates/seichigoOtp'
+import { renderSigninOtpEmail, renderSignupOtpEmail } from '@/lib/email/templates/seichigoOtp'
 import { generateEmailOtpCode, generateEmailOtpSalt, hashEmailOtpCode, normalizeEmail, resolveOtpSecret, sha256Hex } from '@/lib/auth/emailOtp'
 
 export const runtime = 'nodejs'
@@ -72,6 +72,8 @@ export async function POST(req: Request) {
   const ip = getClientIp(req) || '0.0.0.0'
   const ipHash = sha256Hex(ip + (process.env.RATE_LIMIT_SALT || ''))
 
+  const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } }).catch(() => null)
+
   const code = generateEmailOtpCode()
   const salt = generateEmailOtpSalt()
   const codeHash = hashEmailOtpCode({ code, salt, secret: resolveOtpSecret() })
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
     },
   })
 
-  const tpl = renderSeichigoOtpEmail(code)
+  const tpl = existingUser ? renderSigninOtpEmail(code) : renderSignupOtpEmail(code)
   const from = process.env.EMAIL_FROM || 'no-reply@example.com'
 
   try {
