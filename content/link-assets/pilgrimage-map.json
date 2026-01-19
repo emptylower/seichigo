@@ -1,0 +1,14 @@
+{
+  "id": "pilgrimage-map",
+  "type": "map",
+  "title_zh": "圣地巡礼地图总览",
+  "title_en": "Anime Pilgrimage Map Overview",
+  "description_zh": "汇总站内所有已收录的圣地巡礼点位与路线入口，支持一键在 Google Maps 打开导航。",
+  "description_en": "A curated overview of pilgrimage spots and routes with one-click Google Maps navigation.",
+  "filterByAnimeIds": [],
+  "filterByCities": [],
+  "relatedPosts": [],
+  "contentFile": "/content/link-assets/pilgrimage-map.md",
+  "cover": "",
+  "publishDate": "2026-01-19"
+}

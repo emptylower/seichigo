@@ -1,6 +1,8 @@
 import '../styles/globals.css'
 import type { Metadata } from 'next'
 import Script from 'next/script'
+import { headers } from 'next/headers'
+import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import { getSiteUrl } from '@/lib/seo/site'
 
 export const metadata: Metadata = {
@@ -34,10 +36,14 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const h = await headers()
+  const locale = (h.get('x-seichigo-locale') || '').trim() === 'en' ? 'en' : 'zh'
+
   return (
-    <html lang="zh">
+    <html lang={locale}>
       <body>
+        <HtmlLangSync />
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];

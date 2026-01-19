@@ -1,0 +1,16 @@
+{
+  "id": "tokyo",
+  "name_zh": "东京",
+  "name_en": "Tokyo",
+  "name_ja": "東京",
+  "description_zh": "东京圣地巡礼路线汇总——从新宿到台场，覆盖热门动漫取景地。",
+  "description_en": "Tokyo anime pilgrimage routes — from Shinjuku to Odaiba.",
+  "areas": [
+    { "id": "shinjuku", "name_zh": "新宿", "name_en": "Shinjuku" },
+    { "id": "shibuya", "name_zh": "涩谷", "name_en": "Shibuya" },
+    { "id": "minato", "name_zh": "港区", "name_en": "Minato" }
+  ],
+  "cover": "",
+  "transportTips_zh": "推荐使用 Suica/Pasmo，东京地铁一日券也很划算。",
+  "transportTips_en": "Use Suica/Pasmo. Tokyo Metro 24-hour pass is great value."
+}

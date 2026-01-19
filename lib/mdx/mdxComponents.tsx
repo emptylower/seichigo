@@ -2,6 +2,9 @@
 import React from 'react'
 import SpotList from '@/components/content/SpotList'
 import Callout from '@/components/content/Callout'
+import TldrBox from '@/components/content/TldrBox'
+import TransportCard from '@/components/content/TransportCard'
+import PhotoTipsList from '@/components/content/PhotoTipsList'
 
 function rewriteAssetImageSrc(src: unknown): null | { full: string; placeholder: string; sd: string; hd: string } {
   if (typeof src !== 'string') return null
@@ -56,8 +59,12 @@ function MdxImg(props: React.ImgHTMLAttributes<HTMLImageElement>) {
 export const mdxComponents = {
   SpotList,
   Callout,
+  TldrBox,
+  TransportCard,
+  PhotoTipsList,
   a: MdxLink,
   img: MdxImg,
 }
+
 
 export type MDXComponents = typeof mdxComponents
