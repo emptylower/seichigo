@@ -39,7 +39,7 @@ describe('public posts aggregation', () => {
     expect(list[0]?.source).toBe('db')
   })
 
-  it('getAllPublicPosts: merges and sorts by updatedAt/publishedAt/publishDate desc', async () => {
+  it('getAllPublicPosts: merges and sorts by publishedAt/publishDate desc', async () => {
     const repo = new InMemoryArticleRepo()
     const created = await repo.createDraft({ authorId: 'u1', slug: 'db-1', title: 'DB 1' })
     await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-03T00:00:00.000Z') })
@@ -60,6 +60,28 @@ describe('public posts aggregation', () => {
 
     const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
     expect(list.map((x) => x.path)).toEqual([`/posts/db-1`, '/posts/mdx-1'])
+  })
+
+  it('getAllPublicPosts: keeps order by first published time (ignores lastApprovedAt bumps)', async () => {
+    const repo = new InMemoryArticleRepo()
+
+    const older = await repo.createDraft({ authorId: 'u1', slug: 'db-older', title: 'DB Older' })
+    await repo.updateState(older.id, {
+      status: 'published',
+      publishedAt: new Date('2025-01-01T00:00:00.000Z'),
+      lastApprovedAt: new Date('2025-02-01T00:00:00.000Z'),
+    })
+
+    const newer = await repo.createDraft({ authorId: 'u1', slug: 'db-newer', title: 'DB Newer' })
+    await repo.updateState(newer.id, {
+      status: 'published',
+      publishedAt: new Date('2025-01-15T00:00:00.000Z'),
+    })
+
+    const mdx = makeMdxProvider({ all: [] })
+    const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
+
+    expect(list.map((x) => x.path)).toEqual([`/posts/db-newer`, `/posts/db-older`])
   })
 
   it('getPublicPostBySlug: slug exists in MDX -> returns MDX (priority)', async () => {
