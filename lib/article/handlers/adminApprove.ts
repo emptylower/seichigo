@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 import { isFallbackHashSlug, isValidArticleSlug } from '@/lib/article/slug'
+import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
+import { resolveCitiesByNames } from '@/lib/city/resolve'
 
 function hasAnimePrefix(slug: string, animeIds: string[]): boolean {
   const cleaned = slug.trim()
@@ -70,6 +72,27 @@ export function createHandlers(deps: ArticleApiDeps) {
       })
       if (!updated) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+      }
+
+      // Best-effort: ensure city links exist for city hubs.
+      // Primary city for SEO stays on the legacy `city` string field.
+      try {
+        const linked = await getArticleCityIds(id)
+        if (!linked.length) {
+          const rawCity = String((existing as any).city || '').trim()
+          if (rawCity) {
+            const resolved = await resolveCitiesByNames([rawCity], { createIfMissing: true })
+            const primary = resolved.cities[0] || null
+            if (primary) {
+              await setArticleCityIds(id, [primary.id])
+              if (primary.name_zh && rawCity !== primary.name_zh) {
+                await deps.repo.updateDraft(id, { city: primary.name_zh })
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[article/adminApprove] city link sync failed', err)
       }
 
       return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, publishedAt: updated.publishedAt } })

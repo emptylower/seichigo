@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/shared/Button'
 import RichTextEditor, { type RichTextValue } from '@/components/editor/RichTextEditor'
 import EditorToc from '@/components/toc/EditorToc'
+import CityMultiSelect, { type CityOption } from '@/components/city/CityMultiSelect'
 import CoverField from './CoverField'
 
 type ArticleStatus = 'draft' | 'in_review' | 'rejected' | 'published'
@@ -18,6 +19,8 @@ export type ArticleComposerInitial = {
   description: string | null
   animeIds: string[]
   city: string | null
+  cityIds?: string[]
+  cities?: CityOption[]
   routeLength: string | null
   tags: string[]
   cover: string | null
@@ -339,7 +342,7 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   const [animeOptions, setAnimeOptions] = useState<AnimeOption[]>([])
   const [animeLoading, setAnimeLoading] = useState(false)
 
-  const [city, setCity] = useState(initial?.city ?? '')
+  const [selectedCities, setSelectedCities] = useState<CityOption[]>(Array.isArray(initial?.cities) ? initial!.cities! : [])
   const [routeLength, setRouteLength] = useState(initial?.routeLength ?? '')
   const [tagsText, setTagsText] = useState((initial?.tags ?? []).join(', '))
   const [seoTitle, setSeoTitle] = useState(initial?.seoTitle ?? '')
@@ -440,13 +443,15 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
       return
     }
 
+    const cityIds = selectedCities.map((c) => c.id).filter(Boolean)
+
     setSubmitLoading(true)
     const patchRes = await fetch(`${apiBase}/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         animeIds,
-        city: city.trim() || null,
+        cityIds,
         routeLength: routeLength.trim() || null,
         tags: parseTags(tagsText),
         seoTitle: seoTitle.trim() || null,
@@ -693,8 +698,7 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium">城市（可选）</label>
-                      <input className="mt-2 w-full rounded-md border px-3 py-2" value={city} onChange={(e) => setCity(e.target.value)} disabled={submitLoading} />
+                      <CityMultiSelect value={selectedCities} onChange={setSelectedCities} disabled={submitLoading} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium">用时（可选）</label>

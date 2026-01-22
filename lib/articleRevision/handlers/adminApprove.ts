@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { approveRevision } from '@/lib/articleRevision/workflow'
 import type { ArticleRevisionApiDeps } from '@/lib/articleRevision/api'
+import { getRevisionCityIds, setArticleCityIds } from '@/lib/city/links'
+import { resolveCitiesByNames } from '@/lib/city/resolve'
 
 export function createHandlers(deps: ArticleRevisionApiDeps) {
   return {
@@ -53,6 +55,25 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
       })
       if (!applied) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
+      }
+
+      // Best-effort: keep article city links aligned.
+      try {
+        const revisionCityIds = await getRevisionCityIds(revision.id)
+        if (revisionCityIds.length) {
+          await setArticleCityIds(article.id, revisionCityIds)
+        } else {
+          const rawCity = String(revision.city || '').trim()
+          if (rawCity) {
+            const resolved = await resolveCitiesByNames([rawCity], { createIfMissing: true })
+            const primary = resolved.cities[0] || null
+            if (primary) {
+              await setArticleCityIds(article.id, [primary.id])
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[articleRevision/adminApprove] city link sync failed', err)
       }
 
       await deps.articleRepo.updateState(article.id, { lastApprovedAt: deps.now() })

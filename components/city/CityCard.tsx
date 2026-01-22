@@ -1,8 +1,14 @@
 import Link from 'next/link'
-import type { City } from '@/lib/city/types'
 
 type Props = {
-  city: City
+  city: {
+    id: string
+    slug: string
+    name_zh: string
+    name_en?: string | null
+    description_zh?: string | null
+    cover?: string | null
+  }
   postCount: number
 }
 
@@ -23,14 +29,15 @@ function coverGradient(seedKey: string): string {
 
 export default function CityCard({ city, postCount }: Props) {
   const coverSrc = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
+  const seedKey = city.slug || city.id
 
   return (
     <Link
-      href={`/city/${encodeURIComponent(city.id)}`}
+      href={`/city/${encodeURIComponent(city.slug)}`}
       className="group relative flex flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-100 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:ring-pink-100"
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100">
-        <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105" style={{ background: coverGradient(city.id) }} />
+        <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105" style={{ background: coverGradient(seedKey) }} />
         {coverSrc ? (
           <img
             src={coverSrc}

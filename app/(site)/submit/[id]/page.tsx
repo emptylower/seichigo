@@ -57,6 +57,17 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
   const sanitized = sanitizeRichTextHtml(article.contentHtml || '')
   const rendered = renderRichTextEmbeds(sanitized, article.contentJson)
 
+  const cityLinks = await prisma.articleCity.findMany({
+    where: { articleId: article.id },
+    orderBy: { cityId: 'asc' },
+    select: {
+      cityId: true,
+      city: { select: { id: true, slug: true, name_zh: true, name_en: true, name_ja: true } },
+    },
+  })
+  const cityIds = cityLinks.map((x) => x.cityId)
+  const cities = cityLinks.map((x) => x.city)
+
   return (
     <SubmitEditClient
       initial={{
@@ -66,6 +77,8 @@ export default async function SubmitEditPage({ params }: { params: Promise<{ id:
         description: article.description ?? null,
         animeIds: article.animeIds,
         city: article.city,
+        cityIds,
+        cities,
         routeLength: article.routeLength,
         tags: article.tags,
         cover: article.cover,

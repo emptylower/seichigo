@@ -85,6 +85,7 @@ model Submission {
   title           String
   animeName       String
   city            String
+  cities          SubmissionCity[]
   contentMarkdown String
   references      String?
   status          String   @default("pending")
@@ -109,6 +110,7 @@ model Article {
   description String?  @db.Text
   animeIds    String[] @default([])
   city        String?
+  cities      ArticleCity[]
   routeLength String?
   tags        String[] @default([])
   cover       String?
@@ -163,6 +165,7 @@ model ArticleRevision {
   description String?  @db.Text
   animeIds    String[] @default([])
   city        String?
+  cities      ArticleRevisionCity[]
   routeLength String?
   tags        String[] @default([])
   cover       String?
@@ -206,4 +209,84 @@ model Asset {
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+}
+
+model City {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name_zh         String
+  name_en         String?
+  name_ja         String?
+  description_zh  String?  @db.Text
+  description_en  String?  @db.Text
+  transportTips_zh String? @db.Text
+  transportTips_en String? @db.Text
+  cover           String?
+  needsReview     Boolean  @default(true)
+  hidden          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  aliases         CityAlias[]
+  articleLinks    ArticleCity[]
+  revisionLinks   ArticleRevisionCity[]
+  submissionLinks SubmissionCity[]
+  redirectsToMe   CityRedirect[] @relation("CityRedirectTo")
+}
+
+model CityAlias {
+  id       String  @id @default(cuid())
+  cityId   String
+  alias    String
+  aliasNorm String
+  langCode String?
+  isPrimary Boolean @default(false)
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@unique([aliasNorm])
+  @@index([aliasNorm])
+  @@index([cityId])
+}
+
+model CityRedirect {
+  fromSlug String @id
+  toCityId String
+
+  toCity City @relation("CityRedirectTo", fields: [toCityId], references: [id], onDelete: Cascade)
+
+  @@index([toCityId])
+}
+
+model ArticleCity {
+  articleId String
+  cityId    String
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  city    City    @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, cityId])
+  @@index([cityId])
+}
+
+model ArticleRevisionCity {
+  revisionId String
+  cityId     String
+
+  revision ArticleRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  city     City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@id([revisionId, cityId])
+  @@index([cityId])
+}
+
+model SubmissionCity {
+  submissionId String
+  cityId       String
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  city       City       @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@id([submissionId, cityId])
+  @@index([cityId])
 }

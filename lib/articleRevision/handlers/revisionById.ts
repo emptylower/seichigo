@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { canEditRevision, type Actor } from '@/lib/articleRevision/workflow'
 import type { ArticleRevisionApiDeps } from '@/lib/articleRevision/api'
+import { getRevisionCityIds, setRevisionCityIds } from '@/lib/city/links'
+import { listCitiesByIds } from '@/lib/city/listByIds'
 
 const patchSchema = z
   .object({
@@ -10,6 +12,7 @@ const patchSchema = z
     description: z.string().max(320).nullable().optional(),
     animeIds: z.array(z.string()).optional(),
     city: z.string().nullable().optional(),
+    cityIds: z.array(z.string()).optional(),
     routeLength: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     cover: z
@@ -33,6 +36,8 @@ function toDetail(r: any, sanitizeHtml: (html: string) => string) {
     description: r.description ?? null,
     animeIds: r.animeIds,
     city: r.city,
+    cityIds: [],
+    cities: [],
     routeLength: r.routeLength,
     tags: r.tags,
     cover: r.cover ?? null,
@@ -67,7 +72,10 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
         return NextResponse.json({ error: '无权限' }, { status: 403 })
       }
 
-      return NextResponse.json({ ok: true, revision: toDetail(found, deps.sanitizeHtml) })
+      const base = toDetail(found, deps.sanitizeHtml)
+      const cityIds = await getRevisionCityIds(found.id).catch(() => [])
+      const cities = await listCitiesByIds(cityIds).catch(() => [])
+      return NextResponse.json({ ok: true, revision: { ...base, cityIds, cities } })
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -101,6 +109,15 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
       }
 
       const updateInput: Record<string, any> = { ...parsed.data }
+      const nextCityIds = Array.isArray(parsed.data.cityIds)
+        ? parsed.data.cityIds.map((x) => String(x || '').trim()).filter(Boolean)
+        : null
+      if (nextCityIds != null) {
+        delete updateInput.cityIds
+        const cities = await listCitiesByIds(nextCityIds).catch(() => [])
+        const primary = cities[0] || null
+        updateInput.city = primary?.name_zh ? String(primary.name_zh).trim() : null
+      }
       if (parsed.data.contentHtml !== undefined) {
         updateInput.contentHtml = deps.sanitizeHtml(parsed.data.contentHtml)
       }
@@ -132,7 +149,14 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
         return NextResponse.json({ error: '未找到更新稿' }, { status: 404 })
       }
 
-      return NextResponse.json({ ok: true, revision: toDetail(updated, deps.sanitizeHtml) })
+      if (nextCityIds != null) {
+        await setRevisionCityIds(id, nextCityIds).catch(() => null)
+      }
+
+      const base = toDetail(updated, deps.sanitizeHtml)
+      const cityIds = await getRevisionCityIds(updated.id).catch(() => [])
+      const cities = await listCitiesByIds(cityIds).catch(() => [])
+      return NextResponse.json({ ok: true, revision: { ...base, cityIds, cities } })
     },
   }
 }

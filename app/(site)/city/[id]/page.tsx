@@ -1,12 +1,15 @@
-import { getCityById } from '@/lib/city/getCityById'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getCityBySlugOrRedirect } from '@/lib/city/db'
+import { normalizeCityAlias } from '@/lib/city/normalize'
+import { listPublishedDbPostsByCityId } from '@/lib/city/posts'
+import { prisma } from '@/lib/db/prisma'
+import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,8 +24,15 @@ function safeDecodeURIComponent(input: string): string {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
-  const requestedId = safeDecodeURIComponent(String(id || '')).trim()
-  const city = await getCityById(requestedId)
+  const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
+  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
+  if (redirectToSlug && redirectToSlug !== requestedSlug) {
+    return {
+      title: '已移动',
+      alternates: { canonical: `/city/${encodeURIComponent(redirectToSlug)}` },
+      robots: { index: false, follow: false },
+    }
+  }
 
   if (!city) {
     return { title: '未找到城市', robots: { index: false, follow: false } }
@@ -35,13 +45,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     title,
     description,
     alternates: {
-      canonical: `/city/${encodeURIComponent(city.id)}`,
+      canonical: `/city/${encodeURIComponent(city.slug)}`,
     },
     openGraph: {
       type: 'website',
       title,
       description,
-      url: `/city/${encodeURIComponent(city.id)}`,
+      url: `/city/${encodeURIComponent(city.slug)}`,
       images: ['/opengraph-image'],
     },
     twitter: {
@@ -53,30 +63,50 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-function matchesCity(postCity: string, city: { id: string; name_zh: string; name_en?: string; name_ja?: string }): boolean {
-  const raw = String(postCity || '').trim()
-  if (!raw) return false
-
-  const lower = raw.toLowerCase()
-  const candidates = [city.id, city.name_zh, city.name_en, city.name_ja]
-    .map((x) => (typeof x === 'string' ? x.trim() : ''))
-    .filter(Boolean)
-    .map((x) => x.toLowerCase())
-
-  return candidates.includes(lower)
-}
-
 export default async function CityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const requestedId = safeDecodeURIComponent(String(id || '')).trim()
-  const city = await getCityById(requestedId)
+  const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
+  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
+  if (redirectToSlug && redirectToSlug !== requestedSlug) {
+    permanentRedirect(`/city/${encodeURIComponent(redirectToSlug)}`)
+  }
   if (!city) return notFound()
 
-  const all = await getAllPublicPosts('zh')
-  const posts = all.filter((p) => matchesCity(p.city, city))
+  const dbPosts = await listPublishedDbPostsByCityId(city.id).catch(() => [])
+
+  const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch(() => [])
+  const aliasSet = new Set<string>()
+  for (const r of aliasRows) {
+    if (r?.aliasNorm) aliasSet.add(r.aliasNorm)
+  }
+  aliasSet.add(normalizeCityAlias(city.slug))
+  aliasSet.add(normalizeCityAlias(city.name_zh))
+  if (city.name_en) aliasSet.add(normalizeCityAlias(city.name_en))
+  if (city.name_ja) aliasSet.add(normalizeCityAlias(city.name_ja))
+
+  const mdx = await getAllMdxPosts('zh').catch(() => [])
+  const mdxPosts = mdx
+    .filter((p) => {
+      const norm = normalizeCityAlias(String((p as any).city || ''))
+      return norm ? aliasSet.has(norm) : false
+    })
+    .map((p) => ({
+      title: p.title,
+      path: `/posts/${p.slug}`,
+      animeIds: [p.animeId || 'unknown'].filter(Boolean),
+      city: p.city || '',
+      routeLength: p.routeLength,
+      publishDate: p.publishDate,
+      cover: null,
+    }))
+
+  const byPath = new Map<string, any>()
+  for (const p of mdxPosts) byPath.set(p.path, p)
+  for (const p of dbPosts) byPath.set(p.path, p)
+  const posts = Array.from(byPath.values()).sort((a, b) => String(b.publishDate || '').localeCompare(String(a.publishDate || '')))
 
   const siteOrigin = getSiteOrigin()
-  const canonicalUrl = `${siteOrigin}/city/${encodeURIComponent(city.id)}`
+  const canonicalUrl = `${siteOrigin}/city/${encodeURIComponent(city.slug)}`
 
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: '首页', url: `${siteOrigin}/` },
@@ -107,7 +137,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
           items={[
             { name: '首页', href: '/' },
             { name: '城市', href: '/city' },
-            { name: city.name_zh, href: `/city/${encodeURIComponent(city.id)}` },
+            { name: city.name_zh, href: `/city/${encodeURIComponent(city.slug)}` },
           ]}
         />
 
@@ -138,25 +168,6 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         </div>
-
-        {city.areas?.length ? (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 border-b pb-2">
-              <h2 className="text-2xl font-bold text-gray-900">区域</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {city.areas.map((a) => (
-                <a
-                  key={a.id}
-                  href={`#area-${encodeURIComponent(a.id)}`}
-                  className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                >
-                  {a.name_zh}
-                </a>
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         <section className="space-y-6">
           <div className="flex items-center gap-2 border-b pb-2">

@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
-import { getAllCities } from '@/lib/city/getAllCities'
+import { listCitiesForIndex } from '@/lib/city/db'
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getSiteOrigin } from '@/lib/seo/site'
 
@@ -20,7 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getSiteOrigin()
   const posts = await getAllPublicPosts('zh')
   const anime = await getAllAnime().catch(() => [])
-  const cities = await getAllCities().catch(() => [])
+  const cities = await listCitiesForIndex().catch(() => [])
   const resources = await getAllLinkAssets().catch(() => [])
 
   const items: MetadataRoute.Sitemap = [
@@ -60,11 +60,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const c of cities) {
-    const id = String(c?.id || '').trim()
-    if (!id) continue
+    const slug = String((c as any)?.slug || '').trim()
+    if (!slug) continue
 
-    const zhUrl = `${base}/city/${encodeURIComponent(id)}`
-    const enUrl = `${base}/en/city/${encodeURIComponent(id)}`
+    const zhUrl = `${base}/city/${encodeURIComponent(slug)}`
+    const enUrl = `${base}/en/city/${encodeURIComponent(slug)}`
 
     items.push({
       url: zhUrl,

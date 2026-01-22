@@ -1,7 +1,8 @@
-import { getAllCities } from '@/lib/city/getAllCities'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/db'
+import { normalizeCityAlias } from '@/lib/city/normalize'
+import { prisma } from '@/lib/db/prisma'
+import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import CityCard from '@/components/city/CityCard'
-import type { City } from '@/lib/city/types'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -25,36 +26,42 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-function matchesCity(postCity: string, city: City): boolean {
-  const raw = String(postCity || '').trim()
-  if (!raw) return false
-
-  const lower = raw.toLowerCase()
-  const candidates = [city.id, city.name_zh, city.name_en, city.name_ja]
-    .map((x) => (typeof x === 'string' ? x.trim() : ''))
-    .filter(Boolean)
-    .map((x) => x.toLowerCase())
-
-  return candidates.includes(lower)
-}
-
 export default async function CityIndexEnPage() {
-  const [cities, posts] = await Promise.all([getAllCities(), getAllPublicPosts('zh')])
+  const cities = await listCitiesForIndex().catch(() => [])
+  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id)).catch(() => ({} as Record<string, number>))
 
-  const counts = posts.reduce<Record<string, number>>((acc, p) => {
-    for (const c of cities) {
-      if (matchesCity(p.city, c)) {
-        acc[c.id] = (acc[c.id] || 0) + 1
-      }
-    }
-    return acc
-  }, {})
+  const aliasRows = await prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }).catch(() => [])
+  const aliasToCityId = new Map<string, string>()
+  for (const r of aliasRows) {
+    if (r?.aliasNorm && r?.cityId) aliasToCityId.set(r.aliasNorm, r.cityId)
+  }
+  for (const c of cities) {
+    aliasToCityId.set(normalizeCityAlias(c.slug), c.id)
+    aliasToCityId.set(normalizeCityAlias(c.name_zh), c.id)
+    if (c.name_en) aliasToCityId.set(normalizeCityAlias(c.name_en), c.id)
+    if (c.name_ja) aliasToCityId.set(normalizeCityAlias(c.name_ja), c.id)
+  }
+
+  const mdxPosts = await getAllMdxPosts('zh').catch(() => [])
+  const mdxCounts: Record<string, number> = {}
+  for (const p of mdxPosts) {
+    const norm = normalizeCityAlias(String((p as any).city || ''))
+    if (!norm) continue
+    const cityId = aliasToCityId.get(norm)
+    if (!cityId) continue
+    mdxCounts[cityId] = (mdxCounts[cityId] || 0) + 1
+  }
+
+  const counts: Record<string, number> = {}
+  for (const c of cities) {
+    counts[c.id] = (dbCounts[c.id] || 0) + (mdxCounts[c.id] || 0)
+  }
 
   const sorted = [...cities].sort((a, b) => {
     const ca = counts[a.id] || 0
     const cb = counts[b.id] || 0
     if (ca !== cb) return cb - ca
-    return a.id.localeCompare(b.id)
+    return a.slug.localeCompare(b.slug)
   })
 
   return (

@@ -1,6 +1,25 @@
 import '@testing-library/jest-dom/vitest'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
+
+// Most unit tests use in-memory repos and should not touch the real DB.
+// Provide a safe Prisma stub to avoid accidental connections.
+vi.mock('@/lib/db/prisma', () => {
+  const noop = async () => []
+  const prisma: any = {
+    city: { findUnique: async () => null, findMany: noop, create: async () => ({}), update: async () => ({}), upsert: async () => ({}) },
+    cityAlias: { findUnique: async () => null, findMany: noop, create: async () => ({}), createMany: async () => ({ count: 0 }), delete: async () => ({}) },
+    cityRedirect: { findUnique: async () => null, upsert: async () => ({}) },
+    articleCity: { findMany: noop, groupBy: noop, createMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
+    articleRevisionCity: { findMany: noop, createMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
+    submissionCity: { findMany: noop, createMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
+    favorite: { findUnique: async () => null, create: async () => ({}), delete: async () => ({}) },
+    mdxFavorite: { findUnique: async () => null, create: async () => ({}), delete: async () => ({}) },
+    $transaction: async (fn: any) => fn(prisma),
+    $disconnect: async () => {},
+  }
+  return { prisma }
+})
 
 function rect() {
   return {

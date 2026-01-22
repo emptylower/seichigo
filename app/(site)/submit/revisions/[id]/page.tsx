@@ -57,6 +57,17 @@ export default async function RevisionEditPage({ params }: { params: Promise<{ i
   const sanitized = sanitizeRichTextHtml(revision.contentHtml || '')
   const rendered = renderRichTextEmbeds(sanitized, revision.contentJson)
 
+  const cityLinks = await prisma.articleRevisionCity.findMany({
+    where: { revisionId: revision.id },
+    orderBy: { cityId: 'asc' },
+    select: {
+      cityId: true,
+      city: { select: { id: true, slug: true, name_zh: true, name_en: true, name_ja: true } },
+    },
+  })
+  const cityIds = cityLinks.map((x) => x.cityId)
+  const cities = cityLinks.map((x) => x.city)
+
   return (
     <RevisionEditClient
       initial={{
@@ -66,6 +77,8 @@ export default async function RevisionEditPage({ params }: { params: Promise<{ i
         description: revision.description ?? null,
         animeIds: revision.animeIds,
         city: revision.city,
+        cityIds,
+        cities,
         routeLength: revision.routeLength,
         tags: revision.tags,
         cover: revision.cover,

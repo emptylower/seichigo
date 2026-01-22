@@ -4,6 +4,8 @@ import { ArticleSlugExistsError } from '@/lib/article/repo'
 import { canEdit, type Actor } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
+import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
+import { listCitiesByIds } from '@/lib/city/listByIds'
 
 const patchSchema = z
   .object({
@@ -12,6 +14,7 @@ const patchSchema = z
     description: z.string().max(320).nullable().optional(),
     animeIds: z.array(z.string()).optional(),
     city: z.string().nullable().optional(),
+    cityIds: z.array(z.string()).optional(),
     routeLength: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     cover: z
@@ -72,6 +75,8 @@ function toDetail(a: any, sanitizeHtml: (html: string) => string) {
     description: a.description ?? null,
     animeIds: a.animeIds,
     city: a.city,
+    cityIds: [],
+    cities: [],
     routeLength: a.routeLength,
     tags: a.tags,
     cover: a.cover ?? null,
@@ -108,7 +113,10 @@ export function createHandlers(deps: ArticleApiDeps) {
         return NextResponse.json({ error: '无权限' }, { status: 403 })
       }
 
-      return NextResponse.json({ ok: true, article: toDetail(found, deps.sanitizeHtml) })
+      const base = toDetail(found, deps.sanitizeHtml)
+      const cityIds = await getArticleCityIds(found.id).catch(() => [])
+      const cities = await listCitiesByIds(cityIds).catch(() => [])
+      return NextResponse.json({ ok: true, article: { ...base, cityIds, cities } })
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -145,6 +153,15 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       const updateInput: Record<string, any> = { ...parsed.data }
+      const nextCityIds = Array.isArray(parsed.data.cityIds)
+        ? parsed.data.cityIds.map((x) => String(x || '').trim()).filter(Boolean)
+        : null
+      if (nextCityIds != null) {
+        delete updateInput.cityIds
+        const cities = await listCitiesByIds(nextCityIds).catch(() => [])
+        const primary = cities[0] || null
+        updateInput.city = primary?.name_zh ? String(primary.name_zh).trim() : null
+      }
       if (parsed.data.contentHtml !== undefined) {
         updateInput.contentHtml = deps.sanitizeHtml(parsed.data.contentHtml)
       }
@@ -189,7 +206,15 @@ export function createHandlers(deps: ArticleApiDeps) {
       try {
         const updated = await deps.repo.updateDraft(id, updateInput)
         if (!updated) return NextResponse.json({ error: '未找到文章' }, { status: 404 })
-        return NextResponse.json({ ok: true, article: toDetail(updated, deps.sanitizeHtml) })
+
+        if (nextCityIds != null) {
+          await setArticleCityIds(id, nextCityIds).catch(() => null)
+        }
+
+        const base = toDetail(updated, deps.sanitizeHtml)
+        const cityIds = await getArticleCityIds(updated.id).catch(() => [])
+        const cities = await listCitiesByIds(cityIds).catch(() => [])
+        return NextResponse.json({ ok: true, article: { ...base, cityIds, cities } })
       } catch (err) {
         if (err instanceof ArticleSlugExistsError) {
           return NextResponse.json({ error: 'slug 已存在' }, { status: 409 })
