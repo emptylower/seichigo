@@ -20,6 +20,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
+  const [name, setName] = useState('')
   const [summary, setSummary] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -39,6 +40,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       return
     }
     setAnime(data.anime)
+    setName(data.anime.name || '')
     setSummary(data.anime.summary || '')
     setLoading(false)
   }
@@ -71,6 +73,25 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     try {
       await updateField({ summary })
       setShowSuccessModal(true)
+    } catch (err: any) {
+      setFailureMessage(err.message)
+      setShowFailureModal(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function onSaveName() {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setFailureMessage('作品名不能为空')
+      setShowFailureModal(true)
+      return
+    }
+    setSaving(true)
+    try {
+      await updateField({ name: trimmed }, false)
+      setName(trimmed)
     } catch (err: any) {
       setFailureMessage(err.message)
       setShowFailureModal(true)
@@ -141,6 +162,25 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
             label="作品海报"
             description="建议上传竖版海报（3:4 比例）"
           />
+        </section>
+
+        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="font-semibold text-gray-900">作品名</h2>
+          <div className="space-y-2">
+            <input
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="请输入作品名…"
+              disabled={saving}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
+              <Button onClick={onSaveName} disabled={saving}>
+                {saving ? '保存中…' : '保存作品名'}
+              </Button>
+            </div>
+          </div>
         </section>
 
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -235,4 +275,3 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     </div>
   )
 }
-
