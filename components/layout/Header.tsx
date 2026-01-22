@@ -31,12 +31,11 @@ export default async function Header({ locale = 'zh' }: Props) {
       ? {
           posts: 'Posts',
           anime: 'Anime',
-          city: 'Cities',
-          resources: 'Resources',
-          about: 'About',
-          submit: 'Submit',
-          admin: 'Admin',
-          favorites: 'Favorites',
+           city: 'Cities',
+           resources: 'Resources',
+           submit: 'Submit',
+           admin: 'Admin',
+           favorites: 'Favorites',
           signout: 'Sign out',
           signin: 'Sign in',
           signup: 'Sign up',
@@ -44,13 +43,12 @@ export default async function Header({ locale = 'zh' }: Props) {
         }
       : {
           posts: '文章',
-          anime: '作品',
-          city: '城市',
-          resources: '资源',
-          about: '关于',
-          submit: '投稿',
-          admin: '管理员面板',
-          favorites: '我的收藏',
+           anime: '作品',
+           city: '城市',
+           resources: '资源',
+           submit: '投稿',
+           admin: '管理员面板',
+           favorites: '我的收藏',
           signout: '退出',
           signin: '登录',
           signup: '注册',
@@ -76,11 +74,10 @@ export default async function Header({ locale = 'zh' }: Props) {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href={prefixPath('/', locale)} className="hover:text-brand-600">{labels.posts}</Link>
-          <Link href={prefixPath('/anime', locale)} className="hover:text-brand-600">{labels.anime}</Link>
-          <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{labels.city}</Link>
-          <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{labels.resources}</Link>
-          <Link href={prefixPath('/about', locale)} className="hover:text-brand-600">{labels.about}</Link>
-          <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{labels.submit}</Link>
+           <Link href={prefixPath('/anime', locale)} className="hover:text-brand-600">{labels.anime}</Link>
+           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{labels.city}</Link>
+           <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{labels.resources}</Link>
+           <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{labels.submit}</Link>
           {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{labels.admin}</Link> : null}
           {session?.user ? (
             <details className="relative">

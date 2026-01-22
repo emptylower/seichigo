@@ -5,19 +5,19 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Resources',
-  description: 'Maps, checklists, and etiquette pages for anime pilgrimages.',
+  description: 'Maps and checklists for anime pilgrimages.',
   alternates: { canonical: '/en/resources' },
   openGraph: {
     type: 'website',
     url: '/en/resources',
     title: 'Resources',
-    description: 'Maps, checklists, and etiquette pages for anime pilgrimages.',
+    description: 'Maps and checklists for anime pilgrimages.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Resources',
-    description: 'Maps, checklists, and etiquette pages for anime pilgrimages.',
+    description: 'Maps and checklists for anime pilgrimages.',
     images: ['/twitter-image'],
   },
 }
@@ -41,6 +41,7 @@ export default async function ResourcesIndexEnPage() {
   const items = assets
     .map(toListItem)
     .filter((x) => x.id && x.title)
+    .filter((x) => x.type === 'map' || x.type === 'checklist')
     .sort((a, b) => a.id.localeCompare(b.id))
 
   return (

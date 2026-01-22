@@ -41,6 +41,7 @@ export default async function ResourcesIndexPage() {
   const items = assets
     .map(toListItem)
     .filter((x) => x.id && x.title)
+    .filter((x) => x.type === 'map' || x.type === 'checklist')
     .sort((a, b) => a.id.localeCompare(b.id))
 
   return (
