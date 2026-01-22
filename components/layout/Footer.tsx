@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import type { SiteLocale } from './SiteShell'
 
 type Props = {
@@ -70,39 +71,57 @@ export default function Footer({ locale = 'zh' }: Props) {
     : '圣地巡礼请遵守当地法律与礼仪。'
 
   return (
-    <footer className="mt-16 border-t border-pink-100 bg-white pt-12 pb-8 text-sm">
+    <footer className="mt-16 border-t border-pink-100 bg-white pt-16 pb-12 text-sm" aria-labelledby="footer-heading">
+      <h2 id="footer-heading" className="sr-only">Footer</h2>
       <div className="mx-auto max-w-5xl px-4">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          {columns.map((col) => (
-            <div key={col.title}>
-              <h3 className="mb-4 font-semibold text-gray-900">{col.title}</h3>
-              <ul className="space-y-3">
-                {col.links.map((link) => (
-                  <li key={link.label}>
-                    {link.isExternal || link.href === '#' ? (
-                      <a
-                        href={link.href}
-                        className={`text-gray-500 hover:text-brand-600 ${link.href === '#' ? 'cursor-default' : ''}`}
-                        target={link.href.startsWith('http') ? '_blank' : undefined}
-                        rel={link.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                      >
-                        {link.label}
-                      </a>
-                    ) : (
-                      <Link href={getHref(link.href)} className="text-gray-500 hover:text-brand-600">
-                        {link.label}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        <div className="xl:grid xl:grid-cols-3 xl:gap-8">
+          <div className="space-y-4 xl:col-span-1">
+            <Link href={isEn ? '/en' : '/'} className="flex items-center gap-2">
+              <Image
+                src="/brand/app-logo.png"
+                alt="SeichiGo"
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-md bg-white object-cover"
+              />
+              <span className="font-display text-lg text-gray-900">SeichiGo</span>
+            </Link>
+            <p className="max-w-xs text-sm leading-6 text-gray-500">
+              {slogan}
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-2 gap-8 md:grid-cols-4 xl:col-span-2 xl:mt-0">
+            {columns.map((col) => (
+              <div key={col.title}>
+                <h3 className="mb-4 font-semibold text-gray-900">{col.title}</h3>
+                <ul className="space-y-3">
+                  {col.links.map((link) => (
+                    <li key={link.label}>
+                      {link.isExternal || link.href === '#' ? (
+                        <a
+                          href={link.href}
+                          className={`text-gray-500 hover:text-brand-600 ${link.href === '#' ? 'cursor-default' : ''}`}
+                          target={link.href.startsWith('http') ? '_blank' : undefined}
+                          rel={link.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        >
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link href={getHref(link.href)} className="text-gray-500 hover:text-brand-600">
+                          {link.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-12 border-t border-gray-100 pt-8 text-center text-gray-400">
-          <p>{copyright}</p>
-          <p className="mt-2 text-xs">{slogan}</p>
+        <div className="mt-12 border-t border-gray-100 pt-8">
+          <p className="text-xs text-gray-400">{copyright}</p>
         </div>
       </div>
     </footer>
