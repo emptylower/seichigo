@@ -2,13 +2,14 @@ import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { buildEnAlternates } from '@/lib/seo/alternates'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Cities',
   description: 'Browse anime pilgrimage routes by city.',
-  alternates: { canonical: '/en/city' },
+  alternates: buildEnAlternates({ zhPath: '/city' }),
   openGraph: {
     type: 'website',
     url: '/en/city',

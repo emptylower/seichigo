@@ -225,6 +225,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     description,
     siteName: 'SeichiGo',
     siteUrl: siteOrigin,
+    author: { type: 'Organization', name: 'SeichiGo', url: siteOrigin },
     imageUrl: coverUrl,
     datePublished,
     dateModified,

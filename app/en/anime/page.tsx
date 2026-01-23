@@ -1,30 +1,31 @@
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
-import { buildZhAlternates } from '@/lib/seo/alternates'
+import { buildEnAlternates } from '@/lib/seo/alternates'
 import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '作品索引',
-  description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
-  alternates: buildZhAlternates({ path: '/anime' }),
+  title: 'Anime Index',
+  description: 'Browse published pilgrimage routes and posts by anime work.',
+  alternates: buildEnAlternates({ zhPath: '/anime' }),
   openGraph: {
     type: 'website',
-    url: '/anime',
-    title: '作品索引',
-    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    url: '/en/anime',
+    title: 'Anime Index',
+    description: 'Browse published pilgrimage routes and posts by anime work.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '作品索引',
-    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    title: 'Anime Index',
+    description: 'Browse published pilgrimage routes and posts by anime work.',
     images: ['/twitter-image'],
   },
 }
+
 export const dynamic = 'force-dynamic'
 
-export default async function AnimeIndexPage() {
+export default async function AnimeIndexEnPage() {
   const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])
   const counts = posts.reduce<Record<string, number>>((acc, p) => {
     for (const id of p.animeIds || []) {
@@ -55,7 +56,8 @@ export default async function AnimeIndexPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">作品</h1>
+      <h1 className="text-2xl font-bold">Anime</h1>
+      <div className="mt-2 text-sm text-gray-600">Index pages are in English; most content is still in Chinese.</div>
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {sorted.map((a) => (
           <AnimeCard
@@ -66,7 +68,7 @@ export default async function AnimeIndexPage() {
           />
         ))}
       </div>
-      {!sorted.length && <div className="mt-8 text-gray-500">暂无作品元数据。</div>}
+      {!sorted.length ? <div className="mt-8 text-gray-500">No anime metadata yet.</div> : null}
     </div>
   )
 }

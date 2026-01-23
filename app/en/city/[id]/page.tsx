@@ -3,6 +3,7 @@ import { normalizeCityAlias } from '@/lib/city/normalize'
 import { listPublishedDbPostsByCityId } from '@/lib/city/posts'
 import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -45,7 +46,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     title,
     description,
     alternates: {
-      canonical: `/en/city/${encodeURIComponent(city.slug)}`,
+      ...buildHreflangAlternates({
+        canonicalPath: `/en/city/${encodeURIComponent(city.slug)}`,
+        zhPath: `/city/${encodeURIComponent(city.slug)}`,
+        enPath: `/en/city/${encodeURIComponent(city.slug)}`,
+      }),
     },
     openGraph: {
       type: 'website',

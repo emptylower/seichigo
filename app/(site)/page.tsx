@@ -1,5 +1,6 @@
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
+import { buildZhAlternates } from '@/lib/seo/alternates'
 import FeaturedPost from '@/components/bookstore/FeaturedPost'
 import FeaturedEmpty from '@/components/bookstore/FeaturedEmpty'
 import BookShelf from '@/components/bookstore/BookShelf'
@@ -11,7 +12,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: { absolute: 'SeichiGo — 动漫圣地巡礼攻略' },
   description: '用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划，并直接提供可导航的路线点位清单。',
-  alternates: { canonical: '/' },
+  alternates: buildZhAlternates({ path: '/' }),
   openGraph: {
     type: 'website',
     url: '/',

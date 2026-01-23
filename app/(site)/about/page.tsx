@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { buildZhAlternates } from '@/lib/seo/alternates'
 
 export const metadata: Metadata = {
   title: '关于 SeichiGo',
   description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，连接二次元与现实的桥梁。',
-  alternates: { canonical: '/about' },
+  alternates: buildZhAlternates({ path: '/about' }),
   openGraph: {
     type: 'website',
     url: '/about',

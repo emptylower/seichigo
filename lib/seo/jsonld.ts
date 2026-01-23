@@ -55,6 +55,7 @@ export function buildBlogPostingJsonLd(input: {
   about?: { type: 'CreativeWork' | 'Place'; name: string }[]
   keywords?: string[]
   inLanguage?: string
+  author?: { type: 'Person' | 'Organization'; name: string; url?: string | null }
 }): JsonLdObject {
   const url = safeUrl(input.url) || input.url
   const siteUrl = safeUrl(input.siteUrl) || input.siteUrl
@@ -68,6 +69,23 @@ export function buildBlogPostingJsonLd(input: {
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     isPartOf: { '@type': 'Blog', name: String(input.siteName || '').trim(), url: siteUrl },
     publisher: { '@type': 'Organization', name: String(input.siteName || '').trim(), url: siteUrl },
+  }
+
+  const authorName = String(input.author?.name || '').trim()
+  const authorType = input.author?.type
+  const authorUrl = safeUrl(input.author?.url)
+  if (authorType === 'Person' || authorType === 'Organization') {
+    out.author = {
+      '@type': authorType,
+      name: authorName || String(input.siteName || '').trim(),
+      ...(authorUrl ? { url: authorUrl } : {}),
+    }
+  } else {
+    out.author = {
+      '@type': 'Organization',
+      name: String(input.siteName || '').trim(),
+      url: siteUrl,
+    }
   }
 
   const lang = typeof input.inLanguage === 'string' ? input.inLanguage.trim() : ''

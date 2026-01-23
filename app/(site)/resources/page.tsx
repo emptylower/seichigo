@@ -1,12 +1,13 @@
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import type { LinkAsset, LinkAssetListItem } from '@/lib/linkAsset/types'
+import { buildZhAlternates } from '@/lib/seo/alternates'
 import ResourceCard from '@/components/resources/ResourceCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: '巡礼资源',
   description: '地图、清单、礼仪等可引用的圣地巡礼资源页，适合作为外链落地入口。',
-  alternates: { canonical: '/resources' },
+  alternates: buildZhAlternates({ path: '/resources' }),
   openGraph: {
     type: 'website',
     url: '/resources',

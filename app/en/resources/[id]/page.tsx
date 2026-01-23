@@ -6,6 +6,7 @@ import { aggregateSpots } from '@/lib/linkAsset/aggregateSpots'
 import MapAssetView from '@/components/resources/MapAssetView'
 import ChecklistAssetView from '@/components/resources/ChecklistAssetView'
 import EtiquetteAssetView from '@/components/resources/EtiquetteAssetView'
+import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 
@@ -26,7 +27,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     title,
     description,
     alternates: {
-      canonical: `/en/resources/${encodeURIComponent(asset.id)}`,
+      ...buildHreflangAlternates({
+        canonicalPath: `/en/resources/${encodeURIComponent(asset.id)}`,
+        zhPath: `/resources/${encodeURIComponent(asset.id)}`,
+        enPath: `/en/resources/${encodeURIComponent(asset.id)}`,
+      }),
     },
     openGraph: {
       type: 'website',

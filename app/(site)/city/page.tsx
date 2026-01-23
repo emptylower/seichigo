@@ -2,13 +2,14 @@ import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { buildZhAlternates } from '@/lib/seo/alternates'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: '城市索引',
   description: '按城市浏览已发布的圣地巡礼路线与文章，快速找到东京、京都等目的地的点位清单与地图入口。',
-  alternates: { canonical: '/city' },
+  alternates: buildZhAlternates({ path: '/city' }),
   openGraph: {
     type: 'website',
     url: '/city',

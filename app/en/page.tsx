@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { buildEnAlternates } from '@/lib/seo/alternates'
 
 export const metadata: Metadata = {
   title: { absolute: 'SeichiGo — Anime Pilgrimage Guides' },
   description: 'Long-form anime pilgrimage guides with practical spot lists, route maps, and photography tips.',
-  alternates: { canonical: '/en' },
+  alternates: buildEnAlternates({ zhPath: '/' }),
   openGraph: {
     type: 'website',
     url: '/en',

@@ -1,12 +1,13 @@
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import type { LinkAsset, LinkAssetListItem } from '@/lib/linkAsset/types'
+import { buildEnAlternates } from '@/lib/seo/alternates'
 import ResourceCard from '@/components/resources/ResourceCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Resources',
   description: 'Maps and checklists for anime pilgrimages.',
-  alternates: { canonical: '/en/resources' },
+  alternates: buildEnAlternates({ zhPath: '/resources' }),
   openGraph: {
     type: 'website',
     url: '/en/resources',

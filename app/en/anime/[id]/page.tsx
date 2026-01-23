@@ -3,7 +3,6 @@ import { getPostsByAnimeId } from '@/lib/posts/getPostsByAnimeId'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
-import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -25,21 +24,6 @@ function encodeAnimeIdForPath(id: string): string {
   return encodeURIComponent(id)
 }
 
-function hash32(input: string): number {
-  let h = 0
-  for (let i = 0; i < input.length; i++) {
-    h = (h * 31 + input.charCodeAt(i)) >>> 0
-  }
-  return h
-}
-
-function getGradient(id: string) {
-  const seed = hash32(id)
-  const hue1 = seed % 360
-  const hue2 = (hue1 + 40) % 360
-  return `linear-gradient(135deg, hsl(${hue1} 40% 30%), hsl(${hue2} 50% 20%))`
-}
-
 export async function generateStaticParams() {
   return []
 }
@@ -50,31 +34,32 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const anime = await getAnimeById(requestedId).catch(() => null)
   const canonicalId = anime?.id || requestedId || String(id || '')
   const posts = await getPostsByAnimeId(canonicalId, 'zh')
-  
+
   if (!anime && posts.length === 0) {
-    return { title: '未找到作品', robots: { index: false, follow: false } }
+    return { title: 'Anime not found', robots: { index: false, follow: false } }
   }
 
   const title = anime?.name || canonicalId
   const summary = String(anime?.summary || '').trim()
-  const fallback = `${title} 圣地巡礼作品聚合页，汇总相关路线与文章（${posts.length} 篇），提供地图导航与点位清单。`
+  const fallback = `Pilgrimage hub page for ${title}. ${posts.length} posts available.`
   const description = summary ? `${summary} ${fallback}` : fallback
 
+  const path = `/anime/${encodeAnimeIdForPath(canonicalId)}`
   return {
     title,
     description,
     alternates: {
       ...buildHreflangAlternates({
-        canonicalPath: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
-        zhPath: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
-        enPath: `/en/anime/${encodeAnimeIdForPath(canonicalId)}`,
+        canonicalPath: `/en${path}`,
+        zhPath: path,
+        enPath: `/en${path}`,
       }),
     },
     openGraph: {
       type: 'website',
       title,
       description,
-      url: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
+      url: `/en${path}`,
       images: ['/opengraph-image'],
     },
     twitter: {
@@ -86,14 +71,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default async function AnimePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AnimeEnPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const requestedId = safeDecodeURIComponent(String(id || '')).trim()
   const anime = await getAnimeById(requestedId).catch(() => null)
   const canonicalId = anime?.id || requestedId || String(id || '')
 
   if (requestedId && canonicalId && requestedId !== canonicalId) {
-    permanentRedirect(`/anime/${encodeAnimeIdForPath(canonicalId)}`)
+    permanentRedirect(`/en/anime/${encodeAnimeIdForPath(canonicalId)}`)
   }
 
   const posts = await getPostsByAnimeId(canonicalId, 'zh')
@@ -104,83 +89,54 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
 
   const display = anime ?? { id: canonicalId, name: canonicalId, alias: [], summary: '', year: undefined, cover: undefined }
   const siteOrigin = getSiteOrigin()
-  const canonicalUrl = `${siteOrigin}/anime/${encodeAnimeIdForPath(canonicalId)}`
-  const animeWorkJsonLd = buildAnimeWorkJsonLd({
-    url: canonicalUrl,
-    name: display.name,
-    description: display.summary,
-    imageUrl: display.cover || null,
-    alternateNames: Array.isArray(display.alias) ? display.alias : [],
-    year: display.year || null,
-    inLanguage: 'zh',
-    type: 'TVSeries',
-  })
-  
+  const canonicalUrl = `${siteOrigin}/en/anime/${encodeAnimeIdForPath(canonicalId)}`
+
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
-    { name: '首页', url: `${siteOrigin}/` },
-    { name: '作品', url: `${siteOrigin}/anime` },
+    { name: 'Home', url: `${siteOrigin}/en` },
+    { name: 'Anime', url: `${siteOrigin}/en/anime` },
     { name: display.name, url: canonicalUrl },
   ])
 
-  // Cover Strategy: Anime Cover > First Post Cover > Gradient
-  const heroCover = display.cover || posts.find(p => p.cover)?.cover || null
-  const bgGradient = getGradient(canonicalId)
+  const heroCover = display.cover || posts.find((p) => p.cover)?.cover || null
 
   return (
     <>
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       ) : null}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(animeWorkJsonLd) }} />
 
       <div className="space-y-8">
-        {/* Navigation */}
         <Breadcrumbs
           items={[
-            { name: '首页', href: '/' },
-            { name: '作品', href: '/anime' },
-            { name: display.name, href: `/anime/${encodeAnimeIdForPath(canonicalId)}` },
+            { name: 'Home', href: '/en' },
+            { name: 'Anime', href: '/en/anime' },
+            { name: display.name, href: `/en/anime/${encodeAnimeIdForPath(canonicalId)}` },
           ]}
         />
 
-        {/* Hero Section */}
         <div className="relative w-full overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
-          {/* Background Layer */}
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center opacity-40 blur-2xl scale-110 transition-transform duration-1000"
-            style={{ 
-              backgroundImage: heroCover ? `url(${heroCover})` : 'none',
-              background: heroCover ? undefined : bgGradient
-            }}
+            style={{ backgroundImage: heroCover ? `url(${heroCover})` : 'none' }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
 
-          {/* Content Layer */}
           <div className="relative z-10 flex flex-col gap-6 p-6 md:flex-row md:items-start md:p-10">
-            {/* Poster Card */}
             <div className="shrink-0 mx-auto md:mx-0">
               <div className="relative aspect-[3/4] w-40 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/20 md:w-52">
-                <div className="absolute inset-0" style={{ background: bgGradient }} />
                 {heroCover ? (
-                  <img 
-                    src={heroCover} 
-                    alt={display.name} 
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : null}
+                  <img src={heroCover} alt={display.name} className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 bg-white/10" />
+                )}
               </div>
             </div>
 
-            {/* Text Info */}
             <div className="flex-1 space-y-4 text-center md:text-left text-white">
               <div>
-                <h1 className="text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl drop-shadow-md">
-                  {display.name}
-                </h1>
+                <h1 className="text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl">{display.name}</h1>
                 {display.alias?.length ? (
-                  <p className="mt-2 text-sm text-gray-200 md:text-base drop-shadow-sm">
-                    {display.alias.join(' / ')}
-                  </p>
+                  <p className="mt-2 text-sm text-gray-200 md:text-base">{display.alias.join(' / ')}</p>
                 ) : null}
               </div>
 
@@ -191,34 +147,31 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
                   </span>
                 ) : null}
                 <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
-                  {posts.length} 篇文章
+                  {posts.length} posts
                 </span>
               </div>
 
               {display.summary ? (
-                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-100 md:mx-0 md:text-base drop-shadow-sm">
-                  {display.summary}
-                </p>
+                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-100 md:mx-0 md:text-base">{display.summary}</p>
               ) : (
-                <p className="text-sm italic text-gray-300">暂无简介</p>
+                <p className="text-sm italic text-gray-300">No summary yet.</p>
               )}
             </div>
           </div>
         </div>
 
-        {/* Posts Grid Section */}
         <section className="space-y-6">
           <div className="flex items-center gap-2 border-b pb-2">
-            <h2 className="text-2xl font-bold text-gray-900">相关文章</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Related Posts</h2>
           </div>
-          
+
           {posts.length > 0 ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {posts.map((p) => (
                 <Link key={p.path} href={p.path} className="block transition-transform hover:-translate-y-1">
                   <BookCover
                     title={p.title}
-                    path={p.path} // seed for gradient
+                    path={p.path}
                     animeIds={p.animeIds}
                     city={p.city}
                     routeLength={p.routeLength}
@@ -231,7 +184,7 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
             </div>
           ) : (
             <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
-              <p className="text-gray-500">该作品下暂无相关文章。</p>
+              <p className="text-gray-500">No posts found for this anime yet.</p>
             </div>
           )}
         </section>

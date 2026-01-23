@@ -105,22 +105,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const p of posts) {
     const zhUrl = `${base}${p.path}`
-    const enUrl = `${base}/en${p.path}`
 
     items.push({
       url: zhUrl,
       lastModified: toLastModified(p.updatedAt || p.publishedAt || p.publishDate),
       changeFrequency: 'monthly',
       priority: 0.7,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
-    })
-
-    items.push({
-      url: enUrl,
-      lastModified: toLastModified(p.updatedAt || p.publishedAt || p.publishDate),
-      changeFrequency: 'monthly',
-      priority: 0.2,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
     })
   }
   return items
