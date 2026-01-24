@@ -40,11 +40,13 @@ function MdxLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
 
 function MdxImg(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   const { src, ...rest } = props
+  const alt = typeof rest.alt === 'string' ? rest.alt : ''
   const rewritten = rewriteAssetImageSrc(src)
-  if (!rewritten) return <img src={typeof src === 'string' ? src : undefined} {...rest} />
+  if (!rewritten) return <img src={typeof src === 'string' ? src : undefined} {...rest} alt={alt} />
   return (
     <img
       {...rest}
+      alt={alt}
       src={rewritten.placeholder}
       data-seichi-full={rewritten.full}
       data-seichi-sd={rewritten.sd}

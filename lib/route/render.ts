@@ -122,7 +122,7 @@ function renderRouteMapCard(spots: SeichiRouteSpotV1[]): string {
     (resolved[0] ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formatLatLng(resolved[0]))}` : null)
 
   const img =
-    `<img class="seichi-route__map-img" src="${escapeAttr(staticMapUrl)}" alt="路线地图预览" loading="lazy" decoding="async">`
+    `<img class="seichi-route__map-img" src="${escapeAttr(staticMapUrl)}" alt="路线地图预览" width="640" height="360" loading="eager" decoding="async">`
 
   const primaryLink = primaryHref
     ? `<a class="seichi-route__map-primary" href="${escapeAttr(primaryHref)}" target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开"></a>`

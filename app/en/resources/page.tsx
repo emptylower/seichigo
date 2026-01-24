@@ -5,25 +5,29 @@ import ResourceCard from '@/components/resources/ResourceCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Resources',
-  description: 'Maps and checklists for anime pilgrimages.',
+  title: 'Resources — maps & checklists',
+  description:
+    'A curated set of resources for anime pilgrimages: maps, checklists, and etiquette guides you can reference or share, with quick navigation links for trip planning.',
   alternates: buildEnAlternates({ zhPath: '/resources' }),
   openGraph: {
     type: 'website',
     url: '/en/resources',
     title: 'Resources',
-    description: 'Maps and checklists for anime pilgrimages.',
+    description:
+      'A curated set of resources for anime pilgrimages: maps, checklists, and etiquette guides you can reference or share, with quick navigation links for trip planning.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Resources',
-    description: 'Maps and checklists for anime pilgrimages.',
+    description:
+      'A curated set of resources for anime pilgrimages: maps, checklists, and etiquette guides you can reference or share, with quick navigation links for trip planning.',
     images: ['/twitter-image'],
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 function toListItem(asset: LinkAsset): LinkAssetListItem {
   return {

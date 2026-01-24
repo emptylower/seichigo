@@ -3,23 +3,29 @@ import Link from 'next/link'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 
 export const metadata: Metadata = {
-  title: 'About SeichiGo',
-  description: 'SeichiGo publishes long-form anime pilgrimage guides with practical routes and spot lists.',
+  title: 'About SeichiGo — anime pilgrimage guides',
+  description:
+    'SeichiGo publishes long-form anime pilgrimage guides with practical routes, navigation-ready spot lists, and photography tips — built to be useful on the ground.',
   alternates: buildEnAlternates({ zhPath: '/about' }),
   openGraph: {
     type: 'website',
     url: '/en/about',
     title: 'About SeichiGo',
-    description: 'SeichiGo publishes long-form anime pilgrimage guides with practical routes and spot lists.',
+    description:
+      'SeichiGo publishes long-form anime pilgrimage guides with practical routes, navigation-ready spot lists, and photography tips — built to be useful on the ground.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'About SeichiGo',
-    description: 'SeichiGo publishes long-form anime pilgrimage guides with practical routes and spot lists.',
+    description:
+      'SeichiGo publishes long-form anime pilgrimage guides with practical routes, navigation-ready spot lists, and photography tips — built to be useful on the ground.',
     images: ['/twitter-image'],
   },
 }
+
+export const revalidate = 86400
+export const dynamic = 'force-static'
 
 export default function AboutEnPage() {
   return (

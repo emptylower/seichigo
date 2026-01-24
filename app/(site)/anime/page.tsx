@@ -5,24 +5,28 @@ import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '作品索引',
-  description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+  title: '作品索引｜按动画作品浏览圣地巡礼',
+  description:
+    '按动画作品浏览已发布的圣地巡礼路线与文章：汇总每部作品的取景地清单、机位建议与路线导航入口，适合用来快速挑选目的地并开始规划行程。',
   alternates: buildZhAlternates({ path: '/anime' }),
   openGraph: {
     type: 'website',
     url: '/anime',
     title: '作品索引',
-    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    description:
+      '按动画作品浏览已发布的圣地巡礼路线与文章：汇总每部作品的取景地清单、机位建议与路线导航入口，适合用来快速挑选目的地并开始规划行程。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: '作品索引',
-    description: '按作品浏览已发布的圣地巡礼路线与文章，快速找到对应动画的点位清单、机位建议与地图导航入口。',
+    description:
+      '按动画作品浏览已发布的圣地巡礼路线与文章：汇总每部作品的取景地清单、机位建议与路线导航入口，适合用来快速挑选目的地并开始规划行程。',
     images: ['/twitter-image'],
   },
 }
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 export default async function AnimeIndexPage() {
   const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])

@@ -20,6 +20,24 @@ function coverGradient(seedKey: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 55% 46%), hsl(${hue2} 70% 56%))`
 }
 
+function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: number }): string {
+  const raw = String(input || '').trim()
+  if (!raw) return raw
+
+  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
+  const base = hasAbsolute ? undefined : 'https://seichigo.com'
+
+  try {
+    const url = new URL(raw, base)
+    if (!url.pathname.startsWith('/assets/')) return raw
+    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
+    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
+  } catch {
+    return raw
+  }
+}
+
 function typeLabel(type: LinkAssetListItem['type']): string {
   if (type === 'map') return '🗺️ 地图'
   if (type === 'checklist') return '✅ 清单'
@@ -28,7 +46,8 @@ function typeLabel(type: LinkAssetListItem['type']): string {
 }
 
 export default function ResourceCard({ item }: Props) {
-  const coverSrc = typeof item.cover === 'string' && item.cover.trim() ? item.cover.trim() : null
+  const coverRaw = typeof item.cover === 'string' && item.cover.trim() ? item.cover.trim() : null
+  const coverSrc = coverRaw ? optimizeAssetCoverSrc(coverRaw, { width: 1280, quality: 78 }) : null
 
   return (
     <Link
@@ -40,7 +59,9 @@ export default function ResourceCard({ item }: Props) {
         {coverSrc ? (
           <img
             src={coverSrc}
-            alt=""
+            alt={item.title}
+            width={1280}
+            height={720}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
             decoding="async"

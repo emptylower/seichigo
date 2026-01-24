@@ -9,7 +9,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 function safeDecodeURIComponent(input: string): string {
   if (!/%[0-9a-fA-F]{2}/.test(input)) return input
@@ -22,6 +22,24 @@ function safeDecodeURIComponent(input: string): string {
 
 function encodeAnimeIdForPath(id: string): string {
   return encodeURIComponent(id)
+}
+
+function optimizeAssetImgSrc(input: string, opts: { width: number; quality: number }): string {
+  const raw = String(input || '').trim()
+  if (!raw) return raw
+
+  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
+  const base = hasAbsolute ? undefined : 'https://seichigo.com'
+
+  try {
+    const url = new URL(raw, base)
+    if (!url.pathname.startsWith('/assets/')) return raw
+    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
+    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
+  } catch {
+    return raw
+  }
 }
 
 export async function generateStaticParams() {
@@ -97,7 +115,8 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
     { name: display.name, url: canonicalUrl },
   ])
 
-  const heroCover = display.cover || posts.find((p) => p.cover)?.cover || null
+  const heroCoverRaw = display.cover || posts.find((p) => p.cover)?.cover || null
+  const heroCover = heroCoverRaw ? optimizeAssetImgSrc(heroCoverRaw, { width: 900, quality: 78 }) : null
 
   return (
     <>
@@ -125,7 +144,16 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
             <div className="shrink-0 mx-auto md:mx-0">
               <div className="relative aspect-[3/4] w-40 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/20 md:w-52">
                 {heroCover ? (
-                  <img src={heroCover} alt={display.name} className="absolute inset-0 h-full w-full object-cover" />
+                  <img
+                    src={heroCover}
+                    alt={display.name}
+                    width={900}
+                    height={1200}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority="high"
+                  />
                 ) : (
                   <div className="absolute inset-0 bg-white/10" />
                 )}

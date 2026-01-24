@@ -5,25 +5,29 @@ import ResourceCard from '@/components/resources/ResourceCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '巡礼资源',
-  description: '地图、清单、礼仪等可引用的圣地巡礼资源页，适合作为外链落地入口。',
+  title: '巡礼资源｜地图、清单与礼仪指南',
+  description:
+    '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
   alternates: buildZhAlternates({ path: '/resources' }),
   openGraph: {
     type: 'website',
     url: '/resources',
     title: '巡礼资源',
-    description: '地图、清单、礼仪等可引用的圣地巡礼资源页，适合作为外链落地入口。',
+    description:
+      '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: '巡礼资源',
-    description: '地图、清单、礼仪等可引用的圣地巡礼资源页，适合作为外链落地入口。',
+    description:
+      '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
     images: ['/twitter-image'],
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 function toListItem(asset: LinkAsset): LinkAssetListItem {
   return {

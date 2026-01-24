@@ -11,17 +11,24 @@ export function buildHreflangAlternates(input: {
   const origin = getSiteOrigin()
   const includeXDefault = input.includeXDefault !== false
 
+  const canonicalPath = normalizePath(input.canonicalPath)
+  const zhPath = normalizePath(input.zhPath)
+  const enPath = normalizePath(input.enPath)
+
+  const canonical = encodeURI(canonicalPath)
+  const toAbsoluteUrl = (path: string) => new URL(encodeURI(path), origin).toString()
+
   const languages: HreflangMap = {
-    zh: `${origin}${input.zhPath}`,
-    en: `${origin}${input.enPath}`,
+    zh: toAbsoluteUrl(zhPath),
+    en: toAbsoluteUrl(enPath),
   }
 
   if (includeXDefault) {
-    languages['x-default'] = `${origin}${input.zhPath}`
+    languages['x-default'] = toAbsoluteUrl(zhPath)
   }
 
   return {
-    canonical: input.canonicalPath,
+    canonical,
     languages,
   }
 }

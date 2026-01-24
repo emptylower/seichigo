@@ -22,7 +22,27 @@ function coverGradient(seedKey: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 55% 46%), hsl(${hue2} 70% 56%))`
 }
 
+function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: number }): string {
+  const raw = String(input || '').trim()
+  if (!raw) return raw
+
+  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
+  const base = hasAbsolute ? undefined : 'https://seichigo.com'
+
+  try {
+    const url = new URL(raw, base)
+    if (!url.pathname.startsWith('/assets/')) return raw
+    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
+    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
+  } catch {
+    return raw
+  }
+}
+
 export default function AnimeCard({ anime, postCount, cover }: Props) {
+  const coverSrc = cover ? optimizeAssetCoverSrc(cover, { width: 900, quality: 78 }) : null
+
   return (
     <Link
       href={`/anime/${encodeURIComponent(anime.id)}`}
@@ -33,10 +53,12 @@ export default function AnimeCard({ anime, postCount, cover }: Props) {
           className="absolute inset-0 transition-transform duration-700 group-hover:scale-105"
           style={{ background: coverGradient(anime.id) }}
         />
-        {cover ? (
+        {coverSrc ? (
           <img
-            src={cover}
+            src={coverSrc}
             alt={anime.name}
+            width={900}
+            height={1200}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
             decoding="async"

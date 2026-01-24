@@ -5,25 +5,29 @@ import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Anime Index',
-  description: 'Browse published pilgrimage routes and posts by anime work.',
+  title: 'Anime — browse pilgrimage hubs',
+  description:
+    'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
   alternates: buildEnAlternates({ zhPath: '/anime' }),
   openGraph: {
     type: 'website',
     url: '/en/anime',
-    title: 'Anime Index',
-    description: 'Browse published pilgrimage routes and posts by anime work.',
+    title: 'Anime — browse pilgrimage hubs',
+    description:
+      'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Anime Index',
-    description: 'Browse published pilgrimage routes and posts by anime work.',
+    title: 'Anime — browse pilgrimage hubs',
+    description:
+      'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
     images: ['/twitter-image'],
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 export default async function AnimeIndexEnPage() {
   const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])

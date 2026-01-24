@@ -6,7 +6,7 @@ import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getSiteOrigin } from '@/lib/seo/site'
 
 export const runtime = 'nodejs'
-export const revalidate = 0
+export const revalidate = 3600
 
 function toLastModified(input?: string): Date | undefined {
   const raw = typeof input === 'string' ? input.trim() : ''

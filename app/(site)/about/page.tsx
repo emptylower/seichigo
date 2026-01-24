@@ -3,23 +3,29 @@ import Link from 'next/link'
 import { buildZhAlternates } from '@/lib/seo/alternates'
 
 export const metadata: Metadata = {
-  title: '关于 SeichiGo',
-  description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，连接二次元与现实的桥梁。',
+  title: '关于 SeichiGo｜动漫圣地巡礼深度攻略站',
+  description:
+    'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略：包含可导航的点位清单、交通与机位建议，并强调尊重当地居民与可持续的巡礼文化。',
   alternates: buildZhAlternates({ path: '/about' }),
   openGraph: {
     type: 'website',
     url: '/about',
     title: '关于 SeichiGo',
-    description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，连接二次元与现实的桥梁。',
+    description:
+      'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略：包含可导航的点位清单、交通与机位建议，并强调尊重当地居民与可持续的巡礼文化。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: '关于 SeichiGo',
-    description: 'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略，连接二次元与现实的桥梁。',
+    description:
+      'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略：包含可导航的点位清单、交通与机位建议，并强调尊重当地居民与可持续的巡礼文化。',
     images: ['/twitter-image'],
   },
 }
+
+export const revalidate = 86400
+export const dynamic = 'force-static'
 
 export default function AboutPage() {
   return (

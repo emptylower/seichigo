@@ -28,13 +28,32 @@ export const metadata: Metadata = {
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 600
+export const dynamic = 'force-static'
 
 const STATIC_FALLBACK_COVERS = [
   'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop',
 ]
+
+function optimizeAssetImgSrc(input: string, opts: { width: number; quality: number }): string {
+  const raw = String(input || '').trim()
+  if (!raw) return raw
+
+  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
+  const base = hasAbsolute ? undefined : 'https://seichigo.com'
+
+  try {
+    const url = new URL(raw, base)
+    if (!url.pathname.startsWith('/assets/')) return raw
+    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
+    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
+  } catch {
+    return raw
+  }
+}
 
 export default async function HomePage() {
   const [posts, animeList] = await Promise.all([
@@ -93,27 +112,34 @@ export default async function HomePage() {
           <div className="relative hidden lg:block h-[400px]">
             {/* Dynamic Cover Gallery - Fan Stack Effect */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md h-80">
-              {heroDisplay.map((src, i) => (
-                <div 
-                  key={i}
-                  className={`absolute top-0 w-64 aspect-[3/4] rounded-xl shadow-2xl transition-transform hover:scale-105 duration-500 ease-out`}
-                  style={{
-                    left: `${50 + (i - 1) * 25}%`,
-                    top: `${(i - 1) * 20}px`,
-                    transform: `translateX(-50%) rotate(${(i - 1) * 12}deg)`,
-                    zIndex: 3 - i,
-                  }}
-                >
-                  <div className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
-                    <img 
-                      src={src} 
-                      alt="" 
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-30" />
+              {heroDisplay.map((src, i) => {
+                const imgSrc = optimizeAssetImgSrc(src, { width: 640, quality: 72 })
+                return (
+                  <div
+                    key={i}
+                    className={`absolute top-0 w-64 aspect-[3/4] rounded-xl shadow-2xl transition-transform hover:scale-105 duration-500 ease-out`}
+                    style={{
+                      left: `${50 + (i - 1) * 25}%`,
+                      top: `${(i - 1) * 20}px`,
+                      transform: `translateX(-50%) rotate(${(i - 1) * 12}deg)`,
+                      zIndex: 3 - i,
+                    }}
+                  >
+                    <div className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
+                      <img
+                        src={imgSrc}
+                        alt="作品封面"
+                        width={640}
+                        height={853}
+                        className="h-full w-full object-cover"
+                        loading="eager"
+                        decoding="async"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-30" />
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

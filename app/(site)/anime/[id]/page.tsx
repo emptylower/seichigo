@@ -10,7 +10,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 function safeDecodeURIComponent(input: string): string {
   if (!/%[0-9a-fA-F]{2}/.test(input)) return input
@@ -38,6 +38,24 @@ function getGradient(id: string) {
   const hue1 = seed % 360
   const hue2 = (hue1 + 40) % 360
   return `linear-gradient(135deg, hsl(${hue1} 40% 30%), hsl(${hue2} 50% 20%))`
+}
+
+function optimizeAssetImgSrc(input: string, opts: { width: number; quality: number }): string {
+  const raw = String(input || '').trim()
+  if (!raw) return raw
+
+  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
+  const base = hasAbsolute ? undefined : 'https://seichigo.com'
+
+  try {
+    const url = new URL(raw, base)
+    if (!url.pathname.startsWith('/assets/')) return raw
+    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
+    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
+  } catch {
+    return raw
+  }
 }
 
 export async function generateStaticParams() {
@@ -123,7 +141,10 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   ])
 
   // Cover Strategy: Anime Cover > First Post Cover > Gradient
-  const heroCover = display.cover || posts.find(p => p.cover)?.cover || null
+  const heroCoverRaw = display.cover || posts.find((p) => p.cover)?.cover || null
+  const heroCover = heroCoverRaw
+    ? optimizeAssetImgSrc(heroCoverRaw, { width: 900, quality: 78 })
+    : null
   const bgGradient = getGradient(canonicalId)
 
   return (
@@ -165,7 +186,12 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
                   <img 
                     src={heroCover} 
                     alt={display.name} 
+                    width={900}
+                    height={1200}
                     className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority="high"
                   />
                 ) : null}
               </div>

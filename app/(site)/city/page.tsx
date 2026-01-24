@@ -7,25 +7,29 @@ import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '城市索引',
-  description: '按城市浏览已发布的圣地巡礼路线与文章，快速找到东京、京都等目的地的点位清单与地图入口。',
+  title: '城市索引｜按目的地浏览圣地巡礼路线',
+  description:
+    '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
   alternates: buildZhAlternates({ path: '/city' }),
   openGraph: {
     type: 'website',
     url: '/city',
     title: '城市索引',
-    description: '按城市浏览已发布的圣地巡礼路线与文章，快速找到东京、京都等目的地的点位清单与地图入口。',
+    description:
+      '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: '城市索引',
-    description: '按城市浏览已发布的圣地巡礼路线与文章，快速找到东京、京都等目的地的点位清单与地图入口。',
+    description:
+      '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/twitter-image'],
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 export default async function CityIndexPage() {
   const cities = await listCitiesForIndex().catch(() => [])

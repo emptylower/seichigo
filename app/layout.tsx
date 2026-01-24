@@ -1,9 +1,7 @@
 import '../styles/globals.css'
 import type { Metadata } from 'next'
 import Script from 'next/script'
-import { headers } from 'next/headers'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
-import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 import { getSiteUrl } from '@/lib/seo/site'
 
 export const metadata: Metadata = {
@@ -37,23 +35,11 @@ export const metadata: Metadata = {
   },
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const h = await headers()
-  const locale = (h.get('x-seichigo-locale') || '').trim() === 'en' ? 'en' : 'zh'
-
-  const jsonLds = [buildWebSiteJsonLd(), buildOrganizationJsonLd()]
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang={locale}>
+    <html lang="zh">
       <body>
         <HtmlLangSync />
-        {jsonLds.map((obj, idx) => (
-          <script
-            key={`${String(obj['@type'] || 'jsonld')}-${idx}`}
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
-          />
-        ))}
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];

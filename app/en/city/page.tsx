@@ -7,25 +7,29 @@ import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Cities',
-  description: 'Browse anime pilgrimage routes by city.',
+  title: 'Cities — browse pilgrimage routes',
+  description:
+    'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
   alternates: buildEnAlternates({ zhPath: '/city' }),
   openGraph: {
     type: 'website',
     url: '/en/city',
     title: 'Cities',
-    description: 'Browse anime pilgrimage routes by city.',
+    description:
+      'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Cities',
-    description: 'Browse anime pilgrimage routes by city.',
+    description:
+      'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
     images: ['/twitter-image'],
   },
 }
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
+export const dynamic = 'force-static'
 
 export default async function CityIndexEnPage() {
   const cities = await listCitiesForIndex().catch(() => [])
