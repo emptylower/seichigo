@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import SubmitCenterClient from '@/app/(site)/submit/ui'
+import SubmitCenterClient from '@/app/(authed)/submit/ui'
 
 const fetchMock = vi.fn()
 const pushMock = vi.fn()

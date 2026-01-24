@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import FavoritesClient from '@/app/(site)/me/favorites/ui'
+import FavoritesClient from '@/app/(authed)/me/favorites/ui'
 
 function jsonResponse(body: any, status: number = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -44,4 +44,3 @@ describe('favorites page ui', () => {
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('DELETE')
   })
 })
-

@@ -11,10 +11,6 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 export const revalidate = 3600
-// This route is generated on-demand for many ids; keep it fully dynamic so it can
-// safely read auth/session state from the (site) layout without triggering
-// Next.js static generation errors (DYNAMIC_SERVER_USAGE).
-export const dynamic = 'force-dynamic'
 
 function safeDecodeURIComponent(input: string): string {
   if (!/%[0-9a-fA-F]{2}/.test(input)) return input

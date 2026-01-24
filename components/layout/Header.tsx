@@ -2,18 +2,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { getServerAuthSession } from '@/lib/auth/session'
 import type { SiteLocale } from './SiteShell'
+import { prefixPath } from './prefixPath'
 
 type Props = {
   locale?: SiteLocale
-}
-
-function prefixPath(path: string, locale: SiteLocale): string {
-  const clean = path.startsWith('/en') ? path.slice(3) || '/' : path
-  if (locale === 'en') {
-    if (clean === '/') return '/en'
-    return `/en${clean}`
-  }
-  return clean
 }
 
 export default async function Header({ locale = 'zh' }: Props) {

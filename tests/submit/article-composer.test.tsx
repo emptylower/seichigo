@@ -20,7 +20,7 @@ vi.mock('@/components/editor/RichTextEditor', () => ({
   ),
 }))
 
-import ArticleComposerClient from '@/app/(site)/submit/_components/ArticleComposerClient'
+import ArticleComposerClient from '@/app/(authed)/submit/_components/ArticleComposerClient'
 
 function jsonResponse(body: any, status: number = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })

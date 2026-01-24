@@ -67,7 +67,7 @@ describe('admin anime detail ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const Page = (await import('../../app/(site)/admin/panel/anime/[id]/page')).default
+    const Page = (await import('../../app/(authed)/admin/panel/anime/[id]/page')).default
     render(await Page({ params: Promise.resolve({ id: 'btr' }) }))
 
     expect(await screen.findByText('Old Name')).toBeInTheDocument()

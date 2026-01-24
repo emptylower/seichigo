@@ -40,7 +40,7 @@ describe('admin review ui', () => {
   it('shows forbidden for non-admin', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'user-1', isAdmin: false } })
 
-    const AdminReviewPage = (await import('@/app/(site)/admin/review/page')).default
+    const AdminReviewPage = (await import('@/app/(authed)/admin/review/page')).default
     render(await AdminReviewPage())
 
     expect(screen.getByText('无权限访问。')).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('admin review ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminReviewPage = (await import('@/app/(site)/admin/review/page')).default
+    const AdminReviewPage = (await import('@/app/(authed)/admin/review/page')).default
     render(await AdminReviewPage())
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -117,7 +117,7 @@ describe('admin review ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    const AdminReviewDetailPage = (await import('@/app/(authed)/admin/review/[id]/page')).default
     render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'a1' }) }))
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -172,7 +172,7 @@ describe('admin review ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    const AdminReviewDetailPage = (await import('@/app/(authed)/admin/review/[id]/page')).default
     render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'a1' }) }))
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -218,7 +218,7 @@ describe('admin review ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    const AdminReviewDetailPage = (await import('@/app/(authed)/admin/review/[id]/page')).default
     render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'a1' }) }))
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -275,7 +275,7 @@ describe('admin review ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminReviewDetailPage = (await import('@/app/(site)/admin/review/[id]/page')).default
+    const AdminReviewDetailPage = (await import('@/app/(authed)/admin/review/[id]/page')).default
     render(await AdminReviewDetailPage({ params: Promise.resolve({ id: 'r1' }) }))
 
     expect(await screen.findByText('Updated Article')).toBeInTheDocument()

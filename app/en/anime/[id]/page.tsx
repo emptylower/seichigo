@@ -10,9 +10,6 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 export const revalidate = 3600
-// Force SSR to avoid Next.js static generation errors (DYNAMIC_SERVER_USAGE)
-// caused by session checks in the layout.
-export const dynamic = 'force-dynamic'
 
 function safeDecodeURIComponent(input: string): string {
   if (!/%[0-9a-fA-F]{2}/.test(input)) return input

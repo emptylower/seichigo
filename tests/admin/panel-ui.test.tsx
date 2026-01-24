@@ -33,7 +33,7 @@ describe('admin panel ui', () => {
   it('shows forbidden for non-admin', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'user-1', isAdmin: false } })
 
-    const AdminPanelPage = (await import('@/app/(site)/admin/panel/page')).default
+    const AdminPanelPage = (await import('@/app/(authed)/admin/panel/page')).default
     render(await AdminPanelPage())
 
     expect(screen.getByText('无权限访问。')).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('admin panel ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminPanelPage = (await import('@/app/(site)/admin/panel/page')).default
+    const AdminPanelPage = (await import('@/app/(authed)/admin/panel/page')).default
     render(await AdminPanelPage())
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -122,7 +122,7 @@ describe('admin panel ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminPanelArticlePage = (await import('@/app/(site)/admin/panel/articles/[id]/page')).default
+    const AdminPanelArticlePage = (await import('@/app/(authed)/admin/panel/articles/[id]/page')).default
     render(await AdminPanelArticlePage({ params: Promise.resolve({ id: 'a1' }) }))
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
@@ -177,7 +177,7 @@ describe('admin panel ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    const AdminPanelArticlePage = (await import('@/app/(site)/admin/panel/articles/[id]/page')).default
+    const AdminPanelArticlePage = (await import('@/app/(authed)/admin/panel/articles/[id]/page')).default
     render(await AdminPanelArticlePage({ params: Promise.resolve({ id: 'a1' }) }))
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()

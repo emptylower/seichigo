@@ -15,10 +15,6 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 export const revalidate = 3600
-// This route includes DB-backed slugs that are not known at build time.
-// Force SSR to avoid Next.js static generation errors (DYNAMIC_SERVER_USAGE)
-// caused by session checks in the (site) layout.
-export const dynamic = 'force-dynamic'
 
 function extractTextExcerptFromHtml(html: string, maxLen: number = 160): string {
   const raw = String(html || '')
