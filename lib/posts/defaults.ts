@@ -65,6 +65,7 @@ class PrismaPublicArticleRepo implements PublicArticleRepo {
         routeLength: true,
         tags: true,
         cover: true,
+        contentJson: true,
         status: true,
         rejectReason: true,
         needsRevision: true,
@@ -76,7 +77,7 @@ class PrismaPublicArticleRepo implements PublicArticleRepo {
     })
 
     return list.map((r) => {
-      return this.normalizeArticle({ ...r, contentJson: null, contentHtml: '' })
+      return this.normalizeArticle({ ...r, contentHtml: '' })
     })
   }
 }

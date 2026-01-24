@@ -15,6 +15,10 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 export const revalidate = 3600
+// This route includes DB-backed slugs that are not known at build time.
+// Force SSR to avoid Next.js static generation errors (DYNAMIC_SERVER_USAGE)
+// caused by session checks in the (site) layout.
+export const dynamic = 'force-dynamic'
 
 function extractTextExcerptFromHtml(html: string, maxLen: number = 160): string {
   const raw = String(html || '')
@@ -136,9 +140,16 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   const publishDate =
     found.source === 'mdx'
       ? found.post.frontmatter.publishDate
-      : found.article.publishedAt
-        ? found.article.publishedAt.toISOString().slice(0, 10)
-        : undefined
+      : (() => {
+          const publishedAt = (found.article.publishedAt ?? null) as unknown
+          if (!publishedAt) return undefined
+          if (publishedAt instanceof Date) return publishedAt.toISOString().slice(0, 10)
+          if (typeof publishedAt === 'string') {
+            const d = new Date(publishedAt)
+            if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+          }
+          return undefined
+        })()
 
   const animeIds =
     found.source === 'mdx'
