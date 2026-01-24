@@ -1,66 +1,43 @@
-import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
-import type { LinkAsset, LinkAssetListItem } from '@/lib/linkAsset/types'
+import { getResourceRouteGroups } from '@/lib/resources/aggregateRoutes'
 import { buildZhAlternates } from '@/lib/seo/alternates'
-import ResourceCard from '@/components/resources/ResourceCard'
+import RouteDirectory from '@/components/resources/RouteDirectory'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '巡礼资源｜地图、清单与礼仪指南',
+  title: '巡礼资源｜作品路线地图总览',
   description:
-    '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
+    '按作品汇总站内文章的路线地图与点位清单，支持引用整条路线或单个点位，适合作为外链落地入口。',
   alternates: buildZhAlternates({ path: '/resources' }),
   openGraph: {
     type: 'website',
     url: '/resources',
     title: '巡礼资源',
     description:
-      '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
+      '按作品汇总站内文章的路线地图与点位清单，支持引用整条路线或单个点位，适合作为外链落地入口。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: '巡礼资源',
     description:
-      '汇总可引用的圣地巡礼资源页（地图、清单、礼仪指南）：适合作为外链落地入口，也方便在文章与社交平台中引用，帮助读者快速上手规划与导航。',
+      '按作品汇总站内文章的路线地图与点位清单，支持引用整条路线或单个点位，适合作为外链落地入口。',
     images: ['/twitter-image'],
   },
 }
 
-export const revalidate = 3600
-export const dynamic = 'force-static'
-
-function toListItem(asset: LinkAsset): LinkAssetListItem {
-  return {
-    id: asset.id,
-    type: asset.type,
-    title: String(asset.title_zh || '').trim(),
-    description: String(asset.description_zh || '').trim(),
-    cover: asset.cover || undefined,
-    publishDate: asset.publishDate,
-  }
-}
+export const dynamic = 'force-dynamic'
 
 export default async function ResourcesIndexPage() {
-  const assets = await getAllLinkAssets()
-
-  const items = assets
-    .map(toListItem)
-    .filter((x) => x.id && x.title)
-    .filter((x) => x.type === 'map' || x.type === 'checklist')
-    .sort((a, b) => a.id.localeCompare(b.id))
+  const groups = await getResourceRouteGroups()
 
   return (
     <div>
       <h1 className="text-2xl font-bold">资源</h1>
-      <div className="mt-2 text-sm text-gray-600">优先做“可引用”的资源页（地图/清单/礼仪），再反向导流到具体路线文章。</div>
+      <div className="mt-2 text-sm text-gray-600">按作品汇总站内文章的“总路线图”。每条路线与每个点位都有可引用链接。</div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((it) => (
-          <ResourceCard key={it.id} item={it} />
-        ))}
+      <div className="mt-6">
+        <RouteDirectory groups={groups} locale="zh" />
       </div>
-
-      {!items.length ? <div className="mt-8 text-gray-500">暂无资源元数据。</div> : null}
     </div>
   )
 }
