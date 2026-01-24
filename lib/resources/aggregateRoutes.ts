@@ -174,28 +174,41 @@ export function groupResourceRoutesByAnime(routes: ResourceRoutePreview[], anime
 }
 
 export const getResourceRouteGroups = cache(async () => {
-  const repo = await getDefaultPublicArticleRepo()
-  if (!repo) return [] as ResourceAnimeGroup[]
+  try {
+    const repo = await getDefaultPublicArticleRepo()
+    if (!repo) return [] as ResourceAnimeGroup[]
 
-  const published = await repo.listByStatus('published').catch(() => [])
-  const articles: ResourceArticleForRoutes[] = (published as any[]).map((a) => ({
-    slug: String(a?.slug || '').trim(),
-    title: String(a?.title || '').trim(),
-    animeIds: Array.isArray(a?.animeIds) ? a.animeIds : [],
-    city: typeof a?.city === 'string' ? a.city : undefined,
-    contentJson: (a as any)?.contentJson ?? null,
-  }))
+    const published = await repo.listByStatus('published').catch((err) => {
+      console.error('[resources] listByStatus(published) failed', err)
+      return []
+    })
 
-  const routes = extractResourceRoutesFromArticles(articles)
-  const animeList = await getAllAnime().catch(() => [])
-  const animeMeta = new Map<string, { name: string; cover: string | null }>()
-  for (const a of animeList) {
-    const id = String(a?.id || '').trim()
-    if (!id) continue
-    animeMeta.set(id, { name: String(a?.name || id), cover: a?.cover ?? null })
+    const articles: ResourceArticleForRoutes[] = (published as any[]).map((a) => ({
+      slug: String(a?.slug || '').trim(),
+      title: String(a?.title || '').trim(),
+      animeIds: Array.isArray(a?.animeIds) ? a.animeIds : [],
+      city: typeof a?.city === 'string' ? a.city : undefined,
+      contentJson: (a as any)?.contentJson ?? null,
+    }))
+
+    const routes = extractResourceRoutesFromArticles(articles)
+    const animeList = await getAllAnime().catch((err) => {
+      console.error('[resources] getAllAnime failed', err)
+      return []
+    })
+
+    const animeMeta = new Map<string, { name: string; cover: string | null }>()
+    for (const a of animeList) {
+      const id = String(a?.id || '').trim()
+      if (!id) continue
+      animeMeta.set(id, { name: String(a?.name || id), cover: a?.cover ?? null })
+    }
+
+    return groupResourceRoutesByAnime(routes, animeMeta)
+  } catch (err) {
+    console.error('[resources] route directory failed', err)
+    return [] as ResourceAnimeGroup[]
   }
-
-  return groupResourceRoutesByAnime(routes, animeMeta)
 })
 
 export function getGoogleStaticMapApiKey(): string | null {

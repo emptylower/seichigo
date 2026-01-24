@@ -25,7 +25,8 @@ function routePrimaryHref(route: ResourceRoutePreview): string | null {
     const urls = buildGoogleMapsDirectionsUrls(points)
     if (urls[0]) return urls[0]
   }
-  return spotNavHref(route.previewSpots[0] || route.spots[0]!)
+  const first = route.previewSpots[0] || route.spots[0]
+  return first ? spotNavHref(first) : null
 }
 
 function routePreviewMap(route: ResourceRoutePreview): { kind: 'img'; url: string } | { kind: 'svg'; svg: string } {

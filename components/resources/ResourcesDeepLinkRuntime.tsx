@@ -6,7 +6,9 @@ import { useSearchParams } from 'next/navigation'
 function tryOpenRoute(routeKey: string) {
   const key = String(routeKey || '').trim()
   if (!key) return
-  const el = document.querySelector(`details[data-route-key="${CSS.escape(key)}"]`) as HTMLDetailsElement | null
+  const escape = (globalThis as any)?.CSS?.escape
+  const safeKey = typeof escape === 'function' ? escape(key) : key.replace(/"/g, '\\"')
+  const el = document.querySelector(`details[data-route-key="${safeKey}"]`) as HTMLDetailsElement | null
   if (el) el.open = true
 }
 
