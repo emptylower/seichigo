@@ -21,10 +21,8 @@ export function buildOrganizationJsonLd(): JsonLdObject {
     '@type': 'Organization',
     name: 'SeichiGo',
     url: origin,
-    logo: {
-      '@type': 'ImageObject',
-      url: `${origin}/brand/app-logo.png`,
-    },
+    // Keep as URL string for broad validator compatibility.
+    logo: `${origin}/brand/app-logo.png`,
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'customer support',

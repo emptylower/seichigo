@@ -60,6 +60,13 @@ export function buildBlogPostingJsonLd(input: {
   const url = safeUrl(input.url) || input.url
   const siteUrl = safeUrl(input.siteUrl) || input.siteUrl
 
+  let publisherLogoUrl: string | undefined
+  try {
+    publisherLogoUrl = safeUrl(new URL('/brand/app-logo.png', siteUrl).toString()) || undefined
+  } catch {
+    publisherLogoUrl = undefined
+  }
+
   const out: JsonLdObject = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -68,7 +75,12 @@ export function buildBlogPostingJsonLd(input: {
     url,
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     isPartOf: { '@type': 'Blog', name: String(input.siteName || '').trim(), url: siteUrl },
-    publisher: { '@type': 'Organization', name: String(input.siteName || '').trim(), url: siteUrl },
+    publisher: {
+      '@type': 'Organization',
+      name: String(input.siteName || '').trim(),
+      url: siteUrl,
+      ...(publisherLogoUrl ? { logo: publisherLogoUrl } : {}),
+    },
   }
 
   const authorName = String(input.author?.name || '').trim()
