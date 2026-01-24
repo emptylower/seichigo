@@ -33,23 +33,46 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/auth/session', { credentials: 'include' })
-      .then(async (r) => {
-        if (!r.ok) return null
-        return (await r.json()) as Session
+    const controller = new AbortController()
+
+    async function fetchSessionOnce(): Promise<Session> {
+      const r = await fetch('/api/auth/session', {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: controller.signal,
       })
-      .then((data) => {
+      if (!r.ok) return null
+      return (await r.json()) as Session
+    }
+
+    async function loadSession() {
+      try {
+        const first = await fetchSessionOnce()
         if (cancelled) return
-        setSession(data)
+        if (first?.user) {
+          setSession(first)
+          setLoaded(true)
+          return
+        }
+
+        // After a sign-in redirect, some browsers can briefly race cookie
+        // persistence. A single retry avoids pinning the header in anon mode.
+        await new Promise((resolve) => window.setTimeout(resolve, 300))
+        const second = await fetchSessionOnce()
+        if (cancelled) return
+        setSession(second)
         setLoaded(true)
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return
         setSession(null)
         setLoaded(true)
-      })
+      }
+    }
+
+    loadSession()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [])
 
