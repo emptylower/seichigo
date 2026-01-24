@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import { getSiteUrl } from '@/lib/seo/site'
+import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 
 export const metadata: Metadata = {
   title: {
@@ -36,10 +37,19 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const jsonLdWebsite = JSON.stringify(buildWebSiteJsonLd())
+  const jsonLdOrg = JSON.stringify(buildOrganizationJsonLd())
+
   return (
     <html lang="zh">
       <body>
         <HtmlLangSync />
+        <Script id="jsonld-website" type="application/ld+json" strategy="beforeInteractive">
+          {jsonLdWebsite}
+        </Script>
+        <Script id="jsonld-org" type="application/ld+json" strategy="beforeInteractive">
+          {jsonLdOrg}
+        </Script>
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];

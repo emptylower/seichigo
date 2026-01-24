@@ -38,7 +38,8 @@ export function buildBreadcrumbListJsonLd(items: { name: string; url: string }[]
       '@type': 'ListItem',
       position: idx + 1,
       name: it.name,
-      item: it.url,
+      // Some validators require `item` to be an object with `@id` instead of a URL string.
+      item: { '@id': it.url },
     })),
   }
 }
@@ -173,7 +174,7 @@ export function buildRouteItemListJsonLd(spots: SeichiRouteSpotV1[], options?: {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     ...(name ? { name } : {}),
-    itemListOrder: 'http://schema.org/ItemListOrderAscending',
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
     itemListElement: listItems,
   }
 }

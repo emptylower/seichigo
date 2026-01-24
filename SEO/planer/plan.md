@@ -2,7 +2,7 @@
 
 Scope: https://seichigo.com (Next.js App Router + TypeScript)
 
-Last updated: 2026-01-23
+Last updated: 2026-01-24
 
 Status legend:
 
@@ -43,6 +43,37 @@ Local follow-up (not yet reflected in the live audit above):
   - `BlogPosting.publisher.logo` added (`lib/seo/jsonld.ts`)
 - Local verification (code correctness only): `npm test` + `npm run build` passed
 - Next verification after deploy: re-run live audit to confirm `schema/json-ld-valid` no longer reports these items
+
+## Live Audit Snapshot (2026-01-24)
+
+Sources:
+
+- Local script: `npm run seo:audit -- --base-url https://seichigo.com`
+  - Observed: multiple 500s on `/anime/*` + some `/posts/*` (canonical/OG/Twitter/JSON-LD missing as a symptom of 500)
+- Squirrel v0.0.17: `squirrel audit https://seichigo.com --max-pages 50 --format json --output /tmp/squirrel-seichigo.json`
+  - overall score 59 (F), audited 23 pages
+
+Key findings:
+
+- Production 500 is the top blocker
+  - 500 pages are not crawlable/indexable, and tool reports cascade into missing metadata/schema.
+  - Examples observed in sitemap-orphans:
+    - `/anime/btr`, `/anime/hibike`, `/anime/%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97`, `/anime/%E5%A4%A9%E6%B0%94%E4%B9%8B%E5%AD%90`, `/anime/%E8%BD%BB%E9%9F%B3%E5%B0%91%E5%A5%B3`
+    - `/posts/你的名字-your-name-tokyo-from-hida-to-suwa` (and related)
+- `content/meta-in-body`
+  - Not reproduced on sampled 200 pages (e.g. `/en`, `/about`, `/anime`): `<meta>` are present in `<head>`.
+  - Remaining reports likely come from either:
+    - 500 error documents (different renderer)
+    - RSC payload markers (`"$...:metadata"`) being misclassified by some tools
+- Structured Data score remains 0
+  - `schema/json-ld-valid` still fails on city/resources pages.
+  - Hypothesis: BreadcrumbList/ItemList serialization is accepted by browsers but rejected by Squirrel's validator.
+    - Implemented mitigation in code: use `item: {"@id": url}` for BreadcrumbList and `https://schema.org/ItemListOrderAscending`.
+- TTFB is still high on several pages (1s-3s range)
+  - Likely contributors:
+    - Auth session checks in server components (forces dynamic)
+    - DB query / Prisma cold start
+    - Cache misses
 
 ## Current Baseline (Already Implemented)
 
