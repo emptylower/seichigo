@@ -23,19 +23,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const cities = await listCitiesForIndex().catch(() => [])
   const resources = await getAllLinkAssets().catch(() => [])
 
+  const now = new Date()
+
   const items: MetadataRoute.Sitemap = [
-    { url: `${base}/`, changeFrequency: 'weekly', priority: 0.8, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
-    { url: `${base}/en`, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
+    { url: `${base}/`, lastModified: now, changeFrequency: 'weekly', priority: 0.8, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
+    { url: `${base}/en`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
 
-    { url: `${base}/about`, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about` } } },
-    { url: `${base}/anime`, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
-    { url: `${base}/en/anime`, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
+    { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about` } } },
+    { url: `${base}/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
+    { url: `${base}/en/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
 
-    { url: `${base}/city`, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
-    { url: `${base}/en/city`, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
+    { url: `${base}/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
+    { url: `${base}/en/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
 
-    { url: `${base}/resources`, changeFrequency: 'monthly', priority: 0.6, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
-    { url: `${base}/en/resources`, changeFrequency: 'monthly', priority: 0.4, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
+    { url: `${base}/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.6, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
+    { url: `${base}/en/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.4, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
   ]
   for (const a of anime) {
     const id = String(a?.id || '').trim()
@@ -46,6 +48,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: zhUrl,
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.6,
       alternates: { languages: { zh: zhUrl, en: enUrl } },
@@ -53,6 +56,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: enUrl,
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.2,
       alternates: { languages: { zh: zhUrl, en: enUrl } },
@@ -68,6 +72,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: zhUrl,
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.6,
       alternates: { languages: { zh: zhUrl, en: enUrl } },
@@ -75,6 +80,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: enUrl,
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.2,
       alternates: { languages: { zh: zhUrl, en: enUrl } },
@@ -90,6 +96,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: zhUrl,
+      lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.7,
       alternates: { languages: { zh: zhUrl, en: enUrl } },
@@ -97,6 +104,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     items.push({
       url: enUrl,
+      lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.3,
       alternates: { languages: { zh: zhUrl, en: enUrl } },

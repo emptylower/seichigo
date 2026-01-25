@@ -93,13 +93,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title,
       description,
       url: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
-      images: ['/opengraph-image'],
+      images: [`/anime/${encodeAnimeIdForPath(canonicalId)}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/twitter-image'],
+      images: [`/anime/${encodeAnimeIdForPath(canonicalId)}/opengraph-image`],
     },
   }
 }
