@@ -1,29 +1,11 @@
 import { ImageResponse } from 'next/og'
+import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { getSiteOrigin } from '@/lib/seo/site'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
-
-type AnimeData = {
-  id: string
-  name: string
-  year?: number
-  cover?: string
-}
-
-async function fetchAnimeById(id: string, origin: string): Promise<AnimeData | null> {
-  try {
-    const res = await fetch(`${origin}/api/anime`, { next: { revalidate: 3600 } })
-    if (!res.ok) return null
-    const data = await res.json()
-    const items = data?.items || []
-    return items.find((a: AnimeData) => a.id === id) || null
-  } catch {
-    return null
-  }
-}
 
 function toAbsoluteUrl(input: string | null | undefined, base: string): string | null {
   const raw = String(input || '').trim()
@@ -48,7 +30,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   const { id } = await params
   const decodedId = decodeURIComponent(id)
   const origin = getSiteOrigin()
-  const anime = await fetchAnimeById(decodedId, origin)
+  const anime = await getAnimeById(decodedId)
 
   const title = anime?.name || decodedId
   const coverUrl = anime?.cover ? toAbsoluteUrl(anime.cover, origin) : null
