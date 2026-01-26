@@ -57,13 +57,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title,
       description,
       url: `/city/${encodeURIComponent(city.slug)}`,
-      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
     },
   }
 }
