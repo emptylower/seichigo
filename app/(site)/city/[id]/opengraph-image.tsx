@@ -1,10 +1,29 @@
 import { ImageResponse } from 'next/og'
-import { getCityBySlugOrRedirect } from '@/lib/city/db'
 import { getSiteOrigin } from '@/lib/seo/site'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
+
+type CityData = {
+  slug: string
+  name_zh: string
+  name_ja?: string | null
+  cover?: string | null
+}
+
+async function fetchCityBySlug(slug: string, origin: string): Promise<CityData | null> {
+  try {
+    const res = await fetch(`${origin}/api/city/search?q=${encodeURIComponent(slug)}&limit=10`, { next: { revalidate: 3600 } })
+    if (!res.ok) return null
+    const data = await res.json()
+    const items = data?.items || []
+    return items.find((c: CityData) => c.slug === slug) || items[0] || null
+  } catch {
+    return null
+  }
+}
 
 function toAbsoluteUrl(input: string | null | undefined, base: string): string | null {
   const raw = String(input || '').trim()
@@ -28,11 +47,12 @@ function hash32(input: string): number {
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const decodedSlug = decodeURIComponent(id)
-  const { city } = await getCityBySlugOrRedirect(decodedSlug).catch(() => ({ city: null }))
+  const origin = getSiteOrigin()
+  const city = await fetchCityBySlug(decodedSlug, origin)
 
   const name = city?.name_zh || decodedSlug
   const nameJa = city?.name_ja
-  const coverUrl = city?.cover ? toAbsoluteUrl(city.cover, getSiteOrigin()) : null
+  const coverUrl = city?.cover ? toAbsoluteUrl(city.cover, origin) : null
 
   const seed = hash32(decodedSlug)
   const hue1 = (seed % 60) + 180
