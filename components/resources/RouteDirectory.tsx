@@ -5,6 +5,7 @@ import { renderRouteMapSvg } from '@/lib/route/render'
 import type { SeichiRouteSpotV1 } from '@/lib/route/schema'
 import { getGoogleStaticMapApiKey, resolveSpotLatLng } from '@/lib/resources/aggregateRoutes'
 import CopyLinkButton from '@/components/resources/CopyLinkButton'
+import RouteCardActions from '@/components/resources/RouteCardActions'
 import ResourcesDeepLinkRuntime from '@/components/resources/ResourcesDeepLinkRuntime'
 
 function encodeLatLng(lat: number, lng: number): string {
@@ -70,57 +71,46 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
   const routeHref = routeLinkPath(route)
 
   return (
-    <details className="rounded-xl border border-gray-100 bg-white shadow-sm" data-route-key={route.routeKey}>
+    <details className="rounded-xl border border-gray-100 bg-white shadow-sm flex flex-col h-full" data-route-key={route.routeKey}>
       <summary
         id={route.routeAnchorId}
-        className="cursor-pointer list-none px-4 py-4"
+        className="cursor-pointer list-none px-4 py-4 flex flex-col gap-4"
         style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}
       >
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 justify-between sm:flex-row sm:items-start">
-            <div className="min-w-0 flex-1">
-              <div className="text-lg font-bold text-gray-900 leading-snug">{route.routeTitle}</div>
-              <div className="mt-1 text-sm text-gray-500">
-                <Link className="hover:text-brand-700 hover:underline decoration-brand-300 underline-offset-2" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
-                  {route.articleTitle}
-                </Link>
-                {route.city ? <span className="ml-2 bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-600">{route.city}</span> : null}
-                <span className="ml-2 text-xs text-gray-400">{route.spots.length} 点</span>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-              <CopyLinkButton path={routeHref} label="引用路线" className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 hover:text-gray-900 transition-colors whitespace-nowrap" />
-              {primaryHref ? (
-                <a
-                  href={primaryHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 transition-colors whitespace-nowrap"
-                >
-                  打开地图
-                </a>
-              ) : null}
+        <div className="flex flex-col gap-1">
+          <div
+            className="text-base font-semibold text-gray-900 leading-snug [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden"
+            title={route.routeTitle}
+          >
+            {route.routeTitle}
+          </div>
+          <div className="text-sm text-gray-500 flex flex-wrap gap-2 items-center">
+            <Link className="hover:text-brand-700 hover:underline decoration-brand-300 underline-offset-2" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
+              {route.articleTitle}
+            </Link>
+            {route.city ? <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-600 shrink-0">{route.city}</span> : null}
+            <span className="text-xs text-gray-400 shrink-0">{route.spots.length} 点</span>
+          </div>
+        </div>
+
+        <div className="seichi-route__map">
+          <div className="seichi-route__map-card">
+            {map.kind === 'img' ? (
+              <img className="seichi-route__map-img" src={map.url} alt="路线地图预览" loading="lazy" decoding="async" />
+            ) : (
+              <div className="flex items-center justify-center p-6" dangerouslySetInnerHTML={{ __html: map.svg }} />
+            )}
+            {primaryHref ? (
+              <a className="seichi-route__map-primary" href={primaryHref} target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开" />
+            ) : null}
+            <div className="seichi-route__map-cta" aria-hidden="true">
+              详情
             </div>
           </div>
         </div>
 
-        <div className="mt-3">
-          <div className="seichi-route__map">
-            <div className="seichi-route__map-card">
-              {map.kind === 'img' ? (
-                <img className="seichi-route__map-img" src={map.url} alt="路线地图预览" loading="lazy" decoding="async" />
-              ) : (
-                <div className="flex items-center justify-center p-6" dangerouslySetInnerHTML={{ __html: map.svg }} />
-              )}
-              {primaryHref ? (
-                <a className="seichi-route__map-primary" href={primaryHref} target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开" />
-              ) : null}
-              <div className="seichi-route__map-cta" aria-hidden="true">
-                详情
-              </div>
-            </div>
-          </div>
+        <div className="flex justify-end pt-2 border-t border-gray-50">
+          <RouteCardActions routeHref={routeHref} primaryHref={primaryHref} />
         </div>
       </summary>
 
