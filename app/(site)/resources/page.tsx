@@ -32,10 +32,16 @@ export default async function ResourcesIndexPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">资源</h1>
-      <div className="mt-2 text-sm text-gray-600">按作品汇总站内文章的“总路线图”。每条路线与每个点位都有可引用链接。</div>
+      <div className="py-12 text-center">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">巡礼资源</h1>
+        <div className="mx-auto mt-4 max-w-2xl text-lg text-gray-500">
+          按作品汇总站内文章的“总路线图”。
+          <br className="hidden sm:inline" />
+          每条路线与每个点位都有可引用链接，方便分享与打卡。
+        </div>
+      </div>
 
-      <div className="mt-6">
+      <div className="mt-8">
         <RouteDirectory groups={groups} locale="zh" />
       </div>
     </div>

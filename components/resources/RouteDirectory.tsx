@@ -76,29 +76,32 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
         className="cursor-pointer list-none px-4 py-4"
         style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">{route.routeTitle}</div>
-            <div className="mt-1 text-xs text-gray-500">
-              <Link className="hover:text-brand-700" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
-                {route.articleTitle}
-              </Link>
-              {route.city ? <span className="ml-2">{route.city}</span> : null}
-              <span className="ml-2">{route.spots.length} 点</span>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 justify-between sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-bold text-gray-900 leading-snug">{route.routeTitle}</div>
+              <div className="mt-1 text-sm text-gray-500">
+                <Link className="hover:text-brand-700 hover:underline decoration-brand-300 underline-offset-2" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
+                  {route.articleTitle}
+                </Link>
+                {route.city ? <span className="ml-2 bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-600">{route.city}</span> : null}
+                <span className="ml-2 text-xs text-gray-400">{route.spots.length} 点</span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <CopyLinkButton path={routeHref} label="引用路线" />
-            {primaryHref ? (
-              <a
-                href={primaryHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center rounded-md bg-brand-500 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-brand-600"
-              >
-                打开地图
-              </a>
-            ) : null}
+            
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto" onClick={(e) => e.stopPropagation()}>
+              <CopyLinkButton path={routeHref} label="引用路线" className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 hover:text-gray-900 transition-colors whitespace-nowrap" />
+              {primaryHref ? (
+                <a
+                  href={primaryHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 transition-colors whitespace-nowrap"
+                >
+                  打开地图
+                </a>
+              ) : null}
+            </div>
           </div>
         </div>
 
