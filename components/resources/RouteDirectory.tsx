@@ -89,7 +89,7 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
               </div>
             </div>
             
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
               <CopyLinkButton path={routeHref} label="引用路线" className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 hover:text-gray-900 transition-colors whitespace-nowrap" />
               {primaryHref ? (
                 <a
