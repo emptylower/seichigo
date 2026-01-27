@@ -146,20 +146,21 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
 
         <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-40 blur-2xl scale-110 transition-transform duration-1000"
+            className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 hover:scale-105"
             style={{ backgroundImage: heroCover ? `url(${heroCover})` : 'none' }}
           />
+          <div className="absolute inset-0 bg-black/40" />
           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
 
           <div className="relative z-10 flex flex-col gap-4 p-6 md:p-10">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight md:text-5xl">{city.name_zh}</h1>
-              {city.name_ja ? <span className="text-sm text-gray-200 md:text-base">{city.name_ja}</span> : null}
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">{city.name_zh}</h1>
+              {city.name_ja ? <span className="text-sm font-medium text-white/80 md:text-base">{city.name_ja}</span> : null}
             </div>
 
-            {city.description_zh ? <p className="max-w-2xl text-sm text-gray-100 md:text-base">{city.description_zh}</p> : null}
+            {city.description_zh ? <p className="max-w-2xl text-sm leading-relaxed text-gray-100 md:text-base">{city.description_zh}</p> : null}
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
                 {posts.length} 篇文章
               </span>
