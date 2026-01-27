@@ -69,6 +69,7 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
   const primaryHref = routePrimaryHref(route)
   const map = routePreviewMap(route)
   const routeHref = routeLinkPath(route)
+  const articleHref = `/posts/${encodeURIComponent(route.articleSlug)}`
 
   return (
     <details className="rounded-xl border border-gray-100 bg-white shadow-sm flex flex-col h-full" data-route-key={route.routeKey}>
@@ -85,9 +86,6 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
             {route.routeTitle}
           </div>
           <div className="text-sm text-gray-500 flex flex-wrap gap-2 items-center">
-            <Link className="hover:text-brand-700 hover:underline decoration-brand-300 underline-offset-2" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
-              {route.articleTitle}
-            </Link>
             {route.city ? <span className="bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-600 shrink-0">{route.city}</span> : null}
             <span className="text-xs text-gray-400 shrink-0">{route.spots.length} 点</span>
           </div>
@@ -109,8 +107,8 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
           </div>
         </div>
 
-        <div className="flex justify-end pt-2 border-t border-gray-50">
-          <RouteCardActions routeHref={routeHref} primaryHref={primaryHref} />
+        <div className="pt-3 border-t border-gray-50">
+          <RouteCardActions articleHref={articleHref} routeHref={routeHref} primaryHref={primaryHref} />
         </div>
       </summary>
 
