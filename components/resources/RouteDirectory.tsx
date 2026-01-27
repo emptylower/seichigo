@@ -199,7 +199,7 @@ export default function RouteDirectory({ groups, locale }: { groups: ResourceAni
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2 lg:grid-cols-3">
             {g.routes.map((r) => (
               <RouteCard key={r.routeKey} route={r} />
             ))}
