@@ -202,6 +202,10 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   const keywords = [...anime.map((a) => a.label), city, ...tags].map((x) => String(x || '').trim()).filter(Boolean)
 
+  const contentForWordCount = found.source === 'db' ? found.article.contentHtml || '' : ''
+  const textContent = contentForWordCount.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  const wordCount = textContent.length
+
   const blogPostingJsonLd = buildBlogPostingJsonLd({
     url: canonicalUrl,
     title: seoTitle,
@@ -214,6 +218,8 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     dateModified,
     inLanguage: 'zh',
     keywords,
+    wordCount,
+    articleSection: '圣地巡礼',
     about: [
       ...anime.map((a) => ({ type: 'CreativeWork' as const, name: a.label })),
       ...(city ? [{ type: 'Place' as const, name: city }] : []),

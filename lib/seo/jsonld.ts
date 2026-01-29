@@ -57,6 +57,8 @@ export function buildBlogPostingJsonLd(input: {
   keywords?: string[]
   inLanguage?: string
   author?: { type: 'Person' | 'Organization'; name: string; url?: string | null }
+  wordCount?: number
+  articleSection?: string
 }): JsonLdObject {
   const url = safeUrl(input.url) || input.url
   const siteUrl = safeUrl(input.siteUrl) || input.siteUrl
@@ -125,6 +127,13 @@ export function buildBlogPostingJsonLd(input: {
 
   const keywords = Array.isArray(input.keywords) ? input.keywords.map((k) => String(k || '').trim()).filter(Boolean) : []
   if (keywords.length) out.keywords = keywords.join(', ')
+
+  if (typeof input.wordCount === 'number' && input.wordCount > 0) {
+    out.wordCount = input.wordCount
+  }
+  if (input.articleSection) {
+    out.articleSection = input.articleSection
+  }
 
   return out
 }
