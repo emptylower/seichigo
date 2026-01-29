@@ -1,5 +1,7 @@
 import type { SeichiRouteEmbedV1, SeichiRouteSpotV1 } from './schema'
 import { buildGoogleMapsDirectionsUrls, buildGoogleStaticMapUrl, extractLatLngFromGoogleMapsUrl, type LatLng } from './google'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 function escapeHtml(input: string): string {
   return input
@@ -33,7 +35,7 @@ function spotLabel(spot: SeichiRouteSpotV1, order: number): string {
   return zh || name || `Spot ${order}`
 }
 
-export function renderRouteMapSvg(spots: SeichiRouteSpotV1[]): string {
+export function renderRouteMapSvg(spots: SeichiRouteSpotV1[], locale: SupportedLocale = 'zh'): string {
   const n = Math.max(1, spots.length)
   const width = 240
   const paddingX = 28
@@ -72,7 +74,7 @@ export function renderRouteMapSvg(spots: SeichiRouteSpotV1[]): string {
 
   const d = paths.join(' ')
   return (
-    `<svg class="seichi-route__svg" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="路线总览图">` +
+    `<svg class="seichi-route__svg" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeAttr(t('route.embed.overviewAlt', locale))}">` +
     `<path class="seichi-route__path" d="${escapeAttr(d)}" fill="none" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>` +
     circles +
     `</svg>`
@@ -101,17 +103,17 @@ function resolveSpotLatLng(spot: SeichiRouteSpotV1): LatLng | null {
   return fromUrl
 }
 
-function renderRouteMapCard(spots: SeichiRouteSpotV1[]): string {
+function renderRouteMapCard(spots: SeichiRouteSpotV1[], locale: SupportedLocale = 'zh'): string {
   const points = spots.map(resolveSpotLatLng)
   const resolved = points.filter((p): p is LatLng => Boolean(p))
   const apiKey = getGoogleStaticMapApiKey()
 
   if (!apiKey || resolved.length < 1) {
-    return renderRouteMapSvg(spots)
+    return renderRouteMapSvg(spots, locale)
   }
 
   const staticMapUrl = buildGoogleStaticMapUrl(resolved, { apiKey, width: 640, height: 360, scale: 2 })
-  if (!staticMapUrl) return renderRouteMapSvg(spots)
+  if (!staticMapUrl) return renderRouteMapSvg(spots, locale)
 
   const allHaveCoords = points.length === resolved.length
   const routeUrls = allHaveCoords && resolved.length >= 2 ? buildGoogleMapsDirectionsUrls(resolved) : []
@@ -122,18 +124,18 @@ function renderRouteMapCard(spots: SeichiRouteSpotV1[]): string {
     (resolved[0] ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formatLatLng(resolved[0]))}` : null)
 
   const img =
-    `<img class="seichi-route__map-img" src="${escapeAttr(staticMapUrl)}" alt="路线地图预览" width="640" height="360" loading="eager" decoding="async">`
+    `<img class="seichi-route__map-img" src="${escapeAttr(staticMapUrl)}" alt="${escapeAttr(t('route.embed.mapPreviewAlt', locale))}" width="640" height="360" loading="eager" decoding="async">`
 
   const primaryLink = primaryHref
-    ? `<a class="seichi-route__map-primary" href="${escapeAttr(primaryHref)}" target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开"></a>`
+    ? `<a class="seichi-route__map-primary" href="${escapeAttr(primaryHref)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeAttr(t('route.embed.openInMaps', locale))}"></a>`
     : ''
 
   const segments =
     routeUrls.length > 1
-      ? `<div class="seichi-route__map-segments" aria-label="路线分段链接">` +
+      ? `<div class="seichi-route__map-segments" aria-label="${escapeAttr(t('route.embed.segmentsLabel', locale))}">` +
         routeUrls
           .map((u, i) => {
-            const label = `路线 ${i + 1}/${routeUrls.length}`
+            const label = `${t('route.embed.routeSegment', locale)} ${i + 1}/${routeUrls.length}`
             return `<a class="seichi-route__map-segment" href="${escapeAttr(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
           })
           .join('') +
@@ -144,21 +146,21 @@ function renderRouteMapCard(spots: SeichiRouteSpotV1[]): string {
     `<div class="seichi-route__map-card">` +
     img +
     primaryLink +
-    `<div class="seichi-route__map-cta" aria-hidden="true">在 Google 地图打开</div>` +
+    `<div class="seichi-route__map-cta" aria-hidden="true">${escapeHtml(t('route.embed.openInMaps', locale))}</div>` +
     segments +
     `</div>`
   )
 }
 
-function renderRouteTable(spots: SeichiRouteSpotV1[]): string {
+function renderRouteTable(spots: SeichiRouteSpotV1[], locale: SupportedLocale = 'zh'): string {
   const header =
     '<thead><tr>' +
-    '<th>顺序</th>' +
-    '<th>地点</th>' +
-    '<th>最近站</th>' +
-    '<th>机位建议</th>' +
-    '<th>时间戳</th>' +
-    '<th>导航</th>' +
+    `<th>${escapeHtml(t('route.table.order', locale))}</th>` +
+    `<th>${escapeHtml(t('route.table.location', locale))}</th>` +
+    `<th>${escapeHtml(t('route.table.nearestStation', locale))}</th>` +
+    `<th>${escapeHtml(t('route.table.photoTip', locale))}</th>` +
+    `<th>${escapeHtml(t('route.table.timestamp', locale))}</th>` +
+    `<th>${escapeHtml(t('route.table.navigation', locale))}</th>` +
     '</tr></thead>'
 
   const rows = spots
@@ -169,7 +171,7 @@ function renderRouteTable(spots: SeichiRouteSpotV1[]): string {
       const photoTip = escapeHtml(String(spot.photoTip || ''))
       const scene = escapeHtml(String(spot.animeScene || ''))
       const url = sanitizeHttpUrl(spot.googleMapsUrl)
-      const link = url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">打开</a>` : ''
+      const link = url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t('route.table.open', locale))}</a>` : ''
 
       return `<tr><td>${order}</td><td>${name}</td><td>${station}</td><td>${photoTip}</td><td>${scene}</td><td>${link}</td></tr>`
     })
@@ -178,10 +180,11 @@ function renderRouteTable(spots: SeichiRouteSpotV1[]): string {
   return `<table class="seichi-route__table">${header}<tbody>${rows}</tbody></table>`
 }
 
-export function renderSeichiRouteEmbedHtml(route: SeichiRouteEmbedV1, options?: { id?: string }): string {
+export function renderSeichiRouteEmbedHtml(route: SeichiRouteEmbedV1, options?: { id?: string; locale?: SupportedLocale }): string {
+  const locale = options?.locale ?? 'zh'
   const idAttr = options?.id ? ` data-id="${escapeAttr(options.id)}"` : ''
-  const map = renderRouteMapCard(route.spots)
-  const table = renderRouteTable(route.spots)
+  const map = renderRouteMapCard(route.spots, locale)
+  const table = renderRouteTable(route.spots, locale)
   return (
     `<section class="seichi-route"${idAttr}>` +
     `<div class="seichi-route__map">${map}</div>` +

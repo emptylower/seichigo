@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import type { SiteLocale } from './SiteShell'
+import { t } from '@/lib/i18n'
 
 type Props = {
   locale?: SiteLocale
@@ -28,32 +29,32 @@ export default function Footer({ locale = 'zh' }: Props) {
 
   const columns: FooterColumn[] = [
     {
-      title: isEn ? 'Product' : '产品',
+      title: t('footer.product', locale),
       links: [
-        { label: isEn ? 'Posts' : '文章', href: '/' },
-        { label: isEn ? 'Anime' : '作品', href: '/anime' },
-        { label: isEn ? 'Cities' : '城市', href: '/city' },
-        { label: isEn ? 'Resources' : '资源', href: '/resources' },
+        { label: t('footer.posts', locale), href: '/' },
+        { label: t('footer.anime', locale), href: '/anime' },
+        { label: t('footer.city', locale), href: '/city' },
+        { label: t('footer.resources', locale), href: '/resources' },
       ],
     },
     {
-      title: isEn ? 'Support' : '支持',
+      title: t('footer.support', locale),
       links: [
-        { label: isEn ? 'Etiquette Guide' : '圣地巡礼礼仪', href: '/resources/pilgrimage-etiquette' },
-        { label: isEn ? 'Help Center' : '帮助中心', href: '#', isExternal: true },
-        { label: isEn ? 'System Status' : '系统状态', href: '#', isExternal: true },
+        { label: t('footer.etiquette', locale), href: '/resources/pilgrimage-etiquette' },
+        { label: t('footer.help', locale), href: '#', isExternal: true },
+        { label: t('footer.status', locale), href: '#', isExternal: true },
       ],
     },
     {
-      title: isEn ? 'Company' : '关于',
+      title: t('footer.company', locale),
       links: [
-        { label: isEn ? 'About Us' : '关于我们', href: '/about' },
-        { label: isEn ? 'Privacy Policy' : '隐私政策', href: '#', isExternal: true },
-        { label: isEn ? 'Terms of Service' : '用户协议', href: '#', isExternal: true },
+        { label: t('footer.about', locale), href: '/about' },
+        { label: t('footer.privacy', locale), href: '#', isExternal: true },
+        { label: t('footer.terms', locale), href: '#', isExternal: true },
       ],
     },
     {
-      title: isEn ? 'Connect' : '联系',
+      title: t('footer.connect', locale),
       links: [
         { label: 'Email', href: 'mailto:ljj231428@gmail.com', isExternal: true },
         { label: 'X (Twitter)', href: 'https://x.com/xixingshu', isExternal: true },
@@ -62,13 +63,8 @@ export default function Footer({ locale = 'zh' }: Props) {
     },
   ]
 
-  const copyright = isEn
-    ? `© ${new Date().getFullYear()} SeichiGo. All rights reserved.`
-    : `© ${new Date().getFullYear()} SeichiGo. 保留所有权利。`
-
-  const slogan = isEn
-    ? 'Please respect local laws and etiquette during anime pilgrimages.'
-    : '圣地巡礼请遵守当地法律与礼仪。'
+  const copyright = `© ${new Date().getFullYear()} SeichiGo. ${t('footer.copyright', locale)}`
+  const slogan = t('footer.slogan', locale)
 
   return (
     <footer className="mt-16 border-t border-pink-100 bg-white pt-16 pb-12 text-sm" aria-labelledby="footer-heading">

@@ -1,5 +1,7 @@
 import { parseSeichiRouteEmbedV1 } from '@/lib/route/schema'
 import { renderSeichiRouteEmbedHtml } from '@/lib/route/render'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 const SEICHI_ROUTE_TAG_RE = /<seichi-route\b[^>]*?(?:\/>|>\s*<\/seichi-route>)/gi
 const DATA_ID_RE = /\bdata-id\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i
@@ -25,7 +27,7 @@ function collectSeichiRouteNodes(node: any, out: Map<string, unknown>) {
   }
 }
 
-export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | null | undefined): string {
+export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | null | undefined, locale: SupportedLocale = 'zh'): string {
   const html = String(inputHtml || '')
   if (!html) return ''
   if (!html.toLowerCase().includes('seichi-route')) return html
@@ -37,17 +39,17 @@ export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | n
   return html.replace(SEICHI_ROUTE_TAG_RE, (tag) => {
      const id = extractDataIdFromTag(tag)
      if (!id) {
-       return '<section class="seichi-route seichi-route--invalid" data-id="">路线数据缺少 data-id（请发起更新并重新发布）。</section>'
+       return `<section class="seichi-route seichi-route--invalid" data-id="">${t('route.embed.missingDataId', locale)}</section>`
      }
      const raw = routes.get(id)
      if (raw === undefined) {
-       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">路线数据未找到（请发起更新并重新发布）。</section>`
+       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.dataNotFound', locale)}</section>`
      }
      const parsed = parseSeichiRouteEmbedV1(raw)
      if (!parsed.ok) {
-       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">路线数据格式错误：${parsed.error}</section>`
+       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.formatError', locale)}${parsed.error}</section>`
      }
-    return renderSeichiRouteEmbedHtml(parsed.value, { id })
+    return renderSeichiRouteEmbedHtml(parsed.value, { id, locale })
   })
 }
 
