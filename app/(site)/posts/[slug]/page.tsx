@@ -4,6 +4,8 @@ import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNo
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { extractSeichiRouteEmbedsFromTipTapJson } from '@/lib/route/extract'
 import { buildBlogPostingJsonLd, buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
+import { buildFAQPageJsonLd } from '@/lib/seo/faqJsonLd'
+import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
 import PostMeta from '@/components/blog/PostMeta'
 import GiscusComments from '@/components/GiscusComments'
@@ -243,17 +245,27 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     .map((r) => buildRouteItemListJsonLd(r.route.spots, { name: r.route.title || '路线点位' }))
     .filter(Boolean)
 
-  const jsonLds = [blogPostingJsonLd, breadcrumbJsonLd, ...routeItemLists].filter(Boolean) as any[]
+  const faqs =
+    found.source === 'mdx'
+      ? (((found.post.frontmatter as any).faqs as any[]) || [])
+      : (((found.article as any).faqs as any[]) || [])
+
+  const faqJsonLd = buildFAQPageJsonLd(
+    Array.isArray(faqs)
+      ? faqs
+          .map((x) => ({
+            question: String((x as any)?.question || ''),
+            answer: String((x as any)?.answer || ''),
+          }))
+          .filter((x) => x.question && x.answer)
+      : []
+  )
+
+  const jsonLds = [blogPostingJsonLd, breadcrumbJsonLd, ...routeItemLists, faqJsonLd].filter(Boolean) as any[]
 
   return (
     <>
-      {jsonLds.map((obj, idx) => (
-        <script
-          key={`${String(obj['@type'] || 'jsonld')}-${idx}`}
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
-        />
-      ))}
+      <PlaceJsonLd data={jsonLds} keyPrefix={canonicalSlug} />
       <div key={canonicalSlug} className="mx-auto w-full max-w-7xl px-6 lg:px-10" data-layout-wide="true">
         <div className="flex items-start gap-12">
           <aside className="hidden lg:block lg:sticky lg:top-[var(--site-header-h,60px)] lg:shrink-0 lg:w-72 lg:pt-1 xl:fixed xl:left-4 xl:top-[var(--site-header-h,60px)] xl:z-30 2xl:left-10">
