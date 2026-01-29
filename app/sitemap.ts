@@ -26,18 +26,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date()
 
   const items: MetadataRoute.Sitemap = [
-    { url: `${base}/`, lastModified: now, changeFrequency: 'weekly', priority: 0.8, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
-    { url: `${base}/en`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en` } } },
+    { url: `${base}/`, lastModified: now, changeFrequency: 'weekly', priority: 0.8, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
+    { url: `${base}/en`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
+    { url: `${base}/ja`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
 
-    { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about` } } },
-    { url: `${base}/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
-    { url: `${base}/en/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime` } } },
+    { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about`, ja: `${base}/ja/about` } } },
+    { url: `${base}/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
+    { url: `${base}/en/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
+    { url: `${base}/ja/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
 
-    { url: `${base}/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
-    { url: `${base}/en/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city` } } },
+    { url: `${base}/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city`, ja: `${base}/ja/city` } } },
+    { url: `${base}/en/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city`, ja: `${base}/ja/city` } } },
+    { url: `${base}/ja/city`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/city`, en: `${base}/en/city`, ja: `${base}/ja/city` } } },
 
-    { url: `${base}/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.6, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
-    { url: `${base}/en/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.4, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources` } } },
+    { url: `${base}/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.6, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources`, ja: `${base}/ja/resources` } } },
+    { url: `${base}/en/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.4, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources`, ja: `${base}/ja/resources` } } },
+    { url: `${base}/ja/resources`, lastModified: now, changeFrequency: 'monthly', priority: 0.4, alternates: { languages: { zh: `${base}/resources`, en: `${base}/en/resources`, ja: `${base}/ja/resources` } } },
   ]
   for (const a of anime) {
     const id = String(a?.id || '').trim()
@@ -45,13 +49,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const zhUrl = `${base}/anime/${encodeURIComponent(id)}`
     const enUrl = `${base}/en/anime/${encodeURIComponent(id)}`
+    const jaUrl = `${base}/ja/anime/${encodeURIComponent(id)}`
 
     items.push({
       url: zhUrl,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.6,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
 
     items.push({
@@ -59,7 +64,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.2,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
+    })
+
+    items.push({
+      url: jaUrl,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.2,
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
   }
 
@@ -69,13 +82,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const zhUrl = `${base}/city/${encodeURIComponent(slug)}`
     const enUrl = `${base}/en/city/${encodeURIComponent(slug)}`
+    const jaUrl = `${base}/ja/city/${encodeURIComponent(slug)}`
 
     items.push({
       url: zhUrl,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.6,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
 
     items.push({
@@ -83,7 +97,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.2,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
+    })
+
+    items.push({
+      url: jaUrl,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.2,
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
   }
 
@@ -93,13 +115,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const zhUrl = `${base}/resources/${encodeURIComponent(id)}`
     const enUrl = `${base}/en/resources/${encodeURIComponent(id)}`
+    const jaUrl = `${base}/ja/resources/${encodeURIComponent(id)}`
 
     items.push({
       url: zhUrl,
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.7,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
 
     items.push({
@@ -107,7 +130,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.3,
-      alternates: { languages: { zh: zhUrl, en: enUrl } },
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
+    })
+
+    items.push({
+      url: jaUrl,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+      alternates: { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } },
     })
   }
 

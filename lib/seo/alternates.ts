@@ -6,6 +6,7 @@ export function buildHreflangAlternates(input: {
   canonicalPath: string
   zhPath: string
   enPath: string
+  jaPath: string
   includeXDefault?: boolean
 }): { canonical: string; languages: HreflangMap } {
   const origin = getSiteOrigin()
@@ -14,6 +15,7 @@ export function buildHreflangAlternates(input: {
   const canonicalPath = normalizePath(input.canonicalPath)
   const zhPath = normalizePath(input.zhPath)
   const enPath = normalizePath(input.enPath)
+  const jaPath = normalizePath(input.jaPath)
 
   const canonical = encodeURI(canonicalPath)
   const toAbsoluteUrl = (path: string) => new URL(encodeURI(path), origin).toString()
@@ -21,6 +23,7 @@ export function buildHreflangAlternates(input: {
   const languages: HreflangMap = {
     zh: toAbsoluteUrl(zhPath),
     en: toAbsoluteUrl(enPath),
+    ja: toAbsoluteUrl(jaPath),
   }
 
   if (includeXDefault) {
@@ -36,10 +39,12 @@ export function buildHreflangAlternates(input: {
 export function buildZhAlternates(input: { path: string; includeXDefault?: boolean }) {
   const zhPath = normalizePath(input.path)
   const enPath = zhPath === '/' ? '/en' : `/en${zhPath}`
+  const jaPath = zhPath === '/' ? '/ja' : `/ja${zhPath}`
   return buildHreflangAlternates({
     canonicalPath: zhPath,
     zhPath,
     enPath,
+    jaPath,
     includeXDefault: input.includeXDefault,
   })
 }
@@ -47,10 +52,12 @@ export function buildZhAlternates(input: { path: string; includeXDefault?: boole
 export function buildEnAlternates(input: { zhPath: string; enPath?: string; includeXDefault?: boolean }) {
   const zhPath = normalizePath(input.zhPath)
   const enPath = normalizePath(input.enPath ?? (zhPath === '/' ? '/en' : `/en${zhPath}`))
+  const jaPath = zhPath === '/' ? '/ja' : `/ja${zhPath}`
   return buildHreflangAlternates({
     canonicalPath: enPath,
     zhPath,
     enPath,
+    jaPath,
     includeXDefault: input.includeXDefault,
   })
 }
