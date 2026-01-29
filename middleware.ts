@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-function detectLocale(pathname: string): 'zh' | 'en' {
-  return pathname === '/en' || pathname.startsWith('/en/') ? 'en' : 'zh'
+function detectLocale(pathname: string): 'zh' | 'en' | 'ja' {
+  if (pathname === '/en' || pathname.startsWith('/en/')) return 'en'
+  if (pathname === '/ja' || pathname.startsWith('/ja/')) return 'ja'
+  return 'zh'
 }
 
 export function middleware(req: NextRequest) {

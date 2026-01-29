@@ -1,7 +1,7 @@
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 
-export type SiteLocale = 'zh' | 'en'
+export type SiteLocale = 'zh' | 'en' | 'ja'
 
 type Props = {
   children: React.ReactNode
