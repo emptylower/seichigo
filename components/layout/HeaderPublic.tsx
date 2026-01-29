@@ -4,6 +4,7 @@ import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import HeaderAuthControls from './HeaderAuthControls.client'
 import { t } from '@/lib/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 type Props = {
   locale?: SiteLocale
@@ -30,6 +31,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
           <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
           <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>
+          <LanguageSwitcher locale={locale} />
           <HeaderAuthControls
             locale={locale}
             labels={{
