@@ -104,7 +104,9 @@ model Admin {
 model Article {
   id          String   @id @default(cuid())
   authorId    String
-  slug        String   @unique
+  slug        String
+  language    String   @default("zh")
+  translationGroupId String?
   title       String
   seoTitle    String?  @db.Text
   description String?  @db.Text
@@ -128,8 +130,10 @@ model Article {
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
   revisions ArticleRevision[]
 
+  @@unique([slug, language])
   @@index([authorId])
   @@index([status])
+  @@index([translationGroupId])
 }
 
 model Favorite {
@@ -160,6 +164,8 @@ model ArticleRevision {
   id          String   @id @default(cuid())
   articleId   String
   authorId    String
+  language    String   @default("zh")
+  translationGroupId String?
   title       String
   seoTitle    String?  @db.Text
   description String?  @db.Text
@@ -183,6 +189,7 @@ model ArticleRevision {
   @@index([articleId])
   @@index([authorId])
   @@index([status])
+  @@index([translationGroupId])
   @@unique([articleId, activeKey])
 }
 

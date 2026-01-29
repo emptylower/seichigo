@@ -44,7 +44,10 @@ export class PrismaArticleRepo implements ArticleRepo {
   }
 
   async findBySlug(slug: string): Promise<Article | null> {
-    const found = await prisma.article.findUnique({ where: { slug } })
+    const found = await prisma.article.findFirst({ 
+      where: { slug, language: 'zh' },
+      orderBy: { createdAt: 'asc' }
+    })
     return found ? toArticle(found) : null
   }
 
