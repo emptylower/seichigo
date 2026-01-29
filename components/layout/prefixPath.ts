@@ -8,9 +8,16 @@ function isNonLocalizedPath(path: string): boolean {
 
 export function prefixPath(path: string, locale: SiteLocale): string {
   const raw = String(path || '').trim() || '/'
-  const clean = raw.startsWith('/en') ? raw.slice(3) || '/' : raw
-  if (locale !== 'en') return clean
+  let clean = raw
+  
+  if (clean === '/en' || clean.startsWith('/en/')) {
+    clean = clean.slice(3) || '/'
+  } else if (clean === '/ja' || clean.startsWith('/ja/')) {
+    clean = clean.slice(3) || '/'
+  }
+
+  if (locale === 'zh') return clean
   if (isNonLocalizedPath(clean)) return clean
-  if (clean === '/') return '/en'
-  return `/en${clean}`
+  if (clean === '/') return `/${locale}`
+  return `/${locale}${clean}`
 }

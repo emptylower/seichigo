@@ -4,6 +4,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 type Props = {
   locale?: SiteLocale
@@ -43,6 +44,7 @@ export default async function Header({ locale = 'zh' }: Props) {
            <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
            <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>
           {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{t('header.admin', locale)}</Link> : null}
+          <LanguageSwitcher locale={locale} />
           {session?.user ? (
             <details className="relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border px-2 py-1 text-gray-700 hover:bg-gray-50">
