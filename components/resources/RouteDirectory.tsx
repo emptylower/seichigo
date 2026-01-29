@@ -168,9 +168,9 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
   )
 }
 
-export default function RouteDirectory({ groups, locale }: { groups: ResourceAnimeGroup[]; locale: 'zh' | 'en' }) {
-  const emptyText = locale === 'en' ? 'No routes yet.' : '暂无路线资源（目前仅聚合已发布的富文本文章路线）。'
-  const routeCountLabel = (n: number) => (locale === 'en' ? `${n} routes` : `${n} 条路线`)
+export default function RouteDirectory({ groups, locale }: { groups: ResourceAnimeGroup[]; locale: 'zh' | 'en' | 'ja' }) {
+  const emptyText = locale === 'ja' ? 'ルートはまだありません。' : locale === 'en' ? 'No routes yet.' : '暂无路线资源（目前仅聚合已发布的富文本文章路线）。'
+  const routeCountLabel = (n: number) => (locale === 'ja' ? `${n} ルート` : locale === 'en' ? `${n} routes` : `${n} 条路线`)
   return (
     <div className="space-y-10">
       <ResourcesDeepLinkRuntime />
