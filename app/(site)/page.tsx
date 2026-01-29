@@ -66,16 +66,18 @@ export default async function HomePage() {
   const more = posts.slice(12, 24)
   
   // Get valid covers from anime list (works are guaranteed to be poster format 3:4)
-  const validAnimeCovers = animeList
+  const validAnimeWithCovers = animeList
     .filter((a) => a.cover)
-    .map((a) => a.cover!)
     .sort(() => Math.random() - 0.5)
     .slice(0, 3)
 
   // Fill up with static fallbacks if we have fewer than 3 anime covers
-  const heroDisplay = [...validAnimeCovers]
+  const heroDisplay: Array<{ src: string; name?: string }> = validAnimeWithCovers.map((a) => ({
+    src: a.cover!,
+    name: a.name,
+  }))
   while (heroDisplay.length < 3) {
-    heroDisplay.push(STATIC_FALLBACK_COVERS[heroDisplay.length % 3])
+    heroDisplay.push({ src: STATIC_FALLBACK_COVERS[heroDisplay.length % 3] })
   }
 
   return (
@@ -112,8 +114,9 @@ export default async function HomePage() {
           <div className="relative hidden lg:block h-[400px]">
             {/* Dynamic Cover Gallery - Fan Stack Effect */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md h-80">
-              {heroDisplay.map((src, i) => {
-                const imgSrc = optimizeAssetImgSrc(src, { width: 640, quality: 72 })
+              {heroDisplay.map((item, i) => {
+                const imgSrc = optimizeAssetImgSrc(item.src, { width: 640, quality: 72 })
+                const altText = item.name ? `${item.name} 作品封面` : '作品封面'
                 return (
                   <div
                     key={i}
@@ -128,7 +131,7 @@ export default async function HomePage() {
                     <div className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
                       <img
                         src={imgSrc}
-                        alt="作品封面"
+                        alt={altText}
                         width={640}
                         height={853}
                         className="h-full w-full object-cover"
