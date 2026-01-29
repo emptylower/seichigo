@@ -94,6 +94,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     description,
     alternates: {
       canonical: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
+      languages: {
+        'x-default': `/posts/${encodeSlugForPath(frontmatter.slug)}`,
+        zh: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
+      },
     },
     openGraph: {
       type: 'article',
