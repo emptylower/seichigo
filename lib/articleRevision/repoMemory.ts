@@ -55,6 +55,8 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
       id: this.idFactory(),
       articleId: article.id,
       authorId: article.authorId,
+      language: article.language ?? 'zh',
+      translationGroupId: article.translationGroupId ?? null,
       title: article.title,
       seoTitle: article.seoTitle ?? null,
       description: article.description ?? null,

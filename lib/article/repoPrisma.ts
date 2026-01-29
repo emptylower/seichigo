@@ -6,6 +6,8 @@ function toArticle(record: PrismaArticle): Article {
   return {
     ...record,
     status: record.status as Article['status'],
+    language: record.language,
+    translationGroupId: record.translationGroupId,
     lastApprovedAt: record.lastApprovedAt,
   }
 }
@@ -17,6 +19,8 @@ export class PrismaArticleRepo implements ArticleRepo {
         data: {
           authorId: input.authorId,
           slug: input.slug,
+          language: input.language ?? 'zh',
+          translationGroupId: input.translationGroupId ?? undefined,
           title: input.title,
           seoTitle: input.seoTitle ?? undefined,
           description: input.description ?? undefined,
@@ -47,6 +51,13 @@ export class PrismaArticleRepo implements ArticleRepo {
     const found = await prisma.article.findFirst({ 
       where: { slug, language: 'zh' },
       orderBy: { createdAt: 'asc' }
+    })
+    return found ? toArticle(found) : null
+  }
+
+  async findBySlugAndLanguage(slug: string, language: string): Promise<Article | null> {
+    const found = await prisma.article.findUnique({
+      where: { slug_language: { slug, language } }
     })
     return found ? toArticle(found) : null
   }

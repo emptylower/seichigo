@@ -3,13 +3,15 @@ import type { ArticleRevisionStatus } from './workflow'
 
 export type ArticleSnapshot = Pick<
   Article,
-  'id' | 'authorId' | 'title' | 'seoTitle' | 'description' | 'animeIds' | 'city' | 'routeLength' | 'tags' | 'cover' | 'contentJson' | 'contentHtml'
+  'id' | 'authorId' | 'title' | 'seoTitle' | 'description' | 'animeIds' | 'city' | 'routeLength' | 'tags' | 'cover' | 'contentJson' | 'contentHtml' | 'language' | 'translationGroupId'
 >
 
 export type ArticleRevision = {
   id: string
   articleId: string
   authorId: string
+  language: string
+  translationGroupId: string | null
   title: string
   seoTitle: string | null
   description: string | null

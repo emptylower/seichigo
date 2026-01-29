@@ -9,6 +9,8 @@ const createSchema = z.object({
   title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }),
   seoTitle: z.string().max(120).nullable().optional(),
   description: z.string().max(320).nullable().optional(),
+  language: z.string().min(2).max(10).optional(),
+  translationGroupId: z.string().nullable().optional(),
   animeIds: z.array(z.string()).optional(),
   city: z.string().nullable().optional(),
   routeLength: z.string().nullable().optional(),
@@ -26,6 +28,8 @@ function toListItem(a: any) {
   return {
     id: a.id,
     slug: a.slug,
+    language: a.language ?? 'zh',
+    translationGroupId: a.translationGroupId ?? null,
     title: a.title,
     seoTitle: a.seoTitle ?? null,
     description: a.description ?? null,
@@ -71,6 +75,8 @@ export function createHandlers(deps: ArticleApiDeps) {
           const created = await deps.repo.createDraft({
             authorId: session.user.id,
             slug: candidate,
+            language: parsed.data.language ?? 'zh',
+            translationGroupId: parsed.data.translationGroupId ?? null,
             title: parsed.data.title,
             seoTitle,
             description,

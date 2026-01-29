@@ -13,7 +13,7 @@ type MdxProvider = {
 
 export type GetPublicPostBySlugOptions = {
   mdx?: MdxProvider
-  articleRepo?: Pick<ArticleRepo, 'findById' | 'findBySlug'> | PublicArticleRepo
+  articleRepo?: Pick<ArticleRepo, 'findById' | 'findBySlug' | 'findBySlugAndLanguage'> | PublicArticleRepo
 }
 
 type RepoWithListByStatus = Pick<ArticleRepo, 'listByStatus'>
@@ -82,21 +82,32 @@ export async function getPublicPostBySlug(
     if (found && found.status === 'published') {
       const sanitized = sanitizeRichTextHtml(found.contentHtml || '', { imageMode: 'progressive' })
       const contentHtml = renderRichTextEmbeds(sanitized, (found as any).contentJson)
-      return { source: 'db', article: { ...found, contentHtml } }
+      const isFallback = language !== 'zh' && found.language === 'zh'
+      return { source: 'db', article: { ...found, contentHtml }, isFallback }
     }
   }
 
   for (const candidate of uniqueNonEmpty([decoded, trimmed, normalizeArticleSlug(decoded)])) {
-    const article = await repo.findBySlug(candidate).catch(() => null)
+    let article = null
+    let isFallback = false
+
+    if ('findBySlugAndLanguage' in repo && typeof repo.findBySlugAndLanguage === 'function') {
+      article = await repo.findBySlugAndLanguage(candidate, language).catch(() => null)
+      if (!article && language !== 'zh') {
+        article = await repo.findBySlugAndLanguage(candidate, 'zh').catch(() => null)
+        if (article) isFallback = true
+      }
+    } else {
+      article = await repo.findBySlug(candidate).catch(() => null)
+    }
+
     if (!article) continue
     if (article.status !== 'published') return null
     const sanitized = sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' })
     const contentHtml = renderRichTextEmbeds(sanitized, (article as any).contentJson)
-    return { source: 'db', article: { ...article, contentHtml } }
+    return { source: 'db', article: { ...article, contentHtml }, isFallback }
   }
 
-  // Legacy support: resolve old fallback hash slug (post-<sha1>) by scanning published articles.
-  // This enables redirecting old slugs after an admin upgrades them to a readable slug.
   if (isFallbackHashSlug(trimmed) && hasListByStatus(repo)) {
     const published = await repo.listByStatus('published').catch(() => [])
     for (const a of published as any[]) {
@@ -107,7 +118,8 @@ export async function getPublicPostBySlug(
       if (a?.status !== 'published') continue
       const sanitized = sanitizeRichTextHtml(a.contentHtml || '', { imageMode: 'progressive' })
       const contentHtml = renderRichTextEmbeds(sanitized, (a as any).contentJson)
-      return { source: 'db', article: { ...a, contentHtml } }
+      const isFallback = language !== 'zh' && (a.language || 'zh') === 'zh'
+      return { source: 'db', article: { ...a, contentHtml }, isFallback }
     }
   }
 

@@ -10,23 +10,31 @@ export class InMemoryArticleRepo implements ArticleRepo {
   private readonly now: () => Date
   private readonly idFactory: () => string
   private readonly byId = new Map<string, Article>()
-  private readonly bySlug = new Map<string, string>() // slug -> id
+  private readonly bySlugLang = new Map<string, string>() // `${slug}:${language}` -> id
 
   constructor(options?: Options) {
     this.now = options?.now ?? (() => new Date())
     this.idFactory = options?.idFactory ?? (() => crypto.randomUUID())
   }
 
+  private slugLangKey(slug: string, language: string): string {
+    return `${slug}:${language}`
+  }
+
   async createDraft(input: CreateDraftInput): Promise<Article> {
     const slug = input.slug.trim()
     if (!slug) throw new Error('slug is required')
-    if (this.bySlug.has(slug)) throw new ArticleSlugExistsError(slug)
+    const language = input.language ?? 'zh'
+    const key = this.slugLangKey(slug, language)
+    if (this.bySlugLang.has(key)) throw new ArticleSlugExistsError(slug)
 
     const now = this.now()
     const article: Article = {
       id: this.idFactory(),
       authorId: input.authorId,
       slug,
+      language,
+      translationGroupId: input.translationGroupId ?? null,
       title: input.title,
       seoTitle: input.seoTitle ?? null,
       description: input.description ?? null,
@@ -47,7 +55,7 @@ export class InMemoryArticleRepo implements ArticleRepo {
     }
 
     this.byId.set(article.id, article)
-    this.bySlug.set(article.slug, article.id)
+    this.bySlugLang.set(key, article.id)
     return article
   }
 
@@ -56,7 +64,15 @@ export class InMemoryArticleRepo implements ArticleRepo {
   }
 
   async findBySlug(slug: string): Promise<Article | null> {
-    const id = this.bySlug.get(slug)
+    const key = this.slugLangKey(slug, 'zh')
+    const id = this.bySlugLang.get(key)
+    if (!id) return null
+    return this.byId.get(id) ?? null
+  }
+
+  async findBySlugAndLanguage(slug: string, language: string): Promise<Article | null> {
+    const key = this.slugLangKey(slug, language)
+    const id = this.bySlugLang.get(key)
     if (!id) return null
     return this.byId.get(id) ?? null
   }
@@ -80,11 +96,13 @@ export class InMemoryArticleRepo implements ArticleRepo {
     if (input.slug != null) {
       const nextSlug = input.slug.trim()
       if (!nextSlug) throw new Error('slug is required')
-      const slugOwner = this.bySlug.get(nextSlug)
+      const oldKey = this.slugLangKey(existing.slug, existing.language)
+      const newKey = this.slugLangKey(nextSlug, existing.language)
+      const slugOwner = this.bySlugLang.get(newKey)
       if (slugOwner && slugOwner !== id) throw new ArticleSlugExistsError(nextSlug)
       if (nextSlug !== existing.slug) {
-        this.bySlug.delete(existing.slug)
-        this.bySlug.set(nextSlug, id)
+        this.bySlugLang.delete(oldKey)
+        this.bySlugLang.set(newKey, id)
       }
       existing.slug = nextSlug
     }
@@ -126,8 +144,9 @@ export class InMemoryArticleRepo implements ArticleRepo {
     if (!existing) return null
 
     this.byId.delete(id)
-    if (this.bySlug.get(existing.slug) === id) {
-      this.bySlug.delete(existing.slug)
+    const key = this.slugLangKey(existing.slug, existing.language)
+    if (this.bySlugLang.get(key) === id) {
+      this.bySlugLang.delete(key)
     }
     return existing
   }

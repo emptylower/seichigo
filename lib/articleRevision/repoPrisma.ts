@@ -14,6 +14,8 @@ function toRevision(record: PrismaArticleRevision): ArticleRevision {
   return {
     ...record,
     status: record.status as ArticleRevision['status'],
+    language: record.language,
+    translationGroupId: record.translationGroupId,
   }
 }
 
@@ -43,6 +45,8 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
         data: {
           articleId: article.id,
           authorId: article.authorId,
+          language: article.language ?? 'zh',
+          translationGroupId: article.translationGroupId ?? undefined,
           title: article.title,
           seoTitle: article.seoTitle ?? undefined,
           description: article.description ?? undefined,

@@ -4,6 +4,8 @@ export type Article = {
   id: string
   authorId: string
   slug: string
+  language: string
+  translationGroupId: string | null
   title: string
   seoTitle: string | null
   description: string | null
@@ -26,6 +28,8 @@ export type Article = {
 export type CreateDraftInput = {
   authorId: string
   slug: string
+  language?: string
+  translationGroupId?: string | null
   title: string
   seoTitle?: string | null
   description?: string | null
@@ -54,6 +58,7 @@ export interface ArticleRepo {
   createDraft(input: CreateDraftInput): Promise<Article>
   findById(id: string): Promise<Article | null>
   findBySlug(slug: string): Promise<Article | null>
+  findBySlugAndLanguage(slug: string, language: string): Promise<Article | null>
   listByAuthor(authorId: string): Promise<Article[]>
   listByStatus(status: ArticleStatus): Promise<Article[]>
   updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null>

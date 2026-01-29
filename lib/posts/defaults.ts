@@ -1,7 +1,7 @@
 import type { Article, ArticleRepo } from '@/lib/article/repo'
 import type { ArticleStatus } from '@/lib/article/workflow'
 
-export type PublicArticleRepo = Pick<ArticleRepo, 'findById' | 'findBySlug' | 'listByStatus'>
+export type PublicArticleRepo = Pick<ArticleRepo, 'findById' | 'findBySlug' | 'findBySlugAndLanguage' | 'listByStatus'>
 
 let cachedRepo: PublicArticleRepo | null | undefined
 
@@ -16,6 +16,8 @@ class PrismaPublicArticleRepo implements PublicArticleRepo {
       id: String(record?.id || ''),
       authorId: String(record?.authorId || ''),
       slug: String(record?.slug || ''),
+      language: String(record?.language || 'zh'),
+      translationGroupId: record?.translationGroupId ?? null,
       title: String(record?.title || ''),
       seoTitle: record?.seoTitle ?? null,
       description: record?.description ?? null,
@@ -44,7 +46,18 @@ class PrismaPublicArticleRepo implements PublicArticleRepo {
 
   async findBySlug(slug: string): Promise<Article | null> {
     const { prisma } = await import('@/lib/db/prisma')
-    const found = await prisma.article.findUnique({ where: { slug } })
+    const found = await prisma.article.findFirst({
+      where: { slug, language: 'zh' },
+      orderBy: { createdAt: 'asc' }
+    })
+    return found ? this.normalizeArticle(found) : null
+  }
+
+  async findBySlugAndLanguage(slug: string, language: string): Promise<Article | null> {
+    const { prisma } = await import('@/lib/db/prisma')
+    const found = await prisma.article.findUnique({
+      where: { slug_language: { slug, language } }
+    })
     return found ? this.normalizeArticle(found) : null
   }
 

@@ -1,7 +1,9 @@
 import type { Article } from '@/lib/article/repo'
 import type { Post } from '@/lib/mdx/types'
 
-export type PublicPost = { source: 'mdx'; post: Post } | { source: 'db'; article: Article }
+export type PublicPost = 
+  | { source: 'mdx'; post: Post; isFallback?: boolean }
+  | { source: 'db'; article: Article; isFallback?: boolean }
 
 export type PublicPostListItem = {
   source: 'mdx' | 'db'

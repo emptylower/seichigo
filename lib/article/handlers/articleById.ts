@@ -70,6 +70,8 @@ function toDetail(a: any, sanitizeHtml: (html: string) => string) {
     id: a.id,
     authorId: a.authorId,
     slug: a.slug,
+    language: a.language ?? 'zh',
+    translationGroupId: a.translationGroupId ?? null,
     title: a.title,
     seoTitle: a.seoTitle ?? null,
     description: a.description ?? null,
