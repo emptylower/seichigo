@@ -71,6 +71,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         canonicalPath: `/en${path}`,
         zhPath: path,
         enPath: `/en${path}`,
+        jaPath: `/ja${path}`,
       }),
     },
     openGraph: {

@@ -86,6 +86,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         canonicalPath: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
         zhPath: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
         enPath: `/en/anime/${encodeAnimeIdForPath(canonicalId)}`,
+        jaPath: `/ja/anime/${encodeAnimeIdForPath(canonicalId)}`,
       }),
     },
     openGraph: {

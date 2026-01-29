@@ -50,6 +50,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         canonicalPath: `/city/${encodeURIComponent(city.slug)}`,
         zhPath: `/city/${encodeURIComponent(city.slug)}`,
         enPath: `/en/city/${encodeURIComponent(city.slug)}`,
+        jaPath: `/ja/city/${encodeURIComponent(city.slug)}`,
       }),
     },
     openGraph: {

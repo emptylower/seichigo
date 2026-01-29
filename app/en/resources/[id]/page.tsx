@@ -31,6 +31,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         canonicalPath: `/en/resources/${encodeURIComponent(asset.id)}`,
         zhPath: `/resources/${encodeURIComponent(asset.id)}`,
         enPath: `/en/resources/${encodeURIComponent(asset.id)}`,
+        jaPath: `/ja/resources/${encodeURIComponent(asset.id)}`,
       }),
     },
     openGraph: {
