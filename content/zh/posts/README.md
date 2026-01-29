@@ -40,6 +40,15 @@ transportation:
 photoTips:
   - 建议清晨/黄昏拍摄
   - 私人住宅附近请勿打扰居民
+
+# 新增：FAQ 结构化数据（可选，用于 Google 富媒体搜索结果）
+faqs:
+  - question: "如何前往 XXX 圣地？"
+    answer: "从 XX 站乘坐 XX 线，步行约 X 分钟即可到达。"
+  - question: "最佳巡礼季节是什么时候？"
+    answer: "春季和秋季天气最适合，樱花季和红叶季更有氛围。"
+  - question: "巡礼需要多长时间？"
+    answer: "建议预留半天到一天时间，可以从容拍照和体验。"
 ---
 ```
 

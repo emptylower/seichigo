@@ -56,8 +56,8 @@ export default function Footer({ locale = 'zh' }: Props) {
       title: isEn ? 'Connect' : '联系',
       links: [
         { label: 'Email', href: 'mailto:ljj231428@gmail.com', isExternal: true },
-        { label: 'Twitter', href: '#', isExternal: true },
-        { label: 'GitHub', href: '#', isExternal: true },
+        { label: 'X (Twitter)', href: 'https://x.com/xixingshu', isExternal: true },
+        { label: 'GitHub', href: 'https://github.com/seichigo', isExternal: true },
       ],
     },
   ]
