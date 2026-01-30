@@ -38,6 +38,7 @@
     "clsx": "^2.1.1",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.563.0",
+    "marked": "^17.0.1",
     "next": "^15.0.0",
     "next-auth": "^4.24.7",
     "next-mdx-remote": "^5.0.0",
