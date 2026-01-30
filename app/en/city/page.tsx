@@ -76,7 +76,7 @@ export default async function CityIndexEnPage() {
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((c) => (
-          <CityCard key={c.id} city={c} postCount={counts[c.id] || 0} />
+          <CityCard key={c.id} city={c} postCount={counts[c.id] || 0} locale="en" />
         ))}
       </div>
 
