@@ -7,6 +7,7 @@ import BookShelf from '@/components/bookstore/BookShelf'
 import Image from 'next/image'
 import Link from 'next/link'
 import BookCover from '@/components/bookstore/BookCover'
+import AppWaitlistPromoCtas from '@/components/waitlist/AppWaitlistPromoCtas.client'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -246,29 +247,8 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* 按钮组 - 即使禁用也要做得像“敬请期待”的高级徽章 */}
-            <div className="flex shrink-0 flex-col gap-4 sm:flex-row">
-              <button disabled className="group relative flex h-14 items-center gap-3 rounded-xl bg-white/5 px-6 pr-8 text-left ring-1 ring-white/10 transition-all hover:bg-white/10 disabled:cursor-not-allowed">
-                <svg className="h-7 w-7 text-white opacity-90" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-.69-.32-1.54-.32-2.19 0-1.04.56-2.15.56-3.14-.43-1.8-1.79-2.92-5.15-1.21-8.1 1.1-1.9 3.09-2.8 4.75-2.73 1.16.05 2.03.62 2.67.62.63 0 1.76-.66 3.07-.56 1.05.08 2.02.51 2.76 1.44-2.52 1.5-2.07 5.23.47 6.27-.54 1.35-1.22 2.67-2.3 4.18-.76 1.05-1.55 2.08-2.69 1.95-.76-.08-1.55-.53-2.69-.53-1.14 0-1.92.45-2.69.53-1.14.13-1.93-.9-2.69-1.95-.56-.78-1.08-1.63-1.55-2.52 1.5-2.52 3.8-2.8 5.6-1.05.65.63 1.33 1.18 2.05 1.63.72.45 1.48.83 2.28 1.13.8.3 1.63.53 2.48.68.85.15 1.73.23 2.63.23h.1z"/>
-                  <path d="M12.03 7.24c-.13-2.3 1.73-4.3 3.97-4.5.25 2.5-2.45 4.75-3.97 4.5z"/>
-                </svg>
-                <div className="flex flex-col leading-none">
-                  <span className="text-[10px] uppercase text-gray-400">Download on the</span>
-                  <span className="text-sm font-bold text-white">App Store</span>
-                </div>
-              </button>
-              
-              <button disabled className="group relative flex h-14 items-center gap-3 rounded-xl bg-white/5 px-6 pr-8 text-left ring-1 ring-white/10 transition-all hover:bg-white/10 disabled:cursor-not-allowed">
-                <svg className="h-6 w-6 text-white opacity-90" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3.609 1.814L13.792 12 3.61 22.186a2.048 2.048 0 01-2.02-3.12l1.64-7.066-1.64-7.066a2.048 2.048 0 012.02-3.12zM15.5 12c0 .133-.006.265-.018.396l-7.066 7.066c-.63.63-1.72.184-1.72-.707V5.245c0-.89 1.09-1.337 1.72-.707l7.066 7.066c.012.131.018.263.018.396z"/>
-                </svg>
-                <div className="flex flex-col leading-none">
-                  <span className="text-[10px] uppercase text-gray-400">Get it on</span>
-                  <span className="text-sm font-bold text-white">Google Play</span>
-                </div>
-              </button>
-            </div>
+            {/* CTA: open waitlist modal */}
+            <AppWaitlistPromoCtas />
           </div>
         </div>
       </section>

@@ -116,6 +116,9 @@ export default function AdminPanelClient() {
         <Link href="/admin/panel/city">
           <Button variant="ghost" type="button">城市管理</Button>
         </Link>
+        <Link href="/admin/waitlist">
+          <Button variant="ghost" type="button">Waitlist</Button>
+        </Link>
       </div>
 
       {loading ? <div className="text-gray-600">加载中…</div> : null}
