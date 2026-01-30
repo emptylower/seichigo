@@ -171,5 +171,62 @@
     "processing": "处理中…",
     "saving": "保存中…",
     "uploading": "上传中…"
+  },
+  "pages": {
+    "home": {
+      "heroTitle": "出发，",
+      "heroTitleLine2": "去见证那个风景。",
+      "heroSubtitle": "用好读的长文、精致排版和实用的地点列表，",
+      "heroSubtitleLine2": "帮你规划从屏幕到现实的每一次巡礼。",
+      "browseAnimeButton": "浏览作品索引",
+      "submitButton": "投稿你的巡礼",
+      "featuredSectionTitle": "本周精选",
+      "latestSectionTitle": "最新上架",
+      "viewAllAnimeLink": "查看全部作品 →",
+      "exploreSectionTitle": "继续探索",
+      "goToAnimeIndexLink": "去作品索引 →",
+      "appPromoTitle": "SeichiGo App",
+      "appPromoComingSoon": "Coming Soon",
+      "appPromoDescription": "未来将支持",
+      "appPromoOfflineMap": "离线圣地地图",
+      "appPromoAnd": "与",
+      "appPromoNavigation": "一键巡礼导航",
+      "appPromoDescriptionLine2": "把二次元的感动装进口袋，随时出发。"
+    },
+    "about": {
+      "heroTitle": "连接",
+      "heroTitleDimension": "次元",
+      "heroTitleAnd": "与",
+      "heroTitleReality": "现实",
+      "heroTitleSuffix": "的桥梁。",
+      "heroSubtitle": "每一部动画，都是一场梦。",
+      "heroSubtitleLine2": "而圣地巡礼，就是去现实中触碰那个梦的边缘。",
+      "missionCard1Title": "深度考据",
+      "missionCard1Description": "拒绝模糊的\"大概位置\"。我们追求精确到经纬度的点位还原，对比动画分镜与现实场景，不错过任何一个细节。",
+      "missionCard2Title": "杂志质感",
+      "missionCard2Description": "攻略不应只是枯燥的说明书。我们坚持精致的图文排版，让阅读攻略的过程，本身就成为一场美好的精神巡礼。",
+      "missionCard3Title": "可行性第一",
+      "missionCard3Description": "从交通方案到最佳拍摄机位，我们提供保姆级的实操指引，解决\"怎么去\"的难题，让你的出发不再犹豫。",
+      "whyTitle": "为什么建立 SeichiGo？",
+      "whyParagraph1": "很多时候，当我们看完一部感人的动画，心中涌起\"想去这里看看\"的冲动时，却往往止步于繁琐的信息检索。零散的坐标、模糊的截图、过时的交通信息……这些障碍让热血逐渐冷却。",
+      "whyParagraph2": "我们希望改变这一点。SeichiGo 致力于整理最清晰、最优美、最实用的巡礼指南。我们希望当你站在那个路口时，不需要低头在这个 App 和那个网页之间手忙脚乱，而是能抬起头，从容地对那个风景说一句：",
+      "whyQuote": "终于见到你了。",
+      "futureTitle": "未来愿景",
+      "futureDescription": "我们正在开发移动端 App，计划支持离线地图、一键导航与巡礼打卡功能。",
+      "futureDescriptionLine2": "我们的目标是把所有圣地装进口袋，成为你打破次元壁最可靠的伙伴。",
+      "futureComingSoon": "Coming Soon",
+      "contactTitle": "联系我们",
+      "contactDescription": "无论是发现数据错误、投稿你的巡礼故事，还是有商务合作意向，我们都非常期待听到你的声音。"
+    },
+    "components": {
+      "featuredPost": {
+        "featuredBadge": "本周精选",
+        "readButton": "开始阅读",
+        "browseButton": "逛逛作品"
+      },
+      "bookShelf": {
+        "emptyState": "暂无文章内容，先用投稿把书架填满吧。"
+      }
+    }
   }
 }
