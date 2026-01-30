@@ -171,5 +171,62 @@
     "processing": "[JA] 处理中…",
     "saving": "[JA] 保存中…",
     "uploading": "[JA] 上传中…"
+  },
+  "pages": {
+    "home": {
+      "heroTitle": "出発しよう、",
+      "heroTitleLine2": "あの景色に会いに。",
+      "heroSubtitle": "読みやすい長文記事、洗練されたレイアウト、実用的なロケーションリストで、",
+      "heroSubtitleLine2": "画面から現実への聖地巡礼を計画します。",
+      "browseAnimeButton": "作品インデックスを見る",
+      "submitButton": "あなたの巡礼を投稿",
+      "featuredSectionTitle": "今週の注目",
+      "latestSectionTitle": "最新追加",
+      "viewAllAnimeLink": "すべての作品を見る →",
+      "exploreSectionTitle": "探索を続ける",
+      "goToAnimeIndexLink": "作品インデックスへ →",
+      "appPromoTitle": "SeichiGo アプリ",
+      "appPromoComingSoon": "Coming Soon",
+      "appPromoDescription": "将来対応予定",
+      "appPromoOfflineMap": "オフライン聖地マップ",
+      "appPromoAnd": "と",
+      "appPromoNavigation": "ワンタップナビゲーション",
+      "appPromoDescriptionLine2": "二次元の感動をポケットに入れて、いつでも出発。"
+    },
+    "about": {
+      "heroTitle": "つなぐ、",
+      "heroTitleDimension": "次元",
+      "heroTitleAnd": "と",
+      "heroTitleReality": "現実",
+      "heroTitleSuffix": "の架け橋。",
+      "heroSubtitle": "すべてのアニメは、ひとつの夢。",
+      "heroSubtitleLine2": "そして聖地巡礼は、現実でその夢の縁に触れること。",
+      "missionCard1Title": "徹底考証",
+      "missionCard1Description": "曖昧な「だいたいの場所」は拒否します。緯度経度まで正確な地点復元を追求し、アニメのコマと現実の風景を比較し、細部も見逃しません。",
+      "missionCard2Title": "雑誌のような質感",
+      "missionCard2Description": "攻略は無味乾燥な説明書であってはなりません。洗練された図文レイアウトにこだわり、攻略を読む過程そのものが美しい精神的巡礼となるように。",
+      "missionCard3Title": "実行可能性第一",
+      "missionCard3Description": "交通手段から最適な撮影ポジションまで、手取り足取りの実践ガイドを提供し、「どうやって行くか」の難題を解決し、出発をためらわせません。",
+      "whyTitle": "なぜ SeichiGo を作ったのか？",
+      "whyParagraph1": "感動的なアニメを見終わって、「この場所に行ってみたい」という衝動が湧いても、煩雑な情報検索で止まってしまうことが多いです。散らばった座標、ぼやけたスクリーンショット、古い交通情報……これらの障害が熱意を徐々に冷ましていきます。",
+      "whyParagraph2": "私たちはそれを変えたいと思っています。SeichiGo は、最も明確で、最も美しく、最も実用的な巡礼ガイドを整理することに専念しています。あなたがその交差点に立ったとき、このアプリとあのウェブページの間で慌てる必要はなく、顔を上げて落ち着いてその風景に言えることを願っています：",
+      "whyQuote": "やっと会えたね。",
+      "futureTitle": "未来のビジョン",
+      "futureDescription": "モバイルアプリを開発中で、オフラインマップ、ワンタップナビゲーション、巡礼チェックイン機能をサポートする予定です。",
+      "futureDescriptionLine2": "すべての聖地をポケットに入れ、次元の壁を破る最も信頼できる仲間になることが目標です。",
+      "futureComingSoon": "Coming Soon",
+      "contactTitle": "お問い合わせ",
+      "contactDescription": "データの誤りを発見した場合、巡礼ストーリーを投稿したい場合、またはビジネス協力のご相談がある場合、ぜひご連絡ください。"
+    },
+    "components": {
+      "featuredPost": {
+        "featuredBadge": "今週の注目",
+        "readButton": "読み始める",
+        "browseButton": "作品を見る"
+      },
+      "bookShelf": {
+        "emptyState": "まだ記事がありません。投稿で本棚を埋めましょう。"
+      }
+    }
   }
 }

@@ -171,5 +171,62 @@
     "processing": "[EN] 处理中…",
     "saving": "[EN] 保存中…",
     "uploading": "[EN] 上传中…"
+  },
+  "pages": {
+    "home": {
+      "heroTitle": "Set off,",
+      "heroTitleLine2": "to witness that scenery.",
+      "heroSubtitle": "With readable long-form articles, exquisite layouts, and practical location lists,",
+      "heroSubtitleLine2": "we help you plan every pilgrimage from screen to reality.",
+      "browseAnimeButton": "Browse Anime Index",
+      "submitButton": "Submit Your Pilgrimage",
+      "featuredSectionTitle": "Featured This Week",
+      "latestSectionTitle": "Latest Additions",
+      "viewAllAnimeLink": "View All Anime →",
+      "exploreSectionTitle": "Continue Exploring",
+      "goToAnimeIndexLink": "Go to Anime Index →",
+      "appPromoTitle": "SeichiGo App",
+      "appPromoComingSoon": "Coming Soon",
+      "appPromoDescription": "Future support for",
+      "appPromoOfflineMap": "offline pilgrimage maps",
+      "appPromoAnd": "and",
+      "appPromoNavigation": "one-tap navigation",
+      "appPromoDescriptionLine2": "Carry the magic of anime in your pocket, ready to depart anytime."
+    },
+    "about": {
+      "heroTitle": "Bridging",
+      "heroTitleDimension": "dimensions",
+      "heroTitleAnd": "and",
+      "heroTitleReality": "reality",
+      "heroTitleSuffix": ".",
+      "heroSubtitle": "Every anime is a dream.",
+      "heroSubtitleLine2": "And pilgrimage is touching the edge of that dream in reality.",
+      "missionCard1Title": "In-Depth Research",
+      "missionCard1Description": "We reject vague \"approximate locations.\" We pursue precise coordinates down to latitude and longitude, comparing anime frames with real-world scenes, missing no detail.",
+      "missionCard2Title": "Magazine-Quality Design",
+      "missionCard2Description": "Guides shouldn't be dry instruction manuals. We insist on refined image-text layouts, making the reading experience itself a beautiful spiritual pilgrimage.",
+      "missionCard3Title": "Practicality First",
+      "missionCard3Description": "From transportation plans to optimal shooting positions, we provide step-by-step operational guidance, solving the \"how to get there\" challenge so your departure is never hesitant.",
+      "whyTitle": "Why Build SeichiGo?",
+      "whyParagraph1": "Often, when we finish a moving anime and feel the urge to \"visit this place,\" we stop at the tedious information search. Scattered coordinates, blurry screenshots, outdated transit info... these obstacles gradually cool our passion.",
+      "whyParagraph2": "We want to change that. SeichiGo is dedicated to organizing the clearest, most beautiful, and most practical pilgrimage guides. We hope that when you stand at that intersection, you won't need to fumble between apps and web pages, but can look up calmly and say to that scenery:",
+      "whyQuote": "Finally, I meet you.",
+      "futureTitle": "Future Vision",
+      "futureDescription": "We're developing a mobile app with plans to support offline maps, one-tap navigation, and pilgrimage check-ins.",
+      "futureDescriptionLine2": "Our goal is to put all pilgrimage sites in your pocket, becoming your most reliable companion in breaking the dimensional wall.",
+      "futureComingSoon": "Coming Soon",
+      "contactTitle": "Contact Us",
+      "contactDescription": "Whether you've found data errors, want to submit your pilgrimage story, or have business collaboration inquiries, we look forward to hearing from you."
+    },
+    "components": {
+      "featuredPost": {
+        "featuredBadge": "Featured This Week",
+        "readButton": "Start Reading",
+        "browseButton": "Browse Anime"
+      },
+      "bookShelf": {
+        "emptyState": "No articles yet, fill the bookshelf with your submissions."
+      }
+    }
   }
 }
