@@ -23,9 +23,9 @@ function safeDecodeURIComponent(input: string): string {
   }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params
-  const requestedSlug = safeDecodeURIComponent(String(slug || '')).trim()
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
   const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
   if (redirectToSlug && redirectToSlug !== requestedSlug) {
     return {
@@ -65,9 +65,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function CityJaPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-  const requestedSlug = safeDecodeURIComponent(String(slug || '')).trim()
+export default async function CityJaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
   const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
   if (redirectToSlug && redirectToSlug !== requestedSlug) {
     permanentRedirect(`/ja/city/${encodeURIComponent(redirectToSlug)}`)
