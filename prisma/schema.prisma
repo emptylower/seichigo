@@ -20,6 +20,11 @@ model User {
   mustChangePassword Boolean @default(false)
   disabled      Boolean  @default(false)
   isAdmin       Boolean  @default(false)
+  bio           String?  @db.Text
+  bilibili      String?
+  weibo         String?
+  github        String?
+  twitter       String?
   createdAt     DateTime @default(now())
   accounts      Account[]
   sessions      Session[]
