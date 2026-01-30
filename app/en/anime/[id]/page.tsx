@@ -3,6 +3,7 @@ import { getPostsByAnimeId } from '@/lib/posts/getPostsByAnimeId'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -110,6 +111,17 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/en/anime/${encodeAnimeIdForPath(canonicalId)}`
 
+  const animeWorkJsonLd = buildAnimeWorkJsonLd({
+    url: canonicalUrl,
+    name: display.name,
+    description: display.summary,
+    imageUrl: display.cover || null,
+    alternateNames: Array.isArray(display.alias) ? display.alias : [],
+    year: display.year || null,
+    inLanguage: 'en',
+    type: 'TVSeries',
+  })
+
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: 'Home', url: `${siteOrigin}/en` },
     { name: 'Anime', url: `${siteOrigin}/en/anime` },
@@ -124,6 +136,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       ) : null}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(animeWorkJsonLd) }} />
 
       <div className="space-y-8">
         <Breadcrumbs

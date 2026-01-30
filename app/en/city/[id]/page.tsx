@@ -120,6 +120,15 @@ export default async function CityEnPage({ params }: { params: Promise<{ id: str
     { name: city.name_en || city.name_zh, url: canonicalUrl },
   ])
 
+  const placeJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Place',
+    name: city.name_en || city.name_zh,
+    ...(city.description_en || city.description_zh ? { description: city.description_en || city.description_zh } : {}),
+    ...(city.name_zh || city.name_ja ? { alternateName: [city.name_zh, city.name_ja].filter(Boolean) } : {}),
+    ...(canonicalUrl ? { url: canonicalUrl } : {}),
+  }
+
   const heroCover = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
 
   return (
@@ -127,6 +136,7 @@ export default async function CityEnPage({ params }: { params: Promise<{ id: str
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       ) : null}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(placeJsonLd) }} />
 
       <div className="space-y-8">
         <Breadcrumbs
