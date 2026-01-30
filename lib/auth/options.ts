@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
         token.id = (user as any).id
         token.email = user.email
         token.name = user.name
+        token.image = user.image
         token.mustChangePassword = (user as any).mustChangePassword ?? token.mustChangePassword
       }
       token.isAdmin = isAdminEmail((token.email as string | undefined) ?? null)
@@ -35,6 +36,7 @@ export const authOptions: NextAuthOptions = {
 
       const id = token.id || token.sub
       if (id) session.user.id = String(id)
+      if (token.image) session.user.image = String(token.image)
       session.user.isAdmin = isAdminEmail(session.user.email)
 
       // 强制改密需要实时读取 DB（避免 JWT 里值过期造成循环/失效）
