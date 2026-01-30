@@ -32,10 +32,16 @@ export default async function ResourcesIndexJaPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">リソース</h1>
-      <div className="mt-2 text-sm text-gray-600">公開記事から抽出されたグループ化されたルートマップ。各ルート/スポットにはリンクがあります。</div>
+      <div className="py-12 text-center">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">リソース</h1>
+        <div className="mx-auto mt-4 max-w-2xl text-lg text-gray-500">
+          公開記事から抽出されたグループ化されたルートマップ。
+          <br className="hidden sm:inline" />
+          各ルートとスポットは参照・共有用にリンク可能です。
+        </div>
+      </div>
 
-      <div className="mt-6">
+      <div className="mt-8">
         <RouteDirectory groups={groups} locale="ja" />
       </div>
     </div>
