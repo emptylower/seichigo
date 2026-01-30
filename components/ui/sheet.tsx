@@ -49,9 +49,13 @@ const sheetVariants = cva(
   }
 )
 
+// React 19 types don't automatically include `children` in component props.
+// Explicitly include it so <SheetContent>...</SheetContent> type-checks.
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  children?: React.ReactNode
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
