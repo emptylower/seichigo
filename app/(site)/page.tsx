@@ -8,6 +8,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import BookCover from '@/components/bookstore/BookCover'
 import AppWaitlistPromoCtas from '@/components/waitlist/AppWaitlistPromoCtas.client'
+import { t } from '@/lib/i18n'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -89,25 +90,25 @@ export default async function HomePage() {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center max-w-7xl mx-auto">
           <div className="space-y-8 text-center lg:text-left">
             <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl leading-tight">
-              出发，<br />
-              去见证那个风景。
+              {t('pages.home.heroTitle', 'zh')}<br />
+              {t('pages.home.heroTitleLine2', 'zh')}
             </h1>
             <p className="max-w-lg mx-auto lg:mx-0 text-lg text-gray-600 sm:text-xl leading-relaxed">
-              用好读的长文、精致排版和实用的地点列表，<br className="hidden sm:block" />
-              帮你规划从屏幕到现实的每一次巡礼。
+              {t('pages.home.heroSubtitle', 'zh')}<br className="hidden sm:block" />
+              {t('pages.home.heroSubtitleLine2', 'zh')}
             </p>
             <div className="flex flex-wrap justify-center lg:justify-start gap-4 pt-2">
               <Link
                 href="/anime"
                 className="rounded-full bg-brand-600 px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-all hover:bg-brand-700 hover:shadow-xl hover:-translate-y-0.5"
               >
-                浏览作品索引
+                {t('pages.home.browseAnimeButton', 'zh')}
               </Link>
               <Link
                 href="/submit"
                 className="rounded-full border border-gray-200 bg-white px-8 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900"
               >
-                投稿你的巡礼
+                {t('pages.home.submitButton', 'zh')}
               </Link>
             </div>
           </div>
@@ -152,23 +153,23 @@ export default async function HomePage() {
       {/* Featured Post */}
       {featured ? (
         <section className="space-y-6 max-w-7xl mx-auto px-6">
-          <div className="flex items-center gap-2 px-1 border-l-4 border-brand-500 pl-3">
-             <h2 className="text-2xl font-bold tracking-tight text-gray-900">本周精选</h2>
+           <div className="flex items-center gap-2 px-1 border-l-4 border-brand-500 pl-3">
+             <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.featuredSectionTitle', 'zh')}</h2>
           </div>
-          <FeaturedPost item={featured} />
+           <FeaturedPost item={featured} locale="zh" />
         </section>
       ) : null}
 
       {/* Latest Shelf */}
       <section className="space-y-6 max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between px-1 border-l-4 border-brand-500 pl-3">
-          <h2 className="text-2xl font-bold tracking-tight text-gray-900">最新上架</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.latestSectionTitle', 'zh')}</h2>
           <Link href="/anime" className="text-sm font-medium text-brand-600 hover:text-brand-700">
-            查看全部作品 →
+            {t('pages.home.viewAllAnimeLink', 'zh')}
           </Link>
         </div>
         <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-          <BookShelf items={latestShelf} />
+          <BookShelf items={latestShelf} locale="zh" />
         </div>
       </section>
 
@@ -176,9 +177,9 @@ export default async function HomePage() {
       {more.length ? (
         <section className="space-y-6 max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between px-1 border-l-4 border-brand-500 pl-3">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900">继续探索</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.exploreSectionTitle', 'zh')}</h2>
             <Link href="/anime" className="text-sm font-medium text-brand-600 hover:text-brand-700">
-              去作品索引 →
+              {t('pages.home.goToAnimeIndexLink', 'zh')}
             </Link>
           </div>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -233,15 +234,15 @@ export default async function HomePage() {
                 </span>
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-center gap-3 md:justify-start">
-                    <h2 className="text-3xl font-bold text-white tracking-tight">SeichiGo App</h2>
+                    <h2 className="text-3xl font-bold text-white tracking-tight">{t('pages.home.appPromoTitle', 'zh')}</h2>
                     <span className="rounded-full bg-brand-500/20 px-3 py-1 text-xs font-bold text-brand-300 ring-1 ring-brand-500/50 backdrop-blur-md">
-                      Coming Soon
+                      {t('pages.home.appPromoComingSoon', 'zh')}
                     </span>
                   </div>
                   <p className="max-w-lg text-base leading-relaxed text-gray-300">
-                    未来将支持<span className="text-white font-medium">离线圣地地图</span>与<span className="text-white font-medium">一键巡礼导航</span>。
+                    {t('pages.home.appPromoDescription', 'zh')}<span className="text-white font-medium">{t('pages.home.appPromoOfflineMap', 'zh')}</span>{t('pages.home.appPromoAnd', 'zh')}<span className="text-white font-medium">{t('pages.home.appPromoNavigation', 'zh')}</span>。
                     <br className="hidden sm:block" />
-                    把二次元的感动装进口袋，随时出发。
+                    {t('pages.home.appPromoDescriptionLine2', 'zh')}
                   </p>
                 </div>
               </div>
