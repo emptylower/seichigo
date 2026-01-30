@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import Avatar from '@/components/shared/Avatar'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 
 type SessionUser = {
   name?: string | null
   email?: string | null
+  image?: string | null
   isAdmin?: boolean | null
 }
 
@@ -81,8 +83,6 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
     return v || labels.user
   }, [labels.user, session?.user?.email, session?.user?.name])
 
-  const avatarLetter = useMemo(() => userLabel.slice(0, 1).toUpperCase(), [userLabel])
-
   const showAuthed = Boolean(session?.user)
   const showAnon = !showAuthed
 
@@ -103,12 +103,16 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
       {showAuthed ? (
         <details className="relative">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border px-2 py-1 text-gray-700 hover:bg-gray-50">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pink-100 text-xs font-semibold text-pink-700">
-              {avatarLetter}
-            </span>
-            <span className="max-w-28 truncate">{userLabel}</span>
+            <Avatar
+              src={session?.user?.image}
+              name={userLabel}
+              size={32}
+            />
           </summary>
           <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+            <Link href={prefixPath('/me/settings', locale)} className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              用户中心
+            </Link>
             <a href={prefixPath('/me/favorites', locale)} className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
               {labels.favorites}
             </a>
