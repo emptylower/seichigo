@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import type { PublicPostListItem } from '@/lib/posts/types'
+import type { SiteLocale } from '@/components/layout/SiteShell'
+import { t } from '@/lib/i18n'
 import Tag from '@/components/shared/Tag'
 import BookCover from './BookCover'
 
@@ -9,7 +11,7 @@ function formatMeta(item: Pick<PublicPostListItem, 'animeIds' | 'city' | 'routeL
   return parts.join(' · ')
 }
 
-export default function FeaturedPost({ item }: { item: PublicPostListItem }) {
+export default function FeaturedPost({ item, locale }: { item: PublicPostListItem; locale: SiteLocale }) {
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 transition-all hover:shadow-md">
       <div className="grid gap-6 md:grid-cols-2 md:items-center">
@@ -33,7 +35,7 @@ export default function FeaturedPost({ item }: { item: PublicPostListItem }) {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
-                本周精选
+                {t('pages.components.featuredPost.featuredBadge', locale)}
               </span>
             </div>
             <h2 className="text-2xl font-bold leading-tight tracking-tight text-gray-900 md:text-3xl">
@@ -52,10 +54,10 @@ export default function FeaturedPost({ item }: { item: PublicPostListItem }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <Link href={item.path} className="btn-primary no-underline hover:no-underline">
-              开始阅读
+              {t('pages.components.featuredPost.readButton', locale)}
             </Link>
             <Link href="/anime" className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700 no-underline hover:bg-gray-50 hover:no-underline">
-              逛逛作品
+              {t('pages.components.featuredPost.browseButton', locale)}
             </Link>
           </div>
         </div>

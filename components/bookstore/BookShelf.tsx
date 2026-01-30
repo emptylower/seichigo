@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import type { PublicPostListItem } from '@/lib/posts/types'
+import type { SiteLocale } from '@/components/layout/SiteShell'
+import { t } from '@/lib/i18n'
 import BookCover from './BookCover'
 
 function formatLine(item: Pick<PublicPostListItem, 'animeIds' | 'city'>): string {
@@ -54,7 +56,7 @@ function BookTile({ item }: { item: PublicPostListItem }) {
   )
 }
 
-export default function BookShelf({ items }: { items: PublicPostListItem[] }) {
+export default function BookShelf({ items, locale }: { items: PublicPostListItem[]; locale: SiteLocale }) {
   if (!items?.length) {
     return (
       <div className="space-y-3">
@@ -63,7 +65,7 @@ export default function BookShelf({ items }: { items: PublicPostListItem[] }) {
             <SkeletonTile key={idx} seed={idx + 1} />
           ))}
         </div>
-        <div className="text-sm text-gray-500">暂无文章内容，先用投稿把书架填满吧。</div>
+        <div className="text-sm text-gray-500">{t('pages.components.bookShelf.emptyState', locale)}</div>
       </div>
     )
   }

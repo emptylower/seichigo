@@ -1,7 +1,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import type { SiteLocale } from '@/components/layout/SiteShell'
 
-export default function FeaturedEmpty() {
+export default function FeaturedEmpty({ locale }: { locale: SiteLocale }) {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-pink-100 bg-gradient-to-br from-pink-50/70 via-white to-white shadow-sm">
       <div className="grid gap-6 p-6 md:grid-cols-[1fr,320px] md:items-center">
