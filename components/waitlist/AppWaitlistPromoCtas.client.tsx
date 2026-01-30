@@ -1,7 +1,8 @@
 "use client"
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type WaitlistStatusResponse = { ok: true; joined: boolean } | { error: string }
 type WaitlistJoinResponse = { ok: true; joined: true } | { error: string }
@@ -22,6 +23,11 @@ function getErrorMessage(data: unknown): string {
 function AppWaitlistModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [state, setState] = useState<ModalState>({ kind: 'idle' })
   const [joining, setJoining] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   async function loadStatus() {
     setState({ kind: 'loading' })
@@ -79,17 +85,17 @@ function AppWaitlistModal({ open, onClose }: { open: boolean; onClose: () => voi
     }
   }, [open, onClose])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
   const title = 'SeichiGo App Waitlist'
   const description = 'App 正在开发中。加入 Waitlist，第一时间收到上线通知。'
 
-  return (
+  const modal = (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
       onMouseDown={onClose}
     >
       <div
@@ -170,6 +176,8 @@ function AppWaitlistModal({ open, onClose }: { open: boolean; onClose: () => voi
       </div>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }
 
 export default function AppWaitlistPromoCtas() {

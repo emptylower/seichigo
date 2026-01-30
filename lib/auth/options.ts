@@ -27,6 +27,12 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (!session.user) return session
 
+      // Ensure we always propagate email from JWT into the session.
+      // (Some flows can leave session.user.email empty even though token.email is present.)
+      if (!session.user.email && token.email) {
+        session.user.email = String(token.email)
+      }
+
       const id = token.id || token.sub
       if (id) session.user.id = String(id)
       session.user.isAdmin = isAdminEmail(session.user.email)
