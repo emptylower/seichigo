@@ -9,7 +9,7 @@ import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import PostMeta from '@/components/blog/PostMeta'
-import GiscusComments from '@/components/GiscusComments'
+import CommentSection from '@/components/comments/CommentSection'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -330,7 +330,11 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
             )}
             <ProgressiveImagesRuntime />
             <div className="mt-12" />
-            <GiscusComments term={giscusTerm} />
+            {found.source === 'db' ? (
+              <CommentSection articleId={found.article.id} />
+            ) : (
+              <CommentSection mdxSlug={found.post.frontmatter.slug} />
+            )}
           </article>
           </main>
         </div>

@@ -7,14 +7,15 @@ export const runtime = 'nodejs'
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerAuthSession()
     const deps = getCommentApiDeps()
     const handlers = createHandlers(deps)
     
-    const result = await handlers.toggle(session, params.id)
+    const { id } = await ctx.params
+    const result = await handlers.toggle(session, id)
     
     if (!result.ok) {
       const status = result.error === '请先登录' ? 401 : 500
