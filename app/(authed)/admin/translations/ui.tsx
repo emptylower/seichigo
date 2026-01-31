@@ -28,6 +28,8 @@ export default function TranslationsUI() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
 
+  const [readyTasks, setReadyTasks] = useState<TranslationTask[]>([])
+
   const [untranslatedItems, setUntranslatedItems] = useState<UntranslatedItem[]>([])
   const [untranslatedLoading, setUntranslatedLoading] = useState(true)
 
@@ -75,6 +77,16 @@ export default function TranslationsUI() {
     }
   }
 
+  async function loadReadyTasks() {
+    try {
+      const res = await fetch('/api/admin/translations?status=ready')
+      const data = await res.json()
+      setReadyTasks(data.tasks || [])
+    } catch (error) {
+      console.error('Failed to load ready tasks', error)
+    }
+  }
+
   async function loadUntranslated() {
     setUntranslatedLoading(true)
     try {
@@ -117,6 +129,10 @@ export default function TranslationsUI() {
   useEffect(() => {
     void loadTasks()
   }, [filter])
+
+  useEffect(() => {
+    void loadReadyTasks()
+  }, [])
 
   useEffect(() => {
     void loadUntranslated()
@@ -164,6 +180,47 @@ export default function TranslationsUI() {
         </div>
         <Button onClick={() => setShowBatchModal(true)}>批量翻译</Button>
       </div>
+
+      {readyTasks.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-amber-700">
+              待审核翻译 ({readyTasks.length})
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {readyTasks.map((task) => (
+              <div
+                key={task.id}
+                className="rounded-lg border border-amber-200 bg-amber-50 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                      {entityTypeLabels[task.entityType] || task.entityType}
+                    </span>
+                    <span className="text-sm text-gray-600">→</span>
+                    <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+                      {languageLabels[task.targetLanguage] || task.targetLanguage}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-amber-700">
+                      {new Date(task.createdAt).toLocaleDateString('zh-CN')}
+                    </span>
+                    <Link
+                      href={`/admin/translations/${task.id}`}
+                      className="rounded-md bg-amber-500 px-3 py-1 text-sm text-white hover:bg-amber-600"
+                    >
+                      审核
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         <h2 className="text-lg font-medium">未翻译内容</h2>
