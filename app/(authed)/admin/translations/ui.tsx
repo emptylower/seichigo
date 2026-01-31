@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import * as Dialog from '@radix-ui/react-dialog'
+import { X } from 'lucide-react'
+import Button from '@/components/shared/Button'
 
 type TranslationTask = {
   id: string
@@ -16,6 +19,37 @@ export default function TranslationsUI() {
   const [tasks, setTasks] = useState<TranslationTask[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ready')
+
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchEntityType, setBatchEntityType] = useState<'article' | 'city' | 'anime'>('article')
+  const [batchLanguages, setBatchLanguages] = useState<string[]>(['en', 'ja'])
+  const [batchLoading, setBatchLoading] = useState(false)
+
+  async function handleBatchSubmit() {
+    if (batchLanguages.length === 0) return
+    setBatchLoading(true)
+    try {
+      const res = await fetch('/api/admin/translations/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: batchEntityType,
+          targetLanguages: batchLanguages,
+        }),
+      })
+      
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '批量翻译失败')
+      
+      alert(`成功创建 ${data.created} 个翻译任务，跳过 ${data.skipped} 个`)
+      setShowBatchModal(false)
+      void loadTasks()
+    } catch (error: any) {
+      alert(error.message || '操作失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
 
   async function loadTasks() {
     setLoading(true)
@@ -60,18 +94,21 @@ export default function TranslationsUI() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
-        <label className="text-sm font-medium">状态筛选:</label>
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
-        >
-          <option value="pending">待处理</option>
-          <option value="processing">处理中</option>
-          <option value="ready">待审核</option>
-          <option value="approved">已确认</option>
-          <option value="failed">失败</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">状态筛选:</label>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="rounded-md border px-3 py-2 text-sm"
+          >
+            <option value="pending">待处理</option>
+            <option value="processing">处理中</option>
+            <option value="ready">待审核</option>
+            <option value="approved">已确认</option>
+            <option value="failed">失败</option>
+          </select>
+        </div>
+        <Button onClick={() => setShowBatchModal(true)}>批量翻译</Button>
       </div>
 
       {tasks.length === 0 ? (
@@ -114,6 +151,95 @@ export default function TranslationsUI() {
           ))}
         </div>
       )}
+
+      <Dialog.Root open={showBatchModal} onOpenChange={setShowBatchModal}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 fade-in-0 animate-in" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 animate-in fade-in-0 zoom-in-95 sm:rounded-lg">
+            <div className="flex flex-col space-y-1.5 text-center sm:text-left">
+              <Dialog.Title className="text-lg font-semibold leading-none tracking-tight">
+                批量翻译
+              </Dialog.Title>
+              <Dialog.Description className="text-sm text-gray-500">
+                创建批量翻译任务。系统将自动扫描未翻译的内容并生成任务。
+              </Dialog.Description>
+            </div>
+            
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  实体类型
+                </label>
+                <select
+                  value={batchEntityType}
+                  onChange={(e) => setBatchEntityType(e.target.value as any)}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="article">文章 (Article)</option>
+                  <option value="city">城市 (City)</option>
+                  <option value="anime">动漫 (Anime)</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none">
+                  目标语言
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={batchLanguages.includes('en')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setBatchLanguages([...batchLanguages, 'en'])
+                        } else {
+                          setBatchLanguages(batchLanguages.filter(l => l !== 'en'))
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    英语 (en)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={batchLanguages.includes('ja')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setBatchLanguages([...batchLanguages, 'ja'])
+                        } else {
+                          setBatchLanguages(batchLanguages.filter(l => l !== 'ja'))
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    日语 (ja)
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+              <Button variant="ghost" onClick={() => setShowBatchModal(false)}>
+                取消
+              </Button>
+              <Button 
+                onClick={handleBatchSubmit} 
+                disabled={batchLoading || batchLanguages.length === 0}
+              >
+                {batchLoading ? '处理中...' : '开始生成'}
+              </Button>
+            </div>
+            
+            <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
     </div>
   )
 }
