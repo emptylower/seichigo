@@ -100,13 +100,13 @@ export default async function HomePage() {
             <div className="flex flex-wrap justify-center lg:justify-start gap-4 pt-2">
               <Link
                 href="/anime"
-                className="rounded-full bg-brand-600 px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-all hover:bg-brand-700 hover:shadow-xl hover:-translate-y-0.5"
+                className="rounded-full bg-brand-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-all hover:bg-brand-700 hover:shadow-xl hover:-translate-y-0.5"
               >
                 {t('pages.home.browseAnimeButton', 'zh')}
               </Link>
               <Link
                 href="/submit"
-                className="rounded-full border border-gray-200 bg-white px-8 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900"
+                className="rounded-full border border-gray-200 bg-white px-6 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900"
               >
                 {t('pages.home.submitButton', 'zh')}
               </Link>
