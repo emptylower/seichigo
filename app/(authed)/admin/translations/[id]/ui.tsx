@@ -1,0 +1,176 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+
+type TranslationTask = {
+  id: string
+  entityType: string
+  entityId: string
+  targetLanguage: string
+  status: string
+  sourceContent: any
+  draftContent: any
+  error?: string
+  createdAt: string
+}
+
+type Props = {
+  id: string
+}
+
+export default function TranslationDetailUI({ id }: Props) {
+  const router = useRouter()
+  const [task, setTask] = useState<TranslationTask | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [approving, setApproving] = useState(false)
+
+  async function loadTask() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}`)
+      if (!res.ok) throw new Error('Failed to load task')
+      const data = await res.json()
+      setTask(data.task)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleApprove() {
+    if (!confirm('确认要应用此翻译吗？')) return
+    
+    setApproving(true)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}/approve`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error('Failed to approve')
+      
+      alert('翻译已确认并应用')
+      router.push('/admin/translations')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to approve')
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadTask()
+  }, [id])
+
+  if (loading) {
+    return <div className="text-gray-600">加载中...</div>
+  }
+
+  if (error || !task) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+        {error || '未找到翻译任务'}
+      </div>
+    )
+  }
+
+  const languageLabels: Record<string, string> = {
+    en: 'English',
+    ja: '日本語',
+  }
+
+  const entityTypeLabels: Record<string, string> = {
+    article: '文章',
+    city: '城市',
+    anime: '动漫',
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <Link
+            href="/admin/translations"
+            className="text-sm text-brand-600 hover:underline"
+          >
+            ← 返回列表
+          </Link>
+          <h1 className="mt-2 text-2xl font-bold">翻译详情</h1>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+              {entityTypeLabels[task.entityType]}
+            </span>
+            <span className="text-sm text-gray-600">→</span>
+            <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+              {languageLabels[task.targetLanguage]}
+            </span>
+            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+              {task.status}
+            </span>
+          </div>
+        </div>
+        {task.status === 'ready' && task.draftContent && (
+          <button
+            onClick={handleApprove}
+            disabled={approving}
+            className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+          >
+            {approving ? '处理中...' : '确认翻译'}
+          </button>
+        )}
+      </div>
+
+      {task.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <strong>错误:</strong> {task.error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">源内容 (中文)</h2>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            {task.sourceContent ? (
+              <pre className="whitespace-pre-wrap text-sm">
+                {JSON.stringify(task.sourceContent, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-gray-500">暂无源内容</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">
+            翻译内容 ({languageLabels[task.targetLanguage]})
+          </h2>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            {task.draftContent ? (
+              <pre className="whitespace-pre-wrap text-sm">
+                {JSON.stringify(task.draftContent, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-gray-500">翻译尚未生成</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+        <p>
+          <strong>任务 ID:</strong> {task.id}
+        </p>
+        <p>
+          <strong>实体 ID:</strong> {task.entityId}
+        </p>
+        <p>
+          <strong>创建时间:</strong>{' '}
+          {new Date(task.createdAt).toLocaleString('zh-CN')}
+        </p>
+      </div>
+    </div>
+  )
+}
