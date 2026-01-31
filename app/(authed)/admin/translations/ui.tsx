@@ -15,10 +15,21 @@ type TranslationTask = {
   createdAt: string
 }
 
+type UntranslatedItem = {
+  entityType: string
+  entityId: string
+  title: string
+  date: string
+  missingLanguages: string[]
+}
+
 export default function TranslationsUI() {
   const [tasks, setTasks] = useState<TranslationTask[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ready')
+
+  const [untranslatedItems, setUntranslatedItems] = useState<UntranslatedItem[]>([])
+  const [untranslatedLoading, setUntranslatedLoading] = useState(true)
 
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchEntityType, setBatchEntityType] = useState<'article' | 'city' | 'anime'>('article')
@@ -64,9 +75,52 @@ export default function TranslationsUI() {
     }
   }
 
+  async function loadUntranslated() {
+    setUntranslatedLoading(true)
+    try {
+      const res = await fetch('/api/admin/translations/untranslated')
+      const data = await res.json()
+      setUntranslatedItems(data.items || [])
+    } catch (error) {
+      console.error('Failed to load untranslated items', error)
+    } finally {
+      setUntranslatedLoading(false)
+    }
+  }
+
+  async function createTranslationTask(item: UntranslatedItem) {
+    if (!confirm(`确定为 "${item.title}" 创建翻译任务吗？`)) return
+
+    try {
+      const res = await fetch('/api/admin/translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: item.entityType,
+          entityId: item.entityId,
+          targetLanguages: item.missingLanguages,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '创建失败')
+      }
+
+      // Refresh both lists
+      await Promise.all([loadTasks(), loadUntranslated()])
+    } catch (error: any) {
+      alert(error.message || '操作失败')
+    }
+  }
+
   useEffect(() => {
     void loadTasks()
   }, [filter])
+
+  useEffect(() => {
+    void loadUntranslated()
+  }, [])
 
   const statusLabels: Record<string, string> = {
     pending: '待处理',
@@ -111,7 +165,60 @@ export default function TranslationsUI() {
         <Button onClick={() => setShowBatchModal(true)}>批量翻译</Button>
       </div>
 
-      {tasks.length === 0 ? (
+      <div className="space-y-4">
+        <h2 className="text-lg font-medium">未翻译内容</h2>
+        {untranslatedLoading ? (
+          <div className="text-gray-500">加载中...</div>
+        ) : untranslatedItems.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-green-50 p-8 text-center text-green-600">
+            🎉 所有内容都已有翻译任务
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {untranslatedItems.map((item) => (
+              <div
+                key={`${item.entityType}-${item.entityId}`}
+                className="rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                      {entityTypeLabels[item.entityType] || item.entityType}
+                    </span>
+                    <span className="font-medium text-gray-900">{item.title}</span>
+                    <div className="flex gap-1">
+                      {item.missingLanguages.map((lang) => (
+                        <span
+                          key={lang}
+                          className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700"
+                        >
+                          缺失: {languageLabels[lang] || lang}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">
+                      {new Date(item.date).toLocaleDateString('zh-CN')}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      className="px-3 py-1 h-auto"
+                      onClick={() => createTranslationTask(item)}
+                    >
+                      创建翻译任务
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <h2 className="text-lg font-medium">任务列表</h2>
+        {tasks.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center text-gray-600">
           暂无翻译任务
         </div>
@@ -151,6 +258,7 @@ export default function TranslationsUI() {
           ))}
         </div>
       )}
+      </div>
 
       <Dialog.Root open={showBatchModal} onOpenChange={setShowBatchModal}>
         <Dialog.Portal>
