@@ -96,6 +96,35 @@ export function createHandlers(deps: ArticleApiDeps) {
         console.error('[article/adminApprove] city link sync failed', err)
       }
 
+      // Auto-create translation tasks for published article
+      try {
+        const { prisma } = await import('@/lib/db/prisma')
+        const targetLanguages = ['en', 'ja']
+        
+        await Promise.all(
+          targetLanguages.map((targetLanguage) =>
+            prisma.translationTask.upsert({
+              where: {
+                entityType_entityId_targetLanguage: {
+                  entityType: 'article',
+                  entityId: id,
+                  targetLanguage,
+                },
+              },
+              create: {
+                entityType: 'article',
+                entityId: id,
+                targetLanguage,
+                status: 'pending',
+              },
+              update: {},
+            })
+          )
+        )
+      } catch (err) {
+        console.error('[article/adminApprove] translation task creation failed', err)
+      }
+
       // Revalidate homepage caches for all locales
       revalidatePath('/')
       revalidatePath('/en')
