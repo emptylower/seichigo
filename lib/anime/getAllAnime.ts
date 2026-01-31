@@ -9,6 +9,10 @@ export type Anime = {
   summary?: string
   cover?: string
   hidden?: boolean
+  name_ja?: string
+  name_en?: string
+  summary_ja?: string
+  summary_en?: string
 }
 
 export type GetAllAnimeOptions = {
@@ -53,6 +57,10 @@ export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]
           summary: r.summary ?? existing?.summary ?? undefined,
           cover: r.cover ?? existing?.cover ?? undefined,
           hidden: r.hidden ?? false,
+          name_ja: r.name_ja ?? existing?.name_ja ?? undefined,
+          name_en: r.name_en ?? existing?.name_en ?? undefined,
+          summary_ja: r.summary_ja ?? existing?.summary_ja ?? undefined,
+          summary_en: r.summary_en ?? existing?.summary_en ?? undefined,
         })
       }
     } catch {
@@ -87,6 +95,10 @@ export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Pr
           summary: found.summary ?? fromJson?.summary ?? undefined,
           cover: found.cover ?? fromJson?.cover ?? undefined,
           hidden: (found as any).hidden ?? false,
+          name_ja: found.name_ja ?? fromJson?.name_ja ?? undefined,
+          name_en: found.name_en ?? fromJson?.name_en ?? undefined,
+          summary_ja: found.summary_ja ?? fromJson?.summary_ja ?? undefined,
+          summary_en: found.summary_en ?? fromJson?.summary_en ?? undefined,
         }
       }
     } catch {

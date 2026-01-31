@@ -52,7 +52,7 @@ function restoreTerms(text: string, terms: Map<string, string>, glossary: Glossa
   
   for (const [placeholder, originalTerm] of terms.entries()) {
     const translation = glossary[originalTerm]?.[targetLang] || originalTerm
-    restored = restored.replace(placeholder, translation)
+    restored = restored.replaceAll(placeholder, translation)
   }
   
   return restored
