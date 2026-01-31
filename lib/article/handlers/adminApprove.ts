@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 import { isFallbackHashSlug, isValidArticleSlug } from '@/lib/article/slug'
@@ -94,6 +95,15 @@ export function createHandlers(deps: ArticleApiDeps) {
       } catch (err) {
         console.error('[article/adminApprove] city link sync failed', err)
       }
+
+      // Revalidate homepage caches for all locales
+      revalidatePath('/')
+      revalidatePath('/en')
+      revalidatePath('/ja')
+      // Revalidate article detail pages
+      revalidatePath(`/posts/${existing.slug}`)
+      revalidatePath(`/en/posts/${existing.slug}`)
+      revalidatePath(`/ja/posts/${existing.slug}`)
 
       return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, publishedAt: updated.publishedAt } })
     },
