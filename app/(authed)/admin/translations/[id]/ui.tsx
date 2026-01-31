@@ -27,6 +27,9 @@ export default function TranslationDetailUI({ id }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedContent, setEditedContent] = useState<any>(null)
+  const [saving, setSaving] = useState(false)
 
   async function loadTask() {
     setLoading(true)
@@ -36,10 +39,43 @@ export default function TranslationDetailUI({ id }: Props) {
       if (!res.ok) throw new Error('Failed to load task')
       const data = await res.json()
       setTask(data.task)
+      setEditedContent(data.task.draftContent)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          draftContent: editedContent,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to save')
+      
+      const data = await res.json()
+      setTask(data.task)
+      setIsEditing(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleCancel() {
+    if (confirm('确定要取消编辑吗？未保存的更改将丢失。')) {
+      setEditedContent(task?.draftContent)
+      setIsEditing(false)
     }
   }
 
@@ -117,15 +153,45 @@ export default function TranslationDetailUI({ id }: Props) {
             </span>
           </div>
         </div>
-        {task.status === 'ready' && task.draftContent && (
-          <button
-            onClick={handleApprove}
-            disabled={approving}
-            className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
-          >
-            {approving ? '处理中...' : '确认翻译'}
-          </button>
-        )}
+        <div className="flex gap-2">
+          {task.status === 'ready' && task.draftContent && !isEditing && (
+            <>
+              {isTipTapContent(task.draftContent) && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
+                >
+                  编辑翻译
+                </button>
+              )}
+              <button
+                onClick={handleApprove}
+                disabled={approving}
+                className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                {approving ? '处理中...' : '确认翻译'}
+              </button>
+            </>
+          )}
+          {isEditing && (
+            <>
+              <button
+                onClick={handleCancel}
+                disabled={saving}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:opacity-50"
+              >
+                {saving ? '保存中...' : '保存'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {task.error && (
@@ -159,7 +225,11 @@ export default function TranslationDetailUI({ id }: Props) {
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             {task.draftContent ? (
               isTipTapContent(task.draftContent) ? (
-                <TipTapPreview content={task.draftContent} mode="preview" />
+                <TipTapPreview 
+                  content={isEditing ? editedContent : task.draftContent} 
+                  mode={isEditing ? 'edit' : 'preview'}
+                  onChange={setEditedContent}
+                />
               ) : (
                 <pre className="whitespace-pre-wrap text-sm">
                   {JSON.stringify(task.draftContent, null, 2)}
