@@ -92,7 +92,7 @@ export default async function EnglishHomePage() {
               {t('pages.home.heroTitle', 'en')}<br />
               {t('pages.home.heroTitleLine2', 'en')}
             </h1>
-            <p className="max-w-lg mx-auto lg:mx-0 text-lg text-gray-600 sm:text-xl leading-relaxed">
+            <p className="max-w-xl mx-auto lg:mx-0 text-lg text-gray-600 sm:text-xl leading-relaxed">
               {t('pages.home.heroSubtitle', 'en')}<br className="hidden sm:block" />
               {t('pages.home.heroSubtitleLine2', 'en')}
             </p>
