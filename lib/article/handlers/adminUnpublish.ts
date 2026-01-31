@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { unpublish } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
@@ -51,6 +52,16 @@ export function createHandlers(deps: ArticleApiDeps) {
       if (!updated) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
+
+      // Revalidate homepage caches for all locales
+      revalidatePath('/')
+      revalidatePath('/en')
+      revalidatePath('/ja')
+      // Revalidate article detail pages
+      const slug = existing.slug
+      revalidatePath(`/posts/${slug}`)
+      revalidatePath(`/en/posts/${slug}`)
+      revalidatePath(`/ja/posts/${slug}`)
 
       return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, rejectReason: updated.rejectReason } })
     },
