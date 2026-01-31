@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 
 export type TranslationResult = {
   success: boolean
+  sourceContent?: any
   translatedContent?: any
   error?: string
 }
@@ -25,6 +26,13 @@ export async function translateArticle(articleId: string, targetLang: string): P
       return { success: false, error: 'Article not found' }
     }
 
+    const sourceContent = {
+      title: article.title,
+      description: article.description,
+      seoTitle: article.seoTitle,
+      contentJson: article.contentJson,
+    }
+
     const translatedTitle = await translateText(article.title, targetLang)
     const translatedDescription = article.description
       ? await translateText(article.description, targetLang)
@@ -43,6 +51,7 @@ export async function translateArticle(articleId: string, targetLang: string): P
 
     return {
       success: true,
+      sourceContent,
       translatedContent: {
         title: translatedTitle,
         description: translatedDescription,
@@ -71,6 +80,12 @@ export async function translateCity(cityId: string, targetLang: string): Promise
       return { success: false, error: 'City not found' }
     }
 
+    const sourceContent = {
+      name: city.name_zh,
+      description: city.description_zh,
+      transportTips: city.transportTips_zh,
+    }
+
     const translatedName = await translateText(city.name_zh, targetLang)
     const translatedDescription = city.description_zh
       ? await translateText(city.description_zh, targetLang)
@@ -81,6 +96,7 @@ export async function translateCity(cityId: string, targetLang: string): Promise
 
     return {
       success: true,
+      sourceContent,
       translatedContent: {
         name: translatedName,
         description: translatedDescription,
@@ -107,6 +123,11 @@ export async function translateAnime(animeId: string, targetLang: string): Promi
       return { success: false, error: 'Anime not found' }
     }
 
+    const sourceContent = {
+      name: anime.name,
+      summary: anime.summary,
+    }
+
     const translatedName = await translateText(anime.name, targetLang)
     const translatedSummary = anime.summary
       ? await translateText(anime.summary, targetLang)
@@ -114,6 +135,7 @@ export async function translateAnime(animeId: string, targetLang: string): Promi
 
     return {
       success: true,
+      sourceContent,
       translatedContent: {
         name: translatedName,
         summary: translatedSummary,
