@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import TipTapPreview from '@/components/translation/TipTapPreview'
 
 type TranslationTask = {
   id: string
@@ -88,6 +89,10 @@ export default function TranslationDetailUI({ id }: Props) {
     anime: '动漫',
   }
 
+  const isTipTapContent = (content: any) => {
+    return content && typeof content === 'object' && content.type === 'doc'
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -134,9 +139,13 @@ export default function TranslationDetailUI({ id }: Props) {
           <h2 className="text-lg font-semibold">源内容 (中文)</h2>
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
             {task.sourceContent ? (
-              <pre className="whitespace-pre-wrap text-sm">
-                {JSON.stringify(task.sourceContent, null, 2)}
-              </pre>
+              isTipTapContent(task.sourceContent) ? (
+                <TipTapPreview content={task.sourceContent} mode="preview" />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm">
+                  {JSON.stringify(task.sourceContent, null, 2)}
+                </pre>
+              )
             ) : (
               <p className="text-gray-500">暂无源内容</p>
             )}
@@ -149,9 +158,13 @@ export default function TranslationDetailUI({ id }: Props) {
           </h2>
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             {task.draftContent ? (
-              <pre className="whitespace-pre-wrap text-sm">
-                {JSON.stringify(task.draftContent, null, 2)}
-              </pre>
+              isTipTapContent(task.draftContent) ? (
+                <TipTapPreview content={task.draftContent} mode="preview" />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm">
+                  {JSON.stringify(task.draftContent, null, 2)}
+                </pre>
+              )
             ) : (
               <p className="text-gray-500">翻译尚未生成</p>
             )}
