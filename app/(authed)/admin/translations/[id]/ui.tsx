@@ -27,6 +27,7 @@ export default function TranslationDetailUI({ id }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
+  const [translating, setTranslating] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState<any>(null)
   const [saving, setSaving] = useState(false)
@@ -98,6 +99,29 @@ export default function TranslationDetailUI({ id }: Props) {
     }
   }
 
+  async function handleTranslate() {
+    if (!confirm('确定要执行翻译吗？')) return
+    
+    setTranslating(true)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}/translate`, {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Translation failed')
+      }
+      
+      // Reload task to get updated sourceContent and draftContent
+      await loadTask()
+      alert('翻译完成！')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Translation failed')
+    } finally {
+      setTranslating(false)
+    }
+  }
+
   useEffect(() => {
     void loadTask()
   }, [id])
@@ -154,6 +178,15 @@ export default function TranslationDetailUI({ id }: Props) {
           </div>
         </div>
         <div className="flex gap-2">
+          {(task.status === 'pending' || task.status === 'failed') && (
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className="rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:opacity-50"
+            >
+              {translating ? '翻译中...' : '执行翻译'}
+            </button>
+          )}
           {task.status === 'ready' && task.draftContent && !isEditing && (
             <>
               {isTipTapContent(task.draftContent) && (
