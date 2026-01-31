@@ -22,6 +22,7 @@ const createSchema = z.object({
 const listQuerySchema = z.object({
   scope: z.literal('mine').optional(),
   status: z.enum(['draft', 'in_review', 'rejected', 'published']).optional(),
+  language: z.string().min(2).max(10).optional(),
 })
 
 function toListItem(a: any) {
@@ -107,6 +108,7 @@ export function createHandlers(deps: ArticleApiDeps) {
       const parsed = listQuerySchema.safeParse({
         scope: url.searchParams.get('scope') || undefined,
         status: url.searchParams.get('status') || undefined,
+        language: url.searchParams.get('language') || undefined,
       })
       if (!parsed.success) {
         return NextResponse.json({ error: '参数错误' }, { status: 400 })
@@ -120,7 +122,13 @@ export function createHandlers(deps: ArticleApiDeps) {
       const all = await deps.repo.listByAuthor(session.user.id)
       const status = parsed.data.status as ArticleStatus | undefined
       const filtered = status ? all.filter((a) => a.status === status) : all
-      return NextResponse.json({ ok: true, items: filtered.map(toListItem) })
+
+      const language = parsed.data.language
+      const finalFiltered = language
+        ? filtered.filter((a) => (a.language ?? 'zh') === language)
+        : filtered
+
+      return NextResponse.json({ ok: true, items: finalFiltered.map(toListItem) })
     },
   }
 }

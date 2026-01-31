@@ -14,7 +14,17 @@ export async function GET(req: Request) {
   const q = String(url.searchParams.get('q') || '').trim()
   const limitRaw = url.searchParams.get('limit')
   const limit = limitRaw ? Number(limitRaw) : 12
+  const language = url.searchParams.get('language') || 'zh'
 
   const items = await searchCities(q, limit)
-  return NextResponse.json({ ok: true, items })
+  
+  // Add convenience 'name' field based on language
+  const localized = items.map(city => ({
+    ...city,
+    name: language === 'en' ? (city.name_en || city.name_zh) :
+          language === 'ja' ? (city.name_ja || city.name_zh) :
+          city.name_zh
+  }))
+  
+  return NextResponse.json({ ok: true, items: localized })
 }

@@ -21,12 +21,26 @@ function matches(anime: { id: string; name: string; alias?: string[] }, q: strin
   return false
 }
 
+function getLocalizedName(anime: any, language: string): string {
+  if (language === 'en' && anime.name_en) return anime.name_en
+  if (language === 'ja' && anime.name_ja) return anime.name_ja
+  return anime.name
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const q = url.searchParams.get('q') || ''
+  const language = url.searchParams.get('language') || 'zh'
+  
   const all = await getAllAnime()
   const filtered = all.filter((a) => matches(a, q)).slice(0, 30)
-  return NextResponse.json({ ok: true, items: filtered })
+  
+  const localized = filtered.map(anime => ({
+    ...anime,
+    name: getLocalizedName(anime, language)
+  }))
+  
+  return NextResponse.json({ ok: true, items: localized })
 }
 
 const createSchema = z.object({
