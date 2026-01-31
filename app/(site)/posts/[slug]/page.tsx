@@ -8,7 +8,7 @@ import { buildFAQPageJsonLd } from '@/lib/seo/faqJsonLd'
 import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
 import PostMeta from '@/components/blog/PostMeta'
-import GiscusComments from '@/components/GiscusComments'
+import CommentSection from '@/components/comments/CommentSection'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -165,7 +165,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     })
   )
 
-  const giscusTerm = found.source === 'db' ? found.article.id : found.post.frontmatter.slug
+
   const canonicalSlug = found.source === 'mdx' ? found.post.frontmatter.slug : found.article.slug
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/posts/${encodeSlugForPath(canonicalSlug)}`
@@ -299,7 +299,11 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             )}
             <ProgressiveImagesRuntime />
             <div className="mt-12" />
-            <GiscusComments term={giscusTerm} />
+            {found.source === 'db' ? (
+              <CommentSection articleId={found.article.id} />
+            ) : (
+              <CommentSection mdxSlug={found.post.frontmatter.slug} />
+            )}
           </article>
           </main>
         </div>
