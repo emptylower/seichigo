@@ -3,40 +3,40 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   // Use a direct (non-pooling) connection for Prisma migrations/introspection.
   // On Vercel/Neon this is typically provided as DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING.
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  name          String?
-  email         String?  @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?  @db.Text
-  mustChangePassword Boolean @default(false)
-  disabled      Boolean  @default(false)
-  isAdmin       Boolean  @default(false)
-  bio           String?  @db.Text
-  bilibili      String?
-  weibo         String?
-  github        String?
-  twitter       String?
-  createdAt     DateTime @default(now())
-  accounts      Account[]
-  sessions      Session[]
-  submissions   Submission[]
-  articles      Article[]
-  articleRevisions ArticleRevision[]
-  assets        Asset[]
-  favorites     Favorite[]
-  mdxFavorites  MdxFavorite[]
-  waitlistEntry WaitlistEntry?
-  comments      Comment[]
-  commentLikes  CommentLike[]
+  id                 String            @id @default(cuid())
+  name               String?
+  email              String?           @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?           @db.Text
+  mustChangePassword Boolean           @default(false)
+  disabled           Boolean           @default(false)
+  isAdmin            Boolean           @default(false)
+  bio                String?           @db.Text
+  bilibili           String?
+  weibo              String?
+  github             String?
+  twitter            String?
+  createdAt          DateTime          @default(now())
+  accounts           Account[]
+  sessions           Session[]
+  submissions        Submission[]
+  articles           Article[]
+  articleRevisions   ArticleRevision[]
+  assets             Asset[]
+  favorites          Favorite[]
+  mdxFavorites       MdxFavorite[]
+  waitlistEntry      WaitlistEntry?
+  comments           Comment[]
+  commentLikes       CommentLike[]
 }
 
 model Account {
@@ -76,13 +76,13 @@ model VerificationToken {
 }
 
 model EmailOtp {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   email     String
-  codeHash  String   @db.Text
-  salt      String   @db.Text
+  codeHash  String    @db.Text
+  salt      String    @db.Text
   ipHash    String?
-  attempts  Int      @default(0)
-  createdAt DateTime @default(now())
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
   expiresAt DateTime
   usedAt    DateTime?
 
@@ -91,7 +91,7 @@ model EmailOtp {
 }
 
 model Submission {
-  id              String   @id @default(cuid())
+  id              String           @id @default(cuid())
   userId          String
   title           String
   animeName       String
@@ -99,46 +99,46 @@ model Submission {
   cities          SubmissionCity[]
   contentMarkdown String
   references      String?
-  status          String   @default("pending")
+  status          String           @default("pending")
   ipHash          String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Admin {
-  email  String @id
+  email  String  @id
   active Boolean @default(true)
 }
 
 model Article {
-  id          String   @id @default(cuid())
-  authorId    String
-  slug        String
-  language    String   @default("zh")
+  id                 String        @id @default(cuid())
+  authorId           String
+  slug               String
+  language           String        @default("zh")
   translationGroupId String?
-  title       String
-  seoTitle    String?  @db.Text
-  description String?  @db.Text
-  animeIds    String[] @default([])
-  city        String?
-  cities      ArticleCity[]
-  routeLength String?
-  tags        String[] @default([])
-  cover       String?
-  contentJson Json?
-  contentHtml String   @db.Text @default("")
-  status      String   @default("draft")
-  rejectReason String? @db.Text
-  needsRevision Boolean @default(false)
-  publishedAt DateTime?
-  lastApprovedAt DateTime?
-  favorites   Favorite[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  title              String
+  seoTitle           String?       @db.Text
+  description        String?       @db.Text
+  animeIds           String[]      @default([])
+  city               String?
+  cities             ArticleCity[]
+  routeLength        String?
+  tags               String[]      @default([])
+  cover              String?
+  contentJson        Json?
+  contentHtml        String        @default("") @db.Text
+  status             String        @default("draft")
+  rejectReason       String?       @db.Text
+  needsRevision      Boolean       @default(false)
+  publishedAt        DateTime?
+  lastApprovedAt     DateTime?
+  favorites          Favorite[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
   revisions ArticleRevision[]
 
   @@unique([slug, language])
@@ -183,48 +183,52 @@ model WaitlistEntry {
 }
 
 model ArticleRevision {
-  id          String   @id @default(cuid())
-  articleId   String
-  authorId    String
-  language    String   @default("zh")
+  id                 String                @id @default(cuid())
+  articleId          String
+  authorId           String
+  language           String                @default("zh")
   translationGroupId String?
-  title       String
-  seoTitle    String?  @db.Text
-  description String?  @db.Text
-  animeIds    String[] @default([])
-  city        String?
-  cities      ArticleRevisionCity[]
-  routeLength String?
-  tags        String[] @default([])
-  cover       String?
-  contentJson Json?
-  contentHtml String   @db.Text @default("")
-  status      String   @default("draft")
-  activeKey   String?
-  rejectReason String? @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  title              String
+  seoTitle           String?               @db.Text
+  description        String?               @db.Text
+  animeIds           String[]              @default([])
+  city               String?
+  cities             ArticleRevisionCity[]
+  routeLength        String?
+  tags               String[]              @default([])
+  cover              String?
+  contentJson        Json?
+  contentHtml        String                @default("") @db.Text
+  status             String                @default("draft")
+  activeKey          String?
+  rejectReason       String?               @db.Text
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
+  @@unique([articleId, activeKey])
   @@index([articleId])
   @@index([authorId])
   @@index([status])
   @@index([translationGroupId])
-  @@unique([articleId, activeKey])
 }
 
 model Anime {
-  id        String   @id
-  name      String
-  alias     String[] @default([])
-  year      Int?
-  summary   String?
-  cover     String?
-  hidden    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id
+  name       String
+  alias      String[] @default([])
+  year       Int?
+  summary    String?
+  cover      String?
+  hidden     Boolean  @default(false)
+  name_en    String?
+  name_ja    String?
+  summary_en String?
+  summary_ja String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Asset {
@@ -241,34 +245,34 @@ model Asset {
 }
 
 model City {
-  id              String   @id @default(cuid())
-  slug            String   @unique
-  name_zh         String
-  name_en         String?
-  name_ja         String?
-  description_zh  String?  @db.Text
-  description_en  String?  @db.Text
-  transportTips_zh String? @db.Text
-  transportTips_en String? @db.Text
-  cover           String?
-  needsReview     Boolean  @default(true)
-  hidden          Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name_zh          String
+  name_en          String?
+  name_ja          String?
+  description_zh   String?  @db.Text
+  description_en   String?  @db.Text
+  transportTips_zh String?  @db.Text
+  transportTips_en String?  @db.Text
+  cover            String?
+  needsReview      Boolean  @default(true)
+  hidden           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   aliases         CityAlias[]
   articleLinks    ArticleCity[]
   revisionLinks   ArticleRevisionCity[]
   submissionLinks SubmissionCity[]
-  redirectsToMe   CityRedirect[] @relation("CityRedirectTo")
+  redirectsToMe   CityRedirect[]        @relation("CityRedirectTo")
 }
 
 model CityAlias {
-  id       String  @id @default(cuid())
-  cityId   String
-  alias    String
+  id        String  @id @default(cuid())
+  cityId    String
+  alias     String
   aliasNorm String
-  langCode String?
+  langCode  String?
   isPrimary Boolean @default(false)
 
   city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
@@ -321,20 +325,20 @@ model SubmissionCity {
 }
 
 model Comment {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   articleId   String?
   mdxSlug     String?
   authorId    String
   parentId    String?
-  content     String    @db.Text
-  contentHtml String    @db.Text
-  createdAt   DateTime  @default(now())
-  
-  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent      Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     Comment[] @relation("CommentReplies")
-  likes       CommentLike[]
-  
+  content     String   @db.Text
+  contentHtml String   @db.Text
+  createdAt   DateTime @default(now())
+
+  author  User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[]     @relation("CommentReplies")
+  likes   CommentLike[]
+
   @@index([articleId])
   @@index([mdxSlug])
   @@index([authorId])
@@ -344,10 +348,28 @@ model CommentLike {
   userId    String
   commentId String
   createdAt DateTime @default(now())
-  
+
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  
+
   @@id([userId, commentId])
   @@index([commentId])
+}
+
+model TranslationTask {
+  id             String   @id @default(cuid())
+  entityType     String
+  entityId       String
+  targetLanguage String
+  status         String   @default("pending")
+  sourceContent  Json?
+  draftContent   Json?
+  finalContent   Json?
+  error          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([entityType, entityId, targetLanguage])
+  @@index([status])
+  @@index([entityType, status])
 }
