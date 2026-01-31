@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 
+const TARGET_LANGUAGES = ['en', 'ja'] as const
+
+type TargetLanguage = (typeof TARGET_LANGUAGES)[number]
 type EntityType = 'article' | 'city' | 'anime'
-type TargetLanguage = 'en' | 'ja'
 
 export type UntranslatedItem = {
   entityType: EntityType
@@ -13,10 +15,64 @@ export type UntranslatedItem = {
   missingLanguages: TargetLanguage[]
 }
 
-const TARGET_LANGS: TargetLanguage[] = ['en', 'ja']
+type ArticleRow = {
+  id: string
+  title: string
+  translationGroupId: string | null
+  publishedAt: Date | null
+  createdAt: Date
+}
 
-function isNonEmptyText(v: unknown): v is string {
-  return typeof v === 'string' && v.trim().length > 0
+type CityRow = {
+  id: string
+  name_zh: string
+  name_en: string | null
+  name_ja: string | null
+  description_en: string | null
+  transportTips_en: string | null
+  createdAt: Date
+}
+
+type AnimeRow = {
+  id: string
+  name: string
+  name_en: string | null
+  name_ja: string | null
+  summary_en: string | null
+  summary_ja: string | null
+  createdAt: Date
+}
+
+function dateToIso(d: Date | null | undefined): string {
+  return (d ?? new Date(0)).toISOString()
+}
+
+function hasEntityTranslation(entityType: EntityType, row: CityRow | AnimeRow, lang: TargetLanguage): boolean {
+  // Mirror the detection style in app/api/admin/translations/batch/route.ts.
+  if (entityType === 'city') {
+    const city = row as CityRow
+    if (lang === 'en') return Boolean(city.name_en || city.description_en || city.transportTips_en)
+    return Boolean(city.name_ja)
+  }
+
+  const anime = row as AnimeRow
+  if (lang === 'en') return Boolean(anime.name_en || anime.summary_en)
+  return Boolean(anime.name_ja || anime.summary_ja)
+}
+
+async function getEntityIdsWithTasks(entityType: EntityType, entityIds: string[]): Promise<Set<string>> {
+  if (entityIds.length === 0) return new Set()
+
+  const rows = await prisma.translationTask.findMany({
+    where: {
+      entityType,
+      entityId: { in: entityIds },
+      targetLanguage: { in: TARGET_LANGUAGES as unknown as string[] },
+    },
+    select: { entityId: true },
+  })
+
+  return new Set(rows.map((r) => r.entityId))
 }
 
 export async function GET(req: NextRequest) {
@@ -26,165 +82,147 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const [articles, cities, anime] = await Promise.all([
+      prisma.article.findMany({
+        // Only published articles should be considered.
+        where: { status: 'published' },
+        select: {
+          id: true,
+          title: true,
+          translationGroupId: true,
+          publishedAt: true,
+          createdAt: true,
+        },
+      }) as unknown as Promise<ArticleRow[]>,
+      prisma.city.findMany({
+        // Hidden cities should not be translated.
+        where: { hidden: false },
+        select: {
+          id: true,
+          name_zh: true,
+          name_en: true,
+          name_ja: true,
+          description_en: true,
+          transportTips_en: true,
+          createdAt: true,
+        },
+      }) as unknown as Promise<CityRow[]>,
+      prisma.anime.findMany({
+        // Hidden anime should not be translated.
+        where: { hidden: false },
+        select: {
+          id: true,
+          name: true,
+          name_en: true,
+          name_ja: true,
+          summary_en: true,
+          summary_ja: true,
+          createdAt: true,
+        },
+      }) as unknown as Promise<AnimeRow[]>,
+    ])
+
     const items: UntranslatedItem[] = []
 
     // Articles: translation versions are separate Article rows grouped by translationGroupId.
-    const articleRows = await prisma.article.findMany({
-      where: { status: 'published' },
-      select: {
-        id: true,
-        title: true,
-        translationGroupId: true,
-        publishedAt: true,
-        createdAt: true,
-      },
-    })
+    if (articles.length > 0) {
+      const articleIds = articles.map((a) => a.id)
+      const taskArticleIds = await getEntityIdsWithTasks('article', articleIds)
 
-    const articleIds = articleRows.map((r) => r.id)
-    const articleGroupIds = articleRows.map((r) => r.translationGroupId || r.id)
+      const groupById = new Map(articles.map((a) => [a.id, a.translationGroupId || a.id]))
+      const groupIds = Array.from(new Set(Array.from(groupById.values())))
 
-    const translatedArticleRows = articleGroupIds.length
-      ? await prisma.article.findMany({
-          where: {
-            language: { in: TARGET_LANGS },
-            translationGroupId: { in: articleGroupIds },
-          },
-          select: { language: true, translationGroupId: true },
-        })
-      : []
+      const translated = await prisma.article.findMany({
+        where: {
+          language: { in: TARGET_LANGUAGES as unknown as string[] },
+          translationGroupId: { in: groupIds },
+        },
+        select: {
+          language: true,
+          translationGroupId: true,
+        },
+      }) as unknown as Array<{ language: string; translationGroupId: string | null }>
 
-    const translatedKey = new Set(
-      translatedArticleRows
-        .map((t) => {
-          const gid = t.translationGroupId
-          if (!gid) return null
-          const lang = t.language as TargetLanguage
-          if (lang !== 'en' && lang !== 'ja') return null
-          return `${gid}:${lang}`
-        })
-        .filter(Boolean) as string[]
-    )
+      const approvedKey = new Set(
+        translated
+          .map((t) => {
+            const gid = t.translationGroupId
+            if (!gid) return null
+            return `${gid}:${t.language}`
+          })
+          .filter(Boolean) as string[]
+      )
 
-    // If an entity already has any TranslationTask, exclude it from discovery.
-    const existingArticleTasks = articleIds.length
-      ? await prisma.translationTask.findMany({
-          where: {
-            entityType: 'article',
-            entityId: { in: articleIds },
-            targetLanguage: { in: TARGET_LANGS },
-          },
-          select: { entityId: true },
-        })
-      : []
+      for (const a of articles) {
+        // Filter out entities that already have any TranslationTask.
+        if (taskArticleIds.has(a.id)) continue
 
-    const articleHasAnyTask = new Set(existingArticleTasks.map((t) => t.entityId))
+        const gid = groupById.get(a.id)
+        if (!gid) continue
 
-    for (const r of articleRows) {
-      if (articleHasAnyTask.has(r.id)) continue
-      const gid = r.translationGroupId || r.id
-      const missing: TargetLanguage[] = []
-      for (const lang of TARGET_LANGS) {
-        if (!translatedKey.has(`${gid}:${lang}`)) {
-          missing.push(lang)
+        const missingLanguages: TargetLanguage[] = []
+        for (const lang of TARGET_LANGUAGES) {
+          if (!approvedKey.has(`${gid}:${lang}`)) missingLanguages.push(lang)
         }
-      }
 
-      if (missing.length > 0) {
-        const date = (r.publishedAt || r.createdAt).toISOString()
+        if (missingLanguages.length === 0) continue
+
         items.push({
           entityType: 'article',
-          entityId: r.id,
-          title: r.title,
-          date,
-          missingLanguages: missing,
+          entityId: a.id,
+          title: a.title,
+          date: dateToIso(a.publishedAt ?? a.createdAt),
+          missingLanguages,
         })
       }
     }
 
-    // Cities: column-level i18n; hidden cities should not be translated.
-    const cityRows = await prisma.city.findMany({
-      where: { hidden: false },
-      select: {
-        id: true,
-        name_zh: true,
-        name_en: true,
-        name_ja: true,
-        description_en: true,
-        transportTips_en: true,
-        createdAt: true,
-      },
-    })
+    // Cities: column-based i18n.
+    if (cities.length > 0) {
+      const cityIds = cities.map((c) => c.id)
+      const taskCityIds = await getEntityIdsWithTasks('city', cityIds)
 
-    const cityIds = cityRows.map((r) => r.id)
-    const existingCityTasks = cityIds.length
-      ? await prisma.translationTask.findMany({
-          where: {
-            entityType: 'city',
-            entityId: { in: cityIds },
-            targetLanguage: { in: TARGET_LANGS },
-          },
-          select: { entityId: true },
-        })
-      : []
-    const cityHasAnyTask = new Set(existingCityTasks.map((t) => t.entityId))
+      for (const c of cities) {
+        if (taskCityIds.has(c.id)) continue
 
-    for (const r of cityRows) {
-      if (cityHasAnyTask.has(r.id)) continue
-      const missing: TargetLanguage[] = []
-      if (!isNonEmptyText(r.name_en)) missing.push('en')
-      if (!isNonEmptyText(r.name_ja)) missing.push('ja')
+        const missingLanguages: TargetLanguage[] = []
+        for (const lang of TARGET_LANGUAGES) {
+          if (!hasEntityTranslation('city', c, lang)) missingLanguages.push(lang)
+        }
 
-      if (missing.length > 0) {
+        if (missingLanguages.length === 0) continue
+
         items.push({
           entityType: 'city',
-          entityId: r.id,
-          title: r.name_zh,
-          date: r.createdAt.toISOString(),
-          missingLanguages: missing,
+          entityId: c.id,
+          title: c.name_zh,
+          date: dateToIso(c.createdAt),
+          missingLanguages,
         })
       }
     }
 
-    // Anime: column-level i18n; hidden anime should not be translated.
-    const animeRows = await prisma.anime.findMany({
-      where: { hidden: false },
-      select: {
-        id: true,
-        name: true,
-        name_en: true,
-        name_ja: true,
-        summary_en: true,
-        summary_ja: true,
-        createdAt: true,
-      },
-    })
+    // Anime: column-based i18n.
+    if (anime.length > 0) {
+      const animeIds = anime.map((a) => a.id)
+      const taskAnimeIds = await getEntityIdsWithTasks('anime', animeIds)
 
-    const animeIds = animeRows.map((r) => r.id)
-    const existingAnimeTasks = animeIds.length
-      ? await prisma.translationTask.findMany({
-          where: {
-            entityType: 'anime',
-            entityId: { in: animeIds },
-            targetLanguage: { in: TARGET_LANGS },
-          },
-          select: { entityId: true },
-        })
-      : []
-    const animeHasAnyTask = new Set(existingAnimeTasks.map((t) => t.entityId))
+      for (const a of anime) {
+        if (taskAnimeIds.has(a.id)) continue
 
-    for (const r of animeRows) {
-      if (animeHasAnyTask.has(r.id)) continue
-      const missing: TargetLanguage[] = []
-      if (!isNonEmptyText(r.name_en)) missing.push('en')
-      if (!isNonEmptyText(r.name_ja)) missing.push('ja')
+        const missingLanguages: TargetLanguage[] = []
+        for (const lang of TARGET_LANGUAGES) {
+          if (!hasEntityTranslation('anime', a, lang)) missingLanguages.push(lang)
+        }
 
-      if (missing.length > 0) {
+        if (missingLanguages.length === 0) continue
+
         items.push({
           entityType: 'anime',
-          entityId: r.id,
-          title: r.name,
-          date: r.createdAt.toISOString(),
-          missingLanguages: missing,
+          entityId: a.id,
+          title: a.name,
+          date: dateToIso(a.createdAt),
+          missingLanguages,
         })
       }
     }
@@ -194,9 +232,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items, total: items.length })
   } catch (error) {
     console.error('[api/admin/translations/untranslated] GET failed', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
