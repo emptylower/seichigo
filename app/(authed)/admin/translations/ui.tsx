@@ -26,7 +26,7 @@ type UntranslatedItem = {
 export default function TranslationsUI() {
   const [tasks, setTasks] = useState<TranslationTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('ready')
+  const [filter, setFilter] = useState('pending')
 
   const [untranslatedItems, setUntranslatedItems] = useState<UntranslatedItem[]>([])
   const [untranslatedLoading, setUntranslatedLoading] = useState(true)
