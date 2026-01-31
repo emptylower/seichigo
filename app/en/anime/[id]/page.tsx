@@ -58,7 +58,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: 'Anime not found', robots: { index: false, follow: false } }
   }
 
-  const title = anime?.name || canonicalId
+  const title = anime?.name_en ?? anime?.name ?? canonicalId
   const summary = String(anime?.summary || '').trim()
   const fallback = `Pilgrimage hub page for ${title}. ${posts.length} posts available.`
   const description = summary ? `${summary} ${fallback}` : fallback
@@ -107,7 +107,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
     return notFound()
   }
 
-  const display = anime ?? { id: canonicalId, name: canonicalId, alias: [], summary: '', year: undefined, cover: undefined }
+  const display = anime ?? { id: canonicalId, name: canonicalId, name_en: undefined, summary: '', summary_en: undefined, alias: [], year: undefined, cover: undefined }
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/en/anime/${encodeAnimeIdForPath(canonicalId)}`
 
@@ -176,7 +176,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
 
             <div className="flex-1 space-y-4 text-center md:text-left text-white">
               <div>
-                <h1 className="text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl">{display.name}</h1>
+                <h1 className="text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl">{display.name_en ?? display.name}</h1>
                 {display.alias?.length ? (
                   <p className="mt-2 text-sm text-gray-200 md:text-base">{display.alias.join(' / ')}</p>
                 ) : null}
@@ -193,8 +193,8 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
                 </span>
               </div>
 
-              {display.summary ? (
-                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-100 md:mx-0 md:text-base">{display.summary}</p>
+              {display.summary_en ?? display.summary ? (
+                <p className="mx-auto max-w-2xl text-sm leading-relaxed text-gray-100 md:mx-0 md:text-base">{display.summary_en ?? display.summary}</p>
               ) : (
                 <p className="text-sm italic text-gray-300">No summary yet.</p>
               )}
