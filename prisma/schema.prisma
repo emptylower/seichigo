@@ -35,6 +35,8 @@ model User {
   favorites     Favorite[]
   mdxFavorites  MdxFavorite[]
   waitlistEntry WaitlistEntry?
+  comments      Comment[]
+  commentLikes  CommentLike[]
 }
 
 model Account {
@@ -316,4 +318,36 @@ model SubmissionCity {
 
   @@id([submissionId, cityId])
   @@index([cityId])
+}
+
+model Comment {
+  id          String    @id @default(cuid())
+  articleId   String?
+  mdxSlug     String?
+  authorId    String
+  parentId    String?
+  content     String    @db.Text
+  contentHtml String    @db.Text
+  createdAt   DateTime  @default(now())
+  
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent      Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[] @relation("CommentReplies")
+  likes       CommentLike[]
+  
+  @@index([articleId])
+  @@index([mdxSlug])
+  @@index([authorId])
+}
+
+model CommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+  
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  
+  @@id([userId, commentId])
+  @@index([commentId])
 }
