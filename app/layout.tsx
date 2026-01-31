@@ -4,6 +4,7 @@ import Script from 'next/script'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import { getSiteUrl } from '@/lib/seo/site'
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
+import Providers from '@/components/providers/Providers'
 
 export const metadata: Metadata = {
   title: {
@@ -58,7 +59,9 @@ gtag('js', new Date());
 
 gtag('config', 'G-F7E894BEWR');`}
         </Script>
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   )
