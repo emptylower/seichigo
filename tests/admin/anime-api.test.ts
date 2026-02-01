@@ -81,4 +81,117 @@ describe('admin anime api', () => {
     expect(mocks.getAnimeById).not.toHaveBeenCalled()
     expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
   })
+
+  it('accepts name_en translation field', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: 'btr', name: 'Original', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.upsert.mockResolvedValue({ id: 'btr', name: 'Original', name_en: 'English Name', cover: null, summary: null, hidden: false })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/admin/anime/btr', 'PATCH', { name_en: ' English Name ' }), {
+      params: Promise.resolve({ id: 'btr' }),
+    })
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledTimes(1)
+    const call = mocks.prisma.anime.upsert.mock.calls[0]?.[0]
+    expect(call.update.name_en).toBe('English Name')
+  })
+
+  it('accepts name_ja translation field', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: 'btr', name: 'Original', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.upsert.mockResolvedValue({ id: 'btr', name: 'Original', name_ja: '日本語名', cover: null, summary: null, hidden: false })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/admin/anime/btr', 'PATCH', { name_ja: ' 日本語名 ' }), {
+      params: Promise.resolve({ id: 'btr' }),
+    })
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledTimes(1)
+    const call = mocks.prisma.anime.upsert.mock.calls[0]?.[0]
+    expect(call.update.name_ja).toBe('日本語名')
+  })
+
+  it('accepts summary_en translation field', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: 'btr', name: 'Original', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.upsert.mockResolvedValue({ id: 'btr', name: 'Original', summary_en: 'English summary', cover: null, summary: null, hidden: false })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/admin/anime/btr', 'PATCH', { summary_en: ' English summary ' }), {
+      params: Promise.resolve({ id: 'btr' }),
+    })
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledTimes(1)
+    const call = mocks.prisma.anime.upsert.mock.calls[0]?.[0]
+    expect(call.update.summary_en).toBe('English summary')
+  })
+
+  it('accepts summary_ja translation field', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: 'btr', name: 'Original', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.upsert.mockResolvedValue({ id: 'btr', name: 'Original', summary_ja: '日本語の概要', cover: null, summary: null, hidden: false })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/admin/anime/btr', 'PATCH', { summary_ja: ' 日本語の概要 ' }), {
+      params: Promise.resolve({ id: 'btr' }),
+    })
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledTimes(1)
+    const call = mocks.prisma.anime.upsert.mock.calls[0]?.[0]
+    expect(call.update.summary_ja).toBe('日本語の概要')
+  })
+
+  it('accepts multiple translation fields at once', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: 'btr', name: 'Original', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.upsert.mockResolvedValue({ 
+      id: 'btr', 
+      name: 'Original', 
+      name_en: 'English Name',
+      name_ja: '日本語名',
+      summary_en: 'English summary',
+      summary_ja: '日本語の概要',
+      cover: null, 
+      summary: null, 
+      hidden: false 
+    })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/admin/anime/btr', 'PATCH', { 
+      name_en: 'English Name',
+      name_ja: '日本語名',
+      summary_en: 'English summary',
+      summary_ja: '日本語の概要'
+    }), {
+      params: Promise.resolve({ id: 'btr' }),
+    })
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledTimes(1)
+    const call = mocks.prisma.anime.upsert.mock.calls[0]?.[0]
+    expect(call.update.name_en).toBe('English Name')
+    expect(call.update.name_ja).toBe('日本語名')
+    expect(call.update.summary_en).toBe('English summary')
+    expect(call.update.summary_ja).toBe('日本語の概要')
+  })
 })

@@ -13,8 +13,12 @@ const patchSchema = z.object({
     .max(120)
     .refine((v) => v.trim().length > 0, { message: '作品名不能为空' })
     .optional(),
+  name_en: z.string().nullable().optional(),
+  name_ja: z.string().nullable().optional(),
   cover: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
+  summary_en: z.string().nullable().optional(),
+  summary_ja: z.string().nullable().optional(),
   hidden: z.boolean().optional(),
 })
 
@@ -64,11 +68,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const name = parsed.data.name != null ? parsed.data.name.trim() : undefined
-    const { cover, summary, hidden } = parsed.data
-    const data: { name?: string; cover?: string | null; summary?: string | null; hidden?: boolean } = {}
+    const { cover, summary, summary_en, summary_ja, name_en, name_ja, hidden } = parsed.data
+    const data: { 
+      name?: string
+      name_en?: string | null
+      name_ja?: string | null
+      cover?: string | null
+      summary?: string | null
+      summary_en?: string | null
+      summary_ja?: string | null
+      hidden?: boolean 
+    } = {}
     if (name !== undefined) data.name = name
+    if (name_en !== undefined) data.name_en = name_en == null ? null : name_en.trim() || null
+    if (name_ja !== undefined) data.name_ja = name_ja == null ? null : name_ja.trim() || null
     if (cover !== undefined) data.cover = cover
     if (summary !== undefined) data.summary = summary
+    if (summary_en !== undefined) data.summary_en = summary_en == null ? null : summary_en.trim() || null
+    if (summary_ja !== undefined) data.summary_ja = summary_ja == null ? null : summary_ja.trim() || null
     if (hidden !== undefined) data.hidden = hidden
 
     const updated = await prisma.anime.upsert({
