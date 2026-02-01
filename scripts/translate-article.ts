@@ -87,7 +87,7 @@ function restoreTerms(text: string, terms: Map<string, string>, glossary: Glossa
       const index = match[1]
       // Match variations: {{TERM_0}}, {{ TERM_0 }}, {{term_0}}, etc.
       const regex = new RegExp(`\\{\\{\\s*TERM_${index}\\s*\\}\\}`, 'gi')
-      restored = restored.replace(regex, translation)
+      restored = restored.replaceAll(regex, translation)
     }
   }
   
