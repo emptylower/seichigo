@@ -478,6 +478,116 @@ describe('Translation Service', () => {
     })
   })
 
+  describe('translateArticle - seichiRoute embed translation', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should translate seichiRoute embed data in article content', async () => {
+      const mockArticle = {
+        id: 'article-route-1',
+        title: '测试路线文章',
+        description: '包含路线的文章',
+        seoTitle: 'SEO路线标题',
+        contentJson: {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: '文章开头' }] },
+            {
+              type: 'seichiRoute',
+              attrs: {
+                id: 'r1',
+                data: {
+                  version: 1,
+                  title: '东京动漫巡礼路线',
+                  spots: [
+                    {
+                      id: 's1',
+                      name_zh: '新宿站',
+                      lat: 35.6896,
+                      lng: 139.7006,
+                      nearestStation_zh: '新宿站',
+                      photoTip: '最佳拍摄时间是早上',
+                      note: '注意人流量',
+                      animeScene: '你的名字场景',
+                      googleMapsUrl: 'https://maps.google.com/?q=35.6896,139.7006'
+                    },
+                    {
+                      id: 's2',
+                      name_zh: '涩谷站',
+                      lat: 35.6580,
+                      lng: 139.7016,
+                      nearestStation_zh: '涩谷站',
+                      photoTip: '傍晚光线最好',
+                      note: '周末人多',
+                      animeScene: '天气之子场景',
+                      googleMapsUrl: 'https://maps.google.com/?q=35.6580,139.7016'
+                    }
+                  ]
+                }
+              }
+            },
+            { type: 'paragraph', content: [{ type: 'text', text: '文章结尾' }] }
+          ]
+        }
+      }
+
+      vi.spyOn(prisma.article, 'findUnique').mockResolvedValue(mockArticle as any)
+      vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
+
+      const result = await translateArticle('article-route-1', 'en')
+
+      expect(result.success).toBe(true)
+      expect(result.translatedContent).toBeDefined()
+
+      // Verify text nodes are translated
+      const translatedContent = result.translatedContent.contentJson
+      expect(translatedContent.content[0].content[0].text).toBe('translated_文章开头')
+      expect(translatedContent.content[2].content[0].text).toBe('translated_文章结尾')
+
+      // Verify seichiRoute structure is preserved
+      const routeNode = translatedContent.content[1]
+      expect(routeNode.type).toBe('seichiRoute')
+      expect(routeNode.attrs.id).toBe('r1')
+      expect(routeNode.attrs.data.version).toBe(1)
+
+      // Verify route title is translated
+      expect(routeNode.attrs.data.title).toBe('translated_东京动漫巡礼路线')
+
+      // Verify spot translatable fields are translated
+      const spot1 = routeNode.attrs.data.spots[0]
+      expect(spot1.name_zh).toBe('translated_新宿站')
+      expect(spot1.nearestStation_zh).toBe('translated_新宿站')
+      expect(spot1.photoTip).toBe('translated_最佳拍摄时间是早上')
+      expect(spot1.note).toBe('translated_注意人流量')
+      expect(spot1.animeScene).toBe('translated_你的名字场景')
+
+      const spot2 = routeNode.attrs.data.spots[1]
+      expect(spot2.name_zh).toBe('translated_涩谷站')
+      expect(spot2.nearestStation_zh).toBe('translated_涩谷站')
+      expect(spot2.photoTip).toBe('translated_傍晚光线最好')
+      expect(spot2.note).toBe('translated_周末人多')
+      expect(spot2.animeScene).toBe('translated_天气之子场景')
+
+      // Verify non-translatable fields are preserved exactly
+      expect(spot1.id).toBe('s1')
+      expect(spot1.lat).toBe(35.6896)
+      expect(spot1.lng).toBe(139.7006)
+      expect(spot1.googleMapsUrl).toBe('https://maps.google.com/?q=35.6896,139.7006')
+
+      expect(spot2.id).toBe('s2')
+      expect(spot2.lat).toBe(35.6580)
+      expect(spot2.lng).toBe(139.7016)
+      expect(spot2.googleMapsUrl).toBe('https://maps.google.com/?q=35.6580,139.7016')
+    })
+  })
+
   describe('translateTipTapContent - batch translation', () => {
     beforeEach(() => {
       vi.clearAllMocks()
