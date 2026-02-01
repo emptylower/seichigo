@@ -4,6 +4,7 @@ import { translateAnime, translateCity, translateArticle, translateText, transla
 import { prisma } from '@/lib/db/prisma'
 import { z } from 'zod'
 import type { TipTapNode } from '@/lib/translation/tiptap'
+import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
 
 const retranslateSchema = z.object({
   entityType: z.enum(['anime', 'city', 'article', 'text']),
@@ -77,6 +78,8 @@ export async function POST(req: NextRequest) {
           )
         }
         
+        const contentHtml = renderArticleContentHtmlFromJson(translatedContentJson)
+        
         result = {
           success: true,
           sourceContent: source,
@@ -85,6 +88,7 @@ export async function POST(req: NextRequest) {
             description: translatedDescription,
             seoTitle: translatedSeoTitle,
             contentJson: translatedContentJson,
+            contentHtml,
           },
         }
       } else {

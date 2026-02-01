@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import { z } from 'zod'
+import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
 
 const applySchema = z.object({
   entityType: z.enum(['anime', 'city', 'article']),
@@ -42,7 +43,10 @@ export async function POST(req: NextRequest) {
       if ('title' in preview) updateData.title = preview.title
       if ('description' in preview) updateData.description = preview.description
       if ('seoTitle' in preview) updateData.seoTitle = preview.seoTitle
-      if ('contentJson' in preview) updateData.contentJson = preview.contentJson
+      if ('contentJson' in preview) {
+        updateData.contentJson = preview.contentJson
+        updateData.contentHtml = renderArticleContentHtmlFromJson(preview.contentJson)
+      }
 
       updated = await prisma.translationTask.update({
         where: { id: translationTaskId },

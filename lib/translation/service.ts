@@ -1,6 +1,7 @@
 import { translateText, translateTextBatch, BATCH_SIZE, MAX_BATCH_CHARS } from './gemini'
 import { extractTextNodes, replaceTextNodes, type TipTapNode } from './tiptap'
 import { prisma } from '@/lib/db/prisma'
+import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
 
 export type TranslationResult = {
   success: boolean
@@ -59,6 +60,8 @@ export async function translateArticle(articleId: string, targetLang: string): P
       )
     }
 
+    const contentHtml = renderArticleContentHtmlFromJson(translatedContentJson)
+
     return {
       success: true,
       sourceContent,
@@ -67,6 +70,7 @@ export async function translateArticle(articleId: string, targetLang: string): P
         description: translatedDescription,
         seoTitle: translatedSeoTitle,
         contentJson: translatedContentJson,
+        contentHtml,
         cover: article.cover,
         animeIds: article.animeIds,
         city: article.city,
