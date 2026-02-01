@@ -6,7 +6,17 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     translationHistory: {
       findMany: vi.fn(),
+      create: vi.fn(),
     },
+    translationTask: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    article: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -18,8 +28,28 @@ vi.mock('@/lib/db/prisma', () => ({
   prisma: mocks.prisma,
 }))
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}))
+
 function jsonReq(url: string, method: string): NextRequest {
   return new NextRequest(url, { method })
+}
+
+function jsonReqWithBody(url: string, method: string, body: unknown): NextRequest {
+  return new NextRequest(url, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+// Keep module resolution from failing in RED phase when the route file doesn't exist yet.
+const updatePublishedRoutePath: string =
+  'app/api/admin/translations/[id]/update-published/route'
+
+async function importUpdatePublishedHandlers(): Promise<any> {
+  return import(/* @vite-ignore */ updatePublishedRoutePath)
 }
 
 describe('translation history API', () => {
@@ -174,6 +204,216 @@ describe('translation history API', () => {
 
       expect(res.status).toBe(401)
       expect(mocks.prisma.translationHistory.findMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('update-published', () => {
+    beforeEach(() => {
+      // Mirror typical Prisma transaction usage in route handlers.
+      mocks.prisma.$transaction.mockImplementation(async (cbOrOps: any) => {
+        if (typeof cbOrOps === 'function') return cbOrOps(mocks.prisma)
+        return Promise.all(cbOrOps)
+      })
+    })
+
+    it('successfully updates a published article', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      const oldContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Old body' }] },
+        ],
+      }
+      const newContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'New body' }] },
+        ],
+      }
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+        draftContent: {
+          title: 'New Title',
+          description: 'New Description',
+          contentJson: newContentJson,
+          contentHtml: '<p>New body</p>',
+        },
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        title: 'Old Title',
+        description: 'Old Description',
+        contentJson: oldContentJson,
+        contentHtml: '<p>Old body</p>',
+        slug: 'test-article',
+        updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+      })
+
+      mocks.prisma.translationHistory.create.mockResolvedValue({ id: 'hist-1' })
+      mocks.prisma.article.update.mockResolvedValue({ id: 'article-en-1' })
+
+      const handlers = await importUpdatePublishedHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody(
+          'http://localhost/api/admin/translations/task-1/update-published',
+          'POST',
+          { articleUpdatedAt: '2026-02-01T00:00:00.000Z' }
+        ),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(200)
+
+      expect(mocks.prisma.translationHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          translationTaskId: 'task-1',
+          articleId: 'article-en-1',
+          createdById: 'admin-1',
+          content: expect.objectContaining({
+            title: 'Old Title',
+            description: 'Old Description',
+            contentJson: oldContentJson,
+            contentHtml: '<p>Old body</p>',
+          }),
+        }),
+      })
+
+      expect(mocks.prisma.article.update).toHaveBeenCalledWith({
+        where: { id: 'article-en-1' },
+        data: expect.objectContaining({
+          title: 'New Title',
+          description: 'New Description',
+          contentJson: newContentJson,
+          contentHtml: '<p>New body</p>',
+        }),
+      })
+    })
+
+    it('returns 400 when contentJson is empty', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+        draftContent: {
+          title: 'New Title',
+          contentJson: { type: 'doc', content: [] },
+        },
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+        contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [] }] },
+      })
+
+      const handlers = await importUpdatePublishedHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody(
+          'http://localhost/api/admin/translations/task-1/update-published',
+          'POST',
+          { articleUpdatedAt: '2026-02-01T00:00:00.000Z' }
+        ),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(400)
+      const j = await res.json()
+      expect(j.error).toBeTruthy()
+      expect(mocks.prisma.translationHistory.create).not.toHaveBeenCalled()
+      expect(mocks.prisma.article.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 when there is a concurrency conflict', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+        draftContent: {
+          title: 'New Title',
+          contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [] }] },
+        },
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        updatedAt: new Date('2026-02-02T00:00:00.000Z'),
+        contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [] }] },
+      })
+
+      const handlers = await importUpdatePublishedHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody(
+          'http://localhost/api/admin/translations/task-1/update-published',
+          'POST',
+          { articleUpdatedAt: '2026-02-01T00:00:00.000Z' }
+        ),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(409)
+      const j = await res.json()
+      expect(j.error).toBeTruthy()
+      expect(mocks.prisma.translationHistory.create).not.toHaveBeenCalled()
+      expect(mocks.prisma.article.update).not.toHaveBeenCalled()
+    })
+
+    it('creates a history snapshot before updating the article', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+        draftContent: {
+          title: 'New Title',
+          contentJson: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'New' }] }],
+          },
+        },
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        title: 'Old Title',
+        contentJson: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Old' }] }],
+        },
+        updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+      })
+
+      mocks.prisma.translationHistory.create.mockResolvedValue({ id: 'hist-1' })
+      mocks.prisma.article.update.mockResolvedValue({ id: 'article-en-1' })
+
+      const handlers = await importUpdatePublishedHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody(
+          'http://localhost/api/admin/translations/task-1/update-published',
+          'POST',
+          { articleUpdatedAt: '2026-02-01T00:00:00.000Z' }
+        ),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(200)
+
+      const createOrder = mocks.prisma.translationHistory.create.mock.invocationCallOrder[0]
+      const updateOrder = mocks.prisma.article.update.mock.invocationCallOrder[0]
+      expect(createOrder).toBeLessThan(updateOrder)
     })
   })
 })
