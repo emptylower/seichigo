@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
@@ -15,8 +15,56 @@ const LABELS: Record<SiteLocale, string> = {
   ja: '日本語',
 }
 
+function isArticlePage(pathname: string): boolean {
+  return pathname.includes('/posts/')
+}
+
+function extractSlugFromPathname(pathname: string, locale: SiteLocale): string {
+  const match = pathname.match(/\/posts\/([^/]+)/)
+  return match ? match[1] : ''
+}
+
+async function fetchTranslatedSlug(
+  slug: string,
+  currentLang: string,
+  targetLang: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `/api/articles/translations?slug=${encodeURIComponent(slug)}&currentLang=${currentLang}&targetLang=${targetLang}`
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.translatedSlug || null
+  } catch {
+    return null
+  }
+}
+
 export default function LanguageSwitcher({ locale }: Props) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLanguageClick = async (targetLocale: SiteLocale, e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isArticlePage(pathname)) return
+
+    e.preventDefault()
+
+    const slug = extractSlugFromPathname(pathname, locale)
+    if (!slug) {
+      router.push(prefixPath(pathname, targetLocale))
+      return
+    }
+
+    const translatedSlug = await fetchTranslatedSlug(slug, locale, targetLocale)
+
+    if (translatedSlug) {
+      const targetPath = targetLocale === 'zh' ? `/posts/${translatedSlug}` : `/${targetLocale}/posts/${translatedSlug}`
+      router.push(targetPath)
+    } else {
+      router.push(prefixPath(pathname, targetLocale))
+    }
+  }
 
   return (
     <details className="relative">
@@ -34,6 +82,7 @@ export default function LanguageSwitcher({ locale }: Props) {
           <Link
             key={l}
             href={prefixPath(pathname, l)}
+            onClick={(e) => handleLanguageClick(l, e)}
             className={`block rounded-lg px-3 py-2 text-sm ${
               l === locale ? 'bg-pink-50 text-brand-600 font-medium' : 'text-gray-700 hover:bg-gray-50'
             }`}
