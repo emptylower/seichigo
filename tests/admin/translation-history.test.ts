@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     translationHistory: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       create: vi.fn(),
     },
     translationTask: {
@@ -50,6 +51,25 @@ const updatePublishedRoutePath: string =
 
 async function importUpdatePublishedHandlers(): Promise<any> {
   return import(/* @vite-ignore */ updatePublishedRoutePath)
+}
+
+// Keep module resolution from failing in RED phase when the route file doesn't exist yet.
+const rollbackRoutePath: string = 'app/api/admin/translations/[id]/rollback/route'
+
+async function importRollbackHandlers(): Promise<any> {
+  try {
+    return await import(/* @vite-ignore */ rollbackRoutePath)
+  } catch {
+    // RED phase: route may not exist yet. Return a placeholder handler so
+    // assertions run and fail meaningfully until the real API is implemented.
+    return {
+      POST: async () =>
+        new Response(JSON.stringify({ error: 'rollback route not implemented' }), {
+          status: 501,
+          headers: { 'content-type': 'application/json' },
+        }),
+    }
+  }
 }
 
 describe('translation history API', () => {
@@ -414,6 +434,193 @@ describe('translation history API', () => {
       const createOrder = mocks.prisma.translationHistory.create.mock.invocationCallOrder[0]
       const updateOrder = mocks.prisma.article.update.mock.invocationCallOrder[0]
       expect(createOrder).toBeLessThan(updateOrder)
+    })
+  })
+
+  describe('rollback', () => {
+    beforeEach(() => {
+      // Mirror typical Prisma transaction usage in route handlers.
+      mocks.prisma.$transaction.mockImplementation(async (cbOrOps: any) => {
+        if (typeof cbOrOps === 'function') return cbOrOps(mocks.prisma)
+        return Promise.all(cbOrOps)
+      })
+    })
+
+    it('successfully rolls back to a historical version', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      const currentContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Current body' }] },
+        ],
+      }
+      const rollbackContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Rolled back body' }] },
+        ],
+      }
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        title: 'Current Title',
+        description: 'Current Description',
+        contentJson: currentContentJson,
+        contentHtml: '<p>Current body</p>',
+      })
+
+      mocks.prisma.translationHistory.findUnique.mockResolvedValue({
+        id: 'hist-1',
+        translationTaskId: 'task-1',
+        articleId: 'article-en-1',
+        content: {
+          title: 'Old Title',
+          description: 'Old Description',
+          contentJson: rollbackContentJson,
+          contentHtml: '<p>Rolled back body</p>',
+        },
+      })
+
+      mocks.prisma.translationHistory.create.mockResolvedValue({ id: 'hist-snap-1' })
+      mocks.prisma.article.update.mockResolvedValue({ id: 'article-en-1' })
+
+      const handlers = await importRollbackHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody('http://localhost/api/admin/translations/task-1/rollback', 'POST', {
+          historyId: 'hist-1',
+        }),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(200)
+
+      // Should snapshot current article before rollback.
+      expect(mocks.prisma.translationHistory.create).toHaveBeenCalled()
+
+      // Should rollback the article to historical content.
+      expect(mocks.prisma.article.update).toHaveBeenCalledWith({
+        where: { id: 'article-en-1' },
+        data: expect.objectContaining({
+          title: 'Old Title',
+          description: 'Old Description',
+          contentJson: rollbackContentJson,
+          contentHtml: '<p>Rolled back body</p>',
+        }),
+      })
+    })
+
+    it('creates a snapshot of current version before rolling back', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      const currentContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Current body' }] },
+        ],
+      }
+      const rollbackContentJson = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Rolled back body' }] },
+        ],
+      }
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+      })
+
+      mocks.prisma.article.findFirst.mockResolvedValue({
+        id: 'article-en-1',
+        title: 'Current Title',
+        description: 'Current Description',
+        contentJson: currentContentJson,
+        contentHtml: '<p>Current body</p>',
+      })
+
+      mocks.prisma.translationHistory.findUnique.mockResolvedValue({
+        id: 'hist-1',
+        translationTaskId: 'task-1',
+        articleId: 'article-en-1',
+        content: {
+          title: 'Old Title',
+          description: 'Old Description',
+          contentJson: rollbackContentJson,
+          contentHtml: '<p>Rolled back body</p>',
+        },
+      })
+
+      mocks.prisma.translationHistory.create.mockResolvedValue({ id: 'hist-snap-1' })
+      mocks.prisma.article.update.mockResolvedValue({ id: 'article-en-1' })
+
+      const handlers = await importRollbackHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody('http://localhost/api/admin/translations/task-1/rollback', 'POST', {
+          historyId: 'hist-1',
+        }),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(200)
+
+      // Snapshot must be created from CURRENT content, not the rollback target.
+      expect(mocks.prisma.translationHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          translationTaskId: 'task-1',
+          articleId: 'article-en-1',
+          createdById: 'admin-1',
+          content: expect.objectContaining({
+            title: 'Current Title',
+            description: 'Current Description',
+            contentJson: currentContentJson,
+            contentHtml: '<p>Current body</p>',
+          }),
+        }),
+      })
+
+      const createOrder = mocks.prisma.translationHistory.create.mock.invocationCallOrder[0]
+      const updateOrder = mocks.prisma.article.update.mock.invocationCallOrder[0]
+      expect(createOrder).toBeLessThan(updateOrder)
+
+      // Guard against the historical "empty content" regression: rolled back contentJson must not be empty.
+      const updateArg = mocks.prisma.article.update.mock.calls[0]?.[0]
+      const updatedContentJson = updateArg?.data?.contentJson
+      expect(updatedContentJson?.content?.length).toBeGreaterThan(0)
+    })
+
+    it('returns 404 when history version does not exist', async () => {
+      mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+      mocks.prisma.translationTask.findUnique.mockResolvedValue({
+        id: 'task-1',
+        entityType: 'article',
+        entityId: 'article-1',
+        targetLanguage: 'en',
+      })
+
+      mocks.prisma.translationHistory.findUnique.mockResolvedValue(null)
+
+      const handlers = await importRollbackHandlers()
+      const res = await handlers.POST(
+        jsonReqWithBody('http://localhost/api/admin/translations/task-1/rollback', 'POST', {
+          historyId: 'hist-does-not-exist',
+        }),
+        { params: Promise.resolve({ id: 'task-1' }) }
+      )
+
+      expect(res.status).toBe(404)
+      expect(mocks.prisma.translationHistory.create).not.toHaveBeenCalled()
+      expect(mocks.prisma.article.update).not.toHaveBeenCalled()
     })
   })
 })
