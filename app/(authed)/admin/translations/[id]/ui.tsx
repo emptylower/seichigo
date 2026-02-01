@@ -362,106 +362,101 @@ export default function TranslationDetailUI({ id }: Props) {
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-7xl px-0 lg:px-4">
-        <div className="flex items-start gap-12">
-          <aside className="hidden lg:block lg:sticky lg:top-24 lg:shrink-0 lg:w-72">
-            <ArticleToc />
-          </aside>
-          <main className="min-w-0 flex-1 pb-24">
-            <article className="prose prose-pink max-w-none w-full" data-seichi-article-content="true">
-              <div className="not-prose mb-4">
-                <Breadcrumbs items={breadcrumbItems} />
-              </div>
+      <div className="mx-auto w-full px-4 lg:px-8">
+        <main className="pb-24">
+          <article className="prose prose-pink max-w-none w-full" data-seichi-article-content="true">
+            <div className="not-prose mb-4">
+              <Breadcrumbs items={breadcrumbItems} />
+            </div>
 
-              <div className="mb-8 not-prose">
-                <PostMeta 
-                  anime={[]} 
-                  publishDate={new Date(task.createdAt).toLocaleDateString()} 
-                />
-              </div>
+            <div className="mb-8 not-prose">
+              <PostMeta 
+                anime={[]} 
+                publishDate={new Date(task.createdAt).toLocaleDateString()} 
+              />
+            </div>
 
-              {isEditing && (
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      标题
-                    </label>
-                    <input
-                      type="text"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                      value={editedContent?.title || ''}
-                      onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      SEO 标题
-                    </label>
-                    <input
-                      type="text"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                      value={editedContent?.seoTitle || ''}
-                      onChange={(e) => setEditedContent({ ...editedContent, seoTitle: e.target.value })}
-                      placeholder="留空则使用标题"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      描述
-                    </label>
-                    <textarea
-                      rows={3}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                      value={editedContent?.description || ''}
-                      onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
-                      placeholder="用于搜索结果摘要"
-                    />
-                  </div>
+            {isEditing && (
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    标题
+                  </label>
+                  <input
+                    type="text"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                    value={editedContent?.title || ''}
+                    onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
+                  />
                 </div>
-              )}
-
-              <div className="rounded-lg bg-white min-h-[500px] relative">
-                {isEditing && editor && (
-                  <BubbleMenu editor={editor}>
-                    <div className="flex items-center gap-1 rounded bg-white p-1 shadow-lg ring-1 ring-gray-200">
-                      <button
-                        onClick={handleSelectedTextRetranslate}
-                        className="rounded px-2 py-1 text-sm text-purple-600 hover:bg-purple-50"
-                      >
-                        ✨ 重译选中
-                      </button>
-                    </div>
-                  </BubbleMenu>
-                )}
-                
-                {task.draftContent ? (
-                  (() => {
-                    const contentJson = getContentJson(isEditing ? editedContent : task.draftContent)
-                    if (contentJson) {
-                      return (
-                        <TipTapPreview 
-                          content={contentJson}
-                          mode={isEditing ? 'edit' : 'preview'}
-                          onChange={(newContent) => {
-                            setEditedContent({ ...editedContent, contentJson: newContent })
-                          }}
-                          onEditorReady={setEditor}
-                        />
-                      )
-                    }
-                    return (
-                      <pre className="whitespace-pre-wrap text-sm">
-                        {JSON.stringify(task.draftContent, null, 2)}
-                      </pre>
-                    )
-                  })()
-                ) : (
-                  <p className="text-gray-500 p-4">翻译尚未生成</p>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    SEO 标题
+                  </label>
+                  <input
+                    type="text"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                    value={editedContent?.seoTitle || ''}
+                    onChange={(e) => setEditedContent({ ...editedContent, seoTitle: e.target.value })}
+                    placeholder="留空则使用标题"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    描述
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                    value={editedContent?.description || ''}
+                    onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
+                    placeholder="用于搜索结果摘要"
+                  />
+                </div>
               </div>
-            </article>
-          </main>
-        </div>
+            )}
+
+            <div className="rounded-lg bg-white min-h-[500px] relative">
+              {isEditing && editor && (
+                <BubbleMenu editor={editor}>
+                  <div className="flex items-center gap-1 rounded bg-white p-1 shadow-lg ring-1 ring-gray-200">
+                    <button
+                      onClick={handleSelectedTextRetranslate}
+                      className="rounded px-2 py-1 text-sm text-purple-600 hover:bg-purple-50"
+                    >
+                      ✨ 重译选中
+                    </button>
+                  </div>
+                </BubbleMenu>
+              )}
+              
+              {task.draftContent ? (
+                (() => {
+                  const contentJson = getContentJson(isEditing ? editedContent : task.draftContent)
+                  if (contentJson) {
+                    return (
+                      <TipTapPreview 
+                        content={contentJson}
+                        mode={isEditing ? 'edit' : 'preview'}
+                        onChange={(newContent) => {
+                          setEditedContent({ ...editedContent, contentJson: newContent })
+                        }}
+                        onEditorReady={setEditor}
+                      />
+                    )
+                  }
+                  return (
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {JSON.stringify(task.draftContent, null, 2)}
+                    </pre>
+                  )
+                })()
+              ) : (
+                <p className="text-gray-500 p-4">翻译尚未生成</p>
+              )}
+            </div>
+          </article>
+        </main>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
