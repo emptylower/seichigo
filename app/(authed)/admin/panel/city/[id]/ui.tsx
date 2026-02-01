@@ -20,8 +20,10 @@ type CityDetail = {
   name_ja?: string | null
   description_zh?: string | null
   description_en?: string | null
+  description_ja?: string | null
   transportTips_zh?: string | null
   transportTips_en?: string | null
+  transportTips_ja?: string | null
   cover?: string | null
   needsReview?: boolean
   hidden?: boolean
@@ -30,16 +32,46 @@ type CityDetail = {
 
 type DetailResponse = { ok: true; city: CityDetail } | { error: string }
 
+type Tab = 'zh' | 'en' | 'ja'
+
+type RetranslatePreview = {
+  name?: string
+  description?: string
+  transportTips?: string
+}
+
 export default function AdminCityDetailClient({ id }: { id: string }) {
   const [city, setCity] = useState<CityDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [activeTab, setActiveTab] = useState<Tab>('zh')
+
+  const [nameZh, setNameZh] = useState('')
+  const [nameEn, setNameEn] = useState('')
+  const [nameJa, setNameJa] = useState('')
+
+  const [descZh, setDescZh] = useState('')
+  const [descEn, setDescEn] = useState('')
+  const [descJa, setDescJa] = useState('')
+
+  const [tipsZh, setTipsZh] = useState('')
+  const [tipsEn, setTipsEn] = useState('')
+  const [tipsJa, setTipsJa] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const [aliasDraft, setAliasDraft] = useState('')
   const [mergeTarget, setMergeTarget] = useState('')
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showFailureModal, setShowFailureModal] = useState(false)
+  const [failureMessage, setFailureMessage] = useState('')
+
+  const [showRetranslateModal, setShowRetranslateModal] = useState(false)
+  const [retranslatePreview, setRetranslatePreview] = useState<RetranslatePreview | null>(null)
+  const [retranslateLoading, setRetranslateLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -52,6 +84,19 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       return
     }
     setCity(data.city)
+    
+    setNameZh(data.city.name_zh || '')
+    setNameEn(data.city.name_en || '')
+    setNameJa(data.city.name_ja || '')
+    
+    setDescZh(data.city.description_zh || '')
+    setDescEn(data.city.description_en || '')
+    setDescJa(data.city.description_ja || '')
+    
+    setTipsZh(data.city.transportTips_zh || '')
+    setTipsEn(data.city.transportTips_en || '')
+    setTipsJa(data.city.transportTips_ja || '')
+    
     setLoading(false)
   }
 
@@ -59,7 +104,7 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
     void load()
   }, [id])
 
-  async function patchCity(patch: Partial<CityDetail>) {
+  async function patchCity(patch: Partial<CityDetail>, refreshFields = true) {
     setSaving(true)
     setSaveMessage(null)
     try {
@@ -70,11 +115,121 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.ok) throw new Error(data?.error || '保存失败')
-      setCity(data.city)
+      
+      const updatedCity = data.city
+      setCity(updatedCity)
+      
+      if (refreshFields) {
+        if (patch.name_zh !== undefined) setNameZh(updatedCity.name_zh || '')
+        if (patch.name_en !== undefined) setNameEn(updatedCity.name_en || '')
+        if (patch.name_ja !== undefined) setNameJa(updatedCity.name_ja || '')
+        
+        if (patch.description_zh !== undefined) setDescZh(updatedCity.description_zh || '')
+        if (patch.description_en !== undefined) setDescEn(updatedCity.description_en || '')
+        if (patch.description_ja !== undefined) setDescJa(updatedCity.description_ja || '')
+        
+        if (patch.transportTips_zh !== undefined) setTipsZh(updatedCity.transportTips_zh || '')
+        if (patch.transportTips_en !== undefined) setTipsEn(updatedCity.transportTips_en || '')
+        if (patch.transportTips_ja !== undefined) setTipsJa(updatedCity.transportTips_ja || '')
+      }
+      
       setSaveMessage('已保存')
       setTimeout(() => setSaveMessage(null), 1500)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function onSaveCurrentTab() {
+    setSaving(true)
+    try {
+      const payload: Partial<CityDetail> = {}
+      if (activeTab === 'zh') {
+        if (!nameZh.trim()) throw new Error('中文名不能为空')
+        payload.name_zh = nameZh.trim()
+        payload.description_zh = descZh
+        payload.transportTips_zh = tipsZh
+      } else if (activeTab === 'en') {
+        payload.name_en = nameEn.trim() || null
+        payload.description_en = descEn
+        payload.transportTips_en = tipsEn
+      } else if (activeTab === 'ja') {
+        payload.name_ja = nameJa.trim() || null
+        payload.description_ja = descJa
+        payload.transportTips_ja = tipsJa
+      }
+      
+      await patchCity(payload, false)
+      setShowSuccessModal(true)
+    } catch (err: any) {
+      setFailureMessage(err.message)
+      setShowFailureModal(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function onRetranslate() {
+    if (activeTab === 'zh') return
+    
+    setRetranslateLoading(true)
+    try {
+      const res = await fetch('/api/admin/retranslate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'city',
+          entityId: id,
+          targetLang: activeTab
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '翻译失败')
+      
+      setRetranslatePreview(data.preview)
+      setShowRetranslateModal(true)
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setRetranslateLoading(false)
+    }
+  }
+
+  async function onApplyTranslation() {
+    if (!retranslatePreview) return
+    
+    setRetranslateLoading(true)
+    try {
+      const res = await fetch('/api/admin/retranslate/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'city',
+          entityId: id,
+          targetLang: activeTab,
+          preview: retranslatePreview
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '应用失败')
+      
+      if (activeTab === 'en') {
+        if (retranslatePreview.name) setNameEn(retranslatePreview.name)
+        if (retranslatePreview.description) setDescEn(retranslatePreview.description)
+        if (retranslatePreview.transportTips) setTipsEn(retranslatePreview.transportTips)
+      } else if (activeTab === 'ja') {
+        if (retranslatePreview.name) setNameJa(retranslatePreview.name)
+        if (retranslatePreview.description) setDescJa(retranslatePreview.description)
+        if (retranslatePreview.transportTips) setTipsJa(retranslatePreview.transportTips)
+      }
+      
+      setShowRetranslateModal(false)
+      setSaveMessage('已应用并保存')
+      setTimeout(() => setSaveMessage(null), 2000)
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setRetranslateLoading(false)
     }
   }
 
@@ -166,7 +321,7 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
           value={city.cover ?? null}
           onChange={(next) => setCity((prev) => (prev ? { ...prev, cover: next ?? null } : prev))}
           onSave={async (url) => {
-            await patchCity({ cover: url ?? null })
+            await patchCity({ cover: url ?? null }, false)
           }}
           aspectRatio={4 / 3}
           label="城市封面"
@@ -175,116 +330,166 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
         />
       </section>
 
-      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="font-semibold text-gray-900">基本信息</h2>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium">中文名</label>
-            <input
-              className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
-              value={city.name_zh}
-              onChange={(e) => setCity((prev) => (prev ? { ...prev, name_zh: e.target.value } : prev))}
-              disabled={saving}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">英文名</label>
-            <input
-              className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
-              value={city.name_en ?? ''}
-              onChange={(e) => setCity((prev) => (prev ? { ...prev, name_en: e.target.value } : prev))}
-              disabled={saving}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">日文名</label>
-            <input
-              className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
-              value={city.name_ja ?? ''}
-              onChange={(e) => setCity((prev) => (prev ? { ...prev, name_ja: e.target.value } : prev))}
-              disabled={saving}
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <Button
-              type="button"
-              onClick={() =>
-                void patchCity({
-                  name_zh: city.name_zh,
-                  name_en: city.name_en ?? null,
-                  name_ja: city.name_ja ?? null,
-                  needsReview: Boolean(city.needsReview),
-                  hidden: Boolean(city.hidden),
-                })
-              }
-              disabled={saving || !city.name_zh.trim()}
-            >
-              {saving ? '保存中…' : '保存'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void patchCity({ needsReview: false })}
-              disabled={saving || !city.needsReview}
-            >
-              标记已完善
-            </Button>
-          </div>
+      <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-gray-200 px-6">
+          <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+            {(['zh', 'en', 'ja'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`
+                  whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                  ${activeTab === tab
+                    ? 'border-brand-500 text-brand-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                {tab === 'zh' ? '中文 (Original)' : tab === 'en' ? 'English' : '日本語'}
+              </button>
+            ))}
+          </nav>
         </div>
 
-        <div className="grid grid-cols-1 gap-3">
-          <div>
-            <label className="block text-sm font-medium">中文简介</label>
-            <textarea
-              className="mt-2 min-h-24 w-full resize-y rounded-md border px-3 py-2 text-sm"
-              value={city.description_zh ?? ''}
-              onChange={(e) => setCity((prev) => (prev ? { ...prev, description_zh: e.target.value } : prev))}
-              disabled={saving}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">交通小贴士（中文）</label>
-            <textarea
-              className="mt-2 min-h-20 w-full resize-y rounded-md border px-3 py-2 text-sm"
-              value={city.transportTips_zh ?? ''}
-              onChange={(e) => setCity((prev) => (prev ? { ...prev, transportTips_zh: e.target.value } : prev))}
-              disabled={saving}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={Boolean(city.hidden)}
-                onChange={(e) => setCity((prev) => (prev ? { ...prev, hidden: e.target.checked } : prev))}
-                disabled={saving}
-              />
-              隐藏城市
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={Boolean(city.needsReview)}
-                onChange={(e) => setCity((prev) => (prev ? { ...prev, needsReview: e.target.checked } : prev))}
-                disabled={saving}
-              />
-              待完善
-            </label>
-            <Button
-              type="button"
-              onClick={() =>
-                void patchCity({
-                  description_zh: city.description_zh ?? null,
-                  transportTips_zh: city.transportTips_zh ?? null,
-                  hidden: Boolean(city.hidden),
-                  needsReview: Boolean(city.needsReview),
-                })
-              }
-              disabled={saving}
-            >
-              {saving ? '保存中…' : '保存扩展信息'}
-            </Button>
+        <div className="p-6 space-y-6">
+          {activeTab === 'zh' ? (
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">中文名</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={nameZh}
+                  onChange={(e) => setNameZh(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">中文简介</label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={descZh}
+                  onChange={(e) => setDescZh(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">交通小贴士 (中文)</label>
+                <textarea
+                  className="min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={tipsZh}
+                  onChange={(e) => setTipsZh(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+            </>
+          ) : activeTab === 'en' ? (
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">English Name</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={nameEn}
+                  onChange={(e) => setNameEn(e.target.value)}
+                  disabled={saving}
+                  placeholder="Enter English name..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Description (English)</label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={descEn}
+                  onChange={(e) => setDescEn(e.target.value)}
+                  disabled={saving}
+                  placeholder="Enter English description..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Transport Tips (English)</label>
+                <textarea
+                  className="min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={tipsEn}
+                  onChange={(e) => setTipsEn(e.target.value)}
+                  disabled={saving}
+                  placeholder="Enter English transport tips..."
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">都市名 (日本語)</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={nameJa}
+                  onChange={(e) => setNameJa(e.target.value)}
+                  disabled={saving}
+                  placeholder="日本語の都市名..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">紹介 (日本語)</label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={descJa}
+                  onChange={(e) => setDescJa(e.target.value)}
+                  disabled={saving}
+                  placeholder="紹介を入力..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">交通アクセス (日本語)</label>
+                <textarea
+                  className="min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  value={tipsJa}
+                  onChange={(e) => setTipsJa(e.target.value)}
+                  disabled={saving}
+                  placeholder="交通アクセスを入力..."
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
+              {activeTab !== 'zh' ? (
+                <Button variant="ghost" onClick={onRetranslate} disabled={saving || retranslateLoading}>
+                  {retranslateLoading ? '翻译中…' : 'AI 重新翻译'}
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(city.hidden)}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                    setCity((prev) => (prev ? { ...prev, hidden: next } : prev))
+                    void patchCity({ hidden: next }, false)
+                  }}
+                  disabled={saving}
+                />
+                隐藏城市
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(city.needsReview)}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                    setCity((prev) => (prev ? { ...prev, needsReview: next } : prev))
+                    void patchCity({ needsReview: next }, false)
+                  }}
+                  disabled={saving}
+                />
+                待完善
+              </label>
+              <Button onClick={onSaveCurrentTab} disabled={saving}>
+                {saving ? '保存中…' : '保存当前语言'}
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -340,6 +545,114 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
           </Button>
         </div>
       </section>
+
+      {showSuccessModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="px-6 py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">保存成功</h3>
+              <p className="mt-2 text-sm text-gray-600">内容已更新。</p>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4">
+              <Button 
+                className="w-full justify-center" 
+                onClick={() => setShowSuccessModal(false)}
+              >
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showFailureModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="px-6 py-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">保存失败</h3>
+              <p className="mt-2 text-sm text-gray-600">{failureMessage || '发生未知错误'}</p>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4">
+              <Button 
+                variant="ghost" 
+                className="w-full justify-center" 
+                onClick={() => setShowFailureModal(false)}
+              >
+                关闭
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRetranslateModal && retranslatePreview ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl max-h-[90vh]">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">AI 翻译预览 ({activeTab.toUpperCase()})</h3>
+              <button onClick={() => setShowRetranslateModal(false)} className="text-gray-500 hover:text-gray-700">×</button>
+            </div>
+            <div className="px-6 py-6 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <h4 className="font-medium text-gray-500">原文 (中文)</h4>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Name</div>
+                    <div className="p-2 bg-gray-50 rounded text-sm">{nameZh}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Description</div>
+                    <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">{descZh}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Transport Tips</div>
+                    <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">{tipsZh}</div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="font-medium text-brand-600">AI 翻译结果</h4>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Name</div>
+                    <div className="p-2 bg-blue-50 rounded text-sm">{retranslatePreview.name}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Description</div>
+                    <div className="p-2 bg-blue-50 rounded text-sm whitespace-pre-wrap">{retranslatePreview.description}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Transport Tips</div>
+                    <div className="p-2 bg-blue-50 rounded text-sm whitespace-pre-wrap">{retranslatePreview.transportTips}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4 gap-3 justify-end">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowRetranslateModal(false)}
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={onApplyTranslation}
+                disabled={retranslateLoading}
+              >
+                {retranslateLoading ? '应用中…' : '应用翻译 (保存)'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
