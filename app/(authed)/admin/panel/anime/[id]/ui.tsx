@@ -9,9 +9,20 @@ import SharedCoverField from '@/components/shared/CoverField'
 type AnimeDetail = {
   id: string
   name: string
+  name_en?: string | null
+  name_ja?: string | null
   summary?: string | null
+  summary_en?: string | null
+  summary_ja?: string | null
   cover?: string | null
   hidden?: boolean
+}
+
+type Tab = 'zh' | 'en' | 'ja'
+
+type RetranslatePreview = {
+  name?: string
+  summary?: string
 }
 
 export default function AdminAnimeDetailClient({ id }: { id: string }) {
@@ -20,14 +31,27 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
+  const [activeTab, setActiveTab] = useState<Tab>('zh')
+  
   const [name, setName] = useState('')
+  const [nameEn, setNameEn] = useState('')
+  const [nameJa, setNameJa] = useState('')
+  
   const [summary, setSummary] = useState('')
+  const [summaryEn, setSummaryEn] = useState('')
+  const [summaryJa, setSummaryJa] = useState('')
+
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showFailureModal, setShowFailureModal] = useState(false)
   const [failureMessage, setFailureMessage] = useState('')
+
+  // Retranslate Modal State
+  const [showRetranslateModal, setShowRetranslateModal] = useState(false)
+  const [retranslatePreview, setRetranslatePreview] = useState<RetranslatePreview | null>(null)
+  const [retranslateLoading, setRetranslateLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -41,7 +65,13 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     }
     setAnime(data.anime)
     setName(data.anime.name || '')
+    setNameEn(data.anime.name_en || '')
+    setNameJa(data.anime.name_ja || '')
+    
     setSummary(data.anime.summary || '')
+    setSummaryEn(data.anime.summary_en || '')
+    setSummaryJa(data.anime.summary_ja || '')
+    
     setLoading(false)
   }
 
@@ -61,17 +91,39 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       throw new Error(data.error || '更新失败')
     }
     setAnime(data.anime)
+    
+    // Update local state based on what was saved
+    if (field.name !== undefined) setName(data.anime.name || '')
+    if (field.name_en !== undefined) setNameEn(data.anime.name_en || '')
+    if (field.name_ja !== undefined) setNameJa(data.anime.name_ja || '')
+    
     if (refreshSummary) {
-      setSummary(data.anime.summary || '')
+      if (field.summary !== undefined) setSummary(data.anime.summary || '')
+      if (field.summary_en !== undefined) setSummaryEn(data.anime.summary_en || '')
+      if (field.summary_ja !== undefined) setSummaryJa(data.anime.summary_ja || '')
     }
+    
     setSaveMessage('已保存')
     setTimeout(() => setSaveMessage(null), 2000)
   }
 
-  async function onSaveSummary() {
+  async function onSaveCurrentTab() {
     setSaving(true)
     try {
-      await updateField({ summary })
+      const payload: Partial<AnimeDetail> = {}
+      if (activeTab === 'zh') {
+        if (!name.trim()) throw new Error('中文作品名不能为空')
+        payload.name = name.trim()
+        payload.summary = summary
+      } else if (activeTab === 'en') {
+        payload.name_en = nameEn.trim() || null
+        payload.summary_en = summaryEn
+      } else if (activeTab === 'ja') {
+        payload.name_ja = nameJa.trim() || null
+        payload.summary_ja = summaryJa
+      }
+      
+      await updateField(payload, false) // false to prevent overwriting local summary if we want to keep typing? Actually true is safer to sync. But let's use false for now to avoid jump.
       setShowSuccessModal(true)
     } catch (err: any) {
       setFailureMessage(err.message)
@@ -81,22 +133,67 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     }
   }
 
-  async function onSaveName() {
-    const trimmed = name.trim()
-    if (!trimmed) {
-      setFailureMessage('作品名不能为空')
-      setShowFailureModal(true)
-      return
-    }
-    setSaving(true)
+  async function onRetranslate() {
+    if (activeTab === 'zh') return // Cannot retranslate source
+    
+    setRetranslateLoading(true)
     try {
-      await updateField({ name: trimmed }, false)
-      setName(trimmed)
+      const res = await fetch('/api/admin/retranslate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'anime',
+          entityId: id,
+          targetLang: activeTab
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '翻译失败')
+      
+      setRetranslatePreview(data.preview)
+      setShowRetranslateModal(true)
     } catch (err: any) {
-      setFailureMessage(err.message)
-      setShowFailureModal(true)
+      alert(err.message)
     } finally {
-      setSaving(false)
+      setRetranslateLoading(false)
+    }
+  }
+
+  async function onApplyTranslation() {
+    if (!retranslatePreview) return
+    
+    setRetranslateLoading(true)
+    try {
+      // Option A: Call apply API
+      const res = await fetch('/api/admin/retranslate/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'anime',
+          entityId: id,
+          targetLang: activeTab,
+          preview: retranslatePreview
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '应用失败')
+      
+      // Update local state
+      if (activeTab === 'en') {
+        if (retranslatePreview.name) setNameEn(retranslatePreview.name)
+        if (retranslatePreview.summary) setSummaryEn(retranslatePreview.summary)
+      } else if (activeTab === 'ja') {
+        if (retranslatePreview.name) setNameJa(retranslatePreview.name)
+        if (retranslatePreview.summary) setSummaryJa(retranslatePreview.summary)
+      }
+      
+      setShowRetranslateModal(false)
+      setSaveMessage('已应用并保存')
+      setTimeout(() => setSaveMessage(null), 2000)
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setRetranslateLoading(false)
     }
   }
 
@@ -164,39 +261,114 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
           />
         </section>
 
-        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="font-semibold text-gray-900">作品名</h2>
-          <div className="space-y-2">
-            <input
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="请输入作品名…"
-              disabled={saving}
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
-              <Button onClick={onSaveName} disabled={saving}>
-                {saving ? '保存中…' : '保存作品名'}
-              </Button>
-            </div>
+        <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-gray-200 px-6">
+            <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+              {(['zh', 'en', 'ja'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    ${activeTab === tab
+                      ? 'border-brand-500 text-brand-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  {tab === 'zh' ? '中文 (Original)' : tab === 'en' ? 'English' : '日本語'}
+                </button>
+              ))}
+            </nav>
           </div>
-        </section>
 
-        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="font-semibold text-gray-900">简介</h2>
-          <div className="space-y-2">
-            <textarea
-              className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-500"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="请输入作品简介…"
-              disabled={saving}
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
-              <Button onClick={onSaveSummary} disabled={saving}>
-                {saving ? '保存中…' : '保存简介'}
+          <div className="p-6 space-y-6">
+            {activeTab === 'zh' ? (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="name-zh" className="block text-sm font-medium text-gray-700">作品名 (中文)</label>
+                  <input
+                    id="name-zh"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="summary-zh" className="block text-sm font-medium text-gray-700">简介 (中文)</label>
+                  <textarea
+                    id="summary-zh"
+                    className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+              </>
+            ) : activeTab === 'en' ? (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="name-en" className="block text-sm font-medium text-gray-700">Name (English)</label>
+                  <input
+                    id="name-en"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={nameEn}
+                    onChange={(e) => setNameEn(e.target.value)}
+                    disabled={saving}
+                    placeholder="Enter English name..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="summary-en" className="block text-sm font-medium text-gray-700">Summary (English)</label>
+                  <textarea
+                    id="summary-en"
+                    className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={summaryEn}
+                    onChange={(e) => setSummaryEn(e.target.value)}
+                    disabled={saving}
+                    placeholder="Enter English summary..."
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="name-ja" className="block text-sm font-medium text-gray-700">作品名 (日本語)</label>
+                  <input
+                    id="name-ja"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={nameJa}
+                    onChange={(e) => setNameJa(e.target.value)}
+                    disabled={saving}
+                    placeholder="日本語の作品名..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="summary-ja" className="block text-sm font-medium text-gray-700">あらすじ (日本語)</label>
+                  <textarea
+                    id="summary-ja"
+                    className="h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                    value={summaryJa}
+                    onChange={(e) => setSummaryJa(e.target.value)}
+                    disabled={saving}
+                    placeholder="あらすじを入力..."
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-emerald-600 min-h-[20px]">{saveMessage}</span>
+                {activeTab !== 'zh' ? (
+                  <Button variant="ghost" onClick={onRetranslate} disabled={saving || retranslateLoading}>
+                    {retranslateLoading ? '翻译中…' : 'AI 重新翻译'}
+                  </Button>
+                ) : null}
+              </div>
+              <Button onClick={onSaveCurrentTab} disabled={saving}>
+                {saving ? '保存中…' : '保存当前语言'}
               </Button>
             </div>
           </div>
@@ -234,12 +406,12 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900">保存成功</h3>
-              <p className="mt-2 text-sm text-gray-600">作品简介已更新。</p>
+              <p className="mt-2 text-sm text-gray-600">内容已更新。</p>
             </div>
             <div className="flex border-t bg-gray-50 px-6 py-4">
               <Button 
                 className="w-full justify-center" 
-                onClick={() => router.push('/admin/panel')}
+                onClick={() => setShowSuccessModal(false)}
               >
                 确定
               </Button>
@@ -267,6 +439,57 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
                 onClick={() => setShowFailureModal(false)}
               >
                 关闭
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRetranslateModal && retranslatePreview ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl max-h-[90vh]">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">AI 翻译预览 ({activeTab})</h3>
+              <button onClick={() => setShowRetranslateModal(false)} className="text-gray-500 hover:text-gray-700">×</button>
+            </div>
+            <div className="px-6 py-6 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <h4 className="font-medium text-gray-500">原文 (中文)</h4>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Name</div>
+                    <div className="p-2 bg-gray-50 rounded text-sm">{name}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Summary</div>
+                    <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">{summary}</div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="font-medium text-brand-600">AI 翻译结果</h4>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Name</div>
+                    <div className="p-2 bg-blue-50 rounded text-sm">{retranslatePreview.name}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-mono text-gray-400">Summary</div>
+                    <div className="p-2 bg-blue-50 rounded text-sm whitespace-pre-wrap">{retranslatePreview.summary}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex border-t bg-gray-50 px-6 py-4 gap-3 justify-end">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowRetranslateModal(false)}
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={onApplyTranslation}
+                disabled={retranslateLoading}
+              >
+                {retranslateLoading ? '应用中…' : '应用翻译'}
               </Button>
             </div>
           </div>

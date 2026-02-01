@@ -72,14 +72,104 @@ describe('admin anime detail ui', () => {
 
     expect(await screen.findByText('Old Name')).toBeInTheDocument()
 
-    fireEvent.change(await screen.findByPlaceholderText('请输入作品名…'), { target: { value: '  New Name  ' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存作品名' }))
+    const input = await screen.findByLabelText('作品名 (中文)')
+    fireEvent.change(input, { target: { value: 'New Name' } })
+    
+    fireEvent.click(screen.getByRole('button', { name: '保存当前语言' }))
 
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/anime/btr', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'New Name' }),
+      body: JSON.stringify({ name: 'New Name', summary: '' }),
     })
     expect(await screen.findByText('New Name')).toBeInTheDocument()
+  })
+
+  it('allows admin to switch languages and re-translate', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const fetchMock = vi.fn(async (input: any, init?: any) => {
+      const url = String(input)
+      const method = String(init?.method || 'GET').toUpperCase()
+
+      if (url === '/api/admin/anime/btr' && method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          anime: { 
+            id: 'btr', 
+            name: 'Original Name', 
+            summary: 'Original Summary',
+            name_en: 'En Name',
+            summary_en: '', // Empty, needs translation
+            hidden: false 
+          },
+        })
+      }
+
+      // Retranslate Preview
+      if (url === '/api/admin/retranslate' && method === 'POST') {
+        const body = JSON.parse(String(init?.body || '{}'))
+        if (body.targetLang === 'en') {
+          return jsonResponse({
+            ok: true,
+            preview: { name: 'Translated Name En', summary: 'Translated Summary En' },
+            sourceContent: { name: 'Original Name', summary: 'Original Summary' }
+          })
+        }
+      }
+
+      // Retranslate Apply
+      if (url === '/api/admin/retranslate/apply' && method === 'POST') {
+        const body = JSON.parse(String(init?.body || '{}'))
+        return jsonResponse({
+          ok: true,
+          updated: { ...body.preview }
+        })
+      }
+
+      // Normal Update
+      if (url === '/api/admin/anime/btr' && method === 'PATCH') {
+        return jsonResponse({
+          ok: true,
+          anime: { id: 'btr', name: 'Original Name', summary: 'Original Summary', ...JSON.parse(init.body) },
+        })
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const Page = (await import('../../app/(authed)/admin/panel/anime/[id]/page')).default
+    render(await Page({ params: Promise.resolve({ id: 'btr' }) }))
+
+    // 1. Check default (zh) tab
+    expect(await screen.findByDisplayValue('Original Name')).toBeVisible()
+    
+    // 2. Switch to English tab
+    const enTab = screen.getByText('English')
+    fireEvent.click(enTab)
+    
+    // Should show existing English name
+    expect(await screen.findByDisplayValue('En Name')).toBeVisible()
+    
+    // 3. Click Re-translate
+    const retranslateBtn = screen.getByText('AI 重新翻译')
+    fireEvent.click(retranslateBtn)
+    
+    // 4. Expect Modal with Preview
+    expect(await screen.findByText('Translated Summary En')).toBeVisible()
+    
+    // 5. Apply
+    const applyBtn = screen.getByText('应用翻译')
+    fireEvent.click(applyBtn)
+    
+    // 6. Verify API call and UI update
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/retranslate/apply', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"targetLang":"en"')
+    }))
+    
+    // Should update the inputs
+    expect(await screen.findByDisplayValue('Translated Summary En')).toBeVisible()
   })
 })
