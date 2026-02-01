@@ -61,15 +61,20 @@ class PrismaPublicArticleRepo implements PublicArticleRepo {
     return found ? this.normalizeArticle(found) : null
   }
 
-  async listByStatus(status: ArticleStatus): Promise<Article[]> {
+  async listByStatus(status: ArticleStatus, language?: string): Promise<Article[]> {
     const { prisma } = await import('@/lib/db/prisma')
     const list = await prisma.article.findMany({
-      where: { status },
+      where: { 
+        status,
+        ...(language && { language })
+      },
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
         authorId: true,
         slug: true,
+        language: true,
+        translationGroupId: true,
         title: true,
         seoTitle: true,
         description: true,

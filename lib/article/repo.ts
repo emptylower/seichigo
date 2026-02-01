@@ -60,7 +60,7 @@ export interface ArticleRepo {
   findBySlug(slug: string): Promise<Article | null>
   findBySlugAndLanguage(slug: string, language: string): Promise<Article | null>
   listByAuthor(authorId: string): Promise<Article[]>
-  listByStatus(status: ArticleStatus): Promise<Article[]>
+  listByStatus(status: ArticleStatus, language?: string): Promise<Article[]>
   updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null>
   updateState(id: string, input: UpdateStateInput): Promise<Article | null>
   delete(id: string): Promise<Article | null>
