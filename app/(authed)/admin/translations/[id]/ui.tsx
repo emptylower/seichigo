@@ -327,6 +327,13 @@ export default function TranslationDetailUI({ id }: Props) {
                 </button>
           )}
               <button
+                onClick={handleRetranslate}
+                disabled={retranslating}
+                className="rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+              >
+                {retranslating ? '翻译中...' : '重新翻译'}
+              </button>
+              <button
                 onClick={handleApprove}
                 disabled={approving}
                 className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
