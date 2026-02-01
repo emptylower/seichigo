@@ -69,6 +69,7 @@ export default async function AnimeIndexEnPage() {
             anime={a}
             postCount={counts[a.id] || 0}
             cover={a.cover || coverFallback.get(a.id) || null}
+            locale="en"
           />
         ))}
       </div>

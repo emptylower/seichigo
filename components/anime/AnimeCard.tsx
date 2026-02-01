@@ -1,10 +1,13 @@
 import Link from 'next/link'
+import { prefixPath } from '@/components/layout/prefixPath'
+import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { Anime } from '@/lib/anime/getAllAnime'
 
 type Props = {
   anime: Anime
   postCount: number
   cover: string | null
+  locale?: SiteLocale
 }
 
 function hash32(input: string): number {
@@ -40,12 +43,12 @@ function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: nu
   }
 }
 
-export default function AnimeCard({ anime, postCount, cover }: Props) {
+export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Props) {
   const coverSrc = cover ? optimizeAssetCoverSrc(cover, { width: 900, quality: 78 }) : null
 
   return (
     <Link
-      href={`/anime/${encodeURIComponent(anime.id)}`}
+      href={prefixPath(`/anime/${encodeURIComponent(anime.id)}`, locale)}
       className="group relative flex flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-100 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:ring-pink-100"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-gray-100">
@@ -56,7 +59,7 @@ export default function AnimeCard({ anime, postCount, cover }: Props) {
         {coverSrc ? (
           <img
             src={coverSrc}
-            alt={anime.name}
+            alt={locale === 'en' && anime.name_en ? anime.name_en : locale === 'ja' && anime.name_ja ? anime.name_ja : anime.name}
             width={900}
             height={1200}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -69,15 +72,15 @@ export default function AnimeCard({ anime, postCount, cover }: Props) {
 
       <div className="flex flex-1 flex-col p-4">
         <h3 className="line-clamp-1 text-lg font-bold text-gray-900 group-hover:text-brand-600">
-          {anime.name}
+          {locale === 'en' && anime.name_en ? anime.name_en : locale === 'ja' && anime.name_ja ? anime.name_ja : anime.name}
         </h3>
         <p className="mt-1 line-clamp-2 min-h-[2.5em] text-sm text-gray-500">
-          {anime.summary || '暂无简介'}
+          {locale === 'en' && anime.summary_en ? anime.summary_en : locale === 'ja' && anime.summary_ja ? anime.summary_ja : anime.summary || '暂无简介'}
         </p>
 
         <div className="mt-auto flex items-center justify-between pt-3 text-xs font-medium text-gray-400">
           <span className={postCount > 0 ? 'text-brand-600' : ''}>
-            {postCount} 篇文章
+            {postCount} {locale === 'en' ? 'posts' : locale === 'ja' ? '件の記事' : '篇文章'}
           </span>
           {anime.year ? <span>{anime.year}</span> : null}
         </div>
