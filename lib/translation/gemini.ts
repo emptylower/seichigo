@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 const MAX_RETRIES = 5
 const INITIAL_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 32000
@@ -58,7 +58,7 @@ function restoreTerms(text: string, terms: Map<string, string>, glossary: Glossa
       const index = match[1]
       // Match variations: {{TERM_0}}, {{ TERM_0 }}, {{term_0}}, etc.
       const regex = new RegExp(`\\{\\{\\s*TERM_${index}\\s*\\}\\}`, 'gi')
-      restored = restored.replace(regex, translation)
+      restored = restored.replaceAll(regex, translation)
     }
   }
   
