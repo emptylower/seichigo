@@ -254,6 +254,8 @@ model City {
   description_en   String?  @db.Text
   transportTips_zh String?  @db.Text
   transportTips_en String?  @db.Text
+  description_ja   String?  @db.Text
+  transportTips_ja String?  @db.Text
   cover            String?
   needsReview      Boolean  @default(true)
   hidden           Boolean  @default(false)
