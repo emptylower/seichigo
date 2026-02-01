@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 
@@ -61,6 +62,20 @@ export async function POST(
           })
         }
       }
+
+      // Revalidate article pages
+      const articleForRevalidation = existingArticle || await prisma.article.findFirst({
+        where: { translationGroupId: entityId, language: targetLanguage },
+        select: { slug: true }
+      })
+      if (articleForRevalidation?.slug) {
+        revalidatePath('/')
+        revalidatePath('/en')
+        revalidatePath('/ja')
+        revalidatePath(`/posts/${articleForRevalidation.slug}`)
+        revalidatePath(`/en/posts/${articleForRevalidation.slug}`)
+        revalidatePath(`/ja/posts/${articleForRevalidation.slug}`)
+      }
     } else if (entityType === 'city') {
       const updateData: any = {}
       const content = draftContent as any
@@ -78,6 +93,18 @@ export async function POST(
         where: { id: entityId },
         data: updateData,
       })
+
+      // Revalidate city pages
+      const city = await prisma.city.findUnique({ 
+        where: { id: entityId }, 
+        select: { slug: true } 
+      })
+      if (city) {
+        revalidatePath('/city')
+        revalidatePath('/en/city')
+        revalidatePath(`/city/${encodeURIComponent(city.slug)}`)
+        revalidatePath(`/en/city/${encodeURIComponent(city.slug)}`)
+      }
     } else if (entityType === 'anime') {
       const updateData: any = {}
       const content = draftContent as any
@@ -94,6 +121,14 @@ export async function POST(
         where: { id: entityId },
         data: updateData,
       })
+
+      // Revalidate anime pages
+      revalidatePath('/anime')
+      revalidatePath('/ja/anime')
+      revalidatePath('/en/anime')
+      revalidatePath(`/anime/${encodeURIComponent(entityId)}`)
+      revalidatePath(`/ja/anime/${encodeURIComponent(entityId)}`)
+      revalidatePath(`/en/anime/${encodeURIComponent(entityId)}`)
     }
 
     await prisma.translationTask.update({
