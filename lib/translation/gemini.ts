@@ -81,10 +81,11 @@ export async function callGemini(prompt: string, retryCount = 0): Promise<string
   )
 
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    const response = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         contents: [
@@ -113,9 +114,43 @@ export async function callGemini(prompt: string, retryCount = 0): Promise<string
     }
 
     const data = await response.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+
+    // Check for safety blocks
+    if (data.promptFeedback?.blockReason) {
+      console.error('[callGemini] Prompt blocked:', data.promptFeedback)
+      throw new Error(`Prompt blocked: ${data.promptFeedback.blockReason}`)
+    }
+
+    // Check candidates exist
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error('[callGemini] No candidates in response:', JSON.stringify(data))
+      throw new Error('No candidates in Gemini API response')
+    }
+
+    const candidate = data.candidates[0]
+
+    // Check for safety finish reason
+    if (candidate.finishReason === 'SAFETY') {
+      console.error('[callGemini] Response blocked by safety:', candidate.safetyRatings)
+      throw new Error('Response blocked by safety filters')
+    }
+
+    // Extract text parts, filtering out thinking parts (Gemini 2.5 feature)
+    const parts = candidate.content?.parts || []
+    const textParts = parts.filter((part: any) => part.text && !part.thought)
+
+    let text = ''
+    if (textParts.length > 0) {
+      // Concatenate all non-thinking text parts
+      text = textParts.map((part: any) => part.text).join('')
+    } else {
+      // Fallback: try to get any text if no non-thinking parts found
+      const anyTextPart = parts.find((part: any) => part.text)
+      text = anyTextPart?.text || ''
+    }
 
     if (!text) {
+      console.error('[callGemini] Empty text in response:', JSON.stringify(data))
       throw new Error('Empty response from Gemini API')
     }
 
