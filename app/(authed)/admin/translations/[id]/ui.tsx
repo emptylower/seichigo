@@ -253,6 +253,20 @@ export default function TranslationDetailUI({ id }: Props) {
     return content && typeof content === 'object' && content.type === 'doc'
   }
 
+  // Extract TipTap content (supports two formats)
+  const getContentJson = (content: any) => {
+    if (!content) return null
+    // If content itself is TipTap format
+    if (content.type === 'doc') return content
+    // If content has contentJson property (article translation format)
+    if (content.contentJson && content.contentJson.type === 'doc') return content.contentJson
+    return null
+  }
+
+  const hasEditableContent = (content: any) => {
+    return getContentJson(content) !== null
+  }
+
   const breadcrumbItems = [
     { name: '后台', href: '/admin' },
     { name: '翻译任务', href: '/admin/translations' },
@@ -304,7 +318,7 @@ export default function TranslationDetailUI({ id }: Props) {
           )}
           {task.status === 'ready' && task.draftContent && !isEditing && (
             <>
-              {isTipTapContent(task.draftContent) && (
+              {hasEditableContent(task.draftContent) && (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
@@ -421,18 +435,26 @@ export default function TranslationDetailUI({ id }: Props) {
                 )}
                 
                 {task.draftContent ? (
-                  isTipTapContent(task.draftContent) ? (
-                    <TipTapPreview 
-                      content={isEditing ? editedContent : task.draftContent} 
-                      mode={isEditing ? 'edit' : 'preview'}
-                      onChange={setEditedContent}
-                      onEditorReady={setEditor}
-                    />
-                  ) : (
-                    <pre className="whitespace-pre-wrap text-sm">
-                      {JSON.stringify(task.draftContent, null, 2)}
-                    </pre>
-                  )
+                  (() => {
+                    const contentJson = getContentJson(isEditing ? editedContent : task.draftContent)
+                    if (contentJson) {
+                      return (
+                        <TipTapPreview 
+                          content={contentJson}
+                          mode={isEditing ? 'edit' : 'preview'}
+                          onChange={(newContent) => {
+                            setEditedContent({ ...editedContent, contentJson: newContent })
+                          }}
+                          onEditorReady={setEditor}
+                        />
+                      )
+                    }
+                    return (
+                      <pre className="whitespace-pre-wrap text-sm">
+                        {JSON.stringify(task.draftContent, null, 2)}
+                      </pre>
+                    )
+                  })()
                 ) : (
                   <p className="text-gray-500 p-4">翻译尚未生成</p>
                 )}
