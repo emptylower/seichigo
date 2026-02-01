@@ -5,8 +5,8 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const MAX_RETRIES = 5
 const INITIAL_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 32000
-const BATCH_SIZE = 15
-const MAX_BATCH_CHARS = 3000
+export const BATCH_SIZE = 15
+export const MAX_BATCH_CHARS = 3000
 
 const LANGUAGE_NAMES: Record<string, string> = {
   zh: 'Chinese (Simplified)',

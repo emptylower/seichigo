@@ -154,13 +154,11 @@ function splitIntoBatches(texts: string[], maxCount: number, maxChars: number): 
   for (const text of texts) {
     const textLength = text.length
     
-    // Start new batch if limits exceeded
-    if (currentBatch.length >= maxCount || currentChars + textLength > maxChars) {
-      if (currentBatch.length > 0) {
-        batches.push(currentBatch)
-        currentBatch = []
-        currentChars = 0
-      }
+    if (currentBatch.length >= maxCount || 
+        (currentChars + textLength > maxChars && currentBatch.length > 0)) {
+      batches.push(currentBatch)
+      currentBatch = []
+      currentChars = 0
     }
     
     currentBatch.push(text)

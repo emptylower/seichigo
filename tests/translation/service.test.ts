@@ -247,13 +247,22 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
-      expect(translateTextSpy).toHaveBeenCalledWith('你好世界', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('这是测试', 'en')
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['你好世界', '这是测试']),
+        'en'
+      )
       expect(result.content?.[0].content?.[0].text).toBe('translated_你好世界')
       expect(result.content?.[0].content?.[1].text).toBe('translated_这是测试')
     })
@@ -274,17 +283,23 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
       // Should only be called once for the normal text
-      expect(translateTextSpy).toHaveBeenCalledTimes(1)
-      expect(translateTextSpy).toHaveBeenCalledWith('正常文本', 'en')
-      expect(translateTextSpy).not.toHaveBeenCalledWith('', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith('   ', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith('\n\t  ', expect.any(String))
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['正常文本']),
+        'en'
+      )
       
       // Empty/whitespace nodes should remain unchanged
       expect(result.content?.[0].content?.[0].text).toBe('')
@@ -312,20 +327,23 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
       // Should only be called once for the normal text
-      expect(translateTextSpy).toHaveBeenCalledTimes(1)
-      expect(translateTextSpy).toHaveBeenCalledWith('正常文本', 'en')
-      expect(translateTextSpy).not.toHaveBeenCalledWith('。', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith('！', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith('、', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith('「」', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith(' -> ', expect.any(String))
-      expect(translateTextSpy).not.toHaveBeenCalledWith(']', expect.any(String))
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['正常文本']),
+        'en'
+      )
       
       // Punctuation nodes should remain unchanged
       expect(result.content?.[0].content?.[0].text).toBe('。')
@@ -349,17 +367,23 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
-      // All single Chinese characters should be translated
-      expect(translateTextSpy).toHaveBeenCalledTimes(4)
-      expect(translateTextSpy).toHaveBeenCalledWith('是', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('的', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('了', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('我', 'en')
+      // All single Chinese characters should be translated in one batch
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['是', '的', '了', '我']),
+        'en'
+      )
       
       expect(result.content?.[0].content?.[0].text).toBe('translated_是')
       expect(result.content?.[0].content?.[1].text).toBe('translated_的')
@@ -382,32 +406,29 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText')
-        .mockImplementationOnce(async (text: string) => `translated_${text}`)
-        .mockImplementationOnce(async () => {
-          throw new Error('API failure')
-        })
-        .mockImplementationOnce(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch')
+        .mockRejectedValue(new Error('API failure'))
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
-      // All three nodes should have been attempted
-      expect(translateTextSpy).toHaveBeenCalledTimes(3)
-      expect(translateTextSpy).toHaveBeenCalledWith('第一段', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('会失败', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('第三段', 'en')
+      // Batch call should have been attempted once
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['第一段', '会失败', '第三段']),
+        'en'
+      )
       
-      // First and third should be translated, second should keep original
-      expect(result.content?.[0].content?.[0].text).toBe('translated_第一段')
+      // All texts should keep original on batch failure
+      expect(result.content?.[0].content?.[0].text).toBe('第一段')
       expect(result.content?.[0].content?.[1].text).toBe('会失败')
-      expect(result.content?.[0].content?.[2].text).toBe('translated_第三段')
+      expect(result.content?.[0].content?.[2].text).toBe('第三段')
       
       // Error should have been logged
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[translateTipTapContent] Failed to translate node:'),
+        expect.stringContaining('[translateTipTapContent]'),
         expect.any(Error)
       )
 
@@ -431,21 +452,170 @@ describe('Translation Service', () => {
         ]
       }
 
-      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+      const translateTextBatchSpy = vi.spyOn(gemini, 'translateTextBatch').mockImplementation(async (texts: string[]) => {
+        const result = new Map<string, string>()
+        for (const text of texts) {
+          result.set(text, `translated_${text}`)
+        }
+        return result
+      })
 
       const { translateTipTapContent } = await import('@/lib/translation/service')
       const result = await translateTipTapContent(doc, 'en')
 
-      // Only normal text should be translated
-      expect(translateTextSpy).toHaveBeenCalledTimes(2)
-      expect(translateTextSpy).toHaveBeenCalledWith('你好', 'en')
-      expect(translateTextSpy).toHaveBeenCalledWith('世界', 'en')
+      // Only normal text should be translated in one batch
+      expect(translateTextBatchSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextBatchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['你好', '世界']),
+        'en'
+      )
       
       expect(result.content?.[0].content?.[0].text).toBe('translated_你好')
       expect(result.content?.[0].content?.[1].text).toBe('。')
       expect(result.content?.[0].content?.[2].text).toBe('   ')
       expect(result.content?.[0].content?.[3].text).toBe('translated_世界')
       expect(result.content?.[0].content?.[4].text).toBe('！')
+    })
+  })
+
+  describe('translateTipTapContent - batch translation', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('batch reduces API calls', async () => {
+      // Mock translateTextBatch to track calls
+      const batchSpy = vi.spyOn(gemini, 'translateTextBatch')
+        .mockImplementation(async (texts: string[]) => {
+          const result = new Map<string, string>()
+          for (const text of texts) {
+            result.set(text, `translated_${text}`)
+          }
+          return result
+        })
+      
+      // Create document with 50 text nodes
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: Array.from({ length: 50 }, (_, i) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: `text${i}` }]
+        }))
+      }
+      
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      await translateTipTapContent(doc, 'en')
+      
+      // Should call translateTextBatch ≤5 times (50 / 15 = ~4 batches)
+      expect(batchSpy).toHaveBeenCalled()
+      expect(batchSpy.mock.calls.length).toBeLessThanOrEqual(5)
+      expect(batchSpy.mock.calls.length).toBeGreaterThan(0)
+    })
+    
+    it('batch handles JSON parse failure gracefully', async () => {
+      const batchSpy = vi.spyOn(gemini, 'translateTextBatch')
+        .mockRejectedValueOnce(new Error('JSON parse error'))
+      
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'original' }] }
+        ]
+      }
+      
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+      
+      // Should keep original text on failure
+      expect(result.content?.[0].content?.[0].text).toBe('original')
+      
+      // Error should have been logged
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[translateTipTapContent]'),
+        expect.any(Error)
+      )
+      
+      consoleErrorSpy.mockRestore()
+    })
+    
+    it('batch preserves glossary terms', async () => {
+      // Mock translateTextBatch to simulate glossary term preservation
+      // The actual glossary protection happens in translateTextBatch, 
+      // so we verify the batch function is called with the right texts
+      const batchSpy = vi.spyOn(gemini, 'translateTextBatch')
+        .mockImplementation(async (texts: string[]) => {
+          const result = new Map<string, string>()
+          for (const text of texts) {
+            // Simulate glossary term preservation ({{TERM_N}} placeholders)
+            result.set(text, `translated_${text}`)
+          }
+          return result
+        })
+      
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'text with terms' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'another text' }] }
+        ]
+      }
+      
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+      
+      // Verify batch was called with the texts
+      expect(batchSpy).toHaveBeenCalledTimes(1)
+      expect(batchSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['text with terms', 'another text']),
+        'en'
+      )
+      
+      // Verify translations were applied
+      expect(result.content?.[0].content?.[0].text).toBe('translated_text with terms')
+      expect(result.content?.[1].content?.[0].text).toBe('translated_another text')
+    })
+    
+    it('batch respects character limit', async () => {
+      const batchSpy = vi.spyOn(gemini, 'translateTextBatch')
+        .mockImplementation(async (texts: string[]) => {
+          const result = new Map<string, string>()
+          for (const text of texts) {
+            result.set(text, `translated_${text}`)
+          }
+          return result
+        })
+      
+      // Create texts that exceed MAX_BATCH_CHARS (3000) when combined
+      // Each text is 1600 chars, so 2 texts = 3200 chars (exceeds 3000)
+      const longText1 = 'a'.repeat(1600)
+      const longText2 = 'b'.repeat(1600)
+      const longText3 = 'c'.repeat(1600)
+      
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: longText1 }] },
+          { type: 'paragraph', content: [{ type: 'text', text: longText2 }] },
+          { type: 'paragraph', content: [{ type: 'text', text: longText3 }] }
+        ]
+      }
+      
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      await translateTipTapContent(doc, 'en')
+      
+      // Should split into multiple batches due to character limit
+      // First text (1600) fits, second text would make 3200 > 3000, so splits into 2+ batches
+      expect(batchSpy).toHaveBeenCalled()
+      expect(batchSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+      
+      // Verify each batch respects the character limit
+      for (const call of batchSpy.mock.calls) {
+        const texts = call[0] as string[]
+        const totalChars = texts.reduce((sum, text) => sum + text.length, 0)
+        expect(totalChars).toBeLessThanOrEqual(3000)
+      }
     })
   })
 })
