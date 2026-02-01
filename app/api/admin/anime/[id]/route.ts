@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { getServerAuthSession } from '@/lib/auth/session'
@@ -99,6 +100,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
       update: data,
     })
+
+    // Anime pages are statically cached (ISR). Revalidate so admin edits
+    // reflect immediately without waiting for the periodic revalidate window.
+    revalidatePath('/anime')
+    revalidatePath('/ja/anime')
+    revalidatePath('/en/anime')
+    revalidatePath(`/anime/${encodeURIComponent(id)}`)
+    revalidatePath(`/ja/anime/${encodeURIComponent(id)}`)
+    revalidatePath(`/en/anime/${encodeURIComponent(id)}`)
 
     return NextResponse.json({ ok: true, anime: updated })
   } catch (err) {
