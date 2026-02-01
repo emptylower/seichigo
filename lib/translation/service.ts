@@ -151,9 +151,22 @@ export async function translateTipTapContent(content: TipTapNode, targetLang: st
   
   const translations = new Map<string, string>()
   for (const text of texts) {
-    if (text.trim()) {
+    // Skip empty or whitespace-only
+    if (!text.trim()) {
+      continue
+    }
+    // Skip punctuation/symbols only (including CJK punctuation)
+    if (/^[\p{P}\p{S}\s]+$/u.test(text)) {
+      continue
+    }
+    
+    try {
       const translated = await translateText(text, targetLang)
       translations.set(text, translated)
+    } catch (error) {
+      console.error(`[translateTipTapContent] Failed to translate node: "${text.slice(0, 50)}..."`, error)
+      // Keep original text on failure
+      translations.set(text, text)
     }
   }
   
