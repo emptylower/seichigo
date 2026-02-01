@@ -60,9 +60,10 @@ export default function TipTapPreview({
     editorProps: {
       attributes: {
         class: [
-          'prose max-w-none focus:outline-none',
+          'prose prose-pink max-w-none focus:outline-none',
           isEditable ? 'min-h-[8rem]' : ''
         ].join(' '),
+        'data-seichi-article-content': 'true',
       },
     },
   }, [mode]) // Re-create editor if mode changes, or handle update
