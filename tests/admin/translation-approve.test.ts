@@ -53,7 +53,8 @@ describe('POST /api/admin/translations/[id]/approve', () => {
       draftContent: {
         title: 'Translated Title',
         description: 'Translated Description',
-        contentJson: { type: 'doc', content: [] },
+        contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }] },
+        contentHtml: '<p>Hello</p>',
       },
     })
 
@@ -86,6 +87,7 @@ describe('POST /api/admin/translations/[id]/approve', () => {
       data: expect.objectContaining({
         title: 'Translated Title',
         description: 'Translated Description',
+        contentHtml: '<p>Hello</p>',
         slug: 'test-article',
         authorId: 'author-1',
         language: 'en',
