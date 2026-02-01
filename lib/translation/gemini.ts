@@ -5,6 +5,8 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const MAX_RETRIES = 5
 const INITIAL_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 32000
+const BATCH_SIZE = 15
+const MAX_BATCH_CHARS = 3000
 
 const LANGUAGE_NAMES: Record<string, string> = {
   zh: 'Chinese (Simplified)',
@@ -188,4 +190,65 @@ export async function translateText(text: string, targetLang: string): Promise<s
   }
   
   return restoreTerms(cleanedTranslation, terms, glossary, targetLang)
+}
+
+export async function translateTextBatch(texts: string[], targetLang: string): Promise<Map<string, string>> {
+  if (!texts || texts.length === 0) {
+    return new Map()
+  }
+
+  const glossary = loadGlossary()
+  
+  // Apply glossary protection per-text before batching
+  const protectedEntries = texts.map((text, index) => {
+    const { protectedText, terms } = protectTerms(text, glossary)
+    return { index: index.toString(), protectedText, terms }
+  })
+  
+  // Build indexed JSON input
+  const inputJson = Object.fromEntries(
+    protectedEntries.map(e => [e.index, e.protectedText])
+  )
+  
+  const targetLangName = LANGUAGE_NAMES[targetLang] || targetLang
+  const prompt = `Translate the following texts to ${targetLangName}. Preserve any placeholders like {{TERM_0}}. Output ONLY valid JSON, no markdown code blocks, no explanations.
+
+Input JSON:
+${JSON.stringify(inputJson, null, 2)}
+
+Output the translated JSON:`
+  
+  const response = await callGemini(prompt)
+  
+  // Strip markdown code blocks
+  let jsonStr = response.trim()
+  if (jsonStr.startsWith('```json')) {
+    jsonStr = jsonStr.slice(7)
+  } else if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.slice(3)
+  }
+  if (jsonStr.endsWith('```')) {
+    jsonStr = jsonStr.slice(0, -3)
+  }
+  jsonStr = jsonStr.trim()
+  
+  // Parse JSON response
+  let parsed: Record<string, string>
+  try {
+    parsed = JSON.parse(jsonStr) as Record<string, string>
+  } catch (e) {
+    throw new Error(`Failed to parse translation response: ${e instanceof Error ? e.message : 'Unknown error'}`)
+  }
+  
+  // Restore glossary terms per-text and build result map
+  const result = new Map<string, string>()
+  for (const entry of protectedEntries) {
+    const translatedText = parsed[entry.index]
+    if (translatedText !== undefined) {
+      const restored = restoreTerms(translatedText, entry.terms, glossary, targetLang)
+      result.set(texts[parseInt(entry.index)], restored)
+    }
+  }
+  
+  return result
 }
