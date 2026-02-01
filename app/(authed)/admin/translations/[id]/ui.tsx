@@ -7,6 +7,7 @@ import TipTapPreview from '@/components/translation/TipTapPreview'
 import ArticleToc from '@/components/toc/ArticleToc'
 import PostMeta from '@/components/blog/PostMeta'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import { useTranslationAutoSave } from '../../../../../hooks/useTranslationAutoSave'
 
 type TranslationTask = {
   id: string
@@ -33,7 +34,14 @@ export default function TranslationDetailUI({ id }: Props) {
   const [translating, setTranslating] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState<any>(null)
-  const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewContent, setPreviewContent] = useState<any>(null)
+  const [retranslating, setRetranslating] = useState(false)
+
+  const { saveState, saveError } = useTranslationAutoSave({
+    translationId: id,
+    draftContent: editedContent,
+  })
 
   async function loadTask() {
     setLoading(true)
@@ -51,35 +59,42 @@ export default function TranslationDetailUI({ id }: Props) {
     }
   }
 
-  async function handleSave() {
-    setSaving(true)
+  async function handleRetranslate() {
+    if (!task) return
+    setRetranslating(true)
     try {
-      const res = await fetch(`/api/admin/translations/${id}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/admin/retranslate', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          draftContent: editedContent,
+          entityType: task.entityType,
+          entityId: task.entityId,
+          targetLang: task.targetLanguage,
         }),
       })
 
-      if (!res.ok) throw new Error('Failed to save')
-      
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Retranslation failed')
+      }
+
       const data = await res.json()
-      setTask(data.task)
-      setIsEditing(false)
+      setPreviewContent(data.preview)
+      setShowPreview(true)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save')
+      alert(err instanceof Error ? err.message : 'Retranslation failed')
     } finally {
-      setSaving(false)
+      setRetranslating(false)
     }
   }
 
-  function handleCancel() {
-    if (confirm('确定要取消编辑吗？未保存的更改将丢失。')) {
-      setEditedContent(task?.draftContent)
-      setIsEditing(false)
+  function applyRetranslation() {
+    if (previewContent) {
+      setEditedContent(previewContent)
+      setShowPreview(false)
+      setPreviewContent(null)
     }
   }
 
@@ -186,7 +201,16 @@ export default function TranslationDetailUI({ id }: Props) {
             </span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          {isEditing && (
+            <>
+              {saveState === 'saving' && <span className="text-sm text-gray-600">保存中…</span>}
+              {saveState === 'saved' && <span className="text-sm text-emerald-700">已保存</span>}
+              {saveState === 'error' && saveError && (
+                <span className="text-sm text-red-600">{saveError}</span>
+              )}
+            </>
+          )}
           {(task.status === 'pending' || task.status === 'failed') && (
             <button
               onClick={handleTranslate}
@@ -204,8 +228,8 @@ export default function TranslationDetailUI({ id }: Props) {
                   className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
                 >
                   编辑翻译
-                </button>
-              )}
+          </button>
+          )}
               <button
                 onClick={handleApprove}
                 disabled={approving}
@@ -218,19 +242,19 @@ export default function TranslationDetailUI({ id }: Props) {
           {isEditing && (
             <>
               <button
-                onClick={handleCancel}
-                disabled={saving}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={handleRetranslate}
+                disabled={retranslating}
+                className="mr-2 rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-purple-700 hover:bg-purple-100 disabled:opacity-50"
               >
-                取消
+                {retranslating ? '翻译中...' : '重新翻译'}
               </button>
               <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:opacity-50"
-              >
-                {saving ? '保存中...' : '保存'}
-              </button>
+                onClick={handleApprove}
+              disabled={approving}
+              className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              {approving ? '处理中...' : '确认翻译'}
+            </button>
             </>
           )}
         </div>
@@ -334,6 +358,68 @@ export default function TranslationDetailUI({ id }: Props) {
           {new Date(task.createdAt).toLocaleString('zh-CN')}
         </p>
       </div>
+
+      {showPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-lg font-medium">翻译预览</h3>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h4 className="mb-2 font-medium text-gray-700">当前内容</h4>
+                  <div className="rounded border p-4 opacity-50">
+                    {editedContent && isTipTapContent(editedContent) ? (
+                      <div className="pointer-events-none origin-top scale-90">
+                        <TipTapPreview content={editedContent} mode="preview" />
+                      </div>
+                    ) : (
+                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
+                        {JSON.stringify(editedContent, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="mb-2 font-medium text-gray-700">
+                    重新翻译结果
+                  </h4>
+                  <div className="rounded border border-purple-200 bg-purple-50 p-4">
+                    {previewContent && isTipTapContent(previewContent) ? (
+                      <TipTapPreview content={previewContent} mode="preview" />
+                    ) : (
+                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
+                        {JSON.stringify(previewContent, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 rounded-b-lg border-t bg-gray-50 px-6 py-4">
+              <button
+                onClick={() => setShowPreview(false)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={applyRetranslation}
+                className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600"
+              >
+                应用更改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
