@@ -1,6 +1,6 @@
 "use client"
 
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { BlockLayout } from '@/components/editor/extensions/BlockLayout'
@@ -18,13 +18,15 @@ export type TipTapPreviewProps = {
   mode: 'preview' | 'edit'
   onChange?: (content: TipTapNode) => void
   placeholder?: string
+  onEditorReady?: (editor: Editor) => void
 }
 
 export default function TipTapPreview({ 
   content, 
   mode, 
   onChange,
-  placeholder = '暂无内容' 
+  placeholder = '暂无内容',
+  onEditorReady,
 }: TipTapPreviewProps) {
   const isEditable = mode === 'edit'
 
@@ -67,6 +69,12 @@ export default function TipTapPreview({
       },
     },
   }, [mode]) // Re-create editor if mode changes, or handle update
+
+  useEffect(() => {
+    if (editor) {
+      onEditorReady?.(editor)
+    }
+  }, [editor, onEditorReady])
 
   useEffect(() => {
     if (editor && editor.isEditable !== isEditable) {

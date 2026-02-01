@@ -8,6 +8,8 @@ import ArticleToc from '@/components/toc/ArticleToc'
 import PostMeta from '@/components/blog/PostMeta'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { useTranslationAutoSave } from '../../../../../hooks/useTranslationAutoSave'
+import { BubbleMenu } from '@tiptap/react/menus'
+import { type Editor } from '@tiptap/react'
 
 type TranslationTask = {
   id: string
@@ -37,6 +39,10 @@ export default function TranslationDetailUI({ id }: Props) {
   const [showPreview, setShowPreview] = useState(false)
   const [previewContent, setPreviewContent] = useState<any>(null)
   const [retranslating, setRetranslating] = useState(false)
+  
+  const [editor, setEditor] = useState<Editor | null>(null)
+  const [retranslateMode, setRetranslateMode] = useState<'full' | 'selection'>('full')
+  const [selectedText, setSelectedText] = useState<string>('')
 
   const { saveState, saveError } = useTranslationAutoSave({
     translationId: id,
@@ -62,6 +68,7 @@ export default function TranslationDetailUI({ id }: Props) {
   async function handleRetranslate() {
     if (!task) return
     setRetranslating(true)
+    setRetranslateMode('full')
     try {
       const res = await fetch('/api/admin/retranslate', {
         method: 'POST',
@@ -90,11 +97,86 @@ export default function TranslationDetailUI({ id }: Props) {
     }
   }
 
-  function applyRetranslation() {
-    if (previewContent) {
-      setEditedContent(previewContent)
+  async function handleSelectedTextRetranslate() {
+    if (!task || !editor) return
+    const selection = editor.state.selection
+    if (selection.empty) return
+
+    const text = editor.state.doc.textBetween(selection.from, selection.to, ' ')
+    if (!text.trim()) return
+
+    setRetranslating(true)
+    setRetranslateMode('selection')
+    setSelectedText(text)
+    
+    try {
+      const res = await fetch('/api/admin/retranslate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          entityType: 'text',
+          text: text,
+          targetLang: task.targetLanguage,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Translation failed')
+      }
+
+      const data = await res.json()
+      setPreviewContent(data.preview)
+      setShowPreview(true)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Translation failed')
+    } finally {
+      setRetranslating(false)
+    }
+  }
+
+  async function applyRetranslation() {
+    if (!task) return
+    
+    if (retranslateMode === 'selection' && editor && typeof previewContent === 'string') {
+      // For selection mode, just insert into editor (no API call needed)
+      editor.chain().focus().insertContent(previewContent).run()
       setShowPreview(false)
       setPreviewContent(null)
+    } else if (previewContent) {
+      // For full article mode, call apply API to save to database
+      setRetranslating(true)
+      try {
+        const res = await fetch('/api/admin/retranslate/apply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            entityType: task.entityType,
+            entityId: task.entityId,
+            targetLang: task.targetLanguage,
+            preview: previewContent,
+          }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Apply failed')
+        }
+
+        // Update local state with saved content
+        setEditedContent(previewContent)
+        setShowPreview(false)
+        setPreviewContent(null)
+        alert('翻译已应用并保存')
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Apply failed')
+      } finally {
+        setRetranslating(false)
+      }
     }
   }
 
@@ -228,7 +310,7 @@ export default function TranslationDetailUI({ id }: Props) {
                   className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
                 >
                   编辑翻译
-          </button>
+                </button>
           )}
               <button
                 onClick={handleApprove}
@@ -246,7 +328,7 @@ export default function TranslationDetailUI({ id }: Props) {
                 disabled={retranslating}
                 className="mr-2 rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-purple-700 hover:bg-purple-100 disabled:opacity-50"
               >
-                {retranslating ? '翻译中...' : '重新翻译'}
+                {retranslating ? '翻译中...' : '重新翻译全文'}
               </button>
               <button
                 onClick={handleApprove}
@@ -324,13 +406,27 @@ export default function TranslationDetailUI({ id }: Props) {
                 </div>
               )}
 
-              <div className="rounded-lg bg-white min-h-[500px]">
+              <div className="rounded-lg bg-white min-h-[500px] relative">
+                {isEditing && editor && (
+                  <BubbleMenu editor={editor}>
+                    <div className="flex items-center gap-1 rounded bg-white p-1 shadow-lg ring-1 ring-gray-200">
+                      <button
+                        onClick={handleSelectedTextRetranslate}
+                        className="rounded px-2 py-1 text-sm text-purple-600 hover:bg-purple-50"
+                      >
+                        ✨ 重译选中
+                      </button>
+                    </div>
+                  </BubbleMenu>
+                )}
+                
                 {task.draftContent ? (
                   isTipTapContent(task.draftContent) ? (
                     <TipTapPreview 
                       content={isEditing ? editedContent : task.draftContent} 
                       mode={isEditing ? 'edit' : 'preview'}
                       onChange={setEditedContent}
+                      onEditorReady={setEditor}
                     />
                   ) : (
                     <pre className="whitespace-pre-wrap text-sm">
@@ -363,7 +459,7 @@ export default function TranslationDetailUI({ id }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-lg bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-6 py-4">
-              <h3 className="text-lg font-medium">翻译预览</h3>
+              <h3 className="text-lg font-medium">翻译预览 ({retranslateMode === 'selection' ? '选中内容' : '全文'})</h3>
               <button
                 onClick={() => setShowPreview(false)}
                 className="text-gray-400 hover:text-gray-500"
@@ -375,15 +471,19 @@ export default function TranslationDetailUI({ id }: Props) {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <h4 className="mb-2 font-medium text-gray-700">当前内容</h4>
-                  <div className="rounded border p-4 opacity-50">
-                    {editedContent && isTipTapContent(editedContent) ? (
-                      <div className="pointer-events-none origin-top scale-90">
-                        <TipTapPreview content={editedContent} mode="preview" />
-                      </div>
+                  <div className="rounded border p-4 opacity-50 bg-gray-50">
+                    {retranslateMode === 'selection' ? (
+                      <div className="whitespace-pre-wrap">{selectedText}</div>
                     ) : (
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
-                        {JSON.stringify(editedContent, null, 2)}
-                      </pre>
+                      editedContent && isTipTapContent(editedContent) ? (
+                        <div className="pointer-events-none origin-top scale-90">
+                          <TipTapPreview content={editedContent} mode="preview" />
+                        </div>
+                      ) : (
+                        <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
+                          {JSON.stringify(editedContent, null, 2)}
+                        </pre>
+                      )
                     )}
                   </div>
                 </div>
@@ -395,8 +495,8 @@ export default function TranslationDetailUI({ id }: Props) {
                     {previewContent && isTipTapContent(previewContent) ? (
                       <TipTapPreview content={previewContent} mode="preview" />
                     ) : (
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
-                        {JSON.stringify(previewContent, null, 2)}
+                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm font-sans">
+                        {typeof previewContent === 'string' ? previewContent : JSON.stringify(previewContent, null, 2)}
                       </pre>
                     )}
                   </div>
@@ -423,3 +523,4 @@ export default function TranslationDetailUI({ id }: Props) {
     </div>
   )
 }
+

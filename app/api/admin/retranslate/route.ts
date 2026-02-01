@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
-import { translateAnime, translateCity, translateArticle } from '@/lib/translation/service'
+import { translateAnime, translateCity, translateArticle, translateText } from '@/lib/translation/service'
 import { z } from 'zod'
 
 const retranslateSchema = z.object({
-  entityType: z.enum(['anime', 'city', 'article']),
-  entityId: z.string().min(1),
+  entityType: z.enum(['anime', 'city', 'article', 'text']),
+  entityId: z.string().optional(),
   targetLang: z.enum(['en', 'ja']),
   field: z.string().optional(),
+  text: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -26,14 +27,30 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { entityType, entityId, targetLang, field } = parsed.data
+    const { entityType, entityId, targetLang, field, text } = parsed.data
 
     let result
-    if (entityType === 'article') {
+    if (entityType === 'text') {
+      if (!text) {
+        return NextResponse.json(
+          { error: 'Text is required for text translation' },
+          { status: 400 }
+        )
+      }
+      const translatedText = await translateText(text, targetLang)
+      return NextResponse.json({
+        ok: true,
+        preview: translatedText,
+        sourceContent: text,
+      })
+    } else if (entityType === 'article') {
+      if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       result = await translateArticle(entityId, targetLang)
     } else if (entityType === 'city') {
+      if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       result = await translateCity(entityId, targetLang)
     } else if (entityType === 'anime') {
+      if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       result = await translateAnime(entityId, targetLang)
     } else {
       return NextResponse.json(
