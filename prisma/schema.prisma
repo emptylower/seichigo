@@ -37,6 +37,7 @@ model User {
   waitlistEntry      WaitlistEntry?
   comments           Comment[]
   commentLikes       CommentLike[]
+  translationHistories TranslationHistory[]
 }
 
 model Account {
@@ -359,19 +360,36 @@ model CommentLike {
 }
 
 model TranslationTask {
-  id             String   @id @default(cuid())
+  id             String               @id @default(cuid())
   entityType     String
   entityId       String
   targetLanguage String
-  status         String   @default("pending")
+  status         String               @default("pending")
   sourceContent  Json?
   draftContent   Json?
   finalContent   Json?
-  error          String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  error          String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  histories      TranslationHistory[]
 
   @@unique([entityType, entityId, targetLanguage])
   @@index([status])
   @@index([entityType, status])
+}
+
+model TranslationHistory {
+  id                String   @id @default(cuid())
+  translationTaskId String
+  articleId         String
+  content           Json
+  createdAt         DateTime @default(now())
+  createdById       String
+
+  translationTask TranslationTask @relation(fields: [translationTaskId], references: [id], onDelete: Cascade)
+  createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([translationTaskId])
+  @@index([articleId])
+  @@index([createdAt])
 }
