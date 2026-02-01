@@ -1,4 +1,4 @@
-import { translateText } from './gemini'
+import { translateText, translateTextBatch, BATCH_SIZE, MAX_BATCH_CHARS } from './gemini'
 import { extractTextNodes, replaceTextNodes, type TipTapNode } from './tiptap'
 import { prisma } from '@/lib/db/prisma'
 
@@ -146,27 +146,58 @@ export async function translateAnime(animeId: string, targetLang: string): Promi
   }
 }
 
+function splitIntoBatches(texts: string[], maxCount: number, maxChars: number): string[][] {
+  const batches: string[][] = []
+  let currentBatch: string[] = []
+  let currentChars = 0
+  
+  for (const text of texts) {
+    const textLength = text.length
+    
+    // Start new batch if limits exceeded
+    if (currentBatch.length >= maxCount || currentChars + textLength > maxChars) {
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch)
+        currentBatch = []
+        currentChars = 0
+      }
+    }
+    
+    currentBatch.push(text)
+    currentChars += textLength
+  }
+  
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch)
+  }
+  
+  return batches
+}
+
 export async function translateTipTapContent(content: TipTapNode, targetLang: string): Promise<TipTapNode> {
   const texts = extractTextNodes(content)
   
+  const validTexts = texts.filter(text => {
+    if (!text.trim()) return false
+    if (/^[\p{P}\p{S}\s]+$/u.test(text)) return false
+    return true
+  })
+  
+  const batches = splitIntoBatches(validTexts, BATCH_SIZE, MAX_BATCH_CHARS)
+  
   const translations = new Map<string, string>()
-  for (const text of texts) {
-    // Skip empty or whitespace-only
-    if (!text.trim()) {
-      continue
-    }
-    // Skip punctuation/symbols only (including CJK punctuation)
-    if (/^[\p{P}\p{S}\s]+$/u.test(text)) {
-      continue
-    }
-    
+  
+  for (const batch of batches) {
     try {
-      const translated = await translateText(text, targetLang)
-      translations.set(text, translated)
+      const batchResult = await translateTextBatch(batch, targetLang)
+      for (const [original, translated] of batchResult) {
+        translations.set(original, translated)
+      }
     } catch (error) {
-      console.error(`[translateTipTapContent] Failed to translate node: "${text.slice(0, 50)}..."`, error)
-      // Keep original text on failure
-      translations.set(text, text)
+      console.error('[translateTipTapContent] Batch translation failed:', error)
+      for (const text of batch) {
+        translations.set(text, text)
+      }
     }
   }
   
