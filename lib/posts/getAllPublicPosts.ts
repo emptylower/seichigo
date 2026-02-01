@@ -85,7 +85,7 @@ export async function getAllPublicPosts(language: string = 'zh', options?: GetAl
   const mdxPosts = await mdx.getAllPosts(language).catch(() => [])
 
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
-  const dbPublished = repo ? await repo.listByStatus('published').catch(() => []) : []
+  const dbPublished = repo ? await repo.listByStatus('published', language).catch(() => []) : []
 
   const byPath = new Map<string, PublicPostListItem>()
   for (const p of mdxPosts) {
