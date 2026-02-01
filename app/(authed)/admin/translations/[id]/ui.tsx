@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import TipTapPreview from '@/components/translation/TipTapPreview'
+import ArticleToc from '@/components/toc/ArticleToc'
+import PostMeta from '@/components/blog/PostMeta'
+import Breadcrumbs from '@/components/layout/Breadcrumbs'
 
 type TranslationTask = {
   id: string
@@ -153,6 +156,12 @@ export default function TranslationDetailUI({ id }: Props) {
     return content && typeof content === 'object' && content.type === 'doc'
   }
 
+  const breadcrumbItems = [
+    { name: '后台', href: '/admin' },
+    { name: '翻译任务', href: '/admin/translations' },
+    { name: task.draftContent?.title || '任务详情', href: '#' },
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -233,45 +242,43 @@ export default function TranslationDetailUI({ id }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">源内容 (中文)</h2>
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-            {task.sourceContent ? (
-              isTipTapContent(task.sourceContent) ? (
-                <TipTapPreview content={task.sourceContent} mode="preview" />
-              ) : (
-                <pre className="whitespace-pre-wrap text-sm">
-                  {JSON.stringify(task.sourceContent, null, 2)}
-                </pre>
-              )
-            ) : (
-              <p className="text-gray-500">暂无源内容</p>
-            )}
-          </div>
-        </div>
+      <div className="mx-auto w-full max-w-7xl px-0 lg:px-4">
+        <div className="flex items-start gap-12">
+          <aside className="hidden lg:block lg:sticky lg:top-24 lg:shrink-0 lg:w-72">
+            <ArticleToc />
+          </aside>
+          <main className="min-w-0 flex-1 pb-24">
+            <article className="prose prose-pink max-w-none w-full" data-seichi-article-content="true">
+              <div className="not-prose mb-4">
+                <Breadcrumbs items={breadcrumbItems} />
+              </div>
 
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">
-            翻译内容 ({languageLabels[task.targetLanguage]})
-          </h2>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            {task.draftContent ? (
-              isTipTapContent(task.draftContent) ? (
-                <TipTapPreview 
-                  content={isEditing ? editedContent : task.draftContent} 
-                  mode={isEditing ? 'edit' : 'preview'}
-                  onChange={setEditedContent}
+              <div className="mb-8 not-prose">
+                <PostMeta 
+                  anime={[]} 
+                  publishDate={new Date(task.createdAt).toLocaleDateString()} 
                 />
-              ) : (
-                <pre className="whitespace-pre-wrap text-sm">
-                  {JSON.stringify(task.draftContent, null, 2)}
-                </pre>
-              )
-            ) : (
-              <p className="text-gray-500">翻译尚未生成</p>
-            )}
-          </div>
+              </div>
+
+              <div className="rounded-lg bg-white min-h-[500px]">
+                {task.draftContent ? (
+                  isTipTapContent(task.draftContent) ? (
+                    <TipTapPreview 
+                      content={isEditing ? editedContent : task.draftContent} 
+                      mode={isEditing ? 'edit' : 'preview'}
+                      onChange={setEditedContent}
+                    />
+                  ) : (
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {JSON.stringify(task.draftContent, null, 2)}
+                    </pre>
+                  )
+                ) : (
+                  <p className="text-gray-500 p-4">翻译尚未生成</p>
+                )}
+              </div>
+            </article>
+          </main>
         </div>
       </div>
 
