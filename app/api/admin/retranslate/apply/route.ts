@@ -8,6 +8,7 @@ const applySchema = z.object({
   entityId: z.string().min(1),
   targetLang: z.enum(['en', 'ja']),
   preview: z.record(z.any()),
+  translationTaskId: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -26,19 +27,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { entityType, entityId, targetLang, preview } = parsed.data
+    const { entityType, entityId, targetLang, preview, translationTaskId } = parsed.data
 
     let updated
     if (entityType === 'article') {
+      if (!translationTaskId) {
+        return NextResponse.json(
+          { error: 'translationTaskId is required for article entity type' },
+          { status: 400 }
+        )
+      }
+
       const updateData: any = {}
       if ('title' in preview) updateData.title = preview.title
       if ('description' in preview) updateData.description = preview.description
       if ('seoTitle' in preview) updateData.seoTitle = preview.seoTitle
       if ('contentJson' in preview) updateData.contentJson = preview.contentJson
 
-      updated = await prisma.article.update({
-        where: { id: entityId },
-        data: updateData,
+      updated = await prisma.translationTask.update({
+        where: { id: translationTaskId },
+        data: {
+          draftContent: updateData,
+          updatedAt: new Date(),
+        },
       })
     } else if (entityType === 'city') {
       const updateData: any = {}

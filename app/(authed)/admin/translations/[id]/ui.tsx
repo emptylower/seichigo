@@ -155,6 +155,7 @@ export default function TranslationDetailUI({ id }: Props) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+            translationTaskId: id,
             entityType: task.entityType,
             entityId: task.entityId,
             targetLang: task.targetLanguage,
