@@ -23,6 +23,13 @@ type TranslationTask = {
   createdAt: string
 }
 
+type HistoryItem = {
+  id: string
+  createdAt: string
+  operatorName: string | null
+  action: string
+}
+
 type Props = {
   id: string
 }
@@ -40,9 +47,17 @@ export default function TranslationDetailUI({ id }: Props) {
   const [previewContent, setPreviewContent] = useState<any>(null)
   const [retranslating, setRetranslating] = useState(false)
   
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyList, setHistoryList] = useState<HistoryItem[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [rollingBack, setRollingBack] = useState<string | null>(null)
+
   const [editor, setEditor] = useState<Editor | null>(null)
   const [retranslateMode, setRetranslateMode] = useState<'full' | 'selection'>('full')
   const [selectedText, setSelectedText] = useState<string>('')
+
+  const [updating, setUpdating] = useState(false)
+  const [relatedArticle, setRelatedArticle] = useState<{ updatedAt: string, contentJson: any } | null>(null)
 
   const { saveState, saveError } = useTranslationAutoSave({
     translationId: id,
@@ -57,6 +72,7 @@ export default function TranslationDetailUI({ id }: Props) {
       if (!res.ok) throw new Error('Failed to load task')
       const data = await res.json()
       setTask(data.task)
+      setRelatedArticle(data.relatedArticle)
       setEditedContent(data.task.draftContent)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
@@ -64,6 +80,55 @@ export default function TranslationDetailUI({ id }: Props) {
       setLoading(false)
     }
   }
+
+  async function loadHistory() {
+    if (loadingHistory) return
+    setLoadingHistory(true)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}/history`)
+      if (!res.ok) throw new Error('Failed to load history')
+      const data = await res.json()
+      setHistoryList(data.history || [])
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to load history')
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  async function handleRollback(historyId: string) {
+    if (!confirm('确定要回滚到此版本吗？这将覆盖当前的翻译内容。')) return
+    
+    setRollingBack(historyId)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}/rollback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ historyId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Rollback failed')
+      }
+
+      alert('回滚成功')
+      await loadTask()
+      setShowHistory(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Rollback failed')
+    } finally {
+      setRollingBack(null)
+    }
+  }
+
+  useEffect(() => {
+    if (showHistory && historyList.length === 0) {
+      void loadHistory()
+    }
+  }, [showHistory])
 
   async function handleRetranslate() {
     if (!task) return
@@ -179,6 +244,41 @@ export default function TranslationDetailUI({ id }: Props) {
         setRetranslating(false)
       }
     }
+  }
+
+  async function handleUpdatePublished() {
+    if (!task || !relatedArticle) return
+    if (!confirm('确认要更新已发布的文章吗？这将覆盖当前线上内容。')) return
+    
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/admin/translations/${id}/update-published`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          articleUpdatedAt: relatedArticle.updatedAt
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Update failed')
+      }
+
+      alert('文章更新成功')
+      await loadTask()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Update failed')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  function startEditing() {
+    if (task?.status === 'approved' && relatedArticle?.contentJson) {
+      setEditedContent(relatedArticle.contentJson)
+    }
+    setIsEditing(true)
   }
 
   async function handleApprove() {
@@ -343,6 +443,30 @@ export default function TranslationDetailUI({ id }: Props) {
               </button>
             </>
           )}
+          {task.status === 'approved' && !isEditing && (
+            <>
+              <button
+                onClick={startEditing}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
+              >
+                编辑翻译
+              </button>
+              <button
+                onClick={handleRetranslate}
+                disabled={retranslating}
+                className="rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+              >
+                {retranslating ? '翻译中...' : '重新翻译'}
+              </button>
+              <button
+                onClick={handleUpdatePublished}
+                disabled={updating}
+                className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                {updating ? '更新中...' : '更新发布'}
+              </button>
+            </>
+          )}
           {isEditing && (
             <>
               <button
@@ -353,16 +477,66 @@ export default function TranslationDetailUI({ id }: Props) {
                 {retranslating ? '翻译中...' : '重新翻译全文'}
               </button>
               <button
-                onClick={handleApprove}
-              disabled={approving}
-              className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
-            >
-              {approving ? '处理中...' : '确认翻译'}
-            </button>
+                onClick={task.status === 'approved' ? handleUpdatePublished : handleApprove}
+                disabled={task.status === 'approved' ? updating : approving}
+                className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                {task.status === 'approved' 
+                  ? (updating ? '更新中...' : '更新发布')
+                  : (approving ? '处理中...' : '确认翻译')
+                }
+              </button>
             </>
+          )}
+          {task.entityType === 'article' && task.status === 'approved' && !isEditing && (
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
+            >
+              {showHistory ? '隐藏' : '显示'}版本历史
+            </button>
           )}
         </div>
       </div>
+
+      {showHistory && (
+        <div className="mx-auto w-full px-4 lg:px-8 mb-6">
+          <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-4 py-3 bg-gray-50">
+              <h3 className="text-sm font-medium text-gray-900">版本历史</h3>
+            </div>
+            <div className="p-4">
+              {loadingHistory ? (
+                <div className="py-4 text-center text-gray-500 text-sm">加载中...</div>
+              ) : historyList.length === 0 ? (
+                <div className="py-4 text-center text-gray-500 text-sm">暂无历史版本</div>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {historyList.map((history) => (
+                    <li key={history.id} className="flex items-center justify-between py-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-gray-900">
+                          {new Date(history.createdAt).toLocaleString('zh-CN')}
+                        </span>
+                        <span className="text-xs text-gray-500 mt-0.5">
+                          操作者: {history.operatorName || '未知'} <span className="text-gray-300 mx-1">|</span> {history.action}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRollback(history.id)}
+                        disabled={rollingBack === history.id}
+                        className="rounded border border-gray-300 bg-white px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                      >
+                        {rollingBack === history.id ? '回滚中...' : '回滚'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {task.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">

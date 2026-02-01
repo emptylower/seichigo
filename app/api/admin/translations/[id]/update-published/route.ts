@@ -99,7 +99,7 @@ export async function POST(
       contentHtml: nextContentHtml,
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.translationHistory.create({
         data: {
           translationTaskId: task.id,
@@ -122,7 +122,7 @@ export async function POST(
       await tx.translationTask.update({
         where: { id: task.id },
         data: {
-          finalContent: task.draftContent,
+          finalContent: task.draftContent as any,
           updatedAt: new Date(),
         },
       })

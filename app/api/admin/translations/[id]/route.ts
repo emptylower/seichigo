@@ -21,7 +21,18 @@ export async function GET(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ task })
+    let relatedArticle = null
+    if (task.entityType === 'article') {
+      relatedArticle = await prisma.article.findUnique({
+        where: { id: task.entityId },
+        select: {
+          updatedAt: true,
+          contentJson: true,
+        },
+      })
+    }
+
+    return NextResponse.json({ task, relatedArticle })
   } catch (error) {
     console.error('[api/admin/translations/[id]] GET failed', error)
     return NextResponse.json(
