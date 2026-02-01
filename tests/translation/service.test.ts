@@ -227,4 +227,225 @@ describe('Translation Service', () => {
       expect(result.translatedContent.name).toBe('translated_你的名字')
     })
   })
+
+  describe('translateTipTapContent', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should translate normal text nodes', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '你好世界' },
+              { type: 'text', text: '这是测试' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      expect(translateTextSpy).toHaveBeenCalledWith('你好世界', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('这是测试', 'en')
+      expect(result.content?.[0].content?.[0].text).toBe('translated_你好世界')
+      expect(result.content?.[0].content?.[1].text).toBe('translated_这是测试')
+    })
+
+    it('should skip empty and whitespace-only nodes', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '' },
+              { type: 'text', text: '   ' },
+              { type: 'text', text: '\n\t  ' },
+              { type: 'text', text: '正常文本' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      // Should only be called once for the normal text
+      expect(translateTextSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextSpy).toHaveBeenCalledWith('正常文本', 'en')
+      expect(translateTextSpy).not.toHaveBeenCalledWith('', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith('   ', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith('\n\t  ', expect.any(String))
+      
+      // Empty/whitespace nodes should remain unchanged
+      expect(result.content?.[0].content?.[0].text).toBe('')
+      expect(result.content?.[0].content?.[1].text).toBe('   ')
+      expect(result.content?.[0].content?.[2].text).toBe('\n\t  ')
+      expect(result.content?.[0].content?.[3].text).toBe('translated_正常文本')
+    })
+
+    it('should skip punctuation-only nodes', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '。' },
+              { type: 'text', text: '！' },
+              { type: 'text', text: '、' },
+              { type: 'text', text: '「」' },
+              { type: 'text', text: ' -> ' },
+              { type: 'text', text: ']' },
+              { type: 'text', text: '正常文本' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      // Should only be called once for the normal text
+      expect(translateTextSpy).toHaveBeenCalledTimes(1)
+      expect(translateTextSpy).toHaveBeenCalledWith('正常文本', 'en')
+      expect(translateTextSpy).not.toHaveBeenCalledWith('。', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith('！', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith('、', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith('「」', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith(' -> ', expect.any(String))
+      expect(translateTextSpy).not.toHaveBeenCalledWith(']', expect.any(String))
+      
+      // Punctuation nodes should remain unchanged
+      expect(result.content?.[0].content?.[0].text).toBe('。')
+      expect(result.content?.[0].content?.[1].text).toBe('！')
+      expect(result.content?.[0].content?.[6].text).toBe('translated_正常文本')
+    })
+
+    it('should translate single Chinese characters', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '是' },
+              { type: 'text', text: '的' },
+              { type: 'text', text: '了' },
+              { type: 'text', text: '我' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      // All single Chinese characters should be translated
+      expect(translateTextSpy).toHaveBeenCalledTimes(4)
+      expect(translateTextSpy).toHaveBeenCalledWith('是', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('的', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('了', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('我', 'en')
+      
+      expect(result.content?.[0].content?.[0].text).toBe('translated_是')
+      expect(result.content?.[0].content?.[1].text).toBe('translated_的')
+      expect(result.content?.[0].content?.[2].text).toBe('translated_了')
+      expect(result.content?.[0].content?.[3].text).toBe('translated_我')
+    })
+
+    it('should continue on API failure and keep original text', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '第一段' },
+              { type: 'text', text: '会失败' },
+              { type: 'text', text: '第三段' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText')
+        .mockImplementationOnce(async (text: string) => `translated_${text}`)
+        .mockImplementationOnce(async () => {
+          throw new Error('API failure')
+        })
+        .mockImplementationOnce(async (text: string) => `translated_${text}`)
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      // All three nodes should have been attempted
+      expect(translateTextSpy).toHaveBeenCalledTimes(3)
+      expect(translateTextSpy).toHaveBeenCalledWith('第一段', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('会失败', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('第三段', 'en')
+      
+      // First and third should be translated, second should keep original
+      expect(result.content?.[0].content?.[0].text).toBe('translated_第一段')
+      expect(result.content?.[0].content?.[1].text).toBe('会失败')
+      expect(result.content?.[0].content?.[2].text).toBe('translated_第三段')
+      
+      // Error should have been logged
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[translateTipTapContent] Failed to translate node:'),
+        expect.any(Error)
+      )
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should handle mixed content with filters and translations', async () => {
+      const doc: TipTapNode = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '你好' },
+              { type: 'text', text: '。' },
+              { type: 'text', text: '   ' },
+              { type: 'text', text: '世界' },
+              { type: 'text', text: '！' }
+            ]
+          }
+        ]
+      }
+
+      const translateTextSpy = vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const { translateTipTapContent } = await import('@/lib/translation/service')
+      const result = await translateTipTapContent(doc, 'en')
+
+      // Only normal text should be translated
+      expect(translateTextSpy).toHaveBeenCalledTimes(2)
+      expect(translateTextSpy).toHaveBeenCalledWith('你好', 'en')
+      expect(translateTextSpy).toHaveBeenCalledWith('世界', 'en')
+      
+      expect(result.content?.[0].content?.[0].text).toBe('translated_你好')
+      expect(result.content?.[0].content?.[1].text).toBe('。')
+      expect(result.content?.[0].content?.[2].text).toBe('   ')
+      expect(result.content?.[0].content?.[3].text).toBe('translated_世界')
+      expect(result.content?.[0].content?.[4].text).toBe('！')
+    })
+  })
 })
