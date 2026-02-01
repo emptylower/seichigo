@@ -60,10 +60,15 @@ function normalizeDb(article: any): PublicPostListItem {
 
   const effectiveUpdatedAtIso = lastApprovedAtIso || publishedAtIso || recordUpdatedAtIso
 
+  const language = String(article?.language || 'zh')
+  const slug = String(article?.slug || '')
+  const localePrefix = language === 'zh' ? '' : `/${language}`
+  const path = `${localePrefix}/posts/${slug}`.replace(/\/posts\/$/, '/posts')
+
   return {
     source: 'db',
     title: String(article?.title || ''),
-    path: `/posts/${String(article?.slug || '')}`.replace(/\/posts\/$/, '/posts'),
+    path,
     animeIds: Array.isArray(article?.animeIds) ? article.animeIds : [],
     city: String(article?.city || ''),
     routeLength: article?.routeLength ?? undefined,
