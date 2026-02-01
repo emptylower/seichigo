@@ -146,6 +146,52 @@ describe('Translation Service', () => {
       expect(result.translatedContent.title).toBe('translated_测试标题')
     })
 
+    it('should preserve cover and metadata fields in both sourceContent and translatedContent', async () => {
+      const mockArticle = {
+        id: 'article-meta-1',
+        title: '测试标题',
+        description: '测试描述',
+        seoTitle: 'SEO标题',
+        contentJson: { type: 'doc', content: [] },
+        cover: '/images/test-cover.jpg',
+        animeIds: ['anime-1', 'anime-2'],
+        city: 'tokyo',
+        routeLength: '5km',
+        tags: ['tag1', 'tag2'],
+      }
+
+      vi.spyOn(prisma.article, 'findUnique').mockResolvedValue(mockArticle as any)
+      vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const result = await translateArticle('article-meta-1', 'en')
+
+      expect(result.success).toBe(true)
+      
+      // Check sourceContent includes all fields
+      expect(result.sourceContent).toMatchObject({
+        title: '测试标题',
+        description: '测试描述',
+        seoTitle: 'SEO标题',
+        cover: '/images/test-cover.jpg',
+        animeIds: ['anime-1', 'anime-2'],
+        city: 'tokyo',
+        routeLength: '5km',
+        tags: ['tag1', 'tag2'],
+      })
+
+      // Check translatedContent includes metadata (copied, not translated)
+      expect(result.translatedContent).toMatchObject({
+        title: 'translated_测试标题',
+        description: 'translated_测试描述',
+        seoTitle: 'translated_SEO标题',
+        cover: '/images/test-cover.jpg', // Same as source
+        animeIds: ['anime-1', 'anime-2'], // Same as source
+        city: 'tokyo', // Same as source
+        routeLength: '5km', // Same as source
+        tags: ['tag1', 'tag2'], // Same as source
+      })
+    })
+
     it('should handle null optional fields in sourceContent', async () => {
       const mockArticle = {
         id: 'article-2',
@@ -169,6 +215,34 @@ describe('Translation Service', () => {
       })
       expect(result.translatedContent.description).toBe(null)
       expect(result.translatedContent.seoTitle).toBe(null)
+    })
+
+    it('should handle null/undefined metadata fields gracefully', async () => {
+      const mockArticle = {
+        id: 'article-null-meta',
+        title: '最小文章',
+        description: null,
+        seoTitle: null,
+        contentJson: null,
+        cover: null,
+        animeIds: [],
+        city: null,
+        routeLength: null,
+        tags: [],
+      }
+
+      vi.spyOn(prisma.article, 'findUnique').mockResolvedValue(mockArticle as any)
+      vi.spyOn(gemini, 'translateText').mockImplementation(async (text: string) => `translated_${text}`)
+
+      const result = await translateArticle('article-null-meta', 'en')
+
+      expect(result.success).toBe(true)
+      expect(result.sourceContent?.cover).toBeNull()
+      expect(result.translatedContent?.cover).toBeNull()
+      expect(result.translatedContent?.animeIds).toEqual([])
+      expect(result.translatedContent?.tags).toEqual([])
+      expect(result.translatedContent?.city).toBeNull()
+      expect(result.translatedContent?.routeLength).toBeNull()
     })
   })
 

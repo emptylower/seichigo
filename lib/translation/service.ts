@@ -19,6 +19,11 @@ export async function translateArticle(articleId: string, targetLang: string): P
         description: true,
         contentJson: true,
         seoTitle: true,
+        cover: true,
+        animeIds: true,
+        city: true,
+        routeLength: true,
+        tags: true,
       },
     })
 
@@ -31,6 +36,11 @@ export async function translateArticle(articleId: string, targetLang: string): P
       description: article.description,
       seoTitle: article.seoTitle,
       contentJson: article.contentJson,
+      cover: article.cover,
+      animeIds: article.animeIds,
+      city: article.city,
+      routeLength: article.routeLength,
+      tags: article.tags,
     }
 
     const translatedTitle = await translateText(article.title, targetLang)
@@ -57,6 +67,11 @@ export async function translateArticle(articleId: string, targetLang: string): P
         description: translatedDescription,
         seoTitle: translatedSeoTitle,
         contentJson: translatedContentJson,
+        cover: article.cover,
+        animeIds: article.animeIds,
+        city: article.city,
+        routeLength: article.routeLength,
+        tags: article.tags,
       },
     }
   } catch (error: any) {
