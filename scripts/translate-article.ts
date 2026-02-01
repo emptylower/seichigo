@@ -81,7 +81,14 @@ function restoreTerms(text: string, terms: Map<string, string>, glossary: Glossa
   
   for (const [placeholder, originalTerm] of terms.entries()) {
     const translation = glossary[originalTerm]?.[targetLang] || originalTerm
-    restored = restored.replace(placeholder, translation)
+    // Extract the index from placeholder like {{TERM_0}}
+    const match = placeholder.match(/TERM_(\d+)/)
+    if (match) {
+      const index = match[1]
+      // Match variations: {{TERM_0}}, {{ TERM_0 }}, {{term_0}}, etc.
+      const regex = new RegExp(`\\{\\{\\s*TERM_${index}\\s*\\}\\}`, 'gi')
+      restored = restored.replace(regex, translation)
+    }
   }
   
   return restored
