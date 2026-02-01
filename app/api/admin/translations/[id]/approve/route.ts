@@ -47,6 +47,17 @@ export async function POST(
       } else {
         const sourceArticle = await prisma.article.findUnique({
           where: { id: entityId },
+          select: {
+            id: true,
+            authorId: true,
+            slug: true,
+            translationGroupId: true,
+            cover: true,
+            animeIds: true,
+            city: true,
+            routeLength: true,
+            tags: true,
+          },
         })
 
         if (sourceArticle) {
@@ -54,14 +65,25 @@ export async function POST(
           await prisma.article.create({
             data: {
               ...draftData,
-              // Inherit slug from source article if not provided in draft
               slug: draftData.slug || sourceArticle.slug,
               authorId: sourceArticle.authorId,
               language: targetLanguage,
               translationGroupId: sourceArticle.translationGroupId || sourceArticle.id,
+              cover: sourceArticle.cover,
+              animeIds: sourceArticle.animeIds,
+              city: sourceArticle.city,
+              routeLength: sourceArticle.routeLength,
+              tags: sourceArticle.tags,
               status: 'published',
             } as any,
           })
+
+          if (!sourceArticle.translationGroupId) {
+            await prisma.article.update({
+              where: { id: sourceArticle.id },
+              data: { translationGroupId: sourceArticle.id },
+            })
+          }
         }
       }
 
