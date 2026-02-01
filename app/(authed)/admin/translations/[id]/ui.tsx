@@ -260,6 +260,46 @@ export default function TranslationDetailUI({ id }: Props) {
                 />
               </div>
 
+              {isEditing && (
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      标题
+                    </label>
+                    <input
+                      type="text"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                      value={editedContent?.title || ''}
+                      onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      SEO 标题
+                    </label>
+                    <input
+                      type="text"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                      value={editedContent?.seoTitle || ''}
+                      onChange={(e) => setEditedContent({ ...editedContent, seoTitle: e.target.value })}
+                      placeholder="留空则使用标题"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      描述
+                    </label>
+                    <textarea
+                      rows={3}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                      value={editedContent?.description || ''}
+                      onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
+                      placeholder="用于搜索结果摘要"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-lg bg-white min-h-[500px]">
                 {task.draftContent ? (
                   isTipTapContent(task.draftContent) ? (
