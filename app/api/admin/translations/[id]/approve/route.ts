@@ -54,6 +54,8 @@ export async function POST(
           await prisma.article.create({
             data: {
               ...draftData,
+              // Inherit slug from source article if not provided in draft
+              slug: draftData.slug || sourceArticle.slug,
               authorId: sourceArticle.authorId,
               language: targetLanguage,
               translationGroupId: sourceArticle.translationGroupId || sourceArticle.id,
