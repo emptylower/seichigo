@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
-import { translateAnime, translateCity, translateArticle, translateText } from '@/lib/translation/service'
+import { translateAnime, translateCity, translateArticle, translateText, translateTipTapContent } from '@/lib/translation/service'
+import { prisma } from '@/lib/db/prisma'
 import { z } from 'zod'
+import type { TipTapNode } from '@/lib/translation/tiptap'
 
 const retranslateSchema = z.object({
   entityType: z.enum(['anime', 'city', 'article', 'text']),
@@ -45,7 +47,50 @@ export async function POST(req: NextRequest) {
       })
     } else if (entityType === 'article') {
       if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
-      result = await translateArticle(entityId, targetLang)
+      
+      // Try to find existing task with sourceContent
+      const existingTask = await prisma.translationTask.findFirst({
+        where: {
+          entityType: 'article',
+          entityId,
+          targetLanguage: targetLang,
+        },
+        select: { sourceContent: true },
+      })
+
+      if (existingTask?.sourceContent) {
+        // Use preserved source content for translation
+        const source = existingTask.sourceContent as any
+        const translatedTitle = await translateText(source.title, targetLang)
+        const translatedDescription = source.description
+          ? await translateText(source.description, targetLang)
+          : null
+        const translatedSeoTitle = source.seoTitle
+          ? await translateText(source.seoTitle, targetLang)
+          : null
+        
+        let translatedContentJson = source.contentJson
+        if (source.contentJson && typeof source.contentJson === 'object') {
+          translatedContentJson = await translateTipTapContent(
+            source.contentJson as TipTapNode,
+            targetLang
+          )
+        }
+        
+        result = {
+          success: true,
+          sourceContent: source,
+          translatedContent: {
+            title: translatedTitle,
+            description: translatedDescription,
+            seoTitle: translatedSeoTitle,
+            contentJson: translatedContentJson,
+          },
+        }
+      } else {
+        // Fall back to fetching from article (first-time translation)
+        result = await translateArticle(entityId, targetLang)
+      }
     } else if (entityType === 'city') {
       if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       result = await translateCity(entityId, targetLang)
