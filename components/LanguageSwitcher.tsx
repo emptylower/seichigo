@@ -46,13 +46,17 @@ export default function LanguageSwitcher({ locale }: Props) {
   const router = useRouter()
 
   const handleLanguageClick = async (targetLocale: SiteLocale, e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!isArticlePage(pathname)) return
+    if (!isArticlePage(pathname)) {
+      document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
+      return
+    }
 
     e.preventDefault()
 
     const slug = extractSlugFromPathname(pathname, locale)
     if (!slug) {
       router.push(prefixPath(pathname, targetLocale))
+      document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
       return
     }
 
@@ -64,6 +68,8 @@ export default function LanguageSwitcher({ locale }: Props) {
     } else {
       router.push(prefixPath(pathname, targetLocale))
     }
+    
+    document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
   }
 
   return (

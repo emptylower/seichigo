@@ -136,4 +136,42 @@ describe('LanguageSwitcher', () => {
       expect(mockPush).toHaveBeenCalledWith('/en/posts/my-article')
     })
   })
+
+  it('sets NEXT_LOCALE cookie when language is clicked on non-article page', async () => {
+    mockUsePathname.mockReturnValue('/about')
+
+    render(<LanguageSwitcher locale="zh" />)
+
+    const englishLink = screen.getByRole('link', { name: 'English' })
+    fireEvent.click(englishLink)
+
+    await waitFor(() => {
+      expect(document.cookie).toContain('NEXT_LOCALE=en')
+    })
+  })
+
+  it('sets NEXT_LOCALE cookie after navigation on article page', async () => {
+    mockUsePathname.mockReturnValue('/posts/my-article')
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ translatedSlug: 'my-article-en' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+    ;(globalThis as any).fetch = fetchMock
+
+    render(<LanguageSwitcher locale="zh" />)
+
+    const englishLink = screen.getByRole('link', { name: 'English' })
+    fireEvent.click(englishLink)
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/en/posts/my-article-en')
+    })
+
+    await waitFor(() => {
+      expect(document.cookie).toContain('NEXT_LOCALE=en')
+    })
+  })
 })
