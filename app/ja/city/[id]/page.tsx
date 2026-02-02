@@ -152,7 +152,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
 
           <div className="relative z-10 flex flex-col gap-4 p-6 md:p-10">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight md:text-5xl">{city.name_ja || city.name_en || city.name_zh}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-md md:text-5xl">{city.name_ja || city.name_en || city.name_zh}</h1>
               {city.name_zh && city.name_ja ? <span className="text-sm text-gray-200 md:text-base">{city.name_zh}</span> : null}
             </div>
 
