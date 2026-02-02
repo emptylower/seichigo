@@ -17,7 +17,9 @@ type CityRow = {
   name_en: string | null
   name_ja: string | null
   description_en: string | null
+  description_ja: string | null
   transportTips_en: string | null
+  transportTips_ja: string | null
 }
 type AnimeRow = {
   id: string
@@ -30,8 +32,8 @@ type AnimeRow = {
 function hasEntityTranslation(entityType: EntityType, row: CityRow | AnimeRow, lang: TargetLanguage): boolean {
   if (entityType === 'city') {
     const city = row as CityRow
-    if (lang === 'en') return Boolean(city.name_en || city.description_en || city.transportTips_en)
-    return Boolean(city.name_ja)
+    if (lang === 'en') return Boolean(city.name_en?.trim() && city.description_en?.trim() && city.transportTips_en?.trim())
+    return Boolean(city.name_ja?.trim() && city.description_ja?.trim() && city.transportTips_ja?.trim())
   }
 
   const anime = row as AnimeRow
@@ -85,7 +87,9 @@ async function getEntityIdsAndApprovedLangs(
         name_en: true,
         name_ja: true,
         description_en: true,
+        description_ja: true,
         transportTips_en: true,
+        transportTips_ja: true,
       },
     })
     const entityIds = rows.map((r) => r.id)

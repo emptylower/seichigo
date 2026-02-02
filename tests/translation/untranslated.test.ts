@@ -66,6 +66,8 @@ describe('GET /api/admin/translations/untranslated', () => {
         name_ja: null,
         description_en: null,
         transportTips_en: null,
+        description_ja: null,
+        transportTips_ja: null,
         createdAt: new Date('2024-02-01T00:00:00.000Z'),
       },
     ])
@@ -161,6 +163,8 @@ describe('GET /api/admin/translations/untranslated', () => {
         name_ja: null,
         description_en: null,
         transportTips_en: null,
+        description_ja: null,
+        transportTips_ja: null,
         createdAt: new Date('2024-02-01T00:00:00.000Z'),
       },
     ])
