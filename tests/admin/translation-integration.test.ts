@@ -279,8 +279,8 @@ describe('admin translation integration', () => {
 
       expect(mocks.prisma.anime.update).toHaveBeenCalledTimes(1)
       const call = mocks.prisma.anime.update.mock.calls[0]?.[0]
-      expect(call.data.name).toBe('Applied Translation')
-      expect(call.data.summary).toBe('Applied Summary')
+      expect(call.data.name_en).toBe('Applied Translation')
+      expect(call.data.summary_en).toBe('Applied Summary')
     })
 
     it('applies translation preview to city', async () => {

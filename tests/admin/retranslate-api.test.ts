@@ -223,7 +223,7 @@ describe('admin retranslate api - apply', () => {
     expect(j.updated.name).toBe('Applied Name')
     expect(mocks.prisma.anime.update).toHaveBeenCalledWith({
       where: { id: 'anime-1' },
-      data: { name: 'Applied Name', summary: 'Applied Summary' },
+      data: { name_en: 'Applied Name', summary_en: 'Applied Summary' },
     })
   })
 

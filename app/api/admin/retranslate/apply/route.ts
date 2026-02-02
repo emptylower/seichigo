@@ -73,8 +73,14 @@ export async function POST(req: NextRequest) {
       })
     } else if (entityType === 'anime') {
       const updateData: any = {}
-      if ('name' in preview) updateData.name = preview.name
-      if ('summary' in preview) updateData.summary = preview.summary
+      
+      if (targetLang === 'en') {
+        if ('name' in preview) updateData.name_en = preview.name
+        if ('summary' in preview) updateData.summary_en = preview.summary
+      } else if (targetLang === 'ja') {
+        if ('name' in preview) updateData.name_ja = preview.name
+        if ('summary' in preview) updateData.summary_ja = preview.summary
+      }
 
       updated = await prisma.anime.update({
         where: { id: entityId },
