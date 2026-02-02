@@ -111,6 +111,7 @@ export async function POST(
       } else if (targetLanguage === 'ja') {
         if (content.name) updateData.name_ja = content.name
         if (content.description) updateData.description_ja = content.description
+        if (content.transportTips) updateData.transportTips_ja = content.transportTips
       }
 
       await prisma.city.update({
