@@ -58,6 +58,7 @@ export default function TranslationDetailUI({ id }: Props) {
 
   const [updating, setUpdating] = useState(false)
   const [relatedArticle, setRelatedArticle] = useState<{ updatedAt: string, contentJson: any } | null>(null)
+  const [translatedArticle, setTranslatedArticle] = useState<{ id: string, title: string, description: string, seoTitle: string, contentJson: any, updatedAt: string } | null>(null)
 
   const { saveState, saveError } = useTranslationAutoSave({
     translationId: id,
@@ -73,7 +74,19 @@ export default function TranslationDetailUI({ id }: Props) {
       const data = await res.json()
       setTask(data.task)
       setRelatedArticle(data.relatedArticle)
-      setEditedContent(data.task.draftContent)
+      setTranslatedArticle(data.translatedArticle)
+      
+      // Initialize editedContent based on status
+      if (data.task.status === 'approved' && data.translatedArticle?.contentJson) {
+        setEditedContent({
+          title: data.translatedArticle.title,
+          description: data.translatedArticle.description,
+          seoTitle: data.translatedArticle.seoTitle,
+          contentJson: data.translatedArticle.contentJson,
+        })
+      } else {
+        setEditedContent(data.task.draftContent)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -247,7 +260,7 @@ export default function TranslationDetailUI({ id }: Props) {
   }
 
   async function handleUpdatePublished() {
-    if (!task || !relatedArticle) return
+    if (!task || !translatedArticle) return
     if (!confirm('确认要更新已发布的文章吗？这将覆盖当前线上内容。')) return
     
     setUpdating(true)
@@ -256,7 +269,7 @@ export default function TranslationDetailUI({ id }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          articleUpdatedAt: relatedArticle.updatedAt
+          articleUpdatedAt: translatedArticle.updatedAt
         })
       })
 
@@ -275,9 +288,6 @@ export default function TranslationDetailUI({ id }: Props) {
   }
 
   function startEditing() {
-    if (task?.status === 'approved' && relatedArticle?.contentJson) {
-      setEditedContent(relatedArticle.contentJson)
-    }
     setIsEditing(true)
   }
 
