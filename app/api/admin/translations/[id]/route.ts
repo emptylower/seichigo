@@ -22,6 +22,7 @@ export async function GET(
     }
 
     let relatedArticle = null
+    let translatedArticle = null
     if (task.entityType === 'article') {
       relatedArticle = await prisma.article.findUnique({
         where: { id: task.entityId },
@@ -30,9 +31,26 @@ export async function GET(
           contentJson: true,
         },
       })
+
+      if (task.status === 'approved') {
+        translatedArticle = await prisma.article.findFirst({
+          where: {
+            translationGroupId: task.entityId,
+            language: task.targetLanguage,
+          },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            seoTitle: true,
+            contentJson: true,
+            updatedAt: true,
+          },
+        })
+      }
     }
 
-    return NextResponse.json({ task, relatedArticle })
+    return NextResponse.json({ task, relatedArticle, translatedArticle })
   } catch (error) {
     console.error('[api/admin/translations/[id]] GET failed', error)
     return NextResponse.json(
