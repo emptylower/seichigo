@@ -237,4 +237,143 @@ describe('GET /api/admin/translations/untranslated', () => {
       missingLanguages: ['ja'],
     })
   })
+
+  it('city with only name_ja (missing description_ja and transportTips_ja) should have missingLanguages: ["ja"]', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation(() => Promise.resolve([]))
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    mocks.prisma.city.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        name_zh: 'Tokyo',
+        name_en: 'Tokyo EN',
+        name_ja: 'Tokyo JA',
+        description_en: 'Description EN',
+        transportTips_en: 'Tips EN',
+        description_ja: null,
+        transportTips_ja: null,
+        createdAt: new Date('2024-02-01T00:00:00.000Z'),
+      },
+    ])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(1)
+    expect(j.items[0]).toMatchObject({
+      entityType: 'city',
+      entityId: 'c1',
+      title: 'Tokyo',
+      missingLanguages: ['ja'],
+    })
+  })
+
+  it('city with all 3 JA fields should NOT appear in untranslated list', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation(() => Promise.resolve([]))
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    mocks.prisma.city.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        name_zh: 'Tokyo',
+        name_en: 'Tokyo EN',
+        name_ja: 'Tokyo JA',
+        description_en: 'Description EN',
+        transportTips_en: 'Tips EN',
+        description_ja: 'Description JA',
+        transportTips_ja: 'Tips JA',
+        createdAt: new Date('2024-02-01T00:00:00.000Z'),
+      },
+    ])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(0)
+    expect(j.items).toEqual([])
+  })
+
+  it('empty string should be treated as missing (name_ja: "" = untranslated)', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation(() => Promise.resolve([]))
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    mocks.prisma.city.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        name_zh: 'Tokyo',
+        name_en: 'Tokyo EN',
+        name_ja: '',
+        description_en: 'Description EN',
+        transportTips_en: 'Tips EN',
+        description_ja: 'Description JA',
+        transportTips_ja: 'Tips JA',
+        createdAt: new Date('2024-02-01T00:00:00.000Z'),
+      },
+    ])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(1)
+    expect(j.items[0]).toMatchObject({
+      entityType: 'city',
+      entityId: 'c1',
+      title: 'Tokyo',
+      missingLanguages: ['ja'],
+    })
+  })
+
+  it('whitespace-only strings should be treated as missing', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation(() => Promise.resolve([]))
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    mocks.prisma.city.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        name_zh: 'Tokyo',
+        name_en: 'Tokyo EN',
+        name_ja: '   ',
+        description_en: 'Description EN',
+        transportTips_en: 'Tips EN',
+        description_ja: '\t\n',
+        transportTips_ja: 'Tips JA',
+        createdAt: new Date('2024-02-01T00:00:00.000Z'),
+      },
+    ])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(1)
+    expect(j.items[0]).toMatchObject({
+      entityType: 'city',
+      entityId: 'c1',
+      title: 'Tokyo',
+      missingLanguages: ['ja'],
+    })
+  })
 })
