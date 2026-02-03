@@ -286,7 +286,7 @@ export default async function PostEnPage({ params }: { params: Promise<{ slug: s
       <PlaceJsonLd data={jsonLds} keyPrefix={canonicalSlug} />
       <div key={canonicalSlug} className="mx-auto w-full max-w-7xl px-6 lg:px-10" data-layout-wide="true">
         <div className="flex items-start gap-12">
-          <aside className="hidden lg:block lg:sticky lg:top-[var(--site-header-h,60px)] lg:shrink-0 lg:w-72 lg:pt-1 xl:fixed xl:left-4 xl:top-[var(--site-header-h,60px)] xl:z-30 2xl:left-10">
+          <aside className="hidden xl:block xl:sticky xl:top-[var(--site-header-h,60px)] xl:shrink-0 xl:w-72 xl:pt-1 xl:fixed xl:left-4 xl:z-30 2xl:left-10">
             <ArticleToc />
           </aside>
           <main className="min-w-0 flex-1 pb-24">

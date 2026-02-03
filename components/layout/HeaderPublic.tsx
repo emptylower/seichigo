@@ -31,6 +31,8 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
           <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
           <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>
+        </nav>
+        <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">
           <LanguageSwitcher locale={locale} />
           <HeaderAuthControls
             locale={locale}
@@ -43,7 +45,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
               user: t('header.user', locale),
             }}
           />
-        </nav>
+        </div>
       </div>
     </header>
   )

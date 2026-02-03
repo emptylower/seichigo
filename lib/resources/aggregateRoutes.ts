@@ -173,12 +173,12 @@ export function groupResourceRoutesByAnime(routes: ResourceRoutePreview[], anime
   })
 }
 
-export const getResourceRouteGroups = cache(async () => {
+export const getResourceRouteGroups = cache(async (language?: 'zh' | 'en' | 'ja') => {
   try {
     const repo = await getDefaultPublicArticleRepo()
     if (!repo) return [] as ResourceAnimeGroup[]
 
-    const published = await repo.listByStatus('published').catch((err) => {
+    const published = await repo.listByStatus('published', language).catch((err) => {
       console.error('[resources] listByStatus(published) failed', err)
       return []
     })

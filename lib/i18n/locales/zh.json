@@ -51,6 +51,20 @@
       "open": "打开"
     }
   },
+  "resources": {
+    "actions": {
+      "readOriginal": "阅读原文",
+      "quoteMap": "引用地图",
+      "openMap": "打开地图",
+      "copy": "引用",
+      "copied": "已复制"
+    },
+    "routeCard": {
+      "details": "详情",
+      "onlyFirstRouteNote": "默认仅展示每篇文章的第一条路线（总路线）。",
+      "goToArticle": "去文章正文"
+    }
+  },
   "editor": {
     "placeholder": "开始写作…",
     "loading": "编辑器加载中…",

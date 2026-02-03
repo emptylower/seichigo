@@ -51,6 +51,20 @@
       "open": "開く"
     }
   },
+  "resources": {
+    "actions": {
+      "readOriginal": "記事を読む",
+      "quoteMap": "マップを引用",
+      "openMap": "マップを開く",
+      "copy": "引用",
+      "copied": "コピー済み"
+    },
+    "routeCard": {
+      "details": "詳細",
+      "onlyFirstRouteNote": "デフォルトでは各記事の最初のルート（メインルート）のみ表示されます。",
+      "goToArticle": "記事へ"
+    }
+  },
   "editor": {
     "placeholder": "書き始める…",
     "loading": "エディタを読み込み中…",

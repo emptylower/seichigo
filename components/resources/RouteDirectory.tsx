@@ -7,6 +7,9 @@ import { getGoogleStaticMapApiKey, resolveSpotLatLng } from '@/lib/resources/agg
 import CopyLinkButton from '@/components/resources/CopyLinkButton'
 import RouteCardActions from '@/components/resources/RouteCardActions'
 import ResourcesDeepLinkRuntime from '@/components/resources/ResourcesDeepLinkRuntime'
+import { prefixPath } from '@/components/layout/prefixPath'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 function encodeLatLng(lat: number, lng: number): string {
   return `${lat.toFixed(6)},${lng.toFixed(6)}`
@@ -57,19 +60,19 @@ function spotAnchorId(route: ResourceRoutePreview, s: ResourceRouteSpot): string
   return `spot-${route.routeAnchorId}-${s.order}-${s.spotKey}`
 }
 
-function routeLinkPath(route: ResourceRoutePreview): string {
-  return `/resources?route=${encodeURIComponent(route.routeKey)}#${encodeURIComponent(route.routeAnchorId)}`
+function routeLinkPath(route: ResourceRoutePreview, locale: SupportedLocale): string {
+  return prefixPath(`/resources?route=${encodeURIComponent(route.routeKey)}#${encodeURIComponent(route.routeAnchorId)}`, locale)
 }
 
-function spotLinkPath(route: ResourceRoutePreview, s: ResourceRouteSpot): string {
-  return `/resources?route=${encodeURIComponent(route.routeKey)}#${encodeURIComponent(spotAnchorId(route, s))}`
+function spotLinkPath(route: ResourceRoutePreview, s: ResourceRouteSpot, locale: SupportedLocale): string {
+  return prefixPath(`/resources?route=${encodeURIComponent(route.routeKey)}#${encodeURIComponent(spotAnchorId(route, s))}`, locale)
 }
 
-function RouteCard({ route }: { route: ResourceRoutePreview }) {
+function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: SupportedLocale }) {
   const primaryHref = routePrimaryHref(route)
   const map = routePreviewMap(route)
-  const routeHref = routeLinkPath(route)
-  const articleHref = `/posts/${encodeURIComponent(route.articleSlug)}`
+  const routeHref = routeLinkPath(route, locale)
+  const articleHref = prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)
 
   return (
     <details className="rounded-xl border border-gray-100 bg-white shadow-sm flex flex-col h-full" data-route-key={route.routeKey}>
@@ -102,13 +105,13 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
               <a className="seichi-route__map-primary" href={primaryHref} target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开" />
             ) : null}
             <div className="seichi-route__map-cta" aria-hidden="true">
-              详情
+              {t('resources.routeCard.details', locale)}
             </div>
           </div>
         </div>
 
         <div className="pt-3 border-t border-gray-50">
-          <RouteCardActions articleHref={articleHref} routeHref={routeHref} primaryHref={primaryHref} />
+          <RouteCardActions articleHref={articleHref} routeHref={routeHref} primaryHref={primaryHref} locale={locale} />
         </div>
       </summary>
 
@@ -117,24 +120,30 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
           <table className="seichi-route__table">
             <thead>
               <tr>
-                <th>顺序</th>
-                <th>地点</th>
-                <th>最近站</th>
-                <th>机位建议</th>
-                <th>时间戳</th>
-                <th>导航</th>
+                <th>{t('route.table.order', locale)}</th>
+                <th>{t('route.table.location', locale)}</th>
+                <th>{t('route.table.nearestStation', locale)}</th>
+                <th>{t('route.table.photoTip', locale)}</th>
+                <th>{t('route.table.timestamp', locale)}</th>
+                <th>{t('route.table.navigation', locale)}</th>
               </tr>
             </thead>
             <tbody>
               {route.spots.map((s) => {
                 const nav = spotNavHref(s)
                 const sid = spotAnchorId(route, s)
+                const spotPath = spotLinkPath(route, s, locale)
                 return (
                   <tr key={sid} id={sid} style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}>
                     <td>
                       <div className="flex items-center gap-2">
                         <span>{s.order}</span>
-                        <CopyLinkButton path={spotLinkPath(route, s)} label="引用" className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50" />
+                        <CopyLinkButton 
+                          path={spotPath} 
+                          label={t('resources.actions.copy', locale)} 
+                          locale={locale}
+                          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50" 
+                        />
                       </div>
                     </td>
                     <td>{s.label}{s.name_ja ? <span className="ml-1 text-xs text-gray-500">（{s.name_ja}）</span> : null}</td>
@@ -144,7 +153,7 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
                     <td>
                       {nav ? (
                         <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
-                          打开
+                          {t('route.table.open', locale)}
                         </a>
                       ) : (
                         '—'
@@ -158,9 +167,9 @@ function RouteCard({ route }: { route: ResourceRoutePreview }) {
         </div>
 
         <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-          <div>默认仅展示每篇文章的第一条路线（总路线）。</div>
-          <Link className="text-brand-600 hover:text-brand-700" href={`/posts/${encodeURIComponent(route.articleSlug)}`}>
-            去文章正文
+          <div>{t('resources.routeCard.onlyFirstRouteNote', locale)}</div>
+          <Link className="text-brand-600 hover:text-brand-700" href={prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)}>
+            {t('resources.routeCard.goToArticle', locale)}
           </Link>
         </div>
       </div>
@@ -192,7 +201,7 @@ export default function RouteDirectory({ groups, locale }: { groups: ResourceAni
 
           <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2 lg:grid-cols-3">
             {g.routes.map((r) => (
-              <RouteCard key={r.routeKey} route={r} />
+              <RouteCard key={r.routeKey} route={r} locale={locale} />
             ))}
           </div>
         </section>

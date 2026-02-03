@@ -51,6 +51,20 @@
       "open": "Open"
     }
   },
+  "resources": {
+    "actions": {
+      "readOriginal": "Read Article",
+      "quoteMap": "Quote Map",
+      "openMap": "Open Map",
+      "copy": "Copy",
+      "copied": "Copied"
+    },
+    "routeCard": {
+      "details": "Details",
+      "onlyFirstRouteNote": "Showing only the first route (main route) from each article by default.",
+      "goToArticle": "Go to Article"
+    }
+  },
   "editor": {
     "placeholder": "Start writing…",
     "loading": "Loading editor…",

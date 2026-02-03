@@ -1,14 +1,17 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 type Props = {
   path: string
   label: string
+  locale: SupportedLocale
   className?: string
 }
 
-export default function CopyLinkButton({ path, label, className }: Props) {
+export default function CopyLinkButton({ path, label, locale, className }: Props) {
   const [copied, setCopied] = useState(false)
 
   const url = useMemo(() => {
@@ -40,7 +43,7 @@ export default function CopyLinkButton({ path, label, className }: Props) {
       }
       aria-label={label}
     >
-      {copied ? '已复制' : label}
+      {copied ? t('resources.actions.copied', locale) : label}
     </button>
   )
 }

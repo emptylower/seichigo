@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 export default async function ResourcesIndexEnPage() {
-  const groups = await getResourceRouteGroups()
+  const groups = await getResourceRouteGroups('en')
 
   return (
     <div>

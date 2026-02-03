@@ -73,7 +73,7 @@ export default function ArticleToc() {
   return (
     <>
       <div
-        className={`hidden lg:flex flex-col relative transition-all duration-300 ease-in-out overflow-hidden ${
+        className={`hidden xl:flex flex-col relative transition-all duration-300 ease-in-out overflow-hidden ${
           isCollapsed ? 'w-10' : 'w-64'
         }`}
       >
@@ -110,7 +110,7 @@ export default function ArticleToc() {
         </div>
       </div>
 
-      <div className="fixed bottom-6 right-6 z-40 lg:hidden">
+      <div className="fixed bottom-6 right-6 z-40 xl:hidden">
         <button
           onClick={() => setDrawerOpen(true)}
           className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg border border-gray-200 active:scale-95 transition-transform"
