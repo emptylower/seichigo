@@ -174,3 +174,126 @@ describe('getAllPublicPosts - locale prefix', () => {
     expect(jaArticle?.path).toBe('/ja/posts/article-ja')
   })
 })
+
+describe('getAllPublicPosts - MDX locale prefix', () => {
+  it('should generate /en/posts/ path for English MDX posts', async () => {
+    const mockMdx = {
+      getAllPosts: vi.fn().mockResolvedValue([
+        {
+          slug: 'en-mdx-post',
+          title: 'English MDX Post',
+          language: 'en',
+          publishDate: '2024-01-01',
+          tags: [],
+        },
+      ]),
+    }
+
+    const mockRepo: Pick<ArticleRepo, 'listByStatus'> = {
+      listByStatus: vi.fn().mockResolvedValue([]),
+    }
+
+    const result = await getAllPublicPosts('en', {
+      mdx: mockMdx,
+      articleRepo: mockRepo,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0].path).toBe('/en/posts/en-mdx-post')
+    expect(result[0].source).toBe('mdx')
+  })
+
+  it('should generate /ja/posts/ path for Japanese MDX posts', async () => {
+    const mockMdx = {
+      getAllPosts: vi.fn().mockResolvedValue([
+        {
+          slug: 'ja-mdx-post',
+          title: 'Japanese MDX Post',
+          language: 'ja',
+          publishDate: '2024-01-01',
+          tags: [],
+        },
+      ]),
+    }
+
+    const mockRepo: Pick<ArticleRepo, 'listByStatus'> = {
+      listByStatus: vi.fn().mockResolvedValue([]),
+    }
+
+    const result = await getAllPublicPosts('ja', {
+      mdx: mockMdx,
+      articleRepo: mockRepo,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0].path).toBe('/ja/posts/ja-mdx-post')
+    expect(result[0].source).toBe('mdx')
+  })
+
+  it('should generate /posts/ path (no prefix) for Chinese MDX posts', async () => {
+    const mockMdx = {
+      getAllPosts: vi.fn().mockResolvedValue([
+        {
+          slug: 'zh-mdx-post',
+          title: 'Chinese MDX Post',
+          language: 'zh',
+          publishDate: '2024-01-01',
+          tags: [],
+        },
+      ]),
+    }
+
+    const mockRepo: Pick<ArticleRepo, 'listByStatus'> = {
+      listByStatus: vi.fn().mockResolvedValue([]),
+    }
+
+    const result = await getAllPublicPosts('zh', {
+      mdx: mockMdx,
+      articleRepo: mockRepo,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0].path).toBe('/posts/zh-mdx-post')
+    expect(result[0].source).toBe('mdx')
+  })
+
+  it('should use MDX post.language when present, else fall back to function argument', async () => {
+    const mockMdx = {
+      getAllPosts: vi.fn().mockResolvedValue([
+        {
+          slug: 'post-with-lang',
+          title: 'Post With Language',
+          language: 'en',
+          publishDate: '2024-01-01',
+          tags: [],
+        },
+        {
+          slug: 'post-without-lang',
+          title: 'Post Without Language',
+          // language field missing
+          publishDate: '2024-01-02',
+          tags: [],
+        },
+      ]),
+    }
+
+    const mockRepo: Pick<ArticleRepo, 'listByStatus'> = {
+      listByStatus: vi.fn().mockResolvedValue([]),
+    }
+
+    const result = await getAllPublicPosts('ja', {
+      mdx: mockMdx,
+      articleRepo: mockRepo,
+    })
+
+    expect(result).toHaveLength(2)
+    
+    const withLang = result.find(p => p.path.includes('post-with-lang'))
+    const withoutLang = result.find(p => p.path.includes('post-without-lang'))
+
+    // post.language='en' overrides function arg 'ja'
+    expect(withLang?.path).toBe('/en/posts/post-with-lang')
+    // No post.language, falls back to function arg 'ja'
+    expect(withoutLang?.path).toBe('/ja/posts/post-without-lang')
+  })
+})

@@ -8,8 +8,10 @@ export type CityLite = {
   name_ja: string | null
   description_zh: string | null
   description_en: string | null
+  description_ja: string | null
   transportTips_zh: string | null
   transportTips_en: string | null
+  transportTips_ja: string | null
   cover: string | null
   needsReview: boolean
   hidden: boolean
@@ -28,8 +30,10 @@ export async function getCityBySlug(slug: string): Promise<CityLite | null> {
       name_ja: true,
       description_zh: true,
       description_en: true,
+      description_ja: true,
       transportTips_zh: true,
       transportTips_en: true,
+      transportTips_ja: true,
       cover: true,
       needsReview: true,
       hidden: true,
@@ -63,8 +67,10 @@ export async function getCityBySlugOrRedirect(
       name_ja: true,
       description_zh: true,
       description_en: true,
+      description_ja: true,
       transportTips_zh: true,
       transportTips_en: true,
+      transportTips_ja: true,
       cover: true,
       needsReview: true,
       hidden: true,
@@ -86,8 +92,10 @@ export async function listCitiesForIndex(): Promise<CityLite[]> {
       name_ja: true,
       description_zh: true,
       description_en: true,
+      description_ja: true,
       transportTips_zh: true,
       transportTips_en: true,
+      transportTips_ja: true,
       cover: true,
       needsReview: true,
       hidden: true,

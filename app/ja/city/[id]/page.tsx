@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 
   const title = city.name_ja || city.name_en || city.name_zh
-  const description = city.description_ja || city.description_en || city.description_zh || `${title}の聖地巡礼ルートとスポットリスト。`
+  const description = city.description_ja || city.description_zh || city.description_en || `${title}の聖地巡礼ルートとスポットリスト。`
 
   return {
     title,
@@ -120,7 +120,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
     '@context': 'https://schema.org',
     '@type': 'Place',
     name: city.name_ja || city.name_en || city.name_zh,
-    ...(city.description_ja || city.description_en || city.description_zh ? { description: city.description_ja || city.description_en || city.description_zh } : {}),
+    ...(city.description_ja || city.description_zh || city.description_en ? { description: city.description_ja || city.description_zh || city.description_en } : {}),
     ...(city.name_zh || city.name_en ? { alternateName: [city.name_zh, city.name_en].filter(Boolean) } : {}),
     ...(canonicalUrl ? { url: canonicalUrl } : {}),
   }
@@ -156,8 +156,8 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
               {city.name_zh && city.name_ja ? <span className="text-sm text-gray-200 md:text-base">{city.name_zh}</span> : null}
             </div>
 
-            {city.description_ja || city.description_en || city.description_zh ? (
-              <p className="max-w-2xl text-sm text-gray-100 md:text-base">{city.description_ja || city.description_en || city.description_zh}</p>
+            {city.description_ja || city.description_zh || city.description_en ? (
+              <p className="max-w-2xl text-sm text-gray-100 md:text-base">{city.description_ja || city.description_zh || city.description_en}</p>
             ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
@@ -202,10 +202,10 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
           )}
         </section>
 
-        {city.transportTips_ja || city.transportTips_en || city.transportTips_zh ? (
+        {city.transportTips_ja || city.transportTips_zh || city.transportTips_en ? (
           <section className="card">
             <div className="text-sm font-semibold text-gray-900">交通のヒント</div>
-            <div className="mt-1 text-sm text-gray-700">{city.transportTips_ja || city.transportTips_en || city.transportTips_zh}</div>
+            <div className="mt-1 text-sm text-gray-700">{city.transportTips_ja || city.transportTips_zh || city.transportTips_en}</div>
           </section>
         ) : null}
       </div>

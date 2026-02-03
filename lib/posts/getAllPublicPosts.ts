@@ -21,11 +21,15 @@ function toTimestamp(p: PublicPostListItem): number {
   return 0
 }
 
-function normalizeMdx(post: PostFrontmatter, fallbackAnimeId: string): PublicPostListItem {
+function normalizeMdx(post: PostFrontmatter, fallbackAnimeId: string, language: string): PublicPostListItem {
+  const effectiveLanguage = post.language || language
+  const localePrefix = effectiveLanguage === 'zh' ? '' : `/${effectiveLanguage}`
+  const path = `${localePrefix}/posts/${post.slug}`
+  
   return {
     source: 'mdx',
     title: post.title,
-    path: `/posts/${post.slug}`,
+    path,
     animeIds: [post.animeId || fallbackAnimeId].filter(Boolean),
     city: post.city || '',
     routeLength: post.routeLength,
@@ -90,7 +94,7 @@ export async function getAllPublicPosts(language: string = 'zh', options?: GetAl
   const byPath = new Map<string, PublicPostListItem>()
   for (const p of mdxPosts) {
     if (!p?.slug || !p?.title) continue
-    const item = normalizeMdx(p, 'unknown')
+    const item = normalizeMdx(p, 'unknown', language)
     if (!item.path) continue
     byPath.set(item.path, item)
   }

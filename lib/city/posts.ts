@@ -10,14 +10,20 @@ export type CityPostItem = {
   cover: string | null
 }
 
-export async function listPublishedDbPostsByCityId(cityId: string): Promise<CityPostItem[]> {
+export async function listPublishedDbPostsByCityId(
+  cityId: string,
+  language?: 'zh' | 'en' | 'ja'
+): Promise<CityPostItem[]> {
   const id = String(cityId || '').trim()
   if (!id) return []
 
   const rows = await prisma.articleCity.findMany({
     where: {
       cityId: id,
-      article: { status: 'published' },
+      article: {
+        status: 'published',
+        ...(language && { language }),
+      },
     },
     orderBy: [{ article: { publishedAt: 'desc' } }, { article: { updatedAt: 'desc' } }],
     select: {
@@ -25,6 +31,7 @@ export async function listPublishedDbPostsByCityId(cityId: string): Promise<City
         select: {
           slug: true,
           title: true,
+          language: true,
           animeIds: true,
           city: true,
           routeLength: true,
@@ -40,9 +47,13 @@ export async function listPublishedDbPostsByCityId(cityId: string): Promise<City
     .map((r) => {
       const a = r.article
       const publishedAtIso = a.publishedAt instanceof Date ? a.publishedAt.toISOString() : null
+      const articleLanguage = String(a.language || 'zh')
+      const localePrefix = articleLanguage === 'zh' ? '' : `/${articleLanguage}`
+      const slug = String(a.slug || '')
+      const path = `${localePrefix}/posts/${slug}`.replace(/\/posts\/$/, '/posts')
       return {
         title: String(a.title || ''),
-        path: `/posts/${String(a.slug || '')}`.replace(/\/posts\/$/, '/posts'),
+        path,
         animeIds: Array.isArray(a.animeIds) ? a.animeIds : [],
         city: String(a.city || ''),
         routeLength: a.routeLength ?? undefined,
