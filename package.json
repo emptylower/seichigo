@@ -10,6 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seo:audit": "node scripts/seo-audit.js",
+    "seo:sync": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-sync.ts",
+    "seo:rank": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-rank.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
@@ -36,6 +38,8 @@
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "google-search-results-nodejs": "^2.1.0",
+    "googleapis": "^171.1.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.563.0",
     "marked": "^17.0.1",
@@ -61,6 +65,8 @@
     "jsdom": "^26.1.0",
     "postcss": "^8.4.49",
     "prisma": "^5.19.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.3",
     "vitest": "^3.2.4"
   }
