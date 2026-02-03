@@ -393,3 +393,53 @@ model TranslationHistory {
   @@index([articleId])
   @@index([createdAt])
 }
+
+model SeoKeyword {
+  id          String            @id @default(cuid())
+  keyword     String
+  language    String
+  category    String
+  priority    Int               @default(0)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  rankHistory SeoRankHistory[]
+}
+
+model SeoRankHistory {
+  id        String    @id @default(cuid())
+  keywordId String
+  position  Int?
+  url       String?
+  checkedAt DateTime  @default(now())
+  source    String
+
+  keyword SeoKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId])
+}
+
+model SeoGscData {
+  id          String   @id @default(cuid())
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([query, page, date])
+}
+
+model SeoApiUsage {
+  id        String   @id @default(cuid())
+  provider  String
+  date      String
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, date])
+}
