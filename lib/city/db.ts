@@ -103,7 +103,10 @@ export async function listCitiesForIndex(): Promise<CityLite[]> {
   })
 }
 
-export async function countPublishedArticlesByCityIds(cityIds: string[]): Promise<Record<string, number>> {
+export async function countPublishedArticlesByCityIds(
+  cityIds: string[],
+  language?: 'zh' | 'en' | 'ja'
+): Promise<Record<string, number>> {
   const ids = Array.isArray(cityIds) ? cityIds.filter(Boolean) : []
   if (!ids.length) return {}
 
@@ -111,7 +114,7 @@ export async function countPublishedArticlesByCityIds(cityIds: string[]): Promis
     by: ['cityId'],
     where: {
       cityId: { in: ids },
-      article: { status: 'published' },
+      article: { status: 'published', ...(language && { language }) },
     },
     _count: { _all: true },
   })

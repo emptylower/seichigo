@@ -30,7 +30,7 @@ export const revalidate = 3600
 export const dynamic = 'force-static'
 
 export default async function AnimeIndexEnPage() {
-  const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('zh')])
+  const [anime, posts] = await Promise.all([getAllAnime(), getAllPublicPosts('en')])
   const counts = posts.reduce<Record<string, number>>((acc, p) => {
     for (const id of p.animeIds || []) {
       acc[id] = (acc[id] || 0) + 1

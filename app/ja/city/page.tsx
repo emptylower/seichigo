@@ -33,7 +33,7 @@ export const dynamic = 'force-static'
 
 export default async function CityIndexJaPage() {
   const cities = await listCitiesForIndex().catch(() => [])
-  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id)).catch(() => ({} as Record<string, number>))
+  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id), 'ja').catch(() => ({} as Record<string, number>))
 
   const aliasRows = await prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }).catch(() => [])
   const aliasToCityId = new Map<string, string>()
@@ -47,7 +47,7 @@ export default async function CityIndexJaPage() {
     if (c.name_ja) aliasToCityId.set(normalizeCityAlias(c.name_ja), c.id)
   }
 
-  const mdxPosts = await getAllMdxPosts('zh').catch(() => [])
+  const mdxPosts = await getAllMdxPosts('ja').catch(() => [])
   const mdxCounts: Record<string, number> = {}
   for (const p of mdxPosts) {
     const norm = normalizeCityAlias(String((p as any).city || ''))

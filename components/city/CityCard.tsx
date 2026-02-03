@@ -10,6 +10,8 @@ type Props = {
     name_en?: string | null
     name_ja?: string | null
     description_zh?: string | null
+    description_en?: string | null
+    description_ja?: string | null
     cover?: string | null
   }
   postCount: number
@@ -54,6 +56,13 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
   const coverSrc = coverRaw ? optimizeAssetCoverSrc(coverRaw, { width: 1200, quality: 78 }) : null
   const seedKey = city.slug || city.id
 
+  const description =
+    locale === 'en'
+      ? city.description_en || city.description_zh || '—'
+      : locale === 'ja'
+        ? city.description_ja || city.description_zh || city.description_en || '—'
+        : city.description_zh || '—'
+
   return (
     <Link
       href={prefixPath(`/city/${encodeURIComponent(city.slug)}`, locale)}
@@ -79,7 +88,7 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
         <h3 className="line-clamp-1 text-lg font-bold text-gray-900 group-hover:text-brand-600">
           {locale === 'en' && city.name_en ? city.name_en : locale === 'ja' && city.name_ja ? city.name_ja : city.name_zh}
         </h3>
-        <p className="mt-1 line-clamp-2 min-h-[2.5em] text-sm text-gray-500">{city.description_zh || '—'}</p>
+        <p className="mt-1 line-clamp-2 min-h-[2.5em] text-sm text-gray-500">{description}</p>
 
         <div className="mt-auto flex items-center justify-between pt-3 text-xs font-medium text-gray-400">
           <span className={postCount > 0 ? 'text-brand-600' : ''}>

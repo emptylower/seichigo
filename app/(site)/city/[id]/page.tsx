@@ -76,7 +76,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
   }
   if (!city) return notFound()
 
-  const dbPosts = await listPublishedDbPostsByCityId(city.id).catch(() => [])
+  const dbPosts = await listPublishedDbPostsByCityId(city.id, 'zh').catch(() => [])
 
   const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch(() => [])
   const aliasSet = new Set<string>()

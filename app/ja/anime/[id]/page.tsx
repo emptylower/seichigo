@@ -67,7 +67,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const requestedId = safeDecodeURIComponent(String(id || '')).trim()
   const anime = await getAnimeById(requestedId).catch(() => null)
   const canonicalId = anime?.id || requestedId || String(id || '')
-  const posts = await getPostsByAnimeId(canonicalId, 'zh')
+  const posts = await getPostsByAnimeId(canonicalId, 'ja')
   
   if (!anime && posts.length === 0) {
     return { title: '作品が見つかりません', robots: { index: false, follow: false } }
@@ -112,7 +112,7 @@ export default async function AnimeJaPage({ params }: { params: Promise<{ id: st
     permanentRedirect(`/ja/anime/${encodeAnimeIdForPath(canonicalId)}`)
   }
 
-  const posts = await getPostsByAnimeId(canonicalId, 'zh')
+  const posts = await getPostsByAnimeId(canonicalId, 'ja')
 
   if (!anime && posts.length === 0) {
     return notFound()

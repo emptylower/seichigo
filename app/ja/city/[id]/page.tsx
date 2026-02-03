@@ -74,7 +74,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
   }
   if (!city) return notFound()
 
-  const dbPosts = await listPublishedDbPostsByCityId(city.id).catch(() => [])
+  const dbPosts = await listPublishedDbPostsByCityId(city.id, 'ja').catch(() => [])
 
   const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch(() => [])
   const aliasSet = new Set<string>()
@@ -86,7 +86,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
   if (city.name_en) aliasSet.add(normalizeCityAlias(city.name_en))
   if (city.name_ja) aliasSet.add(normalizeCityAlias(city.name_ja))
 
-  const mdx = await getAllMdxPosts('zh').catch(() => [])
+  const mdx = await getAllMdxPosts('ja').catch(() => [])
   const mdxPosts = mdx
     .filter((p) => {
       const norm = normalizeCityAlias(String((p as any).city || ''))
@@ -94,7 +94,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
     })
     .map((p) => ({
       title: p.title,
-      path: `/posts/${p.slug}`,
+      path: `/ja/posts/${p.slug}`,
       animeIds: [p.animeId || 'unknown'].filter(Boolean),
       city: p.city || '',
       routeLength: p.routeLength,

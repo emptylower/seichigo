@@ -33,7 +33,7 @@ export const dynamic = 'force-static'
 
 export default async function CityIndexPage() {
   const cities = await listCitiesForIndex().catch(() => [])
-  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id)).catch(() => ({} as Record<string, number>))
+  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id), 'zh').catch(() => ({} as Record<string, number>))
 
   // Include MDX posts in counts when their city matches a known alias.
   const aliasRows = await prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }).catch(() => [])
