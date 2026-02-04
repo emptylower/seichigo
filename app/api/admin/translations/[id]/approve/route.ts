@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
+import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
 
 export async function POST(
   req: NextRequest,
@@ -44,6 +45,9 @@ export async function POST(
           where: { id: existingArticle.id },
           data: draftContent as any,
         })
+        // Sync city associations from source (in case source cities changed)
+        const sourceCityIds = await getArticleCityIds(entityId)
+        await setArticleCityIds(existingArticle.id, sourceCityIds)
       } else {
         const sourceArticle = await prisma.article.findUnique({
           where: { id: entityId },
@@ -62,7 +66,7 @@ export async function POST(
 
         if (sourceArticle) {
           const draftData = draftContent as Record<string, any>
-          await prisma.article.create({
+          const newArticle = await prisma.article.create({
             data: {
               ...draftData,
               slug: draftData.slug || sourceArticle.slug,
@@ -77,6 +81,12 @@ export async function POST(
               status: 'published',
             } as any,
           })
+
+          // Copy city associations from source article
+          const sourceCityIds = await getArticleCityIds(sourceArticle.id)
+          if (sourceCityIds.length > 0) {
+            await setArticleCityIds(newArticle.id, sourceCityIds)
+          }
 
           if (!sourceArticle.translationGroupId) {
             await prisma.article.update({
