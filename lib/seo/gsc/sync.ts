@@ -3,7 +3,7 @@ import { createGscClient, fetchSearchAnalytics } from './client'
 
 export async function syncGscData(days: number = 7) {
   const client = await createGscClient()
-  const siteUrl = 'sc-domain:seichigo.com'
+  const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
 
   const endDate = new Date()
   const startDate = new Date()

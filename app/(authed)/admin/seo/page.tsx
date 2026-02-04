@@ -17,22 +17,35 @@ export default async function SeoPage() {
   }
 
   const keywords = await prisma.seoKeyword.findMany({
-    where: { isActive: true },
     include: {
       rankHistory: {
         orderBy: { checkedAt: 'desc' },
         take: 1
       }
     },
-    orderBy: { priority: 'desc' }
+    orderBy: [{ isActive: 'desc' }, { priority: 'desc' }]
   })
 
-  const topQueries = await prisma.seoGscData.groupBy({
+  const rawTopQueries = await prisma.seoGscData.groupBy({
     by: ['query'],
     _sum: { clicks: true, impressions: true },
     orderBy: { _sum: { clicks: 'desc' } },
     take: 10
   })
+
+  const toNumber = (value: unknown): number | null => {
+    if (typeof value === 'number') return value
+    if (typeof value === 'bigint') return Number(value)
+    return null
+  }
+
+  const topQueries = rawTopQueries.map((q) => ({
+    ...q,
+    _sum: {
+      clicks: toNumber(q._sum.clicks),
+      impressions: toNumber(q._sum.impressions),
+    },
+  }))
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   const serpUsage = await prisma.seoApiUsage.findUnique({
