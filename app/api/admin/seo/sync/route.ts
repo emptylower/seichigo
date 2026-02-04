@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { syncGscData } from '@/lib/seo/gsc/sync'
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getServerAuthSession()
   
   if (!session?.user?.isAdmin) {
@@ -12,10 +12,20 @@ export async function POST() {
   }
 
   try {
-    const count = await syncGscData(7)
+    const url = new URL(request.url)
+    const daysParam = url.searchParams.get('days')
+    const days = daysParam ? Number.parseInt(daysParam, 10) : 7
+    if (!Number.isFinite(days) || days <= 0 || days > 365) {
+      return NextResponse.json({ error: 'Invalid days' }, { status: 400 })
+    }
+
+    const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
+    const count = await syncGscData(days)
     return NextResponse.json({ 
-      message: `Synced ${count} rows from GSC`, 
-      count 
+      message: `Synced ${count} rows from GSC (last ${days} days, property: ${siteUrl})`,
+      count,
+      days,
+      siteUrl,
     })
   } catch (error) {
     console.error('[api/admin/seo/sync] POST failed', error)
