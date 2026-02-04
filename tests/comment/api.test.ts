@@ -6,13 +6,11 @@ import { createHandlers as createCommentByIdHandlers } from '@/lib/comment/handl
 import { createHandlers as createCommentLikeHandlers } from '@/lib/comment/handlers/commentLike'
 import type { CommentApiDeps } from '@/lib/comment/api'
 
-type Role = 'USER' | 'ADMIN'
-
 type Session = {
   user?: {
     id?: string
     email?: string
-    role?: Role
+    isAdmin?: boolean
   }
 } | null
 
@@ -36,7 +34,6 @@ function makeDeps(
     repo,
     renderMarkdown: renderCommentMarkdown,
     ...overrides,
-    repo,
   }
 }
 
@@ -45,7 +42,7 @@ function makeSession(overrides?: Partial<NonNullable<Session>['user']>): NonNull
     user: {
       id: 'user1',
       email: 'test@example.com',
-      role: 'USER',
+      isAdmin: false,
       ...overrides,
     },
   }
@@ -439,7 +436,7 @@ describe('Comment Handlers', () => {
         contentHtml: '<p>test</p>',
       })
       const handlers = createCommentByIdHandlers(deps)
-      const session = makeSession({ id: 'user2', role: 'USER' })
+      const session = makeSession({ id: 'user2', isAdmin: false })
 
       const result = await handlers.remove(session, comment.id)
       expect(result.ok).toBe(false)
@@ -475,7 +472,7 @@ describe('Comment Handlers', () => {
         contentHtml: '<p>test</p>',
       })
       const handlers = createCommentByIdHandlers(deps)
-      const session = makeSession({ id: 'admin', role: 'ADMIN' })
+      const session = makeSession({ id: 'admin', isAdmin: true })
 
       const result = await handlers.remove(session, comment.id)
       expect(result.ok).toBe(true)

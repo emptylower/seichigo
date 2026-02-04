@@ -1,4 +1,5 @@
 import React from 'react'
+import { serializeJsonLd } from '@/lib/seo/jsonld'
 
 type JsonLd = Record<string, unknown>
 
@@ -16,7 +17,7 @@ function asArray(data: Props['data']): JsonLd[] {
 
 /**
  * Server-safe JSON-LD placement helper.
- * Renders <script type="application/ld+json"> tags with JSON.stringify.
+ * Renders <script type="application/ld+json"> tags with safe serialization.
  */
 export default function PlaceJsonLd({ data, keyPrefix = 'jsonld' }: Props) {
   const items = asArray(data).filter(Boolean)
@@ -28,8 +29,7 @@ export default function PlaceJsonLd({ data, keyPrefix = 'jsonld' }: Props) {
         <script
           key={`${keyPrefix}-${String((obj as any)['@type'] || 'schema')}-${idx}`}
           type="application/ld+json"
-          // JSON.stringify ensures proper escaping; we do not inject raw user HTML.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(obj) }}
         />
       ))}
     </>

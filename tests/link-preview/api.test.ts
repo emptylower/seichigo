@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
+const dnsMocks = vi.hoisted(() => ({
+  lookup: vi.fn(),
+}))
+
+vi.mock('node:dns/promises', () => ({
+  lookup: (...args: any[]) => dnsMocks.lookup(...args),
+}))
+
 function jsonRequest(url: string, body: any) {
   return new Request(url, {
     method: 'POST',
@@ -11,6 +19,7 @@ function jsonRequest(url: string, body: any) {
 describe('link preview api', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    dnsMocks.lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }])
   })
 
   it('returns og:image as preview image', async () => {
@@ -61,5 +70,35 @@ describe('link preview api', () => {
     const res = await POST(jsonRequest('http://localhost/api/link-preview', { url: 'javascript:alert(1)' }))
     expect(res.status).toBe(400)
   })
-})
 
+  it('rejects urls that resolve to private IPs (SSRF)', async () => {
+    dnsMocks.lookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }])
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const { POST } = await import('@/app/api/link-preview/route')
+    const res = await POST(jsonRequest('http://localhost/api/link-preview', { url: 'https://evil.example/test' }))
+    expect(res.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects redirects to disallowed hosts', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 302, headers: { location: 'http://127.0.0.1/' } }))
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const { POST } = await import('@/app/api/link-preview/route')
+    const res = await POST(jsonRequest('http://localhost/api/link-preview', { url: 'https://example.com/page' }))
+    expect(res.status).toBe(400)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects urls with credentials', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const { POST } = await import('@/app/api/link-preview/route')
+    const res = await POST(jsonRequest('http://localhost/api/link-preview', { url: 'https://user:pass@example.com' }))
+    expect(res.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

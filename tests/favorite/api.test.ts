@@ -20,7 +20,7 @@ function makeDeps(options?: {
   session?: any
   mdxPosts?: PostFrontmatter[]
   now?: Date
-}): { deps: FavoriteApiDeps; setSession: (s: any) => void } {
+}): { deps: FavoriteApiDeps; setSession: (s: any) => void; articleRepo: InMemoryArticleRepo } {
   let currentSession: any = options?.session ?? null
   const now = options?.now ?? new Date('2025-01-01T00:00:00.000Z')
 
@@ -38,7 +38,7 @@ function makeDeps(options?: {
     language: 'zh',
   }
 
-  return { deps, setSession: (s) => (currentSession = s) }
+  return { deps, setSession: (s) => (currentSession = s), articleRepo }
 }
 
 describe('favorite api', () => {
@@ -55,12 +55,12 @@ describe('favorite api', () => {
   })
 
   it('lists only published DB favorites (hides down/unpublished)', async () => {
-    const { deps } = makeDeps({ session: { user: { id: 'u1' } } })
+    const { deps, articleRepo } = makeDeps({ session: { user: { id: 'u1' } } })
     const favorites = createFavoritesHandlers(deps)
 
-    const pub = await deps.articleRepo.createDraft({ authorId: 'a', slug: 'pub', title: 'Pub' })
-    const draft = await deps.articleRepo.createDraft({ authorId: 'a', slug: 'draft', title: 'Draft' })
-    await deps.articleRepo.updateState(pub.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+    const pub = await articleRepo.createDraft({ authorId: 'a', slug: 'pub', title: 'Pub' })
+    const draft = await articleRepo.createDraft({ authorId: 'a', slug: 'draft', title: 'Draft' })
+    await articleRepo.updateState(pub.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
 
     const add1 = await favorites.POST(jsonReq('http://localhost/api/favorites', 'POST', { source: 'db', articleId: pub.id }))
     expect(add1.status).toBe(200)
@@ -93,7 +93,7 @@ describe('favorite api', () => {
   })
 
   it('delete endpoints are idempotent', async () => {
-    const { deps } = makeDeps({
+    const { deps, articleRepo } = makeDeps({
       session: { user: { id: 'u1' } },
       mdxPosts: [{ title: 'MDX 1', slug: 'mdx-1', animeId: 'btr', city: '东京', status: 'published', tags: [] }],
     })
@@ -101,8 +101,8 @@ describe('favorite api', () => {
     const delDb = createFavoriteArticleHandlers(deps)
     const delMdx = createFavoriteMdxHandlers(deps)
 
-    const pub = await deps.articleRepo.createDraft({ authorId: 'a', slug: 'pub', title: 'Pub' })
-    await deps.articleRepo.updateState(pub.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+    const pub = await articleRepo.createDraft({ authorId: 'a', slug: 'pub', title: 'Pub' })
+    await articleRepo.updateState(pub.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
 
     await favorites.POST(jsonReq('http://localhost/api/favorites', 'POST', { source: 'db', articleId: pub.id }))
     await favorites.POST(jsonReq('http://localhost/api/favorites', 'POST', { source: 'mdx', slug: 'mdx-1' }))
@@ -118,4 +118,3 @@ describe('favorite api', () => {
     expect(m2.status).toBe(200)
   })
 })
-

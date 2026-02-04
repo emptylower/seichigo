@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { unpublish } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
+import { safeRevalidatePath } from '@/lib/next/revalidate'
 
 const schema = z.object({
   reason: z.string().min(1),
@@ -54,17 +54,16 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       // Revalidate homepage caches for all locales
-      revalidatePath('/')
-      revalidatePath('/en')
-      revalidatePath('/ja')
+      safeRevalidatePath('/')
+      safeRevalidatePath('/en')
+      safeRevalidatePath('/ja')
       // Revalidate article detail pages
       const slug = existing.slug
-      revalidatePath(`/posts/${slug}`)
-      revalidatePath(`/en/posts/${slug}`)
-      revalidatePath(`/ja/posts/${slug}`)
+      safeRevalidatePath(`/posts/${slug}`)
+      safeRevalidatePath(`/en/posts/${slug}`)
+      safeRevalidatePath(`/ja/posts/${slug}`)
 
       return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, rejectReason: updated.rejectReason } })
     },
   }
 }
-

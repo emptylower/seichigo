@@ -42,15 +42,17 @@ export const authOptions: NextAuthOptions = {
       // 强制改密需要实时读取 DB（避免 JWT 里值过期造成循环/失效）
       let mustChangePassword = Boolean(token.mustChangePassword)
       let needsPasswordSetup = false
+      let disabled = false
       if (id) {
         try {
           const u = await prisma.user.findUnique({
             where: { id: String(id) },
-            select: { mustChangePassword: true, passwordHash: true },
+            select: { mustChangePassword: true, passwordHash: true, disabled: true },
           })
           if (u) {
             mustChangePassword = u.mustChangePassword
             needsPasswordSetup = !u.passwordHash
+            disabled = Boolean(u.disabled)
           }
         } catch {
           // ignore (e.g. DB not ready in early boot)
@@ -58,6 +60,7 @@ export const authOptions: NextAuthOptions = {
       }
       session.user.mustChangePassword = mustChangePassword
       session.user.needsPasswordSetup = needsPasswordSetup
+      session.user.disabled = disabled
 
       return session
     },
@@ -110,9 +113,10 @@ export const authOptions: NextAuthOptions = {
           where: { email },
           update: { emailVerified: now, name: undefined },
           create: { email, emailVerified: now, name },
-          select: { id: true, email: true, name: true, mustChangePassword: true },
+          select: { id: true, email: true, name: true, mustChangePassword: true, disabled: true },
         })
 
+        if (user.disabled) return null
         return {
           id: user.id,
           email: user.email,
@@ -153,6 +157,7 @@ export const authOptions: NextAuthOptions = {
           } as any
         }
 
+        if (existing.disabled) return null
         if (!existing.passwordHash) {
           // Bootstrap admin from default password if password hash wasn't set yet.
           if (!isAdminEmail(email)) return null

@@ -5,6 +5,7 @@ import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import { getSiteUrl } from '@/lib/seo/site'
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
+import { serializeJsonLd } from '@/lib/seo/jsonld'
 
 export const metadata: Metadata = {
   title: {
@@ -38,8 +39,8 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const jsonLdWebsite = JSON.stringify(buildWebSiteJsonLd())
-  const jsonLdOrg = JSON.stringify(buildOrganizationJsonLd())
+  const jsonLdWebsite = serializeJsonLd(buildWebSiteJsonLd())
+  const jsonLdOrg = serializeJsonLd(buildOrganizationJsonLd())
 
   return (
     <html lang="zh">

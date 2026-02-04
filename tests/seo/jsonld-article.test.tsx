@@ -10,6 +10,10 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+vi.mock('@/components/comments/CommentSection', () => ({
+  default: () => null,
+}))
+
 const getPublicPostBySlugMock = vi.fn()
 vi.mock('@/lib/posts/getPublicPostBySlug', () => ({
   getPublicPostBySlug: (...args: any[]) => getPublicPostBySlugMock(...args),

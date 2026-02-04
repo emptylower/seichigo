@@ -7,7 +7,7 @@ import MapAssetView from '@/components/resources/MapAssetView'
 import ChecklistAssetView from '@/components/resources/ChecklistAssetView'
 import EtiquetteAssetView from '@/components/resources/EtiquetteAssetView'
 import { buildJaAlternates } from '@/lib/seo/alternates'
-import { buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
+import { buildBreadcrumbListJsonLd, buildRouteItemListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 
 export const revalidate = 3600
@@ -90,7 +90,7 @@ export default async function ResourceJaPage({ params }: { params: Promise<{ id:
   return (
     <>
       {jsonLds.map((obj, idx) => (
-        <script key={`${String(obj['@type'] || 'jsonld')}-${idx}`} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }} />
+        <script key={`${String(obj['@type'] || 'jsonld')}-${idx}`} type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(obj) }} />
       ))}
 
       <div className="space-y-8">

@@ -7,6 +7,7 @@ declare module 'next-auth' {
       isAdmin?: boolean
       mustChangePassword?: boolean
       needsPasswordSetup?: boolean
+      disabled?: boolean
     } & DefaultSession['user']
   }
 }

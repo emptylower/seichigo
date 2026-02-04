@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
+import { safeRevalidatePath } from '@/lib/next/revalidate'
 
 export async function POST(
   req: NextRequest,
@@ -46,8 +46,12 @@ export async function POST(
           data: draftContent as any,
         })
         // Sync city associations from source (in case source cities changed)
-        const sourceCityIds = await getArticleCityIds(entityId)
-        await setArticleCityIds(existingArticle.id, sourceCityIds)
+        try {
+          const sourceCityIds = await getArticleCityIds(entityId)
+          await setArticleCityIds(existingArticle.id, sourceCityIds)
+        } catch (err) {
+          console.error('[api/admin/translations/[id]/approve] city link sync failed', err)
+        }
       } else {
         const sourceArticle = await prisma.article.findUnique({
           where: { id: entityId },
@@ -83,9 +87,13 @@ export async function POST(
           })
 
           // Copy city associations from source article
-          const sourceCityIds = await getArticleCityIds(sourceArticle.id)
-          if (sourceCityIds.length > 0) {
-            await setArticleCityIds(newArticle.id, sourceCityIds)
+          try {
+            const sourceCityIds = await getArticleCityIds(sourceArticle.id)
+            if (sourceCityIds.length > 0) {
+              await setArticleCityIds(newArticle.id, sourceCityIds)
+            }
+          } catch (err) {
+            console.error('[api/admin/translations/[id]/approve] city link sync failed', err)
           }
 
           if (!sourceArticle.translationGroupId) {
@@ -103,12 +111,12 @@ export async function POST(
         select: { slug: true }
       })
       if (articleForRevalidation?.slug) {
-        revalidatePath('/')
-        revalidatePath('/en')
-        revalidatePath('/ja')
-        revalidatePath(`/posts/${articleForRevalidation.slug}`)
-        revalidatePath(`/en/posts/${articleForRevalidation.slug}`)
-        revalidatePath(`/ja/posts/${articleForRevalidation.slug}`)
+        safeRevalidatePath('/')
+        safeRevalidatePath('/en')
+        safeRevalidatePath('/ja')
+        safeRevalidatePath(`/posts/${articleForRevalidation.slug}`)
+        safeRevalidatePath(`/en/posts/${articleForRevalidation.slug}`)
+        safeRevalidatePath(`/ja/posts/${articleForRevalidation.slug}`)
       }
     } else if (entityType === 'city') {
       const updateData: any = {}
@@ -135,10 +143,10 @@ export async function POST(
         select: { slug: true } 
       })
       if (city) {
-        revalidatePath('/city')
-        revalidatePath('/en/city')
-        revalidatePath(`/city/${encodeURIComponent(city.slug)}`)
-        revalidatePath(`/en/city/${encodeURIComponent(city.slug)}`)
+        safeRevalidatePath('/city')
+        safeRevalidatePath('/en/city')
+        safeRevalidatePath(`/city/${encodeURIComponent(city.slug)}`)
+        safeRevalidatePath(`/en/city/${encodeURIComponent(city.slug)}`)
       }
     } else if (entityType === 'anime') {
       const updateData: any = {}
@@ -158,12 +166,12 @@ export async function POST(
       })
 
       // Revalidate anime pages
-      revalidatePath('/anime')
-      revalidatePath('/ja/anime')
-      revalidatePath('/en/anime')
-      revalidatePath(`/anime/${encodeURIComponent(entityId)}`)
-      revalidatePath(`/ja/anime/${encodeURIComponent(entityId)}`)
-      revalidatePath(`/en/anime/${encodeURIComponent(entityId)}`)
+      safeRevalidatePath('/anime')
+      safeRevalidatePath('/ja/anime')
+      safeRevalidatePath('/en/anime')
+      safeRevalidatePath(`/anime/${encodeURIComponent(entityId)}`)
+      safeRevalidatePath(`/ja/anime/${encodeURIComponent(entityId)}`)
+      safeRevalidatePath(`/en/anime/${encodeURIComponent(entityId)}`)
     }
 
     await prisma.translationTask.update({

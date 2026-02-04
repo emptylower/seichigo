@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
     article: {
       update: vi.fn(),
     },
+    translationTask: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }))
 
@@ -254,9 +258,9 @@ describe('admin retranslate api - apply', () => {
 
   it('applies article translation', async () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
-    mocks.prisma.article.update.mockResolvedValue({
-      id: 'article-1',
-      title: 'Applied Title',
+    mocks.prisma.translationTask.update.mockResolvedValue({
+      id: 'task-1',
+      draftContent: { title: 'Applied Title', description: 'Applied Desc' },
     })
 
     const handlers = await import('app/api/admin/retranslate/apply/route')
@@ -265,14 +269,18 @@ describe('admin retranslate api - apply', () => {
         entityType: 'article',
         entityId: 'article-1',
         targetLang: 'en',
+        translationTaskId: 'task-1',
         preview: { title: 'Applied Title', description: 'Applied Desc' },
       })
     )
 
     expect(res.status).toBe(200)
-    expect(mocks.prisma.article.update).toHaveBeenCalledWith({
-      where: { id: 'article-1' },
-      data: { title: 'Applied Title', description: 'Applied Desc' },
+    expect(mocks.prisma.translationTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-1' },
+      data: expect.objectContaining({
+        draftContent: { title: 'Applied Title', description: 'Applied Desc' },
+        updatedAt: expect.any(Date),
+      }),
     })
   })
 

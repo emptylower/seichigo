@@ -50,14 +50,19 @@ export async function POST(req: NextRequest) {
       if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       
       // Try to find existing task with sourceContent
-      const existingTask = await prisma.translationTask.findFirst({
-        where: {
-          entityType: 'article',
-          entityId,
-          targetLanguage: targetLang,
-        },
-        select: { sourceContent: true },
-      })
+      let existingTask: { sourceContent: unknown } | null = null
+      try {
+        existingTask = await prisma.translationTask.findFirst({
+          where: {
+            entityType: 'article',
+            entityId,
+            targetLanguage: targetLang,
+          },
+          select: { sourceContent: true },
+        })
+      } catch {
+        existingTask = null
+      }
 
       if (existingTask?.sourceContent) {
         // Use preserved source content for translation

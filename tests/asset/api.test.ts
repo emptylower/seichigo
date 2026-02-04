@@ -4,7 +4,7 @@ import { createGetAssetHandler, createPostAssetsHandler } from '@/lib/asset/hand
 import sharp from 'sharp'
 
 function makeImageFile(bytes: Uint8Array, opts?: { name?: string; type?: string }) {
-  return new File([bytes], opts?.name ?? 'image.png', { type: opts?.type ?? 'image/png' })
+  return new File([bytes as unknown as BlobPart], opts?.name ?? 'image.png', { type: opts?.type ?? 'image/png' })
 }
 
 describe('asset api', () => {
@@ -90,7 +90,7 @@ describe('asset api', () => {
       .toBuffer()
 
     const form = new FormData()
-    form.set('file', new File([png], 'a.png', { type: 'image/png' }))
+    form.set('file', new File([png as unknown as BlobPart], 'a.png', { type: 'image/png' }))
     const uploadRes = await post(new Request('http://localhost/api/assets', { method: 'POST', body: form }))
     const { id } = (await uploadRes.json()) as { id: string; url: string }
 
@@ -125,5 +125,41 @@ describe('asset api', () => {
       if (prev === undefined) delete process.env.ASSET_MAX_BYTES
       else process.env.ASSET_MAX_BYTES = prev
     }
+  })
+
+  it('rejects SVG uploads (415)', async () => {
+    const repo = new InMemoryAssetRepo()
+    const post = createPostAssetsHandler({
+      assetRepo: repo,
+      getSession: async () => ({ user: { id: 'user-1' } }),
+    })
+
+    const bytes = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    const form = new FormData()
+    form.set('file', makeImageFile(bytes, { name: 'x.svg', type: 'image/svg+xml' }))
+
+    const res = await post(new Request('http://localhost/api/assets', { method: 'POST', body: form }))
+    expect(res.status).toBe(415)
+  })
+
+  it('serves legacy SVG assets as downloads (octet-stream + attachment)', async () => {
+    const repo = new InMemoryAssetRepo()
+    const get = createGetAssetHandler({ assetRepo: repo })
+
+    const bytes = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+    const created = await repo.create({
+      ownerId: 'user-1',
+      contentType: 'image/svg+xml',
+      filename: 'x.svg',
+      bytes,
+    })
+
+    const res = await get(new Request(`http://localhost/assets/${created.id}`), { params: Promise.resolve({ id: created.id }) })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/octet-stream')
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('content-disposition')).toContain('attachment')
+    const out = new Uint8Array(await res.arrayBuffer())
+    expect(Array.from(out)).toEqual(Array.from(bytes))
   })
 })
