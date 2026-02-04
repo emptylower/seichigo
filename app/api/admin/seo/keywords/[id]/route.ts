@@ -13,14 +13,14 @@ const patchSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-export async function PATCH(request: Request, ctx: { params: { id: string } }) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession()
   if (!session?.user?.isAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   try {
-    const id = ctx.params.id
+    const { id } = await ctx.params
     const json = await request.json()
     const input = patchSchema.parse(json)
 
@@ -45,4 +45,3 @@ export async function PATCH(request: Request, ctx: { params: { id: string } }) {
     )
   }
 }
-

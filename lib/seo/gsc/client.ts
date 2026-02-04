@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { readFile } from 'node:fs/promises'
 
 export async function createGscClient() {
   const credJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
@@ -21,7 +22,8 @@ export async function createGscClient() {
     }
   } else {
     try {
-      credentials = require(credPath!)
+      const raw = await readFile(credPath!, 'utf8')
+      credentials = JSON.parse(raw)
     } catch (err) {
       throw new Error(
         `Failed to load credentials from ${credPath}: ${err instanceof Error ? err.message : String(err)}`
