@@ -8,11 +8,20 @@
 - 生产环境：`https://seichigo.com/api/ai`
 - 本地开发：`http://localhost:3000/api/ai`
 
+建议使用不带尾部 `/` 的 base URL（例如 `https://seichigo.com/api/ai`）。
+如果你误用了 `.../api/ai/`，生产环境可能会返回 `308` 重定向到无尾部 `/` 的地址；脚本应当跟随重定向后再判断 JSON。
+
 ### 认证方式
 所有 API 端点都需要管理员权限认证：
 - 使用 Auth.js (NextAuth) Session 认证
 - 必须是管理员用户（邮箱在 `ADMIN_EMAILS` 环境变量中）
 - 请求需要携带有效的 Session Cookie
+
+**Session Cookie 名称**（取决于环境/HTTPS）：
+- 本地/非 HTTPS 常见：`next-auth.session-token`
+- 生产/HTTPS 常见：`__Secure-next-auth.session-token`
+
+建议：从浏览器登录后导出 Cookie，再用 `curl -b cookie.txt` 复用；避免把 token 写进日志。
 
 ### 与“标准 API”的关系
 
@@ -63,6 +72,10 @@
 ```bash
 curl -X GET "http://localhost:3000/api/ai" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN"
+
+# 生产环境（HTTPS）常见 cookie 名
+curl -X GET "https://seichigo.com/api/ai" \
+  -H "Cookie: __Secure-next-auth.session-token=YOUR_SESSION_TOKEN"
 ```
 
 ---
@@ -884,6 +897,7 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 | 403 | 无权限 | 非管理员用户 |
 | 404 | 资源不存在 | 文章 ID 不存在 |
 | 409 | 状态冲突 | 尝试编辑/提交不可操作状态的文章、slug 冲突 |
+| 503 | 服务不可用 | 数据库未配置 / 数据库结构未迁移 |
 | 500 | 服务器错误 | 服务器内部错误，请联系管理员 |
 
 ### 常见错误消息
@@ -904,6 +918,8 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 | `当前状态不可编辑` | 尝试编辑 in_review 或 published 状态 | 等待审核完成或撤回文章 |
 | `只能提交草稿或已拒绝的文章` | 尝试提交非 draft/rejected 状态 | 确认文章状态 |
 | `无法生成唯一 slug，请稍后重试` | Slug 冲突（极少见） | 稍后重试或修改标题 |
+| `数据库未配置` | 服务端缺少 `DATABASE_URL` | 配置数据库连接后重试 |
+| `数据库结构未更新,请先执行迁移(prisma migrate deploy)后重试` | Prisma schema 未迁移 | 先迁移再重试 |
 
 ---
 
