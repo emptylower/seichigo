@@ -20,12 +20,14 @@ export async function POST(request: Request) {
     }
 
     const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
+    const start = Date.now()
     const count = await syncGscData(days)
     return NextResponse.json({ 
       message: `Synced ${count} rows from GSC (last ${days} days, property: ${siteUrl})`,
       count,
       days,
       siteUrl,
+      ms: Date.now() - start,
     })
   } catch (error) {
     console.error('[api/admin/seo/sync] POST failed', error)

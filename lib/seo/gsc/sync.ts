@@ -16,33 +16,43 @@ export async function syncGscData(days: number = 7) {
 
   const rows = await fetchSearchAnalytics(client, siteUrl, startDateStr, endDateStr)
 
+  const concurrency = Math.max(1, Number.parseInt(process.env.GSC_SYNC_CONCURRENCY || '10', 10) || 10)
+
   let synced = 0
-  for (const row of rows) {
-    await prisma.seoGscData.upsert({
-      where: {
-        query_page_date: {
-          query: row.keys[0],
-          page: row.keys[1],
-          date: new Date(row.keys[2]),
-        },
-      },
-      create: {
-        query: row.keys[0],
-        page: row.keys[1],
-        date: new Date(row.keys[2]),
-        clicks: row.clicks || 0,
-        impressions: row.impressions || 0,
-        ctr: row.ctr || 0,
-        position: row.position || 0,
-      },
-      update: {
-        clicks: row.clicks || 0,
-        impressions: row.impressions || 0,
-        ctr: row.ctr || 0,
-        position: row.position || 0,
-      },
-    })
-    synced++
+  for (let i = 0; i < rows.length; i += concurrency) {
+    const chunk = rows.slice(i, i + concurrency)
+    await Promise.all(
+      chunk.map((row) => {
+        const query = row.keys?.[0] || ''
+        const page = row.keys?.[1] || ''
+        const dateStr = row.keys?.[2] || ''
+        return prisma.seoGscData.upsert({
+          where: {
+            query_page_date: {
+              query,
+              page,
+              date: new Date(dateStr),
+            },
+          },
+          create: {
+            query,
+            page,
+            date: new Date(dateStr),
+            clicks: row.clicks || 0,
+            impressions: row.impressions || 0,
+            ctr: row.ctr || 0,
+            position: row.position || 0,
+          },
+          update: {
+            clicks: row.clicks || 0,
+            impressions: row.impressions || 0,
+            ctr: row.ctr || 0,
+            position: row.position || 0,
+          },
+        })
+      })
+    )
+    synced += chunk.length
   }
 
   return synced
