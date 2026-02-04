@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { TrendingUp, Database, Zap, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -52,9 +53,11 @@ const emptyDraft: KeywordDraft = {
 }
 
 export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
+  const router = useRouter()
   const [syncing, setSyncing] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
   const [syncDays, setSyncDays] = useState(7)
+  const [syncResult, setSyncResult] = useState<{ message: string; at: string } | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createDraft, setCreateDraft] = useState<KeywordDraft>(emptyDraft)
@@ -85,8 +88,9 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       const data = await requestJson<{ message?: string }>(`/api/admin/seo/sync?days=${days}`, {
         method: 'POST',
       })
-      alert(data.message || 'Sync complete')
-      window.location.reload()
+      const message = data.message || 'Sync complete'
+      setSyncResult({ message, at: new Date().toLocaleString() })
+      alert(message)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Sync failed')
     } finally {
@@ -102,7 +106,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
         body: { keywordId },
       })
       alert(data.message || 'Check complete')
-      window.location.reload()
+      router.refresh()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Check failed')
     } finally {
@@ -122,7 +126,9 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
         method: 'POST',
         body: { ...createDraft, keyword },
       })
-      window.location.reload()
+      setCreating(false)
+      setCreateDraft(emptyDraft)
+      router.refresh()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Create failed')
     }
@@ -157,7 +163,8 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
         method: 'PATCH',
         body: { ...editDraft, keyword },
       })
-      window.location.reload()
+      cancelEditKeyword()
+      router.refresh()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Update failed')
     }
@@ -169,7 +176,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
         method: 'PATCH',
         body: { isActive: !kw.isActive },
       })
-      window.location.reload()
+      router.refresh()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Update failed')
     }
@@ -254,7 +261,21 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
           />
           <span>天</span>
         </div>
+        <button
+          onClick={() => router.refresh()}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-accent transition-colors font-medium"
+        >
+          刷新数据
+        </button>
       </div>
+
+      {syncResult ? (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">上次同步：</span>
+          {syncResult.message}
+          <span className="ml-2">({syncResult.at})</span>
+        </div>
+      ) : null}
 
       {/* Keywords Table */}
       <Card>
