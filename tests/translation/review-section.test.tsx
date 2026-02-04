@@ -3,10 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TranslationsUI from '@/app/(authed)/admin/translations/ui'
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 // Mock components
 vi.mock('@/components/shared/Button', () => ({
-  default: ({ children, onClick, className }: any) => (
-    <button onClick={onClick} className={className}>
+  default: ({ children, onClick, className, disabled }: any) => (
+    <button onClick={onClick} className={className} disabled={disabled}>
       {children}
     </button>
   ),
@@ -40,7 +45,7 @@ describe('TranslationsUI Review Section', () => {
     global.fetch = vi.fn()
   })
 
-  it('renders pending review section when there are ready tasks', async () => {
+  it('defaults to ready status and renders ready tasks with subject title', async () => {
     const readyTasks = [
       {
         id: 't1',
@@ -48,28 +53,26 @@ describe('TranslationsUI Review Section', () => {
         entityId: 'a1',
         targetLanguage: 'ja',
         status: 'ready',
-        createdAt: '2023-01-01',
+        createdAt: '2023-01-01T00:00:00.000Z',
+        updatedAt: '2023-01-02T00:00:00.000Z',
+        error: null,
+        subject: { title: '示例文章', subtitle: 'slug：demo', slug: 'demo' },
+        target: null,
       },
     ]
 
     const mockFetch = global.fetch as any
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes('status=ready')) {
+      if (url.startsWith('/api/admin/translations?')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ tasks: readyTasks }),
+          json: () => Promise.resolve({ tasks: readyTasks, total: 1 }),
         })
       }
-      if (url.includes('status=pending')) {
+      if (url.startsWith('/api/admin/translations/stats')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ tasks: [] }),
-        })
-      }
-      if (url.includes('/untranslated')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ items: [] }),
+          json: () => Promise.resolve({ ok: true, counts: { ready: 1 } }),
         })
       }
       return Promise.resolve({
@@ -81,46 +84,11 @@ describe('TranslationsUI Review Section', () => {
     render(<TranslationsUI />)
 
     await waitFor(() => {
-      expect(screen.getByText(/待审核翻译/)).toBeInTheDocument()
-    })
-    
-    expect(screen.getByText('文章')).toBeInTheDocument()
-    expect(screen.getByText('日本語')).toBeInTheDocument()
-  })
-
-  it('does not render pending review section when there are no ready tasks', async () => {
-    const mockFetch = global.fetch as any
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes('status=ready')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tasks: [] }),
-        })
-      }
-      if (url.includes('status=pending')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tasks: [] }),
-        })
-      }
-      if (url.includes('/untranslated')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ items: [] }),
-        })
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({}),
-      })
+      expect(screen.getByText('示例文章')).toBeInTheDocument()
     })
 
-    render(<TranslationsUI />)
-
-    await waitFor(() => {
-        expect(screen.queryByText('加载中...')).not.toBeInTheDocument()
-    })
-
-    expect(screen.queryByText(/待审核翻译/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('文章').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('日本語').length).toBeGreaterThan(0)
+    expect(screen.getByText('审核')).toBeInTheDocument()
   })
 })

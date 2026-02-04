@@ -11,7 +11,7 @@ export default function TranslationsPage() {
       <div>
         <h1 className="text-2xl font-bold">翻译管理</h1>
         <p className="mt-1 text-sm text-gray-600">
-          管理待审核的翻译任务
+          搜索、审核与维护翻译任务
         </p>
       </div>
       <Suspense fallback={<div className="text-gray-600">加载中...</div>}>

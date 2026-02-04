@@ -360,6 +360,14 @@ export default function TranslationDetailUI({ id }: Props) {
     anime: '动漫',
   }
 
+  const statusLabels: Record<string, string> = {
+    pending: '待处理',
+    processing: '处理中',
+    ready: '待审核',
+    approved: '已上架',
+    failed: '失败',
+  }
+
   const isTipTapContent = (content: any) => {
     return content && typeof content === 'object' && content.type === 'doc'
   }
@@ -404,7 +412,7 @@ export default function TranslationDetailUI({ id }: Props) {
               {languageLabels[task.targetLanguage]}
             </span>
             <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
-              {task.status}
+              {statusLabels[task.status] || task.status}
             </span>
           </div>
         </div>
@@ -732,4 +740,3 @@ export default function TranslationDetailUI({ id }: Props) {
     </div>
   )
 }
-

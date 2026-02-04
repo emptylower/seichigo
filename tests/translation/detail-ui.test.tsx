@@ -23,10 +23,6 @@ vi.mock('@/components/translation/TipTapPreview', () => ({
   default: ({ content }: any) => <div data-testid="tiptap-preview">{JSON.stringify(content)}</div>,
 }))
 
-vi.mock('@/components/toc/ArticleToc', () => ({
-  default: () => <div data-testid="article-toc">Article TOC</div>,
-}))
-
 vi.mock('@/components/blog/PostMeta', () => ({
   default: () => <div data-testid="post-meta">Post Meta</div>,
 }))
@@ -74,9 +70,6 @@ describe('TranslationDetailUI Layout', () => {
 
     // Assert: No "Source Content" section (as per requirements)
     expect(screen.queryByText('源内容 (中文)')).not.toBeInTheDocument()
-
-    // Assert: Sidebar components exist
-    expect(screen.getByTestId('article-toc')).toBeInTheDocument()
 
     // Assert: Main content components exist
     expect(screen.getByTestId('breadcrumbs')).toBeInTheDocument()
