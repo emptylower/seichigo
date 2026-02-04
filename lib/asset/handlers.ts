@@ -3,6 +3,14 @@ import type { AssetRepo } from './repo'
 type SessionLike = { user?: { id?: string | null } | null } | null
 type GetSession = () => Promise<SessionLike>
 
+const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+])
+
 function json(data: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers)
   if (!headers.has('content-type')) {
@@ -24,6 +32,16 @@ function normalizeParam(value: string | string[] | undefined): string | null {
   if (!value) return null
   if (Array.isArray(value)) return value[0] ?? null
   return value
+}
+
+function sanitizeFilename(value: string | null | undefined, fallback: string): string {
+  const raw = String(value || '').trim()
+  if (!raw) return fallback
+  const cleaned = raw
+    .replace(/[\r\n"]/g, '')
+    .replace(/[\\/]/g, '_')
+    .trim()
+  return cleaned || fallback
 }
 
 export function createPostAssetsHandler(options: {
@@ -50,8 +68,12 @@ export function createPostAssetsHandler(options: {
     }
 
     const contentType = String((file as any).type || '').trim()
-    if (!contentType.startsWith('image/')) {
-      return json({ error: '仅支持上传图片' }, { status: 400 })
+    const normalizedContentType = contentType.toLowerCase()
+    if (!ALLOWED_UPLOAD_CONTENT_TYPES.has(normalizedContentType)) {
+      if (normalizedContentType === 'image/svg+xml') {
+        return json({ error: '不支持上传 SVG 图片' }, { status: 415 })
+      }
+      return json({ error: '仅支持上传图片（jpeg/png/webp/gif/avif）' }, { status: 415 })
     }
 
     const arrayBuffer = await (file as File).arrayBuffer()
@@ -84,6 +106,16 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
     if (!asset) return new Response('Not found', { status: 404 })
 
     const headers = new Headers()
+    headers.set('x-content-type-options', 'nosniff')
+
+    // Defense-in-depth: legacy SVG uploads can execute scripts when served inline on the same origin.
+    // We no longer allow uploading SVG, but we still harden serving.
+    if (isSvg(asset.contentType)) {
+      headers.set('content-type', 'application/octet-stream')
+      headers.set('content-disposition', `attachment; filename="${sanitizeFilename(asset.filename, `${id}.svg`)}"`)
+      headers.set('cache-control', 'public, max-age=31536000, immutable')
+      return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
+    }
 
     const requestUrl = (() => {
       try {

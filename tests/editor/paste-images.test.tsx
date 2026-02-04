@@ -21,7 +21,7 @@ describe('editor paste images', () => {
   })
 
   it('uploads pasted images sequentially and inserts in order', async () => {
-    let resolveFirst: ((resp: Response) => void) | null = null
+    let resolveFirst!: (resp: Response) => void
     fetchMock
       .mockReturnValueOnce(
         new Promise<Response>((resolve) => {
@@ -54,7 +54,7 @@ describe('editor paste images', () => {
       expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/assets')
     })
 
-    resolveFirst?.(jsonResponse({ id: '1', url: '/assets/1' }))
+    resolveFirst(jsonResponse({ id: '1', url: '/assets/1' }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2)

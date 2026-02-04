@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -26,8 +27,8 @@ vi.mock('@/lib/db/prisma', () => ({
   prisma: mocks.prisma,
 }))
 
-function getReq(url: string): Request {
-  return new Request(url, { method: 'GET' })
+function getReq(url: string): NextRequest {
+  return new NextRequest(url, { method: 'GET' })
 }
 
 describe('GET /api/admin/translations/untranslated', () => {
@@ -95,7 +96,7 @@ describe('GET /api/admin/translations/untranslated', () => {
     expect(j.total).toBe(3)
     expect(j.items).toHaveLength(3)
 
-    const byKey = new Map(j.items.map((it: any) => [`${it.entityType}:${it.entityId}`, it]))
+    const byKey = new Map<string, any>(j.items.map((it: any) => [`${it.entityType}:${it.entityId}`, it] as const))
 
     expect(byKey.get('article:a1')).toMatchObject({
       entityType: 'article',

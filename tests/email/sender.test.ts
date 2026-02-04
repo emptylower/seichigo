@@ -15,6 +15,10 @@ function restoreEnv(original: Record<string, string | undefined>) {
   }
 }
 
+function setNodeEnv(value: string) {
+  ;(process.env as Record<string, string | undefined>).NODE_ENV = value
+}
+
 describe.sequential('sendMail', () => {
   const originalEnv = snapshotEnv()
   const originalFetch = globalThis.fetch
@@ -27,7 +31,7 @@ describe.sequential('sendMail', () => {
 
   it('uses Resend when RESEND_API_KEY is set', async () => {
     process.env.RESEND_API_KEY = 're_test_123'
-    process.env.NODE_ENV = 'production'
+    setNodeEnv('production')
     delete process.env.EMAIL_SERVER
     delete process.env.EMAIL_SERVER_HOST
     delete process.env.EMAIL_SERVER_PORT
@@ -68,7 +72,7 @@ describe.sequential('sendMail', () => {
     delete process.env.EMAIL_SERVER_PORT
     delete process.env.EMAIL_SERVER_USER
     delete process.env.EMAIL_SERVER_PASSWORD
-    process.env.NODE_ENV = 'development'
+    setNodeEnv('development')
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await expect(
@@ -90,7 +94,7 @@ describe.sequential('sendMail', () => {
     delete process.env.EMAIL_SERVER_PORT
     delete process.env.EMAIL_SERVER_USER
     delete process.env.EMAIL_SERVER_PASSWORD
-    process.env.NODE_ENV = 'production'
+    setNodeEnv('production')
 
     await expect(
       sendMail({
@@ -103,4 +107,3 @@ describe.sequential('sendMail', () => {
     ).rejects.toThrow(/Email provider is not configured/i)
   })
 })
-

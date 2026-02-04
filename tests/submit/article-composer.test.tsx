@@ -29,10 +29,13 @@ function jsonResponse(body: any, status: number = 200) {
 const baseInitial = {
   id: 'a1',
   title: 'My Title',
+  seoTitle: null,
+  description: null,
   animeIds: [],
   city: null,
   routeLength: null,
   tags: [],
+  cover: null,
   contentJson: null,
   contentHtml: '',
   status: 'draft' as const,

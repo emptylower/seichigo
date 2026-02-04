@@ -61,7 +61,7 @@ export default function CommentSection({ articleId, mdxSlug }: Props) {
         onReply={handleCreate}
         onDelete={fetchComments}
         currentUserId={session?.user?.id}
-        isAdmin={(session?.user as any)?.role === 'ADMIN'}
+        isAdmin={Boolean(session?.user?.isAdmin)}
       />
     </div>
   )

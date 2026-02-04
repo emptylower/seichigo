@@ -1,7 +1,7 @@
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { getPostsByAnimeId } from '@/lib/posts/getPostsByAnimeId'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
-import { buildBreadcrumbListJsonLd } from '@/lib/seo/jsonld'
+import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -149,9 +149,9 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
   return (
     <>
       {breadcrumbJsonLd ? (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
       ) : null}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(animeWorkJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(animeWorkJsonLd) }} />
 
       <div className="space-y-8">
         {/* Navigation */}

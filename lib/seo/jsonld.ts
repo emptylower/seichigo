@@ -187,3 +187,10 @@ export function buildRouteItemListJsonLd(spots: SeichiRouteSpotV1[], options?: {
     itemListElement: listItems,
   }
 }
+
+export function serializeJsonLd(data: unknown): string {
+  // Prevent `</script>` and similar sequences from breaking out of the JSON-LD script tag.
+  // Escaping `<` is the standard mitigation.
+  return JSON.stringify(data).replace(/</g, '\\u003c')
+}
+

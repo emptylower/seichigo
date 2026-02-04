@@ -16,7 +16,7 @@ export function createHandlers(deps: CommentApiDeps) {
         }
 
         const isAuthor = comment.authorId === session.user.id
-        const isAdmin = session.user.role === 'ADMIN'
+        const isAdmin = Boolean(session.user.isAdmin)
 
         if (!isAuthor && !isAdmin) {
           return { ok: false as const, error: '无权限' }

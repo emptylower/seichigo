@@ -1,6 +1,7 @@
 "use client"
 import React from 'react'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
+import { serializeJsonLd } from '@/lib/seo/jsonld'
 
 export type Spot = {
   id?: string
@@ -57,7 +58,7 @@ export default function SpotList({ spots }: { spots: Spot[] }) {
       {itemList ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemList) }}
         />
       ) : null}
       <ol className="space-y-3">

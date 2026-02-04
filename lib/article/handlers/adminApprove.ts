@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import { approve } from '@/lib/article/workflow'
 import type { ArticleApiDeps } from '@/lib/article/api'
 import { isFallbackHashSlug, isValidArticleSlug } from '@/lib/article/slug'
 import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
 import { resolveCitiesByNames } from '@/lib/city/resolve'
+import { safeRevalidatePath } from '@/lib/next/revalidate'
 
 function hasAnimePrefix(slug: string, animeIds: string[]): boolean {
   const cleaned = slug.trim()
@@ -126,13 +126,13 @@ export function createHandlers(deps: ArticleApiDeps) {
       }
 
       // Revalidate homepage caches for all locales
-      revalidatePath('/')
-      revalidatePath('/en')
-      revalidatePath('/ja')
+      safeRevalidatePath('/')
+      safeRevalidatePath('/en')
+      safeRevalidatePath('/ja')
       // Revalidate article detail pages
-      revalidatePath(`/posts/${existing.slug}`)
-      revalidatePath(`/en/posts/${existing.slug}`)
-      revalidatePath(`/ja/posts/${existing.slug}`)
+      safeRevalidatePath(`/posts/${existing.slug}`)
+      safeRevalidatePath(`/en/posts/${existing.slug}`)
+      safeRevalidatePath(`/ja/posts/${existing.slug}`)
 
       return NextResponse.json({ ok: true, article: { id: updated.id, status: updated.status, publishedAt: updated.publishedAt } })
     },

@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
+import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 
 export const runtime = 'nodejs'
 
 const MAX_HTML_BYTES = 1024 * 1024
 const FETCH_TIMEOUT_MS = 6_000
+const MAX_REDIRECTS = 5
 
 function json(data: unknown, init: ResponseInit = {}) {
   return NextResponse.json(data, init)
@@ -32,27 +34,64 @@ function isPrivateIp(hostname: string): boolean {
     const parts = hostname.split('.').map((x) => Number(x))
     if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return true
     const [a, b] = parts
+    if (a === 0) return true
     if (a === 10) return true
     if (a === 127) return true
     if (a === 169 && b === 254) return true
+    if (a === 100 && b >= 64 && b <= 127) return true
     if (a === 192 && b === 168) return true
     if (a === 172 && b >= 16 && b <= 31) return true
+    if (a >= 224) return true
     return false
   }
 
   const lowered = hostname.toLowerCase()
+  if (lowered === '::') return true
   if (lowered === '::1') return true
+  if (lowered.startsWith('::ffff:')) {
+    const v4 = lowered.slice('::ffff:'.length)
+    return isPrivateIp(v4)
+  }
   if (lowered.startsWith('fc') || lowered.startsWith('fd')) return true
+  if (lowered.startsWith('fe8') || lowered.startsWith('fe9') || lowered.startsWith('fea') || lowered.startsWith('feb')) return true
   return false
 }
 
 function isDisallowedHost(hostname: string): boolean {
-  const lowered = hostname.trim().toLowerCase()
+  const lowered = hostname.trim().toLowerCase().replace(/\.$/, '')
   if (!lowered) return true
   if (lowered === 'localhost') return true
   if (lowered.endsWith('.localhost')) return true
+  if (lowered.endsWith('.local')) return true
   if (isPrivateIp(lowered)) return true
   return false
+}
+
+async function resolvesToDisallowedIp(hostname: string): Promise<boolean> {
+  const trimmed = hostname.trim().toLowerCase().replace(/\.$/, '')
+  if (!trimmed) return true
+  if (net.isIP(trimmed)) return isPrivateIp(trimmed)
+
+  try {
+    const results = await lookup(trimmed, { all: true, verbatim: true })
+    if (!results.length) return true
+    return results.some((r) => isPrivateIp(String(r.address || '').trim()))
+  } catch {
+    return true
+  }
+}
+
+async function assertSafeFetchUrl(url: URL): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  if (url.username || url.password) {
+    return { ok: false, status: 400, error: 'URL 不合法' }
+  }
+  if (isDisallowedHost(url.hostname)) {
+    return { ok: false, status: 400, error: '不支持该域名' }
+  }
+  if (await resolvesToDisallowedIp(url.hostname)) {
+    return { ok: false, status: 400, error: '不支持该域名' }
+  }
+  return { ok: true }
 }
 
 async function readTextWithLimit(res: Response, maxBytes: number): Promise<string> {
@@ -128,22 +167,51 @@ export async function POST(req: Request) {
   if (!url) {
     return json({ error: 'URL 不合法' }, { status: 400 })
   }
-  if (isDisallowedHost(url.hostname)) {
-    return json({ error: '不支持该域名' }, { status: 400 })
-  }
+  const safe = await assertSafeFetchUrl(url)
+  if (!safe.ok) return json({ error: safe.error }, { status: safe.status })
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        accept: 'text/html,application/xhtml+xml',
-        'user-agent': 'SeichiGoLinkPreview/1.0',
-      },
-      redirect: 'follow',
-      signal: controller.signal,
-    })
+    let current = url
+    let res: Response | null = null
+    for (let i = 0; i <= MAX_REDIRECTS; i++) {
+      const check = await assertSafeFetchUrl(current)
+      if (!check.ok) return json({ error: check.error }, { status: check.status })
+
+      res = await fetch(current.toString(), {
+        method: 'GET',
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'user-agent': 'SeichiGoLinkPreview/1.0',
+        },
+        redirect: 'manual',
+        signal: controller.signal,
+      })
+
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location')
+        if (!loc) return json({ error: '网页读取失败' }, { status: 502 })
+        let next: URL
+        try {
+          next = new URL(loc, current)
+        } catch {
+          return json({ error: '网页读取失败' }, { status: 502 })
+        }
+        if (next.protocol !== 'http:' && next.protocol !== 'https:') {
+          return json({ error: '网页读取失败' }, { status: 502 })
+        }
+        current = next
+        continue
+      }
+
+      break
+    }
+
+    if (!res) return json({ error: '网页读取失败' }, { status: 502 })
+    if (res.status >= 300 && res.status < 400) {
+      return json({ error: '重定向过多' }, { status: 508 })
+    }
     if (!res.ok) {
       return json({ error: '网页读取失败' }, { status: 502 })
     }
@@ -156,7 +224,7 @@ export async function POST(req: Request) {
 
     let resolved: URL
     try {
-      resolved = new URL(rawImage, url)
+      resolved = new URL(rawImage, current)
     } catch {
       return json({ error: '预览图地址不合法' }, { status: 422 })
     }
@@ -177,4 +245,3 @@ export async function POST(req: Request) {
     clearTimeout(timeout)
   }
 }
-

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
+import { safeRevalidatePath } from '@/lib/next/revalidate'
 
 function isEmptyDocContentJson(contentJson: unknown): boolean {
   if (!contentJson || typeof contentJson !== 'object') return true
@@ -123,13 +123,13 @@ export async function POST(
     })
 
     // Best-effort cache revalidation.
-    revalidatePath('/')
-    revalidatePath('/en')
-    revalidatePath('/ja')
+    safeRevalidatePath('/')
+    safeRevalidatePath('/en')
+    safeRevalidatePath('/ja')
     if (result.slug) {
-      revalidatePath(`/posts/${result.slug}`)
-      revalidatePath(`/en/posts/${result.slug}`)
-      revalidatePath(`/ja/posts/${result.slug}`)
+      safeRevalidatePath(`/posts/${result.slug}`)
+      safeRevalidatePath(`/en/posts/${result.slug}`)
+      safeRevalidatePath(`/ja/posts/${result.slug}`)
     }
 
     return NextResponse.json({ ok: true })

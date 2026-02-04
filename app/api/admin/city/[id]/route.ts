@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
+import { safeRevalidatePath } from '@/lib/next/revalidate'
 
 export const runtime = 'nodejs'
 
@@ -77,10 +77,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // City pages are statically cached (ISR). Revalidate so admin edits (e.g. cover upload)
   // reflect immediately without waiting for the periodic revalidate window.
-  revalidatePath('/city')
-  revalidatePath('/en/city')
-  revalidatePath(`/city/${encodeURIComponent(updated.slug)}`)
-  revalidatePath(`/en/city/${encodeURIComponent(updated.slug)}`)
+  safeRevalidatePath('/city')
+  safeRevalidatePath('/en/city')
+  safeRevalidatePath(`/city/${encodeURIComponent(updated.slug)}`)
+  safeRevalidatePath(`/en/city/${encodeURIComponent(updated.slug)}`)
 
   return NextResponse.json({ ok: true, city: updated })
 }
