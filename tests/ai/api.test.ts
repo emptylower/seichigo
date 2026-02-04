@@ -4,6 +4,8 @@ import type { AiApiDeps } from '@/lib/ai/api'
 import { createHandlers } from '@/lib/ai/handlers/articles'
 import { createHandlers as createArticleByIdHandlers } from '@/lib/ai/handlers/articleById'
 import { createHandlers as createSubmitHandlers } from '@/lib/ai/handlers/submit'
+import { createHandlers as createRootHandlers } from '@/lib/ai/handlers/root'
+import { createHandlers as createNotFoundHandlers } from '@/lib/ai/handlers/notFound'
 import type { Session } from 'next-auth'
 import type { Article } from '@/lib/article/repo'
 import type { ArticleStatus } from '@/lib/article/workflow'
@@ -24,6 +26,98 @@ describe('getAiApiDeps', () => {
     const deps2 = await getAiApiDeps()
 
     expect(deps1).toBe(deps2)
+  })
+})
+
+describe('AI Root Handler', () => {
+  function mockAdminSession(): Session {
+    return {
+      user: { id: 'admin-1', email: 'admin@test.com', name: 'Admin' },
+      expires: '2099-01-01',
+    }
+  }
+
+  function mockUserSession(): Session {
+    return {
+      user: { id: 'user-1', email: 'user@test.com', name: 'User' },
+      expires: '2099-01-01',
+    }
+  }
+
+  function mockDeps(overrides: Partial<AiApiDeps> = {}): AiApiDeps {
+    return {
+      repo: {} as any,
+      getSession: vi.fn().mockResolvedValue(null),
+      sanitizeHtml: vi.fn((html) => html),
+      isAdminEmail: vi.fn().mockReturnValue(false),
+      ...overrides,
+    }
+  }
+
+  it('returns 401 when not authenticated', async () => {
+    const deps = mockDeps({ getSession: vi.fn().mockResolvedValue(null) })
+    const res = await createRootHandlers(deps).GET(new Request('http://localhost/api/ai'))
+    expect(res.status).toBe(401)
+    const json = await res.json()
+    expect(json.error).toBeDefined()
+  })
+
+  it('returns 403 when not admin', async () => {
+    const deps = mockDeps({
+      getSession: vi.fn().mockResolvedValue(mockUserSession()),
+      isAdminEmail: vi.fn().mockReturnValue(false),
+    })
+    const res = await createRootHandlers(deps).GET(new Request('http://localhost/api/ai'))
+    expect(res.status).toBe(403)
+    const json = await res.json()
+    expect(json.error).toBeDefined()
+  })
+
+  it('returns 200 and endpoints for admin', async () => {
+    const deps = mockDeps({
+      getSession: vi.fn().mockResolvedValue(mockAdminSession()),
+      isAdminEmail: vi.fn().mockReturnValue(true),
+    })
+    const res = await createRootHandlers(deps).GET(new Request('http://localhost/api/ai'))
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.ok).toBe(true)
+    expect(json.endpoints).toBeDefined()
+    expect(json.baseUrl).toBe('/api/ai')
+  })
+})
+
+describe('AI Not Found Handler', () => {
+  function mockAdminSession(): Session {
+    return {
+      user: { id: 'admin-1', email: 'admin@test.com', name: 'Admin' },
+      expires: '2099-01-01',
+    }
+  }
+
+  function mockDeps(overrides: Partial<AiApiDeps> = {}): AiApiDeps {
+    return {
+      repo: {} as any,
+      getSession: vi.fn().mockResolvedValue(null),
+      sanitizeHtml: vi.fn((html) => html),
+      isAdminEmail: vi.fn().mockReturnValue(false),
+      ...overrides,
+    }
+  }
+
+  it('returns JSON 404 for unknown /api/ai/* path when admin', async () => {
+    const deps = mockDeps({
+      getSession: vi.fn().mockResolvedValue(mockAdminSession()),
+      isAdminEmail: vi.fn().mockReturnValue(true),
+    })
+    const handlers = createNotFoundHandlers(deps)
+    const req = new Request('http://localhost/api/ai/nope/xyz')
+    const ctx = { params: Promise.resolve({ path: ['nope', 'xyz'] }) }
+    const res = await handlers.GET(req, ctx)
+    expect(res.status).toBe(404)
+    const json = await res.json()
+    expect(json.error).toBe('Not Found')
+    expect(json.path).toBe('/api/ai/nope/xyz')
   })
 })
 

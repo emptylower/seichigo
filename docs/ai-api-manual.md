@@ -14,6 +14,12 @@
 - 必须是管理员用户（邮箱在 `ADMIN_EMAILS` 环境变量中）
 - 请求需要携带有效的 Session Cookie
 
+### 与“标准 API”的关系
+
+- 标准 API（创作中心使用）：`/api/articles/*`（通常只允许操作自己的文章）
+- AI API（给 AI 助手/自动化使用）：`/api/ai/*`（仅管理员白名单可用，可跨作者筛选/操作）
+- 两者操作同一套文章数据（复用底层 repo），区别主要在鉴权与筛选规则
+
 ### 响应格式
 成功响应格式：
 ```json
@@ -35,6 +41,7 @@
 
 | 方法 | 端点 | 用途 | 状态限制 |
 |------|------|------|---------|
+| GET | `/api/ai` | 路由挂载/探活（返回端点列表） | 无 |
 | GET | `/api/ai/articles` | 获取文章列表（不含正文） | 无 |
 | POST | `/api/ai/articles` | 创建新草稿 | 无 |
 | GET | `/api/ai/articles/:id` | 获取单篇文章完整信息 | 无 |
@@ -42,6 +49,23 @@
 | POST | `/api/ai/articles/:id/submit` | 提交审核 | 仅 draft/rejected |
 
 ## 端点详细说明
+
+### GET /api/ai
+
+用于确认 `/api/ai/*` 已正确挂载（不会落到 Next.js HTML 404）。
+
+- 未登录：返回 `401` JSON
+- 非管理员：返回 `403` JSON
+- 管理员：返回 `200` JSON，并包含端点列表
+
+**请求示例**
+
+```bash
+curl -X GET "http://localhost:3000/api/ai" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN"
+```
+
+---
 
 ### GET /api/ai/articles
 
