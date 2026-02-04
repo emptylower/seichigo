@@ -45,12 +45,27 @@ export default function MaintenanceClient() {
 
       const data = (await res.json().catch(() => ({}))) as any
       if (!res.ok) {
-        throw new Error(String(data?.error || 'Request failed'))
+        const msg = String(data?.error || 'Request failed')
+        throw new Error(msg)
       }
       setResult(data)
+
+      if (!dryRun) {
+        const processed = Number((data as any)?.processed || 0)
+        const scanned = Number((data as any)?.scanned || 0)
+        const errors = Number((data as any)?.errors || 0)
+        const nextCursor = (data as any)?.nextCursor ? String((data as any).nextCursor) : ''
+        const summary = `scanned=${scanned}, processed=${processed}, errors=${errors}${nextCursor ? `, nextCursor=${nextCursor}` : ''}`
+        alert(errors > 0 ? `回填执行完成（有错误）\n${summary}` : `回填执行成功\n${summary}`)
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Request failed')
+      const msg = e instanceof Error ? e.message : 'Request failed'
+      setError(msg)
       setResult(null)
+
+      if (!dryRun) {
+        alert(`回填执行失败\n${msg}`)
+      }
     } finally {
       setLoading(false)
     }
