@@ -5,9 +5,11 @@ export async function syncGscData(days: number = 7) {
   const client = await createGscClient()
   const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
 
+  // GSC usually lags behind "today"; querying up to yesterday is more reliable.
   const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - days)
+  endDate.setDate(endDate.getDate() - 1)
+  const startDate = new Date(endDate)
+  startDate.setDate(startDate.getDate() - (days - 1))
 
   const startDateStr = startDate.toISOString().slice(0, 10)
   const endDateStr = endDate.toISOString().slice(0, 10)

@@ -59,6 +59,10 @@ export async function fetchSearchAnalytics(
       startDate,
       endDate,
       dimensions: ['query', 'page', 'date'],
+      // Default is "final" in many clients; for small sites recent days can be "fresh"
+      // only, which would produce zero rows if we don't include them.
+      dataState: 'all',
+      searchType: 'web',
       rowLimit: 25000,
     },
   })
