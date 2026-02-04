@@ -14,7 +14,7 @@ function joinUrl(base, path) {
 
 async function assertJsonEndpoint(path, expectedStatuses) {
   const url = joinUrl(baseUrl, path)
-  const res = await fetch(url, { redirect: 'manual' })
+  const res = await fetch(url, { redirect: 'follow' })
 
   if (!expectedStatuses.includes(res.status)) {
     const body = await res.text().catch(() => '')
