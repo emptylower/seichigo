@@ -13,8 +13,10 @@ async function main() {
   console.log(`Syncing GSC data for last ${days} days...`)
 
   try {
-    const count = await syncGscData(days)
-    console.log(`✓ Synced ${count} rows from GSC`)
+    const result = await syncGscData(days)
+    console.log(`✓ Synced ${result.synced} rows from GSC (fetched ${result.fetched})`)
+    console.log(`  Range: ${result.startDate}..${result.endDate}`)
+    console.log(`  Dimensions: ${result.dimensions.join(',')}`)
     process.exit(0)
   } catch (error) {
     console.error('✗ GSC sync failed:', error instanceof Error ? error.message : String(error))

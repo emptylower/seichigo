@@ -1,7 +1,18 @@
 import { prisma } from '@/lib/db/prisma'
 import { createGscClient, fetchSearchAnalytics } from './client'
+import type { GscDimension } from './client'
 
-export async function syncGscData(days: number = 7) {
+export type SyncGscDataResult = {
+  synced: number
+  fetched: number
+  dimensions: GscDimension[]
+  startDate: string
+  endDate: string
+}
+
+type RowMapper = (row: { keys: string[] }) => { query: string; page: string; dateStr: string }
+
+export async function syncGscData(days: number = 7): Promise<SyncGscDataResult> {
   const client = await createGscClient()
   const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
 
@@ -14,7 +25,38 @@ export async function syncGscData(days: number = 7) {
   const startDateStr = startDate.toISOString().slice(0, 10)
   const endDateStr = endDate.toISOString().slice(0, 10)
 
-  const rows = await fetchSearchAnalytics(client, siteUrl, startDateStr, endDateStr)
+  const attempts: Array<{ dimensions: GscDimension[]; map: RowMapper }> = [
+    {
+      dimensions: ['query', 'page', 'date'],
+      map: (row) => ({
+        query: row.keys?.[0] || '',
+        page: row.keys?.[1] || '',
+        dateStr: row.keys?.[2] || '',
+      }),
+    },
+    {
+      // When data is sparse, GSC may return no rows at the query+page+date granularity.
+      // Fallback to query+date and store it under a synthetic "__all__" page.
+      dimensions: ['query', 'date'],
+      map: (row) => ({
+        query: row.keys?.[0] || '',
+        page: '__all__',
+        dateStr: row.keys?.[1] || '',
+      }),
+    },
+  ]
+
+  let rows: Array<{ keys: string[]; clicks: number; impressions: number; ctr: number; position: number }> = []
+  let usedDimensions: GscDimension[] = attempts[0].dimensions
+  let mapRow: RowMapper = attempts[0].map
+
+  for (const attempt of attempts) {
+    const fetched = await fetchSearchAnalytics(client, siteUrl, startDateStr, endDateStr, attempt.dimensions)
+    rows = fetched
+    usedDimensions = attempt.dimensions
+    mapRow = attempt.map
+    if (fetched.length > 0) break
+  }
 
   const concurrency = Math.max(1, Number.parseInt(process.env.GSC_SYNC_CONCURRENCY || '10', 10) || 10)
 
@@ -23,9 +65,7 @@ export async function syncGscData(days: number = 7) {
     const chunk = rows.slice(i, i + concurrency)
     await Promise.all(
       chunk.map((row) => {
-        const query = row.keys?.[0] || ''
-        const page = row.keys?.[1] || ''
-        const dateStr = row.keys?.[2] || ''
+        const { query, page, dateStr } = mapRow(row)
         return prisma.seoGscData.upsert({
           where: {
             query_page_date: {
@@ -55,5 +95,11 @@ export async function syncGscData(days: number = 7) {
     synced += chunk.length
   }
 
-  return synced
+  return {
+    synced,
+    fetched: rows.length,
+    dimensions: usedDimensions,
+    startDate: startDateStr,
+    endDate: endDateStr,
+  }
 }

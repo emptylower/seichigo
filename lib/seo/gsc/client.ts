@@ -47,18 +47,21 @@ export interface SearchAnalyticsRow {
   position: number
 }
 
+export type GscDimension = 'query' | 'page' | 'date'
+
 export async function fetchSearchAnalytics(
   client: ReturnType<typeof google.webmasters>,
   siteUrl: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  dimensions: GscDimension[]
 ): Promise<SearchAnalyticsRow[]> {
   const response = await client.searchanalytics.query({
     siteUrl,
     requestBody: {
       startDate,
       endDate,
-      dimensions: ['query', 'page', 'date'],
+      dimensions,
       // Default is "final" in many clients; for small sites recent days can be "fresh"
       // only, which would produce zero rows if we don't include them.
       dataState: 'all',

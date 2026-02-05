@@ -21,12 +21,16 @@ export async function POST(request: Request) {
 
     const siteUrl = process.env.GSC_SITE_URL || 'sc-domain:seichigo.com'
     const start = Date.now()
-    const count = await syncGscData(days)
+    const result = await syncGscData(days)
     return NextResponse.json({ 
-      message: `Synced ${count} rows from GSC (last ${days} days, property: ${siteUrl})`,
-      count,
+      message: `Synced ${result.synced} rows from GSC (last ${days} days, property: ${siteUrl})`,
+      count: result.synced,
+      fetched: result.fetched,
       days,
       siteUrl,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      dimensions: result.dimensions,
       ms: Date.now() - start,
     })
   } catch (error) {
