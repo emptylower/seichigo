@@ -719,7 +719,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
 
       {showBulkReport && bulkReport ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-3xl rounded-lg border bg-background p-4 shadow-lg space-y-4">
+          <div className="w-full max-w-3xl rounded-lg border bg-white p-4 shadow-lg space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold">批量检查报告</div>
               <button
