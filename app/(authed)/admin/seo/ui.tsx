@@ -91,6 +91,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       const message = data.message || 'Sync complete'
       setSyncResult({ message, at: new Date().toLocaleString() })
       alert(message)
+      router.refresh()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Sync failed')
     } finally {
