@@ -1,5 +1,4 @@
-// @ts-ignore - no types available for google-search-results-nodejs
-import { getJson } from 'google-search-results-nodejs'
+import SerpApi from 'google-search-results-nodejs'
 
 export interface SerpApiParams {
   q: string
@@ -19,11 +18,11 @@ export function createSerpClient() {
   if (!apiKey) {
     throw new Error('Missing SERPAPI_KEY environment variable')
   }
-  return apiKey
+  return new SerpApi.GoogleSearch(apiKey)
 }
 
 export async function searchGoogle(keyword: string, lang: string): Promise<SerpApiResult[]> {
-  const apiKey = createSerpClient()
+  const search = createSerpClient()
   
   const params: SerpApiParams = {
     q: keyword,
@@ -33,12 +32,16 @@ export async function searchGoogle(keyword: string, lang: string): Promise<SerpA
   }
   
   return new Promise((resolve, reject) => {
-    getJson('google', apiKey, params, (data: any) => {
-      if (data.error) {
-        reject(new Error(data.error))
-      } else {
-        resolve(data.organic_results || [])
-      }
-    })
+    try {
+      search.json(params as unknown as Record<string, unknown>, (data: any) => {
+        if (data?.error) {
+          reject(new Error(data.error))
+          return
+        }
+        resolve(data?.organic_results || [])
+      })
+    } catch (err) {
+      reject(err)
+    }
   })
 }

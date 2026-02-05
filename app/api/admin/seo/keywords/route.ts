@@ -4,12 +4,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
+import { inferKeywordCategory, inferKeywordLanguage } from '@/lib/seo/keywords/infer'
+
+const prioritySchema = z.preprocess((v) => {
+  if (typeof v === 'string' && v.trim()) return Number.parseInt(v, 10)
+  return v
+}, z.number().int().min(0).max(999))
 
 const createSchema = z.object({
   keyword: z.string().trim().min(1).max(100),
-  language: z.enum(['zh', 'en', 'ja']),
-  category: z.enum(['short-tail', 'long-tail']),
-  priority: z.number().int().min(0).max(100),
+  language: z.enum(['zh', 'en', 'ja']).optional(),
+  category: z.enum(['short-tail', 'long-tail']).optional(),
+  priority: prioritySchema.optional().default(0),
   isActive: z.boolean().optional(),
 })
 
@@ -23,8 +29,11 @@ export async function POST(request: Request) {
     const json = await request.json()
     const input = createSchema.parse(json)
 
+    const language = input.language ?? inferKeywordLanguage(input.keyword)
+    const category = input.category ?? inferKeywordCategory(input.keyword, language)
+
     const existing = await prisma.seoKeyword.findFirst({
-      where: { keyword: input.keyword, language: input.language },
+      where: { keyword: input.keyword, language },
       select: { id: true },
     })
 
@@ -32,7 +41,7 @@ export async function POST(request: Request) {
       ? await prisma.seoKeyword.update({
           where: { id: existing.id },
           data: {
-            category: input.category,
+            category,
             priority: input.priority,
             isActive: input.isActive ?? true,
           },
@@ -40,8 +49,8 @@ export async function POST(request: Request) {
       : await prisma.seoKeyword.create({
           data: {
             keyword: input.keyword,
-            language: input.language,
-            category: input.category,
+            language,
+            category,
             priority: input.priority,
             isActive: input.isActive ?? true,
           },
@@ -59,4 +68,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

@@ -4,12 +4,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
+import { inferKeywordCategory, inferKeywordLanguage } from '@/lib/seo/keywords/infer'
+
+const prioritySchema = z.preprocess((v) => {
+  if (typeof v === 'string' && v.trim()) return Number.parseInt(v, 10)
+  return v
+}, z.number().int().min(0).max(999))
 
 const patchSchema = z.object({
   keyword: z.string().trim().min(1).max(100).optional(),
   language: z.enum(['zh', 'en', 'ja']).optional(),
   category: z.enum(['short-tail', 'long-tail']).optional(),
-  priority: z.number().int().min(0).max(100).optional(),
+  priority: prioritySchema.optional(),
   isActive: z.boolean().optional(),
 })
 
@@ -22,7 +28,14 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   try {
     const { id } = await ctx.params
     const json = await request.json()
-    const input = patchSchema.parse(json)
+    const parsed = patchSchema.parse(json)
+
+    const input = (() => {
+      if (!parsed.keyword) return parsed
+      const language = parsed.language ?? inferKeywordLanguage(parsed.keyword)
+      const category = parsed.category ?? inferKeywordCategory(parsed.keyword, language)
+      return { ...parsed, language, category }
+    })()
 
     if (Object.keys(input).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
