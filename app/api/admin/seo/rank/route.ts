@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       )
     }
     
-    const result = await checkKeywordRank(keyword.keyword, keyword.language)
+    const result = await checkKeywordRank(keyword.keyword, keyword.language, { keywordId: keyword.id })
     
     return NextResponse.json({
       message: result.position 

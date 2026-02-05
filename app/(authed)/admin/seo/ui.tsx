@@ -678,6 +678,8 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
                             #{latestRank.position}
                           </span>
+                        ) : latestRank ? (
+                          <span className="text-sm text-muted-foreground">未进前 100</span>
                         ) : (
                           <span className="text-sm text-muted-foreground">-</span>
                         )}
