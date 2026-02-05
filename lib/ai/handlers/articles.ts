@@ -4,8 +4,10 @@ import { ArticleSlugExistsError } from '@/lib/article/repo'
 import type { AiApiDeps } from '@/lib/ai/api'
 import type { ArticleStatus } from '@/lib/article/workflow'
 import { generateSlugFromTitle } from '@/lib/article/slug'
+import { authorizeAiRequest } from '@/lib/ai/auth'
 
 const createSchema = z.object({
+  authorId: z.string().min(1).optional(),
   title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }),
   seoTitle: z.string().max(120).nullable().optional(),
   description: z.string().max(320).nullable().optional(),
@@ -44,13 +46,11 @@ function toListItem(a: any) {
 export function createHandlers(deps: AiApiDeps) {
   return {
     async GET(req: Request) {
-      const session = await deps.getSession()
-      if (!session?.user?.email) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-
-      if (!deps.isAdminEmail(session.user.email)) {
-        return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? 'Forbidden: Admin access required' : 'Unauthorized'
+        return NextResponse.json({ error }, { status })
       }
 
       const url = new URL(req.url)
@@ -79,19 +79,27 @@ export function createHandlers(deps: AiApiDeps) {
     },
 
     async POST(req: Request) {
-      const session = await deps.getSession()
-      if (!session?.user?.id || !session?.user?.email) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? '无权限' : '请先登录'
+        return NextResponse.json({ error }, { status })
       }
 
-      if (!deps.isAdminEmail(session.user.email)) {
-        return NextResponse.json({ error: '无权限' }, { status: 403 })
+      const sessionUserId = auth.mode === 'session' ? auth.session.user?.id : null
+      if (auth.mode === 'session' && !sessionUserId) {
+        return NextResponse.json({ error: '请先登录' }, { status: 401 })
       }
 
       const body = await req.json().catch(() => null)
       const parsed = createSchema.safeParse(body)
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
+      }
+
+      const authorId = sessionUserId || parsed.data.authorId
+      if (!authorId) {
+        return NextResponse.json({ error: '缺少 authorId' }, { status: 400 })
       }
 
       const baseSlug = generateSlugFromTitle(parsed.data.title, new Date())
@@ -105,7 +113,7 @@ export function createHandlers(deps: AiApiDeps) {
         const candidate = `${baseSlug}${suffix}`
         try {
           const created = await deps.repo.createDraft({
-            authorId: session.user.id,
+            authorId,
             slug: candidate,
             language: parsed.data.language ?? 'zh',
             translationGroupId: parsed.data.translationGroupId ?? null,

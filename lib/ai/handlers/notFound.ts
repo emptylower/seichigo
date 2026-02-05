@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server'
 import type { AiApiDeps } from '@/lib/ai/api'
+import { authorizeAiRequest } from '@/lib/ai/auth'
 
 type Ctx = { params?: Promise<{ path?: string[] }> }
 
 export function createHandlers(deps: AiApiDeps) {
-  async function handle(_req: Request, ctx: Ctx) {
-    const session = await deps.getSession()
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    if (!deps.isAdminEmail(session.user.email)) {
-      return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+  async function handle(req: Request, ctx: Ctx) {
+    const auth = await authorizeAiRequest(req, deps)
+    if (!auth.ok) {
+      const status = auth.reason === 'forbidden' ? 403 : 401
+      const error = auth.reason === 'forbidden' ? 'Forbidden: Admin access required' : 'Unauthorized'
+      return NextResponse.json({ error }, { status })
     }
 
     const path = ((await ctx.params)?.path || []).join('/')

@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server'
 import type { AiApiDeps } from '@/lib/ai/api'
+import { authorizeAiRequest } from '@/lib/ai/auth'
 
 export function createHandlers(deps: AiApiDeps) {
   return {
-    async POST(_req: Request, ctx: { params?: Promise<{ id: string }> }) {
-      const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
+    async POST(req: Request, ctx: { params?: Promise<{ id: string }> }) {
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? '无权限' : '请先登录'
+        return NextResponse.json({ error }, { status })
       }
 
-      if (!deps.isAdminEmail(session.user.email)) {
-        return NextResponse.json({ error: '无权限' }, { status: 403 })
+      if (auth.mode === 'session' && !auth.session.user?.id) {
+        return NextResponse.json({ error: '请先登录' }, { status: 401 })
       }
 
       const { id } = (await ctx.params) || {}

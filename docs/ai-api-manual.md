@@ -13,7 +13,10 @@
 
 ### 认证方式
 所有 API 端点都需要管理员权限认证：
-- 使用 Auth.js (NextAuth) Session 认证
+- 方式 A：Auth.js (NextAuth) Session 认证（需要管理员邮箱）
+- 方式 B：API Token 认证（推荐用于自动化/AI）
+
+#### 方式 A：Session Cookie（管理员邮箱）
 - 必须是管理员用户（邮箱在 `ADMIN_EMAILS` 环境变量中）
 - 请求需要携带有效的 Session Cookie
 
@@ -22,6 +25,14 @@
 - 生产/HTTPS 常见：`__Secure-next-auth.session-token`
 
 建议：从浏览器登录后导出 Cookie，再用 `curl -b cookie.txt` 复用；避免把 token 写进日志。
+
+#### 方式 B：API Token（推荐）
+- 服务端设置环境变量 `SEICHIGO_AI_API_KEY`（建议使用足够长的随机字符串，可随时轮换）
+- 客户端请求头二选一：
+  - `Authorization: Bearer YOUR_TOKEN`
+  - `X-AI-KEY: YOUR_TOKEN`
+
+说明：当 `SEICHIGO_AI_API_KEY` 未设置时，仅支持 Session Cookie 认证。
 
 ### 与“标准 API”的关系
 
@@ -55,6 +66,7 @@
 | POST | `/api/ai/articles` | 创建新草稿 | 无 |
 | GET | `/api/ai/articles/:id` | 获取单篇文章完整信息 | 无 |
 | PATCH | `/api/ai/articles/:id` | 更新文章内容 | 仅 draft/rejected |
+| POST | `/api/ai/articles/:id/import` | 导入/覆盖 contentJson（自动生成 contentHtml） | 仅 draft/rejected |
 | POST | `/api/ai/articles/:id/submit` | 提交审核 | 仅 draft/rejected |
 
 ## 端点详细说明
@@ -76,6 +88,10 @@ curl -X GET "http://localhost:3000/api/ai" \
 # 生产环境（HTTPS）常见 cookie 名
 curl -X GET "https://seichigo.com/api/ai" \
   -H "Cookie: __Secure-next-auth.session-token=YOUR_SESSION_TOKEN"
+
+# API Token（推荐用于自动化）
+curl -X GET "http://localhost:3000/api/ai" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ---
@@ -180,6 +196,7 @@ curl -X GET "http://localhost:3000/api/ai/articles?authorId=user_123" \
 
 | 字段 | 类型 | 必需 | 说明 | 限制 |
 |------|------|------|------|------|
+| authorId | string | 否* | 作者用户 ID | \*使用 API Token 认证时必填；Session Cookie 认证时会忽略该字段并使用当前登录用户 |
 | title | string | 是 | 文章标题 | 非空字符串（trim 后长度 > 0） |
 | seoTitle | string \| null | 否 | SEO 标题 | 最多 120 字符 |
 | description | string \| null | 否 | 文章描述 | 最多 320 字符 |
@@ -233,6 +250,17 @@ curl -X POST "http://localhost:3000/api/ai/articles" \
       ]
     },
     "contentHtml": "<h2>引言</h2><p>《你的名字》是新海诚导演的代表作...</p>"
+  }'
+```
+
+API Token 认证（需要提供 `authorId`）：
+```bash
+curl -X POST "http://localhost:3000/api/ai/articles" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "authorId": "user_123",
+    "title": "探访《你的名字》取景地：飞騨古川"
   }'
 ```
 
@@ -475,6 +503,63 @@ curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
 - `contentHtml` 会经过服务器端的安全过滤
 - 字符串字段会自动 trim 处理空白字符
 - 更新后 `updatedAt` 字段会自动更新为当前时间
+
+---
+
+### POST /api/ai/articles/:id/import
+
+用于**稳定导入大 contentJson**（服务端会自动生成并覆盖 `contentHtml`）。只能编辑状态为 `draft` 或 `rejected` 的文章。
+
+相比 `PATCH /api/ai/articles/:id`，该接口更适合大正文导入（例如：超大 JSON、需要 gzip 压缩的场景）。
+
+**Path 参数**
+
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| id | string | 是 | 文章 ID |
+
+**请求方式**
+
+1) `multipart/form-data`（推荐）
+- 字段：`file`（支持 `content.json` 或 `content.json.gz`）
+
+2) 非 multipart
+- 请求体为 JSON（可以是 `{ "contentJson": ... }` 或直接是 TipTap doc JSON）
+- 可选：`Content-Encoding: gzip`
+
+**请求示例：上传文件（推荐）**
+
+```bash
+curl -X POST "http://localhost:3000/api/ai/articles/article_xyz789/import" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@content.json.gz"
+```
+
+**成功响应 (200)**
+
+```json
+{
+  "ok": true,
+  "article": {
+    "id": "article_xyz789",
+    "status": "draft",
+    "revision": "2026-02-03T12:00:00.000Z"
+  }
+}
+```
+
+响应会包含 `ETag` 头（弱校验），可用于自动化流程中做一致性校验/断点续跑。
+
+**错误响应**
+
+| 状态码 | 说明 | 响应示例 |
+|--------|------|---------|
+| 400 | 参数错误/JSON 解析失败 | `{"error": "JSON 解析失败"}` |
+| 400 | 缺少文件 | `{"error": "缺少上传文件（file）或 contentJson"}` |
+| 401 | 未认证 | `{"error": "Unauthorized"}` |
+| 403 | 非管理员 | `{"error": "Forbidden: Admin access required"}` |
+| 404 | 文章不存在 | `{"error": "未找到文章"}` |
+| 409 | 状态不可编辑 | `{"error": "当前状态不可编辑"}` |
 
 ---
 
@@ -893,7 +978,7 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 |--------|------|---------|
 | 200 | 成功 | 请求正常处理 |
 | 400 | 请求参数错误 | 缺少必需字段、字段验证失败、格式错误 |
-| 401 | 未认证 | 未登录或 Session 过期 |
+| 401 | 未认证 | 未登录/Session 过期，或未提供/提供了无效的 API Token |
 | 403 | 无权限 | 非管理员用户 |
 | 404 | 资源不存在 | 文章 ID 不存在 |
 | 409 | 状态冲突 | 尝试编辑/提交不可操作状态的文章、slug 冲突 |
@@ -904,9 +989,9 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 
 | 错误消息 | 出现场景 | 解决方法 |
 |---------|---------|---------|
-| `Unauthorized` | GET /api/ai/articles 未登录 | 确保携带有效的 Session Cookie |
+| `Unauthorized` | GET /api/ai/articles 未认证 | 确保携带有效的 Session Cookie，或设置 `Authorization: Bearer ...` / `X-AI-KEY` |
 | `Forbidden: Admin access required` | 非管理员用户 | 使用管理员邮箱登录 |
-| `请先登录` | POST/PATCH/其他接口未登录 | 确保携带有效的 Session Cookie |
+| `请先登录` | POST/PATCH/其他接口未认证 | 确保携带有效的 Session Cookie，或使用 API Token |
 | `无权限` | 非管理员用户 | 使用管理员邮箱登录 |
 | `标题不能为空` | title 字段为空或仅包含空白字符 | 提供有效的标题 |
 | `参数错误` | 请求体验证失败 | 检查所有字段的类型和格式 |
@@ -943,7 +1028,10 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
    ```bash
    PATCH /api/ai/articles/:id
    ```
-   根据需要更新标题、内容、标签等字段。
+   根据需要更新标题、标签等字段。若需要导入大正文，优先使用：
+   ```bash
+   POST /api/ai/articles/:id/import
+   ```
 
 4. **提交审核**
    ```bash
@@ -965,9 +1053,9 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 ### 内容格式建议
 
 1. **同时提供 JSON 和 HTML**
-   - 推荐同时提供 `contentJson` 和 `contentHtml`
-   - `contentJson` 用于编辑器重新打开和编辑
-   - `contentHtml` 用于后端渲染和显示（会经过安全过滤）
+   - 使用 `PATCH /api/ai/articles/:id` 更新正文时，推荐同时提供 `contentJson` 和 `contentHtml`
+   - 使用 `POST /api/ai/articles/:id/import` 导入正文时，只需要提供 `contentJson`（服务端会自动生成并覆盖 `contentHtml`）
+   - `contentJson` 用于编辑器重新打开和编辑；`contentHtml` 用于前台渲染展示（会经过安全过滤）
 
 2. **图片处理**
    - 先上传图片到资源管理系统获取 `/assets/:id` 路径

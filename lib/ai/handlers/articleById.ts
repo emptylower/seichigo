@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { AiApiDeps } from '@/lib/ai/api'
 import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
+import { authorizeAiRequest } from '@/lib/ai/auth'
 
 function toDetail(a: any, sanitizeHtml: (html: string) => string) {
   const sanitized = sanitizeHtml(String(a.contentHtml || ''))
@@ -54,15 +55,16 @@ const patchSchema = z
 
 export function createHandlers(deps: AiApiDeps) {
   return {
-    async GET(_req: Request, ctx: { params?: Promise<{ id: string }> }) {
-      const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
+    async GET(req: Request, ctx: { params?: Promise<{ id: string }> }) {
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? '无权限' : '请先登录'
+        return NextResponse.json({ error }, { status })
       }
 
-      const isAdmin = deps.isAdminEmail(session.user.email)
-      if (!isAdmin) {
-        return NextResponse.json({ error: '无权限' }, { status: 403 })
+      if (auth.mode === 'session' && !auth.session.user?.id) {
+        return NextResponse.json({ error: '请先登录' }, { status: 401 })
       }
 
       const { id } = (await ctx.params) || {}
@@ -80,14 +82,15 @@ export function createHandlers(deps: AiApiDeps) {
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
-      const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? '无权限' : '请先登录'
+        return NextResponse.json({ error }, { status })
       }
 
-      const isAdmin = deps.isAdminEmail(session.user.email)
-      if (!isAdmin) {
-        return NextResponse.json({ error: '无权限' }, { status: 403 })
+      if (auth.mode === 'session' && !auth.session.user?.id) {
+        return NextResponse.json({ error: '请先登录' }, { status: 401 })
       }
 
       const { id } = (await ctx.params) || {}

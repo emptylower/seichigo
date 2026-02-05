@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
 import type { AiApiDeps } from '@/lib/ai/api'
+import { authorizeAiRequest } from '@/lib/ai/auth'
 
 export function createHandlers(deps: AiApiDeps) {
   return {
-    async GET(_req: Request) {
-      const session = await deps.getSession()
-      if (!session?.user?.email) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-
-      if (!deps.isAdminEmail(session.user.email)) {
-        return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+    async GET(req: Request) {
+      const auth = await authorizeAiRequest(req, deps)
+      if (!auth.ok) {
+        const status = auth.reason === 'forbidden' ? 403 : 401
+        const error = auth.reason === 'forbidden' ? 'Forbidden: Admin access required' : 'Unauthorized'
+        return NextResponse.json({ error }, { status })
       }
 
       return NextResponse.json({
@@ -19,6 +18,7 @@ export function createHandlers(deps: AiApiDeps) {
         endpoints: {
           articles: '/api/ai/articles',
           articleById: '/api/ai/articles/:id',
+          import: '/api/ai/articles/:id/import',
           submit: '/api/ai/articles/:id/submit',
         },
       })
