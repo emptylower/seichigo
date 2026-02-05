@@ -44,6 +44,16 @@ export async function syncGscData(days: number = 7): Promise<SyncGscDataResult> 
         dateStr: row.keys?.[1] || '',
       }),
     },
+    {
+      // If query dimension is withheld (privacy threshold), use date-only totals so we can
+      // still track overall impressions/clicks.
+      dimensions: ['date'],
+      map: (row) => ({
+        query: '__all__',
+        page: '__all__',
+        dateStr: row.keys?.[0] || '',
+      }),
+    },
   ]
 
   let rows: Array<{ keys: string[]; clicks: number; impressions: number; ctr: number; position: number }> = []

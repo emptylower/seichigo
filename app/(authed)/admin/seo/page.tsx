@@ -27,6 +27,7 @@ export default async function SeoPage() {
   })
 
   const rawTopQueries = await prisma.seoGscData.groupBy({
+    where: { query: { not: '__all__' } },
     by: ['query'],
     _sum: { clicks: true, impressions: true },
     orderBy: { _sum: { clicks: 'desc' } },
