@@ -38,6 +38,8 @@
 
 说明：当 `SEICHIGO_AI_API_KEY` 未设置时，仅支持 Session Cookie 认证。
 
+当前：SEICHIGO_AI_API_KEY=50d35343616eb3dea38f3a9297e662f05f24e6745329ab1844ba54546902ad6a
+
 ### 与“标准 API”的关系
 
 - 标准 API（创作中心使用）：`/api/articles/*`（通常只允许操作自己的文章）
