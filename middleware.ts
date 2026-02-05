@@ -83,5 +83,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)'],
 }
