@@ -28,6 +28,10 @@
 
 #### 方式 B：API Token（推荐）
 - 服务端设置环境变量 `SEICHIGO_AI_API_KEY`（建议使用足够长的随机字符串，可随时轮换）
+- 生成 token（示例，二选一）：
+  - `openssl rand -hex 32`
+  - `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- Vercel 部署：在 Project Settings → Environment Variables 添加 `SEICHIGO_AI_API_KEY` 后 Redeploy
 - 客户端请求头二选一：
   - `Authorization: Bearer YOUR_TOKEN`
   - `X-AI-KEY: YOUR_TOKEN`
@@ -114,6 +118,12 @@ curl -X GET "http://localhost:3000/api/ai" \
 ```bash
 curl -X GET "http://localhost:3000/api/ai/articles" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN"
+```
+
+API Token（推荐用于自动化）：
+```bash
+curl -X GET "http://localhost:3000/api/ai/articles?status=draft&language=zh" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 带筛选条件：
@@ -326,6 +336,12 @@ curl -X GET "http://localhost:3000/api/ai/articles/article_xyz789" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN"
 ```
 
+API Token（推荐用于自动化）：
+```bash
+curl -X GET "http://localhost:3000/api/ai/articles/article_xyz789" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
 **成功响应 (200)**
 
 ```json
@@ -416,6 +432,8 @@ curl -X GET "http://localhost:3000/api/ai/articles/article_xyz789" \
 - ❌ 不可编辑：`in_review`、`published`
 
 **请求示例 1：更新标题和描述**
+
+说明：使用 API Token 认证时，将请求头中的 `Cookie: ...` 替换为 `Authorization: Bearer YOUR_TOKEN`（或 `X-AI-KEY: YOUR_TOKEN`）。
 
 ```bash
 curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
@@ -578,6 +596,12 @@ curl -X POST "http://localhost:3000/api/ai/articles/article_xyz789/import" \
 ```bash
 curl -X POST "http://localhost:3000/api/ai/articles/article_xyz789/submit" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN"
+```
+
+API Token（推荐用于自动化）：
+```bash
+curl -X POST "http://localhost:3000/api/ai/articles/article_xyz789/submit" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 **成功响应 (200)**
@@ -1103,18 +1127,22 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
    - 对于 401/403 错误，需要重新认证
    - 对于 500 错误，使用指数退避重试
 
-### Session 管理建议
+### 认证管理建议
 
-1. **Cookie 处理**
+1. **推荐：API Token（自动化/AI）**
+   - 仅需在请求头中携带 `Authorization: Bearer ...` 或 `X-AI-KEY: ...`
+   - Token 可随时轮换：更新服务端环境变量后重新部署即可生效
+
+2. **Session Cookie（可选）**
    - 从登录响应中提取 `next-auth.session-token` Cookie
    - 在所有请求的 Cookie header 中携带
    - Session 有效期通常为 30 天
 
-2. **认证失败处理**
+3. **认证失败处理**
    - 收到 401 错误时，重新登录
    - 保持 Session 活跃（定期发送请求）
 
-3. **安全建议**
+4. **安全建议**
    - 不要在日志中记录 Session Token
    - 使用 HTTPS 传输（生产环境）
    - 妥善保管管理员凭证
@@ -1146,4 +1174,4 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 
 ---
 
-**最后更新：2026年2月3日**
+**最后更新：2026年2月5日**
