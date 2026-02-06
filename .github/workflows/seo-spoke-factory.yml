@@ -83,7 +83,7 @@ jobs:
         if: ${{ inputs.mode == 'generate' }}
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.SEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           branch: codex/seo-spoke-${{ github.run_id }}
           base: ${{ inputs.baseBranch }}
           commit-message: "feat(seo): generate spoke pages via factory"
