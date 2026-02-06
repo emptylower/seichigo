@@ -1,8 +1,6 @@
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
+import JSZip from 'jszip'
 import { normalizeSummary } from './validate'
 import type { SpokeFactorySummary } from './types'
 
@@ -42,32 +40,18 @@ export async function extractSummaryFromZipBuffer(zipBuffer: Buffer): Promise<Sp
   const direct = parseJsonText(asText)
   if (direct) return direct
 
-  const tempDir = path.join(os.tmpdir(), `seo-spoke-${randomUUID()}`)
-  const zipPath = path.join(tempDir, 'artifact.zip')
   try {
-    await fs.mkdir(tempDir, { recursive: true })
-    await fs.writeFile(zipPath, zipBuffer)
-
-    const listing = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' })
-    if (listing.status !== 0) return null
-
-    const entries = String(listing.stdout || '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
+    const zip = await JSZip.loadAsync(zipBuffer)
+    const entries = Object.values(zip.files).filter((entry) => !entry.dir)
     const summaryEntry =
-      entries.find((entry) => entry.endsWith('/summary.json')) ||
-      entries.find((entry) => entry.endsWith('summary.json')) ||
+      entries.find((entry) => entry.name.endsWith('/summary.json')) ||
+      entries.find((entry) => entry.name.endsWith('summary.json')) ||
       entries[0]
     if (!summaryEntry) return null
 
-    const extracted = spawnSync('unzip', ['-p', zipPath, summaryEntry], { encoding: 'utf-8', maxBuffer: 5 * 1024 * 1024 })
-    if (extracted.status !== 0) return null
-    return parseJsonText(String(extracted.stdout || ''))
+    const extracted = await summaryEntry.async('string')
+    return parseJsonText(extracted)
   } catch {
     return null
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
   }
 }
-
