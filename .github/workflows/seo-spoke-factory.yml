@@ -47,6 +47,7 @@ jobs:
       DATABASE_URL_UNPOOLED: ${{ secrets.SEO_AUTOMATION_DATABASE_URL_UNPOOLED || secrets.DATABASE_URL_UNPOOLED }}
       SEO_AUTOMATION_AI_API_BASE_URL: ${{ secrets.SEO_AUTOMATION_AI_API_BASE_URL }}
       SEO_AUTOMATION_AI_API_KEY: ${{ secrets.SEO_AUTOMATION_AI_API_KEY }}
+      SEO_AUTOMATION_AUTO_MERGE: ${{ secrets.SEO_AUTOMATION_AUTO_MERGE }}
       SUMMARY_PATH: .artifacts/summary.json
 
     steps:
@@ -105,6 +106,19 @@ jobs:
             content/zh/posts/**
             content/en/posts/**
             content/ja/posts/**
+
+      - name: Enable Auto Merge
+        if: >-
+          ${{
+            inputs.mode == 'generate' &&
+            steps.cpr.outputs.pull-request-number &&
+            (env.SEO_AUTOMATION_AUTO_MERGE == '1' || env.SEO_AUTOMATION_AUTO_MERGE == 'true')
+          }}
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.SEO_AUTOMATION_GITHUB_TOKEN || github.token }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
 
       - name: Attach PR URL to summary
         if: always()
