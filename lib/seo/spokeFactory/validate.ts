@@ -104,6 +104,15 @@ export function normalizeSummary(input: unknown): SpokeFactorySummary | null {
       ? sourceOriginRaw
       : 'none'
 
+  const acceptanceStatusRaw = String(data.acceptanceStatus || '').trim()
+  const acceptanceStatus =
+    acceptanceStatusRaw === 'pending' ||
+    acceptanceStatusRaw === 'passed' ||
+    acceptanceStatusRaw === 'failed' ||
+    acceptanceStatusRaw === 'skipped'
+      ? acceptanceStatusRaw
+      : 'pending'
+
   return {
     mode,
     sourceOrigin,
@@ -128,5 +137,35 @@ export function normalizeSummary(input: unknown): SpokeFactorySummary | null {
     topics: Array.isArray(data.topics) ? (data.topics as any[]) : [],
     files: Array.isArray(data.files) ? (data.files as any[]) : [],
     prUrl: typeof data.prUrl === 'string' && data.prUrl.trim() ? data.prUrl : null,
+    acceptanceStatus,
+    acceptanceChecked: toNum(data.acceptanceChecked),
+    acceptancePassed: toNum(data.acceptancePassed),
+    acceptanceFailed: toNum(data.acceptanceFailed),
+    acceptanceNote: typeof data.acceptanceNote === 'string' && data.acceptanceNote.trim() ? data.acceptanceNote : null,
+    acceptanceItems: Array.isArray(data.acceptanceItems)
+      ? data.acceptanceItems
+          .map((item) => {
+            if (!item || typeof item !== 'object') return null
+            const obj = item as Record<string, unknown>
+            const url = String(obj.url || '').trim()
+            if (!url) return null
+            const ok = Boolean(obj.ok)
+            const statusRaw = obj.status
+            const statusCandidate =
+              typeof statusRaw === 'number' && Number.isFinite(statusRaw)
+                ? statusRaw
+                : typeof statusRaw === 'string' && statusRaw.trim()
+                  ? Number.parseInt(statusRaw, 10)
+                  : null
+            const status = typeof statusCandidate === 'number' && Number.isFinite(statusCandidate) ? statusCandidate : null
+            return {
+              url,
+              ok,
+              status,
+              note: String(obj.note || '').trim(),
+            }
+          })
+          .filter((item): item is { url: string; ok: boolean; status: number | null; note: string } => Boolean(item))
+      : [],
   }
 }

@@ -66,6 +66,12 @@ async function run(): Promise<number> {
     topics: [],
     files: [],
     prUrl: null,
+    acceptanceStatus: 'pending',
+    acceptanceChecked: 0,
+    acceptancePassed: 0,
+    acceptanceFailed: 0,
+    acceptanceNote: null,
+    acceptanceItems: [],
   }
 
   try {

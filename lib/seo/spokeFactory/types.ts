@@ -2,6 +2,7 @@ export type SpokeLocale = 'zh' | 'en' | 'ja'
 export type SpokeMode = 'preview' | 'generate'
 export type SpokeScope = 'all'
 export type SpokeSourceOrigin = 'local' | 'ai-api' | 'local+ai-api' | 'none'
+export type SpokeAcceptanceStatus = 'pending' | 'passed' | 'failed' | 'skipped'
 
 export type SpokeSourcePost = {
   path: string
@@ -77,6 +78,12 @@ export type SpokeFactorySummary = {
   topics: SpokeSelectedTopic[]
   files: Array<{ path: string; locale: SpokeLocale; slug: string }>
   prUrl: string | null
+  acceptanceStatus: SpokeAcceptanceStatus
+  acceptanceChecked: number
+  acceptancePassed: number
+  acceptanceFailed: number
+  acceptanceNote: string | null
+  acceptanceItems: Array<{ url: string; ok: boolean; status: number | null; note: string }>
 }
 
 export function isSpokeLocale(value: string): value is SpokeLocale {

@@ -48,6 +48,7 @@ jobs:
       SEO_AUTOMATION_AI_API_BASE_URL: ${{ secrets.SEO_AUTOMATION_AI_API_BASE_URL }}
       SEO_AUTOMATION_AI_API_KEY: ${{ secrets.SEO_AUTOMATION_AI_API_KEY }}
       SEO_AUTOMATION_AUTO_MERGE: ${{ secrets.SEO_AUTOMATION_AUTO_MERGE }}
+      SEO_AUTOMATION_SITE_URL: ${{ vars.SEO_AUTOMATION_SITE_URL || secrets.SEO_AUTOMATION_SITE_URL }}
       SUMMARY_PATH: .artifacts/summary.json
 
     steps:
@@ -68,7 +69,7 @@ jobs:
       - name: Init summary file
         run: |
           mkdir -p .artifacts
-          echo '{"mode":"preview","sourceOrigin":"none","sourcePostCount":0,"candidateCount":0,"selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
+          echo '{"mode":"preview","sourceOrigin":"none","sourcePostCount":0,"candidateCount":0,"selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null,"acceptanceStatus":"pending","acceptanceChecked":0,"acceptancePassed":0,"acceptanceFailed":0,"acceptanceNote":null,"acceptanceItems":[]}' > "$SUMMARY_PATH"
 
       - name: Run SEO spoke factory
         run: |
@@ -138,6 +139,216 @@ jobs:
           NODE
         env:
           PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
+
+      - name: Post-merge acceptance check
+        if: ${{ inputs.mode == 'generate' && steps.cpr.outputs.pull-request-number }}
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          SUMMARY_PATH: ${{ env.SUMMARY_PATH }}
+          SEO_AUTOMATION_AUTO_MERGE: ${{ env.SEO_AUTOMATION_AUTO_MERGE }}
+          SEO_AUTOMATION_SITE_URL: ${{ env.SEO_AUTOMATION_SITE_URL }}
+        with:
+          github-token: ${{ secrets.SEO_AUTOMATION_GITHUB_TOKEN || github.token }}
+          script: |
+            const fs = require('fs')
+
+            const summaryPath = process.env.SUMMARY_PATH
+            const prNumber = Number(process.env.PR_NUMBER || '0')
+            const autoMergeEnabled = ['1', 'true', 'yes', 'on'].includes(
+              String(process.env.SEO_AUTOMATION_AUTO_MERGE || '').trim().toLowerCase()
+            )
+            const baseUrl = (process.env.SEO_AUTOMATION_SITE_URL || 'https://seichigo.com').replace(/\/+$/, '')
+
+            function readSummary() {
+              try {
+                return JSON.parse(fs.readFileSync(summaryPath, 'utf-8'))
+              } catch {
+                return {}
+              }
+            }
+
+            function writeSummary(summary) {
+              fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2))
+            }
+
+            function setAcceptance(summary, patch) {
+              summary.acceptanceStatus = patch.acceptanceStatus
+              summary.acceptanceChecked = Number.isFinite(patch.acceptanceChecked) ? patch.acceptanceChecked : 0
+              summary.acceptancePassed = Number.isFinite(patch.acceptancePassed) ? patch.acceptancePassed : 0
+              summary.acceptanceFailed = Number.isFinite(patch.acceptanceFailed) ? patch.acceptanceFailed : 0
+              summary.acceptanceNote = patch.acceptanceNote || null
+              summary.acceptanceItems = Array.isArray(patch.acceptanceItems) ? patch.acceptanceItems : []
+              writeSummary(summary)
+            }
+
+            function sleep(ms) {
+              return new Promise((resolve) => setTimeout(resolve, ms))
+            }
+
+            async function fetchWithTimeout(url, timeoutMs) {
+              const controller = new AbortController()
+              const timeout = setTimeout(() => controller.abort(), timeoutMs)
+              try {
+                return await fetch(url, {
+                  method: 'GET',
+                  redirect: 'follow',
+                  headers: { 'user-agent': 'seichigo-seo-acceptance-check/1.0' },
+                  signal: controller.signal,
+                })
+              } finally {
+                clearTimeout(timeout)
+              }
+            }
+
+            const summary = readSummary()
+
+            if (!prNumber) {
+              setAcceptance(summary, {
+                acceptanceStatus: 'skipped',
+                acceptanceChecked: 0,
+                acceptancePassed: 0,
+                acceptanceFailed: 0,
+                acceptanceNote: 'No PR number found, skipped post-merge acceptance check',
+                acceptanceItems: [],
+              })
+              return
+            }
+
+            if (!autoMergeEnabled) {
+              setAcceptance(summary, {
+                acceptanceStatus: 'skipped',
+                acceptanceChecked: 0,
+                acceptancePassed: 0,
+                acceptanceFailed: 0,
+                acceptanceNote: 'Auto merge disabled, skipped post-merge acceptance check',
+                acceptanceItems: [],
+              })
+              return
+            }
+
+            const maxMergeAttempts = 80
+            const mergePollIntervalMs = 30000
+            let merged = false
+            let closedWithoutMerge = false
+
+            for (let attempt = 1; attempt <= maxMergeAttempts; attempt += 1) {
+              const pull = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              })
+              if (pull.data.merged) {
+                merged = true
+                break
+              }
+              if (pull.data.state === 'closed') {
+                closedWithoutMerge = true
+                break
+              }
+              if (attempt < maxMergeAttempts) {
+                await sleep(mergePollIntervalMs)
+              }
+            }
+
+            if (!merged) {
+              setAcceptance(summary, {
+                acceptanceStatus: 'skipped',
+                acceptanceChecked: 0,
+                acceptancePassed: 0,
+                acceptanceFailed: 0,
+                acceptanceNote: closedWithoutMerge
+                  ? 'PR closed without merge, skipped post-merge acceptance check'
+                  : 'Timed out waiting for PR merge, skipped post-merge acceptance check',
+                acceptanceItems: [],
+              })
+              return
+            }
+
+            const files = Array.isArray(summary.files) ? summary.files : []
+            const urls = []
+            const seen = new Set()
+
+            for (const file of files) {
+              const path = String(file?.path || '')
+              const match = path.match(/^content\/(zh|en|ja)\/posts\/([^/]+)\.mdx$/)
+              const locale = match?.[1] || String(file?.locale || '')
+              const slug = match?.[2] || String(file?.slug || '')
+              if (!locale || !slug) continue
+
+              const encodedSlug = encodeURIComponent(slug)
+              const pathname = locale === 'zh' ? `/posts/${encodedSlug}` : `/${locale}/posts/${encodedSlug}`
+              const url = `${baseUrl}${pathname}`
+              if (seen.has(url)) continue
+              seen.add(url)
+              urls.push(url)
+            }
+
+            if (!urls.length) {
+              setAcceptance(summary, {
+                acceptanceStatus: 'skipped',
+                acceptanceChecked: 0,
+                acceptancePassed: 0,
+                acceptanceFailed: 0,
+                acceptanceNote: 'No generated urls found in summary.files',
+                acceptanceItems: [],
+              })
+              return
+            }
+
+            await sleep(45000)
+
+            const pending = new Set(urls)
+            const maxUrlAttempts = 20
+            const urlPollIntervalMs = 30000
+            const urlTimeoutMs = 12000
+            const byUrl = new Map(urls.map((url) => [url, { ok: false, status: null, note: '' }]))
+
+            for (let attempt = 1; attempt <= maxUrlAttempts && pending.size > 0; attempt += 1) {
+              for (const url of Array.from(pending)) {
+                try {
+                  const response = await fetchWithTimeout(url, urlTimeoutMs)
+                  const status = response.status
+                  if (status === 200) {
+                    byUrl.set(url, { ok: true, status, note: `attempt ${attempt}` })
+                    pending.delete(url)
+                  } else {
+                    byUrl.set(url, { ok: false, status, note: `attempt ${attempt}` })
+                  }
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error)
+                  byUrl.set(url, { ok: false, status: null, note: `attempt ${attempt}: ${message}` })
+                }
+              }
+              if (pending.size > 0 && attempt < maxUrlAttempts) {
+                await sleep(urlPollIntervalMs)
+              }
+            }
+
+            const acceptanceItems = urls.map((url) => {
+              const item = byUrl.get(url) || { ok: false, status: null, note: 'unknown' }
+              return {
+                url,
+                ok: item.ok,
+                status: item.status,
+                note: item.note || '',
+              }
+            })
+            const acceptanceChecked = acceptanceItems.length
+            const acceptanceFailed = acceptanceItems.filter((item) => !item.ok).length
+            const acceptancePassed = acceptanceChecked - acceptanceFailed
+
+            setAcceptance(summary, {
+              acceptanceStatus: acceptanceFailed > 0 ? 'failed' : 'passed',
+              acceptanceChecked,
+              acceptancePassed,
+              acceptanceFailed,
+              acceptanceNote:
+                acceptanceFailed > 0
+                  ? `Checked ${acceptanceChecked} urls, ${acceptanceFailed} failed to return 200`
+                  : `Checked ${acceptanceChecked} urls, all returned 200`,
+              acceptanceItems,
+            })
 
       - name: Upload summary artifact
         if: always()

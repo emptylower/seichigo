@@ -85,6 +85,51 @@ function getSummaryText(summary: Record<string, unknown> | null, key: string): s
   return text || null
 }
 
+type AcceptanceItem = {
+  url: string
+  ok: boolean
+  status: number | null
+  note: string
+}
+
+function getAcceptanceItems(summary: Record<string, unknown> | null): AcceptanceItem[] {
+  if (!summary) return []
+  const raw = summary.acceptanceItems
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const obj = item as Record<string, unknown>
+      const url = String(obj.url || '').trim()
+      if (!url) return null
+      const ok = Boolean(obj.ok)
+      const statusRaw = obj.status
+      const statusCandidate =
+        typeof statusRaw === 'number' && Number.isFinite(statusRaw)
+          ? statusRaw
+          : typeof statusRaw === 'string' && statusRaw.trim()
+            ? Number.parseInt(statusRaw, 10)
+            : null
+      const status = typeof statusCandidate === 'number' && Number.isFinite(statusCandidate) ? statusCandidate : null
+      return {
+        url,
+        ok,
+        status,
+        note: String(obj.note || '').trim(),
+      }
+    })
+    .filter((item): item is AcceptanceItem => Boolean(item))
+}
+
+function formatAcceptanceStatus(value: string | null): string {
+  if (value === 'passed') return '通过'
+  if (value === 'failed') return '失败'
+  if (value === 'skipped') return '跳过'
+  if (value === 'pending') return '待执行'
+  return '-'
+}
+
 export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
   const [mode, setMode] = useState<RunMode>(defaults.mode)
   const [locales, setLocales] = useState<Locale[]>(defaults.locales)
@@ -378,6 +423,56 @@ export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
 
           {!detailLoading && selectedRun ? (
             <div className="space-y-2 text-sm">
+              {(() => {
+                const acceptanceStatus = getSummaryText(selectedRun.summary, 'acceptanceStatus')
+                const acceptanceChecked = getSummaryNumber(selectedRun.summary, 'acceptanceChecked')
+                const acceptancePassed = getSummaryNumber(selectedRun.summary, 'acceptancePassed')
+                const acceptanceFailed = getSummaryNumber(selectedRun.summary, 'acceptanceFailed')
+                const acceptanceNote = getSummaryText(selectedRun.summary, 'acceptanceNote')
+                const acceptanceItems = getAcceptanceItems(selectedRun.summary)
+
+                return (
+                  <div className="mb-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                    <div className="font-medium">
+                      最终验收：{formatAcceptanceStatus(acceptanceStatus)}{' '}
+                      {acceptanceStatus === 'passed' ? '✅' : acceptanceStatus === 'failed' ? '❌' : ''}
+                    </div>
+                    <div className="mt-1">
+                      已检测：{acceptanceChecked ?? '-'}，通过：{acceptancePassed ?? '-'}，失败：{acceptanceFailed ?? '-'}
+                    </div>
+                    {acceptanceNote ? <div className="mt-1">{acceptanceNote}</div> : null}
+                    {acceptanceItems.length ? (
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="min-w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-blue-200 text-left text-blue-700">
+                              <th className="py-1 pr-2">结果</th>
+                              <th className="py-1 pr-2">状态码</th>
+                              <th className="py-1 pr-2">URL</th>
+                              <th className="py-1 pr-2">说明</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {acceptanceItems.map((item) => (
+                              <tr key={item.url} className="border-b border-blue-100 last:border-0">
+                                <td className="py-1 pr-2">{item.ok ? '✅' : '❌'}</td>
+                                <td className="py-1 pr-2">{item.status ?? 'ERR'}</td>
+                                <td className="py-1 pr-2 font-mono">
+                                  <a href={item.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:text-blue-900">
+                                    {item.url}
+                                  </a>
+                                </td>
+                                <td className="py-1 pr-2">{item.note || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })()}
+
               <div>状态：{selectedRun.status}</div>
               <div>结论：{selectedRun.conclusion || '-'}</div>
               <div>
