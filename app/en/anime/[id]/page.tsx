@@ -1,5 +1,6 @@
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { getPostsByAnimeId } from '@/lib/posts/getPostsByAnimeId'
+import { splitSeoSpokePosts } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
@@ -102,6 +103,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
   }
 
   const posts = await getPostsByAnimeId(canonicalId, 'en')
+  const { regular: regularPosts, seoSpoke: seoSpokePosts } = splitSeoSpokePosts(posts)
 
   if (!anime && posts.length === 0) {
     return notFound()
@@ -189,8 +191,13 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
                   </span>
                 ) : null}
                 <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
-                  {posts.length} posts
+                  {regularPosts.length} posts
                 </span>
+                {seoSpokePosts.length ? (
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
+                    {seoSpokePosts.length} spot deep dives
+                  </span>
+                ) : null}
               </div>
 
               {display.summary_en ?? display.summary ? (
@@ -207,9 +214,9 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
             <h2 className="text-2xl font-bold text-gray-900">Related Posts</h2>
           </div>
 
-          {posts.length > 0 ? (
+          {regularPosts.length > 0 ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {posts.map((p) => (
+              {regularPosts.map((p) => (
                 <Link key={p.path} href={p.path} className="block transition-transform hover:-translate-y-1">
                   <BookCover
                     title={p.title}
@@ -230,6 +237,23 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
             </div>
           )}
         </section>
+
+        {seoSpokePosts.length ? (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 border-b pb-2">
+              <h2 className="text-xl font-semibold text-gray-900">Spot Deep Dives</h2>
+            </div>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {seoSpokePosts.map((p) => (
+                <li key={p.path} className="rounded-lg border border-gray-200 bg-white p-4">
+                  <Link href={p.path} className="text-sm font-medium text-gray-900 hover:text-brand-600">
+                    {p.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </>
   )

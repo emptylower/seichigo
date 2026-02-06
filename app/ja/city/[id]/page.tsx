@@ -3,6 +3,7 @@ import { normalizeCityAlias } from '@/lib/city/normalize'
 import { listPublishedDbPostsByCityId } from '@/lib/city/posts'
 import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
@@ -98,6 +99,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
       animeIds: [p.animeId || 'unknown'].filter(Boolean),
       city: p.city || '',
       routeLength: p.routeLength,
+      tags: p.tags || [],
       publishDate: p.publishDate,
       cover: null,
     }))
@@ -105,7 +107,9 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
   const byPath = new Map<string, any>()
   for (const p of mdxPosts) byPath.set(p.path, p)
   for (const p of dbPosts) byPath.set(p.path, p)
-  const posts = Array.from(byPath.values()).sort((a, b) => String(b.publishDate || '').localeCompare(String(a.publishDate || '')))
+  const posts = Array.from(byPath.values())
+    .filter((p) => !isSeoSpokePost(p))
+    .sort((a, b) => String(b.publishDate || '').localeCompare(String(a.publishDate || '')))
 
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/ja/city/${encodeURIComponent(city.slug)}`

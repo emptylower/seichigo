@@ -9,6 +9,7 @@ import Link from 'next/link'
 import BookCover from '@/components/bookstore/BookCover'
 import AppWaitlistPromoCtas from '@/components/waitlist/AppWaitlistPromoCtas.client'
 import { t } from '@/lib/i18n'
+import { isSeoSpokePost } from '@/lib/posts/visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -62,10 +63,11 @@ export default async function HomePage() {
     getAllPublicPosts('zh'),
     getAllAnime()
   ])
+  const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
   
-  const featured = posts[0] || null
-  const latestShelf = posts.slice(0, 12)
-  const more = posts.slice(12, 24)
+  const featured = visiblePosts[0] || null
+  const latestShelf = visiblePosts.slice(0, 12)
+  const more = visiblePosts.slice(12, 24)
   
   // Get valid covers from anime list (works are guaranteed to be poster format 3:4)
   const validAnimeWithCovers = animeList

@@ -18,10 +18,21 @@ function toLastModified(input?: string): Date | undefined {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getSiteOrigin()
-  const posts = await getAllPublicPosts('zh')
-  const anime = await getAllAnime().catch(() => [])
-  const cities = await listCitiesForIndex().catch(() => [])
-  const resources = await getAllLinkAssets().catch(() => [])
+  const [postsZh, postsEn, postsJa, anime, cities, resources] = await Promise.all([
+    getAllPublicPosts('zh').catch(() => []),
+    getAllPublicPosts('en').catch(() => []),
+    getAllPublicPosts('ja').catch(() => []),
+    getAllAnime().catch(() => []),
+    listCitiesForIndex().catch(() => []),
+    getAllLinkAssets().catch(() => []),
+  ])
+  const postsByPath = new Map<string, (typeof postsZh)[number]>()
+  for (const post of [...postsZh, ...postsEn, ...postsJa]) {
+    if (!post?.path) continue
+    if (postsByPath.has(post.path)) continue
+    postsByPath.set(post.path, post)
+  }
+  const posts = Array.from(postsByPath.values())
 
   const now = new Date()
 
