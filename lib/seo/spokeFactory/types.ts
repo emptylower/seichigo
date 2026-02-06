@@ -1,6 +1,7 @@
 export type SpokeLocale = 'zh' | 'en' | 'ja'
 export type SpokeMode = 'preview' | 'generate'
 export type SpokeScope = 'all'
+export type SpokeSourceOrigin = 'local' | 'ai-api' | 'local+ai-api' | 'none'
 
 export type SpokeSourcePost = {
   path: string
@@ -64,6 +65,7 @@ export type SpokeFactoryInput = {
 
 export type SpokeFactorySummary = {
   mode: SpokeMode
+  sourceOrigin: SpokeSourceOrigin
   sourcePostCount: number
   candidateCount: number
   selectedTopics: number

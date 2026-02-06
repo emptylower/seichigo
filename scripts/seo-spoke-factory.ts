@@ -54,6 +54,7 @@ async function run(): Promise<number> {
 
   const summary: SpokeFactorySummary = {
     mode: input.mode,
+    sourceOrigin: 'none',
     sourcePostCount: 0,
     candidateCount: 0,
     selectedTopics: 0,
@@ -73,6 +74,7 @@ async function run(): Promise<number> {
     const existing = await loadExistingSpokeIndex()
     const selection = selectTopicsForGeneration(candidates, existing, input.maxTopics)
 
+    summary.sourceOrigin = extraction.sourceOrigin
     summary.sourcePostCount = extraction.sourcePostCount
     summary.candidateCount = extraction.candidateCount
     summary.selectedTopics = selection.selected.length

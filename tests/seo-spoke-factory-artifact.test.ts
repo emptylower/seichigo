@@ -9,6 +9,7 @@ describe('seo spoke factory artifact parsing', () => {
       'seo-spoke-factory-summary/summary.json',
       JSON.stringify({
         mode: 'preview',
+        sourceOrigin: 'ai-api',
         sourcePostCount: 12,
         candidateCount: 5,
         selectedTopics: 3,
@@ -28,6 +29,7 @@ describe('seo spoke factory artifact parsing', () => {
 
     expect(parsed).not.toBeNull()
     expect(parsed?.mode).toBe('preview')
+    expect(parsed?.sourceOrigin).toBe('ai-api')
     expect(parsed?.sourcePostCount).toBe(12)
     expect(parsed?.candidateCount).toBe(5)
     expect(parsed?.selectedTopics).toBe(3)

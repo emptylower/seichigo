@@ -77,6 +77,14 @@ function getSummaryNumber(summary: Record<string, unknown> | null, key: string):
   return null
 }
 
+function getSummaryText(summary: Record<string, unknown> | null, key: string): string | null {
+  if (!summary) return null
+  const raw = summary[key]
+  if (typeof raw !== 'string') return null
+  const text = raw.trim()
+  return text || null
+}
+
 export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
   const [mode, setMode] = useState<RunMode>(defaults.mode)
   const [locales, setLocales] = useState<Locale[]>(defaults.locales)
@@ -390,7 +398,8 @@ export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
               </div>
               <div>Artifact 数量：{selectedRun.artifacts.length}</div>
               <div>
-                来源文章数：{getSummaryNumber(selectedRun.summary, 'sourcePostCount') ?? '-'}，候选主题数：
+                数据来源：{getSummaryText(selectedRun.summary, 'sourceOrigin') ?? '-'}，来源文章数：
+                {getSummaryNumber(selectedRun.summary, 'sourcePostCount') ?? '-'}，候选主题数：
                 {getSummaryNumber(selectedRun.summary, 'candidateCount') ?? '-'}，入选主题数：
                 {getSummaryNumber(selectedRun.summary, 'selectedTopics') ?? '-'}
               </div>
@@ -398,7 +407,9 @@ export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                   当前来源文章数为 0。工厂会排除 <span className="font-mono">seo-spoke</span> 页面；若你的原文主要在数据库，
                   请在 GitHub Actions Secrets 配置 <span className="font-mono">SEO_AUTOMATION_DATABASE_URL</span>（或
-                  <span className="font-mono"> DATABASE_URL</span>）后重跑 Preview。
+                  <span className="font-mono"> DATABASE_URL</span>）。若不能直连数据库，也可配置
+                  <span className="font-mono"> SEO_AUTOMATION_AI_API_BASE_URL</span> +
+                  <span className="font-mono"> SEO_AUTOMATION_AI_API_KEY</span> 通过 AI API 拉取已发布文章。
                 </div>
               ) : null}
               <pre className="max-h-[360px] overflow-auto rounded-md border bg-gray-50 p-3 text-xs">

@@ -5,7 +5,7 @@ import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { generateSlugFromTitle } from '@/lib/article/slug'
 import { callGemini } from '@/lib/translation/gemini'
-import type { SpokeCandidate, SpokeSelectedTopic, SpokeSourcePost } from './types'
+import type { SpokeCandidate, SpokeSelectedTopic, SpokeSourceOrigin, SpokeSourcePost } from './types'
 
 function slugifyAscii(input: string): string {
   return input
@@ -80,18 +80,124 @@ function parseJsonBlock(input: string): any {
   return null
 }
 
-export async function collectSourcePostsForSpokeFactory(): Promise<SpokeSourcePost[]> {
-  const posts = await getAllPublicPosts('zh').catch(() => [])
-  return posts
-    .filter((post) => !isSeoSpokePost(post))
-    .map((post) => ({
-      path: String(post.path || ''),
-      title: String(post.title || ''),
-      city: String(post.city || ''),
-      animeIds: Array.isArray(post.animeIds) ? post.animeIds.map((x) => String(x || '').trim()).filter(Boolean) : [],
-      tags: Array.isArray(post.tags) ? post.tags.map((x) => String(x || '').trim()).filter(Boolean) : [],
-    }))
-    .filter((post) => post.path && post.title && post.animeIds.length > 0)
+function normalizeSourcePost(input: Partial<SpokeSourcePost>): SpokeSourcePost | null {
+  const path = String(input.path || '').trim()
+  const title = String(input.title || '').trim()
+  const city = String(input.city || '').trim()
+  const animeIds = Array.isArray(input.animeIds)
+    ? input.animeIds.map((x) => String(x || '').trim()).filter(Boolean)
+    : []
+  const tags = Array.isArray(input.tags) ? input.tags.map((x) => String(x || '').trim()).filter(Boolean) : []
+
+  if (!path || !title || animeIds.length === 0) return null
+  return { path, title, city, animeIds, tags }
+}
+
+function dedupeSourcePosts(posts: SpokeSourcePost[]): SpokeSourcePost[] {
+  const byPath = new Map<string, SpokeSourcePost>()
+  for (const post of posts) {
+    const existing = byPath.get(post.path)
+    if (!existing) {
+      byPath.set(post.path, post)
+      continue
+    }
+    byPath.set(post.path, {
+      path: post.path,
+      title: existing.title || post.title,
+      city: existing.city || post.city,
+      animeIds: Array.from(new Set([...existing.animeIds, ...post.animeIds])).filter(Boolean),
+      tags: Array.from(new Set([...existing.tags, ...post.tags])).filter(Boolean),
+    })
+  }
+  return Array.from(byPath.values())
+}
+
+function getAiApiSourceConfigFromEnv(): { baseUrl: string; token: string } | null {
+  const baseUrl = String(process.env.SEO_AUTOMATION_AI_API_BASE_URL || process.env.AI_API_BASE_URL || '').trim()
+  const token = String(
+    process.env.SEO_AUTOMATION_AI_API_KEY || process.env.SEICHIGO_AI_API_KEY || process.env.AI_API_KEY || ''
+  ).trim()
+  if (!baseUrl || !token) return null
+  return { baseUrl, token }
+}
+
+async function fetchSourcePostsFromAiApi(): Promise<SpokeSourcePost[]> {
+  const config = getAiApiSourceConfigFromEnv()
+  if (!config) return []
+
+  let endpoint: URL
+  try {
+    const normalizedBase = config.baseUrl.replace(/\/+$/, '')
+    endpoint = new URL(normalizedBase.endsWith('/articles') ? normalizedBase : `${normalizedBase}/articles`)
+  } catch {
+    return []
+  }
+
+  endpoint.searchParams.set('status', 'published')
+  endpoint.searchParams.set('language', 'zh')
+
+  try {
+    const response = await fetch(endpoint.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'X-AI-KEY': config.token,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    })
+    if (!response.ok) return []
+
+    const data = (await response.json().catch(() => ({}))) as { items?: any[] }
+    const rows = Array.isArray(data.items) ? data.items : []
+
+    return rows
+      .map((row) =>
+        normalizeSourcePost({
+          path: String(row?.slug || '').trim() ? `/posts/${String(row.slug).trim()}` : String(row?.path || '').trim(),
+          title: String(row?.title || '').trim(),
+          city: String(row?.city || '').trim(),
+          animeIds: Array.isArray(row?.animeIds)
+            ? row.animeIds.map((x: unknown) => String(x || '').trim()).filter(Boolean)
+            : [],
+          tags: Array.isArray(row?.tags) ? row.tags.map((x: unknown) => String(x || '').trim()).filter(Boolean) : [],
+        })
+      )
+      .filter((post): post is SpokeSourcePost => Boolean(post))
+      .filter((post) => !isSeoSpokePost(post))
+  } catch {
+    return []
+  }
+}
+
+export async function collectSourcePostsForSpokeFactory(): Promise<{ posts: SpokeSourcePost[]; origin: SpokeSourceOrigin }> {
+  const localPosts = await getAllPublicPosts('zh').catch(() => [])
+  const localSources = dedupeSourcePosts(
+    localPosts
+      .filter((post) => !isSeoSpokePost(post))
+      .map((post) =>
+        normalizeSourcePost({
+          path: String(post.path || ''),
+          title: String(post.title || ''),
+          city: String(post.city || ''),
+          animeIds: Array.isArray(post.animeIds) ? post.animeIds.map((x) => String(x || '').trim()).filter(Boolean) : [],
+          tags: Array.isArray(post.tags) ? post.tags.map((x) => String(x || '').trim()).filter(Boolean) : [],
+        })
+      )
+      .filter((post): post is SpokeSourcePost => Boolean(post))
+  )
+
+  const remoteSources = dedupeSourcePosts(await fetchSourcePostsFromAiApi())
+  if (localSources.length > 0 && remoteSources.length > 0) {
+    return { posts: dedupeSourcePosts([...localSources, ...remoteSources]), origin: 'local+ai-api' }
+  }
+  if (localSources.length > 0) {
+    return { posts: localSources, origin: 'local' }
+  }
+  if (remoteSources.length > 0) {
+    return { posts: remoteSources, origin: 'ai-api' }
+  }
+  return { posts: [], origin: 'none' }
 }
 
 function fallbackCandidatesFromSources(sources: SpokeSourcePost[]): SpokeCandidate[] {
@@ -322,15 +428,18 @@ export function selectTopicsForGeneration(
 }
 
 export type SpokeCandidateExtractionStats = {
+  sourceOrigin: SpokeSourceOrigin
   sourcePostCount: number
   candidateCount: number
   candidates: SpokeCandidate[]
 }
 
 export async function extractSpokeCandidatesWithStats(): Promise<SpokeCandidateExtractionStats> {
-  const sources = await collectSourcePostsForSpokeFactory()
+  const sourceResult = await collectSourcePostsForSpokeFactory()
+  const sources = sourceResult.posts
   if (!sources.length) {
     return {
+      sourceOrigin: sourceResult.origin,
       sourcePostCount: 0,
       candidateCount: 0,
       candidates: [],
@@ -341,6 +450,7 @@ export async function extractSpokeCandidatesWithStats(): Promise<SpokeCandidateE
   const candidates = byAi.length > 0 ? mergeDuplicateCandidates(byAi) : mergeDuplicateCandidates(fallbackCandidatesFromSources(sources))
 
   return {
+    sourceOrigin: sourceResult.origin,
     sourcePostCount: sources.length,
     candidateCount: candidates.length,
     candidates,

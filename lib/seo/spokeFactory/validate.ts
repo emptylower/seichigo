@@ -95,8 +95,18 @@ export function normalizeSummary(input: unknown): SpokeFactorySummary | null {
     return 0
   }
 
+  const sourceOriginRaw = String(data.sourceOrigin || '').trim()
+  const sourceOrigin =
+    sourceOriginRaw === 'local' ||
+    sourceOriginRaw === 'ai-api' ||
+    sourceOriginRaw === 'local+ai-api' ||
+    sourceOriginRaw === 'none'
+      ? sourceOriginRaw
+      : 'none'
+
   return {
     mode,
+    sourceOrigin,
     sourcePostCount: toNum(data.sourcePostCount),
     candidateCount: toNum(data.candidateCount),
     selectedTopics: toNum(data.selectedTopics),

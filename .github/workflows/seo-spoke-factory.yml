@@ -45,6 +45,8 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       DATABASE_URL: ${{ secrets.SEO_AUTOMATION_DATABASE_URL || secrets.DATABASE_URL }}
       DATABASE_URL_UNPOOLED: ${{ secrets.SEO_AUTOMATION_DATABASE_URL_UNPOOLED || secrets.DATABASE_URL_UNPOOLED }}
+      SEO_AUTOMATION_AI_API_BASE_URL: ${{ secrets.SEO_AUTOMATION_AI_API_BASE_URL }}
+      SEO_AUTOMATION_AI_API_KEY: ${{ secrets.SEO_AUTOMATION_AI_API_KEY }}
       SUMMARY_PATH: .artifacts/summary.json
 
     steps:
@@ -65,7 +67,7 @@ jobs:
       - name: Init summary file
         run: |
           mkdir -p .artifacts
-          echo '{"mode":"preview","sourcePostCount":0,"candidateCount":0,"selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
+          echo '{"mode":"preview","sourceOrigin":"none","sourcePostCount":0,"candidateCount":0,"selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
 
       - name: Run SEO spoke factory
         run: |
