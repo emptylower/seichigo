@@ -43,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DATABASE_URL: ${{ secrets.SEO_AUTOMATION_DATABASE_URL || secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.SEO_AUTOMATION_DATABASE_URL_UNPOOLED || secrets.DATABASE_URL_UNPOOLED }}
       SUMMARY_PATH: .artifacts/summary.json
 
     steps:

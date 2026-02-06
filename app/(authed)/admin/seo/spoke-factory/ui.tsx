@@ -394,6 +394,13 @@ export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
                 {getSummaryNumber(selectedRun.summary, 'candidateCount') ?? '-'}，入选主题数：
                 {getSummaryNumber(selectedRun.summary, 'selectedTopics') ?? '-'}
               </div>
+              {getSummaryNumber(selectedRun.summary, 'sourcePostCount') === 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  当前来源文章数为 0。工厂会排除 <span className="font-mono">seo-spoke</span> 页面；若你的原文主要在数据库，
+                  请在 GitHub Actions Secrets 配置 <span className="font-mono">SEO_AUTOMATION_DATABASE_URL</span>（或
+                  <span className="font-mono"> DATABASE_URL</span>）后重跑 Preview。
+                </div>
+              ) : null}
               <pre className="max-h-[360px] overflow-auto rounded-md border bg-gray-50 p-3 text-xs">
                 {JSON.stringify(selectedRun.summary || { message: 'summary 不可用' }, null, 2)}
               </pre>
