@@ -321,12 +321,33 @@ export function selectTopicsForGeneration(
   }
 }
 
-export async function extractSpokeCandidates(): Promise<SpokeCandidate[]> {
+export type SpokeCandidateExtractionStats = {
+  sourcePostCount: number
+  candidateCount: number
+  candidates: SpokeCandidate[]
+}
+
+export async function extractSpokeCandidatesWithStats(): Promise<SpokeCandidateExtractionStats> {
   const sources = await collectSourcePostsForSpokeFactory()
-  if (!sources.length) return []
+  if (!sources.length) {
+    return {
+      sourcePostCount: 0,
+      candidateCount: 0,
+      candidates: [],
+    }
+  }
 
   const byAi = await extractCandidatesWithAi(sources).catch(() => [])
-  if (byAi.length > 0) return mergeDuplicateCandidates(byAi)
+  const candidates = byAi.length > 0 ? mergeDuplicateCandidates(byAi) : mergeDuplicateCandidates(fallbackCandidatesFromSources(sources))
 
-  return mergeDuplicateCandidates(fallbackCandidatesFromSources(sources))
+  return {
+    sourcePostCount: sources.length,
+    candidateCount: candidates.length,
+    candidates,
+  }
+}
+
+export async function extractSpokeCandidates(): Promise<SpokeCandidate[]> {
+  const result = await extractSpokeCandidatesWithStats()
+  return result.candidates
 }

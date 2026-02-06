@@ -66,6 +66,17 @@ function formatDateTime(value: string): string {
   return new Date(ms).toLocaleString('zh-CN')
 }
 
+function getSummaryNumber(summary: Record<string, unknown> | null, key: string): number | null {
+  if (!summary) return null
+  const raw = summary[key]
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') {
+    const parsed = Number.parseInt(raw, 10)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
 export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
   const [mode, setMode] = useState<RunMode>(defaults.mode)
   const [locales, setLocales] = useState<Locale[]>(defaults.locales)
@@ -378,6 +389,11 @@ export default function SpokeFactoryUi({ generateEnabled, defaults }: Props) {
                 )}
               </div>
               <div>Artifact 数量：{selectedRun.artifacts.length}</div>
+              <div>
+                来源文章数：{getSummaryNumber(selectedRun.summary, 'sourcePostCount') ?? '-'}，候选主题数：
+                {getSummaryNumber(selectedRun.summary, 'candidateCount') ?? '-'}，入选主题数：
+                {getSummaryNumber(selectedRun.summary, 'selectedTopics') ?? '-'}
+              </div>
               <pre className="max-h-[360px] overflow-auto rounded-md border bg-gray-50 p-3 text-xs">
                 {JSON.stringify(selectedRun.summary || { message: 'summary 不可用' }, null, 2)}
               </pre>

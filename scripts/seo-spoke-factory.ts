@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { extractSpokeCandidates, loadExistingSpokeIndex, selectTopicsForGeneration } from '@/lib/seo/spokeFactory/extractCandidates'
+import { extractSpokeCandidatesWithStats, loadExistingSpokeIndex, selectTopicsForGeneration } from '@/lib/seo/spokeFactory/extractCandidates'
 import { generateMdxForTopics } from '@/lib/seo/spokeFactory/generateMdx'
 import { writeSummaryArtifact } from '@/lib/seo/spokeFactory/artifact'
 import { validateGeneratedMdxDoc } from '@/lib/seo/spokeFactory/validate'
@@ -54,6 +54,8 @@ async function run(): Promise<number> {
 
   const summary: SpokeFactorySummary = {
     mode: input.mode,
+    sourcePostCount: 0,
+    candidateCount: 0,
     selectedTopics: 0,
     generatedFiles: 0,
     skippedExisting: 0,
@@ -66,10 +68,13 @@ async function run(): Promise<number> {
   }
 
   try {
-    const candidates = await extractSpokeCandidates()
+    const extraction = await extractSpokeCandidatesWithStats()
+    const candidates = extraction.candidates
     const existing = await loadExistingSpokeIndex()
     const selection = selectTopicsForGeneration(candidates, existing, input.maxTopics)
 
+    summary.sourcePostCount = extraction.sourcePostCount
+    summary.candidateCount = extraction.candidateCount
     summary.selectedTopics = selection.selected.length
     summary.skippedExisting = selection.skippedExisting
     summary.skippedLowConfidence = selection.skippedLowConfidence

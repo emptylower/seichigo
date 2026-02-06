@@ -64,6 +64,8 @@ export type SpokeFactoryInput = {
 
 export type SpokeFactorySummary = {
   mode: SpokeMode
+  sourcePostCount: number
+  candidateCount: number
   selectedTopics: number
   generatedFiles: number
   skippedExisting: number
@@ -82,4 +84,3 @@ export function isSpokeLocale(value: string): value is SpokeLocale {
 export function isSpokeMode(value: string): value is SpokeMode {
   return value === 'preview' || value === 'generate'
 }
-

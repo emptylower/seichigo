@@ -97,6 +97,8 @@ export function normalizeSummary(input: unknown): SpokeFactorySummary | null {
 
   return {
     mode,
+    sourcePostCount: toNum(data.sourcePostCount),
+    candidateCount: toNum(data.candidateCount),
     selectedTopics: toNum(data.selectedTopics),
     generatedFiles: toNum(data.generatedFiles),
     skippedExisting: toNum(data.skippedExisting),
@@ -118,4 +120,3 @@ export function normalizeSummary(input: unknown): SpokeFactorySummary | null {
     prUrl: typeof data.prUrl === 'string' && data.prUrl.trim() ? data.prUrl : null,
   }
 }
-

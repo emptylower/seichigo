@@ -63,7 +63,7 @@ jobs:
       - name: Init summary file
         run: |
           mkdir -p .artifacts
-          echo '{"mode":"preview","selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
+          echo '{"mode":"preview","sourcePostCount":0,"candidateCount":0,"selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
 
       - name: Run SEO spoke factory
         run: |
