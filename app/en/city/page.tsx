@@ -2,6 +2,7 @@ import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
@@ -50,6 +51,7 @@ export default async function CityIndexEnPage() {
   const mdxPosts = await getAllMdxPosts('en').catch(() => [])
   const mdxCounts: Record<string, number> = {}
   for (const p of mdxPosts) {
+    if (isSeoSpokePost(p)) continue
     const norm = normalizeCityAlias(String((p as any).city || ''))
     if (!norm) continue
     const cityId = aliasToCityId.get(norm)
