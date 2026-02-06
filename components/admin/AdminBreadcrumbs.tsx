@@ -13,6 +13,9 @@ const LABEL_MAP: Record<string, string> = {
   users: "用户列表",
   settings: "系统设置",
   waitlist: "Waitlist",
+  seo: "SEO 管理",
+  rankings: "排名监控",
+  "spoke-factory": "长尾页面工厂",
 }
 
 export function AdminBreadcrumbs() {

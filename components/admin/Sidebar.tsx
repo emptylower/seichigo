@@ -82,7 +82,7 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           icon: ListTodo,
         },
         {
-          title: "SEO 排名",
+          title: "SEO 管理",
           href: "/admin/seo",
           icon: TrendingUp,
         },

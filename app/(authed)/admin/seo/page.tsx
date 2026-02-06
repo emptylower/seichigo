@@ -1,62 +1,60 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { TrendingUp, WandSparkles } from 'lucide-react'
 import { getServerAuthSession } from '@/lib/auth/session'
-import { prisma } from '@/lib/db/prisma'
-import SeoUi from './ui'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'SEO 工具 - 管理后台',
-  description: 'SEO 关键词排名与 Google Search Console 数据管理。',
+  title: 'SEO 管理 - 管理后台',
+  description: 'SEO 管理中心：排名监控与长尾页面工厂。',
 }
 
-export default async function SeoPage() {
+export default async function SeoOverviewPage() {
   const session = await getServerAuthSession()
   if (!session?.user) redirect('/auth/signin')
   if (!session.user.isAdmin) {
     return <div className="text-gray-600">无权限访问。</div>
   }
 
-  const keywords = await prisma.seoKeyword.findMany({
-    include: {
-      rankHistory: {
-        orderBy: { checkedAt: 'desc' },
-        take: 1
-      }
-    },
-    orderBy: [{ isActive: 'desc' }, { priority: 'desc' }]
-  })
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">SEO 管理</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          统一管理 SEO 排名监控与长尾页面自动化生产流程。
+        </p>
+      </div>
 
-  const rawTopQueries = await prisma.seoGscData.groupBy({
-    where: { query: { not: '__all__' } },
-    by: ['query'],
-    _sum: { clicks: true, impressions: true },
-    orderBy: { _sum: { clicks: 'desc' } },
-    take: 10
-  })
+      <div className="grid gap-4 md:grid-cols-2">
+        <Link
+          href="/admin/seo/rankings"
+          className="rounded-xl border bg-white p-6 shadow-sm transition-colors hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-brand-700">
+            <TrendingUp className="h-4 w-4" />
+            排名监控
+          </div>
+          <h2 className="mt-2 text-xl font-semibold text-gray-900">关键词排名与 GSC</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            管理关键词、同步 GSC、执行 SERP 检查和配额监控。
+          </p>
+        </Link>
 
-  const toNumber = (value: unknown): number | null => {
-    if (typeof value === 'number') return value
-    if (typeof value === 'bigint') return Number(value)
-    return null
-  }
-
-  const topQueries = rawTopQueries.map((q) => ({
-    ...q,
-    _sum: {
-      clicks: toNumber(q._sum.clicks),
-      impressions: toNumber(q._sum.impressions),
-    },
-  }))
-
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const serpUsage = await prisma.seoApiUsage.findUnique({
-    where: {
-      provider_date: {
-        provider: 'serpapi',
-        date: currentMonth
-      }
-    }
-  })
-
-  return <SeoUi keywords={keywords} topQueries={topQueries} serpUsage={serpUsage} />
+        <Link
+          href="/admin/seo/spoke-factory"
+          className="rounded-xl border bg-white p-6 shadow-sm transition-colors hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-brand-700">
+            <WandSparkles className="h-4 w-4" />
+            长尾页面工厂
+          </div>
+          <h2 className="mt-2 text-xl font-semibold text-gray-900">SEO Spoke 自动化</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            手动触发候选提取、AI 生成三语页面并自动创建 PR。
+          </p>
+        </Link>
+      </div>
+    </div>
+  )
 }
+

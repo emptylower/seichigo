@@ -1,0 +1,129 @@
+name: SEO Spoke Factory
+run-name: SEO Spoke Factory (${{ inputs.mode }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: preview or generate
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - generate
+      locales:
+        description: comma-separated locales
+        required: true
+        default: zh,en,ja
+        type: string
+      scope:
+        description: candidate scope
+        required: true
+        default: all
+        type: string
+      maxTopics:
+        description: max topics per run
+        required: true
+        default: "30"
+        type: string
+      baseBranch:
+        description: base branch used for pull request
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  spoke-factory:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      SUMMARY_PATH: .artifacts/summary.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Init summary file
+        run: |
+          mkdir -p .artifacts
+          echo '{"mode":"preview","selectedTopics":0,"generatedFiles":0,"skippedExisting":0,"skippedLowConfidence":0,"skipped":[],"errors":[],"topics":[],"files":[],"prUrl":null}' > "$SUMMARY_PATH"
+
+      - name: Run SEO spoke factory
+        run: |
+          npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-spoke-factory.ts \
+            --mode "${{ inputs.mode }}" \
+            --locales "${{ inputs.locales }}" \
+            --scope "${{ inputs.scope }}" \
+            --max-topics "${{ inputs.maxTopics }}" \
+            --summary-path "$SUMMARY_PATH"
+
+      - name: Create Pull Request
+        id: cpr
+        if: ${{ inputs.mode == 'generate' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          branch: codex/seo-spoke-${{ github.run_id }}
+          base: ${{ inputs.baseBranch }}
+          commit-message: "feat(seo): generate spoke pages via factory"
+          title: "[SEO Factory] Generate spoke pages (run #${{ github.run_id }})"
+          body: |
+            This PR was generated automatically by SEO Spoke Factory.
+
+            - mode: `${{ inputs.mode }}`
+            - locales: `${{ inputs.locales }}`
+            - scope: `${{ inputs.scope }}`
+            - maxTopics: `${{ inputs.maxTopics }}`
+
+            After merge:
+            1. Wait deployment.
+            2. Verify sitemap coverage.
+            3. Optionally request indexing in GSC for priority URLs.
+          labels: seo,automation
+          add-paths: |
+            content/zh/posts/**
+            content/en/posts/**
+            content/ja/posts/**
+
+      - name: Attach PR URL to summary
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = process.env.SUMMARY_PATH
+          const prUrl = process.env.PR_URL || null
+          let data = {}
+          try {
+            data = JSON.parse(fs.readFileSync(path, 'utf-8'))
+          } catch {
+            data = {}
+          }
+          data.prUrl = prUrl
+          fs.writeFileSync(path, JSON.stringify(data, null, 2))
+          NODE
+        env:
+          PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
+
+      - name: Upload summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-spoke-factory-summary
+          path: .artifacts/summary.json

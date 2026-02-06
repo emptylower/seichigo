@@ -348,7 +348,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">SEO 工具</h1>
+        <h1 className="text-3xl font-bold tracking-tight">SEO 排名监控</h1>
         <p className="text-muted-foreground">
           关键词排名监控与 Google Search Console 数据分析
         </p>

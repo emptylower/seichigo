@@ -12,6 +12,7 @@
     "seo:audit": "node scripts/seo-audit.js",
     "seo:sync": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-sync.ts",
     "seo:rank": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-rank.ts",
+    "seo:spoke-factory": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-spoke-factory.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
