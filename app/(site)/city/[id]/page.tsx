@@ -24,6 +24,17 @@ function safeDecodeURIComponent(input: string): string {
   }
 }
 
+function formatDateLabel(input: unknown): string {
+  const raw = String(input || '').trim()
+  if (!raw) return '待更新'
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw.slice(0, 10)
+  const y = parsed.getFullYear()
+  const m = String(parsed.getMonth() + 1).padStart(2, '0')
+  const d = String(parsed.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
   const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
@@ -133,7 +144,15 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
 
   const heroCover = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
   const heroDescription = city.description_zh || `${city.name_zh} 圣地巡礼路线聚合页，汇总相关路线与文章，提供地图导航与点位清单。`
-  const aliasCount = aliasSet.size
+  const uniqueAnimeCount = new Set(
+    posts.flatMap((p) => (Array.isArray((p as any).animeIds) ? (p as any).animeIds : [])).map((id) => String(id || '')).filter((id) => id && id !== 'unknown')
+  ).size
+  const latestPostDate = posts.length ? formatDateLabel(posts[0]?.publishDate) : '待更新'
+  const transportPreview = city.transportTips_zh
+    ? city.transportTips_zh.length > 28
+      ? `${city.transportTips_zh.slice(0, 28)}…`
+      : city.transportTips_zh
+    : null
 
   return (
     <>
@@ -183,33 +202,46 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
                     {city.name_en}
                   </span>
                 ) : null}
-                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-white/95 backdrop-blur-sm">
-                  {aliasCount} 个别名索引
-                </span>
               </div>
             </div>
 
             <aside className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-md md:p-5">
-              <p className="text-[11px] font-semibold tracking-[0.16em] text-white/75">CITY SNAPSHOT</p>
+              <p className="text-[11px] font-semibold tracking-[0.16em] text-white/75">行前速览</p>
               <dl className="mt-4 space-y-3 text-sm text-white/90">
                 <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
-                  <dt className="text-white/70">内容状态</dt>
-                  <dd className="font-medium">{posts.length > 0 ? '已发布' : '待补充'}</dd>
+                  <dt className="text-white/70">涵盖作品</dt>
+                  <dd className="font-medium">{uniqueAnimeCount > 0 ? `${uniqueAnimeCount} 部` : '持续整理中'}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
-                  <dt className="text-white/70">封面氛围</dt>
-                  <dd className="font-medium">{heroCover ? '实景背景' : '渐变背景'}</dd>
+                  <dt className="text-white/70">最新更新</dt>
+                  <dd className="font-medium">{latestPostDate}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-4">
-                  <dt className="text-white/70">交通提示</dt>
-                  <dd className="font-medium">{city.transportTips_zh ? '可用' : '暂无'}</dd>
+                  <dt className="text-white/70">快速跳转</dt>
+                  <dd>
+                    <a href="#related-posts" className="text-sm font-medium text-white/95 underline decoration-white/35 underline-offset-4 hover:text-white">
+                      相关文章
+                    </a>
+                  </dd>
                 </div>
               </dl>
+
+              <div className="mt-4 rounded-xl border border-white/12 bg-black/15 p-3">
+                <p className="text-[11px] font-semibold tracking-[0.08em] text-white/70">交通建议</p>
+                <p className="mt-1 text-xs leading-5 text-white/90">
+                  {transportPreview || '暂无交通提示，建议先看相关文章中的站点分布再规划动线。'}
+                </p>
+                {city.transportTips_zh ? (
+                  <a href="#transport-tips" className="mt-2 inline-block text-xs font-medium text-brand-200 underline decoration-brand-200/40 underline-offset-4">
+                    查看完整提示
+                  </a>
+                ) : null}
+              </div>
             </aside>
           </div>
         </div>
 
-        <section className="space-y-6">
+        <section id="related-posts" className="space-y-6">
           <div className="flex items-center gap-2 border-b pb-2">
             <h2 className="text-2xl font-bold text-gray-900">相关文章</h2>
           </div>
@@ -239,7 +271,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
         </section>
 
         {city.transportTips_zh ? (
-          <section className="card">
+          <section id="transport-tips" className="card">
             <div className="text-sm font-semibold text-gray-900">交通小贴士</div>
             <div className="mt-1 text-sm text-gray-700">{city.transportTips_zh}</div>
           </section>
