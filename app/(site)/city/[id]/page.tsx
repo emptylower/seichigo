@@ -132,6 +132,8 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
   }
 
   const heroCover = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
+  const heroDescription = city.description_zh || `${city.name_zh} 圣地巡礼路线聚合页，汇总相关路线与文章，提供地图导航与点位清单。`
+  const aliasCount = aliasSet.size
 
   return (
     <>
@@ -149,31 +151,61 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
           ]}
         />
 
-        <div className="relative overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
+        <div className="relative isolate overflow-hidden rounded-[2rem] border border-slate-700/40 bg-slate-950 text-white shadow-[0_28px_70px_-30px_rgba(15,23,42,0.95)]">
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-40 blur-2xl scale-110 transition-transform duration-1000"
+            className="absolute inset-0 scale-105 bg-cover bg-center opacity-30 blur-[2px] saturate-125 transition-transform duration-1000"
             style={{ backgroundImage: heroCover ? `url(${heroCover})` : 'none' }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_16%,rgba(244,114,182,0.36),transparent_45%),radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.24),transparent_42%)]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/82 via-slate-900/88 to-slate-950/96" />
+          <div className="absolute -left-16 top-12 h-48 w-48 rounded-full border border-white/15 bg-white/5 blur-2xl" />
+          <div className="absolute -right-20 bottom-0 h-52 w-52 rounded-full border border-brand-200/20 bg-brand-300/20 blur-3xl" />
 
-          <div className="relative z-10 flex flex-col gap-4 p-6 md:p-10">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-md md:text-5xl">{city.name_zh}</h1>
-              {city.name_ja ? <span className="text-sm font-medium text-white/80 md:text-base">{city.name_ja}</span> : null}
-            </div>
+          <div className="relative z-10 grid gap-6 p-6 md:p-10 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+            <div className="space-y-5">
+              <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold tracking-[0.14em] text-white/85 backdrop-blur-sm">
+                城市巡礼
+              </div>
 
-            {city.description_zh ? <p className="max-w-2xl text-sm leading-relaxed text-gray-100 md:text-base">{city.description_zh}</p> : null}
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-white drop-shadow md:text-6xl">{city.name_zh}</h1>
+                {city.name_ja ? <span className="pb-1 text-sm font-medium tracking-wide text-white/80 md:text-base">{city.name_ja}</span> : null}
+              </div>
 
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <span className="rounded-full bg-brand-500/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
-                {posts.length} 篇文章
-              </span>
-              {city.name_en ? (
-                <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-md shadow-sm">
-                  {city.name_en}
+              <p className="max-w-3xl text-sm leading-8 text-slate-100/95 md:text-base">{heroDescription}</p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <span className="rounded-full bg-brand-500/95 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                  {posts.length} 篇文章
                 </span>
-              ) : null}
+                {city.name_en ? (
+                  <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-white/95 backdrop-blur-sm">
+                    {city.name_en}
+                  </span>
+                ) : null}
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-white/95 backdrop-blur-sm">
+                  {aliasCount} 个别名索引
+                </span>
+              </div>
             </div>
+
+            <aside className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-md md:p-5">
+              <p className="text-[11px] font-semibold tracking-[0.16em] text-white/75">CITY SNAPSHOT</p>
+              <dl className="mt-4 space-y-3 text-sm text-white/90">
+                <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
+                  <dt className="text-white/70">内容状态</dt>
+                  <dd className="font-medium">{posts.length > 0 ? '已发布' : '待补充'}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
+                  <dt className="text-white/70">封面氛围</dt>
+                  <dd className="font-medium">{heroCover ? '实景背景' : '渐变背景'}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-white/70">交通提示</dt>
+                  <dd className="font-medium">{city.transportTips_zh ? '可用' : '暂无'}</dd>
+                </div>
+              </dl>
+            </aside>
           </div>
         </div>
 
