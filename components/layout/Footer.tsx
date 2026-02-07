@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import type { SiteLocale } from './SiteShell'
+import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
 
 type Props = {
@@ -19,12 +20,9 @@ type FooterColumn = {
 }
 
 export default function Footer({ locale = 'zh' }: Props) {
-  const isEn = locale === 'en'
-
   const getHref = (path: string) => {
     if (path.startsWith('http') || path.startsWith('mailto') || path === '#') return path
-    if (isEn && path.startsWith('/')) return `/en${path}`
-    return path
+    return prefixPath(path, locale)
   }
 
   const columns: FooterColumn[] = [
@@ -49,8 +47,8 @@ export default function Footer({ locale = 'zh' }: Props) {
       title: t('footer.company', locale),
       links: [
         { label: t('footer.about', locale), href: '/about' },
-        { label: t('footer.privacy', locale), href: '#', isExternal: true },
-        { label: t('footer.terms', locale), href: '#', isExternal: true },
+        { label: t('footer.privacy', locale), href: '/privacy' },
+        { label: t('footer.terms', locale), href: '/terms' },
       ],
     },
     {
@@ -72,7 +70,7 @@ export default function Footer({ locale = 'zh' }: Props) {
       <div className="mx-auto max-w-5xl px-4">
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-4 xl:col-span-1">
-            <Link href={isEn ? '/en' : '/'} className="flex items-center gap-2">
+            <Link href={prefixPath('/', locale)} className="flex items-center gap-2">
               <Image
                 src="/brand/app-logo.png"
                 alt="SeichiGo"
