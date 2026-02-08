@@ -18,6 +18,10 @@ export default function AdminAnimeListClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [nextId, setNextId] = useState('')
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   async function load(query: string = '') {
     setLoading(true)
@@ -43,6 +47,44 @@ export default function AdminAnimeListClient() {
     void load(q)
   }
 
+  function openRenameModal(id: string) {
+    setRenamingId(id)
+    setNextId(id)
+    setRenameError(null)
+  }
+
+  function closeRenameModal() {
+    if (renameBusy) return
+    setRenamingId(null)
+    setRenameError(null)
+    setNextId('')
+  }
+
+  async function submitRename() {
+    if (!renamingId) return
+    const target = nextId.trim().toLowerCase()
+    if (!target || target === renamingId) {
+      setRenameError('请输入新的作品 ID')
+      return
+    }
+    setRenameBusy(true)
+    setRenameError(null)
+    const res = await fetch(`/api/admin/anime/${encodeURIComponent(renamingId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nextId: target }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setRenameBusy(false)
+    if (!res.ok) {
+      setRenameError(data.error || '更新 ID 失败')
+      return
+    }
+    setRenamingId(null)
+    setNextId('')
+    await load(q)
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -50,7 +92,7 @@ export default function AdminAnimeListClient() {
         <p className="mt-1 text-sm text-gray-600">
           <Link href="/admin/panel" className="hover:underline">返回面板</Link>
           {' · '}
-          管理作品元数据（封面、简介、显隐）。
+          管理作品元数据（ID、封面、简介、显隐）。
         </p>
       </div>
 
@@ -87,10 +129,54 @@ export default function AdminAnimeListClient() {
                   {a.alias.join(' / ')}
                 </div>
               ) : null}
+              <div className="mt-2 flex items-center gap-3 text-xs">
+                <button
+                  type="button"
+                  className="text-brand-700 hover:text-brand-800 disabled:text-gray-400"
+                  onClick={() => openRenameModal(a.id)}
+                  disabled={loading}
+                >
+                  改 ID
+                </button>
+                <Link href={`/admin/panel/anime/${encodeURIComponent(a.id)}`} className="text-gray-500 hover:text-gray-700">
+                  编辑详情
+                </Link>
+              </div>
             </li>
           ))}
           {!items.length && <li className="text-gray-500 col-span-full">暂无匹配作品。</li>}
         </ul>
+      ) : null}
+
+      {renamingId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold">修改作品 ID</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              当前：<span className="font-mono">{renamingId}</span>
+            </p>
+            <p className="mt-1 text-xs text-gray-500">仅支持小写英文、数字、连字符；若已有文章引用会被拒绝。</p>
+            <input
+              aria-label="新的作品 ID"
+              className="mt-3 w-full rounded-md border px-3 py-2 font-mono text-sm"
+              value={nextId}
+              onChange={(e) => setNextId(e.target.value)}
+              disabled={renameBusy}
+              placeholder="weathering-with-you"
+            />
+            {renameError ? (
+              <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{renameError}</div>
+            ) : null}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={closeRenameModal} disabled={renameBusy}>
+                取消
+              </Button>
+              <Button type="button" onClick={() => void submitRename()} disabled={renameBusy}>
+                {renameBusy ? '更新中…' : '确认更新 ID'}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   )
