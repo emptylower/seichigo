@@ -1,23 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getServerAuthSession } from '@/lib/auth/session'
+import { listAdminAnime } from '@/lib/anime/adminList'
 
 export const runtime = 'nodejs'
-
-function normalize(s: string): string {
-  return s.trim().toLowerCase()
-}
-
-function matches(anime: { id: string; name: string; alias?: string[] }, q: string): boolean {
-  const needle = normalize(q)
-  if (!needle) return true
-  if (normalize(anime.id).includes(needle)) return true
-  if (normalize(anime.name).includes(needle)) return true
-  for (const a of anime.alias || []) {
-    if (normalize(String(a)).includes(needle)) return true
-  }
-  return false
-}
 
 export async function GET(req: Request) {
   const session = await getServerAuthSession()
@@ -27,15 +12,26 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const q = url.searchParams.get('q') || ''
-  
-  const all = await getAllAnime({ includeHidden: true })
-  const filtered = all.filter((a) => matches(a, q))
-  
-  // Sort: hidden last, then by name
-  filtered.sort((a, b) => {
-    if (a.hidden !== b.hidden) return (a.hidden ? 1 : -1)
-    return a.id.localeCompare(b.id)
-  })
+  const pageRaw = Number.parseInt(url.searchParams.get('page') || '', 10)
+  const pageSizeRaw = Number.parseInt(url.searchParams.get('pageSize') || '', 10)
+  const page = Number.isFinite(pageRaw) ? pageRaw : 1
+  const pageSize = Number.isFinite(pageSizeRaw) ? pageSizeRaw : 36
 
-  return NextResponse.json({ ok: true, items: filtered })
+  const result = await listAdminAnime({ q, page, pageSize })
+
+  return NextResponse.json(
+    {
+      ok: true,
+      items: result.items,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore,
+    },
+    {
+      headers: {
+        'Cache-Control': 'private, max-age=30, stale-while-revalidate=120',
+      },
+    }
+  )
 }

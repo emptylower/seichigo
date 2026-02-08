@@ -3,13 +3,22 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import TipTapPreview from '@/components/translation/TipTapPreview'
+import dynamic from 'next/dynamic'
 import ArticleToc from '@/components/toc/ArticleToc'
 import PostMeta from '@/components/blog/PostMeta'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { useTranslationAutoSave } from '../../../../../hooks/useTranslationAutoSave'
-import { BubbleMenu } from '@tiptap/react/menus'
 import { type Editor } from '@tiptap/react'
+
+const TipTapPreview = dynamic(() => import('@/components/translation/TipTapPreview'), {
+  ssr: false,
+  loading: () => <div className="min-h-[10rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>,
+})
+
+const TipTapBubbleMenu = dynamic(
+  () => import('@tiptap/react/menus').then((mod) => mod.BubbleMenu),
+  { ssr: false }
+)
 
 type TranslationTask = {
   id: string
@@ -615,7 +624,7 @@ export default function TranslationDetailUI({ id }: Props) {
 
             <div className="rounded-lg bg-white min-h-[500px] relative">
               {isEditing && editor && (
-                <BubbleMenu editor={editor}>
+                <TipTapBubbleMenu editor={editor}>
                   <div className="flex items-center gap-1 rounded bg-white p-1 shadow-lg ring-1 ring-gray-200">
                     <button
                       onClick={handleSelectedTextRetranslate}
@@ -624,7 +633,7 @@ export default function TranslationDetailUI({ id }: Props) {
                       ✨ 重译选中
                     </button>
                   </div>
-                </BubbleMenu>
+                </TipTapBubbleMenu>
               )}
               
               {task.draftContent ? (

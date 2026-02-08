@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import AdminAnimeListClient from './ui'
 import type { Metadata } from 'next'
+import { listAdminAnime } from '@/lib/anime/adminList'
 
 export const metadata: Metadata = {
   title: '作品管理',
@@ -15,5 +16,15 @@ export default async function AdminAnimeListPage() {
   if (!session.user.isAdmin) {
     return <div className="text-gray-600">无权限访问。</div>
   }
-  return <AdminAnimeListClient />
+
+  const initial = await listAdminAnime({ page: 1, pageSize: 36 })
+  return (
+    <AdminAnimeListClient
+      initialItems={initial.items}
+      initialPage={initial.page}
+      initialPageSize={initial.pageSize}
+      initialTotal={initial.total}
+      initialQuery=""
+    />
+  )
 }

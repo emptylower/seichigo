@@ -3,11 +3,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import Button from '@/components/shared/Button'
-import RichTextEditor, { type RichTextValue } from '@/components/editor/RichTextEditor'
-import EditorToc from '@/components/toc/EditorToc'
-import CityMultiSelect, { type CityOption } from '@/components/city/CityMultiSelect'
-import CoverField from './CoverField'
+import type { RichTextValue } from '@/components/editor/RichTextEditor'
+import type { CityOption } from '@/components/city/CityMultiSelect'
+
+const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), {
+  loading: () => (
+    <div className="min-h-[24rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
+  ),
+})
+
+const EditorToc = dynamic(() => import('@/components/toc/EditorToc'), {
+  ssr: false,
+  loading: () => <div className="h-24 w-64 rounded-md border border-gray-100 bg-gray-50" />,
+})
+
+const CityMultiSelect = dynamic(() => import('@/components/city/CityMultiSelect'), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-2">
+      <div className="h-4 w-36 rounded bg-gray-100" />
+      <div className="h-10 w-full rounded-md border bg-gray-50" />
+    </div>
+  ),
+})
+
+const CoverField = dynamic(() => import('./CoverField'), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-2">
+      <div className="h-4 w-24 rounded bg-gray-100" />
+      <div className="w-full rounded-md border bg-gray-50" style={{ aspectRatio: '16 / 9' }} />
+    </div>
+  ),
+})
 
 type ArticleStatus = 'draft' | 'in_review' | 'rejected' | 'published'
 type ComposerMode = 'article' | 'revision'

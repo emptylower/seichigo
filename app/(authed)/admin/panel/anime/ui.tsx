@@ -11,40 +11,81 @@ type AnimeItem = {
   hidden?: boolean
 }
 
-type ListResponse = { ok: true; items: AnimeItem[] } | { error: string }
+type ListResponse =
+  | { ok: true; items: AnimeItem[]; total?: number; page?: number; pageSize?: number; hasMore?: boolean }
+  | { error: string }
 
-export default function AdminAnimeListClient() {
-  const [items, setItems] = useState<AnimeItem[]>([])
-  const [loading, setLoading] = useState(true)
+type Props = {
+  initialItems: AnimeItem[]
+  initialPage: number
+  initialPageSize: number
+  initialTotal: number
+  initialQuery: string
+}
+
+export default function AdminAnimeListClient({
+  initialItems,
+  initialPage,
+  initialPageSize,
+  initialTotal,
+  initialQuery,
+}: Props) {
+  const [items, setItems] = useState<AnimeItem[]>(initialItems)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(initialQuery)
+  const [page, setPage] = useState(initialPage)
+  const [pageSize] = useState(initialPageSize)
+  const [total, setTotal] = useState(initialTotal)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [nextId, setNextId] = useState('')
   const [renameBusy, setRenameBusy] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
 
-  async function load(query: string = '') {
+  async function load(query: string = q, targetPage: number = 1) {
     setLoading(true)
     setError(null)
-    const res = await fetch(`/api/admin/anime?q=${encodeURIComponent(query)}`, { method: 'GET' })
+    const params = new URLSearchParams()
+    if (query.trim()) params.set('q', query.trim())
+    params.set('page', String(targetPage))
+    params.set('pageSize', String(pageSize))
+    const res = await fetch(`/api/admin/anime?${params.toString()}`, { method: 'GET' })
     const data = (await res.json().catch(() => ({}))) as ListResponse
     if (!res.ok || 'error' in data) {
       setError(('error' in data && data.error) || '加载失败')
       setItems([])
+      setTotal(0)
       setLoading(false)
       return
     }
     setItems(data.items || [])
+    setTotal(typeof data.total === 'number' ? data.total : (data.items || []).length)
+    setPage(typeof data.page === 'number' && Number.isFinite(data.page) ? data.page : targetPage)
     setLoading(false)
   }
 
   useEffect(() => {
-    void load()
-  }, [])
+    setItems(initialItems)
+    setPage(initialPage)
+    setTotal(initialTotal)
+    setError(null)
+  }, [initialItems, initialPage, initialTotal])
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault()
-    void load(q)
+    void load(q, 1)
+  }
+
+  function prevPage() {
+    if (loading || page <= 1) return
+    void load(q, page - 1)
+  }
+
+  function nextPage() {
+    if (loading) return
+    const hasMore = page * pageSize < total
+    if (!hasMore) return
+    void load(q, page + 1)
   }
 
   function openRenameModal(id: string) {
@@ -82,8 +123,12 @@ export default function AdminAnimeListClient() {
     }
     setRenamingId(null)
     setNextId('')
-    await load(q)
+    await load(q, page)
   }
+
+  const hasMore = page * pageSize < total
+  const startNo = total > 0 ? (page - 1) * pageSize + 1 : 0
+  const endNo = total > 0 ? Math.min(total, page * pageSize) : 0
 
   return (
     <div className="space-y-4">
@@ -105,6 +150,20 @@ export default function AdminAnimeListClient() {
         />
         <Button type="submit" disabled={loading}>搜索</Button>
       </form>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+        <span>
+          共 {total} 条，当前第 {page} 页（{startNo}-{endNo}）
+        </span>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" disabled={loading || page <= 1} onClick={prevPage}>
+            上一页
+          </Button>
+          <Button type="button" variant="ghost" disabled={loading || !hasMore} onClick={nextPage}>
+            下一页
+          </Button>
+        </div>
+      </div>
 
       {loading ? <div className="text-gray-600">加载中…</div> : null}
       {error ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div> : null}
