@@ -4,8 +4,8 @@ import RouteCardActions from '@/components/resources/RouteCardActions'
 
 // Mock Next.js Link component
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, ...rest }: { children: React.ReactNode; href: string }) => (
+    <a href={href} {...rest}>{children}</a>
   ),
 }))
 
@@ -69,21 +69,17 @@ describe('RouteCardActions', () => {
       const readButton = screen.getByText('Read Article')
       expect(readButton).toHaveAttribute('href', baseProps.articleHref)
     })
-  })
+    
+    it('adds nav surface attributes for observability', () => {
+      render(<RouteCardActions {...baseProps} locale="en" />)
 
-  describe('event propagation', () => {
-    it('stops click propagation on container', () => {
-      const { container } = render(<RouteCardActions {...baseProps} locale="en" />)
-      
-      const actionsContainer = container.querySelector('.grid')
-      expect(actionsContainer).toBeInTheDocument()
-      
-      // Verify onClick handler exists (stops propagation)
-      const clickEvent = new MouseEvent('click', { bubbles: true })
-      const stopPropagationSpy = vi.spyOn(clickEvent, 'stopPropagation')
-      
-      actionsContainer?.dispatchEvent(clickEvent)
-      expect(stopPropagationSpy).toHaveBeenCalled()
+      const readButton = screen.getByText('Read Article')
+      const quoteButton = screen.getByRole('button', { name: 'Quote Map' })
+      const openMapButton = screen.getByText('Open Map')
+
+      expect(readButton).toHaveAttribute('data-nav-surface', 'resources-card-actions')
+      expect(quoteButton).toHaveAttribute('data-nav-surface', 'resources-card-actions')
+      expect(openMapButton).toHaveAttribute('data-nav-surface', 'resources-card-actions')
     })
   })
 })

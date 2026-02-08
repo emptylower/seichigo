@@ -9,9 +9,10 @@ type Props = {
   label: string
   locale: SupportedLocale
   className?: string
+  navSurface?: string
 }
 
-export default function CopyLinkButton({ path, label, locale, className }: Props) {
+export default function CopyLinkButton({ path, label, locale, className, navSurface }: Props) {
   const [copied, setCopied] = useState(false)
 
   const url = useMemo(() => {
@@ -37,6 +38,7 @@ export default function CopyLinkButton({ path, label, locale, className }: Props
     <button
       type="button"
       onClick={onClick}
+      data-nav-surface={navSurface}
       className={
         className ||
         'inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50'

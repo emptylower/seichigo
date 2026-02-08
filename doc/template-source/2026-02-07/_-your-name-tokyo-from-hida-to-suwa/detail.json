@@ -1,0 +1,2257 @@
+{
+  "ok": true,
+  "article": {
+    "id": "cmkj44gvj00036ffyj0xkn4u9",
+    "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+    "slug": "你的名字-your-name-tokyo-from-hida-to-suwa",
+    "language": "zh",
+    "translationGroupId": "cmkj44gvj00036ffyj0xkn4u9",
+    "title": "《你的名字》圣地巡礼 Part 3 ｜从飞驒到诹访",
+    "seoTitle": "《你的名字》圣地巡礼 Part 3｜飞驒古川到诹访路线（立石公园黄昏·交通攻略）",
+    "description": "跟随泷的足迹，从东京/名古屋换乘到飞驒古川，打卡飞驒古川站“飞驒牛”、飞驒市图书馆、气多若宫神社，再前往上诹访立石公园等待分身之时；附交通方式、机位与夜间下山安全提示。",
+    "animeIds": [
+      "你的名字"
+    ],
+    "city": "岐阜·飞驒古川 长野·诹访（上诹访）",
+    "routeLength": "两日半",
+    "tags": [
+      "君の名は",
+      "飞驒古川",
+      "气多若宫神社",
+      "飞驒市图书馆",
+      "上诹访",
+      "立石公园",
+      "诹访",
+      "你的名字"
+    ],
+    "cover": "/assets/cmkjghwv00007ksb0m98h3296",
+    "contentJson": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "blockquote",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "在东京的喧嚣之后，我踏上了泷当年的旅程。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "为了寻找那个梦中的小镇，必须离开繁华的都会，深入日本中部的群山。这是一段关于“距离”的旅程——物理上的距离，以及泷与三叶之间那跨越时空的距离。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "从飞驒古川的车站，到诹访湖畔的黄昏，这一路，我们去见她。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "seichiRoute",
+          "attrs": {
+            "id": "cb7ca92d-3fac-4919-9a02-b9aede743035",
+            "data": {
+              "spots": [
+                {
+                  "lat": 35.6813,
+                  "lng": 139.767066,
+                  "note": "东海道新干线起点（东京→名古屋）",
+                  "name_zh": "东京站",
+                  "photoTip": "新干线出发点，按文中建议选右侧座位更贴近泷看窗外的角度",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.681300,139.767066",
+                  "nearestStation_zh": "东京站"
+                },
+                {
+                  "lat": 35.170915,
+                  "lng": 136.881537,
+                  "note": "东京→名古屋后在此换乘高山本线前往飞驒古川",
+                  "name_zh": "名古屋站",
+                  "photoTip": "新干线下车后换乘 JR 高山本线（Wide View Hida）",
+                  "animeScene": "47:17（名古屋换乘段）",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.170915,136.881537",
+                  "nearestStation_zh": "名古屋站"
+                },
+                {
+                  "lat": 36.236726,
+                  "lng": 137.189603,
+                  "note": "高山本线非电气化区段多为柴油动车组，班次不算密，拍车建议提前查时刻表",
+                  "name_zh": "飞驒古川站",
+                  "photoTip": "先别急着出站：候车室找“飞驒牛”立牌；再上北侧跨线桥复刻列车停靠机位",
+                  "animeScene": "47:44（飞驒牛） / 47:33（跨线桥列车停靠机位）",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=36.236726,137.189603",
+                  "nearestStation_zh": "飞驒古川站"
+                },
+                {
+                  "lat": 36.236467,
+                  "lng": 137.189555,
+                  "note": "从站外右转即可到达",
+                  "name_zh": "飞驒古川站 出站右转（出租车停靠点）",
+                  "photoTip": "泷拿着简笔画问路的位置；现实里常见黑色出租车",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=36.236467,137.189555",
+                  "nearestStation_zh": "飞驒古川站"
+                },
+                {
+                  "lat": 36.238063,
+                  "lng": 137.185545,
+                  "note": "严禁擅自摄影；如需拍照请前台申请摄影许可；通常 20:00 闭馆",
+                  "name_zh": "飞驒市图书馆（古川町本町2-22）",
+                  "photoTip": "第16排书架附近靠窗座位，尽量避免拍到其他读者",
+                  "animeScene": "51:43（古川图书馆检索席）",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=36.238063,137.185545",
+                  "nearestStation_zh": "飞驒古川站"
+                },
+                {
+                  "lat": 36.23948,
+                  "lng": 137.197827,
+                  "note": "从镇上步行过去约2公里多，沿途风景好；也可打车",
+                  "name_zh": "气多若宫神社",
+                  "photoTip": "鸟居前回望长阶梯（长距离透视感很强），建议广角或长焦都拍一张",
+                  "animeScene": "47:55（鸟居与长阶梯）",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=36.239480,137.197827",
+                  "nearestStation_zh": "飞驒古川站"
+                },
+                {
+                  "lat": 35.689607,
+                  "lng": 139.700571,
+                  "note": "用于“飞驒→诹访”转场方案：返回东京后从新宿出发更稳妥",
+                  "name_zh": "新宿站（中央线特急出发）",
+                  "photoTip": "从这里乘中央线特急（Azusa号）前往上诹访，天气好可看富士山",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.689607,139.700571",
+                  "nearestStation_zh": "新宿站"
+                },
+                {
+                  "lat": 36.053483,
+                  "lng": 138.122529,
+                  "note": "从上诹访站步行上山约20-30分钟；夜间下山几乎无路灯，务必带照明并结伴或打车",
+                  "name_zh": "立石公园（Tateishi Park）",
+                  "photoTip": "展望台拍整片诹访湖夕阳；建议提前占位等“Kataware-doki（分身之时）”",
+                  "animeScene": "分身之时 / 黄昏名场面（系守湖原型视角）",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=36.053483,138.122529",
+                  "nearestStation_zh": "上诹访站"
+                }
+              ],
+              "title": "《你的名字》圣地巡礼 Part 3｜从飞驒古川到诹访（立石公园黄昏）",
+              "version": 1
+            }
+          }
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 2,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "路线总览 (Route Overview)",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "本篇行程跨度较大，建议预留充裕的 2天1夜。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#ef4444"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "Part 1：寻找系守镇（岐阜·飞驒古川）",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "   交通：名古屋转乘「Wide View Hida」特急列车",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "   核心点：飞驒古川站、飞驒市图书馆、气多若宫神社",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "Part 2：逢魔之时的奇迹（长野·诹访）",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "   交通：返回东京后转战上诹访（或经松本前往）",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "   核心点：立石公园（系守湖全景）、分身之时",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "1. 启程：新干线与高山本线",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "交通： 东海道新干线 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "[东京 站]",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/47udV3t55XwgX99e6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": " → ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "[名古屋 站]",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3gugDo5u6dMbJfVF7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "泷坐在新干线上吃便当的场景，大家都记得吧？",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "现实中，泷乘坐的是 N700A 系列列车。作为一个铁道迷兼巡礼者，这里有个有趣的 “穿帮”细节：",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影画面中，列车座位的排列似乎为了构图做了一些调整。实际上从东京前往名古屋，左侧是3排座（A/B/C），右侧是2排座（D/E）。如果你想还原泷看窗外风景的角度，记得选右侧座位。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkj58egv0003qi7u1pgdzzdu",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2412,
+            "naturalHeight": 1352
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "换乘： JR 高山本线 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "[名古屋 站]",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3gugDo5u6dMbJfVF7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": " → [",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "飞驒古川 站",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/SMGn7TnuNmpd2Rar5",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "]",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                },
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#f97316"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "泷，奥寺前辈和司同学在名谷屋站下车后，随后换乘JR高山线前往 飞驒古川 。这里是",
+              "type": "text"
+            },
+            {
+              "text": "电影47分17秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "的场景",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkj5ddzo0005qi7u3lzihco6",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2414,
+            "naturalHeight": 1354
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkj5e6y80007qi7uu47ug8z7",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2410,
+            "naturalHeight": 1086
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "离开名古屋后，列车变成了柴油动车组。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkj5k5pa0009qi7uq3q5jxxe",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2428,
+            "naturalHeight": 1350
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkj5rwax000dqi7uoxy933qr",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1812,
+            "naturalHeight": 1360
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "随着轰隆隆的引擎声，窗外的景色从高楼变成了溪流与红叶。这种非电气化铁路特有的震动感和稍慢的速度，让人切实体会到：三叶想去一次东京，真的是一件很不容易的事啊。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "2. 飞驒古川站：“飞驒牛”",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/SMGn7TnuNmpd2Rar5",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 飞驒古川站（改札口内 & 跨线桥）",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/SMGn7TnuNmpd2Rar5",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "抵达后可以不急着出站",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "还记得那个奥寺前辈特别喜欢的吉祥物吗？在车站候车室里，你可以找到这只 “飞驒牛” 的立牌。这一幕出现在",
+              "type": "text"
+            },
+            {
+              "text": "电影的47分44秒。",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjdlr3n0003am6d0spukrx3",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2424,
+            "naturalHeight": 1364
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjdjvl10001am6dhhy73iqo",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 720,
+            "naturalHeight": 479
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "车站的等候室也有飞驒市的观光手册、宣传单张等，也有电影《你的名字》的景点地图。手上拿着这张地图，应该不至于完全找不到路吧！",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjdq9w70005am6dj1r4loat",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2422,
+            "naturalHeight": 1364
+          }
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "跨线桥的一瞬：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "走到车站北侧的跨线桥（天桥）上，就是电影47分33秒中列车停靠的经典机位。",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "拍摄贴士：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "虽然不像电影里那样“两小时一班”那么夸张，但高山本线的班次确实不多。想要拍到列车正好停在画面右侧的完美瞬间，需要提前查好时刻表并在这个寒风中的天桥上多一点耐心。",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "3. 寻找与问路：古川町漫步",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3bhqoNuBRjsWzjCq9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 车站出站右转 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3bhqoNuBRjsWzjCq9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "出站后右转，就是泷拿着简笔画四处问路的出租车停靠点。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjdyvua0007am6d0773o8ai",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2478,
+            "naturalHeight": 1360
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjdzi1t0009am6dv6rwbfd7",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2412,
+            "naturalHeight": 1356
+          }
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "小差异：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#f59e0b"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "text": " 电影里的出租车颜色经过了艺术加工，现实中这里停靠的多是黑色出租车。",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "漫步在古川町，你会发现日本乡下的那种“静”。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkje5nif000bam6dzryhsl1h",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2414,
+            "naturalHeight": 1356
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "街上几乎没有人，只有偶尔经过的微风。虽然电影里泷吃瘪的拉面店在现实中并不存在，但这一带随便找一家店，都能吃到正宗的 “高山拉面”（深色酱油汤底，细卷面），味道非常治愈！",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "4. 飞驒市图书馆：泷的检索席",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/1xMWEUzrvN9fdoh89",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 飞驒市古川町本町2-22",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/1xMWEUzrvN9fdoh89",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "对应场景：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 对应",
+              "type": "text"
+            },
+            {
+              "text": "电影51分43秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "的古川图书馆，泷在这里查找系守镇遇难者名录",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjeybkt000lam6d5zorg392",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2414,
+            "naturalHeight": 1364
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjep1g3000ham6dov8l7rod",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2408,
+            "naturalHeight": 1096
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这是整趟巡礼中最具学术气息的一站。现实中的图书馆外观非常现代且漂亮。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "⚠ 注意！图书馆严禁擅自摄影",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#ef4444"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": " 图书馆是市民阅读的地方。如果你想拍照，必须先去前台申请「摄影许可」且最好不要拍到其他读者的脸。",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "图书馆通常 20:00 闭馆",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "走到 第16排书架 附近，那个靠窗的座位就是泷坐过的地方。虽然角度很难完全复刻，但坐在这里看着窗外的光影，仿佛能感受到泷当时查阅资料时那种从希望跌入绝望的心情。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjf3ud3000nam6d4pidvci7",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2428,
+            "naturalHeight": 1356
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "5. 气多若宫神社：通往神域的阶梯",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/BhyyZdgXnCEu7T6N8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 气多若宫神社",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/BhyyZdgXnCEu7T6N8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "对应场景：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "穿过鸟居这里是 ",
+              "type": "text"
+            },
+            {
+              "text": "电影47分55秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，泷询问“宫水神社”时的长阶梯",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjfdlib000313nfxtolhnlh",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1660,
+            "naturalHeight": 1086
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjfb2xk000113nf7ur8ht18",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2416,
+            "naturalHeight": 1360
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这一段路建议步行，虽然有2公里多，但沿途风景极好。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "当你站在气多若宫神社的鸟居前回头望去，那条长长的阶梯和远处的小镇尽收眼底。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这里安静得仿佛被时间遗忘。虽然没有电影里“瞬间放晴”的戏剧性特效，但那种深山神社的庄严感，让人不由得想双手合十。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 2,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "转场：前往诹访湖（立石公园）",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "路线抉择",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "从飞驒到诹访并没有很顺滑的直达路线。为了行程的确定性，我选择了一条看似绕路实则稳妥的方案：返回东京/名古屋，再前往上诹访。",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "(当然，老手也可以选择从高山坐巴士到松本，再转车去上诹访，这样更近)",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "交通：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": " ",
+                  "type": "text"
+                },
+                {
+                  "text": "新宿站",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "link",
+                      "attrs": {
+                        "rel": "noopener noreferrer nofollow",
+                        "href": "https://maps.app.goo.gl/X8wesbNnXdhav4K1A",
+                        "class": null,
+                        "target": "_blank"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "text": "乘坐 ",
+                  "type": "text"
+                },
+                {
+                  "text": "中央线特急（Azusa号）",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": " → ",
+                  "type": "text"
+                },
+                {
+                  "text": "[上诹访 站]",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "这趟列车的窗外有惊喜——天气好的话，你可以看见清晰的富士山 !",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "6. 逢魔之时：立石公园 (Tateishi Park)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/RCqA3nbiDzHwtVVT9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 长野县诹访市（上诹访站步行上山）",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/RCqA3nbiDzHwtVVT9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "重头戏来了。这里是 “系守湖” 最具代表性的原型地。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从上诹访站出来，这段路不算轻松，大概需要爬 20-30 分钟的陡坡，在路上你可以看到 ",
+              "type": "text"
+            },
+            {
+              "text": "糸守变电所。",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjg2oax000513nfamkx1uix",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2262,
+            "naturalHeight": 1236
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjg560z0001ksb02jegnof0",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2426,
+            "naturalHeight": 1356
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从变电站的小路往上走，当你气喘吁吁地爬上立石公园的展望台，眼前的景象会让你觉得一切都值了。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjg9v6h0003ksb0ncku0gdu",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1972,
+            "naturalHeight": 1088
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkjgaqwf0005ksb0voz415ce",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2406,
+            "naturalHeight": 1082
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "整个诹访湖呈现在眼前，夕阳将湖面染成金色。这里聚集了来自世界各地的巡礼者，大家说着不同的语言，架着长枪短炮，却都在等待同一个时刻——Kataware-doki（分身之时/黄昏）。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "⚠ 绝对重要的安全提示",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    },
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#ef4444"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "夜间下山路段危险！",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "立石公园通往车站的山路几乎没有路灯。看完黄昏后天会迅速全黑。",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": " 务必携带手电筒或确保手机电量充足用于照明。",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": " 建议结伴下山，不要走野路。",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": " 如果你是一个人，请考虑叫出租车下山。",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 3,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "小贴士",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "诹访湖每年的8月15都会举行盛大的烟火大会，如果时间允许，可以在这个时间点附近前往，享受盛会",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "结语",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "飞驒古川是现实的质感，而立石公园是梦境的颜色。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "当我在立石公园看着夜幕降临，山下的灯火一点点亮起，那一刻，现实的诹访湖与记忆中的系守湖完美重叠。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "也许我们终其一生都在寻找着什么——也许是一个人，也许是一个地方，也许只是为了看一眼这样的景色。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "如果你也喜欢《你的名字》，请务必来一次这里。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        }
+      ]
+    },
+    "contentHtml": "<blockquote><p><span style=\"color:#9ca3af\">在东京的喧嚣之后，我踏上了泷当年的旅程。</span></p><p><span style=\"color:#9ca3af\">为了寻找那个梦中的小镇，必须离开繁华的都会，深入日本中部的群山。这是一段关于“距离”的旅程——物理上的距离，以及泷与三叶之间那跨越时空的距离。</span></p><p><span style=\"color:#9ca3af\">从飞驒古川的车站，到诹访湖畔的黄昏，这一路，我们去见她。</span></p></blockquote><section class=\"seichi-route\" data-id=\"cb7ca92d-3fac-4919-9a02-b9aede743035\"><div class=\"seichi-route__map\"><div class=\"seichi-route__map-card\"><img class=\"seichi-route__map-img\" src=\"https://maps.googleapis.com/maps/api/staticmap?size=640x360&amp;scale=2&amp;maptype=roadmap&amp;format=png&amp;key=AIzaSyBtNp8ZHr8q2_6FMzBOknS861d-t--KiOw&amp;path=color%3A0xf472b6ff%7Cweight%3A4%7C35.681300%2C139.767066%7C35.170915%2C136.881537%7C36.236726%2C137.189603%7C36.236467%2C137.189555%7C36.238063%2C137.185545%7C36.239480%2C137.197827%7C35.689607%2C139.700571%7C36.053483%2C138.122529&amp;markers=color%3A0xf472b6%7Clabel%3A1%7C35.681300%2C139.767066&amp;markers=color%3A0xf472b6%7Clabel%3A2%7C35.170915%2C136.881537&amp;markers=color%3A0xf472b6%7Clabel%3A3%7C36.236726%2C137.189603&amp;markers=color%3A0xf472b6%7Clabel%3A4%7C36.236467%2C137.189555&amp;markers=color%3A0xf472b6%7Clabel%3A5%7C36.238063%2C137.185545&amp;markers=color%3A0xf472b6%7Clabel%3A6%7C36.239480%2C137.197827&amp;markers=color%3A0xf472b6%7Clabel%3A7%7C35.689607%2C139.700571&amp;markers=color%3A0xf472b6%7Clabel%3A8%7C36.053483%2C138.122529\" alt=\"路线地图预览\" width=\"640\" height=\"360\" loading=\"eager\" decoding=\"async\"><a class=\"seichi-route__map-primary\" href=\"https://www.google.com/maps/dir/?api=1&amp;origin=35.681300%2C139.767066&amp;destination=36.053483%2C138.122529&amp;waypoints=35.170915%2C136.881537%7C36.236726%2C137.189603%7C36.236467%2C137.189555%7C36.238063%2C137.185545%7C36.239480%2C137.197827%7C35.689607%2C139.700571\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"在 Google 地图打开\"></a><div class=\"seichi-route__map-cta\" aria-hidden=\"true\">在 Google 地图打开</div></div></div><div class=\"seichi-route__list\"><table class=\"seichi-route__table\"><thead><tr><th>顺序</th><th>地点</th><th>最近站</th><th>机位建议</th><th>时间戳</th><th>导航</th></tr></thead><tbody><tr><td>1</td><td>东京站</td><td>东京站</td><td>新干线出发点，按文中建议选右侧座位更贴近泷看窗外的角度</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.681300,139.767066\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>2</td><td>名古屋站</td><td>名古屋站</td><td>新干线下车后换乘 JR 高山本线（Wide View Hida）</td><td>47:17（名古屋换乘段）</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.170915,136.881537\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>3</td><td>飞驒古川站</td><td>飞驒古川站</td><td>先别急着出站：候车室找“飞驒牛”立牌；再上北侧跨线桥复刻列车停靠机位</td><td>47:44（飞驒牛） / 47:33（跨线桥列车停靠机位）</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=36.236726,137.189603\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>4</td><td>飞驒古川站 出站右转（出租车停靠点）</td><td>飞驒古川站</td><td>泷拿着简笔画问路的位置；现实里常见黑色出租车</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=36.236467,137.189555\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>5</td><td>飞驒市图书馆（古川町本町2-22）</td><td>飞驒古川站</td><td>第16排书架附近靠窗座位，尽量避免拍到其他读者</td><td>51:43（古川图书馆检索席）</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=36.238063,137.185545\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>6</td><td>气多若宫神社</td><td>飞驒古川站</td><td>鸟居前回望长阶梯（长距离透视感很强），建议广角或长焦都拍一张</td><td>47:55（鸟居与长阶梯）</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=36.239480,137.197827\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>7</td><td>新宿站（中央线特急出发）</td><td>新宿站</td><td>从这里乘中央线特急（Azusa号）前往上诹访，天气好可看富士山</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.689607,139.700571\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>8</td><td>立石公园（Tateishi Park）</td><td>上诹访站</td><td>展望台拍整片诹访湖夕阳；建议提前占位等“Kataware-doki（分身之时）”</td><td>分身之时 / 黄昏名场面（系守湖原型视角）</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=36.053483,138.122529\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr></tbody></table></div></section><seichi-callout><h2><strong>路线总览 (Route Overview)</strong></h2><p><strong><span style=\"color:#ef4444\">本篇行程跨度较大，建议预留充裕的 2天1夜。</span></strong></p><h3><strong>Part 1：寻找系守镇（岐阜·飞驒古川）</strong></h3><ul><li><p>   交通：名古屋转乘「Wide View Hida」特急列车</p></li><li><p>   核心点：飞驒古川站、飞驒市图书馆、气多若宫神社</p></li></ul><h3><strong>Part 2：逢魔之时的奇迹（长野·诹访）</strong></h3><ul><li><p>   交通：返回东京后转战上诹访（或经松本前往）</p></li><li><p>   核心点：立石公园（系守湖全景）、分身之时</p></li></ul></seichi-callout><h2><strong>1. 启程：新干线与高山本线</strong></h2><p><strong><span style=\"color:#f97316\">交通： 东海道新干线 </span></strong><a href=\"https://maps.app.goo.gl/47udV3t55XwgX99e6\" target=\"_blank\" rel=\"noopener noreferrer\"><strong><span style=\"color:#f97316\">[东京 站]</span></strong></a><strong><span style=\"color:#f97316\"> → </span></strong><a href=\"https://maps.app.goo.gl/3gugDo5u6dMbJfVF7\" target=\"_blank\" rel=\"noopener noreferrer\"><strong><span style=\"color:#f97316\">[名古屋 站]</span></strong></a></p><p>泷坐在新干线上吃便当的场景，大家都记得吧？</p><p>现实中，泷乘坐的是 N700A 系列列车。作为一个铁道迷兼巡礼者，这里有个有趣的 “穿帮”细节：</p><p>电影画面中，列车座位的排列似乎为了构图做了一些调整。实际上从东京前往名古屋，左侧是3排座（A/B/C），右侧是2排座（D/E）。如果你想还原泷看窗外风景的角度，记得选右侧座位。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkj58egv0003qi7u1pgdzzdu\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2412\" data-natural-h=\"1352\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p><strong><span style=\"color:#f97316\">换乘： JR 高山本线 </span></strong><a href=\"https://maps.app.goo.gl/3gugDo5u6dMbJfVF7\" target=\"_blank\" rel=\"noopener noreferrer\"><strong><span style=\"color:#f97316\">[名古屋 站]</span></strong></a><strong><span style=\"color:#f97316\"> → [</span></strong><a href=\"https://maps.app.goo.gl/SMGn7TnuNmpd2Rar5\" target=\"_blank\" rel=\"noopener noreferrer\"><strong><span style=\"color:#f97316\">飞驒古川 站</span></strong></a><strong><span style=\"color:#f97316\">]</span></strong></p><p>泷，奥寺前辈和司同学在名谷屋站下车后，随后换乘JR高山线前往 飞驒古川 。这里是<span style=\"background-color:#facc15\">电影47分17秒</span>的场景</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkj5ddzo0005qi7u3lzihco6\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2414\" data-natural-h=\"1354\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkj5e6y80007qi7uu47ug8z7\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2410\" data-natural-h=\"1086\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>离开名古屋后，列车变成了柴油动车组。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkj5k5pa0009qi7uq3q5jxxe\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2428\" data-natural-h=\"1350\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkj5rwax000dqi7uoxy933qr\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1812\" data-natural-h=\"1360\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>随着轰隆隆的引擎声，窗外的景色从高楼变成了溪流与红叶。这种非电气化铁路特有的震动感和稍慢的速度，让人切实体会到：三叶想去一次东京，真的是一件很不容易的事啊。</p><h2><strong>2. 飞驒古川站：“飞驒牛”</strong></h2><p><a href=\"https://maps.app.goo.gl/SMGn7TnuNmpd2Rar5\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 飞驒古川站（改札口内 &amp; 跨线桥）</a></p><p>抵达后可以不急着出站</p><p>还记得那个奥寺前辈特别喜欢的吉祥物吗？在车站候车室里，你可以找到这只 “飞驒牛” 的立牌。这一幕出现在<span style=\"background-color:#facc15\">电影的47分44秒。</span></p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjdlr3n0003am6d0spukrx3\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2424\" data-natural-h=\"1364\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjdjvl10001am6dhhy73iqo\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"720\" data-natural-h=\"479\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>车站的等候室也有飞驒市的观光手册、宣传单张等，也有电影《你的名字》的景点地图。手上拿着这张地图，应该不至于完全找不到路吧！</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjdq9w70005am6dj1r4loat\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2422\" data-natural-h=\"1364\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><seichi-callout><p><strong>跨线桥的一瞬：</strong></p><p>走到车站北侧的跨线桥（天桥）上，就是电影47分33秒中列车停靠的经典机位。</p><p><strong>拍摄贴士：</strong></p><p>虽然不像电影里那样“两小时一班”那么夸张，但高山本线的班次确实不多。想要拍到列车正好停在画面右侧的完美瞬间，需要提前查好时刻表并在这个寒风中的天桥上多一点耐心。</p></seichi-callout><h2><strong>3. 寻找与问路：古川町漫步</strong></h2><p><a href=\"https://maps.app.goo.gl/3bhqoNuBRjsWzjCq9\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 车站出站右转 </a></p><p>出站后右转，就是泷拿着简笔画四处问路的出租车停靠点。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjdyvua0007am6d0773o8ai\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2478\" data-natural-h=\"1360\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjdzi1t0009am6dv6rwbfd7\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2412\" data-natural-h=\"1356\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><seichi-callout><p><strong><span style=\"color:#f59e0b\">小差异：</span></strong> 电影里的出租车颜色经过了艺术加工，现实中这里停靠的多是黑色出租车。</p></seichi-callout><p>漫步在古川町，你会发现日本乡下的那种“静”。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkje5nif000bam6dzryhsl1h\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2414\" data-natural-h=\"1356\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>街上几乎没有人，只有偶尔经过的微风。虽然电影里泷吃瘪的拉面店在现实中并不存在，但这一带随便找一家店，都能吃到正宗的 “高山拉面”（深色酱油汤底，细卷面），味道非常治愈！</p><h2><strong>4. 飞驒市图书馆：泷的检索席</strong></h2><p><a href=\"https://maps.app.goo.gl/1xMWEUzrvN9fdoh89\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 飞驒市古川町本町2-22</a></p><p><strong>对应场景：</strong> 对应<span style=\"background-color:#facc15\">电影51分43秒</span>的古川图书馆，泷在这里查找系守镇遇难者名录</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjeybkt000lam6d5zorg392\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2414\" data-natural-h=\"1364\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjep1g3000ham6dov8l7rod\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2408\" data-natural-h=\"1096\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>这是整趟巡礼中最具学术气息的一站。现实中的图书馆外观非常现代且漂亮。</p><seichi-callout><h3><strong><span style=\"color:#ef4444\">⚠ 注意！图书馆严禁擅自摄影</span></strong></h3><ul><li><p><strong> 图书馆是市民阅读的地方。如果你想拍照，必须先去前台申请「摄影许可」且最好不要拍到其他读者的脸。</strong></p></li><li><p><strong>图书馆通常 20:00 闭馆</strong></p></li></ul></seichi-callout><p>走到 第16排书架 附近，那个靠窗的座位就是泷坐过的地方。虽然角度很难完全复刻，但坐在这里看着窗外的光影，仿佛能感受到泷当时查阅资料时那种从希望跌入绝望的心情。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjf3ud3000nam6d4pidvci7\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2428\" data-natural-h=\"1356\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h2><strong>5. 气多若宫神社：通往神域的阶梯</strong></h2><p><a href=\"https://maps.app.goo.gl/BhyyZdgXnCEu7T6N8\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 气多若宫神社</a></p><p><strong>对应场景：</strong>穿过鸟居这里是 <span style=\"background-color:#facc15\">电影47分55秒</span>，泷询问“宫水神社”时的长阶梯</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjfdlib000313nfxtolhnlh\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1660\" data-natural-h=\"1086\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjfb2xk000113nf7ur8ht18\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2416\" data-natural-h=\"1360\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>这一段路建议步行，虽然有2公里多，但沿途风景极好。</p><p>当你站在气多若宫神社的鸟居前回头望去，那条长长的阶梯和远处的小镇尽收眼底。</p><p>这里安静得仿佛被时间遗忘。虽然没有电影里“瞬间放晴”的戏剧性特效，但那种深山神社的庄严感，让人不由得想双手合十。</p><seichi-callout><h2><strong>转场：前往诹访湖（立石公园）</strong></h2><h3><strong>路线抉择</strong></h3><p>从飞驒到诹访并没有很顺滑的直达路线。为了行程的确定性，我选择了一条看似绕路实则稳妥的方案：返回东京/名古屋，再前往上诹访。</p><p>(当然，老手也可以选择从高山坐巴士到松本，再转车去上诹访，这样更近)</p><p><strong>交通：</strong> <a href=\"https://maps.app.goo.gl/X8wesbNnXdhav4K1A\" target=\"_blank\" rel=\"noopener noreferrer\">新宿站</a>乘坐 <strong>中央线特急（Azusa号）</strong> → <strong>[上诹访 站]</strong></p><p>这趟列车的窗外有惊喜——天气好的话，你可以看见清晰的富士山 !</p></seichi-callout><h2><strong>6. 逢魔之时：立石公园 (Tateishi Park)</strong></h2><p><a href=\"https://maps.app.goo.gl/RCqA3nbiDzHwtVVT9\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 长野县诹访市（上诹访站步行上山）</a></p><p>重头戏来了。这里是 “系守湖” 最具代表性的原型地。</p><p>从上诹访站出来，这段路不算轻松，大概需要爬 20-30 分钟的陡坡，在路上你可以看到 <strong>糸守变电所。</strong></p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjg2oax000513nfamkx1uix\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2262\" data-natural-h=\"1236\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjg560z0001ksb02jegnof0\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2426\" data-natural-h=\"1356\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>从变电站的小路往上走，当你气喘吁吁地爬上立石公园的展望台，眼前的景象会让你觉得一切都值了。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjg9v6h0003ksb0ncku0gdu\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1972\" data-natural-h=\"1088\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkjgaqwf0005ksb0voz415ce\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2406\" data-natural-h=\"1082\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>整个诹访湖呈现在眼前，夕阳将湖面染成金色。这里聚集了来自世界各地的巡礼者，大家说着不同的语言，架着长枪短炮，却都在等待同一个时刻——Kataware-doki（分身之时/黄昏）。</p><seichi-callout><h3><strong><span style=\"color:#ef4444\">⚠ 绝对重要的安全提示</span></strong></h3><p>夜间下山路段危险！</p><p>立石公园通往车站的山路几乎没有路灯。看完黄昏后天会迅速全黑。</p><ul><li><p> 务必携带手电筒或确保手机电量充足用于照明。</p></li><li><p> 建议结伴下山，不要走野路。</p></li><li><p> 如果你是一个人，请考虑叫出租车下山。</p></li></ul><h3><strong>小贴士</strong></h3><p>诹访湖每年的8月15都会举行盛大的烟火大会，如果时间允许，可以在这个时间点附近前往，享受盛会</p></seichi-callout><h2><strong>结语</strong></h2><p>飞驒古川是现实的质感，而立石公园是梦境的颜色。</p><p>当我在立石公园看着夜幕降临，山下的灯火一点点亮起，那一刻，现实的诹访湖与记忆中的系守湖完美重叠。</p><p>也许我们终其一生都在寻找着什么——也许是一个人，也许是一个地方，也许只是为了看一眼这样的景色。</p><p>如果你也喜欢《你的名字》，请务必来一次这里。</p><p></p>",
+    "status": "published",
+    "rejectReason": null,
+    "needsRevision": false,
+    "publishedAt": "2026-01-18T08:16:37.574Z",
+    "lastApprovedAt": "2026-01-18T08:26:54.564Z",
+    "createdAt": "2026-01-18T02:24:01.134Z",
+    "updatedAt": "2026-02-01T15:03:52.032Z"
+  }
+}

@@ -142,108 +142,104 @@ function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: Sup
   const articleHref = prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)
 
   return (
-    <details
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_12px_35px_-24px_rgba(15,23,42,0.7)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-26px_rgba(15,23,42,0.72)]"
-      data-route-key={route.routeKey}
-    >
-      <summary
-        id={route.routeAnchorId}
-        className="cursor-pointer list-none px-4 py-4 flex flex-col gap-4 md:px-5"
-        style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}
-      >
-        <div className="flex flex-col gap-1">
-          <div
-            className="text-base font-semibold leading-snug text-slate-900 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden"
-            title={route.routeTitle}
-          >
-            {route.routeTitle}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-            {route.city ? <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{route.city}</span> : null}
-            <span className="shrink-0 text-xs text-slate-400">{route.spots.length} 点</span>
-          </div>
-        </div>
-
-        <div className="seichi-route__map">
-          <div className="seichi-route__map-card">
-            {map.kind === 'img' ? (
-              <img className="seichi-route__map-img" src={map.url} alt="路线地图预览" loading="lazy" decoding="async" />
-            ) : (
-              <div className="flex items-center justify-center p-6" dangerouslySetInnerHTML={{ __html: map.svg }} />
-            )}
-            {primaryHref ? (
-              <a className="seichi-route__map-primary" href={primaryHref} target="_blank" rel="noopener noreferrer" aria-label="在 Google 地图打开" />
-            ) : null}
-            <div className="seichi-route__map-cta" aria-hidden="true">
-              {t('resources.routeCard.details', locale)}
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_12px_35px_-24px_rgba(15,23,42,0.7)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-26px_rgba(15,23,42,0.72)]">
+      <details data-route-key={route.routeKey}>
+        <summary
+          id={route.routeAnchorId}
+          className="cursor-pointer list-none px-4 py-4 flex flex-col gap-4 md:px-5"
+          style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}
+        >
+          <div className="flex flex-col gap-1">
+            <div
+              className="text-base font-semibold leading-snug text-slate-900 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden"
+              title={route.routeTitle}
+            >
+              {route.routeTitle}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+              {route.city ? <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{route.city}</span> : null}
+              <span className="shrink-0 text-xs text-slate-400">{route.spots.length} 点</span>
             </div>
           </div>
-        </div>
 
-        <div className="border-t border-slate-100 pt-3">
-          <RouteCardActions articleHref={articleHref} routeHref={routeHref} primaryHref={primaryHref} locale={locale} />
-        </div>
-      </summary>
+          <div className="seichi-route__map">
+            <div className="seichi-route__map-card">
+              {map.kind === 'img' ? (
+                <img className="seichi-route__map-img" src={map.url} alt="路线地图预览" loading="lazy" decoding="async" />
+              ) : (
+                <div className="flex items-center justify-center p-6" dangerouslySetInnerHTML={{ __html: map.svg }} />
+              )}
+              <div className="seichi-route__map-cta" aria-hidden="true">
+                {t('resources.routeCard.details', locale)}
+              </div>
+            </div>
+          </div>
+        </summary>
 
-      <div className="px-4 pb-4 md:px-5">
-        <div className="seichi-route__list">
-          <table className="seichi-route__table">
-            <thead>
-              <tr>
-                <th>{t('route.table.order', locale)}</th>
-                <th>{t('route.table.location', locale)}</th>
-                <th>{t('route.table.nearestStation', locale)}</th>
-                <th>{t('route.table.photoTip', locale)}</th>
-                <th>{t('route.table.timestamp', locale)}</th>
-                <th>{t('route.table.navigation', locale)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {route.spots.map((s) => {
-                const nav = spotNavHref(s)
-                const sid = spotAnchorId(route, s)
-                const spotPath = spotLinkPath(route, s, locale)
-                return (
-                  <tr key={sid} id={sid} style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <span>{s.order}</span>
-                        <CopyLinkButton 
-                          path={spotPath} 
-                          label={t('resources.actions.copy', locale)} 
-                          locale={locale}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50" 
-                        />
-                      </div>
-                    </td>
-                    <td>{s.label}{s.name_ja ? <span className="ml-1 text-xs text-gray-500">（{s.name_ja}）</span> : null}</td>
-                    <td>{s.nearestStation_zh || '—'}</td>
-                    <td>{s.photoTip || '—'}</td>
-                    <td>{s.animeScene || '—'}</td>
-                    <td>
-                      {nav ? (
-                        <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
-                          {t('route.table.open', locale)}
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <div className="px-4 pb-4 md:px-5">
+          <div className="seichi-route__list">
+            <table className="seichi-route__table">
+              <thead>
+                <tr>
+                  <th>{t('route.table.order', locale)}</th>
+                  <th>{t('route.table.location', locale)}</th>
+                  <th>{t('route.table.nearestStation', locale)}</th>
+                  <th>{t('route.table.photoTip', locale)}</th>
+                  <th>{t('route.table.timestamp', locale)}</th>
+                  <th>{t('route.table.navigation', locale)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {route.spots.map((s) => {
+                  const nav = spotNavHref(s)
+                  const sid = spotAnchorId(route, s)
+                  const spotPath = spotLinkPath(route, s, locale)
+                  return (
+                    <tr key={sid} id={sid} style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <span>{s.order}</span>
+                          <CopyLinkButton
+                            path={spotPath}
+                            label={t('resources.actions.copy', locale)}
+                            locale={locale}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                          />
+                        </div>
+                      </td>
+                      <td>{s.label}{s.name_ja ? <span className="ml-1 text-xs text-gray-500">（{s.name_ja}）</span> : null}</td>
+                      <td>{s.nearestStation_zh || '—'}</td>
+                      <td>{s.photoTip || '—'}</td>
+                      <td>{s.animeScene || '—'}</td>
+                      <td>
+                        {nav ? (
+                          <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
+                            {t('route.table.open', locale)}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
 
-        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-          <div>{t('resources.routeCard.onlyFirstRouteNote', locale)}</div>
-          <Link className="text-brand-600 hover:text-brand-700" href={prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)}>
-            {t('resources.routeCard.goToArticle', locale)}
-          </Link>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+            <div>{t('resources.routeCard.onlyFirstRouteNote', locale)}</div>
+            <Link className="text-brand-600 hover:text-brand-700" href={prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)}>
+              {t('resources.routeCard.goToArticle', locale)}
+            </Link>
+          </div>
         </div>
+      </details>
+
+      <div className="border-t border-slate-100 px-4 py-3 md:px-5">
+        <RouteCardActions articleHref={articleHref} routeHref={routeHref} primaryHref={primaryHref} locale={locale} />
       </div>
-    </details>
+    </article>
   )
 }
 

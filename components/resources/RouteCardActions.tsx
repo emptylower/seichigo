@@ -10,18 +10,21 @@ type Props = {
   routeHref: string
   primaryHref: string | null
   locale: SupportedLocale
+  navSurface?: string
 }
 
-export default function RouteCardActions({ articleHref, routeHref, primaryHref, locale }: Props) {
+export default function RouteCardActions({
+  articleHref,
+  routeHref,
+  primaryHref,
+  locale,
+  navSurface = 'resources-card-actions',
+}: Props) {
   return (
-    <div
-      className="grid w-full grid-cols-3 gap-2"
-      onClick={(e) => {
-        e.stopPropagation()
-      }}
-    >
+    <div className="grid w-full grid-cols-3 gap-2" data-nav-surface={navSurface}>
       <Link
         href={articleHref}
+        data-nav-surface={navSurface}
         className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900"
       >
         {t('resources.actions.readOriginal', locale)}
@@ -30,6 +33,7 @@ export default function RouteCardActions({ articleHref, routeHref, primaryHref, 
         path={routeHref}
         label={t('resources.actions.quoteMap', locale)}
         locale={locale}
+        navSurface={navSurface}
         className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 whitespace-nowrap"
       />
       {primaryHref ? (
@@ -37,6 +41,7 @@ export default function RouteCardActions({ articleHref, routeHref, primaryHref, 
           href={primaryHref}
           target="_blank"
           rel="noopener noreferrer"
+          data-nav-surface={navSurface}
           className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-brand-500 px-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-600 whitespace-nowrap"
         >
           {t('resources.actions.openMap', locale)}

@@ -6,6 +6,7 @@ import { getSiteUrl } from '@/lib/seo/site'
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
 import { serializeJsonLd } from '@/lib/seo/jsonld'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
   title: {
@@ -63,6 +64,7 @@ gtag('config', 'G-F7E894BEWR');`}
         <Providers>
           {children}
         </Providers>
+        <SpeedInsights />
       </body>
     </html>
   )

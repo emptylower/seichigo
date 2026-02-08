@@ -1,0 +1,100 @@
+{
+  "ok": true,
+  "items": [
+    {
+      "id": "cmkhtjwh00001lom1qnr8c7x9",
+      "slug": "你的名字-your-name-tokyo-minato-ward",
+      "language": "zh",
+      "translationGroupId": "cmkhtjwh00001lom1qnr8c7x9",
+      "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+      "title": "《你的名字 》圣地寻礼 part2 | 东京 · 港区篇",
+      "seoTitle": "你的名字 圣地巡礼｜东京港区·惠比寿路线全攻略（含交通与取景点）",
+      "description": "《你的名字》东京圣地巡礼路线整理，涵盖港区、惠比寿、新宿、涩谷等取景地，包含交通方式、开放时间与拍照建议，适合一天完成的实地巡礼攻略。",
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "东京",
+      "routeLength": "半日",
+      "tags": [
+        "港区",
+        "你的名字",
+        "君の名は",
+        "圣地巡礼",
+        "东京圣地巡礼",
+        "新海诚",
+        "日本动画取景地",
+        "东京旅行",
+        "动漫巡礼"
+      ],
+      "status": "published",
+      "rejectReason": null,
+      "publishedAt": "2026-01-17T06:41:20.715Z",
+      "createdAt": "2026-01-17T04:40:19.236Z",
+      "updatedAt": "2026-02-02T01:59:56.650Z"
+    },
+    {
+      "id": "cmj7xm9ei00019gdl6crx969m",
+      "slug": "你的名字-your-name-seichigo-tokyo-shinjuku",
+      "language": "zh",
+      "translationGroupId": "cmj7xm9ei00019gdl6crx969m",
+      "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+      "title": "《你的名字 》 圣地寻礼  part1 |  东京 · 新宿篇",
+      "seoTitle": "《你的名字》圣地巡礼｜东京·新宿篇（半日路线｜机位建议｜时间戳对照）",
+      "description": "《你的名字》东京新宿区圣地巡礼半日路线整理：从 JR 新宿站南口出发，串联西武新宿、 新宿警察署、地下通道与小巷、擦肩而过的天桥、新宿御苑、千驮谷/信浓町/四谷、朝日桥、须贺町邮筒到须贺神社重逢阶梯；附机位建议与电影时间戳，并可顺路打卡《天气之子》《言叶之庭》相关取景点。",
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "东京",
+      "routeLength": "半日",
+      "tags": [
+        "你的名字",
+        "君の名は",
+        "圣地巡礼",
+        "东京",
+        "新宿",
+        "新海诚",
+        "须贺神社",
+        "新宿御苑",
+        "JR新宿站",
+        "信浓町站",
+        "四谷站",
+        "天气之子"
+      ],
+      "status": "published",
+      "rejectReason": null,
+      "publishedAt": "2026-01-12T11:41:00.152Z",
+      "createdAt": "2025-12-16T01:56:43.673Z",
+      "updatedAt": "2026-02-01T15:46:11.407Z"
+    },
+    {
+      "id": "cmkj44gvj00036ffyj0xkn4u9",
+      "slug": "你的名字-your-name-tokyo-from-hida-to-suwa",
+      "language": "zh",
+      "translationGroupId": "cmkj44gvj00036ffyj0xkn4u9",
+      "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+      "title": "《你的名字》圣地巡礼 Part 3 ｜从飞驒到诹访",
+      "seoTitle": "《你的名字》圣地巡礼 Part 3｜飞驒古川到诹访路线（立石公园黄昏·交通攻略）",
+      "description": "跟随泷的足迹，从东京/名古屋换乘到飞驒古川，打卡飞驒古川站“飞驒牛”、飞驒市图书馆、气多若宫神社，再前往上诹访立石公园等待分身之时；附交通方式、机位与夜间下山安全提示。",
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "岐阜·飞驒古川 长野·诹访（上诹访）",
+      "routeLength": "两日半",
+      "tags": [
+        "君の名は",
+        "飞驒古川",
+        "气多若宫神社",
+        "飞驒市图书馆",
+        "上诹访",
+        "立石公园",
+        "诹访",
+        "你的名字"
+      ],
+      "status": "published",
+      "rejectReason": null,
+      "publishedAt": "2026-01-18T08:16:37.574Z",
+      "createdAt": "2026-01-18T02:24:01.134Z",
+      "updatedAt": "2026-02-01T15:03:52.032Z"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
+import { resolveAnimeId } from '@/lib/anime/id'
 
 export const runtime = 'nodejs'
 
@@ -63,13 +64,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
   }
 
-  const id = parsed.data.id.trim()
+  const requestedId = parsed.data.id.trim()
   const name = (parsed.data.name ?? parsed.data.id).trim()
   if (!name) {
     return NextResponse.json({ error: 'name 不能为空' }, { status: 400 })
   }
+  const resolvedId = resolveAnimeId(requestedId, name)
+  if (!resolvedId) {
+    return NextResponse.json(
+      { error: '请使用英文作品 ID（小写字母/数字/连字符），例如 weathering-with-you' },
+      { status: 400 }
+    )
+  }
 
-  const existing = await prisma.anime.findUnique({ where: { id } }).catch(() => null)
+  const existing = await prisma.anime.findUnique({ where: { id: resolvedId } }).catch(() => null)
   if (existing) {
     return NextResponse.json({ ok: true, anime: { id: existing.id, name: existing.name } })
   }
@@ -77,7 +85,7 @@ export async function POST(req: Request) {
   try {
     const created = await prisma.anime.create({
       data: {
-        id,
+        id: resolvedId,
         name,
         alias: [],
       },
@@ -85,11 +93,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, anime: { id: created.id, name: created.name } })
   } catch (err: any) {
     // unique constraint, race
-    const fallback = await prisma.anime.findUnique({ where: { id } }).catch(() => null)
+    const fallback = await prisma.anime.findUnique({ where: { id: resolvedId } }).catch(() => null)
     if (fallback) {
       return NextResponse.json({ ok: true, anime: { id: fallback.id, name: fallback.name } })
     }
     throw err
   }
 }
-

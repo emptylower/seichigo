@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-02-07T07:13:37.735Z",
+  "baseUrl": "https://seichigo.com/api/ai",
+  "selectedCount": 3,
+  "selected": [
+    {
+      "id": "cmkj44gvj00036ffyj0xkn4u9",
+      "slug": "你的名字-your-name-tokyo-from-hida-to-suwa",
+      "title": "《你的名字》圣地巡礼 Part 3 ｜从飞驒到诹访",
+      "publishedAt": "2026-01-18T08:16:37.574Z",
+      "dir": "doc/template-source/2026-02-07/_-your-name-tokyo-from-hida-to-suwa",
+      "publicUrl": "https://seichigo.com/posts/%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97-your-name-tokyo-from-hida-to-suwa",
+      "contentHtmlLength": 18825
+    },
+    {
+      "id": "cmkhtjwh00001lom1qnr8c7x9",
+      "slug": "你的名字-your-name-tokyo-minato-ward",
+      "title": "《你的名字 》圣地寻礼 part2 | 东京 · 港区篇",
+      "publishedAt": "2026-01-17T06:41:20.715Z",
+      "dir": "doc/template-source/2026-02-07/_-your-name-tokyo-minato-ward",
+      "publicUrl": "https://seichigo.com/posts/%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97-your-name-tokyo-minato-ward",
+      "contentHtmlLength": 18954
+    },
+    {
+      "id": "cmj7xm9ei00019gdl6crx969m",
+      "slug": "你的名字-your-name-seichigo-tokyo-shinjuku",
+      "title": "《你的名字 》 圣地寻礼  part1 |  东京 · 新宿篇",
+      "publishedAt": "2026-01-12T11:41:00.152Z",
+      "dir": "doc/template-source/2026-02-07/_-your-name-seichigo-tokyo-shinjuku",
+      "publicUrl": "https://seichigo.com/posts/%E4%BD%A0%E7%9A%84%E5%90%8D%E5%AD%97-your-name-seichigo-tokyo-shinjuku",
+      "contentHtmlLength": 47077
+    }
+  ]
+}

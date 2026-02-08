@@ -657,6 +657,9 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
                         onKeyDown={onAnimeKeyDown}
                         disabled={submitLoading}
                       />
+                      <div className="mt-1 text-xs text-gray-500">
+                        新建时请使用英文 ID（如 weathering-with-you）；中文名可在作品管理中编辑。
+                      </div>
                       <div className="mt-2 rounded-md border bg-white">
                         <div className="px-3 py-2 text-xs text-gray-500">
                           {animeLoading ? '加载中…' : animeOptions.length ? '选择一个匹配项（或继续输入）' : animeQuery.trim() ? '未找到匹配项，按 Enter 创建' : '输入关键词开始搜索'}

@@ -25,6 +25,10 @@ type RetranslatePreview = {
   summary?: string
 }
 
+type AnimePatchPayload = Partial<AnimeDetail> & {
+  nextId?: string
+}
+
 export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const router = useRouter()
   const [anime, setAnime] = useState<AnimeDetail | null>(null)
@@ -40,6 +44,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const [summary, setSummary] = useState('')
   const [summaryEn, setSummaryEn] = useState('')
   const [summaryJa, setSummaryJa] = useState('')
+  const [slugId, setSlugId] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -64,6 +69,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       return
     }
     setAnime(data.anime)
+    setSlugId(data.anime.id || '')
     setName(data.anime.name || '')
     setNameEn(data.anime.name_en || '')
     setNameJa(data.anime.name_ja || '')
@@ -79,7 +85,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     void load()
   }, [id])
 
-  async function updateField(field: Partial<AnimeDetail>, refreshSummary = true) {
+  async function updateField(field: AnimePatchPayload, refreshSummary = true) {
     setSaveMessage(null)
     const res = await fetch(`/api/admin/anime/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -91,6 +97,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       throw new Error(data.error || '更新失败')
     }
     setAnime(data.anime)
+    setSlugId(data.anime.id || '')
     
     // Update local state based on what was saved
     if (field.name !== undefined) setName(data.anime.name || '')
@@ -226,6 +233,33 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     }
   }
 
+  async function onRenameId() {
+    const nextId = slugId.trim().toLowerCase()
+    if (!nextId || nextId === id) return
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      const res = await fetch(`/api/admin/anime/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nextId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || '更新 ID 失败')
+      const updatedId = String(data?.anime?.id || '')
+      if (!updatedId || updatedId === id) {
+        throw new Error('更新 ID 失败（响应异常）')
+      }
+      router.replace(`/admin/panel/anime/${encodeURIComponent(updatedId)}`)
+      router.refresh()
+    } catch (err: any) {
+      setFailureMessage(err.message)
+      setShowFailureModal(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <div className="text-gray-600">加载中…</div>
   if (error) return <div className="text-rose-600">{error}</div>
   if (!anime) return <div className="text-gray-600">未找到</div>
@@ -247,6 +281,28 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       </div>
 
       <div className="space-y-6">
+        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="font-semibold text-gray-900">ID（URL Slug）</h2>
+          <p className="text-sm text-gray-600">建议使用英文小写 + 连字符。仅在该作品没有文章/修订引用时可修改。</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              aria-label="作品 ID (slug)"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              value={slugId}
+              onChange={(e) => setSlugId(e.target.value)}
+              disabled={saving}
+              placeholder="weathering-with-you"
+            />
+            <Button
+              type="button"
+              onClick={onRenameId}
+              disabled={saving || !slugId.trim() || slugId.trim().toLowerCase() === id}
+            >
+              更新 ID
+            </Button>
+          </div>
+        </section>
+
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900">封面</h2>
           <SharedCoverField

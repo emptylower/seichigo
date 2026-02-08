@@ -6,7 +6,17 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     anime: {
       upsert: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
     },
+    article: {
+      count: vi.fn(),
+    },
+    articleRevision: {
+      count: vi.fn(),
+    },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -33,6 +43,7 @@ function jsonReq(url: string, method: string, body?: any): Request {
 describe('admin anime api', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mocks.prisma.$transaction.mockImplementation(async (cb: any) => cb(mocks.prisma))
   })
 
   it('allows admin to rename anime via PATCH', async () => {
@@ -193,5 +204,100 @@ describe('admin anime api', () => {
     expect(call.update.name_ja).toBe('日本語名')
     expect(call.update.summary_en).toBe('English summary')
     expect(call.update.summary_ja).toBe('日本語の概要')
+  })
+
+  it('renames anime id when there are no article references', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: '天气之子', name: '天气之子', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.findUnique.mockImplementation(async ({ where }: any) => {
+      if (where.id === '天气之子') {
+        return {
+          id: '天气之子',
+          name: '天气之子',
+          alias: [],
+          year: null,
+          summary: null,
+          cover: null,
+          hidden: false,
+          name_en: null,
+          name_ja: null,
+          summary_en: null,
+          summary_ja: null,
+        }
+      }
+      if (where.id === 'weathering-with-you') return null
+      return null
+    })
+    mocks.prisma.article.count.mockResolvedValue(0)
+    mocks.prisma.articleRevision.count.mockResolvedValue(0)
+    mocks.prisma.anime.create.mockResolvedValue({
+      id: 'weathering-with-you',
+      name: '天气之子',
+      alias: [],
+      year: null,
+      summary: null,
+      cover: null,
+      hidden: false,
+      name_en: null,
+      name_ja: null,
+      summary_en: null,
+      summary_ja: null,
+    })
+    mocks.prisma.anime.delete.mockResolvedValue({ id: '天气之子' })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(
+      jsonReq('http://localhost/api/admin/anime/weathering-with-you', 'PATCH', { nextId: 'weathering-with-you' }),
+      {
+        params: Promise.resolve({ id: '天气之子' }),
+      }
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+    expect(j.anime.id).toBe('weathering-with-you')
+    expect(mocks.prisma.anime.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: 'weathering-with-you' }) }))
+    expect(mocks.prisma.anime.delete).toHaveBeenCalledWith({ where: { id: '天气之子' } })
+    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
+  })
+
+  it('blocks anime id rename when referenced by articles', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({ id: '天气之子', name: '天气之子', cover: null, summary: null, hidden: false })
+    mocks.prisma.anime.findUnique.mockImplementation(async ({ where }: any) => {
+      if (where.id === '天气之子') {
+        return {
+          id: '天气之子',
+          name: '天气之子',
+          alias: [],
+          year: null,
+          summary: null,
+          cover: null,
+          hidden: false,
+          name_en: null,
+          name_ja: null,
+          summary_en: null,
+          summary_ja: null,
+        }
+      }
+      if (where.id === 'weathering-with-you') return null
+      return null
+    })
+    mocks.prisma.article.count.mockResolvedValue(1)
+    mocks.prisma.articleRevision.count.mockResolvedValue(0)
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(
+      jsonReq('http://localhost/api/admin/anime/weathering-with-you', 'PATCH', { nextId: 'weathering-with-you' }),
+      {
+        params: Promise.resolve({ id: '天气之子' }),
+      }
+    )
+
+    expect(res.status).toBe(400)
+    expect(mocks.prisma.anime.create).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.delete).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
   })
 })

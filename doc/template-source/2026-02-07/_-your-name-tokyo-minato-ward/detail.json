@@ -1,0 +1,1800 @@
+{
+  "ok": true,
+  "article": {
+    "id": "cmkhtjwh00001lom1qnr8c7x9",
+    "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+    "slug": "你的名字-your-name-tokyo-minato-ward",
+    "language": "zh",
+    "translationGroupId": "cmkhtjwh00001lom1qnr8c7x9",
+    "title": "《你的名字 》圣地寻礼 part2 | 东京 · 港区篇",
+    "seoTitle": "你的名字 圣地巡礼｜东京港区·惠比寿路线全攻略（含交通与取景点）",
+    "description": "《你的名字》东京圣地巡礼路线整理，涵盖港区、惠比寿、新宿、涩谷等取景地，包含交通方式、开放时间与拍照建议，适合一天完成的实地巡礼攻略。",
+    "animeIds": [
+      "你的名字"
+    ],
+    "city": "东京",
+    "routeLength": "半日",
+    "tags": [
+      "港区",
+      "你的名字",
+      "君の名は",
+      "圣地巡礼",
+      "东京圣地巡礼",
+      "新海诚",
+      "日本动画取景地",
+      "东京旅行",
+      "动漫巡礼"
+    ],
+    "cover": "/assets/cmkhxrg8k0001i53zflxyt8zv",
+    "contentJson": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "blockquote",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "如果说飞驒古川是三叶的梦乡，那么东京就是泷迷失与寻找的钢铁森林。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "新海诚笔下的东京，不仅仅是背景，更是推动命运齿轮转动的舞台。作为一名圣地巡礼者，这一天的行程我决定追随泷的脚步，从那个经典的红色扶手阶梯开始，穿过六本木的繁华，最终在东京站踏上寻找的旅途。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "这不仅仅是一次打卡，更是一次为了那句“我也许，正在寻找着什么人”的奔赴。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "seichiRoute",
+          "attrs": {
+            "id": "dd8d7b9d-6d1f-4924-9cb4-7b9f61a47d86",
+            "data": {
+              "spots": [
+                {
+                  "lat": 35.68933,
+                  "lng": 139.71305,
+                  "note": "敬请保持安静礼貌",
+                  "name_zh": "须贺神社",
+                  "photoTip": "电影中泷与三叶重逢的阶梯场景",
+                  "animeScene": "电影核心桥段",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.68933,139.71305",
+                  "nearestStation_zh": "四谷三丁目站"
+                },
+                {
+                  "lat": 35.68989,
+                  "lng": 139.71428,
+                  "name_zh": "四谷三丁目站",
+                  "photoTip": "起点周边公共交通点",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.68989,139.71428",
+                  "nearestStation_zh": "四谷三丁目地铁站"
+                },
+                {
+                  "lat": 35.66587,
+                  "lng": 139.72926,
+                  "note": "周二闭馆，注意开放时间",
+                  "name_zh": "国立新美术馆",
+                  "photoTip": "可拍馆外建筑与步行路线",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.66587,139.72926",
+                  "nearestStation_zh": "青山一丁目站"
+                },
+                {
+                  "lat": 35.66051,
+                  "lng": 139.72925,
+                  "name_zh": "六本木之丘（六本木新城）",
+                  "photoTip": "森美术馆观景台俯瞰东京",
+                  "animeScene": "《天气之子》花火大会取景地",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.66051,139.72925",
+                  "nearestStation_zh": "六本木站"
+                },
+                {
+                  "lat": 35.65977,
+                  "lng": 139.72912,
+                  "name_zh": "森美术馆展望台",
+                  "photoTip": "城市夜景，可远眺东京晴空塔",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.65977,139.72912",
+                  "nearestStation_zh": "六本木站"
+                },
+                {
+                  "lat": 35.64667,
+                  "lng": 139.71007,
+                  "name_zh": "惠比寿 Sky Lounge（38层）",
+                  "photoTip": "免费观景点，人少视角好",
+                  "animeScene": "电影夜景氛围参考",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.64667,139.71007",
+                  "nearestStation_zh": "惠比寿站"
+                },
+                {
+                  "lat": 35.69092,
+                  "lng": 139.70026,
+                  "note": "东京商业与娱乐中心",
+                  "name_zh": "新宿站",
+                  "photoTip": "世界人流量最大的车站之一",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.69092,139.70026",
+                  "nearestStation_zh": "JR新宿站"
+                },
+                {
+                  "lat": 35.68518,
+                  "lng": 139.71005,
+                  "name_zh": "新宿御苑",
+                  "photoTip": "适合日间巡礼与记录行程",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.68518,139.71005",
+                  "nearestStation_zh": "新宿御苑前站"
+                },
+                {
+                  "lat": 35.68708,
+                  "lng": 139.71036,
+                  "note": "为剧情设定参考点，非官方取景",
+                  "name_zh": "新宿意大利餐厅（泷打工设定参考）",
+                  "photoTip": "楼梯送餐的动画既视感",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.68708,139.71036",
+                  "nearestStation_zh": "新宿御苑前站"
+                },
+                {
+                  "lat": 35.65949,
+                  "lng": 139.70055,
+                  "name_zh": "涩谷十字路口",
+                  "photoTip": "推荐二楼窗口拍摄人流",
+                  "animeScene": "泷求职途中休息的场景",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.65949,139.70055",
+                  "nearestStation_zh": "涩谷站"
+                },
+                {
+                  "lat": 35.68124,
+                  "lng": 139.76713,
+                  "name_zh": "东京站",
+                  "photoTip": "东海道·山阳新干线标志墙",
+                  "animeScene": "46:09 泷乘坐新干线",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.68124,139.76713",
+                  "nearestStation_zh": "东京站"
+                }
+              ],
+              "title": "你的名字 东京 港区 & 惠比寿 圣地巡礼",
+              "version": 1
+            }
+          }
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 2,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "路线总览与贴士 (Route & Tips)",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "本篇行程以电影核心名场面为线索，串联起东京市区的“港区”与“新宿/涩谷”商圈。",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": " SeichiGo 建议： 这是一条典型的“特种兵”路线，步数较多。特别是国立新美术馆等室内场馆有严格的闭馆时间，建议尽早出发。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#ef4444"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "1. 泷的打工生活：向港区进发",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/UD8Z4oF4U3TRt1Fj6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "左门町巴士站",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/UD8Z4oF4U3TRt1Fj6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从须贺神社出来，那种“怅然若失”的感觉还没消散，我便开始前往泷在东京生活的另一面——繁华的港区。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从神社步行约 400米 到达 左门町（Samoncho） 附近的巴士站。搭乘 都营巴士 [品97] 路公交车，前往 青山斋场 下车。随后步行400米，到达国立新美术馆",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhuw2e90007118s1jrlrpqg",
+            "align": "center",
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 41,
+            "cropEditing": false,
+            "naturalWidth": 1020,
+            "naturalHeight": 1350
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐在晃晃悠悠的东京巴士上，看着窗外掠过的街景，就像电影中那些快速剪辑的过场画面一样，充满了大都会的节奏感。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "2. “泷与奥寺的约会”：国立新美术馆",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3R9VP5R8DvMugAYr9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 港区六本木 7-22-2",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/3R9VP5R8DvMugAYr9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "那座波浪状的玻璃帷幕建筑，就是泷与奥寺前辈约会的地方。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "走进馆内，独特的倒锥形混凝土平台映入眼帘。虽然电影里并没有明确给出外观的大特写，但坐在二楼的 「Salon de Thé Rond」 咖啡厅里，那种局促却又憧憬的少年心事仿佛就在眼前。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "乘坐电梯来到3楼，这里的视角刚好可以看到服务员端着盘子经过，这是",
+              "type": "text"
+            },
+            {
+              "text": "电影39分22秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "的镜头",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkih438b00011ifegsrgtz3x",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2446,
+            "naturalHeight": 1360
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhuqlr80003118sqg38tj26",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2416,
+            "naturalHeight": 1356
+          }
+        },
+        {
+          "type": "blockquote",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "避雷指南：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "周二闭馆！周二闭馆！",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        },
+                        {
+                          "text": "（重要的事情说三遍，别跑空了）",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "周五、周六延长至 20:00，其余时间 18:00 关闭。",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "想拍出同款空镜建议平日上午前往。",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "3. 俯瞰东京天际线：六本木新城 (Roppongi Hills)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/Xqg6xYKvqzj18GCY7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 六本木新城森大厦",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/Xqg6xYKvqzj18GCY7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从美术馆向南步行约 600米，来到六本木之丘，购票进入森美术馆 · 展望台",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这里其实也是",
+              "type": "text"
+            },
+            {
+              "text": "《天气之子》",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#22c55e"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "中阳菜祈祷花火大会晴空的取景地，但同时也是",
+              "type": "text"
+            },
+            {
+              "text": "《你的名字》",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textColor",
+                  "attrs": {
+                    "color": "#22c55e"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "泷与奥寺的约会的场景之一。在2023年底，虽然原本的屋顶停机坪（Sky Deck）因故关闭了，但 ",
+              "type": "text"
+            },
+            {
+              "text": "52层的森美术馆展望台 (Tokyo City View)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 依然能提供绝佳的视角。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhvamdr0009118s4plxv5l9",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2418,
+            "naturalHeight": 1364
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhvbg1l000b118sh0fd6qui",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在这里，你可以看到远处的晴空塔和东京塔遥相呼应。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhvknxr000f118ss108an6b",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2408,
+            "naturalHeight": 1096
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhvmytg000h118sh1gf08tm",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "玻璃窗附近有许多游客留下的祈愿贴纸，这里也有很多中文留言，看来很多国人都来过这里。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "4. 惠比寿的黄昏与新宿的夜",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/izEdKnJXJerr4G5k6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "sky lounge",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/izEdKnJXJerr4G5k6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "交通：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 日比谷线 [六本木] → [惠比寿]，然后大约步行800米",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "原计划去寻找传说中的日出天桥，但我选择了一个更私藏的地点——惠比寿花园广场附近的 Sky Lounge (38F)。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhw2j5b000j118s8khmjbcv",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2418,
+            "naturalHeight": 1092
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这是一个免费的观景台，人流比涩谷少得多。当暮色降临，东京的霓虹灯带开始像血管一样流动，电车在城市间穿梭的光轨，完美的还原了新海诚电影中那种“既寂寞又绚烂”的现代都市质感。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhw38se000l118so5rhj5ka",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2416,
+            "naturalHeight": 1216
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "晚餐小插曲：新宿的意大利风情",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "餐厅名：Cafe La Bohéme",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/VkrGELJRGwaPVDeo9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "晚餐可以选择泷打工餐厅的意大利馆子，这里的服务员像泷一样从楼梯跑下来送餐，这里整体的消费算不上高。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwejnl000r118swrh336u4",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2416,
+            "naturalHeight": 1360
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwfysz000t118skso3t20r",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1532,
+            "naturalHeight": 1342
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhw7kcl000n118sdq71e7k1",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2416,
+            "naturalHeight": 1352
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwcnua000p118srggvx4t4",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1572,
+            "naturalHeight": 964
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "5. 混乱中的秩序：涩谷十字路口 (Shibuya Crossing)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/6JW1pXK8DvW6WxrE9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 涩谷站八公口",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/6JW1pXK8DvW6WxrE9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "吃饱喝足，怎能不去世界上最繁忙的十字路口？",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这是泷奔波求职时反复出现的背景。站在街头，看着信号灯变绿，巨大的人潮瞬间吞没街道，你会深刻体会到泷在城市中的那种渺小感与孤独感。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "blockquote",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "📸 摄影机位：",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "推荐去 TSUTAYA 二楼的星巴克（虽然人很多，需要先买单），隔着玻璃俯拍路口，那是观察东京心跳的最佳位置。",
+                  "type": "text"
+                },
+                {
+                  "type": "hardBreak"
+                },
+                {
+                  "text": "同时，这是",
+                  "type": "text"
+                },
+                {
+                  "text": "电影1小时36分33秒",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textBackground",
+                      "attrs": {
+                        "backgroundColor": "#facc15"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "text": "，泷求职时休息的咖啡厅，这里他遇见了沙耶香和敕使",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwlm4z0001k508asr1y42h",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2414,
+            "naturalHeight": 1348
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwmbfl0003k5084n0bjz0k",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2420,
+            "naturalHeight": 1352
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwrhw70005k508hwfoq00y",
+            "align": null,
+            "cropB": 0,
+            "cropL": 6,
+            "cropR": 6,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2160,
+            "naturalHeight": 1080
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhwth530007k508j0nbypk2",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1319
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "6. 旅途的开始：东京站新干线",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标:",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/iaHvynBB81tW2TbG7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "东京站",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/iaHvynBB81tW2TbG7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "巡礼的最后，是出发。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "第二天一早，我来到了东京站。在",
+              "type": "text"
+            },
+            {
+              "text": "电影的 46分09秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，泷就是在这里，凭着记忆中的速写，毅然决然地登上了前往飞驒的新干线。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhx212w0009k50896q78mmf",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2414,
+            "naturalHeight": 1358
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhx312h000bk508g24uqy0y",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2412,
+            "naturalHeight": 1230
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "站在站台上，墙上是熟悉的东海道·山阳新干线标志。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhx4l0x000dk508rx6a1yd1",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2240,
+            "naturalHeight": 1324
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhx58qq000fk5084d6ysxid",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2422,
+            "naturalHeight": 1362
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "现实中，泷当年乘坐的 700 系可能已经退役或不再常见，取而代之的是更新的 N700A 甚至 N700S。如果坐在右侧靠窗的位置，随着列车缓缓驶出，可以看到东京塔一闪而过。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "“我不记得那个小镇的名字，但我知道，我要去见她。”",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在名古屋站换乘 JR 高山本线后，窗外的景色将逐渐从高楼大厦变为连绵青山。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "下一站，飞驒古川。",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmkhxdbjp0001fdl930a6efax",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1374,
+            "naturalHeight": 772
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "结语",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这条路线，让我从东京的日常，一步步走进了电影的非日常。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "如果你也打算来东京，请不要只是匆匆路过。试着在须贺神社的阶梯上多停留一秒，或者在六本木的眺望台中多看一眼这个城市。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "因为，所谓圣地巡礼，不就是在现实中，确认那份曾经感动过我们的心情确实存在过吗？",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "(未完待续... 下一篇：飞驒古川篇)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "italic"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        }
+      ]
+    },
+    "contentHtml": "<blockquote><p><span style=\"color:#9ca3af\">如果说飞驒古川是三叶的梦乡，那么东京就是泷迷失与寻找的钢铁森林。</span></p><p><span style=\"color:#9ca3af\">新海诚笔下的东京，不仅仅是背景，更是推动命运齿轮转动的舞台。作为一名圣地巡礼者，这一天的行程我决定追随泷的脚步，从那个经典的红色扶手阶梯开始，穿过六本木的繁华，最终在东京站踏上寻找的旅途。</span></p><p><span style=\"color:#9ca3af\">这不仅仅是一次打卡，更是一次为了那句“我也许，正在寻找着什么人”的奔赴。</span></p></blockquote><section class=\"seichi-route\" data-id=\"dd8d7b9d-6d1f-4924-9cb4-7b9f61a47d86\"><div class=\"seichi-route__map\"><div class=\"seichi-route__map-card\"><img class=\"seichi-route__map-img\" src=\"https://maps.googleapis.com/maps/api/staticmap?size=640x360&amp;scale=2&amp;maptype=roadmap&amp;format=png&amp;key=AIzaSyBtNp8ZHr8q2_6FMzBOknS861d-t--KiOw&amp;path=color%3A0xf472b6ff%7Cweight%3A4%7C35.689330%2C139.713050%7C35.689890%2C139.714280%7C35.665870%2C139.729260%7C35.660510%2C139.729250%7C35.659770%2C139.729120%7C35.646670%2C139.710070%7C35.690920%2C139.700260%7C35.685180%2C139.710050%7C35.687080%2C139.710360%7C35.659490%2C139.700550%7C35.681240%2C139.767130&amp;markers=color%3A0xf472b6%7Clabel%3A1%7C35.689330%2C139.713050&amp;markers=color%3A0xf472b6%7Clabel%3A2%7C35.689890%2C139.714280&amp;markers=color%3A0xf472b6%7Clabel%3A3%7C35.665870%2C139.729260&amp;markers=color%3A0xf472b6%7Clabel%3A4%7C35.660510%2C139.729250&amp;markers=color%3A0xf472b6%7Clabel%3A5%7C35.659770%2C139.729120&amp;markers=color%3A0xf472b6%7Clabel%3A6%7C35.646670%2C139.710070&amp;markers=color%3A0xf472b6%7Clabel%3A7%7C35.690920%2C139.700260&amp;markers=color%3A0xf472b6%7Clabel%3A8%7C35.685180%2C139.710050&amp;markers=color%3A0xf472b6%7Clabel%3A9%7C35.687080%2C139.710360&amp;markers=color%3A0xf472b6%7Clabel%3AA%7C35.659490%2C139.700550&amp;markers=color%3A0xf472b6%7Clabel%3AB%7C35.681240%2C139.767130\" alt=\"路线地图预览\" width=\"640\" height=\"360\" loading=\"eager\" decoding=\"async\"><a class=\"seichi-route__map-primary\" href=\"https://www.google.com/maps/dir/?api=1&amp;origin=35.689330%2C139.713050&amp;destination=35.681240%2C139.767130&amp;waypoints=35.689890%2C139.714280%7C35.665870%2C139.729260%7C35.660510%2C139.729250%7C35.659770%2C139.729120%7C35.646670%2C139.710070%7C35.690920%2C139.700260%7C35.685180%2C139.710050%7C35.687080%2C139.710360%7C35.659490%2C139.700550\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"在 Google 地图打开\"></a><div class=\"seichi-route__map-cta\" aria-hidden=\"true\">在 Google 地图打开</div></div></div><div class=\"seichi-route__list\"><table class=\"seichi-route__table\"><thead><tr><th>顺序</th><th>地点</th><th>最近站</th><th>机位建议</th><th>时间戳</th><th>导航</th></tr></thead><tbody><tr><td>1</td><td>须贺神社</td><td>四谷三丁目站</td><td>电影中泷与三叶重逢的阶梯场景</td><td>电影核心桥段</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.68933,139.71305\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>2</td><td>四谷三丁目站</td><td>四谷三丁目地铁站</td><td>起点周边公共交通点</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.68989,139.71428\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>3</td><td>国立新美术馆</td><td>青山一丁目站</td><td>可拍馆外建筑与步行路线</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.66587,139.72926\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>4</td><td>六本木之丘（六本木新城）</td><td>六本木站</td><td>森美术馆观景台俯瞰东京</td><td>《天气之子》花火大会取景地</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.66051,139.72925\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>5</td><td>森美术馆展望台</td><td>六本木站</td><td>城市夜景，可远眺东京晴空塔</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.65977,139.72912\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>6</td><td>惠比寿 Sky Lounge（38层）</td><td>惠比寿站</td><td>免费观景点，人少视角好</td><td>电影夜景氛围参考</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.64667,139.71007\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>7</td><td>新宿站</td><td>JR新宿站</td><td>世界人流量最大的车站之一</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.69092,139.70026\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>8</td><td>新宿御苑</td><td>新宿御苑前站</td><td>适合日间巡礼与记录行程</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.68518,139.71005\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>9</td><td>新宿意大利餐厅（泷打工设定参考）</td><td>新宿御苑前站</td><td>楼梯送餐的动画既视感</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.68708,139.71036\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>10</td><td>涩谷十字路口</td><td>涩谷站</td><td>推荐二楼窗口拍摄人流</td><td>泷求职途中休息的场景</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.65949,139.70055\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>11</td><td>东京站</td><td>东京站</td><td>东海道·山阳新干线标志墙</td><td>46:09 泷乘坐新干线</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.68124,139.76713\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr></tbody></table></div></section><seichi-callout><h2><strong>路线总览与贴士 (Route &amp; Tips)</strong></h2><p>本篇行程以电影核心名场面为线索，串联起东京市区的“港区”与“新宿/涩谷”商圈。</p><p><span style=\"color:#ef4444\"> SeichiGo 建议： 这是一条典型的“特种兵”路线，步数较多。特别是国立新美术馆等室内场馆有严格的闭馆时间，建议尽早出发。</span></p></seichi-callout><h3><strong>1. 泷的打工生活：向港区进发</strong></h3><p><a href=\"https://maps.app.goo.gl/UD8Z4oF4U3TRt1Fj6\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong>左门町巴士站</a></p><p>从须贺神社出来，那种“怅然若失”的感觉还没消散，我便开始前往泷在东京生活的另一面——繁华的港区。</p><p>从神社步行约 400米 到达 左门町（Samoncho） 附近的巴士站。搭乘 都营巴士 [品97] 路公交车，前往 青山斋场 下车。随后步行400米，到达国立新美术馆</p><figure data-align=\"center\" data-figure-image=\"true\" data-width-pct=\"41\" style=\"--seichi-width-pct:41;width:41%\"><div data-figure-image-container=\"true\" data-width-pct=\"41\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhuw2e90007118s1jrlrpqg\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1020\" data-natural-h=\"1350\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>坐在晃晃悠悠的东京巴士上，看着窗外掠过的街景，就像电影中那些快速剪辑的过场画面一样，充满了大都会的节奏感。</p><p></p><h3><strong>2. “泷与奥寺的约会”：国立新美术馆</strong></h3><p><a href=\"https://maps.app.goo.gl/3R9VP5R8DvMugAYr9\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 港区六本木 7-22-2</a></p><p>那座波浪状的玻璃帷幕建筑，就是泷与奥寺前辈约会的地方。</p><p>走进馆内，独特的倒锥形混凝土平台映入眼帘。虽然电影里并没有明确给出外观的大特写，但坐在二楼的 「Salon de Thé Rond」 咖啡厅里，那种局促却又憧憬的少年心事仿佛就在眼前。</p><p>乘坐电梯来到3楼，这里的视角刚好可以看到服务员端着盘子经过，这是<span style=\"background-color:#facc15\">电影39分22秒</span>的镜头</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkih438b00011ifegsrgtz3x\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2446\" data-natural-h=\"1360\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhuqlr80003118sqg38tj26\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2416\" data-natural-h=\"1356\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><blockquote><p><strong>避雷指南：</strong></p><ul><li><p><strong>周二闭馆！周二闭馆！</strong>（重要的事情说三遍，别跑空了）</p></li><li><p>周五、周六延长至 20:00，其余时间 18:00 关闭。</p></li><li><p>想拍出同款空镜建议平日上午前往。</p></li></ul></blockquote><p></p><h3><strong>3. 俯瞰东京天际线：六本木新城 (Roppongi Hills)</strong></h3><p><a href=\"https://maps.app.goo.gl/Xqg6xYKvqzj18GCY7\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 六本木新城森大厦</a></p><p>从美术馆向南步行约 600米，来到六本木之丘，购票进入森美术馆 · 展望台</p><p>这里其实也是<span style=\"color:#22c55e\">《天气之子》</span>中阳菜祈祷花火大会晴空的取景地，但同时也是<span style=\"color:#22c55e\">《你的名字》</span>泷与奥寺的约会的场景之一。在2023年底，虽然原本的屋顶停机坪（Sky Deck）因故关闭了，但 <strong>52层的森美术馆展望台 (Tokyo City View)</strong> 依然能提供绝佳的视角。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhvamdr0009118s4plxv5l9\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2418\" data-natural-h=\"1364\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhvbg1l000b118sh0fd6qui\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>在这里，你可以看到远处的晴空塔和东京塔遥相呼应。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhvknxr000f118ss108an6b\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2408\" data-natural-h=\"1096\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhvmytg000h118sh1gf08tm\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>玻璃窗附近有许多游客留下的祈愿贴纸，这里也有很多中文留言，看来很多国人都来过这里。</p><p></p><h3><strong>4. 惠比寿的黄昏与新宿的夜</strong></h3><p><a href=\"https://maps.app.goo.gl/izEdKnJXJerr4G5k6\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong>sky lounge</a></p><p><strong>交通：</strong> 日比谷线 [六本木] → [惠比寿]，然后大约步行800米</p><p>原计划去寻找传说中的日出天桥，但我选择了一个更私藏的地点——惠比寿花园广场附近的 Sky Lounge (38F)。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhw2j5b000j118s8khmjbcv\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2418\" data-natural-h=\"1092\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>这是一个免费的观景台，人流比涩谷少得多。当暮色降临，东京的霓虹灯带开始像血管一样流动，电车在城市间穿梭的光轨，完美的还原了新海诚电影中那种“既寂寞又绚烂”的现代都市质感。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhw38se000l118so5rhj5ka\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2416\" data-natural-h=\"1216\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>晚餐小插曲：新宿的意大利风情</p><p><a href=\"https://maps.app.goo.gl/VkrGELJRGwaPVDeo9\" target=\"_blank\" rel=\"noopener noreferrer\">餐厅名：Cafe La Bohéme</a></p><p>晚餐可以选择泷打工餐厅的意大利馆子，这里的服务员像泷一样从楼梯跑下来送餐，这里整体的消费算不上高。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwejnl000r118swrh336u4\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2416\" data-natural-h=\"1360\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwfysz000t118skso3t20r\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1532\" data-natural-h=\"1342\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhw7kcl000n118sdq71e7k1\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2416\" data-natural-h=\"1352\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwcnua000p118srggvx4t4\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1572\" data-natural-h=\"964\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>5. 混乱中的秩序：涩谷十字路口 (Shibuya Crossing)</strong></h3><p><a href=\"https://maps.app.goo.gl/6JW1pXK8DvW6WxrE9\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 涩谷站八公口</a></p><p>吃饱喝足，怎能不去世界上最繁忙的十字路口？</p><p>这是泷奔波求职时反复出现的背景。站在街头，看着信号灯变绿，巨大的人潮瞬间吞没街道，你会深刻体会到泷在城市中的那种渺小感与孤独感。</p><blockquote><p>📸 摄影机位：</p><p>推荐去 TSUTAYA 二楼的星巴克（虽然人很多，需要先买单），隔着玻璃俯拍路口，那是观察东京心跳的最佳位置。<br />同时，这是<span style=\"background-color:#facc15\">电影1小时36分33秒</span>，泷求职时休息的咖啡厅，这里他遇见了沙耶香和敕使</p></blockquote><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwlm4z0001k508asr1y42h\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2414\" data-natural-h=\"1348\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwmbfl0003k5084n0bjz0k\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2420\" data-natural-h=\"1352\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"transform\" style=\"aspect-ratio:190080 / 108000\"><img src=\"/assets/cmkhwrhw70005k508hwfoq00y\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-crop-l=\"6\" data-crop-r=\"6\" data-natural-w=\"2160\" data-natural-h=\"1080\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%;--seichi-crop-left:-7%;--seichi-crop-top:0%;--seichi-crop-width:114%;--seichi-crop-height:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhwth530007k508j0nbypk2\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1319\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p></p><h3><strong>6. 旅途的开始：东京站新干线</strong></h3><p><a href=\"https://maps.app.goo.gl/iaHvynBB81tW2TbG7\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标:</strong>东京站</a></p><p>巡礼的最后，是出发。</p><p>第二天一早，我来到了东京站。在<span style=\"background-color:#facc15\">电影的 46分09秒</span>，泷就是在这里，凭着记忆中的速写，毅然决然地登上了前往飞驒的新干线。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhx212w0009k50896q78mmf\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2414\" data-natural-h=\"1358\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhx312h000bk508g24uqy0y\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2412\" data-natural-h=\"1230\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>站在站台上，墙上是熟悉的东海道·山阳新干线标志。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhx4l0x000dk508rx6a1yd1\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2240\" data-natural-h=\"1324\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhx58qq000fk5084d6ysxid\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2422\" data-natural-h=\"1362\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>现实中，泷当年乘坐的 700 系可能已经退役或不再常见，取而代之的是更新的 N700A 甚至 N700S。如果坐在右侧靠窗的位置，随着列车缓缓驶出，可以看到东京塔一闪而过。</p><p>“我不记得那个小镇的名字，但我知道，我要去见她。”</p><p>在名古屋站换乘 JR 高山本线后，窗外的景色将逐渐从高楼大厦变为连绵青山。</p><p><strong>下一站，飞驒古川。</strong></p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmkhxdbjp0001fdl930a6efax\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1374\" data-natural-h=\"772\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3>结语</h3><p>这条路线，让我从东京的日常，一步步走进了电影的非日常。</p><p>如果你也打算来东京，请不要只是匆匆路过。试着在须贺神社的阶梯上多停留一秒，或者在六本木的眺望台中多看一眼这个城市。</p><p>因为，所谓圣地巡礼，不就是在现实中，确认那份曾经感动过我们的心情确实存在过吗？</p><p><em>(未完待续... 下一篇：飞驒古川篇)</em></p><p></p>",
+    "status": "published",
+    "rejectReason": null,
+    "needsRevision": false,
+    "publishedAt": "2026-01-17T06:41:20.715Z",
+    "lastApprovedAt": "2026-01-18T09:50:46.090Z",
+    "createdAt": "2026-01-17T04:40:19.236Z",
+    "updatedAt": "2026-02-02T01:59:56.650Z"
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "generatedAt": "2026-02-07T07:14:19.515Z",
+  "sourceDir": "doc/template-source/2026-02-07",
+  "sampleSize": 3,
+  "averages": {
+    "charCount": 2902.67,
+    "pCount": 62,
+    "h2Count": 4,
+    "imgCount": 38.33,
+    "ulCount": 2.67,
+    "liCount": 7,
+    "tableCount": 1,
+    "calloutCount": 3.33
+  },
+  "headingFrequency": [
+    {
+      "heading": "路线总览 (Route Overview)",
+      "count": 2
+    },
+    {
+      "heading": "结语",
+      "count": 2
+    },
+    {
+      "heading": "1. 启程：新干线与高山本线",
+      "count": 1
+    },
+    {
+      "heading": "2. 飞驒古川站：“飞驒牛”",
+      "count": 1
+    },
+    {
+      "heading": "3. 寻找与问路：古川町漫步",
+      "count": 1
+    },
+    {
+      "heading": "4. 飞驒市图书馆：泷的检索席",
+      "count": 1
+    },
+    {
+      "heading": "5. 气多若宫神社：通往神域的阶梯",
+      "count": 1
+    },
+    {
+      "heading": "转场：前往诹访湖（立石公园）",
+      "count": 1
+    },
+    {
+      "heading": "6. 逢魔之时：立石公园 (Tateishi Park)",
+      "count": 1
+    },
+    {
+      "heading": "路线总览与贴士 (Route & Tips)",
+      "count": 1
+    }
+  ],
+  "h2Sequences": [
+    {
+      "sequence": "路线总览 (Route Overview) > 1. 启程：新干线与高山本线 > 2. 飞驒古川站：“飞驒牛” > 3. 寻找与问路：古川町漫步 > 4. 飞驒市图书馆：泷的检索席 > 5. 气多若宫神社：通往神域的阶梯 > 转场：前往诹访湖（立石公园） > 6. 逢魔之时：立石公园 (Tateishi Park) > 结语",
+      "count": 1
+    },
+    {
+      "sequence": "路线总览与贴士 (Route & Tips)",
+      "count": 1
+    },
+    {
+      "sequence": "路线总览 (Route Overview) > 结语",
+      "count": 1
+    }
+  ],
+  "articles": [
+    {
+      "id": "cmkj44gvj00036ffyj0xkn4u9",
+      "slug": "你的名字-your-name-tokyo-from-hida-to-suwa",
+      "title": "《你的名字》圣地巡礼 Part 3 ｜从飞驒到诹访",
+      "publishedAt": "2026-01-18T08:16:37.574Z",
+      "seoTitle": "《你的名字》圣地巡礼 Part 3｜飞驒古川到诹访路线（立石公园黄昏·交通攻略）",
+      "descriptionLength": 84,
+      "tags": [
+        "君の名は",
+        "飞驒古川",
+        "气多若宫神社",
+        "飞驒市图书馆",
+        "上诹访",
+        "立石公园",
+        "诹访",
+        "你的名字"
+      ],
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "岐阜·飞驒古川 长野·诹访（上诹访）",
+      "routeLength": "两日半",
+      "charCount": 2752,
+      "h2": [
+        "路线总览 (Route Overview)",
+        "1. 启程：新干线与高山本线",
+        "2. 飞驒古川站：“飞驒牛”",
+        "3. 寻找与问路：古川町漫步",
+        "4. 飞驒市图书馆：泷的检索席",
+        "5. 气多若宫神社：通往神域的阶梯",
+        "转场：前往诹访湖（立石公园）",
+        "6. 逢魔之时：立石公园 (Tateishi Park)",
+        "结语"
+      ],
+      "h3": [
+        "Part 1：寻找系守镇（岐阜·飞驒古川）",
+        "Part 2：逢魔之时的奇迹（长野·诹访）",
+        "⚠ 注意！图书馆严禁擅自摄影",
+        "路线抉择",
+        "⚠ 绝对重要的安全提示",
+        "小贴士"
+      ],
+      "pCount": 60,
+      "imgCount": 21,
+      "blockquoteCount": 1,
+      "ulCount": 4,
+      "olCount": 0,
+      "liCount": 9,
+      "preCount": 0,
+      "tableCount": 1,
+      "calloutCount": 6
+    },
+    {
+      "id": "cmkhtjwh00001lom1qnr8c7x9",
+      "slug": "你的名字-your-name-tokyo-minato-ward",
+      "title": "《你的名字 》圣地寻礼 part2 | 东京 · 港区篇",
+      "publishedAt": "2026-01-17T06:41:20.715Z",
+      "seoTitle": "你的名字 圣地巡礼｜东京港区·惠比寿路线全攻略（含交通与取景点）",
+      "descriptionLength": 67,
+      "tags": [
+        "港区",
+        "你的名字",
+        "君の名は",
+        "圣地巡礼",
+        "东京圣地巡礼",
+        "新海诚",
+        "日本动画取景地",
+        "东京旅行",
+        "动漫巡礼"
+      ],
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "东京",
+      "routeLength": "半日",
+      "charCount": 2280,
+      "h2": [
+        "路线总览与贴士 (Route & Tips)"
+      ],
+      "h3": [
+        "1. 泷的打工生活：向港区进发",
+        "2. “泷与奥寺的约会”：国立新美术馆",
+        "3. 俯瞰东京天际线：六本木新城 (Roppongi Hills)",
+        "4. 惠比寿的黄昏与新宿的夜",
+        "5. 混乱中的秩序：涩谷十字路口 (Shibuya Crossing)",
+        "6. 旅途的开始：东京站新干线",
+        "结语"
+      ],
+      "pCount": 51,
+      "imgCount": 23,
+      "blockquoteCount": 3,
+      "ulCount": 1,
+      "olCount": 0,
+      "liCount": 3,
+      "preCount": 0,
+      "tableCount": 1,
+      "calloutCount": 1
+    },
+    {
+      "id": "cmj7xm9ei00019gdl6crx969m",
+      "slug": "你的名字-your-name-seichigo-tokyo-shinjuku",
+      "title": "《你的名字 》 圣地寻礼  part1 |  东京 · 新宿篇",
+      "publishedAt": "2026-01-12T11:41:00.152Z",
+      "seoTitle": "《你的名字》圣地巡礼｜东京·新宿篇（半日路线｜机位建议｜时间戳对照）",
+      "descriptionLength": 136,
+      "tags": [
+        "你的名字",
+        "君の名は",
+        "圣地巡礼",
+        "东京",
+        "新宿",
+        "新海诚",
+        "须贺神社",
+        "新宿御苑",
+        "JR新宿站",
+        "信浓町站",
+        "四谷站",
+        "天气之子"
+      ],
+      "animeIds": [
+        "你的名字"
+      ],
+      "city": "东京",
+      "routeLength": "半日",
+      "charCount": 3676,
+      "h2": [
+        "路线总览 (Route Overview)",
+        "结语"
+      ],
+      "h3": [
+        "1. 梦醒的起点：JR 新宿站南口",
+        "2. 前前前世的旋律：Yunika Vision",
+        "3. 擦肩而过的遗憾：新宿大天桥",
+        "4. 言叶之庭的彩蛋：新宿御苑",
+        "5. 变迁的车站：千驮谷站 (Sendagaya)",
+        "6. 无法接通的电话：信浓町站前天桥",
+        "7. 最后的冲刺：四谷 (Yotsuya) 与 坡道"
+      ],
+      "pCount": 75,
+      "imgCount": 71,
+      "blockquoteCount": 1,
+      "ulCount": 3,
+      "olCount": 1,
+      "liCount": 9,
+      "preCount": 0,
+      "tableCount": 1,
+      "calloutCount": 3
+    }
+  ]
+}

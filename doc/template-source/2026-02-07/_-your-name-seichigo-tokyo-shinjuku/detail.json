@@ -1,0 +1,3832 @@
+{
+  "ok": true,
+  "article": {
+    "id": "cmj7xm9ei00019gdl6crx969m",
+    "authorId": "cmj7c4saf0000t9eyj7lzsskr",
+    "slug": "你的名字-your-name-seichigo-tokyo-shinjuku",
+    "language": "zh",
+    "translationGroupId": "cmj7xm9ei00019gdl6crx969m",
+    "title": "《你的名字 》 圣地寻礼  part1 |  东京 · 新宿篇",
+    "seoTitle": "《你的名字》圣地巡礼｜东京·新宿篇（半日路线｜机位建议｜时间戳对照）",
+    "description": "《你的名字》东京新宿区圣地巡礼半日路线整理：从 JR 新宿站南口出发，串联西武新宿、 新宿警察署、地下通道与小巷、擦肩而过的天桥、新宿御苑、千驮谷/信浓町/四谷、朝日桥、须贺町邮筒到须贺神社重逢阶梯；附机位建议与电影时间戳，并可顺路打卡《天气之子》《言叶之庭》相关取景点。",
+    "animeIds": [
+      "你的名字"
+    ],
+    "city": "东京",
+    "routeLength": "半日",
+    "tags": [
+      "你的名字",
+      "君の名は",
+      "圣地巡礼",
+      "东京",
+      "新宿",
+      "新海诚",
+      "须贺神社",
+      "新宿御苑",
+      "JR新宿站",
+      "信浓町站",
+      "四谷站",
+      "天气之子"
+    ],
+    "cover": "/assets/cmk6qcnt200016sjfnrr82ev7",
+    "contentJson": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "blockquote",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "电影《你的名字》，是「新海诚」导演的成名之作，上映于2016年，无论是在人设、作画风格还是剧情节奏上都有着 2016年，一颗彗星划过夜空，留下了关于“寻找”的执念。 转眼十年之约将至（2026），作为新海诚导演的“老巢”，新宿不仅仅是泷生活的地方，更是整部电影视觉美学的核心——巨大的广告屏、复杂的铁路网、还有那座永远人来人往的天桥。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "如果说系守是梦，新宿就是醒来后怅然若失的现实。 今天，让我们从新宿站出发，沿着泷的足迹，去寻找那个名为“结（Musubi）”的红线。",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "textColor",
+                      "attrs": {
+                        "color": "#9ca3af"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "seichiRoute",
+          "attrs": {
+            "id": "089c344c-7a9a-4cb8-80ee-3df8bcd12433",
+            "data": {
+              "spots": [
+                {
+                  "lat": 35.6891562,
+                  "lng": 139.7003335,
+                  "note": "文章起点",
+                  "name_zh": "JR新宿站 南口",
+                  "photoTip": "出站后向右，天桥附近取景；高峰期注意不挡路。",
+                  "animeScene": "20:40",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6891562,139.7003335",
+                  "nearestStation_zh": "JR 新宿站"
+                },
+                {
+                  "lat": 35.6940435,
+                  "lng": 139.7002934,
+                  "name_zh": "西武新宿站（Seibu Shinjuku Sta. PePe Front Square）",
+                  "photoTip": "商场下方是机位；原作更高机位可能在楼上（需许可）。",
+                  "animeScene": "32:02",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6940435,139.7002934",
+                  "nearestStation_zh": "西武新宿站"
+                },
+                {
+                  "lat": 35.6934979,
+                  "lng": 139.6944899,
+                  "name_zh": "新宿警察署（Metropolitan Police Department Shinjuku Police Station）",
+                  "photoTip": "十字路口旁红绿灯圆环取景；注意遵守交通规则。",
+                  "animeScene": "30:00",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6934979,139.6944899"
+                },
+                {
+                  "lat": 35.6934857,
+                  "lng": 139.7004661,
+                  "note": "按原文外链重定向坐标",
+                  "name_zh": "大塚商会（文章中《天气之子》取景点旁）",
+                  "photoTip": "顺路点，按文章描述在其附近寻找对应街景角度。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6934857,139.7004661"
+                },
+                {
+                  "lat": 35.6935825,
+                  "lng": 139.6994694,
+                  "name_zh": "地下通道（左手边视角点）",
+                  "photoTip": "通道出口回看取“抬头看天空”的开阔感；别阻挡通行。",
+                  "animeScene": "1:28:18",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6935825,139.6994694"
+                },
+                {
+                  "lat": 35.69399,
+                  "lng": 139.6994897,
+                  "name_zh": "右手边小巷（《天气之子》追逐段）",
+                  "photoTip": "进巷后回头拍；尽量不拍路人正脸。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.69399,139.6994897"
+                },
+                {
+                  "lat": 35.6937103,
+                  "lng": 139.6976629,
+                  "name_zh": "天桥（擦肩而过的天桥）",
+                  "photoTip": "天桥上可带到远处楼体；人多时靠边快速拍。",
+                  "animeScene": "1:37:06",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6937103,139.6976629"
+                },
+                {
+                  "lat": 35.6883395,
+                  "lng": 139.7074915,
+                  "note": "《言叶之庭》也可顺路",
+                  "name_zh": "新宿御苑（新宿门）",
+                  "photoTip": "入园按动线走；注意园内规则（部分区域可能限制三脚架）。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6883395,139.7074915",
+                  "nearestStation_zh": "新宿御苑前 / 新宿三丁目"
+                },
+                {
+                  "lat": 35.6857194,
+                  "lng": 139.7065788,
+                  "note": "按原文外链重定向坐标",
+                  "name_zh": "代代木大厦最佳机位",
+                  "photoTip": "在园内开阔处取景，把楼体放画面上方。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6857194,139.7065788"
+                },
+                {
+                  "lat": 35.6810402,
+                  "lng": 139.7113149,
+                  "name_zh": "千驮谷站（千駄ケ谷駅）",
+                  "photoTip": "站体翻新变化大，找轮廓与街道走向更关键。",
+                  "animeScene": "1:39:32",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6810402,139.7113149",
+                  "nearestStation_zh": "JR 千驮谷站"
+                },
+                {
+                  "lat": 35.6800602,
+                  "lng": 139.7203199,
+                  "name_zh": "信浓町站（信濃町駅）",
+                  "photoTip": "出站即到天桥；靠边拍，长焦更接近动画透视。",
+                  "animeScene": "41:32 / 1:13:55",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6800602,139.7203199",
+                  "nearestStation_zh": "JR 信浓町站"
+                },
+                {
+                  "lat": 35.686014,
+                  "lng": 139.730667,
+                  "name_zh": "四谷站（赤坂口一带）",
+                  "photoTip": "出站口位置对照镜头站位；注意不挡通勤人流。",
+                  "animeScene": "39:00",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.686014,139.730667",
+                  "nearestStation_zh": "JR 四谷站"
+                },
+                {
+                  "lat": 35.6814333,
+                  "lng": 139.7262391,
+                  "name_zh": "朝日桥（朝日橋）",
+                  "photoTip": "桥上取电车进隧道方向；不要越过护栏。",
+                  "animeScene": "1:15:55",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6814333,139.7262391"
+                },
+                {
+                  "lat": 35.6829413,
+                  "lng": 139.7258165,
+                  "note": "按原文外链：dir 终点坐标",
+                  "name_zh": "路中间向后回头（铁炮坂段落外链落点）",
+                  "photoTip": "不建议站车道中间；尽量在人行区域取替代角度，确保安全。",
+                  "animeScene": "38:00",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6829413,139.7258165"
+                },
+                {
+                  "lat": 35.6865943,
+                  "lng": 139.7225879,
+                  "name_zh": "须贺町（红色邮筒附近）",
+                  "photoTip": "建议用中长焦带背景；避免拍到门牌/车牌等隐私。",
+                  "animeScene": "1:39:50",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6865943,139.7225879"
+                },
+                {
+                  "lat": 35.6863997,
+                  "lng": 139.7246496,
+                  "name_zh": "东福院坂的四谷小学校（交通标识牌）",
+                  "photoTip": "学校周边注意不喧哗、不聚集；别影响通行。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6863997,139.7246496"
+                },
+                {
+                  "lat": 35.6860802,
+                  "lng": 139.7240879,
+                  "name_zh": "东福院坂标柱（坡顶附近）",
+                  "photoTip": "坡顶向下更接近动画纵深；注意车辆来往。",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.6860802,139.7240879"
+                },
+                {
+                  "lat": 35.685168,
+                  "lng": 139.7234366,
+                  "note": "按原文外链重定向坐标",
+                  "name_zh": "须贺神社（男女主相认阶梯）",
+                  "photoTip": "按文章描述取景；注意是居民区，轻声快速完成拍摄。",
+                  "animeScene": "1:39:00",
+                  "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=35.685168,139.7234366"
+                }
+              ],
+              "title": "《你的名字》东京 · 新宿篇（路线坐标版）",
+              "version": 1
+            }
+          }
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "align": null,
+                "level": 2,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "路线总览 (Route Overview)",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "本篇行程是一条",
+                  "type": "text"
+                },
+                {
+                  "text": "高强度的步行路线",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": "，建议穿舒适的鞋子。 路线逻辑分为三个阶段：",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "type": "orderedList",
+              "attrs": {
+                "type": null,
+                "align": null,
+                "start": 1,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "新宿中心区",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        },
+                        {
+                          "text": "：初次交换身体的震撼（南口、歌舞伎町、西新宿）",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "泷的通学路",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        },
+                        {
+                          "text": "：中央总武线的日常（千驮谷、信浓町）",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "attrs": {
+                        "align": null,
+                        "indent": 0
+                      },
+                      "content": [
+                        {
+                          "text": "最后的奔跑",
+                          "type": "text",
+                          "marks": [
+                            {
+                              "type": "bold"
+                            }
+                          ]
+                        },
+                        {
+                          "text": "：从四谷到须贺神社的重逢之路",
+                          "type": "text"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "1. 梦醒的起点：JR 新宿站南口",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": " ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/LfoUR8X2fioVZ9AT6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " JR 新宿站南口天桥",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/LfoUR8X2fioVZ9AT6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": " ",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": " 电影时间：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 20:40",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从南口出来向右看，就是那座横跨甲州街道的天桥。 ",
+              "type": "text"
+            },
+            {
+              "text": "“东京——！！”",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 当三叶第一次进入泷的身体，站在这个位置看着脚下川流不息的车流和巨大的人潮时，那种乡下少女初入大都会的震撼扑面而来。站在这里，耳边仿佛能听到那句可爱的感叹。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmja60g040003z3mfsmfcrw8b",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2490,
+            "naturalHeight": 1516
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmja61krb0005z3mf0b8jcv6j",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2484,
+            "naturalHeight": 1490
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmja1nwil0001acgucp6748zf",
+            "align": "center",
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 83,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1444
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmja1xd8w0005acguo5dq9s5a",
+            "align": "center",
+            "cropB": 0,
+            "cropL": 9,
+            "cropR": 9,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 83,
+            "cropEditing": false,
+            "naturalWidth": 1306,
+            "naturalHeight": 601
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "2. 前前前世的旋律：Yunika Vision",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/UfLSuMFrdjf2WJsJ8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 西武新宿站前 / 新宿大ガード东",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/UfLSuMFrdjf2WJsJ8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": " ",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影时间：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 32:02 / 1:28:18",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "导航到 ",
+              "type": "text"
+            },
+            {
+              "text": "<西武新宿站>",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "，抬头就是那个标志性的三联大屏幕商场（Yunika Vision）。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "32分02秒",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：《前前前世》激昂的音乐响起，镜头飞速掠过这里。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "1小时28分18秒",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：那一夜，迪亚马特彗星就是从这块屏幕的上方冷冷掠过，而屏幕上正播放着彗星接近的新闻。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": "📸 拍摄 Tip：",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": " 原作的最佳平视机位在对面的大楼上（Lab），但需要许可。普通游客站在",
+                  "type": "text"
+                },
+                {
+                  "text": "PePe前广场",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "bold"
+                    }
+                  ]
+                },
+                {
+                  "text": "仰拍，依然能感受到那种巨大的压迫感。",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbh23070003rf5e189r8e2k",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2476,
+            "naturalHeight": 1520
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbhf7dl0005rf5ee5v92xum",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2484,
+            "naturalHeight": 1486
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbhumgy0009rf5erhv34kd3",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1430
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbhwika000brf5eo6aklwas",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1438
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbi68jx000drf5ehqpsrzrb",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbiamdh000frf5e5gdvaaw9",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "3. 擦肩而过的遗憾：新宿大天桥",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 新宿警察署里 / 损保 Japan 大厦前 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影时间：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 1:37:06",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "往西新宿方向走，穿过那个著名的 ",
+              "type": "text"
+            },
+            {
+              "text": "<新宿警察署> ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "圆环红绿灯（30分《前前前世》画面），继续向前就能看到这座巨大的天桥。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这是电影尾声最“意难平”的一幕。 雪夜，成年的泷和三叶在天桥上擦肩而过。两人都停下了脚步，却谁也没有回头。 站在桥上，透过钢筋结构看远处的",
+              "type": "text"
+            },
+            {
+              "text": "代代木大厦（NTT Docomo Tower）",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "，那座新海诚最爱的高塔，见证了无数次错过的瞬间。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在前往 ",
+              "type": "text"
+            },
+            {
+              "text": "<新宿警察署> ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "code"
+                }
+              ]
+            },
+            {
+              "text": "途中可以遇到《天气之子》的取景地，就在 ",
+              "type": "text"
+            },
+            {
+              "text": "<大塚商会>",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/TScK5s9kC8od925p9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "code"
+                }
+              ]
+            },
+            {
+              "text": " 旁边",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbigcpx000hrf5e43m6v7sh",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2452,
+            "naturalHeight": 1476
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbiir5a000jrf5exlk7h5ca",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2482,
+            "naturalHeight": 1480
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "穿过",
+              "type": "text"
+            },
+            {
+              "text": "地下通道，在左手边",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/LdLFahbAG97BWkAL7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，就能看到电影 1小时28分18秒 的画面，迪亚马特彗星从上方掠过。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbissbs000nrf5essd7k8x8",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1437
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjald8000vrf5esze97mv6",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1344,
+            "naturalHeight": 768
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "往",
+              "type": "text"
+            },
+            {
+              "text": "右手边的小巷",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/Tv93q7WWrYddmfi48",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "中然后回头看，就是《天气之子》中，帆高和阳菜被追逐时经过的地方。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbj4n0t000trf5erb4fuwwy",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2488,
+            "naturalHeight": 1480
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "回到主路，继续向前一直走，可以看到一座",
+              "type": "text"
+            },
+            {
+              "text": "天桥",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/qiViCTpayMyeRh6y9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "。这是电影1小时37分06秒，泷和三叶擦肩而过的天桥。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjlcm9000zrf5edzjp1dlf",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1435
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjiwmc000xrf5e1ketul10",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2488,
+            "naturalHeight": 1484
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjmx500011rf5e6vysrzco",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2940,
+            "naturalHeight": 1648
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "天桥上可以看到远处的代代木大厦，它在新海诚的电影中反复出现过。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjs3ku0013rf5eqoz8ssj3",
+            "align": "center",
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 65,
+            "cropEditing": false,
+            "naturalWidth": 2492,
+            "naturalHeight": 1484
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbju7q20015rf5e7ddzot52",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2940,
+            "naturalHeight": 1502
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbjv5t80017rf5eageirdg8",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1439
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "继续往前走前往",
+              "type": "text"
+            },
+            {
+              "text": "<新宿警察署>",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "code"
+                }
+              ]
+            },
+            {
+              "text": "十字路口，在十字路口旁边架起了一个巨大的红绿灯圆环。它在电影30分",
+              "type": "text"
+            },
+            {
+              "text": "《前前前世》",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "code"
+                }
+              ]
+            },
+            {
+              "text": "画面中出现过",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbks9fl0001nl1kawou3e3o",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1428
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbkt1pz0003nl1k06gitbjd",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbkwlw20005nl1kh4b10u34",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjbkywu00007nl1kr8od03hm",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1440
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "4. 言叶之庭的彩蛋：新宿御苑",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/GSY1nmN9kJ28Red28",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 新宿门进入",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/GSY1nmN9kJ28Red28",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "乘坐丸之内线到新宿三丁目，进入",
+              "type": "text"
+            },
+            {
+              "text": " <新宿御苑> ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "。 这里不仅是《言叶之庭》的发生地，也是拍摄代代木大厦的最佳机位。新海诚宇宙在这里交汇。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "seichiCallout",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "align": null,
+                "indent": 0
+              },
+              "content": [
+                {
+                  "text": " ",
+                  "type": "text"
+                },
+                {
+                  "text": "TIPS：持有中国大陆高考准考证等海外学生证件，在这里购票时也可以享有学生优惠哦！",
+                  "type": "text",
+                  "marks": [
+                    {
+                      "type": "italic"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjtz2xse0005uabpgggp91ei",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1682,
+            "naturalHeight": 1044
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "这里是拍摄",
+              "type": "text"
+            },
+            {
+              "text": "代代木大厦的最佳机位",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/DQKP4seaZ6ZSufBL7",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmjtzbezf0007uabpxa4lo5vc",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1664,
+            "naturalHeight": 1040
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "5. 变迁的车站：千驮谷站 (Sendagaya)",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/QCjuwXfKEQrd3qDc8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " JR 千驮谷站 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/QCjuwXfKEQrd3qDc8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影时间：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 1:39:32",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "穿过御苑来到 ",
+              "type": "text"
+            },
+            {
+              "text": "<千驮谷站> ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "。 虽然为了迎接奥运会，车站经过了翻新，但这依旧是泷每天上学的必经之路。电影片尾，成年的泷在这里下车，在这条中央·总武线的站台上，寻找着那个熟悉的身影。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju26lvl0003zc6io0l3d8nq",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2838,
+            "naturalHeight": 1598
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju274qt0005zc6igguqt1q1",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 1530,
+            "naturalHeight": 1098
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "刷西瓜卡进站乘车，来到二站台，等待",
+              "type": "text"
+            },
+            {
+              "text": "中央线总武线各站停车",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "，开往",
+              "type": "text"
+            },
+            {
+              "text": "御茶之水 秋叶原 千叶方向",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "。这条线也是泷每天上学的路线。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju2htje0007zc6iisp45vuv",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2330,
+            "naturalHeight": 1316
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "6. 无法接通的电话：信浓町站前天桥",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "坐标：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/vzxTzzSzX87fXy938",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                },
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " JR 信浓町站出站即达 ",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer nofollow",
+                    "href": "https://maps.app.goo.gl/vzxTzzSzX87fXy938",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影时间：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 41:32 / 1:13:55",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": " 从信浓町站一出来，就能看到那座蓝色的天桥。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "41分32秒",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：泷在这里拨打三叶的电话，却显示“不在服务区”。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "1小时13分55秒",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：三叶鼓起勇气来到东京，也曾站在这里给泷打电话。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "站在天桥上，背景是",
+              "type": "text"
+            },
+            {
+              "text": "外苑东通り",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "的林荫道和远处的代代木大厦。看着过往的行人，你会深刻体会到那种“在千万人的城市里，唯独联系不上你”的孤独。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju2qnny000bzc6ihel6hl9b",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1976,
+            "naturalHeight": 1052
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "电影 41分32秒 ，泷在天桥上给三叶打电话。1小时13分55秒，三叶在天桥上给泷打电话。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju2rgp7000dzc6i9vn7hv1p",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2334,
+            "naturalHeight": 1310
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju2sfuz000fzc6i897y8y9h",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2334,
+            "naturalHeight": 1308
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju2vxld000hzc6i8h7mw4rd",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2940,
+            "naturalHeight": 1654
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在车站出站口，还有电影1小时39分40秒画面，片尾三叶寻找泷的时候经过这里",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju332b7000lzc6ihu1suvrz",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2334,
+            "naturalHeight": 1304
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju31kdh000jzc6ii86p2q5l",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2332,
+            "naturalHeight": 1320
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在天桥上可以看到电影 41分20秒的 外院东通り",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju378uo000nzc6i8kds1uar",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2328,
+            "naturalHeight": 1298
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju37vtr000pzc6idtwattfn",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2328,
+            "naturalHeight": 1308
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "41分25秒的代代木大厦也取自这里",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju3afum000rzc6iov98ae99",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2328,
+            "naturalHeight": 1306
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju3ccmz000vzc6ikb4mcwtr",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2940,
+            "naturalHeight": 1654
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "车站出口在外苑东通路り上往天桥拍摄，是电影中泷和奥寺前辈约会的天桥",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju3xo1d0001qdwv1yxj91s0",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2334,
+            "naturalHeight": 1312
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "向南步行700多米到明治神宫外苑，在",
+              "type": "text"
+            },
+            {
+              "text": "动画31分27秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "前前前世中一闪而过",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju3zklh0003qdwvr0q5dc2o",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2330,
+            "naturalHeight": 1312
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju43c0t0005qdwvpu4gssio",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2318,
+            "naturalHeight": 1238
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 3,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "7. 最后的冲刺：四谷 (Yotsuya) 与 坡道",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "路线：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 四谷站 → 须贺神社（约 2km 步行）",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "接下来是一段长途跋涉，我们需要复刻泷最后寻找三叶的奔跑路线。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "四谷站赤坂口",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：泷和奥寺前辈约会集合的地方（39分）。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "align": null,
+                    "indent": 0
+                  },
+                  "content": [
+                    {
+                      "text": "新宿通铁路桥",
+                      "type": "text",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "text": "：成年的泷看着窗外，丸之内线列车短暂冲出地面的瞬间（1:39:49）。",
+                      "type": "text"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "四谷站下车后从赤坂口出站",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/WWVwEzGS62zjXqLV8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，这是",
+              "type": "text"
+            },
+            {
+              "text": "电影39分",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，泷和奥寺前辈每天见面的地方。同时在前前前世片段中也有出现。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju4c0s20007qdwv134fb4ze",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2328,
+            "naturalHeight": 1306
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju4dn5t0009qdwvxdgdbj8w",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2258,
+            "naturalHeight": 1198
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "来到新宿通り跨越铁道的桥上，这里在",
+              "type": "text"
+            },
+            {
+              "text": "电影1小时39分49秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "一闪而过",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju4htej0003fr3agtf29vc9",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2326,
+            "naturalHeight": 1304
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmju4gjxt0001fr3asxu1jw78",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2252,
+            "naturalHeight": 1186
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "画面中行驶的电车是地铁丸之内线，在四谷车站短暂驶入地面。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "接下来的路程是一段长长的步行路线，我们会看到电影中很多的场景，全程两公里。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在",
+              "type": "text"
+            },
+            {
+              "text": "朝日桥",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/fM7Aornx8YvVwumx6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "上可以看到",
+              "type": "text"
+            },
+            {
+              "text": "电影 1小时15分55秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，三叶乘坐的中央线电车进隧道的画面。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk6t4jea0001wuelk0cx28on",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2332,
+            "naturalHeight": 1304
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3w99y300034jgtvpxojz31",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2330,
+            "naturalHeight": 1196
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从朝日桥继续向前走，对着栅栏拍照，这是动画前前前世片段，以及泷去与奥寺前辈约会时经过的地方",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3x0vh900054jgt5cfcory6",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2326,
+            "naturalHeight": 1316
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "前面的路口右转就进入了铁炮坂。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "继续往前走，站在",
+              "type": "text"
+            },
+            {
+              "text": "路中间向后回头",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/wHkojv4DXXZm2Knv6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，这里是",
+              "type": "text"
+            },
+            {
+              "text": "电影38分",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "泷飞奔出家门，去找奥寺前辈时经过的地方。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3xcazs00094jgt0ey0d3nu",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2326,
+            "naturalHeight": 1312
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3xbph000074jgtbvjje9im",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 1982,
+            "naturalHeight": 1052
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "到",
+              "type": "text"
+            },
+            {
+              "text": "须贺町",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/8rb3pUvHy2bZS3Nr6",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，打卡",
+              "type": "text"
+            },
+            {
+              "text": "电影1小时39分50秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "邮筒",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3yj59m000d4jgtrjzx8m0n",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2332,
+            "naturalHeight": 1314
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3yhaub000b4jgtbhoxurq6",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2344,
+            "naturalHeight": 1352
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "从邮筒向北侧沿门通寺坂出发，在新宿通り路口以长焦向后拍摄。这是",
+              "type": "text"
+            },
+            {
+              "text": "电影1小时39分42秒",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "中泷奔跑着寻找三叶踪迹经过的地方。在这也可以看到刚刚的红色邮筒",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3yvk7x000f4jgtem6fvisx",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2328,
+            "naturalHeight": 1314
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3ywjev000h4jgtfq0kvgjm",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1455
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "经过新宿通り，到",
+              "type": "text"
+            },
+            {
+              "text": "东福院坂的四谷小学校",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/MhrjAWo48AAxWL2n8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，这里有与剧中相同的交通标识牌",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zbv69000j4jgtgcq707x1",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2332,
+            "naturalHeight": 1310
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zcqbt000l4jgtr5cyc4af",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1453
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "站在",
+              "type": "text"
+            },
+            {
+              "text": "东福院坂的坡顶",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/9xWP9FC8Zq4E5RLh8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，就是电影中出租车经过的画面",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zmx73000n4jgt2viw1yd6",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2342,
+            "naturalHeight": 1316
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zop4y000p4jgtyngvxy3w",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 50,
+            "cropEditing": false,
+            "naturalWidth": 2332,
+            "naturalHeight": 1330
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "继续向前走",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/9xWP9FC8Zq4E5RLh8",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "，可以看到",
+              "type": "text"
+            },
+            {
+              "text": "1小时39分",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "textBackground",
+                  "attrs": {
+                    "backgroundColor": "#facc15"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "三叶寻找泷的画面",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zr6yb000r4jgtye90amk5",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2338,
+            "naturalHeight": 1316
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3zrqe0000t4jgtxh5d92cf",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1453
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "旁边的蓝色贩卖机上，还有中英日韩四语的欢迎《你的名字》全球游客的标语",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk3ztumt000v4jgtktcvq2cv",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1364,
+            "naturalHeight": 972
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "穿过路口直接往前走，就是今天的重头戏，",
+              "type": "text"
+            },
+            {
+              "text": "须贺神社",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "rel": "noopener noreferrer",
+                    "href": "https://maps.app.goo.gl/7eyspudBUvYh8D8N9",
+                    "class": null,
+                    "target": "_blank"
+                  }
+                }
+              ]
+            },
+            {
+              "text": "的入口",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk400gsp000x4jgt2bi3y2l5",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2330,
+            "naturalHeight": 1314
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk401e0m000z4jgtggfowq58",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1453
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk4020r800114jgtvu9ydm2j",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2330,
+            "naturalHeight": 1306
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk402lg100134jgt4afg3q4i",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2560,
+            "naturalHeight": 1453
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk403frr00154jgtcjt5w80u",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2336,
+            "naturalHeight": 1318
+          }
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk406icv00194jgtw21cox2z",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 2214,
+            "naturalHeight": 1196
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "在阶梯上就是须贺神社本社，这里因电影而成为了一个景点，这里似乎供奉的是须佐之男",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "figureImage",
+          "attrs": {
+            "alt": "",
+            "src": "/assets/cmk40b2g3001b4jgtlkjl7cmi",
+            "align": null,
+            "cropB": 0,
+            "cropL": 0,
+            "cropR": 0,
+            "cropT": 0,
+            "flipX": false,
+            "flipY": false,
+            "indent": 0,
+            "rotate": 0,
+            "caption": false,
+            "widthPct": 100,
+            "cropEditing": false,
+            "naturalWidth": 1556,
+            "naturalHeight": 1016
+          }
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "align": null,
+            "level": 2,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "结语",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "新宿篇的巡礼，是一场对“记忆”的确认。 从繁华到静谧，从错过的天桥到重逢的阶梯。如果你走完了全程，你会发现这不仅仅是打卡，而是在现实世界里，重新活了一次电影。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "下期预告：",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": " 但这还不是全部。泷与奥寺前辈的约会路线还有另一半——",
+              "type": "text"
+            },
+            {
+              "text": "港区篇",
+              "type": "text",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "text": "。 我们将去往六本木的美术馆，去补完那场并不完美的约会。",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          },
+          "content": [
+            {
+              "text": "让我们下期再见～ (o^^o)",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "align": null,
+            "indent": 0
+          }
+        }
+      ]
+    },
+    "contentHtml": "<blockquote><p><span style=\"color:#9ca3af\">电影《你的名字》，是「新海诚」导演的成名之作，上映于2016年，无论是在人设、作画风格还是剧情节奏上都有着 2016年，一颗彗星划过夜空，留下了关于“寻找”的执念。 转眼十年之约将至（2026），作为新海诚导演的“老巢”，新宿不仅仅是泷生活的地方，更是整部电影视觉美学的核心——巨大的广告屏、复杂的铁路网、还有那座永远人来人往的天桥。</span></p><p><span style=\"color:#9ca3af\">如果说系守是梦，新宿就是醒来后怅然若失的现实。 今天，让我们从新宿站出发，沿着泷的足迹，去寻找那个名为“结（Musubi）”的红线。</span></p></blockquote><section class=\"seichi-route\" data-id=\"089c344c-7a9a-4cb8-80ee-3df8bcd12433\"><div class=\"seichi-route__map\"><div class=\"seichi-route__map-card\"><img class=\"seichi-route__map-img\" src=\"https://maps.googleapis.com/maps/api/staticmap?size=640x360&amp;scale=2&amp;maptype=roadmap&amp;format=png&amp;key=AIzaSyBtNp8ZHr8q2_6FMzBOknS861d-t--KiOw&amp;path=color%3A0xf472b6ff%7Cweight%3A4%7C35.689156%2C139.700333%7C35.694043%2C139.700293%7C35.693498%2C139.694490%7C35.693486%2C139.700466%7C35.693582%2C139.699469%7C35.693990%2C139.699490%7C35.693710%2C139.697663%7C35.688339%2C139.707492%7C35.685719%2C139.706579%7C35.681040%2C139.711315%7C35.680060%2C139.720320%7C35.686014%2C139.730667%7C35.681433%2C139.726239%7C35.682941%2C139.725817%7C35.686594%2C139.722588%7C35.686400%2C139.724650%7C35.686080%2C139.724088%7C35.685168%2C139.723437&amp;markers=color%3A0xf472b6%7Clabel%3A1%7C35.689156%2C139.700333&amp;markers=color%3A0xf472b6%7Clabel%3A2%7C35.694043%2C139.700293&amp;markers=color%3A0xf472b6%7Clabel%3A3%7C35.693498%2C139.694490&amp;markers=color%3A0xf472b6%7Clabel%3A4%7C35.693486%2C139.700466&amp;markers=color%3A0xf472b6%7Clabel%3A5%7C35.693582%2C139.699469&amp;markers=color%3A0xf472b6%7Clabel%3A6%7C35.693990%2C139.699490&amp;markers=color%3A0xf472b6%7Clabel%3A7%7C35.693710%2C139.697663&amp;markers=color%3A0xf472b6%7Clabel%3A8%7C35.688339%2C139.707492&amp;markers=color%3A0xf472b6%7Clabel%3A9%7C35.685719%2C139.706579&amp;markers=color%3A0xf472b6%7Clabel%3AA%7C35.681040%2C139.711315&amp;markers=color%3A0xf472b6%7Clabel%3AB%7C35.680060%2C139.720320&amp;markers=color%3A0xf472b6%7Clabel%3AC%7C35.686014%2C139.730667&amp;markers=color%3A0xf472b6%7Clabel%3AD%7C35.681433%2C139.726239&amp;markers=color%3A0xf472b6%7Clabel%3AE%7C35.682941%2C139.725817&amp;markers=color%3A0xf472b6%7Clabel%3AF%7C35.686594%2C139.722588&amp;markers=color%3A0xf472b6%7Clabel%3AG%7C35.686400%2C139.724650&amp;markers=color%3A0xf472b6%7Clabel%3AH%7C35.686080%2C139.724088&amp;markers=color%3A0xf472b6%7Clabel%3AI%7C35.685168%2C139.723437\" alt=\"路线地图预览\" width=\"640\" height=\"360\" loading=\"eager\" decoding=\"async\"><a class=\"seichi-route__map-primary\" href=\"https://www.google.com/maps/dir/?api=1&amp;origin=35.689156%2C139.700333&amp;destination=35.685168%2C139.723437&amp;waypoints=35.694043%2C139.700293%7C35.693498%2C139.694490%7C35.693486%2C139.700466%7C35.693582%2C139.699469%7C35.693990%2C139.699490%7C35.693710%2C139.697663%7C35.688339%2C139.707492%7C35.685719%2C139.706579%7C35.681040%2C139.711315%7C35.680060%2C139.720320%7C35.686014%2C139.730667%7C35.681433%2C139.726239%7C35.682941%2C139.725817%7C35.686594%2C139.722588%7C35.686400%2C139.724650%7C35.686080%2C139.724088\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"在 Google 地图打开\"></a><div class=\"seichi-route__map-cta\" aria-hidden=\"true\">在 Google 地图打开</div></div></div><div class=\"seichi-route__list\"><table class=\"seichi-route__table\"><thead><tr><th>顺序</th><th>地点</th><th>最近站</th><th>机位建议</th><th>时间戳</th><th>导航</th></tr></thead><tbody><tr><td>1</td><td>JR新宿站 南口</td><td>JR 新宿站</td><td>出站后向右，天桥附近取景；高峰期注意不挡路。</td><td>20:40</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6891562,139.7003335\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>2</td><td>西武新宿站（Seibu Shinjuku Sta. PePe Front Square）</td><td>西武新宿站</td><td>商场下方是机位；原作更高机位可能在楼上（需许可）。</td><td>32:02</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6940435,139.7002934\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>3</td><td>新宿警察署（Metropolitan Police Department Shinjuku Police Station）</td><td></td><td>十字路口旁红绿灯圆环取景；注意遵守交通规则。</td><td>30:00</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6934979,139.6944899\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>4</td><td>大塚商会（文章中《天气之子》取景点旁）</td><td></td><td>顺路点，按文章描述在其附近寻找对应街景角度。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6934857,139.7004661\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>5</td><td>地下通道（左手边视角点）</td><td></td><td>通道出口回看取“抬头看天空”的开阔感；别阻挡通行。</td><td>1:28:18</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6935825,139.6994694\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>6</td><td>右手边小巷（《天气之子》追逐段）</td><td></td><td>进巷后回头拍；尽量不拍路人正脸。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.69399,139.6994897\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>7</td><td>天桥（擦肩而过的天桥）</td><td></td><td>天桥上可带到远处楼体；人多时靠边快速拍。</td><td>1:37:06</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6937103,139.6976629\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>8</td><td>新宿御苑（新宿门）</td><td>新宿御苑前 / 新宿三丁目</td><td>入园按动线走；注意园内规则（部分区域可能限制三脚架）。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6883395,139.7074915\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>9</td><td>代代木大厦最佳机位</td><td></td><td>在园内开阔处取景，把楼体放画面上方。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6857194,139.7065788\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>10</td><td>千驮谷站（千駄ケ谷駅）</td><td>JR 千驮谷站</td><td>站体翻新变化大，找轮廓与街道走向更关键。</td><td>1:39:32</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6810402,139.7113149\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>11</td><td>信浓町站（信濃町駅）</td><td>JR 信浓町站</td><td>出站即到天桥；靠边拍，长焦更接近动画透视。</td><td>41:32 / 1:13:55</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6800602,139.7203199\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>12</td><td>四谷站（赤坂口一带）</td><td>JR 四谷站</td><td>出站口位置对照镜头站位；注意不挡通勤人流。</td><td>39:00</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.686014,139.730667\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>13</td><td>朝日桥（朝日橋）</td><td></td><td>桥上取电车进隧道方向；不要越过护栏。</td><td>1:15:55</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6814333,139.7262391\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>14</td><td>路中间向后回头（铁炮坂段落外链落点）</td><td></td><td>不建议站车道中间；尽量在人行区域取替代角度，确保安全。</td><td>38:00</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6829413,139.7258165\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>15</td><td>须贺町（红色邮筒附近）</td><td></td><td>建议用中长焦带背景；避免拍到门牌/车牌等隐私。</td><td>1:39:50</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6865943,139.7225879\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>16</td><td>东福院坂的四谷小学校（交通标识牌）</td><td></td><td>学校周边注意不喧哗、不聚集；别影响通行。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6863997,139.7246496\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>17</td><td>东福院坂标柱（坡顶附近）</td><td></td><td>坡顶向下更接近动画纵深；注意车辆来往。</td><td></td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.6860802,139.7240879\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr><tr><td>18</td><td>须贺神社（男女主相认阶梯）</td><td></td><td>按文章描述取景；注意是居民区，轻声快速完成拍摄。</td><td>1:39:00</td><td><a href=\"https://www.google.com/maps/search/?api=1&amp;query=35.685168,139.7234366\" target=\"_blank\" rel=\"noopener noreferrer\">打开</a></td></tr></tbody></table></div></section><seichi-callout><h2><strong>路线总览 (Route Overview)</strong></h2><p>本篇行程是一条<strong>高强度的步行路线</strong>，建议穿舒适的鞋子。 路线逻辑分为三个阶段：</p><ol><li><p><strong>新宿中心区</strong>：初次交换身体的震撼（南口、歌舞伎町、西新宿）</p></li><li><p><strong>泷的通学路</strong>：中央总武线的日常（千驮谷、信浓町）</p></li><li><p><strong>最后的奔跑</strong>：从四谷到须贺神社的重逢之路</p></li></ol></seichi-callout><h3><strong>1. 梦醒的起点：JR 新宿站南口</strong></h3><p><strong> </strong><a href=\"https://maps.app.goo.gl/LfoUR8X2fioVZ9AT6\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> JR 新宿站南口天桥</a> </p><p><strong> 电影时间：</strong> 20:40</p><p>从南口出来向右看，就是那座横跨甲州街道的天桥。 <strong>“东京——！！”</strong> 当三叶第一次进入泷的身体，站在这个位置看着脚下川流不息的车流和巨大的人潮时，那种乡下少女初入大都会的震撼扑面而来。站在这里，耳边仿佛能听到那句可爱的感叹。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmja60g040003z3mfsmfcrw8b\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2490\" data-natural-h=\"1516\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmja61krb0005z3mf0b8jcv6j\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2484\" data-natural-h=\"1490\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p></p><figure data-align=\"center\" data-figure-image=\"true\" data-width-pct=\"83\" style=\"--seichi-width-pct:83;width:83%\"><div data-figure-image-container=\"true\" data-width-pct=\"83\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmja1nwil0001acgucp6748zf\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1444\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-align=\"center\" data-figure-image=\"true\" data-width-pct=\"83\" style=\"--seichi-width-pct:83;width:83%\"><div data-figure-image-container=\"true\" data-width-pct=\"83\"><div data-figure-image-frame=\"true\" data-mode=\"transform\" style=\"aspect-ratio:107092 / 60100\"><img src=\"/assets/cmja1xd8w0005acguo5dq9s5a\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-crop-l=\"9\" data-crop-r=\"9\" data-natural-w=\"1306\" data-natural-h=\"601\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%;--seichi-crop-left:-11%;--seichi-crop-top:0%;--seichi-crop-width:122%;--seichi-crop-height:100%\" /></div></div></figure><h3><strong>2. 前前前世的旋律：Yunika Vision</strong></h3><p><a href=\"https://maps.app.goo.gl/UfLSuMFrdjf2WJsJ8\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 西武新宿站前 / 新宿大ガード东</a> </p><p><strong>电影时间：</strong> 32:02 / 1:28:18</p><p>导航到 <strong>&lt;西武新宿站&gt;</strong>，抬头就是那个标志性的三联大屏幕商场（Yunika Vision）。</p><ul><li><p><strong>32分02秒</strong>：《前前前世》激昂的音乐响起，镜头飞速掠过这里。</p></li><li><p><strong>1小时28分18秒</strong>：那一夜，迪亚马特彗星就是从这块屏幕的上方冷冷掠过，而屏幕上正播放着彗星接近的新闻。</p></li></ul><seichi-callout><p><strong>📸 拍摄 Tip：</strong> 原作的最佳平视机位在对面的大楼上（Lab），但需要许可。普通游客站在<strong>PePe前广场</strong>仰拍，依然能感受到那种巨大的压迫感。</p></seichi-callout><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbh23070003rf5e189r8e2k\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2476\" data-natural-h=\"1520\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbhf7dl0005rf5ee5v92xum\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2484\" data-natural-h=\"1486\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p></p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbhumgy0009rf5erhv34kd3\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1430\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbhwika000brf5eo6aklwas\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1438\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbi68jx000drf5ehqpsrzrb\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbiamdh000frf5e5gdvaaw9\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>3. 擦肩而过的遗憾：新宿大天桥</strong></h3><p><a href=\"https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 新宿警察署里 / 损保 Japan 大厦前 </a></p><p><strong>电影时间：</strong> 1:37:06</p><p>往西新宿方向走，穿过那个著名的 <strong>&lt;新宿警察署&gt; </strong>圆环红绿灯（30分《前前前世》画面），继续向前就能看到这座巨大的天桥。</p><p>这是电影尾声最“意难平”的一幕。 雪夜，成年的泷和三叶在天桥上擦肩而过。两人都停下了脚步，却谁也没有回头。 站在桥上，透过钢筋结构看远处的<strong>代代木大厦（NTT Docomo Tower）</strong>，那座新海诚最爱的高塔，见证了无数次错过的瞬间。</p><p>在前往 <a href=\"https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169\" target=\"_blank\" rel=\"noopener noreferrer\"><code>&lt;新宿警察署&gt; </code></a>途中可以遇到《天气之子》的取景地，就在 <a href=\"https://maps.app.goo.gl/TScK5s9kC8od925p9\" target=\"_blank\" rel=\"noopener noreferrer\"><code>&lt;大塚商会&gt;</code></a> 旁边</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbigcpx000hrf5e43m6v7sh\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2452\" data-natural-h=\"1476\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbiir5a000jrf5exlk7h5ca\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2482\" data-natural-h=\"1480\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>穿过<a href=\"https://maps.app.goo.gl/LdLFahbAG97BWkAL7\" target=\"_blank\" rel=\"noopener noreferrer\">地下通道，在左手边</a>，就能看到电影 1小时28分18秒 的画面，迪亚马特彗星从上方掠过。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbissbs000nrf5essd7k8x8\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1437\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjald8000vrf5esze97mv6\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1344\" data-natural-h=\"768\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>往<a href=\"https://maps.app.goo.gl/Tv93q7WWrYddmfi48\" target=\"_blank\" rel=\"noopener noreferrer\">右手边的小巷</a>中然后回头看，就是《天气之子》中，帆高和阳菜被追逐时经过的地方。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbj4n0t000trf5erb4fuwwy\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2488\" data-natural-h=\"1480\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>回到主路，继续向前一直走，可以看到一座<a href=\"https://maps.app.goo.gl/qiViCTpayMyeRh6y9\" target=\"_blank\" rel=\"noopener noreferrer\">天桥</a>。这是电影1小时37分06秒，泷和三叶擦肩而过的天桥。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjlcm9000zrf5edzjp1dlf\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1435\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjiwmc000xrf5e1ketul10\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2488\" data-natural-h=\"1484\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjmx500011rf5e6vysrzco\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2940\" data-natural-h=\"1648\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>天桥上可以看到远处的代代木大厦，它在新海诚的电影中反复出现过。</p><figure data-align=\"center\" data-figure-image=\"true\" data-width-pct=\"65\" style=\"--seichi-width-pct:65;width:65%\"><div data-figure-image-container=\"true\" data-width-pct=\"65\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjs3ku0013rf5eqoz8ssj3\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2492\" data-natural-h=\"1484\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbju7q20015rf5e7ddzot52\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2940\" data-natural-h=\"1502\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbjv5t80017rf5eageirdg8\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1439\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p></p><p>继续往前走前往<a href=\"https://maps.app.goo.gl/bHqz8UZ6ZUAcfe169\" target=\"_blank\" rel=\"noopener noreferrer\"><code>&lt;新宿警察署&gt;</code></a>十字路口，在十字路口旁边架起了一个巨大的红绿灯圆环。它在电影30分<code>《前前前世》</code>画面中出现过</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbks9fl0001nl1kawou3e3o\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1428\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbkt1pz0003nl1k06gitbjd\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbkwlw20005nl1kh4b10u34\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjbkywu00007nl1kr8od03hm\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1440\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>4. 言叶之庭的彩蛋：新宿御苑</strong></h3><p><a href=\"https://maps.app.goo.gl/GSY1nmN9kJ28Red28\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> 新宿门进入</a></p><p>乘坐丸之内线到新宿三丁目，进入<strong> &lt;新宿御苑&gt; </strong>。 这里不仅是《言叶之庭》的发生地，也是拍摄代代木大厦的最佳机位。新海诚宇宙在这里交汇。</p><seichi-callout><p> <em>TIPS：持有中国大陆高考准考证等海外学生证件，在这里购票时也可以享有学生优惠哦！</em></p></seichi-callout><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjtz2xse0005uabpgggp91ei\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1682\" data-natural-h=\"1044\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>这里是拍摄<a href=\"https://maps.app.goo.gl/DQKP4seaZ6ZSufBL7\" target=\"_blank\" rel=\"noopener noreferrer\">代代木大厦的最佳机位</a></p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmjtzbezf0007uabpxa4lo5vc\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1664\" data-natural-h=\"1040\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>5. 变迁的车站：千驮谷站 (Sendagaya)</strong></h3><p><a href=\"https://maps.app.goo.gl/QCjuwXfKEQrd3qDc8\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> JR 千驮谷站 </a></p><p><strong>电影时间：</strong> 1:39:32</p><p>穿过御苑来到 <strong>&lt;千驮谷站&gt; </strong>。 虽然为了迎接奥运会，车站经过了翻新，但这依旧是泷每天上学的必经之路。电影片尾，成年的泷在这里下车，在这条中央·总武线的站台上，寻找着那个熟悉的身影。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju26lvl0003zc6io0l3d8nq\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2838\" data-natural-h=\"1598\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju274qt0005zc6igguqt1q1\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1530\" data-natural-h=\"1098\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>刷西瓜卡进站乘车，来到二站台，等待<strong>中央线总武线各站停车</strong>，开往<strong>御茶之水 秋叶原 千叶方向</strong>。这条线也是泷每天上学的路线。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju2htje0007zc6iisp45vuv\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2330\" data-natural-h=\"1316\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>6. 无法接通的电话：信浓町站前天桥</strong></h3><p><a href=\"https://maps.app.goo.gl/vzxTzzSzX87fXy938\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>坐标：</strong> JR 信浓町站出站即达 </a></p><p><strong>电影时间：</strong> 41:32 / 1:13:55</p><p> 从信浓町站一出来，就能看到那座蓝色的天桥。</p><ul><li><p><strong>41分32秒</strong>：泷在这里拨打三叶的电话，却显示“不在服务区”。</p></li><li><p><strong>1小时13分55秒</strong>：三叶鼓起勇气来到东京，也曾站在这里给泷打电话。</p></li></ul><p>站在天桥上，背景是<strong>外苑东通り</strong>的林荫道和远处的代代木大厦。看着过往的行人，你会深刻体会到那种“在千万人的城市里，唯独联系不上你”的孤独。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju2qnny000bzc6ihel6hl9b\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1976\" data-natural-h=\"1052\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>电影 41分32秒 ，泷在天桥上给三叶打电话。1小时13分55秒，三叶在天桥上给泷打电话。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju2rgp7000dzc6i9vn7hv1p\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2334\" data-natural-h=\"1310\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju2sfuz000fzc6i897y8y9h\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2334\" data-natural-h=\"1308\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju2vxld000hzc6i8h7mw4rd\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2940\" data-natural-h=\"1654\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>在车站出站口，还有电影1小时39分40秒画面，片尾三叶寻找泷的时候经过这里</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju332b7000lzc6ihu1suvrz\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2334\" data-natural-h=\"1304\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju31kdh000jzc6ii86p2q5l\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2332\" data-natural-h=\"1320\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>在天桥上可以看到电影 41分20秒的 外院东通り</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju378uo000nzc6i8kds1uar\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2328\" data-natural-h=\"1298\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju37vtr000pzc6idtwattfn\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2328\" data-natural-h=\"1308\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>41分25秒的代代木大厦也取自这里</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju3afum000rzc6iov98ae99\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2328\" data-natural-h=\"1306\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju3ccmz000vzc6ikb4mcwtr\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2940\" data-natural-h=\"1654\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>车站出口在外苑东通路り上往天桥拍摄，是电影中泷和奥寺前辈约会的天桥</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju3xo1d0001qdwv1yxj91s0\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2334\" data-natural-h=\"1312\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>向南步行700多米到明治神宫外苑，在<span style=\"background-color:#facc15\">动画31分27秒</span>前前前世中一闪而过</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju3zklh0003qdwvr0q5dc2o\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2330\" data-natural-h=\"1312\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju43c0t0005qdwvpu4gssio\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2318\" data-natural-h=\"1238\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h3><strong>7. 最后的冲刺：四谷 (Yotsuya) 与 坡道</strong></h3><p><strong>路线：</strong> 四谷站 → 须贺神社（约 2km 步行）</p><p>接下来是一段长途跋涉，我们需要复刻泷最后寻找三叶的奔跑路线。</p><ul><li><p><strong>四谷站赤坂口</strong>：泷和奥寺前辈约会集合的地方（39分）。</p></li><li><p><strong>新宿通铁路桥</strong>：成年的泷看着窗外，丸之内线列车短暂冲出地面的瞬间（1:39:49）。</p></li></ul><p><a href=\"https://maps.app.goo.gl/WWVwEzGS62zjXqLV8\" target=\"_blank\" rel=\"noopener noreferrer\">四谷站下车后从赤坂口出站</a>，这是<span style=\"background-color:#facc15\">电影39分</span>，泷和奥寺前辈每天见面的地方。同时在前前前世片段中也有出现。</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju4c0s20007qdwv134fb4ze\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2328\" data-natural-h=\"1306\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju4dn5t0009qdwvxdgdbj8w\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2258\" data-natural-h=\"1198\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>来到新宿通り跨越铁道的桥上，这里在<span style=\"background-color:#facc15\">电影1小时39分49秒</span>一闪而过</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju4htej0003fr3agtf29vc9\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2326\" data-natural-h=\"1304\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmju4gjxt0001fr3asxu1jw78\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2252\" data-natural-h=\"1186\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>画面中行驶的电车是地铁丸之内线，在四谷车站短暂驶入地面。</p><p></p><p>接下来的路程是一段长长的步行路线，我们会看到电影中很多的场景，全程两公里。</p><p>在<a href=\"https://maps.app.goo.gl/fM7Aornx8YvVwumx6\" target=\"_blank\" rel=\"noopener noreferrer\">朝日桥</a>上可以看到<span style=\"background-color:#facc15\">电影 1小时15分55秒</span>，三叶乘坐的中央线电车进隧道的画面。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk6t4jea0001wuelk0cx28on\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2332\" data-natural-h=\"1304\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3w99y300034jgtvpxojz31\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2330\" data-natural-h=\"1196\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>从朝日桥继续向前走，对着栅栏拍照，这是动画前前前世片段，以及泷去与奥寺前辈约会时经过的地方</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3x0vh900054jgt5cfcory6\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2326\" data-natural-h=\"1316\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>前面的路口右转就进入了铁炮坂。</p><p>继续往前走，站在<a href=\"https://maps.app.goo.gl/wHkojv4DXXZm2Knv6\" target=\"_blank\" rel=\"noopener noreferrer\">路中间向后回头</a>，这里是<span style=\"background-color:#facc15\">电影38分</span>泷飞奔出家门，去找奥寺前辈时经过的地方。</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3xcazs00094jgt0ey0d3nu\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2326\" data-natural-h=\"1312\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3xbph000074jgtbvjje9im\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1982\" data-natural-h=\"1052\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>到<a href=\"https://maps.app.goo.gl/8rb3pUvHy2bZS3Nr6\" target=\"_blank\" rel=\"noopener noreferrer\">须贺町</a>，打卡<span style=\"background-color:#facc15\">电影1小时39分50秒</span>邮筒</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3yj59m000d4jgtrjzx8m0n\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2332\" data-natural-h=\"1314\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3yhaub000b4jgtbhoxurq6\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2344\" data-natural-h=\"1352\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>从邮筒向北侧沿门通寺坂出发，在新宿通り路口以长焦向后拍摄。这是<span style=\"background-color:#facc15\">电影1小时39分42秒</span>中泷奔跑着寻找三叶踪迹经过的地方。在这也可以看到刚刚的红色邮筒</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3yvk7x000f4jgtem6fvisx\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2328\" data-natural-h=\"1314\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3ywjev000h4jgtfq0kvgjm\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1455\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>经过新宿通り，到<a href=\"https://maps.app.goo.gl/MhrjAWo48AAxWL2n8\" target=\"_blank\" rel=\"noopener noreferrer\">东福院坂的四谷小学校</a>，这里有与剧中相同的交通标识牌</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zbv69000j4jgtgcq707x1\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2332\" data-natural-h=\"1310\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zcqbt000l4jgtr5cyc4af\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1453\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>站在<a href=\"https://maps.app.goo.gl/9xWP9FC8Zq4E5RLh8\" target=\"_blank\" rel=\"noopener noreferrer\">东福院坂的坡顶</a>，就是电影中出租车经过的画面</p><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zmx73000n4jgt2viw1yd6\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2342\" data-natural-h=\"1316\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"50\" style=\"--seichi-width-pct:50;width:50%\"><div data-figure-image-container=\"true\" data-width-pct=\"50\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zop4y000p4jgtyngvxy3w\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2332\" data-natural-h=\"1330\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p><a href=\"https://maps.app.goo.gl/9xWP9FC8Zq4E5RLh8\" target=\"_blank\" rel=\"noopener noreferrer\">继续向前走</a>，可以看到<span style=\"background-color:#facc15\">1小时39分</span>三叶寻找泷的画面</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zr6yb000r4jgtye90amk5\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2338\" data-natural-h=\"1316\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3zrqe0000t4jgtxh5d92cf\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1453\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>旁边的蓝色贩卖机上，还有中英日韩四语的欢迎《你的名字》全球游客的标语</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk3ztumt000v4jgtktcvq2cv\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1364\" data-natural-h=\"972\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p>穿过路口直接往前走，就是今天的重头戏，<a href=\"https://maps.app.goo.gl/7eyspudBUvYh8D8N9\" target=\"_blank\" rel=\"noopener noreferrer\">须贺神社</a>的入口</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk400gsp000x4jgt2bi3y2l5\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2330\" data-natural-h=\"1314\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk401e0m000z4jgtggfowq58\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1453\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk4020r800114jgtvu9ydm2j\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2330\" data-natural-h=\"1306\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk402lg100134jgt4afg3q4i\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2560\" data-natural-h=\"1453\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk403frr00154jgtcjt5w80u\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2336\" data-natural-h=\"1318\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk406icv00194jgtw21cox2z\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"2214\" data-natural-h=\"1196\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><p></p><p>在阶梯上就是须贺神社本社，这里因电影而成为了一个景点，这里似乎供奉的是须佐之男</p><figure data-figure-image=\"true\" data-width-pct=\"100\" style=\"--seichi-width-pct:100;width:100%\"><div data-figure-image-container=\"true\" data-width-pct=\"100\"><div data-figure-image-frame=\"true\" data-mode=\"plain\"><img src=\"/assets/cmk40b2g3001b4jgtlkjl7cmi\" data-rotate=\"0\" data-flip-x=\"0\" data-flip-y=\"0\" data-natural-w=\"1556\" data-natural-h=\"1016\" style=\"--seichi-rot:0deg;--seichi-flip-x:1;--seichi-flip-y:1;--seichi-w:100%;--seichi-h:100%\" /></div></div></figure><h2>结语</h2><p>新宿篇的巡礼，是一场对“记忆”的确认。 从繁华到静谧，从错过的天桥到重逢的阶梯。如果你走完了全程，你会发现这不仅仅是打卡，而是在现实世界里，重新活了一次电影。</p><p><strong>下期预告：</strong> 但这还不是全部。泷与奥寺前辈的约会路线还有另一半——<strong>港区篇</strong>。 我们将去往六本木的美术馆，去补完那场并不完美的约会。</p><p>让我们下期再见～ (o^^o)</p><p></p><p></p>",
+    "status": "published",
+    "rejectReason": null,
+    "needsRevision": false,
+    "publishedAt": "2026-01-12T11:41:00.152Z",
+    "lastApprovedAt": "2026-01-18T09:38:27.130Z",
+    "createdAt": "2025-12-16T01:56:43.673Z",
+    "updatedAt": "2026-02-01T15:46:11.407Z"
+  }
+}
