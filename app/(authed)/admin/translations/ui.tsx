@@ -119,9 +119,11 @@ export default function TranslationsUI() {
   const [untranslatedQuery, setUntranslatedQuery] = useState('')
 
   const [showBatchModal, setShowBatchModal] = useState(false)
-  const [batchEntityType, setBatchEntityType] = useState<'article' | 'city' | 'anime'>('article')
-  const [batchLanguages, setBatchLanguages] = useState<string[]>(['en', 'ja'])
+  const [batchTaskItems, setBatchTaskItems] = useState<TranslationTaskListItem[]>([])
+  const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([])
   const [batchLoading, setBatchLoading] = useState(false)
+  const [batchExecuting, setBatchExecuting] = useState(false)
+  const [batchError, setBatchError] = useState<string | null>(null)
 
   const statusLabels: Record<string, string> = {
     all: '全部',
@@ -185,31 +187,90 @@ export default function TranslationsUI() {
     router.replace(desired ? `/admin/translations?${desired}` : '/admin/translations', { scroll: false })
   }, [entityType, page, pageSize, q, router, searchParams, status, targetLanguage])
 
-  async function handleBatchSubmit() {
-    if (batchLanguages.length === 0) return
+  async function loadBatchTaskItems() {
     setBatchLoading(true)
+    setBatchError(null)
     try {
-      const res = await fetch('/api/admin/translations/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityType: batchEntityType,
-          targetLanguages: batchLanguages,
-        }),
-      })
-      
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '批量翻译失败')
-      
-      alert(`成功创建 ${data.created} 个翻译任务，跳过 ${data.skipped} 个`)
-      setShowBatchModal(false)
-      await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
-    } catch (error: any) {
-      alert(error.message || '操作失败')
+      const pageSize = 100
+      let nextPage = 1
+      let total = 0
+      const all: TranslationTaskListItem[] = []
+
+      while (nextPage <= 100) {
+        const params = new URLSearchParams()
+        params.set('status', 'pending')
+        params.set('page', String(nextPage))
+        params.set('pageSize', String(pageSize))
+
+        const res = await fetch(`/api/admin/translations?${params.toString()}`, { method: 'GET' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || '加载待翻译任务失败')
+
+        const rows = Array.isArray(data.tasks) ? (data.tasks as TranslationTaskListItem[]) : []
+        all.push(...rows)
+        total = typeof data.total === 'number' ? data.total : Number.parseInt(String(data.total || 0), 10) || 0
+
+        if (all.length >= total || rows.length === 0) break
+        nextPage += 1
+      }
+
+      setBatchTaskItems(all)
+      setBatchSelectedIds(all.map((t) => t.id))
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '加载待翻译任务失败'
+      setBatchTaskItems([])
+      setBatchSelectedIds([])
+      setBatchError(msg)
     } finally {
       setBatchLoading(false)
     }
   }
+
+  async function handleBatchSubmit() {
+    if (batchSelectedIds.length === 0) return
+    setBatchExecuting(true)
+    setBatchError(null)
+    try {
+      const res = await fetch('/api/admin/translations/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskIds: batchSelectedIds }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || '批量执行失败')
+
+      alert(`已执行 ${data.processed} 个，成功 ${data.success} 个，失败 ${data.failed} 个，跳过 ${data.skipped} 个`)
+      setShowBatchModal(false)
+      await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
+    } catch (error: any) {
+      const msg = error?.message || '操作失败'
+      setBatchError(msg)
+      alert(msg)
+    } finally {
+      setBatchExecuting(false)
+    }
+  }
+
+  function toggleBatchSelectAll() {
+    if (batchSelectedIds.length === batchTaskItems.length) {
+      setBatchSelectedIds([])
+      return
+    }
+    setBatchSelectedIds(batchTaskItems.map((t) => t.id))
+  }
+
+  function toggleBatchItem(id: string) {
+    setBatchSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id)
+      return [...prev, id]
+    })
+  }
+
+  useEffect(() => {
+    if (!showBatchModal) return
+    void loadBatchTaskItems()
+  }, [showBatchModal])
 
   async function loadTasks() {
     if (view !== 'tasks') return
@@ -718,63 +779,85 @@ export default function TranslationsUI() {
                 批量翻译
               </Dialog.Title>
               <Dialog.Description className="text-sm text-gray-500">
-                创建批量翻译任务。系统将自动扫描未翻译的内容并生成任务。
+                选择已创建但未执行的翻译任务，然后一键执行翻译。
               </Dialog.Description>
             </div>
             
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  实体类型
-                </label>
-                <select
-                  value={batchEntityType}
-                  onChange={(e) => setBatchEntityType(e.target.value as any)}
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="article">文章 (Article)</option>
-                  <option value="city">城市 (City)</option>
-                  <option value="anime">动漫 (Anime)</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium leading-none">
-                  目标语言
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={batchLanguages.includes('en')}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setBatchLanguages([...batchLanguages, 'en'])
-                        } else {
-                          setBatchLanguages(batchLanguages.filter(l => l !== 'en'))
-                        }
-                      }}
-                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                    />
-                    英语 (en)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={batchLanguages.includes('ja')}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setBatchLanguages([...batchLanguages, 'ja'])
-                        } else {
-                          setBatchLanguages(batchLanguages.filter(l => l !== 'ja'))
-                        }
-                      }}
-                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                    />
-                    日语 (ja)
-                  </label>
+            <div className="space-y-3 py-4">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-gray-600">
+                  共 {batchTaskItems.length} 个待翻译任务，已选择 {batchSelectedIds.length} 个
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    className="h-8 px-3 text-xs"
+                    onClick={toggleBatchSelectAll}
+                    disabled={batchLoading || batchTaskItems.length === 0}
+                  >
+                    {batchSelectedIds.length === batchTaskItems.length ? '取消全选' : '全选'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setBatchSelectedIds([])}
+                    disabled={batchLoading || batchSelectedIds.length === 0}
+                  >
+                    清空
+                  </Button>
                 </div>
               </div>
+
+              {batchError ? (
+                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {batchError}
+                </div>
+              ) : null}
+
+              {batchLoading ? (
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+                  正在加载待翻译任务...
+                </div>
+              ) : batchTaskItems.length === 0 ? (
+                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-6 text-center text-sm text-green-700">
+                  当前没有待执行翻译的任务
+                </div>
+              ) : (
+                <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-md border border-gray-200 p-2">
+                  {batchTaskItems.map((task) => (
+                    <label
+                      key={task.id}
+                      className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-100 p-2 hover:bg-gray-50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                        checked={batchSelectedIds.includes(task.id)}
+                        onChange={() => toggleBatchItem(task.id)}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {entityTypeLabels[task.entityType] || task.entityType}
+                          </span>
+                          <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                            {languageLabels[task.targetLanguage] || task.targetLanguage}
+                          </span>
+                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            {statusLabels[task.status] || task.status}
+                          </span>
+                        </div>
+                        <div className="mt-1 truncate text-sm font-medium text-gray-900">
+                          {task.subject.title || '(未命名内容)'}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {task.subject.subtitle || `任务 ID: ${task.id}`}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
@@ -783,9 +866,9 @@ export default function TranslationsUI() {
               </Button>
               <Button 
                 onClick={handleBatchSubmit} 
-                disabled={batchLoading || batchLanguages.length === 0}
+                disabled={batchLoading || batchExecuting || batchSelectedIds.length === 0}
               >
-                {batchLoading ? '处理中...' : '开始生成'}
+                {batchExecuting ? '执行中...' : '执行翻译'}
               </Button>
             </div>
             
