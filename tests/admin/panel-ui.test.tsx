@@ -1,9 +1,12 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
 const redirectMock = vi.fn()
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
@@ -11,6 +14,22 @@ vi.mock('@/lib/auth/session', () => ({
 
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => redirectMock(url),
+}))
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 vi.mock('next/link', () => ({
@@ -33,6 +52,10 @@ describe('admin panel ui', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
     redirectMock.mockReset()
+    askForConfirmMock.mockReset()
+    askForConfirmMock.mockResolvedValue(true)
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -103,10 +126,12 @@ describe('admin panel ui', () => {
     fireEvent.change(screen.getByLabelText('下架原因（必填）'), { target: { value: 'policy update' } })
     fireEvent.click(screen.getByRole('button', { name: '下架' }))
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/unpublish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: 'policy update' }),
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/unpublish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'policy update' }),
+      })
     })
 
     expect(await screen.findByText('已下架。')).toBeInTheDocument()

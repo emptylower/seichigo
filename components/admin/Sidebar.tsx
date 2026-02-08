@@ -8,12 +8,11 @@ import {
   FileText,
   Map,
   Users,
-  Settings,
   ListTodo,
   Image as ImageIcon,
   Languages,
   TrendingUp,
-  Activity,
+  Wrench,
 } from "lucide-react"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -70,13 +69,8 @@ export function Sidebar({ className, ...props }: SidebarProps) {
       ],
     },
     {
-      title: "系统",
+      title: "运营与维护",
       items: [
-        {
-          title: "系统设置",
-          href: "/admin/settings",
-          icon: Settings,
-        },
         {
           title: "Waitlist",
           href: "/admin/waitlist",
@@ -88,9 +82,9 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           icon: TrendingUp,
         },
         {
-          title: "运维检查",
-          href: "/admin/ops",
-          icon: Activity,
+          title: "维护工具",
+          href: "/admin/maintenance",
+          icon: Wrench,
         },
       ],
     },

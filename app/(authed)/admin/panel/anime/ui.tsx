@@ -3,6 +3,10 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import Button from '@/components/shared/Button'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
+import { AdminEmptyState } from '@/components/admin/state/AdminEmptyState'
 
 type AnimeItem = {
   id: string
@@ -30,6 +34,7 @@ export default function AdminAnimeListClient({
   initialTotal,
   initialQuery,
 }: Props) {
+  const toast = useAdminToast()
   const [items, setItems] = useState<AnimeItem[]>(initialItems)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,26 +47,31 @@ export default function AdminAnimeListClient({
   const [renameBusy, setRenameBusy] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
 
-  async function load(query: string = q, targetPage: number = 1) {
+  async function load(query: string = q, targetPage: number = page) {
     setLoading(true)
     setError(null)
-    const params = new URLSearchParams()
-    if (query.trim()) params.set('q', query.trim())
-    params.set('page', String(targetPage))
-    params.set('pageSize', String(pageSize))
-    const res = await fetch(`/api/admin/anime?${params.toString()}`, { method: 'GET' })
-    const data = (await res.json().catch(() => ({}))) as ListResponse
-    if (!res.ok || 'error' in data) {
-      setError(('error' in data && data.error) || '加载失败')
+    try {
+      const params = new URLSearchParams()
+      if (query.trim()) params.set('q', query.trim())
+      params.set('page', String(targetPage))
+      params.set('pageSize', String(pageSize))
+
+      const res = await fetch(`/api/admin/anime?${params.toString()}`, { method: 'GET' })
+      const data = (await res.json().catch(() => ({}))) as ListResponse
+      if (!res.ok || 'error' in data) {
+        throw new Error(('error' in data && data.error) || '加载失败')
+      }
+
+      setItems(data.items || [])
+      setTotal(typeof data.total === 'number' ? data.total : (data.items || []).length)
+      setPage(typeof data.page === 'number' && Number.isFinite(data.page) ? data.page : targetPage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载失败')
       setItems([])
       setTotal(0)
+    } finally {
       setLoading(false)
-      return
     }
-    setItems(data.items || [])
-    setTotal(typeof data.total === 'number' ? data.total : (data.items || []).length)
-    setPage(typeof data.page === 'number' && Number.isFinite(data.page) ? data.page : targetPage)
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -108,40 +118,49 @@ export default function AdminAnimeListClient({
       setRenameError('请输入新的作品 ID')
       return
     }
+
     setRenameBusy(true)
     setRenameError(null)
-    const res = await fetch(`/api/admin/anime/${encodeURIComponent(renamingId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nextId: target }),
-    })
-    const data = await res.json().catch(() => ({}))
-    setRenameBusy(false)
-    if (!res.ok) {
-      setRenameError(data.error || '更新 ID 失败')
-      return
+    try {
+      const res = await fetch(`/api/admin/anime/${encodeURIComponent(renamingId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nextId: target }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || '更新 ID 失败')
+
+      setRenamingId(null)
+      setNextId('')
+      toast.success(`作品 ID 已更新为 ${target}`)
+      await load(q, page)
+    } catch (err: any) {
+      const msg = String(err?.message || '更新 ID 失败')
+      setRenameError(msg)
+      toast.error(msg)
+    } finally {
+      setRenameBusy(false)
     }
-    setRenamingId(null)
-    setNextId('')
-    await load(q, page)
   }
 
   const hasMore = page * pageSize < total
   const startNo = total > 0 ? (page - 1) * pageSize + 1 : 0
   const endNo = total > 0 ? Math.min(total, page * pageSize) : 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">作品管理</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          <Link href="/admin/panel" className="hover:underline">返回面板</Link>
-          {' · '}
-          管理作品元数据（ID、封面、简介、显隐）。
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">作品管理</h1>
+          <p className="mt-1 text-sm text-gray-600">管理作品元数据（ID、封面、简介、显隐）。</p>
+        </div>
+        <Button type="button" variant="ghost" disabled={loading} onClick={() => void load(q, page)}>
+          刷新
+        </Button>
       </div>
 
-      <form onSubmit={onSearch} className="flex gap-2">
+      <form onSubmit={onSearch} className="flex flex-wrap items-center gap-2">
         <input
           className="w-full max-w-xs rounded-md border px-3 py-2 text-sm"
           value={q}
@@ -151,61 +170,63 @@ export default function AdminAnimeListClient({
         <Button type="submit" disabled={loading}>搜索</Button>
       </form>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-        <span>
-          共 {total} 条，当前第 {page} 页（{startNo}-{endNo}）
-        </span>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" disabled={loading || page <= 1} onClick={prevPage}>
-            上一页
-          </Button>
-          <Button type="button" variant="ghost" disabled={loading || !hasMore} onClick={nextPage}>
-            下一页
-          </Button>
-        </div>
+      <div className="text-xs text-gray-500">
+        共 {total} 条，当前第 {page} / {totalPages} 页（{startNo}-{endNo}）
       </div>
 
-      {loading ? <div className="text-gray-600">加载中…</div> : null}
-      {error ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div> : null}
+      {loading ? <AdminSkeleton rows={8} /> : null}
+      {!loading && error ? <AdminErrorState message={error} onRetry={() => void load(q, page)} /> : null}
 
       {!loading && !error ? (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((a) => (
-            <li key={a.id} className={`card ${a.hidden ? 'opacity-60 bg-gray-50' : ''}`}>
-              <div className="flex items-start justify-between gap-2">
-                <Link href={`/admin/panel/anime/${encodeURIComponent(a.id)}`} className="font-semibold hover:underline">
-                  {a.name}
-                </Link>
-                {a.hidden ? (
-                  <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-600">
-                    已隐藏
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-1 text-xs text-gray-500 font-mono">{a.id}</div>
-              {a.alias?.length ? (
-                <div className="mt-1 truncate text-xs text-gray-400">
-                  {a.alias.join(' / ')}
+        items.length ? (
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((a) => (
+              <li key={a.id} className={`card ${a.hidden ? 'opacity-60 bg-gray-50' : ''}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <Link href={`/admin/panel/anime/${encodeURIComponent(a.id)}`} className="font-semibold hover:underline">
+                    {a.name}
+                  </Link>
+                  {a.hidden ? (
+                    <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-600">
+                      已隐藏
+                    </span>
+                  ) : null}
                 </div>
-              ) : null}
-              <div className="mt-2 flex items-center gap-3 text-xs">
-                <button
-                  type="button"
-                  className="text-brand-700 hover:text-brand-800 disabled:text-gray-400"
-                  onClick={() => openRenameModal(a.id)}
-                  disabled={loading}
-                >
-                  改 ID
-                </button>
-                <Link href={`/admin/panel/anime/${encodeURIComponent(a.id)}`} className="text-gray-500 hover:text-gray-700">
-                  编辑详情
-                </Link>
-              </div>
-            </li>
-          ))}
-          {!items.length && <li className="text-gray-500 col-span-full">暂无匹配作品。</li>}
-        </ul>
+                <div className="mt-1 text-xs text-gray-500 font-mono">{a.id}</div>
+                {a.alias?.length ? (
+                  <div className="mt-1 truncate text-xs text-gray-400">
+                    {a.alias.join(' / ')}
+                  </div>
+                ) : null}
+                <div className="mt-2 flex items-center gap-3 text-xs">
+                  <button
+                    type="button"
+                    className="text-brand-700 hover:text-brand-800 disabled:text-gray-400"
+                    onClick={() => openRenameModal(a.id)}
+                    disabled={loading}
+                  >
+                    改 ID
+                  </button>
+                  <Link href={`/admin/panel/anime/${encodeURIComponent(a.id)}`} className="text-gray-500 hover:text-gray-700">
+                    编辑详情
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <AdminEmptyState title="暂无匹配作品" description="尝试调整关键词或清空筛选条件。" />
+        )
       ) : null}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="ghost" disabled={loading || page <= 1} onClick={prevPage}>
+          上一页
+        </Button>
+        <Button type="button" variant="ghost" disabled={loading || !hasMore} onClick={nextPage}>
+          下一页
+        </Button>
+      </div>
 
       {renamingId ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

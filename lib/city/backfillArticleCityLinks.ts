@@ -19,6 +19,7 @@ export type BackfillCityLinksResult = {
   limit: number
   cursor: string | null
   nextCursor: string | null
+  totalCandidates: number
   scanned: number
   processed: number
   skippedAlreadyLinked: number
@@ -92,12 +93,16 @@ export async function backfillArticleCityLinks(opts: Options): Promise<BackfillC
 
   const actions: BackfillCityLinksAction[] = []
 
+  const where = {
+    status: 'published' as const,
+    language: { in: ['en', 'ja'] },
+    ...(cursor ? { id: { gt: cursor } } : {}),
+  }
+
+  const totalCandidates = await prisma.article.count({ where })
+
   const rows = await prisma.article.findMany({
-    where: {
-      status: 'published',
-      language: { in: ['en', 'ja'] },
-      ...(cursor ? { id: { gt: cursor } } : {}),
-    },
+    where,
     orderBy: [{ id: 'asc' }],
     take: limit,
     select: {
@@ -172,6 +177,7 @@ export async function backfillArticleCityLinks(opts: Options): Promise<BackfillC
     limit,
     cursor,
     nextCursor,
+    totalCandidates,
     scanned,
     processed,
     skippedAlreadyLinked,

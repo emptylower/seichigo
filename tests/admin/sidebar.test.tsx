@@ -20,7 +20,7 @@ describe('Sidebar', () => {
     expect(screen.getByText('概览')).toBeInTheDocument()
     expect(screen.getByText('内容管理')).toBeInTheDocument()
     expect(screen.getByText('用户管理')).toBeInTheDocument()
-    expect(screen.getByText('系统')).toBeInTheDocument()
+    expect(screen.getByText('运营与维护')).toBeInTheDocument()
   })
 
   it('renders main navigation links', () => {
@@ -29,8 +29,8 @@ describe('Sidebar', () => {
     expect(screen.getByText('仪表盘')).toBeInTheDocument()
     expect(screen.getByText('文章审核')).toBeInTheDocument()
     expect(screen.getByText('用户列表')).toBeInTheDocument()
-    expect(screen.getByText('系统设置')).toBeInTheDocument()
-    expect(screen.getByText('运维检查')).toBeInTheDocument()
+    expect(screen.getByText('维护工具')).toBeInTheDocument()
+    expect(screen.getByText('SEO 管理')).toBeInTheDocument()
   })
 
   it('highlights active link', () => {

@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
 import TranslationDetailUI from './ui'
 
 export const metadata = {
@@ -22,7 +23,7 @@ export default async function TranslationDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
-      <Suspense fallback={<div className="text-gray-600">加载中...</div>}>
+      <Suspense fallback={<AdminSkeleton rows={10} />}>
         <TranslationDetailUI id={id} />
       </Suspense>
     </div>

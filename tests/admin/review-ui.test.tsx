@@ -6,6 +6,7 @@ const getSessionMock = vi.fn()
 const pushMock = vi.fn()
 const toastSuccessMock = vi.fn()
 const toastErrorMock = vi.fn()
+const askForConfirmMock = vi.fn(async () => true)
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
@@ -21,6 +22,10 @@ vi.mock('@/hooks/useAdminToast', () => ({
     dismiss: vi.fn(),
     clear: vi.fn(),
   }),
+}))
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
 }))
 
 vi.mock('next/navigation', () => ({
@@ -50,6 +55,8 @@ describe('admin review ui', () => {
     pushMock.mockReset()
     toastSuccessMock.mockReset()
     toastErrorMock.mockReset()
+    askForConfirmMock.mockReset()
+    askForConfirmMock.mockResolvedValue(true)
     vi.unstubAllGlobals()
   })
 
@@ -182,10 +189,12 @@ describe('admin review ui', () => {
     fireEvent.change(screen.getByLabelText('原因（必填）'), { target: { value: 'needs more detail' } })
     fireEvent.click(screen.getByRole('button', { name: '拒绝' }))
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/reject', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: 'needs more detail' }),
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'needs more detail' }),
+      })
     })
 
     expect(await screen.findByText('已拒绝。')).toBeInTheDocument()
@@ -233,7 +242,9 @@ describe('admin review ui', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '同意发布' }))
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/approve', { method: 'POST' })
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles/a1/approve', { method: 'POST' })
+    })
     expect(await screen.findByText('已同意发布。')).toBeInTheDocument()
   })
 
@@ -337,7 +348,9 @@ describe('admin review ui', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '同意发布' }))
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions/r1/approve', { method: 'POST' })
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions/r1/approve', { method: 'POST' })
+    })
     expect(await screen.findByText('已同意发布。')).toBeInTheDocument()
   })
 })

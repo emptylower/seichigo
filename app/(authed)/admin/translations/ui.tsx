@@ -48,6 +48,19 @@ type UntranslatedItem = {
 
 type StatusKey = 'all' | 'pending' | 'processing' | 'ready' | 'approved' | 'failed'
 
+type BatchExecutionProgress = {
+  total: number
+  processed: number
+  success: number
+  failed: number
+  skipped: number
+  running: boolean
+  cancelled: boolean
+  startedAt: number
+  finishedAt: number | null
+  currentTaskId: string | null
+}
+
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
   const max = opts?.max ?? 100
@@ -134,6 +147,7 @@ export default function TranslationsUI() {
   const [batchLoading, setBatchLoading] = useState(false)
   const [batchExecuting, setBatchExecuting] = useState(false)
   const [batchError, setBatchError] = useState<string | null>(null)
+  const [batchProgress, setBatchProgress] = useState<BatchExecutionProgress | null>(null)
 
   const statusLabels: Record<string, string> = {
     all: '全部',
@@ -175,6 +189,7 @@ export default function TranslationsUI() {
 
   const taskAbort = useRef<AbortController | null>(null)
   const statsAbort = useRef<AbortController | null>(null)
+  const batchCancelRef = useRef(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 250)
@@ -238,28 +253,120 @@ export default function TranslationsUI() {
 
   async function handleBatchSubmit() {
     if (batchSelectedIds.length === 0) return
+
+    const selectedIds = [...batchSelectedIds]
+    const aggregate = {
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+    }
+
+    batchCancelRef.current = false
     setBatchExecuting(true)
     setBatchError(null)
+    setShowBatchModal(false)
+    setBatchProgress({
+      total: selectedIds.length,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      running: true,
+      cancelled: false,
+      startedAt: Date.now(),
+      finishedAt: null,
+      currentTaskId: null,
+    })
+
+    let lastError = ''
     try {
-      const res = await fetch('/api/admin/translations/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskIds: batchSelectedIds }),
-      })
+      for (const taskId of selectedIds) {
+        if (batchCancelRef.current) break
 
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || '批量执行失败')
+        setBatchProgress((prev) => (prev ? { ...prev, currentTaskId: taskId } : prev))
 
-      toast.success(`已执行 ${data.processed} 个，成功 ${data.success} 个，失败 ${data.failed} 个，跳过 ${data.skipped} 个`)
-      setShowBatchModal(false)
+        try {
+          const res = await fetch('/api/admin/translations/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskIds: [taskId] }),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error || '批量执行失败')
+
+          aggregate.success += Number(data.success || 0)
+          aggregate.failed += Number(data.failed || 0)
+          aggregate.skipped += Number(data.skipped || 0)
+        } catch (error: any) {
+          aggregate.failed += 1
+          lastError = String(error?.message || '批量执行失败')
+        } finally {
+          aggregate.processed += 1
+          setBatchProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  processed: aggregate.processed,
+                  success: aggregate.success,
+                  failed: aggregate.failed,
+                  skipped: aggregate.skipped,
+                }
+              : prev
+          )
+        }
+      }
+
+      const cancelled = batchCancelRef.current
+      setBatchProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              running: false,
+              cancelled,
+              finishedAt: Date.now(),
+              currentTaskId: null,
+            }
+          : prev
+      )
+
+      if (lastError) {
+        setBatchError(lastError)
+      }
+
+      if (cancelled) {
+        toast.info(
+          `已中断，已处理 ${aggregate.processed} / ${selectedIds.length} 个（成功 ${aggregate.success}，失败 ${aggregate.failed}，跳过 ${aggregate.skipped}）`,
+          '批量翻译已中断'
+        )
+      } else {
+        toast.success(`已执行 ${aggregate.processed} 个，成功 ${aggregate.success} 个，失败 ${aggregate.failed} 个，跳过 ${aggregate.skipped} 个`)
+      }
+
+      setBatchSelectedIds([])
       await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
     } catch (error: any) {
       const msg = error?.message || '操作失败'
       setBatchError(msg)
+      setBatchProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              running: false,
+              cancelled: false,
+              finishedAt: Date.now(),
+              currentTaskId: null,
+            }
+          : prev
+      )
       toast.error(msg)
     } finally {
       setBatchExecuting(false)
     }
+  }
+
+  function cancelBatchExecution() {
+    batchCancelRef.current = true
   }
 
   function toggleBatchSelectAll() {
@@ -452,8 +559,43 @@ export default function TranslationsUI() {
             未翻译内容
           </button>
         </div>
-        <Button onClick={() => setShowBatchModal(true)}>批量翻译</Button>
+        <Button onClick={() => setShowBatchModal(true)} disabled={batchExecuting}>
+          批量翻译
+        </Button>
       </div>
+
+      {batchProgress ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">批量任务进度</div>
+              <div className="mt-1 text-sm text-gray-700">
+                已处理 {batchProgress.processed} / {batchProgress.total}，成功 {batchProgress.success}，失败 {batchProgress.failed}，跳过 {batchProgress.skipped}
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                状态：
+                {batchProgress.running
+                  ? '执行中'
+                  : batchProgress.cancelled
+                    ? '已中断'
+                    : '已完成'}
+                {batchProgress.currentTaskId ? ` · 当前任务 ${batchProgress.currentTaskId}` : ''}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {batchProgress.running ? (
+                <Button type="button" variant="ghost" onClick={cancelBatchExecution}>
+                  中断执行
+                </Button>
+              ) : (
+                <Button type="button" variant="ghost" onClick={() => setBatchProgress(null)}>
+                  清除进度
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {view === 'tasks' ? (
         <div className="space-y-4">

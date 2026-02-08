@@ -4,6 +4,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 type ArticleDetail = {
   id: string
@@ -47,8 +51,23 @@ type ActionApiResponse =
   | { ok: true; revision: { id: string; status: string; rejectReason?: string | null } }
   | { error: string }
 
+type ResultTone = 'success' | 'error' | 'info'
+
+type ActionResult = {
+  tone: ResultTone
+  title: string
+  detail: string
+  at: string
+}
+
+function nowText(): string {
+  return new Date().toLocaleString('zh-CN')
+}
+
 export default function AdminReviewDetailClient({ id }: { id: string }) {
   const router = useRouter()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [detail, setDetail] = useState<ReviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -60,13 +79,22 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
   const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [actionResult, setActionResult] = useState<ActionResult | null>(null)
 
   const article = detail?.kind === 'article' ? detail.article : null
   const revision = detail?.kind === 'revision' ? detail.revision : null
 
   const isInReview = article?.status === 'in_review' || revision?.status === 'in_review'
-
   const previewHtml = useMemo(() => article?.contentHtml || revision?.contentHtml || '', [article?.contentHtml, revision?.contentHtml])
+
+  function setResult(tone: ResultTone, title: string, detailText: string) {
+    setActionResult({
+      tone,
+      title,
+      detail: detailText,
+      at: nowText(),
+    })
+  }
 
   async function load() {
     setLoading(true)
@@ -105,22 +133,43 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
   }, [id])
 
   async function onApprove() {
+    if (!detail) return
+
+    const accepted = await askForConfirm({
+      title: detail.kind === 'revision' ? '确认通过修订审核' : '确认通过文章审核',
+      description: '通过后内容将进入已发布状态。',
+      confirmLabel: '确认通过',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
+
     setActionError(null)
     setActionSuccess(null)
     setActionLoading('approve')
-    const url = detail?.kind === 'revision' ? `/api/admin/review/revisions/${id}/approve` : `/api/admin/review/articles/${id}/approve`
+    const url = detail.kind === 'revision' ? `/api/admin/review/revisions/${id}/approve` : `/api/admin/review/articles/${id}/approve`
     const res = await fetch(url, { method: 'POST' })
     const data = (await res.json().catch(() => ({}))) as ActionApiResponse
     setActionLoading(null)
     if (!res.ok || 'error' in data) {
-      setActionError(('error' in data && data.error) || '操作失败')
+      const msg = ('error' in data && data.error) || '操作失败'
+      setActionError(msg)
+      setResult('error', '审核通过失败', msg)
+      toast.error(msg)
       return
     }
+
     setActionSuccess('已同意发布。')
+    setResult('success', '审核通过成功', `${detail.kind === 'revision' ? '修订' : '文章'}已通过审核`)
+    toast.success('已同意发布。')
+
     try {
       window.sessionStorage?.setItem('seichigo.adminReview.flash', '已同意发布。')
-    } catch {}
+    } catch {
+      // ignore
+    }
     router.push('/admin/review')
+
     if ('article' in data) {
       setDetail((prev) =>
         prev?.kind === 'article'
@@ -140,8 +189,19 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     setActionSuccess(null)
     if (!cleaned) {
       setActionError('请填写拒绝原因')
+      setResult('error', '拒绝失败', '请先填写拒绝原因')
       return
     }
+
+    const accepted = await askForConfirm({
+      title: '确认拒绝',
+      description: `拒绝原因：${cleaned}`,
+      confirmLabel: '确认拒绝',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
+
     setActionLoading('reject')
     const url = detail?.kind === 'revision' ? `/api/admin/review/revisions/${id}/reject` : `/api/admin/review/articles/${id}/reject`
     const res = await fetch(url, {
@@ -152,10 +212,17 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     const data = (await res.json().catch(() => ({}))) as ActionApiResponse
     setActionLoading(null)
     if (!res.ok || 'error' in data) {
-      setActionError(('error' in data && data.error) || '操作失败')
+      const msg = ('error' in data && data.error) || '操作失败'
+      setActionError(msg)
+      setResult('error', '拒绝失败', msg)
+      toast.error(msg)
       return
     }
+
     setActionSuccess('已拒绝。')
+    setResult('success', '拒绝成功', `拒绝原因：${cleaned}`)
+    toast.success('已拒绝。')
+
     if ('article' in data) {
       setDetail((prev) =>
         prev?.kind === 'article'
@@ -206,40 +273,67 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
     const data = (await res.json().catch(() => ({}))) as { ok?: true; article?: { slug?: string }; error?: string }
     setSlugSaving(false)
     if (!res.ok || !data?.ok) {
-      setSlugError(data?.error || '保存失败')
+      const msg = data?.error || '保存失败'
+      setSlugError(msg)
+      toast.error(msg)
       return
     }
     const nextSlug = String(data.article?.slug || cleaned)
     setSlugDraft(nextSlug)
     setDetail((prev) => (prev?.kind === 'article' ? { kind: 'article', article: { ...prev.article, slug: nextSlug } } : prev))
     setSlugSuccess('已更新 slug。')
+    setResult('success', 'slug 更新成功', `新 slug：${nextSlug}`)
+    toast.success('已更新 slug。')
   }
+
+  if (loading) return <AdminSkeleton rows={10} />
+  if (error) return <AdminErrorState message={error} onRetry={() => void load()} />
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold">{article?.title || revision?.title || '审核详情'}</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            <Link href="/admin/review" className="hover:underline">
-              返回待审列表
-            </Link>
-          </p>
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold">{article?.title || revision?.title || '审核详情'}</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              <Link href="/admin/review" className="hover:underline">
+                返回待审列表
+              </Link>
+            </p>
+            <div className="mt-2 text-xs text-gray-500">
+              <span className="mr-3">状态：{article?.status || revision?.status}</span>
+              <span>类型：{detail?.kind === 'revision' ? '修订' : '文章'}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={onApprove} disabled={!isInReview || actionLoading != null}>
+              {actionLoading === 'approve' ? '处理中…' : '同意发布'}
+            </Button>
+            <Button variant="ghost" onClick={onReject} disabled={!isInReview || actionLoading != null}>
+              {actionLoading === 'reject' ? '处理中…' : '拒绝'}
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={onApprove} disabled={!isInReview || actionLoading != null}>
-            {actionLoading === 'approve' ? '处理中…' : '同意发布'}
-          </Button>
-          <Button variant="ghost" onClick={onReject} disabled={!isInReview || actionLoading != null}>
-            {actionLoading === 'reject' ? '处理中…' : '拒绝'}
-          </Button>
-        </div>
-      </div>
+      </section>
 
-      {loading ? <div className="text-gray-600">加载中…</div> : null}
-      {error ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div> : null}
+      <section className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <h2 className="text-sm font-semibold text-gray-900">结果反馈</h2>
+        {actionResult ? (
+          <div className="mt-2 space-y-1">
+            <div className={actionResult.tone === 'error' ? 'text-sm font-medium text-rose-700' : 'text-sm font-medium text-emerald-700'}>
+              {actionResult.title}
+            </div>
+            <div className="text-sm text-gray-700">{actionResult.detail}</div>
+            <div className="text-xs text-gray-500">时间：{actionResult.at}</div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-gray-600">执行审核操作后，会在这里显示结果摘要。</p>
+        )}
+        {actionError ? <div className="mt-2 rounded-md bg-rose-50 p-3 text-rose-700">{actionError}</div> : null}
+        {actionSuccess ? <div className="mt-2 rounded-md bg-emerald-50 p-3 text-emerald-700">{actionSuccess}</div> : null}
+      </section>
 
-      {(article || revision) && !loading && !error ? (
+      {(article || revision) ? (
         <div className="space-y-6">
           <section className="card space-y-1">
             {article ? (
@@ -265,10 +359,7 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
                 {slugSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{slugSuccess}</div> : null}
               </div>
             ) : null}
-            <div className="text-sm text-gray-600">
-              <span className="font-medium text-gray-900">状态：</span>
-              <span>{article?.status || revision?.status}</span>
-            </div>
+
             {(article?.animeIds?.length || revision?.animeIds?.length) ? (
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">作品：</span>
@@ -311,8 +402,6 @@ export default function AdminReviewDetailClient({ id }: { id: string }) {
               placeholder="请填写拒绝原因（必填）"
               disabled={!isInReview || actionLoading != null}
             />
-            {actionError ? <div className="rounded-md bg-rose-50 p-3 text-rose-700">{actionError}</div> : null}
-            {actionSuccess ? <div className="rounded-md bg-emerald-50 p-3 text-emerald-700">{actionSuccess}</div> : null}
             {(article?.rejectReason || revision?.rejectReason) ? (
               <div className="text-sm text-gray-600">
                 当前记录的拒绝原因：<span className="text-gray-900">{article?.rejectReason || revision?.rejectReason}</span>

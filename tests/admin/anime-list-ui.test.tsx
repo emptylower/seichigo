@@ -3,12 +3,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import AdminAnimeListClient from '@/app/(authed)/admin/panel/anime/ui'
 
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: any) => (
     <a href={href} {...rest}>
       {children}
     </a>
   ),
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -22,6 +37,8 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
 describe('admin anime list ui', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
   })
 
   it('renames anime id from list modal', async () => {
