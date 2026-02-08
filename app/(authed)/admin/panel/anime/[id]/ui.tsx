@@ -283,7 +283,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       <div className="space-y-6">
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900">ID（URL Slug）</h2>
-          <p className="text-sm text-gray-600">建议使用英文小写 + 连字符。仅在该作品没有文章/修订引用时可修改。</p>
+          <p className="text-sm text-gray-600">建议使用英文小写 + 连字符。修改时会自动迁移文章/修订里的旧 ID 引用。</p>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               aria-label="作品 ID (slug)"

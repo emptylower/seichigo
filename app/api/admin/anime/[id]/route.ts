@@ -48,6 +48,24 @@ function revalidateAnimePaths(id: string) {
   safeRevalidatePath(`/en/anime/${encodeURIComponent(id)}`)
 }
 
+function dedupeStrings(input: unknown[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of input) {
+    const value = String(item || '').trim()
+    if (!value) continue
+    if (seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
+  }
+  return out
+}
+
+function replaceAnimeId(animeIds: string[], fromId: string, toId: string): string[] {
+  const next = animeIds.map((x) => (x === fromId ? toId : x))
+  return dedupeStrings(next)
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession()
   if (!session?.user?.isAdmin) {
@@ -93,44 +111,106 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     if (nextId && nextId !== id) {
       const source = await prisma.anime.findUnique({ where: { id } })
-      if (!source) {
-        return NextResponse.json({ error: '当前作品不是数据库记录，暂不支持修改 ID' }, { status: 400 })
-      }
-
-      const target = await prisma.anime.findUnique({ where: { id: nextId } })
-      if (target) {
-        return NextResponse.json({ error: '目标作品 ID 已存在' }, { status: 409 })
-      }
-
-      const [articleRefs, revisionRefs] = await Promise.all([
-        prisma.article.count({ where: { animeIds: { has: id } } }),
-        prisma.articleRevision.count({ where: { animeIds: { has: id } } }),
-      ])
-      if (articleRefs > 0 || revisionRefs > 0) {
-        return NextResponse.json(
-          { error: `该作品已被 ${articleRefs + revisionRefs} 篇文章/修订引用，无法修改 ID` },
-          { status: 400 }
-        )
+      const sourceSnapshot = {
+        name: String(source?.name || current.name || id),
+        alias: dedupeStrings(Array.isArray(source?.alias) ? source.alias : (current.alias || [])),
+        year: source?.year ?? current.year ?? null,
+        summary: source?.summary ?? current.summary ?? null,
+        cover: source?.cover ?? current.cover ?? null,
+        hidden: source?.hidden ?? current.hidden ?? false,
+        name_en: source?.name_en ?? current.name_en ?? null,
+        name_ja: source?.name_ja ?? current.name_ja ?? null,
+        summary_en: source?.summary_en ?? current.summary_en ?? null,
+        summary_ja: source?.summary_ja ?? current.summary_ja ?? null,
       }
 
       const renamed = await prisma.$transaction(async (tx) => {
-        const created = await tx.anime.create({
-          data: {
-            id: nextId,
-            name: source.name,
-            alias: source.alias,
-            year: source.year,
-            summary: source.summary,
-            cover: source.cover,
-            hidden: source.hidden,
-            name_en: source.name_en,
-            name_ja: source.name_ja,
-            summary_en: source.summary_en,
-            summary_ja: source.summary_ja,
+        const target = await tx.anime.findUnique({ where: { id: nextId } })
+
+        let nextAnime
+        if (!target) {
+          nextAnime = await tx.anime.create({
+            data: {
+              id: nextId,
+              name: name ?? sourceSnapshot.name,
+              alias: dedupeStrings([...sourceSnapshot.alias, id]),
+              year: sourceSnapshot.year,
+              summary: sourceSnapshot.summary,
+              cover: sourceSnapshot.cover,
+              hidden: false,
+              name_en: sourceSnapshot.name_en,
+              name_ja: sourceSnapshot.name_ja,
+              summary_en: sourceSnapshot.summary_en,
+              summary_ja: sourceSnapshot.summary_ja,
+            },
+          })
+        } else {
+          const updateData: Record<string, unknown> = {
+            hidden: false,
+            alias: dedupeStrings([...(target.alias || []), ...sourceSnapshot.alias, id]),
+          }
+          if (name) updateData.name = name
+          if (target.year == null && sourceSnapshot.year != null) updateData.year = sourceSnapshot.year
+          if (!target.cover && sourceSnapshot.cover) updateData.cover = sourceSnapshot.cover
+          if (!target.summary && sourceSnapshot.summary) updateData.summary = sourceSnapshot.summary
+          if (!target.name_en && sourceSnapshot.name_en) updateData.name_en = sourceSnapshot.name_en
+          if (!target.name_ja && sourceSnapshot.name_ja) updateData.name_ja = sourceSnapshot.name_ja
+          if (!target.summary_en && sourceSnapshot.summary_en) updateData.summary_en = sourceSnapshot.summary_en
+          if (!target.summary_ja && sourceSnapshot.summary_ja) updateData.summary_ja = sourceSnapshot.summary_ja
+          nextAnime = await tx.anime.update({
+            where: { id: nextId },
+            data: updateData,
+          })
+        }
+
+        const articleRefs = await tx.article.findMany({
+          where: { animeIds: { has: id } },
+          select: { id: true, animeIds: true },
+        })
+        for (const row of articleRefs) {
+          const nextAnimeIds = replaceAnimeId(row.animeIds || [], id, nextId)
+          if (nextAnimeIds.join('\u0000') === (row.animeIds || []).join('\u0000')) continue
+          await tx.article.update({
+            where: { id: row.id },
+            data: { animeIds: nextAnimeIds },
+          })
+        }
+
+        const revisionRefs = await tx.articleRevision.findMany({
+          where: { animeIds: { has: id } },
+          select: { id: true, animeIds: true },
+        })
+        for (const row of revisionRefs) {
+          const nextAnimeIds = replaceAnimeId(row.animeIds || [], id, nextId)
+          if (nextAnimeIds.join('\u0000') === (row.animeIds || []).join('\u0000')) continue
+          await tx.articleRevision.update({
+            where: { id: row.id },
+            data: { animeIds: nextAnimeIds },
+          })
+        }
+
+        await tx.anime.upsert({
+          where: { id },
+          create: {
+            id,
+            name: sourceSnapshot.name,
+            alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
+            year: sourceSnapshot.year,
+            summary: sourceSnapshot.summary,
+            cover: sourceSnapshot.cover,
+            hidden: true,
+            name_en: sourceSnapshot.name_en,
+            name_ja: sourceSnapshot.name_ja,
+            summary_en: sourceSnapshot.summary_en,
+            summary_ja: sourceSnapshot.summary_ja,
+          },
+          update: {
+            hidden: true,
+            alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
           },
         })
-        await tx.anime.delete({ where: { id } })
-        return created
+
+        return nextAnime
       })
 
       revalidateAnimePaths(id)

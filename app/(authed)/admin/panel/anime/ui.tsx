@@ -155,7 +155,7 @@ export default function AdminAnimeListClient() {
             <p className="mt-1 text-sm text-gray-600">
               当前：<span className="font-mono">{renamingId}</span>
             </p>
-            <p className="mt-1 text-xs text-gray-500">仅支持小写英文、数字、连字符；若已有文章引用会被拒绝。</p>
+            <p className="mt-1 text-xs text-gray-500">仅支持小写英文、数字、连字符；会自动迁移文章/修订中的旧 ID。</p>
             <input
               aria-label="新的作品 ID"
               className="mt-3 w-full rounded-md border px-3 py-2 font-mono text-sm"

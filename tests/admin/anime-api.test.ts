@@ -8,13 +8,15 @@ const mocks = vi.hoisted(() => ({
       upsert: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
-      delete: vi.fn(),
+      update: vi.fn(),
     },
     article: {
-      count: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
     },
     articleRevision: {
-      count: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -228,8 +230,8 @@ describe('admin anime api', () => {
       if (where.id === 'weathering-with-you') return null
       return null
     })
-    mocks.prisma.article.count.mockResolvedValue(0)
-    mocks.prisma.articleRevision.count.mockResolvedValue(0)
+    mocks.prisma.article.findMany.mockResolvedValue([])
+    mocks.prisma.articleRevision.findMany.mockResolvedValue([])
     mocks.prisma.anime.create.mockResolvedValue({
       id: 'weathering-with-you',
       name: '天气之子',
@@ -243,7 +245,12 @@ describe('admin anime api', () => {
       summary_en: null,
       summary_ja: null,
     })
-    mocks.prisma.anime.delete.mockResolvedValue({ id: '天气之子' })
+    mocks.prisma.anime.upsert.mockResolvedValue({
+      id: '天气之子',
+      name: '天气之子',
+      hidden: true,
+      alias: ['weathering-with-you'],
+    })
 
     const handlers = await import('app/api/admin/anime/[id]/route')
     const res = await handlers.PATCH(
@@ -258,34 +265,50 @@ describe('admin anime api', () => {
     expect(j.ok).toBe(true)
     expect(j.anime.id).toBe('weathering-with-you')
     expect(mocks.prisma.anime.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: 'weathering-with-you' }) }))
-    expect(mocks.prisma.anime.delete).toHaveBeenCalledWith({ where: { id: '天气之子' } })
-    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '天气之子' } }))
   })
 
-  it('blocks anime id rename when referenced by articles', async () => {
+  it('merges file-source old id into existing target id and migrates article references', async () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
     mocks.getAnimeById.mockResolvedValue({ id: '天气之子', name: '天气之子', cover: null, summary: null, hidden: false })
     mocks.prisma.anime.findUnique.mockImplementation(async ({ where }: any) => {
-      if (where.id === '天气之子') {
+      if (where.id === '天气之子') return null
+      if (where.id === 'weathering-with-you') {
         return {
-          id: '天气之子',
+          id: 'weathering-with-you',
           name: '天气之子',
-          alias: [],
+          alias: ['天気の子'],
           year: null,
           summary: null,
           cover: null,
-          hidden: false,
+          hidden: true,
           name_en: null,
           name_ja: null,
           summary_en: null,
           summary_ja: null,
         }
       }
-      if (where.id === 'weathering-with-you') return null
       return null
     })
-    mocks.prisma.article.count.mockResolvedValue(1)
-    mocks.prisma.articleRevision.count.mockResolvedValue(0)
+    mocks.prisma.anime.update.mockResolvedValue({
+      id: 'weathering-with-you',
+      name: '天气之子',
+      alias: ['天気の子', 'weathering-with-you', '天气之子'],
+      hidden: false,
+    })
+    mocks.prisma.article.findMany.mockResolvedValue([
+      { id: 'a1', animeIds: ['天气之子'] },
+      { id: 'a2', animeIds: ['foo', '天气之子'] },
+    ])
+    mocks.prisma.article.update.mockResolvedValue(null)
+    mocks.prisma.articleRevision.findMany.mockResolvedValue([{ id: 'r1', animeIds: ['天气之子'] }])
+    mocks.prisma.articleRevision.update.mockResolvedValue(null)
+    mocks.prisma.anime.upsert.mockResolvedValue({
+      id: '天气之子',
+      name: '天气之子',
+      hidden: true,
+      alias: ['weathering-with-you'],
+    })
 
     const handlers = await import('app/api/admin/anime/[id]/route')
     const res = await handlers.PATCH(
@@ -295,9 +318,25 @@ describe('admin anime api', () => {
       }
     )
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+    expect(j.anime.id).toBe('weathering-with-you')
+    expect(mocks.prisma.anime.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'weathering-with-you' },
+        data: expect.objectContaining({ hidden: false }),
+      })
+    )
+    expect(mocks.prisma.article.update).toHaveBeenCalledWith({
+      where: { id: 'a1' },
+      data: { animeIds: ['weathering-with-you'] },
+    })
+    expect(mocks.prisma.articleRevision.update).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: { animeIds: ['weathering-with-you'] },
+    })
     expect(mocks.prisma.anime.create).not.toHaveBeenCalled()
-    expect(mocks.prisma.anime.delete).not.toHaveBeenCalled()
-    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '天气之子' } }))
   })
 })
