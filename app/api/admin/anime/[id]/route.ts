@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import { z } from 'zod'
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { getServerAuthSession } from '@/lib/auth/session'
@@ -66,6 +68,18 @@ function replaceAnimeId(animeIds: string[], fromId: string, toId: string): strin
   return dedupeStrings(next)
 }
 
+async function hasAnimeSeedFile(id: string): Promise<boolean> {
+  const safeId = String(id || '').trim()
+  if (!safeId) return false
+  const filePath = path.join(process.cwd(), 'content', 'anime', `${safeId}.json`)
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession()
   if (!session?.user?.isAdmin) {
@@ -111,6 +125,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     if (nextId && nextId !== id) {
       const source = await prisma.anime.findUnique({ where: { id } })
+      const sourceFromDb = Boolean(source)
+      const keepLegacyHidden = await hasAnimeSeedFile(id)
       const sourceSnapshot = {
         name: String(source?.name || current.name || id),
         alias: dedupeStrings(Array.isArray(source?.alias) ? source.alias : (current.alias || [])),
@@ -149,14 +165,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             hidden: false,
             alias: dedupeStrings([...(target.alias || []), ...sourceSnapshot.alias, id]),
           }
-          if (name) updateData.name = name
-          if (target.year == null && sourceSnapshot.year != null) updateData.year = sourceSnapshot.year
-          if (!target.cover && sourceSnapshot.cover) updateData.cover = sourceSnapshot.cover
-          if (!target.summary && sourceSnapshot.summary) updateData.summary = sourceSnapshot.summary
-          if (!target.name_en && sourceSnapshot.name_en) updateData.name_en = sourceSnapshot.name_en
-          if (!target.name_ja && sourceSnapshot.name_ja) updateData.name_ja = sourceSnapshot.name_ja
-          if (!target.summary_en && sourceSnapshot.summary_en) updateData.summary_en = sourceSnapshot.summary_en
-          if (!target.summary_ja && sourceSnapshot.summary_ja) updateData.summary_ja = sourceSnapshot.summary_ja
+          if (name) {
+            updateData.name = name
+          } else if (sourceFromDb) {
+            updateData.name = sourceSnapshot.name
+          }
+          if (sourceFromDb && sourceSnapshot.year != null) updateData.year = sourceSnapshot.year
+          if (sourceFromDb && sourceSnapshot.cover) updateData.cover = sourceSnapshot.cover
+          if (sourceFromDb && sourceSnapshot.summary) updateData.summary = sourceSnapshot.summary
+          if (sourceFromDb && sourceSnapshot.name_en) updateData.name_en = sourceSnapshot.name_en
+          if (sourceFromDb && sourceSnapshot.name_ja) updateData.name_ja = sourceSnapshot.name_ja
+          if (sourceFromDb && sourceSnapshot.summary_en) updateData.summary_en = sourceSnapshot.summary_en
+          if (sourceFromDb && sourceSnapshot.summary_ja) updateData.summary_ja = sourceSnapshot.summary_ja
+          if (!sourceFromDb && target.year == null && sourceSnapshot.year != null) updateData.year = sourceSnapshot.year
+          if (!sourceFromDb && !target.cover && sourceSnapshot.cover) updateData.cover = sourceSnapshot.cover
+          if (!sourceFromDb && !target.summary && sourceSnapshot.summary) updateData.summary = sourceSnapshot.summary
+          if (!sourceFromDb && !target.name_en && sourceSnapshot.name_en) updateData.name_en = sourceSnapshot.name_en
+          if (!sourceFromDb && !target.name_ja && sourceSnapshot.name_ja) updateData.name_ja = sourceSnapshot.name_ja
+          if (!sourceFromDb && !target.summary_en && sourceSnapshot.summary_en) updateData.summary_en = sourceSnapshot.summary_en
+          if (!sourceFromDb && !target.summary_ja && sourceSnapshot.summary_ja) updateData.summary_ja = sourceSnapshot.summary_ja
           nextAnime = await tx.anime.update({
             where: { id: nextId },
             data: updateData,
@@ -189,26 +216,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           })
         }
 
-        await tx.anime.upsert({
-          where: { id },
-          create: {
-            id,
-            name: sourceSnapshot.name,
-            alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
-            year: sourceSnapshot.year,
-            summary: sourceSnapshot.summary,
-            cover: sourceSnapshot.cover,
-            hidden: true,
-            name_en: sourceSnapshot.name_en,
-            name_ja: sourceSnapshot.name_ja,
-            summary_en: sourceSnapshot.summary_en,
-            summary_ja: sourceSnapshot.summary_ja,
-          },
-          update: {
-            hidden: true,
-            alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
-          },
-        })
+        if (keepLegacyHidden) {
+          await tx.anime.upsert({
+            where: { id },
+            create: {
+              id,
+              name: sourceSnapshot.name,
+              alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
+              year: sourceSnapshot.year,
+              summary: sourceSnapshot.summary,
+              cover: sourceSnapshot.cover,
+              hidden: true,
+              name_en: sourceSnapshot.name_en,
+              name_ja: sourceSnapshot.name_ja,
+              summary_en: sourceSnapshot.summary_en,
+              summary_ja: sourceSnapshot.summary_ja,
+            },
+            update: {
+              hidden: true,
+              alias: dedupeStrings([...sourceSnapshot.alias, nextId]),
+            },
+          })
+        } else if (sourceFromDb) {
+          await tx.anime.delete({ where: { id } })
+        }
 
         return nextAnime
       })

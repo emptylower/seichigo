@@ -68,7 +68,25 @@ export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]
     }
   }
 
-  return Array.from(byId.values())
+  const merged = Array.from(byId.values())
+  if (options?.includeHidden) return merged
+
+  const shadowedLegacyIds = new Set<string>()
+  const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+  for (const anime of merged) {
+    if (anime.hidden) continue
+    for (const aliasRaw of anime.alias || []) {
+      const alias = String(aliasRaw || '').trim()
+      if (!alias || !ID_RE.test(alias)) continue
+      if (alias === anime.id) continue
+      const legacy = byId.get(alias)
+      if (!legacy) continue
+      shadowedLegacyIds.add(alias)
+    }
+  }
+
+  if (!shadowedLegacyIds.size) return merged
+  return merged.filter((anime) => !shadowedLegacyIds.has(anime.id))
 }
 
 export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Promise<Anime | null> {

@@ -71,4 +71,16 @@ describe('getAllAnime', () => {
     expect(result).toHaveLength(1)
     expect(result[0].hidden).toBe(true)
   })
+
+  it('hides legacy id entries shadowed by visible db alias ids', async () => {
+    mocks.fs.readdir.mockResolvedValue(['btr.json'])
+    mocks.fs.readFile.mockResolvedValue(JSON.stringify({ id: 'btr', name: 'Bocchi the Rock (file)' }))
+    mocks.prisma.anime.findMany.mockResolvedValue([
+      { id: 'bocchi-the-rock', name: '孤独摇滚!', alias: ['btr'], hidden: false },
+    ])
+
+    const result = await getAllAnime()
+    expect(result.find((x) => x.id === 'bocchi-the-rock')).toBeTruthy()
+    expect(result.find((x) => x.id === 'btr')).toBeFalsy()
+  })
 })

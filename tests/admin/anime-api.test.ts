@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
     },
     article: {
       findMany: vi.fn(),
@@ -245,12 +246,7 @@ describe('admin anime api', () => {
       summary_en: null,
       summary_ja: null,
     })
-    mocks.prisma.anime.upsert.mockResolvedValue({
-      id: '天气之子',
-      name: '天气之子',
-      hidden: true,
-      alias: ['weathering-with-you'],
-    })
+    mocks.prisma.anime.delete.mockResolvedValue({ id: '天气之子' })
 
     const handlers = await import('app/api/admin/anime/[id]/route')
     const res = await handlers.PATCH(
@@ -265,7 +261,8 @@ describe('admin anime api', () => {
     expect(j.ok).toBe(true)
     expect(j.anime.id).toBe('weathering-with-you')
     expect(mocks.prisma.anime.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: 'weathering-with-you' }) }))
-    expect(mocks.prisma.anime.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '天气之子' } }))
+    expect(mocks.prisma.anime.delete).toHaveBeenCalledWith({ where: { id: '天气之子' } })
+    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
   })
 
   it('merges file-source old id into existing target id and migrates article references', async () => {
@@ -337,6 +334,88 @@ describe('admin anime api', () => {
       data: { animeIds: ['weathering-with-you'] },
     })
     expect(mocks.prisma.anime.create).not.toHaveBeenCalled()
-    expect(mocks.prisma.anime.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '天气之子' } }))
+    expect(mocks.prisma.anime.delete).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.upsert).not.toHaveBeenCalled()
+  })
+
+  it('inherits metadata from db source when merging into existing target id', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.getAnimeById.mockResolvedValue({
+      id: 'bocchi-the-roc',
+      name: '孤独摇滚!',
+      cover: 'https://cdn.example.com/custom-cover.jpg',
+      summary: 'custom summary',
+      hidden: false,
+    })
+    mocks.prisma.anime.findUnique.mockImplementation(async ({ where }: any) => {
+      if (where.id === 'bocchi-the-roc') {
+        return {
+          id: 'bocchi-the-roc',
+          name: '孤独摇滚!',
+          alias: [],
+          year: 2022,
+          summary: 'custom summary',
+          cover: 'https://cdn.example.com/custom-cover.jpg',
+          hidden: false,
+          name_en: 'Bocchi the Rock!',
+          name_ja: 'ぼっち・ざ・ろっく！',
+          summary_en: 'custom summary en',
+          summary_ja: 'custom summary ja',
+        }
+      }
+      if (where.id === 'bocchi-the-rock') {
+        return {
+          id: 'bocchi-the-rock',
+          name: 'Bocchi the Rock!',
+          alias: ['btr'],
+          year: null,
+          summary: null,
+          cover: null,
+          hidden: false,
+          name_en: null,
+          name_ja: null,
+          summary_en: null,
+          summary_ja: null,
+        }
+      }
+      return null
+    })
+    mocks.prisma.anime.update.mockResolvedValue({
+      id: 'bocchi-the-rock',
+      name: '孤独摇滚!',
+      alias: ['btr', 'bocchi-the-roc'],
+      year: 2022,
+      summary: 'custom summary',
+      cover: 'https://cdn.example.com/custom-cover.jpg',
+      hidden: false,
+    })
+    mocks.prisma.article.findMany.mockResolvedValue([])
+    mocks.prisma.articleRevision.findMany.mockResolvedValue([])
+    mocks.prisma.anime.delete.mockResolvedValue({ id: 'bocchi-the-roc' })
+
+    const handlers = await import('app/api/admin/anime/[id]/route')
+    const res = await handlers.PATCH(
+      jsonReq('http://localhost/api/admin/anime/bocchi-the-roc', 'PATCH', { nextId: 'bocchi-the-rock' }),
+      {
+        params: Promise.resolve({ id: 'bocchi-the-roc' }),
+      }
+    )
+
+    expect(res.status).toBe(200)
+    expect(mocks.prisma.anime.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bocchi-the-rock' },
+        data: expect.objectContaining({
+          name: '孤独摇滚!',
+          cover: 'https://cdn.example.com/custom-cover.jpg',
+          summary: 'custom summary',
+          year: 2022,
+          name_en: 'Bocchi the Rock!',
+          name_ja: 'ぼっち・ざ・ろっく！',
+          summary_en: 'custom summary en',
+          summary_ja: 'custom summary ja',
+        }),
+      })
+    )
   })
 })
