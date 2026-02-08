@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Button from '@/components/shared/Button'
 import SharedCoverField from '@/components/shared/CoverField'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 type AnimeDetail = {
   id: string
@@ -31,6 +35,8 @@ type AnimePatchPayload = Partial<AnimeDetail> & {
 
 export default function AdminAnimeDetailClient({ id }: { id: string }) {
   const router = useRouter()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [anime, setAnime] = useState<AnimeDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -160,7 +166,7 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       setRetranslatePreview(data.preview)
       setShowRetranslateModal(true)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '翻译失败')
     } finally {
       setRetranslateLoading(false)
     }
@@ -198,36 +204,49 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
       setSaveMessage('已应用并保存')
       setTimeout(() => setSaveMessage(null), 2000)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '应用失败')
     } finally {
       setRetranslateLoading(false)
     }
   }
 
   async function onDelete() {
-    if (!confirm('确定要删除（隐藏）该作品吗？前台将不再显示。')) return
+    const accepted = await askForConfirm({
+      title: '确认隐藏作品',
+      description: '该操作会将作品从前台隐藏。',
+      confirmLabel: '确认隐藏',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
     setSaving(true)
     try {
       const res = await fetch(`/api/admin/anime/${encodeURIComponent(id)}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('删除失败')
       const data = await res.json()
       setAnime(data.anime)
-      alert('已删除（隐藏）')
+      toast.success('已删除（隐藏）')
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '删除失败')
     } finally {
       setSaving(false)
     }
   }
 
   async function onRestore() {
-    if (!confirm('确定要恢复显示该作品吗？')) return
+    const accepted = await askForConfirm({
+      title: '确认恢复作品',
+      description: '恢复后前台将重新显示该作品。',
+      confirmLabel: '确认恢复',
+      cancelLabel: '取消',
+    })
+    if (!accepted) return
     setSaving(true)
     try {
       await updateField({ hidden: false })
-      alert('已恢复')
+      toast.success('已恢复')
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '恢复失败')
     } finally {
       setSaving(false)
     }
@@ -260,8 +279,8 @@ export default function AdminAnimeDetailClient({ id }: { id: string }) {
     }
   }
 
-  if (loading) return <div className="text-gray-600">加载中…</div>
-  if (error) return <div className="text-rose-600">{error}</div>
+  if (loading) return <AdminSkeleton rows={8} />
+  if (error) return <AdminErrorState message={error} onRetry={() => void load()} />
   if (!anime) return <div className="text-gray-600">未找到</div>
 
   return (

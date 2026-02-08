@@ -3,8 +3,28 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TranslationDetailUI from '../../app/(authed)/admin/translations/[id]/ui'
 import { useRouter } from 'next/navigation'
 
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
+}))
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 const mockEditor = {
@@ -80,9 +100,11 @@ describe('TranslationDetailUI', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(useRouter as any).mockReturnValue({ push: vi.fn() })
+    askForConfirmMock.mockReset()
+    askForConfirmMock.mockResolvedValue(true)
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
     global.fetch = vi.fn()
-    global.confirm = vi.fn(() => true)
-    global.alert = vi.fn()
   })
 
   it('renders correctly and enters edit mode with re-translate button', async () => {
@@ -169,25 +191,32 @@ describe('TranslationDetailUI', () => {
     expect(screen.queryByText('翻译预览 (选中内容)')).not.toBeInTheDocument()
   })
 
-  it('approve action still submits when browser confirm is unavailable', async () => {
+  it('approve action submits and redirects to list', async () => {
     const push = vi.fn()
     ;(useRouter as any).mockReturnValue({ push })
-    global.confirm = vi.fn(() => false)
 
+    let resolveApprove: (() => void) | null = null
     ;(global.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ task: mockTask }),
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ ok: true }),
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveApprove = () => resolve({
+          ok: true,
+          json: async () => ({ ok: true }),
+        })
       })
+      )
 
     render(<TranslationDetailUI id="task-1" />)
     await waitFor(() => expect(screen.getByText('确认翻译')).toBeInTheDocument())
 
     fireEvent.click(screen.getByText('确认翻译'))
+
+    expect(screen.getByRole('button', { name: '处理中...' })).toBeDisabled()
+
+    resolveApprove?.()
 
     await waitFor(() =>
       expect(global.fetch).toHaveBeenCalledWith('/api/admin/translations/task-1/approve', { method: 'POST' })
@@ -195,8 +224,7 @@ describe('TranslationDetailUI', () => {
     expect(push).toHaveBeenCalledWith('/admin/translations')
   })
 
-  it('translate action still submits when browser confirm is unavailable', async () => {
-    global.confirm = vi.fn(() => false)
+  it('translate action submits and keeps user on detail', async () => {
     const pendingTask = {
       ...mockTask,
       status: 'pending',

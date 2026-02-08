@@ -1,12 +1,11 @@
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
-import AdminPanelClient from './ui'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '管理员面板',
-  description: '管理员后台：内容与数据管理。',
-  alternates: { canonical: '/admin/panel' },
+  title: '管理员面板（兼容入口）',
+  description: '管理员后台兼容入口，将重定向到仪表盘。',
+  alternates: { canonical: '/admin/dashboard' },
 }
 
 export default async function AdminPanelPage() {
@@ -15,5 +14,5 @@ export default async function AdminPanelPage() {
   if (!session.user.isAdmin) {
     return <div className="text-gray-600">无权限访问。</div>
   }
-  return <AdminPanelClient />
+  redirect('/admin/dashboard')
 }

@@ -1,12 +1,26 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
 const pushMock = vi.fn()
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -34,6 +48,8 @@ describe('admin review ui', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
     pushMock.mockReset()
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -53,19 +69,16 @@ describe('admin review ui', () => {
       const url = String(input)
       const method = String(init?.method || 'GET').toUpperCase()
 
-      if (url === '/api/admin/review/articles?status=in_review' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          items: [{ id: 'a1', slug: 'hello', title: 'Hello Article', status: 'in_review', updatedAt: '2025-01-01T00:00:00.000Z' }],
-        })
-      }
-
-      if (url === '/api/admin/review/revisions?status=in_review' && method === 'GET') {
+      if (url === '/api/admin/review/queue?status=in_review&page=1&pageSize=20' && method === 'GET') {
         return jsonResponse({
           ok: true,
           items: [
-            { id: 'r1', articleId: 'a2', authorId: 'user-2', title: 'Updated Article', status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z' },
+            { id: 'a1', kind: 'article', articleId: 'a1', slug: 'hello', title: 'Hello Article', status: 'in_review', updatedAt: '2025-01-01T00:00:00.000Z' },
+            { id: 'r1', kind: 'revision', articleId: 'a2', slug: null, title: 'Updated Article', status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z' },
           ],
+          total: 2,
+          page: 1,
+          pageSize: 20,
         })
       }
 
@@ -78,8 +91,49 @@ describe('admin review ui', () => {
 
     expect(await screen.findByText('Hello Article')).toBeInTheDocument()
     expect(await screen.findByText('Updated Article')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles?status=in_review', { method: 'GET' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions?status=in_review', { method: 'GET' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/queue?status=in_review&page=1&pageSize=20', { method: 'GET' })
+  })
+
+  it('shows loading skeleton then empty state', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    let resolveFetch: ((res: Response) => void) | null = null
+    const fetchMock = vi.fn(async () => {
+      return await new Promise<Response>((resolve) => {
+        resolveFetch = resolve
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const AdminReviewPage = (await import('@/app/(authed)/admin/review/page')).default
+    render(await AdminReviewPage())
+
+    await waitFor(() => {
+      expect(document.querySelector('.animate-pulse')).toBeTruthy()
+    })
+
+    resolveFetch?.(jsonResponse({
+      ok: true,
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    }))
+
+    expect(await screen.findByText('暂无待审核内容')).toBeInTheDocument()
+  })
+
+  it('shows error state when queue load fails', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const fetchMock = vi.fn(async () => jsonResponse({ error: 'queue failed' }, { status: 500 }))
+    vi.stubGlobal('fetch', fetchMock as any)
+
+    const AdminReviewPage = (await import('@/app/(authed)/admin/review/page')).default
+    render(await AdminReviewPage())
+
+    expect(await screen.findByText('queue failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
   })
 
   it('reject requires reason and posts to reject endpoint', async () => {

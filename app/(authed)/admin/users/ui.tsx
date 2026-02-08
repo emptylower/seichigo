@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Button from '@/components/shared/Button'
 import {
   Table,
   TableBody,
@@ -12,6 +13,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
+import { AdminEmptyState } from '@/components/admin/state/AdminEmptyState'
 
 type User = {
   id: string
@@ -42,6 +46,32 @@ export default function UsersListClient() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const router = useRouter()
 
+  const loadUsers = useCallback(async (nextPage = page, nextQ = debouncedSearch) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        page: nextPage.toString(),
+        q: nextQ,
+      })
+      const res = await fetch(`/api/admin/users?${params.toString()}`)
+      const data = (await res.json().catch(() => ({}))) as UsersResponse
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || '加载用户列表失败')
+      }
+
+      setUsers(data.users || [])
+      setTotal(data.total || 0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载用户列表失败')
+      setUsers([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [debouncedSearch, page])
+
   useEffect(() => {
     const timer = setTimeout(() => {
 
@@ -52,47 +82,24 @@ export default function UsersListClient() {
   }, [search])
 
   useEffect(() => {
-    async function fetchUsers() {
-      setLoading(true)
-      setError(null)
-      try {
-        const params = new URLSearchParams({
-          page: page.toString(),
-          q: debouncedSearch,
-        })
-        const res = await fetch(`/api/admin/users?${params}`)
-        const data = (await res.json()) as UsersResponse
-
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || 'Fetch failed')
-        }
-
-        setUsers(data.users)
-        setTotal(data.total)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : '加载用户列表失败')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchUsers()
-  }, [page, debouncedSearch])
+    void loadUsers(page, debouncedSearch)
+  }, [debouncedSearch, loadUsers, page])
 
   const totalPages = Math.ceil(total / 20)
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">用户管理</h1>
-          <p className="text-muted-foreground">
-            管理系统内的所有用户账户。
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
+          <p className="text-muted-foreground">管理系统内的所有用户账户。</p>
         </div>
+        <Button type="button" variant="ghost" onClick={() => void loadUsers(page, debouncedSearch)} disabled={loading}>
+          刷新
+        </Button>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           placeholder="搜索邮箱或名称..."
           value={search}
@@ -101,7 +108,15 @@ export default function UsersListClient() {
         />
       </div>
 
-      <div className="rounded-md border">
+      <div className="text-xs text-gray-500">
+        共 {total} 条记录，第 {page} / {totalPages || 1} 页
+      </div>
+
+      {loading ? <AdminSkeleton rows={8} /> : null}
+      {!loading && error ? <AdminErrorState message={error} onRetry={() => void loadUsers(page, debouncedSearch)} /> : null}
+
+      {!loading && !error ? (
+      <div className="rounded-md border bg-white">
         <Table>
           <TableHeader>
             <TableRow>
@@ -115,22 +130,10 @@ export default function UsersListClient() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
-                  加载中...
-                </TableCell>
-              </TableRow>
-            ) : error ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-red-500">
-                  {error}
-                </TableCell>
-              </TableRow>
-            ) : users.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
-                  暂无用户
+                  <AdminEmptyState title="暂无用户" description="当前条件下没有匹配用户。" />
                 </TableCell>
               </TableRow>
             ) : (
@@ -174,27 +177,25 @@ export default function UsersListClient() {
           </TableBody>
         </Table>
       </div>
+      ) : null}
 
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          共 {total} 条记录，第 {page} / {totalPages || 1} 页
-        </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1 || loading}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
-          >
-            上一页
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || loading}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
-          >
-            下一页
-          </button>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page === 1 || loading}
+        >
+          上一页
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page >= totalPages || loading}
+        >
+          下一页
+        </Button>
       </div>
     </div>
   )

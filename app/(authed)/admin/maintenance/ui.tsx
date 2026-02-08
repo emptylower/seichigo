@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
+import { useAdminToast } from '@/hooks/useAdminToast'
 
 type BackfillResult = Record<string, unknown>
 
@@ -14,6 +15,7 @@ function prettyJson(value: unknown): string {
 }
 
 export default function MaintenanceClient() {
+  const toast = useAdminToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BackfillResult | null>(null)
@@ -56,7 +58,11 @@ export default function MaintenanceClient() {
         const errors = Number((data as any)?.errors || 0)
         const nextCursor = (data as any)?.nextCursor ? String((data as any).nextCursor) : ''
         const summary = `scanned=${scanned}, processed=${processed}, errors=${errors}${nextCursor ? `, nextCursor=${nextCursor}` : ''}`
-        alert(errors > 0 ? `回填执行完成（有错误）\n${summary}` : `回填执行成功\n${summary}`)
+        if (errors > 0) {
+          toast.error(`回填执行完成（有错误）：${summary}`)
+        } else {
+          toast.success(`回填执行成功：${summary}`)
+        }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Request failed'
@@ -64,7 +70,7 @@ export default function MaintenanceClient() {
       setResult(null)
 
       if (!dryRun) {
-        alert(`回填执行失败\n${msg}`)
+        toast.error(`回填执行失败：${msg}`)
       }
     } finally {
       setLoading(false)

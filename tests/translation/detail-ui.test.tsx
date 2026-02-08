@@ -3,6 +3,26 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TranslationDetailUI from '@/app/(authed)/admin/translations/[id]/ui'
 
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
+}))
+
 // Mock dependencies
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -49,6 +69,7 @@ describe('TranslationDetailUI Layout', () => {
 
   beforeEach(() => {
     vi.resetAllMocks()
+    askForConfirmMock.mockResolvedValue(true)
     global.fetch = vi.fn((url: string) => {
       if (url.includes('/api/admin/translations/123')) {
         return Promise.resolve({
@@ -74,7 +95,7 @@ describe('TranslationDetailUI Layout', () => {
     // Assert: Main content components exist
     expect(screen.getByTestId('breadcrumbs')).toBeInTheDocument()
     expect(screen.getByTestId('post-meta')).toBeInTheDocument()
-    expect(screen.getByTestId('tiptap-preview')).toBeInTheDocument()
+    expect(screen.getByText('编辑器加载中…')).toBeInTheDocument()
 
     // Assert: Layout classes (prose-pink)
     const article = document.querySelector('article')

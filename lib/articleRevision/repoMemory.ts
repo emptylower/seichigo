@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import type {
   ArticleRevision,
+  ArticleRevisionSummary,
   ArticleRevisionRepo,
   ArticleSnapshot,
   UpdateArticleRevisionDraftInput,
@@ -90,6 +91,11 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
   }
 
+  async listSummaryByStatus(status: ArticleRevision['status']): Promise<ArticleRevisionSummary[]> {
+    const list = await this.listByStatus(status)
+    return list.map((item) => this.toSummary(item))
+  }
+
   async updateDraft(id: string, input: UpdateArticleRevisionDraftInput): Promise<ArticleRevision | null> {
     const existing = this.byId.get(id)
     if (!existing) return null
@@ -133,5 +139,19 @@ export class InMemoryArticleRevisionRepo implements ArticleRevisionRepo {
     }
 
     return this.byId.get(id) ?? null
+  }
+
+  private toSummary(revision: ArticleRevision): ArticleRevisionSummary {
+    return {
+      id: revision.id,
+      articleId: revision.articleId,
+      authorId: revision.authorId,
+      language: revision.language,
+      translationGroupId: revision.translationGroupId,
+      title: revision.title,
+      status: revision.status,
+      createdAt: revision.createdAt,
+      updatedAt: revision.updatedAt,
+    }
   }
 }

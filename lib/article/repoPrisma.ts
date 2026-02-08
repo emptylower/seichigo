@@ -1,6 +1,6 @@
 import { Prisma, type Article as PrismaArticle } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
-import { ArticleSlugExistsError, type Article, type ArticleRepo, type CreateDraftInput, type UpdateDraftInput, type UpdateStateInput } from './repo'
+import { ArticleSlugExistsError, type Article, type ArticleRepo, type ArticleSummary, type CreateDraftInput, type UpdateDraftInput, type UpdateStateInput } from './repo'
 
 function toArticle(record: PrismaArticle): Article {
   return {
@@ -9,6 +9,21 @@ function toArticle(record: PrismaArticle): Article {
     language: record.language,
     translationGroupId: record.translationGroupId,
     lastApprovedAt: record.lastApprovedAt,
+  }
+}
+
+function toArticleSummary(record: Pick<PrismaArticle, 'id' | 'authorId' | 'slug' | 'language' | 'translationGroupId' | 'title' | 'status' | 'publishedAt' | 'createdAt' | 'updatedAt'>): ArticleSummary {
+  return {
+    id: record.id,
+    authorId: record.authorId,
+    slug: record.slug,
+    language: record.language,
+    translationGroupId: record.translationGroupId,
+    title: record.title,
+    status: record.status as Article['status'],
+    publishedAt: record.publishedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   }
 }
 
@@ -67,9 +82,38 @@ export class PrismaArticleRepo implements ArticleRepo {
     return list.map(toArticle)
   }
 
-  async listByStatus(status: Article['status']): Promise<Article[]> {
-    const list = await prisma.article.findMany({ where: { status }, orderBy: { updatedAt: 'desc' } })
+  async listByStatus(status: Article['status'], language?: string): Promise<Article[]> {
+    const list = await prisma.article.findMany({
+      where: {
+        status,
+        ...(language ? { language } : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+    })
     return list.map(toArticle)
+  }
+
+  async listSummaryByStatus(status: Article['status'], language?: string): Promise<ArticleSummary[]> {
+    const list = await prisma.article.findMany({
+      where: {
+        status,
+        ...(language ? { language } : {}),
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        authorId: true,
+        slug: true,
+        language: true,
+        translationGroupId: true,
+        title: true,
+        status: true,
+        publishedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+    return list.map(toArticleSummary)
   }
 
   async updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null> {

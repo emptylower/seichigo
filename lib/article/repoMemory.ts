@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { ArticleSlugExistsError, type Article, type ArticleRepo, type CreateDraftInput, type UpdateDraftInput, type UpdateStateInput } from './repo'
+import { ArticleSlugExistsError, type Article, type ArticleRepo, type ArticleSummary, type CreateDraftInput, type UpdateDraftInput, type UpdateStateInput } from './repo'
 
 type Options = {
   now?: () => Date
@@ -83,10 +83,16 @@ export class InMemoryArticleRepo implements ArticleRepo {
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
   }
 
-  async listByStatus(status: Article['status']): Promise<Article[]> {
+  async listByStatus(status: Article['status'], language?: string): Promise<Article[]> {
     return Array.from(this.byId.values())
       .filter((a) => a.status === status)
+      .filter((a) => !language || a.language === language)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+  }
+
+  async listSummaryByStatus(status: Article['status'], language?: string): Promise<ArticleSummary[]> {
+    const list = await this.listByStatus(status, language)
+    return list.map((item) => this.toSummary(item))
   }
 
   async updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null> {
@@ -149,5 +155,20 @@ export class InMemoryArticleRepo implements ArticleRepo {
       this.bySlugLang.delete(key)
     }
     return existing
+  }
+
+  private toSummary(article: Article): ArticleSummary {
+    return {
+      id: article.id,
+      authorId: article.authorId,
+      slug: article.slug,
+      language: article.language,
+      translationGroupId: article.translationGroupId,
+      title: article.title,
+      status: article.status,
+      publishedAt: article.publishedAt,
+      createdAt: article.createdAt,
+      updatedAt: article.updatedAt,
+    }
   }
 }

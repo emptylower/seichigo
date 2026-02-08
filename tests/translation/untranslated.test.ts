@@ -426,4 +426,76 @@ describe('GET /api/admin/translations/untranslated', () => {
       missingLanguages: ['ja'],
     })
   })
+
+  it('supports pagination + q + entityType filters', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'published' && opts?.where?.language === 'zh') {
+        return Promise.resolve([
+          {
+            id: 'a1',
+            title: 'Tokyo Route One',
+            translationGroupId: null,
+            publishedAt: new Date('2024-03-01T00:00:00.000Z'),
+            createdAt: new Date('2024-03-01T00:00:00.000Z'),
+          },
+          {
+            id: 'a2',
+            title: 'Osaka Route Two',
+            translationGroupId: null,
+            publishedAt: new Date('2024-02-01T00:00:00.000Z'),
+            createdAt: new Date('2024-02-01T00:00:00.000Z'),
+          },
+          {
+            id: 'a3',
+            title: 'Tokyo Route Three',
+            translationGroupId: null,
+            publishedAt: new Date('2024-01-01T00:00:00.000Z'),
+            createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          },
+        ])
+      }
+      if (opts?.where?.language?.in && opts?.where?.translationGroupId?.in) {
+        return Promise.resolve([])
+      }
+      return Promise.resolve([])
+    })
+
+    mocks.prisma.city.findMany.mockResolvedValue([])
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(
+      getReq('http://localhost/api/admin/translations/untranslated?entityType=article&q=tokyo&page=1&pageSize=5')
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.entityType).toBe('article')
+    expect(j.q).toBe('tokyo')
+    expect(j.total).toBe(2)
+    expect(j.page).toBe(1)
+    expect(j.pageSize).toBe(5)
+    expect(j.items).toHaveLength(2)
+    expect(j.items[0]).toMatchObject({
+      entityType: 'article',
+      entityId: 'a1',
+      title: 'Tokyo Route One',
+    })
+
+    expect(mocks.prisma.city.findMany).not.toHaveBeenCalled()
+    expect(mocks.prisma.anime.findMany).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 for unauthenticated', async () => {
+    mocks.getSession.mockResolvedValue(null)
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(401)
+    expect(mocks.prisma.article.findMany).not.toHaveBeenCalled()
+  })
 })

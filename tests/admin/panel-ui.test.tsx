@@ -3,9 +3,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
+const redirectMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
+}))
+
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => redirectMock(url),
 }))
 
 vi.mock('next/link', () => ({
@@ -27,6 +32,7 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
 describe('admin panel ui', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
+    redirectMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -39,52 +45,16 @@ describe('admin panel ui', () => {
     expect(screen.getByText('无权限访问。')).toBeInTheDocument()
   })
 
-  it('renders in_review list and can switch to published list', async () => {
+  it('redirects admin panel entry to dashboard', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
-    const fetchMock = vi.fn(async (input: any, init?: any) => {
-      const url = String(input)
-      const method = String(init?.method || 'GET').toUpperCase()
-
-      if (url === '/api/admin/review/articles?status=in_review' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          items: [{ id: 'a1', slug: 'hello', title: 'Hello Article', status: 'in_review', updatedAt: '2025-01-01T00:00:00.000Z' }],
-        })
-      }
-
-      if (url === '/api/admin/review/revisions?status=in_review' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          items: [
-            { id: 'r1', articleId: 'a2', authorId: 'user-2', title: 'Updated Article', status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z' },
-          ],
-        })
-      }
-
-      if (url === '/api/admin/review/articles?status=published' && method === 'GET') {
-        return jsonResponse({
-          ok: true,
-          items: [{ id: 'p1', slug: 'pub', title: 'Published Article', status: 'published', updatedAt: '2025-01-02T00:00:00.000Z' }],
-        })
-      }
-
-      return jsonResponse({ error: 'not found' }, { status: 404 })
-    })
-    vi.stubGlobal('fetch', fetchMock as any)
-
     const AdminPanelPage = (await import('@/app/(authed)/admin/panel/page')).default
-    render(await AdminPanelPage())
-
-    expect(await screen.findByText('Hello Article')).toBeInTheDocument()
-    expect(await screen.findByText('Updated Article')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles?status=in_review', { method: 'GET' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/revisions?status=in_review', { method: 'GET' })
-
-    fireEvent.click(screen.getByRole('button', { name: '已发布' }))
-
-    expect(await screen.findByText('Published Article')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/review/articles?status=published', { method: 'GET' })
+    try {
+      await AdminPanelPage()
+    } catch {
+      // redirect in next can throw
+    }
+    expect(redirectMock).toHaveBeenCalledWith('/admin/dashboard')
   })
 
   it('unpublish requires reason and posts to unpublish endpoint', async () => {

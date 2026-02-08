@@ -30,6 +30,7 @@ describe('Sidebar', () => {
     expect(screen.getByText('文章审核')).toBeInTheDocument()
     expect(screen.getByText('用户列表')).toBeInTheDocument()
     expect(screen.getByText('系统设置')).toBeInTheDocument()
+    expect(screen.getByText('运维检查')).toBeInTheDocument()
   })
 
   it('highlights active link', () => {
@@ -61,5 +62,12 @@ describe('AdminBreadcrumbs', () => {
     
     expect(screen.getByText('管理后台')).toBeInTheDocument()
     expect(screen.getByText('unknown-segment')).toBeInTheDocument()
+  })
+
+  it('maps ops segment to 运维检查', () => {
+    mocks.usePathname.mockReturnValue('/admin/ops')
+    render(<AdminBreadcrumbs />)
+
+    expect(screen.getByText('运维检查')).toBeInTheDocument()
   })
 })

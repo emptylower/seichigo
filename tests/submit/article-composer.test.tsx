@@ -57,13 +57,13 @@ describe('submit/new article composer', () => {
   })
 
   it('creates a draft after typing content', async () => {
-    vi.useFakeTimers()
-
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, article: { id: 'a1' } }))
 
     render(<ArticleComposerClient initial={null} />)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'hello' } })
+    const editor = await screen.findByLabelText('rich-text')
+    vi.useFakeTimers()
+    fireEvent.change(editor, { target: { value: 'hello' } })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(401)
@@ -78,14 +78,14 @@ describe('submit/new article composer', () => {
   })
 
   it('auto-saves latest content after debounce (no extra saves)', async () => {
-    vi.useFakeTimers()
-
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, article: { updatedAt: new Date().toISOString() } }))
 
     render(<ArticleComposerClient initial={baseInitial} />)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+    const editor = await screen.findByLabelText('rich-text')
+    vi.useFakeTimers()
+    fireEvent.change(editor, { target: { value: 'A' } })
+    fireEvent.change(editor, { target: { value: 'B' } })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(801)
@@ -100,8 +100,6 @@ describe('submit/new article composer', () => {
   })
 
   it('queues saves while one request is in flight (prevents stale overwrite)', async () => {
-    vi.useFakeTimers()
-
     let resolveFirst: ((resp: Response) => void) | null = null
     fetchMock
       .mockReturnValueOnce(
@@ -113,7 +111,9 @@ describe('submit/new article composer', () => {
 
     render(<ArticleComposerClient initial={baseInitial} />)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
+    const editor = await screen.findByLabelText('rich-text')
+    vi.useFakeTimers()
+    fireEvent.change(editor, { target: { value: 'A' } })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(801)
@@ -121,7 +121,7 @@ describe('submit/new article composer', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+    fireEvent.change(editor, { target: { value: 'B' } })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(801)
       await Promise.resolve()
@@ -143,8 +143,6 @@ describe('submit/new article composer', () => {
   })
 
   it('shows retry when autosave fails and allows manual retry', async () => {
-    vi.useFakeTimers()
-
     let rejectFirst: ((err: any) => void) | null = null
     fetchMock
       .mockReturnValueOnce(
@@ -156,7 +154,9 @@ describe('submit/new article composer', () => {
 
     render(<ArticleComposerClient initial={baseInitial} />)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'A' } })
+    const editor = await screen.findByLabelText('rich-text')
+    vi.useFakeTimers()
+    fireEvent.change(editor, { target: { value: 'A' } })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(801)
@@ -209,12 +209,13 @@ describe('revision composer', () => {
   })
 
   it('auto-saves to revision endpoint', async () => {
-    vi.useFakeTimers()
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
 
     render(<ArticleComposerClient initial={baseInitial as any} mode="revision" />)
 
-    fireEvent.change(screen.getByLabelText('rich-text'), { target: { value: 'B' } })
+    const editor = await screen.findByLabelText('rich-text')
+    vi.useFakeTimers()
+    fireEvent.change(editor, { target: { value: 'B' } })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(801)

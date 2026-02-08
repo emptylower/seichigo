@@ -145,6 +145,7 @@ model Article {
   @@unique([slug, language])
   @@index([authorId])
   @@index([status])
+  @@index([status, updatedAt])
   @@index([translationGroupId])
 }
 
@@ -213,6 +214,7 @@ model ArticleRevision {
   @@index([articleId])
   @@index([authorId])
   @@index([status])
+  @@index([status, updatedAt])
   @@index([translationGroupId])
 }
 
@@ -375,7 +377,9 @@ model TranslationTask {
 
   @@unique([entityType, entityId, targetLanguage])
   @@index([status])
+  @@index([status, updatedAt])
   @@index([entityType, status])
+  @@index([entityType, targetLanguage, status, updatedAt])
 }
 
 model TranslationHistory {
@@ -442,4 +446,44 @@ model SeoApiUsage {
   updatedAt DateTime @updatedAt
 
   @@unique([provider, date])
+}
+
+model OpsReport {
+  id               String       @id @default(cuid())
+  source           String
+  windowStart      DateTime
+  windowEnd        DateTime
+  dateKey          String
+  triggerMode      String
+  status           String
+  totalDeployments Int
+  totalLogs        Int
+  severeCount      Int
+  warningCount     Int
+  truncated        Boolean      @default(false)
+  markdownSummary  String       @db.Text
+  rawSummary       Json?
+  createdAt        DateTime     @default(now())
+  events           OpsLogEvent[]
+
+  @@index([createdAt, dateKey])
+}
+
+model OpsLogEvent {
+  id           String    @id @default(cuid())
+  reportId     String
+  severity     String
+  fingerprint  String
+  timestamp    DateTime?
+  deploymentId String?
+  requestId    String?
+  path         String?
+  method       String?
+  statusCode   Int?
+  message      String    @db.Text
+  raw          Json?
+  createdAt    DateTime  @default(now())
+  report       OpsReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, severity, timestamp, fingerprint])
 }

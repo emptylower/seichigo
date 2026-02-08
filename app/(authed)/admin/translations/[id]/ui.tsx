@@ -9,6 +9,10 @@ import PostMeta from '@/components/blog/PostMeta'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import { useTranslationAutoSave } from '../../../../../hooks/useTranslationAutoSave'
 import { type Editor } from '@tiptap/react'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 const TipTapPreview = dynamic(() => import('@/components/translation/TipTapPreview'), {
   ssr: false,
@@ -45,6 +49,8 @@ type Props = {
 
 export default function TranslationDetailUI({ id }: Props) {
   const router = useRouter()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [task, setTask] = useState<TranslationTask | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -112,14 +118,21 @@ export default function TranslationDetailUI({ id }: Props) {
       const data = await res.json()
       setHistoryList(data.history || [])
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to load history')
+      toast.error(err instanceof Error ? err.message : 'Failed to load history')
     } finally {
       setLoadingHistory(false)
     }
   }
 
   async function handleRollback(historyId: string) {
-    if (!confirm('确定要回滚到此版本吗？这将覆盖当前的翻译内容。')) return
+    const accepted = await askForConfirm({
+      title: '确认回滚翻译版本',
+      description: '这将覆盖当前翻译内容，且不可撤销。',
+      confirmLabel: '确认回滚',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
     
     setRollingBack(historyId)
     try {
@@ -136,11 +149,11 @@ export default function TranslationDetailUI({ id }: Props) {
         throw new Error(data.error || 'Rollback failed')
       }
 
-      alert('回滚成功')
+      toast.success('回滚成功')
       await loadTask()
       setShowHistory(false)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Rollback failed')
+      toast.error(err instanceof Error ? err.message : 'Rollback failed')
     } finally {
       setRollingBack(null)
     }
@@ -178,7 +191,7 @@ export default function TranslationDetailUI({ id }: Props) {
       setPreviewContent(data.preview)
       setShowPreview(true)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Retranslation failed')
+      toast.error(err instanceof Error ? err.message : 'Retranslation failed')
     } finally {
       setRetranslating(false)
     }
@@ -218,7 +231,7 @@ export default function TranslationDetailUI({ id }: Props) {
       setPreviewContent(data.preview)
       setShowPreview(true)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Translation failed')
+      toast.error(err instanceof Error ? err.message : 'Translation failed')
     } finally {
       setRetranslating(false)
     }
@@ -259,9 +272,9 @@ export default function TranslationDetailUI({ id }: Props) {
         setEditedContent(previewContent)
         setShowPreview(false)
         setPreviewContent(null)
-        alert('翻译已应用并保存')
+        toast.success('翻译已应用并保存')
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Apply failed')
+        toast.error(err instanceof Error ? err.message : 'Apply failed')
       } finally {
         setRetranslating(false)
       }
@@ -270,7 +283,14 @@ export default function TranslationDetailUI({ id }: Props) {
 
   async function handleUpdatePublished() {
     if (!task || !translatedArticle) return
-    if (!confirm('确认要更新已发布的文章吗？这将覆盖当前线上内容。')) return
+    const accepted = await askForConfirm({
+      title: '确认更新已发布文章',
+      description: '该操作将覆盖线上内容。',
+      confirmLabel: '确认更新',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
     
     setUpdating(true)
     try {
@@ -287,10 +307,10 @@ export default function TranslationDetailUI({ id }: Props) {
         throw new Error(data.error || 'Update failed')
       }
 
-      alert('文章更新成功')
+      toast.success('文章更新成功')
       await loadTask()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Update failed')
+      toast.error(err instanceof Error ? err.message : 'Update failed')
     } finally {
       setUpdating(false)
     }
@@ -309,10 +329,10 @@ export default function TranslationDetailUI({ id }: Props) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Failed to approve')
       
-      alert('翻译已确认并应用')
+      toast.success('翻译已确认并应用')
       router.push('/admin/translations')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve')
+      toast.error(err instanceof Error ? err.message : 'Failed to approve')
     } finally {
       setApproving(false)
     }
@@ -331,9 +351,9 @@ export default function TranslationDetailUI({ id }: Props) {
       
       // Reload task to get updated sourceContent and draftContent
       await loadTask()
-      alert('翻译完成！')
+      toast.success('翻译完成')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Translation failed')
+      toast.error(err instanceof Error ? err.message : 'Translation failed')
     } finally {
       setTranslating(false)
     }
@@ -344,15 +364,11 @@ export default function TranslationDetailUI({ id }: Props) {
   }, [id])
 
   if (loading) {
-    return <div className="text-gray-600">加载中...</div>
+    return <AdminSkeleton rows={10} />
   }
 
   if (error || !task) {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
-        {error || '未找到翻译任务'}
-      </div>
-    )
+    return <AdminErrorState message={error || '未找到翻译任务'} onRetry={() => void loadTask()} />
   }
 
   const languageLabels: Record<string, string> = {

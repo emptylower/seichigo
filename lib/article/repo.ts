@@ -1,5 +1,19 @@
 import type { ArticleStatus } from './workflow'
 
+export type ArticleSummary = Pick<
+  Article,
+  | 'id'
+  | 'authorId'
+  | 'slug'
+  | 'language'
+  | 'translationGroupId'
+  | 'title'
+  | 'status'
+  | 'publishedAt'
+  | 'createdAt'
+  | 'updatedAt'
+>
+
 export type Article = {
   id: string
   authorId: string
@@ -61,6 +75,7 @@ export interface ArticleRepo {
   findBySlugAndLanguage(slug: string, language: string): Promise<Article | null>
   listByAuthor(authorId: string): Promise<Article[]>
   listByStatus(status: ArticleStatus, language?: string): Promise<Article[]>
+  listSummaryByStatus(status: ArticleStatus, language?: string): Promise<ArticleSummary[]>
   updateDraft(id: string, input: UpdateDraftInput): Promise<Article | null>
   updateState(id: string, input: UpdateStateInput): Promise<Article | null>
   delete(id: string): Promise<Article | null>

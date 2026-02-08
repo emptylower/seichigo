@@ -31,4 +31,40 @@ export class PrismaWaitlistRepo implements WaitlistRepo {
     const list = await prisma.waitlistEntry.findMany({ orderBy: { createdAt: 'desc' } })
     return list.map(toEntry)
   }
+
+  async listPage(input: { page: number; pageSize: number; q?: string }): Promise<{
+    items: WaitlistEntry[]
+    total: number
+    page: number
+    pageSize: number
+  }> {
+    const page = Number.isFinite(input.page) ? Math.max(1, Math.floor(input.page)) : 1
+    const pageSize = Number.isFinite(input.pageSize) ? Math.min(100, Math.max(1, Math.floor(input.pageSize))) : 20
+    const q = String(input.q || '').trim()
+    const where = q
+      ? {
+          OR: [
+            { email: { contains: q, mode: 'insensitive' as const } },
+            { userId: { contains: q, mode: 'insensitive' as const } },
+          ],
+        }
+      : undefined
+
+    const [items, total] = await Promise.all([
+      prisma.waitlistEntry.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.waitlistEntry.count({ where }),
+    ])
+
+    return {
+      items: items.map(toEntry),
+      total,
+      page,
+      pageSize,
+    }
+  }
 }

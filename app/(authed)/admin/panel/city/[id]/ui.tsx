@@ -4,6 +4,10 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
 import CoverField from '@/components/shared/CoverField'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 type CityAlias = {
   id: string
@@ -41,6 +45,8 @@ type RetranslatePreview = {
 }
 
 export default function AdminCityDetailClient({ id }: { id: string }) {
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [city, setCity] = useState<CityDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -189,7 +195,7 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       setRetranslatePreview(data.preview)
       setShowRetranslateModal(true)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '翻译失败')
     } finally {
       setRetranslateLoading(false)
     }
@@ -227,7 +233,7 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       setSaveMessage('已应用并保存')
       setTimeout(() => setSaveMessage(null), 2000)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '应用失败')
     } finally {
       setRetranslateLoading(false)
     }
@@ -248,14 +254,21 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       setAliasDraft('')
       await load()
     } catch (e: any) {
-      alert(e?.message || '添加失败')
+      toast.error(e?.message || '添加失败')
     } finally {
       setSaving(false)
     }
   }
 
   async function removeAlias(aliasId: string) {
-    if (!confirm('确定删除该别名吗？')) return
+    const accepted = await askForConfirm({
+      title: '确认删除别名',
+      description: '删除后该别名将不再生效。',
+      confirmLabel: '确认删除',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
     setSaving(true)
     try {
       const res = await fetch(`/api/admin/city/${encodeURIComponent(id)}/aliases/${encodeURIComponent(aliasId)}`, {
@@ -264,8 +277,9 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.ok) throw new Error(data?.error || '删除失败')
       await load()
+      toast.success('别名已删除')
     } catch (e: any) {
-      alert(e?.message || '删除失败')
+      toast.error(e?.message || '删除失败')
     } finally {
       setSaving(false)
     }
@@ -274,7 +288,14 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
   async function merge() {
     const target = mergeTarget.trim()
     if (!target) return
-    if (!confirm('确定要合并吗？合并后本城市将被隐藏，并建立跳转。')) return
+    const accepted = await askForConfirm({
+      title: '确认合并城市',
+      description: '合并后当前城市将被隐藏，并建立跳转关系。',
+      confirmLabel: '确认合并',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
     setSaving(true)
     try {
       const res = await fetch(`/api/admin/city/${encodeURIComponent(id)}/merge`, {
@@ -284,10 +305,10 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.ok) throw new Error(data?.error || '合并失败')
-      alert('合并完成（本城市已隐藏）')
+      toast.success('合并完成（本城市已隐藏）')
       await load()
     } catch (e: any) {
-      alert(e?.message || '合并失败')
+      toast.error(e?.message || '合并失败')
     } finally {
       setSaving(false)
     }
@@ -295,8 +316,8 @@ export default function AdminCityDetailClient({ id }: { id: string }) {
 
   const aliases = useMemo(() => (city?.aliases || []).slice(), [city?.aliases])
 
-  if (loading) return <div className="text-gray-600">加载中…</div>
-  if (error) return <div className="text-rose-600">{error}</div>
+  if (loading) return <AdminSkeleton rows={8} />
+  if (error) return <AdminErrorState message={error} onRetry={() => void load()} />
   if (!city) return <div className="text-gray-600">未找到</div>
 
   return (

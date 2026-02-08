@@ -6,6 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import Button from '@/components/shared/Button'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminEmptyState } from '@/components/admin/state/AdminEmptyState'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 type TranslationTaskListItem = {
   id: string
@@ -89,6 +94,8 @@ function buildPublicLinks(task: TranslationTaskListItem): { source?: string; tar
 export default function TranslationsUI() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
 
   const [view, setView] = useState<'tasks' | 'untranslated'>('tasks')
 
@@ -117,6 +124,9 @@ export default function TranslationsUI() {
   const [untranslatedItems, setUntranslatedItems] = useState<UntranslatedItem[]>([])
   const [untranslatedLoading, setUntranslatedLoading] = useState(false)
   const [untranslatedQuery, setUntranslatedQuery] = useState('')
+  const [untranslatedPage, setUntranslatedPage] = useState(1)
+  const [untranslatedPageSize] = useState(30)
+  const [untranslatedTotal, setUntranslatedTotal] = useState(0)
 
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchTaskItems, setBatchTaskItems] = useState<TranslationTaskListItem[]>([])
@@ -240,13 +250,13 @@ export default function TranslationsUI() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || '批量执行失败')
 
-      alert(`已执行 ${data.processed} 个，成功 ${data.success} 个，失败 ${data.failed} 个，跳过 ${data.skipped} 个`)
+      toast.success(`已执行 ${data.processed} 个，成功 ${data.success} 个，失败 ${data.failed} 个，跳过 ${data.skipped} 个`)
       setShowBatchModal(false)
       await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
     } catch (error: any) {
       const msg = error?.message || '操作失败'
       setBatchError(msg)
-      alert(msg)
+      toast.error(msg)
     } finally {
       setBatchExecuting(false)
     }
@@ -340,18 +350,34 @@ export default function TranslationsUI() {
   async function loadUntranslated() {
     setUntranslatedLoading(true)
     try {
-      const res = await fetch('/api/admin/translations/untranslated')
-      const data = await res.json()
-      setUntranslatedItems(data.items || [])
+      const params = new URLSearchParams()
+      if (untranslatedQuery.trim()) params.set('q', untranslatedQuery.trim())
+      params.set('entityType', entityType)
+      params.set('page', String(untranslatedPage))
+      params.set('pageSize', String(untranslatedPageSize))
+
+      const res = await fetch(`/api/admin/translations/untranslated?${params.toString()}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || '加载未翻译内容失败')
+      setUntranslatedItems(Array.isArray(data.items) ? data.items : [])
+      setUntranslatedTotal(typeof data.total === 'number' ? data.total : Number.parseInt(String(data.total || 0), 10) || 0)
     } catch (error) {
       console.error('Failed to load untranslated items', error)
+      setUntranslatedItems([])
+      setUntranslatedTotal(0)
     } finally {
       setUntranslatedLoading(false)
     }
   }
 
   async function createTranslationTask(item: UntranslatedItem) {
-    if (!confirm(`确定为 "${item.title}" 创建翻译任务吗？`)) return
+    const accepted = await askForConfirm({
+      title: '创建翻译任务',
+      description: `确定为 "${item.title}" 创建翻译任务吗？`,
+      confirmLabel: '确认创建',
+      cancelLabel: '取消',
+    })
+    if (!accepted) return
 
     try {
       const res = await fetch('/api/admin/translations', {
@@ -371,8 +397,9 @@ export default function TranslationsUI() {
 
       // Refresh related UI
       await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
+      toast.success(`已为 "${item.title}" 创建翻译任务`)
     } catch (error: any) {
-      alert(error.message || '操作失败')
+      toast.error(error.message || '操作失败')
     }
   }
 
@@ -385,17 +412,10 @@ export default function TranslationsUI() {
   }, [entityType, targetLanguage])
 
   useEffect(() => {
-    if (view === 'untranslated' && untranslatedItems.length === 0) {
+    if (view === 'untranslated') {
       void loadUntranslated()
     }
-  }, [untranslatedItems.length, view])
-
-  const filteredUntranslated = useMemo(() => {
-    const needle = untranslatedQuery.trim()
-    if (!needle) return untranslatedItems
-    const lower = needle.toLowerCase()
-    return untranslatedItems.filter((it) => it.title.toLowerCase().includes(lower))
-  }, [untranslatedItems, untranslatedQuery])
+  }, [entityType, untranslatedPage, untranslatedPageSize, untranslatedQuery, view])
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
 
@@ -548,19 +568,15 @@ export default function TranslationsUI() {
           </div>
 
           {tasksError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {tasksError}
-            </div>
+            <AdminErrorState message={tasksError} onRetry={() => void loadTasks()} />
           ) : null}
 
-          {tasksLoading ? <div className="text-gray-600">加载中…</div> : null}
+          {tasksLoading ? <AdminSkeleton rows={8} /> : null}
 
           {!tasksLoading && !tasksError ? (
             <div className="space-y-3">
               {tasks.length === 0 ? (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center text-gray-600">
-                  暂无匹配的翻译任务
-                </div>
+                <AdminEmptyState title="暂无匹配的翻译任务" />
               ) : (
                 tasks.map((task) => {
                   const links = buildPublicLinks(task)
@@ -699,7 +715,10 @@ export default function TranslationsUI() {
               <label className="text-sm font-medium text-gray-700">搜索标题</label>
               <input
                 value={untranslatedQuery}
-                onChange={(e) => setUntranslatedQuery(e.target.value)}
+                onChange={(e) => {
+                  setUntranslatedQuery(e.target.value)
+                  setUntranslatedPage(1)
+                }}
                 placeholder="按标题筛选"
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
@@ -709,6 +728,7 @@ export default function TranslationsUI() {
               className="h-10"
               onClick={() => {
                 setUntranslatedQuery('')
+                setUntranslatedPage(1)
                 void loadUntranslated()
               }}
               disabled={untranslatedLoading}
@@ -718,14 +738,12 @@ export default function TranslationsUI() {
           </div>
 
           {untranslatedLoading ? (
-            <div className="text-gray-500">加载中...</div>
-          ) : filteredUntranslated.length === 0 ? (
-            <div className="rounded-lg border border-gray-200 bg-green-50 p-8 text-center text-green-700">
-              所有内容都已有翻译任务
-            </div>
+            <AdminSkeleton rows={8} />
+          ) : untranslatedItems.length === 0 ? (
+            <AdminEmptyState title="所有内容都已有翻译任务" />
           ) : (
             <div className="space-y-3">
-              {filteredUntranslated.map((item) => (
+              {untranslatedItems.map((item) => (
                 <div
                   key={`${item.entityType}-${item.entityId}`}
                   className="rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 transition-colors"
@@ -767,6 +785,30 @@ export default function TranslationsUI() {
               ))}
             </div>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div className="text-sm text-gray-600">
+              共 {untranslatedTotal} 条 <span className="text-gray-300 mx-1">|</span> 第 {untranslatedPage} / {Math.max(1, Math.ceil(untranslatedTotal / untranslatedPageSize))} 页
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                className="px-3 py-1.5"
+                disabled={untranslatedLoading || untranslatedPage <= 1}
+                onClick={() => setUntranslatedPage((p) => Math.max(1, p - 1))}
+              >
+                上一页
+              </Button>
+              <Button
+                variant="ghost"
+                className="px-3 py-1.5"
+                disabled={untranslatedLoading || untranslatedPage >= Math.max(1, Math.ceil(untranslatedTotal / untranslatedPageSize))}
+                onClick={() => setUntranslatedPage((p) => p + 1)}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

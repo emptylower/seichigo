@@ -6,6 +6,10 @@ import { useEffect, useState } from 'react'
 import Button from '@/components/shared/Button'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
+import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
+import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 
 type UserDetail = {
   id: string
@@ -59,6 +63,8 @@ function formatDate(dateStr: string | null) {
 
 export default function AdminUserDetailClient({ id }: { id: string }) {
   const router = useRouter()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [user, setUser] = useState<UserDetail | null>(null)
   const [articles, setArticles] = useState<ArticleItem[]>([])
   const [drafts, setDrafts] = useState<DraftItem[]>([])
@@ -99,7 +105,14 @@ export default function AdminUserDetailClient({ id }: { id: string }) {
   async function toggleAdmin() {
     if (!user) return
     const action = user.isAdmin ? '取消管理员权限' : '设为管理员'
-    if (!confirm(`确定要${action}吗？`)) return
+    const accepted = await askForConfirm({
+      title: action,
+      description: `确定要${action}吗？`,
+      confirmLabel: '确认',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
 
     setUpdating(true)
     try {
@@ -112,8 +125,9 @@ export default function AdminUserDetailClient({ id }: { id: string }) {
       if (!res.ok) throw new Error(data.error || '操作失败')
       
       setUser(data.user)
+      toast.success(`${action}成功`)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '操作失败')
     } finally {
       setUpdating(false)
     }
@@ -122,7 +136,14 @@ export default function AdminUserDetailClient({ id }: { id: string }) {
   async function toggleDisabled() {
     if (!user) return
     const action = user.disabled ? '启用账户' : '禁用账户'
-    if (!confirm(`确定要${action}吗？`)) return
+    const accepted = await askForConfirm({
+      title: action,
+      description: `确定要${action}吗？`,
+      confirmLabel: '确认',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!accepted) return
 
     setUpdating(true)
     try {
@@ -135,15 +156,16 @@ export default function AdminUserDetailClient({ id }: { id: string }) {
       if (!res.ok) throw new Error(data.error || '操作失败')
       
       setUser(data.user)
+      toast.success(`${action}成功`)
     } catch (err: any) {
-      alert(err.message)
+      toast.error(err.message || '操作失败')
     } finally {
       setUpdating(false)
     }
   }
 
-  if (loading) return <div className="text-gray-600 p-8">加载中…</div>
-  if (error) return <div className="text-rose-600 p-8">错误: {error}</div>
+  if (loading) return <AdminSkeleton rows={8} />
+  if (error) return <AdminErrorState message={error} onRetry={() => void load()} />
   if (!user) return <div className="text-gray-600 p-8">用户不存在</div>
 
   return (

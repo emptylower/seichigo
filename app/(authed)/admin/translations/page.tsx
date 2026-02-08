@@ -1,11 +1,19 @@
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
+import { getServerAuthSession } from '@/lib/auth/session'
 import TranslationsUI from './ui'
 
 export const metadata = {
   title: '翻译管理 - 管理后台',
 }
 
-export default function TranslationsPage() {
+export default async function TranslationsPage() {
+  const session = await getServerAuthSession()
+  if (!session?.user) redirect('/auth/signin')
+  if (!session.user.isAdmin) {
+    return <div className="text-gray-600">无权限访问。</div>
+  }
+
   return (
     <div className="space-y-6">
       <div>

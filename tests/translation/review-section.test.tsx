@@ -3,6 +3,26 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import TranslationsUI from '@/app/(authed)/admin/translations/ui'
 
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
+}))
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
@@ -42,6 +62,7 @@ vi.mock('lucide-react', () => ({
 describe('TranslationsUI Review Section', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    askForConfirmMock.mockResolvedValue(true)
     global.fetch = vi.fn()
   })
 

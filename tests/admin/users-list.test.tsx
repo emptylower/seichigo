@@ -82,9 +82,6 @@ describe('Admin Users List', () => {
     const UsersListClient = (await import('@/app/(authed)/admin/users/ui')).default
     render(<UsersListClient />)
 
-    // Check loading state
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
-
     // Check data loaded
     await waitFor(() => {
       expect(screen.getByText('test@example.com')).toBeInTheDocument()

@@ -1,11 +1,30 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
+}))
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 vi.mock('next/link', () => ({
@@ -21,6 +40,7 @@ vi.mock('next/navigation', () => ({
     push: vi.fn(),
     refresh: vi.fn(),
   }),
+  redirect: vi.fn(),
 }))
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -34,6 +54,11 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
 describe('admin user detail page', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
+    getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    askForConfirmMock.mockReset()
+    askForConfirmMock.mockResolvedValue(true)
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -63,8 +88,6 @@ describe('admin user detail page', () => {
       return jsonResponse({ error: 'not found' }, { status: 404 })
     })
     vi.stubGlobal('fetch', fetchMock as any)
-    vi.stubGlobal('confirm', vi.fn(() => true))
-    vi.stubGlobal('alert', vi.fn())
 
     const UserDetailPage = (await import('@/app/(authed)/admin/users/[id]/page')).default
     render(await UserDetailPage({ params: Promise.resolve({ id: 'user-123' }) }))
@@ -117,8 +140,6 @@ describe('admin user detail page', () => {
     })
     
     vi.stubGlobal('fetch', fetchMock as any)
-    const confirmMock = vi.fn(() => true)
-    vi.stubGlobal('confirm', confirmMock)
 
     const UserDetailPage = (await import('@/app/(authed)/admin/users/[id]/page')).default
     render(await UserDetailPage({ params: Promise.resolve({ id: 'user-123' }) }))
@@ -126,11 +147,16 @@ describe('admin user detail page', () => {
     const toggleBtn = await screen.findByRole('button', { name: '设为管理员' })
     fireEvent.click(toggleBtn)
 
-    expect(confirmMock).toHaveBeenCalledWith('确定要设为管理员吗？')
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/admin/users/user-123'), expect.objectContaining({
-      method: 'PATCH',
-      body: JSON.stringify({ isAdmin: true })
+    expect(askForConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: '设为管理员',
+      tone: 'danger',
     }))
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/admin/users/user-123'), expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ isAdmin: true }),
+      }))
+    })
     
     expect(await screen.findByRole('button', { name: '取消管理员' })).toBeInTheDocument()
   })
@@ -173,8 +199,6 @@ describe('admin user detail page', () => {
     })
     
     vi.stubGlobal('fetch', fetchMock as any)
-    const confirmMock = vi.fn(() => true)
-    vi.stubGlobal('confirm', confirmMock)
 
     const UserDetailPage = (await import('@/app/(authed)/admin/users/[id]/page')).default
     render(await UserDetailPage({ params: Promise.resolve({ id: 'user-123' }) }))
@@ -182,11 +206,16 @@ describe('admin user detail page', () => {
     const toggleBtn = await screen.findByRole('button', { name: '禁用账户' })
     fireEvent.click(toggleBtn)
 
-    expect(confirmMock).toHaveBeenCalledWith('确定要禁用账户吗？')
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/admin/users/user-123'), expect.objectContaining({
-      method: 'PATCH',
-      body: JSON.stringify({ disabled: true })
+    expect(askForConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: '禁用账户',
+      tone: 'danger',
     }))
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/admin/users/user-123'), expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ disabled: true }),
+      }))
+    })
     
     expect(await screen.findByRole('button', { name: '启用账户' })).toBeInTheDocument()
   })

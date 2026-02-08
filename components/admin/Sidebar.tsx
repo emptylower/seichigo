@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Languages,
   TrendingUp,
+  Activity,
 } from "lucide-react"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -85,6 +86,11 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           title: "SEO 管理",
           href: "/admin/seo",
           icon: TrendingUp,
+        },
+        {
+          title: "运维检查",
+          href: "/admin/ops",
+          icon: Activity,
         },
       ],
     },

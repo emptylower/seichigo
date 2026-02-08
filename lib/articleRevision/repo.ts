@@ -28,6 +28,11 @@ export type ArticleRevision = {
   updatedAt: Date
 }
 
+export type ArticleRevisionSummary = Pick<
+  ArticleRevision,
+  'id' | 'articleId' | 'authorId' | 'language' | 'translationGroupId' | 'title' | 'status' | 'createdAt' | 'updatedAt'
+>
+
 type MutableDraftFields =
   | 'title'
   | 'seoTitle'
@@ -53,6 +58,7 @@ export interface ArticleRevisionRepo {
   getOrCreateActiveFromArticle(article: ArticleSnapshot): Promise<ArticleRevision>
   listByAuthor(authorId: string): Promise<ArticleRevision[]>
   listByStatus(status: ArticleRevisionStatus): Promise<ArticleRevision[]>
+  listSummaryByStatus(status: ArticleRevisionStatus): Promise<ArticleRevisionSummary[]>
   updateDraft(id: string, input: UpdateArticleRevisionDraftInput): Promise<ArticleRevision | null>
   updateState(id: string, input: UpdateArticleRevisionStateInput): Promise<ArticleRevision | null>
 }

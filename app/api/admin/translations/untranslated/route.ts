@@ -49,6 +49,23 @@ function dateToIso(d: Date | null | undefined): string {
   return (d ?? new Date(0)).toISOString()
 }
 
+function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
+  const min = opts?.min ?? 1
+  const max = opts?.max ?? 100
+  const raw = value ? Number.parseInt(value, 10) : NaN
+  if (!Number.isFinite(raw)) return fallback
+  return Math.min(max, Math.max(min, raw))
+}
+
+function normalizeQuery(value: string | null): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function parseEntityType(value: string | null): EntityType | 'all' {
+  if (value === 'article' || value === 'city' || value === 'anime') return value
+  return 'all'
+}
+
 function hasEntityTranslation(entityType: EntityType, row: CityRow | AnimeRow, lang: TargetLanguage): boolean {
   // Mirror the detection style in app/api/admin/translations/batch/route.ts.
   if (entityType === 'city') {
@@ -84,49 +101,61 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { searchParams } = new URL(req.url)
+    const page = clampInt(searchParams.get('page'), 1, { min: 1, max: 10_000 })
+    const pageSize = clampInt(searchParams.get('pageSize'), 30, { min: 5, max: 100 })
+    const q = normalizeQuery(searchParams.get('q'))
+    const entityTypeFilter = parseEntityType(searchParams.get('entityType'))
+
     const [articles, cities, anime] = await Promise.all([
-      prisma.article.findMany({
-        // Only published source (zh) articles should be considered.
-        where: {
-          status: 'published',
-          language: 'zh',
-        },
-        select: {
-          id: true,
-          title: true,
-          translationGroupId: true,
-          publishedAt: true,
-          createdAt: true,
-        },
-      }) as unknown as Promise<ArticleRow[]>,
-      prisma.city.findMany({
-        // Hidden cities should not be translated.
-        where: { hidden: false },
-        select: {
-          id: true,
-          name_zh: true,
-          name_en: true,
-          name_ja: true,
-          description_en: true,
-          transportTips_en: true,
-          description_ja: true,
-          transportTips_ja: true,
-          createdAt: true,
-        },
-      }) as unknown as Promise<CityRow[]>,
-      prisma.anime.findMany({
-        // Hidden anime should not be translated.
-        where: { hidden: false },
-        select: {
-          id: true,
-          name: true,
-          name_en: true,
-          name_ja: true,
-          summary_en: true,
-          summary_ja: true,
-          createdAt: true,
-        },
-      }) as unknown as Promise<AnimeRow[]>,
+      entityTypeFilter === 'all' || entityTypeFilter === 'article'
+        ? (prisma.article.findMany({
+            // Only published source (zh) articles should be considered.
+            where: {
+              status: 'published',
+              language: 'zh',
+            },
+            select: {
+              id: true,
+              title: true,
+              translationGroupId: true,
+              publishedAt: true,
+              createdAt: true,
+            },
+          }) as unknown as Promise<ArticleRow[]>)
+        : Promise.resolve([]),
+      entityTypeFilter === 'all' || entityTypeFilter === 'city'
+        ? (prisma.city.findMany({
+            // Hidden cities should not be translated.
+            where: { hidden: false },
+            select: {
+              id: true,
+              name_zh: true,
+              name_en: true,
+              name_ja: true,
+              description_en: true,
+              transportTips_en: true,
+              description_ja: true,
+              transportTips_ja: true,
+              createdAt: true,
+            },
+          }) as unknown as Promise<CityRow[]>)
+        : Promise.resolve([]),
+      entityTypeFilter === 'all' || entityTypeFilter === 'anime'
+        ? (prisma.anime.findMany({
+            // Hidden anime should not be translated.
+            where: { hidden: false },
+            select: {
+              id: true,
+              name: true,
+              name_en: true,
+              name_ja: true,
+              summary_en: true,
+              summary_ja: true,
+              createdAt: true,
+            },
+          }) as unknown as Promise<AnimeRow[]>)
+        : Promise.resolve([]),
     ])
 
     const items: UntranslatedItem[] = []
@@ -237,7 +266,25 @@ export async function GET(req: NextRequest) {
 
     items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 
-    return NextResponse.json({ items, total: items.length })
+    const filtered = q
+      ? items.filter((item) => {
+          const haystack = `${item.title} ${item.entityId} ${item.entityType}`.toLowerCase()
+          return haystack.includes(q)
+        })
+      : items
+
+    const total = filtered.length
+    const start = (page - 1) * pageSize
+    const paged = filtered.slice(start, start + pageSize)
+
+    return NextResponse.json({
+      items: paged,
+      total,
+      page,
+      pageSize,
+      q: q || undefined,
+      entityType: entityTypeFilter,
+    })
   } catch (error) {
     console.error('[api/admin/translations/untranslated] GET failed', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

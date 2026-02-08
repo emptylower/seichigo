@@ -29,16 +29,22 @@ describe('admin anime list ui', () => {
       const url = String(input)
       const method = String(init?.method || 'GET').toUpperCase()
 
-      if (url.startsWith('/api/admin/anime?q=') && method === 'GET') {
+      if (url.startsWith('/api/admin/anime?') && method === 'GET') {
         const query = new URL(`http://localhost${url}`).searchParams.get('q') || ''
         if (!query) {
           return jsonResponse({
             ok: true,
+            total: 1,
+            page: 1,
+            pageSize: 36,
             items: [{ id: '天气之子', name: '天气之子', alias: [], hidden: false }],
           })
         }
         return jsonResponse({
           ok: true,
+          total: 1,
+          page: 1,
+          pageSize: 36,
           items: [{ id: 'weathering-with-you', name: '天气之子', alias: [], hidden: false }],
         })
       }
@@ -54,7 +60,15 @@ describe('admin anime list ui', () => {
     })
     vi.stubGlobal('fetch', fetchMock as any)
 
-    render(<AdminAnimeListClient />)
+    render(
+      <AdminAnimeListClient
+        initialItems={[{ id: '天气之子', name: '天气之子', alias: [], hidden: false }]}
+        initialPage={1}
+        initialPageSize={36}
+        initialTotal={1}
+        initialQuery=""
+      />
+    )
 
     expect(await screen.findByRole('link', { name: '天气之子' })).toBeInTheDocument()
 

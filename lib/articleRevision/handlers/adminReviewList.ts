@@ -37,9 +37,8 @@ export function createHandlers(deps: ArticleRevisionApiDeps) {
       }
 
       const status = (parsed.data.status ?? 'in_review') as ArticleRevisionStatus
-      const list = await deps.revisionRepo.listByStatus(status)
+      const list = await deps.revisionRepo.listSummaryByStatus(status)
       return NextResponse.json({ ok: true, items: list.map(toListItem) })
     },
   }
 }
-

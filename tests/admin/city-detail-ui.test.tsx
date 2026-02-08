@@ -4,9 +4,28 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
 const pushMock = vi.fn()
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
+}))
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -46,6 +65,10 @@ describe('admin city detail ui', () => {
   beforeEach(() => {
     getSessionMock.mockReset()
     pushMock.mockReset()
+    askForConfirmMock.mockReset()
+    askForConfirmMock.mockResolvedValue(true)
+    toastSuccessMock.mockReset()
+    toastErrorMock.mockReset()
     vi.unstubAllGlobals()
   })
 

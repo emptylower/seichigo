@@ -2,6 +2,7 @@ import { Prisma, type ArticleRevision as PrismaArticleRevision } from '@prisma/c
 import { prisma } from '@/lib/db/prisma'
 import type {
   ArticleRevision,
+  ArticleRevisionSummary,
   ArticleRevisionRepo,
   ArticleSnapshot,
   UpdateArticleRevisionDraftInput,
@@ -16,6 +17,22 @@ function toRevision(record: PrismaArticleRevision): ArticleRevision {
     status: record.status as ArticleRevision['status'],
     language: record.language,
     translationGroupId: record.translationGroupId,
+  }
+}
+
+function toRevisionSummary(
+  record: Pick<PrismaArticleRevision, 'id' | 'articleId' | 'authorId' | 'language' | 'translationGroupId' | 'title' | 'status' | 'createdAt' | 'updatedAt'>
+): ArticleRevisionSummary {
+  return {
+    id: record.id,
+    articleId: record.articleId,
+    authorId: record.authorId,
+    language: record.language,
+    translationGroupId: record.translationGroupId,
+    title: record.title,
+    status: record.status as ArticleRevision['status'],
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   }
 }
 
@@ -80,6 +97,25 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
   async listByStatus(status: ArticleRevision['status']): Promise<ArticleRevision[]> {
     const list = await prisma.articleRevision.findMany({ where: { status }, orderBy: { updatedAt: 'desc' } })
     return list.map(toRevision)
+  }
+
+  async listSummaryByStatus(status: ArticleRevision['status']): Promise<ArticleRevisionSummary[]> {
+    const list = await prisma.articleRevision.findMany({
+      where: { status },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        articleId: true,
+        authorId: true,
+        language: true,
+        translationGroupId: true,
+        title: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+    return list.map(toRevisionSummary)
   }
 
   async updateDraft(id: string, input: UpdateArticleRevisionDraftInput): Promise<ArticleRevision | null> {

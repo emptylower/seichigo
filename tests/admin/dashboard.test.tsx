@@ -71,27 +71,27 @@ describe('admin dashboard', () => {
     const fetchMock = vi.fn(async (input: any, init?: any) => {
       const url = String(input)
       
-      if (url === '/api/admin/stats') {
+      if (url === '/api/admin/dashboard/summary') {
         return jsonResponse({
           ok: true,
           stats: {
             pendingArticles: 5,
+            pendingRevisions: 2,
+            pendingReviewTotal: 7,
+            readyTranslations: 3,
             publishedArticles: 10,
             animeCount: 20,
             cityCount: 30,
             userCount: 40,
-            waitlistCount: 2
-          }
-        })
-      }
-
-      if (url === '/api/admin/review/articles?status=in_review') {
-        return jsonResponse({
-          ok: true,
-          items: [
-            { id: 'a1', title: 'Recent Article 1', slug: 'recent-1', status: 'in_review' },
-            { id: 'a2', title: 'Recent Article 2', slug: 'recent-2', status: 'in_review' }
-          ]
+            waitlistCount: 2,
+          },
+          queue: {
+            total: 2,
+            items: [
+              { id: 'a1', kind: 'article', title: 'Recent Article 1', slug: 'recent-1', status: 'in_review', updatedAt: '2025-01-02T00:00:00.000Z', href: '/admin/review/a1' },
+              { id: 'r1', kind: 'revision', title: 'Recent Revision 1', slug: null, status: 'in_review', updatedAt: '2025-01-03T00:00:00.000Z', href: '/admin/review/r1' },
+            ],
+          },
         })
       }
 
@@ -103,10 +103,15 @@ describe('admin dashboard', () => {
     render(await AdminDashboardPage())
 
     await waitFor(() => {
-      expect(screen.getByText('待审文章')).toBeInTheDocument()
+      expect(screen.getByText('待审核队列')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/dashboard/summary', { method: 'GET' })
+
+    expect(screen.getByText('7')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('文章 5 + 修订 2')).toBeInTheDocument()
     expect(screen.getByText('10')).toBeInTheDocument()
     expect(screen.getByText('20')).toBeInTheDocument()
     expect(screen.getByText('30')).toBeInTheDocument()
@@ -114,8 +119,8 @@ describe('admin dashboard', () => {
     expect(screen.getByText('2')).toBeInTheDocument()
 
     expect(screen.getByText('Recent Article 1')).toBeInTheDocument()
-    expect(screen.getByText('recent-1')).toBeInTheDocument()
-    expect(screen.getByText('Recent Article 2')).toBeInTheDocument()
+    expect(screen.getByText(/slug: recent-1/)).toBeInTheDocument()
+    expect(screen.getByText('Recent Revision 1')).toBeInTheDocument()
   })
 
   it('handles error state', async () => {
@@ -130,7 +135,7 @@ describe('admin dashboard', () => {
     render(await AdminDashboardPage())
 
     await waitFor(() => {
-      expect(screen.getByText('错误: API Error')).toBeInTheDocument()
+      expect(screen.getByText('API Error')).toBeInTheDocument()
     })
   })
 })

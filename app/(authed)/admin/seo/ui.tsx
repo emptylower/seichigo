@@ -4,6 +4,8 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TrendingUp, Database, Zap, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAdminToast } from '@/hooks/useAdminToast'
+import { useAdminConfirm } from '@/hooks/useAdminConfirm'
 
 type Keyword = {
   id: string
@@ -88,6 +90,8 @@ type BulkCheckReport = {
 
 export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
   const router = useRouter()
+  const toast = useAdminToast()
+  const askForConfirm = useAdminConfirm()
   const [syncing, setSyncing] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
   const [syncDays, setSyncDays] = useState(7)
@@ -132,10 +136,10 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       })
       const message = data.message || 'Sync complete'
       setSyncResult({ message, at: new Date().toLocaleString() })
-      alert(message)
+      toast.success(message)
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Sync failed')
+      toast.error(err instanceof Error ? err.message : 'Sync failed')
     } finally {
       setSyncing(false)
     }
@@ -148,10 +152,10 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
         method: 'POST',
         body: { keywordId },
       })
-      alert(data.message || 'Check complete')
+      toast.success(data.message || 'Check complete')
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Check failed')
+      toast.error(err instanceof Error ? err.message : 'Check failed')
     } finally {
       setChecking(null)
     }
@@ -160,7 +164,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
   async function handleCreateKeyword() {
     const keyword = createDraft.keyword.trim()
     if (!keyword) {
-      alert('请输入关键词')
+      toast.error('请输入关键词')
       return
     }
 
@@ -173,7 +177,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       setCreateDraft(emptyDraft)
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Create failed')
+      toast.error(err instanceof Error ? err.message : 'Create failed')
     }
   }
 
@@ -195,7 +199,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
     if (!editingId) return
     const keyword = editDraft.keyword.trim()
     if (!keyword) {
-      alert('请输入关键词')
+      toast.error('请输入关键词')
       return
     }
 
@@ -207,14 +211,14 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       cancelEditKeyword()
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Update failed')
+      toast.error(err instanceof Error ? err.message : 'Update failed')
     }
   }
 
   async function handleBulkImport() {
     const input = bulkInput.trim()
     if (!input) {
-      alert('请输入要导入的关键词列表')
+      toast.error('请输入要导入的关键词列表')
       return
     }
 
@@ -228,16 +232,16 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       const base = `导入完成：新增 ${data.inserted}，更新 ${data.updated}，共 ${data.total}`
       const errors = data.errors?.length || 0
       if (errors > 0) {
-        alert(`${base}\n${errors} 行解析失败（已跳过）。`)
+        toast.error(`${base}；${errors} 行解析失败（已跳过）。`)
       } else {
-        alert(base)
+        toast.success(base)
       }
 
       setBulkOpen(false)
       setBulkInput('')
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Import failed')
+      toast.error(err instanceof Error ? err.message : 'Import failed')
     } finally {
       setBulkImporting(false)
     }
@@ -250,14 +254,18 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       .sort((a, b) => b.priority - a.priority)
 
     if (toCheck.length === 0) {
-      alert('没有可检查的关键词（请先新增并启用关键词）')
+      toast.error('没有可检查的关键词（请先新增并启用关键词）')
       return
     }
 
     const remaining = Math.max(0, quotaLimit - usedQuota)
-    const ok = window.confirm(
-      `将检查 ${toCheck.length} 个关键词（预计消耗 ${toCheck.length} 次配额；本月剩余约 ${remaining} 次）。继续？`
-    )
+    const ok = await askForConfirm({
+      title: '确认一键检查',
+      description: `将检查 ${toCheck.length} 个关键词（预计消耗 ${toCheck.length} 次配额；本月剩余约 ${remaining} 次）。`,
+      confirmLabel: '继续',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
     if (!ok) return
 
     bulkCancelRef.current = false
@@ -336,7 +344,7 @@ export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
       })
       router.refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Update failed')
+      toast.error(err instanceof Error ? err.message : 'Update failed')
     }
   }
 

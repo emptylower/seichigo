@@ -3,6 +3,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import TranslationDetailUI from '../../app/(authed)/admin/translations/[id]/ui'
 import React from 'react'
 
+const askForConfirmMock = vi.fn(async () => true)
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('@/hooks/useAdminConfirm', () => ({
+  useAdminConfirm: () => askForConfirmMock,
+}))
+
+vi.mock('@/hooks/useAdminToast', () => ({
+  useAdminToast: () => ({
+    toasts: [],
+    show: vi.fn(),
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
+}))
+
 vi.mock('@/components/translation/TipTapPreview', () => ({
   default: ({ content, mode, onChange }: any) => (
     <div data-testid={`tiptap-preview-${mode}`}>
@@ -48,7 +68,7 @@ global.fetch = mockFetch
 describe('TranslationDetailUI Edit Mode with Auto-Save', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    window.confirm = vi.fn().mockReturnValue(true)
+    askForConfirmMock.mockResolvedValue(true)
   })
 
   const mockTask = {
