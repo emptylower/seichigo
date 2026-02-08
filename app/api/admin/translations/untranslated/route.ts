@@ -86,8 +86,11 @@ export async function GET(req: NextRequest) {
 
     const [articles, cities, anime] = await Promise.all([
       prisma.article.findMany({
-        // Only published articles should be considered.
-        where: { status: 'published' },
+        // Only published source (zh) articles should be considered.
+        where: {
+          status: 'published',
+          language: 'zh',
+        },
         select: {
           id: true,
           title: true,
@@ -139,6 +142,7 @@ export async function GET(req: NextRequest) {
       const translated = await prisma.article.findMany({
         where: {
           language: { in: TARGET_LANGUAGES as unknown as string[] },
+          status: 'published',
           translationGroupId: { in: groupIds },
         },
         select: {

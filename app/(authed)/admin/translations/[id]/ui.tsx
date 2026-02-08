@@ -292,14 +292,13 @@ export default function TranslationDetailUI({ id }: Props) {
   }
 
   async function handleApprove() {
-    if (!confirm('确认要应用此翻译吗？')) return
-    
     setApproving(true)
     try {
       const res = await fetch(`/api/admin/translations/${id}/approve`, {
         method: 'POST',
       })
-      if (!res.ok) throw new Error('Failed to approve')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to approve')
       
       alert('翻译已确认并应用')
       router.push('/admin/translations')
@@ -311,8 +310,6 @@ export default function TranslationDetailUI({ id }: Props) {
   }
 
   async function handleTranslate() {
-    if (!confirm('确定要执行翻译吗？')) return
-    
     setTranslating(true)
     try {
       const res = await fetch(`/api/admin/translations/${id}/translate`, {

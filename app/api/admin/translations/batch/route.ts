@@ -48,7 +48,10 @@ async function getEntityIdsAndApprovedLangs(
 {
   if (entityType === 'article') {
     const rows: ArticleRow[] = await prisma.article.findMany({
-      where: { status: 'published' },
+      where: {
+        status: 'published',
+        language: 'zh',
+      },
       select: { id: true, translationGroupId: true },
     })
 
@@ -59,6 +62,7 @@ async function getEntityIdsAndApprovedLangs(
     const translated = await prisma.article.findMany({
       where: {
         language: { in: targetLanguages },
+        status: 'published',
         translationGroupId: { in: groupIds },
       },
       select: {

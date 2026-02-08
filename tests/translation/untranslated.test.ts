@@ -40,7 +40,7 @@ describe('GET /api/admin/translations/untranslated', () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
     mocks.prisma.article.findMany.mockImplementation((opts: any) => {
-      if (opts?.where?.status === 'published') {
+      if (opts?.where?.status === 'published' && opts?.where?.language === 'zh') {
         return Promise.resolve([
           {
             id: 'a1',
@@ -125,7 +125,12 @@ describe('GET /api/admin/translations/untranslated', () => {
 
     // Ensure route queries published-only articles and filters hidden entities in DB query.
     expect(mocks.prisma.article.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ status: 'published' }) })
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'published',
+          language: 'zh',
+        }),
+      })
     )
     expect(mocks.prisma.city.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ hidden: false }) })
@@ -139,7 +144,7 @@ describe('GET /api/admin/translations/untranslated', () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
     mocks.prisma.article.findMany.mockImplementation((opts: any) => {
-      if (opts?.where?.status === 'published') {
+      if (opts?.where?.status === 'published' && opts?.where?.language === 'zh') {
         return Promise.resolve([
           {
             id: 'a1',
@@ -202,7 +207,7 @@ describe('GET /api/admin/translations/untranslated', () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
     mocks.prisma.article.findMany.mockImplementation((opts: any) => {
-      if (opts?.where?.status === 'published') {
+      if (opts?.where?.status === 'published' && opts?.where?.language === 'zh') {
         return Promise.resolve([
           {
             id: 'a1',
@@ -214,7 +219,7 @@ describe('GET /api/admin/translations/untranslated', () => {
         ])
       }
 
-      if (opts?.where?.language?.in && opts?.where?.translationGroupId?.in) {
+      if (opts?.where?.language?.in && opts?.where?.translationGroupId?.in && opts?.where?.status === 'published') {
         return Promise.resolve([{ language: 'en', translationGroupId: 'a1' }])
       }
 
@@ -236,6 +241,50 @@ describe('GET /api/admin/translations/untranslated', () => {
       entityType: 'article',
       entityId: 'a1',
       missingLanguages: ['ja'],
+    })
+  })
+
+  it('ignores draft translations when computing article missing languages', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    mocks.prisma.article.findMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'published' && opts?.where?.language === 'zh') {
+        return Promise.resolve([
+          {
+            id: 'a1',
+            title: 'Zh Article',
+            translationGroupId: null,
+            publishedAt: new Date('2024-01-10T00:00:00.000Z'),
+            createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          },
+        ])
+      }
+
+      if (opts?.where?.language?.in && opts?.where?.translationGroupId?.in) {
+        // Simulate there is only a non-published translation.
+        // Route should query published rows only, so this branch should return empty.
+        if (opts?.where?.status === 'published') return Promise.resolve([])
+        return Promise.resolve([{ language: 'en', translationGroupId: 'a1' }])
+      }
+
+      return Promise.resolve([])
+    })
+
+    mocks.prisma.city.findMany.mockResolvedValue([])
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(getReq('http://localhost/api/admin/translations/untranslated'))
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(1)
+    expect(j.items[0]).toMatchObject({
+      entityType: 'article',
+      entityId: 'a1',
+      missingLanguages: ['en', 'ja'],
     })
   })
 

@@ -168,4 +168,58 @@ describe('TranslationDetailUI', () => {
     fireEvent.click(screen.getByText('应用更改'))
     expect(screen.queryByText('翻译预览 (选中内容)')).not.toBeInTheDocument()
   })
+
+  it('approve action still submits when browser confirm is unavailable', async () => {
+    const push = vi.fn()
+    ;(useRouter as any).mockReturnValue({ push })
+    global.confirm = vi.fn(() => false)
+
+    ;(global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ task: mockTask }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+
+    render(<TranslationDetailUI id="task-1" />)
+    await waitFor(() => expect(screen.getByText('确认翻译')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('确认翻译'))
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith('/api/admin/translations/task-1/approve', { method: 'POST' })
+    )
+    expect(push).toHaveBeenCalledWith('/admin/translations')
+  })
+
+  it('translate action still submits when browser confirm is unavailable', async () => {
+    global.confirm = vi.fn(() => false)
+    const pendingTask = {
+      ...mockTask,
+      status: 'pending',
+      draftContent: null,
+    }
+
+    ;(global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ task: pendingTask }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'boom' }),
+      })
+
+    render(<TranslationDetailUI id="task-1" />)
+    await waitFor(() => expect(screen.getByText('执行翻译')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('执行翻译'))
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith('/api/admin/translations/task-1/translate', { method: 'POST' })
+    )
+  })
 })
