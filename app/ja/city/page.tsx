@@ -1,8 +1,4 @@
-import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/db'
-import { normalizeCityAlias } from '@/lib/city/normalize'
-import { prisma } from '@/lib/db/prisma'
-import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
-import { isSeoSpokePost } from '@/lib/posts/visibility'
+import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
@@ -33,36 +29,7 @@ export const revalidate = 3600
 export const dynamic = 'force-static'
 
 export default async function CityIndexJaPage() {
-  const cities = await listCitiesForIndex().catch(() => [])
-  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id), 'ja').catch(() => ({} as Record<string, number>))
-
-  const aliasRows = await prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }).catch(() => [])
-  const aliasToCityId = new Map<string, string>()
-  for (const r of aliasRows) {
-    if (r?.aliasNorm && r?.cityId) aliasToCityId.set(r.aliasNorm, r.cityId)
-  }
-  for (const c of cities) {
-    aliasToCityId.set(normalizeCityAlias(c.slug), c.id)
-    aliasToCityId.set(normalizeCityAlias(c.name_zh), c.id)
-    if (c.name_en) aliasToCityId.set(normalizeCityAlias(c.name_en), c.id)
-    if (c.name_ja) aliasToCityId.set(normalizeCityAlias(c.name_ja), c.id)
-  }
-
-  const mdxPosts = await getAllMdxPosts('ja').catch(() => [])
-  const mdxCounts: Record<string, number> = {}
-  for (const p of mdxPosts) {
-    if (isSeoSpokePost(p)) continue
-    const norm = normalizeCityAlias(String((p as any).city || ''))
-    if (!norm) continue
-    const cityId = aliasToCityId.get(norm)
-    if (!cityId) continue
-    mdxCounts[cityId] = (mdxCounts[cityId] || 0) + 1
-  }
-
-  const counts: Record<string, number> = {}
-  for (const c of cities) {
-    counts[c.id] = (dbCounts[c.id] || 0) + (mdxCounts[c.id] || 0)
-  }
+  const { cities, counts } = await getCityCountsByLocale('ja')
 
   const sorted = [...cities].sort((a, b) => {
     const ca = counts[a.id] || 0
