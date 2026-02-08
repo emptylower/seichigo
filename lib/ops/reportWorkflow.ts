@@ -47,41 +47,11 @@ export class OpsUserInputError extends Error {
 
 type OpsPrismaLike = {
   opsReport: {
-    create: (args: {
-      data: {
-        source: string
-        windowStart: Date
-        windowEnd: Date
-        dateKey: string
-        triggerMode: string
-        status: string
-        totalDeployments: number
-        totalLogs: number
-        severeCount: number
-        warningCount: number
-        truncated: boolean
-        markdownSummary: string
-        rawSummary: Prisma.InputJsonValue | null
-      }
-    }) => Promise<{ id: string; createdAt: Date }>
-    deleteMany: (args: { where: { createdAt: { lt: Date } } }) => Promise<{ count: number }>
+    create: (args: Prisma.OpsReportCreateArgs) => Promise<{ id: string; createdAt: Date }>
+    deleteMany: (args: Prisma.OpsReportDeleteManyArgs) => Promise<{ count: number }>
   }
   opsLogEvent: {
-    createMany: (args: {
-      data: Array<{
-        reportId: string
-        severity: string
-        fingerprint: string
-        timestamp: Date | null
-        deploymentId: string | null
-        requestId: string | null
-        path: string | null
-        method: string | null
-        statusCode: number | null
-        message: string
-        raw: Prisma.InputJsonValue | null
-      }>
-    }) => Promise<{ count: number }>
+    createMany: (args: Prisma.OpsLogEventCreateManyArgs) => Promise<{ count: number }>
   }
 }
 

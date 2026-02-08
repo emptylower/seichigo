@@ -29,7 +29,7 @@ export function AdminToastProvider({ children }: { children: React.ReactNode }) 
   const clearTimer = useCallback((id: string) => {
     const timer = timersRef.current.get(id)
     if (!timer) return
-    window.clearTimeout(timer)
+    clearTimeout(timer)
     timersRef.current.delete(id)
   }, [])
 
@@ -64,7 +64,7 @@ export function AdminToastProvider({ children }: { children: React.ReactNode }) 
     })
 
     if (durationMs != null) {
-      const timer = window.setTimeout(() => {
+      const timer = setTimeout(() => {
         dismiss(id)
       }, durationMs)
       timersRef.current.set(id, timer)
@@ -75,7 +75,7 @@ export function AdminToastProvider({ children }: { children: React.ReactNode }) 
 
   const clear = useCallback(() => {
     for (const timer of timersRef.current.values()) {
-      window.clearTimeout(timer)
+      clearTimeout(timer)
     }
     timersRef.current.clear()
     setToasts([])
@@ -84,7 +84,7 @@ export function AdminToastProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     return () => {
       for (const timer of timersRef.current.values()) {
-        window.clearTimeout(timer)
+        clearTimeout(timer)
       }
       timersRef.current.clear()
     }
