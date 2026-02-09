@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
+  Activity,
   LayoutDashboard,
   FileText,
   Map,
@@ -80,6 +81,11 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           title: "SEO 管理",
           href: "/admin/seo",
           icon: TrendingUp,
+        },
+        {
+          title: "运维检查",
+          href: "/admin/ops",
+          icon: Activity,
         },
         {
           title: "维护工具",

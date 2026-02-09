@@ -29,6 +29,7 @@ describe('Sidebar', () => {
     expect(screen.getByText('仪表盘')).toBeInTheDocument()
     expect(screen.getByText('文章审核')).toBeInTheDocument()
     expect(screen.getByText('用户列表')).toBeInTheDocument()
+    expect(screen.getByText('运维检查')).toBeInTheDocument()
     expect(screen.getByText('维护工具')).toBeInTheDocument()
     expect(screen.getByText('SEO 管理')).toBeInTheDocument()
   })
