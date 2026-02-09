@@ -3,15 +3,26 @@ import { runOpsReport } from '@/lib/ops/reportWorkflow'
 
 function makeDeps(options?: {
   listDeployments?: Array<{ id: string; createdAt: Date | null; name: string | null; url: string | null; raw: Record<string, unknown> }>
+  listDeploymentsByCall?: Array<
+    Array<{ id: string; createdAt: Date | null; name: string | null; url: string | null; raw: Record<string, unknown> }>
+  >
   listDeploymentEvents?: Record<string, Array<Record<string, unknown>>>
   throwOnDeployment?: boolean
   env?: NodeJS.ProcessEnv
 }) {
+  let listDeploymentsCallCount = 0
   const listDeployments = vi.fn(async () => {
     if (options?.throwOnDeployment) {
       throw new Error('deployment events unavailable')
     }
 
+    if (options?.listDeploymentsByCall) {
+      const index = Math.min(listDeploymentsCallCount, options.listDeploymentsByCall.length - 1)
+      listDeploymentsCallCount += 1
+      return options.listDeploymentsByCall[index] || []
+    }
+
+    listDeploymentsCallCount += 1
     return options?.listDeployments || []
   })
 
@@ -198,5 +209,37 @@ describe('ops report workflow', () => {
     expect(result.markdownSummary).toContain('Collection State: `no_data`')
     expect(result.markdownSummary).toContain('Can Prove "No Issues": `no`')
     expect(result.markdownSummary).toContain('report is informational only')
+  })
+
+  it('falls back to latest deployment when window has no new deployments', async () => {
+    const fallbackDeployment = {
+      id: 'dep-latest',
+      createdAt: new Date('2026-02-07T10:00:00.000Z'),
+      name: 'seichigo',
+      url: 'seichigo.vercel.app',
+      raw: { id: 'dep-latest' },
+    }
+
+    const { deps, spies } = makeDeps({
+      listDeploymentsByCall: [[], [fallbackDeployment]],
+      listDeploymentEvents: {
+        'dep-latest': [{ statusCode: 200, message: 'request ok', method: 'GET', path: '/home' }],
+      },
+    })
+
+    const result = await runOpsReport(
+      {
+        triggerMode: 'cron',
+        windowStart: new Date('2026-02-08T00:00:00.000Z'),
+        windowEnd: new Date('2026-02-09T00:00:00.000Z'),
+      },
+      deps as any
+    )
+
+    expect(spies.listDeployments).toHaveBeenCalledTimes(2)
+    expect(result.totalDeployments).toBe(1)
+    expect(result.totalLogs).toBe(1)
+    expect(result.markdownSummary).toContain('Deployment Selection: `latest_fallback`')
+    expect(result.markdownSummary).toContain('Collection State: `logs_collected`')
   })
 })

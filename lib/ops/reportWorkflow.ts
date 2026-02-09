@@ -12,6 +12,7 @@ import { createOpsVercelClientFromEnv, type VercelClient, type VercelDeployment 
 
 export type OpsTriggerMode = 'cron' | 'manual'
 export type OpsReportStatus = 'ok' | 'partial' | 'failed'
+export type DeploymentSelectionMode = 'window' | 'latest_fallback'
 
 export type RunOpsReportInput = {
   triggerMode: OpsTriggerMode
@@ -235,6 +236,7 @@ function buildMarkdownSummary(args: {
   status: OpsReportStatus
   windowStart: Date
   windowEnd: Date
+  deploymentSelectionMode: DeploymentSelectionMode
   totalDeployments: number
   totalLogs: number
   severeCount: number
@@ -253,6 +255,7 @@ function buildMarkdownSummary(args: {
   lines.push(`- Trigger: \`${args.triggerMode}\``)
   lines.push(`- Status: \`${args.status}\``)
   lines.push(`- Window: \`${toIso(args.windowStart)}\` -> \`${toIso(args.windowEnd)}\``)
+  lines.push(`- Deployment Selection: \`${args.deploymentSelectionMode}\``)
   lines.push(`- Deployments Scanned: \`${args.totalDeployments}\``)
   lines.push(`- Logs Scanned: \`${args.totalLogs}\``)
   lines.push(`- Severe: \`${args.severeCount}\``)
@@ -427,6 +430,8 @@ export async function runOpsReport(
   const dateKey = toUtcDateKey(input.windowStart)
 
   let deployments: VercelDeployment[] = []
+  let windowDeploymentsCount = 0
+  let deploymentSelectionMode: DeploymentSelectionMode = 'window'
   const fetchErrors: string[] = []
 
   try {
@@ -435,8 +440,25 @@ export async function runOpsReport(
       windowStart: input.windowStart,
       windowEnd: input.windowEnd,
     })
+    windowDeploymentsCount = deployments.length
   } catch (error) {
     fetchErrors.push(error instanceof Error ? error.message : String(error))
+  }
+
+  if (deployments.length === 0) {
+    try {
+      const fallbackDeployments = await client.listDeployments({
+        limit: 1,
+      })
+
+      if (fallbackDeployments.length > 0) {
+        deployments = fallbackDeployments
+        deploymentSelectionMode = 'latest_fallback'
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      fetchErrors.push(`latest_fallback: ${msg}`)
+    }
   }
 
   const logFetch = await fetchLogsForWindow({
@@ -489,6 +511,7 @@ export async function runOpsReport(
     status,
     windowStart: input.windowStart,
     windowEnd: input.windowEnd,
+    deploymentSelectionMode,
     totalDeployments: deployments.length,
     totalLogs: logFetch.totalLogs,
     severeCount,
@@ -508,6 +531,8 @@ export async function runOpsReport(
     dateKey,
     windowStart: toIso(input.windowStart),
     windowEnd: toIso(input.windowEnd),
+    deploymentSelectionMode,
+    windowDeploymentsCount,
     config,
     totals: {
       totalDeployments: deployments.length,
