@@ -101,6 +101,9 @@ describe('ops report workflow', () => {
     expect(result.totalLogs).toBe(3)
     expect(result.severeCount).toBe(1)
     expect(result.warningCount).toBe(2)
+    expect(result.markdownSummary).toContain('Collection Summary')
+    expect(result.markdownSummary).toContain('Collection State: `logs_collected`')
+    expect(result.markdownSummary).toContain('Can Prove "No Issues": `no`')
     expect(result.markdownSummary).toContain('Top Severe Fingerprints')
     expect(spies.createReport).toHaveBeenCalledTimes(1)
     expect(spies.createMany).toHaveBeenCalledTimes(1)
@@ -141,5 +144,59 @@ describe('ops report workflow', () => {
 
     expect(result.truncated).toBe(true)
     expect(result.severeCount).toBe(3)
+  })
+
+  it('marks report as provable when logs are collected and no anomalies are found', async () => {
+    const { deps } = makeDeps({
+      listDeployments: [
+        {
+          id: 'dep-1',
+          createdAt: new Date('2026-02-08T12:00:00.000Z'),
+          name: 'seichigo',
+          url: 'seichigo.vercel.app',
+          raw: { id: 'dep-1' },
+        },
+      ],
+      listDeploymentEvents: {
+        'dep-1': [{ statusCode: 200, message: 'ok', method: 'GET', path: '/health' }],
+      },
+    })
+
+    const result = await runOpsReport(
+      {
+        triggerMode: 'manual',
+        windowStart: new Date('2026-02-08T00:00:00.000Z'),
+        windowEnd: new Date('2026-02-09T00:00:00.000Z'),
+      },
+      deps as any
+    )
+
+    expect(result.severeCount).toBe(0)
+    expect(result.warningCount).toBe(0)
+    expect(result.markdownSummary).toContain('Collection State: `logs_collected`')
+    expect(result.markdownSummary).toContain('Can Prove "No Issues": `yes`')
+    expect(result.markdownSummary).toContain('no notable anomalies')
+  })
+
+  it('marks report as no_data when neither deployments nor logs are collected', async () => {
+    const { deps } = makeDeps({
+      listDeployments: [],
+      listDeploymentEvents: {},
+    })
+
+    const result = await runOpsReport(
+      {
+        triggerMode: 'manual',
+        windowStart: new Date('2026-02-08T00:00:00.000Z'),
+        windowEnd: new Date('2026-02-09T00:00:00.000Z'),
+      },
+      deps as any
+    )
+
+    expect(result.totalDeployments).toBe(0)
+    expect(result.totalLogs).toBe(0)
+    expect(result.markdownSummary).toContain('Collection State: `no_data`')
+    expect(result.markdownSummary).toContain('Can Prove "No Issues": `no`')
+    expect(result.markdownSummary).toContain('report is informational only')
   })
 })

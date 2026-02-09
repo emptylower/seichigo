@@ -144,6 +144,12 @@ type FingerprintSummaryItem = {
   sample: string
 }
 
+type CollectionSummary = {
+  state: 'logs_collected' | 'deployments_only' | 'no_data'
+  canProveNoIssues: boolean
+  conclusion: string
+}
+
 function summarizeFingerprints(events: ClassifiedLogEvent[], severity: 'severe' | 'warning'): FingerprintSummaryItem[] {
   const map = new Map<string, { count: number; sample: string }>()
 
@@ -164,6 +170,65 @@ function summarizeFingerprints(events: ClassifiedLogEvent[], severity: 'severe' 
     .slice(0, 5)
 }
 
+function buildCollectionSummary(args: {
+  totalDeployments: number
+  totalLogs: number
+  severeCount: number
+  warningCount: number
+  truncated: boolean
+  fetchErrors: string[]
+  parseErrors: string[]
+}): CollectionSummary {
+  const hasLogs = args.totalLogs > 0
+  const hasDeployments = args.totalDeployments > 0
+  const anomalyCount = args.severeCount + args.warningCount
+  const hasErrors = args.fetchErrors.length > 0 || args.parseErrors.length > 0
+
+  if (hasLogs) {
+    if (anomalyCount === 0 && !args.truncated && !hasErrors) {
+      return {
+        state: 'logs_collected',
+        canProveNoIssues: true,
+        conclusion: 'Collected runtime logs successfully; no notable anomalies matched current rules in this window.',
+      }
+    }
+
+    if (anomalyCount === 0) {
+      const caveats: string[] = []
+      if (args.truncated) caveats.push('result was truncated')
+      if (hasErrors) caveats.push('some fetch/parse errors occurred')
+
+      return {
+        state: 'logs_collected',
+        canProveNoIssues: false,
+        conclusion: caveats.length
+          ? `No anomalies were flagged, but confidence is reduced (${caveats.join('; ')}).`
+          : 'No anomalies were flagged, but confidence is reduced.',
+      }
+    }
+
+    return {
+      state: 'logs_collected',
+      canProveNoIssues: false,
+      conclusion: `Detected ${anomalyCount} flagged events (severe=${args.severeCount}, warning=${args.warningCount}).`,
+    }
+  }
+
+  if (hasDeployments) {
+    return {
+      state: 'deployments_only',
+      canProveNoIssues: false,
+      conclusion: 'Deployments were found, but no runtime log lines were returned for this window; health cannot be confirmed from logs.',
+    }
+  }
+
+  return {
+    state: 'no_data',
+    canProveNoIssues: false,
+    conclusion: 'No deployments were returned in this window, so no logs were scanned; this report is informational only.',
+  }
+}
+
 function buildMarkdownSummary(args: {
   dateKey: string
   triggerMode: OpsTriggerMode
@@ -179,6 +244,7 @@ function buildMarkdownSummary(args: {
   warningTop: FingerprintSummaryItem[]
   fetchErrors: string[]
   parseErrors: string[]
+  collectionSummary: CollectionSummary
 }): string {
   const lines: string[] = []
   lines.push('# SeichiGo Daily Ops Report')
@@ -192,6 +258,12 @@ function buildMarkdownSummary(args: {
   lines.push(`- Severe: \`${args.severeCount}\``)
   lines.push(`- Warning: \`${args.warningCount}\``)
   lines.push(`- Truncated: \`${args.truncated ? 'yes' : 'no'}\``)
+  lines.push('')
+
+  lines.push('## Collection Summary')
+  lines.push(`- Collection State: \`${args.collectionSummary.state}\``)
+  lines.push(`- Can Prove "No Issues": \`${args.collectionSummary.canProveNoIssues ? 'yes' : 'no'}\``)
+  lines.push(`- Conclusion: ${args.collectionSummary.conclusion}`)
   lines.push('')
 
   lines.push('## Top Severe Fingerprints')
@@ -395,6 +467,15 @@ export async function runOpsReport(
   const storedEvents = toStoredEvents(allEvents, config.maxStoredEventsPerRun)
   const severeTop = summarizeFingerprints(allEvents, 'severe')
   const warningTop = summarizeFingerprints(allEvents, 'warning')
+  const collectionSummary = buildCollectionSummary({
+    totalDeployments: deployments.length,
+    totalLogs: logFetch.totalLogs,
+    severeCount,
+    warningCount,
+    truncated,
+    fetchErrors,
+    parseErrors: normalized.parseErrors,
+  })
   const status = inferStatus({
     totalLogs: logFetch.totalLogs,
     totalDeployments: deployments.length,
@@ -417,6 +498,7 @@ export async function runOpsReport(
     warningTop,
     fetchErrors,
     parseErrors: normalized.parseErrors,
+    collectionSummary,
   })
 
   const rawSummary = {
@@ -438,6 +520,7 @@ export async function runOpsReport(
     deploymentIds: deployments.map((item) => item.id),
     fetchErrors,
     parseErrors: normalized.parseErrors,
+    collectionSummary,
     topFingerprints: {
       severe: severeTop,
       warning: warningTop,
