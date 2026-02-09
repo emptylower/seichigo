@@ -198,12 +198,12 @@ export class VercelClient {
     return rows
       .map((item) => {
         const rec = asRecord(item)
-        const id = toStringOrNull(rec.id)
+        const id = toStringOrNull(rec.id) || toStringOrNull(rec.uid)
         if (!id) return null
 
         return {
           id,
-          createdAt: toDate(rec.createdAt),
+          createdAt: toDate(rec.createdAt ?? rec.created),
           name: toStringOrNull(rec.name),
           url: toStringOrNull(rec.url),
           raw: rec,
