@@ -101,22 +101,26 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
     <>
       {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{labels.admin}</Link> : null}
       {showAuthed ? (
-        <details className="relative">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border px-2 py-1 text-gray-700 hover:bg-gray-50">
+        <details className="group relative">
+          <summary
+            className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-pink-200/80 bg-gradient-to-b from-white to-pink-50/80 p-1.5 text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-pink-300 hover:shadow-[0_8px_18px_rgba(236,72,153,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 group-open:border-pink-300 group-open:shadow-[0_8px_18px_rgba(236,72,153,0.18)] [&::-webkit-details-marker]:hidden"
+            aria-label={userLabel}
+          >
             <Avatar
               src={session?.user?.image}
               name={userLabel}
-              size={32}
+              size={34}
             />
+            <span className="sr-only">{userLabel}</span>
           </summary>
-          <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
-            <Link href={prefixPath('/me/settings', locale)} className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+          <div className="absolute right-0 mt-2 w-44 rounded-2xl border border-pink-100 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-sm">
+            <Link href={prefixPath('/me/settings', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               用户中心
             </Link>
-            <a href={prefixPath('/me/favorites', locale)} className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <a href={prefixPath('/me/favorites', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.favorites}
             </a>
-            <a href="/api/auth/signout" className="block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <a href="/api/auth/signout" className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.signout}
             </a>
           </div>
