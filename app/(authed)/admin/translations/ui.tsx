@@ -11,32 +11,7 @@ import { useAdminConfirm } from '@/hooks/useAdminConfirm'
 import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
 import { AdminEmptyState } from '@/components/admin/state/AdminEmptyState'
 import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
-
-type TranslationTaskListItem = {
-  id: string
-  entityType: string
-  entityId: string
-  targetLanguage: string
-  status: string
-  createdAt: string
-  updatedAt: string
-  error: string | null
-  subject: {
-    title: string | null
-    subtitle: string | null
-    slug: string | null
-  }
-  target:
-    | {
-        id: string
-        title: string | null
-        slug: string | null
-        status: string | null
-        publishedAt: string | null
-        updatedAt: string | null
-      }
-    | null
-}
+import type { TranslationTaskListItem } from '@/lib/translation/adminDashboard'
 
 type UntranslatedItem = {
   entityType: string
@@ -47,6 +22,20 @@ type UntranslatedItem = {
 }
 
 type StatusKey = 'all' | 'pending' | 'processing' | 'ready' | 'approved' | 'failed'
+
+type TranslationsUIProps = {
+  initialQuery?: {
+    status: string
+    entityType: string
+    targetLanguage: string
+    q: string
+    page: number
+    pageSize: number
+  }
+  initialTasks?: TranslationTaskListItem[]
+  initialTotal?: number
+  initialStats?: Record<string, number> | null
+}
 
 type BatchExecutionProgress = {
   total: number
@@ -73,6 +62,33 @@ function formatDateTime(value: string): string {
   const ms = Date.parse(value)
   if (!Number.isFinite(ms)) return value
   return new Date(ms).toLocaleString('zh-CN')
+}
+
+function isStatusKey(value: string): value is StatusKey {
+  return (['all', 'pending', 'processing', 'ready', 'approved', 'failed'] as const).includes(value as StatusKey)
+}
+
+function buildTaskSignature(input: {
+  view: 'tasks' | 'untranslated'
+  status: string
+  entityType: string
+  targetLanguage: string
+  q: string
+  page: number
+  pageSize: number
+}): string {
+  return `${input.view}|${input.status}|${input.entityType}|${input.targetLanguage}|${input.q}|${input.page}|${input.pageSize}`
+}
+
+function buildStatsSignature(entityType: string, targetLanguage: string): string {
+  return `${entityType}|${targetLanguage}`
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
 }
 
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
@@ -104,7 +120,12 @@ function buildPublicLinks(task: TranslationTaskListItem): { source?: string; tar
   return {}
 }
 
-export default function TranslationsUI() {
+export default function TranslationsUI({
+  initialQuery,
+  initialTasks = [],
+  initialTotal = 0,
+  initialStats = null,
+}: TranslationsUIProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useAdminToast()
@@ -113,25 +134,30 @@ export default function TranslationsUI() {
   const [view, setView] = useState<'tasks' | 'untranslated'>('tasks')
 
   const [status, setStatus] = useState<StatusKey>(() => {
-    const raw = String(searchParams.get('status') || '').trim() as StatusKey
-    return raw && (['all', 'pending', 'processing', 'ready', 'approved', 'failed'] as const).includes(raw)
-      ? raw
-      : 'ready'
+    if (initialQuery?.status && isStatusKey(initialQuery.status)) return initialQuery.status
+    const raw = String(searchParams.get('status') || '').trim()
+    return isStatusKey(raw) ? raw : 'ready'
   })
-  const [entityType, setEntityType] = useState<string>(() => searchParams.get('entityType') || 'all')
-  const [targetLanguage, setTargetLanguage] = useState<string>(() => searchParams.get('targetLanguage') || 'all')
-  const [q, setQ] = useState<string>(() => searchParams.get('q') || '')
-  const [page, setPage] = useState<number>(() => clampInt(searchParams.get('page'), 1, { min: 1, max: 10_000 }))
-  const [pageSize, setPageSize] = useState<number>(() => clampInt(searchParams.get('pageSize'), 20, { min: 5, max: 100 }))
+  const [entityType, setEntityType] = useState<string>(() => initialQuery?.entityType || searchParams.get('entityType') || 'all')
+  const [targetLanguage, setTargetLanguage] = useState<string>(() => initialQuery?.targetLanguage || searchParams.get('targetLanguage') || 'all')
+  const [q, setQ] = useState<string>(() => initialQuery?.q || searchParams.get('q') || '')
+  const [page, setPage] = useState<number>(() =>
+    typeof initialQuery?.page === 'number' ? initialQuery.page : clampInt(searchParams.get('page'), 1, { min: 1, max: 10_000 })
+  )
+  const [pageSize, setPageSize] = useState<number>(() =>
+    typeof initialQuery?.pageSize === 'number'
+      ? initialQuery.pageSize
+      : clampInt(searchParams.get('pageSize'), 20, { min: 5, max: 100 })
+  )
 
-  const [debouncedQ, setDebouncedQ] = useState<string>(() => String(searchParams.get('q') || '').trim())
+  const [debouncedQ, setDebouncedQ] = useState<string>(() => String(initialQuery?.q || searchParams.get('q') || '').trim())
 
-  const [tasks, setTasks] = useState<TranslationTaskListItem[]>([])
-  const [total, setTotal] = useState(0)
+  const [tasks, setTasks] = useState<TranslationTaskListItem[]>(() => initialTasks)
+  const [total, setTotal] = useState(() => initialTotal)
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksError, setTasksError] = useState<string | null>(null)
 
-  const [stats, setStats] = useState<Record<string, number> | null>(null)
+  const [stats, setStats] = useState<Record<string, number> | null>(() => initialStats)
   const [statsLoading, setStatsLoading] = useState(false)
 
   const [untranslatedItems, setUntranslatedItems] = useState<UntranslatedItem[]>([])
@@ -190,6 +216,24 @@ export default function TranslationsUI() {
   const taskAbort = useRef<AbortController | null>(null)
   const statsAbort = useRef<AbortController | null>(null)
   const batchCancelRef = useRef(false)
+  const initialTaskSignatureRef = useRef<string | null>(
+    initialQuery
+      ? buildTaskSignature({
+          view: 'tasks',
+          status: initialQuery.status,
+          entityType: initialQuery.entityType,
+          targetLanguage: initialQuery.targetLanguage,
+          q: String(initialQuery.q || '').trim(),
+          page: initialQuery.page,
+          pageSize: initialQuery.pageSize,
+        })
+      : null
+  )
+  const initialStatsSignatureRef = useRef<string | null>(
+    initialQuery && initialStats
+      ? buildStatsSignature(initialQuery.entityType, initialQuery.targetLanguage)
+      : null
+  )
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 250)
@@ -391,6 +435,22 @@ export default function TranslationsUI() {
 
   async function loadTasks() {
     if (view !== 'tasks') return
+
+    const currentTaskSignature = buildTaskSignature({
+      view,
+      status,
+      entityType,
+      targetLanguage,
+      q: debouncedQ,
+      page,
+      pageSize,
+    })
+    if (initialTaskSignatureRef.current && currentTaskSignature === initialTaskSignatureRef.current) {
+      initialTaskSignatureRef.current = null
+      setTasksError(null)
+      return
+    }
+
     taskAbort.current?.abort()
     const controller = new AbortController()
     taskAbort.current = controller
@@ -415,7 +475,7 @@ export default function TranslationsUI() {
       setTasks((data.tasks || []) as TranslationTaskListItem[])
       setTotal(typeof data.total === 'number' ? data.total : Number.parseInt(String(data.total || 0), 10) || 0)
     } catch (error) {
-      if ((error as any)?.name === 'AbortError') return
+      if (isAbortError(error)) return
       const msg = error instanceof Error ? error.message : '加载失败'
       setTasksError(msg)
     } finally {
@@ -425,6 +485,12 @@ export default function TranslationsUI() {
   }
 
   async function loadStats() {
+    const currentStatsSignature = buildStatsSignature(entityType, targetLanguage)
+    if (initialStatsSignatureRef.current && currentStatsSignature === initialStatsSignatureRef.current) {
+      initialStatsSignatureRef.current = null
+      return
+    }
+
     statsAbort.current?.abort()
     const controller = new AbortController()
     statsAbort.current = controller
@@ -446,7 +512,7 @@ export default function TranslationsUI() {
         setStats(null)
       }
     } catch (error) {
-      if ((error as any)?.name === 'AbortError') return
+      if (isAbortError(error)) return
       setStats(null)
     } finally {
       if (statsAbort.current === controller) statsAbort.current = null

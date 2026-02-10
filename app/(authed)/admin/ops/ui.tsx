@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
 
-type ReportListItem = {
+export type ReportListItem = {
   id: string
   source: string
   dateKey: string
@@ -19,12 +19,12 @@ type ReportListItem = {
   createdAt: string
 }
 
-type ReportDetail = ReportListItem & {
+export type ReportDetail = ReportListItem & {
   markdownSummary: string
-  rawSummary: Record<string, unknown> | null
+  rawSummary: unknown
 }
 
-type OpsLogEvent = {
+export type OpsLogEvent = {
   id: string
   severity: 'severe' | 'warning' | string
   fingerprint: string
@@ -35,7 +35,7 @@ type OpsLogEvent = {
   method: string | null
   statusCode: number | null
   message: string
-  raw: Record<string, unknown> | null
+  raw: unknown
   createdAt: string
 }
 
@@ -72,6 +72,14 @@ type DetailResponse =
 
 const LIST_LIMIT = 20
 
+export type AdminOpsInitialData = {
+  items: ReportListItem[]
+  nextCursor: string | null
+  selectedId: string | null
+  detailReport: ReportDetail | null
+  detailEvents: OpsLogEvent[]
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '-'
   const ms = Date.parse(value)
@@ -103,19 +111,19 @@ function severityColor(severity: string): string {
   return 'text-amber-700 bg-amber-50 border-amber-200'
 }
 
-export default function AdminOpsUi() {
-  const [loading, setLoading] = useState(true)
+export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInitialData }) {
+  const [loading, setLoading] = useState(() => !initialData)
   const [loadingMore, setLoadingMore] = useState(false)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<ReportListItem[]>([])
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [items, setItems] = useState<ReportListItem[]>(() => initialData?.items || [])
+  const [nextCursor, setNextCursor] = useState<string | null>(() => initialData?.nextCursor || null)
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(() => initialData?.selectedId || null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
-  const [detailReport, setDetailReport] = useState<ReportDetail | null>(null)
-  const [detailEvents, setDetailEvents] = useState<OpsLogEvent[]>([])
+  const [detailReport, setDetailReport] = useState<ReportDetail | null>(() => initialData?.detailReport || null)
+  const [detailEvents, setDetailEvents] = useState<OpsLogEvent[]>(() => initialData?.detailEvents || [])
 
   const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -247,9 +255,10 @@ export default function AdminOpsUi() {
   }
 
   useEffect(() => {
+    if (initialData) return
     void loadReports()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialData])
 
   return (
     <div className="space-y-6 max-w-7xl">
