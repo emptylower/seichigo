@@ -103,7 +103,7 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
       {showAuthed ? (
         <details className="group relative">
           <summary
-            className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-pink-200/80 bg-gradient-to-b from-white to-pink-50/80 p-1.5 text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-pink-300 hover:shadow-[0_8px_18px_rgba(236,72,153,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 group-open:border-pink-300 group-open:shadow-[0_8px_18px_rgba(236,72,153,0.18)] [&::-webkit-details-marker]:hidden"
+            className="flex cursor-pointer list-none items-center justify-center rounded-full text-gray-700 transition duration-200 hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white [&::-webkit-details-marker]:hidden"
             aria-label={userLabel}
           >
             <Avatar
