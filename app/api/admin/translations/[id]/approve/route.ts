@@ -172,6 +172,61 @@ export async function POST(
       safeRevalidatePath(`/anime/${encodeURIComponent(entityId)}`)
       safeRevalidatePath(`/ja/anime/${encodeURIComponent(entityId)}`)
       safeRevalidatePath(`/en/anime/${encodeURIComponent(entityId)}`)
+    } else if (entityType === 'anitabi_bangumi') {
+      const bangumiId = Number.parseInt(String(entityId), 10)
+      if (!Number.isFinite(bangumiId)) {
+        return NextResponse.json({ error: 'Invalid bangumi id' }, { status: 400 })
+      }
+
+      const content = draftContent as any
+      await prisma.anitabiBangumiI18n.upsert({
+        where: {
+          bangumiId_language: {
+            bangumiId,
+            language: targetLanguage,
+          },
+        },
+        create: {
+          bangumiId,
+          language: targetLanguage,
+          title: content.title ?? null,
+          description: content.description ?? null,
+          city: content.city ?? null,
+        },
+        update: {
+          title: content.title ?? null,
+          description: content.description ?? null,
+          city: content.city ?? null,
+        },
+      })
+
+      safeRevalidatePath('/map')
+      safeRevalidatePath('/en/map')
+      safeRevalidatePath('/ja/map')
+    } else if (entityType === 'anitabi_point') {
+      const content = draftContent as any
+      await prisma.anitabiPointI18n.upsert({
+        where: {
+          pointId_language: {
+            pointId: entityId,
+            language: targetLanguage,
+          },
+        },
+        create: {
+          pointId: entityId,
+          language: targetLanguage,
+          name: content.name ?? null,
+          note: content.note ?? null,
+        },
+        update: {
+          name: content.name ?? null,
+          note: content.note ?? null,
+        },
+      })
+
+      safeRevalidatePath('/map')
+      safeRevalidatePath('/en/map')
+      safeRevalidatePath('/ja/map')
     }
 
     await prisma.translationTask.update({

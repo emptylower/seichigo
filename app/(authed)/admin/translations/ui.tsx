@@ -117,6 +117,22 @@ function buildPublicLinks(task: TranslationTaskListItem): { source?: string; tar
     return { source, target }
   }
 
+  if (task.entityType === 'anitabi_bangumi') {
+    const id = encodeURIComponent(String(task.entityId || '').trim())
+    if (!id) return {}
+    const source = `/map?b=${id}`
+    const target = `${localePrefix}/map?b=${id}`
+    return { source, target }
+  }
+
+  if (task.entityType === 'anitabi_point') {
+    const id = encodeURIComponent(String(task.entityId || '').trim())
+    if (!id) return {}
+    const source = `/map?p=${id}`
+    const target = `${localePrefix}/map?p=${id}`
+    return { source, target }
+  }
+
   return {}
 }
 
@@ -189,6 +205,8 @@ export default function TranslationsUI({
     article: '文章',
     city: '城市',
     anime: '动漫',
+    anitabi_bangumi: '地图作品',
+    anitabi_point: '地图地标',
   }
 
   const languageLabels: Record<string, string> = {
@@ -693,6 +711,8 @@ export default function TranslationsUI({
                 <option value="article">文章</option>
                 <option value="city">城市</option>
                 <option value="anime">动漫</option>
+                <option value="anitabi_bangumi">地图作品</option>
+                <option value="anitabi_point">地图地标</option>
               </select>
             </div>
 

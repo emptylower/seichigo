@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db/prisma'
 const TARGET_LANGUAGES = ['en', 'ja'] as const
 
 type TargetLanguage = (typeof TARGET_LANGUAGES)[number]
-type EntityType = 'article' | 'city' | 'anime'
+type EntityType = 'article' | 'city' | 'anime' | 'anitabi_bangumi' | 'anitabi_point'
 
 export type UntranslatedItem = {
   entityType: EntityType
@@ -45,6 +45,20 @@ type AnimeRow = {
   createdAt: Date
 }
 
+type AnitabiBangumiRow = {
+  id: number
+  titleZh: string | null
+  titleJaRaw: string | null
+  updatedAt: Date
+}
+
+type AnitabiPointRow = {
+  id: string
+  name: string
+  nameZh: string | null
+  updatedAt: Date
+}
+
 function dateToIso(d: Date | null | undefined): string {
   return (d ?? new Date(0)).toISOString()
 }
@@ -62,7 +76,7 @@ function normalizeQuery(value: string | null): string {
 }
 
 function parseEntityType(value: string | null): EntityType | 'all' {
-  if (value === 'article' || value === 'city' || value === 'anime') return value
+  if (value === 'article' || value === 'city' || value === 'anime' || value === 'anitabi_bangumi' || value === 'anitabi_point') return value
   return 'all'
 }
 
@@ -107,7 +121,7 @@ export async function GET(req: NextRequest) {
     const q = normalizeQuery(searchParams.get('q'))
     const entityTypeFilter = parseEntityType(searchParams.get('entityType'))
 
-    const [articles, cities, anime] = await Promise.all([
+    const [articles, cities, anime, anitabiBangumi, anitabiPoints] = await Promise.all([
       entityTypeFilter === 'all' || entityTypeFilter === 'article'
         ? (prisma.article.findMany({
             // Only published source (zh) articles should be considered.
@@ -155,6 +169,27 @@ export async function GET(req: NextRequest) {
               createdAt: true,
             },
           }) as unknown as Promise<AnimeRow[]>)
+        : Promise.resolve([]),
+      entityTypeFilter === 'all' || entityTypeFilter === 'anitabi_bangumi'
+        ? (prisma.anitabiBangumi.findMany({
+            where: { mapEnabled: true },
+            select: {
+              id: true,
+              titleZh: true,
+              titleJaRaw: true,
+              updatedAt: true,
+            },
+          }) as unknown as Promise<AnitabiBangumiRow[]>)
+        : Promise.resolve([]),
+      entityTypeFilter === 'all' || entityTypeFilter === 'anitabi_point'
+        ? (prisma.anitabiPoint.findMany({
+            select: {
+              id: true,
+              name: true,
+              nameZh: true,
+              updatedAt: true,
+            },
+          }) as unknown as Promise<AnitabiPointRow[]>)
         : Promise.resolve([]),
     ])
 
@@ -259,6 +294,81 @@ export async function GET(req: NextRequest) {
           entityId: a.id,
           title: a.name,
           date: dateToIso(a.createdAt),
+          missingLanguages,
+        })
+      }
+    }
+
+    if (anitabiBangumi.length > 0) {
+      const ids = anitabiBangumi.map((row) => String(row.id))
+      const taskIds = await getEntityIdsWithTasks('anitabi_bangumi', ids)
+      const translated = await prisma.anitabiBangumiI18n.findMany({
+        where: {
+          bangumiId: {
+            in: anitabiBangumi.map((row) => row.id),
+          },
+          language: { in: TARGET_LANGUAGES as unknown as string[] },
+        },
+        select: {
+          bangumiId: true,
+          language: true,
+        },
+      })
+
+      const approvedKey = new Set(translated.map((row) => `${row.bangumiId}:${row.language}`))
+
+      for (const row of anitabiBangumi) {
+        const entityId = String(row.id)
+        if (taskIds.has(entityId)) continue
+
+        const missingLanguages: TargetLanguage[] = []
+        for (const lang of TARGET_LANGUAGES) {
+          if (!approvedKey.has(`${row.id}:${lang}`)) missingLanguages.push(lang)
+        }
+        if (missingLanguages.length === 0) continue
+
+        items.push({
+          entityType: 'anitabi_bangumi',
+          entityId,
+          title: row.titleZh || row.titleJaRaw || entityId,
+          date: dateToIso(row.updatedAt),
+          missingLanguages,
+        })
+      }
+    }
+
+    if (anitabiPoints.length > 0) {
+      const ids = anitabiPoints.map((row) => row.id)
+      const taskIds = await getEntityIdsWithTasks('anitabi_point', ids)
+      const translated = await prisma.anitabiPointI18n.findMany({
+        where: {
+          pointId: {
+            in: ids,
+          },
+          language: { in: TARGET_LANGUAGES as unknown as string[] },
+        },
+        select: {
+          pointId: true,
+          language: true,
+        },
+      })
+
+      const approvedKey = new Set(translated.map((row) => `${row.pointId}:${row.language}`))
+
+      for (const row of anitabiPoints) {
+        if (taskIds.has(row.id)) continue
+
+        const missingLanguages: TargetLanguage[] = []
+        for (const lang of TARGET_LANGUAGES) {
+          if (!approvedKey.has(`${row.id}:${lang}`)) missingLanguages.push(lang)
+        }
+        if (missingLanguages.length === 0) continue
+
+        items.push({
+          entityType: 'anitabi_point',
+          entityId: row.id,
+          title: row.nameZh || row.name || row.id,
+          date: dateToIso(row.updatedAt),
           missingLanguages,
         })
       }

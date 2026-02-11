@@ -165,6 +165,93 @@ export async function translateAnime(animeId: string, targetLang: string): Promi
   }
 }
 
+export async function translateAnitabiBangumi(bangumiId: string, targetLang: string): Promise<TranslationResult> {
+  try {
+    const id = Number.parseInt(String(bangumiId), 10)
+    if (!Number.isFinite(id)) {
+      return { success: false, error: 'Invalid bangumi id' }
+    }
+
+    const bangumi = await prisma.anitabiBangumi.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        titleZh: true,
+        description: true,
+        city: true,
+      },
+    })
+
+    if (!bangumi) {
+      return { success: false, error: 'Bangumi not found' }
+    }
+
+    const sourceTitle = bangumi.titleZh || ''
+    const sourceDescription = bangumi.description || null
+    const sourceCity = bangumi.city || null
+
+    const translatedTitle = sourceTitle ? await translateText(sourceTitle, targetLang) : sourceTitle
+    const translatedDescription = sourceDescription
+      ? await translateText(sourceDescription, targetLang)
+      : null
+    const translatedCity = sourceCity ? await translateText(sourceCity, targetLang) : null
+
+    return {
+      success: true,
+      sourceContent: {
+        title: sourceTitle,
+        description: sourceDescription,
+        city: sourceCity,
+      },
+      translatedContent: {
+        title: translatedTitle,
+        description: translatedDescription,
+        city: translatedCity,
+      },
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Translation failed' }
+  }
+}
+
+export async function translateAnitabiPoint(pointId: string, targetLang: string): Promise<TranslationResult> {
+  try {
+    const point = await prisma.anitabiPoint.findUnique({
+      where: { id: String(pointId) },
+      select: {
+        id: true,
+        name: true,
+        nameZh: true,
+        mark: true,
+      },
+    })
+
+    if (!point) {
+      return { success: false, error: 'Point not found' }
+    }
+
+    const sourceName = point.nameZh || point.name
+    const sourceNote = point.mark || null
+
+    const translatedName = sourceName ? await translateText(sourceName, targetLang) : sourceName
+    const translatedNote = sourceNote ? await translateText(sourceNote, targetLang) : null
+
+    return {
+      success: true,
+      sourceContent: {
+        name: sourceName,
+        note: sourceNote,
+      },
+      translatedContent: {
+        name: translatedName,
+        note: translatedNote,
+      },
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Translation failed' }
+  }
+}
+
 function splitIntoBatches(texts: string[], maxCount: number, maxChars: number): string[][] {
   const batches: string[][] = []
   let currentBatch: string[] = []

@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 
-export type AdminTranslationEntityType = 'article' | 'city' | 'anime'
+export type AdminTranslationEntityType = 'article' | 'city' | 'anime' | 'anitabi_bangumi' | 'anitabi_point'
 
 export type TranslationTaskListSubject = {
   title: string | null
@@ -102,7 +102,7 @@ function normalizeStatus(input: string | null | undefined): string {
 function normalizeEntityType(input: string | null | undefined): string {
   const value = String(input || '').trim()
   if (!value) return 'all'
-  const allowed = new Set(['all', 'article', 'city', 'anime'])
+  const allowed = new Set(['all', 'article', 'city', 'anime', 'anitabi_bangumi', 'anitabi_point'])
   return allowed.has(value) ? value : 'all'
 }
 
@@ -139,8 +139,10 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
     const includeArticle = query.entityType === 'all' || query.entityType === 'article'
     const includeCity = query.entityType === 'all' || query.entityType === 'city'
     const includeAnime = query.entityType === 'all' || query.entityType === 'anime'
+    const includeAnitabiBangumi = query.entityType === 'all' || query.entityType === 'anitabi_bangumi'
+    const includeAnitabiPoint = query.entityType === 'all' || query.entityType === 'anitabi_point'
 
-    const [articleRows, cityRows, animeRows] = await Promise.all([
+    const [articleRows, cityRows, animeRows, anitabiBangumiRows, anitabiPointRows] = await Promise.all([
       includeArticle
         ? prisma.article.findMany({
             where: {
@@ -183,6 +185,31 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
             take: 100,
           })
         : Promise.resolve([]),
+      includeAnitabiBangumi
+        ? prisma.anitabiBangumi.findMany({
+            where: {
+              OR: [
+                { titleZh: { contains: query.q, mode: 'insensitive' } },
+                { titleJaRaw: { contains: query.q, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true },
+            take: 100,
+          })
+        : Promise.resolve([]),
+      includeAnitabiPoint
+        ? prisma.anitabiPoint.findMany({
+            where: {
+              OR: [
+                { id: { contains: query.q, mode: 'insensitive' } },
+                { name: { contains: query.q, mode: 'insensitive' } },
+                { nameZh: { contains: query.q, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true },
+            take: 100,
+          })
+        : Promise.resolve([]),
     ])
 
     if (articleRows.length > 0) {
@@ -214,6 +241,24 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
       }
     }
 
+    if (anitabiBangumiRows.length > 0) {
+      const ids = Array.from(new Set(anitabiBangumiRows.map((row) => String(row.id)).filter(Boolean)))
+      if (ids.length > 0) {
+        qOr.push({
+          AND: [{ entityType: 'anitabi_bangumi' }, { entityId: { in: ids } }],
+        })
+      }
+    }
+
+    if (anitabiPointRows.length > 0) {
+      const ids = Array.from(new Set(anitabiPointRows.map((row) => String(row.id)).filter(Boolean)))
+      if (ids.length > 0) {
+        qOr.push({
+          AND: [{ entityType: 'anitabi_point' }, { entityId: { in: ids } }],
+        })
+      }
+    }
+
     where.OR = qOr
   }
 
@@ -240,8 +285,14 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
   const articleIds = Array.from(new Set(tasks.filter((task) => task.entityType === 'article').map((task) => task.entityId)))
   const cityIds = Array.from(new Set(tasks.filter((task) => task.entityType === 'city').map((task) => task.entityId)))
   const animeIds = Array.from(new Set(tasks.filter((task) => task.entityType === 'anime').map((task) => task.entityId)))
+  const anitabiBangumiIds = Array.from(
+    new Set(tasks.filter((task) => task.entityType === 'anitabi_bangumi').map((task) => task.entityId))
+  )
+  const anitabiPointIds = Array.from(
+    new Set(tasks.filter((task) => task.entityType === 'anitabi_point').map((task) => task.entityId))
+  )
 
-  const [articles, cities, anime, articleTargets] = await Promise.all([
+  const [articles, cities, anime, articleTargets, anitabiBangumi, anitabiPoints] = await Promise.all([
     articleIds.length > 0
       ? prisma.article.findMany({
           where: { id: { in: articleIds } },
@@ -289,11 +340,33 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
           },
         })
       : Promise.resolve([]),
+    anitabiBangumiIds.length > 0
+      ? prisma.anitabiBangumi.findMany({
+          where: { id: { in: anitabiBangumiIds.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isFinite(id)) } },
+          select: {
+            id: true,
+            titleZh: true,
+            titleJaRaw: true,
+          },
+        })
+      : Promise.resolve([]),
+    anitabiPointIds.length > 0
+      ? prisma.anitabiPoint.findMany({
+          where: { id: { in: anitabiPointIds } },
+          select: {
+            id: true,
+            name: true,
+            nameZh: true,
+          },
+        })
+      : Promise.resolve([]),
   ])
 
   const articleById = new Map(articles.map((article) => [article.id, article]))
   const cityById = new Map(cities.map((city) => [city.id, city]))
   const animeById = new Map(anime.map((row) => [row.id, row]))
+  const anitabiBangumiById = new Map(anitabiBangumi.map((row) => [String(row.id), row]))
+  const anitabiPointById = new Map(anitabiPoints.map((row) => [row.id, row]))
 
   const targetByKey = new Map<string, (typeof articleTargets)[number]>()
   for (const row of articleTargets) {
@@ -357,6 +430,32 @@ export async function listTranslationTasksForAdmin(query: TranslationTaskListQue
         ...base,
         subject: {
           title: animeItem?.name ? String(animeItem.name) : null,
+          subtitle: `id：${String(task.entityId)}`,
+          slug: null,
+        },
+        target: null,
+      }
+    }
+
+    if (task.entityType === 'anitabi_bangumi') {
+      const item = anitabiBangumiById.get(task.entityId)
+      return {
+        ...base,
+        subject: {
+          title: item?.titleZh ? String(item.titleZh) : item?.titleJaRaw ? String(item.titleJaRaw) : null,
+          subtitle: `id：${String(task.entityId)}`,
+          slug: null,
+        },
+        target: null,
+      }
+    }
+
+    if (task.entityType === 'anitabi_point') {
+      const item = anitabiPointById.get(task.entityId)
+      return {
+        ...base,
+        subject: {
+          title: item?.nameZh ? String(item.nameZh) : item?.name ? String(item.name) : null,
           subtitle: `id：${String(task.entityId)}`,
           slug: null,
         },

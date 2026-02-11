@@ -28,6 +28,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
         <nav className="flex min-w-0 flex-1 items-center justify-end gap-3 overflow-x-auto whitespace-nowrap text-sm sm:gap-4 sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Link href={prefixPath('/', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
           <Link href={prefixPath('/anime', locale)} className="hover:text-brand-600">{t('header.anime', locale)}</Link>
+          <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
           <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
           <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>

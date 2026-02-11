@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
-import { translateArticle, translateCity, translateAnime } from '@/lib/translation/service'
+import {
+  translateAnime,
+  translateAnitabiBangumi,
+  translateAnitabiPoint,
+  translateArticle,
+  translateCity,
+} from '@/lib/translation/service'
 
 const executeSchema = z.object({
   taskIds: z.array(z.string().min(1)).min(1).max(200),
@@ -83,6 +89,10 @@ export async function POST(req: NextRequest) {
           result = await translateCity(task.entityId, task.targetLanguage)
         } else if (task.entityType === 'anime') {
           result = await translateAnime(task.entityId, task.targetLanguage)
+        } else if (task.entityType === 'anitabi_bangumi') {
+          result = await translateAnitabiBangumi(task.entityId, task.targetLanguage)
+        } else if (task.entityType === 'anitabi_point') {
+          result = await translateAnitabiPoint(task.entityId, task.targetLanguage)
         } else {
           result = { success: false, error: 'Unknown entity type' as string }
         }
