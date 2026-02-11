@@ -5,6 +5,7 @@ import { runAnitabiSync } from '@/lib/anitabi/sync/workflow'
 
 const schema = z.object({
   mode: z.enum(['full', 'delta', 'dryRun']).default('delta'),
+  maxRowsPerRun: z.number().int().min(1).max(10000).optional(),
 })
 
 export function createHandlers(deps: AnitabiApiDeps) {
@@ -21,7 +22,10 @@ export function createHandlers(deps: AnitabiApiDeps) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
-      const report = await runAnitabiSync(deps, { mode: parsed.data.mode })
+      const report = await runAnitabiSync(deps, {
+        mode: parsed.data.mode,
+        maxRowsPerRun: parsed.data.maxRowsPerRun ?? null,
+      })
       if (report.status === 'failed') {
         return NextResponse.json(report, { status: 502 })
       }

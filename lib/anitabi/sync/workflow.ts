@@ -30,7 +30,10 @@ function getSyncConcurrency(): number {
   return clampInt(raw, 1, 8)
 }
 
-function getSyncMaxRowsPerRun(): number | null {
+function getSyncMaxRowsPerRun(overrideValue?: number | null): number | null {
+  if (typeof overrideValue === 'number' && Number.isFinite(overrideValue)) {
+    return clampInt(overrideValue, 1, 10000)
+  }
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_ROWS_PER_RUN || ''), 10)
   if (!Number.isFinite(raw)) return null
   return clampInt(raw, 1, 10000)
@@ -238,7 +241,7 @@ async function syncContributorsAndChangelog(deps: AnitabiApiDeps, datasetVersion
 
 export async function runAnitabiSync(
   deps: AnitabiApiDeps,
-  input: { mode: AnitabiSyncMode }
+  input: { mode: AnitabiSyncMode; maxRowsPerRun?: number | null }
 ): Promise<AnitabiSyncReport> {
   const startedAt = deps.now()
   const datasetVersion = nowVersion(startedAt)
@@ -278,7 +281,7 @@ export async function runAnitabiSync(
       return BigInt(modified) !== prev
     })
 
-    const maxRowsPerRun = getSyncMaxRowsPerRun()
+    const maxRowsPerRun = getSyncMaxRowsPerRun(input.maxRowsPerRun)
     const rowsToProcess = maxRowsPerRun ? changedRows.slice(0, maxRowsPerRun) : changedRows
 
     await asyncPool(rowsToProcess, getSyncConcurrency(), async (row) => {

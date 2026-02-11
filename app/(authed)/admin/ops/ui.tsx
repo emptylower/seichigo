@@ -70,6 +70,55 @@ type DetailResponse =
       error: string
     }
 
+type AnitabiProgress = {
+  activeDatasetVersion: string
+  sourceBangumiTotal: number
+  importedBangumi: number
+  importedMapEnabled: number
+  pendingBangumi: number | null
+  importedPoints: number
+  expectedPointsInImportedBangumi: number
+  pointTotal: number | null
+  pointTotalMode: 'exact' | 'estimated' | 'unknown'
+  pendingPoints: number | null
+  worksCompletionRate: number | null
+  pointsCompletionRate: number | null
+  importedPointCoverageRate: number | null
+  latestRun: {
+    id: string
+    mode: string
+    status: string
+    changedCount: number
+    startedAt: string
+    endedAt: string | null
+    errorSummary: string | null
+  } | null
+  updatedAt: string
+}
+
+type AnitabiProgressResponse =
+  | {
+      ok: true
+      progress: AnitabiProgress
+    }
+  | {
+      error: string
+    }
+
+type AnitabiSyncResponse =
+  | {
+      runId: string
+      mode: 'full' | 'delta' | 'dryRun'
+      status: 'ok' | 'failed'
+      datasetVersion: string | null
+      scanned: number
+      changed: number
+      message?: string
+    }
+  | {
+      error: string
+    }
+
 const LIST_LIMIT = 20
 
 export type AdminOpsInitialData = {
@@ -99,6 +148,11 @@ function prettyJson(value: unknown): string {
   }
 }
 
+function formatPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '-'
+  return `${(value * 100).toFixed(1)}%`
+}
+
 function statusColor(status: string): string {
   if (status === 'ok') return 'text-emerald-700 bg-emerald-50 border-emerald-200'
   if (status === 'partial') return 'text-amber-700 bg-amber-50 border-amber-200'
@@ -124,6 +178,11 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailReport, setDetailReport] = useState<ReportDetail | null>(() => initialData?.detailReport || null)
   const [detailEvents, setDetailEvents] = useState<OpsLogEvent[]>(() => initialData?.detailEvents || [])
+  const [anitabiLoading, setAnitabiLoading] = useState(true)
+  const [anitabiRunning, setAnitabiRunning] = useState(false)
+  const [anitabiError, setAnitabiError] = useState<string | null>(null)
+  const [anitabiProgress, setAnitabiProgress] = useState<AnitabiProgress | null>(null)
+  const [anitabiMaxRowsInput, setAnitabiMaxRowsInput] = useState('300')
 
   const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -133,6 +192,54 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     if (detailReport?.dateKey === todayDateKey) return detailReport
     return null
   }, [items, detailReport, todayDateKey])
+
+  async function loadAnitabiProgress() {
+    setAnitabiLoading(true)
+    setAnitabiError(null)
+    try {
+      const res = await fetch('/api/admin/anitabi/progress', { method: 'GET' })
+      const data = (await res.json().catch(() => ({}))) as AnitabiProgressResponse
+      if (!res.ok || !('ok' in data && data.ok)) {
+        throw new Error(('error' in data && data.error) || `Request failed (${res.status})`)
+      }
+      setAnitabiProgress(data.progress)
+    } catch (e) {
+      setAnitabiProgress(null)
+      setAnitabiError(e instanceof Error ? e.message : '加载 Anitabi 进度失败')
+    } finally {
+      setAnitabiLoading(false)
+    }
+  }
+
+  async function runAnitabiSync(mode: 'delta' | 'full' | 'dryRun') {
+    const parsed = Number.parseInt(anitabiMaxRowsInput.trim(), 10)
+    const maxRowsPerRun = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 10000) : undefined
+
+    setAnitabiRunning(true)
+    setAnitabiError(null)
+    try {
+      const res = await fetch('/api/admin/anitabi/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, ...(maxRowsPerRun ? { maxRowsPerRun } : {}) }),
+      })
+
+      const data = (await res.json().catch(() => ({}))) as AnitabiSyncResponse
+      if (!res.ok || !('runId' in data)) {
+        throw new Error(('error' in data && data.error) || `Request failed (${res.status})`)
+      }
+
+      if (data.status === 'failed') {
+        throw new Error(data.message || '同步失败')
+      }
+
+      await loadAnitabiProgress()
+    } catch (e) {
+      setAnitabiError(e instanceof Error ? e.message : '执行同步失败')
+    } finally {
+      setAnitabiRunning(false)
+    }
+  }
 
   async function loadReports(options?: { cursor?: string | null; append?: boolean }) {
     const cursor = options?.cursor || null
@@ -260,12 +367,124 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData])
 
+  useEffect(() => {
+    void loadAnitabiProgress()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">运维检查</h1>
         <p className="mt-1 text-sm text-gray-600">每日巡检 Vercel 日志并提取异常，可导出 Markdown 与 JSON。</p>
       </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Anitabi 复刻进度</h2>
+            <p className="mt-1 text-xs text-gray-500">基于本库已落地数据与源站总量估算，支持手动分批推进同步。</p>
+          </div>
+          <Button type="button" variant="ghost" onClick={() => void loadAnitabiProgress()} disabled={anitabiLoading || anitabiRunning}>
+            刷新进度
+          </Button>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <div className="min-w-[140px]">
+            <label className="mb-1 block text-xs text-gray-600">每批最大作品数</label>
+            <input
+              value={anitabiMaxRowsInput}
+              onChange={(e) => setAnitabiMaxRowsInput(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-brand-400"
+              inputMode="numeric"
+              placeholder="300"
+            />
+          </div>
+          <Button type="button" variant="primary" onClick={() => void runAnitabiSync('delta')} disabled={anitabiRunning}>
+            {anitabiRunning ? '执行中…' : '推进一批（Delta）'}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => void runAnitabiSync('dryRun')} disabled={anitabiRunning}>
+            仅扫描（DryRun）
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => void runAnitabiSync('full')} disabled={anitabiRunning}>
+            全量重扫（Full）
+          </Button>
+        </div>
+
+        {anitabiError ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{anitabiError}</div> : null}
+        {anitabiLoading ? <div className="text-sm text-gray-600">加载进度中…</div> : null}
+
+        {!anitabiLoading && anitabiProgress ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">当前数据版本</div>
+                <div className="mt-1 font-mono text-sm text-gray-900">{anitabiProgress.activeDatasetVersion}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">作品进度</div>
+                <div className="mt-1 text-sm font-semibold text-gray-900">
+                  {anitabiProgress.importedBangumi} / {anitabiProgress.sourceBangumiTotal}
+                </div>
+                <div className="text-xs text-gray-500">待补：{anitabiProgress.pendingBangumi ?? '-'}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">点位进度（{anitabiProgress.pointTotalMode === 'exact' ? '精确' : anitabiProgress.pointTotalMode === 'estimated' ? '估算' : '未知'}）</div>
+                <div className="mt-1 text-sm font-semibold text-gray-900">
+                  {anitabiProgress.importedPoints} / {anitabiProgress.pointTotal ?? '-'}
+                </div>
+                <div className="text-xs text-gray-500">待补：{anitabiProgress.pendingPoints ?? '-'}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">已导入作品点位覆盖率</div>
+                <div className="mt-1 text-sm font-semibold text-gray-900">{formatPercent(anitabiProgress.importedPointCoverageRate)}</div>
+                <div className="text-xs text-gray-500">
+                  已入库点位 {anitabiProgress.importedPoints} / 期望 {anitabiProgress.expectedPointsInImportedBangumi}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                  <span>作品完成率</span>
+                  <span>{formatPercent(anitabiProgress.worksCompletionRate)}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-brand-500"
+                    style={{ width: `${Math.max(0, Math.min(100, (anitabiProgress.worksCompletionRate || 0) * 100))}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                  <span>点位完成率</span>
+                  <span>{formatPercent(anitabiProgress.pointsCompletionRate)}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={{ width: `${Math.max(0, Math.min(100, (anitabiProgress.pointsCompletionRate || 0) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-3 text-xs text-gray-600">
+              <div className="mb-1">最近同步：{anitabiProgress.latestRun ? `${anitabiProgress.latestRun.mode} / ${anitabiProgress.latestRun.status}` : '-'}</div>
+              <div className="mb-1">变更数：{anitabiProgress.latestRun?.changedCount ?? '-'}</div>
+              <div className="mb-1">开始：{formatDateTime(anitabiProgress.latestRun?.startedAt || null)}</div>
+              <div className="mb-1">结束：{formatDateTime(anitabiProgress.latestRun?.endedAt || null)}</div>
+              {anitabiProgress.latestRun?.errorSummary ? (
+                <div className="rounded bg-rose-50 px-2 py-1 text-rose-700">错误：{anitabiProgress.latestRun.errorSummary}</div>
+              ) : null}
+              <div className="mt-1 text-gray-500">更新时间：{formatDateTime(anitabiProgress.updatedAt)}</div>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
