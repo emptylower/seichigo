@@ -1,6 +1,14 @@
 {
   "crons": [
     {
+      "path": "/api/cron/anitabi/hourly",
+      "schedule": "10 * * * *"
+    },
+    {
+      "path": "/api/cron/anitabi/daily",
+      "schedule": "10 3 * * *"
+    },
+    {
       "path": "/api/cron/ops/daily",
       "schedule": "0 0 * * *"
     }

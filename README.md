@@ -35,6 +35,20 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Set:
   - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/seichigo?schema=public
 
+**Anitabi Sync On Vercel (store in Vercel Postgres / Nano DB)**
+- Required env vars in Vercel Project:
+  - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (point to your Vercel Postgres)
+  - `ANITABI_CRON_SECRET` (random long secret)
+  - Optional: `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
+- This repo schedules:
+  - Hourly delta: `/api/cron/anitabi/hourly` at `10 * * * *` (UTC)
+  - Daily full: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)
+- One-time manual bootstrap after deploy:
+  - `curl -H "Authorization: Bearer $ANITABI_CRON_SECRET" https://<your-domain>/api/cron/anitabi/daily`
+- Quick check:
+  - Open `https://<your-domain>/api/anitabi/bootstrap?locale=zh&tab=latest`
+  - If `cards` is non-empty, sync data is already in your Vercel DB.
+
 **Admin Login**
 - Visit `/auth/signin` and use an email listed in `ADMIN_EMAILS`.
 - Default password: `112233` (override via `ADMIN_DEFAULT_PASSWORD`).
