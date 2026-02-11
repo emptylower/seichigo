@@ -40,11 +40,12 @@ Code-first Next.js App Router blog for anime pilgrimage content.
   - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (point to your Vercel Postgres)
   - `ANITABI_CRON_SECRET` (random long secret)
   - `ANITABI_SYNC_CONCURRENCY` (recommended `1-2` on Neon/Vercel)
+  - Optional: `ANITABI_SYNC_MAX_ROWS_PER_RUN` (recommended `200-500` on Vercel Hobby)
   - Optional: `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
 - This repo schedules:
-  - Daily full: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)
+  - Daily delta: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)
 - Note for Vercel Hobby:
-  - Hourly crons are not supported. Use the daily full sync above, and call `/api/cron/anitabi/hourly` manually or from an external scheduler if you still need delta updates.
+  - Hourly crons are not supported. Use the daily delta sync above, and call `/api/cron/anitabi/hourly` manually or from an external scheduler if you still need higher frequency updates.
 - One-time manual bootstrap after deploy:
   - `curl -H "Authorization: Bearer $ANITABI_CRON_SECRET" https://<your-domain>/api/cron/anitabi/daily`
 - Quick check:

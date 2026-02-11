@@ -30,6 +30,12 @@ function getSyncConcurrency(): number {
   return clampInt(raw, 1, 8)
 }
 
+function getSyncMaxRowsPerRun(): number | null {
+  const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_ROWS_PER_RUN || ''), 10)
+  if (!Number.isFinite(raw)) return null
+  return clampInt(raw, 1, 10000)
+}
+
 async function upsertCursor(
   prisma: PrismaClient,
   sourceName: string,
@@ -272,7 +278,10 @@ export async function runAnitabiSync(
       return BigInt(modified) !== prev
     })
 
-    await asyncPool(changedRows, getSyncConcurrency(), async (row) => {
+    const maxRowsPerRun = getSyncMaxRowsPerRun()
+    const rowsToProcess = maxRowsPerRun ? changedRows.slice(0, maxRowsPerRun) : changedRows
+
+    await asyncPool(rowsToProcess, getSyncConcurrency(), async (row) => {
       await syncBangumiOne(deps, datasetVersion, row, dryRun)
     })
 
@@ -287,7 +296,7 @@ export async function runAnitabiSync(
       data: {
         status: 'ok',
         endedAt: deps.now(),
-        changedCount: changedRows.length,
+        changedCount: rowsToProcess.length,
         sourceSnapshotHash: snapshotHash,
       },
     })
@@ -298,7 +307,7 @@ export async function runAnitabiSync(
       status: 'ok',
       datasetVersion: dryRun ? null : datasetVersion,
       scanned: bangumi.length,
-      changed: changedRows.length,
+      changed: rowsToProcess.length,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown sync error'

@@ -21,7 +21,7 @@ function routeError(err: unknown) {
 export async function GET(req: Request) {
   try {
     const deps = await getAnitabiApiDeps()
-    return createHandlers(deps, 'full').GET(req)
+    return createHandlers(deps, 'delta').GET(req)
   } catch (err) {
     console.error('[api/cron/anitabi/daily] GET failed', err)
     return routeError(err)
