@@ -5,6 +5,7 @@ import { getAnitabiApiDeps } from '@/lib/anitabi/api'
 import { createHandlers } from '@/lib/anitabi/handlers/cron'
 
 function routeError(err: unknown) {
+  // Keep cron responses stable so Vercel cron retries are easier to observe.
   const code = (err as any)?.code
   if (code === 'P2021' || code === 'P2022') {
     return NextResponse.json({ error: '数据库结构未更新，请先执行迁移（prisma migrate deploy）后重试' }, { status: 503 })
