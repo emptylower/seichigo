@@ -39,6 +39,7 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 - Required env vars in Vercel Project:
   - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (point to your Vercel Postgres)
   - `ANITABI_CRON_SECRET` (random long secret)
+  - `ANITABI_SYNC_CONCURRENCY` (recommended `1-2` on Neon/Vercel)
   - Optional: `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
 - This repo schedules:
   - Daily full: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)

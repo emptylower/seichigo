@@ -20,6 +20,16 @@ function nowVersion(d: Date): string {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function getSyncConcurrency(): number {
+  const raw = Number.parseInt(String(process.env.ANITABI_SYNC_CONCURRENCY || ''), 10)
+  if (!Number.isFinite(raw)) return 2
+  return clampInt(raw, 1, 8)
+}
+
 async function upsertCursor(
   prisma: PrismaClient,
   sourceName: string,
@@ -73,94 +83,92 @@ async function syncBangumiOne(
     return { changed: true, id: bangumi.id }
   }
 
-  await deps.prisma.$transaction(async (tx) => {
-    await tx.anitabiBangumi.upsert({
-      where: { id: normalized.id },
-      create: {
-        id: normalized.id,
-        titleZh: normalized.titleZh,
-        titleJaRaw: normalized.titleJaRaw,
-        cat: normalized.cat,
-        cover: normalized.cover,
-        description: normalized.description,
-        color: normalized.color,
-        city: normalized.city,
-        tags: normalized.tags,
-        geoLat: normalized.geoLat,
-        geoLng: normalized.geoLng,
-        zoom: normalized.zoom,
-        sourceModifiedMs: normalized.sourceModifiedMs,
-        mapEnabled,
-        datasetVersion,
-      },
-      update: {
-        titleZh: normalized.titleZh,
-        titleJaRaw: normalized.titleJaRaw,
-        cat: normalized.cat,
-        cover: normalized.cover,
-        description: normalized.description,
-        color: normalized.color,
-        city: normalized.city,
-        tags: normalized.tags,
-        geoLat: normalized.geoLat,
-        geoLng: normalized.geoLng,
-        zoom: normalized.zoom,
-        sourceModifiedMs: normalized.sourceModifiedMs,
-        mapEnabled,
-        datasetVersion,
-      },
-    })
-
-    await tx.anitabiBangumiMeta.upsert({
-      where: { bangumiId: normalized.id },
-      create: {
-        bangumiId: normalized.id,
-        pointsLength: liteStats.pointsLength,
-        imagesLength: liteStats.imagesLength,
-        themeJson: (pointsSummary as any)?.theme ?? null,
-        customEpNamesJson: (pointsSummary as any)?.customEPNames ?? null,
-        logsJson: (pointsSummary as any)?.logs ?? null,
-        removedPointsJson: (pointsSummary as any)?.removedPoints ?? null,
-        completenessJson: (pointsSummary as any)?.completeness ?? null,
-      },
-      update: {
-        pointsLength: liteStats.pointsLength,
-        imagesLength: liteStats.imagesLength,
-        themeJson: (pointsSummary as any)?.theme ?? null,
-        customEpNamesJson: (pointsSummary as any)?.customEPNames ?? null,
-        logsJson: (pointsSummary as any)?.logs ?? null,
-        removedPointsJson: (pointsSummary as any)?.removedPoints ?? null,
-        completenessJson: (pointsSummary as any)?.completeness ?? null,
-      },
-    })
-
-    await tx.anitabiPoint.deleteMany({ where: { bangumiId: normalized.id } })
-
-    if (points.length > 0) {
-      await tx.anitabiPoint.createMany({
-        data: points.map((point) => ({
-          id: point.id,
-          bangumiId: point.bangumiId,
-          name: point.name,
-          nameZh: point.nameZh,
-          geoLat: point.geoLat,
-          geoLng: point.geoLng,
-          ep: point.ep,
-          s: point.s,
-          image: point.image,
-          origin: point.origin,
-          originUrl: point.originUrl,
-          originLink: point.originLink,
-          density: point.density,
-          mark: point.mark,
-          folder: point.folder,
-          uid: point.uid,
-          reviewUid: point.reviewUid,
-          datasetVersion,
-        })),
-      })
-    }
+  await deps.prisma.anitabiBangumi.upsert({
+    where: { id: normalized.id },
+    create: {
+      id: normalized.id,
+      titleZh: normalized.titleZh,
+      titleJaRaw: normalized.titleJaRaw,
+      cat: normalized.cat,
+      cover: normalized.cover,
+      description: normalized.description,
+      color: normalized.color,
+      city: normalized.city,
+      tags: normalized.tags,
+      geoLat: normalized.geoLat,
+      geoLng: normalized.geoLng,
+      zoom: normalized.zoom,
+      sourceModifiedMs: normalized.sourceModifiedMs,
+      mapEnabled,
+      datasetVersion,
+    },
+    update: {
+      titleZh: normalized.titleZh,
+      titleJaRaw: normalized.titleJaRaw,
+      cat: normalized.cat,
+      cover: normalized.cover,
+      description: normalized.description,
+      color: normalized.color,
+      city: normalized.city,
+      tags: normalized.tags,
+      geoLat: normalized.geoLat,
+      geoLng: normalized.geoLng,
+      zoom: normalized.zoom,
+      sourceModifiedMs: normalized.sourceModifiedMs,
+      mapEnabled,
+      datasetVersion,
+    },
   })
+
+  await deps.prisma.anitabiBangumiMeta.upsert({
+    where: { bangumiId: normalized.id },
+    create: {
+      bangumiId: normalized.id,
+      pointsLength: liteStats.pointsLength,
+      imagesLength: liteStats.imagesLength,
+      themeJson: (pointsSummary as any)?.theme ?? null,
+      customEpNamesJson: (pointsSummary as any)?.customEPNames ?? null,
+      logsJson: (pointsSummary as any)?.logs ?? null,
+      removedPointsJson: (pointsSummary as any)?.removedPoints ?? null,
+      completenessJson: (pointsSummary as any)?.completeness ?? null,
+    },
+    update: {
+      pointsLength: liteStats.pointsLength,
+      imagesLength: liteStats.imagesLength,
+      themeJson: (pointsSummary as any)?.theme ?? null,
+      customEpNamesJson: (pointsSummary as any)?.customEPNames ?? null,
+      logsJson: (pointsSummary as any)?.logs ?? null,
+      removedPointsJson: (pointsSummary as any)?.removedPoints ?? null,
+      completenessJson: (pointsSummary as any)?.completeness ?? null,
+    },
+  })
+
+  await deps.prisma.anitabiPoint.deleteMany({ where: { bangumiId: normalized.id } })
+
+  if (points.length > 0) {
+    await deps.prisma.anitabiPoint.createMany({
+      data: points.map((point) => ({
+        id: point.id,
+        bangumiId: point.bangumiId,
+        name: point.name,
+        nameZh: point.nameZh,
+        geoLat: point.geoLat,
+        geoLng: point.geoLng,
+        ep: point.ep,
+        s: point.s,
+        image: point.image,
+        origin: point.origin,
+        originUrl: point.originUrl,
+        originLink: point.originLink,
+        density: point.density,
+        mark: point.mark,
+        folder: point.folder,
+        uid: point.uid,
+        reviewUid: point.reviewUid,
+        datasetVersion,
+      })),
+    })
+  }
 
   return { changed: true, id: normalized.id }
 }
@@ -184,20 +192,18 @@ async function syncContributorsAndChangelog(deps: AnitabiApiDeps, datasetVersion
     const sourceHash = hashText(changelogText)
     const entries = parseChangelogMarkdown(changelogText)
 
-    await deps.prisma.$transaction(async (tx) => {
-      await tx.anitabiChangelogEntry.deleteMany({})
-      if (entries.length) {
-        await tx.anitabiChangelogEntry.createMany({
-          data: entries.map((entry) => ({
-            date: entry.date || '',
-            title: entry.title,
-            body: entry.body,
-            linksJson: entry.links,
-            sourceHash,
-          })),
-        })
-      }
-    })
+    await deps.prisma.anitabiChangelogEntry.deleteMany({})
+    if (entries.length) {
+      await deps.prisma.anitabiChangelogEntry.createMany({
+        data: entries.map((entry) => ({
+          date: entry.date || '',
+          title: entry.title,
+          body: entry.body,
+          linksJson: entry.links,
+          sourceHash,
+        })),
+      })
+    }
 
     await upsertCursor(deps.prisma, 'changelog', { value: sourceHash })
   }
@@ -207,20 +213,18 @@ async function syncContributorsAndChangelog(deps: AnitabiApiDeps, datasetVersion
     const rows = normalizeContributorsFromUsersRaw(usersRaw)
     const dedup = new Map(rows.map((row) => [row.id, row]))
 
-    await deps.prisma.$transaction(async (tx) => {
-      await tx.anitabiContributor.deleteMany({})
-      if (dedup.size > 0) {
-        await tx.anitabiContributor.createMany({
-          data: Array.from(dedup.values()).map((item) => ({
-            id: item.id,
-            name: item.name,
-            avatar: item.avatar,
-            link: item.link,
-            raw: item.payload as any,
-          })),
-        })
-      }
-    })
+    await deps.prisma.anitabiContributor.deleteMany({})
+    if (dedup.size > 0) {
+      await deps.prisma.anitabiContributor.createMany({
+        data: Array.from(dedup.values()).map((item) => ({
+          id: item.id,
+          name: item.name,
+          avatar: item.avatar,
+          link: item.link,
+          raw: item.payload as any,
+        })),
+      })
+    }
 
     await upsertCursor(deps.prisma, 'usersJson', { value: String(dedup.size) })
   }
@@ -268,7 +272,7 @@ export async function runAnitabiSync(
       return BigInt(modified) !== prev
     })
 
-    await asyncPool(changedRows, 8, async (row) => {
+    await asyncPool(changedRows, getSyncConcurrency(), async (row) => {
       await syncBangumiOne(deps, datasetVersion, row, dryRun)
     })
 
