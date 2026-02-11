@@ -13,7 +13,7 @@
     "seo:sync": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-sync.ts",
     "seo:rank": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-rank.ts",
     "seo:spoke-factory": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-spoke-factory.ts",
-    "anitabi:sync": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-sync.ts",
+    "anitabi:sync": "npx ts-node -T --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-sync.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

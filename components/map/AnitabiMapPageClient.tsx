@@ -173,6 +173,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const mapRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
+  const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
@@ -335,6 +336,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     mapRef.current = map
 
     return () => {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove()
+        userMarkerRef.current = null
+      }
       map.remove()
       mapRef.current = null
     }
@@ -430,14 +435,50 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     openBangumi(picked.id).catch(() => null)
   }, [cards, openBangumi])
 
-  const onLocate = useCallback(() => {
-    if (!navigator?.geolocation) return
-    navigator.geolocation.getCurrentPosition((position) => {
-      const map = mapRef.current
-      if (!map) return
-      map.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 12, essential: true })
-    })
+  const paintUserMarker = useCallback((lng: number, lat: number) => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (!userMarkerRef.current) {
+      const el = document.createElement('div')
+      el.style.width = '16px'
+      el.style.height = '16px'
+      el.style.borderRadius = '999px'
+      el.style.background = '#2563eb'
+      el.style.border = '2px solid white'
+      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)'
+      userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map)
+      return
+    }
+
+    userMarkerRef.current.setLngLat([lng, lat])
   }, [])
+
+  const onLocate = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return
+
+    const locate = (highAccuracy: boolean) =>
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const map = mapRef.current
+          if (!map) return
+          const { latitude, longitude, accuracy } = position.coords
+          const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
+          map.flyTo({ center: [longitude, latitude], zoom, essential: true })
+          paintUserMarker(longitude, latitude)
+        },
+        () => {
+          if (highAccuracy) locate(false)
+        },
+        {
+          enableHighAccuracy: highAccuracy,
+          timeout: highAccuracy ? 15000 : 8000,
+          maximumAge: highAccuracy ? 0 : 300000,
+        }
+      )
+
+    locate(true)
+  }, [paintUserMarker])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return

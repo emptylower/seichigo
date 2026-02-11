@@ -88,8 +88,8 @@ export type NormalizedPoint = {
   density: number | null
   mark: string | null
   folder: string | null
-  uid: number | null
-  reviewUid: number | null
+  uid: string | null
+  reviewUid: string | null
 }
 
 function safeStringList(input: unknown): string[] {
@@ -105,6 +105,14 @@ function parseGeo(input: unknown): { lat: number | null; lng: number | null } {
   const lat = toNumberOrNull(input[0])
   const lng = toNumberOrNull(input[1])
   return { lat, lng }
+}
+
+function parseSafeInt32(input: unknown): number | null {
+  const n = toNumberOrNull(input)
+  if (n == null) return null
+  if (!Number.isInteger(n)) return null
+  if (n > 2147483647 || n < -2147483648) return null
+  return n
 }
 
 export function normalizeBangumi(raw: RawBangumi): NormalizedBangumi {
@@ -169,11 +177,11 @@ export function normalizePoints(
       origin: normalizeText(row?.origin) || normalizeText((extra as any)?.origin) || null,
       originUrl: normalizeText(row?.originURL) || normalizeText((extra as any)?.originURL) || null,
       originLink: normalizeText(row?.originLink) || normalizeText((extra as any)?.originLink) || null,
-      density: toNumberOrNull((extra as any)?.density),
+      density: parseSafeInt32((extra as any)?.density),
       mark: normalizeText((extra as any)?.mark) || null,
       folder: normalizeText((extra as any)?.folder) || null,
-      uid: toNumberOrNull((extra as any)?.uid),
-      reviewUid: toNumberOrNull((extra as any)?.reviewUid),
+      uid: normalizeText((extra as any)?.uid) || null,
+      reviewUid: normalizeText((extra as any)?.reviewUid) || null,
     })
   }
 
