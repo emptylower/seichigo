@@ -23,6 +23,8 @@ export async function GET(
 
     let relatedArticle = null
     let translatedArticle = null
+    let relatedEntity = null
+    let translatedEntity = null
     if (task.entityType === 'article') {
       relatedArticle = await prisma.article.findUnique({
         where: { id: task.entityId },
@@ -48,9 +50,62 @@ export async function GET(
           },
         })
       }
+    } else if (task.entityType === 'anitabi_bangumi') {
+      const bangumiId = Number.parseInt(task.entityId, 10)
+      if (Number.isFinite(bangumiId)) {
+        relatedEntity = await prisma.anitabiBangumi.findUnique({
+          where: { id: bangumiId },
+          select: {
+            id: true,
+            titleZh: true,
+            titleJaRaw: true,
+            description: true,
+            city: true,
+            updatedAt: true,
+          },
+        })
+        translatedEntity = await prisma.anitabiBangumiI18n.findUnique({
+          where: {
+            bangumiId_language: {
+              bangumiId,
+              language: task.targetLanguage,
+            },
+          },
+          select: {
+            title: true,
+            description: true,
+            city: true,
+            updatedAt: true,
+          },
+        })
+      }
+    } else if (task.entityType === 'anitabi_point') {
+      relatedEntity = await prisma.anitabiPoint.findUnique({
+        where: { id: task.entityId },
+        select: {
+          id: true,
+          name: true,
+          nameZh: true,
+          mark: true,
+          updatedAt: true,
+        },
+      })
+      translatedEntity = await prisma.anitabiPointI18n.findUnique({
+        where: {
+          pointId_language: {
+            pointId: task.entityId,
+            language: task.targetLanguage,
+          },
+        },
+        select: {
+          name: true,
+          note: true,
+          updatedAt: true,
+        },
+      })
     }
 
-    return NextResponse.json({ task, relatedArticle, translatedArticle })
+    return NextResponse.json({ task, relatedArticle, translatedArticle, relatedEntity, translatedEntity })
   } catch (error) {
     console.error('[api/admin/translations/[id]] GET failed', error)
     return NextResponse.json(

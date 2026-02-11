@@ -11,33 +11,35 @@ datasource db {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  name               String?
-  email              String?           @unique
-  emailVerified      DateTime?
-  image              String?
-  passwordHash       String?           @db.Text
-  mustChangePassword Boolean           @default(false)
-  disabled           Boolean           @default(false)
-  isAdmin            Boolean           @default(false)
-  bio                String?           @db.Text
-  bilibili           String?
-  weibo              String?
-  github             String?
-  twitter            String?
-  createdAt          DateTime          @default(now())
-  accounts           Account[]
-  sessions           Session[]
-  submissions        Submission[]
-  articles           Article[]
-  articleRevisions   ArticleRevision[]
-  assets             Asset[]
-  favorites          Favorite[]
-  mdxFavorites       MdxFavorite[]
-  waitlistEntry      WaitlistEntry?
-  comments           Comment[]
-  commentLikes       CommentLike[]
+  id                   String               @id @default(cuid())
+  name                 String?
+  email                String?              @unique
+  emailVerified        DateTime?
+  image                String?
+  passwordHash         String?              @db.Text
+  mustChangePassword   Boolean              @default(false)
+  disabled             Boolean              @default(false)
+  isAdmin              Boolean              @default(false)
+  bio                  String?              @db.Text
+  bilibili             String?
+  weibo                String?
+  github               String?
+  twitter              String?
+  createdAt            DateTime             @default(now())
+  accounts             Account[]
+  sessions             Session[]
+  submissions          Submission[]
+  articles             Article[]
+  articleRevisions     ArticleRevision[]
+  assets               Asset[]
+  favorites            Favorite[]
+  mdxFavorites         MdxFavorite[]
+  waitlistEntry        WaitlistEntry?
+  comments             Comment[]
+  commentLikes         CommentLike[]
   translationHistories TranslationHistory[]
+  anitabiFavorites     AnitabiFavorite[]
+  anitabiViewHistory   AnitabiViewHistory[]
 }
 
 model Account {
@@ -219,19 +221,20 @@ model ArticleRevision {
 }
 
 model Anime {
-  id         String   @id
-  name       String
-  alias      String[] @default([])
-  year       Int?
-  summary    String?
-  cover      String?
-  hidden     Boolean  @default(false)
-  name_en    String?
-  name_ja    String?
-  summary_en String?
-  summary_ja String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String           @id
+  name            String
+  alias           String[]         @default([])
+  year            Int?
+  summary         String?
+  cover           String?
+  hidden          Boolean          @default(false)
+  name_en         String?
+  name_ja         String?
+  summary_en      String?
+  summary_ja      String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  anitabiMappings AnitabiMapping[]
 }
 
 model Asset {
@@ -270,6 +273,7 @@ model City {
   revisionLinks   ArticleRevisionCity[]
   submissionLinks SubmissionCity[]
   redirectsToMe   CityRedirect[]        @relation("CityRedirectTo")
+  anitabiMappings AnitabiMapping[]
 }
 
 model CityAlias {
@@ -399,23 +403,23 @@ model TranslationHistory {
 }
 
 model SeoKeyword {
-  id          String            @id @default(cuid())
+  id          String           @id @default(cuid())
   keyword     String
   language    String
   category    String
-  priority    Int               @default(0)
-  isActive    Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  priority    Int              @default(0)
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   rankHistory SeoRankHistory[]
 }
 
 model SeoRankHistory {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   keywordId String
   position  Int?
   url       String?
-  checkedAt DateTime  @default(now())
+  checkedAt DateTime @default(now())
   source    String
 
   keyword SeoKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
@@ -449,7 +453,7 @@ model SeoApiUsage {
 }
 
 model OpsReport {
-  id               String       @id @default(cuid())
+  id               String        @id @default(cuid())
   source           String
   windowStart      DateTime
   windowEnd        DateTime
@@ -460,10 +464,10 @@ model OpsReport {
   totalLogs        Int
   severeCount      Int
   warningCount     Int
-  truncated        Boolean      @default(false)
-  markdownSummary  String       @db.Text
+  truncated        Boolean       @default(false)
+  markdownSummary  String        @db.Text
   rawSummary       Json?
-  createdAt        DateTime     @default(now())
+  createdAt        DateTime      @default(now())
   events           OpsLogEvent[]
 
   @@index([createdAt, dateKey])
@@ -486,4 +490,219 @@ model OpsLogEvent {
   report       OpsReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([reportId, severity, timestamp, fingerprint])
+}
+
+model AnitabiBangumi {
+  id               Int      @id
+  titleZh          String?
+  titleJaRaw       String?
+  cat              String?
+  cover            String?
+  description      String?  @db.Text
+  color            String?
+  city             String?
+  tags             String[] @default([])
+  geoLat           Float?
+  geoLng           Float?
+  zoom             Float?
+  sourceModifiedMs BigInt?
+  mapEnabled       Boolean  @default(true)
+  datasetVersion   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  points      AnitabiPoint[]
+  meta        AnitabiBangumiMeta?
+  i18n        AnitabiBangumiI18n[]
+  mappings    AnitabiMapping[]
+  favorites   AnitabiFavorite[]
+  viewHistory AnitabiViewHistory[]
+
+  @@index([updatedAt])
+  @@index([sourceModifiedMs])
+  @@index([datasetVersion])
+  @@index([mapEnabled, updatedAt])
+}
+
+model AnitabiPoint {
+  id             String   @id
+  bangumiId      Int
+  name           String
+  nameZh         String?
+  geoLat         Float?
+  geoLng         Float?
+  ep             String?
+  s              String?
+  image          String?
+  origin         String?
+  originUrl      String?
+  originLink     String?
+  density        Int?
+  mark           String?
+  folder         String?
+  uid            Int?
+  reviewUid      Int?
+  datasetVersion String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  bangumi     AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  i18n        AnitabiPointI18n[]
+  favorites   AnitabiFavorite[]
+  viewHistory AnitabiViewHistory[]
+
+  @@index([bangumiId, updatedAt])
+  @@index([bangumiId, ep])
+  @@index([datasetVersion])
+  @@index([geoLat, geoLng])
+}
+
+model AnitabiBangumiMeta {
+  bangumiId         Int      @id
+  pointsLength      Int      @default(0)
+  imagesLength      Int      @default(0)
+  themeJson         Json?
+  customEpNamesJson Json?
+  logsJson          Json?
+  removedPointsJson Json?
+  completenessJson  Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+}
+
+model AnitabiContributor {
+  id        String   @id
+  name      String?
+  avatar    String?
+  link      String?
+  raw       Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AnitabiChangelogEntry {
+  id         String   @id @default(cuid())
+  date       String
+  title      String
+  body       String   @db.Text
+  linksJson  Json?
+  sourceHash String
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+  @@index([sourceHash])
+}
+
+model AnitabiFavorite {
+  id         String   @id @default(cuid())
+  userId     String
+  targetType String
+  targetKey  String
+  bangumiId  Int?
+  pointId    String?
+  createdAt  DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bangumi AnitabiBangumi? @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  point   AnitabiPoint?   @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetKey])
+  @@index([userId, createdAt])
+  @@index([bangumiId])
+  @@index([pointId])
+}
+
+model AnitabiViewHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  targetType String
+  targetKey  String
+  bangumiId  Int?
+  pointId    String?
+  viewedAt   DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bangumi AnitabiBangumi? @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  point   AnitabiPoint?   @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@index([userId, viewedAt])
+  @@index([targetKey])
+  @@index([bangumiId])
+  @@index([pointId])
+}
+
+model AnitabiBangumiI18n {
+  id          String   @id @default(cuid())
+  bangumiId   Int
+  language    String
+  title       String?
+  description String?  @db.Text
+  city        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+
+  @@unique([bangumiId, language])
+  @@index([language, updatedAt])
+}
+
+model AnitabiPointI18n {
+  id        String   @id @default(cuid())
+  pointId   String
+  language  String
+  name      String?
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  point AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@unique([pointId, language])
+  @@index([language, updatedAt])
+}
+
+model AnitabiMapping {
+  id        String   @id @default(cuid())
+  bangumiId Int
+  animeId   String?
+  cityId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  anime   Anime?         @relation(fields: [animeId], references: [id], onDelete: SetNull)
+  city    City?          @relation(fields: [cityId], references: [id], onDelete: SetNull)
+
+  @@index([bangumiId])
+  @@index([animeId])
+  @@index([cityId])
+}
+
+model AnitabiSyncRun {
+  id                 String    @id @default(cuid())
+  mode               String
+  status             String
+  startedAt          DateTime
+  endedAt            DateTime?
+  changedCount       Int       @default(0)
+  errorSummary       String?   @db.Text
+  sourceSnapshotHash String?
+  datasetVersion     String?
+  createdAt          DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([mode, status, startedAt])
+}
+
+model AnitabiSourceCursor {
+  sourceName    String    @id
+  etag          String?
+  lastModified  String?
+  value         String?
+  lastSuccessAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }

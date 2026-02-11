@@ -4,7 +4,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 
 const batchSchema = z.object({
-  entityType: z.enum(['article', 'city', 'anime']),
+  entityType: z.enum(['article', 'city', 'anime', 'anitabi_bangumi', 'anitabi_point']),
   targetLanguages: z.array(z.enum(['en', 'ja'])).min(1),
 })
 
@@ -27,6 +27,14 @@ type AnimeRow = {
   name_ja: string | null
   summary_en: string | null
   summary_ja: string | null
+}
+
+type AnitabiBangumiRow = {
+  id: number
+}
+
+type AnitabiPointRow = {
+  id: string
 }
 
 function hasEntityTranslation(entityType: EntityType, row: CityRow | AnimeRow, lang: TargetLanguage): boolean {
@@ -105,6 +113,46 @@ async function getEntityIdsAndApprovedLangs(
         }
       }
     }
+    return { entityIds, approvedKey }
+  }
+
+  if (entityType === 'anitabi_bangumi') {
+    const rows: AnitabiBangumiRow[] = await prisma.anitabiBangumi.findMany({
+      where: { mapEnabled: true },
+      select: { id: true },
+    })
+    const ids = rows.map((row) => row.id)
+    const entityIds = ids.map((id) => String(id))
+    const translated = await prisma.anitabiBangumiI18n.findMany({
+      where: {
+        bangumiId: { in: ids },
+        language: { in: targetLanguages },
+      },
+      select: {
+        bangumiId: true,
+        language: true,
+      },
+    })
+    const approvedKey = new Set(translated.map((row) => `${row.bangumiId}:${row.language}`))
+    return { entityIds, approvedKey }
+  }
+
+  if (entityType === 'anitabi_point') {
+    const rows: AnitabiPointRow[] = await prisma.anitabiPoint.findMany({
+      select: { id: true },
+    })
+    const entityIds = rows.map((row) => row.id)
+    const translated = await prisma.anitabiPointI18n.findMany({
+      where: {
+        pointId: { in: entityIds },
+        language: { in: targetLanguages },
+      },
+      select: {
+        pointId: true,
+        language: true,
+      },
+    })
+    const approvedKey = new Set(translated.map((row) => `${row.pointId}:${row.language}`))
     return { entityIds, approvedKey }
   }
 

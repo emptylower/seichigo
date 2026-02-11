@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
-import { translateArticle, translateCity, translateAnime } from '@/lib/translation/service'
+import {
+  translateAnime,
+  translateAnitabiBangumi,
+  translateAnitabiPoint,
+  translateArticle,
+  translateCity,
+} from '@/lib/translation/service'
 
 export async function POST(
   req: NextRequest,
@@ -37,6 +43,10 @@ export async function POST(
       result = await translateCity(task.entityId, task.targetLanguage)
     } else if (task.entityType === 'anime') {
       result = await translateAnime(task.entityId, task.targetLanguage)
+    } else if (task.entityType === 'anitabi_bangumi') {
+      result = await translateAnitabiBangumi(task.entityId, task.targetLanguage)
+    } else if (task.entityType === 'anitabi_point') {
+      result = await translateAnitabiPoint(task.entityId, task.targetLanguage)
     } else {
       return NextResponse.json(
         { error: 'Unknown entity type' },
