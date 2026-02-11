@@ -540,8 +540,8 @@ model AnitabiPoint {
   density        Int?
   mark           String?
   folder         String?
-  uid            Int?
-  reviewUid      Int?
+  uid            String?
+  reviewUid      String?
   datasetVersion String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

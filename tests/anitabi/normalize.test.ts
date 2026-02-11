@@ -35,7 +35,7 @@ describe('anitabi normalize', () => {
     expect(rows[0]?.bangumiId).toBe(293133)
     expect(rows[0]?.density).toBe(8)
     expect(rows[0]?.mark).toBe('test mark')
-    expect(rows[0]?.uid).toBe(3)
+    expect(rows[0]?.uid).toBe('3')
   })
 
   it('normalizes contributors from object payload', () => {
