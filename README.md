@@ -41,8 +41,9 @@ Code-first Next.js App Router blog for anime pilgrimage content.
   - `ANITABI_CRON_SECRET` (random long secret)
   - Optional: `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
 - This repo schedules:
-  - Hourly delta: `/api/cron/anitabi/hourly` at `10 * * * *` (UTC)
   - Daily full: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)
+- Note for Vercel Hobby:
+  - Hourly crons are not supported. Use the daily full sync above, and call `/api/cron/anitabi/hourly` manually or from an external scheduler if you still need delta updates.
 - One-time manual bootstrap after deploy:
   - `curl -H "Authorization: Bearer $ANITABI_CRON_SECRET" https://<your-domain>/api/cron/anitabi/daily`
 - Quick check:
