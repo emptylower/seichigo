@@ -45,6 +45,14 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     hot: '热门作品',
     random: '随机跳转作品',
     locate: '定位到我的位置',
+    locating: '定位中…',
+    located: '已定位',
+    locateDenied: '定位权限被拒绝，请在浏览器中允许位置权限',
+    locateTimeout: '定位超时，请重试',
+    locateUnavailable: '当前设备不支持定位',
+    locateInsecure: '定位需要 HTTPS 或 localhost 环境',
+    locateFailed: '定位失败，请稍后重试',
+    mapNotReady: '地图尚未就绪，请稍后再试',
     changelog: '更新记录',
     close: '关闭',
     loading: '加载中...',
@@ -65,6 +73,14 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     hot: 'Trending',
     random: 'Random Anime',
     locate: 'Locate Me',
+    locating: 'Locating…',
+    located: 'Located',
+    locateDenied: 'Location permission denied in browser settings',
+    locateTimeout: 'Location timeout, please retry',
+    locateUnavailable: 'Geolocation is unavailable on this device',
+    locateInsecure: 'Geolocation requires HTTPS or localhost',
+    locateFailed: 'Failed to locate, please retry later',
+    mapNotReady: 'Map is not ready yet',
     changelog: 'Changelog',
     close: 'Close',
     loading: 'Loading...',
@@ -85,6 +101,14 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     hot: '人気作品',
     random: 'ランダム作品',
     locate: '現在地',
+    locating: '現在地を取得中…',
+    located: '現在地を取得済み',
+    locateDenied: '位置情報の権限が拒否されました。ブラウザ設定をご確認ください',
+    locateTimeout: '位置情報の取得がタイムアウトしました',
+    locateUnavailable: 'この端末では位置情報を利用できません',
+    locateInsecure: '位置情報には HTTPS または localhost が必要です',
+    locateFailed: '位置情報の取得に失敗しました',
+    mapNotReady: '地図の初期化が未完了です',
     changelog: '更新履歴',
     close: '閉じる',
     loading: '読み込み中...',
@@ -200,6 +224,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [meState, setMeState] = useState<MeState | null>(null)
   const [meLoaded, setMeLoaded] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locateHint, setLocateHint] = useState<string | null>(null)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -432,6 +458,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
   }, [locale, queryInput])
 
+  useEffect(() => {
+    if (!locateHint) return
+    const timer = window.setTimeout(() => {
+      setLocateHint(null)
+    }, 6000)
+    return () => window.clearTimeout(timer)
+  }, [locateHint])
+
   const onSubmitQuery = useCallback(() => {
     setQuery(queryInput.trim())
     setSearchOpen(false)
@@ -464,30 +498,84 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [])
 
   const onLocate = useCallback(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return
+    if (typeof window === 'undefined') return
+    if (!window.isSecureContext) {
+      setLocateHint(label.locateInsecure)
+      return
+    }
 
-    const locate = (highAccuracy: boolean) =>
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const map = mapRef.current
-          if (!map) return
-          const { latitude, longitude, accuracy } = position.coords
-          const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
-          map.flyTo({ center: [longitude, latitude], zoom, essential: true })
-          paintUserMarker(longitude, latitude)
-        },
-        () => {
-          if (highAccuracy) locate(false)
-        },
-        {
-          enableHighAccuracy: highAccuracy,
-          timeout: highAccuracy ? 15000 : 8000,
-          maximumAge: highAccuracy ? 0 : 300000,
-        }
-      )
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocateHint(label.locateUnavailable)
+      return
+    }
 
-    locate(true)
-  }, [paintUserMarker])
+    setLocating(true)
+    setLocateHint(null)
+
+    const resolveSuccess = (position: GeolocationPosition) => {
+      const map = mapRef.current
+      if (!map) {
+        setLocating(false)
+        setLocateHint(label.mapNotReady)
+        return
+      }
+
+      const { latitude, longitude, accuracy } = position.coords
+      const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
+      map.flyTo({ center: [longitude, latitude], zoom, essential: true })
+      paintUserMarker(longitude, latitude)
+      setLocating(false)
+      const acc = Number.isFinite(accuracy) ? Math.round(accuracy) : null
+      setLocateHint(acc != null ? `${label.located} (±${acc}m)` : label.located)
+    }
+
+    const resolveError = (error: GeolocationPositionError, highAccuracy: boolean) => {
+      if (highAccuracy && error.code !== error.PERMISSION_DENIED) {
+        navigator.geolocation.getCurrentPosition(
+          resolveSuccess,
+          (error2) => {
+            setLocating(false)
+            if (error2.code === error2.PERMISSION_DENIED) {
+              setLocateHint(label.locateDenied)
+            } else if (error2.code === error2.TIMEOUT) {
+              setLocateHint(label.locateTimeout)
+            } else if (error2.code === error2.POSITION_UNAVAILABLE) {
+              setLocateHint(label.locateUnavailable)
+            } else {
+              setLocateHint(label.locateFailed)
+            }
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 300000,
+          }
+        )
+        return
+      }
+
+      setLocating(false)
+      if (error.code === error.PERMISSION_DENIED) {
+        setLocateHint(label.locateDenied)
+      } else if (error.code === error.TIMEOUT) {
+        setLocateHint(label.locateTimeout)
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        setLocateHint(label.locateUnavailable)
+      } else {
+        setLocateHint(label.locateFailed)
+      }
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      resolveSuccess,
+      (error) => resolveError(error, true),
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    )
+  }, [label.locateDenied, label.locateFailed, label.locateInsecure, label.locateTimeout, label.locateUnavailable, label.located, label.mapNotReady, paintUserMarker])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -542,14 +630,21 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 >
                   {styleMode === 'street' ? '卫星' : '街道'}
                 </button>
-                <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onLocate} type="button">
-                  {label.locate}
+                <button
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={onLocate}
+                  type="button"
+                  disabled={locating}
+                >
+                  {locating ? label.locating : label.locate}
                 </button>
                 <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onRandom} type="button">
                   {label.random}
                 </button>
               </div>
             </div>
+
+            {locateHint ? <div className="text-xs text-slate-500">{locateHint}</div> : null}
 
             <div className="relative">
               <div className="flex gap-2">
