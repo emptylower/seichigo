@@ -36,6 +36,12 @@ const DEFAULT_VIEW = {
   z: 5,
 }
 
+function parseNumberParam(value: string | null): number | null {
+  if (value == null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 const L: Record<SupportedLocale, Record<string, string>> = {
   zh: {
     title: '巡礼地图',
@@ -137,18 +143,18 @@ function parseUrlState(): UrlState {
   }
 
   const params = new URLSearchParams(window.location.search)
-  const b = Number(params.get('b'))
-  const lng = Number(params.get('lng'))
-  const lat = Number(params.get('lat'))
-  const z = Number(params.get('z'))
+  const b = parseNumberParam(params.get('b'))
+  const lng = parseNumberParam(params.get('lng'))
+  const lat = parseNumberParam(params.get('lat'))
+  const z = parseNumberParam(params.get('z'))
   const tabRaw = params.get('tab')
 
   return {
-    b: Number.isFinite(b) ? b : null,
+    b: b && b > 0 ? b : null,
     p: params.get('p') || null,
-    lng: Number.isFinite(lng) ? lng : DEFAULT_VIEW.lng,
-    lat: Number.isFinite(lat) ? lat : DEFAULT_VIEW.lat,
-    z: Number.isFinite(z) ? z : DEFAULT_VIEW.z,
+    lng: lng ?? DEFAULT_VIEW.lng,
+    lat: lat ?? DEFAULT_VIEW.lat,
+    z: z && z > 0 ? z : DEFAULT_VIEW.z,
     tab: tabRaw === 'recent' || tabRaw === 'hot' ? tabRaw : 'latest',
     q: params.get('q') || '',
   }
@@ -363,14 +369,24 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       zoom: parsed.z,
       pitchWithRotate: false,
       dragRotate: false,
+      renderWorldCopies: true,
+      dragPan: true,
+      scrollZoom: true,
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.on('moveend', () => syncUrlRef.current())
 
+    const resizeMap = () => map.resize()
+    map.once('load', resizeMap)
+    const rafId = window.requestAnimationFrame(resizeMap)
+    window.addEventListener('resize', resizeMap)
+
     mapRef.current = map
 
     return () => {
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', resizeMap)
       if (userMarkerRef.current) {
         userMarkerRef.current.remove()
         userMarkerRef.current = null
@@ -617,8 +633,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   return (
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
-      <div className="grid h-full grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)]">
-        <aside className="flex h-full flex-col border-r border-slate-200 bg-white">
+      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
+        <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
           <div className="space-y-3 border-b border-slate-200 px-4 py-4">
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-lg font-semibold text-slate-900">{label.title}</h1>
@@ -745,7 +761,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
             {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
             {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
             <div className="space-y-3">
@@ -773,7 +789,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
         </aside>
 
-        <section className="relative h-full">
+        <section className="relative h-full min-h-0">
           <div ref={mapRootRef} className="h-full w-full" />
 
           <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-end gap-2">
