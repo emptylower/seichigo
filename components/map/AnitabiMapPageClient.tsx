@@ -165,6 +165,12 @@ function geoLink(point: { geo: [number, number] | null }): string | null {
   return `https://www.google.com/maps?q=${point.geo[0]},${point.geo[1]}`
 }
 
+function matchPointId(candidateId: string, pointId: string): boolean {
+  if (candidateId === pointId) return true
+  if (pointId.includes(':')) return false
+  return candidateId.endsWith(`:${pointId}`)
+}
+
 export default function AnitabiMapPageClient({ locale }: Props) {
   const label = L[locale]
 
@@ -197,7 +203,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
-    return detail.points.find((point) => point.id === selectedPointId) || null
+    return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
 
   const favoriteSet = useMemo(() => {
@@ -283,7 +289,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         const map = mapRef.current
         if (map) {
           if (pointId) {
-            const target = json.points.find((point) => point.id === pointId)
+            const target = json.points.find((point) => matchPointId(point.id, pointId))
+            if (target && target.id !== pointId) {
+              setSelectedPointId(target.id)
+            }
             if (target?.geo) {
               map.flyTo({ center: [target.geo[1], target.geo[0]], zoom: Math.max(map.getZoom(), 13), essential: true })
             }

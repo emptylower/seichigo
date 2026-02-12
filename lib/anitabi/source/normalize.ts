@@ -115,6 +115,10 @@ function parseSafeInt32(input: unknown): number | null {
   return n
 }
 
+function scopedPointId(bangumiId: number, rawPointId: string): string {
+  return `${bangumiId}:${rawPointId}`
+}
+
 export function normalizeBangumi(raw: RawBangumi): NormalizedBangumi {
   const id = Number(raw?.id)
   if (!Number.isFinite(id)) throw new Error('Invalid bangumi id')
@@ -156,18 +160,18 @@ export function normalizePoints(
   const out: NormalizedPoint[] = []
 
   for (const row of details || []) {
-    const id = normalizeText(row?.id)
-    if (!id || seen.has(id)) continue
-    seen.add(id)
+    const rawId = normalizeText(row?.id)
+    if (!rawId || seen.has(rawId)) continue
+    seen.add(rawId)
 
-    const extra = pointSummary.get(id) || {}
+    const extra = pointSummary.get(rawId) || {}
     const geoRaw = Array.isArray(row?.geo) ? row?.geo : (extra as any)?.geo
     const geo = parseGeo(geoRaw)
 
     out.push({
-      id,
+      id: scopedPointId(bangumiId, rawId),
       bangumiId,
-      name: normalizeText(row?.name) || normalizeText((extra as any)?.name) || id,
+      name: normalizeText(row?.name) || normalizeText((extra as any)?.name) || rawId,
       nameZh: normalizeText(row?.cn) || normalizeText((extra as any)?.cn) || null,
       geoLat: geo.lat,
       geoLng: geo.lng,

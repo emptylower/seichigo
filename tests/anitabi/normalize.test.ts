@@ -32,6 +32,7 @@ describe('anitabi normalize', () => {
     )
 
     expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe('293133:p1')
     expect(rows[0]?.bangumiId).toBe(293133)
     expect(rows[0]?.density).toBe(8)
     expect(rows[0]?.mark).toBe('test mark')
