@@ -37,6 +37,19 @@ const DEFAULT_VIEW = {
 }
 const CARD_PAGE_SIZE = 18
 const CARD_LIST_PREFETCH_ROOT_MARGIN = '0px 0px 320px 0px'
+const RANGE_SOURCE_ID = 'anitabi-bangumi-range-source'
+const RANGE_FILL_LAYER_ID = 'anitabi-bangumi-range-fill'
+const RANGE_LINE_LAYER_ID = 'anitabi-bangumi-range-line'
+const DETAIL_PANEL_WIDTH = 340
+
+type CameraPadding = {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+type PointCoord = [number, number]
 
 function parseNumberParam(value: string | null): number | null {
   if (value == null || value === '') return null
@@ -219,6 +232,167 @@ function matchPointId(candidateId: string, pointId: string): boolean {
   return candidateId.endsWith(`:${pointId}`)
 }
 
+function collectPointCoords(points: AnitabiBangumiDTO['points']): PointCoord[] {
+  return points
+    .filter((point): point is typeof point & { geo: [number, number] } => Array.isArray(point.geo))
+    .map((point) => [point.geo[1], point.geo[0]])
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
+}
+
+function toDegrees(value: number): number {
+  return (value * 180) / Math.PI
+}
+
+function haversineMeters(a: PointCoord, b: PointCoord): number {
+  const earthRadius = 6378137
+  const lat1 = toRadians(a[1])
+  const lat2 = toRadians(b[1])
+  const latDelta = lat2 - lat1
+  const lngDelta = toRadians(b[0] - a[0])
+  const sinLat = Math.sin(latDelta / 2)
+  const sinLng = Math.sin(lngDelta / 2)
+  const m = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(m)))
+}
+
+function buildCoverageCircle(points: PointCoord[]): GeoJSON.FeatureCollection<GeoJSON.Polygon> | null {
+  if (!points.length) return null
+
+  const [sumLng, sumLat] = points.reduce<[number, number]>(
+    (acc, point) => [acc[0] + point[0], acc[1] + point[1]],
+    [0, 0]
+  )
+  const center: PointCoord = [sumLng / points.length, sumLat / points.length]
+
+  let maxDistance = 0
+  for (const point of points) {
+    maxDistance = Math.max(maxDistance, haversineMeters(center, point))
+  }
+
+  const radiusMeters = Math.min(250000, Math.max(maxDistance * 1.2, points.length === 1 ? 420 : 700))
+  const earthRadius = 6378137
+  const angularDistance = radiusMeters / earthRadius
+  const lat1 = toRadians(center[1])
+  const lng1 = toRadians(center[0])
+  const steps = 72
+  const coordinates: PointCoord[] = []
+
+  for (let i = 0; i <= steps; i += 1) {
+    const bearing = (i / steps) * Math.PI * 2
+    const sinLat2 = Math.sin(lat1) * Math.cos(angularDistance) + Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
+    const lat2 = Math.asin(Math.min(1, Math.max(-1, sinLat2)))
+    const y = Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1)
+    const x = Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+    const lng2 = lng1 + Math.atan2(y, x)
+    coordinates.push([toDegrees(lng2), toDegrees(lat2)])
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {
+          radiusMeters,
+          pointsLength: points.length,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [coordinates],
+        },
+      },
+    ],
+  }
+}
+
+function buildBounds(points: PointCoord[]): maplibregl.LngLatBounds | null {
+  if (!points.length) return null
+  const bounds = new maplibregl.LngLatBounds(points[0], points[0])
+  for (const point of points.slice(1)) {
+    bounds.extend(point)
+  }
+  return bounds
+}
+
+function removeRangeLayer(map: maplibregl.Map): void {
+  if (map.getLayer(RANGE_LINE_LAYER_ID)) map.removeLayer(RANGE_LINE_LAYER_ID)
+  if (map.getLayer(RANGE_FILL_LAYER_ID)) map.removeLayer(RANGE_FILL_LAYER_ID)
+  if (map.getSource(RANGE_SOURCE_ID)) map.removeSource(RANGE_SOURCE_ID)
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.trim().replace('#', '')
+  if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return `rgba(236, 72, 153, ${alpha})`
+  }
+
+  const fullHex = normalized.length === 3 ? normalized.split('').map((c) => `${c}${c}`).join('') : normalized
+  const r = Number.parseInt(fullHex.slice(0, 2), 16)
+  const g = Number.parseInt(fullHex.slice(2, 4), 16)
+  const b = Number.parseInt(fullHex.slice(4, 6), 16)
+  const clampedAlpha = Math.max(0, Math.min(1, alpha))
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
+}
+
+function createPointMarkerElement(options: { color: string; selected: boolean; title: string }): HTMLButtonElement {
+  const { color, selected, title } = options
+  const marker = document.createElement('button')
+  marker.type = 'button'
+  marker.title = title
+  marker.setAttribute('aria-label', title)
+  marker.style.position = 'relative'
+  marker.style.display = 'grid'
+  marker.style.placeItems = 'center'
+  marker.style.width = selected ? '30px' : '14px'
+  marker.style.height = selected ? '30px' : '14px'
+  marker.style.padding = '0'
+  marker.style.border = 'none'
+  marker.style.background = 'transparent'
+  marker.style.cursor = 'pointer'
+  marker.style.zIndex = selected ? '50' : '10'
+
+  const core = document.createElement('span')
+  core.style.display = 'block'
+  core.style.width = selected ? '15px' : '12px'
+  core.style.height = selected ? '15px' : '12px'
+  core.style.borderRadius = '999px'
+  core.style.border = selected ? '3px solid #ffffff' : '2px solid #ffffff'
+  core.style.background = color
+  core.style.boxShadow = selected ? '0 0 0 2px rgba(15,23,42,0.58), 0 10px 24px rgba(0,0,0,0.35)' : '0 1px 4px rgba(0,0,0,0.32)'
+  marker.appendChild(core)
+
+  if (selected) {
+    const ring = document.createElement('span')
+    ring.style.position = 'absolute'
+    ring.style.inset = '0'
+    ring.style.borderRadius = '999px'
+    ring.style.border = `2px solid ${hexToRgba(color, 0.66)}`
+    ring.style.boxShadow = `0 0 0 4px ${hexToRgba(color, 0.24)}`
+    ring.style.pointerEvents = 'none'
+    marker.appendChild(ring)
+
+    const pulse = document.createElement('span')
+    pulse.style.position = 'absolute'
+    pulse.style.inset = '1px'
+    pulse.style.borderRadius = '999px'
+    pulse.style.background = hexToRgba(color, 0.25)
+    pulse.style.pointerEvents = 'none'
+    marker.appendChild(pulse)
+    if (typeof pulse.animate === 'function') {
+      pulse.animate([{ transform: 'scale(0.78)', opacity: 0.9 }, { transform: 'scale(1.34)', opacity: 0 }], {
+        duration: 1350,
+        iterations: Number.POSITIVE_INFINITY,
+        easing: 'ease-out',
+      })
+    }
+  }
+
+  return marker
+}
+
 export default function AnitabiMapPageClient({ locale }: Props) {
   const label = L[locale]
 
@@ -232,6 +406,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const cardsContainerRef = useRef<HTMLDivElement | null>(null)
   const cardsLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const cardFeedTokenRef = useRef(0)
+  const focusTimerRef = useRef<number | null>(null)
+  const rangeOverlayRef = useRef<{ data: GeoJSON.FeatureCollection<GeoJSON.Polygon>; color: string } | null>(null)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -266,6 +442,150 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const favoriteSet = useMemo(() => {
     return new Set((meState?.favorites || []).map((row) => row.targetKey))
   }, [meState])
+
+  const getCameraPadding = useCallback((withDetailPanel: boolean): CameraPadding => {
+    const map = mapRef.current
+    const defaultTop = 56
+
+    if (!map) {
+      const sidePadding = withDetailPanel ? DETAIL_PANEL_WIDTH + 24 : 40
+      return {
+        top: defaultTop,
+        right: sidePadding,
+        bottom: withDetailPanel ? 120 : defaultTop,
+        left: 40,
+      }
+    }
+
+    const container = map.getContainer()
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const isDesktop = width >= 1024
+    const rightPanel = withDetailPanel && isDesktop ? Math.min(Math.round(width * 0.42), DETAIL_PANEL_WIDTH + 24) : 28
+    const top = Math.max(28, Math.round(height * 0.08))
+    const bottom = withDetailPanel ? Math.max(82, Math.round(height * 0.24)) : top
+    const left = Math.max(28, Math.round(width * 0.07))
+
+    return {
+      top,
+      right: rightPanel,
+      bottom,
+      left,
+    }
+  }, [])
+
+  const getCameraOffset = useCallback(
+    (withDetailPanel: boolean): [number, number] => {
+      const padding = getCameraPadding(withDetailPanel)
+      return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2]
+    },
+    [getCameraPadding]
+  )
+
+  const focusGeo = useCallback(
+    (geo: [number, number], zoom: number, withDetailPanel: boolean) => {
+      const map = mapRef.current
+      if (!map) return false
+
+      if (focusTimerRef.current != null) {
+        window.clearTimeout(focusTimerRef.current)
+        focusTimerRef.current = null
+      }
+
+      map.resize()
+      map.stop()
+      const offset = getCameraOffset(withDetailPanel)
+      map.flyTo({
+        center: [geo[1], geo[0]],
+        zoom,
+        offset,
+        essential: true,
+        duration: 780,
+      })
+
+      // A second short recenter solves occasional visual drift while map canvas is still settling.
+      focusTimerRef.current = window.setTimeout(() => {
+        const activeMap = mapRef.current
+        if (!activeMap) return
+        activeMap.easeTo({
+          center: [geo[1], geo[0]],
+          zoom: Math.max(activeMap.getZoom(), zoom),
+          offset,
+          essential: true,
+          duration: 260,
+        })
+        focusTimerRef.current = null
+      }, 360)
+
+      return true
+    },
+    [getCameraOffset]
+  )
+
+  const fitBangumiBounds = useCallback(
+    (points: PointCoord[]) => {
+      const map = mapRef.current
+      if (!map || points.length < 2) return false
+
+      const bounds = buildBounds(points)
+      if (!bounds) return false
+
+      if (focusTimerRef.current != null) {
+        window.clearTimeout(focusTimerRef.current)
+        focusTimerRef.current = null
+      }
+
+      map.resize()
+      map.fitBounds(bounds, {
+        padding: getCameraPadding(true),
+        maxZoom: 12.8,
+        duration: 840,
+        essential: true,
+      })
+      return true
+    },
+    [getCameraPadding]
+  )
+
+  const syncRangeOverlay = useCallback(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) return false
+
+    removeRangeLayer(map)
+
+    const overlay = rangeOverlayRef.current
+    if (!overlay) return true
+
+    map.addSource(RANGE_SOURCE_ID, {
+      type: 'geojson',
+      data: overlay.data,
+    })
+
+    map.addLayer({
+      id: RANGE_FILL_LAYER_ID,
+      type: 'fill',
+      source: RANGE_SOURCE_ID,
+      paint: {
+        'fill-color': hexToRgba(overlay.color, 0.16),
+        'fill-opacity': 1,
+      },
+    })
+    map.addLayer({
+      id: RANGE_LINE_LAYER_ID,
+      type: 'line',
+      source: RANGE_SOURCE_ID,
+      paint: {
+        'line-color': hexToRgba(overlay.color, 0.88),
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 12, 3.2],
+      },
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+    })
+
+    return true
+  }, [])
 
   const syncUrl = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -393,16 +713,20 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
         const map = mapRef.current
         if (map) {
+          const geoPoints = collectPointCoords(json.points)
+
           if (pointId) {
             const target = json.points.find((point) => matchPointId(point.id, pointId))
             if (target && target.id !== pointId) {
               setSelectedPointId(target.id)
             }
             if (target?.geo) {
-              map.flyTo({ center: [target.geo[1], target.geo[0]], zoom: Math.max(map.getZoom(), 13), essential: true })
+              focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+            } else {
+              fitBangumiBounds(geoPoints)
             }
-          } else if (json.card.geo) {
-            map.flyTo({ center: [json.card.geo[1], json.card.geo[0]], zoom: json.card.zoom || 10, essential: true })
+          } else if (!fitBangumiBounds(geoPoints) && json.card.geo) {
+            focusGeo(json.card.geo, json.card.zoom || 10, true)
           }
         }
 
@@ -417,7 +741,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         setDetailLoading(false)
       }
     },
-    [locale, meLoaded]
+    [fitBangumiBounds, focusGeo, locale, meLoaded]
   )
 
   useEffect(() => {
@@ -473,7 +797,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     map.on('moveend', () => syncUrlRef.current())
 
     const resizeMap = () => map.resize()
-    map.once('load', resizeMap)
+    map.once('load', () => {
+      resizeMap()
+      syncRangeOverlay()
+    })
     const rafId = window.requestAnimationFrame(resizeMap)
     window.addEventListener('resize', resizeMap)
 
@@ -482,20 +809,30 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return () => {
       window.cancelAnimationFrame(rafId)
       window.removeEventListener('resize', resizeMap)
+      if (focusTimerRef.current != null) {
+        window.clearTimeout(focusTimerRef.current)
+        focusTimerRef.current = null
+      }
+      for (const marker of markersRef.current) marker.remove()
+      markersRef.current = []
       if (userMarkerRef.current) {
         userMarkerRef.current.remove()
         userMarkerRef.current = null
       }
+      removeRangeLayer(map)
       map.remove()
       mapRef.current = null
     }
-  }, [parsed.lat, parsed.lng, parsed.z])
+  }, [parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    map.once('idle', () => {
+      syncRangeOverlay()
+    })
     map.setStyle(buildStyle(styleMode))
-  }, [styleMode])
+  }, [styleMode, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
@@ -510,16 +847,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     for (const point of detail.points) {
       if (!point.geo) continue
-      const dot = document.createElement('button')
-      dot.type = 'button'
-      dot.style.width = point.id === selectedPointId ? '16px' : '12px'
-      dot.style.height = point.id === selectedPointId ? '16px' : '12px'
-      dot.style.borderRadius = '999px'
-      dot.style.border = '2px solid white'
-      dot.style.background = color
-      dot.style.boxShadow = '0 1px 4px rgba(0,0,0,0.3)'
-      dot.style.cursor = 'pointer'
-      dot.title = point.name
+      const isSelected = selectedPointId ? matchPointId(point.id, selectedPointId) : false
+      const dot = createPointMarkerElement({
+        color,
+        selected: isSelected,
+        title: point.name,
+      })
       dot.addEventListener('click', () => {
         setSelectedPointId(point.id)
         fetch('/api/anitabi/me/history', {
@@ -533,6 +866,32 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       markersRef.current.push(marker)
     }
   }, [detail, selectedPointId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (!detail) {
+      rangeOverlayRef.current = null
+      if (!syncRangeOverlay()) {
+        map.once('idle', () => syncRangeOverlay())
+      }
+      return
+    }
+
+    const points = collectPointCoords(detail.points)
+    const circle = buildCoverageCircle(points)
+    rangeOverlayRef.current = circle
+      ? {
+          data: circle,
+          color: detail.card.color || '#ec4899',
+        }
+      : null
+
+    if (!syncRangeOverlay()) {
+      map.once('idle', () => syncRangeOverlay())
+    }
+  }, [detail, syncRangeOverlay])
 
   useEffect(() => {
     syncUrl()
@@ -633,7 +992,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
       const { latitude, longitude, accuracy } = position.coords
       const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
-      map.flyTo({ center: [longitude, latitude], zoom, essential: true })
+      focusGeo([latitude, longitude], zoom, false)
       paintUserMarker(longitude, latitude)
       setLocating(false)
       const acc = Number.isFinite(accuracy) ? Math.round(accuracy) : null
@@ -686,7 +1045,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         maximumAge: 0,
       }
     )
-  }, [label.locateDenied, label.locateFailed, label.locateInsecure, label.locateTimeout, label.locateUnavailable, label.located, label.mapNotReady, paintUserMarker])
+  }, [focusGeo, label.locateDenied, label.locateFailed, label.locateInsecure, label.locateTimeout, label.locateUnavailable, label.located, label.mapNotReady, paintUserMarker])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -860,26 +1219,45 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
             {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
             <div className="space-y-3">
-              {cards.map((card) => (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => openBangumi(card.id).catch(() => null)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${selectedBangumiId === card.id ? 'border-brand-400 bg-brand-50/70' : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'}`}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
-                    <span className="text-[10px] text-slate-500">{card.cat || ''}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    {card.city ? <span>{card.city}</span> : null}
-                    <span>·</span>
-                    <span>{card.pointsLength} {label.points}</span>
-                    <span>·</span>
-                    <span>{card.imagesLength} {label.screenshots}</span>
-                  </div>
-                </button>
-              ))}
+              {cards.map((card) => {
+                const swatchColor = card.color || '#ec4899'
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => openBangumi(card.id).catch(() => null)}
+                    className={`group w-full overflow-hidden rounded-2xl border text-left transition ${
+                      selectedBangumiId === card.id
+                        ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
+                        : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
+                    }`}
+                  >
+                    <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
+                    <div className="flex items-start gap-3 p-3">
+                      <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                        {card.cover ? (
+                          <img src={card.cover} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
+                          {card.cat ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">{card.cat}</span> : null}
+                        </div>
+                        {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+                          {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
+                        </div>
+                      </div>
+                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white shadow-sm" style={{ background: swatchColor }} />
+                    </div>
+                  </button>
+                )
+              })}
             </div>
             <div ref={cardsLoadMoreRef} className="h-2" />
             {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
@@ -965,11 +1343,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                     <button
                       key={point.id}
                       type="button"
-                      className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPointId === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
+                      className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
                       onClick={() => {
                         setSelectedPointId(point.id)
                         if (point.geo && mapRef.current) {
-                          mapRef.current.flyTo({ center: [point.geo[1], point.geo[0]], zoom: Math.max(mapRef.current.getZoom(), 13), essential: true })
+                          focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
                         }
                       }}
                     >
