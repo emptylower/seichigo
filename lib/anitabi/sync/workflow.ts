@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import type { AnitabiSyncMode, AnitabiSyncReport } from '@/lib/anitabi/types'
-import { asyncPool, hashText } from '@/lib/anitabi/utils'
+import { hashText } from '@/lib/anitabi/utils'
 import { fetchJsonWithRetry, fetchTextWithRetry } from '@/lib/anitabi/source/client'
 import {
   getLiteStats,
@@ -37,6 +37,13 @@ function getSyncMaxRowsPerRun(overrideValue?: number | null): number | null {
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_ROWS_PER_RUN || ''), 10)
   if (!Number.isFinite(raw)) return null
   return clampInt(raw, 1, 10000)
+}
+
+function getSyncMaxRuntimeMs(): number | null {
+  const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_RUNTIME_MS || ''), 10)
+  if (Number.isFinite(raw)) return clampInt(raw, 1000, 120000)
+  if (process.env.VERCEL === '1') return 7000
+  return null
 }
 
 function toAbsoluteUrl(value: string | null | undefined, base: string): string | null {
@@ -311,22 +318,47 @@ export async function runAnitabiSync(
     const maxRowsPerRun = getSyncMaxRowsPerRun(input.maxRowsPerRun)
     const rowsToProcess = maxRowsPerRun ? changedRows.slice(0, maxRowsPerRun) : changedRows
 
-    await asyncPool(rowsToProcess, getSyncConcurrency(), async (row) => {
-      await syncBangumiOne(deps, datasetVersion, row, dryRun)
-    })
+    const maxRuntimeMs = getSyncMaxRuntimeMs()
+    const deadlineAt = maxRuntimeMs == null ? null : Date.now() + maxRuntimeMs
+    const queue = rowsToProcess.slice()
+    let processedCount = 0
+    let stoppedByTimeBudget = false
+
+    const workers = Math.min(getSyncConcurrency(), Math.max(1, queue.length))
+    await Promise.all(
+      Array.from({ length: workers }, async () => {
+        while (true) {
+          if (deadlineAt != null && Date.now() >= deadlineAt) {
+            stoppedByTimeBudget = true
+            break
+          }
+          const row = queue.shift()
+          if (!row) break
+          await syncBangumiOne(deps, datasetVersion, row, dryRun)
+          processedCount += 1
+        }
+      })
+    )
 
     if (!dryRun) {
-      await syncContributorsAndChangelog(deps, datasetVersion)
+      if (normalizedMode === 'full') {
+        await syncContributorsAndChangelog(deps, datasetVersion)
+      }
       await upsertCursor(deps.prisma, 'activeDatasetVersion', { value: datasetVersion })
       await upsertCursor(deps.prisma, 'bangumi', { value: String(bangumi.length) })
     }
+
+    const progressMessage =
+      stoppedByTimeBudget && queue.length > 0
+        ? `单次执行已到时间预算，已处理 ${processedCount}/${rowsToProcess.length} 个作品，请继续推进下一批`
+        : undefined
 
     await deps.prisma.anitabiSyncRun.update({
       where: { id: run.id },
       data: {
         status: 'ok',
         endedAt: deps.now(),
-        changedCount: rowsToProcess.length,
+        changedCount: processedCount,
         sourceSnapshotHash: snapshotHash,
       },
     })
@@ -337,7 +369,8 @@ export async function runAnitabiSync(
       status: 'ok',
       datasetVersion: dryRun ? null : datasetVersion,
       scanned: bangumi.length,
-      changed: rowsToProcess.length,
+      changed: processedCount,
+      ...(progressMessage ? { message: progressMessage } : {}),
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown sync error'

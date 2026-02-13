@@ -41,6 +41,7 @@ Code-first Next.js App Router blog for anime pilgrimage content.
   - `ANITABI_CRON_SECRET` (random long secret)
   - `ANITABI_SYNC_CONCURRENCY` (recommended `1-2` on Neon/Vercel)
   - Optional: `ANITABI_SYNC_MAX_ROWS_PER_RUN` (recommended `200-500` on Vercel Hobby)
+  - Optional: `ANITABI_SYNC_MAX_RUNTIME_MS` (recommended `6000-9000` on Vercel Hobby to avoid 504 timeout)
   - Optional: `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
 - This repo schedules:
   - Daily delta: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)

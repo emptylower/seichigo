@@ -1,4 +1,5 @@
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
