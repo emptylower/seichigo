@@ -156,16 +156,33 @@ export function normalizePoints(
     pointSummary.set(id, row)
   }
 
-  const seen = new Set<string>()
+  const pointDetail = new Map<string, RawPointDetail>()
+  for (const row of details || []) {
+    const id = normalizeText(row?.id)
+    if (!id || pointDetail.has(id)) continue
+    pointDetail.set(id, row)
+  }
+
+  const orderedIds: string[] = []
+  const seenIds = new Set<string>()
+  for (const row of summary?.points || []) {
+    const id = normalizeText((row as any)?.id)
+    if (!id || seenIds.has(id)) continue
+    seenIds.add(id)
+    orderedIds.push(id)
+  }
+  for (const [id] of pointDetail) {
+    if (seenIds.has(id)) continue
+    seenIds.add(id)
+    orderedIds.push(id)
+  }
+
   const out: NormalizedPoint[] = []
 
-  for (const row of details || []) {
-    const rawId = normalizeText(row?.id)
-    if (!rawId || seen.has(rawId)) continue
-    seen.add(rawId)
-
+  for (const rawId of orderedIds) {
+    const row = pointDetail.get(rawId)
     const extra = pointSummary.get(rawId) || {}
-    const geoRaw = Array.isArray(row?.geo) ? row?.geo : (extra as any)?.geo
+    const geoRaw = Array.isArray(row?.geo) ? row.geo : (extra as any)?.geo
     const geo = parseGeo(geoRaw)
 
     out.push({

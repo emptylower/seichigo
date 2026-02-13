@@ -39,6 +39,30 @@ describe('anitabi normalize', () => {
     expect(rows[0]?.uid).toBe('3')
   })
 
+  it('keeps summary-only points and lets detail override fields', () => {
+    const rows = normalizePoints(
+      293133,
+      [{ id: 'p1', name: '青梅駅-detail', image: 'https://example.com/p1.jpg' }],
+      {
+        points: [
+          { id: 'p1', name: '青梅駅-summary', geo: [35.79, 139.25], image: '/images/p1.jpg' },
+          { id: 'p2', name: '立川駅-summary', geo: [35.70, 139.41], image: '/images/p2.jpg', density: 2 },
+        ],
+      }
+    )
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.id).toBe('293133:p1')
+    expect(rows[0]?.name).toBe('青梅駅-detail')
+    expect(rows[0]?.image).toBe('https://example.com/p1.jpg')
+    expect(rows[0]?.geoLat).toBe(35.79)
+
+    expect(rows[1]?.id).toBe('293133:p2')
+    expect(rows[1]?.name).toBe('立川駅-summary')
+    expect(rows[1]?.image).toBe('/images/p2.jpg')
+    expect(rows[1]?.density).toBe(2)
+  })
+
   it('normalizes contributors from object payload', () => {
     const users = normalizeContributorsFromUsersRaw({
       u1: { name: 'Alice', avatar: 'a.png', link: 'https://x.dev' },

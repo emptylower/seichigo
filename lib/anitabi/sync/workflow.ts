@@ -39,6 +39,17 @@ function getSyncMaxRowsPerRun(overrideValue?: number | null): number | null {
   return clampInt(raw, 1, 10000)
 }
 
+function toAbsoluteUrl(value: string | null | undefined, base: string): string | null {
+  if (!value) return null
+  const text = value.trim()
+  if (!text) return null
+  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base
+  if (/^https?:\/\//i.test(text)) return text
+  if (text.startsWith('//')) return `https:${text}`
+  if (text.startsWith('/')) return `${normalizedBase}${text}`
+  return text
+}
+
 async function upsertCursor(
   prisma: PrismaClient,
   sourceName: string,
@@ -70,6 +81,7 @@ async function syncBangumiOne(
 ): Promise<{ changed: boolean; id: number }> {
   const bangumi = normalizeBangumi(row)
   const apiBase = deps.getApiBase()
+  const siteBase = deps.getSiteBase()
 
   const detail = (await fetchJsonWithRetry<RawBangumi>(`${apiBase}/bangumi/${bangumi.id}`)) || row
   const normalized = normalizeBangumi(detail)
@@ -165,10 +177,10 @@ async function syncBangumiOne(
         geoLng: point.geoLng,
         ep: point.ep,
         s: point.s,
-        image: point.image,
+        image: toAbsoluteUrl(point.image, siteBase),
         origin: point.origin,
-        originUrl: point.originUrl,
-        originLink: point.originLink,
+        originUrl: toAbsoluteUrl(point.originUrl, siteBase),
+        originLink: toAbsoluteUrl(point.originLink, siteBase),
         density: point.density,
         mark: point.mark,
         folder: point.folder,
@@ -265,9 +277,18 @@ export async function runAnitabiSync(
     await writeRawJson(datasetVersion, 'bangumi', bangumi)
 
     const existing = await deps.prisma.anitabiBangumi.findMany({
-      select: { id: true, sourceModifiedMs: true },
+      select: {
+        id: true,
+        sourceModifiedMs: true,
+        meta: { select: { pointsLength: true } },
+      },
     })
-    const existingMap = new Map(existing.map((row) => [row.id, row.sourceModifiedMs]))
+    const existingMap = new Map(existing.map((row) => [row.id, row]))
+    const pointCounts = await deps.prisma.anitabiPoint.groupBy({
+      by: ['bangumiId'],
+      _count: { _all: true },
+    })
+    const pointCountMap = new Map(pointCounts.map((row) => [row.bangumiId, row._count._all]))
 
     const changedRows = bangumi.filter((row) => {
       const id = Number(row?.id)
@@ -277,8 +298,14 @@ export async function runAnitabiSync(
       const modified = Number(row?.modified)
       const prev = existingMap.get(id)
       if (!Number.isFinite(modified)) return true
-      if (prev == null) return true
-      return BigInt(modified) !== prev
+      if (!prev) return true
+      if (BigInt(modified) !== prev.sourceModifiedMs) return true
+
+      const expectedPoints = Number(prev.meta?.pointsLength || 0)
+      const importedPoints = Number(pointCountMap.get(id) || 0)
+      if (expectedPoints > 0 && importedPoints < expectedPoints) return true
+
+      return false
     })
 
     const maxRowsPerRun = getSyncMaxRowsPerRun(input.maxRowsPerRun)
