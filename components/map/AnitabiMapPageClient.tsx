@@ -181,7 +181,11 @@ function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification
     sources: {
       osm: {
         type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tiles: [
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        ],
         tileSize: 256,
         attribution: '© OpenStreetMap contributors',
       },

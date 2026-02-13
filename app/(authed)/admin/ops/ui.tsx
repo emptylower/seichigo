@@ -368,7 +368,35 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
   }, [initialData])
 
   useEffect(() => {
-    void loadAnitabiProgress()
+    if (!initialData || !selectedId || detailReport || detailLoading || detailError) return
+    void loadDetail(selectedId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData, selectedId, detailReport, detailLoading, detailError])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = () => {
+      if (!cancelled) void loadAnitabiProgress()
+    }
+
+    const maybeGlobal = globalThis as typeof globalThis & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+
+    if (typeof maybeGlobal.requestIdleCallback === 'function') {
+      const idleId = maybeGlobal.requestIdleCallback(run, { timeout: 1200 })
+      return () => {
+        cancelled = true
+        maybeGlobal.cancelIdleCallback?.(idleId)
+      }
+    }
+
+    const timer = setTimeout(run, 250)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

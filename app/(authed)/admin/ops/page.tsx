@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import AdminOpsUi from './ui'
-import type { AdminOpsInitialData, OpsLogEvent, ReportDetail, ReportListItem } from './ui'
+import type { AdminOpsInitialData, ReportListItem } from './ui'
 
 const LIST_LIMIT = 20
 
@@ -37,38 +37,6 @@ function serializeReportListItem(
     truncated: row.truncated,
     windowStart: row.windowStart.toISOString(),
     windowEnd: row.windowEnd.toISOString(),
-    createdAt: row.createdAt.toISOString(),
-  }
-}
-
-function serializeOpsEvent(
-  row: {
-    id: string
-    severity: string
-    fingerprint: string
-    timestamp: Date | null
-    deploymentId: string | null
-    requestId: string | null
-    path: string | null
-    method: string | null
-    statusCode: number | null
-    message: string
-    raw: unknown
-    createdAt: Date
-  }
-): OpsLogEvent {
-  return {
-    id: row.id,
-    severity: row.severity,
-    fingerprint: row.fingerprint,
-    timestamp: row.timestamp ? row.timestamp.toISOString() : null,
-    deploymentId: row.deploymentId,
-    requestId: row.requestId,
-    path: row.path,
-    method: row.method,
-    statusCode: row.statusCode,
-    message: row.message,
-    raw: row.raw,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -114,48 +82,12 @@ export default async function AdminOpsPage() {
     const items = visibleRows.map(serializeReportListItem)
     const nextCursor = hasMore ? items[items.length - 1]?.createdAt || null : null
 
-    let detailReport: ReportDetail | null = null
-    let detailEvents: OpsLogEvent[] = []
-
-    const initialSelectedId = items[0]?.id || null
-    if (initialSelectedId) {
-      const report = await prisma.opsReport.findUnique({
-        where: { id: initialSelectedId },
-        include: {
-          events: {
-            orderBy: [{ severity: 'asc' }, { timestamp: 'desc' }, { createdAt: 'desc' }],
-          },
-        },
-      })
-
-      if (report) {
-        detailReport = {
-          id: report.id,
-          source: report.source,
-          dateKey: report.dateKey,
-          triggerMode: report.triggerMode,
-          status: report.status,
-          totalDeployments: report.totalDeployments,
-          totalLogs: report.totalLogs,
-          severeCount: report.severeCount,
-          warningCount: report.warningCount,
-          truncated: report.truncated,
-          windowStart: report.windowStart.toISOString(),
-          windowEnd: report.windowEnd.toISOString(),
-          createdAt: report.createdAt.toISOString(),
-          markdownSummary: report.markdownSummary,
-          rawSummary: report.rawSummary,
-        }
-        detailEvents = report.events.map(serializeOpsEvent)
-      }
-    }
-
     initialData = {
       items,
       nextCursor,
-      selectedId: detailReport?.id || null,
-      detailReport,
-      detailEvents,
+      selectedId: items[0]?.id || null,
+      detailReport: null,
+      detailEvents: [],
     }
   } catch (error) {
     console.error('[admin/ops] preload failed', error)
