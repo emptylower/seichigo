@@ -77,3 +77,36 @@ export async function asyncPool<T, R>(
   await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()))
   return ret
 }
+
+function normalizeBaseUrl(input: string | null | undefined): string {
+  const fallback = 'https://www.anitabi.cn'
+  const base = normalizeText(input) || fallback
+  return base.replace(/\/+$/, '')
+}
+
+export function getAnitabiSiteBaseUrl(): string {
+  return normalizeBaseUrl(process.env.ANITABI_SITE_BASE_URL)
+}
+
+export function resolveAnitabiAssetUrl(value: string | null | undefined, baseUrl?: string | null): string | null {
+  const text = normalizeText(value)
+  if (!text) return null
+
+  if (/^http:\/\//i.test(text)) {
+    return text.replace(/^http:\/\//i, 'https://')
+  }
+
+  if (/^https:\/\//i.test(text)) {
+    return text
+  }
+
+  if (text.startsWith('//')) {
+    return `https:${text}`
+  }
+
+  if (text.startsWith('/')) {
+    return `${normalizeBaseUrl(baseUrl)}${text}`
+  }
+
+  return text
+}

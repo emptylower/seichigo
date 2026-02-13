@@ -9,7 +9,7 @@ import type {
   AnitabiPointDTO,
   AnitabiSearchResultDTO,
 } from '@/lib/anitabi/types'
-import { ANITABI_TAB_LABELS, clampInt, normalizeText } from '@/lib/anitabi/utils'
+import { ANITABI_TAB_LABELS, clampInt, resolveAnitabiAssetUrl, normalizeText } from '@/lib/anitabi/utils'
 
 function pickLocalizedTitle(
   locale: SupportedLocale,
@@ -54,7 +54,7 @@ function toCard(
     titleZh: row.titleZh,
     cat: row.cat,
     city: row.city,
-    cover: row.cover,
+    cover: resolveAnitabiAssetUrl(row.cover),
     color: row.color,
     pointsLength: row.meta?.pointsLength || 0,
     imagesLength: row.meta?.imagesLength || 0,

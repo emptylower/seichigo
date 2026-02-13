@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { normalizeText } from '@/lib/anitabi/utils'
+import { normalizeText, resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 
 function normalizeTarget(targetType: string, bangumiId?: number | null, pointId?: string | null): string {
   if (targetType === 'point' && pointId) return `point:${pointId}`
@@ -162,7 +162,7 @@ export async function getMeState(input: {
         ? {
             id: row.bangumi.id,
             title: normalizeText(row.bangumi.i18n[0]?.title) || row.bangumi.titleZh || row.bangumi.titleJaRaw,
-            cover: row.bangumi.cover,
+            cover: resolveAnitabiAssetUrl(row.bangumi.cover),
             city: row.bangumi.city,
             pointsLength: row.bangumi.meta?.pointsLength || 0,
             imagesLength: row.bangumi.meta?.imagesLength || 0,
@@ -173,7 +173,7 @@ export async function getMeState(input: {
             id: row.point.id,
             bangumiId: row.point.bangumiId,
             name: normalizeText(row.point.i18n[0]?.name) || row.point.name,
-            image: row.point.image,
+            image: resolveAnitabiAssetUrl(row.point.image),
             geo: row.point.geoLat != null && row.point.geoLng != null ? [row.point.geoLat, row.point.geoLng] : null,
           }
         : null,
@@ -187,7 +187,7 @@ export async function getMeState(input: {
         ? {
             id: row.bangumi.id,
             title: normalizeText(row.bangumi.i18n[0]?.title) || row.bangumi.titleZh || row.bangumi.titleJaRaw,
-            cover: row.bangumi.cover,
+            cover: resolveAnitabiAssetUrl(row.bangumi.cover),
             city: row.bangumi.city,
           }
         : null,
@@ -196,7 +196,7 @@ export async function getMeState(input: {
             id: row.point.id,
             bangumiId: row.point.bangumiId,
             name: normalizeText(row.point.i18n[0]?.name) || row.point.name,
-            image: row.point.image,
+            image: resolveAnitabiAssetUrl(row.point.image),
           }
         : null,
     })),

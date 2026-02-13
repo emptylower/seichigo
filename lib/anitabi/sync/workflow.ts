@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import type { AnitabiSyncMode, AnitabiSyncReport } from '@/lib/anitabi/types'
-import { hashText } from '@/lib/anitabi/utils'
+import { hashText, resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { fetchJsonWithRetry, fetchTextWithRetry } from '@/lib/anitabi/source/client'
 import {
   getLiteStats,
@@ -44,17 +44,6 @@ function getSyncMaxRuntimeMs(): number | null {
   if (Number.isFinite(raw)) return clampInt(raw, 1000, 120000)
   if (process.env.VERCEL === '1') return 7000
   return null
-}
-
-function toAbsoluteUrl(value: string | null | undefined, base: string): string | null {
-  if (!value) return null
-  const text = value.trim()
-  if (!text) return null
-  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base
-  if (/^https?:\/\//i.test(text)) return text
-  if (text.startsWith('//')) return `https:${text}`
-  if (text.startsWith('/')) return `${normalizedBase}${text}`
-  return text
 }
 
 async function upsertCursor(
@@ -106,6 +95,7 @@ async function syncBangumiOne(
 
   const points = mapEnabled ? normalizePoints(bangumi.id, pointsDetail, pointsSummary) : []
   const liteStats = getLiteStats(lite)
+  const resolvedCover = resolveAnitabiAssetUrl(normalized.cover, siteBase)
 
   if (dryRun) {
     return { changed: true, id: bangumi.id }
@@ -118,7 +108,7 @@ async function syncBangumiOne(
       titleZh: normalized.titleZh,
       titleJaRaw: normalized.titleJaRaw,
       cat: normalized.cat,
-      cover: normalized.cover,
+      cover: resolvedCover,
       description: normalized.description,
       color: normalized.color,
       city: normalized.city,
@@ -134,7 +124,7 @@ async function syncBangumiOne(
       titleZh: normalized.titleZh,
       titleJaRaw: normalized.titleJaRaw,
       cat: normalized.cat,
-      cover: normalized.cover,
+      cover: resolvedCover,
       description: normalized.description,
       color: normalized.color,
       city: normalized.city,
@@ -184,10 +174,10 @@ async function syncBangumiOne(
         geoLng: point.geoLng,
         ep: point.ep,
         s: point.s,
-        image: toAbsoluteUrl(point.image, siteBase),
+        image: resolveAnitabiAssetUrl(point.image, siteBase),
         origin: point.origin,
-        originUrl: toAbsoluteUrl(point.originUrl, siteBase),
-        originLink: toAbsoluteUrl(point.originLink, siteBase),
+        originUrl: resolveAnitabiAssetUrl(point.originUrl, siteBase),
+        originLink: resolveAnitabiAssetUrl(point.originLink, siteBase),
         density: point.density,
         mark: point.mark,
         folder: point.folder,
