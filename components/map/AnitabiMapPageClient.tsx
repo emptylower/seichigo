@@ -35,6 +35,8 @@ const DEFAULT_VIEW = {
   lat: 35.681236,
   z: 5,
 }
+const CARD_PAGE_SIZE = 18
+const CARD_LIST_PREFETCH_ROOT_MARGIN = '0px 0px 320px 0px'
 
 function parseNumberParam(value: string | null): number | null {
   if (value == null || value === '') return null
@@ -62,6 +64,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     changelog: '更新记录',
     close: '关闭',
     loading: '加载中...',
+    loadingMore: '正在加载更多作品…',
+    loadedAll: '已加载全部作品',
+    loadMoreFailed: '加载更多失败，请重试',
+    retry: '重试',
     noData: '暂无可用数据',
     points: '地标',
     screenshots: '截图',
@@ -90,6 +96,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     changelog: 'Changelog',
     close: 'Close',
     loading: 'Loading...',
+    loadingMore: 'Loading more titles…',
+    loadedAll: 'All titles loaded',
+    loadMoreFailed: 'Failed to load more titles',
+    retry: 'Retry',
     noData: 'No data yet',
     points: 'Points',
     screenshots: 'Shots',
@@ -118,6 +128,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     changelog: '更新履歴',
     close: '閉じる',
     loading: '読み込み中...',
+    loadingMore: '作品をさらに読み込み中…',
+    loadedAll: 'すべての作品を読み込みました',
+    loadMoreFailed: '追加読み込みに失敗しました',
+    retry: '再試行',
     noData: 'データがありません',
     points: 'スポット',
     screenshots: '画像',
@@ -215,6 +229,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const markersRef = useRef<maplibregl.Marker[]>([])
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
+  const cardsContainerRef = useRef<HTMLDivElement | null>(null)
+  const cardsLoadMoreRef = useRef<HTMLDivElement | null>(null)
+  const cardFeedTokenRef = useRef(0)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -229,6 +246,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
   const [detail, setDetail] = useState<AnitabiBangumiDTO | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingMoreCards, setLoadingMoreCards] = useState(false)
+  const [cardsLoadError, setCardsLoadError] = useState<string | null>(null)
+  const [hasMoreCards, setHasMoreCards] = useState(true)
+  const [nextChunkIndex, setNextChunkIndex] = useState(1)
   const [detailLoading, setDetailLoading] = useState(false)
   const [searchResult, setSearchResult] = useState<SearchResult>({ bangumi: [], points: [], cities: [] })
   const [searchOpen, setSearchOpen] = useState(false)
@@ -293,7 +314,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [locale])
 
   const loadBootstrap = useCallback(async () => {
+    const requestToken = cardFeedTokenRef.current + 1
+    cardFeedTokenRef.current = requestToken
     setLoading(true)
+    setLoadingMoreCards(false)
+    setCardsLoadError(null)
     try {
       const params = new URLSearchParams()
       params.set('locale', locale)
@@ -304,12 +329,56 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const res = await fetch(`/api/anitabi/bootstrap?${params.toString()}`, { method: 'GET' })
       if (!res.ok) throw new Error('Failed to load bootstrap')
       const json = (await res.json()) as AnitabiBootstrapDTO
+      if (requestToken !== cardFeedTokenRef.current) return
       setBootstrap(json)
       setCards(json.cards)
+      setNextChunkIndex(1)
+      setHasMoreCards(json.cards.length >= CARD_PAGE_SIZE)
     } finally {
+      if (requestToken !== cardFeedTokenRef.current) return
       setLoading(false)
     }
   }, [locale, query, selectedCity, tab])
+
+  const loadMoreCards = useCallback(async () => {
+    if (loading || loadingMoreCards || !hasMoreCards) return
+    const requestToken = cardFeedTokenRef.current
+    const params = new URLSearchParams()
+    params.set('locale', locale)
+    params.set('tab', tab)
+    params.set('size', String(CARD_PAGE_SIZE))
+    if (query) params.set('q', query)
+    if (selectedCity) params.set('city', selectedCity)
+
+    setLoadingMoreCards(true)
+    setCardsLoadError(null)
+    try {
+      const res = await fetch(`/api/anitabi/chunks/${nextChunkIndex}?${params.toString()}`, { method: 'GET' })
+      const json = (await res.json().catch(() => ({}))) as { items?: AnitabiBangumiCard[] }
+      if (!res.ok) throw new Error(label.loadMoreFailed)
+      if (requestToken !== cardFeedTokenRef.current) return
+
+      const items = Array.isArray(json.items) ? json.items : []
+      setCards((prev) => {
+        const seen = new Set(prev.map((row) => row.id))
+        const merged = prev.slice()
+        for (const item of items) {
+          if (seen.has(item.id)) continue
+          seen.add(item.id)
+          merged.push(item)
+        }
+        return merged
+      })
+      setNextChunkIndex((prev) => prev + 1)
+      setHasMoreCards(items.length >= CARD_PAGE_SIZE)
+    } catch {
+      if (requestToken !== cardFeedTokenRef.current) return
+      setCardsLoadError(label.loadMoreFailed)
+    } finally {
+      if (requestToken !== cardFeedTokenRef.current) return
+      setLoadingMoreCards(false)
+    }
+  }, [hasMoreCards, label.loadMoreFailed, loading, loadingMoreCards, locale, nextChunkIndex, query, selectedCity, tab])
 
   const openBangumi = useCallback(
     async (id: number, pointId?: string | null) => {
@@ -354,6 +423,28 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     loadBootstrap().catch(() => null)
   }, [loadBootstrap])
+
+  useEffect(() => {
+    if (loading || loadingMoreCards || !hasMoreCards) return
+    const root = cardsContainerRef.current
+    const target = cardsLoadMoreRef.current
+    if (!root || !target) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        loadMoreCards().catch(() => null)
+      },
+      {
+        root,
+        rootMargin: CARD_LIST_PREFETCH_ROOT_MARGIN,
+        threshold: 0,
+      }
+    )
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [cards.length, hasMoreCards, loadMoreCards, loading, loadingMoreCards])
 
   useEffect(() => {
     if (parsed.b) {
@@ -765,7 +856,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+          <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
             {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
             {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
             <div className="space-y-3">
@@ -790,6 +881,23 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 </button>
               ))}
             </div>
+            <div ref={cardsLoadMoreRef} className="h-2" />
+            {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
+            {cardsLoadError ? (
+              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-rose-600">
+                <span>{cardsLoadError}</span>
+                <button
+                  type="button"
+                  onClick={() => loadMoreCards().catch(() => null)}
+                  className="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                >
+                  {label.retry}
+                </button>
+              </div>
+            ) : null}
+            {!loading && !loadingMoreCards && !hasMoreCards && cards.length > 0 ? (
+              <div className="pt-3 text-center text-xs text-slate-400">{label.loadedAll}</div>
+            ) : null}
           </div>
         </aside>
 

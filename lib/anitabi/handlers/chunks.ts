@@ -11,6 +11,8 @@ export function createHandlers(deps: AnitabiApiDeps) {
       const tab = parseTab(url.searchParams.get('tab'))
       const index = clampInt(params.index, 0, 0, 999)
       const size = clampInt(url.searchParams.get('size'), 100, 20, 200)
+      const city = url.searchParams.get('city')
+      const q = url.searchParams.get('q')
 
       const cards = await listChunk({
         prisma: deps.prisma,
@@ -18,6 +20,8 @@ export function createHandlers(deps: AnitabiApiDeps) {
         tab,
         index,
         size,
+        city,
+        q,
       })
 
       return NextResponse.json({ ok: true, index, size, items: cards }, {

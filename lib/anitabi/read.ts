@@ -389,6 +389,8 @@ export async function listChunk(input: {
   tab: AnitabiMapTab
   index: number
   size?: number
+  city?: string | null
+  q?: string | null
 }): Promise<AnitabiBangumiCard[]> {
   const size = clampInt(input.size, 100, 20, 200)
   const index = clampInt(input.index, 0, 0, 999)
@@ -396,6 +398,8 @@ export async function listChunk(input: {
     prisma: input.prisma,
     locale: input.locale,
     tab: input.tab,
+    city: input.city,
+    q: input.q,
     take: size,
     skip: index * size,
   })
