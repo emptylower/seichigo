@@ -404,6 +404,31 @@ function buildBBoxRing(points: PointCoord[], paddingMeters: number): PointCoord[
   )
 }
 
+function buildSinglePointRing(point: PointCoord, paddingMeters: number): PointCoord[] {
+  const bearings = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]
+  return closeRing(bearings.map((bearing) => moveByMeters(point, bearing, paddingMeters)))
+}
+
+function buildTwoPointRing(a: PointCoord, b: PointCoord, paddingMeters: number): PointCoord[] {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const nearSamePoint = Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9
+  if (nearSamePoint) return buildSinglePointRing(a, paddingMeters)
+
+  const heading = Math.atan2(dx, dy)
+  const left = heading - Math.PI / 2
+  const right = heading + Math.PI / 2
+  const tail = heading + Math.PI
+  const extension = paddingMeters * 0.8
+
+  const aLeft = moveByMeters(moveByMeters(a, left, paddingMeters), tail, extension)
+  const aRight = moveByMeters(moveByMeters(a, right, paddingMeters), tail, extension)
+  const bLeft = moveByMeters(moveByMeters(b, left, paddingMeters), heading, extension)
+  const bRight = moveByMeters(moveByMeters(b, right, paddingMeters), heading, extension)
+
+  return closeRing([aLeft, bLeft, bRight, aRight])
+}
+
 function padHull(points: PointCoord[], paddingMeters: number): PointCoord[] {
   const [sumLng, sumLat] = points.reduce<[number, number]>(
     (acc, point) => [acc[0] + point[0], acc[1] + point[1]],
@@ -437,7 +462,11 @@ function buildCoverageArea(points: PointCoord[]): GeoJSON.FeatureCollection<GeoJ
   const largePaddingMeters = clamp(Math.max(900, bboxDiagMeters * 0.08), 900, 70000)
 
   let ring: PointCoord[]
-  if (deduped.length < 3) {
+  if (deduped.length === 1) {
+    ring = buildSinglePointRing(deduped[0]!, smallPaddingMeters)
+  } else if (deduped.length === 2) {
+    ring = buildTwoPointRing(deduped[0]!, deduped[1]!, smallPaddingMeters)
+  } else if (deduped.length < 3) {
     ring = buildBBoxRing(deduped, smallPaddingMeters)
   } else {
     const hull = buildConvexHull(deduped)
