@@ -568,6 +568,79 @@ function buildDistanceClusters(points: PointCoord[]): PointCoord[][] {
   return Array.from(grouped.values()).sort((a, b) => b.length - a.length)
 }
 
+function clusterSpreadMeters(cluster: PointCoord[]): number {
+  if (!cluster.length) return Number.POSITIVE_INFINITY
+  if (cluster.length === 1) return 0
+  const lngs = cluster.map((point) => point[0])
+  const lats = cluster.map((point) => point[1])
+  const minLng = Math.min(...lngs)
+  const maxLng = Math.max(...lngs)
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+  return distanceMeters([minLng, minLat], [maxLng, maxLat])
+}
+
+function clusterNearestMedianMeters(cluster: PointCoord[]): number {
+  if (cluster.length < 2) return Number.POSITIVE_INFINITY
+  const nearest: number[] = []
+  for (let i = 0; i < cluster.length; i += 1) {
+    let best = Number.POSITIVE_INFINITY
+    for (let j = 0; j < cluster.length; j += 1) {
+      if (i === j) continue
+      const d = distanceMeters(cluster[i]!, cluster[j]!)
+      if (d < best) best = d
+    }
+    if (Number.isFinite(best)) nearest.push(best)
+  }
+  return median(nearest)
+}
+
+function pickFocusCluster(points: PointCoord[]): PointCoord[] {
+  const clusters = buildDistanceClusters(points)
+  if (!clusters.length) return []
+  if (clusters.length === 1) return clusters[0]!
+
+  let pool = clusters.filter((cluster) => cluster.length >= 3)
+  if (!pool.length) pool = clusters.filter((cluster) => cluster.length >= 2)
+  if (!pool.length) return clusters[0]!
+
+  let best = pool[0]!
+  let bestMedian = clusterNearestMedianMeters(best)
+  let bestCount = best.length
+  let bestSpread = clusterSpreadMeters(best)
+
+  for (const cluster of pool.slice(1)) {
+    const nextMedian = clusterNearestMedianMeters(cluster)
+    const nextCount = cluster.length
+    const nextSpread = clusterSpreadMeters(cluster)
+
+    if (nextMedian < bestMedian - 1) {
+      best = cluster
+      bestMedian = nextMedian
+      bestCount = nextCount
+      bestSpread = nextSpread
+      continue
+    }
+
+    if (Math.abs(nextMedian - bestMedian) <= 1 && nextCount > bestCount) {
+      best = cluster
+      bestMedian = nextMedian
+      bestCount = nextCount
+      bestSpread = nextSpread
+      continue
+    }
+
+    if (Math.abs(nextMedian - bestMedian) <= 1 && nextCount === bestCount && nextSpread < bestSpread) {
+      best = cluster
+      bestMedian = nextMedian
+      bestCount = nextCount
+      bestSpread = nextSpread
+    }
+  }
+
+  return best
+}
+
 function buildBounds(points: PointCoord[]): maplibregl.LngLatBounds | null {
   if (!points.length) return null
   const bounds = new maplibregl.LngLatBounds(points[0], points[0])
@@ -989,6 +1062,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         const map = mapRef.current
         if (map) {
           const geoPoints = collectPointCoords(json.points)
+          const focusCluster = pickFocusCluster(geoPoints)
+          const focusPoints = focusCluster.length ? focusCluster : geoPoints
 
           if (pointId) {
             const target = json.points.find((point) => matchPointId(point.id, pointId))
@@ -998,9 +1073,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             if (target?.geo) {
               focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
             } else {
-              fitBangumiBounds(geoPoints)
+              fitBangumiBounds(focusPoints)
             }
-          } else if (!fitBangumiBounds(geoPoints) && json.card.geo) {
+          } else if (focusPoints.length >= 2) {
+            fitBangumiBounds(focusPoints)
+          } else if (focusPoints.length === 1) {
+            const single = focusPoints[0]!
+            focusGeo([single[1], single[0]], Math.max(map.getZoom(), 12.8), true)
+          } else if (json.card.geo) {
             focusGeo(json.card.geo, json.card.zoom || 10, true)
           }
         }
