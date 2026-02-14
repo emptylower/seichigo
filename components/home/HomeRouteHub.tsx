@@ -41,10 +41,6 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
         <div className="pointer-events-none absolute -left-16 bottom-6 h-44 w-44 rounded-full bg-brand-100/70 blur-3xl" />
 
         <div className="relative mb-6 space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50/70 px-3 py-1 text-xs font-semibold text-brand-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-            {t('pages.home.mapHubPrimaryBadge', locale)}
-          </div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[30px]">{t('pages.home.mapHubTitle', locale)}</h2>
           <p className="max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">{t('pages.home.mapHubSubtitle', locale)}</p>
         </div>
@@ -52,9 +48,8 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
         <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[1.36fr_1fr]">
           <Link
             href={prefixPath('/map', locale)}
-            className="group relative isolate overflow-hidden rounded-[28px] border border-white/60 bg-[linear-gradient(150deg,rgba(255,255,255,0.45),rgba(255,255,255,0.18))] p-4 no-underline shadow-[0_26px_42px_-30px_rgba(14,18,38,0.55)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:no-underline hover:shadow-[0_30px_48px_-30px_rgba(14,18,38,0.7)] sm:p-5"
+            className="group relative isolate overflow-hidden rounded-[28px] border border-white/60 bg-white/10 p-4 no-underline shadow-[0_26px_42px_-30px_rgba(14,18,38,0.58)] transition-all duration-300 hover:-translate-y-0.5 hover:no-underline hover:shadow-[0_34px_50px_-32px_rgba(14,18,38,0.74)] sm:p-5"
           >
-            <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.85),rgba(255,255,255,0.16)_48%),linear-gradient(132deg,rgba(13,20,43,0.07),rgba(13,20,43,0.34))]" />
             <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-white/35" />
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
               <img
@@ -63,28 +58,30 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
                 aria-hidden="true"
                 loading="lazy"
                 decoding="async"
-                className="h-full w-full object-fill object-center opacity-[0.92] saturate-[1.04]"
+                className="h-full w-full object-fill object-center opacity-[0.95] saturate-[1.08]"
               />
             </div>
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(248,250,252,0.28)_0%,rgba(15,23,42,0.14)_38%,rgba(2,6,23,0.68)_100%)]" />
-            <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(to_right,rgba(255,255,255,0.36)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.36)_1px,transparent_1px)] [background-size:34px_34px]" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.14)_0%,rgba(15,23,42,0.16)_42%,rgba(2,6,23,0.72)_100%)]" />
+            <div className="pointer-events-none absolute -left-14 -top-14 h-40 w-40 rounded-full bg-white/35 blur-2xl" />
+            <div className="pointer-events-none absolute -right-16 top-16 h-36 w-36 rounded-full bg-cyan-200/28 blur-2xl" />
+            <div className="pointer-events-none absolute inset-0 opacity-[0.1] [background-image:linear-gradient(to_right,rgba(255,255,255,0.34)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.34)_1px,transparent_1px)] [background-size:34px_34px]" />
 
             <div className="relative flex min-h-[325px] flex-col justify-between gap-6 p-2 sm:min-h-[350px]">
-              <div className="max-w-[560px] rounded-[24px] border border-white/55 bg-white/[0.22] p-5 text-slate-900 shadow-[0_20px_36px_-24px_rgba(15,23,42,0.58)] backdrop-blur-2xl sm:p-6">
-                <h3 className="text-[30px] font-bold leading-tight tracking-tight text-slate-900 sm:text-[36px]">
+              <div className="max-w-[560px] rounded-[24px] border border-white/58 bg-[linear-gradient(140deg,rgba(255,255,255,0.46),rgba(255,255,255,0.26))] p-5 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_24px_42px_-28px_rgba(15,23,42,0.7)] backdrop-blur-[18px] backdrop-saturate-150 sm:p-6">
+                <h3 className="text-[30px] font-bold leading-tight tracking-tight text-slate-900/95 sm:text-[36px]">
                   {t('pages.home.mapHubPrimaryTitle', locale)}
                 </h3>
-                <p className="mt-3 max-w-xl text-base leading-7 text-slate-700">{t('pages.home.mapHubPrimaryDesc', locale)}</p>
+                <p className="mt-3 max-w-xl text-base leading-7 text-slate-700/95">{t('pages.home.mapHubPrimaryDesc', locale)}</p>
 
                 <div className="mt-5 flex flex-wrap gap-2.5 text-sm font-semibold text-slate-700">
-                  <span className="rounded-full border border-white/65 bg-white/45 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-lg">{t('pages.home.mapHubChipAnime', locale)}</span>
-                  <span className="rounded-full border border-white/65 bg-white/45 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-lg">{t('pages.home.mapHubChipCity', locale)}</span>
-                  <span className="rounded-full border border-white/65 bg-white/45 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-lg">{t('pages.home.mapHubChipSpot', locale)}</span>
+                  <span className="rounded-full border border-white/70 bg-white/52 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-lg">{t('pages.home.mapHubChipAnime', locale)}</span>
+                  <span className="rounded-full border border-white/70 bg-white/52 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-lg">{t('pages.home.mapHubChipCity', locale)}</span>
+                  <span className="rounded-full border border-white/70 bg-white/52 px-3.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-lg">{t('pages.home.mapHubChipSpot', locale)}</span>
                 </div>
               </div>
 
               <div>
-                <span className="inline-flex items-center rounded-full border border-white/55 bg-white/30 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-16px_rgba(15,23,42,0.65)] backdrop-blur-xl transition-all group-hover:bg-white/40 group-hover:text-slate-900">
+                <span className="inline-flex items-center rounded-full border border-white/68 bg-white/24 px-5 py-2.5 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.62),0_12px_24px_-16px_rgba(15,23,42,0.7)] backdrop-blur-xl backdrop-saturate-150 transition-all group-hover:bg-white/34 group-hover:text-slate-900">
                   {t('pages.home.mapHubPrimaryCta', locale)}
                 </span>
               </div>
