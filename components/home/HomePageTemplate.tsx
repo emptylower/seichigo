@@ -44,6 +44,8 @@ function coverAlt(name: string | undefined, locale: SiteLocale): string {
 }
 
 export default function HomePageTemplate({ locale, data }: { locale: SiteLocale; data: HomePortalData }) {
+  const routeHubHeroImage = optimizeAssetImgSrc(data.heroDisplay[0]?.src || '', { width: 1200, quality: 72 })
+
   return (
     <div className="space-y-16 pb-12">
       <section className="relative overflow-hidden px-4 py-10 sm:px-6 sm:py-12 md:py-20 lg:px-12">
@@ -111,7 +113,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         </div>
       </section>
 
-      <HomeRouteHub locale={locale} />
+      <HomeRouteHub locale={locale} heroImageSrc={routeHubHeroImage || undefined} />
 
       {data.featured ? (
         <section className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
