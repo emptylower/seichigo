@@ -436,7 +436,11 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
     setAnimeLoading(false)
     const j = await res.json().catch(() => ({}))
     if (!res.ok || !j?.ok) {
-      setSettingsError(j.error || '创建作品失败')
+      const message = j.error || '创建作品失败'
+      setSettingsError(message)
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(message)
+      }
       return
     }
     const created = normalizeAnimeOption(j.anime)

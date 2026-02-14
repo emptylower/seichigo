@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 
 const CHINESE_ZONES = new Set(['CN', 'HK', 'TW', 'MO'])
 const JAPANESE_ZONES = new Set(['JP'])
+const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
 
 const BOT_PATTERN = /bot|crawler|spider|crawling|slurp|externalhit/i
 
@@ -21,6 +22,10 @@ function getLocaleForCountry(country: string): 'zh' | 'en' | 'ja' {
 
 function isApiRoute(pathname: string): boolean {
   return pathname.startsWith('/api/')
+}
+
+function isStaticAssetRoute(pathname: string): boolean {
+  return STATIC_FILE_EXT_PATTERN.test(pathname)
 }
 
 function isBot(userAgent: string | null): boolean {
@@ -46,7 +51,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.next({ request: { headers } })
   }
 
-  if (isApiRoute(pathname)) {
+  if (isApiRoute(pathname) || isStaticAssetRoute(pathname)) {
     return NextResponse.next({ request: { headers } })
   }
 
@@ -83,5 +88,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image|sitemap.xml|robots.txt).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image|sitemap.xml|robots.txt|.*\\..*).*)'],
 }

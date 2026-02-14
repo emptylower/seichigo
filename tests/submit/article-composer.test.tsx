@@ -193,6 +193,51 @@ describe('submit/new article composer', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/articles/a1/revision', { method: 'POST' })
     expect(replaceMock).toHaveBeenCalledWith('/submit/revisions/r1')
   })
+
+  it('alerts when creating anime fails with 400', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = (init?.method || 'GET').toUpperCase()
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+
+      if (url.startsWith('/api/anime?q=')) {
+        return jsonResponse({ ok: true, items: [] })
+      }
+
+      if (url === '/api/anime' && method === 'POST') {
+        return jsonResponse(
+          { error: '请使用英文作品 ID（小写字母/数字/连字符），例如 weathering-with-you' },
+          400
+        )
+      }
+
+      return jsonResponse({ ok: true })
+    })
+
+    render(<ArticleComposerClient initial={baseInitial} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '提交审核' }))
+      await Promise.resolve()
+    })
+
+    const input = await screen.findByPlaceholderText('搜索或输入作品名，Enter 选择/创建')
+    fireEvent.change(input, { target: { value: '天气之子' } })
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await Promise.resolve()
+    })
+
+    expect(alertSpy).toHaveBeenCalledWith('请使用英文作品 ID（小写字母/数字/连字符），例如 weathering-with-you')
+    expect(screen.getByText('请使用英文作品 ID（小写字母/数字/连字符），例如 weathering-with-you')).toBeInTheDocument()
+    alertSpy.mockRestore()
+  })
 })
 
 describe('revision composer', () => {

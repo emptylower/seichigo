@@ -163,6 +163,24 @@ describe('i18n IP-based redirect middleware', () => {
     })
   })
 
+  describe('static files - skip redirect', () => {
+    it('does not redirect /manifest.webmanifest', () => {
+      const req = createRequest('/manifest.webmanifest', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+
+    it('does not redirect public assets under /brand', () => {
+      const req = createRequest('/brand/app-logo.png', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+  })
+
   describe('bot detection - skip redirect', () => {
     const botUserAgents = [
       'Googlebot/2.1 (+http://www.google.com/bot.html)',
