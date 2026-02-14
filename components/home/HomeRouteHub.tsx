@@ -56,17 +56,17 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
           >
             <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.85),rgba(255,255,255,0.16)_48%),linear-gradient(132deg,rgba(13,20,43,0.07),rgba(13,20,43,0.34))]" />
             <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-white/35" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-[-6%] h-[54%] overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
               <img
                 src={MAP_HUB_BASE_IMAGE}
                 alt=""
                 aria-hidden="true"
                 loading="lazy"
                 decoding="async"
-                className="h-full w-full object-fill object-center opacity-[0.94] saturate-[1.05]"
+                className="h-full w-full object-fill object-center opacity-[0.92] saturate-[1.04]"
               />
             </div>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[linear-gradient(to_top,rgba(2,6,23,0.74)_0%,rgba(2,6,23,0.45)_38%,rgba(248,250,252,0.18)_100%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(248,250,252,0.28)_0%,rgba(15,23,42,0.14)_38%,rgba(2,6,23,0.68)_100%)]" />
             <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(to_right,rgba(255,255,255,0.36)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.36)_1px,transparent_1px)] [background-size:34px_34px]" />
 
             <div className="relative flex min-h-[325px] flex-col justify-between gap-6 p-2 sm:min-h-[350px]">
