@@ -395,6 +395,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
+  const syncPointLayerRef = useRef<() => boolean>(() => false)
+  const detailRef = useRef<AnitabiBangumiDTO | null>(null)
   const cardsContainerRef = useRef<HTMLDivElement | null>(null)
   const cardsLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const cardFeedTokenRef = useRef(0)
@@ -594,6 +596,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return true
   }, [detail, selectedPointId])
 
+  useEffect(() => {
+    syncPointLayerRef.current = syncPointLayer
+  }, [syncPointLayer])
+
   const syncRangeOverlay = useCallback(() => {
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
@@ -658,6 +664,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     syncUrlRef.current = syncUrl
   }, [syncUrl])
+
+  useEffect(() => {
+    detailRef.current = detail
+  }, [detail])
 
   const loadMe = useCallback(async () => {
     try {
@@ -854,6 +864,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
       setSelectedPointId(pointId)
+      const activeDetail = detailRef.current
+      const target = activeDetail?.points.find((point) => matchPointId(point.id, pointId)) || null
+      if (target && isValidGeoPair(target.geo)) {
+        focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+      }
       fetch('/api/anitabi/me/history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -875,7 +890,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const resizeMap = () => map.resize()
     map.once('load', () => {
       resizeMap()
-      syncPointLayer()
+      syncPointLayerRef.current()
       syncRangeOverlay()
     })
     const rafId = window.requestAnimationFrame(resizeMap)
@@ -903,17 +918,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       map.remove()
       mapRef.current = null
     }
-  }, [parsed.lat, parsed.lng, parsed.z, syncPointLayer, syncRangeOverlay])
+  }, [focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     map.once('idle', () => {
-      syncPointLayer()
+      syncPointLayerRef.current()
       syncRangeOverlay()
     })
     map.setStyle(buildStyle(styleMode))
-  }, [styleMode, syncPointLayer, syncRangeOverlay])
+  }, [styleMode, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
