@@ -45,6 +45,9 @@ const POINT_LAYER_ID = 'anitabi-bangumi-point-layer'
 const POINT_SELECTED_HALO_LAYER_ID = 'anitabi-bangumi-point-selected-halo-layer'
 const POINT_SELECTED_LAYER_ID = 'anitabi-bangumi-point-selected-layer'
 const DETAIL_PANEL_WIDTH = 340
+const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
+const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
+const CLUSTER_JOIN_DISTANCE_SCALE = 8
 
 type CameraPadding = {
   top: number
@@ -492,6 +495,77 @@ function buildCoverageArea(points: PointCoord[]): GeoJSON.FeatureCollection<GeoJ
       },
     ],
   }
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0
+  const sorted = values.slice().sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+}
+
+function buildDistanceClusters(points: PointCoord[]): PointCoord[][] {
+  const deduped = dedupePoints(points)
+  const n = deduped.length
+  if (n === 0) return []
+  if (n <= 2) return [deduped]
+
+  const nearest = Array.from({ length: n }, () => Number.POSITIVE_INFINITY)
+  for (let i = 0; i < n; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      const d = distanceMeters(deduped[i]!, deduped[j]!)
+      if (d < nearest[i]!) nearest[i] = d
+      if (d < nearest[j]!) nearest[j] = d
+    }
+  }
+
+  const nearestFinite = nearest.filter((x) => Number.isFinite(x) && x > 0)
+  const joinDistance = clamp(
+    Math.max(CLUSTER_JOIN_DISTANCE_MIN_METERS, median(nearestFinite) * CLUSTER_JOIN_DISTANCE_SCALE),
+    CLUSTER_JOIN_DISTANCE_MIN_METERS,
+    CLUSTER_JOIN_DISTANCE_MAX_METERS
+  )
+
+  const parent = Array.from({ length: n }, (_, idx) => idx)
+  const find = (idx: number): number => {
+    let root = idx
+    while (parent[root] !== root) {
+      root = parent[root]!
+    }
+    let node = idx
+    while (parent[node] !== node) {
+      const next = parent[node]!
+      parent[node] = root
+      node = next
+    }
+    return root
+  }
+  const union = (a: number, b: number) => {
+    const rootA = find(a)
+    const rootB = find(b)
+    if (rootA === rootB) return
+    if (rootA < rootB) parent[rootB] = rootA
+    else parent[rootA] = rootB
+  }
+
+  for (let i = 0; i < n; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      if (distanceMeters(deduped[i]!, deduped[j]!) <= joinDistance) {
+        union(i, j)
+      }
+    }
+  }
+
+  const grouped = new Map<number, PointCoord[]>()
+  for (let i = 0; i < n; i += 1) {
+    const root = find(i)
+    const list = grouped.get(root)
+    if (list) list.push(deduped[i]!)
+    else grouped.set(root, [deduped[i]!])
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => b.length - a.length)
 }
 
 function buildBounds(points: PointCoord[]): maplibregl.LngLatBounds | null {
@@ -1095,10 +1169,23 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
 
     const points = collectPointCoords(detail.points)
-    const area = buildCoverageArea(points)
-    rangeOverlayRef.current = area
+    const clusters = buildDistanceClusters(points)
+    const features: GeoJSON.Feature<GeoJSON.Polygon>[] = []
+
+    for (const cluster of clusters) {
+      const area = buildCoverageArea(cluster)
+      if (!area) continue
+      for (const feature of area.features) {
+        features.push(feature)
+      }
+    }
+
+    rangeOverlayRef.current = features.length
       ? {
-          data: area,
+          data: {
+            type: 'FeatureCollection',
+            features,
+          },
           color: detail.card.color || '#ec4899',
         }
       : null
