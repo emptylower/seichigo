@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiChangelogDTO, AnitabiMapTab } from '@/lib/anitabi/types'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 
 type Props = {
   locale: SupportedLocale
@@ -1680,6 +1680,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       <div className="relative">
         <div className="flex gap-2">
           <input
+            id="anitabi-map-search"
+            name="q"
             value={queryInput}
             onFocus={() => setSearchOpen(true)}
             onChange={(e) => setQueryInput(e.target.value)}
@@ -1891,7 +1893,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
       {!isDesktop ? (
         <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
-          <SheetContent side="bottom" className="h-[84dvh] rounded-t-2xl border border-slate-200 bg-white p-0">
+          <SheetContent side="bottom" hideClose className="h-[84dvh] rounded-t-2xl border border-slate-200 bg-white p-0">
+            <SheetTitle className="sr-only">{label.panel}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {locale === 'en'
+                ? 'Browse filters, title list, and point details'
+                : locale === 'ja'
+                  ? '絞り込み、作品一覧、スポット詳細を表示'
+                  : '浏览筛选、作品列表与地标详情'}
+            </SheetDescription>
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-slate-200 px-4 py-3">
                 <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-300" />

@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Menu } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import HeaderAuthControls from './HeaderAuthControls.client'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 
@@ -70,10 +70,22 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
           <Menu className="h-5 w-5" />
         </button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[88vw] max-w-sm p-0">
+      <SheetContent side="right" hideClose className="w-[88vw] max-w-sm border-l-0 bg-white p-0 shadow-2xl">
+        <SheetTitle className="sr-only">{menuTitleByLocale[locale]}</SheetTitle>
+        <SheetDescription className="sr-only">
+          {locale === 'en' ? 'Site navigation, language, and account actions' : locale === 'ja' ? 'サイトナビゲーション、言語、アカウント操作' : '站点导航、语言与账号操作'}
+        </SheetDescription>
         <div className="flex h-full flex-col">
-          <div className="border-b border-slate-200 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-900">{menuTitleByLocale[locale]}</h2>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+              aria-label={locale === 'en' ? 'Close menu' : locale === 'ja' ? 'メニューを閉じる' : '关闭菜单'}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           <div className="mobile-safe-bottom min-h-0 flex-1 overflow-y-auto px-4 py-4">
