@@ -5,7 +5,7 @@ import BookShelf from '@/components/bookstore/BookShelf'
 import FeaturedPost from '@/components/bookstore/FeaturedPost'
 import HomePopularAnime from '@/components/home/HomePopularAnime'
 import HomePopularCities from '@/components/home/HomePopularCities'
-import HomeStarterSteps from '@/components/home/HomeStarterSteps'
+import HomeRouteHub from '@/components/home/HomeRouteHub'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import AppWaitlistPromoCtas from '@/components/waitlist/AppWaitlistPromoCtas.client'
@@ -111,7 +111,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         </div>
       </section>
 
-      <HomeStarterSteps steps={data.starterSteps} locale={locale} />
+      <HomeRouteHub locale={locale} />
 
       {data.featured ? (
         <section className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
