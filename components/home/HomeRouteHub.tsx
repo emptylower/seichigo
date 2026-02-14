@@ -30,12 +30,9 @@ const QUICK_LINKS = [
   },
 ] as const
 
-type HomeRouteHubProps = {
-  locale: SiteLocale
-  heroImageSrc?: string
-}
+const MAP_HUB_BASE_IMAGE = '/images/home/chopper-map-base.webp'
 
-export default function HomeRouteHub({ locale, heroImageSrc }: HomeRouteHubProps) {
+export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
   return (
     <section className="mx-auto max-w-7xl px-4 sm:px-6">
       <div className="relative overflow-hidden rounded-[30px] border border-slate-200/90 bg-[linear-gradient(160deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))] p-6 shadow-[0_22px_55px_-34px_rgba(15,23,42,0.45)] sm:p-8">
@@ -59,18 +56,16 @@ export default function HomeRouteHub({ locale, heroImageSrc }: HomeRouteHubProps
           >
             <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.85),rgba(255,255,255,0.16)_48%),linear-gradient(132deg,rgba(13,20,43,0.07),rgba(13,20,43,0.34))]" />
             <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-white/35" />
-            {heroImageSrc ? (
-              <div className="pointer-events-none absolute inset-x-0 bottom-[-6%] h-[54%] overflow-hidden">
-                <img
-                  src={heroImageSrc}
-                  alt=""
-                  aria-hidden="true"
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full scale-[1.06] object-cover object-center opacity-[0.94] saturate-[1.05]"
-                />
-              </div>
-            ) : null}
+            <div className="pointer-events-none absolute inset-x-0 bottom-[-6%] h-[54%] overflow-hidden">
+              <img
+                src={MAP_HUB_BASE_IMAGE}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-fill object-center opacity-[0.94] saturate-[1.05]"
+              />
+            </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[linear-gradient(to_top,rgba(2,6,23,0.74)_0%,rgba(2,6,23,0.45)_38%,rgba(248,250,252,0.18)_100%)]" />
             <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(to_right,rgba(255,255,255,0.36)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.36)_1px,transparent_1px)] [background-size:34px_34px]" />
 
