@@ -740,6 +740,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return window.innerWidth >= DESKTOP_BREAKPOINT
   })
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [mobileDetailFocus, setMobileDetailFocus] = useState(false)
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
@@ -1106,7 +1107,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       setSelectedBangumiId(id)
       setSelectedPointId(pointId || null)
       if (!isDesktop) {
-        setMobilePanelOpen(true)
+        setMobileDetailFocus(false)
+        setMobilePanelOpen(false)
       }
       setDetailLoading(true)
       try {
@@ -1219,6 +1221,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       if (!pointId) return
       setSelectedPointId(pointId)
       if (!isDesktopRef.current) {
+        setMobileDetailFocus(true)
         setMobilePanelOpen(true)
       }
       const activeDetail = detailRef.current
@@ -1569,7 +1572,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-            onClick={() => setDetail(null)}
+            onClick={() => {
+              setDetail(null)
+              setMobileDetailFocus(false)
+            }}
           >
             {label.close}
           </button>
@@ -1613,6 +1619,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               onClick={() => {
                 setSelectedPointId(point.id)
                 if (!isDesktopRef.current) {
+                  setMobileDetailFocus(true)
                   setMobilePanelOpen(true)
                 }
                 if (point.geo && mapRef.current) {
@@ -1869,7 +1876,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center mobile-safe-bottom">
               <button
                 type="button"
-                onClick={() => setMobilePanelOpen(true)}
+                onClick={() => {
+                  setMobileDetailFocus(false)
+                  setMobilePanelOpen(true)
+                }}
                 className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-medium text-slate-700 shadow-lg backdrop-blur hover:bg-white"
               >
                 <span>{detail ? `${label.selected} · ${detail.card.title}` : label.openPanel}</span>
@@ -1910,7 +1920,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                   <button
                     type="button"
                     className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    onClick={() => setMobilePanelOpen(false)}
+                    onClick={() => {
+                      setMobileDetailFocus(false)
+                      setMobilePanelOpen(false)
+                    }}
                   >
                     {label.hidePanel}
                   </button>
@@ -1920,8 +1933,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {explorerHeader}
 
               <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+                {mobileDetailFocus && detailPanelInner ? (
+                  <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {detailPanelInner}
+                  </div>
+                ) : null}
                 {cardsList}
-                {detailPanelInner ? (
+                {!mobileDetailFocus && detailPanelInner ? (
                   <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     {detailPanelInner}
                   </div>
