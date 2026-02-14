@@ -740,7 +740,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return window.innerWidth >= DESKTOP_BREAKPOINT
   })
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
-  const [mobileDetailFocus, setMobileDetailFocus] = useState(false)
+  const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
@@ -1107,7 +1107,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       setSelectedBangumiId(id)
       setSelectedPointId(pointId || null)
       if (!isDesktop) {
-        setMobileDetailFocus(false)
+        setMobilePointPopupOpen(false)
         setMobilePanelOpen(false)
       }
       setDetailLoading(true)
@@ -1221,8 +1221,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       if (!pointId) return
       setSelectedPointId(pointId)
       if (!isDesktopRef.current) {
-        setMobileDetailFocus(true)
-        setMobilePanelOpen(true)
+        setMobilePointPopupOpen(true)
       }
       const activeDetail = detailRef.current
       const target = activeDetail?.points.find((point) => matchPointId(point.id, pointId)) || null
@@ -1404,6 +1403,18 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return () => window.cancelAnimationFrame(rafId)
   }, [isDesktop, mobilePanelOpen])
 
+  useEffect(() => {
+    if (isDesktop) {
+      setMobilePointPopupOpen(false)
+    }
+  }, [isDesktop])
+
+  useEffect(() => {
+    if (!selectedPoint) {
+      setMobilePointPopupOpen(false)
+    }
+  }, [selectedPoint])
+
   const onSubmitQuery = useCallback(() => {
     setQuery(queryInput.trim())
     setSearchOpen(false)
@@ -1574,7 +1585,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
             onClick={() => {
               setDetail(null)
-              setMobileDetailFocus(false)
+              setMobilePointPopupOpen(false)
             }}
           >
             {label.close}
@@ -1618,10 +1629,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
               onClick={() => {
                 setSelectedPointId(point.id)
-                if (!isDesktopRef.current) {
-                  setMobileDetailFocus(true)
-                  setMobilePanelOpen(true)
-                }
+                if (!isDesktopRef.current) setMobilePointPopupOpen(false)
                 if (point.geo && mapRef.current) {
                   focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
                 }
@@ -1851,6 +1859,45 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     </>
   )
 
+  const mobilePointPopup = !isDesktop && !mobilePanelOpen && mobilePointPopupOpen && selectedPoint ? (
+    <div className="pointer-events-none absolute inset-x-3 z-30" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="pointer-events-auto mx-auto max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur">
+        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+          <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{selectedPoint.name}</h3>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+            onClick={() => setMobilePointPopupOpen(false)}
+          >
+            {label.close}
+          </button>
+        </div>
+        <div className="space-y-2 px-3 py-3">
+          {selectedPoint.image ? <img src={selectedPoint.image} alt={selectedPoint.name} className="h-40 w-full rounded-md object-cover" /> : null}
+          <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
+            {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
+            {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
+            {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
+          </div>
+          <div className="flex items-center gap-2">
+            {geoLink(selectedPoint) ? (
+              <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
+                {label.openInGoogle}
+              </a>
+            ) : null}
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
+            >
+              {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
@@ -1872,14 +1919,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
           </div>
 
+          {mobilePointPopup}
+
           {!isDesktop ? (
             <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center mobile-safe-bottom">
               <button
                 type="button"
-                onClick={() => {
-                  setMobileDetailFocus(false)
-                  setMobilePanelOpen(true)
-                }}
+                onClick={() => setMobilePanelOpen(true)}
                 className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-medium text-slate-700 shadow-lg backdrop-blur hover:bg-white"
               >
                 <span>{detail ? `${label.selected} · ${detail.card.title}` : label.openPanel}</span>
@@ -1920,10 +1966,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                   <button
                     type="button"
                     className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    onClick={() => {
-                      setMobileDetailFocus(false)
-                      setMobilePanelOpen(false)
-                    }}
+                    onClick={() => setMobilePanelOpen(false)}
                   >
                     {label.hidePanel}
                   </button>
@@ -1933,13 +1976,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {explorerHeader}
 
               <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
-                {mobileDetailFocus && detailPanelInner ? (
-                  <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    {detailPanelInner}
-                  </div>
-                ) : null}
                 {cardsList}
-                {!mobileDetailFocus && detailPanelInner ? (
+                {detailPanelInner ? (
                   <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     {detailPanelInner}
                   </div>
