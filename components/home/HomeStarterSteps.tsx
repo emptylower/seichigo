@@ -20,7 +20,7 @@ export default function HomeStarterSteps({
   if (!steps.length) return null
 
   return (
-    <section className="space-y-6 max-w-7xl mx-auto px-6">
+    <section className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6">
       <div className="flex items-center justify-between px-1 border-l-4 border-brand-500 pl-3">
         <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.starterTitle', locale)}</h2>
       </div>

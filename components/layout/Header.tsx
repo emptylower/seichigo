@@ -25,7 +25,7 @@ export default async function Header({ locale = 'zh' }: Props) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+      <div className="mx-auto flex min-h-[var(--site-header-h)] max-w-5xl items-center justify-between px-4 py-2">
         <Link href={prefixPath('/', locale)} className="flex items-center gap-2">
           <Image
             src="/brand/app-logo.png"

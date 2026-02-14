@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiChangelogDTO, AnitabiMapTab } from '@/lib/anitabi/types'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 
 type Props = {
   locale: SupportedLocale
@@ -45,6 +46,7 @@ const POINT_LAYER_ID = 'anitabi-bangumi-point-layer'
 const POINT_SELECTED_HALO_LAYER_ID = 'anitabi-bangumi-point-selected-halo-layer'
 const POINT_SELECTED_LAYER_ID = 'anitabi-bangumi-point-selected-layer'
 const DETAIL_PANEL_WIDTH = 340
+const DESKTOP_BREAKPOINT = 1024
 const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
@@ -101,6 +103,16 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favorites: '收藏',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
+    street: '街道',
+    satellite: '卫星',
+    search: '搜索',
+    allCities: '全部',
+    searchCityPrefix: '城市',
+    searchAnimePrefix: '作品',
+    searchPointPrefix: '地标',
+    openPanel: '打开列表面板',
+    hidePanel: '收起面板',
+    panel: '作品与筛选',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -133,6 +145,16 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favorites: 'Favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
+    street: 'Street',
+    satellite: 'Satellite',
+    search: 'Search',
+    allCities: 'All',
+    searchCityPrefix: 'City',
+    searchAnimePrefix: 'Anime',
+    searchPointPrefix: 'Spot',
+    openPanel: 'Open list panel',
+    hidePanel: 'Hide panel',
+    panel: 'Titles & filters',
   },
   ja: {
     title: '巡礼マップ',
@@ -165,6 +187,16 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favorites: 'お気に入り',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
+    street: '街道',
+    satellite: '衛星',
+    search: '検索',
+    allCities: 'すべて',
+    searchCityPrefix: '都市',
+    searchAnimePrefix: '作品',
+    searchPointPrefix: 'スポット',
+    openPanel: 'リストを開く',
+    hidePanel: 'パネルを閉じる',
+    panel: '作品と絞り込み',
   },
 }
 
@@ -693,6 +725,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const cardFeedTokenRef = useRef(0)
   const focusTimerRef = useRef<number | null>(null)
   const rangeOverlayRef = useRef<{ data: GeoJSON.FeatureCollection<GeoJSON.Polygon>; color: string } | null>(null)
+  const isDesktopRef = useRef(true)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -702,6 +735,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(parsed.p)
   const [styleMode, setStyleMode] = useState<'street' | 'satellite'>('street')
   const [changelogOpen, setChangelogOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.innerWidth >= DESKTOP_BREAKPOINT
+  })
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
@@ -728,16 +766,20 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return new Set((meState?.favorites || []).map((row) => row.targetKey))
   }, [meState])
 
+  useEffect(() => {
+    isDesktopRef.current = isDesktop
+  }, [isDesktop])
+
   const getCameraPadding = useCallback((withDetailPanel: boolean): CameraPadding => {
     const map = mapRef.current
     const defaultTop = 56
 
     if (!map) {
-      const sidePadding = withDetailPanel ? DETAIL_PANEL_WIDTH + 24 : 40
+      const sidePadding = withDetailPanel && isDesktop ? DETAIL_PANEL_WIDTH + 24 : 40
       return {
         top: defaultTop,
         right: sidePadding,
-        bottom: withDetailPanel ? 120 : defaultTop,
+        bottom: withDetailPanel ? (isDesktop ? 120 : 220) : defaultTop,
         left: 40,
       }
     }
@@ -745,8 +787,19 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const container = map.getContainer()
     const width = container.clientWidth
     const height = container.clientHeight
-    const isDesktop = width >= 1024
-    const rightPanel = withDetailPanel && isDesktop ? Math.min(Math.round(width * 0.42), DETAIL_PANEL_WIDTH + 24) : 28
+    const desktopViewport = width >= DESKTOP_BREAKPOINT
+
+    if (!desktopViewport) {
+      const top = Math.max(22, Math.round(height * 0.06))
+      return {
+        top,
+        right: 22,
+        left: 22,
+        bottom: withDetailPanel ? Math.max(220, Math.round(height * 0.4)) : Math.max(88, Math.round(height * 0.16)),
+      }
+    }
+
+    const rightPanel = withDetailPanel ? Math.min(Math.round(width * 0.42), DETAIL_PANEL_WIDTH + 24) : 28
     const top = Math.max(28, Math.round(height * 0.08))
     const bottom = withDetailPanel ? Math.max(82, Math.round(height * 0.24)) : top
     const left = Math.max(28, Math.round(width * 0.07))
@@ -1052,6 +1105,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     async (id: number, pointId?: string | null) => {
       setSelectedBangumiId(id)
       setSelectedPointId(pointId || null)
+      if (!isDesktop) {
+        setMobilePanelOpen(true)
+      }
       setDetailLoading(true)
       try {
         const res = await fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, { method: 'GET' })
@@ -1096,7 +1152,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         setDetailLoading(false)
       }
     },
-    [fitBangumiBounds, focusGeo, locale, meLoaded]
+    [fitBangumiBounds, focusGeo, isDesktop, locale, meLoaded]
   )
 
   useEffect(() => {
@@ -1162,6 +1218,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
       setSelectedPointId(pointId)
+      if (!isDesktopRef.current) {
+        setMobilePanelOpen(true)
+      }
       const activeDetail = detailRef.current
       const target = activeDetail?.points.find((point) => matchPointId(point.id, pointId)) || null
       if (target && isValidGeoPair(target.geo)) {
@@ -1318,6 +1377,30 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return () => window.clearTimeout(timer)
   }, [locateHint])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleResize = () => {
+      const desktop = window.innerWidth >= DESKTOP_BREAKPOINT
+      setIsDesktop(desktop)
+      if (desktop) {
+        setMobilePanelOpen(false)
+      }
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const rafId = window.requestAnimationFrame(() => {
+      map.resize()
+    })
+    return () => window.cancelAnimationFrame(rafId)
+  }, [isDesktop, mobilePanelOpen])
+
   const onSubmitQuery = useCallback(() => {
     setQuery(queryInput.trim())
     setSearchOpen(false)
@@ -1467,199 +1550,309 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     { key: 'hot' as const, label: label.hot },
   ]
 
+  const detailPanelInner = detail ? (
+    <>
+      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+        <div>
+          <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
+          <div className="text-xs text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+            onClick={() => toggleFavorite({ targetType: 'bangumi', bangumiId: detail.card.id }).catch(() => null)}
+            title={meState ? label.favorites : label.signInToFavorite}
+          >
+            {favoriteSet.has(`bangumi:${detail.card.id}`) ? '★' : '☆'}
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+            onClick={() => setDetail(null)}
+          >
+            {label.close}
+          </button>
+        </div>
+      </div>
+
+      {selectedPoint ? (
+        <div className="space-y-2 border-b border-slate-200 px-3 py-3">
+          <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
+          {selectedPoint.image ? <img src={selectedPoint.image} alt={selectedPoint.name} className="h-40 w-full rounded-md object-cover" /> : null}
+          <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
+            {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
+            {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
+            {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
+          </div>
+          <div className="flex items-center gap-2">
+            {geoLink(selectedPoint) ? (
+              <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
+                {label.openInGoogle}
+              </a>
+            ) : null}
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
+            >
+              {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="max-h-[420px] overflow-auto px-3 py-2">
+        {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
+        <div className="space-y-1">
+          {detail.points.map((point) => (
+            <button
+              key={point.id}
+              type="button"
+              className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
+              onClick={() => {
+                setSelectedPointId(point.id)
+                if (!isDesktopRef.current) {
+                  setMobilePanelOpen(true)
+                }
+                if (point.geo && mapRef.current) {
+                  focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
+                }
+              }}
+            >
+              <span className="font-medium">{point.name}</span>
+              {point.ep ? <span className="ml-1 text-slate-500">EP {point.ep}</span> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  ) : null
+
+  const changelogPanelInner = changelogOpen ? (
+    <>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-900">{label.changelog}</h2>
+        <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100" onClick={() => setChangelogOpen(false)}>
+          {label.close}
+        </button>
+      </div>
+      <div className="space-y-3 text-xs text-slate-700">
+        {(bootstrap?.changelog || []).map((item: AnitabiChangelogDTO) => (
+          <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
+            <div className="mb-1 text-[11px] text-slate-500">{item.date}</div>
+            <div className="mb-1 font-medium text-slate-900">{item.title}</div>
+            <div className="whitespace-pre-wrap leading-relaxed text-slate-700">{item.body}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  ) : null
+
+  const explorerHeader = (
+    <div className="space-y-3 border-b border-slate-200 px-4 py-4">
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold text-slate-900">{label.title}</h1>
+        <div className="flex items-center gap-1">
+          <button
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+            onClick={() => setStyleMode(styleMode === 'street' ? 'satellite' : 'street')}
+            type="button"
+          >
+            {styleMode === 'street' ? label.satellite : label.street}
+          </button>
+          <button
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onLocate}
+            type="button"
+            disabled={locating}
+          >
+            {locating ? label.locating : label.locate}
+          </button>
+          <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onRandom} type="button">
+            {label.random}
+          </button>
+        </div>
+      </div>
+
+      {locateHint ? <div className="text-xs text-slate-500">{locateHint}</div> : null}
+
+      <div className="relative">
+        <div className="flex gap-2">
+          <input
+            value={queryInput}
+            onFocus={() => setSearchOpen(true)}
+            onChange={(e) => setQueryInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSubmitQuery()
+            }}
+            placeholder={label.searchPlaceholder}
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-400"
+          />
+          <button className="rounded-md bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600" onClick={onSubmitQuery} type="button">
+            {label.search}
+          </button>
+        </div>
+
+        {searchOpen && (searchResult.bangumi.length > 0 || searchResult.points.length > 0 || searchResult.cities.length > 0) ? (
+          <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border border-slate-200 bg-white p-2 shadow-xl">
+            {searchResult.cities.slice(0, 6).map((city) => (
+              <button
+                key={`city:${city}`}
+                type="button"
+                className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  setSelectedCity(city)
+                  setSearchOpen(false)
+                }}
+              >
+                {label.searchCityPrefix}：{city}
+              </button>
+            ))}
+            {searchResult.bangumi.slice(0, 10).map((item) => (
+              <button
+                key={`bangumi:${item.id}`}
+                type="button"
+                className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  openBangumi(item.id).catch(() => null)
+                  setSearchOpen(false)
+                }}
+              >
+                {label.searchAnimePrefix}：{item.title}
+              </button>
+            ))}
+            {searchResult.points.slice(0, 10).map((point) => (
+              <button
+                key={`point:${point.id}`}
+                type="button"
+                className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  openBangumi(point.bangumiId, point.id).catch(() => null)
+                  setSearchOpen(false)
+                }}
+              >
+                {label.searchPointPrefix}：{point.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`rounded-full border px-2 py-1 text-xs ${!selectedCity ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
+          onClick={() => setSelectedCity('')}
+        >
+          {label.allCities}
+        </button>
+        {(bootstrap?.facets.cities || []).map((city) => (
+          <button
+            key={city}
+            type="button"
+            className={`rounded-full border px-2 py-1 text-xs ${selectedCity === city ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
+            onClick={() => setSelectedCity(city)}
+          >
+            {city}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        {tabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`rounded-md px-3 py-1.5 text-xs ${tab === item.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+        <button className="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={() => setChangelogOpen((v) => !v)}>
+          {label.changelog}
+        </button>
+      </div>
+    </div>
+  )
+
+  const cardsList = (
+    <>
+      {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
+      {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
+      <div className="space-y-3">
+        {cards.map((card) => {
+          const swatchColor = card.color || '#ec4899'
+          return (
+            <button
+              key={card.id}
+              type="button"
+              onClick={() => openBangumi(card.id).catch(() => null)}
+              className={`group w-full overflow-hidden rounded-2xl border text-left transition ${
+                selectedBangumiId === card.id
+                  ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
+                  : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
+              }`}
+            >
+              <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
+              <div className="flex items-start gap-3 p-3">
+                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                  {card.cover ? (
+                    <img src={card.cover} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
+                    {card.cat ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">{card.cat}</span> : null}
+                  </div>
+                  {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+                    {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
+                  </div>
+                </div>
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white shadow-sm" style={{ background: swatchColor }} />
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <div ref={cardsLoadMoreRef} className="h-2" />
+      {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
+      {cardsLoadError ? (
+        <div className="flex items-center justify-center gap-2 pt-3 text-xs text-rose-600">
+          <span>{cardsLoadError}</span>
+          <button
+            type="button"
+            onClick={() => loadMoreCards().catch(() => null)}
+            className="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+          >
+            {label.retry}
+          </button>
+        </div>
+      ) : null}
+      {!loading && !loadingMoreCards && !hasMoreCards && cards.length > 0 ? (
+        <div className="pt-3 text-center text-xs text-slate-400">{label.loadedAll}</div>
+      ) : null}
+    </>
+  )
+
   return (
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
-        <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
-          <div className="space-y-3 border-b border-slate-200 px-4 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <h1 className="text-lg font-semibold text-slate-900">{label.title}</h1>
-              <div className="flex items-center gap-1">
-                <button
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                  onClick={() => setStyleMode(styleMode === 'street' ? 'satellite' : 'street')}
-                  type="button"
-                >
-                  {styleMode === 'street' ? '卫星' : '街道'}
-                </button>
-                <button
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={onLocate}
-                  type="button"
-                  disabled={locating}
-                >
-                  {locating ? label.locating : label.locate}
-                </button>
-                <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onRandom} type="button">
-                  {label.random}
-                </button>
-              </div>
+        {isDesktop ? (
+          <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
+            {explorerHeader}
+            <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+              {cardsList}
             </div>
-
-            {locateHint ? <div className="text-xs text-slate-500">{locateHint}</div> : null}
-
-            <div className="relative">
-              <div className="flex gap-2">
-                <input
-                  value={queryInput}
-                  onFocus={() => setSearchOpen(true)}
-                  onChange={(e) => setQueryInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onSubmitQuery()
-                  }}
-                  placeholder={label.searchPlaceholder}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-400"
-                />
-                <button className="rounded-md bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600" onClick={onSubmitQuery} type="button">
-                  搜索
-                </button>
-              </div>
-
-              {searchOpen && (searchResult.bangumi.length > 0 || searchResult.points.length > 0 || searchResult.cities.length > 0) ? (
-                <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border border-slate-200 bg-white p-2 shadow-xl">
-                  {searchResult.cities.slice(0, 6).map((city) => (
-                    <button
-                      key={`city:${city}`}
-                      type="button"
-                      className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      onClick={() => {
-                        setSelectedCity(city)
-                        setSearchOpen(false)
-                      }}
-                    >
-                      城市：{city}
-                    </button>
-                  ))}
-                  {searchResult.bangumi.slice(0, 10).map((item) => (
-                    <button
-                      key={`bangumi:${item.id}`}
-                      type="button"
-                      className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      onClick={() => {
-                        openBangumi(item.id).catch(() => null)
-                        setSearchOpen(false)
-                      }}
-                    >
-                      作品：{item.title}
-                    </button>
-                  ))}
-                  {searchResult.points.slice(0, 10).map((point) => (
-                    <button
-                      key={`point:${point.id}`}
-                      type="button"
-                      className="mb-1 block w-full rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      onClick={() => {
-                        openBangumi(point.bangumiId, point.id).catch(() => null)
-                        setSearchOpen(false)
-                      }}
-                    >
-                      地标：{point.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`rounded-full border px-2 py-1 text-xs ${!selectedCity ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
-                onClick={() => setSelectedCity('')}
-              >
-                全部
-              </button>
-              {(bootstrap?.facets.cities || []).map((city) => (
-                <button
-                  key={city}
-                  type="button"
-                  className={`rounded-full border px-2 py-1 text-xs ${selectedCity === city ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
-                  onClick={() => setSelectedCity(city)}
-                >
-                  {city}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              {tabs.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`rounded-md px-3 py-1.5 text-xs ${tab === item.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                  onClick={() => setTab(item.key)}
-                >
-                  {item.label}
-                </button>
-              ))}
-              <button className="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={() => setChangelogOpen((v) => !v)}>
-                {label.changelog}
-              </button>
-            </div>
-          </div>
-
-          <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
-            {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
-            {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
-            <div className="space-y-3">
-              {cards.map((card) => {
-                const swatchColor = card.color || '#ec4899'
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => openBangumi(card.id).catch(() => null)}
-                    className={`group w-full overflow-hidden rounded-2xl border text-left transition ${
-                      selectedBangumiId === card.id
-                        ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
-                        : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
-                    }`}
-                  >
-                    <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
-                    <div className="flex items-start gap-3 p-3">
-                      <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                        {card.cover ? (
-                          <img src={card.cover} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
-                        ) : (
-                          <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
-                          {card.cat ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">{card.cat}</span> : null}
-                        </div>
-                        {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
-                          {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
-                        </div>
-                      </div>
-                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white shadow-sm" style={{ background: swatchColor }} />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            <div ref={cardsLoadMoreRef} className="h-2" />
-            {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
-            {cardsLoadError ? (
-              <div className="flex items-center justify-center gap-2 pt-3 text-xs text-rose-600">
-                <span>{cardsLoadError}</span>
-                <button
-                  type="button"
-                  onClick={() => loadMoreCards().catch(() => null)}
-                  className="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
-                >
-                  {label.retry}
-                </button>
-              </div>
-            ) : null}
-            {!loading && !loadingMoreCards && !hasMoreCards && cards.length > 0 ? (
-              <div className="pt-3 text-center text-xs text-slate-400">{label.loadedAll}</div>
-            ) : null}
-          </div>
-        </aside>
+          </aside>
+        ) : null}
 
         <section className="relative h-full min-h-0">
           <div ref={mapRootRef} className="h-full w-full" />
@@ -1670,99 +1863,69 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
           </div>
 
-          {detail ? (
-            <div className="absolute right-4 top-14 z-20 max-h-[calc(100%-80px)] w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-                <div>
-                  <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
-                  <div className="text-xs text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-                    onClick={() => toggleFavorite({ targetType: 'bangumi', bangumiId: detail.card.id }).catch(() => null)}
-                    title={meState ? label.favorites : label.signInToFavorite}
-                  >
-                    {favoriteSet.has(`bangumi:${detail.card.id}`) ? '★' : '☆'}
-                  </button>
-                  <button type="button" className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100" onClick={() => setDetail(null)}>
-                    {label.close}
-                  </button>
-                </div>
-              </div>
-
-              {selectedPoint ? (
-                <div className="space-y-2 border-b border-slate-200 px-3 py-3">
-                  <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
-                  {selectedPoint.image ? <img src={selectedPoint.image} alt={selectedPoint.name} className="h-40 w-full rounded-md object-cover" /> : null}
-                  <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
-                    {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
-                    {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
-                    {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {geoLink(selectedPoint) ? (
-                      <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
-                        {label.openInGoogle}
-                      </a>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                      onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
-                    >
-                      {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="max-h-[420px] overflow-auto px-3 py-2">
-                {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
-                <div className="space-y-1">
-                  {detail.points.map((point) => (
-                    <button
-                      key={point.id}
-                      type="button"
-                      className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
-                      onClick={() => {
-                        setSelectedPointId(point.id)
-                        if (point.geo && mapRef.current) {
-                          focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
-                        }
-                      }}
-                    >
-                      <span className="font-medium">{point.name}</span>
-                      {point.ep ? <span className="ml-1 text-slate-500">EP {point.ep}</span> : null}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {!isDesktop ? (
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center mobile-safe-bottom">
+              <button
+                type="button"
+                onClick={() => setMobilePanelOpen(true)}
+                className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-medium text-slate-700 shadow-lg backdrop-blur hover:bg-white"
+              >
+                <span>{detail ? `${label.selected} · ${detail.card.title}` : label.openPanel}</span>
+              </button>
             </div>
           ) : null}
 
-          {changelogOpen ? (
+          {isDesktop && detailPanelInner ? (
+            <div className="absolute right-4 top-14 z-20 max-h-[calc(100%-80px)] w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+              {detailPanelInner}
+            </div>
+          ) : null}
+
+          {isDesktop && changelogPanelInner ? (
             <div className="absolute bottom-4 left-4 z-20 max-h-[45vh] w-[360px] overflow-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">{label.changelog}</h2>
-                <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100" onClick={() => setChangelogOpen(false)}>
-                  {label.close}
-                </button>
-              </div>
-              <div className="space-y-3 text-xs text-slate-700">
-                {(bootstrap?.changelog || []).map((item: AnitabiChangelogDTO) => (
-                  <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
-                    <div className="mb-1 text-[11px] text-slate-500">{item.date}</div>
-                    <div className="mb-1 font-medium text-slate-900">{item.title}</div>
-                    <div className="whitespace-pre-wrap leading-relaxed text-slate-700">{item.body}</div>
-                  </div>
-                ))}
-              </div>
+              {changelogPanelInner}
             </div>
           ) : null}
         </section>
       </div>
+
+      {!isDesktop ? (
+        <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
+          <SheetContent side="bottom" className="h-[84dvh] rounded-t-2xl border border-slate-200 bg-white p-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-300" />
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-slate-900">{label.panel}</h2>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                    onClick={() => setMobilePanelOpen(false)}
+                  >
+                    {label.hidePanel}
+                  </button>
+                </div>
+              </div>
+
+              {explorerHeader}
+
+              <div ref={cardsContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+                {cardsList}
+                {detailPanelInner ? (
+                  <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {detailPanelInner}
+                  </div>
+                ) : null}
+                {changelogPanelInner ? (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    {changelogPanelInner}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </div>
   )
 }

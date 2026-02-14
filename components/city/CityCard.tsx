@@ -84,13 +84,13 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="line-clamp-1 text-lg font-bold text-gray-900 group-hover:text-brand-600">
+      <div className="flex flex-1 flex-col p-3 sm:p-4">
+        <h3 className="line-clamp-1 text-base font-bold text-gray-900 group-hover:text-brand-600 sm:text-lg">
           {locale === 'en' && city.name_en ? city.name_en : locale === 'ja' && city.name_ja ? city.name_ja : city.name_zh}
         </h3>
-        <p className="mt-1 line-clamp-2 min-h-[2.5em] text-sm text-gray-500">{description}</p>
+        <p className="mt-1 line-clamp-2 min-h-[2.2em] text-xs text-gray-500 sm:min-h-[2.5em] sm:text-sm">{description}</p>
 
-        <div className="mt-auto flex items-center justify-between pt-3 text-xs font-medium text-gray-400">
+        <div className="mt-auto flex items-center justify-between pt-2 text-[11px] font-medium text-gray-400 sm:pt-3 sm:text-xs">
           <span className={postCount > 0 ? 'text-brand-600' : ''}>
             {postCount} {locale === 'en' ? 'posts' : locale === 'ja' ? '件の記事' : '篇文章'}
           </span>

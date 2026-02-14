@@ -21,7 +21,7 @@ export default function RouteCardActions({
   navSurface = 'resources-card-actions',
 }: Props) {
   return (
-    <div className="grid w-full grid-cols-3 gap-2" data-nav-surface={navSurface}>
+    <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3" data-nav-surface={navSurface}>
       <Link
         href={articleHref}
         data-nav-surface={navSurface}

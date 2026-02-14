@@ -177,7 +177,7 @@ function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: Sup
         </summary>
 
         <div className="px-4 pb-4 md:px-5">
-          <div className="seichi-route__list">
+          <div className="seichi-route__list hidden md:block">
             <table className="seichi-route__table">
               <thead>
                 <tr>
@@ -227,6 +227,56 @@ function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: Sup
             </table>
           </div>
 
+          <div className="mt-3 space-y-2 md:hidden">
+            {route.spots.map((s) => {
+              const nav = spotNavHref(s)
+              const sid = spotAnchorId(route, s)
+              const spotPath = spotLinkPath(route, s, locale)
+              return (
+                <article
+                  key={sid}
+                  id={sid}
+                  style={{ scrollMarginTop: 'calc(var(--site-header-h, 60px) + 16px)' }}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <span>{s.order}.</span>
+                        <span className="line-clamp-2">
+                          {s.label}
+                          {s.name_ja ? <span className="ml-1 text-xs font-normal text-gray-500">（{s.name_ja}）</span> : null}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600">{s.nearestStation_zh || '—'}</div>
+                    </div>
+                    <CopyLinkButton
+                      path={spotPath}
+                      label={t('resources.actions.copy', locale)}
+                      locale={locale}
+                      className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                    />
+                  </div>
+
+                  <div className="mt-2 grid gap-1 text-xs text-slate-600">
+                    <div>{t('route.table.photoTip', locale)}：{s.photoTip || '—'}</div>
+                    <div>{t('route.table.timestamp', locale)}：{s.animeScene || '—'}</div>
+                  </div>
+
+                  <div className="mt-2">
+                    {nav ? (
+                      <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
+                        {t('route.table.open', locale)}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-slate-400">—</span>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
             <div>{t('resources.routeCard.onlyFirstRouteNote', locale)}</div>
             <Link className="text-brand-600 hover:text-brand-700" href={prefixPath(`/posts/${encodeURIComponent(route.articleSlug)}`, locale)}>
@@ -263,12 +313,12 @@ export default function RouteDirectory({
       {groupsWithSectionId.length ? (
         <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-pink-50/30 p-4 md:p-5">
           <div className="text-xs font-semibold tracking-[0.1em] text-slate-500">{copy.quickJump}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible sm:pb-0">
             {groupsWithSectionId.map((g) => (
               <a
                 key={g.animeId}
                 href={`#${g.sectionId}`}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
+                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
               >
                 <span className="max-w-[170px] truncate">{g.animeName}</span>
                 <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{routeCountLabel(g.routeCount)}</span>
@@ -277,7 +327,7 @@ export default function RouteDirectory({
             {upcomingAnime.length ? (
               <a
                 href="#coming-soon"
-                className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
+                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
               >
                 <span>{copy.soonLink}</span>
                 <span className="rounded-full bg-white px-1.5 py-0.5 text-[11px] text-brand-700">{upcomingAnime.length}</span>

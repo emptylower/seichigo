@@ -63,6 +63,14 @@ describe('RouteCardActions', () => {
   })
 
   describe('link hrefs', () => {
+    it('uses mobile-first single-column layout with desktop three-column fallback', () => {
+      const { container } = render(<RouteCardActions {...baseProps} locale="en" />)
+      const root = container.querySelector('[data-nav-surface="resources-card-actions"]')
+      expect(root).toBeTruthy()
+      expect(root?.className).toContain('grid-cols-1')
+      expect(root?.className).toContain('sm:grid-cols-3')
+    })
+
     it('links to correct article href', () => {
       render(<RouteCardActions {...baseProps} locale="en" />)
       

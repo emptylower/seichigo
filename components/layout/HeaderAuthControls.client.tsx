@@ -19,6 +19,7 @@ type Session = {
 
 type Props = {
   locale: SiteLocale
+  layout?: 'inline' | 'stack'
   labels: {
     admin: string
     favorites: string
@@ -29,7 +30,7 @@ type Props = {
   }
 }
 
-export default function HeaderAuthControls({ locale, labels }: Props) {
+export default function HeaderAuthControls({ locale, layout = 'inline', labels }: Props) {
   const [session, setSession] = useState<Session>(null)
   const [loaded, setLoaded] = useState(false)
 
@@ -86,13 +87,73 @@ export default function HeaderAuthControls({ locale, labels }: Props) {
   const showAuthed = Boolean(session?.user)
   const showAnon = !showAuthed
 
+  const anonControls = layout === 'stack' ? (
+    <div className="grid gap-2">
+      <Link
+        href="/auth/signin"
+        className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+      >
+        {labels.signin}
+      </Link>
+      <Link href="/auth/signup" className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-600">
+        {labels.signup}
+      </Link>
+    </div>
+  ) : (
+    <div className="flex items-center gap-2">
+      <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+      <Link href="/auth/signup" className="btn-primary">{labels.signup}</Link>
+    </div>
+  )
+
   // Keep a stable initial render (avoid hydration mismatch) by rendering the
   // anonymous controls until session is loaded.
   if (!loaded) {
+    return anonControls
+  }
+
+  if (layout === 'stack') {
     return (
-      <div className="flex items-center gap-2">
-        <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-        <Link href="/auth/signup" className="btn-primary">{labels.signup}</Link>
+      <div className="grid gap-2.5 text-sm">
+        {session?.user?.isAdmin ? (
+          <Link
+            href={prefixPath('/admin/panel', locale)}
+            className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+          >
+            {labels.admin}
+          </Link>
+        ) : null}
+
+        {showAuthed ? (
+          <>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <Avatar src={session?.user?.image} name={userLabel} size={32} />
+              <div className="min-w-0">
+                <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
+              </div>
+            </div>
+            <Link
+              href={prefixPath('/me/settings', locale)}
+              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            >
+              用户中心
+            </Link>
+            <a
+              href={prefixPath('/me/favorites', locale)}
+              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            >
+              {labels.favorites}
+            </a>
+            <a
+              href="/api/auth/signout"
+              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            >
+              {labels.signout}
+            </a>
+          </>
+        ) : null}
+
+        {showAnon ? anonControls : null}
       </div>
     )
   }

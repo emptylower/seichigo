@@ -7,10 +7,22 @@
 :root {
   --bg: 255 255 255;
   --fg: 17 24 39; /* gray-900 */
+  --site-header-h: 64px;
+  --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 html, body {
   @apply bg-white text-gray-900 font-body antialiased;
+}
+
+.mobile-safe-bottom {
+  padding-bottom: calc(1rem + var(--mobile-safe-bottom));
+}
+
+@media (min-width: 768px) {
+  .mobile-safe-bottom {
+    padding-bottom: 1rem;
+  }
 }
 
 h1, h2, h3, h4, h5, h6 {

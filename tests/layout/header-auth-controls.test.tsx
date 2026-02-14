@@ -82,4 +82,35 @@ describe('HeaderAuthControls', () => {
     expect(screen.queryByRole('link', { name: labels.signin })).toBeNull()
     expect(screen.queryByRole('link', { name: labels.signup })).toBeNull()
   })
+
+  it('renders stack layout entries for drawer mode', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user: {
+            name: 'Test User',
+            email: 'test@example.com',
+            isAdmin: false,
+          },
+          expires: new Date(Date.now() + 60_000).toISOString(),
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    )
+
+    ;(globalThis as any).fetch = fetchMock
+
+    render(<HeaderAuthControls locale="zh" labels={labels} layout="stack" />)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('用户中心')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.favorites })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.signout })).toBeInTheDocument()
+  })
 })

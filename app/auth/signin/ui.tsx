@@ -156,7 +156,7 @@ export default function SignInClient() {
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-brand-50 via-white to-white">
-      <div className="mx-auto flex max-w-md flex-col px-4 py-12">
+      <div className="mx-auto flex max-w-md flex-col px-4 py-8 sm:py-12">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm">
             <Image src="/brand/app-logo.png" alt="SeichiGo" width={44} height={44} className="h-11 w-11 object-cover" priority />
@@ -167,7 +167,7 @@ export default function SignInClient() {
           </div>
         </div>
 
-        <div className="mt-8 rounded-2xl border border-pink-100 bg-white/80 p-6 shadow-sm backdrop-blur">
+        <div className="mt-8 rounded-2xl border border-pink-100 bg-white/80 p-5 shadow-sm backdrop-blur sm:p-6">
           <h1 className="text-xl font-bold">登录</h1>
 
           {errorParam ? (
@@ -203,7 +203,7 @@ export default function SignInClient() {
                 <label htmlFor="login-email" className={labelClass}>
                   邮箱
                 </label>
-                <div className="mt-1 flex gap-2">
+                <div className="mt-1 flex flex-col gap-2 sm:flex-row">
                   <input
                     id="login-email"
                     className={inputClass}
@@ -213,7 +213,7 @@ export default function SignInClient() {
                     autoComplete="email"
                     required
                   />
-                  <Button type="button" variant="ghost" disabled={!canSendCode} onClick={requestCode} className="shrink-0 whitespace-nowrap">
+                  <Button type="button" variant="ghost" disabled={!canSendCode} onClick={requestCode} className="h-11 shrink-0 whitespace-nowrap sm:h-auto">
                     {sendLabel}
                   </Button>
                 </div>
@@ -238,7 +238,7 @@ export default function SignInClient() {
               {emailHint ? <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{emailHint}</div> : null}
               {emailError ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{emailError}</div> : null}
 
-              <Button type="submit" disabled={loading === 'email-verify'} className="w-full">
+              <Button type="submit" disabled={loading === 'email-verify'} className="h-11 w-full">
                 {loading === 'email-verify' ? '验证中…' : '登录'}
               </Button>
             </form>
@@ -275,7 +275,7 @@ export default function SignInClient() {
 
               {passwordError ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{passwordError}</div> : null}
 
-              <Button type="submit" disabled={loading === 'password'} className="w-full">
+              <Button type="submit" disabled={loading === 'password'} className="h-11 w-full">
                 {loading === 'password' ? '登录中…' : '登录'}
               </Button>
             </form>

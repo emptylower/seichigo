@@ -46,30 +46,30 @@ function coverAlt(name: string | undefined, locale: SiteLocale): string {
 export default function HomePageTemplate({ locale, data }: { locale: SiteLocale; data: HomePortalData }) {
   return (
     <div className="space-y-16 pb-12">
-      <section className="relative px-6 py-12 md:py-20 lg:px-12 overflow-hidden">
+      <section className="relative overflow-hidden px-4 py-10 sm:px-6 sm:py-12 md:py-20 lg:px-12">
         <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-purple-50/30 -z-10" />
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center max-w-7xl mx-auto">
           <div className="space-y-8 text-center lg:text-left">
-            <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl leading-tight">
+            <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-gray-900 sm:text-4xl lg:text-6xl">
               {t('pages.home.heroTitle', locale)}
               <br />
               {t('pages.home.heroTitleLine2', locale)}
             </h1>
-            <p className="max-w-lg mx-auto lg:mx-0 text-lg text-gray-600 sm:text-xl leading-relaxed">
+            <p className="mx-auto max-w-lg text-base leading-relaxed text-gray-600 sm:text-lg md:text-xl lg:mx-0">
               {t('pages.home.heroSubtitle', locale)}
               <br className="hidden sm:block" />
               {t('pages.home.heroSubtitleLine2', locale)}
             </p>
-            <div className="flex flex-wrap justify-center lg:justify-start gap-4 pt-2">
+            <div className="flex flex-col justify-center gap-3 pt-2 sm:flex-row sm:flex-wrap lg:justify-start">
               <Link
                 href={prefixPath('/anime', locale)}
-                className="rounded-full bg-brand-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-all hover:bg-brand-700 hover:shadow-xl hover:-translate-y-0.5"
+                className="inline-flex w-full justify-center rounded-full bg-brand-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-brand-200 transition-all hover:-translate-y-0.5 hover:bg-brand-700 hover:shadow-xl sm:w-auto"
               >
                 {t('pages.home.browseAnimeButton', locale)}
               </Link>
               <Link
                 href={prefixPath('/submit', locale)}
-                className="rounded-full border border-gray-200 bg-white px-6 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900"
+                className="inline-flex w-full justify-center rounded-full border border-gray-200 bg-white px-6 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900 sm:w-auto"
               >
                 {t('pages.home.submitButton', locale)}
               </Link>
@@ -114,7 +114,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
       <HomeStarterSteps steps={data.starterSteps} locale={locale} />
 
       {data.featured ? (
-        <section className="space-y-6 max-w-7xl mx-auto px-6">
+        <section className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
           <div className="flex items-center gap-2 px-1 border-l-4 border-brand-500 pl-3">
             <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.featuredSectionTitle', locale)}</h2>
           </div>
@@ -124,7 +124,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
 
       <HomePopularAnime items={data.popularAnime} locale={locale} />
 
-      <section className="space-y-6 max-w-7xl mx-auto px-6">
+      <section className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
         <div className="flex items-center justify-between px-1 border-l-4 border-brand-500 pl-3">
           <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.latestSectionTitle', locale)}</h2>
           <Link href={prefixPath('/anime', locale)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
@@ -139,7 +139,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
       <HomePopularCities items={data.popularCities} locale={locale} />
 
       {data.more.length ? (
-        <section className="space-y-6 max-w-7xl mx-auto px-6">
+        <section className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
           <div className="flex items-center justify-between px-1 border-l-4 border-brand-500 pl-3">
             <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.exploreSectionTitle', locale)}</h2>
             <Link href={prefixPath('/anime', locale)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
@@ -176,7 +176,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         </section>
       ) : null}
 
-      <section className="max-w-7xl mx-auto px-6">
+      <section className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="relative overflow-hidden rounded-3xl bg-gray-900 px-6 py-12 shadow-2xl sm:px-12 md:py-16">
           <div className="absolute top-0 right-0 -mt-20 -mr-20 h-80 w-80 rounded-full bg-brand-500 opacity-20 blur-3xl" />
           <div className="absolute bottom-0 left-0 -mb-20 -ml-20 h-80 w-80 rounded-full bg-purple-500 opacity-20 blur-3xl" />
