@@ -40,6 +40,10 @@ const CARD_LIST_PREFETCH_ROOT_MARGIN = '0px 0px 320px 0px'
 const RANGE_SOURCE_ID = 'anitabi-bangumi-range-source'
 const RANGE_FILL_LAYER_ID = 'anitabi-bangumi-range-fill'
 const RANGE_LINE_LAYER_ID = 'anitabi-bangumi-range-line'
+const POINT_SOURCE_ID = 'anitabi-bangumi-point-source'
+const POINT_LAYER_ID = 'anitabi-bangumi-point-layer'
+const POINT_SELECTED_HALO_LAYER_ID = 'anitabi-bangumi-point-selected-halo-layer'
+const POINT_SELECTED_LAYER_ID = 'anitabi-bangumi-point-selected-layer'
 const DETAIL_PANEL_WIDTH = 340
 
 type CameraPadding = {
@@ -50,6 +54,11 @@ type CameraPadding = {
 }
 
 type PointCoord = [number, number]
+type PointFeatureProperties = {
+  pointId: string
+  color: string
+  selected: number
+}
 
 function parseNumberParam(value: string | null): number | null {
   if (value == null || value === '') return null
@@ -232,10 +241,43 @@ function matchPointId(candidateId: string, pointId: string): boolean {
   return candidateId.endsWith(`:${pointId}`)
 }
 
+function isValidGeoPair(geo: [number, number] | null): geo is [number, number] {
+  return Array.isArray(geo) && Number.isFinite(geo[0]) && Number.isFinite(geo[1])
+}
+
 function collectPointCoords(points: AnitabiBangumiDTO['points']): PointCoord[] {
   return points
-    .filter((point): point is typeof point & { geo: [number, number] } => Array.isArray(point.geo))
+    .filter((point): point is typeof point & { geo: [number, number] } => isValidGeoPair(point.geo))
     .map((point) => [point.geo[1], point.geo[0]])
+}
+
+function buildPointFeatureCollection(
+  detail: AnitabiBangumiDTO,
+  selectedPointId: string | null
+): GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties> {
+  const color = detail.card.color || '#6d28d9'
+  const features: Array<GeoJSON.Feature<GeoJSON.Point, PointFeatureProperties>> = []
+
+  for (const point of detail.points) {
+    if (!isValidGeoPair(point.geo)) continue
+    features.push({
+      type: 'Feature',
+      properties: {
+        pointId: point.id,
+        color,
+        selected: selectedPointId && matchPointId(point.id, selectedPointId) ? 1 : 0,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [point.geo[1], point.geo[0]],
+      },
+    })
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  }
 }
 
 function toRadians(value: number): number {
@@ -323,6 +365,13 @@ function removeRangeLayer(map: maplibregl.Map): void {
   if (map.getSource(RANGE_SOURCE_ID)) map.removeSource(RANGE_SOURCE_ID)
 }
 
+function removePointLayer(map: maplibregl.Map): void {
+  if (map.getLayer(POINT_SELECTED_LAYER_ID)) map.removeLayer(POINT_SELECTED_LAYER_ID)
+  if (map.getLayer(POINT_SELECTED_HALO_LAYER_ID)) map.removeLayer(POINT_SELECTED_HALO_LAYER_ID)
+  if (map.getLayer(POINT_LAYER_ID)) map.removeLayer(POINT_LAYER_ID)
+  if (map.getSource(POINT_SOURCE_ID)) map.removeSource(POINT_SOURCE_ID)
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.trim().replace('#', '')
   if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(normalized)) {
@@ -337,62 +386,6 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
 }
 
-function createPointMarkerElement(options: { color: string; selected: boolean; title: string }): HTMLButtonElement {
-  const { color, selected, title } = options
-  const marker = document.createElement('button')
-  marker.type = 'button'
-  marker.title = title
-  marker.setAttribute('aria-label', title)
-  marker.style.position = 'relative'
-  marker.style.display = 'grid'
-  marker.style.placeItems = 'center'
-  marker.style.width = selected ? '30px' : '14px'
-  marker.style.height = selected ? '30px' : '14px'
-  marker.style.padding = '0'
-  marker.style.border = 'none'
-  marker.style.background = 'transparent'
-  marker.style.cursor = 'pointer'
-  marker.style.zIndex = selected ? '50' : '10'
-
-  const core = document.createElement('span')
-  core.style.display = 'block'
-  core.style.width = selected ? '15px' : '12px'
-  core.style.height = selected ? '15px' : '12px'
-  core.style.borderRadius = '999px'
-  core.style.border = selected ? '3px solid #ffffff' : '2px solid #ffffff'
-  core.style.background = color
-  core.style.boxShadow = selected ? '0 0 0 2px rgba(15,23,42,0.58), 0 10px 24px rgba(0,0,0,0.35)' : '0 1px 4px rgba(0,0,0,0.32)'
-  marker.appendChild(core)
-
-  if (selected) {
-    const ring = document.createElement('span')
-    ring.style.position = 'absolute'
-    ring.style.inset = '0'
-    ring.style.borderRadius = '999px'
-    ring.style.border = `2px solid ${hexToRgba(color, 0.66)}`
-    ring.style.boxShadow = `0 0 0 4px ${hexToRgba(color, 0.24)}`
-    ring.style.pointerEvents = 'none'
-    marker.appendChild(ring)
-
-    const pulse = document.createElement('span')
-    pulse.style.position = 'absolute'
-    pulse.style.inset = '1px'
-    pulse.style.borderRadius = '999px'
-    pulse.style.background = hexToRgba(color, 0.25)
-    pulse.style.pointerEvents = 'none'
-    marker.appendChild(pulse)
-    if (typeof pulse.animate === 'function') {
-      pulse.animate([{ transform: 'scale(0.78)', opacity: 0.9 }, { transform: 'scale(1.34)', opacity: 0 }], {
-        duration: 1350,
-        iterations: Number.POSITIVE_INFINITY,
-        easing: 'ease-out',
-      })
-    }
-  }
-
-  return marker
-}
-
 export default function AnitabiMapPageClient({ locale }: Props) {
   const label = L[locale]
 
@@ -400,7 +393,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const mapRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const markersRef = useRef<maplibregl.Marker[]>([])
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
   const cardsContainerRef = useRef<HTMLDivElement | null>(null)
@@ -546,6 +538,61 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     },
     [getCameraPadding]
   )
+
+  const syncPointLayer = useCallback(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) return false
+
+    removePointLayer(map)
+    if (!detail) return true
+
+    const data = buildPointFeatureCollection(detail, selectedPointId)
+    map.addSource(POINT_SOURCE_ID, {
+      type: 'geojson',
+      data,
+    })
+
+    map.addLayer({
+      id: POINT_LAYER_ID,
+      type: 'circle',
+      source: POINT_SOURCE_ID,
+      paint: {
+        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 3.4, 8, 5.4, 12, 6.8],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.2, 12, 2.2],
+        'circle-opacity': 0.95,
+      },
+    })
+
+    map.addLayer({
+      id: POINT_SELECTED_HALO_LAYER_ID,
+      type: 'circle',
+      source: POINT_SOURCE_ID,
+      filter: ['==', ['get', 'selected'], 1],
+      paint: {
+        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 8, 12, 12, 16],
+        'circle-opacity': 0.2,
+      },
+    })
+
+    map.addLayer({
+      id: POINT_SELECTED_LAYER_ID,
+      type: 'circle',
+      source: POINT_SOURCE_ID,
+      filter: ['==', ['get', 'selected'], 1],
+      paint: {
+        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 5, 8, 7.2, 12, 8.8],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.8, 12, 2.6],
+        'circle-opacity': 0.98,
+      },
+    })
+
+    return true
+  }, [detail, selectedPointId])
 
   const syncRangeOverlay = useCallback(() => {
     const map = mapRef.current
@@ -795,10 +842,40 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.on('moveend', () => syncUrlRef.current())
+    const pointLayerIds = () => [POINT_SELECTED_LAYER_ID, POINT_LAYER_ID].filter((id) => Boolean(map.getLayer(id)))
+    const readPointIdFromRendered = (event: maplibregl.MapMouseEvent): string | null => {
+      const layers = pointLayerIds()
+      if (!layers.length) return null
+      const hit = map.queryRenderedFeatures(event.point, { layers })[0]
+      const pointId = hit?.properties?.pointId
+      return typeof pointId === 'string' ? pointId : null
+    }
+    const handlePointClick = (event: maplibregl.MapMouseEvent) => {
+      const pointId = readPointIdFromRendered(event)
+      if (!pointId) return
+      setSelectedPointId(pointId)
+      fetch('/api/anitabi/me/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetType: 'point', pointId }),
+      }).catch(() => null)
+    }
+    const handlePointerMove = (event: maplibregl.MapMouseEvent) => {
+      map.getCanvas().style.cursor = readPointIdFromRendered(event) ? 'pointer' : ''
+    }
+    const resetPointer = () => {
+      map.getCanvas().style.cursor = ''
+    }
+
+    map.on('click', handlePointClick)
+    map.on('mousemove', handlePointerMove)
+    map.on('dragstart', resetPointer)
+    map.on('mouseout', resetPointer)
 
     const resizeMap = () => map.resize()
     map.once('load', () => {
       resizeMap()
+      syncPointLayer()
       syncRangeOverlay()
     })
     const rafId = window.requestAnimationFrame(resizeMap)
@@ -813,59 +890,38 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         window.clearTimeout(focusTimerRef.current)
         focusTimerRef.current = null
       }
-      for (const marker of markersRef.current) marker.remove()
-      markersRef.current = []
       if (userMarkerRef.current) {
         userMarkerRef.current.remove()
         userMarkerRef.current = null
       }
+      map.off('click', handlePointClick)
+      map.off('mousemove', handlePointerMove)
+      map.off('dragstart', resetPointer)
+      map.off('mouseout', resetPointer)
+      removePointLayer(map)
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
     }
-  }, [parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
+  }, [parsed.lat, parsed.lng, parsed.z, syncPointLayer, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     map.once('idle', () => {
+      syncPointLayer()
       syncRangeOverlay()
     })
     map.setStyle(buildStyle(styleMode))
-  }, [styleMode, syncRangeOverlay])
+  }, [styleMode, syncPointLayer, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-
-    for (const marker of markersRef.current) marker.remove()
-    markersRef.current = []
-
-    if (!detail) return
-
-    const color = detail.card.color || '#ec4899'
-
-    for (const point of detail.points) {
-      if (!point.geo) continue
-      const isSelected = selectedPointId ? matchPointId(point.id, selectedPointId) : false
-      const dot = createPointMarkerElement({
-        color,
-        selected: isSelected,
-        title: point.name,
-      })
-      dot.addEventListener('click', () => {
-        setSelectedPointId(point.id)
-        fetch('/api/anitabi/me/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetType: 'point', pointId: point.id }),
-        }).catch(() => null)
-      })
-
-      const marker = new maplibregl.Marker({ element: dot }).setLngLat([point.geo[1], point.geo[0]]).addTo(map)
-      markersRef.current.push(marker)
+    if (!syncPointLayer()) {
+      map.once('idle', () => syncPointLayer())
     }
-  }, [detail, selectedPointId])
+  }, [syncPointLayer])
 
   useEffect(() => {
     const map = mapRef.current
