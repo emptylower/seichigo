@@ -28,8 +28,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/brand/app-logo.png',
+    shortcut: '/brand/app-logo.png',
     apple: '/brand/app-logo.png',
   },
+  manifest: '/manifest.webmanifest',
   openGraph: {
     siteName: 'SeichiGo',
     type: 'website',

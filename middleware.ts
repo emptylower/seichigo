@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 const CHINESE_ZONES = new Set(['CN', 'HK', 'TW', 'MO'])
 const JAPANESE_ZONES = new Set(['JP'])
 const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
+const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanifest|favicon\.ico|favicon\.png|brand\/app-logo\.png)$/
 
 const BOT_PATTERN = /bot|crawler|spider|crawling|slurp|externalhit/i
 
@@ -33,6 +34,15 @@ function isBot(userAgent: string | null): boolean {
   return BOT_PATTERN.test(userAgent)
 }
 
+function resolveLocaleStaticAlias(pathname: string): string | null {
+  if (!LOCALE_PREFIXED_STATIC_ALIAS_PATTERN.test(pathname)) return null
+  const withoutLocale = pathname.replace(/^\/(en|ja)(?=\/)/, '')
+  if (withoutLocale === '/favicon.png') {
+    return '/brand/app-logo.png'
+  }
+  return withoutLocale
+}
+
 function hasLocaleCookie(req: NextRequest): boolean {
   const cookieHeader = req.headers.get('cookie')
   if (!cookieHeader) return false
@@ -46,6 +56,13 @@ export function middleware(req: NextRequest) {
   const headers = new Headers(req.headers)
   headers.set('x-seichigo-pathname', pathname)
   headers.set('x-seichigo-locale', currentLocale)
+
+  const staticAliasPath = resolveLocaleStaticAlias(pathname)
+  if (staticAliasPath) {
+    const url = req.nextUrl.clone()
+    url.pathname = staticAliasPath
+    return NextResponse.rewrite(url, { request: { headers } })
+  }
 
   if (hasLocaleCookie(req)) {
     return NextResponse.next({ request: { headers } })
@@ -88,5 +105,8 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image|sitemap.xml|robots.txt|.*\\..*).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|assets/|opengraph-image|twitter-image|sitemap.xml|robots.txt|.*\\..*).*)',
+    '/(en|ja)/(manifest\\.webmanifest|favicon\\.png|favicon\\.ico|brand/app-logo\\.png)',
+  ],
 }

@@ -1,8 +1,8 @@
 "use client"
 
-import ArticleComposerClient, { type ArticleComposerInitial } from '../_components/ArticleComposerClient'
+import type { ArticleComposerInitial } from '../_components/ArticleComposerClient'
+import ArticleComposerLazy from '../_components/ArticleComposerLazy'
 
 export default function SubmitEditClient({ initial }: { initial: ArticleComposerInitial }) {
-  return <ArticleComposerClient initial={initial} />
+  return <ArticleComposerLazy initial={initial} />
 }
-

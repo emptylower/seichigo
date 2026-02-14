@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { buildJaAlternates } from '@/lib/seo/alternates'
-import AnitabiMapPageClient from '@/components/map/AnitabiMapPageClient'
 import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
 import { notFound } from 'next/navigation'
+import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
 
 export const metadata: Metadata = {
   title: '巡礼マップ',
@@ -30,5 +30,5 @@ export default function MapPageJa() {
     notFound()
   }
 
-  return <AnitabiMapPageClient locale="ja" />
+  return <AnitabiMapPageLazy locale="ja" />
 }

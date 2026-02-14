@@ -288,7 +288,7 @@ function toDegrees(value: number): number {
   return (value * 180) / Math.PI
 }
 
-function haversineMeters(a: PointCoord, b: PointCoord): number {
+function distanceMeters(a: PointCoord, b: PointCoord): number {
   const earthRadius = 6378137
   const lat1 = toRadians(a[1])
   const lat2 = toRadians(b[1])
@@ -300,36 +300,152 @@ function haversineMeters(a: PointCoord, b: PointCoord): number {
   return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(m)))
 }
 
-function buildCoverageCircle(points: PointCoord[]): GeoJSON.FeatureCollection<GeoJSON.Polygon> | null {
-  if (!points.length) return null
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
 
+function normalizeLng(value: number): number {
+  let next = value
+  while (next > 180) next -= 360
+  while (next < -180) next += 360
+  return next
+}
+
+function moveByMeters(origin: PointCoord, bearingRad: number, meters: number): PointCoord {
+  const earthRadius = 6378137
+  const angularDistance = meters / earthRadius
+  const lat1 = toRadians(origin[1])
+  const lng1 = toRadians(origin[0])
+  const sinLat2 = Math.sin(lat1) * Math.cos(angularDistance) + Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearingRad)
+  const lat2 = Math.asin(Math.min(1, Math.max(-1, sinLat2)))
+  const y = Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(lat1)
+  const x = Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+  const lng2 = lng1 + Math.atan2(y, x)
+  return [normalizeLng(toDegrees(lng2)), toDegrees(lat2)]
+}
+
+function closeRing(points: PointCoord[]): PointCoord[] {
+  if (!points.length) return points
+  const first = points[0]
+  const last = points[points.length - 1]
+  if (!first || !last) return points
+  if (first[0] === last[0] && first[1] === last[1]) return points
+  return [...points, [first[0], first[1]]]
+}
+
+function dedupePoints(points: PointCoord[]): PointCoord[] {
+  const seen = new Set<string>()
+  const out: PointCoord[] = []
+  for (const point of points) {
+    const key = `${point[0].toFixed(6)}:${point[1].toFixed(6)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(point)
+  }
+  return out
+}
+
+function cross(o: PointCoord, a: PointCoord, b: PointCoord): number {
+  return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+}
+
+function buildConvexHull(points: PointCoord[]): PointCoord[] {
+  const sorted = dedupePoints(points)
+    .slice()
+    .sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]))
+
+  if (sorted.length <= 2) return sorted
+
+  const lower: PointCoord[] = []
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) {
+      lower.pop()
+    }
+    lower.push(point)
+  }
+
+  const upper: PointCoord[] = []
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    const point = sorted[i]!
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) {
+      upper.pop()
+    }
+    upper.push(point)
+  }
+
+  lower.pop()
+  upper.pop()
+  return [...lower, ...upper]
+}
+
+function buildBBoxRing(points: PointCoord[], paddingMeters: number): PointCoord[] {
+  const lngs = points.map((point) => point[0])
+  const lats = points.map((point) => point[1])
+  const minLng = Math.min(...lngs)
+  const maxLng = Math.max(...lngs)
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+
+  const center: PointCoord = [(minLng + maxLng) / 2, (minLat + maxLat) / 2]
+  const corners: PointCoord[] = [
+    [minLng, minLat],
+    [minLng, maxLat],
+    [maxLng, maxLat],
+    [maxLng, minLat],
+  ]
+
+  return closeRing(
+    corners.map((corner) => {
+      const dx = corner[0] - center[0]
+      const dy = corner[1] - center[1]
+      const bearing = Math.atan2(dx, dy)
+      return moveByMeters(corner, bearing, paddingMeters)
+    })
+  )
+}
+
+function padHull(points: PointCoord[], paddingMeters: number): PointCoord[] {
   const [sumLng, sumLat] = points.reduce<[number, number]>(
     (acc, point) => [acc[0] + point[0], acc[1] + point[1]],
     [0, 0]
   )
   const center: PointCoord = [sumLng / points.length, sumLat / points.length]
 
-  let maxDistance = 0
-  for (const point of points) {
-    maxDistance = Math.max(maxDistance, haversineMeters(center, point))
-  }
+  return closeRing(
+    points.map((point) => {
+      const dx = point[0] - center[0]
+      const dy = point[1] - center[1]
+      const bearing = Math.atan2(dx, dy)
+      return moveByMeters(point, bearing, paddingMeters)
+    })
+  )
+}
 
-  const radiusMeters = Math.min(250000, Math.max(maxDistance * 1.2, points.length === 1 ? 420 : 700))
-  const earthRadius = 6378137
-  const angularDistance = radiusMeters / earthRadius
-  const lat1 = toRadians(center[1])
-  const lng1 = toRadians(center[0])
-  const steps = 72
-  const coordinates: PointCoord[] = []
+function buildCoverageArea(points: PointCoord[]): GeoJSON.FeatureCollection<GeoJSON.Polygon> | null {
+  if (!points.length) return null
 
-  for (let i = 0; i <= steps; i += 1) {
-    const bearing = (i / steps) * Math.PI * 2
-    const sinLat2 = Math.sin(lat1) * Math.cos(angularDistance) + Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
-    const lat2 = Math.asin(Math.min(1, Math.max(-1, sinLat2)))
-    const y = Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1)
-    const x = Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
-    const lng2 = lng1 + Math.atan2(y, x)
-    coordinates.push([toDegrees(lng2), toDegrees(lat2)])
+  const deduped = dedupePoints(points)
+  const lngs = deduped.map((point) => point[0])
+  const lats = deduped.map((point) => point[1])
+  const minLng = Math.min(...lngs)
+  const maxLng = Math.max(...lngs)
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+  const bboxDiagMeters = distanceMeters([minLng, minLat], [maxLng, maxLat])
+
+  const smallPaddingMeters = clamp(Math.max(800, bboxDiagMeters * 0.18), 800, 60000)
+  const largePaddingMeters = clamp(Math.max(900, bboxDiagMeters * 0.08), 900, 70000)
+
+  let ring: PointCoord[]
+  if (deduped.length < 3) {
+    ring = buildBBoxRing(deduped, smallPaddingMeters)
+  } else {
+    const hull = buildConvexHull(deduped)
+    if (hull.length < 3) {
+      ring = buildBBoxRing(deduped, smallPaddingMeters)
+    } else {
+      ring = padHull(hull, largePaddingMeters)
+    }
   }
 
   return {
@@ -338,12 +454,11 @@ function buildCoverageCircle(points: PointCoord[]): GeoJSON.FeatureCollection<Ge
       {
         type: 'Feature',
         properties: {
-          radiusMeters,
           pointsLength: points.length,
         },
         geometry: {
           type: 'Polygon',
-          coordinates: [coordinates],
+          coordinates: [ring],
         },
       },
     ],
@@ -951,10 +1066,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
 
     const points = collectPointCoords(detail.points)
-    const circle = buildCoverageCircle(points)
-    rangeOverlayRef.current = circle
+    const area = buildCoverageArea(points)
+    rangeOverlayRef.current = area
       ? {
-          data: circle,
+          data: area,
           color: detail.card.color || '#ec4899',
         }
       : null

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { buildZhAlternates } from '@/lib/seo/alternates'
-import AnitabiMapPageClient from '@/components/map/AnitabiMapPageClient'
 import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
 import { notFound } from 'next/navigation'
+import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
 
 export const metadata: Metadata = {
   title: '巡礼地图｜动画巡礼地标与截图',
@@ -30,5 +30,5 @@ export default function MapPage() {
     notFound()
   }
 
-  return <AnitabiMapPageClient locale="zh" />
+  return <AnitabiMapPageLazy locale="zh" />
 }

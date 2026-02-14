@@ -179,6 +179,24 @@ describe('i18n IP-based redirect middleware', () => {
       expect(res.status).not.toBe(307)
       expect(res.headers.get('location')).toBeNull()
     })
+
+    it('rewrites locale-prefixed manifest path to root manifest', () => {
+      const req = createRequest('/en/manifest.webmanifest', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/manifest.webmanifest')
+    })
+
+    it('rewrites locale-prefixed favicon fallback to app logo', () => {
+      const req = createRequest('/ja/favicon.png', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/brand/app-logo.png')
+    })
   })
 
   describe('bot detection - skip redirect', () => {

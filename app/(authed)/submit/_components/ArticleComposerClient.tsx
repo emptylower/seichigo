@@ -9,8 +9,9 @@ import type { RichTextValue } from '@/components/editor/RichTextEditor'
 import type { CityOption } from '@/components/city/CityMultiSelect'
 
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), {
+  ssr: false,
   loading: () => (
-    <div className="min-h-[24rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
+    <div className="min-h-[30rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
   ),
 })
 
