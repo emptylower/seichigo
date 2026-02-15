@@ -52,8 +52,6 @@ const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
-const GOOGLE_STREET_VIEW_EMBED_KEY =
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY || ''
 
 type CameraPadding = {
   top: number
@@ -305,14 +303,14 @@ function resolvePanoramaLocation(point: { geo: [number, number] | null; originLi
   return extractLatLngFromGoogleMapsUrl(point.originLink)
 }
 
-function buildGoogleStreetViewEmbedSrc(location: { lat: number; lng: number }, apiKey: string): string | null {
+function buildGoogleStreetViewEmbedSrc(location: { lat: number; lng: number }): string | null {
   if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return null
-  const key = apiKey.trim()
   const params = new URLSearchParams()
-  if (key) params.set('key', key)
-  params.set('location', `${location.lat},${location.lng}`)
-  params.set('fov', '85')
-  return `https://www.google.com/maps/embed/v1/streetview?${params.toString()}`
+  params.set('layer', 'c')
+  params.set('cbll', `${location.lat.toFixed(6)},${location.lng.toFixed(6)}`)
+  params.set('cbp', '12,0,0,0,0')
+  params.set('output', 'svembed')
+  return `https://maps.google.com/maps?${params.toString()}`
 }
 
 function extractMapillaryImageKey(rawInput: string | null | undefined): string | null {
@@ -352,7 +350,7 @@ function buildMapillaryEmbedSrc(imageKey: string): string | null {
 function resolvePanoramaEmbed(point: { geo: [number, number] | null; originLink?: string | null }): PanoramaEmbed | null {
   const location = resolvePanoramaLocation(point)
   if (location) {
-    const googleSrc = buildGoogleStreetViewEmbedSrc(location, GOOGLE_STREET_VIEW_EMBED_KEY)
+    const googleSrc = buildGoogleStreetViewEmbedSrc(location)
     if (googleSrc) return { provider: 'google', src: googleSrc }
   }
 
