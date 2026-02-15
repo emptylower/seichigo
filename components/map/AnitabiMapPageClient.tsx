@@ -1596,7 +1596,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       {selectedPoint ? (
         <div className="space-y-2 border-b border-slate-200 px-3 py-3">
           <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
-          {selectedPoint.image ? <img src={selectedPoint.image} alt={selectedPoint.name} className="h-40 w-full rounded-md object-cover" /> : null}
+          {selectedPoint.image ? (
+            <img
+              src={selectedPoint.image}
+              alt={selectedPoint.name}
+              width={640}
+              height={360}
+              className="h-40 w-full rounded-md object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : null}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
@@ -1823,7 +1833,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               <div className="flex items-start gap-3 p-3">
                 <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                   {card.cover ? (
-                    <img src={card.cover} alt={card.title} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={card.cover} alt={card.title} width={96} height={128} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
                   )}
@@ -1880,7 +1890,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </button>
         </div>
         <div className="space-y-2 px-3 py-3">
-          {selectedPoint.image ? <img src={selectedPoint.image} alt={selectedPoint.name} className="h-40 w-full rounded-md object-cover" /> : null}
+          {selectedPoint.image ? (
+            <img
+              src={selectedPoint.image}
+              alt={selectedPoint.name}
+              width={640}
+              height={360}
+              className="h-40 w-full rounded-md object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : null}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}

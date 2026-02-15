@@ -85,7 +85,7 @@ export default async function AdminOpsPage() {
     initialData = {
       items,
       nextCursor,
-      selectedId: items[0]?.id || null,
+      selectedId: null,
       detailReport: null,
       detailEvents: [],
     }

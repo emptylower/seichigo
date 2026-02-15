@@ -8,6 +8,8 @@ import { NodeSelection, Plugin } from '@tiptap/pm/state'
 type FigureImageAttrs = {
   src: string
   alt?: string
+  naturalWidth?: number | null
+  naturalHeight?: number | null
 }
 
 type CropHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -165,6 +167,8 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
       const h = naturalHeight * fracH
       const ratio = rotate === 90 || rotate === 270 ? `${h} / ${w}` : `${w} / ${h}`
       style['aspect-ratio'] = ratio
+    } else if (mode === 'plain' && naturalWidth && naturalHeight) {
+      style['aspect-ratio'] = `${naturalWidth} / ${naturalHeight}`
     }
     return style
   }, [applyCrop, cropB, cropL, cropR, cropT, mode, naturalHeight, naturalWidth, rotate])
@@ -418,6 +422,8 @@ function FigureImageView({ node, selected, editor, getPos, updateAttributes, HTM
             ref={imgRef}
             src={src}
             alt={alt}
+            width={naturalWidth ?? undefined}
+            height={naturalHeight ?? undefined}
             draggable={!cropEditing}
             contentEditable={false}
             data-drag-handle
@@ -739,6 +745,8 @@ export const FigureImage = Node.create({
       const hEff = naturalHeight * fracH
       const ratio = rotate === 90 || rotate === 270 ? `${hEff} / ${wEff}` : `${wEff} / ${hEff}`
       frameStyleParts.push(`aspect-ratio:${ratio}`)
+    } else if (mode === 'plain' && naturalWidth && naturalHeight) {
+      frameStyleParts.push(`aspect-ratio:${naturalWidth} / ${naturalHeight}`)
     }
 
     const { w, h } = computeRotatedSizeVars({ rotate, naturalWidth, naturalHeight })
@@ -785,6 +793,8 @@ export const FigureImage = Node.create({
             {
               src,
               alt,
+              width: naturalWidth ?? undefined,
+              height: naturalHeight ?? undefined,
               draggable: 'true',
               'data-rotate': String(rotate),
               'data-flip-x': flipX ? '1' : '0',
@@ -812,7 +822,9 @@ export const FigureImage = Node.create({
           const src = normalizeSrc(attrs?.src)
           if (!src) return false
           const alt = String(attrs?.alt || '')
-          return chain().insertContent({ type: this.name, attrs: { src, alt } }).run()
+          const naturalWidth = clampInt(attrs?.naturalWidth, 0, 200000, 0) || undefined
+          const naturalHeight = clampInt(attrs?.naturalHeight, 0, 200000, 0) || undefined
+          return chain().insertContent({ type: this.name, attrs: { src, alt, naturalWidth, naturalHeight } }).run()
         },
     }
   },

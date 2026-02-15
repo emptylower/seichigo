@@ -267,10 +267,14 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
       setItems((prev) => (append ? [...prev, ...data.items] : data.items))
       setNextCursor(data.nextCursor || null)
 
-      const reportToLoad =
-        selectedId && data.items.some((item) => item.id === selectedId)
-          ? selectedId
-          : data.items[0]?.id || (append ? selectedId : null)
+      const hasSelectedInPage = selectedId ? data.items.some((item) => item.id === selectedId) : false
+      const reportToLoad = hasSelectedInPage ? selectedId : null
+
+      if (!append && !hasSelectedInPage) {
+        setSelectedId(null)
+        setDetailReport(null)
+        setDetailEvents([])
+      }
 
       if (!append && reportToLoad) {
         await loadDetail(reportToLoad)
@@ -366,12 +370,6 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     void loadReports()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData])
-
-  useEffect(() => {
-    if (!initialData || !selectedId || detailReport || detailLoading || detailError) return
-    void loadDetail(selectedId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData, selectedId, detailReport, detailLoading, detailError])
 
   useEffect(() => {
     let cancelled = false

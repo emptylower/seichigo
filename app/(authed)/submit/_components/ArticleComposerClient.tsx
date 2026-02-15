@@ -363,6 +363,37 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   }, [])
 
   const displayTitle = title === '未命名' ? '' : title
+  const [richEditorReady, setRichEditorReady] = useState(() => !editable)
+
+  useEffect(() => {
+    if (!editable || richEditorReady) return
+    let cancelled = false
+
+    const maybeGlobal = globalThis as typeof globalThis & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+
+    if (typeof maybeGlobal.requestIdleCallback === 'function') {
+      const idleId = maybeGlobal.requestIdleCallback(() => {
+        if (cancelled) return
+        setRichEditorReady(true)
+      }, { timeout: 1200 })
+      return () => {
+        cancelled = true
+        maybeGlobal.cancelIdleCallback?.(idleId)
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+      setRichEditorReady(true)
+    }, 120)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [editable, richEditorReady])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -385,6 +416,7 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [reviseLoading, setReviseLoading] = useState(false)
+  const saveIndicatorText = saveState === 'creating' ? '创建中…' : saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '已保存' : '\u00A0'
 
   async function loadAnimeOptions(q: string) {
     setAnimeLoading(true)
@@ -566,9 +598,9 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
           </a>
           <div className="flex items-center gap-3 text-xs text-gray-500">
             <span>{formatStatus(status)}</span>
-            {saveState === 'creating' ? <span>创建中…</span> : null}
-            {saveState === 'saving' ? <span>保存中…</span> : null}
-            {saveState === 'saved' ? <span className="text-emerald-700">已保存</span> : null}
+            <span className={`inline-block min-w-[4.5rem] text-right ${saveState === 'saved' ? 'text-emerald-700' : ''}`}>
+              {saveIndicatorText}
+            </span>
           </div>
         </div>
 
@@ -597,12 +629,16 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
 
         <div className="mt-8">
           {editable ? (
-            <RichTextEditor
-              initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
-              value={content}
-              onChange={setContent}
-              onEditorReady={setEditor}
-            />
+            richEditorReady ? (
+              <RichTextEditor
+                initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
+                value={content}
+                onChange={setContent}
+                onEditorReady={setEditor}
+              />
+            ) : (
+              <div className="min-h-[30rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
+            )
           ) : (
             <div className="prose prose-pink max-w-none" dangerouslySetInnerHTML={{ __html: initial?.contentHtml || '' }} />
           )}

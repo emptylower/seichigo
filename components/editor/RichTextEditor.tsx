@@ -494,7 +494,7 @@ export default function RichTextEditor({ initialValue, value, onChange, onEditor
     setUploading(true)
     try {
       const maxBytes = resolveClientAssetMaxBytes()
-      const urls: string[] = []
+      const uploads: Array<{ url: string; naturalWidth: number | null; naturalHeight: number | null }> = []
       let failedCount = 0
       let firstError: string | null = null
       for (const file of files) {
@@ -527,7 +527,22 @@ export default function RichTextEditor({ initialValue, value, onChange, onEditor
               }
               break
             }
-            urls.push(data.url)
+
+            let naturalWidth: number | null = null
+            let naturalHeight: number | null = null
+            try {
+              const img = await loadImageFromFile(candidate)
+              naturalWidth = img.naturalWidth || img.width || null
+              naturalHeight = img.naturalHeight || img.height || null
+            } catch {
+              // Ignore probe failures and insert image without explicit dimensions.
+            }
+
+            uploads.push({
+              url: data.url,
+              naturalWidth,
+              naturalHeight,
+            })
             break
           }
         } catch {
@@ -535,7 +550,7 @@ export default function RichTextEditor({ initialValue, value, onChange, onEditor
         }
       }
 
-      if (!urls.length) {
+      if (!uploads.length) {
         if (failedCount) setError(firstError || '上传失败')
         return
       }
@@ -545,16 +560,26 @@ export default function RichTextEditor({ initialValue, value, onChange, onEditor
           .focus()
           .insertContentAt(
             resolveImageInsertPos(editor),
-            urls.map((url) => ({ type: 'figureImage', attrs: { src: url, alt: '' } }))
+            uploads.map((row) => ({
+              type: 'figureImage',
+              attrs: {
+                src: row.url,
+                alt: '',
+                naturalWidth: row.naturalWidth ?? undefined,
+                naturalHeight: row.naturalHeight ?? undefined,
+              },
+            }))
           )
           .run()
       } else {
-        const nextHtml = `${value.html || ''}\n${urls.map((url) => `<p><img src="${url}" alt="" /></p>`).join('\n')}\n`
+        const nextHtml = `${value.html || ''}\n${uploads
+          .map((row) => `<p><img src="${row.url}" alt=""${row.naturalWidth && row.naturalHeight ? ` width="${row.naturalWidth}" height="${row.naturalHeight}"` : ''} /></p>`)
+          .join('\n')}\n`
         onChange({ json: null, html: nextHtml })
       }
 
       if (failedCount) {
-        setError(firstError ? `${firstError}（有 ${failedCount} 张上传失败，已插入其余 ${urls.length} 张。）` : `有 ${failedCount} 张图片上传失败，已插入其余 ${urls.length} 张。`)
+        setError(firstError ? `${firstError}（有 ${failedCount} 张上传失败，已插入其余 ${uploads.length} 张。）` : `有 ${failedCount} 张图片上传失败，已插入其余 ${uploads.length} 张。`)
       }
     } finally {
       setUploading(false)
