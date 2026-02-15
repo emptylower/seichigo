@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryAssetRepo } from '@/lib/asset/repoMemory'
-import { createGetAssetHandler, createPostAssetsHandler } from '@/lib/asset/handlers'
+import { createGetAssetHandler, createPostAssetsHandler, createPostAssetsHandlerWithOwner } from '@/lib/asset/handlers'
 import sharp from 'sharp'
 
 function makeImageFile(bytes: Uint8Array, opts?: { name?: string; type?: string }) {
@@ -46,6 +46,39 @@ describe('asset api', () => {
     expect(stored).not.toBeNull()
     expect(stored?.contentType).toBe('image/png')
     expect(Array.from(stored?.bytes ?? [])).toEqual(Array.from(bytes))
+  })
+
+  it('uploads image with custom owner resolver', async () => {
+    const repo = new InMemoryAssetRepo()
+    const post = createPostAssetsHandlerWithOwner({
+      assetRepo: repo,
+      resolveOwnerId: async () => ({ ok: true, ownerId: 'owner-from-token' }),
+    })
+
+    const bytes = new Uint8Array([7, 8, 9])
+    const form = new FormData()
+    form.set('file', makeImageFile(bytes, { name: 'a.png', type: 'image/png' }))
+
+    const res = await post(new Request('http://localhost/api/ai/assets', { method: 'POST', body: form }))
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { id: string; url: string }
+    const stored = await repo.findById(json.id)
+    expect(stored?.ownerId).toBe('owner-from-token')
+  })
+
+  it('returns custom resolver error response when owner cannot be resolved', async () => {
+    const repo = new InMemoryAssetRepo()
+    const post = createPostAssetsHandlerWithOwner({
+      assetRepo: repo,
+      resolveOwnerId: async () => ({ ok: false, response: new Response(JSON.stringify({ error: '无权限' }), { status: 403 }) }),
+    })
+
+    const bytes = new Uint8Array([7, 8, 9])
+    const form = new FormData()
+    form.set('file', makeImageFile(bytes, { name: 'a.png', type: 'image/png' }))
+
+    const res = await post(new Request('http://localhost/api/ai/assets', { method: 'POST', body: form }))
+    expect(res.status).toBe(403)
   })
 
   it('serves uploaded asset publicly with correct Content-Type and bytes', async () => {

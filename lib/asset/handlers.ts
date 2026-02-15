@@ -2,6 +2,8 @@ import type { AssetRepo } from './repo'
 
 type SessionLike = { user?: { id?: string | null } | null } | null
 type GetSession = () => Promise<SessionLike>
+type ResolveOwnerResult = { ok: true; ownerId: string } | { ok: false; response: Response }
+type ResolveOwnerId = (req: Request) => Promise<ResolveOwnerResult>
 
 const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
   'image/jpeg',
@@ -48,12 +50,26 @@ export function createPostAssetsHandler(options: {
   assetRepo: AssetRepo
   getSession: GetSession
 }) {
+  return createPostAssetsHandlerWithOwner({
+    assetRepo: options.assetRepo,
+    resolveOwnerId: async () => {
+      const session = await options.getSession()
+      const ownerId = String(session?.user?.id || '').trim()
+      if (!ownerId) {
+        return { ok: false, response: json({ error: '请先登录' }, { status: 401 }) }
+      }
+      return { ok: true, ownerId }
+    },
+  })
+}
+
+export function createPostAssetsHandlerWithOwner(options: {
+  assetRepo: AssetRepo
+  resolveOwnerId: ResolveOwnerId
+}) {
   return async function postAssets(req: Request) {
-    const session = await options.getSession()
-    const ownerId = session?.user?.id
-    if (!ownerId) {
-      return json({ error: '请先登录' }, { status: 401 })
-    }
+    const owner = await options.resolveOwnerId(req)
+    if (!owner.ok) return owner.response
 
     let form: FormData
     try {
@@ -86,7 +102,7 @@ export function createPostAssetsHandler(options: {
     const filename = typeof (file as any).name === 'string' && (file as any).name.trim() ? String((file as any).name).trim() : null
 
     const created = await options.assetRepo.create({
-      ownerId,
+      ownerId: owner.ownerId,
       contentType,
       filename,
       bytes,

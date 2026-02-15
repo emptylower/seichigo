@@ -1,7 +1,7 @@
 # SeichiGo AI Assistant API 操作手册
 
 本手册为 AI 助手提供完整的 API 调用指南，用于管理 SeichiGo 博客系统的文章内容。
-
+SEICHIGO_AI_API_KEY=50d35343616eb3dea38f3a9297e662f05f24e6745329ab1844ba54546902ad6a
 ## 概述
 
 ### Base URL
@@ -38,8 +38,6 @@
 
 说明：当 `SEICHIGO_AI_API_KEY` 未设置时，仅支持 Session Cookie 认证。
 
-当前：SEICHIGO_AI_API_KEY=50d35343616eb3dea38f3a9297e662f05f24e6745329ab1844ba54546902ad6a
-
 ### 与“标准 API”的关系
 
 - 标准 API（创作中心使用）：`/api/articles/*`（通常只允许操作自己的文章）
@@ -55,6 +53,8 @@
   "article": {...}    // POST/GET/PATCH 单篇文章
 }
 ```
+
+说明：`POST /api/ai/assets` 成功响应为 `{ "id": "...", "url": "/assets/..." }`（保持与现有资产上传接口一致）。
 
 错误响应格式：
 ```json
@@ -74,6 +74,7 @@
 | PATCH | `/api/ai/articles/:id` | 更新文章内容 | 仅 draft/rejected |
 | POST | `/api/ai/articles/:id/import` | 导入/覆盖 contentJson（自动生成 contentHtml） | 仅 draft/rejected |
 | POST | `/api/ai/articles/:id/submit` | 提交审核 | 仅 draft/rejected |
+| POST | `/api/ai/assets` | 上传图片资源（返回 `/assets/:id`） | 无 |
 
 ## 端点详细说明
 
@@ -636,6 +637,62 @@ curl -X POST "http://localhost:3000/api/ai/articles/article_xyz789/submit" \
 
 ---
 
+### POST /api/ai/assets
+
+上传图片资源，成功后返回 `{ id, url }`，其中 `url` 格式为 `/assets/:id`。
+
+**鉴权规则**
+
+- Session 管理员模式：默认使用当前登录用户 ID 作为 ownerId
+- API Token 模式：必须提供 ownerId（用于满足资产 owner 约束）
+  - 推荐请求头：`X-SEICHIGO-OWNER-ID: user_123`
+  - 兼容请求头：`X-OWNER-ID`、`X-AUTHOR-ID`
+  - 兼容 Query：`?ownerId=user_123` 或 `?authorId=user_123`
+
+**请求格式**
+
+- `multipart/form-data`
+- 字段：`file`（支持 `jpeg/png/webp/gif/avif`，不支持 SVG）
+
+**请求示例（API Token）**
+
+```bash
+curl -X POST "http://localhost:3000/api/ai/assets" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "X-SEICHIGO-OWNER-ID: user_123" \
+  -F "file=@./point-001.webp"
+```
+
+**请求示例（Session Cookie）**
+
+```bash
+curl -X POST "http://localhost:3000/api/ai/assets" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN" \
+  -F "file=@./point-001.webp"
+```
+
+**成功响应 (200)**
+
+```json
+{
+  "id": "asset_abc123",
+  "url": "/assets/asset_abc123"
+}
+```
+
+**错误响应**
+
+| 状态码 | 说明 | 响应示例 |
+|--------|------|---------|
+| 400 | 缺少 ownerId（Token 模式） | `{"error":"缺少 ownerId（请通过 X-SEICHIGO-OWNER-ID 或 ownerId 参数传入）"}` |
+| 400 | 缺少文件 | `{"error":"缺少文件"}` |
+| 401 | 未登录/未认证 | `{"error":"请先登录"}` |
+| 403 | 非管理员 | `{"error":"无权限"}` |
+| 413 | 文件过大 | `{"error":"文件过大"}` |
+| 415 | 不支持文件类型 | `{"error":"仅支持上传图片（jpeg/png/webp/gif/avif）"}` |
+
+---
+
 ## 文章状态说明
 
 ### 状态流转图
@@ -1024,6 +1081,8 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 | `至少需要更新一个字段` | PATCH 请求体为空 | 至少提供一个要更新的字段 |
 | `slug 不允许修改` | PATCH 请求包含 slug 字段 | 移除 slug 字段 |
 | `封面地址无效` | cover 字段格式不正确 | 使用 `/assets/:id` 格式 |
+| `缺少 ownerId（请通过 X-SEICHIGO-OWNER-ID 或 ownerId 参数传入）` | Token 调用 `/api/ai/assets` 未提供 ownerId | 在请求头或 query 中传 ownerId |
+| `缺少文件` | 调用 `/api/ai/assets` 时未上传 `file` | 使用 `multipart/form-data` 且包含 `file` 字段 |
 | `缺少 id` | Path 参数缺失 | 确保 URL 包含文章 ID |
 | `未找到文章` | 文章 ID 不存在 | 检查文章 ID 是否正确 |
 | `当前状态不可编辑` | 尝试编辑 in_review 或 published 状态 | 等待审核完成或撤回文章 |
@@ -1059,18 +1118,24 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
    POST /api/ai/articles/:id/import
    ```
 
-4. **提交审核**
+4. **上传图片资源**
+   ```bash
+   POST /api/ai/assets
+   ```
+   使用 AI Token 时，记得传 `X-SEICHIGO-OWNER-ID`（或 `ownerId` 参数），并在正文中引用返回的 `/assets/:id`。
+
+5. **提交审核**
    ```bash
    POST /api/ai/articles/:id/submit
    ```
    完成编辑后提交给管理员审核。
 
-5. **处理拒绝**
+6. **处理拒绝**
    - 如果文章被拒绝（status=rejected），检查 `rejectReason` 字段
    - 根据拒绝原因进行修改：`PATCH /api/ai/articles/:id`
    - 重新提交：`POST /api/ai/articles/:id/submit`
 
-6. **查看发布状态**
+7. **查看发布状态**
    ```bash
    GET /api/ai/articles/:id
    ```
@@ -1084,7 +1149,7 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
    - `contentJson` 用于编辑器重新打开和编辑；`contentHtml` 用于前台渲染展示（会经过安全过滤）
 
 2. **图片处理**
-   - 先上传图片到资源管理系统获取 `/assets/:id` 路径
+   - 通过 `POST /api/ai/assets`（或创作中心 `POST /api/assets`）先上传图片，获取 `/assets/:id` 路径
    - 在 TipTap JSON 中使用该路径
    - 不要使用外部 URL
 
@@ -1176,4 +1241,4 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 
 ---
 
-**最后更新：2026年2月5日**
+**最后更新：2026年2月15日**

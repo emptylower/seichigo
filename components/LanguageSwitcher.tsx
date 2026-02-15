@@ -46,12 +46,13 @@ export default function LanguageSwitcher({ locale }: Props) {
   const router = useRouter()
 
   const handleLanguageClick = async (targetLocale: SiteLocale, e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+
     if (!isArticlePage(pathname)) {
       document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
+      router.push(prefixPath(pathname, targetLocale))
       return
     }
-
-    e.preventDefault()
 
     const slug = extractSlugFromPathname(pathname, locale)
     if (!slug) {

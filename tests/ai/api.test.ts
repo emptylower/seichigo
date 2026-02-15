@@ -83,6 +83,7 @@ describe('AI Root Handler', () => {
     const json = await res.json()
     expect(json.ok).toBe(true)
     expect(json.endpoints).toBeDefined()
+    expect(json.endpoints.assets).toBe('/api/ai/assets')
     expect(json.baseUrl).toBe('/api/ai')
   })
 })

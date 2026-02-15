@@ -146,6 +146,10 @@ describe('LanguageSwitcher', () => {
     fireEvent.click(englishLink)
 
     await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/en/about')
+    })
+
+    await waitFor(() => {
       expect(document.cookie).toContain('NEXT_LOCALE=en')
     })
   })
