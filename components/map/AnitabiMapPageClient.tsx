@@ -140,7 +140,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: '谷歌导航',
     enterPanorama: '进入全景',
     exitPanorama: '退出全景',
-    panoramaHint: '已到街景级缩放，进入全景',
     panoramaUnavailable: '该点位暂无可用全景',
     panoramaLoadFailed: '全景加载失败，请稍后重试',
     favorites: '收藏',
@@ -187,7 +186,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: 'Google Nav',
     enterPanorama: 'Enter Panorama',
     exitPanorama: 'Exit Panorama',
-    panoramaHint: 'Street-level zoom reached',
     panoramaUnavailable: 'Panorama is unavailable for this point',
     panoramaLoadFailed: 'Failed to load panorama, please retry',
     favorites: 'Favorite',
@@ -234,7 +232,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: 'Google ナビ',
     enterPanorama: '全景を表示',
     exitPanorama: '全景を閉じる',
-    panoramaHint: '街レベルまで拡大、全景表示可能',
     panoramaUnavailable: 'このスポットでは全景を利用できません',
     panoramaLoadFailed: '全景の読み込みに失敗しました',
     favorites: 'お気に入り',
@@ -893,6 +890,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const rangeOverlayRef = useRef<{ data: GeoJSON.FeatureCollection<GeoJSON.Polygon>; color: string } | null>(null)
   const isDesktopRef = useRef(true)
   const selectedPointIdRef = useRef<string | null>(parsed.p)
+  const autoPanoramaDismissedRef = useRef(false)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -938,10 +936,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return resolvePanoramaEmbed(selectedPoint)
   }, [selectedPoint])
 
-  const showZoomPanoramaHint = Boolean(
-    selectedPointPanorama && mapZoom >= PANORAMA_TRIGGER_ZOOM && (isDesktop || !mobilePanelOpen) && mapViewMode === 'map'
-  )
-
   const favoriteSet = useMemo(() => {
     return new Set((meState?.favorites || []).map((row) => row.targetKey))
   }, [meState])
@@ -953,6 +947,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     selectedPointIdRef.current = selectedPointId
   }, [selectedPointId])
+
+  useEffect(() => {
+    autoPanoramaDismissedRef.current = false
+  }, [selectedPoint?.id])
 
   useEffect(() => {
     if (!selectedPointPanorama && mapViewMode === 'panorama') {
@@ -967,6 +965,18 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const rafId = window.requestAnimationFrame(() => map.resize())
     return () => window.cancelAnimationFrame(rafId)
   }, [mapViewMode])
+
+  useEffect(() => {
+    if (mapZoom < PANORAMA_TRIGGER_ZOOM) {
+      autoPanoramaDismissedRef.current = false
+      return
+    }
+    if (mapViewMode !== 'map') return
+    if (!selectedPointPanorama) return
+    if (autoPanoramaDismissedRef.current) return
+    setPanoramaError(null)
+    setMapViewMode('panorama')
+  }, [mapViewMode, mapZoom, selectedPointPanorama])
 
   useEffect(() => {
     if (mapViewMode !== 'panorama') {
@@ -1731,9 +1741,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [selectedPointPanorama])
 
   const exitPanorama = useCallback(() => {
+    if (mapZoom >= PANORAMA_TRIGGER_ZOOM) {
+      autoPanoramaDismissedRef.current = true
+    }
     setPanoramaError(null)
     setMapViewMode('map')
-  }, [])
+  }, [mapZoom])
 
   const paintUserMarker = useCallback((lng: number, lat: number) => {
     const map = mapRef.current
@@ -2335,21 +2348,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
 
           {mobilePointPopup}
-
-          {showZoomPanoramaHint ? (
-            <div
-              className="pointer-events-none absolute inset-x-4 z-30 flex justify-center"
-              style={{ bottom: isDesktop ? '1rem' : 'calc(8.5rem + env(safe-area-inset-bottom, 0px))' }}
-            >
-              <button
-                type="button"
-                className="pointer-events-auto inline-flex items-center rounded-full bg-brand-500 px-4 py-2 text-xs font-medium text-white shadow-lg hover:bg-brand-600"
-                onClick={enterPanorama}
-              >
-                {label.panoramaHint}
-              </button>
-            </div>
-          ) : null}
 
           {!isDesktop ? (
             <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center mobile-safe-bottom">
