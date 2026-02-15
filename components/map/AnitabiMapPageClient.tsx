@@ -71,7 +71,7 @@ type PointFeatureProperties = {
 
 type PanoramaEmbed = {
   provider: 'google'
-  location: { lat: number; lng: number }
+  src: string
 } | {
   provider: 'mapillary'
   src: string
@@ -81,36 +81,6 @@ function parseNumberParam(value: string | null): number | null {
   if (value == null || value === '') return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
-}
-
-type GoogleMapsApi = {
-  maps: {
-    StreetViewPanorama: new (container: HTMLElement, opts?: Record<string, unknown>) => {
-      setPosition: (latLng: unknown) => void
-      setPano: (panoId: string) => void
-      setPov: (pov: { heading: number; pitch: number }) => void
-      setVisible: (visible: boolean) => void
-    }
-    StreetViewService: new () => {
-      getPanorama: (
-        request: { location: { lat: number; lng: number }; radius?: number },
-        callback: (data: any, status: string) => void
-      ) => void
-    }
-    StreetViewStatus: {
-      OK: string
-    }
-    event?: {
-      trigger: (instance: unknown, eventName: string) => void
-    }
-  }
-}
-
-declare global {
-  interface Window {
-    google?: GoogleMapsApi
-    __seichigoGoogleMapsLoadPromise?: Promise<GoogleMapsApi>
-  }
 }
 
 const L: Record<SupportedLocale, Record<string, string>> = {
@@ -335,45 +305,14 @@ function resolvePanoramaLocation(point: { geo: [number, number] | null; originLi
   return extractLatLngFromGoogleMapsUrl(point.originLink)
 }
 
-function loadGoogleMapsApi(apiKey: string): Promise<GoogleMapsApi> {
-  if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Google Maps API only works in browser'))
-  }
-
+function buildGoogleStreetViewEmbedSrc(location: { lat: number; lng: number }, apiKey: string): string | null {
+  if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return null
   const key = apiKey.trim()
-  if (!key) {
-    return Promise.reject(new Error('Missing Google Maps API key'))
-  }
-
-  if (window.google?.maps?.StreetViewPanorama) {
-    return Promise.resolve(window.google)
-  }
-
-  if (window.__seichigoGoogleMapsLoadPromise) {
-    return window.__seichigoGoogleMapsLoadPromise
-  }
-
-  window.__seichigoGoogleMapsLoadPromise = new Promise<GoogleMapsApi>((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`
-    script.async = true
-    script.onload = () => {
-      if (window.google?.maps?.StreetViewPanorama) {
-        resolve(window.google)
-      } else {
-        reject(new Error('Google Maps API loaded but Street View is unavailable'))
-      }
-    }
-    script.onerror = () => {
-      reject(new Error('Failed to load Google Maps API script'))
-    }
-    document.head.appendChild(script)
-  }).catch((error) => {
-    delete window.__seichigoGoogleMapsLoadPromise
-    throw error
-  })
-
-  return window.__seichigoGoogleMapsLoadPromise
+  const params = new URLSearchParams()
+  if (key) params.set('key', key)
+  params.set('location', `${location.lat},${location.lng}`)
+  params.set('fov', '85')
+  return `https://www.google.com/maps/embed/v1/streetview?${params.toString()}`
 }
 
 function extractMapillaryImageKey(rawInput: string | null | undefined): string | null {
@@ -412,8 +351,9 @@ function buildMapillaryEmbedSrc(imageKey: string): string | null {
 
 function resolvePanoramaEmbed(point: { geo: [number, number] | null; originLink?: string | null }): PanoramaEmbed | null {
   const location = resolvePanoramaLocation(point)
-  if (location && GOOGLE_STREET_VIEW_EMBED_KEY.trim()) {
-    return { provider: 'google', location }
+  if (location) {
+    const googleSrc = buildGoogleStreetViewEmbedSrc(location, GOOGLE_STREET_VIEW_EMBED_KEY)
+    if (googleSrc) return { provider: 'google', src: googleSrc }
   }
 
   const mapillaryKey = extractMapillaryImageKey(point.originLink)
@@ -870,24 +810,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const parsed = useMemo(() => parseUrlState(), [])
 
   const mapRootRef = useRef<HTMLDivElement | null>(null)
-  const panoramaRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const googleStreetViewRef = useRef<{
-    container: HTMLElement
-    panorama: {
-      setPosition: (latLng: unknown) => void
-      setPano: (panoId: string) => void
-      setPov: (pov: { heading: number; pitch: number }) => void
-      setVisible: (visible: boolean) => void
-    }
-    service: {
-      getPanorama: (
-        request: { location: { lat: number; lng: number }; radius?: number },
-        callback: (data: any, status: string) => void
-      ) => void
-    }
-    statusOk: string
-  } | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
   const syncPointLayerRef = useRef<() => boolean>(() => false)
@@ -1038,14 +961,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [mapViewMode, mapZoom, selectedPointPanorama])
 
   useEffect(() => {
-    const timers: number[] = []
     if (mapViewMode !== 'panorama') {
       setPanoramaError(null)
       failPanoramaProgress()
-      const runtime = googleStreetViewRef.current
-      runtime?.panorama.setVisible(false)
-      if (runtime) runtime.container.innerHTML = ''
-      googleStreetViewRef.current = null
       return
     }
 
@@ -1055,106 +973,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       return
     }
 
-    let cancelled = false
     setPanoramaError(null)
     startPanoramaProgress()
-
-    if (selectedPointPanorama.provider !== 'google') {
-      const runtime = googleStreetViewRef.current
-      runtime?.panorama.setVisible(false)
-      if (runtime) runtime.container.innerHTML = ''
-      googleStreetViewRef.current = null
-      return () => {
-        cancelled = true
-        for (const timer of timers) window.clearTimeout(timer)
-      }
-    }
-
-    const root = panoramaRootRef.current
-    if (!root) {
-      setPanoramaError(label.panoramaLoadFailed)
-      failPanoramaProgress()
-      return
-    }
-
-    loadGoogleMapsApi(GOOGLE_STREET_VIEW_EMBED_KEY)
-      .then((google) => {
-        if (cancelled) return
-
-        const prevRuntime = googleStreetViewRef.current
-        if (prevRuntime) prevRuntime.panorama.setVisible(false)
-        root.innerHTML = ''
-
-        const runtime = {
-          container: root,
-          panorama: new google.maps.StreetViewPanorama(root, {
-            addressControl: true,
-            fullscreenControl: false,
-            motionTracking: false,
-            showRoadLabels: true,
-            zoomControl: true,
-            disableDefaultUI: false,
-          }),
-          service: new google.maps.StreetViewService(),
-          statusOk: google.maps.StreetViewStatus.OK,
-        }
-        googleStreetViewRef.current = runtime
-        const fallbackLocation = selectedPointPanorama.location
-
-        runtime.service.getPanorama(
-          { location: fallbackLocation, radius: 120 },
-          (data: any, status: string) => {
-            if (cancelled) return
-
-            const streetView = runtime.panorama
-            if (status === runtime.statusOk && data?.location?.latLng) {
-              const panoId = typeof data?.location?.pano === 'string' ? data.location.pano : ''
-              if (panoId) streetView.setPano(panoId)
-              else streetView.setPosition(data.location.latLng)
-              if (typeof data?.tiles?.centerHeading === 'number') {
-                streetView.setPov({ heading: data.tiles.centerHeading, pitch: 0 })
-              }
-              streetView.setVisible(true)
-              setPanoramaError(null)
-              const triggerResize = () => {
-                google.maps.event?.trigger(streetView as unknown, 'resize')
-              }
-              window.requestAnimationFrame(() => {
-                if (cancelled) return
-                triggerResize()
-                timers.push(window.setTimeout(() => {
-                  if (cancelled) return
-                  triggerResize()
-                }, 180))
-                timers.push(window.setTimeout(() => {
-                  if (cancelled) return
-                  triggerResize()
-                  finishPanoramaProgress()
-                }, 520))
-              })
-              return
-            }
-
-            streetView.setVisible(false)
-            setPanoramaError(label.panoramaUnavailable)
-            failPanoramaProgress()
-          }
-        )
-      })
-      .catch(() => {
-        if (cancelled) return
-        setPanoramaError(label.panoramaLoadFailed)
-        failPanoramaProgress()
-      })
-
-    return () => {
-      cancelled = true
-      for (const timer of timers) window.clearTimeout(timer)
-    }
   }, [
     failPanoramaProgress,
-    finishPanoramaProgress,
-    label.panoramaLoadFailed,
     label.panoramaUnavailable,
     mapViewMode,
     selectedPointPanorama,
@@ -2388,27 +2210,25 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             <div
               className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}
             >
-              {selectedPointPanorama?.provider === 'google' ? <div ref={panoramaRootRef} className="h-full w-full" /> : null}
               {mapViewMode === 'panorama' ? (
                 selectedPointPanorama ? (
-                  selectedPointPanorama.provider === 'mapillary' ? (
-                    <iframe
-                      title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
-                      src={selectedPointPanorama.src}
-                      className="h-full w-full border-0"
-                      loading="lazy"
-                      allowFullScreen
-                      referrerPolicy="no-referrer-when-downgrade"
-                      onLoad={() => {
-                        setPanoramaError(null)
-                        finishPanoramaProgress()
-                      }}
-                      onError={() => {
-                        setPanoramaError(label.panoramaLoadFailed)
-                        failPanoramaProgress()
-                      }}
-                    />
-                  ) : null
+                  <iframe
+                    key={`${selectedPointPanorama.provider}:${selectedPointPanorama.src}`}
+                    title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
+                    src={selectedPointPanorama.src}
+                    className="h-full w-full border-0"
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                    onLoad={() => {
+                      setPanoramaError(null)
+                      finishPanoramaProgress()
+                    }}
+                    onError={() => {
+                      setPanoramaError(label.panoramaLoadFailed)
+                      failPanoramaProgress()
+                    }}
+                  />
                 ) : (
                   <div className="grid h-full w-full place-items-center px-6 text-center text-sm text-white/85">
                     {label.panoramaUnavailable}
