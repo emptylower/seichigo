@@ -112,7 +112,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: '谷歌导航',
     enterPanorama: '进入全景',
     exitPanorama: '退出全景',
-    panoramaLoading: '全景加载中…',
+    panoramaLoading: '少女祈祷中',
     panoramaUnavailable: '该点位暂无可用全景',
     panoramaLoadFailed: '全景加载失败，请稍后重试',
     favorites: '收藏',
@@ -2236,8 +2236,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {mapViewMode === 'panorama' && panoramaLoading ? (
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
                   <div className="w-64 max-w-[78vw] rounded-2xl border border-white/25 bg-black/55 px-4 py-3 text-center shadow-2xl backdrop-blur-sm">
-                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/95">
-                      <span className="inline-grid h-4 w-4 place-items-center rounded-full bg-brand-300 text-[10px] text-brand-900">★</span>
+                    <div className="mb-2 inline-flex items-center rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/95">
                       <span>{label.panoramaLoading}</span>
                     </div>
                     <div className="h-3 overflow-hidden rounded-full border border-white/25 bg-white/15">
