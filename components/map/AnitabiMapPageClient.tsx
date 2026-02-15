@@ -51,7 +51,7 @@ const DESKTOP_BREAKPOINT = 1024
 const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
-const PANORAMA_TRIGGER_ZOOM = 17.2
+const PANORAMA_TRIGGER_ZOOM = 18.4
 const GOOGLE_STREET_VIEW_EMBED_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY || ''
 
@@ -99,6 +99,9 @@ type GoogleMapsApi = {
     StreetViewStatus: {
       OK: string
     }
+    event?: {
+      trigger: (instance: unknown, eventName: string) => void
+    }
   }
 }
 
@@ -140,6 +143,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: '谷歌导航',
     enterPanorama: '进入全景',
     exitPanorama: '退出全景',
+    panoramaLoading: '全景加载中…',
     panoramaUnavailable: '该点位暂无可用全景',
     panoramaLoadFailed: '全景加载失败，请稍后重试',
     favorites: '收藏',
@@ -186,6 +190,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: 'Google Nav',
     enterPanorama: 'Enter Panorama',
     exitPanorama: 'Exit Panorama',
+    panoramaLoading: 'Loading panorama…',
     panoramaUnavailable: 'Panorama is unavailable for this point',
     panoramaLoadFailed: 'Failed to load panorama, please retry',
     favorites: 'Favorite',
@@ -232,6 +237,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openInGoogle: 'Google ナビ',
     enterPanorama: '全景を表示',
     exitPanorama: '全景を閉じる',
+    panoramaLoading: '全景を読み込み中…',
     panoramaUnavailable: 'このスポットでは全景を利用できません',
     panoramaLoadFailed: '全景の読み込みに失敗しました',
     favorites: 'お気に入り',
@@ -891,6 +897,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const isDesktopRef = useRef(true)
   const selectedPointIdRef = useRef<string | null>(parsed.p)
   const autoPanoramaDismissedRef = useRef(false)
+  const panoramaProgressTimerRef = useRef<number | null>(null)
+  const panoramaProgressDoneTimerRef = useRef<number | null>(null)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -925,6 +933,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [mapZoom, setMapZoom] = useState(parsed.z)
   const [mapViewMode, setMapViewMode] = useState<'map' | 'panorama'>('map')
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
+  const [panoramaLoading, setPanoramaLoading] = useState(false)
+  const [panoramaProgress, setPanoramaProgress] = useState(0)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -940,6 +950,46 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return new Set((meState?.favorites || []).map((row) => row.targetKey))
   }, [meState])
 
+  const clearPanoramaProgressTimers = useCallback(() => {
+    if (panoramaProgressTimerRef.current != null) {
+      window.clearInterval(panoramaProgressTimerRef.current)
+      panoramaProgressTimerRef.current = null
+    }
+    if (panoramaProgressDoneTimerRef.current != null) {
+      window.clearTimeout(panoramaProgressDoneTimerRef.current)
+      panoramaProgressDoneTimerRef.current = null
+    }
+  }, [])
+
+  const startPanoramaProgress = useCallback(() => {
+    clearPanoramaProgressTimers()
+    setPanoramaLoading(true)
+    setPanoramaProgress(8)
+    panoramaProgressTimerRef.current = window.setInterval(() => {
+      setPanoramaProgress((prev) => {
+        if (prev >= 92) return prev
+        if (prev < 35) return Math.min(92, prev + 9)
+        if (prev < 70) return Math.min(92, prev + 5)
+        return Math.min(92, prev + 2)
+      })
+    }, 220)
+  }, [clearPanoramaProgressTimers])
+
+  const finishPanoramaProgress = useCallback(() => {
+    clearPanoramaProgressTimers()
+    setPanoramaProgress(100)
+    panoramaProgressDoneTimerRef.current = window.setTimeout(() => {
+      setPanoramaLoading(false)
+      panoramaProgressDoneTimerRef.current = null
+    }, 280)
+  }, [clearPanoramaProgressTimers])
+
+  const failPanoramaProgress = useCallback(() => {
+    clearPanoramaProgressTimers()
+    setPanoramaLoading(false)
+    setPanoramaProgress(0)
+  }, [clearPanoramaProgressTimers])
+
   useEffect(() => {
     isDesktopRef.current = isDesktop
   }, [isDesktop])
@@ -951,6 +1001,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     autoPanoramaDismissedRef.current = false
   }, [selectedPoint?.id])
+
+  useEffect(() => {
+    return () => {
+      clearPanoramaProgressTimers()
+    }
+  }, [clearPanoramaProgressTimers])
 
   useEffect(() => {
     if (!selectedPointPanorama && mapViewMode === 'panorama') {
@@ -981,29 +1037,34 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     if (mapViewMode !== 'panorama') {
       setPanoramaError(null)
+      failPanoramaProgress()
       googleStreetViewRef.current?.panorama.setVisible(false)
-      googleStreetViewRef.current = null
       return
     }
 
     if (!selectedPointPanorama) {
       setPanoramaError(label.panoramaUnavailable)
-      return
-    }
-
-    if (selectedPointPanorama.provider !== 'google') {
-      setPanoramaError(null)
-      return
-    }
-
-    const root = panoramaRootRef.current
-    if (!root) {
-      setPanoramaError(label.panoramaLoadFailed)
+      failPanoramaProgress()
       return
     }
 
     let cancelled = false
     setPanoramaError(null)
+    startPanoramaProgress()
+
+    if (selectedPointPanorama.provider !== 'google') {
+      googleStreetViewRef.current?.panorama.setVisible(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const root = panoramaRootRef.current
+    if (!root) {
+      setPanoramaError(label.panoramaLoadFailed)
+      failPanoramaProgress()
+      return
+    }
 
     loadGoogleMapsApi(GOOGLE_STREET_VIEW_EMBED_KEY)
       .then((google) => {
@@ -1040,25 +1101,42 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               }
               streetView.setVisible(true)
               setPanoramaError(null)
+              window.requestAnimationFrame(() => {
+                if (cancelled) return
+                google.maps.event?.trigger(streetView as unknown, 'resize')
+                window.requestAnimationFrame(() => {
+                  if (cancelled) return
+                  google.maps.event?.trigger(streetView as unknown, 'resize')
+                })
+              })
+              finishPanoramaProgress()
               return
             }
 
-            streetView.setPosition(fallbackLocation)
-            streetView.setPov({ heading: 0, pitch: 0 })
-            streetView.setVisible(true)
+            streetView.setVisible(false)
             setPanoramaError(label.panoramaUnavailable)
+            failPanoramaProgress()
           }
         )
       })
       .catch(() => {
         if (cancelled) return
         setPanoramaError(label.panoramaLoadFailed)
+        failPanoramaProgress()
       })
 
     return () => {
       cancelled = true
     }
-  }, [label.panoramaLoadFailed, label.panoramaUnavailable, mapViewMode, selectedPointPanorama])
+  }, [
+    failPanoramaProgress,
+    finishPanoramaProgress,
+    label.panoramaLoadFailed,
+    label.panoramaUnavailable,
+    mapViewMode,
+    selectedPointPanorama,
+    startPanoramaProgress,
+  ])
 
   const getCameraPadding = useCallback((withDetailPanel: boolean): CameraPadding => {
     const map = mapRef.current
@@ -2311,8 +2389,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                         loading="lazy"
                         allowFullScreen
                         referrerPolicy="no-referrer-when-downgrade"
-                        onLoad={() => setPanoramaError(null)}
-                        onError={() => setPanoramaError(label.panoramaLoadFailed)}
+                        onLoad={() => {
+                          setPanoramaError(null)
+                          finishPanoramaProgress()
+                        }}
+                        onError={() => {
+                          setPanoramaError(label.panoramaLoadFailed)
+                          failPanoramaProgress()
+                        }}
                       />
                       {panoramaError ? (
                         <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
@@ -2326,6 +2410,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                     {label.panoramaUnavailable}
                   </div>
                 )
+              ) : null}
+              {mapViewMode === 'panorama' && panoramaLoading ? (
+                <div className="pointer-events-none absolute inset-x-6 top-6 z-20 rounded-md bg-black/65 px-3 py-2">
+                  <div className="mb-1 text-[11px] text-white/90">{label.panoramaLoading}</div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
+                    <div
+                      className="h-full rounded-full bg-brand-400 transition-[width] duration-200 ease-out"
+                      style={{ width: `${panoramaProgress}%` }}
+                    />
+                  </div>
+                </div>
               ) : null}
             </div>
           </div>
