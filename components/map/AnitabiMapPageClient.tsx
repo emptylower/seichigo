@@ -872,6 +872,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const panoramaRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const googleStreetViewRef = useRef<{
+    container: HTMLElement
     panorama: {
       setPosition: (latLng: unknown) => void
       setPov: (pov: { heading: number; pitch: number }) => void
@@ -1070,8 +1071,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       .then((google) => {
         if (cancelled) return
 
-        if (!googleStreetViewRef.current) {
+        if (!googleStreetViewRef.current || googleStreetViewRef.current.container !== root) {
+          googleStreetViewRef.current?.panorama.setVisible(false)
           googleStreetViewRef.current = {
+            container: root,
             panorama: new google.maps.StreetViewPanorama(root, {
               addressControl: true,
               fullscreenControl: false,
@@ -2369,42 +2372,27 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 mapViewMode === 'panorama' ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
             >
+              {selectedPointPanorama?.provider === 'google' ? <div ref={panoramaRootRef} className="h-full w-full" /> : null}
               {mapViewMode === 'panorama' ? (
                 selectedPointPanorama ? (
-                  selectedPointPanorama.provider === 'google' ? (
-                    <>
-                      <div ref={panoramaRootRef} className="h-full w-full" />
-                      {panoramaError ? (
-                        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
-                          {panoramaError}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <iframe
-                        title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
-                        src={selectedPointPanorama.src}
-                        className="h-full w-full border-0"
-                        loading="lazy"
-                        allowFullScreen
-                        referrerPolicy="no-referrer-when-downgrade"
-                        onLoad={() => {
-                          setPanoramaError(null)
-                          finishPanoramaProgress()
-                        }}
-                        onError={() => {
-                          setPanoramaError(label.panoramaLoadFailed)
-                          failPanoramaProgress()
-                        }}
-                      />
-                      {panoramaError ? (
-                        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
-                          {panoramaError}
-                        </div>
-                      ) : null}
-                    </>
-                  )
+                  selectedPointPanorama.provider === 'mapillary' ? (
+                    <iframe
+                      title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
+                      src={selectedPointPanorama.src}
+                      className="h-full w-full border-0"
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      onLoad={() => {
+                        setPanoramaError(null)
+                        finishPanoramaProgress()
+                      }}
+                      onError={() => {
+                        setPanoramaError(label.panoramaLoadFailed)
+                        failPanoramaProgress()
+                      }}
+                    />
+                  ) : null
                 ) : (
                   <div className="grid h-full w-full place-items-center px-6 text-center text-sm text-white/85">
                     {label.panoramaUnavailable}
@@ -2412,14 +2400,24 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 )
               ) : null}
               {mapViewMode === 'panorama' && panoramaLoading ? (
-                <div className="pointer-events-none absolute inset-x-6 top-6 z-20 rounded-md bg-black/65 px-3 py-2">
-                  <div className="mb-1 text-[11px] text-white/90">{label.panoramaLoading}</div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
-                    <div
-                      className="h-full rounded-full bg-brand-400 transition-[width] duration-200 ease-out"
-                      style={{ width: `${panoramaProgress}%` }}
-                    />
+                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                  <div className="w-64 max-w-[78vw] rounded-2xl border border-white/25 bg-black/55 px-4 py-3 text-center shadow-2xl backdrop-blur-sm">
+                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/95">
+                      <span className="inline-grid h-4 w-4 place-items-center rounded-full bg-brand-300 text-[10px] text-brand-900">★</span>
+                      <span>{label.panoramaLoading}</span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full border border-white/25 bg-white/15">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand-300 via-brand-400 to-brand-500 transition-[width] duration-200 ease-out"
+                        style={{ width: `${panoramaProgress}%` }}
+                      />
+                    </div>
                   </div>
+                </div>
+              ) : null}
+              {mapViewMode === 'panorama' && panoramaError ? (
+                <div className="pointer-events-none absolute inset-x-6 bottom-6 z-20 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
+                  {panoramaError}
                 </div>
               ) : null}
             </div>
