@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { getBootstrap } from '@/lib/anitabi/read'
-import { normalizeLocale, parseTab } from '@/lib/anitabi/utils'
+import { normalizeLocale, parseTab, parseUserLocation } from '@/lib/anitabi/utils'
 
 export function createHandlers(deps: AnitabiApiDeps) {
   return {
@@ -11,6 +11,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
       const tab = parseTab(url.searchParams.get('tab'))
       const city = url.searchParams.get('city')
       const q = url.searchParams.get('q')
+      const userLocation = parseUserLocation(url.searchParams)
 
       const data = await getBootstrap({
         prisma: deps.prisma,
@@ -18,6 +19,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
         tab,
         city,
         q,
+        userLocation,
       })
 
       return NextResponse.json(data, {

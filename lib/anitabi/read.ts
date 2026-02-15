@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type {
   AnitabiBangumiCard,
@@ -62,6 +62,50 @@ function toCard(
     mapEnabled: row.mapEnabled,
     geo: row.geoLat != null && row.geoLng != null ? [row.geoLat, row.geoLng] : null,
     zoom: row.zoom,
+    nearestDistanceMeters: null,
+  }
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
+}
+
+function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const earthRadius = 6378137
+  const latDelta = toRadians(b.lat - a.lat)
+  const lngDelta = toRadians(b.lng - a.lng)
+  const lat1 = toRadians(a.lat)
+  const lat2 = toRadians(b.lat)
+  const sinLat = Math.sin(latDelta / 2)
+  const sinLng = Math.sin(lngDelta / 2)
+  const m = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(m)))
+}
+
+function buildBangumiWhere(city: string, q: string): Prisma.AnitabiBangumiWhereInput {
+  return {
+    mapEnabled: true,
+    ...(city ? { city } : {}),
+    ...(q
+      ? {
+          OR: [
+            { titleZh: { contains: q, mode: 'insensitive' } },
+            { titleJaRaw: { contains: q, mode: 'insensitive' } },
+            { city: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  }
+}
+
+function buildCardInclude(locale: SupportedLocale): Prisma.AnitabiBangumiInclude {
+  return {
+    meta: { select: { pointsLength: true, imagesLength: true } },
+    i18n: {
+      where: { language: locale },
+      select: { title: true },
+      take: 1,
+    },
   }
 }
 
@@ -105,38 +149,77 @@ export async function listBangumiCards(input: {
   tab: AnitabiMapTab
   city?: string | null
   q?: string | null
+  userLocation?: { lat: number; lng: number } | null
   take?: number
   skip?: number
 }): Promise<AnitabiBangumiCard[]> {
   const q = normalizeText(input.q)
   const city = normalizeText(input.city)
+  const take = clampInt(input.take, 18, 1, 200)
+  const skip = clampInt(input.skip, 0, 0, 9999)
+  const bangumiWhere = buildBangumiWhere(city, q)
 
-  const queryTake = input.tab === 'hot' ? Math.max((input.take ?? 18) * 4, 120) : clampInt(input.take, 18, 1, 200)
+  if (input.tab === 'nearby') {
+    if (!input.userLocation) return []
+
+    const nearPointRows = await input.prisma.anitabiPoint.findMany({
+      where: {
+        geoLat: { not: null },
+        geoLng: { not: null },
+        bangumi: {
+          is: bangumiWhere,
+        },
+      },
+      select: {
+        bangumiId: true,
+        geoLat: true,
+        geoLng: true,
+      },
+    })
+
+    const minDistanceByBangumi = new Map<number, number>()
+    for (const row of nearPointRows) {
+      if (row.geoLat == null || row.geoLng == null) continue
+      const meters = distanceMeters(input.userLocation, { lat: row.geoLat, lng: row.geoLng })
+      const prev = minDistanceByBangumi.get(row.bangumiId)
+      if (prev == null || meters < prev) {
+        minDistanceByBangumi.set(row.bangumiId, meters)
+      }
+    }
+
+    const sortedBangumi = Array.from(minDistanceByBangumi.entries()).sort((a, b) => {
+      if (a[1] !== b[1]) return a[1] - b[1]
+      return a[0] - b[0]
+    })
+
+    const page = sortedBangumi.slice(skip, skip + take)
+    if (!page.length) return []
+
+    const pagedIds = page.map(([bangumiId]) => bangumiId)
+    const rows = await input.prisma.anitabiBangumi.findMany({
+      where: { id: { in: pagedIds } },
+      include: buildCardInclude(input.locale),
+    })
+
+    const rowById = new Map(rows.map((row) => [row.id, row]))
+    const cards: AnitabiBangumiCard[] = []
+    for (const [bangumiId, distance] of page) {
+      const row = rowById.get(bangumiId)
+      if (!row) continue
+      const card = toCard(input.locale, row)
+      card.nearestDistanceMeters = Math.round(distance)
+      cards.push(card)
+    }
+    return cards
+  }
+
+  const queryTake = input.tab === 'hot' ? Math.max(take * 4, 120) : take
 
   const rows = await input.prisma.anitabiBangumi.findMany({
-    where: {
-      mapEnabled: true,
-      ...(city ? { city } : {}),
-      ...(q
-        ? {
-            OR: [
-              { titleZh: { contains: q, mode: 'insensitive' } },
-              { titleJaRaw: { contains: q, mode: 'insensitive' } },
-              { city: { contains: q, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      meta: { select: { pointsLength: true, imagesLength: true } },
-      i18n: {
-        where: { language: input.locale },
-        select: { title: true },
-        take: 1,
-      },
-    },
+    where: bangumiWhere,
+    include: buildCardInclude(input.locale),
     orderBy: input.tab === 'recent' ? [{ createdAt: 'desc' }, { sourceModifiedMs: 'desc' }] : [{ sourceModifiedMs: 'desc' }, { updatedAt: 'desc' }],
-    skip: input.skip ?? 0,
+    skip,
     take: queryTake,
   })
 
@@ -147,7 +230,7 @@ export async function listBangumiCards(input: {
       return (b.sourceModifiedMs || 0) - (a.sourceModifiedMs || 0)
     })
   }
-  return cards.slice(0, clampInt(input.take, 18, 1, 200))
+  return cards.slice(0, take)
 }
 
 function toPointDto(
@@ -284,6 +367,7 @@ export async function getBootstrap(input: {
   tab: AnitabiMapTab
   city?: string | null
   q?: string | null
+  userLocation?: { lat: number; lng: number } | null
 }): Promise<AnitabiBootstrapDTO> {
   const [datasetVersion, cards, cities, changelog] = await Promise.all([
     getActiveDatasetVersion(input.prisma),
@@ -293,6 +377,7 @@ export async function getBootstrap(input: {
       tab: input.tab,
       city: input.city,
       q: input.q,
+      userLocation: input.userLocation,
       take: 18,
     }),
     listFacetCities(input.prisma),
@@ -306,6 +391,7 @@ export async function getBootstrap(input: {
       { key: 'latest', label: ANITABI_TAB_LABELS[input.locale].latest },
       { key: 'recent', label: ANITABI_TAB_LABELS[input.locale].recent },
       { key: 'hot', label: ANITABI_TAB_LABELS[input.locale].hot },
+      { key: 'nearby', label: ANITABI_TAB_LABELS[input.locale].nearby },
     ],
     facets: { cities },
     cards,
@@ -391,6 +477,7 @@ export async function listChunk(input: {
   size?: number
   city?: string | null
   q?: string | null
+  userLocation?: { lat: number; lng: number } | null
 }): Promise<AnitabiBangumiCard[]> {
   const size = clampInt(input.size, 100, 20, 200)
   const index = clampInt(input.index, 0, 0, 999)
@@ -400,6 +487,7 @@ export async function listChunk(input: {
     tab: input.tab,
     city: input.city,
     q: input.q,
+    userLocation: input.userLocation,
     take: size,
     skip: index * size,
   })

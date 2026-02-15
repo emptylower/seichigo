@@ -7,16 +7,19 @@ export const ANITABI_TAB_LABELS: Record<SupportedLocale, Record<AnitabiMapTab, s
     latest: '最新更新',
     recent: '近期新作',
     hot: '热门作品',
+    nearby: '附近的点位',
   },
   en: {
     latest: 'Latest Updates',
     recent: 'Recent Releases',
     hot: 'Trending',
+    nearby: 'Nearby Works',
   },
   ja: {
     latest: '最新更新',
     recent: '新着作品',
     hot: '人気作品',
+    nearby: '近くの作品',
   },
 }
 
@@ -32,8 +35,21 @@ export function clampInt(value: string | number | null | undefined, fallback: nu
 }
 
 export function parseTab(value: string | null | undefined): AnitabiMapTab {
-  if (value === 'recent' || value === 'hot') return value
+  if (value === 'recent' || value === 'hot' || value === 'nearby') return value
   return 'latest'
+}
+
+export function parseUserLocation(params: URLSearchParams): { lat: number; lng: number } | null {
+  const latRaw = params.get('lat')
+  const lngRaw = params.get('lng')
+  if (latRaw == null || lngRaw == null) return null
+  if (!latRaw.trim() || !lngRaw.trim()) return null
+
+  const lat = toNumberOrNull(latRaw)
+  const lng = toNumberOrNull(lngRaw)
+  if (lat == null || lng == null) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { lat, lng }
 }
 
 export function hashText(input: string): string {

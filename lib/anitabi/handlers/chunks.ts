@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { listChunk } from '@/lib/anitabi/read'
-import { clampInt, normalizeLocale, parseTab } from '@/lib/anitabi/utils'
+import { clampInt, normalizeLocale, parseTab, parseUserLocation } from '@/lib/anitabi/utils'
 
 export function createHandlers(deps: AnitabiApiDeps) {
   return {
@@ -13,6 +13,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
       const size = clampInt(url.searchParams.get('size'), 100, 20, 200)
       const city = url.searchParams.get('city')
       const q = url.searchParams.get('q')
+      const userLocation = parseUserLocation(url.searchParams)
 
       const cards = await listChunk({
         prisma: deps.prisma,
@@ -22,6 +23,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
         size,
         city,
         q,
+        userLocation,
       })
 
       return NextResponse.json({ ok: true, index, size, items: cards }, {

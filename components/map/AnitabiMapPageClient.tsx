@@ -22,8 +22,15 @@ type UrlState = {
   lng: number
   lat: number
   z: number
+  hasViewport: boolean
   tab: AnitabiMapTab
   q: string
+}
+
+type UserLocation = {
+  lat: number
+  lng: number
+  accuracy: number | null
 }
 
 type SearchResult = {
@@ -88,6 +95,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     latest: '最新更新',
     recent: '近期新作',
     hot: '热门作品',
+    nearby: '附近的点位',
     random: '随机跳转作品',
     locate: '定位到我的位置',
     locating: '定位中…',
@@ -98,6 +106,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateInsecure: '定位需要 HTTPS 或 localhost 环境',
     locateFailed: '定位失败，请稍后重试',
     mapNotReady: '地图尚未就绪，请稍后再试',
+    nearbyNeedLocation: '请先允许定位，以查看附近作品',
     changelog: '更新记录',
     close: '关闭',
     loading: '加载中...',
@@ -135,6 +144,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     latest: 'Latest Updates',
     recent: 'Recent Releases',
     hot: 'Trending',
+    nearby: 'Nearby Works',
     random: 'Random Anime',
     locate: 'Locate Me',
     locating: 'Locating…',
@@ -145,6 +155,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateInsecure: 'Geolocation requires HTTPS or localhost',
     locateFailed: 'Failed to locate, please retry later',
     mapNotReady: 'Map is not ready yet',
+    nearbyNeedLocation: 'Allow location access to view nearby works',
     changelog: 'Changelog',
     close: 'Close',
     loading: 'Loading...',
@@ -182,6 +193,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     latest: '最新更新',
     recent: '新着作品',
     hot: '人気作品',
+    nearby: '近くの作品',
     random: 'ランダム作品',
     locate: '現在地',
     locating: '現在地を取得中…',
@@ -192,6 +204,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateInsecure: '位置情報には HTTPS または localhost が必要です',
     locateFailed: '位置情報の取得に失敗しました',
     mapNotReady: '地図の初期化が未完了です',
+    nearbyNeedLocation: '近くの作品を見るには位置情報を許可してください',
     changelog: '更新履歴',
     close: '閉じる',
     loading: '読み込み中...',
@@ -233,6 +246,7 @@ function parseUrlState(): UrlState {
       lng: DEFAULT_VIEW.lng,
       lat: DEFAULT_VIEW.lat,
       z: DEFAULT_VIEW.z,
+      hasViewport: false,
       tab: 'latest',
       q: '',
     }
@@ -251,7 +265,8 @@ function parseUrlState(): UrlState {
     lng: lng ?? DEFAULT_VIEW.lng,
     lat: lat ?? DEFAULT_VIEW.lat,
     z: z && z > 0 ? z : DEFAULT_VIEW.z,
-    tab: tabRaw === 'recent' || tabRaw === 'hot' ? tabRaw : 'latest',
+    hasViewport: lng != null || lat != null || z != null,
+    tab: tabRaw === 'recent' || tabRaw === 'hot' || tabRaw === 'nearby' ? tabRaw : 'latest',
     q: params.get('q') || '',
   }
 }
@@ -426,6 +441,15 @@ function distanceMeters(a: PointCoord, b: PointCoord): number {
   const sinLng = Math.sin(lngDelta / 2)
   const m = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng
   return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(m)))
+}
+
+function formatDistance(distanceMetersValue: number): string {
+  if (!Number.isFinite(distanceMetersValue) || distanceMetersValue < 0) return ''
+  if (distanceMetersValue >= 1000) {
+    const kilometers = distanceMetersValue / 1000
+    return `${kilometers.toFixed(kilometers >= 10 ? 1 : 2)} km`
+  }
+  return `${Math.round(distanceMetersValue)} m`
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -823,6 +847,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const autoPanoramaDismissedRef = useRef(false)
   const panoramaProgressTimerRef = useRef<number | null>(null)
   const panoramaProgressDoneTimerRef = useRef<number | null>(null)
+  const autoLocateAttemptedRef = useRef(false)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -854,6 +879,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [meLoaded, setMeLoaded] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
+  const [mapReady, setMapReady] = useState(false)
   const [mapZoom, setMapZoom] = useState(parsed.z)
   const [mapViewMode, setMapViewMode] = useState<'map' | 'panorama'>('map')
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
@@ -1257,6 +1284,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       params.set('tab', tab)
       if (query) params.set('q', query)
       if (selectedCity) params.set('city', selectedCity)
+      if (tab === 'nearby' && userLocation) {
+        params.set('lat', userLocation.lat.toFixed(6))
+        params.set('lng', userLocation.lng.toFixed(6))
+      }
 
       const res = await fetch(`/api/anitabi/bootstrap?${params.toString()}`, { method: 'GET' })
       if (!res.ok) throw new Error('Failed to load bootstrap')
@@ -1270,10 +1301,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       if (requestToken !== cardFeedTokenRef.current) return
       setLoading(false)
     }
-  }, [locale, query, selectedCity, tab])
+  }, [locale, query, selectedCity, tab, userLocation])
 
   const loadMoreCards = useCallback(async () => {
     if (loading || loadingMoreCards || !hasMoreCards) return
+    if (tab === 'nearby' && !userLocation) return
     const requestToken = cardFeedTokenRef.current
     const params = new URLSearchParams()
     params.set('locale', locale)
@@ -1281,6 +1313,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     params.set('size', String(CARD_PAGE_SIZE))
     if (query) params.set('q', query)
     if (selectedCity) params.set('city', selectedCity)
+    if (tab === 'nearby' && userLocation) {
+      params.set('lat', userLocation.lat.toFixed(6))
+      params.set('lng', userLocation.lng.toFixed(6))
+    }
 
     setLoadingMoreCards(true)
     setCardsLoadError(null)
@@ -1310,7 +1346,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       if (requestToken !== cardFeedTokenRef.current) return
       setLoadingMoreCards(false)
     }
-  }, [hasMoreCards, label.loadMoreFailed, loading, loadingMoreCards, locale, nextChunkIndex, query, selectedCity, tab])
+  }, [hasMoreCards, label.loadMoreFailed, loading, loadingMoreCards, locale, nextChunkIndex, query, selectedCity, tab, userLocation])
 
   const openBangumi = useCallback(
     async (id: number, pointId?: string | null) => {
@@ -1471,6 +1507,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     const resizeMap = () => map.resize()
     map.once('load', () => {
+      setMapReady(true)
       resizeMap()
       syncPointLayerRef.current()
       syncRangeOverlay()
@@ -1688,64 +1725,25 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     userMarkerRef.current.setLngLat([lng, lat])
   }, [])
 
-  const onLocate = useCallback(() => {
+  const locateUser = useCallback((options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent)
     if (typeof window === 'undefined') return
     if (!window.isSecureContext) {
-      setLocateHint(label.locateInsecure)
+      if (!silent) setLocateHint(label.locateInsecure)
       return
     }
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setLocateHint(label.locateUnavailable)
+      if (!silent) setLocateHint(label.locateUnavailable)
       return
     }
 
     setLocating(true)
-    setLocateHint(null)
+    if (!silent) setLocateHint(null)
 
-    const resolveSuccess = (position: GeolocationPosition) => {
-      const map = mapRef.current
-      if (!map) {
-        setLocating(false)
-        setLocateHint(label.mapNotReady)
-        return
-      }
-
-      const { latitude, longitude, accuracy } = position.coords
-      const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
-      focusGeo([latitude, longitude], zoom, false)
-      paintUserMarker(longitude, latitude)
+    const resolveFailure = (error: GeolocationPositionError) => {
       setLocating(false)
-      const acc = Number.isFinite(accuracy) ? Math.round(accuracy) : null
-      setLocateHint(acc != null ? `${label.located} (±${acc}m)` : label.located)
-    }
-
-    const resolveError = (error: GeolocationPositionError, highAccuracy: boolean) => {
-      if (highAccuracy && error.code !== error.PERMISSION_DENIED) {
-        navigator.geolocation.getCurrentPosition(
-          resolveSuccess,
-          (error2) => {
-            setLocating(false)
-            if (error2.code === error2.PERMISSION_DENIED) {
-              setLocateHint(label.locateDenied)
-            } else if (error2.code === error2.TIMEOUT) {
-              setLocateHint(label.locateTimeout)
-            } else if (error2.code === error2.POSITION_UNAVAILABLE) {
-              setLocateHint(label.locateUnavailable)
-            } else {
-              setLocateHint(label.locateFailed)
-            }
-          },
-          {
-            enableHighAccuracy: false,
-            timeout: 10000,
-            maximumAge: 300000,
-          }
-        )
-        return
-      }
-
-      setLocating(false)
+      if (silent) return
       if (error.code === error.PERMISSION_DENIED) {
         setLocateHint(label.locateDenied)
       } else if (error.code === error.TIMEOUT) {
@@ -1755,6 +1753,47 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       } else {
         setLocateHint(label.locateFailed)
       }
+    }
+
+    const resolveSuccess = (position: GeolocationPosition) => {
+      const map = mapRef.current
+      if (!map) {
+        setLocating(false)
+        if (!silent) setLocateHint(label.mapNotReady)
+        return
+      }
+
+      const { latitude, longitude, accuracy } = position.coords
+      const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
+      const roundedAccuracy = Number.isFinite(accuracy) ? Math.round(accuracy) : null
+
+      setUserLocation({
+        lat: latitude,
+        lng: longitude,
+        accuracy: roundedAccuracy,
+      })
+      focusGeo([latitude, longitude], zoom, false)
+      paintUserMarker(longitude, latitude)
+      setLocating(false)
+      if (!silent) {
+        setLocateHint(roundedAccuracy != null ? `${label.located} (±${roundedAccuracy}m)` : label.located)
+      }
+    }
+
+    const resolveError = (error: GeolocationPositionError, highAccuracy: boolean) => {
+      if (highAccuracy && error.code !== error.PERMISSION_DENIED) {
+        navigator.geolocation.getCurrentPosition(
+          resolveSuccess,
+          (fallbackError) => resolveFailure(fallbackError),
+          {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 300000,
+          }
+        )
+        return
+      }
+      resolveFailure(error)
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -1767,6 +1806,18 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       }
     )
   }, [focusGeo, label.locateDenied, label.locateFailed, label.locateInsecure, label.locateTimeout, label.locateUnavailable, label.located, label.mapNotReady, paintUserMarker])
+
+  const onLocate = useCallback(() => {
+    locateUser()
+  }, [locateUser])
+
+  useEffect(() => {
+    if (!mapReady) return
+    if (parsed.hasViewport) return
+    if (autoLocateAttemptedRef.current) return
+    autoLocateAttemptedRef.current = true
+    locateUser({ silent: true })
+  }, [locateUser, mapReady, parsed.hasViewport])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -1804,6 +1855,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     { key: 'latest' as const, label: label.latest },
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
+    { key: 'nearby' as const, label: label.nearby },
   ]
 
   const detailPanelInner = detail ? (
@@ -1939,21 +1991,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           >
             {styleMode === 'street' ? label.satellite : label.street}
           </button>
-          <button
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={onLocate}
-            type="button"
-            disabled={locating}
-          >
-            {locating ? label.locating : label.locate}
-          </button>
           <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onRandom} type="button">
             {label.random}
           </button>
         </div>
       </div>
-
-      {locateHint ? <div className="text-xs text-slate-500">{locateHint}</div> : null}
 
       <div className="relative">
         <div className="flex gap-2">
@@ -2067,7 +2109,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const cardsList = (
     <>
       {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
-      {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
+      {!loading && tab === 'nearby' && !userLocation ? <div className="text-sm text-slate-500">{label.nearbyNeedLocation}</div> : null}
+      {!loading && (tab !== 'nearby' || userLocation) && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
       <div className="space-y-3">
         {cards.map((card) => {
           const swatchColor = card.color || '#ec4899'
@@ -2099,6 +2142,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                   {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
                   <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
                     {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
+                    {card.nearestDistanceMeters != null ? <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-700">{formatDistance(card.nearestDistanceMeters)}</span> : null}
                     <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
                   </div>
@@ -2268,10 +2312,40 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             ) : (
               <div />
             )}
-            <button className="pointer-events-auto rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white" type="button" onClick={onShare}>
-              {label.share}
-            </button>
+            <div className="pointer-events-auto flex items-center gap-2">
+              {mapViewMode === 'map' ? (
+                <button
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={onLocate}
+                  disabled={locating}
+                  title={locating ? label.locating : label.locate}
+                  aria-label={locating ? label.locating : label.locate}
+                >
+                  {locating ? (
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" />
+                      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m12.5 0a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              ) : null}
+              <button className="rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white" type="button" onClick={onShare}>
+                {label.share}
+              </button>
+            </div>
           </div>
+          {locateHint ? (
+            <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-4">
+              <div className="rounded-full bg-black/65 px-3 py-1 text-[11px] text-white shadow-lg backdrop-blur-sm">
+                {locateHint}
+              </div>
+            </div>
+          ) : null}
 
           {mobilePointPopup}
 

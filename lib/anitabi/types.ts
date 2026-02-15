@@ -1,4 +1,4 @@
-export type AnitabiMapTab = 'latest' | 'recent' | 'hot'
+export type AnitabiMapTab = 'latest' | 'recent' | 'hot' | 'nearby'
 
 export type AnitabiDatasetVersion = string
 
@@ -16,6 +16,7 @@ export type AnitabiBangumiCard = {
   mapEnabled: boolean
   geo: [number, number] | null
   zoom: number | null
+  nearestDistanceMeters: number | null
 }
 
 export type AnitabiPointDTO = {
