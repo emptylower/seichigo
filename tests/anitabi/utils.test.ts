@@ -15,6 +15,9 @@ describe('anitabi utils', () => {
   })
 
   it('parses user location from query params', () => {
+    const paramsV2 = new URLSearchParams({ ulat: '35.681236', ulng: '139.767125' })
+    expect(parseUserLocation(paramsV2)).toEqual({ lat: 35.681236, lng: 139.767125 })
+
     const params = new URLSearchParams({ lat: '35.681236', lng: '139.767125' })
     expect(parseUserLocation(params)).toEqual({ lat: 35.681236, lng: 139.767125 })
   })

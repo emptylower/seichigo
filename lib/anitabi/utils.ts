@@ -40,8 +40,8 @@ export function parseTab(value: string | null | undefined): AnitabiMapTab {
 }
 
 export function parseUserLocation(params: URLSearchParams): { lat: number; lng: number } | null {
-  const latRaw = params.get('lat')
-  const lngRaw = params.get('lng')
+  const latRaw = params.get('ulat') ?? params.get('lat')
+  const lngRaw = params.get('ulng') ?? params.get('lng')
   if (latRaw == null || lngRaw == null) return null
   if (!latRaw.trim() || !lngRaw.trim()) return null
 

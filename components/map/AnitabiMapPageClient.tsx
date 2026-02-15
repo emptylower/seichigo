@@ -247,14 +247,14 @@ function parseUrlState(): UrlState {
       lat: DEFAULT_VIEW.lat,
       z: DEFAULT_VIEW.z,
       hasViewport: false,
-      tab: 'latest',
+      tab: 'nearby',
       q: '',
     }
   }
 
   const params = new URLSearchParams(window.location.search)
   const b = parseNumberParam(params.get('b'))
-  const lng = parseNumberParam(params.get('lng'))
+  const lng = parseNumberParam(params.get('mlng')) ?? parseNumberParam(params.get('lng'))
   const lat = parseNumberParam(params.get('lat'))
   const z = parseNumberParam(params.get('z'))
   const tabRaw = params.get('tab')
@@ -266,7 +266,7 @@ function parseUrlState(): UrlState {
     lat: lat ?? DEFAULT_VIEW.lat,
     z: z && z > 0 ? z : DEFAULT_VIEW.z,
     hasViewport: lng != null || lat != null || z != null,
-    tab: tabRaw === 'recent' || tabRaw === 'hot' || tabRaw === 'nearby' ? tabRaw : 'latest',
+    tab: tabRaw === 'latest' || tabRaw === 'recent' || tabRaw === 'hot' || tabRaw === 'nearby' ? tabRaw : 'nearby',
     q: params.get('q') || '',
   }
 }
@@ -892,6 +892,39 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
 
+  const detailPoints = useMemo(() => {
+    if (!detail) return [] as Array<{ point: AnitabiBangumiDTO['points'][number]; distanceMeters: number | null }>
+
+    const origin: PointCoord | null = userLocation ? [userLocation.lng, userLocation.lat] : null
+    const ranked = detail.points.map((point, index) => {
+      const pointCoord: PointCoord | null = isValidGeoPair(point.geo) ? [point.geo[1], point.geo[0]] : null
+      const pointDistance = origin && pointCoord ? distanceMeters(origin, pointCoord) : null
+      return {
+        point,
+        distanceMeters: pointDistance,
+        index,
+      }
+    })
+
+    ranked.sort((a, b) => {
+      if (a.distanceMeters != null && b.distanceMeters != null) {
+        if (a.distanceMeters !== b.distanceMeters) return a.distanceMeters - b.distanceMeters
+      } else if (a.distanceMeters != null) {
+        return -1
+      } else if (b.distanceMeters != null) {
+        return 1
+      }
+      return a.index - b.index
+    })
+
+    return ranked.map(({ point, distanceMeters: pointDistance }) => ({ point, distanceMeters: pointDistance }))
+  }, [detail, userLocation])
+
+  const selectedPointDistanceMeters = useMemo(() => {
+    if (!selectedPoint || !userLocation || !isValidGeoPair(selectedPoint.geo)) return null
+    return distanceMeters([userLocation.lng, userLocation.lat], [selectedPoint.geo[1], selectedPoint.geo[0]])
+  }, [selectedPoint, userLocation])
+
   const selectedPointPanorama = useMemo(() => {
     if (!selectedPoint) return null
     return resolvePanoramaEmbed(selectedPoint)
@@ -1228,12 +1261,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (selectedBangumiId != null) params.set('b', String(selectedBangumiId))
     if (selectedPointId) params.set('p', selectedPointId)
     if (query) params.set('q', query)
-    if (tab !== 'latest') params.set('tab', tab)
+    if (tab !== 'nearby') params.set('tab', tab)
 
     const map = mapRef.current
     if (map) {
       const center = map.getCenter()
-      params.set('lng', center.lng.toFixed(6))
+      params.set('mlng', center.lng.toFixed(6))
       params.set('lat', center.lat.toFixed(6))
       params.set('z', map.getZoom().toFixed(2))
     }
@@ -1285,8 +1318,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       if (query) params.set('q', query)
       if (selectedCity) params.set('city', selectedCity)
       if (tab === 'nearby' && userLocation) {
-        params.set('lat', userLocation.lat.toFixed(6))
-        params.set('lng', userLocation.lng.toFixed(6))
+        params.set('ulat', userLocation.lat.toFixed(6))
+        params.set('ulng', userLocation.lng.toFixed(6))
       }
 
       const res = await fetch(`/api/anitabi/bootstrap?${params.toString()}`, { method: 'GET' })
@@ -1314,8 +1347,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (query) params.set('q', query)
     if (selectedCity) params.set('city', selectedCity)
     if (tab === 'nearby' && userLocation) {
-      params.set('lat', userLocation.lat.toFixed(6))
-      params.set('lng', userLocation.lng.toFixed(6))
+      params.set('ulat', userLocation.lat.toFixed(6))
+      params.set('ulng', userLocation.lng.toFixed(6))
     }
 
     setLoadingMoreCards(true)
@@ -1852,10 +1885,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   )
 
   const tabs = bootstrap?.tabs || [
+    { key: 'nearby' as const, label: label.nearby },
     { key: 'latest' as const, label: label.latest },
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
-    { key: 'nearby' as const, label: label.nearby },
   ]
 
   const detailPanelInner = detail ? (
@@ -1906,6 +1939,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
             {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
+            {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
           </div>
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (
@@ -1936,7 +1970,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       <div className="max-h-[420px] overflow-auto px-3 py-2">
         {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
         <div className="space-y-1">
-          {detail.points.map((point) => (
+          {detailPoints.map(({ point, distanceMeters: pointDistance }) => (
             <button
               key={point.id}
               type="button"
@@ -1952,6 +1986,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             >
               <span className="font-medium">{point.name}</span>
               {point.ep ? <span className="ml-1 text-slate-500">EP {point.ep}</span> : null}
+              {pointDistance != null ? <span className="ml-1 text-slate-500">· ~{formatDistance(pointDistance)}</span> : null}
             </button>
           ))}
         </div>
@@ -2202,6 +2237,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
             {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
+            {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
           </div>
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (

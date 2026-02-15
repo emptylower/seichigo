@@ -388,10 +388,10 @@ export async function getBootstrap(input: {
     datasetVersion,
     tab: input.tab,
     tabs: [
+      { key: 'nearby', label: ANITABI_TAB_LABELS[input.locale].nearby },
       { key: 'latest', label: ANITABI_TAB_LABELS[input.locale].latest },
       { key: 'recent', label: ANITABI_TAB_LABELS[input.locale].recent },
       { key: 'hot', label: ANITABI_TAB_LABELS[input.locale].hot },
-      { key: 'nearby', label: ANITABI_TAB_LABELS[input.locale].nearby },
     ],
     facets: { cities },
     cards,
