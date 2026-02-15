@@ -60,6 +60,76 @@ function formatLatLng(p: LatLng): string {
   return `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`
 }
 
+function normalizeHttpUrl(rawInput: string | null | undefined): string | null {
+  const raw = String(rawInput || '').trim()
+  if (!raw || raw.startsWith('//')) return null
+
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+function isGoogleMapsHost(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return /(^|\.)google\./.test(host)
+}
+
+export function isGoogleMapsPanoramaUrl(input: string | null | undefined): boolean {
+  const normalized = normalizeHttpUrl(input)
+  if (!normalized) return false
+
+  try {
+    const url = new URL(normalized)
+    if (!isGoogleMapsHost(url.hostname)) return false
+
+    if (url.searchParams.get('map_action') === 'pano') return true
+    if (url.searchParams.get('layer') === 'c') return true
+    if (url.searchParams.has('cbll') || url.searchParams.has('cbp')) return true
+    if (/,3a,/.test(`${url.pathname}${url.search}`)) return true
+  } catch {
+    return false
+  }
+
+  return false
+}
+
+export function buildGoogleMapsPanoramaUrl(
+  point: LatLng,
+  options?: { heading?: number; pitch?: number; fov?: number }
+): string | null {
+  const valid = toLatLng(point.lat, point.lng)
+  if (!valid) return null
+
+  const params = new URLSearchParams()
+  params.set('api', '1')
+  params.set('map_action', 'pano')
+  params.set('viewpoint', formatLatLng(valid))
+
+  if (isFiniteNumber(options?.heading)) params.set('heading', String(options?.heading))
+  if (isFiniteNumber(options?.pitch)) params.set('pitch', String(options?.pitch))
+  if (isFiniteNumber(options?.fov)) params.set('fov', String(options?.fov))
+
+  return `https://www.google.com/maps/@?${params.toString()}`
+}
+
+export function resolveGoogleMapsPanoramaUrl(input: {
+  geo?: LatLng | null
+  originLink?: string | null
+}): string | null {
+  const origin = normalizeHttpUrl(input.originLink)
+  if (origin && isGoogleMapsPanoramaUrl(origin)) return origin
+
+  const originLatLng = origin ? extractLatLngFromGoogleMapsUrl(origin) : null
+  const target = input.geo || originLatLng
+  if (!target) return null
+
+  return buildGoogleMapsPanoramaUrl(target)
+}
+
 export function buildGoogleMapsDirectionsUrls(
   points: LatLng[],
   options?: { maxStopsPerUrl?: number; travelmode?: GoogleMapsTravelMode }
@@ -142,4 +212,3 @@ export function buildGoogleStaticMapUrl(
 
   return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`
 }
-

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildGoogleMapsPanoramaUrl,
   buildGoogleMapsDirectionsUrls,
   buildGoogleStaticMapUrl,
   extractLatLngFromGoogleMapsUrl,
+  isGoogleMapsPanoramaUrl,
+  resolveGoogleMapsPanoramaUrl,
   type LatLng,
 } from '@/lib/route/google'
 
@@ -98,5 +101,42 @@ describe('route google helpers', () => {
       expect(u.searchParams.getAll('path')[0]).toContain('35.200000,139.300000')
     })
   })
-})
 
+  describe('panorama helpers', () => {
+    it('detects panorama urls', () => {
+      expect(isGoogleMapsPanoramaUrl('https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.1,139.2')).toBe(true)
+      expect(isGoogleMapsPanoramaUrl('https://www.google.com/maps?q=35.1,139.2')).toBe(false)
+    })
+
+    it('builds a panorama url from valid point', () => {
+      const url = buildGoogleMapsPanoramaUrl({ lat: 35.1, lng: 139.2 }, { heading: 120, pitch: 5 })
+      expect(url).toBeTruthy()
+      const parsed = new URL(url!)
+      expect(parsed.hostname).toBe('www.google.com')
+      expect(parsed.searchParams.get('map_action')).toBe('pano')
+      expect(parsed.searchParams.get('viewpoint')).toBe('35.100000,139.200000')
+      expect(parsed.searchParams.get('heading')).toBe('120')
+      expect(parsed.searchParams.get('pitch')).toBe('5')
+    })
+
+    it('returns null when point is invalid', () => {
+      expect(buildGoogleMapsPanoramaUrl({ lat: 999, lng: 139.2 })).toBeNull()
+    })
+
+    it('prefers source panorama link when available', () => {
+      const source = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=35.1,139.2'
+      expect(resolveGoogleMapsPanoramaUrl({ originLink: source, geo: { lat: 0, lng: 0 } })).toBe(source)
+    })
+
+    it('falls back to geo when source is not panorama', () => {
+      const url = resolveGoogleMapsPanoramaUrl({
+        originLink: 'https://www.google.com/maps?q=35.1,139.2',
+        geo: { lat: 36.1, lng: 140.2 },
+      })
+      expect(url).toBeTruthy()
+      const parsed = new URL(url!)
+      expect(parsed.searchParams.get('map_action')).toBe('pano')
+      expect(parsed.searchParams.get('viewpoint')).toBe('36.100000,140.200000')
+    })
+  })
+})

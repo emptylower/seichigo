@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiChangelogDTO, AnitabiMapTab } from '@/lib/anitabi/types'
+import { resolveGoogleMapsPanoramaUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 
 type Props = {
@@ -50,6 +51,7 @@ const DESKTOP_BREAKPOINT = 1024
 const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
+const PANORAMA_TRIGGER_ZOOM = 17.2
 
 type CameraPadding = {
   top: number
@@ -100,6 +102,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     screenshots: '截图',
     share: '分享',
     openInGoogle: '谷歌导航',
+    openInPanorama: '进入全景',
+    panoramaHint: '已到街景级缩放，打开全景',
     favorites: '收藏',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
@@ -142,6 +146,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     screenshots: 'Shots',
     share: 'Share',
     openInGoogle: 'Google Nav',
+    openInPanorama: 'Street View',
+    panoramaHint: 'Street-level zoom reached',
     favorites: 'Favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
@@ -184,6 +190,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     screenshots: '画像',
     share: '共有',
     openInGoogle: 'Google ナビ',
+    openInPanorama: 'ストリートビュー',
+    panoramaHint: '街レベルまで拡大',
     favorites: 'お気に入り',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
@@ -268,6 +276,14 @@ function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification
 function geoLink(point: { geo: [number, number] | null }): string | null {
   if (!point.geo) return null
   return `https://www.google.com/maps?q=${point.geo[0]},${point.geo[1]}`
+}
+
+function panoramaLink(point: { geo: [number, number] | null; originLink?: string | null }): string | null {
+  const geo = isValidGeoPair(point.geo) ? { lat: point.geo[0], lng: point.geo[1] } : null
+  return resolveGoogleMapsPanoramaUrl({
+    geo,
+    originLink: point.originLink || null,
+  })
 }
 
 function matchPointId(candidateId: string, pointId: string): boolean {
@@ -726,6 +742,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const focusTimerRef = useRef<number | null>(null)
   const rangeOverlayRef = useRef<{ data: GeoJSON.FeatureCollection<GeoJSON.Polygon>; color: string } | null>(null)
   const isDesktopRef = useRef(true)
+  const selectedPointIdRef = useRef<string | null>(parsed.p)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -757,11 +774,21 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [meLoaded, setMeLoaded] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
+  const [mapZoom, setMapZoom] = useState(parsed.z)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
+
+  const selectedPointPanoramaHref = useMemo(() => {
+    if (!selectedPoint) return null
+    return panoramaLink(selectedPoint)
+  }, [selectedPoint])
+
+  const showZoomPanoramaHint = Boolean(
+    selectedPointPanoramaHref && mapZoom >= PANORAMA_TRIGGER_ZOOM && (isDesktop || !mobilePanelOpen)
+  )
 
   const favoriteSet = useMemo(() => {
     return new Set((meState?.favorites || []).map((row) => row.targetKey))
@@ -770,6 +797,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     isDesktopRef.current = isDesktop
   }, [isDesktop])
+
+  useEffect(() => {
+    selectedPointIdRef.current = selectedPointId
+  }, [selectedPointId])
 
   const getCameraPadding = useCallback((withDetailPanel: boolean): CameraPadding => {
     const map = mapRef.current
@@ -1207,7 +1238,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.on('moveend', () => syncUrlRef.current())
+    const syncMapViewState = () => {
+      syncUrlRef.current()
+      setMapZoom(map.getZoom())
+    }
+    map.on('moveend', syncMapViewState)
+    map.on('zoomend', syncMapViewState)
     const pointLayerIds = () => [POINT_SELECTED_LAYER_ID, POINT_LAYER_ID].filter((id) => Boolean(map.getLayer(id)))
     const readPointIdFromRendered = (event: maplibregl.MapMouseEvent): string | null => {
       const layers = pointLayerIds()
@@ -1219,6 +1255,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const handlePointClick = (event: maplibregl.MapMouseEvent) => {
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
+      const prevPointId = selectedPointIdRef.current
       setSelectedPointId(pointId)
       if (!isDesktopRef.current) {
         setMobilePointPopupOpen(true)
@@ -1226,7 +1263,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const activeDetail = detailRef.current
       const target = activeDetail?.points.find((point) => matchPointId(point.id, pointId)) || null
       if (target && isValidGeoPair(target.geo)) {
-        focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+        const sameAsPrev = Boolean(prevPointId && (matchPointId(pointId, prevPointId) || matchPointId(prevPointId, pointId)))
+        const panoUrl = panoramaLink(target)
+        if (sameAsPrev && map.getZoom() >= PANORAMA_TRIGGER_ZOOM && panoUrl) {
+          window.open(panoUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+        }
       }
       fetch('/api/anitabi/me/history', {
         method: 'POST',
@@ -1272,6 +1315,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       map.off('mousemove', handlePointerMove)
       map.off('dragstart', resetPointer)
       map.off('mouseout', resetPointer)
+      map.off('moveend', syncMapViewState)
+      map.off('zoomend', syncMapViewState)
       removePointLayer(map)
       removeRangeLayer(map)
       map.remove()
@@ -1618,6 +1663,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 {label.openInGoogle}
               </a>
             ) : null}
+            {selectedPointPanoramaHref ? (
+              <a
+                className="rounded bg-brand-500 px-2 py-1 text-xs text-white no-underline hover:bg-brand-600"
+                href={selectedPointPanoramaHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {label.openInPanorama}
+              </a>
+            ) : null}
             <button
               type="button"
               className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
@@ -1912,6 +1967,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 {label.openInGoogle}
               </a>
             ) : null}
+            {selectedPointPanoramaHref ? (
+              <a
+                className="rounded bg-brand-500 px-2 py-1 text-xs text-white no-underline hover:bg-brand-600"
+                href={selectedPointPanoramaHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {label.openInPanorama}
+              </a>
+            ) : null}
             <button
               type="button"
               className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
@@ -1947,6 +2012,22 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
 
           {mobilePointPopup}
+
+          {showZoomPanoramaHint && selectedPointPanoramaHref ? (
+            <div
+              className="pointer-events-none absolute inset-x-4 z-30 flex justify-center"
+              style={{ bottom: isDesktop ? '1rem' : 'calc(8.5rem + env(safe-area-inset-bottom, 0px))' }}
+            >
+              <a
+                className="pointer-events-auto inline-flex items-center rounded-full bg-brand-500 px-4 py-2 text-xs font-medium text-white no-underline shadow-lg hover:bg-brand-600"
+                href={selectedPointPanoramaHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {label.panoramaHint}
+              </a>
+            </div>
+          ) : null}
 
           {!isDesktop ? (
             <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center mobile-safe-bottom">
