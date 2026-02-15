@@ -77,6 +77,17 @@ export type AnitabiSearchResultDTO = {
   cities: string[]
 }
 
+export type AnitabiNearbyPointDTO = {
+  id: string
+  bangumiId: number
+  bangumiTitle: string
+  city: string | null
+  name: string
+  geo: [number, number]
+  distanceMeters: number
+  image: string | null
+}
+
 export type AnitabiSyncMode = 'full' | 'delta' | 'dryRun'
 
 export type AnitabiSyncReport = {

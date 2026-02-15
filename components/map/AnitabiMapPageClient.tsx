@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiChangelogDTO, AnitabiMapTab } from '@/lib/anitabi/types'
+import type {
+  AnitabiBangumiCard,
+  AnitabiBangumiDTO,
+  AnitabiBootstrapDTO,
+  AnitabiChangelogDTO,
+  AnitabiMapTab,
+  AnitabiNearbyPointDTO,
+} from '@/lib/anitabi/types'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 
@@ -24,12 +31,19 @@ type UrlState = {
   z: number
   tab: AnitabiMapTab
   q: string
+  shouldAutoLocate: boolean
 }
 
 type SearchResult = {
   bangumi: AnitabiBangumiCard[]
   points: Array<{ id: string; bangumiId: number; name: string }>
   cities: string[]
+}
+
+type UserLocation = {
+  lat: number
+  lng: number
+  accuracy: number | null
 }
 
 const DEFAULT_VIEW = {
@@ -155,6 +169,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: '打开列表面板',
     hidePanel: '收起面板',
     panel: '作品与筛选',
+    nearbyPoints: '附近的点位',
+    nearbyLoading: '附近点位加载中…',
+    nearbyEmpty: '附近暂无可用点位',
+    nearbyLoadFailed: '附近点位加载失败，请稍后重试',
+    nearbyNeedLocation: '请先允许定位后查看附近点位',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -201,6 +220,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'Open list panel',
     hidePanel: 'Hide panel',
     panel: 'Titles & filters',
+    nearbyPoints: 'Nearby Spots',
+    nearbyLoading: 'Loading nearby spots…',
+    nearbyEmpty: 'No nearby spots yet',
+    nearbyLoadFailed: 'Failed to load nearby spots',
+    nearbyNeedLocation: 'Allow location access to see nearby spots',
   },
   ja: {
     title: '巡礼マップ',
@@ -247,6 +271,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'リストを開く',
     hidePanel: 'パネルを閉じる',
     panel: '作品と絞り込み',
+    nearbyPoints: '近くのスポット',
+    nearbyLoading: '近くのスポットを読み込み中…',
+    nearbyEmpty: '近くのスポットはまだありません',
+    nearbyLoadFailed: '近くのスポット取得に失敗しました',
+    nearbyNeedLocation: '位置情報を許可すると近くのスポットを表示できます',
   },
 }
 
@@ -260,6 +289,7 @@ function parseUrlState(): UrlState {
       z: DEFAULT_VIEW.z,
       tab: 'latest',
       q: '',
+      shouldAutoLocate: true,
     }
   }
 
@@ -269,6 +299,8 @@ function parseUrlState(): UrlState {
   const lat = parseNumberParam(params.get('lat'))
   const z = parseNumberParam(params.get('z'))
   const tabRaw = params.get('tab')
+  const hasExplicitView = lng != null || lat != null || z != null
+  const hasTarget = Boolean((b && b > 0) || params.get('p'))
 
   return {
     b: b && b > 0 ? b : null,
@@ -278,6 +310,7 @@ function parseUrlState(): UrlState {
     z: z && z > 0 ? z : DEFAULT_VIEW.z,
     tab: tabRaw === 'recent' || tabRaw === 'hot' ? tabRaw : 'latest',
     q: params.get('q') || '',
+    shouldAutoLocate: !hasExplicitView && !hasTarget,
   }
 }
 
@@ -857,6 +890,15 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
 }
 
+function formatDistance(meters: number): string {
+  if (!Number.isFinite(meters) || meters < 0) return '-'
+  if (meters < 1000) return `${Math.round(meters)}m`
+  const km = meters / 1000
+  if (km >= 100) return `${Math.round(km)}km`
+  if (km >= 10) return `${km.toFixed(1)}km`
+  return `${km.toFixed(2)}km`
+}
+
 export default function AnitabiMapPageClient({ locale }: Props) {
   const label = L[locale]
 
@@ -891,6 +933,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const isDesktopRef = useRef(true)
   const selectedPointIdRef = useRef<string | null>(parsed.p)
   const autoPanoramaDismissedRef = useRef(false)
+  const autoLocateTriggeredRef = useRef(false)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -922,6 +965,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [meLoaded, setMeLoaded] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
+  const [nearbyPoints, setNearbyPoints] = useState<AnitabiNearbyPointDTO[]>([])
+  const [nearbyLoading, setNearbyLoading] = useState(false)
+  const [nearbyError, setNearbyError] = useState<string | null>(null)
   const [mapZoom, setMapZoom] = useState(parsed.z)
   const [mapViewMode, setMapViewMode] = useState<'map' | 'panorama'>('map')
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
@@ -1553,6 +1601,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       resizeMap()
       syncPointLayerRef.current()
       syncRangeOverlay()
+      setMapReady(true)
     })
     const rafId = window.requestAnimationFrame(resizeMap)
     window.addEventListener('resize', resizeMap)
@@ -1580,6 +1629,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
+      setMapReady(false)
     }
   }, [focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
 
@@ -1674,6 +1724,49 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       window.clearTimeout(t)
     }
   }, [locale, queryInput])
+
+  useEffect(() => {
+    if (!userLocation) {
+      setNearbyPoints([])
+      setNearbyError(null)
+      setNearbyLoading(false)
+      return
+    }
+
+    const ctrl = new AbortController()
+    setNearbyLoading(true)
+    setNearbyError(null)
+
+    const params = new URLSearchParams()
+    params.set('locale', locale)
+    params.set('lat', userLocation.lat.toFixed(6))
+    params.set('lng', userLocation.lng.toFixed(6))
+    params.set('limit', '16')
+    if (selectedCity) params.set('city', selectedCity)
+    if (query) params.set('q', query)
+
+    fetch(`/api/anitabi/nearby?${params.toString()}`, {
+      method: 'GET',
+      signal: ctrl.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('nearby failed')
+        const json = (await res.json().catch(() => ({}))) as { items?: AnitabiNearbyPointDTO[] }
+        setNearbyPoints(Array.isArray(json.items) ? json.items : [])
+      })
+      .catch((err) => {
+        if (ctrl.signal.aborted) return
+        console.error('[anitabi-map] load nearby failed', err)
+        setNearbyPoints([])
+        setNearbyError(label.nearbyLoadFailed)
+      })
+      .finally(() => {
+        if (ctrl.signal.aborted) return
+        setNearbyLoading(false)
+      })
+
+    return () => ctrl.abort()
+  }, [label.nearbyLoadFailed, locale, query, selectedCity, userLocation])
 
   useEffect(() => {
     if (!locateHint) return
@@ -1794,8 +1887,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
       focusGeo([latitude, longitude], zoom, false)
       paintUserMarker(longitude, latitude)
-      setLocating(false)
       const acc = Number.isFinite(accuracy) ? Math.round(accuracy) : null
+      setUserLocation({
+        lat: latitude,
+        lng: longitude,
+        accuracy: acc,
+      })
+      setLocating(false)
       setLocateHint(acc != null ? `${label.located} (±${acc}m)` : label.located)
     }
 
@@ -1846,6 +1944,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       }
     )
   }, [focusGeo, label.locateDenied, label.locateFailed, label.locateInsecure, label.locateTimeout, label.locateUnavailable, label.located, label.mapNotReady, paintUserMarker])
+
+  useEffect(() => {
+    if (!mapReady || !parsed.shouldAutoLocate) return
+    if (autoLocateTriggeredRef.current) return
+    autoLocateTriggeredRef.current = true
+    onLocate()
+  }, [mapReady, onLocate, parsed.shouldAutoLocate])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -2018,21 +2123,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           >
             {styleMode === 'street' ? label.satellite : label.street}
           </button>
-          <button
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={onLocate}
-            type="button"
-            disabled={locating}
-          >
-            {locating ? label.locating : label.locate}
-          </button>
           <button className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" onClick={onRandom} type="button">
             {label.random}
           </button>
         </div>
       </div>
-
-      {locateHint ? <div className="text-xs text-slate-500">{locateHint}</div> : null}
 
       <div className="relative">
         <div className="flex gap-2">
@@ -2145,6 +2240,37 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const cardsList = (
     <>
+      <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <h2 className="mb-2 text-sm font-semibold text-slate-900">{label.nearbyPoints}</h2>
+        {!userLocation ? <p className="text-xs text-slate-500">{label.nearbyNeedLocation}</p> : null}
+        {nearbyLoading ? <p className="text-xs text-slate-500">{label.nearbyLoading}</p> : null}
+        {nearbyError ? <p className="text-xs text-rose-600">{nearbyError}</p> : null}
+        {userLocation && !nearbyLoading && !nearbyError && nearbyPoints.length === 0 ? (
+          <p className="text-xs text-slate-500">{label.nearbyEmpty}</p>
+        ) : null}
+        {nearbyPoints.length > 0 ? (
+          <div className="space-y-1.5">
+            {nearbyPoints.map((point) => (
+              <button
+                key={point.id}
+                type="button"
+                className="flex w-full items-start justify-between gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50"
+                onClick={() => openBangumi(point.bangumiId, point.id).catch(() => null)}
+              >
+                <div className="min-w-0">
+                  <div className="line-clamp-1 text-xs font-medium text-slate-900">{point.name}</div>
+                  <div className="line-clamp-1 text-[11px] text-slate-500">
+                    {point.bangumiTitle}
+                    {point.city ? ` · ${point.city}` : ''}
+                  </div>
+                </div>
+                <div className="shrink-0 text-[11px] font-medium text-brand-600">{formatDistance(point.distanceMeters)}</div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
       {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
       <div className="space-y-3">
@@ -2331,21 +2457,46 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
 
           <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-center justify-between gap-2">
-            {mapViewMode === 'panorama' ? (
+            <div className="flex items-center gap-2">
+              {mapViewMode === 'panorama' ? (
+                <button
+                  className="pointer-events-auto rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white"
+                  type="button"
+                  onClick={exitPanorama}
+                >
+                  {label.exitPanorama}
+                </button>
+              ) : null}
               <button
-                className="pointer-events-auto rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white"
+                className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-white/95 text-slate-700 shadow hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
-                onClick={exitPanorama}
+                onClick={onLocate}
+                disabled={locating}
+                aria-label={locating ? label.locating : label.locate}
+                title={locating ? label.locating : label.locate}
               >
-                {label.exitPanorama}
+                {locating ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    <path
+                      d="M12 4.5a7.5 7.5 0 1 0 7.5 7.5A7.51 7.51 0 0 0 12 4.5Zm0 12a4.5 4.5 0 1 1 4.5-4.5 4.5 4.5 0 0 1-4.5 4.5Zm0-14.5a1 1 0 0 1 1 1v1.05a8.99 8.99 0 0 1 7.95 7.95H22a1 1 0 1 1 0 2h-1.05A8.99 8.99 0 0 1 13 21.95V23a1 1 0 1 1-2 0v-1.05a8.99 8.99 0 0 1-7.95-7.95H2a1 1 0 1 1 0-2h1.05A8.99 8.99 0 0 1 11 4.05V3a1 1 0 0 1 1-1Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                )}
               </button>
-            ) : (
-              <div />
-            )}
+            </div>
             <button className="pointer-events-auto rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white" type="button" onClick={onShare}>
               {label.share}
             </button>
           </div>
+
+          {locateHint ? (
+            <div className="pointer-events-none absolute left-1/2 top-16 z-20 -translate-x-1/2 rounded-md bg-black/65 px-3 py-1.5 text-xs text-white/95 shadow">
+              {locateHint}
+            </div>
+          ) : null}
 
           {mobilePointPopup}
 

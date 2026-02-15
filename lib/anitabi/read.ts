@@ -6,6 +6,7 @@ import type {
   AnitabiBootstrapDTO,
   AnitabiChangelogDTO,
   AnitabiMapTab,
+  AnitabiNearbyPointDTO,
   AnitabiPointDTO,
   AnitabiSearchResultDTO,
 } from '@/lib/anitabi/types'
@@ -62,6 +63,44 @@ function toCard(
     mapEnabled: row.mapEnabled,
     geo: row.geoLat != null && row.geoLng != null ? [row.geoLat, row.geoLng] : null,
     zoom: row.zoom,
+  }
+}
+
+const NEARBY_RADIUS_KM_STEPS = [25, 60, 120, 240, 480, 960]
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
+}
+
+function distanceMeters(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const earthRadius = 6378137
+  const latDelta = toRadians(toLat - fromLat)
+  const lngDelta = toRadians(toLng - fromLng)
+  const fromLatRad = toRadians(fromLat)
+  const toLatRad = toRadians(toLat)
+  const sinLat = Math.sin(latDelta / 2)
+  const sinLng = Math.sin(lngDelta / 2)
+  const acc = sinLat * sinLat + Math.cos(fromLatRad) * Math.cos(toLatRad) * sinLng * sinLng
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(acc)))
+}
+
+function clampLatitude(value: number): number {
+  return Math.max(-90, Math.min(90, value))
+}
+
+function clampLongitude(value: number): number {
+  return Math.max(-180, Math.min(180, value))
+}
+
+function buildNearbyBounds(lat: number, lng: number, radiusKm: number): { minLat: number; maxLat: number; minLng: number; maxLng: number } {
+  const latDelta = radiusKm / 110.574
+  const cosLat = Math.max(0.1, Math.abs(Math.cos(toRadians(lat))))
+  const lngDelta = radiusKm / (111.320 * cosLat)
+  return {
+    minLat: clampLatitude(lat - latDelta),
+    maxLat: clampLatitude(lat + latDelta),
+    minLng: clampLongitude(lng - lngDelta),
+    maxLng: clampLongitude(lng + lngDelta),
   }
 }
 
@@ -381,6 +420,142 @@ export async function searchDataset(input: {
     points: pointRows.map((row) => toPointDto(input.locale, row)),
     cities: cityRows.map((row) => normalizeText(row.city)).filter(Boolean),
   }
+}
+
+export async function listNearbyPoints(input: {
+  prisma: PrismaClient
+  locale: SupportedLocale
+  lat: number
+  lng: number
+  city?: string | null
+  q?: string | null
+  limit?: number
+}): Promise<AnitabiNearbyPointDTO[]> {
+  if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng)) return []
+
+  const limit = clampInt(input.limit, 12, 1, 40)
+  const city = normalizeText(input.city)
+  const q = normalizeText(input.q)
+  const qWhere = q
+    ? {
+        OR: [
+          { name: { contains: q, mode: 'insensitive' as const } },
+          { nameZh: { contains: q, mode: 'insensitive' as const } },
+          { mark: { contains: q, mode: 'insensitive' as const } },
+          { bangumi: { titleZh: { contains: q, mode: 'insensitive' as const } } },
+          { bangumi: { titleJaRaw: { contains: q, mode: 'insensitive' as const } } },
+          { bangumi: { city: { contains: q, mode: 'insensitive' as const } } },
+        ],
+      }
+    : {}
+
+  const sharedSelect = {
+    id: true,
+    bangumiId: true,
+    name: true,
+    geoLat: true,
+    geoLng: true,
+    image: true,
+    i18n: {
+      where: { language: input.locale },
+      select: { name: true },
+      take: 1,
+    },
+    bangumi: {
+      select: {
+        titleZh: true,
+        titleJaRaw: true,
+        city: true,
+        i18n: {
+          where: { language: input.locale },
+          select: { title: true },
+          take: 1,
+        },
+      },
+    },
+  } as const
+
+  type NearbyCandidate = {
+    id: string
+    bangumiId: number
+    name: string
+    geoLat: number | null
+    geoLng: number | null
+    image: string | null
+    i18n: Array<{ name: string | null }>
+    bangumi: {
+      titleZh: string | null
+      titleJaRaw: string | null
+      city: string | null
+      i18n: Array<{ title: string | null }>
+    }
+  }
+  const candidateById = new Map<string, NearbyCandidate>()
+
+  for (const radiusKm of NEARBY_RADIUS_KM_STEPS) {
+    const bounds = buildNearbyBounds(input.lat, input.lng, radiusKm)
+    const rows = await input.prisma.anitabiPoint.findMany({
+      where: {
+        geoLat: {
+          not: null,
+          gte: bounds.minLat,
+          lte: bounds.maxLat,
+        },
+        geoLng: {
+          not: null,
+          gte: bounds.minLng,
+          lte: bounds.maxLng,
+        },
+        bangumi: {
+          mapEnabled: true,
+          ...(city ? { city } : {}),
+        },
+        ...qWhere,
+      },
+      select: sharedSelect,
+    })
+    for (const row of rows) {
+      candidateById.set(row.id, row)
+    }
+    if (candidateById.size >= limit * 6) break
+  }
+
+  if (candidateById.size < limit) {
+    const fallbackRows = await input.prisma.anitabiPoint.findMany({
+      where: {
+        geoLat: { not: null },
+        geoLng: { not: null },
+        bangumi: {
+          mapEnabled: true,
+          ...(city ? { city } : {}),
+        },
+        ...qWhere,
+      },
+      select: sharedSelect,
+    })
+    for (const row of fallbackRows) {
+      candidateById.set(row.id, row)
+    }
+  }
+
+  return Array.from(candidateById.values())
+    .map((row) => {
+      if (row.geoLat == null || row.geoLng == null) return null
+      const localizedName = input.locale === 'zh' ? null : normalizeText(row.i18n?.[0]?.name)
+      return {
+        id: row.id,
+        bangumiId: row.bangumiId,
+        bangumiTitle: pickLocalizedTitle(input.locale, row.bangumi),
+        city: row.bangumi.city,
+        name: localizedName || row.name,
+        geo: [row.geoLat, row.geoLng],
+        distanceMeters: distanceMeters(input.lat, input.lng, row.geoLat, row.geoLng),
+        image: resolveAnitabiAssetUrl(row.image),
+      } satisfies AnitabiNearbyPointDTO
+    })
+    .filter((row): row is AnitabiNearbyPointDTO => Boolean(row))
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, limit)
 }
 
 export async function listChunk(input: {
