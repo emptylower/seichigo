@@ -87,6 +87,7 @@ type GoogleMapsApi = {
   maps: {
     StreetViewPanorama: new (container: HTMLElement, opts?: Record<string, unknown>) => {
       setPosition: (latLng: unknown) => void
+      setPano: (panoId: string) => void
       setPov: (pov: { heading: number; pitch: number }) => void
       setVisible: (visible: boolean) => void
     }
@@ -875,6 +876,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     container: HTMLElement
     panorama: {
       setPosition: (latLng: unknown) => void
+      setPano: (panoId: string) => void
       setPov: (pov: { heading: number; pitch: number }) => void
       setVisible: (visible: boolean) => void
     }
@@ -1036,10 +1038,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [mapViewMode, mapZoom, selectedPointPanorama])
 
   useEffect(() => {
+    const timers: number[] = []
     if (mapViewMode !== 'panorama') {
       setPanoramaError(null)
       failPanoramaProgress()
-      googleStreetViewRef.current?.panorama.setVisible(false)
+      const runtime = googleStreetViewRef.current
+      runtime?.panorama.setVisible(false)
+      if (runtime) runtime.container.innerHTML = ''
+      googleStreetViewRef.current = null
       return
     }
 
@@ -1054,9 +1060,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     startPanoramaProgress()
 
     if (selectedPointPanorama.provider !== 'google') {
-      googleStreetViewRef.current?.panorama.setVisible(false)
+      const runtime = googleStreetViewRef.current
+      runtime?.panorama.setVisible(false)
+      if (runtime) runtime.container.innerHTML = ''
+      googleStreetViewRef.current = null
       return () => {
         cancelled = true
+        for (const timer of timers) window.clearTimeout(timer)
       }
     }
 
@@ -1071,24 +1081,24 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       .then((google) => {
         if (cancelled) return
 
-        if (!googleStreetViewRef.current || googleStreetViewRef.current.container !== root) {
-          googleStreetViewRef.current?.panorama.setVisible(false)
-          googleStreetViewRef.current = {
-            container: root,
-            panorama: new google.maps.StreetViewPanorama(root, {
-              addressControl: true,
-              fullscreenControl: false,
-              motionTracking: false,
-              showRoadLabels: true,
-              zoomControl: true,
-              disableDefaultUI: false,
-            }),
-            service: new google.maps.StreetViewService(),
-            statusOk: google.maps.StreetViewStatus.OK,
-          }
-        }
+        const prevRuntime = googleStreetViewRef.current
+        if (prevRuntime) prevRuntime.panorama.setVisible(false)
+        root.innerHTML = ''
 
-        const runtime = googleStreetViewRef.current
+        const runtime = {
+          container: root,
+          panorama: new google.maps.StreetViewPanorama(root, {
+            addressControl: true,
+            fullscreenControl: false,
+            motionTracking: false,
+            showRoadLabels: true,
+            zoomControl: true,
+            disableDefaultUI: false,
+          }),
+          service: new google.maps.StreetViewService(),
+          statusOk: google.maps.StreetViewStatus.OK,
+        }
+        googleStreetViewRef.current = runtime
         const fallbackLocation = selectedPointPanorama.location
 
         runtime.service.getPanorama(
@@ -1098,21 +1108,30 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
             const streetView = runtime.panorama
             if (status === runtime.statusOk && data?.location?.latLng) {
-              streetView.setPosition(data.location.latLng)
+              const panoId = typeof data?.location?.pano === 'string' ? data.location.pano : ''
+              if (panoId) streetView.setPano(panoId)
+              else streetView.setPosition(data.location.latLng)
               if (typeof data?.tiles?.centerHeading === 'number') {
                 streetView.setPov({ heading: data.tiles.centerHeading, pitch: 0 })
               }
               streetView.setVisible(true)
               setPanoramaError(null)
+              const triggerResize = () => {
+                google.maps.event?.trigger(streetView as unknown, 'resize')
+              }
               window.requestAnimationFrame(() => {
                 if (cancelled) return
-                google.maps.event?.trigger(streetView as unknown, 'resize')
-                window.requestAnimationFrame(() => {
+                triggerResize()
+                timers.push(window.setTimeout(() => {
                   if (cancelled) return
-                  google.maps.event?.trigger(streetView as unknown, 'resize')
-                })
+                  triggerResize()
+                }, 180))
+                timers.push(window.setTimeout(() => {
+                  if (cancelled) return
+                  triggerResize()
+                  finishPanoramaProgress()
+                }, 520))
               })
-              finishPanoramaProgress()
               return
             }
 
@@ -1130,6 +1149,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     return () => {
       cancelled = true
+      for (const timer of timers) window.clearTimeout(timer)
     }
   }, [
     failPanoramaProgress,
@@ -2363,14 +2383,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <div className="absolute inset-0">
             <div
               ref={mapRootRef}
-              className={`absolute inset-0 transition-opacity duration-200 ${
-                mapViewMode === 'map' ? 'opacity-100' : 'pointer-events-none opacity-0'
-              }`}
+              className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
             />
             <div
-              className={`absolute inset-0 bg-black transition-opacity duration-200 ${
-                mapViewMode === 'panorama' ? 'opacity-100' : 'pointer-events-none opacity-0'
-              }`}
+              className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}
             >
               {selectedPointPanorama?.provider === 'google' ? <div ref={panoramaRootRef} className="h-full w-full" /> : null}
               {mapViewMode === 'panorama' ? (
