@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiChangelogDTO, AnitabiMapTab } from '@/lib/anitabi/types'
+import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiMapTab } from '@/lib/anitabi/types'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 
@@ -107,7 +107,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateFailed: '定位失败，请稍后重试',
     mapNotReady: '地图尚未就绪，请稍后再试',
     nearbyNeedLocation: '请先允许定位，以查看附近作品',
-    changelog: '更新记录',
     close: '关闭',
     loading: '加载中...',
     loadingMore: '正在加载更多作品…',
@@ -156,7 +155,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateFailed: 'Failed to locate, please retry later',
     mapNotReady: 'Map is not ready yet',
     nearbyNeedLocation: 'Allow location access to view nearby works',
-    changelog: 'Changelog',
     close: 'Close',
     loading: 'Loading...',
     loadingMore: 'Loading more titles…',
@@ -205,7 +203,6 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locateFailed: '位置情報の取得に失敗しました',
     mapNotReady: '地図の初期化が未完了です',
     nearbyNeedLocation: '近くの作品を見るには位置情報を許可してください',
-    changelog: '更新履歴',
     close: '閉じる',
     loading: '読み込み中...',
     loadingMore: '作品をさらに読み込み中…',
@@ -856,7 +853,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [selectedBangumiId, setSelectedBangumiId] = useState<number | null>(parsed.b)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(parsed.p)
   const [styleMode, setStyleMode] = useState<'street' | 'satellite'>('street')
-  const [changelogOpen, setChangelogOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === 'undefined') return true
     return window.innerWidth >= DESKTOP_BREAKPOINT
@@ -1994,26 +1990,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     </>
   ) : null
 
-  const changelogPanelInner = changelogOpen ? (
-    <>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">{label.changelog}</h2>
-        <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100" onClick={() => setChangelogOpen(false)}>
-          {label.close}
-        </button>
-      </div>
-      <div className="space-y-3 text-xs text-slate-700">
-        {(bootstrap?.changelog || []).map((item: AnitabiChangelogDTO) => (
-          <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
-            <div className="mb-1 text-[11px] text-slate-500">{item.date}</div>
-            <div className="mb-1 font-medium text-slate-900">{item.title}</div>
-            <div className="whitespace-pre-wrap leading-relaxed text-slate-700">{item.body}</div>
-          </div>
-        ))}
-      </div>
-    </>
-  ) : null
-
   const explorerHeader = (
     <div className="space-y-3 border-b border-slate-200 px-4 py-4">
       <div className="flex items-center justify-between gap-2">
@@ -2134,9 +2110,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {item.label}
           </button>
         ))}
-        <button className="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={() => setChangelogOpen((v) => !v)}>
-          {label.changelog}
-        </button>
       </div>
     </div>
   )
@@ -2402,12 +2375,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {detailPanelInner}
             </div>
           ) : null}
-
-          {isDesktop && changelogPanelInner ? (
-            <div className="absolute bottom-4 left-4 z-20 max-h-[45vh] w-[360px] overflow-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
-              {changelogPanelInner}
-            </div>
-          ) : null}
         </section>
       </div>
 
@@ -2444,11 +2411,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 {detailPanelInner ? (
                   <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     {detailPanelInner}
-                  </div>
-                ) : null}
-                {changelogPanelInner ? (
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                    {changelogPanelInner}
                   </div>
                 ) : null}
               </div>
