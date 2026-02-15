@@ -20,6 +20,7 @@ export function createHandlers(deps: AiApiDeps) {
           articleById: '/api/ai/articles/:id',
           import: '/api/ai/articles/:id/import',
           submit: '/api/ai/articles/:id/submit',
+          assets: '/api/ai/assets',
         },
       })
     },
