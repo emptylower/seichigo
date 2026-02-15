@@ -9,7 +9,7 @@ import type {
   AnitabiBootstrapDTO,
   AnitabiChangelogDTO,
   AnitabiMapTab,
-  AnitabiNearbyPointDTO,
+  AnitabiNearbyBangumiDTO,
 } from '@/lib/anitabi/types'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
@@ -17,6 +17,8 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 type Props = {
   locale: SupportedLocale
 }
+
+type ExplorerListMode = 'feed' | 'nearby'
 
 type MeState = {
   favorites: Array<{ targetKey: string }>
@@ -31,6 +33,7 @@ type UrlState = {
   z: number
   tab: AnitabiMapTab
   q: string
+  listMode: ExplorerListMode
   shouldAutoLocate: boolean
 }
 
@@ -173,11 +176,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: '打开列表面板',
     hidePanel: '收起面板',
     panel: '作品与筛选',
-    nearbyPoints: '附近的点位',
-    nearbyLoading: '附近点位加载中…',
-    nearbyEmpty: '附近暂无可用点位',
-    nearbyLoadFailed: '附近点位加载失败，请稍后重试',
-    nearbyNeedLocation: '请先允许定位后查看附近点位',
+    nearbyPoints: '附近作品',
+    nearbyLoading: '附近作品加载中…',
+    nearbyEmpty: '附近暂无可用作品',
+    nearbyLoadFailed: '附近作品加载失败，请稍后重试',
+    nearbyNeedLocation: '请先允许定位后查看附近作品',
+    nearestPoint: '最近点位',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -225,11 +229,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'Open list panel',
     hidePanel: 'Hide panel',
     panel: 'Titles & filters',
-    nearbyPoints: 'Nearby Spots',
-    nearbyLoading: 'Loading nearby spots…',
-    nearbyEmpty: 'No nearby spots yet',
-    nearbyLoadFailed: 'Failed to load nearby spots',
-    nearbyNeedLocation: 'Allow location access to see nearby spots',
+    nearbyPoints: 'Nearby Titles',
+    nearbyLoading: 'Loading nearby titles…',
+    nearbyEmpty: 'No nearby titles yet',
+    nearbyLoadFailed: 'Failed to load nearby titles',
+    nearbyNeedLocation: 'Allow location access to see nearby titles',
+    nearestPoint: 'Nearest spot',
   },
   ja: {
     title: '巡礼マップ',
@@ -277,11 +282,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'リストを開く',
     hidePanel: 'パネルを閉じる',
     panel: '作品と絞り込み',
-    nearbyPoints: '近くのスポット',
-    nearbyLoading: '近くのスポットを読み込み中…',
-    nearbyEmpty: '近くのスポットはまだありません',
-    nearbyLoadFailed: '近くのスポット取得に失敗しました',
-    nearbyNeedLocation: '位置情報を許可すると近くのスポットを表示できます',
+    nearbyPoints: '近くの作品',
+    nearbyLoading: '近くの作品を読み込み中…',
+    nearbyEmpty: '近くの作品はまだありません',
+    nearbyLoadFailed: '近くの作品取得に失敗しました',
+    nearbyNeedLocation: '位置情報を許可すると近くの作品を表示できます',
+    nearestPoint: '最寄りスポット',
   },
 }
 
@@ -295,6 +301,7 @@ function parseUrlState(): UrlState {
       z: DEFAULT_VIEW.z,
       tab: 'latest',
       q: '',
+      listMode: 'feed',
       shouldAutoLocate: true,
     }
   }
@@ -305,6 +312,8 @@ function parseUrlState(): UrlState {
   const lat = parseNumberParam(params.get('lat'))
   const z = parseNumberParam(params.get('z'))
   const tabRaw = params.get('tab')
+  const listMode: ExplorerListMode = tabRaw === 'nearby' ? 'nearby' : 'feed'
+  const tab: AnitabiMapTab = tabRaw === 'recent' || tabRaw === 'hot' ? tabRaw : 'latest'
   const hasExplicitView = lng != null || lat != null || z != null
   const hasTarget = Boolean((b && b > 0) || params.get('p'))
 
@@ -314,8 +323,9 @@ function parseUrlState(): UrlState {
     lng: lng ?? DEFAULT_VIEW.lng,
     lat: lat ?? DEFAULT_VIEW.lat,
     z: z && z > 0 ? z : DEFAULT_VIEW.z,
-    tab: tabRaw === 'recent' || tabRaw === 'hot' ? tabRaw : 'latest',
+    tab,
     q: params.get('q') || '',
+    listMode,
     shouldAutoLocate: !hasExplicitView && !hasTarget,
   }
 }
@@ -914,6 +924,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const panoramaRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const googleStreetViewRef = useRef<{
+    container: HTMLElement
     panorama: {
       setPosition: (latLng: unknown) => void
       setPov: (pov: { heading: number; pitch: number }) => void
@@ -944,6 +955,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const autoLocateTriggeredRef = useRef(false)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
+  const [listMode, setListMode] = useState<ExplorerListMode>(parsed.listMode)
   const [queryInput, setQueryInput] = useState(parsed.q)
   const [query, setQuery] = useState(parsed.q)
   const [selectedCity, setSelectedCity] = useState('')
@@ -975,7 +987,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [locateHint, setLocateHint] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
-  const [nearbyPoints, setNearbyPoints] = useState<AnitabiNearbyPointDTO[]>([])
+  const [nearbyBangumi, setNearbyBangumi] = useState<AnitabiNearbyBangumiDTO[]>([])
   const [nearbyLoading, setNearbyLoading] = useState(false)
   const [nearbyError, setNearbyError] = useState<string | null>(null)
   const [mapZoom, setMapZoom] = useState(parsed.z)
@@ -1118,8 +1130,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       .then((google) => {
         if (cancelled) return
 
-        if (!googleStreetViewRef.current) {
+        if (!googleStreetViewRef.current || googleStreetViewRef.current.container !== root) {
+          googleStreetViewRef.current?.panorama.setVisible(false)
           googleStreetViewRef.current = {
+            container: root,
             panorama: new google.maps.StreetViewPanorama(root, {
               addressControl: true,
               fullscreenControl: false,
@@ -1406,7 +1420,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (selectedBangumiId != null) params.set('b', String(selectedBangumiId))
     if (selectedPointId) params.set('p', selectedPointId)
     if (query) params.set('q', query)
-    if (tab !== 'latest') params.set('tab', tab)
+    if (listMode === 'nearby') params.set('tab', 'nearby')
+    else if (tab !== 'latest') params.set('tab', tab)
 
     const map = mapRef.current
     if (map) {
@@ -1419,7 +1434,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const next = params.toString()
     const href = `${window.location.pathname}${next ? `?${next}` : ''}`
     window.history.replaceState(null, '', href)
-  }, [query, selectedBangumiId, selectedPointId, tab])
+  }, [listMode, query, selectedBangumiId, selectedPointId, tab])
 
   useEffect(() => {
     syncUrlRef.current = syncUrl
@@ -1805,7 +1820,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   useEffect(() => {
     if (!userLocation) {
-      setNearbyPoints([])
+      setNearbyBangumi([])
       setNearbyError(null)
       setNearbyLoading(false)
       return
@@ -1829,13 +1844,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     })
       .then(async (res) => {
         if (!res.ok) throw new Error('nearby failed')
-        const json = (await res.json().catch(() => ({}))) as { items?: AnitabiNearbyPointDTO[] }
-        setNearbyPoints(Array.isArray(json.items) ? json.items : [])
+        const json = (await res.json().catch(() => ({}))) as { items?: AnitabiNearbyBangumiDTO[] }
+        setNearbyBangumi(Array.isArray(json.items) ? json.items : [])
       })
       .catch((err) => {
         if (ctrl.signal.aborted) return
         console.error('[anitabi-map] load nearby failed', err)
-        setNearbyPoints([])
+        setNearbyBangumi([])
         setNearbyError(label.nearbyLoadFailed)
       })
       .finally(() => {
@@ -2303,12 +2318,25 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <button
             key={item.key}
             type="button"
-            className={`rounded-md px-3 py-1.5 text-xs ${tab === item.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-            onClick={() => setTab(item.key)}
+            className={`rounded-md px-3 py-1.5 text-xs ${listMode === 'feed' && tab === item.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            onClick={() => {
+              setListMode('feed')
+              setTab(item.key)
+            }}
           >
             {item.label}
           </button>
         ))}
+        <button
+          type="button"
+          className={`rounded-md px-3 py-1.5 text-xs ${listMode === 'nearby' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+          onClick={() => {
+            setListMode('nearby')
+            if (!userLocation && !locating) onLocate()
+          }}
+        >
+          {label.nearbyPoints}
+        </button>
         <button className="ml-auto rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={() => setChangelogOpen((v) => !v)}>
           {label.changelog}
         </button>
@@ -2316,99 +2344,95 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     </div>
   )
 
+  const renderCard = (card: AnitabiBangumiCard, opts?: { extra?: React.ReactNode; pointId?: string }) => {
+    const swatchColor = card.color || '#ec4899'
+    return (
+      <button
+        key={card.id}
+        type="button"
+        onClick={() => openBangumi(card.id, opts?.pointId || null).catch(() => null)}
+        className={`group w-full overflow-hidden rounded-2xl border text-left transition ${
+          selectedBangumiId === card.id
+            ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
+            : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
+        }`}
+      >
+        <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
+        <div className="flex items-start gap-3 p-3">
+          <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+            {card.cover ? (
+              <img src={card.cover} alt={card.title} width={96} height={128} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+            ) : (
+              <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
+              {card.cat ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">{card.cat}</span> : null}
+            </div>
+            {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+              {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
+              <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
+            </div>
+            {opts?.extra}
+          </div>
+          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white shadow-sm" style={{ background: swatchColor }} />
+        </div>
+      </button>
+    )
+  }
+
   const cardsList = (
     <>
-      <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900">{label.nearbyPoints}</h2>
-        {!userLocation ? <p className="text-xs text-slate-500">{label.nearbyNeedLocation}</p> : null}
-        {nearbyLoading ? <p className="text-xs text-slate-500">{label.nearbyLoading}</p> : null}
-        {nearbyError ? <p className="text-xs text-rose-600">{nearbyError}</p> : null}
-        {userLocation && !nearbyLoading && !nearbyError && nearbyPoints.length === 0 ? (
-          <p className="text-xs text-slate-500">{label.nearbyEmpty}</p>
-        ) : null}
-        {nearbyPoints.length > 0 ? (
-          <div className="space-y-1.5">
-            {nearbyPoints.map((point) => (
-              <button
-                key={point.id}
-                type="button"
-                className="flex w-full items-start justify-between gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50"
-                onClick={() => openBangumi(point.bangumiId, point.id).catch(() => null)}
-              >
-                <div className="min-w-0">
-                  <div className="line-clamp-1 text-xs font-medium text-slate-900">{point.name}</div>
-                  <div className="line-clamp-1 text-[11px] text-slate-500">
-                    {point.bangumiTitle}
-                    {point.city ? ` · ${point.city}` : ''}
-                  </div>
+      {listMode === 'nearby' ? (
+        <>
+          {!userLocation ? <div className="text-sm text-slate-500">{label.nearbyNeedLocation}</div> : null}
+          {nearbyLoading ? <div className="text-sm text-slate-500">{label.nearbyLoading}</div> : null}
+          {nearbyError ? <div className="text-sm text-rose-600">{nearbyError}</div> : null}
+          {userLocation && !nearbyLoading && !nearbyError && nearbyBangumi.length === 0 ? (
+            <div className="text-sm text-slate-500">{label.nearbyEmpty}</div>
+          ) : null}
+          <div className="space-y-3">
+            {nearbyBangumi.map((item) => renderCard(item, {
+              pointId: item.nearestPointId,
+              extra: (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-brand-700">
+                  <span className="rounded-full bg-brand-50 px-2 py-0.5">{label.nearestPoint} · {item.nearestPointName}</span>
+                  <span className="font-medium">{formatDistance(item.nearestDistanceMeters)}</span>
                 </div>
-                <div className="shrink-0 text-[11px] font-medium text-brand-600">{formatDistance(point.distanceMeters)}</div>
-              </button>
-            ))}
+              ),
+            }))}
           </div>
-        ) : null}
-      </section>
-
-      {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
-      {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
-      <div className="space-y-3">
-        {cards.map((card) => {
-          const swatchColor = card.color || '#ec4899'
-          return (
-            <button
-              key={card.id}
-              type="button"
-              onClick={() => openBangumi(card.id).catch(() => null)}
-              className={`group w-full overflow-hidden rounded-2xl border text-left transition ${
-                selectedBangumiId === card.id
-                  ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
-                  : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
-              }`}
-            >
-              <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
-              <div className="flex items-start gap-3 p-3">
-                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                  {card.cover ? (
-                    <img src={card.cover} alt={card.title} width={96} height={128} className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{card.title}</h3>
-                    {card.cat ? <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">{card.cat}</span> : null}
-                  </div>
-                  {card.titleZh && card.titleZh !== card.title ? <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">{card.titleZh}</div> : null}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
-                    {card.city ? <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.city}</span> : null}
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.pointsLength} {label.points}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5">{card.imagesLength} {label.screenshots}</span>
-                  </div>
-                </div>
-                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white shadow-sm" style={{ background: swatchColor }} />
-              </div>
-            </button>
-          )
-        })}
-      </div>
-      <div ref={cardsLoadMoreRef} className="h-2" />
-      {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
-      {cardsLoadError ? (
-        <div className="flex items-center justify-center gap-2 pt-3 text-xs text-rose-600">
-          <span>{cardsLoadError}</span>
-          <button
-            type="button"
-            onClick={() => loadMoreCards().catch(() => null)}
-            className="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
-          >
-            {label.retry}
-          </button>
-        </div>
-      ) : null}
-      {!loading && !loadingMoreCards && !hasMoreCards && cards.length > 0 ? (
-        <div className="pt-3 text-center text-xs text-slate-400">{label.loadedAll}</div>
-      ) : null}
+        </>
+      ) : (
+        <>
+          {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
+          {!loading && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
+          <div className="space-y-3">
+            {cards.map((card) => renderCard(card))}
+          </div>
+          <div ref={cardsLoadMoreRef} className="h-2" />
+          {loadingMoreCards ? <div className="pt-3 text-center text-xs text-slate-500">{label.loadingMore}</div> : null}
+          {cardsLoadError ? (
+            <div className="flex items-center justify-center gap-2 pt-3 text-xs text-rose-600">
+              <span>{cardsLoadError}</span>
+              <button
+                type="button"
+                onClick={() => loadMoreCards().catch(() => null)}
+                className="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+              >
+                {label.retry}
+              </button>
+            </div>
+          ) : null}
+          {!loading && !loadingMoreCards && !hasMoreCards && cards.length > 0 ? (
+            <div className="pt-3 text-center text-xs text-slate-400">{label.loadedAll}</div>
+          ) : null}
+        </>
+      )}
     </>
   )
 
@@ -2495,42 +2519,27 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 mapViewMode === 'panorama' ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
             >
+              {selectedPointPanorama?.provider === 'google' ? <div ref={panoramaRootRef} className="h-full w-full" /> : null}
               {mapViewMode === 'panorama' ? (
                 selectedPointPanorama ? (
-                  selectedPointPanorama.provider === 'google' ? (
-                    <>
-                      <div ref={panoramaRootRef} className="h-full w-full" />
-                      {panoramaError ? (
-                        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
-                          {panoramaError}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <iframe
-                        title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
-                        src={selectedPointPanorama.src}
-                        className="h-full w-full border-0"
-                        loading="lazy"
-                        allowFullScreen
-                        referrerPolicy="no-referrer-when-downgrade"
-                        onLoad={() => {
-                          setPanoramaError(null)
-                          finishPanoramaProgress()
-                        }}
-                        onError={() => {
-                          setPanoramaError(label.panoramaLoadFailed)
-                          failPanoramaProgress()
-                        }}
-                      />
-                      {panoramaError ? (
-                        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
-                          {panoramaError}
-                        </div>
-                      ) : null}
-                    </>
-                  )
+                  selectedPointPanorama.provider === 'mapillary' ? (
+                    <iframe
+                      title={selectedPoint ? `${selectedPoint.name} panorama` : 'panorama'}
+                      src={selectedPointPanorama.src}
+                      className="h-full w-full border-0"
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      onLoad={() => {
+                        setPanoramaError(null)
+                        finishPanoramaProgress()
+                      }}
+                      onError={() => {
+                        setPanoramaError(label.panoramaLoadFailed)
+                        failPanoramaProgress()
+                      }}
+                    />
+                  ) : null
                 ) : (
                   <div className="grid h-full w-full place-items-center px-6 text-center text-sm text-white/85">
                     {label.panoramaUnavailable}
@@ -2538,14 +2547,24 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 )
               ) : null}
               {mapViewMode === 'panorama' && panoramaLoading ? (
-                <div className="pointer-events-none absolute inset-x-6 top-6 z-20 rounded-md bg-black/65 px-3 py-2">
-                  <div className="mb-1 text-[11px] text-white/90">{label.panoramaLoading}</div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
-                    <div
-                      className="h-full rounded-full bg-brand-400 transition-[width] duration-200 ease-out"
-                      style={{ width: `${panoramaProgress}%` }}
-                    />
+                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+                  <div className="w-64 max-w-[78vw] rounded-2xl border border-white/25 bg-black/55 px-4 py-3 text-center shadow-2xl backdrop-blur-sm">
+                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/95">
+                      <span className="inline-grid h-4 w-4 place-items-center rounded-full bg-brand-300 text-[10px] text-brand-900">★</span>
+                      <span>{label.panoramaLoading}</span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full border border-white/25 bg-white/15">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand-300 via-brand-400 to-brand-500 transition-[width] duration-200 ease-out"
+                        style={{ width: `${panoramaProgress}%` }}
+                      />
+                    </div>
                   </div>
+                </div>
+              ) : null}
+              {mapViewMode === 'panorama' && panoramaError ? (
+                <div className="pointer-events-none absolute inset-x-6 bottom-6 z-20 rounded-md bg-black/60 px-3 py-2 text-center text-xs text-white/90">
+                  {panoramaError}
                 </div>
               ) : null}
             </div>
