@@ -1699,7 +1699,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             name="q"
             value={queryInput}
             onFocus={() => setSearchOpen(true)}
-            onChange={(e) => setQueryInput(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value
+              setQueryInput(next)
+              if (!next.trim() && query) {
+                setQuery('')
+                setSearchOpen(false)
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onSubmitQuery()
             }}
