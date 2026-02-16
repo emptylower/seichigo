@@ -895,6 +895,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
   const [panoramaLoading, setPanoramaLoading] = useState(false)
   const [panoramaProgress, setPanoramaProgress] = useState(0)
+  const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string } | null>(null)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -1740,6 +1741,54 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
   }, [selectedPointPanorama])
 
+  const openImagePreview = useCallback((imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null) => {
+    const src = String(imageUrl || '').trim()
+    if (!src) return
+    const saveTarget = String(saveUrl || '').trim() || src
+    setImagePreview({ src, name: pointName, saveUrl: saveTarget })
+  }, [])
+
+  const onImagePreviewOpenChange = useCallback((open: boolean) => {
+    if (!open) setImagePreview(null)
+  }, [])
+
+  const renderPointImage = useCallback(
+    (imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null) => {
+      const src = String(imageUrl || '').trim()
+      if (!src) {
+        return (
+          <div className="grid h-40 w-full place-items-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
+            {label.noImage}
+          </div>
+        )
+      }
+
+      return (
+        <button
+          type="button"
+          className="group relative block h-40 w-full overflow-hidden rounded-md"
+          onClick={() => openImagePreview(src, pointName, saveUrl)}
+          title={label.previewImage}
+          aria-label={label.previewImage}
+        >
+          <img
+            src={src}
+            alt={pointName}
+            width={640}
+            height={360}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
+            loading="lazy"
+            decoding="async"
+          />
+          <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded bg-black/60 px-2 py-0.5 text-[11px] text-white">
+            {label.previewImage}
+          </span>
+        </button>
+      )
+    },
+    [label.noImage, label.previewImage, openImagePreview]
+  )
+
   const exitPanorama = useCallback(() => {
     if (mapZoom >= PANORAMA_TRIGGER_ZOOM) {
       autoPanoramaDismissedRef.current = true
@@ -1934,17 +1983,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       {selectedPoint ? (
         <div className="space-y-2 border-b border-slate-200 px-3 py-3">
           <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
-          {selectedPoint.image ? (
-            <img
-              src={selectedPoint.image}
-              alt={selectedPoint.name}
-              width={640}
-              height={360}
-              className="h-40 w-full rounded-md object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          ) : null}
+          {renderPointImage(selectedPoint.image, selectedPoint.name, selectedPoint.originUrl)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
@@ -2225,17 +2264,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </button>
         </div>
         <div className="space-y-2 px-3 py-3">
-          {selectedPoint.image ? (
-            <img
-              src={selectedPoint.image}
-              alt={selectedPoint.name}
-              width={640}
-              height={360}
-              className="h-40 w-full rounded-md object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          ) : null}
+          {renderPointImage(selectedPoint.image, selectedPoint.name, selectedPoint.originUrl)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
@@ -2448,6 +2477,51 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </SheetContent>
         </Sheet>
       ) : null}
+
+      <Dialog.Root open={Boolean(imagePreview)} onOpenChange={onImagePreviewOpenChange}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-[1px]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[121] w-[calc(100vw-1.5rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl focus:outline-none sm:p-4">
+            <Dialog.Description className="sr-only">
+              {locale === 'en' ? 'Image preview with manual save action' : locale === 'ja' ? '画像プレビューと手動保存操作' : '图片预览与手动保存'}
+            </Dialog.Description>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <Dialog.Title className="line-clamp-1 text-sm font-semibold text-slate-900">
+                {imagePreview?.name || label.previewImage}
+              </Dialog.Title>
+              <div className="flex items-center gap-2">
+                {imagePreview?.saveUrl ? (
+                  <a
+                    href={imagePreview.saveUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 no-underline hover:bg-slate-100"
+                  >
+                    {label.saveOriginal}
+                  </a>
+                ) : null}
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                  >
+                    {label.close}
+                  </button>
+                </Dialog.Close>
+              </div>
+            </div>
+            {imagePreview?.src ? (
+              <div className="max-h-[75dvh] overflow-auto rounded-lg bg-slate-100">
+                <img
+                  src={imagePreview.src}
+                  alt={imagePreview.name || label.previewImage}
+                  className="mx-auto h-auto max-h-[75dvh] w-auto max-w-full object-contain"
+                />
+              </div>
+            ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }
