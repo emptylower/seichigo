@@ -10,6 +10,7 @@ import { getSiteOrigin } from '@/lib/seo/site'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import PostMeta from '@/components/blog/PostMeta'
 import CommentSection from '@/components/comments/CommentSection'
+import ArticleShareButtons from '@/components/content/ArticleShareButtons'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -315,13 +316,14 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
             
             <h1>{title}</h1>
             <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
-            {favoritesEnabled ? (
-              <div className="not-prose mt-3 flex justify-end">
+            <div className="not-prose mt-3 flex flex-wrap items-center justify-between gap-3">
+              <ArticleShareButtons url={canonicalUrl} title={seoTitle} locale="ja" tag="Seichigo" />
+              {favoritesEnabled ? (
                 <FavoriteButton
                   target={found.source === 'db' ? { source: 'db', articleId: found.article.id } : { source: 'mdx', slug: found.post.frontmatter.slug }}
                 />
-              </div>
-            ) : null}
+              ) : null}
+            </div>
             <div className="mt-6" />
             {found.source === 'mdx' ? (
               found.post.content
