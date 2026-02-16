@@ -394,6 +394,43 @@ function extensionFromMimeType(mimeType: string | null | undefined): string {
   return '.jpg'
 }
 
+function normalizePointImageUrl(input: string | null | undefined): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+
+  try {
+    const url = new URL(raw, 'https://seichigo.com')
+    const host = url.hostname.toLowerCase()
+    const isAnitabiHost = host === 'anitabi.cn' || host.endsWith('.anitabi.cn')
+    if (isAnitabiHost) {
+      url.searchParams.delete('plan')
+      url.searchParams.delete('w')
+      url.searchParams.delete('h')
+      url.searchParams.delete('q')
+    }
+    return url.toString()
+  } catch {
+    return raw
+  }
+}
+
+function looksLikeImageUrl(input: string | null | undefined): boolean {
+  const raw = String(input || '').trim()
+  if (!raw) return false
+
+  try {
+    const url = new URL(raw, 'https://seichigo.com')
+    const path = url.pathname.toLowerCase()
+    if (/\.(avif|webp|png|jpe?g|gif|bmp|svg)$/.test(path)) return true
+    const format = String(url.searchParams.get('format') || '').toLowerCase()
+    if (format && ['avif', 'webp', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg'].includes(format)) return true
+  } catch {
+    if (/\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(raw)) return true
+  }
+
+  return false
+}
+
 function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification {
   if (mode === 'satellite') {
     return {
@@ -1053,6 +1090,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const selectedPointPanorama = useMemo(() => {
     if (!selectedPoint) return null
     return resolvePanoramaEmbed(selectedPoint)
+  }, [selectedPoint])
+
+  const selectedPointImage = useMemo(() => {
+    if (!selectedPoint) return { previewUrl: null as string | null, downloadUrl: null as string | null }
+
+    const previewUrl = normalizePointImageUrl(selectedPoint.image)
+    const originUrl = String(selectedPoint.originUrl || '').trim()
+    const downloadUrl = looksLikeImageUrl(originUrl) ? originUrl : previewUrl
+
+    return { previewUrl, downloadUrl }
   }, [selectedPoint])
 
   const favoriteSet = useMemo(() => {
@@ -1923,7 +1970,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
       const res = await fetch(`/api/anitabi/image-download?${params.toString()}`)
       if (!res.ok) {
-        throw new Error('download_failed')
+        const data = (await res.json().catch(() => null)) as { error?: unknown } | null
+        const msg = String(data?.error || '').trim()
+        throw new Error(msg || 'download_failed')
       }
 
       const blob = await res.blob()
@@ -1946,8 +1995,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       window.setTimeout(() => {
         window.URL.revokeObjectURL(objectUrl)
       }, 1200)
-    } catch {
-      setImageSaveError(label.saveOriginalFailed)
+    } catch (err) {
+      const msg = String((err as Error)?.message || '').trim()
+      setImageSaveError(msg && msg !== 'download_failed' ? msg : label.saveOriginalFailed)
     } finally {
       setImageSaving(false)
     }
@@ -2172,7 +2222,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       {selectedPoint ? (
         <div className="space-y-2 border-b border-slate-200 px-3 py-3">
           <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
-          {renderPointImage(selectedPoint.image, selectedPoint.name, selectedPoint.originUrl)}
+          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
@@ -2453,7 +2503,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </button>
         </div>
         <div className="space-y-2 px-3 py-3">
-          {renderPointImage(selectedPoint.image, selectedPoint.name, selectedPoint.originUrl)}
+          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
