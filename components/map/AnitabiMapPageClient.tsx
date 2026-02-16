@@ -2206,7 +2206,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (typeof window === 'undefined') return
     syncUrlRef.current()
     const href = window.location.href
-    if (typeof navigator.share === 'function') {
+    if (!isDesktop && typeof navigator.share === 'function') {
       try {
         await navigator.share({
           title: label.title,
@@ -2250,7 +2250,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     setLocateHint(label.shareFailed)
     window.prompt(label.shareManualCopy, href)
-  }, [label.shareCopied, label.shareFailed, label.shareManualCopy, label.title])
+  }, [isDesktop, label.shareCopied, label.shareFailed, label.shareManualCopy, label.title])
 
   const toggleFavorite = useCallback(
     async (payload: { targetType: 'bangumi' | 'point'; bangumiId?: number; pointId?: string }) => {
