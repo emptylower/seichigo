@@ -70,7 +70,7 @@ export default function Footer({ locale = 'zh' }: Props) {
       <div className="mx-auto max-w-5xl px-4">
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-4 xl:col-span-1">
-            <Link href={prefixPath('/', locale)} className="flex items-center gap-2">
+            <Link href={prefixPath('/', locale)} prefetch={false} className="flex items-center gap-2">
               <Image
                 src="/brand/app-logo.png"
                 alt="SeichiGo"
@@ -102,7 +102,7 @@ export default function Footer({ locale = 'zh' }: Props) {
                           {link.label}
                         </a>
                       ) : (
-                        <Link href={getHref(link.href)} className="text-gray-500 hover:text-brand-600">
+                        <Link href={getHref(link.href)} prefetch={false} className="text-gray-500 hover:text-brand-600">
                           {link.label}
                         </Link>
                       )}

@@ -9,7 +9,7 @@ type Props = {
 
 export default function Providers({ children }: Props) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
       <NavigationProbe />
       {children}
     </SessionProvider>

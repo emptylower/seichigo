@@ -4,6 +4,20 @@ import type { AiApiDeps } from '@/lib/ai/api'
 import { renderRichTextEmbeds } from '@/lib/richtext/embeds'
 import { authorizeAiRequest } from '@/lib/ai/auth'
 
+const AI_ARTICLE_CACHE_CONTROL = 'private, max-age=30, stale-while-revalidate=120'
+
+function buildArticleEtag(id: string, updatedAt: unknown): string {
+  const stamp = Number(new Date(String(updatedAt || 0)).getTime() || 0)
+  return `W/"ai-article-${id}-${stamp}"`
+}
+
+function isIfNoneMatchHit(req: Request, etag: string): boolean {
+  const raw = String(req.headers.get('if-none-match') || '').trim()
+  if (!raw) return false
+  if (raw === '*') return true
+  return raw.split(',').map((item) => item.trim()).includes(etag)
+}
+
 function toDetail(a: any, sanitizeHtml: (html: string) => string) {
   const sanitized = sanitizeHtml(String(a.contentHtml || ''))
   const rendered = renderRichTextEmbeds(sanitized, a.contentJson)
@@ -77,8 +91,29 @@ export function createHandlers(deps: AiApiDeps) {
         return NextResponse.json({ error: '未找到文章' }, { status: 404 })
       }
 
+      const etag = buildArticleEtag(found.id, found.updatedAt)
+      if (isIfNoneMatchHit(req, etag)) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: {
+            'Cache-Control': AI_ARTICLE_CACHE_CONTROL,
+            ETag: etag,
+            Vary: 'Authorization, Cookie',
+          },
+        })
+      }
+
       const article = toDetail(found, deps.sanitizeHtml)
-      return NextResponse.json({ ok: true, article })
+      return NextResponse.json(
+        { ok: true, article },
+        {
+          headers: {
+            'Cache-Control': AI_ARTICLE_CACHE_CONTROL,
+            ETag: etag,
+            Vary: 'Authorization, Cookie',
+          },
+        }
+      )
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {

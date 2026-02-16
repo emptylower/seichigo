@@ -1047,7 +1047,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const focusTimerRef = useRef<number | null>(null)
   const rangeOverlayRef = useRef<{ data: GeoJSON.FeatureCollection<GeoJSON.Polygon>; color: string } | null>(null)
   const isDesktopRef = useRef(true)
+  const meStateRef = useRef<MeState | null>(null)
   const selectedPointIdRef = useRef<string | null>(parsed.p)
+  const initialOpenBangumiDoneRef = useRef(false)
   const autoPanoramaDismissedRef = useRef(false)
   const panoramaProgressTimerRef = useRef<number | null>(null)
   const panoramaProgressDoneTimerRef = useRef<number | null>(null)
@@ -1202,6 +1204,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   useEffect(() => {
     isDesktopRef.current = isDesktop
   }, [isDesktop])
+
+  useEffect(() => {
+    meStateRef.current = meState
+  }, [meState])
 
   useEffect(() => {
     selectedPointIdRef.current = selectedPointId
@@ -1648,7 +1654,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           }
         }
 
-        if (meLoaded) {
+        if (meStateRef.current) {
           fetch('/api/anitabi/me/history', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1659,7 +1665,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         setDetailLoading(false)
       }
     },
-    [fitBangumiBounds, focusGeo, isDesktop, locale, meLoaded]
+    [fitBangumiBounds, focusGeo, isDesktop, locale]
   )
 
   useEffect(() => {
@@ -1689,11 +1695,37 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [cards.length, hasMoreCards, loadMoreCards, loading, loadingMoreCards])
 
   useEffect(() => {
-    if (parsed.b) {
-      openBangumi(parsed.b, parsed.p).catch(() => null)
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      loadMe().catch(() => null)
     }
-    loadMe().catch(() => null)
-  }, [loadMe, openBangumi, parsed.b, parsed.p])
+
+    const win = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+
+    if (typeof win.requestIdleCallback === 'function' && typeof win.cancelIdleCallback === 'function') {
+      const id = win.requestIdleCallback(run, { timeout: 1200 })
+      return () => {
+        cancelled = true
+        win.cancelIdleCallback?.(id)
+      }
+    }
+
+    const timer = setTimeout(run, 280)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [loadMe])
+
+  useEffect(() => {
+    if (!parsed.b || initialOpenBangumiDoneRef.current) return
+    initialOpenBangumiDoneRef.current = true
+    openBangumi(parsed.b, parsed.p).catch(() => null)
+  }, [openBangumi, parsed.b, parsed.p])
 
   useEffect(() => {
     const mapRoot = mapRootRef.current
@@ -1745,11 +1777,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
         }
       }
-      fetch('/api/anitabi/me/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetType: 'point', pointId }),
-      }).catch(() => null)
+      if (meStateRef.current) {
+        fetch('/api/anitabi/me/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetType: 'point', pointId }),
+        }).catch(() => null)
+      }
     }
     const handlePointerMove = (event: maplibregl.MapMouseEvent) => {
       map.getCanvas().style.cursor = readPointIdFromRendered(event) ? 'pointer' : ''

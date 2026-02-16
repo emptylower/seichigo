@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import Avatar from '@/components/shared/Avatar'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
@@ -31,53 +32,9 @@ type Props = {
 }
 
 export default function HeaderAuthControls({ locale, layout = 'inline', labels }: Props) {
-  const [session, setSession] = useState<Session>(null)
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    const controller = new AbortController()
-
-    async function fetchSessionOnce(): Promise<Session> {
-      const r = await fetch('/api/auth/session', {
-        credentials: 'include',
-        cache: 'no-store',
-        signal: controller.signal,
-      })
-      if (!r.ok) return null
-      return (await r.json()) as Session
-    }
-
-    async function loadSession() {
-      try {
-        const first = await fetchSessionOnce()
-        if (cancelled) return
-        if (first?.user) {
-          setSession(first)
-          setLoaded(true)
-          return
-        }
-
-        // After a sign-in redirect, some browsers can briefly race cookie
-        // persistence. A single retry avoids pinning the header in anon mode.
-        await new Promise((resolve) => window.setTimeout(resolve, 300))
-        const second = await fetchSessionOnce()
-        if (cancelled) return
-        setSession(second)
-        setLoaded(true)
-      } catch {
-        if (cancelled) return
-        setSession(null)
-        setLoaded(true)
-      }
-    }
-
-    loadSession()
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [])
+  const { data: sessionData, status } = useSession()
+  const session = sessionData as Session
+  const loaded = status !== 'loading'
 
   const userLabel = useMemo(() => {
     const v = String(session?.user?.name || session?.user?.email || labels.user).trim()
@@ -91,18 +48,19 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
     <div className="grid gap-2">
       <Link
         href="/auth/signin"
+        prefetch={false}
         className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
       >
         {labels.signin}
       </Link>
-      <Link href="/auth/signup" className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-600">
+      <Link href="/auth/signup" prefetch={false} className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-600">
         {labels.signup}
       </Link>
     </div>
   ) : (
     <div className="flex items-center gap-2">
-      <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-      <Link href="/auth/signup" className="btn-primary">{labels.signup}</Link>
+      <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+      <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
     </div>
   )
 
@@ -118,6 +76,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
         {session?.user?.isAdmin ? (
           <Link
             href={prefixPath('/admin/panel', locale)}
+            prefetch={false}
             className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
           >
             {labels.admin}
@@ -134,6 +93,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             </div>
             <Link
               href={prefixPath('/me/settings', locale)}
+              prefetch={false}
               className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
             >
               用户中心
@@ -160,7 +120,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
 
   return (
     <>
-      {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{labels.admin}</Link> : null}
+      {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} prefetch={false} className="hover:text-brand-600">{labels.admin}</Link> : null}
       {showAuthed ? (
         <details className="group relative">
           <summary
@@ -175,7 +135,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             <span className="sr-only">{userLabel}</span>
           </summary>
           <div className="absolute right-0 mt-2 w-44 rounded-2xl border border-pink-100 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-sm">
-            <Link href={prefixPath('/me/settings', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               用户中心
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
@@ -189,8 +149,8 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
       ) : null}
       {showAnon ? (
         <div className="flex items-center gap-2">
-          <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-          <Link href="/auth/signup" className="btn-primary">{labels.signup}</Link>
+          <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+          <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
         </div>
       ) : null}
     </>

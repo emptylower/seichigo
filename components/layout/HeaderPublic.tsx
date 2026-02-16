@@ -24,7 +24,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
   return (
     <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
       <div className="mx-auto flex min-h-[var(--site-header-h)] max-w-5xl items-center justify-between gap-3 px-4 py-2 sm:gap-4">
-        <Link href={prefixPath('/', locale)} className="shrink-0 flex min-h-11 items-center gap-2">
+        <Link href={prefixPath('/', locale)} prefetch={false} className="shrink-0 flex min-h-11 items-center gap-2">
           <Image
             src="/brand/app-logo.png"
             alt="SeichiGo"
@@ -38,12 +38,12 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
 
         <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 md:flex">
           <nav className="flex min-w-0 items-center justify-end gap-4 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Link href={prefixPath('/', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
-            <Link href={prefixPath('/map', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
-            <Link href={prefixPath('/anime', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.anime', locale)}</Link>
-            <Link href={prefixPath('/city', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
-            <Link href={prefixPath('/resources', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.resources', locale)}</Link>
-            <Link href={prefixPath('/submit', locale)} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.submit', locale)}</Link>
+            <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
+            <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
+            <Link href={prefixPath('/anime', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.anime', locale)}</Link>
+            <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
+            <Link href={prefixPath('/resources', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.resources', locale)}</Link>
+            <Link href={prefixPath('/submit', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.submit', locale)}</Link>
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">
             <LanguageSwitcher locale={locale} />
