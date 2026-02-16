@@ -230,20 +230,43 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
           </div>
         </section>
 
-        <section className="mx-auto max-w-4xl px-4 sm:px-6">
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold tracking-tight text-gray-900">{t('pages.home.faqSectionTitle', locale)}</h2>
-              <p className="text-sm leading-relaxed text-gray-600 sm:text-base">{t('pages.home.faqSectionSubtitle', locale)}</p>
+        <section className="mx-auto max-w-5xl px-4 sm:px-6">
+          <div className="relative overflow-hidden rounded-[2rem] border border-rose-100/80 bg-gradient-to-br from-rose-50/70 via-white to-amber-50/40 p-6 shadow-[0_30px_80px_-45px_rgba(219,39,119,0.55)] sm:p-8">
+            <div className="pointer-events-none absolute -right-10 -top-14 h-48 w-48 rounded-full bg-brand-200/30 blur-3xl" />
+            <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-orange-200/30 blur-3xl" />
+
+            <div className="relative z-10 space-y-2">
+              <span className="inline-flex items-center rounded-full border border-brand-200/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
+                FAQ
+              </span>
+              <h2 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">{t('pages.home.faqSectionTitle', locale)}</h2>
+              <p className="max-w-3xl text-sm leading-relaxed text-gray-600 sm:text-base">{t('pages.home.faqSectionSubtitle', locale)}</p>
             </div>
-            <div className="mt-6 divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-gray-50/70">
+
+            <div className="relative z-10 mt-7 space-y-3">
               {faqItems.map((item, idx) => (
-                <details key={`${item.question}-${idx}`} className="group px-5 py-4">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-base font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
-                    <span>{item.question}</span>
-                    <span className="text-lg leading-none text-brand-600 transition-transform duration-200 group-open:rotate-45">+</span>
+                <details
+                  key={`${item.question}-${idx}`}
+                  className="group rounded-2xl border border-white/80 bg-white/85 p-4 shadow-[0_12px_35px_-24px_rgba(15,23,42,0.45)] backdrop-blur-sm transition-all duration-300 open:border-brand-200/70 open:bg-white open:shadow-[0_20px_45px_-28px_rgba(219,39,119,0.45)] sm:p-5"
+                >
+                  <summary className="flex cursor-pointer list-none items-start gap-4 text-left [&::-webkit-details-marker]:hidden">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700 ring-1 ring-brand-100">
+                      {String(idx + 1).padStart(2, '0')}
+                    </span>
+                    <span className="flex-1 pt-0.5 text-base font-semibold leading-7 text-gray-900 sm:text-lg sm:leading-7">
+                      {item.question}
+                    </span>
+                    <span className="relative mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50/80 text-brand-700 ring-1 ring-brand-100">
+                      <span className="absolute h-0.5 w-3 rounded-full bg-current" />
+                      <span className="absolute h-3 w-0.5 rounded-full bg-current transition-transform duration-200 group-open:scale-y-0" />
+                    </span>
                   </summary>
-                  <p className="pt-3 text-sm leading-7 text-gray-600">{item.answer}</p>
+
+                  <div className="grid grid-rows-[0fr] transition-all duration-300 group-open:grid-rows-[1fr]">
+                    <p className="overflow-hidden pl-11 pr-10 pt-0 text-sm leading-7 text-gray-600 sm:text-[15px]">
+                      {item.answer}
+                    </p>
+                  </div>
                 </details>
               ))}
             </div>
