@@ -235,7 +235,19 @@
       "appPromoOfflineMap": "offline pilgrimage maps",
       "appPromoAnd": "and",
       "appPromoNavigation": "one-tap navigation",
-      "appPromoDescriptionLine2": "Carry the magic of anime in your pocket, ready to depart anytime."
+      "appPromoDescriptionLine2": "Carry the magic of anime in your pocket, ready to depart anytime.",
+      "faqSectionTitle": "FAQ",
+      "faqSectionSubtitle": "If this is your first time using SeichiGo, these answers will help you plan faster.",
+      "faqQ1": "Where should I start for my first pilgrimage?",
+      "faqA1": "Start from the anime index and pick one title you want to revisit, then narrow your route with the map or city hub for a realistic same-day plan.",
+      "faqQ2": "Should I start from the map or the anime page?",
+      "faqA2": "If you already picked an anime, start from the anime page. If you already picked a destination city, start from map or city pages. Lock one constraint first, then filter routes.",
+      "faqQ3": "Can route and spot links be used for navigation directly?",
+      "faqA3": "Yes. Copy route or spot links from Resources and open them directly on departure day so you can navigate with minimal context switching.",
+      "faqQ4": "How long does it take for a submission to appear on home?",
+      "faqA4": "Submissions go through review before publishing. Once approved, they can be surfaced on home and index pages.",
+      "faqQ5": "How do I report wrong coordinates or outdated info?",
+      "faqA5": "Use the contact channels in the footer and include anime title, city, and the specific incorrect point so we can verify and patch it quickly."
     },
     "about": {
       "heroTitle": "Bridging",
