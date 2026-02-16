@@ -60,6 +60,7 @@ const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
+const USER_LOCATION_STORAGE_KEY = 'anitabi-map-user-location'
 
 type CameraPadding = {
   top: number
@@ -81,6 +82,69 @@ type PanoramaEmbed = {
 } | {
   provider: 'mapillary'
   src: string
+}
+
+function isValidLatLng(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
+
+function resolveLocateZoom(accuracy: number | null): number {
+  if (accuracy == null || !Number.isFinite(accuracy)) return 11
+  if (accuracy <= 100) return 15
+  if (accuracy <= 500) return 13
+  return 11
+}
+
+function readStoredUserLocation(): UserLocation | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(USER_LOCATION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      lat?: unknown
+      lng?: unknown
+      accuracy?: unknown
+    }
+    const lat = typeof parsed.lat === 'number' ? parsed.lat : Number.NaN
+    const lng = typeof parsed.lng === 'number' ? parsed.lng : Number.NaN
+    if (!isValidLatLng(lat, lng)) return null
+    const accuracy = typeof parsed.accuracy === 'number' && Number.isFinite(parsed.accuracy)
+      ? Math.max(0, Math.round(parsed.accuracy))
+      : null
+    return { lat, lng, accuracy }
+  } catch {
+    return null
+  }
+}
+
+function writeStoredUserLocation(location: UserLocation): void {
+  if (typeof window === 'undefined') return
+  if (!isValidLatLng(location.lat, location.lng)) return
+  try {
+    window.localStorage.setItem(
+      USER_LOCATION_STORAGE_KEY,
+      JSON.stringify({
+        lat: location.lat,
+        lng: location.lng,
+        accuracy: location.accuracy,
+        updatedAt: Date.now(),
+      })
+    )
+  } catch {
+    // noop
+  }
+}
+
+async function queryGeolocationPermissionState(): Promise<PermissionState | null> {
+  if (typeof navigator === 'undefined') return null
+  const permissions = (navigator as Navigator & { permissions?: Permissions }).permissions
+  if (!permissions?.query) return null
+  try {
+    const status = await permissions.query({ name: 'geolocation' as PermissionName })
+    return status.state
+  } catch {
+    return null
+  }
 }
 
 function parseNumberParam(value: string | null): number | null {
@@ -127,7 +191,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panoramaLoadFailed: '全景加载失败，请稍后重试',
     noImage: '暂无图片',
     previewImage: '预览原图',
-    saveOriginal: '打开原图保存',
+    saveOriginal: '下载原图',
+    savingOriginal: '下载中…',
+    saveOriginalFailed: '下载失败，请重试',
     favorites: '收藏',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
@@ -179,7 +245,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panoramaLoadFailed: 'Failed to load panorama, please retry',
     noImage: 'No image yet',
     previewImage: 'Preview image',
-    saveOriginal: 'Open original',
+    saveOriginal: 'Download original',
+    savingOriginal: 'Downloading…',
+    saveOriginalFailed: 'Download failed, please retry',
     favorites: 'Favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
@@ -231,7 +299,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panoramaLoadFailed: '全景の読み込みに失敗しました',
     noImage: '画像はありません',
     previewImage: '原画像を表示',
-    saveOriginal: '元画像を開く',
+    saveOriginal: '元画像をダウンロード',
+    savingOriginal: 'ダウンロード中…',
+    saveOriginalFailed: 'ダウンロードに失敗しました',
     favorites: 'お気に入り',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
@@ -888,7 +958,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [meLoaded, setMeLoaded] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(() => readStoredUserLocation())
   const [mapReady, setMapReady] = useState(false)
   const [mapZoom, setMapZoom] = useState(parsed.z)
   const [mapViewMode, setMapViewMode] = useState<'map' | 'panorama'>('map')
@@ -1855,14 +1925,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       }
 
       const { latitude, longitude, accuracy } = position.coords
-      const zoom = accuracy <= 100 ? 15 : accuracy <= 500 ? 13 : 11
       const roundedAccuracy = Number.isFinite(accuracy) ? Math.round(accuracy) : null
-
-      setUserLocation({
+      const zoom = resolveLocateZoom(roundedAccuracy)
+      const nextLocation: UserLocation = {
         lat: latitude,
         lng: longitude,
         accuracy: roundedAccuracy,
-      })
+      }
+
+      setUserLocation(nextLocation)
+      writeStoredUserLocation(nextLocation)
       focusGeo([latitude, longitude], zoom, false)
       paintUserMarker(longitude, latitude)
       setLocating(false)
@@ -1903,12 +1975,35 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [locateUser])
 
   useEffect(() => {
+    if (!mapReady || !userLocation) return
+    paintUserMarker(userLocation.lng, userLocation.lat)
+  }, [mapReady, paintUserMarker, userLocation])
+
+  useEffect(() => {
     if (!mapReady) return
     if (parsed.hasViewport) return
     if (autoLocateAttemptedRef.current) return
     autoLocateAttemptedRef.current = true
-    locateUser({ silent: true })
-  }, [locateUser, mapReady, parsed.hasViewport])
+
+    if (userLocation) {
+      focusGeo([userLocation.lat, userLocation.lng], resolveLocateZoom(userLocation.accuracy), false)
+      return
+    }
+
+    let canceled = false
+    queryGeolocationPermissionState()
+      .then((permissionState) => {
+        if (canceled) return
+        if (permissionState === 'granted') {
+          locateUser({ silent: true })
+        }
+      })
+      .catch(() => null)
+
+    return () => {
+      canceled = true
+    }
+  }, [focusGeo, locateUser, mapReady, parsed.hasViewport, userLocation])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
