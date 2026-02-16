@@ -61,6 +61,7 @@ const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
 const USER_LOCATION_STORAGE_KEY = 'anitabi-map-user-location'
+const GUEST_FAVORITES_STORAGE_KEY = 'anitabi-map-guest-favorites'
 
 type CameraPadding = {
   top: number
@@ -135,6 +136,31 @@ function writeStoredUserLocation(location: UserLocation): void {
   }
 }
 
+function readStoredGuestFavorites(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(GUEST_FAVORITES_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => String(item || '').trim())
+      .filter((item) => item.length > 0)
+      .slice(0, 500)
+  } catch {
+    return []
+  }
+}
+
+function writeStoredGuestFavorites(keys: string[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(GUEST_FAVORITES_STORAGE_KEY, JSON.stringify(keys))
+  } catch {
+    // noop
+  }
+}
+
 async function queryGeolocationPermissionState(): Promise<PermissionState | null> {
   if (typeof navigator === 'undefined') return null
   const permissions = (navigator as Navigator & { permissions?: Permissions }).permissions
@@ -185,6 +211,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     share: '分享',
     shareCopied: '分享链接已复制',
     shareFailed: '分享失败，请手动复制地址栏链接',
+    shareManualCopy: '复制以下链接',
     openInGoogle: '谷歌导航',
     enterPanorama: '进入全景',
     exitPanorama: '退出全景',
@@ -197,6 +224,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     savingOriginal: '下载中…',
     saveOriginalFailed: '下载失败，请重试',
     favorites: '收藏',
+    favoriteAdded: '已加入收藏',
+    favoriteRemoved: '已取消收藏',
+    favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
     street: '街道',
@@ -241,6 +271,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     share: 'Share',
     shareCopied: 'Share link copied',
     shareFailed: 'Share failed, please copy the URL from the address bar',
+    shareManualCopy: 'Copy this link',
     openInGoogle: 'Google Nav',
     enterPanorama: 'Enter Panorama',
     exitPanorama: 'Exit Panorama',
@@ -253,6 +284,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     savingOriginal: 'Downloading…',
     saveOriginalFailed: 'Download failed, please retry',
     favorites: 'Favorite',
+    favoriteAdded: 'Added to favorites',
+    favoriteRemoved: 'Removed from favorites',
+    favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
     street: 'Street',
@@ -297,6 +331,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     share: '共有',
     shareCopied: '共有リンクをコピーしました',
     shareFailed: '共有に失敗しました。アドレスバーの URL を手動でコピーしてください',
+    shareManualCopy: 'このリンクをコピー',
     openInGoogle: 'Google ナビ',
     enterPanorama: '全景を表示',
     exitPanorama: '全景を閉じる',
@@ -309,6 +344,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     savingOriginal: 'ダウンロード中…',
     saveOriginalFailed: 'ダウンロードに失敗しました',
     favorites: 'お気に入り',
+    favoriteAdded: 'お気に入りに追加しました',
+    favoriteRemoved: 'お気に入りを解除しました',
+    favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
     street: '街道',
@@ -1042,6 +1080,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [meState, setMeState] = useState<MeState | null>(null)
   const [meLoaded, setMeLoaded] = useState(false)
+  const [guestFavorites, setGuestFavorites] = useState<string[]>(() => readStoredGuestFavorites())
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<UserLocation | null>(() => readStoredUserLocation())
@@ -1109,8 +1148,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [selectedPoint])
 
   const favoriteSet = useMemo(() => {
-    return new Set((meState?.favorites || []).map((row) => row.targetKey))
-  }, [meState])
+    const set = new Set((meState?.favorites || []).map((row) => row.targetKey))
+    for (const key of guestFavorites) {
+      set.add(key)
+    }
+    return set
+  }, [guestFavorites, meState])
+
+  useEffect(() => {
+    writeStoredGuestFavorites(guestFavorites)
+  }, [guestFavorites])
 
   const clearPanoramaProgressTimers = useCallback(() => {
     if (panoramaProgressTimerRef.current != null) {
@@ -2202,28 +2249,44 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
 
     setLocateHint(label.shareFailed)
-  }, [label.shareCopied, label.shareFailed, label.title])
+    window.prompt(label.shareManualCopy, href)
+  }, [label.shareCopied, label.shareFailed, label.shareManualCopy, label.title])
 
   const toggleFavorite = useCallback(
     async (payload: { targetType: 'bangumi' | 'point'; bangumiId?: number; pointId?: string }) => {
+      const targetKey = payload.targetType === 'bangumi' ? `bangumi:${payload.bangumiId}` : `point:${payload.pointId}`
+
       if (!meLoaded || !meState) {
-        const callback = encodeURIComponent(window.location.pathname + window.location.search)
-        window.location.href = `/auth/signin?callbackUrl=${callback}`
+        setGuestFavorites((prev) => {
+          const next = new Set(prev)
+          if (next.has(targetKey)) {
+            next.delete(targetKey)
+            setLocateHint(label.favoriteRemoved)
+          } else {
+            next.add(targetKey)
+            setLocateHint(label.favoriteAdded)
+          }
+          return Array.from(next)
+        })
         return
       }
 
-      const targetKey = payload.targetType === 'bangumi' ? `bangumi:${payload.bangumiId}` : `point:${payload.pointId}`
       const remove = favoriteSet.has(targetKey)
 
-      await fetch('/api/anitabi/me/favorites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, remove }),
-      })
-
-      await loadMe()
+      try {
+        const res = await fetch('/api/anitabi/me/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, remove }),
+        })
+        if (!res.ok) throw new Error('favorite request failed')
+        await loadMe()
+        setLocateHint(remove ? label.favoriteRemoved : label.favoriteAdded)
+      } catch {
+        setLocateHint(label.favoriteFailed)
+      }
     },
-    [favoriteSet, loadMe, meLoaded, meState]
+    [favoriteSet, label.favoriteAdded, label.favoriteFailed, label.favoriteRemoved, loadMe, meLoaded, meState]
   )
 
   const tabs = bootstrap?.tabs || [
@@ -2246,7 +2309,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
             onClick={() => toggleFavorite({ targetType: 'bangumi', bangumiId: detail.card.id }).catch(() => null)}
-            title={meState ? label.favorites : label.signInToFavorite}
+            title={label.favorites}
           >
             {favoriteSet.has(`bangumi:${detail.card.id}`) ? '★' : '☆'}
           </button>
