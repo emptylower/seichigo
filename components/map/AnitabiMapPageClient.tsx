@@ -351,6 +351,49 @@ function parseUrlState(): UrlState {
   }
 }
 
+function sanitizeDownloadFileNameBase(input: string): string {
+  const cleaned = String(input || '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned) return 'anitabi-image'
+  return cleaned.slice(0, 80)
+}
+
+function parseContentDispositionFilename(value: string | null): string | null {
+  if (!value) return null
+
+  const utf8Match = value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      const decoded = decodeURIComponent(utf8Match[1].trim().replace(/^"|"$/g, ''))
+      if (decoded) return decoded
+    } catch {
+      // noop
+    }
+  }
+
+  const plainMatch = value.match(/filename\s*=\s*"?([^";]+)"?/i)
+  if (plainMatch?.[1]) {
+    const name = plainMatch[1].trim()
+    if (name) return name
+  }
+
+  return null
+}
+
+function extensionFromMimeType(mimeType: string | null | undefined): string {
+  const normalized = String(mimeType || '').toLowerCase()
+  if (normalized.includes('image/jpeg') || normalized.includes('image/jpg')) return '.jpg'
+  if (normalized.includes('image/png')) return '.png'
+  if (normalized.includes('image/webp')) return '.webp'
+  if (normalized.includes('image/avif')) return '.avif'
+  if (normalized.includes('image/gif')) return '.gif'
+  if (normalized.includes('image/svg+xml')) return '.svg'
+  return '.jpg'
+}
+
 function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification {
   if (mode === 'satellite') {
     return {
@@ -966,6 +1009,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [panoramaLoading, setPanoramaLoading] = useState(false)
   const [panoramaProgress, setPanoramaProgress] = useState(0)
   const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string } | null>(null)
+  const [imageSaving, setImageSaving] = useState(false)
+  const [imageSaveError, setImageSaveError] = useState<string | null>(null)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -1815,11 +1860,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     const src = String(imageUrl || '').trim()
     if (!src) return
     const saveTarget = String(saveUrl || '').trim() || src
+    setImageSaving(false)
+    setImageSaveError(null)
     setImagePreview({ src, name: pointName, saveUrl: saveTarget })
   }, [])
 
   const onImagePreviewOpenChange = useCallback((open: boolean) => {
-    if (!open) setImagePreview(null)
+    if (!open) {
+      setImagePreview(null)
+      setImageSaving(false)
+      setImageSaveError(null)
+    }
   }, [])
 
   const renderPointImage = useCallback(
@@ -1858,6 +1909,49 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     },
     [label.noImage, label.previewImage, openImagePreview]
   )
+
+  const saveOriginalImage = useCallback(async () => {
+    if (!imagePreview?.saveUrl || imageSaving) return
+
+    setImageSaveError(null)
+    setImageSaving(true)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('url', imagePreview.saveUrl)
+      if (imagePreview.name) params.set('name', imagePreview.name)
+
+      const res = await fetch(`/api/anitabi/image-download?${params.toString()}`)
+      if (!res.ok) {
+        throw new Error('download_failed')
+      }
+
+      const blob = await res.blob()
+      if (!blob.size) {
+        throw new Error('empty_file')
+      }
+
+      const hintedName = parseContentDispositionFilename(res.headers.get('content-disposition'))
+      const fallbackBase = sanitizeDownloadFileNameBase(imagePreview.name)
+      const fallbackName = `${fallbackBase}${extensionFromMimeType(blob.type)}`
+      const fileName = hintedName || fallbackName
+
+      const objectUrl = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl)
+      }, 1200)
+    } catch {
+      setImageSaveError(label.saveOriginalFailed)
+    } finally {
+      setImageSaving(false)
+    }
+  }, [imagePreview, imageSaving, label.saveOriginalFailed])
 
   const exitPanorama = useCallback(() => {
     if (mapZoom >= PANORAMA_TRIGGER_ZOOM) {
@@ -2576,7 +2670,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       <Dialog.Root open={Boolean(imagePreview)} onOpenChange={onImagePreviewOpenChange}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-[1px]" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[121] w-[calc(100vw-1.5rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl focus:outline-none sm:p-4">
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[121] min-w-[320px] max-w-[92vw] w-fit -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl focus:outline-none sm:p-4">
             <Dialog.Description className="sr-only">
               {locale === 'en' ? 'Image preview with manual save action' : locale === 'ja' ? '画像プレビューと手動保存操作' : '图片预览与手动保存'}
             </Dialog.Description>
@@ -2586,14 +2680,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               </Dialog.Title>
               <div className="flex items-center gap-2">
                 {imagePreview?.saveUrl ? (
-                  <a
-                    href={imagePreview.saveUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 no-underline hover:bg-slate-100"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      saveOriginalImage().catch(() => null)
+                    }}
+                    disabled={imageSaving}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 no-underline hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    {label.saveOriginal}
-                  </a>
+                    {imageSaving ? label.savingOriginal : label.saveOriginal}
+                  </button>
                 ) : null}
                 <Dialog.Close asChild>
                   <button
@@ -2605,12 +2701,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 </Dialog.Close>
               </div>
             </div>
+            {imageSaveError ? (
+              <div className="mb-2 text-xs text-rose-600">{imageSaveError}</div>
+            ) : null}
             {imagePreview?.src ? (
-              <div className="max-h-[75dvh] overflow-auto rounded-lg bg-slate-100">
+              <div className="max-h-[78dvh] overflow-auto rounded-lg bg-slate-100 p-1 sm:p-2">
                 <img
                   src={imagePreview.src}
                   alt={imagePreview.name || label.previewImage}
-                  className="mx-auto h-auto max-h-[75dvh] w-auto max-w-full object-contain"
+                  className="mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain"
                 />
               </div>
             ) : null}
