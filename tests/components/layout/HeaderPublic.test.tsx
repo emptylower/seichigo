@@ -25,7 +25,7 @@ describe('HeaderPublic', () => {
 
     const nav = container.querySelector('nav')
     expect(nav).toBeTruthy()
-    expect(nav?.textContent).toContain('Posts')
+    expect(nav?.textContent).toContain('Home')
     expect(nav?.textContent).toContain('Anime')
     expect(nav?.textContent).toContain('Map')
     expect(nav?.textContent).toContain('Resources')

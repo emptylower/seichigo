@@ -51,8 +51,8 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
 
   const navItems = [
     { href: prefixPath('/', locale), label: t('header.posts', locale) },
-    { href: prefixPath('/anime', locale), label: t('header.anime', locale) },
     { href: prefixPath('/map', locale), label: t('header.map', locale) },
+    { href: prefixPath('/anime', locale), label: t('header.anime', locale) },
     { href: prefixPath('/city', locale), label: t('header.city', locale) },
     { href: prefixPath('/resources', locale), label: t('header.resources', locale) },
     { href: prefixPath('/submit', locale), label: t('header.submit', locale) },

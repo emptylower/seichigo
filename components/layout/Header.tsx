@@ -39,11 +39,11 @@ export default async function Header({ locale = 'zh' }: Props) {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href={prefixPath('/', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
-           <Link href={prefixPath('/anime', locale)} className="hover:text-brand-600">{t('header.anime', locale)}</Link>
-           <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
-           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
-           <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
-           <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>
+          <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
+          <Link href={prefixPath('/anime', locale)} className="hover:text-brand-600">{t('header.anime', locale)}</Link>
+          <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
+          <Link href={prefixPath('/resources', locale)} className="hover:text-brand-600">{t('header.resources', locale)}</Link>
+          <Link href={prefixPath('/submit', locale)} className="hover:text-brand-600">{t('header.submit', locale)}</Link>
           {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{t('header.admin', locale)}</Link> : null}
           <LanguageSwitcher locale={locale} />
           {session?.user ? (
