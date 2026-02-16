@@ -1,5 +1,3 @@
-"use client"
-
 import type { ArticleComposerInitial } from '../_components/ArticleComposerClient'
 import ArticleComposerLazy from '../_components/ArticleComposerLazy'
 

@@ -6,7 +6,7 @@ import Button from '@/components/shared/Button'
 
 type User = { id: string; email?: string | null }
 
-type ArticleListItem = {
+export type ArticleListItem = {
   id: string
   slug: string
   title: string
@@ -17,6 +17,7 @@ type ArticleListItem = {
 
 type Props = {
   user: User | null
+  initialItems?: ArticleListItem[]
 }
 
 type Filter = 'all' | 'draftbox' | 'in_review' | 'published'
@@ -44,10 +45,10 @@ function formatDateTime(input: string) {
   }).format(d)
 }
 
-export default function SubmitCenterClient({ user }: Props) {
+export default function SubmitCenterClient({ user, initialItems }: Props) {
   const router = useRouter()
-  const [items, setItems] = useState<ArticleListItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<ArticleListItem[]>(() => initialItems || [])
+  const [loading, setLoading] = useState(() => Boolean(user && !initialItems))
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('draftbox')
@@ -78,9 +79,10 @@ export default function SubmitCenterClient({ user }: Props) {
 
   useEffect(() => {
     if (!user) return
-    load()
+    if (initialItems) return
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id])
+  }, [user?.id, initialItems])
 
   async function submit(id: string) {
     setFlash(null)

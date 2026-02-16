@@ -363,37 +363,6 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   }, [])
 
   const displayTitle = title === '未命名' ? '' : title
-  const [richEditorReady, setRichEditorReady] = useState(() => !editable)
-
-  useEffect(() => {
-    if (!editable || richEditorReady) return
-    let cancelled = false
-
-    const maybeGlobal = globalThis as typeof globalThis & {
-      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
-      cancelIdleCallback?: (id: number) => void
-    }
-
-    if (typeof maybeGlobal.requestIdleCallback === 'function') {
-      const idleId = maybeGlobal.requestIdleCallback(() => {
-        if (cancelled) return
-        setRichEditorReady(true)
-      }, { timeout: 1200 })
-      return () => {
-        cancelled = true
-        maybeGlobal.cancelIdleCallback?.(idleId)
-      }
-    }
-
-    const timer = window.setTimeout(() => {
-      if (cancelled) return
-      setRichEditorReady(true)
-    }, 120)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [editable, richEditorReady])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -629,16 +598,12 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
 
         <div className="mt-8">
           {editable ? (
-            richEditorReady ? (
-              <RichTextEditor
-                initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
-                value={content}
-                onChange={setContent}
-                onEditorReady={setEditor}
-              />
-            ) : (
-              <div className="min-h-[30rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
-            )
+            <RichTextEditor
+              initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
+              value={content}
+              onChange={setContent}
+              onEditorReady={setEditor}
+            />
           ) : (
             <div className="prose prose-pink max-w-none" dangerouslySetInnerHTML={{ __html: initial?.contentHtml || '' }} />
           )}
