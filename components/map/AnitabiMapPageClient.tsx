@@ -183,6 +183,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     points: '地标',
     screenshots: '截图',
     share: '分享',
+    shareCopied: '分享链接已复制',
+    shareFailed: '分享失败，请手动复制地址栏链接',
     openInGoogle: '谷歌导航',
     enterPanorama: '进入全景',
     exitPanorama: '退出全景',
@@ -237,6 +239,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     points: 'Points',
     screenshots: 'Shots',
     share: 'Share',
+    shareCopied: 'Share link copied',
+    shareFailed: 'Share failed, please copy the URL from the address bar',
     openInGoogle: 'Google Nav',
     enterPanorama: 'Enter Panorama',
     exitPanorama: 'Exit Panorama',
@@ -291,6 +295,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     points: 'スポット',
     screenshots: '画像',
     share: '共有',
+    shareCopied: '共有リンクをコピーしました',
+    shareFailed: '共有に失敗しました。アドレスバーの URL を手動でコピーしてください',
     openInGoogle: 'Google ナビ',
     enterPanorama: '全景を表示',
     exitPanorama: '全景を閉じる',
@@ -2151,13 +2157,52 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
+    syncUrlRef.current()
     const href = window.location.href
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: label.title,
+          url: href,
+        })
+        return
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      }
+    }
+
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(href)
+        setLocateHint(label.shareCopied)
+        return
+      } catch {
+        // fall through
+      }
+    }
+
     try {
-      await navigator.clipboard.writeText(href)
+      const textarea = document.createElement('textarea')
+      textarea.value = href
+      textarea.setAttribute('readonly', 'true')
+      textarea.style.position = 'fixed'
+      textarea.style.top = '-9999px'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      textarea.setSelectionRange(0, textarea.value.length)
+      const copied = document.execCommand('copy')
+      document.body.removeChild(textarea)
+      if (copied) {
+        setLocateHint(label.shareCopied)
+        return
+      }
     } catch {
       // ignore
     }
-  }, [])
+
+    setLocateHint(label.shareFailed)
+  }, [label.shareCopied, label.shareFailed, label.title])
 
   const toggleFavorite = useCallback(
     async (payload: { targetType: 'bangumi' | 'point'; bangumiId?: number; pointId?: string }) => {
