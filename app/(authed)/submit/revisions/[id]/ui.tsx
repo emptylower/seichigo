@@ -1,6 +1,6 @@
 import type { ArticleComposerInitial } from '../../_components/ArticleComposerClient'
-import ArticleComposerLazy from '../../_components/ArticleComposerLazy'
+import ArticleComposerClient from '../../_components/ArticleComposerClient'
 
 export default function RevisionEditClient({ initial }: { initial: ArticleComposerInitial }) {
-  return <ArticleComposerLazy initial={initial} mode="revision" />
+  return <ArticleComposerClient initial={initial} mode="revision" />
 }

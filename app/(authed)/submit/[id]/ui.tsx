@@ -1,6 +1,6 @@
 import type { ArticleComposerInitial } from '../_components/ArticleComposerClient'
-import ArticleComposerLazy from '../_components/ArticleComposerLazy'
+import ArticleComposerClient from '../_components/ArticleComposerClient'
 
 export default function SubmitEditClient({ initial }: { initial: ArticleComposerInitial }) {
-  return <ArticleComposerLazy initial={initial} />
+  return <ArticleComposerClient initial={initial} />
 }

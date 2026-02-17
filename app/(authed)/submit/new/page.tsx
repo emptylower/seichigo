@@ -1,5 +1,5 @@
 import { getServerAuthSession } from '@/lib/auth/session'
-import ArticleComposerLazy from '../_components/ArticleComposerLazy'
+import ArticleComposerClient from '../_components/ArticleComposerClient'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -23,5 +23,5 @@ export default async function NewArticlePage() {
     )
   }
 
-  return <ArticleComposerLazy initial={null} />
+  return <ArticleComposerClient initial={null} />
 }

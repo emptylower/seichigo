@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -11,7 +11,9 @@ import type { CityOption } from '@/components/city/CityMultiSelect'
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), {
   ssr: false,
   loading: () => (
-    <div className="min-h-[30rem] rounded-md border bg-white p-4 text-sm text-gray-500">编辑器加载中…</div>
+    <div className="rounded-md border bg-white p-4 text-sm text-gray-500" style={{ minHeight: 'var(--editor-shell-min-h, 30rem)' }}>
+      编辑器加载中…
+    </div>
   ),
 })
 
@@ -84,6 +86,24 @@ function countPlainText(html: string): number {
   const withoutTags = html.replace(/<[^>]*>/g, ' ')
   const collapsed = withoutTags.replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim()
   return collapsed.length
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function estimateEditorShellMinHeight(html: string): number {
+  const source = String(html || '')
+  const textChars = countPlainText(source)
+  const imageCount = (source.match(/<img\b/gi) || []).length
+  const blockCount = (source.match(/<(p|h[1-6]|li|blockquote|pre|figure)\b/gi) || []).length
+
+  // Keep placeholder height closer to the eventual editor size to reduce CLS on heavy drafts.
+  const textHeight = Math.ceil(textChars / 34) * 20
+  const blockSpacing = blockCount * 6
+  const imageHeight = imageCount * 320
+  const estimated = 620 + textHeight + blockSpacing + imageHeight
+  return clampNumber(estimated, 560, 2200)
 }
 
 function formatStatus(status: ArticleStatus | 'approved') {
@@ -386,6 +406,18 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
   const [flash, setFlash] = useState<string | null>(null)
   const [reviseLoading, setReviseLoading] = useState(false)
   const saveIndicatorText = saveState === 'creating' ? '创建中…' : saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '已保存' : '\u00A0'
+  const editorShellMinHeightPx = useMemo(() => {
+    if (!editable) return 0
+    return estimateEditorShellMinHeight(initial?.contentHtml || '')
+  }, [editable, initial?.contentHtml])
+  const editorShellStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!editable) return undefined
+    const style: CSSProperties & Record<'--editor-shell-min-h', string> = {
+      minHeight: `${editorShellMinHeightPx}px`,
+      '--editor-shell-min-h': `${editorShellMinHeightPx}px`,
+    }
+    return style
+  }, [editable, editorShellMinHeightPx])
 
   async function loadAnimeOptions(q: string) {
     setAnimeLoading(true)
@@ -596,7 +628,7 @@ export default function ArticleComposerClient({ initial, mode = 'article' }: Pro
           disabled={!editable || saveState === 'creating'}
         />
 
-        <div className="mt-8">
+        <div className="mt-8" style={editorShellStyle}>
           {editable ? (
             <RichTextEditor
               initialValue={{ json: initial?.contentJson ?? null, html: initial?.contentHtml ?? '' }}
