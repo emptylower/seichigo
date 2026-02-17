@@ -81,7 +81,8 @@ const MAP_EXECUTE_LIMIT_FAILED_PER_TYPE = 10
 const MAP_EXECUTE_TIMEOUT_MS = 65_000
 const MAP_STATS_TIMEOUT_MS = 15_000
 const MAP_EXECUTE_RETRY_DELAY_MS = 1500
-const MAP_ONE_KEY_MAX_ROUNDS = 300
+const MAP_ONE_KEY_MAX_ROUNDS = 5000
+const MAP_ONE_KEY_BACKFILL_LIMIT = 1
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES = 3
 const MAP_ONE_KEY_RETRY_PER_ROUND = 2
 
@@ -1108,25 +1109,6 @@ export default function TranslationsUI({
     setMapOpsLoading(true)
     setMapOpsMessage(null)
     try {
-      let initialPending = 0
-      try {
-        const snapshot = await loadMapStatusSnapshot(targetLanguage)
-        initialPending = Number(snapshot.pending || 0)
-      } catch {
-        initialPending = 0
-      }
-
-      const estimatedRounds = Math.max(
-        1,
-        Math.ceil(initialPending / Math.max(1, MAP_EXECUTE_LIMIT_PENDING_PER_TYPE * 2))
-      )
-
-      beginMapOpsProgress({
-        title: '一键推进地图队列',
-        totalSteps: estimatedRounds,
-        detail: `准备开始批次推进（预计 ${estimatedRounds} 轮）...`,
-      })
-
       let attemptedRounds = 0
       let progressedRounds = 0
       let totalProcessed = 0
@@ -1134,112 +1116,267 @@ export default function TranslationsUI({
       let totalFailed = 0
       let totalReclaimed = 0
       let totalSkipped = 0
+      let totalBackfillEnqueued = 0
+      let totalBackfillUpdated = 0
       let consecutiveNoProgress = 0
-      let queueDrained = false
-      let reachedRoundCap = false
       let allErrors: string[] = []
+      let completionState: 'done' | 'stopped' | 'capped' = 'capped'
+      let bangumiCursor = bangumiBackfillCursor
+      let pointCursor = pointBackfillCursor
 
-      for (let i = 0; i < MAP_ONE_KEY_MAX_ROUNDS; i += 1) {
-        attemptedRounds = i + 1
-        const dynamicTotalSteps = Math.max(estimatedRounds, attemptedRounds)
+      beginMapOpsProgress({
+        title: '一键推进地图队列',
+        totalSteps: 2,
+        detail: '准备开始：优先处理失败任务...',
+      })
+
+      const mergeRound = (round: MapExecutionSummary) => {
+        const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
+        totalProcessed += round.processed
+        totalSuccess += round.success
+        totalFailed += translationFailed
+        totalReclaimed += round.reclaimedProcessing
+        totalSkipped += round.skipped
+        allErrors = appendUniqueMessages(allErrors, round.errorMessages)
+        return translationFailed
+      }
+
+      const executeRoundWithRetries = async (statusScope: MapExecuteStatusScope, cycle: number, stageLabel: string) => {
+        let aggregatedErrors: string[] = []
+        let lastRound: MapExecutionSummary | null = null
+
+        for (let retry = 0; retry <= MAP_ONE_KEY_RETRY_PER_ROUND; retry += 1) {
+          const round = await executeMapTranslateRound({ statusScope })
+          aggregatedErrors = appendUniqueMessages(aggregatedErrors, round.errorMessages, 10)
+          lastRound = {
+            ...round,
+            errorMessages: aggregatedErrors,
+          }
+
+          const hasRetryableError = aggregatedErrors.some(
+            (message) => isRetryableExecuteMessage(message) || message.includes('未拿到有效执行结果')
+          )
+          const shouldRetry =
+            round.processed === 0 &&
+            round.total > 0 &&
+            hasRetryableError &&
+            retry < MAP_ONE_KEY_RETRY_PER_ROUND
+
+          if (!shouldRetry) break
+
+          patchMapOpsProgress({
+            totalSteps: Math.max(2, cycle + 1),
+            currentStep: cycle - 1,
+            errors: appendUniqueMessages(allErrors, aggregatedErrors),
+            detail: `第 ${cycle} 轮${stageLabel}未推进，自动重试 ${retry + 1}/${MAP_ONE_KEY_RETRY_PER_ROUND}...`,
+          })
+          await sleep(MAP_EXECUTE_RETRY_DELAY_MS)
+        }
+
+        return (
+          lastRound || {
+            total: 0,
+            processed: 0,
+            success: 0,
+            failed: 0,
+            skipped: 0,
+            reclaimedProcessing: 0,
+            errorMessages: aggregatedErrors,
+          }
+        )
+      }
+
+      for (let cycle = 1; cycle <= MAP_ONE_KEY_MAX_ROUNDS; cycle += 1) {
+        attemptedRounds = cycle
         patchMapOpsProgress({
-          totalSteps: dynamicTotalSteps,
-          currentStep: i,
+          totalSteps: Math.max(2, cycle + 1),
+          currentStep: cycle - 1,
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
           reclaimed: totalReclaimed,
           skipped: totalSkipped,
           errors: allErrors,
-          detail: `正在执行第 ${attemptedRounds} 轮（自动推进）...`,
+          detail: `第 ${cycle} 轮：优先重试失败任务...`,
         })
 
-        let round: MapExecutionSummary | null = null
-        for (let retry = 0; retry <= MAP_ONE_KEY_RETRY_PER_ROUND; retry += 1) {
-          round = await executeMapTranslateRound({ statusScope: 'pending' })
-
-          const hasRetryableError = round.errorMessages.some(
-            (message) => isRetryableExecuteMessage(message) || message.includes('未拿到有效执行结果')
-          )
-          const shouldRetry = round.processed === 0 && round.total > 0 && hasRetryableError && retry < MAP_ONE_KEY_RETRY_PER_ROUND
-
-          if (!shouldRetry) break
-
-          allErrors = appendUniqueMessages(allErrors, round.errorMessages)
+        const failedRound = await executeRoundWithRetries('failed', cycle, '（失败优先）')
+        const failedTranslationFailed = mergeRound(failedRound)
+        if (failedRound.processed > 0) {
+          progressedRounds += 1
+          consecutiveNoProgress = 0
           patchMapOpsProgress({
-            totalSteps: dynamicTotalSteps,
-            currentStep: i,
+            currentStep: cycle,
+            totalSteps: Math.max(2, cycle + 1),
+            processed: totalProcessed,
+            success: totalSuccess,
+            failed: totalFailed,
+            reclaimed: totalReclaimed,
+            skipped: totalSkipped,
             errors: allErrors,
-            detail: `第 ${attemptedRounds} 轮未推进，自动重试 ${retry + 1}/${MAP_ONE_KEY_RETRY_PER_ROUND}...`,
+            detail: `第 ${cycle} 轮：失败任务优先推进完成（处理 ${failedRound.processed}，成功 ${failedRound.success}，翻译失败 ${failedTranslationFailed}，回收 ${failedRound.reclaimedProcessing}）`,
           })
-          await sleep(MAP_EXECUTE_RETRY_DELAY_MS)
+          continue
         }
 
-        if (!round) continue
-
-        const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
-        allErrors = appendUniqueMessages(allErrors, round.errorMessages)
-
-        if (round.total === 0) {
-          queueDrained = true
+        if (failedRound.total > 0) {
+          consecutiveNoProgress += 1
           patchMapOpsProgress({
-            currentStep: attemptedRounds,
-            totalSteps: Math.max(estimatedRounds, attemptedRounds),
-            detail: `第 ${attemptedRounds} 轮完成：队列已清空`,
+            currentStep: cycle,
+            totalSteps: Math.max(2, cycle + 1),
+            errors: allErrors,
+            detail: `第 ${cycle} 轮：失败任务仍存在但无进展（连续 ${consecutiveNoProgress} 轮）`,
+          })
+          if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
+            completionState = 'stopped'
+            break
+          }
+          continue
+        }
+
+        patchMapOpsProgress({
+          currentStep: cycle - 1,
+          totalSteps: Math.max(2, cycle + 1),
+          errors: allErrors,
+          detail: `第 ${cycle} 轮：无失败任务，补充新任务（作品 + 点位）...`,
+        })
+
+        const bangumiFill = await runMapBackfillOnce({
+          entityType: 'anitabi_bangumi',
+          mode: 'missing',
+          limit: MAP_ONE_KEY_BACKFILL_LIMIT,
+          cursor: bangumiCursor,
+        })
+        bangumiCursor = bangumiFill.done ? null : bangumiFill.nextCursor
+        setBangumiBackfillCursor(bangumiCursor)
+
+        const pointFill = await runMapBackfillOnce({
+          entityType: 'anitabi_point',
+          mode: 'missing',
+          limit: MAP_ONE_KEY_BACKFILL_LIMIT,
+          cursor: pointCursor,
+        })
+        pointCursor = pointFill.done ? null : pointFill.nextCursor
+        setPointBackfillCursor(pointCursor)
+
+        totalBackfillEnqueued += bangumiFill.enqueued + pointFill.enqueued
+        totalBackfillUpdated += bangumiFill.updated + pointFill.updated
+
+        patchMapOpsProgress({
+          currentStep: cycle - 1,
+          totalSteps: Math.max(2, cycle + 1),
+          errors: allErrors,
+          detail: `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}），开始处理 pending...`,
+        })
+
+        const pendingRound = await executeRoundWithRetries('pending', cycle, '（处理 pending）')
+        const pendingTranslationFailed = mergeRound(pendingRound)
+
+        if (pendingRound.processed > 0) {
+          progressedRounds += 1
+          consecutiveNoProgress = 0
+          patchMapOpsProgress({
+            currentStep: cycle,
+            totalSteps: Math.max(2, cycle + 1),
+            processed: totalProcessed,
+            success: totalSuccess,
+            failed: totalFailed,
+            reclaimed: totalReclaimed,
+            skipped: totalSkipped,
+            errors: allErrors,
+            detail: `第 ${cycle} 轮：pending 处理完成（处理 ${pendingRound.processed}，成功 ${pendingRound.success}，翻译失败 ${pendingTranslationFailed}，回收 ${pendingRound.reclaimedProcessing}）`,
+          })
+          continue
+        }
+
+        const nothingMoreToBackfill = bangumiFill.done && pointFill.done
+        if (pendingRound.total === 0 && nothingMoreToBackfill) {
+          completionState = 'done'
+          patchMapOpsProgress({
+            currentStep: cycle,
+            totalSteps: Math.max(2, cycle + 1),
+            processed: totalProcessed,
+            success: totalSuccess,
+            failed: totalFailed,
+            reclaimed: totalReclaimed,
+            skipped: totalSkipped,
+            errors: allErrors,
+            detail: `第 ${cycle} 轮：没有失败任务、没有新补队任务、没有 pending，准备进入抽样发布...`,
           })
           break
         }
 
-        if (round.processed === 0) {
+        if (pendingRound.total > 0) {
           consecutiveNoProgress += 1
           patchMapOpsProgress({
-            currentStep: attemptedRounds,
-            totalSteps: Math.max(estimatedRounds, attemptedRounds),
+            currentStep: cycle,
+            totalSteps: Math.max(2, cycle + 1),
             errors: allErrors,
-            detail: `第 ${attemptedRounds} 轮无进展（连续 ${consecutiveNoProgress} 轮），准备下一轮...`,
+            detail: `第 ${cycle} 轮：pending 无进展（连续 ${consecutiveNoProgress} 轮）`,
           })
-
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
+            completionState = 'stopped'
             break
           }
           continue
         }
 
         consecutiveNoProgress = 0
-        progressedRounds += 1
-        totalProcessed += round.processed
-        totalSuccess += round.success
-        totalFailed += translationFailed
-        totalReclaimed += round.reclaimedProcessing
-        totalSkipped += round.skipped
+      }
 
+      if (attemptedRounds >= MAP_ONE_KEY_MAX_ROUNDS && completionState !== 'done' && completionState !== 'stopped') {
+        completionState = 'capped'
+      }
+
+      let publishSummary = '未进入抽样发布阶段'
+      if (completionState === 'done') {
         patchMapOpsProgress({
           currentStep: attemptedRounds,
-          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          totalSteps: Math.max(2, attemptedRounds + 1),
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
           reclaimed: totalReclaimed,
           skipped: totalSkipped,
           errors: allErrors,
-          detail: `第 ${attemptedRounds} 轮完成：处理 ${round.processed}（成功 ${round.success}，翻译失败 ${translationFailed}，回收 ${round.reclaimedProcessing}）`,
+          detail: '全量翻译阶段完成，开始抽样检查并发布...',
         })
+
+        const pool = await loadReadyMapTasks(300)
+        if (pool.length > 0) {
+          const sampleSize = Math.min(300, Math.max(50, Math.round(pool.length * 0.03)))
+          const size = Math.min(sampleSize, pool.length)
+          const shuffled = pool.slice().sort(() => Math.random() - 0.5)
+          const sample = shuffled.slice(0, size)
+
+          const publishRes = await fetch('/api/admin/translations/approve-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskIds: sample.map((task) => task.id),
+            }),
+          })
+          const publishData = await publishRes.json().catch(() => ({}))
+          if (!publishRes.ok) {
+            throw new Error(publishData.error || '抽样发布失败')
+          }
+          allErrors = appendUniqueMessages(allErrors, collectErrorMessages((publishData as { results?: unknown })?.results))
+          publishSummary = `抽样发布：样本 ${size}，通过 ${Number(publishData.approved || 0)}，失败 ${Number(publishData.failed || 0)}，跳过 ${Number(publishData.skipped || 0)}`
+        } else {
+          publishSummary = '抽样发布：当前没有 ready 任务，已跳过'
+        }
       }
 
-      if (!queueDrained && attemptedRounds >= MAP_ONE_KEY_MAX_ROUNDS) {
-        reachedRoundCap = true
-      }
-
-      const failureStop = consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES
       const reasonText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
+      const baseSummary = `共尝试 ${attemptedRounds} 轮，实际推进 ${progressedRounds} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}，补队新建 ${totalBackfillEnqueued}，补队更新 ${totalBackfillUpdated}`
 
-      if (queueDrained) {
-        const msg = `一键推进完成：共尝试 ${attemptedRounds} 轮，实际推进 ${progressedRounds} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}（队列已清空）${reasonText}`
+      if (completionState === 'done') {
+        const msg = `一键推进完成：${baseSummary}；${publishSummary}${reasonText}`
         setMapOpsMessage(msg)
         patchMapOpsProgress({
           running: false,
-          currentStep: attemptedRounds,
-          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          currentStep: Math.max(1, attemptedRounds + 1),
+          totalSteps: Math.max(2, attemptedRounds + 1),
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
@@ -1249,13 +1386,13 @@ export default function TranslationsUI({
           detail: msg,
         })
         toast.success(`一键推进完成：处理 ${totalProcessed} 条`)
-      } else if (failureStop) {
-        const msg = `一键推进已暂停：连续 ${consecutiveNoProgress} 轮无进展，避免无限重试。已处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
+      } else if (completionState === 'stopped') {
+        const msg = `一键推进已暂停：连续 ${consecutiveNoProgress} 轮无进展，自动停止。${baseSummary}${reasonText}`
         setMapOpsMessage(msg)
         patchMapOpsProgress({
           running: false,
-          currentStep: attemptedRounds,
-          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          currentStep: Math.max(1, attemptedRounds),
+          totalSteps: Math.max(2, attemptedRounds),
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
@@ -1265,13 +1402,13 @@ export default function TranslationsUI({
           detail: msg,
         })
         toast.error('一键推进已暂停：连续失败过多')
-      } else if (reachedRoundCap) {
-        const msg = `一键推进达到安全上限 ${MAP_ONE_KEY_MAX_ROUNDS} 轮，已自动暂停。当前处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
+      } else {
+        const msg = `一键推进达到安全上限 ${MAP_ONE_KEY_MAX_ROUNDS} 轮，自动暂停。${baseSummary}${reasonText}`
         setMapOpsMessage(msg)
         patchMapOpsProgress({
           running: false,
-          currentStep: attemptedRounds,
-          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          currentStep: Math.max(1, attemptedRounds),
+          totalSteps: Math.max(2, attemptedRounds),
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
@@ -1281,22 +1418,6 @@ export default function TranslationsUI({
           detail: msg,
         })
         toast.info('一键推进达到安全上限，已暂停')
-      } else {
-        const msg = `一键推进结束：处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
-        setMapOpsMessage(msg)
-        patchMapOpsProgress({
-          running: false,
-          currentStep: attemptedRounds,
-          totalSteps: Math.max(estimatedRounds, attemptedRounds),
-          processed: totalProcessed,
-          success: totalSuccess,
-          failed: totalFailed,
-          reclaimed: totalReclaimed,
-          skipped: totalSkipped,
-          errors: allErrors,
-          detail: msg,
-        })
-        toast.info('一键推进已结束')
       }
 
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
