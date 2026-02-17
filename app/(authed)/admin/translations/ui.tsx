@@ -62,6 +62,30 @@ type MapExecutionSummary = {
 
 type MapExecuteStatusScope = 'pending' | 'failed' | 'pending_or_failed'
 
+type OneKeyMapQueueSnapshot = {
+  bangumiRemaining: number | null
+  pointRemaining: number | null
+  bangumiQueueOpen: number | null
+  pointQueueOpen: number | null
+  estimatedUnfinishedTasks: number | null
+}
+
+type OneKeyMapMetrics = {
+  bangumiBatch: number
+  bangumiBackfilledTotal: number
+  bangumiRemaining: number | null
+  pointBackfilledEnqueued: number
+  pointBackfilledUpdated: number
+  pointBackfilledTotal: number
+  pointQueueOpen: number | null
+  pointUnqueuedEstimate: number | null
+  pointUnfinishedTotal: number | null
+  roundProcessed: number
+  totalProcessed: number
+  estimatedTotal: number | null
+  completionPercent: number
+}
+
 type MapOpsProgress = {
   title: string
   detail: string
@@ -74,6 +98,7 @@ type MapOpsProgress = {
   reclaimed: number
   skipped: number
   errors: string[]
+  oneKey: OneKeyMapMetrics | null
 }
 
 const MAP_EXECUTE_LIMIT_PENDING_PER_TYPE = 20
@@ -133,6 +158,22 @@ function calcProgressPercent(progress: MapOpsProgress | null): number {
   const bounded = Math.max(0, Math.min(progress.currentStep, progress.totalSteps))
   if (progress.running && bounded === 0) return 12
   return Math.round((bounded / progress.totalSteps) * 100)
+}
+
+function calcCompletionPercent(processed: number, estimatedTotal: number | null): number {
+  if (estimatedTotal === null) return 0
+  if (estimatedTotal <= 0) return 100
+  return Math.max(0, Math.min(100, Math.round((processed / estimatedTotal) * 100)))
+}
+
+function calcOneKeyProgressPercent(progress: MapOpsProgress | null): number {
+  if (!progress?.oneKey) return 0
+  return Math.max(0, Math.min(100, progress.oneKey.completionPercent))
+}
+
+function formatMetricCount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '-'
+  return String(value)
 }
 
 function collectErrorMessages(results: unknown): string[] {
@@ -318,6 +359,76 @@ async function loadMapStatusSnapshot(targetLanguage: string): Promise<MapStatusS
   return sumStatusCounts([bangumi, point])
 }
 
+async function fetchUntranslatedTotalByEntityType(input: {
+  entityType: 'anitabi_bangumi' | 'anitabi_point'
+}): Promise<number> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), MAP_STATS_TIMEOUT_MS)
+  try {
+    const params = new URLSearchParams()
+    params.set('entityType', input.entityType)
+    params.set('page', '1')
+    params.set('pageSize', '5')
+    const res = await fetch(`/api/admin/translations/untranslated?${params.toString()}`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    const raw = await res.text()
+    let data: { error?: string; total?: number } = {}
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as { error?: string; total?: number }
+      } catch {
+        throw new Error(`未翻译统计返回非 JSON 响应（HTTP ${res.status}）`)
+      }
+    }
+    if (!res.ok) {
+      throw new Error(String(data.error || `未翻译统计失败（HTTP ${res.status}）`))
+    }
+    return Number(data.total || 0)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function sumUnfinishedTaskCount(counts: Record<string, number> | null | undefined): number {
+  if (!counts) return 0
+  return Number(counts.pending || 0) + Number(counts.processing || 0) + Number(counts.ready || 0) + Number(counts.failed || 0)
+}
+
+async function loadOneKeyMapQueueSnapshot(targetLanguage: string): Promise<OneKeyMapQueueSnapshot> {
+  try {
+    const [bangumiStats, pointStats, bangumiRemaining, pointRemaining] = await Promise.all([
+      fetchTaskStatsByEntityType({ entityType: 'anitabi_bangumi', targetLanguage }),
+      fetchTaskStatsByEntityType({ entityType: 'anitabi_point', targetLanguage }),
+      fetchUntranslatedTotalByEntityType({ entityType: 'anitabi_bangumi' }),
+      fetchUntranslatedTotalByEntityType({ entityType: 'anitabi_point' }),
+    ])
+
+    const langMultiplier = targetLanguage === 'all' ? 2 : 1
+    const bangumiQueueOpen = sumUnfinishedTaskCount(bangumiStats)
+    const pointQueueOpen = sumUnfinishedTaskCount(pointStats)
+    const estimatedUnfinishedTasks =
+      bangumiQueueOpen + pointQueueOpen + (Number(bangumiRemaining || 0) + Number(pointRemaining || 0)) * langMultiplier
+
+    return {
+      bangumiRemaining,
+      pointRemaining,
+      bangumiQueueOpen,
+      pointQueueOpen,
+      estimatedUnfinishedTasks,
+    }
+  } catch {
+    return {
+      bangumiRemaining: null,
+      pointRemaining: null,
+      bangumiQueueOpen: null,
+      pointQueueOpen: null,
+      estimatedUnfinishedTasks: null,
+    }
+  }
+}
+
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
   const lang = String(task.targetLanguage || '').trim()
   const localePrefix = lang === 'en' ? '/en' : lang === 'ja' ? '/ja' : ''
@@ -499,6 +610,7 @@ export default function TranslationsUI({
       reclaimed: 0,
       skipped: 0,
       errors: [],
+      oneKey: null,
     })
   }
 
@@ -1123,12 +1235,75 @@ export default function TranslationsUI({
       let completionState: 'done' | 'stopped' | 'capped' = 'capped'
       let bangumiCursor = bangumiBackfillCursor
       let pointCursor = pointBackfillCursor
+      let bangumiBatch = 0
+      let totalBangumiBackfilled = 0
+      let totalPointBackfilledEnqueued = 0
+      let totalPointBackfilledUpdated = 0
+      const langMultiplier = targetLanguage === 'all' ? 2 : 1
+      let queueSnapshot = await loadOneKeyMapQueueSnapshot(targetLanguage)
+      let estimatedTotal: number | null =
+        queueSnapshot.estimatedUnfinishedTasks === null
+          ? null
+          : Math.max(0, Number(queueSnapshot.estimatedUnfinishedTasks || 0))
+
+      const refreshQueueSnapshot = async () => {
+        queueSnapshot = await loadOneKeyMapQueueSnapshot(targetLanguage)
+        if (queueSnapshot.estimatedUnfinishedTasks !== null) {
+          const candidate = totalProcessed + Number(queueSnapshot.estimatedUnfinishedTasks || 0)
+          estimatedTotal = estimatedTotal === null ? candidate : Math.max(estimatedTotal, candidate)
+        }
+      }
+
+      const buildOneKeyMetrics = (roundProcessed: number): OneKeyMapMetrics => {
+        const pointUnqueuedEstimate =
+          queueSnapshot.pointRemaining === null ? null : Math.max(0, queueSnapshot.pointRemaining * langMultiplier)
+        const pointUnfinishedTotal =
+          queueSnapshot.pointQueueOpen === null || pointUnqueuedEstimate === null
+            ? null
+            : queueSnapshot.pointQueueOpen + pointUnqueuedEstimate
+        return {
+          bangumiBatch,
+          bangumiBackfilledTotal: totalBangumiBackfilled,
+          bangumiRemaining: queueSnapshot.bangumiRemaining,
+          pointBackfilledEnqueued: totalPointBackfilledEnqueued,
+          pointBackfilledUpdated: totalPointBackfilledUpdated,
+          pointBackfilledTotal: totalPointBackfilledEnqueued + totalPointBackfilledUpdated,
+          pointQueueOpen: queueSnapshot.pointQueueOpen,
+          pointUnqueuedEstimate,
+          pointUnfinishedTotal,
+          roundProcessed,
+          totalProcessed,
+          estimatedTotal,
+          completionPercent: calcCompletionPercent(totalProcessed, estimatedTotal),
+        }
+      }
+
+      const patchOneKeyProgress = (input: {
+        currentStep: number
+        totalSteps: number
+        detail: string
+        roundProcessed: number
+      }) => {
+        patchMapOpsProgress({
+          currentStep: input.currentStep,
+          totalSteps: input.totalSteps,
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: input.detail,
+          oneKey: buildOneKeyMetrics(input.roundProcessed),
+        })
+      }
 
       beginMapOpsProgress({
         title: '一键推进地图队列',
         totalSteps: 2,
         detail: '准备开始：优先处理失败任务...',
       })
+      patchMapOpsProgress({ oneKey: buildOneKeyMetrics(0) })
 
       const mergeRound = (round: MapExecutionSummary) => {
         const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
@@ -1164,10 +1339,11 @@ export default function TranslationsUI({
 
           if (!shouldRetry) break
 
-          patchMapOpsProgress({
-            totalSteps: Math.max(2, cycle + 1),
+          allErrors = appendUniqueMessages(allErrors, aggregatedErrors)
+          patchOneKeyProgress({
             currentStep: cycle - 1,
-            errors: appendUniqueMessages(allErrors, aggregatedErrors),
+            totalSteps: Math.max(2, cycle + 1),
+            roundProcessed: 0,
             detail: `第 ${cycle} 轮${stageLabel}未推进，自动重试 ${retry + 1}/${MAP_ONE_KEY_RETRY_PER_ROUND}...`,
           })
           await sleep(MAP_EXECUTE_RETRY_DELAY_MS)
@@ -1188,15 +1364,10 @@ export default function TranslationsUI({
 
       for (let cycle = 1; cycle <= MAP_ONE_KEY_MAX_ROUNDS; cycle += 1) {
         attemptedRounds = cycle
-        patchMapOpsProgress({
-          totalSteps: Math.max(2, cycle + 1),
+        patchOneKeyProgress({
           currentStep: cycle - 1,
-          processed: totalProcessed,
-          success: totalSuccess,
-          failed: totalFailed,
-          reclaimed: totalReclaimed,
-          skipped: totalSkipped,
-          errors: allErrors,
+          totalSteps: Math.max(2, cycle + 1),
+          roundProcessed: 0,
           detail: `第 ${cycle} 轮：优先重试失败任务...`,
         })
 
@@ -1205,15 +1376,11 @@ export default function TranslationsUI({
         if (failedRound.processed > 0) {
           progressedRounds += 1
           consecutiveNoProgress = 0
-          patchMapOpsProgress({
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
-            processed: totalProcessed,
-            success: totalSuccess,
-            failed: totalFailed,
-            reclaimed: totalReclaimed,
-            skipped: totalSkipped,
-            errors: allErrors,
+            roundProcessed: failedRound.processed,
             detail: `第 ${cycle} 轮：失败任务优先推进完成（处理 ${failedRound.processed}，成功 ${failedRound.success}，翻译失败 ${failedTranslationFailed}，回收 ${failedRound.reclaimedProcessing}）`,
           })
           continue
@@ -1221,10 +1388,11 @@ export default function TranslationsUI({
 
         if (failedRound.total > 0) {
           consecutiveNoProgress += 1
-          patchMapOpsProgress({
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
-            errors: allErrors,
+            roundProcessed: 0,
             detail: `第 ${cycle} 轮：失败任务仍存在但无进展（连续 ${consecutiveNoProgress} 轮）`,
           })
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
@@ -1234,10 +1402,10 @@ export default function TranslationsUI({
           continue
         }
 
-        patchMapOpsProgress({
+        patchOneKeyProgress({
           currentStep: cycle - 1,
           totalSteps: Math.max(2, cycle + 1),
-          errors: allErrors,
+          roundProcessed: 0,
           detail: `第 ${cycle} 轮：无失败任务，补充新任务（作品 + 点位）...`,
         })
 
@@ -1261,11 +1429,18 @@ export default function TranslationsUI({
 
         totalBackfillEnqueued += bangumiFill.enqueued + pointFill.enqueued
         totalBackfillUpdated += bangumiFill.updated + pointFill.updated
+        totalBangumiBackfilled += bangumiFill.enqueued + bangumiFill.updated
+        totalPointBackfilledEnqueued += pointFill.enqueued
+        totalPointBackfilledUpdated += pointFill.updated
+        if (bangumiFill.scanned > 0 || bangumiFill.enqueued > 0 || bangumiFill.updated > 0) {
+          bangumiBatch += 1
+        }
 
-        patchMapOpsProgress({
+        await refreshQueueSnapshot()
+        patchOneKeyProgress({
           currentStep: cycle - 1,
           totalSteps: Math.max(2, cycle + 1),
-          errors: allErrors,
+          roundProcessed: 0,
           detail: `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}），开始处理 pending...`,
         })
 
@@ -1275,15 +1450,11 @@ export default function TranslationsUI({
         if (pendingRound.processed > 0) {
           progressedRounds += 1
           consecutiveNoProgress = 0
-          patchMapOpsProgress({
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
-            processed: totalProcessed,
-            success: totalSuccess,
-            failed: totalFailed,
-            reclaimed: totalReclaimed,
-            skipped: totalSkipped,
-            errors: allErrors,
+            roundProcessed: pendingRound.processed,
             detail: `第 ${cycle} 轮：pending 处理完成（处理 ${pendingRound.processed}，成功 ${pendingRound.success}，翻译失败 ${pendingTranslationFailed}，回收 ${pendingRound.reclaimedProcessing}）`,
           })
           continue
@@ -1292,15 +1463,11 @@ export default function TranslationsUI({
         const nothingMoreToBackfill = bangumiFill.done && pointFill.done
         if (pendingRound.total === 0 && nothingMoreToBackfill) {
           completionState = 'done'
-          patchMapOpsProgress({
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
-            processed: totalProcessed,
-            success: totalSuccess,
-            failed: totalFailed,
-            reclaimed: totalReclaimed,
-            skipped: totalSkipped,
-            errors: allErrors,
+            roundProcessed: 0,
             detail: `第 ${cycle} 轮：没有失败任务、没有新补队任务、没有 pending，准备进入抽样发布...`,
           })
           break
@@ -1308,10 +1475,11 @@ export default function TranslationsUI({
 
         if (pendingRound.total > 0) {
           consecutiveNoProgress += 1
-          patchMapOpsProgress({
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
-            errors: allErrors,
+            roundProcessed: 0,
             detail: `第 ${cycle} 轮：pending 无进展（连续 ${consecutiveNoProgress} 轮）`,
           })
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
@@ -1328,17 +1496,14 @@ export default function TranslationsUI({
         completionState = 'capped'
       }
 
+      await refreshQueueSnapshot()
+
       let publishSummary = '未进入抽样发布阶段'
       if (completionState === 'done') {
-        patchMapOpsProgress({
+        patchOneKeyProgress({
           currentStep: attemptedRounds,
           totalSteps: Math.max(2, attemptedRounds + 1),
-          processed: totalProcessed,
-          success: totalSuccess,
-          failed: totalFailed,
-          reclaimed: totalReclaimed,
-          skipped: totalSkipped,
-          errors: allErrors,
+          roundProcessed: 0,
           detail: '全量翻译阶段完成，开始抽样检查并发布...',
         })
 
@@ -1365,6 +1530,8 @@ export default function TranslationsUI({
         } else {
           publishSummary = '抽样发布：当前没有 ready 任务，已跳过'
         }
+
+        await refreshQueueSnapshot()
       }
 
       const reasonText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
@@ -1384,6 +1551,7 @@ export default function TranslationsUI({
           skipped: totalSkipped,
           errors: allErrors,
           detail: msg,
+          oneKey: buildOneKeyMetrics(0),
         })
         toast.success(`一键推进完成：处理 ${totalProcessed} 条`)
       } else if (completionState === 'stopped') {
@@ -1400,6 +1568,7 @@ export default function TranslationsUI({
           skipped: totalSkipped,
           errors: allErrors,
           detail: msg,
+          oneKey: buildOneKeyMetrics(0),
         })
         toast.error('一键推进已暂停：连续失败过多')
       } else {
@@ -1416,6 +1585,7 @@ export default function TranslationsUI({
           skipped: totalSkipped,
           errors: allErrors,
           detail: msg,
+          oneKey: buildOneKeyMetrics(0),
         })
         toast.info('一键推进达到安全上限，已暂停')
       }
@@ -1684,6 +1854,7 @@ export default function TranslationsUI({
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
   const mapOpsProgressPercent = calcProgressPercent(mapOpsProgress)
+  const oneKeyProgressPercent = calcOneKeyProgressPercent(mapOpsProgress)
 
   useEffect(() => {
     if (view !== 'tasks') return
@@ -1848,7 +2019,7 @@ export default function TranslationsUI({
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]" />
-          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
             {mapOpsProgress ? (
               <>
                 <div className="flex items-start justify-between gap-3">
@@ -1882,6 +2053,40 @@ export default function TranslationsUI({
                     </span>
                   </div>
                 </div>
+
+                {mapOpsProgress.oneKey ? (
+                  <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                    <div className="text-[11px] font-medium text-gray-600">一键自动推进实时指标</div>
+                    <div className="mt-1 space-y-0.5 text-[11px] text-gray-600">
+                      <div>
+                        作品批次：第 {mapOpsProgress.oneKey.bangumiBatch} 批，剩余作品 {formatMetricCount(mapOpsProgress.oneKey.bangumiRemaining)}
+                      </div>
+                      <div>
+                        点位补队：累计 {mapOpsProgress.oneKey.pointBackfilledTotal}（新建 {mapOpsProgress.oneKey.pointBackfilledEnqueued} / 更新 {mapOpsProgress.oneKey.pointBackfilledUpdated}）
+                      </div>
+                      <div>
+                        未完成点位：{formatMetricCount(mapOpsProgress.oneKey.pointUnfinishedTotal)}（已入队 {formatMetricCount(mapOpsProgress.oneKey.pointQueueOpen)} + 未入队估算 {formatMetricCount(mapOpsProgress.oneKey.pointUnqueuedEstimate)}）
+                      </div>
+                      <div>
+                        翻译推进：本轮 {mapOpsProgress.oneKey.roundProcessed}，累计 {mapOpsProgress.oneKey.totalProcessed} / 预计总量 {formatMetricCount(mapOpsProgress.oneKey.estimatedTotal)}
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all duration-300"
+                          style={{ width: `${oneKeyProgressPercent}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500">
+                        <span>总推进完成度</span>
+                        <span>
+                          {oneKeyProgressPercent}%（{mapOpsProgress.oneKey.totalProcessed} / {formatMetricCount(mapOpsProgress.oneKey.estimatedTotal)}）
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="mt-4 grid grid-cols-5 gap-2 text-xs">
                   <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center text-gray-600">

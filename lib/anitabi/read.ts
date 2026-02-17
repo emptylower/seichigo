@@ -10,6 +10,7 @@ import type {
   AnitabiSearchResultDTO,
 } from '@/lib/anitabi/types'
 import { ANITABI_TAB_LABELS, clampInt, resolveAnitabiAssetUrl, normalizeText } from '@/lib/anitabi/utils'
+import { getRecentHotSnapshot, resolveHotScore } from '@/lib/anitabi/hotRank'
 
 function pickLocalizedTitle(
   locale: SupportedLocale,
@@ -107,6 +108,76 @@ function buildCardInclude(locale: SupportedLocale): Prisma.AnitabiBangumiInclude
       take: 1,
     },
   }
+}
+
+type HotSignalSeed = {
+  titles: string[]
+  years: number[]
+}
+
+function addUniqueTitle(target: HotSignalSeed, input: unknown) {
+  const text = normalizeText(input)
+  if (!text) return
+  if (target.titles.includes(text)) return
+  if (target.titles.length >= 24) return
+  target.titles.push(text)
+}
+
+function addUniqueYear(target: HotSignalSeed, input: unknown) {
+  const n = Number(input)
+  if (!Number.isFinite(n)) return
+  const year = Math.trunc(n)
+  if (year < 1900 || year > 2200) return
+  if (target.years.includes(year)) return
+  if (target.years.length >= 4) return
+  target.years.push(year)
+}
+
+async function getHotSignalsByBangumiId(prisma: PrismaClient, bangumiIds: number[]): Promise<Map<number, HotSignalSeed>> {
+  const ids = Array.from(new Set(bangumiIds.filter((id) => Number.isFinite(id))))
+  if (!ids.length) return new Map()
+
+  const rows = await prisma.anitabiMapping.findMany({
+    where: {
+      bangumiId: { in: ids },
+      animeId: { not: null },
+    },
+    select: {
+      bangumiId: true,
+      anime: {
+        select: {
+          name: true,
+          name_ja: true,
+          name_en: true,
+          alias: true,
+          year: true,
+        },
+      },
+    },
+  })
+
+  const out = new Map<number, HotSignalSeed>()
+  const ensure = (bangumiId: number) => {
+    const existing = out.get(bangumiId)
+    if (existing) return existing
+    const next: HotSignalSeed = { titles: [], years: [] }
+    out.set(bangumiId, next)
+    return next
+  }
+
+  for (const row of rows) {
+    if (!row.anime) continue
+    const target = ensure(row.bangumiId)
+    addUniqueTitle(target, row.anime.name)
+    addUniqueTitle(target, row.anime.name_ja)
+    addUniqueTitle(target, row.anime.name_en)
+    for (const alias of row.anime.alias || []) {
+      addUniqueTitle(target, alias)
+    }
+    addUniqueYear(target, row.anime.year)
+  }
+
+  return out
 }
 
 export async function getActiveDatasetVersion(prisma: PrismaClient): Promise<string> {
@@ -225,10 +296,29 @@ export async function listBangumiCards(input: {
 
   const cards = rows.map((row) => toCard(input.locale, row))
   if (input.tab === 'hot') {
-    cards.sort((a, b) => {
-      if (a.pointsLength !== b.pointsLength) return b.pointsLength - a.pointsLength
-      return (b.sourceModifiedMs || 0) - (a.sourceModifiedMs || 0)
+    const [hotSnapshot, hotSignalsByBangumiId] = await Promise.all([
+      getRecentHotSnapshot().catch(() => null),
+      getHotSignalsByBangumiId(input.prisma, rows.map((row) => row.id)).catch(() => new Map<number, HotSignalSeed>()),
+    ])
+
+    const ranked = rows.map((row, idx) => {
+      const seed = hotSignalsByBangumiId.get(row.id) || { titles: [], years: [] }
+      const titles = [row.titleJaRaw, row.titleZh, ...seed.titles].map((x) => normalizeText(x)).filter(Boolean)
+      const hotScore = resolveHotScore(hotSnapshot, { titles, years: seed.years })
+      return { card: cards[idx]!, hotScore }
     })
+
+    ranked.sort((a, b) => {
+      const aHasScore = Number.isFinite(a.hotScore)
+      const bHasScore = Number.isFinite(b.hotScore)
+      if (aHasScore && !bHasScore) return -1
+      if (!aHasScore && bHasScore) return 1
+      if (aHasScore && bHasScore && a.hotScore !== b.hotScore) return (b.hotScore || 0) - (a.hotScore || 0)
+
+      if (a.card.pointsLength !== b.card.pointsLength) return b.card.pointsLength - a.card.pointsLength
+      return (b.card.sourceModifiedMs || 0) - (a.card.sourceModifiedMs || 0)
+    })
+    return ranked.map((item) => item.card).slice(0, take)
   }
   return cards.slice(0, take)
 }
