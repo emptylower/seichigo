@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/anitabi/translate",
-      "schedule": "25 * * * *"
+      "schedule": "25 3 * * *"
     },
     {
       "path": "/api/cron/ops/daily",

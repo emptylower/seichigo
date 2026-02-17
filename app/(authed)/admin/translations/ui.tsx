@@ -50,6 +50,14 @@ type BatchExecutionProgress = {
   currentTaskId: string | null
 }
 
+type MapExecutionSummary = {
+  total: number
+  processed: number
+  success: number
+  failed: number
+  skipped: number
+}
+
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
   const max = opts?.max ?? 100
@@ -649,47 +657,103 @@ export default function TranslationsUI({
     }
   }
 
+  async function executeMapTranslateRound(input?: { includeFailed?: boolean }): Promise<MapExecutionSummary> {
+    const includeFailed = Boolean(input?.includeFailed)
+    const [bangumiRes, pointRes] = await Promise.all([
+      fetch('/api/admin/translations/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'anitabi_bangumi',
+          targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+          limit: 300,
+          includeFailed,
+          concurrency: 4,
+        }),
+      }).then((res) => res.json().then((data) => ({ res, data }))),
+      fetch('/api/admin/translations/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'anitabi_point',
+          targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+          limit: 300,
+          includeFailed,
+          concurrency: 4,
+        }),
+      }).then((res) => res.json().then((data) => ({ res, data }))),
+    ])
+
+    if (!bangumiRes.res.ok) throw new Error(bangumiRes.data.error || '地图作品批量执行失败')
+    if (!pointRes.res.ok) throw new Error(pointRes.data.error || '地图点位批量执行失败')
+
+    return {
+      total: Number(bangumiRes.data.total || 0) + Number(pointRes.data.total || 0),
+      processed: Number(bangumiRes.data.processed || 0) + Number(pointRes.data.processed || 0),
+      success: Number(bangumiRes.data.success || 0) + Number(pointRes.data.success || 0),
+      failed: Number(bangumiRes.data.failed || 0) + Number(pointRes.data.failed || 0),
+      skipped: Number(bangumiRes.data.skipped || 0) + Number(pointRes.data.skipped || 0),
+    }
+  }
+
   async function executeMapPendingBatch() {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
     try {
-      const [bangumiRes, pointRes] = await Promise.all([
-        fetch('/api/admin/translations/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            entityType: 'anitabi_bangumi',
-            targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-            limit: 300,
-            includeFailed: true,
-            concurrency: 4,
-          }),
-        }).then((res) => res.json().then((data) => ({ res, data }))),
-        fetch('/api/admin/translations/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            entityType: 'anitabi_point',
-            targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-            limit: 300,
-            includeFailed: true,
-            concurrency: 4,
-          }),
-        }).then((res) => res.json().then((data) => ({ res, data }))),
-      ])
+      const round = await executeMapTranslateRound({ includeFailed: true })
 
-      if (!bangumiRes.res.ok) throw new Error(bangumiRes.data.error || '地图作品批量执行失败')
-      if (!pointRes.res.ok) throw new Error(pointRes.data.error || '地图点位批量执行失败')
-
-      const success = Number(bangumiRes.data.success || 0) + Number(pointRes.data.success || 0)
-      const failed = Number(bangumiRes.data.failed || 0) + Number(pointRes.data.failed || 0)
-      const skipped = Number(bangumiRes.data.skipped || 0) + Number(pointRes.data.skipped || 0)
-
-      setMapOpsMessage(`批量翻译完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`)
-      toast.success(`地图批量翻译完成：成功 ${success}`)
+      setMapOpsMessage(`单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}`)
+      toast.success(`地图单轮执行完成：处理 ${round.processed}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = error instanceof Error ? error.message : '地图批量执行失败'
+      setMapOpsMessage(msg)
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+    }
+  }
+
+  async function handleManualAdvanceMapQueue(maxRounds = 10) {
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      const rounds = Math.max(1, Math.min(20, Math.floor(maxRounds)))
+      let roundCount = 0
+      let totalProcessed = 0
+      let totalSuccess = 0
+      let totalFailed = 0
+      let totalSkipped = 0
+      let queueDrained = false
+
+      for (let i = 0; i < rounds; i += 1) {
+        const round = await executeMapTranslateRound({ includeFailed: false })
+        if (round.total === 0 || round.processed === 0) {
+          queueDrained = true
+          break
+        }
+
+        roundCount += 1
+        totalProcessed += round.processed
+        totalSuccess += round.success
+        totalFailed += round.failed
+        totalSkipped += round.skipped
+      }
+
+      if (roundCount === 0) {
+        setMapOpsMessage('当前没有 pending 的地图翻译任务，队列已是最新状态')
+        toast.info('当前没有 pending 的地图翻译任务')
+        return
+      }
+
+      const suffix = queueDrained ? '（队列已清空）' : `（达到手动推进上限 ${rounds} 轮）`
+      setMapOpsMessage(
+        `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}`
+      )
+      toast.success(`手动推进完成：处理 ${totalProcessed} 条`)
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '手动推进失败'
       setMapOpsMessage(msg)
       toast.error(msg)
     } finally {
@@ -853,7 +917,7 @@ export default function TranslationsUI({
           <div>
             <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
             <div className="mt-1 text-xs text-gray-500">
-              回填历史任务、增量补队、按限制批量执行与抽检发布（en + ja）
+              回填历史任务、增量补队、手动推进队列与抽检发布（en + ja，不依赖 cron）
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -887,7 +951,14 @@ export default function TranslationsUI({
               onClick={() => void executeMapPendingBatch()}
               disabled={mapOpsLoading || sampleApproving}
             >
-              执行地图待翻译
+              执行地图待翻译（单轮）
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleManualAdvanceMapQueue(10)}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              手动推进队列（10轮）
             </Button>
             <Button
               type="button"
