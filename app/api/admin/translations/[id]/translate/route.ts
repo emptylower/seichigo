@@ -58,6 +58,7 @@ export async function POST(
         where: { id },
         data: {
           status: 'ready',
+          sourceHash: result.sourceHash || null,
           sourceContent: result.sourceContent,
           draftContent: result.translatedContent,
           error: null,

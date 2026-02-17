@@ -13,6 +13,18 @@ const mocks = vi.hoisted(() => ({
     anime: {
       findMany: vi.fn(),
     },
+    anitabiBangumi: {
+      findMany: vi.fn(),
+    },
+    anitabiPoint: {
+      findMany: vi.fn(),
+    },
+    anitabiBangumiI18n: {
+      findMany: vi.fn(),
+    },
+    anitabiPointI18n: {
+      findMany: vi.fn(),
+    },
     translationTask: {
       findMany: vi.fn(),
     },
@@ -34,6 +46,10 @@ function getReq(url: string): NextRequest {
 describe('GET /api/admin/translations/untranslated', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mocks.prisma.anitabiBangumi.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiPoint.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiBangumiI18n.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiPointI18n.findMany.mockResolvedValue([])
   })
 
   it('returns untranslated items across article/city/anime with missingLanguages', async () => {

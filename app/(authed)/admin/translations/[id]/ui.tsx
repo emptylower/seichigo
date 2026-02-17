@@ -380,6 +380,8 @@ export default function TranslationDetailUI({ id }: Props) {
     article: '文章',
     city: '城市',
     anime: '动漫',
+    anitabi_bangumi: '地图作品',
+    anitabi_point: '地图地标',
   }
 
   const statusLabels: Record<string, string> = {
@@ -407,6 +409,11 @@ export default function TranslationDetailUI({ id }: Props) {
   const hasEditableContent = (content: any) => {
     return getContentJson(content) !== null
   }
+
+  const isArticleTask = task.entityType === 'article'
+  const isMapBangumiTask = task.entityType === 'anitabi_bangumi'
+  const isMapPointTask = task.entityType === 'anitabi_point'
+  const canEditTask = isArticleTask ? hasEditableContent(task.draftContent) : isMapBangumiTask || isMapPointTask
 
   const breadcrumbItems = [
     { name: '后台', href: '/admin' },
@@ -459,7 +466,7 @@ export default function TranslationDetailUI({ id }: Props) {
           )}
           {task.status === 'ready' && task.draftContent && !isEditing && (
             <>
-              {hasEditableContent(task.draftContent) && (
+              {canEditTask && (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
@@ -487,6 +494,7 @@ export default function TranslationDetailUI({ id }: Props) {
             <>
               <button
                 onClick={startEditing}
+                disabled={!canEditTask}
                 className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
               >
                 编辑翻译
@@ -498,13 +506,23 @@ export default function TranslationDetailUI({ id }: Props) {
               >
                 {retranslating ? '翻译中...' : '重新翻译'}
               </button>
-              <button
-                onClick={handleUpdatePublished}
-                disabled={updating}
-                className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
-              >
-                {updating ? '更新中...' : '更新发布'}
-              </button>
+              {isArticleTask ? (
+                <button
+                  onClick={handleUpdatePublished}
+                  disabled={updating}
+                  className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {updating ? '更新中...' : '更新发布'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleApprove}
+                  disabled={approving}
+                  className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {approving ? '处理中...' : '更新译文'}
+                </button>
+              )}
             </>
           )}
           {isEditing && (
@@ -517,11 +535,11 @@ export default function TranslationDetailUI({ id }: Props) {
                 {retranslating ? '翻译中...' : '重新翻译全文'}
               </button>
               <button
-                onClick={task.status === 'approved' ? handleUpdatePublished : handleApprove}
-                disabled={task.status === 'approved' ? updating : approving}
+                onClick={task.status === 'approved' && isArticleTask ? handleUpdatePublished : handleApprove}
+                disabled={task.status === 'approved' && isArticleTask ? updating : approving}
                 className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-600 disabled:opacity-50"
               >
-                {task.status === 'approved' 
+                {task.status === 'approved' && isArticleTask
                   ? (updating ? '更新中...' : '更新发布')
                   : (approving ? '处理中...' : '确认翻译')
                 }
@@ -600,46 +618,115 @@ export default function TranslationDetailUI({ id }: Props) {
 
             {isEditing && (
               <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    标题
-                  </label>
-                  <input
-                    type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                    value={editedContent?.title || ''}
-                    onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    SEO 标题
-                  </label>
-                  <input
-                    type="text"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                    value={editedContent?.seoTitle || ''}
-                    onChange={(e) => setEditedContent({ ...editedContent, seoTitle: e.target.value })}
-                    placeholder="留空则使用标题"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    描述
-                  </label>
-                  <textarea
-                    rows={3}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                    value={editedContent?.description || ''}
-                    onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
-                    placeholder="用于搜索结果摘要"
-                  />
-                </div>
+                {isArticleTask ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        标题
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.title || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        SEO 标题
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.seoTitle || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, seoTitle: e.target.value })}
+                        placeholder="留空则使用标题"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        描述
+                      </label>
+                      <textarea
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.description || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
+                        placeholder="用于搜索结果摘要"
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {isMapBangumiTask ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        作品标题
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.title || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        城市
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.city || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, city: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        描述
+                      </label>
+                      <textarea
+                        rows={4}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.description || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, description: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {isMapPointTask ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        点位名称
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.name || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        点位备注
+                      </label>
+                      <textarea
+                        rows={4}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                        value={editedContent?.note || ''}
+                        onChange={(e) => setEditedContent({ ...editedContent, note: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : null}
               </div>
             )}
 
             <div className="rounded-lg bg-white min-h-[500px] relative">
-              {isEditing && editor && (
+              {isEditing && isArticleTask && editor && (
                 <TipTapBubbleMenu editor={editor}>
                   <div className="flex items-center gap-1 rounded bg-white p-1 shadow-lg ring-1 ring-gray-200">
                     <button
@@ -669,7 +756,7 @@ export default function TranslationDetailUI({ id }: Props) {
                   }
                   return (
                     <pre className="whitespace-pre-wrap text-sm">
-                      {JSON.stringify(task.draftContent, null, 2)}
+                      {JSON.stringify(isEditing ? editedContent : task.draftContent, null, 2)}
                     </pre>
                   )
                 })()

@@ -5,6 +5,10 @@
       "schedule": "10 3 * * *"
     },
     {
+      "path": "/api/cron/anitabi/translate",
+      "schedule": "25 * * * *"
+    },
+    {
       "path": "/api/cron/ops/daily",
       "schedule": "0 0 * * *"
     }

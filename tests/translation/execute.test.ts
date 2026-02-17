@@ -6,9 +6,11 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     translationTask: {
       findMany: vi.fn(),
+      updateMany: vi.fn(),
       update: vi.fn(),
     },
   },
+  executeMapTranslationTasks: vi.fn(),
   translateArticle: vi.fn(),
   translateCity: vi.fn(),
   translateAnime: vi.fn(),
@@ -20,6 +22,10 @@ vi.mock('@/lib/auth/session', () => ({
 
 vi.mock('@/lib/db/prisma', () => ({
   prisma: mocks.prisma,
+}))
+
+vi.mock('@/lib/translation/mapTaskExecutor', () => ({
+  executeMapTranslationTasks: (...args: any[]) => mocks.executeMapTranslationTasks(...args),
 }))
 
 vi.mock('@/lib/translation/service', () => ({
@@ -55,31 +61,58 @@ describe('POST /api/admin/translations/execute', () => {
   it('executes pending/failed tasks and skips invalid statuses', async () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
-    mocks.prisma.translationTask.findMany.mockResolvedValue([
-      {
-        id: 't1',
-        entityType: 'article',
-        entityId: 'a1',
-        targetLanguage: 'en',
-        status: 'pending',
-      },
-      {
-        id: 't2',
-        entityType: 'city',
-        entityId: 'c1',
-        targetLanguage: 'ja',
-        status: 'approved',
-      },
-      {
-        id: 't3',
-        entityType: 'anime',
-        entityId: 'an1',
-        targetLanguage: 'ja',
-        status: 'failed',
-      },
-    ])
+    mocks.prisma.translationTask.findMany.mockImplementation((opts: any) => {
+      if (opts?.where?.id?.in && !opts?.where?.status) {
+        return Promise.resolve([
+          {
+            id: 't1',
+            entityType: 'article',
+            entityId: 'a1',
+            targetLanguage: 'en',
+            status: 'pending',
+          },
+          {
+            id: 't2',
+            entityType: 'city',
+            entityId: 'c1',
+            targetLanguage: 'ja',
+            status: 'approved',
+          },
+          {
+            id: 't3',
+            entityType: 'anime',
+            entityId: 'an1',
+            targetLanguage: 'ja',
+            status: 'failed',
+          },
+        ])
+      }
 
+      if (opts?.where?.id?.in && opts?.where?.status === 'processing') {
+        return Promise.resolve([
+          {
+            id: 't1',
+            entityType: 'article',
+            entityId: 'a1',
+            targetLanguage: 'en',
+            status: 'processing',
+          },
+          {
+            id: 't3',
+            entityType: 'anime',
+            entityId: 'an1',
+            targetLanguage: 'ja',
+            status: 'processing',
+          },
+        ])
+      }
+
+      return Promise.resolve([])
+    })
+
+    mocks.prisma.translationTask.updateMany.mockResolvedValue({ count: 2 })
     mocks.prisma.translationTask.update.mockResolvedValue({})
+    mocks.executeMapTranslationTasks.mockResolvedValue([])
     mocks.translateArticle.mockResolvedValue({
       success: true,
       sourceContent: { title: 'source' },
@@ -112,7 +145,69 @@ describe('POST /api/admin/translations/execute', () => {
     expect(mocks.translateAnime).toHaveBeenCalledWith('an1', 'ja')
     expect(mocks.translateCity).not.toHaveBeenCalled()
 
-    // t1: processing + ready, t3: processing + failed
-    expect(mocks.prisma.translationTask.update).toHaveBeenCalledTimes(4)
+    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledTimes(1)
+    expect(mocks.prisma.translationTask.update).toHaveBeenCalledTimes(2)
+  })
+
+  it('supports filter mode and delegates map tasks to map executor', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.prisma.translationTask.findMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status?.in && opts?.select?.id && !opts?.where?.id) {
+        return Promise.resolve([{ id: 'm1' }])
+      }
+
+      if (opts?.where?.id?.in && !opts?.where?.status) {
+        return Promise.resolve([
+          {
+            id: 'm1',
+            entityType: 'anitabi_point',
+            entityId: 'p1',
+            targetLanguage: 'en',
+            status: 'pending',
+          },
+        ])
+      }
+
+      if (opts?.where?.id?.in && opts?.where?.status === 'processing') {
+        return Promise.resolve([
+          {
+            id: 'm1',
+            entityType: 'anitabi_point',
+            entityId: 'p1',
+            targetLanguage: 'en',
+            status: 'processing',
+          },
+        ])
+      }
+
+      return Promise.resolve([])
+    })
+
+    mocks.prisma.translationTask.updateMany.mockResolvedValue({ count: 1 })
+    mocks.executeMapTranslationTasks.mockResolvedValue([
+      { taskId: 'm1', status: 'ready' },
+    ])
+
+    const handlers = await import('app/api/admin/translations/execute/route')
+    const res = await handlers.POST(
+      postReq('http://localhost/api/admin/translations/execute', {
+        entityType: 'anitabi_point',
+        targetLanguage: 'en',
+        limit: 100,
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j).toMatchObject({
+      ok: true,
+      total: 1,
+      processed: 1,
+      success: 1,
+      failed: 0,
+      skipped: 0,
+    })
+    expect(mocks.executeMapTranslationTasks).toHaveBeenCalledTimes(1)
+    expect(mocks.translateArticle).not.toHaveBeenCalled()
   })
 })

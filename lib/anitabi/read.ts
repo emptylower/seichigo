@@ -250,16 +250,18 @@ function toPointDto(
     originLink: string | null
     density: number | null
     mark: string | null
-    i18n: Array<{ name: string | null }>
+    i18n: Array<{ name: string | null; note: string | null }>
   }
 ): AnitabiPointDTO {
   const localizedName = locale === 'zh' ? null : normalizeText(row.i18n?.[0]?.name)
+  const localizedNote = locale === 'zh' ? null : normalizeText(row.i18n?.[0]?.note)
 
   return {
     id: row.id,
     bangumiId: row.bangumiId,
     name: localizedName || row.name,
     nameZh: row.nameZh,
+    note: localizedNote || row.mark,
     geo: row.geoLat != null && row.geoLng != null ? [row.geoLat, row.geoLng] : null,
     ep: row.ep,
     s: row.s,
@@ -290,7 +292,7 @@ export async function getBangumiDetail(input: {
         include: {
           i18n: {
             where: { language: input.locale },
-            select: { name: true },
+            select: { name: true, note: true },
             take: 1,
           },
         },
@@ -313,7 +315,7 @@ export async function getBangumiDetail(input: {
   const points = row.points.map((point) =>
     toPointDto(input.locale, {
       ...point,
-      i18n: point.i18n.map((it) => ({ name: it.name })),
+      i18n: point.i18n.map((it) => ({ name: it.name, note: it.note })),
     })
   )
 
@@ -439,7 +441,7 @@ export async function searchDataset(input: {
       include: {
         i18n: {
           where: { language: input.locale },
-          select: { name: true },
+          select: { name: true, note: true },
           take: 1,
         },
       },
