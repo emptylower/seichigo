@@ -56,6 +56,7 @@ type MapExecutionSummary = {
   success: number
   failed: number
   skipped: number
+  errorMessages: string[]
 }
 
 type MapOpsProgress = {
@@ -68,6 +69,7 @@ type MapOpsProgress = {
   success: number
   failed: number
   skipped: number
+  errors: string[]
 }
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
@@ -117,6 +119,20 @@ function calcProgressPercent(progress: MapOpsProgress | null): number {
   const bounded = Math.max(0, Math.min(progress.currentStep, progress.totalSteps))
   if (progress.running && bounded === 0) return 12
   return Math.round((bounded / progress.totalSteps) * 100)
+}
+
+function collectErrorMessages(results: unknown): string[] {
+  if (!Array.isArray(results)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const row of results) {
+    const error = String((row as { error?: unknown } | null)?.error || '').trim()
+    if (!error || seen.has(error)) continue
+    seen.add(error)
+    out.push(error)
+    if (out.length >= 6) break
+  }
+  return out
 }
 
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
@@ -298,6 +314,7 @@ export default function TranslationsUI({
       success: 0,
       failed: 0,
       skipped: 0,
+      errors: [],
     })
   }
 
@@ -674,6 +691,7 @@ export default function TranslationsUI({
         processed: result.scanned,
         success: result.enqueued,
         skipped: result.updated,
+        errors: [],
         detail: `回填完成：扫描 ${result.scanned}，新建 ${result.enqueued}，更新 ${result.updated}${result.done ? '（当前回填已完成）' : ''}`,
       })
       toast.success(`${entityTypeLabels[entityType]}回填已执行`)
@@ -684,6 +702,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         failed: 1,
+        errors: [msg],
         detail: msg,
       })
       toast.error(msg)
@@ -707,6 +726,7 @@ export default function TranslationsUI({
         processed: bangumiResult.scanned,
         success: bangumiResult.enqueued,
         skipped: bangumiResult.updated,
+        errors: [],
         detail: `作品补队完成：新建 ${bangumiResult.enqueued}，更新 ${bangumiResult.updated}。正在补队点位...`,
       })
       const pointResult = await runMapBackfillOnce({ entityType: 'anitabi_point', mode: 'stale', limit: 1000 })
@@ -720,6 +740,7 @@ export default function TranslationsUI({
         processed: bangumiResult.scanned + pointResult.scanned,
         success: bangumiResult.enqueued + pointResult.enqueued,
         skipped: bangumiResult.updated + pointResult.updated,
+        errors: [],
         detail: `增量补队完成：作品 新建 ${bangumiResult.enqueued}/更新 ${bangumiResult.updated}，点位 新建 ${pointResult.enqueued}/更新 ${pointResult.updated}`,
       })
       toast.success('地图增量补队已执行')
@@ -730,6 +751,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         failed: 1,
+        errors: [msg],
         detail: msg,
       })
       toast.error(msg)
@@ -768,12 +790,18 @@ export default function TranslationsUI({
     if (!bangumiRes.res.ok) throw new Error(bangumiRes.data.error || '地图作品批量执行失败')
     if (!pointRes.res.ok) throw new Error(pointRes.data.error || '地图点位批量执行失败')
 
+    const errorMessages = [
+      ...collectErrorMessages((bangumiRes.data as { results?: unknown })?.results),
+      ...collectErrorMessages((pointRes.data as { results?: unknown })?.results),
+    ]
+
     return {
       total: Number(bangumiRes.data.total || 0) + Number(pointRes.data.total || 0),
       processed: Number(bangumiRes.data.processed || 0) + Number(pointRes.data.processed || 0),
       success: Number(bangumiRes.data.success || 0) + Number(pointRes.data.success || 0),
       failed: Number(bangumiRes.data.failed || 0) + Number(pointRes.data.failed || 0),
       skipped: Number(bangumiRes.data.skipped || 0) + Number(pointRes.data.skipped || 0),
+      errorMessages: Array.from(new Set(errorMessages)).slice(0, 6),
     }
   }
 
@@ -787,8 +815,9 @@ export default function TranslationsUI({
     })
     try {
       const round = await executeMapTranslateRound({ includeFailed: true })
+      const errorText = round.errorMessages.length > 0 ? `；原因：${round.errorMessages.join(' ｜ ')}` : ''
 
-      setMapOpsMessage(`单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}`)
+      setMapOpsMessage(`单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}${errorText}`)
       patchMapOpsProgress({
         running: false,
         currentStep: 1,
@@ -796,7 +825,8 @@ export default function TranslationsUI({
         success: round.success,
         failed: round.failed,
         skipped: round.skipped,
-        detail: `单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}`,
+        errors: round.errorMessages,
+        detail: `单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}${errorText}`,
       })
       toast.success(`地图单轮执行完成：处理 ${round.processed}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
@@ -806,6 +836,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         failed: 1,
+        errors: [msg],
         detail: msg,
       })
       toast.error(msg)
@@ -830,6 +861,7 @@ export default function TranslationsUI({
       let totalFailed = 0
       let totalSkipped = 0
       let queueDrained = false
+      const allErrors: string[] = []
 
       for (let i = 0; i < rounds; i += 1) {
         patchMapOpsProgress({
@@ -851,6 +883,14 @@ export default function TranslationsUI({
         totalSuccess += round.success
         totalFailed += round.failed
         totalSkipped += round.skipped
+        if (round.errorMessages.length > 0) {
+          for (const message of round.errorMessages) {
+            if (!allErrors.includes(message)) {
+              allErrors.push(message)
+              if (allErrors.length >= 6) break
+            }
+          }
+        }
 
         patchMapOpsProgress({
           currentStep: i + 1,
@@ -858,6 +898,7 @@ export default function TranslationsUI({
           success: totalSuccess,
           failed: totalFailed,
           skipped: totalSkipped,
+          errors: allErrors,
           detail: `第 ${i + 1} 轮完成：本轮处理 ${round.processed}（成功 ${round.success}，失败 ${round.failed}）`,
         })
       }
@@ -868,6 +909,7 @@ export default function TranslationsUI({
           running: false,
           currentStep: 1,
           totalSteps: 1,
+          errors: [],
           detail: '当前没有 pending 的地图翻译任务，队列已是最新状态',
         })
         toast.info('当前没有 pending 的地图翻译任务')
@@ -875,8 +917,9 @@ export default function TranslationsUI({
       }
 
       const suffix = queueDrained ? '（队列已清空）' : `（达到手动推进上限 ${rounds} 轮）`
+      const errorText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
       setMapOpsMessage(
-        `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}`
+        `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}${errorText}`
       )
       patchMapOpsProgress({
         running: false,
@@ -886,7 +929,8 @@ export default function TranslationsUI({
         success: totalSuccess,
         failed: totalFailed,
         skipped: totalSkipped,
-        detail: `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}`,
+        errors: allErrors,
+        detail: `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}${errorText}`,
       })
       toast.success(`手动推进完成：处理 ${totalProcessed} 条`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
@@ -896,6 +940,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         failed: 1,
+        errors: [msg],
         detail: msg,
       })
       toast.error(msg)
@@ -966,6 +1011,7 @@ export default function TranslationsUI({
         success: Number(data.approved || 0),
         failed: Number(data.failed || 0),
         skipped: Number(data.skipped || 0),
+        errors: collectErrorMessages((data as { results?: unknown })?.results),
         detail: `抽检发布已应用：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}。正在刷新列表...`,
       })
 
@@ -975,6 +1021,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         currentStep: 2,
+        errors: collectErrorMessages((data as { results?: unknown })?.results),
         detail: `抽检发布完成：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}`,
       })
     } catch (error) {
@@ -983,6 +1030,7 @@ export default function TranslationsUI({
       patchMapOpsProgress({
         running: false,
         failed: mapOpsProgress ? mapOpsProgress.failed || 1 : 1,
+        errors: [msg],
         detail: msg,
       })
       toast.error(msg)
@@ -1238,6 +1286,19 @@ export default function TranslationsUI({
                     跳过 {mapOpsProgress.skipped}
                   </div>
                 </div>
+
+                {mapOpsProgress.errors.length > 0 ? (
+                  <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
+                    <div className="text-xs font-medium text-rose-700">失败原因</div>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-rose-700">
+                      {mapOpsProgress.errors.slice(0, 4).map((message) => (
+                        <li key={message} className="break-words">
+                          {message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
                 {!mapOpsProgress.running ? (
                   <div className="mt-4 flex justify-end">
