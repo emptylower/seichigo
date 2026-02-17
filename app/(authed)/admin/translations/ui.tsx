@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import Button from '@/components/shared/Button'
 import { useAdminToast } from '@/hooks/useAdminToast'
 import { useAdminConfirm } from '@/hooks/useAdminConfirm'
@@ -58,6 +58,18 @@ type MapExecutionSummary = {
   skipped: number
 }
 
+type MapOpsProgress = {
+  title: string
+  detail: string
+  running: boolean
+  currentStep: number
+  totalSteps: number
+  processed: number
+  success: number
+  failed: number
+  skipped: number
+}
+
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
   const max = opts?.max ?? 100
@@ -97,6 +109,14 @@ function isAbortError(error: unknown): boolean {
     (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
     (error instanceof Error && error.name === 'AbortError')
   )
+}
+
+function calcProgressPercent(progress: MapOpsProgress | null): number {
+  if (!progress) return 0
+  if (progress.totalSteps <= 0) return progress.running ? 12 : 100
+  const bounded = Math.max(0, Math.min(progress.currentStep, progress.totalSteps))
+  if (progress.running && bounded === 0) return 12
+  return Math.round((bounded / progress.totalSteps) * 100)
 }
 
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
@@ -200,6 +220,7 @@ export default function TranslationsUI({
   const [batchProgress, setBatchProgress] = useState<BatchExecutionProgress | null>(null)
   const [mapOpsLoading, setMapOpsLoading] = useState(false)
   const [mapOpsMessage, setMapOpsMessage] = useState<string | null>(null)
+  const [mapOpsProgress, setMapOpsProgress] = useState<MapOpsProgress | null>(null)
   const [bangumiBackfillCursor, setBangumiBackfillCursor] = useState<string | null>(null)
   const [pointBackfillCursor, setPointBackfillCursor] = useState<string | null>(null)
   const [sampleApproving, setSampleApproving] = useState(false)
@@ -265,6 +286,24 @@ export default function TranslationsUI({
       ? buildStatsSignature(initialQuery.entityType, initialQuery.targetLanguage)
       : null
   )
+
+  function beginMapOpsProgress(input: { title: string; totalSteps: number; detail: string }) {
+    setMapOpsProgress({
+      title: input.title,
+      detail: input.detail,
+      running: true,
+      currentStep: 0,
+      totalSteps: Math.max(1, input.totalSteps),
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+    })
+  }
+
+  function patchMapOpsProgress(patch: Partial<MapOpsProgress>) {
+    setMapOpsProgress((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 250)
@@ -605,6 +644,12 @@ export default function TranslationsUI({
   async function handleMapBackfill(entityType: 'anitabi_bangumi' | 'anitabi_point') {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
+    const actionLabel = entityTypeLabels[entityType]
+    beginMapOpsProgress({
+      title: `${actionLabel}回填`,
+      totalSteps: 1,
+      detail: `正在扫描并创建 ${actionLabel} 翻译任务...`,
+    })
     try {
       const cursor = entityType === 'anitabi_bangumi' ? bangumiBackfillCursor : pointBackfillCursor
       const result = await runMapBackfillOnce({
@@ -623,11 +668,24 @@ export default function TranslationsUI({
       setMapOpsMessage(
         `${entityTypeLabels[entityType]}：扫描 ${result.scanned}，新建 ${result.enqueued}，更新 ${result.updated}${result.done ? '（当前回填已完成）' : `（可继续，cursor=${result.nextCursor || '-'})`}`
       )
+      patchMapOpsProgress({
+        running: false,
+        currentStep: 1,
+        processed: result.scanned,
+        success: result.enqueued,
+        skipped: result.updated,
+        detail: `回填完成：扫描 ${result.scanned}，新建 ${result.enqueued}，更新 ${result.updated}${result.done ? '（当前回填已完成）' : ''}`,
+      })
       toast.success(`${entityTypeLabels[entityType]}回填已执行`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = error instanceof Error ? error.message : '回填任务创建失败'
       setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        detail: msg,
+      })
       toast.error(msg)
     } finally {
       setMapOpsLoading(false)
@@ -637,20 +695,43 @@ export default function TranslationsUI({
   async function handleMapIncrementalRefill() {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
+    beginMapOpsProgress({
+      title: '地图增量补队',
+      totalSteps: 2,
+      detail: '正在补队地图作品...',
+    })
     try {
-      const [bangumiResult, pointResult] = await Promise.all([
-        runMapBackfillOnce({ entityType: 'anitabi_bangumi', mode: 'stale', limit: 1000 }),
-        runMapBackfillOnce({ entityType: 'anitabi_point', mode: 'stale', limit: 1000 }),
-      ])
+      const bangumiResult = await runMapBackfillOnce({ entityType: 'anitabi_bangumi', mode: 'stale', limit: 1000 })
+      patchMapOpsProgress({
+        currentStep: 1,
+        processed: bangumiResult.scanned,
+        success: bangumiResult.enqueued,
+        skipped: bangumiResult.updated,
+        detail: `作品补队完成：新建 ${bangumiResult.enqueued}，更新 ${bangumiResult.updated}。正在补队点位...`,
+      })
+      const pointResult = await runMapBackfillOnce({ entityType: 'anitabi_point', mode: 'stale', limit: 1000 })
 
       setMapOpsMessage(
         `增量补队完成：作品 新建 ${bangumiResult.enqueued}/更新 ${bangumiResult.updated}，点位 新建 ${pointResult.enqueued}/更新 ${pointResult.updated}`
       )
+      patchMapOpsProgress({
+        running: false,
+        currentStep: 2,
+        processed: bangumiResult.scanned + pointResult.scanned,
+        success: bangumiResult.enqueued + pointResult.enqueued,
+        skipped: bangumiResult.updated + pointResult.updated,
+        detail: `增量补队完成：作品 新建 ${bangumiResult.enqueued}/更新 ${bangumiResult.updated}，点位 新建 ${pointResult.enqueued}/更新 ${pointResult.updated}`,
+      })
       toast.success('地图增量补队已执行')
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = error instanceof Error ? error.message : '增量补队失败'
       setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        detail: msg,
+      })
       toast.error(msg)
     } finally {
       setMapOpsLoading(false)
@@ -699,15 +780,34 @@ export default function TranslationsUI({
   async function executeMapPendingBatch() {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
+    beginMapOpsProgress({
+      title: '执行地图待翻译（单轮）',
+      totalSteps: 1,
+      detail: '正在执行地图翻译任务（作品 + 点位）...',
+    })
     try {
       const round = await executeMapTranslateRound({ includeFailed: true })
 
       setMapOpsMessage(`单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}`)
+      patchMapOpsProgress({
+        running: false,
+        currentStep: 1,
+        processed: round.processed,
+        success: round.success,
+        failed: round.failed,
+        skipped: round.skipped,
+        detail: `单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}`,
+      })
       toast.success(`地图单轮执行完成：处理 ${round.processed}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = error instanceof Error ? error.message : '地图批量执行失败'
       setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        detail: msg,
+      })
       toast.error(msg)
     } finally {
       setMapOpsLoading(false)
@@ -719,6 +819,11 @@ export default function TranslationsUI({
     setMapOpsMessage(null)
     try {
       const rounds = Math.max(1, Math.min(20, Math.floor(maxRounds)))
+      beginMapOpsProgress({
+        title: `手动推进地图队列（最多 ${rounds} 轮）`,
+        totalSteps: rounds,
+        detail: `准备执行第 1 / ${rounds} 轮...`,
+      })
       let roundCount = 0
       let totalProcessed = 0
       let totalSuccess = 0
@@ -727,6 +832,14 @@ export default function TranslationsUI({
       let queueDrained = false
 
       for (let i = 0; i < rounds; i += 1) {
+        patchMapOpsProgress({
+          currentStep: i,
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          skipped: totalSkipped,
+          detail: `正在执行第 ${i + 1} / ${rounds} 轮...`,
+        })
         const round = await executeMapTranslateRound({ includeFailed: false })
         if (round.total === 0 || round.processed === 0) {
           queueDrained = true
@@ -738,10 +851,25 @@ export default function TranslationsUI({
         totalSuccess += round.success
         totalFailed += round.failed
         totalSkipped += round.skipped
+
+        patchMapOpsProgress({
+          currentStep: i + 1,
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          skipped: totalSkipped,
+          detail: `第 ${i + 1} 轮完成：本轮处理 ${round.processed}（成功 ${round.success}，失败 ${round.failed}）`,
+        })
       }
 
       if (roundCount === 0) {
         setMapOpsMessage('当前没有 pending 的地图翻译任务，队列已是最新状态')
+        patchMapOpsProgress({
+          running: false,
+          currentStep: 1,
+          totalSteps: 1,
+          detail: '当前没有 pending 的地图翻译任务，队列已是最新状态',
+        })
         toast.info('当前没有 pending 的地图翻译任务')
         return
       }
@@ -750,11 +878,26 @@ export default function TranslationsUI({
       setMapOpsMessage(
         `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}`
       )
+      patchMapOpsProgress({
+        running: false,
+        currentStep: queueDrained ? roundCount : rounds,
+        totalSteps: queueDrained ? roundCount : rounds,
+        processed: totalProcessed,
+        success: totalSuccess,
+        failed: totalFailed,
+        skipped: totalSkipped,
+        detail: `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}`,
+      })
       toast.success(`手动推进完成：处理 ${totalProcessed} 条`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = error instanceof Error ? error.message : '手动推进失败'
       setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        detail: msg,
+      })
       toast.error(msg)
     } finally {
       setMapOpsLoading(false)
@@ -803,6 +946,11 @@ export default function TranslationsUI({
       })
       if (!accepted) return
 
+      beginMapOpsProgress({
+        title: '抽检并批量发布',
+        totalSteps: 2,
+        detail: `正在发布 ${size} 条抽检任务...`,
+      })
       const res = await fetch('/api/admin/translations/approve-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -812,13 +960,31 @@ export default function TranslationsUI({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || '抽检发布失败')
+      patchMapOpsProgress({
+        currentStep: 1,
+        processed: Number(data.total || size),
+        success: Number(data.approved || 0),
+        failed: Number(data.failed || 0),
+        skipped: Number(data.skipped || 0),
+        detail: `抽检发布已应用：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}。正在刷新列表...`,
+      })
 
       setMapOpsMessage(`抽检发布完成：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}`)
       toast.success(`抽检发布完成：通过 ${data.approved || 0}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+      patchMapOpsProgress({
+        running: false,
+        currentStep: 2,
+        detail: `抽检发布完成：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}`,
+      })
     } catch (error) {
       const msg = error instanceof Error ? error.message : '抽检发布失败'
       setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: mapOpsProgress ? mapOpsProgress.failed || 1 : 1,
+        detail: msg,
+      })
       toast.error(msg)
     } finally {
       setSampleApproving(false)
@@ -873,6 +1039,7 @@ export default function TranslationsUI({
   }, [entityType, untranslatedPage, untranslatedPageSize, untranslatedQuery, view])
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
+  const mapOpsProgressPercent = calcProgressPercent(mapOpsProgress)
 
   useEffect(() => {
     if (view !== 'tasks') return
@@ -1011,6 +1178,79 @@ export default function TranslationsUI({
           </div>
         </div>
       ) : null}
+
+      <Dialog.Root
+        open={Boolean(mapOpsProgress)}
+        onOpenChange={(open) => {
+          if (!open && mapOpsProgress && !mapOpsProgress.running) {
+            setMapOpsProgress(null)
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
+            {mapOpsProgress ? (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Dialog.Title className="text-base font-semibold text-gray-900">{mapOpsProgress.title}</Dialog.Title>
+                    <Dialog.Description className="mt-1 text-sm text-gray-600">{mapOpsProgress.detail}</Dialog.Description>
+                  </div>
+                  {mapOpsProgress.running ? (
+                    <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-brand-500" />
+                  ) : (
+                    <Dialog.Close className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">Close</span>
+                    </Dialog.Close>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className={`h-full rounded-full bg-brand-500 transition-all duration-300 ${mapOpsProgress.running && mapOpsProgress.currentStep === 0 ? 'animate-pulse' : ''}`}
+                      style={{ width: `${mapOpsProgressPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      {mapOpsProgress.running ? '处理中' : '已完成'}
+                    </span>
+                    <span>
+                      步骤 {Math.max(0, Math.min(mapOpsProgress.currentStep, mapOpsProgress.totalSteps))} / {mapOpsProgress.totalSteps}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-4 gap-2 text-xs">
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center text-gray-600">
+                    处理 {mapOpsProgress.processed}
+                  </div>
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-center text-emerald-700">
+                    成功 {mapOpsProgress.success}
+                  </div>
+                  <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-center text-rose-700">
+                    失败 {mapOpsProgress.failed}
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-center text-slate-600">
+                    跳过 {mapOpsProgress.skipped}
+                  </div>
+                </div>
+
+                {!mapOpsProgress.running ? (
+                  <div className="mt-4 flex justify-end">
+                    <Button variant="ghost" onClick={() => setMapOpsProgress(null)}>
+                      关闭
+                    </Button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {view === 'tasks' ? (
         <div className="space-y-4">
