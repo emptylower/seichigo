@@ -27,29 +27,45 @@ function collectSeichiRouteNodes(node: any, out: Map<string, unknown>) {
   }
 }
 
+function renderRouteByData(id: string, raw: unknown, locale: SupportedLocale): string {
+  const parsed = parseSeichiRouteEmbedV1(raw)
+  if (!parsed.ok) {
+    return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.formatError', locale)}${parsed.error}</section>`
+  }
+  return renderSeichiRouteEmbedHtml(parsed.value, { id, locale })
+}
+
 export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | null | undefined, locale: SupportedLocale = 'zh'): string {
   const html = String(inputHtml || '')
   if (!html) return ''
-  if (!html.toLowerCase().includes('seichi-route')) return html
 
   const routes = new Map<string, unknown>()
   collectSeichiRouteNodes(contentJson, routes)
   if (!routes.size) return html
 
-  return html.replace(SEICHI_ROUTE_TAG_RE, (tag) => {
-     const id = extractDataIdFromTag(tag)
-     if (!id) {
-       return `<section class="seichi-route seichi-route--invalid" data-id="">${t('route.embed.missingDataId', locale)}</section>`
-     }
-     const raw = routes.get(id)
-     if (raw === undefined) {
-       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.dataNotFound', locale)}</section>`
-     }
-     const parsed = parseSeichiRouteEmbedV1(raw)
-     if (!parsed.ok) {
-       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.formatError', locale)}${parsed.error}</section>`
-     }
-    return renderSeichiRouteEmbedHtml(parsed.value, { id, locale })
-  })
-}
+  const renderedIds = new Set<string>()
 
+  const replaced = html.replace(SEICHI_ROUTE_TAG_RE, (tag) => {
+    const id = extractDataIdFromTag(tag)
+    if (!id) {
+      return `<section class="seichi-route seichi-route--invalid" data-id="">${t('route.embed.missingDataId', locale)}</section>`
+    }
+
+    const raw = routes.get(id)
+    if (raw === undefined) {
+      return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.dataNotFound', locale)}</section>`
+    }
+
+    renderedIds.add(id)
+    return renderRouteByData(id, raw, locale)
+  })
+
+  const missing: string[] = []
+  for (const [id, raw] of routes) {
+    if (renderedIds.has(id)) continue
+    missing.push(renderRouteByData(id, raw, locale))
+  }
+
+  if (!missing.length) return replaced
+  return `${replaced}${missing.join('')}`
+}

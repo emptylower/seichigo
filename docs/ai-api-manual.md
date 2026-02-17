@@ -71,7 +71,7 @@ SEICHIGO_AI_API_KEY=50d35343616eb3dea38f3a9297e662f05f24e6745329ab1844ba54546902
 | GET | `/api/ai/articles` | 获取文章列表（不含正文） | 无 |
 | POST | `/api/ai/articles` | 创建新草稿 | 无 |
 | GET | `/api/ai/articles/:id` | 获取单篇文章完整信息 | 无 |
-| PATCH | `/api/ai/articles/:id` | 更新文章内容 | 仅 draft/rejected |
+| PATCH | `/api/ai/articles/:id` | 更新元数据/小幅字段（正文建议走 import） | 仅 draft/rejected |
 | POST | `/api/ai/articles/:id/import` | 导入/覆盖 contentJson（自动生成 contentHtml） | 仅 draft/rejected |
 | POST | `/api/ai/articles/:id/submit` | 提交审核 | 仅 draft/rejected |
 | POST | `/api/ai/assets` | 上传图片资源（返回 `/assets/:id`） | 无 |
@@ -220,7 +220,7 @@ curl -X GET "http://localhost:3000/api/ai/articles?authorId=user_123" \
 | routeLength | string \| null | 否 | 路线长度 | - |
 | tags | string[] | 否 | 标签 | 字符串数组 |
 | contentJson | object \| null | 否 | TipTap JSON 格式的内容 | 见 TipTap 格式章节 |
-| contentHtml | string | 否 | HTML 格式的内容 | 会自动进行安全过滤 |
+| contentHtml | string | 否 | HTML 格式的内容 | 会自动进行安全过滤；建议不手写，优先通过 import 自动生成 |
 
 **请求示例**
 
@@ -261,8 +261,7 @@ curl -X POST "http://localhost:3000/api/ai/articles" \
           }
         }
       ]
-    },
-    "contentHtml": "<h2>引言</h2><p>《你的名字》是新海诚导演的代表作...</p>"
+    }
   }'
 ```
 
@@ -317,6 +316,8 @@ curl -X POST "http://localhost:3000/api/ai/articles" \
 - `slug` 字段由系统自动生成，基于标题和创建时间，不需要也不能在请求中指定
 - 如果自动生成的 slug 已存在，系统会尝试添加数字后缀（最多尝试 20 次）
 - `contentHtml` 会经过服务器端的安全过滤，移除潜在的危险 HTML 标签和属性
+- 若正文由 AI 生成，推荐流程是：先 `POST /api/ai/articles` 创建草稿，再 `POST /api/ai/articles/:id/import` 导入 `contentJson`，由服务端生成 `contentHtml`
+- 不建议手工拼接 `contentHtml`（特别是包含 `seichiRoute` 路线图时），否则容易与 `contentJson` 不一致，导致文章页不显示路线图
 - 所有字符串字段会自动 trim 处理空白字符
 - 新创建的文章状态默认为 `draft`
 
@@ -405,7 +406,10 @@ curl -X GET "http://localhost:3000/api/ai/articles/article_xyz789" \
 
 ### PATCH /api/ai/articles/:id
 
-更新文章内容。只能编辑状态为 `draft` 或 `rejected` 的文章。
+更新文章字段。只能编辑状态为 `draft` 或 `rejected` 的文章。
+
+> 重要：`PATCH` 不会根据 `contentJson` 自动重建 `contentHtml`。  
+> 更新正文时请使用 `POST /api/ai/articles/:id/import`，避免 `contentJson` / `contentHtml` 不一致。
 
 **Path 参数**
 
@@ -427,8 +431,8 @@ curl -X GET "http://localhost:3000/api/ai/articles/article_xyz789" \
 | routeLength | string \| null | 路线长度 | - |
 | tags | string[] | 标签 | 字符串数组 |
 | cover | string \| null | 封面图片 | 格式：`/assets/[a-zA-Z0-9_-]+`，最多 512 字符 |
-| contentJson | object \| null | TipTap JSON 内容 | 见 TipTap 格式章节 |
-| contentHtml | string | HTML 内容 | 会自动进行安全过滤 |
+| contentJson | object \| null | TipTap JSON 内容 | 仅建议在非正文主流程下使用；正文改动优先 `/import` |
+| contentHtml | string | HTML 内容 | 会自动进行安全过滤；正文改动不建议手写 |
 
 **状态限制**
 - ✅ 可编辑：`draft`、`rejected`
@@ -448,28 +452,16 @@ curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
   }'
 ```
 
-**请求示例 2：更新内容**
+**请求示例 2：更新标签和路线信息**
 
 ```bash
 curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "contentJson": {
-      "type": "doc",
-      "content": [
-        {
-          "type": "heading",
-          "attrs": { "level": 2 },
-          "content": [{ "type": "text", "text": "更新后的章节标题" }]
-        },
-        {
-          "type": "paragraph",
-          "content": [{ "type": "text", "text": "更新后的段落内容..." }]
-        }
-      ]
-    },
-    "contentHtml": "<h2>更新后的章节标题</h2><p>更新后的段落内容...</p>"
+    "city": "宇治",
+    "routeLength": "4.2公里",
+    "tags": ["京吹", "宇治", "圣地巡礼"]
   }'
 ```
 
@@ -522,6 +514,7 @@ curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
 - 只能编辑 `draft` 或 `rejected` 状态的文章
 - 如果文章在审核中（`in_review`）或已发布（`published`），会返回 409 错误
 - `contentHtml` 会经过服务器端的安全过滤
+- 更新正文时不要依赖 `PATCH` 同步 `contentJson` 与 `contentHtml`；请改用 `POST /api/ai/articles/:id/import`
 - 字符串字段会自动 trim 处理空白字符
 - 更新后 `updatedAt` 字段会自动更新为当前时间
 
@@ -530,6 +523,8 @@ curl -X PATCH "http://localhost:3000/api/ai/articles/article_xyz789" \
 ### POST /api/ai/articles/:id/import
 
 用于**稳定导入大 contentJson**（服务端会自动生成并覆盖 `contentHtml`）。只能编辑状态为 `draft` 或 `rejected` 的文章。
+
+这是正文写入的**推荐入口**（尤其是包含 `seichiRoute` / 路线图节点时）。
 
 相比 `PATCH /api/ai/articles/:id`，该接口更适合大正文导入（例如：超大 JSON、需要 gzip 压缩的场景）。
 
@@ -1107,13 +1102,13 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
    ```bash
    POST /api/ai/articles
    ```
-   提供标题、描述、标签等基础信息和内容。
+   先写入标题、描述、标签等基础信息。
 
 3. **编辑草稿**
    ```bash
    PATCH /api/ai/articles/:id
    ```
-   根据需要更新标题、标签等字段。若需要导入大正文，优先使用：
+   使用 PATCH 更新标题、标签、封面等元数据字段。正文写入请使用：
    ```bash
    POST /api/ai/articles/:id/import
    ```
@@ -1143,17 +1138,23 @@ SeichiGo 使用 TipTap 编辑器，内容以 JSON 格式存储。
 
 ### 内容格式建议
 
-1. **同时提供 JSON 和 HTML**
-   - 使用 `PATCH /api/ai/articles/:id` 更新正文时，推荐同时提供 `contentJson` 和 `contentHtml`
-   - 使用 `POST /api/ai/articles/:id/import` 导入正文时，只需要提供 `contentJson`（服务端会自动生成并覆盖 `contentHtml`）
-   - `contentJson` 用于编辑器重新打开和编辑；`contentHtml` 用于前台渲染展示（会经过安全过滤）
+1. **`contentJson` 作为正文单一真源（强烈推荐）**
+   - 正文更新统一走 `POST /api/ai/articles/:id/import`，只传 `contentJson`
+   - 该接口会按 `contentJson` 自动生成并覆盖 `contentHtml`，可避免 JSON/HTML 漂移
+   - `PATCH /api/ai/articles/:id` 主要用于元数据（title/description/tags/cover 等），不建议用于正文主流程
+   - 若你在 `POST /api/ai/articles` 阶段已传正文，也建议紧接着调用一次 `/import` 做“服务端重建 HTML”兜底
 
-2. **图片处理**
+2. **路线图（`seichiRoute`）防错规则**
+   - 不要手工删除或改写与 `contentJson` 对应的路线图占位 HTML
+   - 如果正文包含路线图/清单节点，务必通过 `/import` 生成最终 HTML
+   - 典型异常表现：资源中心能看到路线图，但文章正文不显示路线图；根因通常是 `contentJson` 与 `contentHtml` 不一致
+
+3. **图片处理**
    - 通过 `POST /api/ai/assets`（或创作中心 `POST /api/assets`）先上传图片，获取 `/assets/:id` 路径
    - 在 TipTap JSON 中使用该路径
    - 不要使用外部 URL
 
-3. **文本标记**
+4. **文本标记**
    - 合理使用粗体突出重点
    - 适当使用链接引用外部资源
    - 保持文本可读性

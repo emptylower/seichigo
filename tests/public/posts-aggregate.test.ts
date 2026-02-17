@@ -213,6 +213,34 @@ describe('public posts aggregation', () => {
     expect(html).toContain('<table')
   })
 
+  it('getPublicPostBySlug: backfills seichi-route embed when HTML placeholder is missing', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({
+      authorId: 'u1',
+      slug: 'db-route-missing-tag',
+      title: 'DB Route Missing Tag',
+      contentHtml: '<p>hi</p>',
+      contentJson: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'seichiRoute', attrs: { id: 'r1', data: { version: 1, spots: [{ name_zh: 'A' }, { name_zh: 'B' }] } } },
+        ],
+      },
+    })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug('db-route-missing-tag', 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+
+    const html = found && found.source === 'db' ? found.article.contentHtml : ''
+    expect(html).toContain('<p>hi</p>')
+    expect(html).toContain('<section class="seichi-route"')
+    expect(html).toContain('<svg')
+    expect(html).toContain('<table')
+  })
+
   it('getPublicPostBySlug: percent-encoded unicode slug resolves DB', async () => {
     const repo = new InMemoryArticleRepo()
     const slug = '你的名字-your-name-seichigo-tokyo-shinjuku'

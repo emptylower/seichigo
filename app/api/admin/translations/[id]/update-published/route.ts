@@ -88,10 +88,7 @@ export async function POST(
       return NextResponse.json({ error: 'Conflict' }, { status: 409 })
     }
 
-    const nextContentHtml =
-      typeof draft?.contentHtml === 'string' && draft.contentHtml.trim()
-        ? draft.contentHtml
-        : renderArticleContentHtmlFromJson(contentJson)
+    const nextContentHtml = renderArticleContentHtmlFromJson(contentJson)
 
     const updateData: Record<string, unknown> = {
       ...(draft as Record<string, unknown>),
@@ -122,7 +119,7 @@ export async function POST(
       await tx.translationTask.update({
         where: { id: task.id },
         data: {
-          finalContent: task.draftContent as any,
+          finalContent: updateData as any,
           updatedAt: new Date(),
         },
       })

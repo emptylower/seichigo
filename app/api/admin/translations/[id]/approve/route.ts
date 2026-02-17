@@ -3,6 +3,16 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
 import { safeRevalidatePath } from '@/lib/next/revalidate'
+import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
+
+function normalizeArticleDraftContent(draftContent: unknown): Record<string, unknown> {
+  const draftData = draftContent && typeof draftContent === 'object' ? { ...(draftContent as Record<string, unknown>) } : {}
+  const contentJson = draftData.contentJson
+  if (contentJson && typeof contentJson === 'object') {
+    draftData.contentHtml = renderArticleContentHtmlFromJson(contentJson)
+  }
+  return draftData
+}
 
 export async function POST(
   req: NextRequest,
@@ -31,8 +41,12 @@ export async function POST(
     }
 
     const { entityType, entityId, targetLanguage, draftContent } = task
+    let normalizedFinalContent: unknown = draftContent
 
     if (entityType === 'article') {
+      const draftData = normalizeArticleDraftContent(draftContent)
+      normalizedFinalContent = draftData
+
       const existingArticle = await prisma.article.findFirst({
         where: {
           translationGroupId: entityId,
@@ -43,7 +57,7 @@ export async function POST(
       if (existingArticle) {
         await prisma.article.update({
           where: { id: existingArticle.id },
-          data: draftContent as any,
+          data: draftData as any,
         })
         // Sync city associations from source (in case source cities changed)
         try {
@@ -69,7 +83,6 @@ export async function POST(
         })
 
         if (sourceArticle) {
-          const draftData = draftContent as Record<string, any>
           const newArticle = await prisma.article.create({
             data: {
               ...draftData,
@@ -233,7 +246,7 @@ export async function POST(
       where: { id },
       data: {
         status: 'approved',
-        finalContent: draftContent,
+        finalContent: normalizedFinalContent as any,
         updatedAt: new Date(),
       },
     })
