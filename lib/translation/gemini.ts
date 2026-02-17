@@ -71,7 +71,11 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-export async function callGemini(prompt: string, retryCount = 0): Promise<string> {
+type CallGeminiOptions = {
+  responseMimeType?: string
+}
+
+export async function callGemini(prompt: string, retryCount = 0, options: CallGeminiOptions = {}): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is not set')
@@ -98,6 +102,7 @@ export async function callGemini(prompt: string, retryCount = 0): Promise<string
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 8192,
+          ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
         },
       }),
     })
@@ -107,7 +112,7 @@ export async function callGemini(prompt: string, retryCount = 0): Promise<string
         throw new Error(`Rate limit exceeded after ${MAX_RETRIES} retries`)
       }
       await sleep(backoffMs)
-      return callGemini(prompt, retryCount + 1)
+      return callGemini(prompt, retryCount + 1, options)
     }
 
     if (!response.ok) {
@@ -164,7 +169,7 @@ export async function callGemini(prompt: string, retryCount = 0): Promise<string
 
     if (retryCount < MAX_RETRIES) {
       await sleep(backoffMs)
-      return callGemini(prompt, retryCount + 1)
+      return callGemini(prompt, retryCount + 1, options)
     }
 
     throw error
@@ -190,6 +195,111 @@ export async function translateText(text: string, targetLang: string): Promise<s
   }
   
   return restoreTerms(cleanedTranslation, terms, glossary, targetLang)
+}
+
+function stripCodeBlock(input: string): string {
+  let text = input.trim()
+  if (text.startsWith('```json')) {
+    text = text.slice(7)
+  } else if (text.startsWith('```')) {
+    text = text.slice(3)
+  }
+  if (text.endsWith('```')) {
+    text = text.slice(0, -3)
+  }
+  return text.trim()
+}
+
+function extractFirstJsonObject(input: string): string | null {
+  const text = input.trim()
+  const start = text.indexOf('{')
+  if (start < 0) return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (ch === '\\') {
+        escaped = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === '{') {
+      depth += 1
+      continue
+    }
+
+    if (ch === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return text.slice(start, i + 1)
+      }
+    }
+  }
+
+  return null
+}
+
+function normalizeBatchJson(parsed: unknown): Record<string, string> | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null
+  }
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      out[key] = value
+    } else if (value == null) {
+      out[key] = ''
+    } else {
+      out[key] = String(value)
+    }
+  }
+  return out
+}
+
+function parseBatchJsonResponse(response: string): Record<string, string> | null {
+  const primary = stripCodeBlock(response)
+  try {
+    return normalizeBatchJson(JSON.parse(primary))
+  } catch {
+    const extracted = extractFirstJsonObject(primary)
+    if (!extracted) return null
+    try {
+      return normalizeBatchJson(JSON.parse(extracted))
+    } catch {
+      return null
+    }
+  }
+}
+
+async function fallbackTranslateTextIndividually(texts: string[], targetLang: string): Promise<Map<string, string>> {
+  const uniqueTexts = Array.from(new Set(texts.map((text) => String(text || ''))))
+  const result = new Map<string, string>()
+
+  for (const text of uniqueTexts) {
+    try {
+      result.set(text, await translateText(text, targetLang))
+    } catch (error) {
+      console.error('[translateTextBatch] fallback single translation failed', error)
+      result.set(text, text)
+    }
+  }
+
+  return result
 }
 
 export async function translateTextBatch(texts: string[], targetLang: string): Promise<Map<string, string>> {
@@ -218,26 +328,11 @@ ${JSON.stringify(inputJson, null, 2)}
 
 Output the translated JSON:`
   
-  const response = await callGemini(prompt)
-  
-  // Strip markdown code blocks
-  let jsonStr = response.trim()
-  if (jsonStr.startsWith('```json')) {
-    jsonStr = jsonStr.slice(7)
-  } else if (jsonStr.startsWith('```')) {
-    jsonStr = jsonStr.slice(3)
-  }
-  if (jsonStr.endsWith('```')) {
-    jsonStr = jsonStr.slice(0, -3)
-  }
-  jsonStr = jsonStr.trim()
-  
-  // Parse JSON response
-  let parsed: Record<string, string>
-  try {
-    parsed = JSON.parse(jsonStr) as Record<string, string>
-  } catch (e) {
-    throw new Error(`Failed to parse translation response: ${e instanceof Error ? e.message : 'Unknown error'}`)
+  const response = await callGemini(prompt, 0, { responseMimeType: 'application/json' })
+  const parsed = parseBatchJsonResponse(response)
+  if (!parsed) {
+    console.error('[translateTextBatch] failed to parse batch JSON response, fallback to single mode')
+    return fallbackTranslateTextIndividually(texts, targetLang)
   }
   
   // Restore glossary terms per-text and build result map
