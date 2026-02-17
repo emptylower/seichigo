@@ -190,6 +190,11 @@ export default function TranslationsUI({
   const [batchExecuting, setBatchExecuting] = useState(false)
   const [batchError, setBatchError] = useState<string | null>(null)
   const [batchProgress, setBatchProgress] = useState<BatchExecutionProgress | null>(null)
+  const [mapOpsLoading, setMapOpsLoading] = useState(false)
+  const [mapOpsMessage, setMapOpsMessage] = useState<string | null>(null)
+  const [bangumiBackfillCursor, setBangumiBackfillCursor] = useState<string | null>(null)
+  const [pointBackfillCursor, setPointBackfillCursor] = useState<string | null>(null)
+  const [sampleApproving, setSampleApproving] = useState(false)
 
   const statusLabels: Record<string, string> = {
     all: '全部',
@@ -561,6 +566,201 @@ export default function TranslationsUI({
     }
   }
 
+  async function runMapBackfillOnce(input: {
+    entityType: 'anitabi_bangumi' | 'anitabi_point'
+    mode: 'missing' | 'stale' | 'all'
+    limit?: number
+    cursor?: string | null
+  }): Promise<{ scanned: number; enqueued: number; updated: number; nextCursor: string | null; done: boolean }> {
+    const res = await fetch('/api/admin/translations/backfill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityType: input.entityType,
+        targetLanguages: ['en', 'ja'],
+        mode: input.mode,
+        limit: input.limit ?? 1000,
+        cursor: input.cursor || undefined,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || '回填任务创建失败')
+    return {
+      scanned: Number(data.scanned || 0),
+      enqueued: Number(data.enqueued || 0),
+      updated: Number(data.updated || 0),
+      nextCursor: typeof data.nextCursor === 'string' ? data.nextCursor : null,
+      done: Boolean(data.done),
+    }
+  }
+
+  async function handleMapBackfill(entityType: 'anitabi_bangumi' | 'anitabi_point') {
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      const cursor = entityType === 'anitabi_bangumi' ? bangumiBackfillCursor : pointBackfillCursor
+      const result = await runMapBackfillOnce({
+        entityType,
+        mode: 'all',
+        limit: 1000,
+        cursor,
+      })
+
+      if (entityType === 'anitabi_bangumi') {
+        setBangumiBackfillCursor(result.done ? null : result.nextCursor)
+      } else {
+        setPointBackfillCursor(result.done ? null : result.nextCursor)
+      }
+
+      setMapOpsMessage(
+        `${entityTypeLabels[entityType]}：扫描 ${result.scanned}，新建 ${result.enqueued}，更新 ${result.updated}${result.done ? '（当前回填已完成）' : `（可继续，cursor=${result.nextCursor || '-'})`}`
+      )
+      toast.success(`${entityTypeLabels[entityType]}回填已执行`)
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '回填任务创建失败'
+      setMapOpsMessage(msg)
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+    }
+  }
+
+  async function handleMapIncrementalRefill() {
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      const [bangumiResult, pointResult] = await Promise.all([
+        runMapBackfillOnce({ entityType: 'anitabi_bangumi', mode: 'stale', limit: 1000 }),
+        runMapBackfillOnce({ entityType: 'anitabi_point', mode: 'stale', limit: 1000 }),
+      ])
+
+      setMapOpsMessage(
+        `增量补队完成：作品 新建 ${bangumiResult.enqueued}/更新 ${bangumiResult.updated}，点位 新建 ${pointResult.enqueued}/更新 ${pointResult.updated}`
+      )
+      toast.success('地图增量补队已执行')
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '增量补队失败'
+      setMapOpsMessage(msg)
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+    }
+  }
+
+  async function executeMapPendingBatch() {
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      const [bangumiRes, pointRes] = await Promise.all([
+        fetch('/api/admin/translations/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entityType: 'anitabi_bangumi',
+            targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+            limit: 300,
+            includeFailed: true,
+            concurrency: 4,
+          }),
+        }).then((res) => res.json().then((data) => ({ res, data }))),
+        fetch('/api/admin/translations/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entityType: 'anitabi_point',
+            targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+            limit: 300,
+            includeFailed: true,
+            concurrency: 4,
+          }),
+        }).then((res) => res.json().then((data) => ({ res, data }))),
+      ])
+
+      if (!bangumiRes.res.ok) throw new Error(bangumiRes.data.error || '地图作品批量执行失败')
+      if (!pointRes.res.ok) throw new Error(pointRes.data.error || '地图点位批量执行失败')
+
+      const success = Number(bangumiRes.data.success || 0) + Number(pointRes.data.success || 0)
+      const failed = Number(bangumiRes.data.failed || 0) + Number(pointRes.data.failed || 0)
+      const skipped = Number(bangumiRes.data.skipped || 0) + Number(pointRes.data.skipped || 0)
+
+      setMapOpsMessage(`批量翻译完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`)
+      toast.success(`地图批量翻译完成：成功 ${success}`)
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '地图批量执行失败'
+      setMapOpsMessage(msg)
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+    }
+  }
+
+  async function loadReadyMapTasks(limitPerType: number): Promise<TranslationTaskListItem[]> {
+    const [bangumiRes, pointRes] = await Promise.all([
+      fetch(`/api/admin/translations?status=ready&entityType=anitabi_bangumi&page=1&pageSize=${limitPerType}`),
+      fetch(`/api/admin/translations?status=ready&entityType=anitabi_point&page=1&pageSize=${limitPerType}`),
+    ])
+
+    const [bangumiData, pointData] = await Promise.all([
+      bangumiRes.json().catch(() => ({})),
+      pointRes.json().catch(() => ({})),
+    ])
+
+    if (!bangumiRes.ok) throw new Error(bangumiData.error || '获取地图作品待审核任务失败')
+    if (!pointRes.ok) throw new Error(pointData.error || '获取地图点位待审核任务失败')
+
+    const bangumiTasks = Array.isArray(bangumiData.tasks) ? (bangumiData.tasks as TranslationTaskListItem[]) : []
+    const pointTasks = Array.isArray(pointData.tasks) ? (pointData.tasks as TranslationTaskListItem[]) : []
+
+    return [...bangumiTasks, ...pointTasks]
+  }
+
+  async function approveMapSampleBatch() {
+    setSampleApproving(true)
+    try {
+      const pool = await loadReadyMapTasks(300)
+      if (pool.length === 0) {
+        toast.info('当前没有可抽检发布的地图 ready 任务')
+        return
+      }
+
+      const sampleSize = Math.min(300, Math.max(50, Math.round(pool.length * 0.03)))
+      const size = Math.min(sampleSize, pool.length)
+      const shuffled = pool.slice().sort(() => Math.random() - 0.5)
+      const sample = shuffled.slice(0, size)
+
+      const accepted = await askForConfirm({
+        title: '确认抽检并批量发布',
+        description: `将从 ready 任务中抽取 ${size} 条样本并执行批量发布。`,
+        confirmLabel: '确认发布',
+        cancelLabel: '取消',
+      })
+      if (!accepted) return
+
+      const res = await fetch('/api/admin/translations/approve-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskIds: sample.map((task) => task.id),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || '抽检发布失败')
+
+      setMapOpsMessage(`抽检发布完成：通过 ${data.approved || 0}，失败 ${data.failed || 0}，跳过 ${data.skipped || 0}`)
+      toast.success(`抽检发布完成：通过 ${data.approved || 0}`)
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '抽检发布失败'
+      setMapOpsMessage(msg)
+      toast.error(msg)
+    } finally {
+      setSampleApproving(false)
+    }
+  }
+
   async function createTranslationTask(item: UntranslatedItem) {
     const accepted = await askForConfirm({
       title: '创建翻译任务',
@@ -646,6 +846,66 @@ export default function TranslationsUI({
         <Button onClick={() => setShowBatchModal(true)} disabled={batchExecuting}>
           批量翻译
         </Button>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
+            <div className="mt-1 text-xs text-gray-500">
+              回填历史任务、增量补队、按限制批量执行与抽检发布（en + ja）
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleMapBackfill('anitabi_bangumi')}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              作品回填（1000）
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleMapBackfill('anitabi_point')}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              点位回填（1000）
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleMapIncrementalRefill()}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              增量补队
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void executeMapPendingBatch()}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              执行地图待翻译
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void approveMapSampleBatch()}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              {sampleApproving ? '抽检发布中...' : '抽检并批量发布'}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-gray-500">
+          回填游标：作品 {bangumiBackfillCursor || '-'} / 点位 {pointBackfillCursor || '-'}
+        </div>
+        {mapOpsMessage ? (
+          <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+            {mapOpsMessage}
+          </div>
+        ) : null}
       </div>
 
       {batchProgress ? (

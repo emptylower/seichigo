@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { getArticleCityIds, setArticleCityIds } from '@/lib/city/links'
 import { safeRevalidatePath } from '@/lib/next/revalidate'
 import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
+import { buildBangumiSourceHash, buildPointSourceHash } from '@/lib/translation/mapSourceHash'
 
 function normalizeArticleDraftContent(draftContent: unknown): Record<string, unknown> {
   const draftData = draftContent && typeof draftContent === 'object' ? { ...(draftContent as Record<string, unknown>) } : {}
@@ -41,6 +42,8 @@ export async function POST(
     }
 
     const { entityType, entityId, targetLanguage, draftContent } = task
+    const taskSourceHash = String(task.sourceHash || '').trim() || null
+    let resolvedTaskSourceHash = taskSourceHash
     let normalizedFinalContent: unknown = draftContent
 
     if (entityType === 'article') {
@@ -192,6 +195,17 @@ export async function POST(
       }
 
       const content = draftContent as any
+      const source = (task.sourceContent || {}) as {
+        title?: string | null
+        description?: string | null
+        city?: string | null
+      }
+      const sourceHash = taskSourceHash || buildBangumiSourceHash({
+        titleZh: source.title ?? content.title ?? '',
+        description: source.description ?? content.description ?? null,
+        city: source.city ?? content.city ?? null,
+      })
+      resolvedTaskSourceHash = sourceHash
       await prisma.anitabiBangumiI18n.upsert({
         where: {
           bangumiId_language: {
@@ -202,11 +216,13 @@ export async function POST(
         create: {
           bangumiId,
           language: targetLanguage,
+          sourceHash,
           title: content.title ?? null,
           description: content.description ?? null,
           city: content.city ?? null,
         },
         update: {
+          sourceHash,
           title: content.title ?? null,
           description: content.description ?? null,
           city: content.city ?? null,
@@ -218,6 +234,16 @@ export async function POST(
       safeRevalidatePath('/ja/map')
     } else if (entityType === 'anitabi_point') {
       const content = draftContent as any
+      const source = (task.sourceContent || {}) as {
+        name?: string | null
+        note?: string | null
+      }
+      const sourceHash = taskSourceHash || buildPointSourceHash({
+        name: source.name ?? content.name ?? '',
+        nameZh: source.name ?? content.name ?? '',
+        mark: source.note ?? content.note ?? null,
+      })
+      resolvedTaskSourceHash = sourceHash
       await prisma.anitabiPointI18n.upsert({
         where: {
           pointId_language: {
@@ -228,10 +254,12 @@ export async function POST(
         create: {
           pointId: entityId,
           language: targetLanguage,
+          sourceHash,
           name: content.name ?? null,
           note: content.note ?? null,
         },
         update: {
+          sourceHash,
           name: content.name ?? null,
           note: content.note ?? null,
         },
@@ -246,6 +274,7 @@ export async function POST(
       where: { id },
       data: {
         status: 'approved',
+        sourceHash: resolvedTaskSourceHash,
         finalContent: normalizedFinalContent as any,
         updatedAt: new Date(),
       },

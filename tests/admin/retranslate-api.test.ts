@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   translateAnime: vi.fn(),
   translateCity: vi.fn(),
   translateArticle: vi.fn(),
+  translateAnitabiBangumi: vi.fn(),
+  translateAnitabiPoint: vi.fn(),
   prisma: {
     anime: {
       update: vi.fn(),
@@ -30,6 +32,8 @@ vi.mock('@/lib/translation/service', () => ({
   translateAnime: (...args: any[]) => mocks.translateAnime(...args),
   translateCity: (...args: any[]) => mocks.translateCity(...args),
   translateArticle: (...args: any[]) => mocks.translateArticle(...args),
+  translateAnitabiBangumi: (...args: any[]) => mocks.translateAnitabiBangumi(...args),
+  translateAnitabiPoint: (...args: any[]) => mocks.translateAnitabiPoint(...args),
 }))
 
 vi.mock('@/lib/db/prisma', () => ({
@@ -118,6 +122,30 @@ describe('admin retranslate api - preview', () => {
     const j = await res.json()
     expect(j.ok).toBe(true)
     expect(j.preview.title).toBe('Translated Title')
+  })
+
+  it('returns preview for map point translation', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.translateAnitabiPoint.mockResolvedValue({
+      success: true,
+      sourceContent: { name: 'Source point', note: 'Source note' },
+      translatedContent: { name: 'Translated point', note: 'Translated note' },
+    })
+
+    const handlers = await import('app/api/admin/retranslate/route')
+    const res = await handlers.POST(
+      jsonReq('http://localhost/api/admin/retranslate', 'POST', {
+        entityType: 'anitabi_point',
+        entityId: 'point-1',
+        targetLang: 'en',
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j.ok).toBe(true)
+    expect(j.preview).toEqual({ name: 'Translated point', note: 'Translated note' })
+    expect(mocks.translateAnitabiPoint).toHaveBeenCalledWith('point-1', 'en')
   })
 
   it('returns only specified field when field parameter provided', async () => {
@@ -279,6 +307,34 @@ describe('admin retranslate api - apply', () => {
       where: { id: 'task-1' },
       data: expect.objectContaining({
         draftContent: { title: 'Applied Title', description: 'Applied Desc' },
+        updatedAt: expect.any(Date),
+      }),
+    })
+  })
+
+  it('applies map bangumi translation into translation task draft content', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.prisma.translationTask.update.mockResolvedValue({
+      id: 'task-map-1',
+      draftContent: { title: 'Map title EN', city: 'Tokyo EN', description: 'Map desc EN' },
+    })
+
+    const handlers = await import('app/api/admin/retranslate/apply/route')
+    const res = await handlers.POST(
+      jsonReq('http://localhost/api/admin/retranslate/apply', 'POST', {
+        entityType: 'anitabi_bangumi',
+        entityId: '101',
+        targetLang: 'en',
+        translationTaskId: 'task-map-1',
+        preview: { title: 'Map title EN', city: 'Tokyo EN', description: 'Map desc EN' },
+      })
+    )
+
+    expect(res.status).toBe(200)
+    expect(mocks.prisma.translationTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-map-1' },
+      data: expect.objectContaining({
+        draftContent: { title: 'Map title EN', city: 'Tokyo EN', description: 'Map desc EN' },
         updatedAt: expect.any(Date),
       }),
     })

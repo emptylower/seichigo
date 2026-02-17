@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth/session'
-import { translateAnime, translateCity, translateArticle, translateText, translateTipTapContent } from '@/lib/translation/service'
+import {
+  translateAnime,
+  translateAnitabiBangumi,
+  translateAnitabiPoint,
+  translateCity,
+  translateArticle,
+  translateText,
+  translateTipTapContent,
+} from '@/lib/translation/service'
 import { prisma } from '@/lib/db/prisma'
 import { z } from 'zod'
 import type { TipTapNode } from '@/lib/translation/tiptap'
 import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
 
 const retranslateSchema = z.object({
-  entityType: z.enum(['anime', 'city', 'article', 'text']),
+  entityType: z.enum(['anime', 'city', 'article', 'anitabi_bangumi', 'anitabi_point', 'text']),
   entityId: z.string().optional(),
   targetLang: z.enum(['en', 'ja']),
   field: z.string().optional(),
@@ -106,6 +114,12 @@ export async function POST(req: NextRequest) {
     } else if (entityType === 'anime') {
       if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
       result = await translateAnime(entityId, targetLang)
+    } else if (entityType === 'anitabi_bangumi') {
+      if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
+      result = await translateAnitabiBangumi(entityId, targetLang)
+    } else if (entityType === 'anitabi_point') {
+      if (!entityId) return NextResponse.json({ error: 'entityId required' }, { status: 400 })
+      result = await translateAnitabiPoint(entityId, targetLang)
     } else {
       return NextResponse.json(
         { error: 'Unknown entity type' },

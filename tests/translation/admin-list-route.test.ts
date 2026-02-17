@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
     anime: {
       findMany: vi.fn(),
     },
+    anitabiBangumi: {
+      findMany: vi.fn(),
+    },
+    anitabiPoint: {
+      findMany: vi.fn(),
+    },
   },
 }))
 
@@ -34,6 +40,8 @@ function getReq(url: string): Request {
 describe('GET /api/admin/translations', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mocks.prisma.anitabiBangumi.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiPoint.findMany.mockResolvedValue([])
   })
 
   it('returns compact list items with subject/target and pagination', async () => {
@@ -147,4 +155,3 @@ describe('GET /api/admin/translations', () => {
     )
   })
 })
-

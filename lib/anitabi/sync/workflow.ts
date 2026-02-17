@@ -15,6 +15,7 @@ import {
 } from '@/lib/anitabi/source/normalize'
 import { parseChangelogMarkdown } from '@/lib/anitabi/source/parseChangelog'
 import { writeRawJson, writeRawText } from '@/lib/anitabi/sync/rawStore'
+import { enqueueMapTranslationTasksForBangumiIds } from '@/lib/translation/mapTaskEnqueue'
 
 function nowVersion(d: Date): string {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
@@ -161,12 +162,41 @@ async function syncBangumiOne(
     },
   })
 
-  await deps.prisma.anitabiPoint.deleteMany({ where: { bangumiId: normalized.id } })
+  const normalizedPoints = points.map((point) => ({
+    id: point.id,
+    bangumiId: point.bangumiId,
+    name: point.name,
+    nameZh: point.nameZh,
+    geoLat: point.geoLat,
+    geoLng: point.geoLng,
+    ep: point.ep,
+    s: point.s,
+    image: resolveAnitabiAssetUrl(point.image, siteBase),
+    origin: point.origin,
+    originUrl: resolveAnitabiAssetUrl(point.originUrl, siteBase),
+    originLink: resolveAnitabiAssetUrl(point.originLink, siteBase),
+    density: point.density,
+    mark: point.mark,
+    folder: point.folder,
+    uid: point.uid,
+    reviewUid: point.reviewUid,
+    datasetVersion,
+  }))
 
-  if (points.length > 0) {
-    await deps.prisma.anitabiPoint.createMany({
-      data: points.map((point) => ({
-        id: point.id,
+  const existingPointRows = await deps.prisma.anitabiPoint.findMany({
+    where: { bangumiId: normalized.id },
+    select: { id: true },
+  })
+  const incomingPointIdSet = new Set(normalizedPoints.map((point) => point.id))
+  const stalePointIds = existingPointRows
+    .map((row) => row.id)
+    .filter((id) => !incomingPointIdSet.has(id))
+
+  for (const point of normalizedPoints) {
+    await deps.prisma.anitabiPoint.upsert({
+      where: { id: point.id },
+      create: point,
+      update: {
         bangumiId: point.bangumiId,
         name: point.name,
         nameZh: point.nameZh,
@@ -174,17 +204,25 @@ async function syncBangumiOne(
         geoLng: point.geoLng,
         ep: point.ep,
         s: point.s,
-        image: resolveAnitabiAssetUrl(point.image, siteBase),
+        image: point.image,
         origin: point.origin,
-        originUrl: resolveAnitabiAssetUrl(point.originUrl, siteBase),
-        originLink: resolveAnitabiAssetUrl(point.originLink, siteBase),
+        originUrl: point.originUrl,
+        originLink: point.originLink,
         density: point.density,
         mark: point.mark,
         folder: point.folder,
         uid: point.uid,
         reviewUid: point.reviewUid,
-        datasetVersion,
-      })),
+        datasetVersion: point.datasetVersion,
+      },
+    })
+  }
+
+  if (stalePointIds.length > 0) {
+    await deps.prisma.anitabiPoint.deleteMany({
+      where: {
+        id: { in: stalePointIds },
+      },
     })
   }
 
@@ -313,6 +351,7 @@ export async function runAnitabiSync(
     const queue = rowsToProcess.slice()
     let processedCount = 0
     let stoppedByTimeBudget = false
+    const processedBangumiIds = new Set<number>()
 
     const workers = Math.min(getSyncConcurrency(), Math.max(1, queue.length))
     await Promise.all(
@@ -324,11 +363,21 @@ export async function runAnitabiSync(
           }
           const row = queue.shift()
           if (!row) break
-          await syncBangumiOne(deps, datasetVersion, row, dryRun)
+          const result = await syncBangumiOne(deps, datasetVersion, row, dryRun)
+          processedBangumiIds.add(result.id)
           processedCount += 1
         }
       })
     )
+
+    let enqueueSummary:
+      | {
+          scannedBangumi: number
+          scannedPoint: number
+          enqueued: number
+          updated: number
+        }
+      | null = null
 
     if (!dryRun) {
       if (normalizedMode === 'full') {
@@ -336,12 +385,30 @@ export async function runAnitabiSync(
       }
       await upsertCursor(deps.prisma, 'activeDatasetVersion', { value: datasetVersion })
       await upsertCursor(deps.prisma, 'bangumi', { value: String(bangumi.length) })
+
+      const autoEnqueueEnabled = String(process.env.ANITABI_TRANSLATION_AUTO_ENQUEUE || '').trim() === '1'
+      if (autoEnqueueEnabled && processedBangumiIds.size > 0) {
+        try {
+          enqueueSummary = await enqueueMapTranslationTasksForBangumiIds({
+            prisma: deps.prisma,
+            bangumiIds: Array.from(processedBangumiIds),
+            targetLanguages: ['en', 'ja'],
+            mode: 'all',
+          })
+        } catch (error) {
+          console.error('[anitabi/sync] failed to auto-enqueue map translation tasks', error)
+        }
+      }
     }
 
     const progressMessage =
       stoppedByTimeBudget && queue.length > 0
         ? `单次执行已到时间预算，已处理 ${processedCount}/${rowsToProcess.length} 个作品，请继续推进下一批`
         : undefined
+    const enqueueMessage = enqueueSummary
+      ? `地图翻译任务自动入队：新建 ${enqueueSummary.enqueued}，更新 ${enqueueSummary.updated}`
+      : undefined
+    const message = [progressMessage, enqueueMessage].filter(Boolean).join('；') || undefined
 
     await deps.prisma.anitabiSyncRun.update({
       where: { id: run.id },
@@ -360,7 +427,7 @@ export async function runAnitabiSync(
       datasetVersion: dryRun ? null : datasetVersion,
       scanned: bangumi.length,
       changed: processedCount,
-      ...(progressMessage ? { message: progressMessage } : {}),
+      ...(message ? { message } : {}),
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown sync error'

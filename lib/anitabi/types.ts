@@ -24,6 +24,7 @@ export type AnitabiPointDTO = {
   bangumiId: number
   name: string
   nameZh: string | null
+  note: string | null
   geo: [number, number] | null
   ep: string | null
   s: string | null

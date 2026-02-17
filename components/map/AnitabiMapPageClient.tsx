@@ -2371,6 +2371,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
             {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
           </div>
+          {selectedPoint.note ? (
+            <div className="rounded-md bg-slate-50 px-2 py-1 text-xs leading-relaxed text-slate-700">
+              {selectedPoint.note}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
@@ -2652,6 +2657,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
             {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
           </div>
+          {selectedPoint.note ? (
+            <div className="rounded-md bg-slate-50 px-2 py-1 text-xs leading-relaxed text-slate-700">
+              {selectedPoint.note}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
