@@ -119,6 +119,59 @@ type AnitabiSyncResponse =
       error: string
     }
 
+type AnitabiDiffItem = {
+  id: number
+  title: string
+  sourceModifiedMs: string | null
+  localModifiedMs: string | null
+  expectedPoints: number | null
+  importedPoints: number | null
+  missingPoints: number | null
+}
+
+type AnitabiDiff = {
+  activeDatasetVersion: string
+  sourceTotal: number
+  localTotal: number
+  needsSync: boolean
+  recommendedMode: 'delta' | 'full'
+  works: {
+    sourceOnlyCount: number
+    localOnlyCount: number
+    modifiedCount: number
+    pointGapCount: number
+    syncCandidateCount: number
+  }
+  points: {
+    expectedInLocalWorks: number
+    importedInLocalWorks: number
+    missingInLocalWorks: number
+  }
+  status: {
+    mapEnabledWorks: number
+    mapDisabledWorks: number
+    mappedWorks: number
+    unmappedWorks: number
+    hiddenAnimeLinkedWorks: number
+  }
+  examples: {
+    sourceOnly: AnitabiDiffItem[]
+    localOnly: AnitabiDiffItem[]
+    modified: AnitabiDiffItem[]
+    pointGap: AnitabiDiffItem[]
+  }
+  checkedAt: string
+}
+
+type AnitabiDiffResponse =
+  | {
+      ok: true
+      diff: AnitabiDiff
+    }
+  | {
+      error: string
+    }
+
 const LIST_LIMIT = 20
 
 export type AdminOpsInitialData = {
@@ -165,6 +218,14 @@ function severityColor(severity: string): string {
   return 'text-amber-700 bg-amber-50 border-amber-200'
 }
 
+function formatAnitabiDiffItem(item: AnitabiDiffItem): string {
+  const points =
+    item.expectedPoints != null && item.importedPoints != null
+      ? `点位 ${item.importedPoints}/${item.expectedPoints}`
+      : '点位 -'
+  return `#${item.id} ${item.title} · ${points}`
+}
+
 export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInitialData }) {
   const [loading, setLoading] = useState(() => !initialData)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -182,6 +243,9 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
   const [anitabiRunning, setAnitabiRunning] = useState(false)
   const [anitabiError, setAnitabiError] = useState<string | null>(null)
   const [anitabiProgress, setAnitabiProgress] = useState<AnitabiProgress | null>(null)
+  const [anitabiDiffLoading, setAnitabiDiffLoading] = useState(false)
+  const [anitabiDiff, setAnitabiDiff] = useState<AnitabiDiff | null>(null)
+  const [anitabiDiffError, setAnitabiDiffError] = useState<string | null>(null)
   const [anitabiMaxRowsInput, setAnitabiMaxRowsInput] = useState('300')
 
   const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
@@ -211,31 +275,75 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     }
   }
 
-  async function runAnitabiSync(mode: 'delta' | 'full' | 'dryRun') {
+  async function loadAnitabiDiff() {
+    setAnitabiDiffLoading(true)
+    setAnitabiDiffError(null)
+    try {
+      const res = await fetch('/api/admin/anitabi/diff?sample=8', { method: 'GET' })
+      const data = (await res.json().catch(() => ({}))) as AnitabiDiffResponse
+      if (!res.ok || !('ok' in data && data.ok)) {
+        throw new Error(('error' in data && data.error) || `Request failed (${res.status})`)
+      }
+      setAnitabiDiff(data.diff)
+      return data.diff
+    } catch (e) {
+      setAnitabiDiff(null)
+      setAnitabiDiffError(e instanceof Error ? e.message : '加载 Anitabi 差异失败')
+      return null
+    } finally {
+      setAnitabiDiffLoading(false)
+    }
+  }
+
+  async function executeAnitabiSync(mode: 'delta' | 'full' | 'dryRun') {
     const parsed = Number.parseInt(anitabiMaxRowsInput.trim(), 10)
     const maxRowsPerRun = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 10000) : undefined
 
+    const res = await fetch('/api/admin/anitabi/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, ...(maxRowsPerRun ? { maxRowsPerRun } : {}) }),
+    })
+
+    const data = (await res.json().catch(() => ({}))) as AnitabiSyncResponse
+    if (!res.ok || !('runId' in data)) {
+      throw new Error(('error' in data && data.error) || `Request failed (${res.status})`)
+    }
+
+    if (data.status === 'failed') {
+      throw new Error(data.message || '同步失败')
+    }
+  }
+
+  async function runAnitabiSync(mode: 'delta' | 'full' | 'dryRun') {
     setAnitabiRunning(true)
     setAnitabiError(null)
     try {
-      const res = await fetch('/api/admin/anitabi/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, ...(maxRowsPerRun ? { maxRowsPerRun } : {}) }),
-      })
-
-      const data = (await res.json().catch(() => ({}))) as AnitabiSyncResponse
-      if (!res.ok || !('runId' in data)) {
-        throw new Error(('error' in data && data.error) || `Request failed (${res.status})`)
-      }
-
-      if (data.status === 'failed') {
-        throw new Error(data.message || '同步失败')
-      }
-
-      await loadAnitabiProgress()
+      await executeAnitabiSync(mode)
+      await Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])
     } catch (e) {
       setAnitabiError(e instanceof Error ? e.message : '执行同步失败')
+    } finally {
+      setAnitabiRunning(false)
+    }
+  }
+
+  async function runAnitabiDetectAndSync() {
+    setAnitabiRunning(true)
+    setAnitabiError(null)
+    try {
+      const diff = await loadAnitabiDiff()
+      if (!diff) return
+      if (!diff.needsSync) {
+        await loadAnitabiProgress()
+        return
+      }
+
+      const mode = diff.recommendedMode === 'full' ? 'full' : 'delta'
+      await executeAnitabiSync(mode)
+      await Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])
+    } catch (e) {
+      setAnitabiError(e instanceof Error ? e.message : '检测并同步失败')
     } finally {
       setAnitabiRunning(false)
     }
@@ -373,8 +481,9 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
 
   useEffect(() => {
     let cancelled = false
-    const run = () => {
-      if (!cancelled) void loadAnitabiProgress()
+    const run = async () => {
+      if (cancelled) return
+      await Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])
     }
 
     const maybeGlobal = globalThis as typeof globalThis & {
@@ -383,14 +492,18 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     }
 
     if (typeof maybeGlobal.requestIdleCallback === 'function') {
-      const idleId = maybeGlobal.requestIdleCallback(run, { timeout: 1200 })
+      const idleId = maybeGlobal.requestIdleCallback(() => {
+        void run()
+      }, { timeout: 1200 })
       return () => {
         cancelled = true
         maybeGlobal.cancelIdleCallback?.(idleId)
       }
     }
 
-    const timer = setTimeout(run, 250)
+    const timer = setTimeout(() => {
+      void run()
+    }, 250)
     return () => {
       cancelled = true
       clearTimeout(timer)
@@ -409,11 +522,21 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Anitabi 复刻进度</h2>
-            <p className="mt-1 text-xs text-gray-500">基于本库已落地数据与源站总量估算，支持手动分批推进同步。</p>
+            <p className="mt-1 text-xs text-gray-500">支持检测源站差异，并与本地点位/作品状态对比后同步。</p>
           </div>
-          <Button type="button" variant="ghost" onClick={() => void loadAnitabiProgress()} disabled={anitabiLoading || anitabiRunning}>
-            刷新进度
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])}
+              disabled={anitabiLoading || anitabiDiffLoading || anitabiRunning}
+            >
+              刷新进度
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => void loadAnitabiDiff()} disabled={anitabiDiffLoading || anitabiRunning}>
+              {anitabiDiffLoading ? '检测中…' : '检测差异'}
+            </Button>
+          </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-end gap-2">
@@ -427,8 +550,11 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
               placeholder="300"
             />
           </div>
+          <Button type="button" variant="primary" onClick={() => void runAnitabiDetectAndSync()} disabled={anitabiRunning || anitabiDiffLoading}>
+            {anitabiRunning ? '执行中…' : '检测并同步（建议模式）'}
+          </Button>
           <Button type="button" variant="primary" onClick={() => void runAnitabiSync('delta')} disabled={anitabiRunning}>
-            {anitabiRunning ? '执行中…' : '推进一批（Delta）'}
+            推进一批（Delta）
           </Button>
           <Button type="button" variant="ghost" onClick={() => void runAnitabiSync('dryRun')} disabled={anitabiRunning}>
             仅扫描（DryRun）
@@ -439,6 +565,7 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
         </div>
 
         {anitabiError ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{anitabiError}</div> : null}
+        {anitabiDiffError ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{anitabiDiffError}</div> : null}
         {anitabiLoading ? <div className="text-sm text-gray-600">加载进度中…</div> : null}
 
         {!anitabiLoading && anitabiProgress ? (
@@ -507,6 +634,104 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
                 <div className="rounded bg-rose-50 px-2 py-1 text-rose-700">错误：{anitabiProgress.latestRun.errorSummary}</div>
               ) : null}
               <div className="mt-1 text-gray-500">更新时间：{formatDateTime(anitabiProgress.updatedAt)}</div>
+            </div>
+          </div>
+        ) : null}
+
+        {anitabiDiffLoading ? <div className="mt-4 text-sm text-gray-600">加载差异中…</div> : null}
+
+        {!anitabiDiffLoading && anitabiDiff ? (
+          <div className="mt-4 space-y-4 rounded-lg border border-dashed border-gray-300 bg-gray-50/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-gray-900">Anitabi 差异检测</div>
+              <div className="text-xs text-gray-500">
+                检测时间：{formatDateTime(anitabiDiff.checkedAt)} · 建议：{anitabiDiff.recommendedMode === 'full' ? 'Full' : 'Delta'}
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">
+              当前版本 {anitabiDiff.activeDatasetVersion} · 源站作品 {anitabiDiff.sourceTotal} · 本地作品 {anitabiDiff.localTotal}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-xs text-gray-500">作品差异</div>
+                <div className="mt-1 text-sm text-gray-900">
+                  源站新增 {anitabiDiff.works.sourceOnlyCount} / 本地孤儿 {anitabiDiff.works.localOnlyCount}
+                </div>
+                <div className="text-xs text-gray-500">源站更新 {anitabiDiff.works.modifiedCount} / 点位缺口 {anitabiDiff.works.pointGapCount}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-xs text-gray-500">待同步作品数</div>
+                <div className="mt-1 text-sm font-semibold text-gray-900">{anitabiDiff.works.syncCandidateCount}</div>
+                <div className="text-xs text-gray-500">{anitabiDiff.needsSync ? '检测到需同步差异' : '当前无需同步'}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-xs text-gray-500">点位缺口</div>
+                <div className="mt-1 text-sm font-semibold text-gray-900">{anitabiDiff.points.missingInLocalWorks}</div>
+                <div className="text-xs text-gray-500">
+                  已入库 {anitabiDiff.points.importedInLocalWorks} / 期望 {anitabiDiff.points.expectedInLocalWorks}
+                </div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-xs text-gray-500">作品状态</div>
+                <div className="mt-1 text-sm text-gray-900">
+                  在地图中 {anitabiDiff.status.mapEnabledWorks} / 已映射 {anitabiDiff.status.mappedWorks}
+                </div>
+                <div className="text-xs text-gray-500">
+                  未映射 {anitabiDiff.status.unmappedWorks} / 映射到隐藏作品 {anitabiDiff.status.hiddenAnimeLinkedWorks}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-gray-700">源站新增（示例）</div>
+                {anitabiDiff.examples.sourceOnly.length ? (
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    {anitabiDiff.examples.sourceOnly.map((item) => (
+                      <li key={`sourceOnly-${item.id}`}>{formatAnitabiDiffItem(item)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-gray-500">无</div>
+                )}
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-gray-700">源站更新（示例）</div>
+                {anitabiDiff.examples.modified.length ? (
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    {anitabiDiff.examples.modified.map((item) => (
+                      <li key={`modified-${item.id}`}>{formatAnitabiDiffItem(item)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-gray-500">无</div>
+                )}
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-gray-700">点位缺口（示例）</div>
+                {anitabiDiff.examples.pointGap.length ? (
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    {anitabiDiff.examples.pointGap.map((item) => (
+                      <li key={`pointGap-${item.id}`}>{formatAnitabiDiffItem(item)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-gray-500">无</div>
+                )}
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-gray-700">本地孤儿数据（示例）</div>
+                {anitabiDiff.examples.localOnly.length ? (
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    {anitabiDiff.examples.localOnly.map((item) => (
+                      <li key={`localOnly-${item.id}`}>{formatAnitabiDiffItem(item)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-gray-500">无</div>
+                )}
+              </div>
             </div>
           </div>
         ) : null}
