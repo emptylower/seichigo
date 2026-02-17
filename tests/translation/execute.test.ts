@@ -110,7 +110,10 @@ describe('POST /api/admin/translations/execute', () => {
       return Promise.resolve([])
     })
 
-    mocks.prisma.translationTask.updateMany.mockResolvedValue({ count: 2 })
+    mocks.prisma.translationTask.updateMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'processing') return Promise.resolve({ count: 0 })
+      return Promise.resolve({ count: 2 })
+    })
     mocks.prisma.translationTask.update.mockResolvedValue({})
     mocks.executeMapTranslationTasks.mockResolvedValue([])
     mocks.translateArticle.mockResolvedValue({
@@ -145,7 +148,29 @@ describe('POST /api/admin/translations/execute', () => {
     expect(mocks.translateAnime).toHaveBeenCalledWith('an1', 'ja')
     expect(mocks.translateCity).not.toHaveBeenCalled()
 
-    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledTimes(1)
+    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledTimes(2)
+    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'processing',
+          id: { in: ['t1', 't2', 't3', 'missing'] },
+        }),
+        data: expect.objectContaining({
+          status: 'failed',
+        }),
+      })
+    )
+    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['t1', 't3'] },
+          status: { in: ['pending', 'failed'] },
+        }),
+        data: expect.objectContaining({
+          status: 'processing',
+        }),
+      })
+    )
     expect(mocks.prisma.translationTask.update).toHaveBeenCalledTimes(2)
   })
 
@@ -183,7 +208,10 @@ describe('POST /api/admin/translations/execute', () => {
       return Promise.resolve([])
     })
 
-    mocks.prisma.translationTask.updateMany.mockResolvedValue({ count: 1 })
+    mocks.prisma.translationTask.updateMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'processing') return Promise.resolve({ count: 0 })
+      return Promise.resolve({ count: 1 })
+    })
     mocks.executeMapTranslationTasks.mockResolvedValue([
       { taskId: 'm1', status: 'ready' },
     ])
@@ -209,5 +237,47 @@ describe('POST /api/admin/translations/execute', () => {
     })
     expect(mocks.executeMapTranslationTasks).toHaveBeenCalledTimes(1)
     expect(mocks.translateArticle).not.toHaveBeenCalled()
+  })
+
+  it('reclaims stale processing tasks when no pending tasks are found', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+    mocks.prisma.translationTask.updateMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'processing') return Promise.resolve({ count: 3 })
+      return Promise.resolve({ count: 0 })
+    })
+
+    const handlers = await import('app/api/admin/translations/execute/route')
+    const res = await handlers.POST(
+      postReq('http://localhost/api/admin/translations/execute', {
+        entityType: 'anitabi_point',
+        targetLanguage: 'ja',
+        limit: 100,
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j).toMatchObject({
+      ok: true,
+      reclaimedProcessing: 3,
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+    })
+    expect(mocks.prisma.translationTask.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'processing',
+          entityType: 'anitabi_point',
+          targetLanguage: 'ja',
+        }),
+        data: expect.objectContaining({
+          status: 'failed',
+        }),
+      })
+    )
   })
 })

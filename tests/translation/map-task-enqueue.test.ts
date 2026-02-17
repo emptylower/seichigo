@@ -3,6 +3,7 @@ import {
   enqueueMapTranslationTasksForBackfill,
   enqueueMapTranslationTasksForBangumiIds,
 } from '@/lib/translation/mapTaskEnqueue'
+import { buildPointSourceHash } from '@/lib/translation/mapSourceHash'
 
 describe('mapTaskEnqueue', () => {
   it('creates missing map point tasks in backfill mode', async () => {
@@ -89,5 +90,53 @@ describe('mapTaskEnqueue', () => {
       updated: 1,
     })
     expect(prisma.translationTask.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reset failed tasks for missing mode when source hash is unchanged', async () => {
+    const pointRow = {
+      id: 'p-failed',
+      name: '旧点位',
+      nameZh: '旧点位',
+      mark: '备注',
+      i18n: [],
+    }
+
+    const prisma: any = {
+      anitabiPoint: {
+        findMany: vi.fn().mockResolvedValue([pointRow]),
+      },
+      translationTask: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'task-failed',
+            entityId: 'p-failed',
+            targetLanguage: 'en',
+            status: 'failed',
+            sourceHash: buildPointSourceHash(pointRow),
+          },
+        ]),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+    }
+
+    const result = await enqueueMapTranslationTasksForBackfill({
+      prisma,
+      entityType: 'anitabi_point',
+      mode: 'missing',
+      targetLanguages: ['en'],
+      limit: 1000,
+      cursor: null,
+    })
+
+    expect(result).toMatchObject({
+      scanned: 1,
+      enqueued: 0,
+      updated: 0,
+      done: true,
+      nextCursor: 'p-failed',
+    })
+    expect(prisma.translationTask.create).not.toHaveBeenCalled()
+    expect(prisma.translationTask.update).not.toHaveBeenCalled()
   })
 })

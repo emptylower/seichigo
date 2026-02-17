@@ -56,6 +56,7 @@ type MapExecutionSummary = {
   success: number
   failed: number
   skipped: number
+  reclaimedProcessing: number
   errorMessages: string[]
 }
 
@@ -71,6 +72,9 @@ type MapOpsProgress = {
   skipped: number
   errors: string[]
 }
+
+const MAP_EXECUTE_LIMIT_PER_TYPE = 120
+const MAP_EXECUTE_TIMEOUT_MS = 65_000
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -133,6 +137,65 @@ function collectErrorMessages(results: unknown): string[] {
     if (out.length >= 6) break
   }
   return out
+}
+
+function normalizeFetchErrorMessage(error: unknown, fallback: string): string {
+  if (isAbortError(error)) {
+    return '请求超时（超过 65 秒），请重试或减少单次执行规模'
+  }
+
+  const message = error instanceof Error ? String(error.message || '').trim() : ''
+  if (!message) return fallback
+  if (message === 'Failed to fetch') {
+    return '请求失败（网络中断或函数超时），请稍后重试；若任务卡住可筛选“处理中”查看'
+  }
+  return message
+}
+
+type ExecuteApiResponse = {
+  ok?: boolean
+  error?: string
+  total?: number
+  processed?: number
+  success?: number
+  failed?: number
+  skipped?: number
+  reclaimedProcessing?: number
+  results?: unknown
+}
+
+async function postExecuteTasks(payload: Record<string, unknown>): Promise<ExecuteApiResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), MAP_EXECUTE_TIMEOUT_MS)
+  try {
+    const res = await fetch('/api/admin/translations/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+
+    const raw = await res.text()
+    let data: ExecuteApiResponse = {}
+
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as ExecuteApiResponse
+      } catch {
+        throw new Error(`执行接口返回了非 JSON 响应（HTTP ${res.status}），可能是函数超时`)
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(String(data.error || `执行失败（HTTP ${res.status}）`))
+    }
+
+    return data
+  } catch (error) {
+    throw new Error(normalizeFetchErrorMessage(error, '执行请求失败'))
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
@@ -762,45 +825,40 @@ export default function TranslationsUI({
 
   async function executeMapTranslateRound(input?: { includeFailed?: boolean }): Promise<MapExecutionSummary> {
     const includeFailed = Boolean(input?.includeFailed)
-    const [bangumiRes, pointRes] = await Promise.all([
-      fetch('/api/admin/translations/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityType: 'anitabi_bangumi',
-          targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-          limit: 300,
-          includeFailed,
-          concurrency: 4,
-        }),
-      }).then((res) => res.json().then((data) => ({ res, data }))),
-      fetch('/api/admin/translations/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityType: 'anitabi_point',
-          targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-          limit: 300,
-          includeFailed,
-          concurrency: 4,
-        }),
-      }).then((res) => res.json().then((data) => ({ res, data }))),
+    const [bangumiData, pointData] = await Promise.all([
+      postExecuteTasks({
+        entityType: 'anitabi_bangumi',
+        targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+        limit: MAP_EXECUTE_LIMIT_PER_TYPE,
+        includeFailed,
+        concurrency: 4,
+      }),
+      postExecuteTasks({
+        entityType: 'anitabi_point',
+        targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+        limit: MAP_EXECUTE_LIMIT_PER_TYPE,
+        includeFailed,
+        concurrency: 4,
+      }),
     ])
 
-    if (!bangumiRes.res.ok) throw new Error(bangumiRes.data.error || '地图作品批量执行失败')
-    if (!pointRes.res.ok) throw new Error(pointRes.data.error || '地图点位批量执行失败')
-
     const errorMessages = [
-      ...collectErrorMessages((bangumiRes.data as { results?: unknown })?.results),
-      ...collectErrorMessages((pointRes.data as { results?: unknown })?.results),
+      ...collectErrorMessages(bangumiData.results),
+      ...collectErrorMessages(pointData.results),
     ]
+    const reclaimedProcessing =
+      Number(bangumiData.reclaimedProcessing || 0) + Number(pointData.reclaimedProcessing || 0)
+    if (reclaimedProcessing > 0) {
+      errorMessages.unshift(`已回收 ${reclaimedProcessing} 条长时间 processing 的任务（标记为 failed）`)
+    }
 
     return {
-      total: Number(bangumiRes.data.total || 0) + Number(pointRes.data.total || 0),
-      processed: Number(bangumiRes.data.processed || 0) + Number(pointRes.data.processed || 0),
-      success: Number(bangumiRes.data.success || 0) + Number(pointRes.data.success || 0),
-      failed: Number(bangumiRes.data.failed || 0) + Number(pointRes.data.failed || 0),
-      skipped: Number(bangumiRes.data.skipped || 0) + Number(pointRes.data.skipped || 0),
+      total: Number(bangumiData.total || 0) + Number(pointData.total || 0),
+      processed: Number(bangumiData.processed || 0) + Number(pointData.processed || 0),
+      success: Number(bangumiData.success || 0) + Number(pointData.success || 0),
+      failed: Number(bangumiData.failed || 0) + Number(pointData.failed || 0),
+      skipped: Number(bangumiData.skipped || 0) + Number(pointData.skipped || 0),
+      reclaimedProcessing,
       errorMessages: Array.from(new Set(errorMessages)).slice(0, 6),
     }
   }
@@ -831,7 +889,7 @@ export default function TranslationsUI({
       toast.success(`地图单轮执行完成：处理 ${round.processed}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '地图批量执行失败'
+      const msg = normalizeFetchErrorMessage(error, '地图批量执行失败')
       setMapOpsMessage(msg)
       patchMapOpsProgress({
         running: false,
@@ -935,7 +993,7 @@ export default function TranslationsUI({
       toast.success(`手动推进完成：处理 ${totalProcessed} 条`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '手动推进失败'
+      const msg = normalizeFetchErrorMessage(error, '手动推进失败')
       setMapOpsMessage(msg)
       patchMapOpsProgress({
         running: false,

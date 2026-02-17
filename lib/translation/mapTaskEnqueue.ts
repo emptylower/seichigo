@@ -120,7 +120,9 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
     }
 
     const sourceHashChanged = String(existing.sourceHash || '') !== candidate.sourceHash
-    const mustResetPending = sourceHashChanged || (candidate.reason === 'missing' && existing.status !== 'pending')
+    // Keep failed/ready history when source text is unchanged.
+    // Requeue is handled by execute(includeFailed=true) instead of force-resetting status here.
+    const mustResetPending = sourceHashChanged
 
     if (!mustResetPending) continue
 

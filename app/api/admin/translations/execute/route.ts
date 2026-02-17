@@ -1,3 +1,6 @@
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerAuthSession } from '@/lib/auth/session'
@@ -36,10 +39,42 @@ type TaskRow = {
   status: string
 }
 
+const STALE_PROCESSING_MINUTES = 5
+
 function parseConcurrency(input: unknown): number {
   const n = typeof input === 'number' ? input : Number.NaN
   if (!Number.isFinite(n)) return 4
   return Math.max(1, Math.min(12, Math.floor(n)))
+}
+
+function buildStaleProcessingError(minutes: number): string {
+  return `Task execution timeout: processing status exceeded ${minutes} minutes`
+}
+
+async function reclaimStaleProcessingTasks(input: {
+  taskIds?: string[]
+  entityType?: string
+  targetLanguage?: string
+}): Promise<number> {
+  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MINUTES * 60 * 1000)
+  const now = new Date()
+
+  const result = await prisma.translationTask.updateMany({
+    where: {
+      status: 'processing',
+      updatedAt: { lt: staleBefore },
+      ...(input.taskIds && input.taskIds.length > 0 ? { id: { in: input.taskIds } } : {}),
+      ...(input.entityType ? { entityType: input.entityType } : {}),
+      ...(input.targetLanguage ? { targetLanguage: input.targetLanguage } : {}),
+    },
+    data: {
+      status: 'failed',
+      error: buildStaleProcessingError(STALE_PROCESSING_MINUTES),
+      updatedAt: now,
+    },
+  })
+
+  return Number(result.count || 0)
 }
 
 async function resolveTaskIdsByFilter(input: {
@@ -129,6 +164,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null)
     let taskIds: string[] = []
     let concurrency = parseConcurrency((body as any)?.concurrency)
+    let filterEntityType: string | undefined
+    let filterTargetLanguage: string | undefined
+    let reclaimedProcessing = 0
 
     if (body && typeof body === 'object' && Array.isArray((body as any).taskIds)) {
       const parsed = executeByIdsSchema.safeParse(body)
@@ -141,6 +179,9 @@ export async function POST(req: NextRequest) {
 
       taskIds = Array.from(new Set(parsed.data.taskIds.map((id) => String(id).trim()).filter(Boolean)))
       concurrency = parseConcurrency(parsed.data.concurrency)
+      reclaimedProcessing = await reclaimStaleProcessingTasks({
+        taskIds: taskIds.length > 0 ? taskIds : undefined,
+      })
     } else {
       const parsed = executeByFilterSchema.safeParse(body || {})
       if (!parsed.success) {
@@ -150,9 +191,15 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      filterEntityType = parsed.data.entityType
+      filterTargetLanguage = parsed.data.targetLanguage
+      reclaimedProcessing = await reclaimStaleProcessingTasks({
+        entityType: filterEntityType,
+        targetLanguage: filterTargetLanguage,
+      })
       taskIds = await resolveTaskIdsByFilter({
-        entityType: parsed.data.entityType,
-        targetLanguage: parsed.data.targetLanguage,
+        entityType: filterEntityType,
+        targetLanguage: filterTargetLanguage,
         limit: parsed.data.limit,
         includeFailed: parsed.data.includeFailed,
       })
@@ -162,6 +209,7 @@ export async function POST(req: NextRequest) {
     if (!taskIds.length) {
       return NextResponse.json({
         ok: true,
+        reclaimedProcessing,
         total: 0,
         processed: 0,
         success: 0,
@@ -270,6 +318,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      reclaimedProcessing,
       total: taskIds.length,
       processed: success + failed,
       success,
