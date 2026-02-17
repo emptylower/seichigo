@@ -177,7 +177,10 @@ describe('POST /api/admin/translations/execute', () => {
   it('supports filter mode and delegates map tasks to map executor', async () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
     mocks.prisma.translationTask.findMany.mockImplementation((opts: any) => {
-      if (opts?.where?.status?.in && opts?.select?.id && !opts?.where?.id) {
+      const status = opts?.where?.status
+      const isStatusFilter =
+        status === 'pending' || status === 'failed' || Boolean(status?.in)
+      if (isStatusFilter && opts?.select?.id && !opts?.where?.id) {
         return Promise.resolve([{ id: 'm1' }])
       }
 
@@ -237,6 +240,80 @@ describe('POST /api/admin/translations/execute', () => {
     })
     expect(mocks.executeMapTranslationTasks).toHaveBeenCalledTimes(1)
     expect(mocks.translateArticle).not.toHaveBeenCalled()
+  })
+
+  it('supports failed-only filter mode via statusScope', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+    mocks.prisma.translationTask.findMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'failed' && opts?.select?.id && !opts?.where?.id) {
+        return Promise.resolve([{ id: 'f1' }])
+      }
+
+      if (opts?.where?.id?.in && !opts?.where?.status) {
+        return Promise.resolve([
+          {
+            id: 'f1',
+            entityType: 'anitabi_point',
+            entityId: 'p1',
+            targetLanguage: 'en',
+            status: 'failed',
+          },
+        ])
+      }
+
+      if (opts?.where?.id?.in && opts?.where?.status === 'processing') {
+        return Promise.resolve([
+          {
+            id: 'f1',
+            entityType: 'anitabi_point',
+            entityId: 'p1',
+            targetLanguage: 'en',
+            status: 'processing',
+          },
+        ])
+      }
+
+      return Promise.resolve([])
+    })
+
+    mocks.prisma.translationTask.updateMany.mockImplementation((opts: any) => {
+      if (opts?.where?.status === 'processing') return Promise.resolve({ count: 0 })
+      return Promise.resolve({ count: 1 })
+    })
+    mocks.executeMapTranslationTasks.mockResolvedValue([
+      { taskId: 'f1', status: 'ready' },
+    ])
+
+    const handlers = await import('app/api/admin/translations/execute/route')
+    const res = await handlers.POST(
+      postReq('http://localhost/api/admin/translations/execute', {
+        entityType: 'anitabi_point',
+        targetLanguage: 'en',
+        statusScope: 'failed',
+        limit: 100,
+      })
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+    expect(j).toMatchObject({
+      ok: true,
+      total: 1,
+      processed: 1,
+      success: 1,
+      failed: 0,
+      skipped: 0,
+    })
+    expect(mocks.prisma.translationTask.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'failed',
+          entityType: 'anitabi_point',
+          targetLanguage: 'en',
+        }),
+        select: { id: true },
+      })
+    )
   })
 
   it('reclaims stale processing tasks when no pending tasks are found', async () => {

@@ -22,6 +22,7 @@ const executeByFilterSchema = z.object({
   targetLanguage: z.enum(['en', 'ja']).optional(),
   limit: z.number().int().min(1).max(1000).optional(),
   includeFailed: z.boolean().optional(),
+  statusScope: z.enum(['pending', 'failed', 'pending_or_failed']).optional(),
   concurrency: z.number().int().min(1).max(12).optional(),
 })
 
@@ -40,6 +41,7 @@ type TaskRow = {
 }
 
 const STALE_PROCESSING_MINUTES = 5
+type TaskStatusScope = 'pending' | 'failed' | 'pending_or_failed'
 
 function parseConcurrency(input: unknown): number {
   const n = typeof input === 'number' ? input : Number.NaN
@@ -82,10 +84,19 @@ async function resolveTaskIdsByFilter(input: {
   targetLanguage?: string
   limit?: number
   includeFailed?: boolean
+  statusScope?: TaskStatusScope
 }): Promise<string[]> {
+  const statusScope = input.statusScope || (input.includeFailed ? 'pending_or_failed' : 'pending')
+  const statusWhere =
+    statusScope === 'pending'
+      ? 'pending'
+      : statusScope === 'failed'
+        ? 'failed'
+        : { in: ['pending', 'failed'] as const }
+
   const rows = await prisma.translationTask.findMany({
     where: {
-      status: { in: input.includeFailed ? ['pending', 'failed'] : ['pending'] },
+      status: statusWhere,
       ...(input.entityType ? { entityType: input.entityType } : {}),
       ...(input.targetLanguage ? { targetLanguage: input.targetLanguage } : {}),
     },
@@ -202,6 +213,7 @@ export async function POST(req: NextRequest) {
         targetLanguage: filterTargetLanguage,
         limit: parsed.data.limit,
         includeFailed: parsed.data.includeFailed,
+        statusScope: parsed.data.statusScope,
       })
       concurrency = parseConcurrency(parsed.data.concurrency)
     }

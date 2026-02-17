@@ -60,6 +60,8 @@ type MapExecutionSummary = {
   errorMessages: string[]
 }
 
+type MapExecuteStatusScope = 'pending' | 'failed' | 'pending_or_failed'
+
 type MapOpsProgress = {
   title: string
   detail: string
@@ -74,7 +76,8 @@ type MapOpsProgress = {
   errors: string[]
 }
 
-const MAP_EXECUTE_LIMIT_PER_TYPE = 40
+const MAP_EXECUTE_LIMIT_PENDING_PER_TYPE = 30
+const MAP_EXECUTE_LIMIT_FAILED_PER_TYPE = 20
 const MAP_EXECUTE_TIMEOUT_MS = 65_000
 const MAP_STATS_TIMEOUT_MS = 15_000
 
@@ -902,8 +905,11 @@ export default function TranslationsUI({
     }
   }
 
-  async function executeMapTranslateRound(input?: { includeFailed?: boolean }): Promise<MapExecutionSummary> {
-    const includeFailed = Boolean(input?.includeFailed)
+  async function executeMapTranslateRound(input?: { statusScope?: MapExecuteStatusScope }): Promise<MapExecutionSummary> {
+    const statusScope: MapExecuteStatusScope = input?.statusScope || 'pending'
+    const limitPerType =
+      statusScope === 'failed' ? MAP_EXECUTE_LIMIT_FAILED_PER_TYPE : MAP_EXECUTE_LIMIT_PENDING_PER_TYPE
+    const concurrency = statusScope === 'failed' ? 2 : 3
     const summary: MapExecutionSummary = {
       total: 0,
       processed: 0,
@@ -927,9 +933,10 @@ export default function TranslationsUI({
         const data = await postExecuteTasks({
           entityType,
           targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-          limit: MAP_EXECUTE_LIMIT_PER_TYPE,
-          includeFailed,
-          concurrency: 4,
+          limit: limitPerType,
+          includeFailed: statusScope !== 'pending',
+          statusScope,
+          concurrency,
         })
 
         summary.total += Number(data.total || 0)
@@ -984,7 +991,7 @@ export default function TranslationsUI({
   }
 
   async function executeMapSingleRound(input: {
-    includeFailed: boolean
+    statusScope: MapExecuteStatusScope
     title: string
     loadingDetail: string
     successPrefix: string
@@ -998,7 +1005,7 @@ export default function TranslationsUI({
       detail: input.loadingDetail,
     })
     try {
-      const round = await executeMapTranslateRound({ includeFailed: input.includeFailed })
+      const round = await executeMapTranslateRound({ statusScope: input.statusScope })
       const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
       const errorText = round.errorMessages.length > 0 ? `；原因：${round.errorMessages.join(' ｜ ')}` : ''
 
@@ -1035,7 +1042,7 @@ export default function TranslationsUI({
 
   async function executeMapPendingBatch() {
     await executeMapSingleRound({
-      includeFailed: false,
+      statusScope: 'pending',
       title: '执行地图待翻译（单轮）',
       loadingDetail: '正在执行 pending 地图翻译任务（作品 + 点位）...',
       successPrefix: '单轮执行完成',
@@ -1045,7 +1052,7 @@ export default function TranslationsUI({
 
   async function executeMapFailedBatch() {
     await executeMapSingleRound({
-      includeFailed: true,
+      statusScope: 'failed',
       title: '重试地图失败任务（单轮）',
       loadingDetail: '正在重试 failed 地图任务（作品 + 点位）...',
       successPrefix: '失败任务重试完成',
@@ -1082,7 +1089,7 @@ export default function TranslationsUI({
           skipped: totalSkipped,
           detail: `正在执行第 ${i + 1} / ${rounds} 轮...`,
         })
-        const round = await executeMapTranslateRound({ includeFailed: false })
+        const round = await executeMapTranslateRound({ statusScope: 'pending' })
         if (round.total === 0 || round.processed === 0) {
           queueDrained = true
           break
