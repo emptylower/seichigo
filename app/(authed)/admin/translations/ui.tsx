@@ -69,6 +69,7 @@ type MapOpsProgress = {
   processed: number
   success: number
   failed: number
+  reclaimed: number
   skipped: number
   errors: string[]
 }
@@ -453,6 +454,7 @@ export default function TranslationsUI({
       processed: 0,
       success: 0,
       failed: 0,
+      reclaimed: 0,
       skipped: 0,
       errors: [],
     })
@@ -961,8 +963,9 @@ export default function TranslationsUI({
             summary.success = Math.max(summary.success, successDelta)
             summary.failed = Math.max(summary.failed, failedDelta)
             summary.total = Math.max(summary.total, processedDelta)
+            const estimatedFailedWithoutReclaimed = Math.max(0, failedDelta - summary.reclaimedProcessing)
             summary.errorMessages.push(
-              `本轮请求超时，但后台已推进：估算成功 ${successDelta}，失败 ${failedDelta}（按状态差值）`
+              `本轮请求超时，但后台已推进：估算成功 ${successDelta}，翻译失败 ${estimatedFailedWithoutReclaimed}，回收 ${summary.reclaimedProcessing}（按状态差值）`
             )
           }
         }
@@ -980,33 +983,43 @@ export default function TranslationsUI({
     return summary
   }
 
-  async function executeMapPendingBatch() {
+  async function executeMapSingleRound(input: {
+    includeFailed: boolean
+    title: string
+    loadingDetail: string
+    successPrefix: string
+    failFallback: string
+  }) {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
     beginMapOpsProgress({
-      title: '执行地图待翻译（单轮）',
+      title: input.title,
       totalSteps: 1,
-      detail: '正在执行地图翻译任务（作品 + 点位）...',
+      detail: input.loadingDetail,
     })
     try {
-      const round = await executeMapTranslateRound({ includeFailed: true })
+      const round = await executeMapTranslateRound({ includeFailed: input.includeFailed })
+      const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
       const errorText = round.errorMessages.length > 0 ? `；原因：${round.errorMessages.join(' ｜ ')}` : ''
 
-      setMapOpsMessage(`单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}${errorText}`)
+      setMapOpsMessage(
+        `${input.successPrefix}：处理 ${round.processed}，成功 ${round.success}，翻译失败 ${translationFailed}，回收 ${round.reclaimedProcessing}，跳过 ${round.skipped}${errorText}`
+      )
       patchMapOpsProgress({
         running: false,
         currentStep: 1,
         processed: round.processed,
         success: round.success,
-        failed: round.failed,
+        failed: translationFailed,
+        reclaimed: round.reclaimedProcessing,
         skipped: round.skipped,
         errors: round.errorMessages,
-        detail: `单轮执行完成：处理 ${round.processed}，成功 ${round.success}，失败 ${round.failed}，跳过 ${round.skipped}${errorText}`,
+        detail: `${input.successPrefix}：处理 ${round.processed}，成功 ${round.success}，翻译失败 ${translationFailed}，回收 ${round.reclaimedProcessing}，跳过 ${round.skipped}${errorText}`,
       })
-      toast.success(`地图单轮执行完成：处理 ${round.processed}`)
+      toast.success(`${input.successPrefix}：处理 ${round.processed}`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
-      const msg = normalizeFetchErrorMessage(error, '地图批量执行失败')
+      const msg = normalizeFetchErrorMessage(error, input.failFallback)
       setMapOpsMessage(msg)
       patchMapOpsProgress({
         running: false,
@@ -1018,6 +1031,26 @@ export default function TranslationsUI({
     } finally {
       setMapOpsLoading(false)
     }
+  }
+
+  async function executeMapPendingBatch() {
+    await executeMapSingleRound({
+      includeFailed: false,
+      title: '执行地图待翻译（单轮）',
+      loadingDetail: '正在执行 pending 地图翻译任务（作品 + 点位）...',
+      successPrefix: '单轮执行完成',
+      failFallback: '地图批量执行失败',
+    })
+  }
+
+  async function executeMapFailedBatch() {
+    await executeMapSingleRound({
+      includeFailed: true,
+      title: '重试地图失败任务（单轮）',
+      loadingDetail: '正在重试 failed 地图任务（作品 + 点位）...',
+      successPrefix: '失败任务重试完成',
+      failFallback: '地图失败任务重试失败',
+    })
   }
 
   async function handleManualAdvanceMapQueue(maxRounds = 10) {
@@ -1034,6 +1067,7 @@ export default function TranslationsUI({
       let totalProcessed = 0
       let totalSuccess = 0
       let totalFailed = 0
+      let totalReclaimed = 0
       let totalSkipped = 0
       let queueDrained = false
       const allErrors: string[] = []
@@ -1044,6 +1078,7 @@ export default function TranslationsUI({
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
+          reclaimed: totalReclaimed,
           skipped: totalSkipped,
           detail: `正在执行第 ${i + 1} / ${rounds} 轮...`,
         })
@@ -1056,7 +1091,8 @@ export default function TranslationsUI({
         roundCount += 1
         totalProcessed += round.processed
         totalSuccess += round.success
-        totalFailed += round.failed
+        totalFailed += Math.max(0, round.failed - round.reclaimedProcessing)
+        totalReclaimed += round.reclaimedProcessing
         totalSkipped += round.skipped
         if (round.errorMessages.length > 0) {
           for (const message of round.errorMessages) {
@@ -1072,9 +1108,10 @@ export default function TranslationsUI({
           processed: totalProcessed,
           success: totalSuccess,
           failed: totalFailed,
+          reclaimed: totalReclaimed,
           skipped: totalSkipped,
           errors: allErrors,
-          detail: `第 ${i + 1} 轮完成：本轮处理 ${round.processed}（成功 ${round.success}，失败 ${round.failed}）`,
+          detail: `第 ${i + 1} 轮完成：本轮处理 ${round.processed}（成功 ${round.success}，翻译失败 ${Math.max(0, round.failed - round.reclaimedProcessing)}，回收 ${round.reclaimedProcessing}）`,
         })
       }
 
@@ -1094,7 +1131,7 @@ export default function TranslationsUI({
       const suffix = queueDrained ? '（队列已清空）' : `（达到手动推进上限 ${rounds} 轮）`
       const errorText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
       setMapOpsMessage(
-        `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}${errorText}`
+        `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${suffix}${errorText}`
       )
       patchMapOpsProgress({
         running: false,
@@ -1103,9 +1140,10 @@ export default function TranslationsUI({
         processed: totalProcessed,
         success: totalSuccess,
         failed: totalFailed,
+        reclaimed: totalReclaimed,
         skipped: totalSkipped,
         errors: allErrors,
-        detail: `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，失败 ${totalFailed}，跳过 ${totalSkipped}${suffix}${errorText}`,
+        detail: `手动推进完成：共 ${roundCount} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${suffix}${errorText}`,
       })
       toast.success(`手动推进完成：处理 ${totalProcessed} 条`)
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
@@ -1345,6 +1383,14 @@ export default function TranslationsUI({
             </Button>
             <Button
               type="button"
+              variant="ghost"
+              onClick={() => void executeMapFailedBatch()}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              重试失败（单轮）
+            </Button>
+            <Button
+              type="button"
               onClick={() => void handleManualAdvanceMapQueue(10)}
               disabled={mapOpsLoading || sampleApproving}
             >
@@ -1447,7 +1493,7 @@ export default function TranslationsUI({
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-4 gap-2 text-xs">
+                <div className="mt-4 grid grid-cols-5 gap-2 text-xs">
                   <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center text-gray-600">
                     处理 {mapOpsProgress.processed}
                   </div>
@@ -1455,7 +1501,10 @@ export default function TranslationsUI({
                     成功 {mapOpsProgress.success}
                   </div>
                   <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-center text-rose-700">
-                    失败 {mapOpsProgress.failed}
+                    翻译失败 {mapOpsProgress.failed}
+                  </div>
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-center text-amber-700">
+                    回收 {mapOpsProgress.reclaimed}
                   </div>
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-center text-slate-600">
                     跳过 {mapOpsProgress.skipped}
