@@ -92,7 +92,7 @@ async function resolveTaskIdsByFilter(input: {
       ? 'pending'
       : statusScope === 'failed'
         ? 'failed'
-        : { in: ['pending', 'failed'] as const }
+        : { in: ['pending', 'failed'] }
 
   const rows = await prisma.translationTask.findMany({
     where: {
