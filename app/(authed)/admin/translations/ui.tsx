@@ -76,10 +76,11 @@ type MapOpsProgress = {
   errors: string[]
 }
 
-const MAP_EXECUTE_LIMIT_PENDING_PER_TYPE = 30
-const MAP_EXECUTE_LIMIT_FAILED_PER_TYPE = 20
+const MAP_EXECUTE_LIMIT_PENDING_PER_TYPE = 20
+const MAP_EXECUTE_LIMIT_FAILED_PER_TYPE = 10
 const MAP_EXECUTE_TIMEOUT_MS = 65_000
 const MAP_STATS_TIMEOUT_MS = 15_000
+const MAP_EXECUTE_RETRY_DELAY_MS = 1500
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -157,6 +158,22 @@ function normalizeFetchErrorMessage(error: unknown, fallback: string): string {
   return message
 }
 
+function isRetryableExecuteMessage(message: string): boolean {
+  const text = String(message || '').toLowerCase()
+  if (!text) return false
+  return (
+    text.includes('http 504') ||
+    text.includes('超时') ||
+    text.includes('timed out') ||
+    text.includes('failed to fetch') ||
+    text.includes('网络中断')
+  )
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 type ExecuteApiResponse = {
   ok?: boolean
   error?: string
@@ -183,7 +200,7 @@ type MapStatusSnapshot = {
   failed: number
 }
 
-async function postExecuteTasks(payload: Record<string, unknown>): Promise<ExecuteApiResponse> {
+async function postExecuteTasks(payload: Record<string, unknown>, attempt = 0): Promise<ExecuteApiResponse> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MAP_EXECUTE_TIMEOUT_MS)
   try {
@@ -211,7 +228,12 @@ async function postExecuteTasks(payload: Record<string, unknown>): Promise<Execu
 
     return data
   } catch (error) {
-    throw new Error(normalizeFetchErrorMessage(error, '执行请求失败'))
+    const message = normalizeFetchErrorMessage(error, '执行请求失败')
+    if (attempt < 1 && isRetryableExecuteMessage(message)) {
+      await sleep(MAP_EXECUTE_RETRY_DELAY_MS)
+      return postExecuteTasks(payload, attempt + 1)
+    }
+    throw new Error(message)
   } finally {
     clearTimeout(timer)
   }
@@ -909,7 +931,7 @@ export default function TranslationsUI({
     const statusScope: MapExecuteStatusScope = input?.statusScope || 'pending'
     const limitPerType =
       statusScope === 'failed' ? MAP_EXECUTE_LIMIT_FAILED_PER_TYPE : MAP_EXECUTE_LIMIT_PENDING_PER_TYPE
-    const concurrency = statusScope === 'failed' ? 2 : 3
+    const concurrency = statusScope === 'failed' ? 1 : 2
     const summary: MapExecutionSummary = {
       total: 0,
       processed: 0,
@@ -984,7 +1006,7 @@ export default function TranslationsUI({
     summary.errorMessages = Array.from(new Set(summary.errorMessages)).slice(0, 6)
 
     if (summary.processed === 0 && requestErrors.length > 0) {
-      throw new Error(summary.errorMessages[0] || '地图批量执行失败')
+      summary.errorMessages.unshift('本轮未拿到有效执行结果，可能是网关超时；任务状态可能未变化')
     }
 
     return summary
@@ -1023,7 +1045,13 @@ export default function TranslationsUI({
         errors: round.errorMessages,
         detail: `${input.successPrefix}：处理 ${round.processed}，成功 ${round.success}，翻译失败 ${translationFailed}，回收 ${round.reclaimedProcessing}，跳过 ${round.skipped}${errorText}`,
       })
-      toast.success(`${input.successPrefix}：处理 ${round.processed}`)
+      if (round.processed > 0) {
+        toast.success(`${input.successPrefix}：处理 ${round.processed}`)
+      } else if (round.errorMessages.length > 0) {
+        toast.info('本轮未推进，可能是网关超时，请稍后重试')
+      } else {
+        toast.info('本轮没有可处理的任务')
+      }
       await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
     } catch (error) {
       const msg = normalizeFetchErrorMessage(error, input.failFallback)
