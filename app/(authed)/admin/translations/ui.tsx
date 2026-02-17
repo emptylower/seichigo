@@ -252,6 +252,13 @@ type StatsApiResponse = {
   counts?: Record<string, number>
 }
 
+type MapSummaryApiResponse = {
+  ok?: boolean
+  error?: string
+  bangumiRemaining?: number
+  pointRemaining?: number
+}
+
 type MapStatusSnapshot = {
   pending: number
   processing: number
@@ -361,33 +368,37 @@ async function loadMapStatusSnapshot(targetLanguage: string): Promise<MapStatusS
   return sumStatusCounts([bangumi, point])
 }
 
-async function fetchUntranslatedTotalByEntityType(input: {
-  entityType: 'anitabi_bangumi' | 'anitabi_point'
-}): Promise<number> {
+async function fetchMapRemainingSummary(input: {
+  targetLanguage: string
+}): Promise<{ bangumiRemaining: number; pointRemaining: number }> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MAP_STATS_TIMEOUT_MS)
   try {
     const params = new URLSearchParams()
-    params.set('entityType', input.entityType)
-    params.set('page', '1')
-    params.set('pageSize', '5')
-    const res = await fetch(`/api/admin/translations/untranslated?${params.toString()}`, {
+    if (input.targetLanguage !== 'all') {
+      params.set('targetLanguage', input.targetLanguage)
+    }
+
+    const res = await fetch(`/api/admin/translations/map-summary?${params.toString()}`, {
       method: 'GET',
       signal: controller.signal,
     })
     const raw = await res.text()
-    let data: { error?: string; total?: number } = {}
+    let data: MapSummaryApiResponse = {}
     if (raw) {
       try {
-        data = JSON.parse(raw) as { error?: string; total?: number }
+        data = JSON.parse(raw) as MapSummaryApiResponse
       } catch {
-        throw new Error(`未翻译统计返回非 JSON 响应（HTTP ${res.status}）`)
+        throw new Error(`地图摘要返回非 JSON 响应（HTTP ${res.status}）`)
       }
     }
     if (!res.ok) {
-      throw new Error(String(data.error || `未翻译统计失败（HTTP ${res.status}）`))
+      throw new Error(String(data.error || `地图摘要失败（HTTP ${res.status}）`))
     }
-    return Number(data.total || 0)
+    return {
+      bangumiRemaining: Number(data.bangumiRemaining || 0),
+      pointRemaining: Number(data.pointRemaining || 0),
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -404,41 +415,36 @@ function sumPendingLikeTaskCount(counts: Record<string, number> | null | undefin
 }
 
 async function loadOneKeyMapQueueSnapshot(targetLanguage: string): Promise<OneKeyMapQueueSnapshot> {
-  try {
-    const [bangumiStats, pointStats, bangumiRemaining, pointRemaining] = await Promise.all([
-      fetchTaskStatsByEntityType({ entityType: 'anitabi_bangumi', targetLanguage }),
-      fetchTaskStatsByEntityType({ entityType: 'anitabi_point', targetLanguage }),
-      fetchUntranslatedTotalByEntityType({ entityType: 'anitabi_bangumi' }),
-      fetchUntranslatedTotalByEntityType({ entityType: 'anitabi_point' }),
-    ])
+  const [bangumiStatsResult, pointStatsResult, mapSummaryResult] = await Promise.allSettled([
+    fetchTaskStatsByEntityType({ entityType: 'anitabi_bangumi', targetLanguage }),
+    fetchTaskStatsByEntityType({ entityType: 'anitabi_point', targetLanguage }),
+    fetchMapRemainingSummary({ targetLanguage }),
+  ])
 
-    const langMultiplier = targetLanguage === 'all' ? 2 : 1
-    const bangumiQueueOpen = sumUnfinishedTaskCount(bangumiStats)
-    const pointQueueOpen = sumUnfinishedTaskCount(pointStats)
-    const bangumiPendingLike = sumPendingLikeTaskCount(bangumiStats)
-    const pointPendingLike = sumPendingLikeTaskCount(pointStats)
-    const estimatedUnfinishedTasks =
-      bangumiPendingLike + pointPendingLike + (Number(bangumiRemaining || 0) + Number(pointRemaining || 0)) * langMultiplier
+  const bangumiStats = bangumiStatsResult.status === 'fulfilled' ? bangumiStatsResult.value : null
+  const pointStats = pointStatsResult.status === 'fulfilled' ? pointStatsResult.value : null
+  const mapSummary = mapSummaryResult.status === 'fulfilled' ? mapSummaryResult.value : null
 
-    return {
-      bangumiRemaining,
-      pointRemaining,
-      bangumiQueueOpen,
-      pointQueueOpen,
-      bangumiPendingLike,
-      pointPendingLike,
-      estimatedUnfinishedTasks,
-    }
-  } catch {
-    return {
-      bangumiRemaining: null,
-      pointRemaining: null,
-      bangumiQueueOpen: null,
-      pointQueueOpen: null,
-      bangumiPendingLike: null,
-      pointPendingLike: null,
-      estimatedUnfinishedTasks: null,
-    }
+  const langMultiplier = targetLanguage === 'all' ? 2 : 1
+  const bangumiQueueOpen = bangumiStats ? sumUnfinishedTaskCount(bangumiStats) : null
+  const pointQueueOpen = pointStats ? sumUnfinishedTaskCount(pointStats) : null
+  const bangumiPendingLike = bangumiStats ? sumPendingLikeTaskCount(bangumiStats) : null
+  const pointPendingLike = pointStats ? sumPendingLikeTaskCount(pointStats) : null
+  const bangumiRemaining = mapSummary ? Number(mapSummary.bangumiRemaining || 0) : null
+  const pointRemaining = mapSummary ? Number(mapSummary.pointRemaining || 0) : null
+  const estimatedUnfinishedTasks =
+    bangumiPendingLike === null || pointPendingLike === null || bangumiRemaining === null || pointRemaining === null
+      ? null
+      : bangumiPendingLike + pointPendingLike + (bangumiRemaining + pointRemaining) * langMultiplier
+
+  return {
+    bangumiRemaining,
+    pointRemaining,
+    bangumiQueueOpen,
+    pointQueueOpen,
+    bangumiPendingLike,
+    pointPendingLike,
+    estimatedUnfinishedTasks,
   }
 }
 
@@ -1254,15 +1260,34 @@ export default function TranslationsUI({
       let totalPointBackfilledUpdated = 0
       const langMultiplier = targetLanguage === 'all' ? 2 : 1
       let queueSnapshot = await loadOneKeyMapQueueSnapshot(targetLanguage)
-      let estimatedTotal: number | null =
-        queueSnapshot.estimatedUnfinishedTasks === null
+      const initialPendingLikeTotal =
+        queueSnapshot.bangumiPendingLike === null || queueSnapshot.pointPendingLike === null
           ? null
-          : Math.max(0, Number(queueSnapshot.estimatedUnfinishedTasks || 0))
+          : queueSnapshot.bangumiPendingLike + queueSnapshot.pointPendingLike
+      let estimatedTotal: number | null =
+        queueSnapshot.estimatedUnfinishedTasks !== null
+          ? Math.max(0, Number(queueSnapshot.estimatedUnfinishedTasks || 0))
+          : initialPendingLikeTotal
 
       const refreshQueueSnapshot = async () => {
-        queueSnapshot = await loadOneKeyMapQueueSnapshot(targetLanguage)
+        const nextSnapshot = await loadOneKeyMapQueueSnapshot(targetLanguage)
+        queueSnapshot = {
+          bangumiRemaining: nextSnapshot.bangumiRemaining ?? queueSnapshot.bangumiRemaining,
+          pointRemaining: nextSnapshot.pointRemaining ?? queueSnapshot.pointRemaining,
+          bangumiQueueOpen: nextSnapshot.bangumiQueueOpen ?? queueSnapshot.bangumiQueueOpen,
+          pointQueueOpen: nextSnapshot.pointQueueOpen ?? queueSnapshot.pointQueueOpen,
+          bangumiPendingLike: nextSnapshot.bangumiPendingLike ?? queueSnapshot.bangumiPendingLike,
+          pointPendingLike: nextSnapshot.pointPendingLike ?? queueSnapshot.pointPendingLike,
+          estimatedUnfinishedTasks: nextSnapshot.estimatedUnfinishedTasks ?? queueSnapshot.estimatedUnfinishedTasks,
+        }
         if (queueSnapshot.estimatedUnfinishedTasks !== null) {
           const candidate = totalProcessed + Number(queueSnapshot.estimatedUnfinishedTasks || 0)
+          estimatedTotal = estimatedTotal === null ? candidate : Math.max(estimatedTotal, candidate)
+          return
+        }
+
+        if (queueSnapshot.bangumiPendingLike !== null && queueSnapshot.pointPendingLike !== null) {
+          const candidate = totalProcessed + queueSnapshot.bangumiPendingLike + queueSnapshot.pointPendingLike
           estimatedTotal = estimatedTotal === null ? candidate : Math.max(estimatedTotal, candidate)
         }
       }
