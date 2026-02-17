@@ -81,6 +81,9 @@ const MAP_EXECUTE_LIMIT_FAILED_PER_TYPE = 10
 const MAP_EXECUTE_TIMEOUT_MS = 65_000
 const MAP_STATS_TIMEOUT_MS = 15_000
 const MAP_EXECUTE_RETRY_DELAY_MS = 1500
+const MAP_ONE_KEY_MAX_ROUNDS = 300
+const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES = 3
+const MAP_ONE_KEY_RETRY_PER_ROUND = 2
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -143,6 +146,19 @@ function collectErrorMessages(results: unknown): string[] {
     if (out.length >= 6) break
   }
   return out
+}
+
+function appendUniqueMessages(target: string[], incoming: string[], max = 8): string[] {
+  const next = [...target]
+  const seen = new Set(next)
+  for (const message of incoming) {
+    const text = String(message || '').trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    next.push(text)
+    if (next.length >= max) break
+  }
+  return next
 }
 
 function normalizeFetchErrorMessage(error: unknown, fallback: string): string {
@@ -1088,6 +1104,217 @@ export default function TranslationsUI({
     })
   }
 
+  async function handleOneKeyAdvanceMapQueue() {
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      let initialPending = 0
+      try {
+        const snapshot = await loadMapStatusSnapshot(targetLanguage)
+        initialPending = Number(snapshot.pending || 0)
+      } catch {
+        initialPending = 0
+      }
+
+      const estimatedRounds = Math.max(
+        1,
+        Math.ceil(initialPending / Math.max(1, MAP_EXECUTE_LIMIT_PENDING_PER_TYPE * 2))
+      )
+
+      beginMapOpsProgress({
+        title: '一键推进地图队列',
+        totalSteps: estimatedRounds,
+        detail: `准备开始批次推进（预计 ${estimatedRounds} 轮）...`,
+      })
+
+      let attemptedRounds = 0
+      let progressedRounds = 0
+      let totalProcessed = 0
+      let totalSuccess = 0
+      let totalFailed = 0
+      let totalReclaimed = 0
+      let totalSkipped = 0
+      let consecutiveNoProgress = 0
+      let queueDrained = false
+      let reachedRoundCap = false
+      let allErrors: string[] = []
+
+      for (let i = 0; i < MAP_ONE_KEY_MAX_ROUNDS; i += 1) {
+        attemptedRounds = i + 1
+        const dynamicTotalSteps = Math.max(estimatedRounds, attemptedRounds)
+        patchMapOpsProgress({
+          totalSteps: dynamicTotalSteps,
+          currentStep: i,
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: `正在执行第 ${attemptedRounds} 轮（自动推进）...`,
+        })
+
+        let round: MapExecutionSummary | null = null
+        for (let retry = 0; retry <= MAP_ONE_KEY_RETRY_PER_ROUND; retry += 1) {
+          round = await executeMapTranslateRound({ statusScope: 'pending' })
+
+          const hasRetryableError = round.errorMessages.some(
+            (message) => isRetryableExecuteMessage(message) || message.includes('未拿到有效执行结果')
+          )
+          const shouldRetry = round.processed === 0 && round.total > 0 && hasRetryableError && retry < MAP_ONE_KEY_RETRY_PER_ROUND
+
+          if (!shouldRetry) break
+
+          allErrors = appendUniqueMessages(allErrors, round.errorMessages)
+          patchMapOpsProgress({
+            totalSteps: dynamicTotalSteps,
+            currentStep: i,
+            errors: allErrors,
+            detail: `第 ${attemptedRounds} 轮未推进，自动重试 ${retry + 1}/${MAP_ONE_KEY_RETRY_PER_ROUND}...`,
+          })
+          await sleep(MAP_EXECUTE_RETRY_DELAY_MS)
+        }
+
+        if (!round) continue
+
+        const translationFailed = Math.max(0, round.failed - round.reclaimedProcessing)
+        allErrors = appendUniqueMessages(allErrors, round.errorMessages)
+
+        if (round.total === 0) {
+          queueDrained = true
+          patchMapOpsProgress({
+            currentStep: attemptedRounds,
+            totalSteps: Math.max(estimatedRounds, attemptedRounds),
+            detail: `第 ${attemptedRounds} 轮完成：队列已清空`,
+          })
+          break
+        }
+
+        if (round.processed === 0) {
+          consecutiveNoProgress += 1
+          patchMapOpsProgress({
+            currentStep: attemptedRounds,
+            totalSteps: Math.max(estimatedRounds, attemptedRounds),
+            errors: allErrors,
+            detail: `第 ${attemptedRounds} 轮无进展（连续 ${consecutiveNoProgress} 轮），准备下一轮...`,
+          })
+
+          if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
+            break
+          }
+          continue
+        }
+
+        consecutiveNoProgress = 0
+        progressedRounds += 1
+        totalProcessed += round.processed
+        totalSuccess += round.success
+        totalFailed += translationFailed
+        totalReclaimed += round.reclaimedProcessing
+        totalSkipped += round.skipped
+
+        patchMapOpsProgress({
+          currentStep: attemptedRounds,
+          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: `第 ${attemptedRounds} 轮完成：处理 ${round.processed}（成功 ${round.success}，翻译失败 ${translationFailed}，回收 ${round.reclaimedProcessing}）`,
+        })
+      }
+
+      if (!queueDrained && attemptedRounds >= MAP_ONE_KEY_MAX_ROUNDS) {
+        reachedRoundCap = true
+      }
+
+      const failureStop = consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES
+      const reasonText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
+
+      if (queueDrained) {
+        const msg = `一键推进完成：共尝试 ${attemptedRounds} 轮，实际推进 ${progressedRounds} 轮，处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}（队列已清空）${reasonText}`
+        setMapOpsMessage(msg)
+        patchMapOpsProgress({
+          running: false,
+          currentStep: attemptedRounds,
+          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: msg,
+        })
+        toast.success(`一键推进完成：处理 ${totalProcessed} 条`)
+      } else if (failureStop) {
+        const msg = `一键推进已暂停：连续 ${consecutiveNoProgress} 轮无进展，避免无限重试。已处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
+        setMapOpsMessage(msg)
+        patchMapOpsProgress({
+          running: false,
+          currentStep: attemptedRounds,
+          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: msg,
+        })
+        toast.error('一键推进已暂停：连续失败过多')
+      } else if (reachedRoundCap) {
+        const msg = `一键推进达到安全上限 ${MAP_ONE_KEY_MAX_ROUNDS} 轮，已自动暂停。当前处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
+        setMapOpsMessage(msg)
+        patchMapOpsProgress({
+          running: false,
+          currentStep: attemptedRounds,
+          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: msg,
+        })
+        toast.info('一键推进达到安全上限，已暂停')
+      } else {
+        const msg = `一键推进结束：处理 ${totalProcessed}，成功 ${totalSuccess}，翻译失败 ${totalFailed}，回收 ${totalReclaimed}，跳过 ${totalSkipped}${reasonText}`
+        setMapOpsMessage(msg)
+        patchMapOpsProgress({
+          running: false,
+          currentStep: attemptedRounds,
+          totalSteps: Math.max(estimatedRounds, attemptedRounds),
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          reclaimed: totalReclaimed,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: msg,
+        })
+        toast.info('一键推进已结束')
+      }
+
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = normalizeFetchErrorMessage(error, '一键推进失败')
+      setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        errors: [msg],
+        detail: msg,
+      })
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+    }
+  }
+
   async function handleManualAdvanceMapQueue(maxRounds = 10) {
     setMapOpsLoading(true)
     setMapOpsMessage(null)
@@ -1380,7 +1607,7 @@ export default function TranslationsUI({
           <div>
             <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
             <div className="mt-1 text-xs text-gray-500">
-              回填历史任务、增量补队、手动推进队列与抽检发布（en + ja，不依赖 cron）
+              回填历史任务、增量补队、一键自动推进/手动推进队列与抽检发布（en + ja，不依赖 cron）
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1407,6 +1634,13 @@ export default function TranslationsUI({
               disabled={mapOpsLoading || sampleApproving}
             >
               增量补队
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleOneKeyAdvanceMapQueue()}
+              disabled={mapOpsLoading || sampleApproving}
+            >
+              一键自动推进
             </Button>
             <Button
               type="button"
