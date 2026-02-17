@@ -5,6 +5,8 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 
 const SEICHI_ROUTE_TAG_RE = /<seichi-route\b[^>]*?(?:\/>|>\s*<\/seichi-route>)/gi
 const DATA_ID_RE = /\bdata-id\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i
+const FIRST_HEADING_RE = /<h[1-3]\b[^>]*>/i
+const FIRST_PARAGRAPH_CLOSE_RE = /<\/p>/i
 
 function extractDataIdFromTag(tag: string): string | null {
   const m = DATA_ID_RE.exec(tag)
@@ -35,6 +37,30 @@ function renderRouteByData(id: string, raw: unknown, locale: SupportedLocale): s
   return renderSeichiRouteEmbedHtml(parsed.value, { id, locale })
 }
 
+function pickNextUnrenderedRouteId(orderedIds: string[], renderedIds: Set<string>): string | null {
+  for (const id of orderedIds) {
+    if (!renderedIds.has(id)) return id
+  }
+  return null
+}
+
+function insertAfterLead(html: string, injection: string): string {
+  if (!injection) return html
+
+  const heading = FIRST_HEADING_RE.exec(html)
+  if (heading && heading.index > 0) {
+    return `${html.slice(0, heading.index)}${injection}${html.slice(heading.index)}`
+  }
+
+  const firstParagraphClose = FIRST_PARAGRAPH_CLOSE_RE.exec(html)
+  if (firstParagraphClose) {
+    const idx = firstParagraphClose.index + firstParagraphClose[0].length
+    return `${html.slice(0, idx)}${injection}${html.slice(idx)}`
+  }
+
+  return `${injection}${html}`
+}
+
 export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | null | undefined, locale: SupportedLocale = 'zh'): string {
   const html = String(inputHtml || '')
   if (!html) return ''
@@ -43,21 +69,22 @@ export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | n
   collectSeichiRouteNodes(contentJson, routes)
   if (!routes.size) return html
 
+  const orderedRouteIds = Array.from(routes.keys())
   const renderedIds = new Set<string>()
 
   const replaced = html.replace(SEICHI_ROUTE_TAG_RE, (tag) => {
     const id = extractDataIdFromTag(tag)
-    if (!id) {
-      return `<section class="seichi-route seichi-route--invalid" data-id="">${t('route.embed.missingDataId', locale)}</section>`
-    }
-
-    const raw = routes.get(id)
-    if (raw === undefined) {
+    const preferredId = id && routes.has(id) ? id : null
+    const resolvedId = preferredId || pickNextUnrenderedRouteId(orderedRouteIds, renderedIds)
+    if (!resolvedId) {
+      if (!id) {
+        return `<section class="seichi-route seichi-route--invalid" data-id="">${t('route.embed.missingDataId', locale)}</section>`
+      }
       return `<section class="seichi-route seichi-route--invalid" data-id="${id}">${t('route.embed.dataNotFound', locale)}</section>`
     }
 
-    renderedIds.add(id)
-    return renderRouteByData(id, raw, locale)
+    renderedIds.add(resolvedId)
+    return renderRouteByData(resolvedId, routes.get(resolvedId), locale)
   })
 
   const missing: string[] = []
@@ -67,5 +94,5 @@ export function renderRichTextEmbeds(inputHtml: string, contentJson: unknown | n
   }
 
   if (!missing.length) return replaced
-  return `${replaced}${missing.join('')}`
+  return insertAfterLead(replaced, missing.join(''))
 }

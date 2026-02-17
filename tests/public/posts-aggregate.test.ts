@@ -241,6 +241,64 @@ describe('public posts aggregation', () => {
     expect(html).toContain('<table')
   })
 
+  it('getPublicPostBySlug: inserts missing route embed below lead and before first heading', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({
+      authorId: 'u1',
+      slug: 'db-route-lead-insert',
+      title: 'DB Route Lead Insert',
+      contentHtml: '<p>引子</p><h2>路线总览与贴士</h2><p>后文</p>',
+      contentJson: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '引子' }] },
+          { type: 'seichiRoute', attrs: { id: 'r1', data: { version: 1, spots: [{ name_zh: 'A' }, { name_zh: 'B' }] } } },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: '路线总览与贴士' }] },
+        ],
+      },
+    })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug('db-route-lead-insert', 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+
+    const html = found && found.source === 'db' ? found.article.contentHtml : ''
+    const leadEnd = html.indexOf('</p>')
+    const routePos = html.indexOf('<section class="seichi-route"')
+    const headingPos = html.indexOf('<h2>')
+    expect(leadEnd).toBeGreaterThanOrEqual(0)
+    expect(routePos).toBeGreaterThan(leadEnd)
+    expect(headingPos).toBeGreaterThan(routePos)
+  })
+
+  it('getPublicPostBySlug: falls back to route order when placeholder data-id mismatches', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({
+      authorId: 'u1',
+      slug: 'db-route-mismatch-id',
+      title: 'DB Route Mismatch ID',
+      contentHtml: '<p>引子</p><seichi-route data-id="wrong-id"></seichi-route><p>后文</p>',
+      contentJson: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '引子' }] },
+          { type: 'seichiRoute', attrs: { id: 'r1', data: { version: 1, spots: [{ name_zh: 'A' }, { name_zh: 'B' }] } } },
+        ],
+      },
+    })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = makeMdxProvider()
+    const found = await getPublicPostBySlug('db-route-mismatch-id', 'zh', { mdx, articleRepo: repo })
+    expect(found?.source).toBe('db')
+
+    const html = found && found.source === 'db' ? found.article.contentHtml : ''
+    expect(html).toContain('data-id="r1"')
+    expect(html).not.toContain('路线数据未找到')
+    expect(html).not.toContain('seichi-route--invalid')
+  })
+
   it('getPublicPostBySlug: percent-encoded unicode slug resolves DB', async () => {
     const repo = new InMemoryArticleRepo()
     const slug = '你的名字-your-name-seichigo-tokyo-shinjuku'
