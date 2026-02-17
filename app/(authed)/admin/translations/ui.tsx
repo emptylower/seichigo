@@ -73,8 +73,9 @@ type MapOpsProgress = {
   errors: string[]
 }
 
-const MAP_EXECUTE_LIMIT_PER_TYPE = 120
+const MAP_EXECUTE_LIMIT_PER_TYPE = 40
 const MAP_EXECUTE_TIMEOUT_MS = 65_000
+const MAP_STATS_TIMEOUT_MS = 15_000
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -164,6 +165,20 @@ type ExecuteApiResponse = {
   results?: unknown
 }
 
+type StatsApiResponse = {
+  ok?: boolean
+  error?: string
+  counts?: Record<string, number>
+}
+
+type MapStatusSnapshot = {
+  pending: number
+  processing: number
+  ready: number
+  approved: number
+  failed: number
+}
+
 async function postExecuteTasks(payload: Record<string, unknown>): Promise<ExecuteApiResponse> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MAP_EXECUTE_TIMEOUT_MS)
@@ -196,6 +211,68 @@ async function postExecuteTasks(payload: Record<string, unknown>): Promise<Execu
   } finally {
     clearTimeout(timer)
   }
+}
+
+function sumStatusCounts(counts: Array<Record<string, number> | null | undefined>): MapStatusSnapshot {
+  let pending = 0
+  let processing = 0
+  let ready = 0
+  let approved = 0
+  let failed = 0
+
+  for (const row of counts) {
+    if (!row) continue
+    pending += Number(row.pending || 0)
+    processing += Number(row.processing || 0)
+    ready += Number(row.ready || 0)
+    approved += Number(row.approved || 0)
+    failed += Number(row.failed || 0)
+  }
+
+  return { pending, processing, ready, approved, failed }
+}
+
+async function fetchTaskStatsByEntityType(input: {
+  entityType: 'anitabi_bangumi' | 'anitabi_point'
+  targetLanguage: string
+}): Promise<Record<string, number>> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), MAP_STATS_TIMEOUT_MS)
+  try {
+    const params = new URLSearchParams()
+    params.set('entityType', input.entityType)
+    if (input.targetLanguage !== 'all') {
+      params.set('targetLanguage', input.targetLanguage)
+    }
+
+    const res = await fetch(`/api/admin/translations/stats?${params.toString()}`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    const raw = await res.text()
+    let data: StatsApiResponse = {}
+    if (raw) {
+      try {
+        data = JSON.parse(raw) as StatsApiResponse
+      } catch {
+        throw new Error(`状态接口返回非 JSON 响应（HTTP ${res.status}）`)
+      }
+    }
+    if (!res.ok) {
+      throw new Error(String(data.error || `状态接口失败（HTTP ${res.status}）`))
+    }
+    return (data.counts as Record<string, number>) || {}
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function loadMapStatusSnapshot(targetLanguage: string): Promise<MapStatusSnapshot> {
+  const [bangumi, point] = await Promise.all([
+    fetchTaskStatsByEntityType({ entityType: 'anitabi_bangumi', targetLanguage }),
+    fetchTaskStatsByEntityType({ entityType: 'anitabi_point', targetLanguage }),
+  ])
+  return sumStatusCounts([bangumi, point])
 }
 
 function buildPublicLinks(task: TranslationTaskListItem): { source?: string; target?: string } {
@@ -825,42 +902,82 @@ export default function TranslationsUI({
 
   async function executeMapTranslateRound(input?: { includeFailed?: boolean }): Promise<MapExecutionSummary> {
     const includeFailed = Boolean(input?.includeFailed)
-    const [bangumiData, pointData] = await Promise.all([
-      postExecuteTasks({
-        entityType: 'anitabi_bangumi',
-        targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-        limit: MAP_EXECUTE_LIMIT_PER_TYPE,
-        includeFailed,
-        concurrency: 4,
-      }),
-      postExecuteTasks({
-        entityType: 'anitabi_point',
-        targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
-        limit: MAP_EXECUTE_LIMIT_PER_TYPE,
-        includeFailed,
-        concurrency: 4,
-      }),
-    ])
+    const summary: MapExecutionSummary = {
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      reclaimedProcessing: 0,
+      errorMessages: [],
+    }
+    const requestErrors: string[] = []
+    let beforeSnapshot: MapStatusSnapshot | null = null
 
-    const errorMessages = [
-      ...collectErrorMessages(bangumiData.results),
-      ...collectErrorMessages(pointData.results),
-    ]
-    const reclaimedProcessing =
-      Number(bangumiData.reclaimedProcessing || 0) + Number(pointData.reclaimedProcessing || 0)
-    if (reclaimedProcessing > 0) {
-      errorMessages.unshift(`已回收 ${reclaimedProcessing} 条长时间 processing 的任务（标记为 failed）`)
+    try {
+      beforeSnapshot = await loadMapStatusSnapshot(targetLanguage)
+    } catch {
+      beforeSnapshot = null
     }
 
-    return {
-      total: Number(bangumiData.total || 0) + Number(pointData.total || 0),
-      processed: Number(bangumiData.processed || 0) + Number(pointData.processed || 0),
-      success: Number(bangumiData.success || 0) + Number(pointData.success || 0),
-      failed: Number(bangumiData.failed || 0) + Number(pointData.failed || 0),
-      skipped: Number(bangumiData.skipped || 0) + Number(pointData.skipped || 0),
-      reclaimedProcessing,
-      errorMessages: Array.from(new Set(errorMessages)).slice(0, 6),
+    for (const entityType of ['anitabi_bangumi', 'anitabi_point'] as const) {
+      try {
+        const data = await postExecuteTasks({
+          entityType,
+          targetLanguage: targetLanguage === 'all' ? undefined : targetLanguage,
+          limit: MAP_EXECUTE_LIMIT_PER_TYPE,
+          includeFailed,
+          concurrency: 4,
+        })
+
+        summary.total += Number(data.total || 0)
+        summary.processed += Number(data.processed || 0)
+        summary.success += Number(data.success || 0)
+        summary.failed += Number(data.failed || 0)
+        summary.skipped += Number(data.skipped || 0)
+        summary.reclaimedProcessing += Number(data.reclaimedProcessing || 0)
+        summary.errorMessages.push(...collectErrorMessages(data.results))
+      } catch (error) {
+        requestErrors.push(normalizeFetchErrorMessage(error, `${entityType} 执行失败`))
+      }
     }
+
+    if (summary.reclaimedProcessing > 0) {
+      summary.errorMessages.unshift(`已回收 ${summary.reclaimedProcessing} 条长时间 processing 的任务（标记为 failed）`)
+    }
+
+    if (requestErrors.length > 0) {
+      summary.errorMessages.push(...requestErrors)
+
+      try {
+        const afterSnapshot = await loadMapStatusSnapshot(targetLanguage)
+        if (beforeSnapshot) {
+          const successDelta = Math.max(0, afterSnapshot.ready - beforeSnapshot.ready)
+          const failedDelta = Math.max(0, afterSnapshot.failed - beforeSnapshot.failed)
+          const processedDelta = successDelta + failedDelta
+
+          if (processedDelta > summary.processed) {
+            summary.processed = processedDelta
+            summary.success = Math.max(summary.success, successDelta)
+            summary.failed = Math.max(summary.failed, failedDelta)
+            summary.total = Math.max(summary.total, processedDelta)
+            summary.errorMessages.push(
+              `本轮请求超时，但后台已推进：估算成功 ${successDelta}，失败 ${failedDelta}（按状态差值）`
+            )
+          }
+        }
+      } catch {
+        // ignore snapshot fallback error
+      }
+    }
+
+    summary.errorMessages = Array.from(new Set(summary.errorMessages)).slice(0, 6)
+
+    if (summary.processed === 0 && requestErrors.length > 0) {
+      throw new Error(summary.errorMessages[0] || '地图批量执行失败')
+    }
+
+    return summary
   }
 
   async function executeMapPendingBatch() {
