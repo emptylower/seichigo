@@ -64,23 +64,15 @@ export function buildEnAlternates(input: { zhPath: string; enPath?: string; incl
 
 export function buildJaAlternates(input: { zhPath: string; jaPath?: string; includeXDefault?: boolean }) {
   const zhPath = normalizePath(input.zhPath)
+  const enPath = zhPath === '/' ? '/en' : `/en${zhPath}`
   const jaPath = normalizePath(input.jaPath ?? (zhPath === '/' ? '/ja' : `/ja${zhPath}`))
-  const origin = getSiteOrigin()
-  const toAbsoluteUrl = (path: string) => new URL(encodeURI(path), origin).toString()
-
-  const languages: HreflangMap = {
-    zh: toAbsoluteUrl(zhPath),
-    ja: toAbsoluteUrl(jaPath),
-  }
-
-  if (input.includeXDefault !== false) {
-    languages['x-default'] = toAbsoluteUrl(zhPath)
-  }
-
-  return {
-    canonical: encodeURI(jaPath),
-    languages,
-  }
+  return buildHreflangAlternates({
+    canonicalPath: jaPath,
+    zhPath,
+    enPath,
+    jaPath,
+    includeXDefault: input.includeXDefault,
+  })
 }
 
 function normalizePath(path: string): string {
