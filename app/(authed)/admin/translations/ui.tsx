@@ -1478,6 +1478,11 @@ export default function TranslationsUI({
 
       for (let cycle = 1; cycle <= MAP_ONE_KEY_MAX_ROUNDS; cycle += 1) {
         attemptedRounds = cycle
+        let backfillScannedThisRound = 0
+        let backfillEnqueuedThisRound = 0
+        let backfillUpdatedThisRound = 0
+        let backfillCursorAdvancedThisRound = false
+        let backfillReachedEndThisRound = false
         patchOneKeyProgress({
           currentStep: cycle - 1,
           totalSteps: Math.max(2, cycle + 1),
@@ -1587,6 +1592,8 @@ export default function TranslationsUI({
 
           const shouldSkipBackfill = hasNoMissingEntities()
           if (!shouldSkipBackfill) {
+            const prevBangumiCursor = bangumiCursor
+            const prevPointCursor = pointCursor
             bangumiFill = await backfillUntilProgress({
               entityType: 'anitabi_bangumi',
               cursor: bangumiCursor,
@@ -1600,6 +1607,14 @@ export default function TranslationsUI({
             })
             pointCursor = pointFill.done ? null : pointFill.nextCursor
             setPointBackfillCursor(pointCursor)
+
+            backfillScannedThisRound = bangumiFill.scanned + pointFill.scanned
+            backfillEnqueuedThisRound = bangumiFill.enqueued + pointFill.enqueued
+            backfillUpdatedThisRound = bangumiFill.updated + pointFill.updated
+            backfillCursorAdvancedThisRound =
+              String(prevBangumiCursor || '') !== String(bangumiCursor || '') ||
+              String(prevPointCursor || '') !== String(pointCursor || '')
+            backfillReachedEndThisRound = bangumiFill.done && pointFill.done
           }
 
           totalBackfillEnqueued += bangumiFill.enqueued + pointFill.enqueued
@@ -1660,14 +1675,34 @@ export default function TranslationsUI({
             break
           }
 
+          if (
+            backfillScannedThisRound > 0 &&
+            backfillEnqueuedThisRound === 0 &&
+            backfillUpdatedThisRound === 0 &&
+            backfillCursorAdvancedThisRound &&
+            !backfillReachedEndThisRound
+          ) {
+            consecutiveNoProgress = 0
+            patchOneKeyProgress({
+              currentStep: cycle,
+              totalSteps: Math.max(2, cycle + 1),
+              roundProcessed: 0,
+              detail: `第 ${cycle} 轮：补队扫描推进中（本轮扫描 ${backfillScannedThisRound} 条，当前未命中新缺口），继续下一轮...`,
+            })
+            continue
+          }
+
           consecutiveNoProgress += 1
           patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
             roundProcessed: 0,
-            detail: hasNoPendingLikeQueue()
-              ? `第 ${cycle} 轮：pending 为 0，但仍有未覆盖实体（作品剩余 ${formatMetricCount(queueSnapshot.bangumiRemaining)}，点位剩余 ${formatMetricCount(queueSnapshot.pointRemaining)}），继续补队扫描（连续 ${consecutiveNoProgress} 轮）`
-              : `第 ${cycle} 轮：pending 为 0，但队列仍未清空（可能存在 processing/failed），等待回收后继续（连续 ${consecutiveNoProgress} 轮）`,
+            detail:
+              hasNoPendingLikeQueue() && backfillReachedEndThisRound && backfillScannedThisRound > 0
+                ? `第 ${cycle} 轮：补队已扫到末尾但未新增任务（扫描 ${backfillScannedThisRound}），仍存在缺口；疑似数据口径不一致（连续 ${consecutiveNoProgress} 轮）`
+                : hasNoPendingLikeQueue()
+                  ? `第 ${cycle} 轮：pending 为 0，但仍有未覆盖实体（作品剩余 ${formatMetricCount(queueSnapshot.bangumiRemaining)}，点位剩余 ${formatMetricCount(queueSnapshot.pointRemaining)}），继续补队扫描（连续 ${consecutiveNoProgress} 轮）`
+                  : `第 ${cycle} 轮：pending 为 0，但队列仍未清空（可能存在 processing/failed），等待回收后继续（连续 ${consecutiveNoProgress} 轮）`,
           })
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
             completionState = 'stopped'
