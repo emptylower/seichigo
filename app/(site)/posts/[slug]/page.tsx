@@ -100,6 +100,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       languages: {
         'x-default': `/posts/${encodeSlugForPath(frontmatter.slug)}`,
         zh: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
+        en: `/en/posts/${encodeSlugForPath(frontmatter.slug)}`,
+        ja: `/ja/posts/${encodeSlugForPath(frontmatter.slug)}`,
       },
     },
     openGraph: {

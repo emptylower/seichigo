@@ -32,7 +32,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (postsByPath.has(post.path)) continue
     postsByPath.set(post.path, post)
   }
-  const posts = Array.from(postsByPath.values())
+
+  // Group posts by slug to build hreflang alternates across locales
+  const postSlugToLocales = new Map<string, Map<string, (typeof postsZh)[number]>>()
+  for (const [path, post] of postsByPath) {
+    const slugMatch = path.match(/^(?:\/(?:en|ja))?\/posts\/(.+)$/)
+    if (!slugMatch) continue
+    const slug = slugMatch[1]
+    const locale = path.startsWith('/en/') ? 'en' : path.startsWith('/ja/') ? 'ja' : 'zh'
+    if (!postSlugToLocales.has(slug)) postSlugToLocales.set(slug, new Map())
+    postSlugToLocales.get(slug)!.set(locale, post)
+  }
 
   const now = new Date()
 
@@ -153,15 +163,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   }
 
-  for (const p of posts) {
-    const zhUrl = `${base}${p.path}`
+  for (const [slug, localeMap] of postSlugToLocales) {
+    const encodedSlug = encodeURIComponent(slug)
+    const zhUrl = `${base}/posts/${encodedSlug}`
+    const enUrl = `${base}/en/posts/${encodedSlug}`
+    const jaUrl = `${base}/ja/posts/${encodedSlug}`
+    const alternates = { languages: { zh: zhUrl, en: enUrl, ja: jaUrl } }
 
-    items.push({
-      url: zhUrl,
-      lastModified: toLastModified(p.updatedAt || p.publishedAt || p.publishDate),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    })
+    for (const [locale, post] of localeMap) {
+      const url = locale === 'zh' ? zhUrl : locale === 'en' ? enUrl : jaUrl
+      items.push({
+        url,
+        lastModified: toLastModified(post.updatedAt || post.publishedAt || post.publishDate),
+        changeFrequency: 'monthly',
+        priority: locale === 'zh' ? 0.7 : 0.3,
+        alternates,
+      })
+    }
   }
   return items
 }
