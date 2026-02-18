@@ -189,10 +189,10 @@
   },
   "pages": {
     "home": {
-      "heroTitle": "出発しよう、",
-      "heroTitleLine2": "あの景色に会いに。",
+      "heroTitle": "アニメ聖地巡礼、",
+      "heroTitleLine2": "ここから始めよう。",
       "heroSubtitle": "読みやすい長文記事、洗練されたレイアウト、実用的なロケーションリストで、",
-      "heroSubtitleLine2": "画面から現実への聖地巡礼を計画します。",
+      "heroSubtitleLine2": "画面から現実への聖地巡礼をサポートします。",
       "browseAnimeButton": "作品を見る",
       "submitButton": "巡礼を投稿",
       "mapHubTitle": "ルート計画ハブ",
@@ -213,7 +213,7 @@
       "mapHubQuickResourcesTitle": "ナビ可能な素材を確保",
       "mapHubQuickResourcesDesc": "ルートと地点リンクをコピーし、出発日にすぐ地図を開ける状態にします。",
       "mapHubQuickResourcesCta": "リソースへ →",
-      "starterTitle": "はじめての巡礼ガイド",
+      "starterTitle": "聖地巡礼はじめてガイド",
       "starterStep1Title": "まずは行きたい作品を選ぶ",
       "starterStep1Desc": "作品インデックスから入り、その作品の公開済みルートと記事をまとめて確認します。",
       "starterStep2Title": "次に都市ごとにルートを絞る",

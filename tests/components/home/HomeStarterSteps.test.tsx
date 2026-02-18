@@ -31,7 +31,7 @@ describe('HomeStarterSteps', () => {
   it('renders starter title and locale-aware links', () => {
     render(<HomeStarterSteps steps={steps} locale="en" />)
 
-    expect(screen.getByRole('heading', { name: 'Start Here' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Anime Pilgrimage Starter Guide' })).toBeInTheDocument()
 
     expect(screen.getByRole('link', { name: 'Browse Full Anime Index →' })).toHaveAttribute('href', '/en/anime')
     expect(screen.getByRole('link', { name: 'View All Cities →' })).toHaveAttribute('href', '/en/city')

@@ -189,10 +189,10 @@
   },
   "pages": {
     "home": {
-      "heroTitle": "出发，",
-      "heroTitleLine2": "去见证那个风景。",
+      "heroTitle": "动漫圣地巡礼，",
+      "heroTitleLine2": "从这里出发。",
       "heroSubtitle": "用好读的长文、精致排版和实用的地点列表，",
-      "heroSubtitleLine2": "帮你规划从屏幕到现实的每一次巡礼。",
+      "heroSubtitleLine2": "帮你规划从屏幕到现实的每一次圣地巡礼。",
       "browseAnimeButton": "浏览作品索引",
       "submitButton": "投稿你的巡礼",
       "mapHubTitle": "路线规划中心",
@@ -213,7 +213,7 @@
       "mapHubQuickResourcesTitle": "拿走可导航资源",
       "mapHubQuickResourcesDesc": "复制路线和点位链接，出发当天直接打开地图。",
       "mapHubQuickResourcesCta": "打开资源中心 →",
-      "starterTitle": "新手出发",
+      "starterTitle": "圣地巡礼新手出发",
       "starterStep1Title": "先选一部你最想重访的作品",
       "starterStep1Desc": "从作品索引进入，快速查看这部作品的已发布路线与相关文章。",
       "starterStep2Title": "按城市收敛路线与点位",
