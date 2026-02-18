@@ -110,6 +110,7 @@ const MAP_STATS_TIMEOUT_MS = 15_000
 const MAP_EXECUTE_RETRY_DELAY_MS = 1500
 const MAP_ONE_KEY_MAX_ROUNDS = 5000
 const MAP_ONE_KEY_BACKFILL_LIMIT = 20
+const MAP_ONE_KEY_BACKFILL_MAX_SWEEPS = 20
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES = 3
 const MAP_ONE_KEY_RETRY_PER_ROUND = 2
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILED_ONLY = 5
@@ -550,6 +551,9 @@ export default function TranslationsUI({
   const [batchProgress, setBatchProgress] = useState<BatchExecutionProgress | null>(null)
   const [mapOpsLoading, setMapOpsLoading] = useState(false)
   const [mapOpsMessage, setMapOpsMessage] = useState<string | null>(null)
+  const [showMapOpsPanel, setShowMapOpsPanel] = useState<boolean>(
+    () => initialQuery?.entityType === 'anitabi_bangumi' || initialQuery?.entityType === 'anitabi_point'
+  )
   const [mapOpsProgress, setMapOpsProgress] = useState<MapOpsProgress | null>(null)
   const [bangumiBackfillCursor, setBangumiBackfillCursor] = useState<string | null>(null)
   const [pointBackfillCursor, setPointBackfillCursor] = useState<string | null>(null)
@@ -1393,6 +1397,39 @@ export default function TranslationsUI({
         return true
       }
 
+      const backfillUntilProgress = async (input: {
+        entityType: 'anitabi_bangumi' | 'anitabi_point'
+        cursor: string | null
+      }): Promise<{ scanned: number; enqueued: number; updated: number; nextCursor: string | null; done: boolean; sweeps: number }> => {
+        let nextCursor = input.cursor
+        let scanned = 0
+        let enqueued = 0
+        let updated = 0
+        let done = false
+        let sweeps = 0
+
+        for (let i = 0; i < MAP_ONE_KEY_BACKFILL_MAX_SWEEPS; i += 1) {
+          const row = await runMapBackfillOnce({
+            entityType: input.entityType,
+            mode: 'missing',
+            limit: MAP_ONE_KEY_BACKFILL_LIMIT,
+            cursor: nextCursor,
+          })
+          sweeps += 1
+          scanned += row.scanned
+          enqueued += row.enqueued
+          updated += row.updated
+          nextCursor = row.done ? null : row.nextCursor
+          done = row.done
+
+          if (row.enqueued > 0 || row.updated > 0 || row.done) {
+            break
+          }
+        }
+
+        return { scanned, enqueued, updated, nextCursor, done, sweeps }
+      }
+
       const executeRoundWithRetries = async (statusScope: MapExecuteStatusScope, cycle: number, stageLabel: string) => {
         let aggregatedErrors: string[] = []
         let lastRound: MapExecutionSummary | null = null
@@ -1501,19 +1538,35 @@ export default function TranslationsUI({
           break
         }
 
-        let bangumiFill: { scanned: number; enqueued: number; updated: number; nextCursor: string | null; done: boolean } = {
+        let bangumiFill: {
+          scanned: number
+          enqueued: number
+          updated: number
+          nextCursor: string | null
+          done: boolean
+          sweeps: number
+        } = {
           scanned: 0,
           enqueued: 0,
           updated: 0,
           nextCursor: bangumiCursor,
           done: true,
+          sweeps: 0,
         }
-        let pointFill: { scanned: number; enqueued: number; updated: number; nextCursor: string | null; done: boolean } = {
+        let pointFill: {
+          scanned: number
+          enqueued: number
+          updated: number
+          nextCursor: string | null
+          done: boolean
+          sweeps: number
+        } = {
           scanned: 0,
           enqueued: 0,
           updated: 0,
           nextCursor: pointCursor,
           done: true,
+          sweeps: 0,
         }
 
         const queueNotEmpty = !hasNoPendingLikeQueue()
@@ -1534,19 +1587,15 @@ export default function TranslationsUI({
 
           const shouldSkipBackfill = hasNoMissingEntities()
           if (!shouldSkipBackfill) {
-            bangumiFill = await runMapBackfillOnce({
+            bangumiFill = await backfillUntilProgress({
               entityType: 'anitabi_bangumi',
-              mode: 'missing',
-              limit: MAP_ONE_KEY_BACKFILL_LIMIT,
               cursor: bangumiCursor,
             })
             bangumiCursor = bangumiFill.done ? null : bangumiFill.nextCursor
             setBangumiBackfillCursor(bangumiCursor)
 
-            pointFill = await runMapBackfillOnce({
+            pointFill = await backfillUntilProgress({
               entityType: 'anitabi_point',
-              mode: 'missing',
-              limit: MAP_ONE_KEY_BACKFILL_LIMIT,
               cursor: pointCursor,
             })
             pointCursor = pointFill.done ? null : pointFill.nextCursor
@@ -1569,7 +1618,7 @@ export default function TranslationsUI({
             roundProcessed: 0,
             detail: shouldSkipBackfill
               ? `第 ${cycle} 轮：当前无缺失项，跳过补队，开始处理 pending...`
-              : `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}），开始处理 pending...`,
+              : `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}；扫描 作品 ${bangumiFill.scanned}/点位 ${pointFill.scanned}，扫段 作品 ${bangumiFill.sweeps}/点位 ${pointFill.sweeps}），开始处理 pending...`,
           })
         }
 
@@ -1600,16 +1649,32 @@ export default function TranslationsUI({
 
         if (pendingRound.total === 0) {
           await refreshQueueSnapshot()
-        }
-        if (pendingRound.total === 0 && hasNoMissingEntities() && hasNoPendingLikeQueue()) {
-          completionState = 'done'
+          if (hasNoMissingEntities() && hasNoPendingLikeQueue()) {
+            completionState = 'done'
+            patchOneKeyProgress({
+              currentStep: cycle,
+              totalSteps: Math.max(2, cycle + 1),
+              roundProcessed: 0,
+              detail: `第 ${cycle} 轮：没有失败任务、没有新补队任务、没有 pending，准备进入抽样发布...`,
+            })
+            break
+          }
+
+          consecutiveNoProgress += 1
           patchOneKeyProgress({
             currentStep: cycle,
             totalSteps: Math.max(2, cycle + 1),
             roundProcessed: 0,
-            detail: `第 ${cycle} 轮：没有失败任务、没有新补队任务、没有 pending，准备进入抽样发布...`,
+            detail: hasNoPendingLikeQueue()
+              ? `第 ${cycle} 轮：pending 为 0，但仍有未覆盖实体（作品剩余 ${formatMetricCount(queueSnapshot.bangumiRemaining)}，点位剩余 ${formatMetricCount(queueSnapshot.pointRemaining)}），继续补队扫描（连续 ${consecutiveNoProgress} 轮）`
+              : `第 ${cycle} 轮：pending 为 0，但队列仍未清空（可能存在 processing/failed），等待回收后继续（连续 ${consecutiveNoProgress} 轮）`,
           })
-          break
+          if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
+            completionState = 'stopped'
+            stopReason = 'no_progress'
+            break
+          }
+          continue
         }
 
         if (pendingRound.total > 0) {
@@ -1628,8 +1693,6 @@ export default function TranslationsUI({
           }
           continue
         }
-
-        consecutiveNoProgress = 0
       }
 
       if (attemptedRounds >= MAP_ONE_KEY_MAX_ROUNDS && completionState !== 'done' && completionState !== 'stopped') {
@@ -2047,81 +2110,92 @@ export default function TranslationsUI({
           <div>
             <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
             <div className="mt-1 text-xs text-gray-500">
-              回填历史任务、增量补队、一键自动推进/手动推进队列与抽检发布（en + ja，不依赖 cron）
+              回填历史任务、增量补队、一键自动推进/手动推进队列与抽检发布（en + ja，不依赖 cron）。
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void handleMapBackfill('anitabi_bangumi')}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              作品回填（1000）
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void handleMapBackfill('anitabi_point')}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              点位回填（1000）
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void handleMapIncrementalRefill()}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              增量补队
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void handleOneKeyAdvanceMapQueue()}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              一键自动推进
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void executeMapPendingBatch()}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              执行地图待翻译（单轮）
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void executeMapFailedBatch()}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              重试失败（单轮）
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void handleManualAdvanceMapQueue(10)}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              手动推进队列（10轮）
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void approveMapSampleBatch()}
-              disabled={mapOpsLoading || sampleApproving}
-            >
-              {sampleApproving ? '抽检发布中...' : '抽检并批量发布'}
-            </Button>
-          </div>
+          <Button type="button" variant="ghost" onClick={() => setShowMapOpsPanel((prev) => !prev)}>
+            {showMapOpsPanel ? '收起控制区' : '展开控制区'}
+          </Button>
         </div>
-        <div className="mt-2 text-xs text-gray-500">
-          回填游标：作品 {bangumiBackfillCursor || '-'} / 点位 {pointBackfillCursor || '-'}
-        </div>
-        {mapOpsMessage ? (
-          <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-            {mapOpsMessage}
+        {showMapOpsPanel ? (
+          <>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void handleMapBackfill('anitabi_bangumi')}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                作品回填（1000）
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void handleMapBackfill('anitabi_point')}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                点位回填（1000）
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void handleMapIncrementalRefill()}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                增量补队
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleOneKeyAdvanceMapQueue()}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                一键自动推进
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void executeMapPendingBatch()}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                执行地图待翻译（单轮）
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void executeMapFailedBatch()}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                重试失败（单轮）
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleManualAdvanceMapQueue(10)}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                手动推进队列（10轮）
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void approveMapSampleBatch()}
+                disabled={mapOpsLoading || sampleApproving}
+              >
+                {sampleApproving ? '抽检发布中...' : '抽检并批量发布'}
+              </Button>
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              回填游标：作品 {bangumiBackfillCursor || '-'} / 点位 {pointBackfillCursor || '-'}
+            </div>
+            {mapOpsMessage ? (
+              <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                {mapOpsMessage}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-2 text-xs text-gray-500">
+            默认折叠控制区以减轻首屏渲染压力，需要时再展开。
           </div>
-        ) : null}
+        )}
       </div>
 
       {batchProgress ? (
