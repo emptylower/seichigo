@@ -1501,13 +1501,6 @@ export default function TranslationsUI({
           break
         }
 
-        patchOneKeyProgress({
-          currentStep: cycle - 1,
-          totalSteps: Math.max(2, cycle + 1),
-          roundProcessed: 0,
-          detail: `第 ${cycle} 轮：无失败任务，补充新任务（作品 + 点位）...`,
-        })
-
         let bangumiFill: { scanned: number; enqueued: number; updated: number; nextCursor: string | null; done: boolean } = {
           scanned: 0,
           enqueued: 0,
@@ -1523,45 +1516,62 @@ export default function TranslationsUI({
           done: true,
         }
 
-        const shouldSkipBackfill = hasNoMissingEntities()
-        if (!shouldSkipBackfill) {
-          bangumiFill = await runMapBackfillOnce({
-            entityType: 'anitabi_bangumi',
-            mode: 'missing',
-            limit: MAP_ONE_KEY_BACKFILL_LIMIT,
-            cursor: bangumiCursor,
+        const queueNotEmpty = !hasNoPendingLikeQueue()
+        if (queueNotEmpty) {
+          patchOneKeyProgress({
+            currentStep: cycle - 1,
+            totalSteps: Math.max(2, cycle + 1),
+            roundProcessed: 0,
+            detail: `第 ${cycle} 轮：当前队列未清空（pending/processing/failed 仍有任务），先处理现有任务，暂不补队...`,
           })
-          bangumiCursor = bangumiFill.done ? null : bangumiFill.nextCursor
-          setBangumiBackfillCursor(bangumiCursor)
-
-          pointFill = await runMapBackfillOnce({
-            entityType: 'anitabi_point',
-            mode: 'missing',
-            limit: MAP_ONE_KEY_BACKFILL_LIMIT,
-            cursor: pointCursor,
+        } else {
+          patchOneKeyProgress({
+            currentStep: cycle - 1,
+            totalSteps: Math.max(2, cycle + 1),
+            roundProcessed: 0,
+            detail: `第 ${cycle} 轮：无失败任务且队列已清空，补充新任务（作品 + 点位）...`,
           })
-          pointCursor = pointFill.done ? null : pointFill.nextCursor
-          setPointBackfillCursor(pointCursor)
-        }
 
-        totalBackfillEnqueued += bangumiFill.enqueued + pointFill.enqueued
-        totalBackfillUpdated += bangumiFill.updated + pointFill.updated
-        totalBangumiBackfilled += bangumiFill.enqueued + bangumiFill.updated
-        totalPointBackfilledEnqueued += pointFill.enqueued
-        totalPointBackfilledUpdated += pointFill.updated
-        if (bangumiFill.scanned > 0 || bangumiFill.enqueued > 0 || bangumiFill.updated > 0) {
-          bangumiBatch += 1
-        }
+          const shouldSkipBackfill = hasNoMissingEntities()
+          if (!shouldSkipBackfill) {
+            bangumiFill = await runMapBackfillOnce({
+              entityType: 'anitabi_bangumi',
+              mode: 'missing',
+              limit: MAP_ONE_KEY_BACKFILL_LIMIT,
+              cursor: bangumiCursor,
+            })
+            bangumiCursor = bangumiFill.done ? null : bangumiFill.nextCursor
+            setBangumiBackfillCursor(bangumiCursor)
 
-        await refreshQueueSnapshot()
-        patchOneKeyProgress({
-          currentStep: cycle - 1,
-          totalSteps: Math.max(2, cycle + 1),
-          roundProcessed: 0,
-          detail: shouldSkipBackfill
-            ? `第 ${cycle} 轮：当前无缺失项，跳过补队，开始处理 pending...`
-            : `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}），开始处理 pending...`,
-        })
+            pointFill = await runMapBackfillOnce({
+              entityType: 'anitabi_point',
+              mode: 'missing',
+              limit: MAP_ONE_KEY_BACKFILL_LIMIT,
+              cursor: pointCursor,
+            })
+            pointCursor = pointFill.done ? null : pointFill.nextCursor
+            setPointBackfillCursor(pointCursor)
+          }
+
+          totalBackfillEnqueued += bangumiFill.enqueued + pointFill.enqueued
+          totalBackfillUpdated += bangumiFill.updated + pointFill.updated
+          totalBangumiBackfilled += bangumiFill.enqueued + bangumiFill.updated
+          totalPointBackfilledEnqueued += pointFill.enqueued
+          totalPointBackfilledUpdated += pointFill.updated
+          if (bangumiFill.scanned > 0 || bangumiFill.enqueued > 0 || bangumiFill.updated > 0) {
+            bangumiBatch += 1
+          }
+
+          await refreshQueueSnapshot()
+          patchOneKeyProgress({
+            currentStep: cycle - 1,
+            totalSteps: Math.max(2, cycle + 1),
+            roundProcessed: 0,
+            detail: shouldSkipBackfill
+              ? `第 ${cycle} 轮：当前无缺失项，跳过补队，开始处理 pending...`
+              : `第 ${cycle} 轮：补队完成（作品 新建 ${bangumiFill.enqueued}/更新 ${bangumiFill.updated}，点位 新建 ${pointFill.enqueued}/更新 ${pointFill.updated}），开始处理 pending...`,
+          })
+        }
 
         const pendingRound = await executeRoundWithRetries('pending', cycle, '（处理 pending）')
         const pendingTranslationFailed = mergeRound(pendingRound)
