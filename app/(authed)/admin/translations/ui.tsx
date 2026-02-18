@@ -109,9 +109,10 @@ const MAP_EXECUTE_TIMEOUT_MS = 65_000
 const MAP_STATS_TIMEOUT_MS = 15_000
 const MAP_EXECUTE_RETRY_DELAY_MS = 1500
 const MAP_ONE_KEY_MAX_ROUNDS = 5000
-const MAP_ONE_KEY_BACKFILL_LIMIT = 1
+const MAP_ONE_KEY_BACKFILL_LIMIT = 20
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES = 3
 const MAP_ONE_KEY_RETRY_PER_ROUND = 2
+const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILED_ONLY = 5
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -1075,11 +1076,17 @@ export default function TranslationsUI({
     }
   }
 
-  async function executeMapTranslateRound(input?: { statusScope?: MapExecuteStatusScope }): Promise<MapExecutionSummary> {
+  async function executeMapTranslateRound(input?: {
+    statusScope?: MapExecuteStatusScope
+    limitPerType?: number
+    concurrency?: number
+  }): Promise<MapExecutionSummary> {
     const statusScope: MapExecuteStatusScope = input?.statusScope || 'pending'
-    const limitPerType =
-      statusScope === 'failed' ? MAP_EXECUTE_LIMIT_FAILED_PER_TYPE : MAP_EXECUTE_LIMIT_PENDING_PER_TYPE
-    const concurrency = statusScope === 'failed' ? 1 : 2
+    const limitPerType = Math.max(
+      1,
+      Math.floor(input?.limitPerType ?? (statusScope === 'failed' ? MAP_EXECUTE_LIMIT_FAILED_PER_TYPE : MAP_EXECUTE_LIMIT_PENDING_PER_TYPE))
+    )
+    const concurrency = Math.max(1, Math.floor(input?.concurrency ?? (statusScope === 'failed' ? 1 : 2)))
     const summary: MapExecutionSummary = {
       total: 0,
       processed: 0,
@@ -1250,8 +1257,11 @@ export default function TranslationsUI({
       let totalBackfillEnqueued = 0
       let totalBackfillUpdated = 0
       let consecutiveNoProgress = 0
+      let consecutiveFailedOnly = 0
       let allErrors: string[] = []
       let completionState: 'done' | 'stopped' | 'capped' = 'capped'
+      let stopReason: 'no_progress' | null = null
+      let stoppedByFailedOnly = false
       let bangumiCursor = bangumiBackfillCursor
       let pointCursor = pointBackfillCursor
       let bangumiBatch = 0
@@ -1366,6 +1376,23 @@ export default function TranslationsUI({
         return translationFailed
       }
 
+      const detectFailedOnlyStall = (input: { roundSuccess: number; translationFailed: number }): boolean => {
+        if (input.roundSuccess > 0 || input.translationFailed <= 0) {
+          consecutiveFailedOnly = 0
+          return false
+        }
+
+        consecutiveFailedOnly += 1
+        if (consecutiveFailedOnly < MAP_ONE_KEY_MAX_CONSECUTIVE_FAILED_ONLY) return false
+
+        stoppedByFailedOnly = true
+        completionState = 'stopped'
+        allErrors = appendUniqueMessages(allErrors, [
+          `连续 ${consecutiveFailedOnly} 轮仅产生失败、无成功转化，已停止自动重试并转入抽样发布`,
+        ])
+        return true
+      }
+
       const executeRoundWithRetries = async (statusScope: MapExecuteStatusScope, cycle: number, stageLabel: string) => {
         let aggregatedErrors: string[] = []
         let lastRound: MapExecutionSummary | null = null
@@ -1433,6 +1460,15 @@ export default function TranslationsUI({
             roundProcessed: failedRound.processed,
             detail: `第 ${cycle} 轮：失败任务优先推进完成（处理 ${failedRound.processed}，成功 ${failedRound.success}，翻译失败 ${failedTranslationFailed}，回收 ${failedRound.reclaimedProcessing}）`,
           })
+          if (detectFailedOnlyStall({ roundSuccess: failedRound.success, translationFailed: failedTranslationFailed })) {
+            patchOneKeyProgress({
+              currentStep: cycle,
+              totalSteps: Math.max(2, cycle + 1),
+              roundProcessed: failedRound.processed,
+              detail: `第 ${cycle} 轮：失败任务连续仅失败，停止重试并转入抽样发布...`,
+            })
+            break
+          }
           continue
         }
 
@@ -1447,6 +1483,7 @@ export default function TranslationsUI({
           })
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
             completionState = 'stopped'
+            stopReason = 'no_progress'
             break
           }
           continue
@@ -1539,6 +1576,15 @@ export default function TranslationsUI({
             roundProcessed: pendingRound.processed,
             detail: `第 ${cycle} 轮：pending 处理完成（处理 ${pendingRound.processed}，成功 ${pendingRound.success}，翻译失败 ${pendingTranslationFailed}，回收 ${pendingRound.reclaimedProcessing}）`,
           })
+          if (detectFailedOnlyStall({ roundSuccess: pendingRound.success, translationFailed: pendingTranslationFailed })) {
+            patchOneKeyProgress({
+              currentStep: cycle,
+              totalSteps: Math.max(2, cycle + 1),
+              roundProcessed: pendingRound.processed,
+              detail: `第 ${cycle} 轮：连续仅失败无成功，停止重试并转入抽样发布...`,
+            })
+            break
+          }
           continue
         }
 
@@ -1567,6 +1613,7 @@ export default function TranslationsUI({
           })
           if (consecutiveNoProgress >= MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES) {
             completionState = 'stopped'
+            stopReason = 'no_progress'
             break
           }
           continue
@@ -1582,12 +1629,13 @@ export default function TranslationsUI({
       await refreshQueueSnapshot()
 
       let publishSummary = '未进入抽样发布阶段'
-      if (completionState === 'done') {
+      const shouldRunPublish = completionState === 'done' || stoppedByFailedOnly
+      if (shouldRunPublish) {
         patchOneKeyProgress({
           currentStep: attemptedRounds,
           totalSteps: Math.max(2, attemptedRounds + 1),
           roundProcessed: 0,
-          detail: '全量翻译阶段完成，开始抽样检查并发布...',
+          detail: completionState === 'done' ? '全量翻译阶段完成，开始抽样检查并发布...' : '失败重试已触发保护停止，开始抽样检查并发布...',
         })
 
         const pool = await loadReadyMapTasks(300)
@@ -1638,7 +1686,10 @@ export default function TranslationsUI({
         })
         toast.success(`一键推进完成：处理 ${totalProcessed} 条`)
       } else if (completionState === 'stopped') {
-        const msg = `一键推进已暂停：连续 ${consecutiveNoProgress} 轮无进展，自动停止。${baseSummary}${reasonText}`
+        const msg =
+          stoppedByFailedOnly
+            ? `一键推进已暂停：连续 ${MAP_ONE_KEY_MAX_CONSECUTIVE_FAILED_ONLY} 轮仅失败无成功，已停止重试并执行抽样发布。${baseSummary}；${publishSummary}${reasonText}`
+            : `一键推进已暂停：连续 ${consecutiveNoProgress} 轮无进展，自动停止。${baseSummary}${reasonText}`
         setMapOpsMessage(msg)
         patchMapOpsProgress({
           running: false,
@@ -1653,7 +1704,11 @@ export default function TranslationsUI({
           detail: msg,
           oneKey: buildOneKeyMetrics(0),
         })
-        toast.error('一键推进已暂停：连续失败过多')
+        if (stoppedByFailedOnly) {
+          toast.info('一键推进已停止重复失败重试，并已执行抽样发布')
+        } else {
+          toast.error('一键推进已暂停：连续失败过多')
+        }
       } else {
         const msg = `一键推进达到安全上限 ${MAP_ONE_KEY_MAX_ROUNDS} 轮，自动暂停。${baseSummary}${reasonText}`
         setMapOpsMessage(msg)
