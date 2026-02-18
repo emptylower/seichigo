@@ -114,6 +114,9 @@ const MAP_ONE_KEY_BACKFILL_MAX_SWEEPS = 20
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILURES = 3
 const MAP_ONE_KEY_RETRY_PER_ROUND = 2
 const MAP_ONE_KEY_MAX_CONSECUTIVE_FAILED_ONLY = 5
+const APPROVE_ALL_READY_PAGE_SIZE = 100
+const APPROVE_ALL_NON_MAP_CONCURRENCY = 4
+const APPROVE_ALL_READY_MAX_ROUNDS = 1000
 
 function clampInt(value: string | null, fallback: number, opts?: { min?: number; max?: number }): number {
   const min = opts?.min ?? 1
@@ -558,6 +561,7 @@ export default function TranslationsUI({
   const [bangumiBackfillCursor, setBangumiBackfillCursor] = useState<string | null>(null)
   const [pointBackfillCursor, setPointBackfillCursor] = useState<string | null>(null)
   const [sampleApproving, setSampleApproving] = useState(false)
+  const [approveAllReadyRunning, setApproveAllReadyRunning] = useState(false)
 
   const statusLabels: Record<string, string> = {
     all: '全部',
@@ -1981,6 +1985,219 @@ export default function TranslationsUI({
     return [...bangumiTasks, ...pointTasks]
   }
 
+  async function loadReadyTasksPage(pageSize: number): Promise<{ tasks: TranslationTaskListItem[]; total: number }> {
+    const res = await fetch(`/api/admin/translations?status=ready&entityType=all&targetLanguage=all&page=1&pageSize=${pageSize}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || '获取待审核任务失败')
+
+    return {
+      tasks: Array.isArray(data.tasks) ? (data.tasks as TranslationTaskListItem[]) : [],
+      total: Number(data.total || 0),
+    }
+  }
+
+  async function loadReadyCountAll(): Promise<number | null> {
+    const res = await fetch('/api/admin/translations/stats?entityType=all&targetLanguage=all')
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return null
+    const counts = (data as { counts?: Record<string, number> })?.counts
+    if (!counts || typeof counts !== 'object') return null
+    return Number(counts.ready || 0)
+  }
+
+  async function approveSingleTask(taskId: string): Promise<{ status: 'approved' | 'failed'; error?: string }> {
+    try {
+      const res = await fetch(`/api/admin/translations/${encodeURIComponent(taskId)}/approve`, {
+        method: 'POST',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { status: 'failed', error: String(data.error || `任务 ${taskId} 审核失败（HTTP ${res.status}）`) }
+      }
+      return { status: 'approved' }
+    } catch (error) {
+      return {
+        status: 'failed',
+        error: normalizeFetchErrorMessage(error, `任务 ${taskId} 审核失败`),
+      }
+    }
+  }
+
+  async function approveAllReadyTasks() {
+    const accepted = await askForConfirm({
+      title: '确认一键审核全部待审核',
+      description: '将直接通过当前所有 ready 任务（文章 / 城市 / 动漫 / 地图），请确认。',
+      confirmLabel: '确认全部通过',
+      cancelLabel: '取消',
+    })
+    if (!accepted) return
+
+    setApproveAllReadyRunning(true)
+    setMapOpsLoading(true)
+    setMapOpsMessage(null)
+    try {
+      let estimatedTotal = await loadReadyCountAll()
+      beginMapOpsProgress({
+        title: '一键审核全部待审核',
+        totalSteps: Math.max(1, estimatedTotal ?? 1),
+        detail: estimatedTotal !== null ? `准备开始：当前待审核 ${estimatedTotal} 条...` : '准备开始：拉取待审核任务...',
+      })
+
+      let rounds = 0
+      let totalProcessed = 0
+      let totalApproved = 0
+      let totalFailed = 0
+      let totalSkipped = 0
+      let remainingReady: number | null = estimatedTotal
+      let allErrors: string[] = []
+      let stoppedByNoProgress = false
+
+      for (let round = 1; round <= APPROVE_ALL_READY_MAX_ROUNDS; round += 1) {
+        rounds = round
+        const page = await loadReadyTasksPage(APPROVE_ALL_READY_PAGE_SIZE)
+        const readyTasks = page.tasks
+        if (readyTasks.length === 0) {
+          remainingReady = 0
+          break
+        }
+
+        let roundProcessed = 0
+        let roundApproved = 0
+        let roundFailed = 0
+        let roundSkipped = 0
+
+        const mapTaskIds = readyTasks
+          .filter((task) => task.entityType === 'anitabi_bangumi' || task.entityType === 'anitabi_point')
+          .map((task) => task.id)
+        const nonMapTaskIds = readyTasks
+          .filter((task) => task.entityType !== 'anitabi_bangumi' && task.entityType !== 'anitabi_point')
+          .map((task) => task.id)
+
+        if (mapTaskIds.length > 0) {
+          try {
+            const res = await fetch('/api/admin/translations/approve-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taskIds: mapTaskIds }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+              roundProcessed += mapTaskIds.length
+              roundFailed += mapTaskIds.length
+              allErrors = appendUniqueMessages(allErrors, [String(data.error || '地图批量审核失败')])
+            } else {
+              roundProcessed += Number(data.total || mapTaskIds.length)
+              roundApproved += Number(data.approved || 0)
+              roundFailed += Number(data.failed || 0)
+              roundSkipped += Number(data.skipped || 0)
+              allErrors = appendUniqueMessages(allErrors, collectErrorMessages((data as { results?: unknown })?.results))
+            }
+          } catch (error) {
+            roundProcessed += mapTaskIds.length
+            roundFailed += mapTaskIds.length
+            allErrors = appendUniqueMessages(allErrors, [normalizeFetchErrorMessage(error, '地图批量审核失败')])
+          }
+        }
+
+        if (nonMapTaskIds.length > 0) {
+          for (let i = 0; i < nonMapTaskIds.length; i += APPROVE_ALL_NON_MAP_CONCURRENCY) {
+            const chunk = nonMapTaskIds.slice(i, i + APPROVE_ALL_NON_MAP_CONCURRENCY)
+            const results = await Promise.all(chunk.map((taskId) => approveSingleTask(taskId)))
+            roundProcessed += results.length
+            for (const item of results) {
+              if (item.status === 'approved') {
+                roundApproved += 1
+              } else {
+                roundFailed += 1
+                if (item.error) {
+                  allErrors = appendUniqueMessages(allErrors, [item.error])
+                }
+              }
+            }
+          }
+        }
+
+        if (roundProcessed === 0) {
+          stoppedByNoProgress = true
+          allErrors = appendUniqueMessages(allErrors, ['本轮未处理任何待审核任务，为避免死循环已停止'])
+          break
+        }
+
+        totalProcessed += roundProcessed
+        totalApproved += roundApproved
+        totalFailed += roundFailed
+        totalSkipped += roundSkipped
+
+        const readyCount = await loadReadyCountAll()
+        remainingReady = readyCount
+        if (readyCount !== null) {
+          const candidate = totalProcessed + readyCount
+          estimatedTotal = estimatedTotal === null ? candidate : Math.max(estimatedTotal, candidate)
+        } else if (estimatedTotal === null || estimatedTotal < totalProcessed) {
+          estimatedTotal = totalProcessed
+        }
+
+        const totalSteps = Math.max(1, estimatedTotal ?? totalProcessed)
+        const currentStep =
+          remainingReady !== null
+            ? Math.max(0, Math.min(totalSteps, totalSteps - remainingReady))
+            : Math.max(0, Math.min(totalSteps, totalProcessed))
+
+        patchMapOpsProgress({
+          currentStep,
+          totalSteps,
+          processed: totalProcessed,
+          success: totalApproved,
+          failed: totalFailed,
+          reclaimed: 0,
+          skipped: totalSkipped,
+          errors: allErrors,
+          detail: `第 ${round} 轮：处理 ${roundProcessed}（通过 ${roundApproved}，失败 ${roundFailed}，跳过 ${roundSkipped}）${remainingReady !== null ? `，剩余待审核 ${remainingReady}` : ''}`,
+        })
+
+        if (remainingReady === 0) break
+      }
+
+      const finished = remainingReady === 0
+      const reasonText = allErrors.length > 0 ? `；原因：${allErrors.join(' ｜ ')}` : ''
+      const summary = `共 ${rounds} 轮，处理 ${totalProcessed}，通过 ${totalApproved}，失败 ${totalFailed}，跳过 ${totalSkipped}`
+      const stopText = stoppedByNoProgress ? '本轮无进展已停止' : `剩余待审核 ${remainingReady ?? '-'}`
+      const message = finished ? `一键审核完成：${summary}${reasonText}` : `一键审核暂停：${summary}，${stopText}${reasonText}`
+      setMapOpsMessage(message)
+      patchMapOpsProgress({
+        running: false,
+        currentStep: Math.max(1, Math.min(Math.max(1, estimatedTotal ?? totalProcessed), totalProcessed)),
+        totalSteps: Math.max(1, estimatedTotal ?? totalProcessed),
+        processed: totalProcessed,
+        success: totalApproved,
+        failed: totalFailed,
+        reclaimed: 0,
+        skipped: totalSkipped,
+        errors: allErrors,
+        detail: message,
+      })
+      if (finished) {
+        toast.success(`一键审核完成：通过 ${totalApproved}`)
+      } else {
+        toast.info('一键审核已暂停，请查看失败原因')
+      }
+      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    } catch (error) {
+      const msg = normalizeFetchErrorMessage(error, '一键审核失败')
+      setMapOpsMessage(msg)
+      patchMapOpsProgress({
+        running: false,
+        failed: 1,
+        errors: [msg],
+        detail: msg,
+      })
+      toast.error(msg)
+    } finally {
+      setMapOpsLoading(false)
+      setApproveAllReadyRunning(false)
+    }
+  }
+
   async function approveMapSampleBatch() {
     setSampleApproving(true)
     try {
@@ -2101,6 +2318,7 @@ export default function TranslationsUI({
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
   const mapOpsProgressPercent = calcProgressPercent(mapOpsProgress)
   const oneKeyProgressPercent = calcOneKeyProgressPercent(mapOpsProgress)
+  const mapControlsBusy = mapOpsLoading || sampleApproving || approveAllReadyRunning
 
   useEffect(() => {
     if (view !== 'tasks') return
@@ -2145,7 +2363,7 @@ export default function TranslationsUI({
           <div>
             <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
             <div className="mt-1 text-xs text-gray-500">
-              回填历史任务、增量补队、一键自动推进/手动推进队列与抽检发布（en + ja，不依赖 cron）。
+              回填历史任务、增量补队、一键自动推进/手动推进队列，以及一键审核全部待审核（en + ja，不依赖 cron）。
             </div>
           </div>
           <Button type="button" variant="ghost" onClick={() => setShowMapOpsPanel((prev) => !prev)}>
@@ -2159,7 +2377,7 @@ export default function TranslationsUI({
                 type="button"
                 variant="ghost"
                 onClick={() => void handleMapBackfill('anitabi_bangumi')}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 作品回填（1000）
               </Button>
@@ -2167,7 +2385,7 @@ export default function TranslationsUI({
                 type="button"
                 variant="ghost"
                 onClick={() => void handleMapBackfill('anitabi_point')}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 点位回填（1000）
               </Button>
@@ -2175,14 +2393,14 @@ export default function TranslationsUI({
                 type="button"
                 variant="ghost"
                 onClick={() => void handleMapIncrementalRefill()}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 增量补队
               </Button>
               <Button
                 type="button"
                 onClick={() => void handleOneKeyAdvanceMapQueue()}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 一键自动推进
               </Button>
@@ -2190,7 +2408,7 @@ export default function TranslationsUI({
                 type="button"
                 variant="ghost"
                 onClick={() => void executeMapPendingBatch()}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 执行地图待翻译（单轮）
               </Button>
@@ -2198,21 +2416,28 @@ export default function TranslationsUI({
                 type="button"
                 variant="ghost"
                 onClick={() => void executeMapFailedBatch()}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 重试失败（单轮）
               </Button>
               <Button
                 type="button"
                 onClick={() => void handleManualAdvanceMapQueue(10)}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 手动推进队列（10轮）
               </Button>
               <Button
                 type="button"
+                onClick={() => void approveAllReadyTasks()}
+                disabled={mapControlsBusy}
+              >
+                {approveAllReadyRunning ? '一键审核中...' : '一键审核全部待审核'}
+              </Button>
+              <Button
+                type="button"
                 onClick={() => void approveMapSampleBatch()}
-                disabled={mapOpsLoading || sampleApproving}
+                disabled={mapControlsBusy}
               >
                 {sampleApproving ? '抽检发布中...' : '抽检并批量发布'}
               </Button>
