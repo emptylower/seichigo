@@ -189,8 +189,8 @@
   },
   "pages": {
     "home": {
-      "heroTitle": "Anime Pilgrimage,",
-      "heroTitleLine2": "starts here.",
+      "heroTitle": "Set off,",
+      "heroTitleLine2": "to witness that scenery.",
       "heroSubtitle": "With readable long-form articles, exquisite layouts, and practical location lists,",
       "heroSubtitleLine2": "we help you plan every anime pilgrimage from screen to reality.",
       "browseAnimeButton": "Browse Anime",
@@ -213,7 +213,7 @@
       "mapHubQuickResourcesTitle": "Grab Navigation-Ready Assets",
       "mapHubQuickResourcesDesc": "Copy route and spot links so you can open navigation instantly on departure day.",
       "mapHubQuickResourcesCta": "Open Resources →",
-      "starterTitle": "Anime Pilgrimage Starter Guide",
+      "starterTitle": "Start Here",
       "starterStep1Title": "Pick one title you want to revisit",
       "starterStep1Desc": "Start from the anime index and check published routes and related posts for that work.",
       "starterStep2Title": "Narrow down by destination city",

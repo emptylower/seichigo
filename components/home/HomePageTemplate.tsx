@@ -63,7 +63,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
           <div className="absolute inset-0 bg-gradient-to-br from-brand-50/50 to-purple-50/30 -z-10" />
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center max-w-7xl mx-auto">
             <div className="space-y-8 text-center lg:text-left">
-              <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-gray-900 sm:text-4xl lg:text-6xl">
+              <h1 className="mx-auto max-w-[15ch] text-balance text-3xl font-extrabold leading-tight tracking-tight text-gray-900 sm:text-4xl lg:mx-0 lg:text-6xl">
                 {t('pages.home.heroTitle', locale)}
                 <br />
                 {t('pages.home.heroTitleLine2', locale)}
