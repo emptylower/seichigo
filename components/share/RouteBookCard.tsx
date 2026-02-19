@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Download, Share2, X, Copy, Check, Loader2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { buildGoogleStaticMapUrl } from '@/lib/route/google'
+import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface RouteBookCardProps {
   animeTitle: string
@@ -62,8 +63,6 @@ export default function RouteBookCard({
         scale: 2 
       })
 
-      if (!mapUrl) throw new Error('Failed to build map URL')
-
       const loadImage = (src: string, crossOrigin?: string) => new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image()
         if (crossOrigin) img.crossOrigin = crossOrigin
@@ -79,10 +78,12 @@ export default function RouteBookCard({
       })
 
       const [mapImage, qrImage, logoImage, ...thumbImages] = await Promise.all([
-        loadImage(mapUrl, 'anonymous'),
+        mapUrl ? loadImage(mapUrl, 'anonymous').catch(() => null) : Promise.resolve(null),
         loadImage(qrDataUrl),
         loadImage('/brand/web-logo.png').catch(() => null),
-        ...featuredImages.slice(0, 3).map(src => loadImage(src, 'anonymous').catch(() => null))
+        ...featuredImages.slice(0, 3).map((src, idx) =>
+          loadImage(toCanvasSafeImageUrl(src, `routebook-thumb-${idx + 1}`), 'anonymous').catch(() => null)
+        )
       ])
 
       canvas.width = CARD_WIDTH
@@ -91,7 +92,21 @@ export default function RouteBookCard({
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT)
 
-      ctx.drawImage(mapImage, 0, 0, CARD_WIDTH, MAP_HEIGHT)
+      if (mapImage) {
+        ctx.drawImage(mapImage, 0, 0, CARD_WIDTH, MAP_HEIGHT)
+      } else {
+        const mapFallback = ctx.createLinearGradient(0, 0, CARD_WIDTH, MAP_HEIGHT)
+        mapFallback.addColorStop(0, '#fdf2f8')
+        mapFallback.addColorStop(1, '#fee2e2')
+        ctx.fillStyle = mapFallback
+        ctx.fillRect(0, 0, CARD_WIDTH, MAP_HEIGHT)
+        ctx.fillStyle = '#be185d'
+        ctx.font = 'bold 42px sans-serif'
+        ctx.fillText('本次巡礼路线图', PADDING, 120)
+        ctx.fillStyle = '#9f1239'
+        ctx.font = '32px sans-serif'
+        ctx.fillText('地图预览暂不可用，已展示巡礼战报摘要', PADDING, 180)
+      }
 
       const gradient = ctx.createLinearGradient(0, MAP_HEIGHT - 200, 0, MAP_HEIGHT)
       gradient.addColorStop(0, 'rgba(255,255,255,0)')

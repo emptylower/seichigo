@@ -55,6 +55,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
 
       try {
         const created = await deps.repo.addPoint(routeBookId, session.user.id, parsed.data.pointId, zone)
+        await deps.pointPoolRepo.delete(session.user.id, parsed.data.pointId)
         return NextResponse.json({ ok: true, item: created })
       } catch (err) {
         if (err instanceof SortedZoneLimitError) {
@@ -90,6 +91,12 @@ export function createHandlers(deps: RouteBookApiDeps) {
         if (!ok) {
           return NextResponse.json({ error: '点位不存在' }, { status: 404 })
         }
+
+        const remainsInAnyRouteBook = await deps.repo.isPointInAnyRouteBook(session.user.id, parsed.data.pointId)
+        if (!remainsInAnyRouteBook) {
+          await deps.pointPoolRepo.upsert(session.user.id, parsed.data.pointId)
+        }
+
         return NextResponse.json({ ok: true })
       } catch (err) {
         const msg = getErrorMessage(err)

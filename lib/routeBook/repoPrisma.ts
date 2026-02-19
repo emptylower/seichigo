@@ -4,7 +4,9 @@ import {
   SORTED_ZONE_LIMIT,
   SortedZoneLimitError,
   type RouteBook,
+  type RouteBookPointRef,
   type RouteBookPoint,
+  type RouteBookPointListFilters,
   type RouteBookRepo,
   type RouteBookStatus,
   type RouteBookUpdateInput,
@@ -298,5 +300,58 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
       const reloaded = await tx.routeBookPoint.findUnique({ where: { id: updated.id } })
       return reloaded ? toRouteBookPoint(reloaded) : toRouteBookPoint(updated)
     })
+  }
+
+  async isPointInAnyRouteBook(userId: string, pointId: string): Promise<boolean> {
+    const found = await prisma.routeBookPoint.findFirst({
+      where: {
+        pointId,
+        routeBook: {
+          userId,
+        },
+      },
+      select: { id: true },
+    })
+    return Boolean(found)
+  }
+
+  async listPointRefsByUser(userId: string, filters?: RouteBookPointListFilters): Promise<RouteBookPointRef[]> {
+    const rows = await prisma.routeBookPoint.findMany({
+      where: {
+        routeBook: {
+          userId,
+        },
+        ...(filters?.bangumiId !== undefined
+          ? {
+              point: {
+                bangumiId: filters.bangumiId,
+              },
+            }
+          : {}),
+      },
+      select: {
+        pointId: true,
+        routeBook: {
+          select: {
+            updatedAt: true,
+          },
+        },
+        createdAt: true,
+      },
+      orderBy: [{ routeBook: { updatedAt: 'desc' } }, { createdAt: 'desc' }],
+    })
+
+    const merged = new Map<string, Date>()
+    for (const row of rows) {
+      const seen = merged.get(row.pointId)
+      const updatedAt = row.routeBook.updatedAt ?? row.createdAt
+      if (!seen || seen.getTime() < updatedAt.getTime()) {
+        merged.set(row.pointId, updatedAt)
+      }
+    }
+
+    return Array.from(merged.entries())
+      .map(([pointId, updatedAt]) => ({ pointId, updatedAt }))
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
   }
 }

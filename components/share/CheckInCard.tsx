@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Download, Share2, X, Copy, Check, Loader2 } from 'lucide-react'
+import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface CheckInCardProps {
   animeTitle: string
@@ -50,8 +51,9 @@ export default function CheckInCard({
         img.src = src
       })
 
+      const safeImageUrl = imageUrl ? toCanvasSafeImageUrl(imageUrl, `${pointName}-checkin-card`) : ''
       const [mainImage, logoImage] = await Promise.all([
-        loadImage(imageUrl, 'anonymous'),
+        safeImageUrl ? loadImage(safeImageUrl, 'anonymous').catch(() => null) : Promise.resolve(null),
         loadImage('/brand/web-logo.png').catch(() => null)
       ])
 
@@ -80,7 +82,18 @@ export default function CheckInCard({
       }
 
       const mainImageHeight = CARD_HEIGHT - FOOTER_HEIGHT
-      drawImageCover(ctx, mainImage, 0, 0, CARD_WIDTH, mainImageHeight)
+      if (mainImage) {
+        drawImageCover(ctx, mainImage, 0, 0, CARD_WIDTH, mainImageHeight)
+      } else {
+        const fallbackGradient = ctx.createLinearGradient(0, 0, CARD_WIDTH, mainImageHeight)
+        fallbackGradient.addColorStop(0, '#fce7f3')
+        fallbackGradient.addColorStop(1, '#fdf2f8')
+        ctx.fillStyle = fallbackGradient
+        ctx.fillRect(0, 0, CARD_WIDTH, mainImageHeight)
+        ctx.fillStyle = '#be185d'
+        ctx.font = 'bold 52px sans-serif'
+        ctx.fillText('SeichiGo 打卡', PADDING, 120)
+      }
 
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, mainImageHeight, CARD_WIDTH, FOOTER_HEIGHT)

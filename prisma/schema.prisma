@@ -41,6 +41,7 @@ model User {
   anitabiFavorites     AnitabiFavorite[]
   anitabiViewHistory   AnitabiViewHistory[]
   userPointStates      UserPointState[]
+  userPointPools       UserPointPool[]
   routeBooks           RouteBook[]
   badges               UserBadge[]
 }
@@ -556,6 +557,7 @@ model AnitabiPoint {
   favorites   AnitabiFavorite[]
   viewHistory AnitabiViewHistory[]
   userPointStates UserPointState[]
+  userPointPools  UserPointPool[]
   routeBookPoints RouteBookPoint[]
 
   @@index([bangumiId, updatedAt])
@@ -657,6 +659,20 @@ model UserPointState {
   @@index([userId])
   @@index([pointId])
   @@index([state])
+}
+
+model UserPointPool {
+  id        String      @id @default(cuid())
+  userId    String
+  pointId   String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  point     AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pointId])
+  @@index([userId])
+  @@index([pointId])
 }
 
 model RouteBook {

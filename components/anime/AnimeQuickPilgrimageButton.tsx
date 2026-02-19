@@ -2,11 +2,8 @@
 
 import { useState } from 'react'
 import { Rocket, Loader2 } from 'lucide-react'
-import * as Dialog from '@radix-ui/react-dialog'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
-import CheckInCard from '@/components/share/CheckInCard'
-import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
-import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
+import type { AnitabiBangumiDTO } from '@/lib/anitabi/types'
 
 interface Props {
   bangumiId: number | null
@@ -17,10 +14,6 @@ export default function AnimeQuickPilgrimageButton({ bangumiId }: Props) {
   const [bangumi, setBangumi] = useState<AnitabiBangumiDTO | null>(null)
   const [userPointStates, setUserPointStates] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
-  
-  // Check-in card state
-  const [showCheckInCard, setShowCheckInCard] = useState(false)
-  const [selectedPoint, setSelectedPoint] = useState<AnitabiPointDTO | null>(null)
 
   if (!bangumiId) return null
 
@@ -58,14 +51,6 @@ export default function AnimeQuickPilgrimageButton({ bangumiId }: Props) {
     }
   }
 
-  const handleCheckIn = (pointId: string) => {
-    const point = bangumi?.points.find(p => p.id === pointId)
-    if (point) {
-      setSelectedPoint(point)
-      setShowCheckInCard(true)
-    }
-  }
-
   return (
     <>
       <button
@@ -86,28 +71,21 @@ export default function AnimeQuickPilgrimageButton({ bangumiId }: Props) {
           bangumi={bangumi}
           userPointStates={userPointStates}
           onClose={() => setIsOpen(false)}
-          onCheckIn={handleCheckIn}
+          onStatesUpdated={async () => {
+            const statesRes = await fetch('/api/me/point-states').then((r) => r.json()).catch(() => ({ items: [] }))
+            const stateItems = Array.isArray(statesRes?.items) ? statesRes.items : []
+            const statesMap: Record<string, string> = {}
+            for (const row of stateItems) {
+              if (!row || typeof row !== 'object') continue
+              const pointId = typeof (row as { pointId?: unknown }).pointId === 'string' ? (row as { pointId: string }).pointId : ''
+              const state = typeof (row as { state?: unknown }).state === 'string' ? (row as { state: string }).state : ''
+              if (!pointId || !state) continue
+              statesMap[pointId] = state
+            }
+            setUserPointStates(statesMap)
+          }}
         />
       )}
-
-      {/* Check-in Modal */}
-      <Dialog.Root open={showCheckInCard} onOpenChange={setShowCheckInCard}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[201] w-full max-w-md -translate-x-1/2 -translate-y-1/2 p-4 animate-in zoom-in-95 fade-in duration-300 focus:outline-none">
-            {selectedPoint && (
-              <CheckInCard
-                animeTitle={bangumi?.card.title || ''}
-                pointName={selectedPoint.nameZh || selectedPoint.name}
-                cityName={bangumi?.card.city || ''}
-                imageUrl={resolveAnitabiAssetUrl(selectedPoint.image) || ''}
-                shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/anime/${bangumiId}?p=${selectedPoint.id}` : ''}
-                onClose={() => setShowCheckInCard(false)}
-              />
-            )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
     </>
   )
 }

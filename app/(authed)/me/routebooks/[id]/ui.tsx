@@ -30,6 +30,13 @@ type PointRecord = {
   createdAt: string
 }
 
+type PointPoolItem = {
+  id: string
+  pointId: string
+  createdAt: string
+  updatedAt: string
+}
+
 type RouteBookDetail = {
   id: string
   title: string
@@ -151,6 +158,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [titleDraft, setTitleDraft] = useState('')
   const [checkedInPointIds, setCheckedInPointIds] = useState<Set<string>>(new Set())
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
+  const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -161,9 +169,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     setLoading(true)
     setError(null)
     try {
-      const [rbRes, psRes] = await Promise.all([
+      const [rbRes, psRes, poolRes] = await Promise.all([
         fetch(`/api/me/routebooks/${id}`),
         fetch('/api/me/point-states?state=checked_in'),
+        fetch('/api/me/point-pool'),
       ])
       const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
       if (!rbRes.ok || 'error' in rbData) {
@@ -183,6 +192,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       const psData = await psRes.json().catch(() => ({}))
       if (psData.ok && Array.isArray(psData.items)) {
         setCheckedInPointIds(new Set(psData.items.map((s: { pointId: string }) => s.pointId)))
+      }
+
+      const poolData = await poolRes.json().catch(() => ({}))
+      if (poolData.ok && Array.isArray(poolData.items)) {
+        setPointPoolItems(
+          poolData.items.filter((item: unknown): item is PointPoolItem => {
+            if (!item || typeof item !== 'object') return false
+            const row = item as Record<string, unknown>
+            return typeof row.id === 'string' && typeof row.pointId === 'string'
+          })
+        )
+      } else {
+        setPointPoolItems([])
       }
     } catch {
       setError('加载失败')
@@ -271,6 +293,16 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
 
     void load()
+  }
+
+  async function handleAddFromPointPool(pointId: string) {
+    const res = await fetch(`/api/me/routebooks/${id}/points`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pointId, zone: 'unsorted' }),
+    })
+    if (!res.ok) return
+    await load()
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -578,6 +610,40 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
             收集篮为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到路书。
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-lg font-semibold">
+          点位池 ({pointPoolItems.length})
+        </h2>
+        {pointPoolItems.length > 0 ? (
+          <div className="space-y-2">
+            {pointPoolItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-slate-800">{item.pointId}</div>
+                  <div className="text-xs text-slate-500">想去点位</div>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-md border border-brand-300 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
+                  onClick={() => {
+                    void handleAddFromPointPool(item.pointId)
+                  }}
+                >
+                  加入收集篮
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+            点位池为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>点击“想去”来收集点位。
           </div>
         )}
       </div>

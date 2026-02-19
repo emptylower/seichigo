@@ -22,8 +22,6 @@ type PointState = {
 }
 
 type MeState = {
-  favorites: Array<{ targetKey: string }>
-  history: Array<{ targetKey: string }>
   pointStates: PointState[]
 }
 
@@ -79,7 +77,7 @@ const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
 const USER_LOCATION_STORAGE_KEY = 'anitabi-map-user-location'
-const GUEST_FAVORITES_STORAGE_KEY = 'anitabi-map-guest-favorites'
+const POINT_POOL_HINT_SEEN_STORAGE_KEY = 'anitabi-map-point-pool-hint-seen'
 
 type CameraPadding = {
   top: number
@@ -155,26 +153,19 @@ function writeStoredUserLocation(location: UserLocation): void {
   }
 }
 
-function readStoredGuestFavorites(): string[] {
-  if (typeof window === 'undefined') return []
+function hasSeenPointPoolHint(): boolean {
+  if (typeof window === 'undefined') return true
   try {
-    const raw = window.localStorage.getItem(GUEST_FAVORITES_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((item) => String(item || '').trim())
-      .filter((item) => item.length > 0)
-      .slice(0, 500)
+    return window.localStorage.getItem(POINT_POOL_HINT_SEEN_STORAGE_KEY) === '1'
   } catch {
-    return []
+    return true
   }
 }
 
-function writeStoredGuestFavorites(keys: string[]): void {
+function markPointPoolHintSeen(): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(GUEST_FAVORITES_STORAGE_KEY, JSON.stringify(keys))
+    window.localStorage.setItem(POINT_POOL_HINT_SEEN_STORAGE_KEY, '1')
   } catch {
     // noop
   }
@@ -278,15 +269,21 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
+    signInToPointPool: '登录后可将点位加入想去清单',
     signInToRouteBook: '登录后可使用路书功能',
     quickStart: '开始',
     quickPilgrimage: '快速巡礼',
-    quickPilgrimageHint: '按距离自动规划路线，导航返回后可直接打卡',
+    quickPilgrimageHint: '站内逐点导航推进，可选打开 Google Maps',
     quickPilgrimageProgressPrefix: '已打卡',
     routeBooks: '我的路书',
     addToRouteBook: '加入路书',
     addToRouteBookSuccess: '已加入路书',
     addToRouteBookFailed: '加入路书失败，请稍后重试',
+    addToPointPool: '想去',
+    addToPointPoolSuccess: '已加入想去清单',
+    addToPointPoolFailed: '加入想去清单失败，请稍后重试',
+    pointPoolGuide: '已加入点位池：前往「我的路书」将点位加入你的路线草稿。',
+    stateAutoHint: '状态由行为自动更新：想去 -> 加入路书后计划中 -> 打卡后已打卡',
     routeBookSelectTitle: '加入路书',
     routeBookLoading: '正在加载路书…',
     routeBookEmpty: '还没有路书，先创建一个吧',
@@ -359,15 +356,21 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
+    signInToPointPool: 'Sign in to add this point to your want-to-go pool',
     signInToRouteBook: 'Sign in to use routebooks',
     quickStart: 'Start',
     quickPilgrimage: 'Quick Pilgrimage',
-    quickPilgrimageHint: 'Distance-sorted route with quick navigation and check-ins',
+    quickPilgrimageHint: 'In-page step navigation with optional Google Maps handoff',
     quickPilgrimageProgressPrefix: 'Checked in',
     routeBooks: 'My Routebooks',
     addToRouteBook: 'Add to Routebook',
     addToRouteBookSuccess: 'Added to routebook',
     addToRouteBookFailed: 'Failed to add to routebook',
+    addToPointPool: 'Want to go',
+    addToPointPoolSuccess: 'Added to want-to-go pool',
+    addToPointPoolFailed: 'Failed to add point',
+    pointPoolGuide: 'Added to point pool. Open My Routebooks and move this point into your plan.',
+    stateAutoHint: 'State is automatic: Want to go -> Planned after adding to routebook -> Checked in after check-in.',
     routeBookSelectTitle: 'Add to Routebook',
     routeBookLoading: 'Loading routebooks…',
     routeBookEmpty: 'No routebooks yet. Create one first.',
@@ -440,15 +443,21 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
+    signInToPointPool: 'ログインして行きたいリストに追加',
     signInToRouteBook: '路書機能を使うにはログインしてください',
     quickStart: '開始',
     quickPilgrimage: 'クイック巡礼',
-    quickPilgrimageHint: '距離順にルートを並べ替え、ナビから戻ってすぐ打刻できます',
+    quickPilgrimageHint: 'ページ内で順番に進行し、必要時のみ Google Maps を開けます',
     quickPilgrimageProgressPrefix: '巡礼済み',
     routeBooks: 'マイルートブック',
     addToRouteBook: '路書に追加',
     addToRouteBookSuccess: '路書に追加しました',
     addToRouteBookFailed: '路書への追加に失敗しました',
+    addToPointPool: '行きたい',
+    addToPointPoolSuccess: '行きたいリストに追加しました',
+    addToPointPoolFailed: '追加に失敗しました',
+    pointPoolGuide: 'スポットプールに追加しました。マイルートブックからルート草稿へ追加できます。',
+    stateAutoHint: '状態は自動更新です：行きたい -> 路書追加で計画中 -> 打刻で巡礼済み',
     routeBookSelectTitle: '路書に追加',
     routeBookLoading: '路書を読み込み中…',
     routeBookEmpty: '路書がありません。先に作成してください。',
@@ -1205,8 +1214,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [searchResult, setSearchResult] = useState<SearchResult>({ bangumi: [], points: [], cities: [] })
   const [searchOpen, setSearchOpen] = useState(false)
   const [meState, setMeState] = useState<MeState | null>(null)
-  const [meLoaded, setMeLoaded] = useState(false)
-  const [guestFavorites, setGuestFavorites] = useState<string[]>(() => readStoredGuestFavorites())
   const [locating, setLocating] = useState(false)
   const [locateHint, setLocateHint] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<UserLocation | null>(() => readStoredUserLocation())
@@ -1236,6 +1243,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (!detail || !selectedPointId) return null
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
+
+  const selectedPointState = useMemo(() => {
+    if (!selectedPoint || !meState) return null
+    return meState.pointStates.find((ps) => ps.pointId === selectedPoint.id)?.state || null
+  }, [meState, selectedPoint])
 
   const quickPilgrimageStates = useMemo(() => {
     const out: Record<string, string> = {}
@@ -1335,18 +1347,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       checkedInThumbnails: thumbnails
     }
   }, [detail, meState])
-
-  const favoriteSet = useMemo(() => {
-    const set = new Set((meState?.favorites || []).map((row) => row.targetKey))
-    for (const key of guestFavorites) {
-      set.add(key)
-    }
-    return set
-  }, [guestFavorites, meState])
-
-  useEffect(() => {
-    writeStoredGuestFavorites(guestFavorites)
-  }, [guestFavorites])
 
   const clearPanoramaProgressTimers = useCallback(() => {
     if (panoramaProgressTimerRef.current != null) {
@@ -1734,35 +1734,22 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const loadMe = useCallback(async () => {
     try {
-      const [res, pointRes] = await Promise.all([
-        fetch(`/api/anitabi/me/state?locale=${encodeURIComponent(locale)}`, { method: 'GET' }),
-        fetch('/api/me/point-states', { method: 'GET' }),
-      ])
-
-      if (res.status === 401 || pointRes.status === 401) {
+      const pointRes = await fetch('/api/me/point-states', { method: 'GET' })
+      if (pointRes.status === 401) {
         setMeState(null)
-        setMeLoaded(true)
         return
       }
 
-      if (!res.ok && !pointRes.ok) return
-
-      const [json, pointJson] = await Promise.all([
-        res.ok ? res.json() : { favorites: [], history: [] },
-        pointRes.ok ? pointRes.json() : { items: [] },
-      ])
+      if (!pointRes.ok) return
+      const pointJson = await pointRes.json().catch(() => ({ items: [] }))
 
       setMeState({
-        favorites: Array.isArray(json.favorites) ? json.favorites : [],
-        history: Array.isArray(json.history) ? json.history : [],
         pointStates: Array.isArray(pointJson.items) ? pointJson.items : [],
       })
     } catch {
       // noop
-    } finally {
-      setMeLoaded(true)
     }
-  }, [locale])
+  }, [])
 
   const loadBootstrap = useCallback(async () => {
     const requestToken = cardFeedTokenRef.current + 1
@@ -2514,77 +2501,45 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     window.prompt(label.shareManualCopy, href)
   }, [isDesktop, label.shareCopied, label.shareFailed, label.shareManualCopy, label.title])
 
-  const setPointState = useCallback(
-    async (pointId: string, state: 'want_to_go' | 'planned' | 'checked_in') => {
-      if (!meLoaded || !meState) {
-        if (window.confirm(label.signInToFavorite)) {
-          window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`
-        }
-        return
-      }
-
-      const current = meState.pointStates.find((ps) => ps.pointId === pointId)
-      const isRemoving = current?.state === state
-
+  const addPointToPointPool = useCallback(
+    async (pointId: string) => {
       try {
-        if (isRemoving) {
-          const res = await fetch('/api/me/point-states', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pointId }),
-          })
-          if (!res.ok) throw new Error('delete point state failed')
-        } else {
-          const res = await fetch('/api/me/point-states', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pointId, state }),
-          })
-          if (!res.ok) throw new Error('put point state failed')
-        }
-        await loadMe()
-      } catch {
-        setLocateHint(label.favoriteFailed)
-      }
-    },
-    [label.favoriteFailed, label.signInToFavorite, loadMe, meLoaded, meState]
-  )
-
-  const toggleFavorite = useCallback(
-    async (payload: { targetType: 'bangumi' | 'point'; bangumiId?: number; pointId?: string }) => {
-      const targetKey = payload.targetType === 'bangumi' ? `bangumi:${payload.bangumiId}` : `point:${payload.pointId}`
-
-      if (!meLoaded || !meState) {
-        setGuestFavorites((prev) => {
-          const next = new Set(prev)
-          if (next.has(targetKey)) {
-            next.delete(targetKey)
-            setLocateHint(label.favoriteRemoved)
-          } else {
-            next.add(targetKey)
-            setLocateHint(label.favoriteAdded)
-          }
-          return Array.from(next)
-        })
-        return
-      }
-
-      const remove = favoriteSet.has(targetKey)
-
-      try {
-        const res = await fetch('/api/anitabi/me/favorites', {
-          method: 'POST',
+        const res = await fetch('/api/me/point-pool', {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, remove }),
+          body: JSON.stringify({ pointId }),
         })
-        if (!res.ok) throw new Error('favorite request failed')
+        const json = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          if (window.confirm(label.signInToPointPool)) {
+            window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`
+          }
+          return
+        }
+        if (!res.ok) {
+          setLocateHint(getApiErrorMessage(json) || label.addToPointPoolFailed)
+          return
+        }
+
         await loadMe()
-        setLocateHint(remove ? label.favoriteRemoved : label.favoriteAdded)
+        if (!hasSeenPointPoolHint()) {
+          markPointPoolHintSeen()
+          setLocateHint(label.pointPoolGuide)
+          return
+        }
+
+        setLocateHint(label.addToPointPoolSuccess)
       } catch {
-        setLocateHint(label.favoriteFailed)
+        setLocateHint(label.addToPointPoolFailed)
       }
     },
-    [favoriteSet, label.favoriteAdded, label.favoriteFailed, label.favoriteRemoved, loadMe, meLoaded, meState]
+    [
+      label.addToPointPoolFailed,
+      label.addToPointPoolSuccess,
+      label.pointPoolGuide,
+      label.signInToPointPool,
+      loadMe,
+    ]
   )
 
   const redirectToSignInForRouteBook = useCallback(() => {
@@ -2741,27 +2696,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <div className="text-xs text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
-            onClick={() => setShowQuickPilgrimage(true)}
-          >
-            {label.quickPilgrimage}
-          </button>
           <a
             href="/me/routebooks"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100 no-underline"
           >
             {label.routeBooks}
           </a>
-          <button
-            type="button"
-            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-            onClick={() => toggleFavorite({ targetType: 'bangumi', bangumiId: detail.card.id }).catch(() => null)}
-            title={label.favorites}
-          >
-            {favoriteSet.has(`bangumi:${detail.card.id}`) ? '★' : '☆'}
-          </button>
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
@@ -2811,52 +2751,30 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'want_to_go')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'want_to_go')
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-              </svg>
-              {label.wantToGo}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'planned')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'planned')
-                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" />
-              </svg>
-              {label.planned}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'checked_in')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in')
-                  ? 'bg-white text-green-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              {label.checkedIn}
-            </button>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
+            <div className="mt-2 flex items-center gap-1.5">
+              {(['want_to_go', 'planned', 'checked_in'] as const).map((state) => (
+                <span
+                  key={state}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    selectedPointState === state
+                      ? state === 'checked_in'
+                        ? 'bg-green-500 text-white'
+                        : state === 'planned'
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-blue-500 text-white'
+                      : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {state === 'checked_in' ? label.checkedIn : state === 'planned' ? label.planned : label.wantToGo}
+                </span>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
                 {label.openInGoogle}
@@ -2873,6 +2791,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
             <button
               type="button"
+              className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+              onClick={() => {
+                addPointToPointPool(selectedPoint.id).catch(() => null)
+              }}
+            >
+              {label.addToPointPool}
+            </button>
+            <button
+              type="button"
               className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
               onClick={openRouteBookPicker}
             >
@@ -2880,10 +2807,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
             <button
               type="button"
-              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-              onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
+              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600"
+              onClick={() => setShowQuickPilgrimage(true)}
             >
-              {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
+              {label.quickPilgrimage}
             </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
@@ -3227,52 +3154,30 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'want_to_go')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'want_to_go')
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-              </svg>
-              {label.wantToGo}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'planned')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'planned')
-                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" />
-              </svg>
-              {label.planned}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPointState(selectedPoint.id, 'checked_in')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
-                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in')
-                  ? 'bg-white text-green-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
-              }`}
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              {label.checkedIn}
-            </button>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
+            <div className="mt-2 flex items-center gap-1.5">
+              {(['want_to_go', 'planned', 'checked_in'] as const).map((state) => (
+                <span
+                  key={state}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    selectedPointState === state
+                      ? state === 'checked_in'
+                        ? 'bg-green-500 text-white'
+                        : state === 'planned'
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-blue-500 text-white'
+                      : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {state === 'checked_in' ? label.checkedIn : state === 'planned' ? label.planned : label.wantToGo}
+                </span>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
                 {label.openInGoogle}
@@ -3289,6 +3194,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
             <button
               type="button"
+              className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+              onClick={() => {
+                addPointToPointPool(selectedPoint.id).catch(() => null)
+              }}
+            >
+              {label.addToPointPool}
+            </button>
+            <button
+              type="button"
               className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
               onClick={openRouteBookPicker}
             >
@@ -3296,10 +3210,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
             <button
               type="button"
-              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-              onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
+              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600"
+              onClick={() => setShowQuickPilgrimage(true)}
             >
-              {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
+              {label.quickPilgrimage}
             </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
@@ -3500,9 +3414,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           bangumi={detail}
           userPointStates={quickPilgrimageStates}
           onClose={() => setShowQuickPilgrimage(false)}
-          onCheckIn={(pointId) => {
-            setSelectedPointId(pointId)
-            setShowCheckInCard(true)
+          onStatesUpdated={() => {
+            loadMe().catch(() => null)
           }}
         />
       ) : null}
