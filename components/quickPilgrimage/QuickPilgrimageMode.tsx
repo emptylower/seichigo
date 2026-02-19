@@ -350,7 +350,11 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
         </button>
       </div>
 
-      <div className="relative flex-1 flex flex-col items-center justify-center p-6 pb-12">
+      <div
+        className={`relative flex-1 flex flex-col items-center p-6 pb-12 ${
+          step === 'cards' && currentNavigationStep === 'navigating' ? 'justify-start' : 'justify-center'
+        }`}
+      >
         {step === 'intro' && (
           <div className="flex flex-col items-center text-center max-w-sm animate-in zoom-in-95 fade-in duration-700">
             <div className="relative mb-8 group">
@@ -388,23 +392,120 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
           </div>
         )}
 
-        {step === 'cards' && currentPoint && (
-          <div key={currentPoint.id} className="flex flex-col items-center w-full max-w-md animate-in slide-in-from-right-8 fade-in duration-500">
-            <div className="w-full flex justify-between items-end mb-4 px-2">
+        {step === 'cards' && currentPoint && currentNavigationStep === 'navigating' && (
+          <div key={`${currentPoint.id}:navigating`} className="flex h-full w-full max-w-5xl flex-col animate-in fade-in duration-300">
+            <div className="mb-4 flex items-end justify-between px-1">
               <div className="space-y-1">
-                <span className="inline-block px-2.5 py-1 rounded-md bg-brand-500/10 text-brand-400 text-[10px] font-bold tracking-widest uppercase border border-brand-500/20">
+                <span className="inline-block rounded-md border border-brand-500/20 bg-brand-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-400">
                   {currentPoint.ep ? `EP. ${currentPoint.ep}` : 'POI'}
                 </span>
-                <h3 className="text-xl font-bold line-clamp-1">{currentPoint.nameZh || currentPoint.name}</h3>
+                <h3 className="line-clamp-1 text-xl font-bold">{currentPoint.nameZh || currentPoint.name}</h3>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Progress</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</div>
                 <div className="text-sm font-mono font-bold text-slate-300">{currentIndex + 1} / {points.length}</div>
               </div>
             </div>
 
-            <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/10 group">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            {navigationNotice ? (
+              <div className="mb-3 w-full rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+                {navigationNotice}
+              </div>
+            ) : null}
+
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
+              {currentEmbeddedNavigationVisible ? (
+                <iframe
+                  title="站内导航画面"
+                  src={currentEmbeddedNavigationUrl}
+                  className="h-full w-full border-0 bg-slate-900"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-300">
+                  已尝试跳转 Google Maps App。返回后可点击“导航完成”，也可点击“切换站内导航”继续在本页面导航。
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">站内导航</div>
+                <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-300">导航中</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div className="text-slate-400">方向</div>
+                  <div className="mt-1 font-semibold text-white">{currentDirection || '未知'}</div>
+                </div>
+                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div className="text-slate-400">距离</div>
+                  <div className="mt-1 font-semibold text-white">{formatDistanceMeters(currentDistance)}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">
+                导航中：可按方向与距离前进。完成后点击“导航完成”或“退出导航”。
+              </div>
+            </div>
+
+            <div className="mt-4 grid w-full grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  clearNavigationDetection()
+                  setNavigationNotice(null)
+                  setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
+                }}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95"
+              >
+                <CheckCircle2 size={18} />
+                导航完成
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearNavigationDetection()
+                  setNavigationNotice(null)
+                  setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
+                }}
+                className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95"
+              >
+                <X size={18} />
+                退出导航
+              </button>
+            </div>
+
+            {!currentEmbeddedNavigationVisible ? (
+              <button
+                type="button"
+                onClick={() => setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: true }))}
+                className="mt-3 inline-flex items-center justify-center gap-1.5 text-xs text-slate-300 hover:text-white"
+              >
+                <Navigation size={14} />
+                切换站内导航
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {step === 'cards' && currentPoint && currentNavigationStep !== 'navigating' && (
+          <div key={`${currentPoint.id}:normal`} className="flex w-full max-w-md flex-col items-center animate-in slide-in-from-right-8 fade-in duration-500">
+            <div className="mb-4 flex w-full items-end justify-between px-2">
+              <div className="space-y-1">
+                <span className="inline-block rounded-md border border-brand-500/20 bg-brand-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-400">
+                  {currentPoint.ep ? `EP. ${currentPoint.ep}` : 'POI'}
+                </span>
+                <h3 className="line-clamp-1 text-xl font-bold">{currentPoint.nameZh || currentPoint.name}</h3>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</div>
+                <div className="text-sm font-mono font-bold text-slate-300">{currentIndex + 1} / {points.length}</div>
+              </div>
+            </div>
+
+            <div className="group relative w-full aspect-video overflow-hidden rounded-3xl bg-slate-900 shadow-2xl ring-1 ring-white/10">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
               {currentPoint.image ? (
                 <img
                   src={resolveAnitabiAssetUrl(currentPoint.image) || ''}
@@ -412,7 +513,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600">
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-600">
                   <Film size={48} strokeWidth={1} />
                   <p className="text-xs font-medium uppercase tracking-widest">No Screenshot</p>
                 </div>
@@ -421,17 +522,15 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
 
             <div className="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
               <div className="flex items-center justify-between">
-                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">站内导航</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">站内导航</div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    currentNavigationStep === 'navigating'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : currentNavigationStep === 'done'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-slate-700/70 text-slate-300'
+                    currentNavigationStep === 'done'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'bg-slate-700/70 text-slate-300'
                   }`}
                 >
-                  {currentNavigationStep === 'navigating' ? '导航中' : currentNavigationStep === 'done' ? '已结束' : '未开始'}
+                  {currentNavigationStep === 'done' ? '已结束' : '未开始'}
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
@@ -444,45 +543,19 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   <div className="mt-1 font-semibold text-white">{formatDistanceMeters(currentDistance)}</div>
                 </div>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400 line-clamp-2">
+              <div className="mt-2 text-[11px] text-slate-400">
                 {currentNavigationStep === 'idle'
-                  ? '先点击“导航”进入站内导航。导航完成或退出导航后，才可打卡。'
-                  : currentNavigationStep === 'navigating'
-                    ? '导航中：可按方向与距离前进。完成后点击“导航完成”或“退出导航”。'
-                    : currentPoint.note || '你已结束导航，可以打卡并进入下一站，或重新导航。'}
+                  ? '先点击“导航”进入整页导航视图。导航完成或退出后，才可打卡。'
+                  : currentPoint.note || '你已结束导航，可以打卡并进入下一站，或重新导航。'}
               </div>
             </div>
-
-            {currentNavigationStep === 'navigating' ? (
-              <div className="mt-4 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60">
-                {currentEmbeddedNavigationVisible ? (
-                  <iframe
-                    title="站内导航画面"
-                    src={currentEmbeddedNavigationUrl}
-                    className="h-64 w-full border-0 bg-slate-900"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                ) : (
-                  <div className="px-4 py-4 text-xs text-slate-300">
-                    已尝试跳转 Google Maps App。返回后你可点击“导航完成”，或点击“切换站内导航”继续在当前页面导航。
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {navigationNotice ? (
-              <div className="mt-2 w-full rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
-                {navigationNotice}
-              </div>
-            ) : null}
 
             {currentNavigationStep === 'idle' ? (
               <div className="mt-6 grid w-full grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={handleStartNavigation}
-                  className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 font-bold text-white hover:bg-brand-600 active:scale-95"
                 >
                   <Navigation size={18} />
                   导航
@@ -490,53 +563,12 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                 <button
                   type="button"
                   onClick={handleSkip}
-                  className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95"
                 >
                   <SkipForward size={18} />
                   跳过
                 </button>
               </div>
-            ) : null}
-
-            {currentNavigationStep === 'navigating' ? (
-              <>
-                <div className="mt-6 grid w-full grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearNavigationDetection()
-                      setNavigationNotice(null)
-                      setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
-                    }}
-                    className="flex items-center justify-center gap-2 bg-emerald-500 text-white py-3.5 rounded-2xl font-bold hover:bg-emerald-600 active:scale-95"
-                  >
-                    <CheckCircle2 size={18} />
-                    导航完成
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearNavigationDetection()
-                      setNavigationNotice(null)
-                      setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
-                    }}
-                    className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
-                  >
-                    <X size={18} />
-                    退出导航
-                  </button>
-                </div>
-                {!currentEmbeddedNavigationVisible ? (
-                  <button
-                    type="button"
-                    onClick={() => setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: true }))}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
-                  >
-                    <Navigation size={14} />
-                    切换站内导航
-                  </button>
-                ) : null}
-              </>
             ) : null}
 
             {currentNavigationStep === 'done' ? (
@@ -545,7 +577,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   <button
                     type="button"
                     onClick={() => setCheckInTargetId(currentPoint.id)}
-                    className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 font-bold text-white hover:bg-brand-600 active:scale-95"
                   >
                     <CheckCircle2 size={18} />
                     打卡并下一步
@@ -553,7 +585,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   <button
                     type="button"
                     onClick={handleStartNavigation}
-                    className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95"
                   >
                     <RotateCcw size={18} />
                     重新导航
