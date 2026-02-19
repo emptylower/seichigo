@@ -7,6 +7,8 @@ import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
+import AnimeQuickPilgrimageButton from '@/components/anime/AnimeQuickPilgrimageButton'
+import { prisma } from '@/lib/db/prisma'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
@@ -121,6 +123,11 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
     return notFound()
   }
 
+  const bangumiMapping = await prisma.anitabiMapping.findFirst({
+    where: { animeId: canonicalId },
+    select: { bangumiId: true }
+  })
+
   const display = anime ?? { id: canonicalId, name: canonicalId, alias: [], summary: '', year: undefined, cover: undefined }
   const siteOrigin = getSiteOrigin()
   const canonicalUrl = `${siteOrigin}/anime/${encodeAnimeIdForPath(canonicalId)}`
@@ -225,6 +232,9 @@ export default async function AnimePage({ params }: { params: Promise<{ id: stri
                     {seoSpokePosts.length} 个地点详解
                   </span>
                 ) : null}
+                {bangumiMapping && (
+                  <AnimeQuickPilgrimageButton bangumiId={bangumiMapping.bangumiId} />
+                )}
               </div>
 
               {display.summary ? (

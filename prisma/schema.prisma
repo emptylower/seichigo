@@ -40,6 +40,9 @@ model User {
   translationHistories TranslationHistory[]
   anitabiFavorites     AnitabiFavorite[]
   anitabiViewHistory   AnitabiViewHistory[]
+  userPointStates      UserPointState[]
+  routeBooks           RouteBook[]
+  badges               UserBadge[]
 }
 
 model Account {
@@ -552,6 +555,8 @@ model AnitabiPoint {
   i18n        AnitabiPointI18n[]
   favorites   AnitabiFavorite[]
   viewHistory AnitabiViewHistory[]
+  userPointStates UserPointState[]
+  routeBookPoints RouteBookPoint[]
 
   @@index([bangumiId, updatedAt])
   @@index([bangumiId, ep])
@@ -629,10 +634,59 @@ model AnitabiViewHistory {
   bangumi AnitabiBangumi? @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
   point   AnitabiPoint?   @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, targetKey])
   @@index([userId, viewedAt])
-  @@index([targetKey])
   @@index([bangumiId])
   @@index([pointId])
+}
+
+model UserPointState {
+  id          String        @id @default(cuid())
+  userId      String
+  pointId     String
+  state       String
+  checkedInAt DateTime?
+  gpsVerified Boolean       @default(false)
+  photoUrl    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  point       AnitabiPoint  @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pointId])
+  @@index([userId])
+  @@index([pointId])
+  @@index([state])
+}
+
+model RouteBook {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  status    String
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points    RouteBookPoint[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model RouteBookPoint {
+  id          String       @id @default(cuid())
+  routeBookId String
+  pointId     String
+  sortOrder   Int
+  zone        String
+  createdAt   DateTime     @default(now())
+  routeBook   RouteBook    @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  point       AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+
+  @@index([routeBookId])
+  @@index([pointId])
+  @@index([zone])
 }
 
 model AnitabiBangumiI18n {
@@ -711,4 +765,18 @@ model AnitabiSourceCursor {
   lastSuccessAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeType  String
+  badgeKey   String
+  earnedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeType, badgeKey])
+  @@index([userId])
 }

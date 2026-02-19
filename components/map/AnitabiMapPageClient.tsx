@@ -7,14 +7,23 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiMapTab } from '@/lib/anitabi/types'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
+import CheckInCard from '@/components/share/CheckInCard'
+import RouteBookCard from '@/components/share/RouteBookCard'
+import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 
 type Props = {
   locale: SupportedLocale
 }
 
+type PointState = {
+  pointId: string
+  state: 'want_to_go' | 'planned' | 'checked_in'
+}
+
 type MeState = {
   favorites: Array<{ targetKey: string }>
   history: Array<{ targetKey: string }>
+  pointStates: PointState[]
 }
 
 type UrlState = {
@@ -75,6 +84,7 @@ type PointFeatureProperties = {
   pointId: string
   color: string
   selected: number
+  userState: string
 }
 
 type PanoramaEmbed = {
@@ -229,6 +239,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
+    wantToGo: '想去',
+    planned: '计划中',
+    checkedIn: '已打卡',
     street: '街道',
     satellite: '卫星',
     search: '搜索',
@@ -239,6 +252,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: '打开列表面板',
     hidePanel: '收起面板',
     panel: '作品与筛选',
+    allPoints: '全部圣地',
+    onlyMarked: '只看我的标记',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -289,6 +304,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
+    wantToGo: 'Want to go',
+    planned: 'Planned',
+    checkedIn: 'Checked in',
     street: 'Street',
     satellite: 'Satellite',
     search: 'Search',
@@ -299,6 +317,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'Open list panel',
     hidePanel: 'Hide panel',
     panel: 'Titles & filters',
+    allPoints: 'All Spots',
+    onlyMarked: 'My Markers',
   },
   ja: {
     title: '巡礼マップ',
@@ -311,7 +331,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     locate: '現在地',
     locating: '現在地を取得中…',
     located: '現在地を取得済み',
-    locateDenied: '位置情報の権限が拒否されました。ブラウザ設定をご確認ください',
+    locateDenied: '位置情報の权限が拒否されました。ブラウザ設定をご確認ください',
     locateTimeout: '位置情報の取得がタイムアウトしました',
     locateUnavailable: 'この端末では位置情報を利用できません',
     locateInsecure: '位置情報には HTTPS または localhost が必要です',
@@ -349,6 +369,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
+    wantToGo: '行きたい',
+    planned: '計画中',
+    checkedIn: '巡礼済み',
     street: '街道',
     satellite: '衛星',
     search: '検索',
@@ -359,6 +382,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     openPanel: 'リストを開く',
     hidePanel: 'パネルを閉じる',
     panel: '作品と絞り込み',
+    allPoints: 'すべてのスポット',
+    onlyMarked: 'マイマーク',
   },
 }
 
@@ -600,19 +625,29 @@ function collectPointCoords(points: AnitabiBangumiDTO['points']): PointCoord[] {
 
 function buildPointFeatureCollection(
   detail: AnitabiBangumiDTO,
-  selectedPointId: string | null
+  selectedPointId: string | null,
+  meState: MeState | null,
+  viewFilter: 'all' | 'marked' = 'all',
+  stateFilter: string[] = []
 ): GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties> {
   const color = detail.card.color || '#6d28d9'
   const features: Array<GeoJSON.Feature<GeoJSON.Point, PointFeatureProperties>> = []
 
   for (const point of detail.points) {
     if (!isValidGeoPair(point.geo)) continue
+
+    const userState = meState?.pointStates.find((ps) => ps.pointId === point.id)?.state || 'none'
+
+    if (viewFilter === 'marked' && userState === 'none') continue
+    if (stateFilter.length > 0 && !stateFilter.includes(userState)) continue
+
     features.push({
       type: 'Feature',
       properties: {
         pointId: point.id,
         color,
         selected: selectedPointId && matchPointId(point.id, selectedPointId) ? 1 : 0,
+        userState,
       },
       geometry: {
         type: 'Point',
@@ -1061,6 +1096,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [selectedCity, setSelectedCity] = useState('')
   const [selectedBangumiId, setSelectedBangumiId] = useState<number | null>(parsed.b)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(parsed.p)
+  const [viewFilter, setViewFilter] = useState<'all' | 'marked'>('all')
+  const [stateFilter, setStateFilter] = useState<string[]>([])
   const [styleMode, setStyleMode] = useState<'street' | 'satellite'>('street')
   const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === 'undefined') return true
@@ -1095,6 +1132,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string } | null>(null)
   const [imageSaving, setImageSaving] = useState(false)
   const [imageSaveError, setImageSaveError] = useState<string | null>(null)
+  const [showCheckInCard, setShowCheckInCard] = useState(false)
+  const [showRouteBookCard, setShowRouteBookCard] = useState(false)
+  const [showComparisonGenerator, setShowComparisonGenerator] = useState(false)
+  const [comparisonImageBlob, setComparisonImageBlob] = useState<Blob | null>(null)
+  const [comparisonImageUrl, setComparisonImageUrl] = useState<string | null>(null)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -1105,15 +1147,22 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (!detail) return [] as Array<{ point: AnitabiBangumiDTO['points'][number]; distanceMeters: number | null }>
 
     const origin: PointCoord | null = userLocation ? [userLocation.lng, userLocation.lat] : null
-    const ranked = detail.points.map((point, index) => {
-      const pointCoord: PointCoord | null = isValidGeoPair(point.geo) ? [point.geo[1], point.geo[0]] : null
-      const pointDistance = origin && pointCoord ? distanceMeters(origin, pointCoord) : null
-      return {
-        point,
-        distanceMeters: pointDistance,
-        index,
-      }
-    })
+    const ranked = detail.points
+      .filter((point) => {
+        const userState = meState?.pointStates.find((ps) => ps.pointId === point.id)?.state || 'none'
+        if (viewFilter === 'marked' && userState === 'none') return false
+        if (stateFilter.length > 0 && !stateFilter.includes(userState)) return false
+        return true
+      })
+      .map((point, index) => {
+        const pointCoord: PointCoord | null = isValidGeoPair(point.geo) ? [point.geo[1], point.geo[0]] : null
+        const pointDistance = origin && pointCoord ? distanceMeters(origin, pointCoord) : null
+        return {
+          point,
+          distanceMeters: pointDistance,
+          index,
+        }
+      })
 
     ranked.sort((a, b) => {
       if (a.distanceMeters != null && b.distanceMeters != null) {
@@ -1127,7 +1176,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     })
 
     return ranked.map(({ point, distanceMeters: pointDistance }) => ({ point, distanceMeters: pointDistance }))
-  }, [detail, userLocation])
+  }, [detail, userLocation, meState, viewFilter, stateFilter])
 
   const selectedPointDistanceMeters = useMemo(() => {
     if (!selectedPoint || !userLocation || !isValidGeoPair(selectedPoint.geo)) return null
@@ -1148,6 +1197,36 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
     return { previewUrl, downloadUrl }
   }, [selectedPoint])
+
+  const { isBangumiCompleted, totalRouteDistance, checkedInThumbnails } = useMemo(() => {
+    if (!detail || !meState) {
+      return { isBangumiCompleted: false, totalRouteDistance: '0 km', checkedInThumbnails: [] as string[] }
+    }
+    const checkedInPoints = detail.points.filter((p) =>
+      meState.pointStates.find((ps) => ps.pointId === p.id && ps.state === 'checked_in')
+    )
+    const isCompleted = checkedInPoints.length === detail.points.length && detail.points.length > 0
+    
+    let meters = 0
+    for (let i = 0; i < detail.points.length - 1; i++) {
+      const p1 = detail.points[i]
+      const p2 = detail.points[i + 1]
+      if (p1?.geo && p2?.geo) {
+        meters += distanceMeters([p1.geo[1], p1.geo[0]], [p2.geo[1], p2.geo[0]])
+      }
+    }
+
+    const thumbnails = checkedInPoints
+      .map(p => normalizePointImageUrl(p.image))
+      .filter((src): src is string => !!src)
+      .slice(0, 3)
+
+    return { 
+      isBangumiCompleted: isCompleted, 
+      totalRouteDistance: formatDistance(meters),
+      checkedInThumbnails: thumbnails
+    }
+  }, [detail, meState])
 
   const favoriteSet = useMemo(() => {
     const set = new Set((meState?.favorites || []).map((row) => row.targetKey))
@@ -1394,7 +1473,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     removePointLayer(map)
     if (!detail) return true
 
-    const data = buildPointFeatureCollection(detail, selectedPointId)
+    const data = buildPointFeatureCollection(detail, selectedPointId, meStateRef.current, viewFilter, stateFilter)
     map.addSource(POINT_SOURCE_ID, {
       type: 'geojson',
       data,
@@ -1405,9 +1484,19 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       type: 'circle',
       source: POINT_SOURCE_ID,
       paint: {
-        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-color': [
+          'match',
+          ['get', 'userState'],
+          'checked_in',
+          '#22c55e',
+          'planned',
+          '#f97316',
+          'want_to_go',
+          '#3b82f6',
+          ['coalesce', ['get', 'color'], '#6d28d9'],
+        ],
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 3.4, 8, 5.4, 12, 6.8],
-        'circle-stroke-color': '#ffffff',
+        'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.2, 12, 2.2],
         'circle-opacity': 0.95,
       },
@@ -1419,7 +1508,17 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       source: POINT_SOURCE_ID,
       filter: ['==', ['get', 'selected'], 1],
       paint: {
-        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-color': [
+          'match',
+          ['get', 'userState'],
+          'checked_in',
+          '#22c55e',
+          'planned',
+          '#f97316',
+          'want_to_go',
+          '#3b82f6',
+          ['coalesce', ['get', 'color'], '#6d28d9'],
+        ],
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 8, 12, 12, 16],
         'circle-opacity': 0.2,
       },
@@ -1431,16 +1530,26 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       source: POINT_SOURCE_ID,
       filter: ['==', ['get', 'selected'], 1],
       paint: {
-        'circle-color': ['coalesce', ['get', 'color'], '#6d28d9'],
+        'circle-color': [
+          'match',
+          ['get', 'userState'],
+          'checked_in',
+          '#22c55e',
+          'planned',
+          '#f97316',
+          'want_to_go',
+          '#3b82f6',
+          ['coalesce', ['get', 'color'], '#6d28d9'],
+        ],
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 5, 8, 7.2, 12, 8.8],
-        'circle-stroke-color': '#ffffff',
+        'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.8, 12, 2.6],
         'circle-opacity': 0.98,
       },
     })
 
     return true
-  }, [detail, selectedPointId])
+  }, [detail, selectedPointId, stateFilter, viewFilter])
 
   useEffect(() => {
     syncPointLayerRef.current = syncPointLayer
@@ -1517,17 +1626,28 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
   const loadMe = useCallback(async () => {
     try {
-      const res = await fetch(`/api/anitabi/me/state?locale=${encodeURIComponent(locale)}`, { method: 'GET' })
-      if (res.status === 401) {
+      const [res, pointRes] = await Promise.all([
+        fetch(`/api/anitabi/me/state?locale=${encodeURIComponent(locale)}`, { method: 'GET' }),
+        fetch('/api/me/point-states', { method: 'GET' }),
+      ])
+
+      if (res.status === 401 || pointRes.status === 401) {
         setMeState(null)
         setMeLoaded(true)
         return
       }
-      if (!res.ok) return
-      const json = await res.json()
+
+      if (!res.ok && !pointRes.ok) return
+
+      const [json, pointJson] = await Promise.all([
+        res.ok ? res.json() : { favorites: [], history: [] },
+        pointRes.ok ? pointRes.json() : { items: [] },
+      ])
+
       setMeState({
         favorites: Array.isArray(json.favorites) ? json.favorites : [],
         history: Array.isArray(json.history) ? json.history : [],
+        pointStates: Array.isArray(pointJson.items) ? pointJson.items : [],
       })
     } catch {
       // noop
@@ -2286,6 +2406,42 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     window.prompt(label.shareManualCopy, href)
   }, [isDesktop, label.shareCopied, label.shareFailed, label.shareManualCopy, label.title])
 
+  const setPointState = useCallback(
+    async (pointId: string, state: 'want_to_go' | 'planned' | 'checked_in') => {
+      if (!meLoaded || !meState) {
+        if (window.confirm(label.signInToFavorite)) {
+          window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`
+        }
+        return
+      }
+
+      const current = meState.pointStates.find((ps) => ps.pointId === pointId)
+      const isRemoving = current?.state === state
+
+      try {
+        if (isRemoving) {
+          const res = await fetch('/api/me/point-states', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pointId }),
+          })
+          if (!res.ok) throw new Error('delete point state failed')
+        } else {
+          const res = await fetch('/api/me/point-states', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pointId, state }),
+          })
+          if (!res.ok) throw new Error('put point state failed')
+        }
+        await loadMe()
+      } catch {
+        setLocateHint(label.favoriteFailed)
+      }
+    },
+    [label.favoriteFailed, label.signInToFavorite, loadMe, meLoaded, meState]
+  )
+
   const toggleFavorite = useCallback(
     async (payload: { targetType: 'bangumi' | 'point'; bangumiId?: number; pointId?: string }) => {
       const targetKey = payload.targetType === 'bangumi' ? `bangumi:${payload.bangumiId}` : `point:${payload.pointId}`
@@ -2335,7 +2491,18 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     <>
       <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
         <div>
-          <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
+          <div className="flex items-center gap-2">
+            <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
+            {isBangumiCompleted && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-600 border border-brand-100 shadow-sm hover:bg-brand-100"
+                onClick={() => setShowRouteBookCard(true)}
+              >
+                生成战报
+              </button>
+            )}
+          </div>
           <div className="text-xs text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
         </div>
         <div className="flex items-center gap-1">
@@ -2376,6 +2543,52 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
+
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'want_to_go')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'want_to_go')
+                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+              </svg>
+              {label.wantToGo}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'planned')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'planned')
+                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" />
+              </svg>
+              {label.planned}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'checked_in')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in')
+                  ? 'bg-white text-green-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {label.checkedIn}
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
@@ -2398,9 +2611,67 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             >
               {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
             </button>
+            {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
+              <button
+                type="button"
+                className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100 font-medium"
+                onClick={() => setShowCheckInCard(true)}
+              >
+                打卡卡片
+              </button>
+            )}
           </div>
         </div>
       ) : null}
+
+      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+        <div className="flex rounded bg-slate-200/50 p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewFilter('all')}
+            className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+              viewFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {label.allPoints}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewFilter('marked')}
+            className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+              viewFilter === 'marked' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {label.onlyMarked}
+          </button>
+        </div>
+
+        {viewFilter === 'marked' && (
+          <div className="flex items-center gap-1">
+            {(['want_to_go', 'planned', 'checked_in'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  setStateFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+                }}
+                className={`flex h-4 items-center gap-1 rounded-full px-1.5 text-[9px] font-medium transition ${
+                  stateFilter.includes(s) || stateFilter.length === 0
+                    ? s === 'checked_in'
+                      ? 'bg-green-500 text-white'
+                      : s === 'planned'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-blue-500 text-white'
+                    : 'bg-slate-200 text-slate-400'
+                }`}
+              >
+                <div className="h-1 w-1 rounded-full bg-white" />
+                {s === 'checked_in' ? label.checkedIn : s === 'planned' ? label.planned : label.wantToGo}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="max-h-[420px] overflow-auto px-3 py-2">
         {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
@@ -2662,6 +2933,52 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
+
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'want_to_go')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'want_to_go')
+                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+              </svg>
+              {label.wantToGo}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'planned')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'planned')
+                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" />
+              </svg>
+              {label.planned}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPointState(selectedPoint.id, 'checked_in')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-[11px] font-medium transition-all ${
+                meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in')
+                  ? 'bg-white text-green-600 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white/50 hover:text-slate-800'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {label.checkedIn}
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             {geoLink(selectedPoint) ? (
               <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
@@ -2684,6 +3001,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             >
               {favoriteSet.has(`point:${selectedPoint.id}`) ? '★' : '☆'} {label.favorites}
             </button>
+            {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
+              <button
+                type="button"
+                className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100 font-medium"
+                onClick={() => setShowCheckInCard(true)}
+              >
+                打卡卡片
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -2874,13 +3200,20 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <Dialog.Overlay className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-[1px]" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-[121] min-w-[320px] max-w-[92vw] w-fit -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl focus:outline-none sm:p-4">
             <Dialog.Description className="sr-only">
-              {locale === 'en' ? 'Image preview with manual save action' : locale === 'ja' ? '画像プレビューと手動保存操作' : '图片预览与手动保存'}
+              {locale === 'en' ? 'Image preview with manual save action' : locale === 'ja' ? '画像プレビューと手动保存操作' : '图片预览与手动保存'}
             </Dialog.Description>
             <div className="mb-3 flex items-center justify-between gap-2">
               <Dialog.Title className="line-clamp-1 text-sm font-semibold text-slate-900">
                 {imagePreview?.name || label.previewImage}
               </Dialog.Title>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowComparisonGenerator(true)}
+                  className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
+                >
+                  制作对比图
+                </button>
                 {imagePreview?.saveUrl ? (
                   <button
                     type="button"
@@ -2915,6 +3248,64 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 />
               </div>
             ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={showCheckInCard} onOpenChange={setShowCheckInCard}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[131] w-full max-w-md -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none">
+            <CheckInCard
+              animeTitle={detail?.card.title || ''}
+              pointName={selectedPoint?.name || ''}
+              cityName={detail?.card.city || ''}
+              imageUrl={comparisonImageUrl || selectedPointImage.previewUrl || ''}
+              shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              onClose={() => setShowCheckInCard(false)}
+            />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={showRouteBookCard} onOpenChange={setShowRouteBookCard}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[131] w-full max-w-md -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none">
+            <RouteBookCard
+              animeTitle={detail?.card.titleZh || detail?.card.title || ''}
+              routeBookTitle={`${detail?.card.city || ''}圣地巡礼`}
+              cityName={detail?.card.city || ''}
+              totalPoints={detail?.points.length || 0}
+              totalDistance={totalRouteDistance}
+              completionDate={new Date().toLocaleDateString('zh-CN')}
+              points={(detail?.points || [])
+                .filter((p): p is typeof p & { geo: [number, number] } => isValidGeoPair(p.geo))
+                .map(p => ({ lat: p.geo[0], lng: p.geo[1] }))}
+              featuredImages={checkedInThumbnails}
+              shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
+              onClose={() => setShowRouteBookCard(false)}
+            />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={showComparisonGenerator} onOpenChange={setShowComparisonGenerator}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 bottom-0 z-[131] w-full max-w-2xl -translate-x-1/2 focus:outline-none sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2">
+            <ComparisonImageGenerator
+              animeImage={selectedPointImage.previewUrl || ''}
+              animeTitle={detail?.card.title || ''}
+              pointName={selectedPoint?.name || ''}
+              onClose={() => setShowComparisonGenerator(false)}
+              onSuccess={(blob) => {
+                setComparisonImageBlob(blob)
+                setComparisonImageUrl(URL.createObjectURL(blob))
+                setShowComparisonGenerator(false)
+                setShowCheckInCard(true)
+              }}
+            />
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
