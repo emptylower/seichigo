@@ -281,6 +281,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     signInToRouteBook: '登录后可使用路书功能',
     quickStart: '开始',
     quickPilgrimage: '快速巡礼',
+    quickPilgrimageHint: '按距离自动规划路线，导航返回后可直接打卡',
+    quickPilgrimageProgressPrefix: '已打卡',
     routeBooks: '我的路书',
     addToRouteBook: '加入路书',
     addToRouteBookSuccess: '已加入路书',
@@ -360,6 +362,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     signInToRouteBook: 'Sign in to use routebooks',
     quickStart: 'Start',
     quickPilgrimage: 'Quick Pilgrimage',
+    quickPilgrimageHint: 'Distance-sorted route with quick navigation and check-ins',
+    quickPilgrimageProgressPrefix: 'Checked in',
     routeBooks: 'My Routebooks',
     addToRouteBook: 'Add to Routebook',
     addToRouteBookSuccess: 'Added to routebook',
@@ -439,6 +443,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     signInToRouteBook: '路書機能を使うにはログインしてください',
     quickStart: '開始',
     quickPilgrimage: 'クイック巡礼',
+    quickPilgrimageHint: '距離順にルートを並べ替え、ナビから戻ってすぐ打刻できます',
+    quickPilgrimageProgressPrefix: '巡礼済み',
     routeBooks: 'マイルートブック',
     addToRouteBook: '路書に追加',
     addToRouteBookSuccess: '路書に追加しました',
@@ -1238,6 +1244,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
     return out
   }, [meState])
+
+  const quickPilgrimageProgress = useMemo(() => {
+    if (!detail) return { checked: 0, total: 0 }
+    const checked = detail.points.filter((point) => quickPilgrimageStates[point.id] === 'checked_in').length
+    return { checked, total: detail.points.length }
+  }, [detail, quickPilgrimageStates])
 
   const detailPoints = useMemo(() => {
     if (!detail) return [] as Array<{ point: AnitabiBangumiDTO['points'][number]; distanceMeters: number | null }>
@@ -2734,7 +2746,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             className="rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
             onClick={() => setShowQuickPilgrimage(true)}
           >
-            {label.quickStart}
+            {label.quickPilgrimage}
           </button>
           <a
             href="/me/routebooks"
@@ -2779,6 +2791,25 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
+
+          <div className="rounded-lg border border-brand-100 bg-brand-50/70 px-2 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-brand-700">{label.quickPilgrimage}</div>
+                <div className="line-clamp-2 text-[11px] text-brand-600">{label.quickPilgrimageHint}</div>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
+                onClick={() => setShowQuickPilgrimage(true)}
+              >
+                {label.quickPilgrimage}
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-brand-700">
+              {label.quickPilgrimageProgressPrefix} {quickPilgrimageProgress.checked}/{quickPilgrimageProgress.total}
+            </div>
+          </div>
 
           <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
             <button
@@ -3176,6 +3207,25 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
+
+          <div className="rounded-lg border border-brand-100 bg-brand-50/70 px-2 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-brand-700">{label.quickPilgrimage}</div>
+                <div className="line-clamp-2 text-[11px] text-brand-600">{label.quickPilgrimageHint}</div>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
+                onClick={() => setShowQuickPilgrimage(true)}
+              >
+                {label.quickPilgrimage}
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-brand-700">
+              {label.quickPilgrimageProgressPrefix} {quickPilgrimageProgress.checked}/{quickPilgrimageProgress.total}
+            </div>
+          </div>
 
           <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
             <button
