@@ -105,6 +105,12 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
               {labels.favorites}
             </a>
             <a
+              href={prefixPath('/me/routebooks', locale)}
+              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            >
+              我的路书
+            </a>
+            <a
               href="/api/auth/signout"
               className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
             >
@@ -140,6 +146,9 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.favorites}
+            </a>
+            <a href={prefixPath('/me/routebooks', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              我的路书
             </a>
             <a href="/api/auth/signout" className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.signout}
