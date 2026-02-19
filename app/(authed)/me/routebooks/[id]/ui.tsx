@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { RouteBookStatus, PointZone } from '@/lib/routeBook/repo'
+import type { RouteBookStatus, RouteBookZone } from '@/lib/routeBook/repo'
 import CheckInModal from '@/components/checkin/CheckInModal'
 
 type PointRecord = {
@@ -26,7 +26,7 @@ type PointRecord = {
   routeBookId: string
   pointId: string
   sortOrder: number
-  zone: PointZone
+  zone: RouteBookZone
   createdAt: string
 }
 
@@ -232,7 +232,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     }
   }
 
-  async function handleMoveToZone(pointId: string, targetZone: PointZone) {
+  async function handleMoveToZone(pointId: string, targetZone: RouteBookZone) {
     if (!routeBook) return
 
     const updatedPoints = routeBook.points.map((p) => {
