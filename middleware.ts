@@ -5,6 +5,7 @@ const CHINESE_ZONES = new Set(['CN', 'HK', 'TW', 'MO'])
 const JAPANESE_ZONES = new Set(['JP'])
 const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
 const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanifest|favicon\.ico|favicon\.png|brand\/app-logo\.png)$/
+const LOCALE_PREFIXED_AUTH_ALIAS_PATTERN = /^\/(en|ja)\/auth(?:\/.*)?$/
 
 const BOT_PATTERN = /bot|crawler|spider|crawling|slurp|externalhit/i
 
@@ -43,6 +44,11 @@ function resolveLocaleStaticAlias(pathname: string): string | null {
   return withoutLocale
 }
 
+function resolveLocaleAuthAlias(pathname: string): string | null {
+  if (!LOCALE_PREFIXED_AUTH_ALIAS_PATTERN.test(pathname)) return null
+  return pathname.replace(/^\/(en|ja)(?=\/auth(?:\/|$))/, '')
+}
+
 function hasLocaleCookie(req: NextRequest): boolean {
   const cookieHeader = req.headers.get('cookie')
   if (!cookieHeader) return false
@@ -61,6 +67,13 @@ export function middleware(req: NextRequest) {
   if (staticAliasPath) {
     const url = req.nextUrl.clone()
     url.pathname = staticAliasPath
+    return NextResponse.rewrite(url, { request: { headers } })
+  }
+
+  const authAliasPath = resolveLocaleAuthAlias(pathname)
+  if (authAliasPath) {
+    const url = req.nextUrl.clone()
+    url.pathname = authAliasPath
     return NextResponse.rewrite(url, { request: { headers } })
   }
 

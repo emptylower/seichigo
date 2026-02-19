@@ -199,6 +199,26 @@ describe('i18n IP-based redirect middleware', () => {
     })
   })
 
+  describe('auth locale alias rewrite', () => {
+    it('rewrites /en/auth/signin to /auth/signin', () => {
+      const req = createRequest('/en/auth/signin', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/auth/signin')
+    })
+
+    it('rewrites /ja/auth/signup with query string preserved', () => {
+      const req = createRequest('/ja/auth/signup?callbackUrl=%2Fja%2Fsubmit', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/auth/signup?callbackUrl=%2Fja%2Fsubmit')
+    })
+  })
+
   describe('bot detection - skip redirect', () => {
     const botUserAgents = [
       'Googlebot/2.1 (+http://www.google.com/bot.html)',
