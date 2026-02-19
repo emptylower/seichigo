@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Navigation, SkipForward, CheckCircle2, MapPin, Film, ChevronRight, Award, Map as MapIcon, ExternalLink, RotateCcw } from 'lucide-react'
+import { X, Navigation, SkipForward, CheckCircle2, MapPin, Film, ChevronRight, Award, Map as MapIcon, RotateCcw } from 'lucide-react'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import { getHaversineDistance, resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import CheckInModal from '@/components/checkin/CheckInModal'
@@ -47,15 +47,41 @@ function formatDistanceMeters(distance: number | null): string {
   return `${Math.round(distance)} m`
 }
 
-function buildGoogleMapsUrl(point: AnitabiPointDTO): string {
+function isLikelyMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /android|iphone|ipad|ipod/i.test(navigator.userAgent)
+}
+
+function buildGoogleMapsAppUrl(point: AnitabiPointDTO): string {
   const destination = point.geo ? `${point.geo[0]},${point.geo[1]}` : point.name
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent.toLowerCase()
+  if (ua.includes('android')) {
+    return `google.navigation:q=${encodeURIComponent(destination)}&mode=w`
+  }
+  return `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=walking`
+}
+
+function buildEmbeddedNavigationUrl(
+  point: AnitabiPointDTO,
+  userLocation: { lat: number; lng: number } | null
+): string {
+  const destination = point.geo ? `${point.geo[0]},${point.geo[1]}` : point.name
+  const params = new URLSearchParams()
+  params.set('output', 'embed')
+  params.set('dirflg', 'w')
+  params.set('daddr', destination)
+  if (userLocation) {
+    params.set('saddr', `${userLocation.lat},${userLocation.lng}`)
+  }
+  return `https://www.google.com/maps?${params.toString()}`
 }
 
 export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose, onStatesUpdated }: Props) {
   const [step, setStep] = useState<'intro' | 'cards' | 'summary'>('intro')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [navigationStepByPointId, setNavigationStepByPointId] = useState<Record<string, 'idle' | 'navigating' | 'done'>>({})
+  const [embeddedNavigationByPointId, setEmbeddedNavigationByPointId] = useState<Record<string, boolean>>({})
+  const [navigationNotice, setNavigationNotice] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [isExiting, setIsExiting] = useState(false)
   const [checkInTargetId, setCheckInTargetId] = useState<string | null>(null)
@@ -70,6 +96,8 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
     return seed
   })
   const comparisonUrlsRef = useRef<string[]>([])
+  const navigationFallbackTimerRef = useRef<number | null>(null)
+  const navigationVisibilityListenerRef = useRef<((this: Document, ev: Event) => void) | null>(null)
 
   useEffect(() => {
     setCheckedInPointIds((prev) => {
@@ -107,6 +135,23 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
         if (!url) continue
         window.URL.revokeObjectURL(url)
       }
+    }
+  }, [])
+
+  const clearNavigationDetection = () => {
+    if (navigationFallbackTimerRef.current != null) {
+      window.clearTimeout(navigationFallbackTimerRef.current)
+      navigationFallbackTimerRef.current = null
+    }
+    if (navigationVisibilityListenerRef.current) {
+      document.removeEventListener('visibilitychange', navigationVisibilityListenerRef.current)
+      navigationVisibilityListenerRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearNavigationDetection()
     }
   }, [])
 
@@ -154,6 +199,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
   const checkedInCount = totalPoints - points.length
   const currentPoint = points[currentIndex] || null
   const currentNavigationStep = currentPoint ? navigationStepByPointId[currentPoint.id] || 'idle' : 'idle'
+  const currentEmbeddedNavigationVisible = currentPoint ? embeddedNavigationByPointId[currentPoint.id] !== false : true
   const checkInTarget = checkInTargetId ? bangumi.points.find((point) => point.id === checkInTargetId) || null : null
 
   const currentDistance = useMemo(() => {
@@ -166,6 +212,15 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
     const bearing = calcBearing(userLocation.lat, userLocation.lng, currentPoint.geo[0], currentPoint.geo[1])
     return `${toDirectionLabel(bearing)} ${Math.round(bearing)}°`
   }, [currentPoint, userLocation])
+
+  const currentEmbeddedNavigationUrl = useMemo(() => {
+    if (!currentPoint) return ''
+    return buildEmbeddedNavigationUrl(currentPoint, userLocation)
+  }, [currentPoint, userLocation])
+
+  useEffect(() => {
+    setNavigationNotice(null)
+  }, [currentPoint?.id])
 
   const sessionCheckedPoints = useMemo(
     () => sessionCheckedPointIds
@@ -207,6 +262,8 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
   }, [bangumi.points, sessionCheckedPoints])
 
   const handleSkip = () => {
+    clearNavigationDetection()
+    setNavigationNotice(null)
     if (currentIndex < points.length - 1) {
       setCurrentIndex((prev) => prev + 1)
       return
@@ -214,9 +271,48 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
     setStep('summary')
   }
 
-  const handleOpenGoogleMaps = () => {
+  const handleStartNavigation = () => {
     if (!currentPoint) return
-    window.open(buildGoogleMapsUrl(currentPoint), '_blank', 'noopener,noreferrer')
+
+    setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'navigating' }))
+    setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: true }))
+    setNavigationNotice(null)
+
+    if (!isLikelyMobileDevice()) return
+
+    clearNavigationDetection()
+
+    let wentBackground = false
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        wentBackground = true
+      }
+    }
+    navigationVisibilityListenerRef.current = onVisibilityChange
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    const appUrl = buildGoogleMapsAppUrl(currentPoint)
+    try {
+      window.location.assign(appUrl)
+    } catch {
+      // noop: fallback handled by timer below
+    }
+
+    navigationFallbackTimerRef.current = window.setTimeout(() => {
+      if (navigationVisibilityListenerRef.current) {
+        document.removeEventListener('visibilitychange', navigationVisibilityListenerRef.current)
+        navigationVisibilityListenerRef.current = null
+      }
+      navigationFallbackTimerRef.current = null
+
+      if (wentBackground) {
+        setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: false }))
+        setNavigationNotice('已尝试跳转 Google Maps 导航，返回后可点击“导航完成”或“重新导航”。')
+      } else {
+        setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: true }))
+        setNavigationNotice('未检测到 Google Maps App，已切换为站内导航。')
+      }
+    }, 1200)
   }
 
   const handleClose = () => {
@@ -357,11 +453,35 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
               </div>
             </div>
 
+            {currentNavigationStep === 'navigating' ? (
+              <div className="mt-4 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60">
+                {currentEmbeddedNavigationVisible ? (
+                  <iframe
+                    title="站内导航画面"
+                    src={currentEmbeddedNavigationUrl}
+                    className="h-64 w-full border-0 bg-slate-900"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                ) : (
+                  <div className="px-4 py-4 text-xs text-slate-300">
+                    已尝试跳转 Google Maps App。返回后你可点击“导航完成”，或点击“切换站内导航”继续在当前页面导航。
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {navigationNotice ? (
+              <div className="mt-2 w-full rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+                {navigationNotice}
+              </div>
+            ) : null}
+
             {currentNavigationStep === 'idle' ? (
               <div className="mt-6 grid w-full grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'navigating' }))}
+                  onClick={handleStartNavigation}
                   className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
                 >
                   <Navigation size={18} />
@@ -383,7 +503,11 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                 <div className="mt-6 grid w-full grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))}
+                    onClick={() => {
+                      clearNavigationDetection()
+                      setNavigationNotice(null)
+                      setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
+                    }}
                     className="flex items-center justify-center gap-2 bg-emerald-500 text-white py-3.5 rounded-2xl font-bold hover:bg-emerald-600 active:scale-95"
                   >
                     <CheckCircle2 size={18} />
@@ -391,21 +515,27 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   </button>
                   <button
                     type="button"
-                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))}
+                    onClick={() => {
+                      clearNavigationDetection()
+                      setNavigationNotice(null)
+                      setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))
+                    }}
                     className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
                   >
                     <X size={18} />
                     退出导航
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleOpenGoogleMaps}
-                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
-                >
-                  <ExternalLink size={14} />
-                  可选：打开 Google Maps
-                </button>
+                {!currentEmbeddedNavigationVisible ? (
+                  <button
+                    type="button"
+                    onClick={() => setEmbeddedNavigationByPointId((prev) => ({ ...prev, [currentPoint.id]: true }))}
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
+                  >
+                    <Navigation size={14} />
+                    切换站内导航
+                  </button>
+                ) : null}
               </>
             ) : null}
 
@@ -422,7 +552,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                   </button>
                   <button
                     type="button"
-                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'navigating' }))}
+                    onClick={handleStartNavigation}
                     className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
                   >
                     <RotateCcw size={18} />
@@ -510,6 +640,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
           }}
           onSuccess={() => {
             const pointId = checkInTarget.id
+            clearNavigationDetection()
             setCheckedInPointIds((prev) => {
               const next = new Set(prev)
               next.add(pointId)
@@ -521,6 +652,13 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
               delete next[pointId]
               return next
             })
+            setEmbeddedNavigationByPointId((prev) => {
+              if (!(pointId in prev)) return prev
+              const next = { ...prev }
+              delete next[pointId]
+              return next
+            })
+            setNavigationNotice(null)
             setSessionCheckedPointIds((prev) => (prev.includes(pointId) ? prev : [...prev, pointId]))
             setCheckInTargetId(null)
             onStatesUpdated?.()
