@@ -36,10 +36,17 @@ export default function AnimeQuickPilgrimageButton({ bangumiId }: Props) {
       if (bangumiRes && !bangumiRes.error) {
         setBangumi(bangumiRes)
         const statesMap: Record<string, string> = {}
-        if (statesRes?.states) {
-          statesRes.states.forEach((s: any) => {
-            statesMap[s.pointId] = s.state
-          })
+        const stateItems = Array.isArray(statesRes?.items)
+          ? statesRes.items
+          : Array.isArray(statesRes?.states)
+            ? statesRes.states
+            : []
+        for (const row of stateItems) {
+          if (!row || typeof row !== 'object') continue
+          const pointId = typeof (row as { pointId?: unknown }).pointId === 'string' ? (row as { pointId: string }).pointId : ''
+          const state = typeof (row as { state?: unknown }).state === 'string' ? (row as { state: string }).state : ''
+          if (!pointId || !state) continue
+          statesMap[pointId] = state
         }
         setUserPointStates(statesMap)
         setIsOpen(true)

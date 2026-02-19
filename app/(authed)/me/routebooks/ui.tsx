@@ -17,7 +17,7 @@ type ListResponse =
   | { error: string }
 
 type CreateResponse =
-  | { ok: true; routeBook: RouteBookItem }
+  | { ok: true; routeBook?: RouteBookItem; item?: RouteBookItem }
   | { error: string }
 
 const STATUS_LABEL: Record<RouteBookStatus, string> = {
@@ -43,15 +43,19 @@ export default function RouteBooksClient() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const res = await fetch('/api/me/routebooks')
-    const data = (await res.json().catch(() => ({}))) as ListResponse
-    if (!res.ok || 'error' in data) {
-      setError(('error' in data && data.error) || '加载失败')
+    try {
+      const res = await fetch('/api/me/routebooks')
+      const data = (await res.json().catch(() => ({}))) as ListResponse
+      if (!res.ok || 'error' in data) {
+        setError(('error' in data && data.error) || '加载失败')
+        return
+      }
+      setItems(data.items || [])
+    } catch {
+      setError('加载失败')
+    } finally {
       setLoading(false)
-      return
     }
-    setItems(data.items || [])
-    setLoading(false)
   }, [])
 
   useEffect(() => {

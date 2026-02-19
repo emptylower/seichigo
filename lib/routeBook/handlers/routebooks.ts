@@ -70,7 +70,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
           return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
         }
 
-        return NextResponse.json({ ok: true, item: found })
+        return NextResponse.json({ ok: true, routeBook: found, item: found })
       }
 
       const url = new URL(req.url)
@@ -105,7 +105,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
       const status = parsed.data.status ?? 'draft'
 
       const created = await deps.repo.create(session.user.id, title, status)
-      return NextResponse.json({ ok: true, item: created })
+      return NextResponse.json({ ok: true, routeBook: created, item: created })
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -141,7 +141,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
         return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
       }
 
-      return NextResponse.json({ ok: true, item: updated })
+      return NextResponse.json({ ok: true, routeBook: updated, item: updated })
     },
 
     async DELETE(_req: Request, ctx: { params?: Promise<{ id: string }> }) {

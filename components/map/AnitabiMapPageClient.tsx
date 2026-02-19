@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import CheckInCard from '@/components/share/CheckInCard'
 import RouteBookCard from '@/components/share/RouteBookCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
+import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
 
 type Props = {
   locale: SupportedLocale
@@ -47,6 +48,14 @@ type SearchResult = {
   bangumi: AnitabiBangumiCard[]
   points: Array<{ id: string; bangumiId: number; name: string }>
   cities: string[]
+}
+
+type RouteBookStatus = 'draft' | 'in_progress' | 'completed'
+
+type RouteBookListItem = {
+  id: string
+  title: string
+  status: RouteBookStatus
 }
 
 const DEFAULT_VIEW = {
@@ -189,6 +198,36 @@ function parseNumberParam(value: string | null): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function isRouteBookListItem(value: unknown): value is RouteBookListItem {
+  if (!value || typeof value !== 'object') return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.id === 'string' &&
+    typeof row.title === 'string' &&
+    (row.status === 'draft' || row.status === 'in_progress' || row.status === 'completed')
+  )
+}
+
+function getApiErrorMessage(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  return typeof row.error === 'string' ? row.error : null
+}
+
+function getRouteBookIdFromCreateResponse(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  const routeBook = row.routeBook
+  if (routeBook && typeof routeBook === 'object' && typeof (routeBook as { id?: unknown }).id === 'string') {
+    return (routeBook as { id: string }).id
+  }
+  const item = row.item
+  if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
+    return (item as { id: string }).id
+  }
+  return null
+}
+
 const L: Record<SupportedLocale, Record<string, string>> = {
   zh: {
     title: '巡礼地图',
@@ -239,6 +278,20 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
+    signInToRouteBook: '登录后可使用路书功能',
+    quickStart: '开始',
+    quickPilgrimage: '快速巡礼',
+    routeBooks: '我的路书',
+    addToRouteBook: '加入路书',
+    addToRouteBookSuccess: '已加入路书',
+    addToRouteBookFailed: '加入路书失败，请稍后重试',
+    routeBookSelectTitle: '加入路书',
+    routeBookLoading: '正在加载路书…',
+    routeBookEmpty: '还没有路书，先创建一个吧',
+    routeBookPickOne: '选择一个路书',
+    routeBookCreatePlaceholder: '例如：东京圣地巡礼',
+    routeBookCreateAndAdd: '新建并加入',
+    routeBookCreatedAndAdded: '路书创建成功并已加入点位',
     wantToGo: '想去',
     planned: '计划中',
     checkedIn: '已打卡',
@@ -304,6 +357,20 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
+    signInToRouteBook: 'Sign in to use routebooks',
+    quickStart: 'Start',
+    quickPilgrimage: 'Quick Pilgrimage',
+    routeBooks: 'My Routebooks',
+    addToRouteBook: 'Add to Routebook',
+    addToRouteBookSuccess: 'Added to routebook',
+    addToRouteBookFailed: 'Failed to add to routebook',
+    routeBookSelectTitle: 'Add to Routebook',
+    routeBookLoading: 'Loading routebooks…',
+    routeBookEmpty: 'No routebooks yet. Create one first.',
+    routeBookPickOne: 'Pick a routebook',
+    routeBookCreatePlaceholder: 'For example: Tokyo pilgrimage',
+    routeBookCreateAndAdd: 'Create & Add',
+    routeBookCreatedAndAdded: 'Routebook created and point added',
     wantToGo: 'Want to go',
     planned: 'Planned',
     checkedIn: 'Checked in',
@@ -369,6 +436,20 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
+    signInToRouteBook: '路書機能を使うにはログインしてください',
+    quickStart: '開始',
+    quickPilgrimage: 'クイック巡礼',
+    routeBooks: 'マイルートブック',
+    addToRouteBook: '路書に追加',
+    addToRouteBookSuccess: '路書に追加しました',
+    addToRouteBookFailed: '路書への追加に失敗しました',
+    routeBookSelectTitle: '路書に追加',
+    routeBookLoading: '路書を読み込み中…',
+    routeBookEmpty: '路書がありません。先に作成してください。',
+    routeBookPickOne: '路書を選択',
+    routeBookCreatePlaceholder: '例：東京聖地巡礼',
+    routeBookCreateAndAdd: '作成して追加',
+    routeBookCreatedAndAdded: '路書を作成し、スポットを追加しました',
     wantToGo: '行きたい',
     planned: '計画中',
     checkedIn: '巡礼済み',
@@ -1135,6 +1216,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [showCheckInCard, setShowCheckInCard] = useState(false)
   const [showRouteBookCard, setShowRouteBookCard] = useState(false)
   const [showComparisonGenerator, setShowComparisonGenerator] = useState(false)
+  const [showQuickPilgrimage, setShowQuickPilgrimage] = useState(false)
+  const [routeBookPickerOpen, setRouteBookPickerOpen] = useState(false)
+  const [routeBookItems, setRouteBookItems] = useState<RouteBookListItem[]>([])
+  const [routeBookPickerLoading, setRouteBookPickerLoading] = useState(false)
+  const [routeBookPickerSaving, setRouteBookPickerSaving] = useState(false)
+  const [routeBookPickerError, setRouteBookPickerError] = useState<string | null>(null)
+  const [routeBookTitleDraft, setRouteBookTitleDraft] = useState('')
   const [comparisonImageBlob, setComparisonImageBlob] = useState<Blob | null>(null)
   const [comparisonImageUrl, setComparisonImageUrl] = useState<string | null>(null)
 
@@ -1142,6 +1230,14 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (!detail || !selectedPointId) return null
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
+
+  const quickPilgrimageStates = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const row of meState?.pointStates || []) {
+      out[row.pointId] = row.state
+    }
+    return out
+  }, [meState])
 
   const detailPoints = useMemo(() => {
     if (!detail) return [] as Array<{ point: AnitabiBangumiDTO['points'][number]; distanceMeters: number | null }>
@@ -2479,6 +2575,133 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     [favoriteSet, label.favoriteAdded, label.favoriteFailed, label.favoriteRemoved, loadMe, meLoaded, meState]
   )
 
+  const redirectToSignInForRouteBook = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (!window.confirm(label.signInToRouteBook)) return
+    window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`
+  }, [label.signInToRouteBook])
+
+  const loadRouteBooks = useCallback(async () => {
+    setRouteBookPickerLoading(true)
+    setRouteBookPickerError(null)
+
+    try {
+      const res = await fetch('/api/me/routebooks', { method: 'GET' })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 401) {
+        setRouteBookPickerOpen(false)
+        redirectToSignInForRouteBook()
+        return
+      }
+      if (!res.ok) {
+        setRouteBookPickerError(getApiErrorMessage(data) || label.addToRouteBookFailed)
+        return
+      }
+
+      const rows = Array.isArray((data as { items?: unknown[] }).items)
+        ? (data as { items: unknown[] }).items.filter(isRouteBookListItem)
+        : []
+      setRouteBookItems(rows)
+    } catch {
+      setRouteBookPickerError(label.addToRouteBookFailed)
+    } finally {
+      setRouteBookPickerLoading(false)
+    }
+  }, [label.addToRouteBookFailed, redirectToSignInForRouteBook])
+
+  const openRouteBookPicker = useCallback(() => {
+    if (!selectedPoint) {
+      setLocateHint(label.routeBookPickOne)
+      return
+    }
+    setRouteBookPickerOpen(true)
+    setRouteBookTitleDraft('')
+    void loadRouteBooks()
+  }, [label.routeBookPickOne, loadRouteBooks, selectedPoint])
+
+  const addSelectedPointToRouteBook = useCallback(
+    async (routeBookId: string) => {
+      if (!selectedPoint) return
+      setRouteBookPickerSaving(true)
+      setRouteBookPickerError(null)
+      try {
+        const res = await fetch(`/api/me/routebooks/${routeBookId}/points`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pointId: selectedPoint.id }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          setRouteBookPickerOpen(false)
+          redirectToSignInForRouteBook()
+          return
+        }
+        if (!res.ok) {
+          setRouteBookPickerError(getApiErrorMessage(data) || label.addToRouteBookFailed)
+          return
+        }
+        setLocateHint(label.addToRouteBookSuccess)
+        setRouteBookPickerOpen(false)
+      } catch {
+        setRouteBookPickerError(label.addToRouteBookFailed)
+      } finally {
+        setRouteBookPickerSaving(false)
+      }
+    },
+    [label.addToRouteBookFailed, label.addToRouteBookSuccess, redirectToSignInForRouteBook, selectedPoint]
+  )
+
+  const createRouteBookAndAddPoint = useCallback(async () => {
+    const title = routeBookTitleDraft.trim()
+    if (!title || !selectedPoint) return
+
+    setRouteBookPickerSaving(true)
+    setRouteBookPickerError(null)
+
+    try {
+      const createRes = await fetch('/api/me/routebooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      const createData = await createRes.json().catch(() => ({}))
+      if (createRes.status === 401) {
+        setRouteBookPickerOpen(false)
+        redirectToSignInForRouteBook()
+        return
+      }
+      if (!createRes.ok) {
+        setRouteBookPickerError(getApiErrorMessage(createData) || label.addToRouteBookFailed)
+        return
+      }
+
+      const createdRouteBookId = getRouteBookIdFromCreateResponse(createData)
+      if (!createdRouteBookId) {
+        setRouteBookPickerError(label.addToRouteBookFailed)
+        return
+      }
+
+      const addRes = await fetch(`/api/me/routebooks/${createdRouteBookId}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pointId: selectedPoint.id }),
+      })
+      const addData = await addRes.json().catch(() => ({}))
+      if (!addRes.ok) {
+        setRouteBookPickerError(getApiErrorMessage(addData) || label.addToRouteBookFailed)
+        return
+      }
+
+      setLocateHint(label.routeBookCreatedAndAdded)
+      setRouteBookPickerOpen(false)
+      setRouteBookTitleDraft('')
+    } catch {
+      setRouteBookPickerError(label.addToRouteBookFailed)
+    } finally {
+      setRouteBookPickerSaving(false)
+    }
+  }, [label.addToRouteBookFailed, label.routeBookCreatedAndAdded, redirectToSignInForRouteBook, routeBookTitleDraft, selectedPoint])
+
   const tabs = bootstrap?.tabs || [
     { key: 'nearby' as const, label: label.nearby },
     { key: 'latest' as const, label: label.latest },
@@ -2506,6 +2729,19 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <div className="text-xs text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
+            onClick={() => setShowQuickPilgrimage(true)}
+          >
+            {label.quickStart}
+          </button>
+          <a
+            href="/me/routebooks"
+            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100 no-underline"
+          >
+            {label.routeBooks}
+          </a>
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
@@ -2603,6 +2839,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               title={selectedPointPanorama ? undefined : label.panoramaUnavailable}
             >
               {label.enterPanorama}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
+              onClick={openRouteBookPicker}
+            >
+              {label.addToRouteBook}
             </button>
             <button
               type="button"
@@ -2996,6 +3239,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
             <button
               type="button"
+              className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
+              onClick={openRouteBookPicker}
+            >
+              {label.addToRouteBook}
+            </button>
+            <button
+              type="button"
               className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
               onClick={() => toggleFavorite({ targetType: 'point', pointId: selectedPoint.id }).catch(() => null)}
             >
@@ -3194,6 +3444,91 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </SheetContent>
         </Sheet>
       ) : null}
+
+      {showQuickPilgrimage && detail ? (
+        <QuickPilgrimageMode
+          bangumi={detail}
+          userPointStates={quickPilgrimageStates}
+          onClose={() => setShowQuickPilgrimage(false)}
+          onCheckIn={(pointId) => {
+            setSelectedPointId(pointId)
+            setShowCheckInCard(true)
+          }}
+        />
+      ) : null}
+
+      <Dialog.Root open={routeBookPickerOpen} onOpenChange={setRouteBookPickerOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[131] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-2xl focus:outline-none">
+            <Dialog.Title className="text-sm font-semibold text-slate-900">{label.routeBookSelectTitle}</Dialog.Title>
+            <Dialog.Description className="mt-1 text-xs text-slate-500">{label.routeBookPickOne}</Dialog.Description>
+
+            {routeBookPickerLoading ? (
+              <div className="mt-4 text-sm text-slate-500">{label.routeBookLoading}</div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {routeBookItems.length > 0 ? (
+                  <div className="max-h-44 space-y-2 overflow-y-auto">
+                    {routeBookItems.map((book) => (
+                      <button
+                        key={book.id}
+                        type="button"
+                        disabled={routeBookPickerSaving}
+                        className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => {
+                          void addSelectedPointToRouteBook(book.id)
+                        }}
+                      >
+                        <span className="truncate">{book.title}</span>
+                        <span className="ml-2 text-xs text-slate-400">{book.status}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">{label.routeBookEmpty}</div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 space-y-2">
+              <input
+                type="text"
+                value={routeBookTitleDraft}
+                onChange={(e) => setRouteBookTitleDraft(e.target.value)}
+                placeholder={label.routeBookCreatePlaceholder}
+                maxLength={100}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              <button
+                type="button"
+                disabled={routeBookPickerSaving || !routeBookTitleDraft.trim()}
+                className="w-full rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  void createRouteBookAndAddPoint()
+                }}
+              >
+                {routeBookPickerSaving ? label.loading : label.routeBookCreateAndAdd}
+              </button>
+            </div>
+
+            {routeBookPickerError ? (
+              <div className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{routeBookPickerError}</div>
+            ) : null}
+
+            <div className="mt-4 flex justify-end">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+                >
+                  {label.close}
+                </button>
+              </Dialog.Close>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={Boolean(imagePreview)} onOpenChange={onImagePreviewOpenChange}>
         <Dialog.Portal>

@@ -41,7 +41,7 @@ type RouteBookDetail = {
 }
 
 type DetailResponse =
-  | { ok: true; routeBook: RouteBookDetail }
+  | { ok: true; routeBook?: RouteBookDetail; item?: RouteBookDetail }
   | { error: string }
 
 const STATUS_LABEL: Record<RouteBookStatus, string> = {
@@ -160,24 +160,35 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const [rbRes, psRes] = await Promise.all([
-      fetch(`/api/me/routebooks/${id}`),
-      fetch('/api/me/point-states?state=checked_in'),
-    ])
-    const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
-    if (!rbRes.ok || 'error' in rbData) {
-      setError(('error' in rbData && rbData.error) || '加载失败')
-      setLoading(false)
-      return
-    }
-    setRouteBook(rbData.routeBook)
-    setTitleDraft(rbData.routeBook.title)
+    try {
+      const [rbRes, psRes] = await Promise.all([
+        fetch(`/api/me/routebooks/${id}`),
+        fetch('/api/me/point-states?state=checked_in'),
+      ])
+      const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
+      if (!rbRes.ok || 'error' in rbData) {
+        setError(('error' in rbData && rbData.error) || '加载失败')
+        return
+      }
 
-    const psData = await psRes.json().catch(() => ({}))
-    if (psData.ok && Array.isArray(psData.items)) {
-      setCheckedInPointIds(new Set(psData.items.map((s: { pointId: string }) => s.pointId)))
+      const detail = rbData.routeBook || rbData.item || null
+      if (!detail) {
+        setError('路书数据异常，请刷新重试')
+        return
+      }
+
+      setRouteBook(detail)
+      setTitleDraft(detail.title)
+
+      const psData = await psRes.json().catch(() => ({}))
+      if (psData.ok && Array.isArray(psData.items)) {
+        setCheckedInPointIds(new Set(psData.items.map((s: { pointId: string }) => s.pointId)))
+      }
+    } catch {
+      setError('加载失败')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [id])
 
   useEffect(() => {
