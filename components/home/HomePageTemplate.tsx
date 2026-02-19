@@ -81,7 +81,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
                   {t('pages.home.browseAnimeButton', locale)}
                 </Link>
                 <Link
-                  href={prefixPath('/submit', locale)}
+                  href={prefixPath('/map', locale)}
                   className="inline-flex w-full justify-center rounded-full border border-gray-200 bg-white px-6 py-4 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900 sm:w-auto"
                 >
                   {t('pages.home.submitButton', locale)}
