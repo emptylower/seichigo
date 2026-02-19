@@ -269,7 +269,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
     signInToFavorite: '登录后可收藏',
-    signInToPointPool: '登录后可将点位加入想去清单',
+    signInToPointPool: '登录后可将点位加入全局想去池',
     signInToRouteBook: '登录后可使用路书功能',
     quickStart: '开始',
     quickPilgrimage: '快速巡礼',
@@ -279,11 +279,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToRouteBook: '加入路书',
     addToRouteBookSuccess: '已加入路书',
     addToRouteBookFailed: '加入路书失败，请稍后重试',
-    addToPointPool: '想去',
-    addToPointPoolSuccess: '已加入想去清单',
-    addToPointPoolFailed: '加入想去清单失败，请稍后重试',
-    pointPoolGuide: '已加入点位池：前往「我的路书」将点位加入你的路线草稿。',
+    addToPointPool: '加入想去池',
+    addToPointPoolSuccess: '已加入全局想去池',
+    addToPointPoolFailed: '加入全局想去池失败，请稍后重试',
+    pointPoolGuide: '已加入全局想去池：前往「我的路书」可加入具体路线。',
     stateAutoHint: '状态由行为自动更新：想去 -> 加入路书后计划中 -> 打卡后已打卡',
+    pointAlreadyInPoolHint: '已在全局想去池，可直接加入路书。',
     routeBookSelectTitle: '加入路书',
     routeBookLoading: '正在加载路书…',
     routeBookEmpty: '还没有路书，先创建一个吧',
@@ -356,7 +357,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
     signInToFavorite: 'Sign in to favorite',
-    signInToPointPool: 'Sign in to add this point to your want-to-go pool',
+    signInToPointPool: 'Sign in to add this point to the global want-to-go pool',
     signInToRouteBook: 'Sign in to use routebooks',
     quickStart: 'Start',
     quickPilgrimage: 'Quick Pilgrimage',
@@ -366,11 +367,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToRouteBook: 'Add to Routebook',
     addToRouteBookSuccess: 'Added to routebook',
     addToRouteBookFailed: 'Failed to add to routebook',
-    addToPointPool: 'Want to go',
-    addToPointPoolSuccess: 'Added to want-to-go pool',
-    addToPointPoolFailed: 'Failed to add point',
-    pointPoolGuide: 'Added to point pool. Open My Routebooks and move this point into your plan.',
+    addToPointPool: 'Add to Pool',
+    addToPointPoolSuccess: 'Added to global want-to-go pool',
+    addToPointPoolFailed: 'Failed to add to global pool',
+    pointPoolGuide: 'Added to global pool. Open My Routebooks to place this point into a route.',
     stateAutoHint: 'State is automatic: Want to go -> Planned after adding to routebook -> Checked in after check-in.',
+    pointAlreadyInPoolHint: 'Already in the global pool. You can add it to a routebook now.',
     routeBookSelectTitle: 'Add to Routebook',
     routeBookLoading: 'Loading routebooks…',
     routeBookEmpty: 'No routebooks yet. Create one first.',
@@ -443,7 +445,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
     signInToFavorite: 'ログインしてお気に入り',
-    signInToPointPool: 'ログインして行きたいリストに追加',
+    signInToPointPool: 'ログインして全体の行きたいプールに追加',
     signInToRouteBook: '路書機能を使うにはログインしてください',
     quickStart: '開始',
     quickPilgrimage: 'クイック巡礼',
@@ -453,11 +455,12 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToRouteBook: '路書に追加',
     addToRouteBookSuccess: '路書に追加しました',
     addToRouteBookFailed: '路書への追加に失敗しました',
-    addToPointPool: '行きたい',
-    addToPointPoolSuccess: '行きたいリストに追加しました',
-    addToPointPoolFailed: '追加に失敗しました',
-    pointPoolGuide: 'スポットプールに追加しました。マイルートブックからルート草稿へ追加できます。',
+    addToPointPool: '行きたいプールへ',
+    addToPointPoolSuccess: '全体の行きたいプールに追加しました',
+    addToPointPoolFailed: '全体プールへの追加に失敗しました',
+    pointPoolGuide: '全体の行きたいプールへ追加しました。マイルートブックからルートに追加できます。',
     stateAutoHint: '状態は自動更新です：行きたい -> 路書追加で計画中 -> 打刻で巡礼済み',
+    pointAlreadyInPoolHint: 'すでに全体プールにあります。路書へ追加できます。',
     routeBookSelectTitle: '路書に追加',
     routeBookLoading: '路書を読み込み中…',
     routeBookEmpty: '路書がありません。先に作成してください。',
@@ -1248,6 +1251,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (!selectedPoint || !meState) return null
     return meState.pointStates.find((ps) => ps.pointId === selectedPoint.id)?.state || null
   }, [meState, selectedPoint])
+
+  const showWantToGoAction = Boolean(selectedPoint && selectedPointState === null)
 
   const quickPilgrimageStates = useMemo(() => {
     const out: Record<string, string> = {}
@@ -2772,6 +2777,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 </span>
               ))}
             </div>
+            {selectedPointState === 'want_to_go' ? (
+              <div className="mt-2 text-[11px] text-blue-600">{label.pointAlreadyInPoolHint}</div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -2789,28 +2797,23 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             >
               {label.enterPanorama}
             </button>
-            <button
-              type="button"
-              className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
-              onClick={() => {
-                addPointToPointPool(selectedPoint.id).catch(() => null)
-              }}
-            >
-              {label.addToPointPool}
-            </button>
+            {showWantToGoAction ? (
+              <button
+                type="button"
+                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+                onClick={() => {
+                  addPointToPointPool(selectedPoint.id).catch(() => null)
+                }}
+              >
+                {label.addToPointPool}
+              </button>
+            ) : null}
             <button
               type="button"
               className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
               onClick={openRouteBookPicker}
             >
               {label.addToRouteBook}
-            </button>
-            <button
-              type="button"
-              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600"
-              onClick={() => setShowQuickPilgrimage(true)}
-            >
-              {label.quickPilgrimage}
             </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
@@ -3175,6 +3178,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 </span>
               ))}
             </div>
+            {selectedPointState === 'want_to_go' ? (
+              <div className="mt-2 text-[11px] text-blue-600">{label.pointAlreadyInPoolHint}</div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -3192,28 +3198,23 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             >
               {label.enterPanorama}
             </button>
-            <button
-              type="button"
-              className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
-              onClick={() => {
-                addPointToPointPool(selectedPoint.id).catch(() => null)
-              }}
-            >
-              {label.addToPointPool}
-            </button>
+            {showWantToGoAction ? (
+              <button
+                type="button"
+                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+                onClick={() => {
+                  addPointToPointPool(selectedPoint.id).catch(() => null)
+                }}
+              >
+                {label.addToPointPool}
+              </button>
+            ) : null}
             <button
               type="button"
               className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
               onClick={openRouteBookPicker}
             >
               {label.addToRouteBook}
-            </button>
-            <button
-              type="button"
-              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600"
-              onClick={() => setShowQuickPilgrimage(true)}
-            >
-              {label.quickPilgrimage}
             </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Navigation, SkipForward, CheckCircle2, MapPin, Film, ChevronRight, Award, Map as MapIcon, ExternalLink } from 'lucide-react'
+import { X, Navigation, SkipForward, CheckCircle2, MapPin, Film, ChevronRight, Award, Map as MapIcon, ExternalLink, RotateCcw } from 'lucide-react'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import { getHaversineDistance, resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import CheckInModal from '@/components/checkin/CheckInModal'
@@ -55,6 +55,7 @@ function buildGoogleMapsUrl(point: AnitabiPointDTO): string {
 export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose, onStatesUpdated }: Props) {
   const [step, setStep] = useState<'intro' | 'cards' | 'summary'>('intro')
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [navigationStepByPointId, setNavigationStepByPointId] = useState<Record<string, 'idle' | 'navigating' | 'done'>>({})
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [isExiting, setIsExiting] = useState(false)
   const [checkInTargetId, setCheckInTargetId] = useState<string | null>(null)
@@ -152,6 +153,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
   const totalPoints = bangumi.points.length
   const checkedInCount = totalPoints - points.length
   const currentPoint = points[currentIndex] || null
+  const currentNavigationStep = currentPoint ? navigationStepByPointId[currentPoint.id] || 'idle' : 'idle'
   const checkInTarget = checkInTargetId ? bangumi.points.find((point) => point.id === checkInTargetId) || null : null
 
   const currentDistance = useMemo(() => {
@@ -322,7 +324,20 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
             </div>
 
             <div className="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
-              <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">站内导航</div>
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400">站内导航</div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    currentNavigationStep === 'navigating'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : currentNavigationStep === 'done'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-slate-700/70 text-slate-300'
+                  }`}
+                >
+                  {currentNavigationStep === 'navigating' ? '导航中' : currentNavigationStep === 'done' ? '已结束' : '未开始'}
+                </span>
+              </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
                 <div className="rounded-lg bg-slate-800/70 px-3 py-2">
                   <div className="text-slate-400">方向</div>
@@ -334,37 +349,96 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                 </div>
               </div>
               <div className="mt-2 text-[11px] text-slate-400 line-clamp-2">
-                {currentPoint.note || '你可以直接在当前页面完成打卡并进入下一站。'}
+                {currentNavigationStep === 'idle'
+                  ? '先点击“导航”进入站内导航。导航完成或退出导航后，才可打卡。'
+                  : currentNavigationStep === 'navigating'
+                    ? '导航中：可按方向与距离前进。完成后点击“导航完成”或“退出导航”。'
+                    : currentPoint.note || '你已结束导航，可以打卡并进入下一站，或重新导航。'}
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3 w-full">
-              <button
-                type="button"
-                onClick={() => setCheckInTargetId(currentPoint.id)}
-                className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
-              >
-                <CheckCircle2 size={18} />
-                打卡并下一步
-              </button>
-              <button
-                type="button"
-                onClick={handleSkip}
-                className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
-              >
-                <SkipForward size={18} />
-                跳过
-              </button>
-            </div>
+            {currentNavigationStep === 'idle' ? (
+              <div className="mt-6 grid w-full grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'navigating' }))}
+                  className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
+                >
+                  <Navigation size={18} />
+                  导航
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
+                >
+                  <SkipForward size={18} />
+                  跳过
+                </button>
+              </div>
+            ) : null}
 
-            <button
-              type="button"
-              onClick={handleOpenGoogleMaps}
-              className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
-            >
-              <ExternalLink size={14} />
-              可选：打开 Google Maps
-            </button>
+            {currentNavigationStep === 'navigating' ? (
+              <>
+                <div className="mt-6 grid w-full grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))}
+                    className="flex items-center justify-center gap-2 bg-emerald-500 text-white py-3.5 rounded-2xl font-bold hover:bg-emerald-600 active:scale-95"
+                  >
+                    <CheckCircle2 size={18} />
+                    导航完成
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'done' }))}
+                    className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
+                  >
+                    <X size={18} />
+                    退出导航
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenGoogleMaps}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
+                >
+                  <ExternalLink size={14} />
+                  可选：打开 Google Maps
+                </button>
+              </>
+            ) : null}
+
+            {currentNavigationStep === 'done' ? (
+              <>
+                <div className="mt-6 grid w-full grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCheckInTargetId(currentPoint.id)}
+                    className="flex items-center justify-center gap-2 bg-brand-500 text-white py-3.5 rounded-2xl font-bold hover:bg-brand-600 active:scale-95"
+                  >
+                    <CheckCircle2 size={18} />
+                    打卡并下一步
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNavigationStepByPointId((prev) => ({ ...prev, [currentPoint.id]: 'navigating' }))}
+                    className="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl font-bold border border-white/10 hover:bg-slate-800 active:scale-95"
+                  >
+                    <RotateCcw size={18} />
+                    重新导航
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
+                >
+                  <SkipForward size={14} />
+                  跳过此点
+                </button>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -439,6 +513,12 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
             setCheckedInPointIds((prev) => {
               const next = new Set(prev)
               next.add(pointId)
+              return next
+            })
+            setNavigationStepByPointId((prev) => {
+              if (!(pointId in prev)) return prev
+              const next = { ...prev }
+              delete next[pointId]
               return next
             })
             setSessionCheckedPointIds((prev) => (prev.includes(pointId) ? prev : [...prev, pointId]))
