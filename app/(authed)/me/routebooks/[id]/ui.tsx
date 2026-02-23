@@ -278,6 +278,29 @@ function parsePointKey(pointId: string): string {
   return pointId.slice(sep + 1)
 }
 
+function buildPointLookupCandidates(pointId: string): string[] {
+  const raw = String(pointId || '').trim()
+  if (!raw) return []
+
+  const parsed = parsePointKey(raw)
+  const bangumiId = parseBangumiId(raw)
+  const out = new Set<string>()
+  const push = (value: string | null | undefined) => {
+    const normalized = String(value || '').trim()
+    if (!normalized) return
+    out.add(normalized)
+    out.add(normalized.toLowerCase())
+  }
+
+  push(raw)
+  push(parsed)
+  if (bangumiId && parsed) {
+    push(`${bangumiId}:${parsed}`)
+  }
+
+  return Array.from(out)
+}
+
 function pickPointGradient(seed: string): string {
   let value = 0
   for (const char of seed) value = (value * 29 + char.charCodeAt(0)) % 997
@@ -778,14 +801,18 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
             const pointMap = new Map<string, { title: string; image: string | null; geo: [number, number] | null }>()
             for (const point of data.points || []) {
-              if (!point?.id) continue
-              const title = (point.nameZh || point.name || point.id || '').trim()
+              const rawPointId = String(point?.id || '').trim()
+              if (!rawPointId) continue
+              const title = (point.nameZh || point.name || rawPointId || '').trim()
               if (!title) continue
-              pointMap.set(point.id, {
+              const meta = {
                 title,
                 image: typeof point.image === 'string' ? point.image : null,
-                geo: isGeoPair(point.geo) ? [point.geo[0], point.geo[1]] : null,
-              })
+                geo: isGeoPair(point.geo) ? ([point.geo[0], point.geo[1]] as [number, number]) : null,
+              }
+              for (const candidate of buildPointLookupCandidates(rawPointId)) {
+                pointMap.set(candidate, meta)
+              }
             }
 
             const subtitle =
@@ -794,8 +821,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               `作品 #${bangumiId}`
 
             for (const pointId of ids) {
+              const matched = buildPointLookupCandidates(pointId)
+                .map((candidate) => pointMap.get(candidate))
+                .find((entry) => Boolean(entry))
               const key = parsePointKey(pointId)
-              const matched = pointMap.get(key)
               loadedPreviews[pointId] = {
                 title: matched?.title || `点位 ${key}`,
                 subtitle,
