@@ -2779,11 +2779,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
             <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
-            <div className="mt-2 flex items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
               {(['want_to_go', 'planned', 'checked_in'] as const).map((state) => (
                 <span
                   key={state}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                     selectedPointState === state
                       ? state === 'checked_in'
                         ? 'bg-green-500 text-white'
@@ -2803,15 +2803,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             {geoLink(selectedPoint) ? (
-              <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
+              <a className="inline-flex min-w-[92px] items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
                 {label.openInGoogle}
               </a>
             ) : null}
             <button
               type="button"
-              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex min-w-[92px] items-center justify-center rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
               onClick={enterPanorama}
               disabled={!selectedPointPanorama}
               title={selectedPointPanorama ? undefined : label.panoramaUnavailable}
@@ -2821,7 +2821,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {showWantToGoAction ? (
               <button
                 type="button"
-                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+                className="inline-flex min-w-[108px] items-center justify-center rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                 onClick={() => {
                   addPointToPointPool(selectedPoint.id).catch(() => null)
                 }}
@@ -2832,7 +2832,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
                 type="button"
-                className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100 font-medium"
+                className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
                 onClick={() => setShowCheckInCard(true)}
               >
                 打卡卡片
@@ -2901,12 +2901,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+          <div className="flex flex-wrap items-center justify-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex rounded bg-slate-200/50 p-0.5">
               <button
                 type="button"
                 onClick={() => setViewFilter('all')}
-                className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                className={`rounded px-3 py-1 text-[11px] font-medium transition ${
                   viewFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -2915,7 +2915,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               <button
                 type="button"
                 onClick={() => setViewFilter('marked')}
-                className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                className={`rounded px-3 py-1 text-[11px] font-medium transition ${
                   viewFilter === 'marked' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -2924,7 +2924,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </div>
 
             {viewFilter === 'marked' && (
-              <div className="flex items-center gap-1">
+              <div className="flex w-full flex-wrap items-center justify-center gap-1.5">
                 {(['want_to_go', 'planned', 'checked_in'] as const).map((s) => (
                   <button
                     key={s}
@@ -2932,7 +2932,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                     onClick={() => {
                       setStateFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
                     }}
-                    className={`flex h-4 items-center gap-1 rounded-full px-1.5 text-[9px] font-medium transition ${
+                    className={`flex h-5 items-center gap-1 rounded-full px-2 text-[10px] font-medium transition ${
                       stateFilter.includes(s) || stateFilter.length === 0
                         ? s === 'checked_in'
                           ? 'bg-green-500 text-white'
@@ -3266,11 +3266,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
             <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
-            <div className="mt-2 flex items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
               {(['want_to_go', 'planned', 'checked_in'] as const).map((state) => (
                 <span
                   key={state}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                     selectedPointState === state
                       ? state === 'checked_in'
                         ? 'bg-green-500 text-white'
@@ -3290,15 +3290,15 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             {geoLink(selectedPoint) ? (
-              <a className="rounded bg-slate-900 px-2 py-1 text-xs text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
+              <a className="inline-flex min-w-[92px] items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
                 {label.openInGoogle}
               </a>
             ) : null}
             <button
               type="button"
-              className="rounded bg-brand-500 px-2 py-1 text-xs text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex min-w-[92px] items-center justify-center rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
               onClick={enterPanorama}
               disabled={!selectedPointPanorama}
               title={selectedPointPanorama ? undefined : label.panoramaUnavailable}
@@ -3308,7 +3308,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {showWantToGoAction ? (
               <button
                 type="button"
-                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
+                className="inline-flex min-w-[108px] items-center justify-center rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                 onClick={() => {
                   addPointToPointPool(selectedPoint.id).catch(() => null)
                 }}
@@ -3319,7 +3319,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
                 type="button"
-                className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100 font-medium"
+                className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
                 onClick={() => setShowCheckInCard(true)}
               >
                 打卡卡片
