@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { RouteBookStatus } from '@/lib/routeBook/repo'
 
 type RouteBookItem = {
@@ -88,16 +88,65 @@ export default function RouteBooksClient() {
     setItems((prev) => prev.filter((x) => x.id !== id))
   }
 
-  if (loading) return <div className="text-gray-600">加载中…</div>
-  if (error) return <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
+  const statusCount = useMemo(() => {
+    return items.reduce(
+      (acc, item) => {
+        acc[item.status] += 1
+        return acc
+      },
+      { draft: 0, in_progress: 0, completed: 0 } as Record<RouteBookStatus, number>
+    )
+  }, [items])
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">我的地图</h1>
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="h-5 w-40 animate-pulse rounded bg-pink-100" />
+        <div className="grid gap-3">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div key={idx} className="rounded-2xl border border-pink-100/90 bg-white/90 p-4 shadow-sm">
+              <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
+              <div className="mt-3 h-3 w-20 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
+        <p>{error}</p>
         <button
           type="button"
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+          className="mt-3 inline-flex rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-100"
+          onClick={() => void load()}
+        >
+          重新加载
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium">
+        <span className="inline-flex rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-pink-700">
+          共 {items.length} 张地图
+        </span>
+        <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
+          草稿 {statusCount.draft}
+        </span>
+        <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
+          进行中 {statusCount.in_progress}
+        </span>
+        <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
+          已完成 {statusCount.completed}
+        </span>
+        <button
+          type="button"
+          className="ml-auto inline-flex min-h-10 items-center rounded-full bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
           onClick={() => setShowCreate(true)}
         >
           新建地图
@@ -105,34 +154,38 @@ export default function RouteBooksClient() {
       </div>
 
       {showCreate && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700">
+        <div className="rounded-2xl border border-pink-100 bg-gradient-to-br from-white to-pink-50/50 p-4 shadow-sm sm:p-5">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-slate-900">创建新地图</h2>
+            <p className="text-sm text-slate-500">用于整理想去点位、排序路线与导出导航。</p>
+          </div>
+          <label className="mt-4 block text-sm font-medium text-slate-700">
             地图标题
-            <input
-              type="text"
-              value={createTitle}
-              onChange={(e) => setCreateTitle(e.target.value)}
-              placeholder="例：东京圣地巡礼地图"
-              maxLength={100}
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleCreate()
-              }}
-              autoFocus
-            />
           </label>
-          <div className="mt-3 flex gap-2">
+          <input
+            type="text"
+            value={createTitle}
+            onChange={(e) => setCreateTitle(e.target.value)}
+            placeholder="例：东京圣地巡礼地图"
+            maxLength={100}
+            className="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleCreate()
+            }}
+            autoFocus
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={creating || !createTitle.trim()}
-              className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
               onClick={() => void handleCreate()}
             >
               {creating ? '创建中…' : '创建'}
             </button>
             <button
               type="button"
-              className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
               onClick={() => { setShowCreate(false); setCreateTitle('') }}
             >
               取消
@@ -144,31 +197,49 @@ export default function RouteBooksClient() {
       {items.length ? (
         <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} className="card flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <a href={`/me/routebooks/${item.id}`} className="block truncate font-medium hover:text-brand-600">
-                  {item.title}
-                </a>
-                <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                  <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[item.status]}`}>
-                    {STATUS_LABEL[item.status]}
-                  </span>
-                  <span>{new Date(item.createdAt).toISOString().slice(0, 10)}</span>
+            <li
+              key={item.id}
+              className="rounded-2xl border border-pink-100/90 bg-gradient-to-br from-white via-white to-pink-50/50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.status]}`}>
+                      {STATUS_LABEL[item.status]}
+                    </span>
+                    <span>更新于 {new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+                  </div>
+                  <a href={`/me/routebooks/${item.id}`} className="block truncate text-[15px] font-semibold text-slate-800 no-underline hover:text-brand-700">
+                    {item.title}
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/me/routebooks/${item.id}`}
+                    className="inline-flex rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 no-underline hover:border-pink-200 hover:text-pink-700"
+                  >
+                    进入
+                  </a>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => void handleDelete(item.id)}
+                  >
+                    删除
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                className="rounded-md border border-gray-200 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50"
-                onClick={() => void handleDelete(item.id)}
-              >
-                删除
-              </button>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-gray-600">还没有地图。</p>
+        <div className="rounded-2xl border border-dashed border-pink-200 bg-white/80 p-8 text-center">
+          <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-pink-50 text-pink-500">
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 3c-4.97 0-9 3.58-9 8 0 3.1 1.98 5.79 4.88 7.13.3.14.52.42.57.74l.43 2.78a1 1 0 0 0 1.62.66l2.44-1.94a1 1 0 0 1 .73-.22c4.5.2 8.33-3.16 8.33-7.15 0-4.42-4.03-8-9-8z" />
+            </svg>
+          </div>
+          <p className="text-gray-700">还没有地图。</p>
           <p className="mt-1 text-sm text-gray-500">
             去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>标记想去的地点，然后创建地图规划你的巡礼路线。
           </p>
