@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import CoverField from '@/components/shared/CoverField'
 import type { ProfileData } from '@/lib/profile/types'
 
@@ -11,6 +12,7 @@ type SettingsFormProps = {
 
 export default function SettingsForm({ initialData }: SettingsFormProps) {
   const router = useRouter()
+  const { update } = useSession()
   const [formData, setFormData] = useState<ProfileData>(initialData)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,11 +31,20 @@ export default function SettingsForm({ initialData }: SettingsFormProps) {
         body: JSON.stringify(formData),
       })
 
+      const data = (await res.json().catch(() => null)) as (ProfileData & { error?: string }) | null
+
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || '保存失败')
+        throw new Error(data?.error || '保存失败')
       }
 
+      if (data) {
+        setFormData(data)
+      }
+      try {
+        await update()
+      } catch {
+        // Ignore session refresh errors; profile save already succeeded.
+      }
       setShowToast(true)
       setTimeout(() => setShowToast(false), 3000)
       router.refresh()

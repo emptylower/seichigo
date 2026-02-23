@@ -36,7 +36,12 @@ export const authOptions: NextAuthOptions = {
 
       const id = token.id || token.sub
       if (id) session.user.id = String(id)
-      if (token.image) session.user.image = String(token.image)
+      if (token.name !== undefined) {
+        session.user.name = token.name ? String(token.name) : null
+      }
+      if (token.image !== undefined) {
+        session.user.image = token.image ? String(token.image) : null
+      }
       session.user.isAdmin = isAdminEmail(session.user.email)
 
       // 强制改密需要实时读取 DB（避免 JWT 里值过期造成循环/失效）
@@ -47,9 +52,11 @@ export const authOptions: NextAuthOptions = {
         try {
           const u = await prisma.user.findUnique({
             where: { id: String(id) },
-            select: { mustChangePassword: true, passwordHash: true, disabled: true },
+            select: { name: true, image: true, mustChangePassword: true, passwordHash: true, disabled: true },
           })
           if (u) {
+            session.user.name = u.name
+            session.user.image = u.image
             mustChangePassword = u.mustChangePassword
             needsPasswordSetup = !u.passwordHash
             disabled = Boolean(u.disabled)
