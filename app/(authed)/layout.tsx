@@ -1,4 +1,4 @@
-import SiteShell from '@/components/layout/SiteShell'
+import SiteShellPublic from '@/components/layout/SiteShellPublic'
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 
@@ -10,5 +10,5 @@ export default async function AuthedLayout({ children }: { children: React.React
   if (session?.user?.isAdmin && session?.user?.mustChangePassword) {
     redirect('/auth/change-password')
   }
-  return <SiteShell>{children}</SiteShell>
+  return <SiteShellPublic>{children}</SiteShellPublic>
 }
