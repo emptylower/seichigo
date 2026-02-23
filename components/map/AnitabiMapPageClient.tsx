@@ -3724,7 +3724,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
           <Dialog.Content className="fixed left-1/2 bottom-0 z-[131] w-full max-w-2xl -translate-x-1/2 focus:outline-none sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2">
             <ComparisonImageGenerator
-              animeImage={selectedPointImage.previewUrl || ''}
+              animeImage={selectedPointImage.downloadUrl || selectedPointImage.previewUrl || ''}
               animeTitle={detail?.card.title || ''}
               pointName={selectedPoint?.name || ''}
               onClose={() => setShowComparisonGenerator(false)}

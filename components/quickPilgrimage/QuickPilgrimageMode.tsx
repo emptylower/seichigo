@@ -657,7 +657,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
         <CheckInModal
           pointId={checkInTarget.id}
           pointName={checkInTarget.nameZh || checkInTarget.name}
-          referenceImageUrl={resolveAnitabiAssetUrl(checkInTarget.image)}
+          referenceImageUrl={resolveAnitabiAssetUrl(checkInTarget.originUrl || checkInTarget.image)}
           pointGeo={checkInTarget.geo ? { lat: checkInTarget.geo[0], lng: checkInTarget.geo[1] } : null}
           animeTitle={bangumi.card.title}
           episode={checkInTarget.ep}

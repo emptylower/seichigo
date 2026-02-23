@@ -17,9 +17,6 @@ export interface ComparisonImageGeneratorProps {
 const INFO_BAR_HEIGHT = 180
 const WATERMARK_SIZE = 80
 const PADDING = 60
-const TARGET_OUTPUT_WIDTH = 1600
-const MIN_OUTPUT_WIDTH = 960
-const MAX_OUTPUT_HEIGHT = 8000
 
 export default function ComparisonImageGenerator({
   animeImage,
@@ -41,43 +38,22 @@ export default function ComparisonImageGenerator({
   const safeAnimeImage = animeImage ? toCanvasSafeImageUrl(animeImage, `${pointName}-anime`) : ''
 
   const compressImage = useCallback(async (fileOrUrl: File | string): Promise<string> => {
+    if (typeof fileOrUrl === 'string') {
+      return fileOrUrl
+    }
+
     return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-
-        const MAX_SIDE = 2500
-        if (width > MAX_SIDE || height > MAX_SIDE) {
-          if (width > height) {
-            height = (height / width) * MAX_SIDE
-            width = MAX_SIDE
-          } else {
-            width = (width / height) * MAX_SIDE
-            height = MAX_SIDE
-          }
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const value = String(e.target?.result || '')
+        if (!value) {
+          reject(new Error('Failed to read image'))
+          return
         }
-
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
+        resolve(value)
       }
-      img.onerror = () => reject(new Error('Failed to load image for compression'))
-      
-      if (typeof fileOrUrl === 'string') {
-        img.src = fileOrUrl
-      } else {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          img.src = e.target?.result as string
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(fileOrUrl)
-      }
+      reader.onerror = () => reject(new Error('Failed to read image'))
+      reader.readAsDataURL(fileOrUrl)
     })
   }, [])
 
@@ -128,26 +104,12 @@ export default function ComparisonImageGenerator({
         loadImage('/brand/web-logo.png').catch(() => null)
       ])
 
-      const calcScaledHeight = (img: HTMLImageElement, width: number) => {
-        if (!img.width || !img.height) return Math.round((width * 9) / 16)
-        return Math.round((img.height / img.width) * width)
-      }
-
-      let outputWidth = Math.max(
-        MIN_OUTPUT_WIDTH,
-        Math.min(TARGET_OUTPUT_WIDTH, Math.max(imgAnime?.width || 0, imgUser.width || 0))
-      )
-
-      let animeSectionHeight = imgAnime ? calcScaledHeight(imgAnime, outputWidth) : Math.round((outputWidth * 9) / 16)
-      let userSectionHeight = calcScaledHeight(imgUser, outputWidth)
-      let totalHeight = animeSectionHeight + userSectionHeight + INFO_BAR_HEIGHT
-
-      while (totalHeight > MAX_OUTPUT_HEIGHT && outputWidth > 320) {
-        outputWidth = Math.max(320, Math.floor(outputWidth * 0.88))
-        animeSectionHeight = imgAnime ? calcScaledHeight(imgAnime, outputWidth) : Math.round((outputWidth * 9) / 16)
-        userSectionHeight = calcScaledHeight(imgUser, outputWidth)
-        totalHeight = animeSectionHeight + userSectionHeight + INFO_BAR_HEIGHT
-      }
+      const animeWidth = imgAnime?.width || 0
+      const animeSectionHeight = imgAnime?.height || Math.round((imgUser.width * 9) / 16)
+      const userWidth = imgUser.width
+      const userSectionHeight = imgUser.height
+      const outputWidth = Math.max(animeWidth, userWidth)
+      const totalHeight = animeSectionHeight + userSectionHeight + INFO_BAR_HEIGHT
 
       canvas.width = outputWidth
       canvas.height = totalHeight
@@ -156,7 +118,7 @@ export default function ComparisonImageGenerator({
       ctx.fillRect(0, 0, outputWidth, totalHeight)
 
       if (imgAnime) {
-        ctx.drawImage(imgAnime, 0, 0, outputWidth, animeSectionHeight)
+        ctx.drawImage(imgAnime, 0, 0)
       } else {
         const animeFallback = ctx.createLinearGradient(0, 0, outputWidth, animeSectionHeight)
         animeFallback.addColorStop(0, '#fdf2f8')
@@ -164,12 +126,12 @@ export default function ComparisonImageGenerator({
         ctx.fillStyle = animeFallback
         ctx.fillRect(0, 0, outputWidth, animeSectionHeight)
         ctx.fillStyle = '#9f1239'
-        ctx.font = `bold ${Math.max(26, Math.round(outputWidth * 0.036))}px sans-serif`
+        ctx.font = 'bold 36px sans-serif'
         ctx.fillText('动画原图不可用', PADDING, animeSectionHeight / 2 - 24)
       }
 
       const userTop = animeSectionHeight
-      ctx.drawImage(imgUser, 0, userTop, outputWidth, userSectionHeight)
+      ctx.drawImage(imgUser, 0, userTop)
 
       const infoTop = userTop + userSectionHeight
       ctx.fillStyle = '#ffffff'
@@ -186,21 +148,19 @@ export default function ComparisonImageGenerator({
       }
 
       ctx.textBaseline = 'middle'
-      const titleFontSize = Math.max(26, Math.min(42, Math.round(outputWidth * 0.032)))
-      const subtitleFontSize = Math.max(18, Math.min(30, Math.round(outputWidth * 0.022)))
       
       ctx.fillStyle = '#111827'
-      ctx.font = `bold ${titleFontSize}px sans-serif`
+      ctx.font = 'bold 42px sans-serif'
       ctx.fillText(animeTitle, PADDING, infoTop + 68)
 
       ctx.fillStyle = '#6b7280'
-      ctx.font = `${subtitleFontSize}px sans-serif`
+      ctx.font = '30px sans-serif'
       const infoText = `${pointName}${episode ? ` · 第${episode}话` : ''}`
       ctx.fillText(infoText, PADDING, infoTop + 126)
 
       if (imgLogo) {
         const logoAspectRatio = imgLogo.width / imgLogo.height
-        const logoH = Math.max(48, Math.min(WATERMARK_SIZE, Math.round(outputWidth * 0.08)))
+        const logoH = WATERMARK_SIZE
         const logoW = logoH * logoAspectRatio
         ctx.globalAlpha = 0.9
         ctx.drawImage(imgLogo, outputWidth - logoW - PADDING, infoTop + (INFO_BAR_HEIGHT - logoH) / 2, logoW, logoH)
