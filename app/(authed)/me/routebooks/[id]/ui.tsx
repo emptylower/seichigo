@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  useDraggable,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -20,6 +22,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import type { RouteBookStatus, RouteBookZone } from '@/lib/routeBook/repo'
 import CheckInModal from '@/components/checkin/CheckInModal'
+import { buildGoogleStaticMapUrl, type LatLng } from '@/lib/route/google'
 
 type PointRecord = {
   id: string
@@ -55,6 +58,7 @@ type PointPreview = {
   title: string
   subtitle: string
   image: string | null
+  geo: [number, number] | null
 }
 
 type BangumiResponse = {
@@ -68,6 +72,7 @@ type BangumiResponse = {
     name?: string | null
     nameZh?: string | null
     image?: string | null
+    geo?: [number, number] | null
   }>
 }
 
@@ -99,6 +104,11 @@ const POINT_FALLBACK_GRADIENTS = [
 ] as const
 
 const SORTED_LIMIT = 25
+const SORTED_ZONE_ID = 'zone:sorted'
+const UNSORTED_ZONE_ID = 'zone:unsorted'
+const SORTED_DND_PREFIX = 'sorted:'
+const UNSORTED_DND_PREFIX = 'unsorted:'
+const POOL_DND_PREFIX = 'pool:'
 const NAV_MODE_LABEL: Record<NavMode, string> = {
   transit: '公交 + 步行',
   driving: '驾车',
@@ -113,6 +123,141 @@ const DRAG_SAFE_CONTROL_PROPS = {
   onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   onMouseDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   onTouchStart: (event: { stopPropagation: () => void }) => event.stopPropagation(),
+}
+
+function isGeoPair(value: unknown): value is [number, number] {
+  if (!Array.isArray(value) || value.length < 2) return false
+  const lat = Number(value[0])
+  const lng = Number(value[1])
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false
+  return true
+}
+
+function sortedDragId(recordId: string): string {
+  return `${SORTED_DND_PREFIX}${recordId}`
+}
+
+function unsortedDragId(recordId: string): string {
+  return `${UNSORTED_DND_PREFIX}${recordId}`
+}
+
+function poolDragId(poolItemId: string): string {
+  return `${POOL_DND_PREFIX}${poolItemId}`
+}
+
+function parseDragRecordId(rawId: string, prefix: string): string | null {
+  if (!rawId.startsWith(prefix)) return null
+  const value = rawId.slice(prefix.length)
+  return value || null
+}
+
+function isPointRecord(value: unknown): value is PointRecord {
+  if (!value || typeof value !== 'object') return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.id === 'string' &&
+    typeof row.routeBookId === 'string' &&
+    typeof row.pointId === 'string' &&
+    typeof row.sortOrder === 'number' &&
+    (row.zone === 'sorted' || row.zone === 'unsorted') &&
+    typeof row.createdAt === 'string'
+  )
+}
+
+function getSortedPoints(points: PointRecord[]): PointRecord[] {
+  return points
+    .filter((point) => point.zone === 'sorted')
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+function getUnsortedPoints(points: PointRecord[]): PointRecord[] {
+  return points
+    .filter((point) => point.zone === 'unsorted')
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+function rebuildPoints(sorted: PointRecord[], unsorted: PointRecord[]): PointRecord[] {
+  const normalizedSorted = sorted.map((point, index) => ({ ...point, zone: 'sorted' as const, sortOrder: index }))
+  const normalizedUnsorted = unsorted.map((point, index) => ({ ...point, zone: 'unsorted' as const, sortOrder: index }))
+  return [...normalizedSorted, ...normalizedUnsorted]
+}
+
+function reorderSortedInPoints(points: PointRecord[], sortedPointIds: string[]): PointRecord[] {
+  const sorted = getSortedPoints(points)
+  const unsorted = getUnsortedPoints(points)
+  const byPointId = new Map(sorted.map((point) => [point.pointId, point]))
+
+  const reordered: PointRecord[] = []
+  for (const pointId of sortedPointIds) {
+    const matched = byPointId.get(pointId)
+    if (!matched) continue
+    reordered.push({ ...matched, zone: 'sorted' })
+    byPointId.delete(pointId)
+  }
+
+  for (const point of sorted) {
+    if (byPointId.has(point.pointId)) {
+      reordered.push({ ...point, zone: 'sorted' })
+    }
+  }
+
+  return rebuildPoints(reordered, unsorted)
+}
+
+function movePointToZoneInPoints(
+  points: PointRecord[],
+  pointId: string,
+  targetZone: RouteBookZone,
+  targetSortedIndex?: number
+): PointRecord[] {
+  const sorted = getSortedPoints(points)
+  const unsorted = getUnsortedPoints(points)
+  const source = sorted.find((point) => point.pointId === pointId) || unsorted.find((point) => point.pointId === pointId)
+  if (!source) return points
+
+  const nextSorted = sorted.filter((point) => point.id !== source.id)
+  const nextUnsorted = unsorted.filter((point) => point.id !== source.id)
+
+  if (targetZone === 'sorted') {
+    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : nextSorted.length, nextSorted.length))
+    nextSorted.splice(insertAt, 0, { ...source, zone: 'sorted' })
+    return rebuildPoints(nextSorted, nextUnsorted)
+  }
+
+  nextUnsorted.push({ ...source, zone: 'unsorted' })
+  return rebuildPoints(nextSorted, nextUnsorted)
+}
+
+function addPointToZoneInPoints(
+  points: PointRecord[],
+  created: PointRecord,
+  targetZone: RouteBookZone,
+  targetSortedIndex?: number
+): PointRecord[] {
+  const sorted = getSortedPoints(points)
+  const unsorted = getUnsortedPoints(points)
+  const sanitized = { ...created, zone: targetZone }
+
+  if (targetZone === 'sorted') {
+    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : sorted.length, sorted.length))
+    sorted.splice(insertAt, 0, sanitized)
+    return rebuildPoints(sorted, unsorted)
+  }
+
+  unsorted.push(sanitized)
+  return rebuildPoints(sorted, unsorted)
+}
+
+function formatGoogleStop(point: PointRecord, preview: PointPreview): string {
+  if (isGeoPair(preview.geo)) return `${preview.geo[0]},${preview.geo[1]}`
+  return preview.title || point.pointId
+}
+
+function buildGooglePointEmbedUrl(preview: PointPreview | null): string | null {
+  if (!preview || !isGeoPair(preview.geo)) return null
+  const [lat, lng] = preview.geo
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=16&output=embed`
 }
 
 function formatDate(value: string): string {
@@ -144,23 +289,24 @@ function buildFallbackPreview(pointId: string): PointPreview {
     title: `点位 ${parsePointKey(pointId)}`,
     subtitle: `番剧 #${parseBangumiId(pointId) || '未知'}`,
     image: null,
+    geo: null,
   }
 }
 
-function buildGoogleDirectionsUrl(pointIds: string[], mode: NavMode): string | null {
-  if (!pointIds.length) return null
+function buildGoogleDirectionsUrl(stops: string[], mode: NavMode): string | null {
+  if (!stops.length) return null
 
-  if (pointIds.length === 1) {
+  if (stops.length === 1) {
     const params = new URLSearchParams({
       api: '1',
-      destination: pointIds[0],
+      destination: stops[0],
       travelmode: NAV_MODE_PARAM[mode],
     })
     return `https://www.google.com/maps/dir/?${params.toString()}`
   }
 
-  const origin = pointIds[0]
-  const destination = pointIds[pointIds.length - 1]
+  const origin = stops[0]
+  const destination = stops[stops.length - 1]
   if (!origin || !destination) return null
 
   const params = new URLSearchParams({
@@ -169,18 +315,18 @@ function buildGoogleDirectionsUrl(pointIds: string[], mode: NavMode): string | n
     destination,
     travelmode: NAV_MODE_PARAM[mode],
   })
-  const waypoints = pointIds.slice(1, -1)
+  const waypoints = stops.slice(1, -1)
   if (waypoints.length > 0) {
     params.set('waypoints', waypoints.join('|'))
   }
   return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
-function buildGoogleLegDirectionsUrl(fromPointId: string, toPointId: string, mode: NavMode): string {
+function buildGoogleLegDirectionsUrl(fromStop: string, toStop: string, mode: NavMode): string {
   const params = new URLSearchParams({
     api: '1',
-    origin: fromPointId,
-    destination: toPointId,
+    origin: fromStop,
+    destination: toStop,
     travelmode: NAV_MODE_PARAM[mode],
   })
   return `https://www.google.com/maps/dir/?${params.toString()}`
@@ -202,9 +348,9 @@ function PointThumb({ preview, seed }: { preview: PointPreview; seed: string }) 
   }
 
   return (
-    <div className={`flex h-full w-full items-end bg-gradient-to-br ${gradient}`}>
-      <div className="w-full bg-[linear-gradient(to_top,rgba(2,6,23,0.78),rgba(2,6,23,0.25),transparent)] px-2.5 py-2 text-[11px] font-semibold text-white">
-        {preview.subtitle}
+    <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient}`}>
+      <div className="rounded-md bg-black/35 px-3 py-1.5 text-xs font-semibold text-white">
+        暂无截图
       </div>
     </div>
   )
@@ -324,7 +470,7 @@ function SortablePointCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: point.id })
+  } = useSortable({ id: sortedDragId(point.id) })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -352,13 +498,21 @@ function PointPoolCard({
   item,
   preview,
   onAdd,
+  sortable,
+  isDragging,
 }: {
   item: PointPoolItem
   preview: PointPreview
   onAdd: () => void
+  sortable?: boolean
+  isDragging?: boolean
 }) {
   return (
-    <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_-25px_rgba(15,23,42,0.45)]">
+    <article
+      className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_14px_30px_-25px_rgba(15,23,42,0.45)] transition ${
+        isDragging ? 'border-brand-300 ring-2 ring-brand-200/70' : 'border-slate-200'
+      } ${sortable ? 'cursor-grab select-none active:cursor-grabbing' : ''}`}
+    >
       <div className="flex min-w-0 items-stretch">
         <div className="relative h-28 w-36 shrink-0 overflow-hidden border-r border-slate-100 sm:h-32 sm:w-44">
           <PointThumb preview={preview} seed={item.pointId} />
@@ -369,19 +523,115 @@ function PointPoolCard({
         </div>
 
         <div className="min-w-0 flex-1 space-y-2 p-3">
-          <h3 className="line-clamp-1 text-sm font-semibold text-slate-900 sm:text-base">{preview.title}</h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="line-clamp-1 text-sm font-semibold text-slate-900 sm:text-base">{preview.title}</h3>
+            {sortable ? (
+              <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                拖入路线
+              </span>
+            ) : null}
+          </div>
           <p className="line-clamp-1 text-xs text-slate-500">{preview.subtitle}</p>
           <p className="truncate rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">{item.pointId}</p>
           <button
             type="button"
             className="inline-flex min-h-8 w-full items-center justify-center rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
             onClick={onAdd}
+            {...DRAG_SAFE_CONTROL_PROPS}
           >
             加入当前地图
           </button>
         </div>
       </div>
     </article>
+  )
+}
+
+function DroppablePanel({
+  id,
+  className,
+  activeClassName,
+  children,
+}: {
+  id: string
+  className: string
+  activeClassName: string
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+
+  return (
+    <div ref={setNodeRef} className={`${className} ${isOver ? activeClassName : ''}`}>
+      {children}
+    </div>
+  )
+}
+
+function DraggableUnsortedPointCard({
+  point,
+  preview,
+  onRemove,
+  onMoveToSorted,
+  canMoveToSorted,
+}: {
+  point: PointRecord
+  preview: PointPreview
+  onRemove: (pointId: string) => void
+  onMoveToSorted: () => void
+  canMoveToSorted: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: unsortedDragId(point.id),
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    opacity: isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-pan-y">
+      <PointCard
+        point={point}
+        preview={preview}
+        onRemove={onRemove}
+        onMoveToSorted={onMoveToSorted}
+        canMoveToSorted={canMoveToSorted}
+        sortable
+        isDragging={isDragging}
+      />
+    </div>
+  )
+}
+
+function DraggablePointPoolCard({
+  item,
+  preview,
+  onAdd,
+}: {
+  item: PointPoolItem
+  preview: PointPreview
+  onAdd: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: poolDragId(item.id),
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    opacity: isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-pan-y">
+      <PointPoolCard
+        item={item}
+        preview={preview}
+        onAdd={onAdd}
+        sortable
+        isDragging={isDragging}
+      />
+    </div>
   )
 }
 
@@ -396,6 +646,33 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [travelMode, setTravelMode] = useState<NavMode>('transit')
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
+  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+
+  const parsePointPoolItems = useCallback((items: unknown): PointPoolItem[] => {
+    if (!Array.isArray(items)) return []
+    return items.filter((item: unknown): item is PointPoolItem => {
+      if (!item || typeof item !== 'object') return false
+      const row = item as Record<string, unknown>
+      return (
+        typeof row.id === 'string' &&
+        typeof row.pointId === 'string' &&
+        typeof row.createdAt === 'string' &&
+        typeof row.updatedAt === 'string'
+      )
+    })
+  }, [])
+
+  const refreshPointPool = useCallback(async () => {
+    try {
+      const res = await fetch('/api/me/point-pool', { method: 'GET' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data?.ok) {
+        setPointPoolItems(parsePointPoolItems(data.items))
+      }
+    } catch {
+      // ignore background refresh failures
+    }
+  }, [parsePointPoolItems])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { delay: 140, tolerance: 6 } }),
@@ -433,13 +710,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
       const poolData = await poolRes.json().catch(() => ({}))
       if (poolData.ok && Array.isArray(poolData.items)) {
-        setPointPoolItems(
-          poolData.items.filter((item: unknown): item is PointPoolItem => {
-            if (!item || typeof item !== 'object') return false
-            const row = item as Record<string, unknown>
-            return typeof row.id === 'string' && typeof row.pointId === 'string'
-          })
-        )
+        setPointPoolItems(parsePointPoolItems(poolData.items))
       } else {
         setPointPoolItems([])
       }
@@ -448,16 +719,14 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, parsePointPoolItems])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const unsorted = routeBook?.points.filter((p) => p.zone === 'unsorted') ?? []
-  const sorted = routeBook?.points
-    .filter((p) => p.zone === 'sorted')
-    .sort((a, b) => a.sortOrder - b.sortOrder) ?? []
+  const unsorted = routeBook ? getUnsortedPoints(routeBook.points) : []
+  const sorted = routeBook ? getSortedPoints(routeBook.points) : []
 
   const allPointIds = useMemo(() => {
     const pointIds = [
@@ -507,7 +776,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             const data = (await res.json().catch(() => null)) as BangumiResponse | null
             if (!data) return
 
-            const pointMap = new Map<string, { title: string; image: string | null }>()
+            const pointMap = new Map<string, { title: string; image: string | null; geo: [number, number] | null }>()
             for (const point of data.points || []) {
               if (!point?.id) continue
               const title = (point.nameZh || point.name || point.id || '').trim()
@@ -515,6 +784,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               pointMap.set(point.id, {
                 title,
                 image: typeof point.image === 'string' ? point.image : null,
+                geo: isGeoPair(point.geo) ? [point.geo[0], point.geo[1]] : null,
               })
             }
 
@@ -522,7 +792,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               (typeof data.card?.titleZh === 'string' && data.card.titleZh.trim()) ||
               (typeof data.card?.title === 'string' && data.card.title.trim()) ||
               `作品 #${bangumiId}`
-            const cover = typeof data.card?.cover === 'string' ? data.card.cover : null
 
             for (const pointId of ids) {
               const key = parsePointKey(pointId)
@@ -530,7 +799,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               loadedPreviews[pointId] = {
                 title: matched?.title || `点位 ${key}`,
                 subtitle,
-                image: matched?.image || cover,
+                image: matched?.image || null,
+                geo: matched?.geo || null,
               }
             }
           } catch {
@@ -590,6 +860,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     }
   }
 
+  const persistSortedOrder = useCallback(async (pointIds: string[]): Promise<boolean> => {
+    const res = await fetch(`/api/me/routebooks/${id}/points`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: 'reorder', pointIds }),
+    })
+    if (!res.ok) {
+      void load()
+      return false
+    }
+    return true
+  }, [id, load])
+
   async function handleRemovePoint(pointId: string) {
     const res = await fetch(`/api/me/routebooks/${id}/points`, {
       method: 'DELETE',
@@ -597,72 +880,126 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       body: JSON.stringify({ pointId }),
     })
     if (res.ok) {
-      setRouteBook((prev) => prev ? {
-        ...prev,
-        points: prev.points.filter((p) => p.pointId !== pointId),
-      } : prev)
+      setRouteBook((prev) => {
+        if (!prev) return prev
+        const nextSorted = getSortedPoints(prev.points).filter((point) => point.pointId !== pointId)
+        const nextUnsorted = getUnsortedPoints(prev.points).filter((point) => point.pointId !== pointId)
+        return { ...prev, points: rebuildPoints(nextSorted, nextUnsorted) }
+      })
+      void refreshPointPool()
     }
   }
 
-  async function handleMoveToZone(pointId: string, targetZone: RouteBookZone) {
+  async function handleMoveToZone(pointId: string, targetZone: RouteBookZone, targetSortedIndex?: number) {
     if (!routeBook) return
 
-    const updatedPoints = routeBook.points.map((p) => {
-      if (p.pointId === pointId) {
-        const newSortOrder = targetZone === 'sorted'
-          ? sorted.length
-          : 0
-        return { ...p, zone: targetZone, sortOrder: newSortOrder }
-      }
-      return p
-    })
-    setRouteBook({ ...routeBook, points: updatedPoints })
+    const nextPoints = movePointToZoneInPoints(routeBook.points, pointId, targetZone, targetSortedIndex)
+    setRouteBook({ ...routeBook, points: nextPoints })
 
-    await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'DELETE',
+    const moveRes = await fetch(`/api/me/routebooks/${id}/points`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pointId }),
+      body: JSON.stringify({ op: 'move', pointId, zone: targetZone }),
     })
-    await fetch(`/api/me/routebooks/${id}/points`, {
+    if (!moveRes.ok) {
+      void load()
+      return
+    }
+
+    if (targetZone === 'sorted') {
+      const sortedPointIds = getSortedPoints(nextPoints).map((point) => point.pointId)
+      await persistSortedOrder(sortedPointIds)
+    }
+  }
+
+  async function handleAddFromPointPool(
+    pointId: string,
+    targetZone: RouteBookZone = 'unsorted',
+    targetSortedIndex?: number
+  ): Promise<boolean> {
+    if (!routeBook) return false
+
+    const res = await fetch(`/api/me/routebooks/${id}/points`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pointId, zone: targetZone }),
     })
+    if (!res.ok) return false
 
-    void load()
-  }
+    const payload = await res.json().catch(() => ({}))
+    const created = isPointRecord(payload?.item) ? payload.item : null
+    if (!created) {
+      void load()
+      return false
+    }
 
-  async function handleAddFromPointPool(pointId: string) {
-    const res = await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pointId, zone: 'unsorted' }),
-    })
-    if (!res.ok) return
-    await load()
+    const nextPoints = addPointToZoneInPoints(routeBook.points, created, targetZone, targetSortedIndex)
+    setRouteBook({ ...routeBook, points: nextPoints })
+    setPointPoolItems((prev) => prev.filter((item) => item.pointId !== pointId))
+
+    if (targetZone === 'sorted') {
+      const sortedPointIds = getSortedPoints(nextPoints).map((point) => point.pointId)
+      await persistSortedOrder(sortedPointIds)
+    }
+
+    return true
   }
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over || active.id === over.id || !routeBook) return
+    if (!over || !routeBook) return
 
-    const oldIndex = sorted.findIndex((p) => p.id === active.id)
-    const newIndex = sorted.findIndex((p) => p.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
+    const activeId = String(active.id)
+    const overId = String(over.id)
+    if (activeId === overId) return
 
-    const reordered = arrayMove(sorted, oldIndex, newIndex)
-    const updatedPoints = routeBook.points.map((p) => {
-      if (p.zone !== 'sorted') return p
-      const idx = reordered.findIndex((r) => r.id === p.id)
-      return idx >= 0 ? { ...p, sortOrder: idx } : p
-    })
-    setRouteBook({ ...routeBook, points: updatedPoints })
+    const dropSortedIndex = (() => {
+      if (overId === SORTED_ZONE_ID) return sorted.length
+      const overSortedRecordId = parseDragRecordId(overId, SORTED_DND_PREFIX)
+      if (!overSortedRecordId) return sorted.length
+      const found = sorted.findIndex((point) => point.id === overSortedRecordId)
+      return found >= 0 ? found : sorted.length
+    })()
 
-    await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pointIds: reordered.map((p) => p.pointId) }),
-    })
+    const activeSortedRecordId = parseDragRecordId(activeId, SORTED_DND_PREFIX)
+    if (activeSortedRecordId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
+      const oldIndex = sorted.findIndex((point) => point.id === activeSortedRecordId)
+      const newIndex = overId === SORTED_ZONE_ID
+        ? Math.max(sorted.length - 1, 0)
+        : sorted.findIndex((point) => sortedDragId(point.id) === overId)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reordered = arrayMove(sorted, oldIndex, newIndex)
+      const reorderedPointIds = reordered.map((point) => point.pointId)
+      const updatedPoints = reorderSortedInPoints(routeBook.points, reorderedPointIds)
+      setRouteBook({ ...routeBook, points: updatedPoints })
+      await persistSortedOrder(reorderedPointIds)
+      return
+    }
+
+    if (activeSortedRecordId && overId === UNSORTED_ZONE_ID) {
+      const source = sorted.find((point) => point.id === activeSortedRecordId)
+      if (!source) return
+      await handleMoveToZone(source.pointId, 'unsorted')
+      return
+    }
+
+    const activeUnsortedRecordId = parseDragRecordId(activeId, UNSORTED_DND_PREFIX)
+    if (activeUnsortedRecordId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
+      if (!canAddToSorted) return
+      const source = unsorted.find((point) => point.id === activeUnsortedRecordId)
+      if (!source) return
+      await handleMoveToZone(source.pointId, 'sorted', dropSortedIndex)
+      return
+    }
+
+    const activePoolItemId = parseDragRecordId(activeId, POOL_DND_PREFIX)
+    if (activePoolItemId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
+      if (!canAddToSorted) return
+      const source = pointPoolItems.find((item) => item.id === activePoolItemId)
+      if (!source) return
+      await handleAddFromPointPool(source.pointId, 'sorted', dropSortedIndex)
+    }
   }
 
   if (loading) return <div className="text-gray-600">加载中…</div>
@@ -675,30 +1012,52 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   if (!routeBook) return null
 
   const canAddToSorted = sorted.length < SORTED_LIMIT
-  const routeGoogleUrl = buildGoogleDirectionsUrl(sorted.map((p) => p.pointId), travelMode)
-  const routeLegs = sorted.slice(0, -1).map((from, index) => {
-    const to = sorted[index + 1]
+  const sortedStops = sorted.map((point) => {
+    const preview = getPointPreview(point.pointId)
+    return {
+      point,
+      preview,
+      stop: formatGoogleStop(point, preview),
+    }
+  })
+  const routeGoogleUrl = buildGoogleDirectionsUrl(sortedStops.map((row) => row.stop), travelMode)
+  const routeLegs = sortedStops.slice(0, -1).map((from, index) => {
+    const to = sortedStops[index + 1]
     if (!to) return null
     return {
-      id: `${from.id}:${to.id}`,
+      id: `${from.point.id}:${to.point.id}`,
       order: index + 1,
       from,
       to,
-      navUrl: buildGoogleLegDirectionsUrl(from.pointId, to.pointId, travelMode),
+      navUrl: buildGoogleLegDirectionsUrl(from.stop, to.stop, travelMode),
     }
   }).filter((item): item is {
     id: string
     order: number
-    from: PointRecord
-    to: PointRecord
+    from: { point: PointRecord; preview: PointPreview; stop: string }
+    to: { point: PointRecord; preview: PointPreview; stop: string }
     navUrl: string
   } => Boolean(item))
+  const routeMapPoints: LatLng[] = sortedStops
+    .map((row) => row.preview.geo)
+    .filter(isGeoPair)
+    .map((geo) => ({ lat: geo[0], lng: geo[1] }))
+  const routeMapPreviewUrl = buildGoogleStaticMapUrl(routeMapPoints, {
+    apiKey: staticMapApiKey,
+    width: 1200,
+    height: 680,
+    scale: 2,
+    maptype: 'roadmap',
+  })
   const checkedCount = sorted.filter((p) => checkedInPointIds.has(p.pointId)).length
   const allDone = sorted.length > 0 && checkedCount === sorted.length
   const nextPoint = sorted.find((p) => !checkedInPointIds.has(p.pointId)) || null
   const focusPoint = nextPoint || sorted[0] || null
   const focusPreview = focusPoint ? getPointPreview(focusPoint.pointId) : null
-  const nextPointNavUrl = nextPoint ? buildGoogleDirectionsUrl([nextPoint.pointId], travelMode) : null
+  const focusPointEmbedUrl = buildGooglePointEmbedUrl(focusPreview)
+  const nextPointNavUrl = nextPoint
+    ? buildGoogleDirectionsUrl([formatGoogleStop(nextPoint, getPointPreview(nextPoint.pointId))], travelMode)
+    : null
 
   return (
     <div className="space-y-6">
@@ -831,21 +1190,27 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         />
       )}
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">路线排序 ({sorted.length}/{SORTED_LIMIT})</h2>
-          <span className="text-xs text-slate-500">按住卡片即可拖拽重排，右侧导航实时更新</span>
-        </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={(event) => {
+          void handleDragEnd(event)
+        }}
+      >
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">路线排序 ({sorted.length}/{SORTED_LIMIT})</h2>
+            <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把待排/全局点位拖入路线</span>
+          </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
-          <div className="rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm">
-            {sorted.length > 0 ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(e) => void handleDragEnd(e)}
-              >
-                <SortableContext items={sorted.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
+            <DroppablePanel
+              id={SORTED_ZONE_ID}
+              className="rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm transition"
+              activeClassName="border-brand-300 bg-brand-50/35"
+            >
+              {sorted.length > 0 ? (
+                <SortableContext items={sorted.map((point) => sortedDragId(point.id))} strategy={verticalListSortingStrategy}>
                   <div className="max-h-[72vh] space-y-3 overflow-y-auto pr-1">
                     {sorted.map((point) => (
                       <SortablePointCard
@@ -859,196 +1224,226 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     ))}
                   </div>
                 </SortableContext>
-              </DndContext>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                从下方当前地图待排点中将点位加入路线，或去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位。
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                  从下方当前地图待排点或全局想去池中，直接拖拽点位到此处即可加入路线。
+                </div>
+              )}
+            </DroppablePanel>
 
-          <aside className="self-start rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm xl:sticky xl:top-20">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-900">实时导航预览</h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  {sorted.length} 个点位
-                </span>
-              </div>
+            <aside className="self-start rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm xl:sticky xl:top-20">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-slate-900">实时导航预览</h3>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                    {sorted.length} 个点位
+                  </span>
+                </div>
 
-              <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                {(['transit', 'driving'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      travelMode === mode
-                        ? 'bg-white text-slate-900 shadow'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                    onClick={() => setTravelMode(mode)}
-                  >
-                    {NAV_MODE_LABEL[mode]}
-                  </button>
-                ))}
-              </div>
+                <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                  {(['transit', 'driving'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                        travelMode === mode
+                          ? 'bg-white text-slate-900 shadow'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      onClick={() => setTravelMode(mode)}
+                    >
+                      {NAV_MODE_LABEL[mode]}
+                    </button>
+                  ))}
+                </div>
 
-              {focusPoint && focusPreview ? (
                 <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <div className="aspect-[16/9]">
-                    <PointThumb preview={focusPreview} seed={focusPoint.pointId} />
+                  <div className="aspect-[16/9] bg-slate-100">
+                    {routeMapPreviewUrl ? (
+                      <img
+                        src={routeMapPreviewUrl}
+                        alt="Google 路线预览图"
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : focusPointEmbedUrl ? (
+                      <iframe
+                        title="Google 点位预览"
+                        src={focusPointEmbedUrl}
+                        className="h-full w-full border-0"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-500">
+                        当前路线缺少可用坐标，暂无法渲染 Google 地图预览。
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5 p-3">
                     <div className="text-xs font-medium text-slate-500">
-                      {nextPoint ? `下一站 #${sorted.indexOf(nextPoint) + 1}` : '路线预览'}
+                      {routeMapPoints.length >= 2
+                        ? `Google 路线图已按排序连线（${NAV_MODE_LABEL[travelMode]}）`
+                        : routeMapPoints.length === 1
+                          ? 'Google 点位页预览'
+                          : '路线预览'}
                     </div>
-                    <div className="line-clamp-1 text-sm font-semibold text-slate-900">{focusPreview.title}</div>
-                    <div className="line-clamp-1 text-xs text-slate-500">{focusPreview.subtitle}</div>
-                    <div className="truncate text-xs text-slate-500">{focusPoint.pointId}</div>
+                    {focusPoint && focusPreview ? (
+                      <>
+                        <div className="line-clamp-1 text-sm font-semibold text-slate-900">{focusPreview.title}</div>
+                        <div className="line-clamp-1 text-xs text-slate-500">{focusPreview.subtitle}</div>
+                        <div className="truncate text-xs text-slate-500">{focusPoint.pointId}</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-slate-500">添加点位后会实时更新路线图。</div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-                  路线暂无点位，添加后这里会实时显示导航预览。
-                </div>
-              )}
 
-              {routeBook.status === 'in_progress' && sorted.length > 0 && (
-                <div className={`rounded-xl border p-3 ${
-                  allDone ? 'border-emerald-200 bg-emerald-50/80' : 'border-sky-200 bg-sky-50/80'
-                }`}>
-                  {allDone ? (
-                    <div className="space-y-2">
-                      <div className="text-sm font-semibold text-emerald-700">全部打卡完成</div>
-                      <div className="text-xs text-emerald-600">{sorted.length}/{sorted.length} 已完成</div>
-                      <button
-                        type="button"
-                        className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-                        onClick={() => void handleStatusChange('completed')}
-                      >
-                        标记为完成巡礼
-                      </button>
+                {routeBook.status === 'in_progress' && sorted.length > 0 && (
+                  <div className={`rounded-xl border p-3 ${
+                    allDone ? 'border-emerald-200 bg-emerald-50/80' : 'border-sky-200 bg-sky-50/80'
+                  }`}>
+                    {allDone ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-semibold text-emerald-700">全部打卡完成</div>
+                        <div className="text-xs text-emerald-600">{sorted.length}/{sorted.length} 已完成</div>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                          onClick={() => void handleStatusChange('completed')}
+                        >
+                          标记为完成巡礼
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-sm font-semibold text-sky-700">
+                          巡礼进度 {checkedCount}/{sorted.length}
+                        </div>
+                        {nextPoint ? (
+                          <div className="flex flex-wrap gap-2">
+                            <a
+                              href={nextPointNavUrl ?? '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white no-underline hover:bg-sky-600"
+                            >
+                              导航到下一站
+                            </a>
+                            <button
+                              type="button"
+                              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                              onClick={() => setCheckInTarget(nextPoint.pointId)}
+                            >
+                              打卡下一站
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-slate-500">逐段导航（按当前排序自动更新）</div>
+                  {routeLegs.length > 0 ? (
+                    <div className="max-h-[32vh] space-y-2 overflow-y-auto pr-1">
+                      {routeLegs.map((leg) => (
+                        <div key={leg.id} className="rounded-xl border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-medium text-slate-500">第 {leg.order} 段</div>
+                            <a
+                              href={leg.navUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 no-underline transition hover:bg-slate-50"
+                            >
+                              导航
+                            </a>
+                          </div>
+                          <div className="mt-1 line-clamp-1 text-sm font-semibold text-slate-900">
+                            {leg.from.preview.title} → {leg.to.preview.title}
+                          </div>
+                          <div className="mt-1 truncate text-[11px] text-slate-500">
+                            {leg.from.point.pointId} → {leg.to.point.pointId}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <div className="text-sm font-semibold text-sky-700">
-                        巡礼进度 {checkedCount}/{sorted.length}
-                      </div>
-                      {nextPoint ? (
-                        <div className="flex flex-wrap gap-2">
-                          <a
-                            href={nextPointNavUrl ?? '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white no-underline hover:bg-sky-600"
-                          >
-                            导航到下一站
-                          </a>
-                          <button
-                            type="button"
-                            className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-                            onClick={() => setCheckInTarget(nextPoint.pointId)}
-                          >
-                            打卡下一站
-                          </button>
-                        </div>
-                      ) : null}
+                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-xs text-slate-500">
+                      至少添加 2 个含坐标点位后显示逐段导航。
                     </div>
                   )}
                 </div>
-              )}
-
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-slate-500">逐段导航（按当前排序自动更新）</div>
-                {routeLegs.length > 0 ? (
-                  <div className="max-h-[32vh] space-y-2 overflow-y-auto pr-1">
-                    {routeLegs.map((leg) => (
-                      <div key={leg.id} className="rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs font-medium text-slate-500">第 {leg.order} 段</div>
-                          <a
-                            href={leg.navUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 no-underline transition hover:bg-slate-50"
-                          >
-                            导航
-                          </a>
-                        </div>
-                        <div className="mt-1 line-clamp-1 text-sm font-semibold text-slate-900">
-                          {getPointPreview(leg.from.pointId).title} → {getPointPreview(leg.to.pointId).title}
-                        </div>
-                        <div className="mt-1 truncate text-[11px] text-slate-500">
-                          {leg.from.pointId} → {leg.to.pointId}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300 p-3 text-xs text-slate-500">
-                    至少添加 2 个路线点位后显示逐段导航。
-                  </div>
-                )}
               </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">当前地图待排 ({unsorted.length})</h2>
+            <span className="text-xs text-slate-500">直接拖拽卡片到上方路线区可加入排序；也可把路线卡片拖到此区移出路线</span>
+          </div>
+
+          <DroppablePanel
+            id={UNSORTED_ZONE_ID}
+            className="rounded-3xl border border-transparent p-0 transition"
+            activeClassName="border-brand-300 bg-brand-50/20 p-2"
+          >
+            {unsorted.length > 0 ? (
+              <div className="space-y-3">
+                {unsorted.map((point) => (
+                  <DraggableUnsortedPointCard
+                    key={point.id}
+                    point={point}
+                    preview={getPointPreview(point.pointId)}
+                    onRemove={handleRemovePoint}
+                    onMoveToSorted={() => void handleMoveToZone(point.pointId, 'sorted')}
+                    canMoveToSorted={canAddToSorted}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                当前地图待排为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到地图。
+              </div>
+            )}
+          </DroppablePanel>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">全局想去池 ({pointPoolItems.length})</h2>
+            <span className="text-xs text-slate-500">支持把全局点位直接拖进路线区，减少按钮操作</span>
+          </div>
+
+          {pointPoolItems.length > 0 ? (
+            <div className="space-y-3">
+              {pointPoolItems.map((item) => {
+                const preview = getPointPreview(item.pointId)
+                return (
+                  <DraggablePointPoolCard
+                    key={item.id}
+                    item={item}
+                    preview={preview}
+                    onAdd={() => {
+                      void handleAddFromPointPool(item.pointId)
+                    }}
+                  />
+                )
+              })}
             </div>
-          </aside>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">当前地图待排 ({unsorted.length})</h2>
-          <span className="text-xs text-slate-500">这些点位已加入地图但还未进入路线</span>
-        </div>
-
-        {unsorted.length > 0 ? (
-          <div className="space-y-3">
-            {unsorted.map((point) => (
-              <PointCard
-                key={point.id}
-                point={point}
-                preview={getPointPreview(point.pointId)}
-                onRemove={handleRemovePoint}
-                onMoveToSorted={() => void handleMoveToZone(point.pointId, 'sorted')}
-                canMoveToSorted={canAddToSorted}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            当前地图待排为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到地图。
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">全局想去池 ({pointPoolItems.length})</h2>
-          <span className="text-xs text-slate-500">这些点位点过「想去」但尚未加入任何地图</span>
-        </div>
-
-        {pointPoolItems.length > 0 ? (
-          <div className="space-y-3">
-            {pointPoolItems.map((item) => {
-              const preview = getPointPreview(item.pointId)
-              return (
-                <PointPoolCard
-                  key={item.id}
-                  item={item}
-                  preview={preview}
-                  onAdd={() => {
-                    void handleAddFromPointPool(item.pointId)
-                  }}
-                />
-              )
-            })}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            全局想去池为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>点击“想去”来收集点位。
-          </div>
-        )}
-      </section>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+              全局想去池为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>点击“想去”来收集点位。
+            </div>
+          )}
+        </section>
+      </DndContext>
 
       {!canAddToSorted && (
         <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
