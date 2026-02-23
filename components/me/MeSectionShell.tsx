@@ -18,37 +18,42 @@ const tabs: Array<{ key: MeTabKey; label: string; href: string }> = [
 
 export default function MeSectionShell({ activeTab, title, description, children, wide = false }: Props) {
   return (
-    <section className={`mx-auto w-full ${wide ? 'max-w-6xl' : 'max-w-5xl'} space-y-6`}>
-      <div className="overflow-hidden rounded-3xl border border-pink-100/80 bg-gradient-to-br from-white via-rose-50/70 to-pink-50/70 shadow-[0_14px_38px_-24px_rgba(236,72,153,0.45)]">
-        <div className="space-y-4 px-5 py-6 sm:px-7">
-          <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-pink-500/80">Personal Space</p>
-            <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{title}</h1>
-            <p className="max-w-2xl text-sm text-slate-600 sm:text-[15px]">{description}</p>
+    <section className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-6xl'} px-4 sm:px-6`}>
+      <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-2xl border border-pink-100/80 bg-white/90 p-3 shadow-[0_14px_30px_-28px_rgba(15,23,42,0.45)]">
+            <p className="px-2 pb-2 text-xs font-semibold tracking-[0.08em] text-slate-500">用户中心</p>
+            <nav aria-label="用户中心导航" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+              {tabs.map((tab) => {
+                const active = tab.key === activeTab
+                return (
+                  <Link
+                    key={tab.key}
+                    href={tab.href}
+                    prefetch={false}
+                    className={`inline-flex min-h-10 shrink-0 items-center rounded-xl border px-3.5 text-sm font-medium no-underline transition lg:w-full ${
+                      active
+                        ? 'border-pink-200 bg-brand-500 text-white shadow-[0_12px_20px_-16px_rgba(236,72,153,0.8)]'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-pink-200 hover:text-pink-700'
+                    }`}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    {tab.label}
+                  </Link>
+                )
+              })}
+            </nav>
           </div>
-          <nav aria-label="用户中心导航" className="flex flex-wrap gap-2">
-            {tabs.map((tab) => {
-              const active = tab.key === activeTab
-              return (
-                <Link
-                  key={tab.key}
-                  href={tab.href}
-                  prefetch={false}
-                  className={`inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-medium no-underline transition ${
-                    active
-                      ? 'border-pink-200 bg-pink-500 text-white shadow-[0_10px_24px_-16px_rgba(236,72,153,0.8)]'
-                      : 'border-pink-100 bg-white/85 text-slate-700 hover:border-pink-200 hover:text-pink-700'
-                  }`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  {tab.label}
-                </Link>
-              )
-            })}
-          </nav>
+        </aside>
+
+        <div className="min-w-0 space-y-4">
+          <header className="px-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[30px]">{title}</h1>
+            <p className="mt-1 text-sm text-slate-600 sm:text-[15px]">{description}</p>
+          </header>
+          {children}
         </div>
       </div>
-      {children}
     </section>
   )
 }
