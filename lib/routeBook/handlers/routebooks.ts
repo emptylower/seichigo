@@ -67,7 +67,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
 
         const found = await deps.repo.getById(id, session.user.id)
         if (!found) {
-          return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
         }
 
         return NextResponse.json({ ok: true, routeBook: found, item: found })
@@ -138,7 +138,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
 
       const updated = await deps.repo.update(id, session.user.id, update)
       if (!updated) {
-        return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+        return NextResponse.json({ error: '未找到地图' }, { status: 404 })
       }
 
       return NextResponse.json({ ok: true, routeBook: updated, item: updated })
@@ -157,7 +157,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
 
       const deleted = await deps.repo.delete(id, session.user.id)
       if (!deleted) {
-        return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+        return NextResponse.json({ error: '未找到地图' }, { status: 404 })
       }
 
       return NextResponse.json({ ok: true })

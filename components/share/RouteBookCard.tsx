@@ -245,7 +245,7 @@ export default function RouteBookCard({
     if (!previewUrl) return
     const a = document.createElement('a')
     a.href = previewUrl
-    a.download = `seichigo-routebook-${routeBookTitle}-${Date.now()}.jpg`
+    a.download = `seichigo-map-report-${routeBookTitle}-${Date.now()}.jpg`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -268,7 +268,7 @@ export default function RouteBookCard({
       if (navigator.share) {
         const response = await fetch(previewUrl)
         const blob = await response.blob()
-        const file = new File([blob], 'routebook-card.jpg', { type: 'image/jpeg' })
+        const file = new File([blob], 'map-report-card.jpg', { type: 'image/jpeg' })
         await navigator.share({
           files: [file],
           title: '圣地巡礼战报',
@@ -299,7 +299,7 @@ export default function RouteBookCard({
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="relative aspect-[1080/1920] bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 shadow-inner">
           {previewUrl ? (
-            <img src={previewUrl} alt="Route Book Card Preview" className="w-full h-full object-contain" />
+            <img src={previewUrl} alt="Map report card preview" className="w-full h-full object-contain" />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
               {isGenerating ? (

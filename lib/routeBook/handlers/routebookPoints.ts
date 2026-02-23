@@ -63,7 +63,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
         }
         const msg = getErrorMessage(err)
         if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
         }
         throw err
       }
@@ -101,7 +101,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
       } catch (err) {
         const msg = getErrorMessage(err)
         if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
         }
         throw err
       }
@@ -157,7 +157,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
         }
         const msg = getErrorMessage(err)
         if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到路线册' }, { status: 404 })
+          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
         }
         throw err
       }
