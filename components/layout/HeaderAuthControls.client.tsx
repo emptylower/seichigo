@@ -128,7 +128,6 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
 
   return (
     <>
-      {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} prefetch={false} className="hover:text-brand-600">{labels.admin}</Link> : null}
       {showAuthed ? (
         <details className="group relative">
           <summary
@@ -143,6 +142,11 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             <span className="sr-only">{userLabel}</span>
           </summary>
           <div className="absolute right-0 mt-2 w-44 rounded-2xl border border-pink-100 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-sm">
+            {session?.user?.isAdmin ? (
+              <Link href={prefixPath('/admin/panel', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+                {labels.admin}
+              </Link>
+            ) : null}
             <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {userCenterLabel}
             </Link>

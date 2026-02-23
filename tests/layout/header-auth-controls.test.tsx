@@ -1,13 +1,19 @@
 import React from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+const useSessionMock = vi.fn()
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...rest }: any) => (
+  default: ({ href, children, prefetch: _prefetch, ...rest }: any) => (
     <a href={href} {...rest}>
       {children}
     </a>
   ),
+}))
+
+vi.mock('next-auth/react', () => ({
+  useSession: () => useSessionMock(),
 }))
 
 import HeaderAuthControls from '@/components/layout/HeaderAuthControls.client'
@@ -23,94 +29,79 @@ describe('HeaderAuthControls', () => {
   }
 
   beforeEach(() => {
-    vi.useFakeTimers()
+    useSessionMock.mockReset()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('retries session fetch once when first response is anonymous', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            user: {
-              name: 'lijianjie',
-              email: 'lijianjie@koi.codes',
-              isAdmin: true,
-            },
-            expires: new Date(Date.now() + 60_000).toISOString(),
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        )
-      )
-
-    ;(globalThis as any).fetch = fetchMock
+  it('renders anonymous controls while session is loading', () => {
+    useSessionMock.mockReturnValue({
+      data: null,
+      status: 'loading',
+    })
 
     render(<HeaderAuthControls locale="zh" labels={labels} />)
 
-    // Initial render keeps anonymous controls until loaded.
     expect(screen.getByRole('link', { name: labels.signin })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: labels.signup })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: labels.admin })).toBeNull()
+  })
 
-    await act(async () => {
-      await Promise.resolve()
+  it('shows admin entry inside avatar dropdown for admin users', () => {
+    useSessionMock.mockReturnValue({
+      data: {
+        user: {
+          name: 'lijianjie',
+          email: 'lijianjie@koi.codes',
+          isAdmin: true,
+        },
+      },
+      status: 'authenticated',
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // Trigger the retry timer.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300)
-      await Promise.resolve()
-    })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    render(<HeaderAuthControls locale="zh" labels={labels} />)
 
-    // After retry, it should render authenticated controls.
     const admin = screen.getByRole('link', { name: labels.admin })
     expect(admin.getAttribute('href')).toContain('/admin')
+    expect(admin.closest('details')).not.toBeNull()
+    expect(screen.getAllByRole('link', { name: labels.admin })).toHaveLength(1)
     expect(screen.queryByRole('link', { name: labels.signin })).toBeNull()
     expect(screen.queryByRole('link', { name: labels.signup })).toBeNull()
   })
 
-  it('renders stack layout entries for drawer mode', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          user: {
-            name: 'Test User',
-            email: 'test@example.com',
-            isAdmin: false,
-          },
-          expires: new Date(Date.now() + 60_000).toISOString(),
-        }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-    )
-
-    ;(globalThis as any).fetch = fetchMock
+  it('renders stack layout entries for drawer mode', () => {
+    useSessionMock.mockReturnValue({
+      data: {
+        user: {
+          name: 'Test User',
+          email: 'test@example.com',
+          isAdmin: false,
+        },
+      },
+      status: 'authenticated',
+    })
 
     render(<HeaderAuthControls locale="zh" labels={labels} layout="stack" />)
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-
     expect(screen.getByText('用户中心')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: labels.admin })).toBeNull()
     expect(screen.getByRole('link', { name: labels.favorites })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: labels.signout })).toBeInTheDocument()
+  })
+
+  it('hides admin entry for non-admin users in inline layout', () => {
+    useSessionMock.mockReturnValue({
+      data: {
+        user: {
+          name: 'Normal User',
+          email: 'normal@example.com',
+          isAdmin: false,
+        },
+      },
+      status: 'authenticated',
+    })
+
+    render(<HeaderAuthControls locale="zh" labels={labels} />)
+
+    expect(screen.queryByRole('link', { name: labels.admin })).toBeNull()
+    expect(screen.getByRole('link', { name: labels.favorites })).toBeInTheDocument()
   })
 })
