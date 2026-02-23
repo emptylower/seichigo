@@ -20,6 +20,12 @@ type CreateResponse =
   | { ok: true; routeBook?: RouteBookItem; item?: RouteBookItem }
   | { error: string }
 
+type RouteBookMetadata = {
+  cover?: string
+  description?: string
+  city?: string
+}
+
 const STATUS_LABEL: Record<RouteBookStatus, string> = {
   draft: '草稿',
   in_progress: '进行中',
@@ -27,9 +33,44 @@ const STATUS_LABEL: Record<RouteBookStatus, string> = {
 }
 
 const STATUS_STYLE: Record<RouteBookStatus, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  in_progress: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
+  draft: 'bg-white/80 text-slate-700',
+  in_progress: 'bg-sky-500/85 text-white',
+  completed: 'bg-emerald-500/85 text-white',
+}
+
+const STATUS_DESC: Record<RouteBookStatus, string> = {
+  draft: '先收集点位，逐步补全路线。',
+  in_progress: '正在巡礼中，可持续打卡推进进度。',
+  completed: '这张地图已完成，可随时回看复盘。',
+}
+
+const ROUTEBOOK_FALLBACK_GRADIENTS = [
+  'from-sky-500/80 via-cyan-400/70 to-brand-300/80',
+  'from-brand-500/80 via-rose-400/75 to-orange-300/70',
+  'from-violet-500/75 via-fuchsia-400/70 to-brand-400/70',
+  'from-emerald-500/75 via-teal-400/70 to-cyan-300/70',
+] as const
+
+function pickRouteBookGradient(seed: string): string {
+  let value = 0
+  for (const char of seed) value = (value * 31 + char.charCodeAt(0)) % 997
+  return ROUTEBOOK_FALLBACK_GRADIENTS[value % ROUTEBOOK_FALLBACK_GRADIENTS.length]
+}
+
+function parseMetadata(input: unknown): RouteBookMetadata {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  const row = input as Record<string, unknown>
+  return {
+    cover: typeof row.cover === 'string' ? row.cover : undefined,
+    description: typeof row.description === 'string' ? row.description : undefined,
+    city: typeof row.city === 'string' ? row.city : undefined,
+  }
+}
+
+function formatDate(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '最近更新'
+  return parsed.toLocaleDateString('zh-CN')
 }
 
 export default function RouteBooksClient() {
@@ -100,13 +141,16 @@ export default function RouteBooksClient() {
 
   if (loading) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="h-5 w-40 animate-pulse rounded bg-pink-100" />
-        <div className="grid gap-3">
-          {Array.from({ length: 3 }).map((_, idx) => (
-            <div key={idx} className="rounded-2xl border border-pink-100/90 bg-white/90 p-4 shadow-sm">
-              <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
-              <div className="mt-3 h-3 w-20 animate-pulse rounded bg-slate-100" />
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="overflow-hidden rounded-3xl border border-pink-100/90 bg-white/90 shadow-sm">
+              <div className="aspect-[16/10] animate-pulse bg-slate-200" />
+              <div className="space-y-3 p-4">
+                <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
+                <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+              </div>
             </div>
           ))}
         </div>
@@ -146,7 +190,7 @@ export default function RouteBooksClient() {
         </span>
         <button
           type="button"
-          className="ml-auto inline-flex min-h-10 items-center rounded-full bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
+          className="ml-auto inline-flex min-h-10 items-center rounded-full bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand-600"
           onClick={() => setShowCreate(true)}
         >
           新建地图
@@ -154,12 +198,15 @@ export default function RouteBooksClient() {
       </div>
 
       {showCreate && (
-        <div className="rounded-2xl border border-pink-100 bg-gradient-to-br from-white to-pink-50/50 p-4 shadow-sm sm:p-5">
-          <div className="space-y-1">
+        <div className="relative overflow-hidden rounded-3xl border border-pink-100/90 bg-[linear-gradient(140deg,rgba(255,255,255,0.94),rgba(253,242,248,0.84))] p-4 shadow-[0_18px_38px_-28px_rgba(236,72,153,0.55)] sm:p-5">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand-200/50 blur-3xl" />
+          <div className="pointer-events-none absolute -left-12 bottom-0 h-24 w-24 rounded-full bg-cyan-200/50 blur-2xl" />
+
+          <div className="relative space-y-1">
             <h2 className="text-base font-semibold text-slate-900">创建新地图</h2>
             <p className="text-sm text-slate-500">用于整理想去点位、排序路线与导出导航。</p>
           </div>
-          <label className="mt-4 block text-sm font-medium text-slate-700">
+          <label className="relative mt-4 block text-sm font-medium text-slate-700">
             地图标题
           </label>
           <input
@@ -178,7 +225,7 @@ export default function RouteBooksClient() {
             <button
               type="button"
               disabled={creating || !createTitle.trim()}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50"
               onClick={() => void handleCreate()}
             >
               {creating ? '创建中…' : '创建'}
@@ -195,42 +242,86 @@ export default function RouteBooksClient() {
       )}
 
       {items.length ? (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="rounded-2xl border border-pink-100/90 bg-gradient-to-br from-white via-white to-pink-50/50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[item.status]}`}>
-                      {STATUS_LABEL[item.status]}
-                    </span>
-                    <span>更新于 {new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+        <ul className="grid gap-4 md:grid-cols-2">
+          {items.map((item) => {
+            const metadata = parseMetadata(item.metadata)
+            const cover = metadata.cover || '/images/home/chopper-map-base.webp'
+            const fallbackGradient = pickRouteBookGradient(`${item.id}:${item.title}`)
+            const description = metadata.description || STATUS_DESC[item.status]
+            const chips = [metadata.city, `创建于 ${formatDate(item.createdAt)}`].filter(Boolean)
+
+            return (
+              <li
+                key={item.id}
+                className="group overflow-hidden rounded-[26px] border border-pink-100/90 bg-white shadow-[0_20px_38px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_26px_45px_-28px_rgba(219,39,119,0.35)]"
+              >
+                <div className="relative isolate aspect-[16/10] overflow-hidden">
+                  {metadata.cover ? (
+                    <img
+                      src={cover}
+                      alt={item.title}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                  ) : (
+                    <>
+                      <div className={`absolute inset-0 bg-gradient-to-br ${fallbackGradient}`} />
+                      <img
+                        src={cover}
+                        alt=""
+                        aria-hidden="true"
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover opacity-45 mix-blend-multiply"
+                      />
+                    </>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(2,6,23,0.78)_10%,rgba(2,6,23,0.08)_55%,rgba(255,255,255,0)_100%)]" />
+                  <div className={`absolute left-3 top-3 inline-flex rounded-full border border-white/50 px-2.5 py-1 text-[11px] font-semibold backdrop-blur-sm ${STATUS_STYLE[item.status]}`}>
+                    {STATUS_LABEL[item.status]}
                   </div>
-                  <a href={`/me/routebooks/${item.id}`} className="block truncate text-[15px] font-semibold text-slate-800 no-underline hover:text-brand-700">
-                    {item.title}
-                  </a>
+                  <div className="absolute right-3 top-3 inline-flex rounded-full border border-white/50 bg-black/25 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+                    更新于 {formatDate(item.updatedAt)}
+                  </div>
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-white drop-shadow-sm">
+                      {item.title}
+                    </h3>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`/me/routebooks/${item.id}`}
-                    className="inline-flex rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 no-underline hover:border-pink-200 hover:text-pink-700"
-                  >
-                    进入
-                  </a>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                    onClick={() => void handleDelete(item.id)}
-                  >
-                    删除
-                  </button>
+
+                <div className="space-y-3 p-4">
+                  <p className="line-clamp-2 text-sm leading-6 text-slate-600">{description}</p>
+
+                  <div className="flex min-h-[28px] flex-wrap items-center gap-1.5">
+                    {chips.map((chip) => (
+                      <span key={`${item.id}-${chip}`} className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={`/me/routebooks/${item.id}`}
+                      className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 no-underline transition hover:border-pink-200 hover:text-pink-700"
+                    >
+                      进入
+                    </a>
+                    <button
+                      type="button"
+                      className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-rose-200 hover:text-rose-600"
+                      onClick={() => void handleDelete(item.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <div className="rounded-2xl border border-dashed border-pink-200 bg-white/80 p-8 text-center">

@@ -25,6 +25,7 @@ export async function getAllPosts(language: string = 'zh'): Promise<PostFrontmat
       title: fm.title,
       seoTitle: fm.seoTitle,
       description: fm.description,
+      cover: typeof (fm as { cover?: unknown }).cover === 'string' ? (fm as { cover?: string }).cover : undefined,
       slug: fm.slug!,
       animeId: fm.animeId || 'unknown',
       city: fm.city || '',
