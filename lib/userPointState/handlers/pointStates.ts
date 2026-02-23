@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { UserPointStateApiDeps } from '@/lib/userPointState/api'
 import type { ListByUserFilters, UpsertUserPointStateOpts, UserPointStateValue } from '@/lib/userPointState/repo'
+import { resolveUserPointStates } from '@/lib/userPointState/stateResolver'
 
 const stateSchema = z.enum(['want_to_go', 'planned', 'checked_in'])
 
@@ -61,7 +62,15 @@ export function createHandlers(deps: UserPointStateApiDeps) {
         filters.bangumiId = bangumiId
       }
 
-      const items = await deps.repo.listByUser(session.user.id, filters)
+      const items = await resolveUserPointStates(
+        {
+          pointStateRepo: deps.repo,
+          pointPoolRepo: deps.pointPoolRepo,
+          routeBookRepo: deps.routeBookRepo,
+        },
+        session.user.id,
+        filters
+      )
       return NextResponse.json({ ok: true, items })
     },
 
@@ -78,6 +87,9 @@ export function createHandlers(deps: UserPointStateApiDeps) {
       }
 
       const { pointId, state } = parsed.data
+      if (state !== 'checked_in') {
+        return NextResponse.json({ error: '仅支持更新已打卡状态' }, { status: 400 })
+      }
 
       const opts: UpsertUserPointStateOpts = {}
 
@@ -99,6 +111,7 @@ export function createHandlers(deps: UserPointStateApiDeps) {
       }
 
       const saved = await deps.repo.upsert(session.user.id, pointId, state, opts)
+      await deps.pointPoolRepo.delete(session.user.id, pointId)
       return NextResponse.json({ ok: true, item: saved })
     },
 

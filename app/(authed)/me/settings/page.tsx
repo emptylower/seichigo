@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SettingsForm from '@/components/me/SettingsForm.client'
+import MeSectionShell from '@/components/me/MeSectionShell'
 
 export const runtime = 'nodejs'
 
@@ -27,12 +28,15 @@ export default async function SettingsPage() {
     }
 
     return (
-      <div className="container mx-auto max-w-2xl py-8 px-4">
-        <h1 className="text-2xl font-bold text-gray-900">用户设置</h1>
-        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <MeSectionShell
+        activeTab="settings"
+        title="个人信息"
+        description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"
+      >
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
           页面加载失败：{hint}
-        </p>
-      </div>
+        </div>
+      </MeSectionShell>
     )
   }
   
@@ -76,12 +80,15 @@ export default async function SettingsPage() {
     }
 
     return (
-      <div className="container mx-auto max-w-2xl py-8 px-4">
-        <h1 className="text-2xl font-bold text-gray-900">用户设置</h1>
-        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <MeSectionShell
+        activeTab="settings"
+        title="个人信息"
+        description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"
+      >
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
           页面加载失败：{hint}
-        </p>
-      </div>
+        </div>
+      </MeSectionShell>
     )
   }
 
@@ -90,12 +97,12 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">用户设置</h1>
-        <p className="mt-2 text-gray-600">管理您的个人资料和展示信息</p>
-      </div>
+    <MeSectionShell
+      activeTab="settings"
+      title="个人信息"
+      description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"
+    >
       <SettingsForm initialData={user} />
-    </div>
+    </MeSectionShell>
   )
 }

@@ -38,6 +38,15 @@ export type RouteBookListFilters = {
   status?: RouteBookStatus
 }
 
+export type RouteBookPointListFilters = {
+  bangumiId?: number
+}
+
+export type RouteBookPointRef = {
+  pointId: string
+  updatedAt: Date
+}
+
 export interface RouteBookRepo {
   create(userId: string, title: string, status: RouteBookStatus): Promise<RouteBook>
   update(id: string, userId: string, data: RouteBookUpdateInput): Promise<RouteBook | null>
@@ -49,6 +58,8 @@ export interface RouteBookRepo {
   removePoint(routeBookId: string, userId: string, pointId: string): Promise<boolean>
   reorderPoints(routeBookId: string, userId: string, pointIds: string[]): Promise<RouteBookPoint[]>
   movePointToZone(routeBookId: string, userId: string, pointId: string, zone: RouteBookZone): Promise<RouteBookPoint | null>
+  isPointInAnyRouteBook(userId: string, pointId: string): Promise<boolean>
+  listPointRefsByUser(userId: string, filters?: RouteBookPointListFilters): Promise<RouteBookPointRef[]>
 }
 
 export class SortedZoneLimitError extends Error {

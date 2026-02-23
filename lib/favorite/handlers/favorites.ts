@@ -9,8 +9,29 @@ const addSchema = z.discriminatedUnion('source', [
 ])
 
 type FavoriteListItem =
-  | { source: 'db'; articleId: string; slug: string; title: string; createdAt: string }
-  | { source: 'mdx'; slug: string; title: string; createdAt: string }
+  | {
+    source: 'db'
+    articleId: string
+    slug: string
+    title: string
+    description: string | null
+    cover: string | null
+    tags: string[]
+    animeIds: string[]
+    city: string | null
+    createdAt: string
+  }
+  | {
+    source: 'mdx'
+    slug: string
+    title: string
+    description: string | null
+    cover: string | null
+    tags: string[]
+    animeIds: string[]
+    city: string | null
+    createdAt: string
+  }
 
 async function resolveList(deps: FavoriteApiDeps, userId: string): Promise<FavoriteListItem[]> {
   const favorites = await deps.repo.listByUser(userId)
@@ -29,6 +50,11 @@ async function resolveList(deps: FavoriteApiDeps, userId: string): Promise<Favor
         articleId: f.articleId,
         slug: article.slug,
         title: article.title,
+        description: article.description,
+        cover: article.cover,
+        tags: article.tags,
+        animeIds: article.animeIds,
+        city: article.city,
         createdAt: f.createdAt.toISOString(),
       })
       continue
@@ -40,6 +66,11 @@ async function resolveList(deps: FavoriteApiDeps, userId: string): Promise<Favor
       source: 'mdx',
       slug: post.slug,
       title: post.title,
+      description: post.description || null,
+      cover: post.cover || null,
+      tags: post.tags || [],
+      animeIds: [post.animeId].filter(Boolean),
+      city: post.city || null,
       createdAt: f.createdAt.toISOString(),
     })
   }
@@ -77,4 +108,3 @@ export function createHandlers(deps: FavoriteApiDeps) {
     },
   }
 }
-

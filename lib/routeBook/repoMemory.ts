@@ -4,6 +4,8 @@ import {
   SortedZoneLimitError,
   type RouteBook,
   type RouteBookPoint,
+  type RouteBookPointListFilters,
+  type RouteBookPointRef,
   type RouteBookRepo,
   type RouteBookStatus,
   type RouteBookUpdateInput,
@@ -14,11 +16,13 @@ import {
 type Options = {
   now?: () => Date
   idFactory?: () => string
+  pointBangumiMap?: Map<string, number>
 }
 
 export class InMemoryRouteBookRepo implements RouteBookRepo {
   private readonly now: () => Date
   private readonly idFactory: () => string
+  private readonly pointBangumiMap: Map<string, number>
 
   private readonly byId = new Map<string, RouteBook>()
   private readonly pointsByBookId = new Map<string, Map<string, RouteBookPoint>>()
@@ -26,6 +30,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
   constructor(options?: Options) {
     this.now = options?.now ?? (() => new Date())
     this.idFactory = options?.idFactory ?? (() => crypto.randomUUID())
+    this.pointBangumiMap = options?.pointBangumiMap ?? new Map()
   }
 
   private requireOwnedRouteBook(routeBookId: string, userId: string): RouteBook {
@@ -251,5 +256,41 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     this.touch(routeBookId)
 
     return map.get(pointId) ?? updated
+  }
+
+  async isPointInAnyRouteBook(userId: string, pointId: string): Promise<boolean> {
+    for (const book of this.byId.values()) {
+      if (book.userId !== userId) continue
+      const points = this.pointsByBookId.get(book.id)
+      if (!points) continue
+      if (points.has(pointId)) return true
+    }
+    return false
+  }
+
+  async listPointRefsByUser(userId: string, filters?: RouteBookPointListFilters): Promise<RouteBookPointRef[]> {
+    const merged = new Map<string, Date>()
+
+    for (const book of this.byId.values()) {
+      if (book.userId !== userId) continue
+      const points = this.pointsByBookId.get(book.id)
+      if (!points) continue
+
+      for (const point of points.values()) {
+        if (filters?.bangumiId !== undefined) {
+          const bangumiId = this.pointBangumiMap.get(point.pointId)
+          if (bangumiId !== filters.bangumiId) continue
+        }
+
+        const seen = merged.get(point.pointId)
+        if (!seen || seen.getTime() < book.updatedAt.getTime()) {
+          merged.set(point.pointId, book.updatedAt)
+        }
+      }
+    }
+
+    return Array.from(merged.entries())
+      .map(([pointId, updatedAt]) => ({ pointId, updatedAt }))
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
   }
 }

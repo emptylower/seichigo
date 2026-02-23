@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Upload, Download, Share2, X, RotateCcw, Loader2 } from 'lucide-react'
+import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface ComparisonImageGeneratorProps {
   animeImage: string
@@ -117,8 +118,9 @@ export default function ComparisonImageGenerator({
         img.src = src
       })
 
+      const safeAnimeImage = animeImage ? toCanvasSafeImageUrl(animeImage, `${pointName}-anime`) : ''
       const [imgAnime, imgUser, imgLogo] = await Promise.all([
-        loadImage(animeImage, 'anonymous'),
+        safeAnimeImage ? loadImage(safeAnimeImage, 'anonymous').catch(() => null) : Promise.resolve(null),
         loadImage(userImage),
         loadImage('/brand/web-logo.png').catch(() => null)
       ])
@@ -152,7 +154,18 @@ export default function ComparisonImageGenerator({
         c.drawImage(img, sx, sy, sw, sh, x, y, w, h)
       }
 
-      drawImageCover(ctx, imgAnime, 0, 0, singleWidth, singleHeight)
+      if (imgAnime) {
+        drawImageCover(ctx, imgAnime, 0, 0, singleWidth, singleHeight)
+      } else {
+        const animeFallback = ctx.createLinearGradient(0, 0, singleWidth, singleHeight)
+        animeFallback.addColorStop(0, '#fdf2f8')
+        animeFallback.addColorStop(1, '#ffe4e6')
+        ctx.fillStyle = animeFallback
+        ctx.fillRect(0, 0, singleWidth, singleHeight)
+        ctx.fillStyle = '#9f1239'
+        ctx.font = 'bold 42px sans-serif'
+        ctx.fillText('动画原图不可用', PADDING, singleHeight / 2 - 24)
+      }
       drawImageCover(ctx, imgUser, singleWidth, 0, singleWidth, singleHeight)
 
       ctx.fillStyle = '#ffffff'

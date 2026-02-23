@@ -17,6 +17,7 @@ export type PostFrontmatter = {
   title: string
   seoTitle?: string
   description?: string
+  cover?: string
   slug: string
   animeId: string
   city: string

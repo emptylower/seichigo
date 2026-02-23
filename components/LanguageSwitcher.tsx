@@ -15,6 +15,10 @@ const LABELS: Record<SiteLocale, string> = {
   ja: '日本語',
 }
 
+function setLocaleCookie(locale: SiteLocale) {
+  document.cookie = `NEXT_LOCALE=${locale}; path=/; max-age=31536000; SameSite=Lax`
+}
+
 function isArticlePage(pathname: string): boolean {
   return pathname.includes('/posts/')
 }
@@ -47,9 +51,9 @@ export default function LanguageSwitcher({ locale }: Props) {
 
   const handleLanguageClick = async (targetLocale: SiteLocale, e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
+    setLocaleCookie(targetLocale)
 
     if (!isArticlePage(pathname)) {
-      document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
       router.push(prefixPath(pathname, targetLocale))
       return
     }
@@ -57,7 +61,6 @@ export default function LanguageSwitcher({ locale }: Props) {
     const slug = extractSlugFromPathname(pathname, locale)
     if (!slug) {
       router.push(prefixPath(pathname, targetLocale))
-      document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
       return
     }
 
@@ -69,8 +72,6 @@ export default function LanguageSwitcher({ locale }: Props) {
     } else {
       router.push(prefixPath(pathname, targetLocale))
     }
-    
-    document.cookie = `NEXT_LOCALE=${targetLocale}; path=/; max-age=31536000; SameSite=Lax`
   }
 
   return (
@@ -89,6 +90,7 @@ export default function LanguageSwitcher({ locale }: Props) {
           <Link
             key={l}
             href={prefixPath(pathname, l)}
+            prefetch={false}
             onClick={(e) => handleLanguageClick(l, e)}
             className={`block rounded-lg px-3 py-2 text-sm ${
               l === locale ? 'bg-pink-50 text-brand-600 font-medium' : 'text-gray-700 hover:bg-gray-50'

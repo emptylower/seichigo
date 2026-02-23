@@ -35,6 +35,8 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   const { data: sessionData, status } = useSession()
   const session = sessionData as Session
   const loaded = status !== 'loading'
+  const userCenterLabel = locale === 'en' ? 'Account Center' : locale === 'ja' ? 'ユーザーセンター' : '用户中心'
+  const myMapsLabel = locale === 'en' ? 'My Maps' : locale === 'ja' ? 'マイマップ' : '我的地图'
 
   const userLabel = useMemo(() => {
     const v = String(session?.user?.name || session?.user?.email || labels.user).trim()
@@ -96,13 +98,19 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
               prefetch={false}
               className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
             >
-              用户中心
+              {userCenterLabel}
             </Link>
             <a
               href={prefixPath('/me/favorites', locale)}
               className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
             >
               {labels.favorites}
+            </a>
+            <a
+              href={prefixPath('/me/routebooks', locale)}
+              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            >
+              {myMapsLabel}
             </a>
             <a
               href="/api/auth/signout"
@@ -136,10 +144,13 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
           </summary>
           <div className="absolute right-0 mt-2 w-44 rounded-2xl border border-pink-100 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-sm">
             <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
-              用户中心
+              {userCenterLabel}
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.favorites}
+            </a>
+            <a href={prefixPath('/me/routebooks', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {myMapsLabel}
             </a>
             <a href="/api/auth/signout" className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.signout}
