@@ -142,6 +142,40 @@ describe('profile api', () => {
     expect(profile?.name).toBe('New Name')
   })
 
+  it('PATCH /api/me/profile accepts nullable fields from settings form payload', async () => {
+    const { deps, repo } = makeDeps({
+      session: { user: { id: 'u1', name: 'Old Name', email: 'test@example.com' } } as Session
+    })
+
+    repo.seed('u1', {
+      name: 'Old Name',
+      image: null,
+      bio: null,
+      bilibili: null,
+      weibo: null,
+      github: null,
+      twitter: null,
+    })
+
+    const { createHandlers } = await import('@/lib/profile/handlers')
+    const handlers = createHandlers(deps)
+
+    const res = await handlers.PATCH(jsonReq('http://localhost/api/me/profile', 'PATCH', {
+      name: 'New Name',
+      image: null,
+      bio: null,
+      bilibili: null,
+      weibo: null,
+      github: null,
+      twitter: null,
+    }))
+    expect(res.status).toBe(200)
+
+    const updated = await res.json()
+    expect(updated.name).toBe('New Name')
+    expect(updated.bio).toBe(null)
+  })
+
   it('PATCH /api/me/profile updates bio', async () => {
     const { deps, repo } = makeDeps({
       session: { user: { id: 'u1', name: 'User', email: 'test@example.com' } } as Session

@@ -9,13 +9,13 @@ type ProfileApiDeps = {
 }
 
 const patchSchema = z.object({
-  name: z.string().optional(),
-  image: z.string().optional(),
-  bio: z.string().max(500).optional(),
-  bilibili: z.string().optional(),
-  weibo: z.string().optional(),
-  github: z.string().optional(),
-  twitter: z.string().optional(),
+  name: z.string().nullable().optional(),
+  image: z.string().nullable().optional(),
+  bio: z.string().max(500).nullable().optional(),
+  bilibili: z.string().nullable().optional(),
+  weibo: z.string().nullable().optional(),
+  github: z.string().nullable().optional(),
+  twitter: z.string().nullable().optional(),
 })
 
 export function createHandlers(deps: ProfileApiDeps) {
