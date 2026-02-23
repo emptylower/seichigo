@@ -151,7 +151,7 @@ export default function CheckInModal({
                   <img
                     src={referenceImageUrl}
                     alt={`${pointName} 参考`}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                     loading="lazy"
                   />
                 ) : (

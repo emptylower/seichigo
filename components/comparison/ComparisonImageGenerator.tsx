@@ -17,6 +17,9 @@ export interface ComparisonImageGeneratorProps {
 const INFO_BAR_HEIGHT = 180
 const WATERMARK_SIZE = 80
 const PADDING = 60
+const TARGET_OUTPUT_WIDTH = 1600
+const MIN_OUTPUT_WIDTH = 960
+const MAX_OUTPUT_HEIGHT = 8000
 
 export default function ComparisonImageGenerator({
   animeImage,
@@ -125,82 +128,88 @@ export default function ComparisonImageGenerator({
         loadImage('/brand/web-logo.png').catch(() => null)
       ])
 
-      const singleWidth = 1000
-      const singleHeight = (singleWidth * 9) / 16
-      const totalWidth = singleWidth * 2
-      const totalHeight = singleHeight + INFO_BAR_HEIGHT
+      const calcScaledHeight = (img: HTMLImageElement, width: number) => {
+        if (!img.width || !img.height) return Math.round((width * 9) / 16)
+        return Math.round((img.height / img.width) * width)
+      }
 
-      canvas.width = totalWidth
+      let outputWidth = Math.max(
+        MIN_OUTPUT_WIDTH,
+        Math.min(TARGET_OUTPUT_WIDTH, Math.max(imgAnime?.width || 0, imgUser.width || 0))
+      )
+
+      let animeSectionHeight = imgAnime ? calcScaledHeight(imgAnime, outputWidth) : Math.round((outputWidth * 9) / 16)
+      let userSectionHeight = calcScaledHeight(imgUser, outputWidth)
+      let totalHeight = animeSectionHeight + userSectionHeight + INFO_BAR_HEIGHT
+
+      while (totalHeight > MAX_OUTPUT_HEIGHT && outputWidth > 320) {
+        outputWidth = Math.max(320, Math.floor(outputWidth * 0.88))
+        animeSectionHeight = imgAnime ? calcScaledHeight(imgAnime, outputWidth) : Math.round((outputWidth * 9) / 16)
+        userSectionHeight = calcScaledHeight(imgUser, outputWidth)
+        totalHeight = animeSectionHeight + userSectionHeight + INFO_BAR_HEIGHT
+      }
+
+      canvas.width = outputWidth
       canvas.height = totalHeight
 
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, totalWidth, totalHeight)
-
-      const drawImageCover = (c: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) => {
-        const imgRatio = img.width / img.height
-        const targetRatio = w / h
-        let sx, sy, sw, sh
-        if (imgRatio > targetRatio) {
-          sh = img.height
-          sw = img.height * targetRatio
-          sx = (img.width - sw) / 2
-          sy = 0
-        } else {
-          sw = img.width
-          sh = img.width / targetRatio
-          sx = 0
-          sy = (img.height - sh) / 2
-        }
-        c.drawImage(img, sx, sy, sw, sh, x, y, w, h)
-      }
+      ctx.fillRect(0, 0, outputWidth, totalHeight)
 
       if (imgAnime) {
-        drawImageCover(ctx, imgAnime, 0, 0, singleWidth, singleHeight)
+        ctx.drawImage(imgAnime, 0, 0, outputWidth, animeSectionHeight)
       } else {
-        const animeFallback = ctx.createLinearGradient(0, 0, singleWidth, singleHeight)
+        const animeFallback = ctx.createLinearGradient(0, 0, outputWidth, animeSectionHeight)
         animeFallback.addColorStop(0, '#fdf2f8')
         animeFallback.addColorStop(1, '#ffe4e6')
         ctx.fillStyle = animeFallback
-        ctx.fillRect(0, 0, singleWidth, singleHeight)
+        ctx.fillRect(0, 0, outputWidth, animeSectionHeight)
         ctx.fillStyle = '#9f1239'
-        ctx.font = 'bold 42px sans-serif'
-        ctx.fillText('动画原图不可用', PADDING, singleHeight / 2 - 24)
+        ctx.font = `bold ${Math.max(26, Math.round(outputWidth * 0.036))}px sans-serif`
+        ctx.fillText('动画原图不可用', PADDING, animeSectionHeight / 2 - 24)
       }
-      drawImageCover(ctx, imgUser, singleWidth, 0, singleWidth, singleHeight)
 
+      const userTop = animeSectionHeight
+      ctx.drawImage(imgUser, 0, userTop, outputWidth, userSectionHeight)
+
+      const infoTop = userTop + userSectionHeight
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, singleHeight, totalWidth, INFO_BAR_HEIGHT)
+      ctx.fillRect(0, infoTop, outputWidth, INFO_BAR_HEIGHT)
 
-      ctx.beginPath()
-      ctx.moveTo(0, singleHeight)
-      ctx.lineTo(totalWidth, singleHeight)
-      ctx.strokeStyle = '#f0f0f0'
-      ctx.lineWidth = 2
-      ctx.stroke()
+      const dividerY = [userTop, infoTop]
+      for (const y of dividerY) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(outputWidth, y)
+        ctx.strokeStyle = '#f0f0f0'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
 
       ctx.textBaseline = 'middle'
+      const titleFontSize = Math.max(26, Math.min(42, Math.round(outputWidth * 0.032)))
+      const subtitleFontSize = Math.max(18, Math.min(30, Math.round(outputWidth * 0.022)))
       
       ctx.fillStyle = '#111827'
-      ctx.font = 'bold 48px sans-serif'
-      ctx.fillText(animeTitle, PADDING, singleHeight + 70)
+      ctx.font = `bold ${titleFontSize}px sans-serif`
+      ctx.fillText(animeTitle, PADDING, infoTop + 68)
 
       ctx.fillStyle = '#6b7280'
-      ctx.font = '36px sans-serif'
+      ctx.font = `${subtitleFontSize}px sans-serif`
       const infoText = `${pointName}${episode ? ` · 第${episode}话` : ''}`
-      ctx.fillText(infoText, PADDING, singleHeight + 130)
+      ctx.fillText(infoText, PADDING, infoTop + 126)
 
       if (imgLogo) {
         const logoAspectRatio = imgLogo.width / imgLogo.height
-        const logoH = WATERMARK_SIZE
+        const logoH = Math.max(48, Math.min(WATERMARK_SIZE, Math.round(outputWidth * 0.08)))
         const logoW = logoH * logoAspectRatio
         ctx.globalAlpha = 0.9
-        ctx.drawImage(imgLogo, totalWidth - logoW - PADDING, singleHeight + (INFO_BAR_HEIGHT - logoH) / 2, logoW, logoH)
+        ctx.drawImage(imgLogo, outputWidth - logoW - PADDING, infoTop + (INFO_BAR_HEIGHT - logoH) / 2, logoW, logoH)
         ctx.globalAlpha = 1.0
       } else {
         ctx.fillStyle = '#ec4899'
         ctx.font = 'bold 40px sans-serif'
         ctx.textAlign = 'right'
-        ctx.fillText('SeichiGo', totalWidth - PADDING, singleHeight + INFO_BAR_HEIGHT / 2)
+        ctx.fillText('SeichiGo', outputWidth - PADDING, infoTop + INFO_BAR_HEIGHT / 2)
         ctx.textAlign = 'left'
       }
 
@@ -313,7 +322,7 @@ export default function ComparisonImageGenerator({
               <img
                 src={safeAnimeImage}
                 alt={`${pointName} 动画原图`}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 loading="lazy"
                 onError={() => setReferenceLoadFailed(true)}
               />
@@ -350,7 +359,7 @@ export default function ComparisonImageGenerator({
                 <img
                   src={userImage}
                   alt="上传的打卡照片"
-                  className="mx-auto h-52 w-full rounded-xl object-cover"
+                  className="mx-auto h-52 w-full rounded-xl object-contain bg-white"
                 />
                 <div className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-xl bg-gradient-to-t from-black/40 via-black/0 to-transparent pb-4">
                   <p className="text-sm font-semibold text-white">点击重新上传打卡照</p>
@@ -374,11 +383,11 @@ export default function ComparisonImageGenerator({
           <div className="space-y-4">
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-500">对比图预览</p>
-              <div className="relative aspect-[32/21] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 shadow-inner">
+              <div className="relative rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 shadow-inner">
                 {previewUrl ? (
-                  <img src={previewUrl} alt="Comparison Preview" className="h-full w-full object-contain" />
+                  <img src={previewUrl} alt="Comparison Preview" className="block h-auto w-full object-contain" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm font-medium text-gray-400">
+                  <div className="flex min-h-[260px] items-center justify-center text-sm font-medium text-gray-400">
                     上传后自动生成预览
                   </div>
                 )}
