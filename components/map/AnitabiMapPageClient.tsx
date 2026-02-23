@@ -310,6 +310,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panel: '作品与筛选',
     allPoints: '全部圣地',
     onlyMarked: '只看我的标记',
+    expandWorkDetail: '展开',
+    collapseWorkDetail: '收起',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -401,6 +403,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panel: 'Titles & filters',
     allPoints: 'All Spots',
     onlyMarked: 'My Markers',
+    expandWorkDetail: 'Show more',
+    collapseWorkDetail: 'Show less',
   },
   ja: {
     title: '巡礼マップ',
@@ -492,6 +496,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     panel: '作品と絞り込み',
     allPoints: 'すべてのスポット',
     onlyMarked: 'マイマーク',
+    expandWorkDetail: 'もっと見る',
+    collapseWorkDetail: '折りたたむ',
   },
 }
 
@@ -1214,6 +1220,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   })
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
+  const [workDetailExpanded, setWorkDetailExpanded] = useState(false)
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
@@ -1853,6 +1860,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       setSelectedBangumiId(id)
       setSelectedPointId(pointId || null)
       setDetailCardMode(pointId ? 'point' : 'bangumi')
+      setWorkDetailExpanded(false)
       setMapViewMode('map')
       if (!isDesktop) {
         setMobilePointPopupOpen(false)
@@ -2741,6 +2749,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             onClick={() => {
               setDetail(null)
               setDetailCardMode('bangumi')
+              setWorkDetailExpanded(false)
               setSelectedPointId(null)
               setMobilePointPopupOpen(false)
               setMapViewMode('map')
@@ -2866,7 +2875,22 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
                 <div className="text-[11px] text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
                 {detail.description ? (
-                  <p className="text-xs leading-relaxed text-slate-700">{detail.description}</p>
+                  <div className="space-y-1">
+                    <div className={workDetailExpanded ? 'max-h-40 overflow-y-auto pr-1' : ''}>
+                      <p className={`text-xs leading-relaxed text-slate-700 ${workDetailExpanded ? '' : 'line-clamp-6'}`}>
+                        {detail.description}
+                      </p>
+                    </div>
+                    {detail.description.length > 140 ? (
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100"
+                        onClick={() => setWorkDetailExpanded((prev) => !prev)}
+                      >
+                        {workDetailExpanded ? label.collapseWorkDetail : label.expandWorkDetail}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <p className="text-xs leading-relaxed text-slate-500">{label.noData}</p>
                 )}
@@ -3468,7 +3492,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           ) : null}
 
           {isDesktop && detailPanelInner ? (
-            <div className="absolute right-4 top-14 z-20 max-h-[calc(100%-80px)] w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="absolute right-4 top-14 z-20 max-h-[calc(100%-80px)] w-[340px] overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
               {detailPanelInner}
             </div>
           ) : null}
