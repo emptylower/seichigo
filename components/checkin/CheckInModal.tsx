@@ -144,10 +144,29 @@ export default function CheckInModal({
           </div>
 
           <div className="space-y-3 px-4 py-4">
-            <div>
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-slate-500">动画/原作原图</div>
+              <div className="aspect-[16/9] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                {referenceImageUrl ? (
+                  <img
+                    src={referenceImageUrl}
+                    alt={`${pointName} 参考`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-xs text-slate-500">
+                    暂无可用原图，仍可上传照片继续打卡
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-slate-500">上传区</div>
               <button
                 type="button"
-                className="flex w-full items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-6 text-sm text-slate-500 hover:border-brand-400 hover:text-brand-600"
+                className="flex w-full items-center justify-center rounded-xl border-2 border-dashed border-brand-300 bg-brand-50/50 py-6 text-sm text-slate-500 hover:border-brand-400 hover:text-brand-600"
                 onClick={() => fileRef.current?.click()}
               >
                 {photoPreview ? (
@@ -164,18 +183,6 @@ export default function CheckInModal({
                 onChange={handlePhotoChange}
               />
             </div>
-
-            {referenceImageUrl ? (
-              <div>
-                <div className="mb-1 text-xs text-slate-500">动漫参考截图</div>
-                <img
-                  src={referenceImageUrl}
-                  alt={`${pointName} 参考`}
-                  className="w-full rounded-lg object-cover"
-                  loading="lazy"
-                />
-              </div>
-            ) : null}
 
             {photo ? (
               <button

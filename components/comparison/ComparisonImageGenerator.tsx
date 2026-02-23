@@ -17,7 +17,6 @@ export interface ComparisonImageGeneratorProps {
 const INFO_BAR_HEIGHT = 180
 const WATERMARK_SIZE = 80
 const PADDING = 60
-const TARGET_WIDTH = 2000
 
 export default function ComparisonImageGenerator({
   animeImage,
@@ -33,8 +32,10 @@ export default function ComparisonImageGenerator({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
+  const [referenceLoadFailed, setReferenceLoadFailed] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const safeAnimeImage = animeImage ? toCanvasSafeImageUrl(animeImage, `${pointName}-anime`) : ''
 
   const compressImage = useCallback(async (fileOrUrl: File | string): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -100,7 +101,7 @@ export default function ComparisonImageGenerator({
   }
 
   const generateComparison = useCallback(async () => {
-    if (!userImage || !animeImage) return
+    if (!userImage) return
     setIsProcessing(true)
     setError(null)
 
@@ -118,7 +119,6 @@ export default function ComparisonImageGenerator({
         img.src = src
       })
 
-      const safeAnimeImage = animeImage ? toCanvasSafeImageUrl(animeImage, `${pointName}-anime`) : ''
       const [imgAnime, imgUser, imgLogo] = await Promise.all([
         safeAnimeImage ? loadImage(safeAnimeImage, 'anonymous').catch(() => null) : Promise.resolve(null),
         loadImage(userImage),
@@ -208,7 +208,10 @@ export default function ComparisonImageGenerator({
         if (b) {
           setBlob(b)
           const url = URL.createObjectURL(b)
-          setPreviewUrl(url)
+          setPreviewUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev)
+            return url
+          })
           onSuccess?.(b)
         }
       }, 'image/jpeg', 0.9)
@@ -219,7 +222,7 @@ export default function ComparisonImageGenerator({
     } finally {
       setIsProcessing(false)
     }
-  }, [animeImage, animeTitle, pointName, episode, userImage, onSuccess])
+  }, [safeAnimeImage, animeTitle, pointName, episode, userImage, onSuccess])
 
 
   useEffect(() => {
@@ -240,6 +243,16 @@ export default function ComparisonImageGenerator({
       generateComparison()
     }
   }, [userImage, generateComparison])
+
+  useEffect(() => {
+    setReferenceLoadFailed(false)
+  }, [safeAnimeImage])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   const handleDownload = () => {
     if (!previewUrl) return
@@ -271,10 +284,12 @@ export default function ComparisonImageGenerator({
   }
 
   const reset = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
     setUserImage(null)
     setPreviewUrl(null)
     setBlob(null)
     setError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -291,28 +306,24 @@ export default function ComparisonImageGenerator({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        <div className="relative aspect-[32/21] bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 shadow-inner group">
-          {previewUrl ? (
-            <img src={previewUrl} alt="Comparison Preview" className="w-full h-full object-contain" />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="w-24 h-14 bg-gray-200 rounded-lg animate-pulse" />
-                <div className="w-24 h-14 bg-gray-200 rounded-lg animate-pulse" />
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-gray-500">动画/原作原图</p>
+          <div className="relative aspect-[16/9] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 shadow-inner">
+            {safeAnimeImage && !referenceLoadFailed ? (
+              <img
+                src={safeAnimeImage}
+                alt={`${pointName} 动画原图`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={() => setReferenceLoadFailed(true)}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-5 text-center text-gray-400">
+                <p className="text-sm font-medium text-gray-500">动画原图不可用</p>
+                <p className="text-xs">你依然可以上传照片生成对比图</p>
               </div>
-              <div className="text-center">
-                <p className="text-sm font-medium">合并动画截图与实地照片</p>
-                <p className="text-xs mt-1">上传后自动生成</p>
-              </div>
-            </div>
-          )}
-
-          {isProcessing && (
-            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-4">
-              <Loader2 className="w-10 h-10 text-brand animate-spin" />
-              <p className="text-sm font-bold text-gray-700">正在绘制...</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {error && (
@@ -321,34 +332,70 @@ export default function ComparisonImageGenerator({
           </div>
         )}
 
-        {!userImage ? (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-gray-500">上传区</p>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept="image/jpeg,image/png"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="group relative w-full overflow-hidden rounded-2xl border-2 border-dashed border-brand/35 bg-brand-50/40 px-6 py-10 transition-all hover:border-brand/60 hover:bg-brand/10"
+          >
+            {userImage ? (
+              <div className="relative">
+                <img
+                  src={userImage}
+                  alt="上传的打卡照片"
+                  className="mx-auto h-52 w-full rounded-xl object-cover"
+                />
+                <div className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-xl bg-gradient-to-t from-black/40 via-black/0 to-transparent pb-4">
+                  <p className="text-sm font-semibold text-white">点击重新上传打卡照</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center space-y-3">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/15">
+                  <Upload className="h-8 w-8 text-brand" />
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-bold text-gray-700">点击上传打卡照</p>
+                  <p className="mt-1 text-sm text-gray-500">支持横屏照片，效果更佳</p>
+                </div>
+              </div>
+            )}
+          </button>
+        </div>
+
+        {userImage ? (
           <div className="space-y-4">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept="image/jpeg,image/png"
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full py-10 px-6 flex flex-col items-center justify-center space-y-3 border-2 border-dashed border-gray-200 rounded-2xl hover:border-brand/50 hover:bg-brand/5 transition-all group"
-            >
-              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center group-hover:bg-brand/10 transition-colors">
-                <Upload className="w-8 h-8 text-gray-400 group-hover:text-brand" />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500">对比图预览</p>
+              <div className="relative aspect-[32/21] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 shadow-inner">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Comparison Preview" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm font-medium text-gray-400">
+                    上传后自动生成预览
+                  </div>
+                )}
+
+                {isProcessing ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-white/80 backdrop-blur-sm">
+                    <Loader2 className="h-10 w-10 animate-spin text-brand" />
+                    <p className="text-sm font-bold text-gray-700">正在绘制...</p>
+                  </div>
+                ) : null}
               </div>
-              <div className="text-center">
-                <p className="text-base font-bold text-gray-700">点击上传打卡照</p>
-                <p className="text-sm text-gray-400 mt-1">支持横屏照片，效果更佳</p>
-              </div>
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col space-y-3">
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={handleDownload}
-                disabled={isProcessing}
+                disabled={isProcessing || !previewUrl}
                 className="flex items-center justify-center gap-2 py-4 px-6 bg-brand text-white rounded-2xl font-bold shadow-lg shadow-brand/20 hover:opacity-95 active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 <Download className="w-5 h-5" />
@@ -356,7 +403,7 @@ export default function ComparisonImageGenerator({
               </button>
               <button
                 onClick={handleShare}
-                disabled={isProcessing}
+                disabled={isProcessing || !blob}
                 className="flex items-center justify-center gap-2 py-4 px-6 bg-gray-900 text-white rounded-2xl font-bold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 <Share2 className="w-5 h-5" />
@@ -372,7 +419,7 @@ export default function ComparisonImageGenerator({
               <span>重新选择</span>
             </button>
           </div>
-        )}
+        ) : null}
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
