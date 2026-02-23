@@ -94,25 +94,25 @@ export default function RouteBooksClient() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">我的路书</h1>
+        <h1 className="text-2xl font-bold">我的地图</h1>
         <button
           type="button"
           className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
           onClick={() => setShowCreate(true)}
         >
-          新建路书
+          新建地图
         </button>
       </div>
 
       {showCreate && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <label className="block text-sm font-medium text-slate-700">
-            路书标题
+            地图标题
             <input
               type="text"
               value={createTitle}
               onChange={(e) => setCreateTitle(e.target.value)}
-              placeholder="例：东京圣地巡礼"
+              placeholder="例：东京圣地巡礼地图"
               maxLength={100}
               className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               onKeyDown={(e) => {
@@ -168,9 +168,9 @@ export default function RouteBooksClient() {
         </ul>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-          <p className="text-gray-600">还没有路书。</p>
+          <p className="text-gray-600">还没有地图。</p>
           <p className="mt-1 text-sm text-gray-500">
-            去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>标记想去的地点，然后创建路书规划你的巡礼路线。
+            去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>标记想去的地点，然后创建地图规划你的巡礼路线。
           </p>
         </div>
       )}

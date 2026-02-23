@@ -182,7 +182,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
       const detail = rbData.routeBook || rbData.item || null
       if (!detail) {
-        setError('路书数据异常，请刷新重试')
+        setError('地图数据异常，请刷新重试')
         return
       }
 
@@ -339,7 +339,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   if (error) return (
     <div className="space-y-4">
       <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
-      <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回路书列表</a>
+      <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回地图列表</a>
     </div>
   )
   if (!routeBook) return null
@@ -586,17 +586,17 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           </DndContext>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            从下方当前路书待排点中将点位加入路线，或去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位。
+            从下方当前地图待排点中将点位加入路线，或去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位。
           </div>
         )}
       </div>
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">
-          当前路书待排 ({unsorted.length})
+          当前地图待排 ({unsorted.length})
         </h2>
         <p className="mb-2 text-xs text-slate-500">
-          这里是已加入当前路书、但尚未进入「路线」排序的点位。
+          这里是已加入当前地图、但尚未进入「路线」排序的点位。
         </p>
         {unsorted.length > 0 ? (
           <div className="space-y-2">
@@ -612,7 +612,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            当前路书待排为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到路书。
+            当前地图待排为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到地图。
           </div>
         )}
       </div>
@@ -622,7 +622,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           全局想去池 ({pointPoolItems.length})
         </h2>
         <p className="mb-2 text-xs text-slate-500">
-          这里是你点过「想去」但尚未加入任何路书的点位。
+          这里是你点过「想去」但尚未加入任何地图的点位。
         </p>
         {pointPoolItems.length > 0 ? (
           <div className="space-y-2">
@@ -633,7 +633,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-slate-800">{item.pointId}</div>
-                  <div className="text-xs text-slate-500">未加入路书</div>
+                  <div className="text-xs text-slate-500">未加入地图</div>
                 </div>
                 <button
                   type="button"
@@ -642,7 +642,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     void handleAddFromPointPool(item.pointId)
                   }}
                 >
-                  加入当前路书
+                  加入当前地图
                 </button>
               </div>
             ))}

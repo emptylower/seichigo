@@ -3,8 +3,8 @@ import RouteBooksClient from './ui'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '我的路书',
-  description: '管理你的巡礼路书（需要登录）。',
+  title: '我的地图',
+  description: '管理你的巡礼地图（需要登录）。',
   alternates: { canonical: '/me/routebooks' },
 }
 export const dynamic = 'force-dynamic'
@@ -22,8 +22,8 @@ export default async function RouteBooksPage() {
   if (!session?.user?.id) {
     return (
       <div className="max-w-2xl space-y-4">
-        <h1 className="text-2xl font-bold">我的路书</h1>
-        <p className="text-gray-600">请先登录后查看路书。</p>
+        <h1 className="text-2xl font-bold">我的地图</h1>
+        <p className="text-gray-600">请先登录后查看地图。</p>
         <a className="btn-primary inline-flex w-fit" href={`/auth/signin?callbackUrl=${encodeURIComponent('/me/routebooks')}`}>
           去登录
         </a>
