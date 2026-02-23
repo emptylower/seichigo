@@ -268,6 +268,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteRemoved: '已取消收藏',
     favoriteFailed: '收藏失败，请稍后重试',
     selected: '当前作品',
+    workDetail: '作品详情',
+    pointDetail: '点位详情',
+    backToWorkDetail: '返回作品详情',
     signInToFavorite: '登录后可收藏',
     signInToPointPool: '登录后可将点位加入全局想去池',
     signInToRouteBook: '登录后可使用路书功能',
@@ -283,8 +286,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToPointPoolSuccess: '已加入全局想去池',
     addToPointPoolFailed: '加入全局想去池失败，请稍后重试',
     pointPoolGuide: '已加入全局想去池：前往「我的路书」可加入具体路线。',
-    stateAutoHint: '状态由行为自动更新：想去 -> 加入路书后计划中 -> 打卡后已打卡',
-    pointAlreadyInPoolHint: '已在全局想去池，可直接加入路书。',
+    stateAutoHint: '状态由行为自动更新：想去 -> 计划中 -> 打卡后已打卡',
+    pointAlreadyInPoolHint: '已在全局想去池。',
     routeBookSelectTitle: '加入路书',
     routeBookLoading: '正在加载路书…',
     routeBookEmpty: '还没有路书，先创建一个吧',
@@ -356,6 +359,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteRemoved: 'Removed from favorites',
     favoriteFailed: 'Failed to update favorite',
     selected: 'Selected',
+    workDetail: 'Work Detail',
+    pointDetail: 'Point Detail',
+    backToWorkDetail: 'Back to Work',
     signInToFavorite: 'Sign in to favorite',
     signInToPointPool: 'Sign in to add this point to the global want-to-go pool',
     signInToRouteBook: 'Sign in to use routebooks',
@@ -371,8 +377,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToPointPoolSuccess: 'Added to global want-to-go pool',
     addToPointPoolFailed: 'Failed to add to global pool',
     pointPoolGuide: 'Added to global pool. Open My Routebooks to place this point into a route.',
-    stateAutoHint: 'State is automatic: Want to go -> Planned after adding to routebook -> Checked in after check-in.',
-    pointAlreadyInPoolHint: 'Already in the global pool. You can add it to a routebook now.',
+    stateAutoHint: 'State is automatic: Want to go -> Planned -> Checked in after check-in.',
+    pointAlreadyInPoolHint: 'Already in the global pool.',
     routeBookSelectTitle: 'Add to Routebook',
     routeBookLoading: 'Loading routebooks…',
     routeBookEmpty: 'No routebooks yet. Create one first.',
@@ -444,6 +450,9 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     favoriteRemoved: 'お気に入りを解除しました',
     favoriteFailed: 'お気に入りの更新に失敗しました',
     selected: '選択中',
+    workDetail: '作品詳細',
+    pointDetail: 'スポット詳細',
+    backToWorkDetail: '作品詳細へ戻る',
     signInToFavorite: 'ログインしてお気に入り',
     signInToPointPool: 'ログインして全体の行きたいプールに追加',
     signInToRouteBook: '路書機能を使うにはログインしてください',
@@ -459,8 +468,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     addToPointPoolSuccess: '全体の行きたいプールに追加しました',
     addToPointPoolFailed: '全体プールへの追加に失敗しました',
     pointPoolGuide: '全体の行きたいプールへ追加しました。マイルートブックからルートに追加できます。',
-    stateAutoHint: '状態は自動更新です：行きたい -> 路書追加で計画中 -> 打刻で巡礼済み',
-    pointAlreadyInPoolHint: 'すでに全体プールにあります。路書へ追加できます。',
+    stateAutoHint: '状態は自動更新です：行きたい -> 計画中 -> 打刻で巡礼済み',
+    pointAlreadyInPoolHint: 'すでに全体プールにあります。',
     routeBookSelectTitle: '路書に追加',
     routeBookLoading: '路書を読み込み中…',
     routeBookEmpty: '路書がありません。先に作成してください。',
@@ -1195,6 +1204,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [selectedCity, setSelectedCity] = useState('')
   const [selectedBangumiId, setSelectedBangumiId] = useState<number | null>(parsed.b)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(parsed.p)
+  const [detailCardMode, setDetailCardMode] = useState<'bangumi' | 'point'>(parsed.p ? 'point' : 'bangumi')
   const [viewFilter, setViewFilter] = useState<'all' | 'marked'>('all')
   const [stateFilter, setStateFilter] = useState<string[]>([])
   const [styleMode, setStyleMode] = useState<'street' | 'satellite'>('street')
@@ -1246,6 +1256,12 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     if (!detail || !selectedPointId) return null
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
+
+  useEffect(() => {
+    if (detailCardMode === 'point' && !selectedPoint) {
+      setDetailCardMode('bangumi')
+    }
+  }, [detailCardMode, selectedPoint])
 
   const selectedPointState = useMemo(() => {
     if (!selectedPoint || !meState) return null
@@ -1836,6 +1852,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     async (id: number, pointId?: string | null) => {
       setSelectedBangumiId(id)
       setSelectedPointId(pointId || null)
+      setDetailCardMode(pointId ? 'point' : 'bangumi')
       setMapViewMode('map')
       if (!isDesktop) {
         setMobilePointPopupOpen(false)
@@ -1859,7 +1876,10 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             if (target && target.id !== pointId) {
               setSelectedPointId(target.id)
             }
-            if (target?.geo) {
+            if (!target) {
+              setSelectedPointId(null)
+              setDetailCardMode('bangumi')
+            } else if (target.geo) {
               focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
             } else {
               fitBangumiBounds(focusPoints)
@@ -1982,6 +2002,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
       const prevPointId = selectedPointIdRef.current
+      setDetailCardMode('point')
       setSelectedPointId(pointId)
       if (!isDesktopRef.current) {
         setMobilePointPopupOpen(true)
@@ -2674,6 +2695,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     }
   }, [label.addToRouteBookFailed, label.routeBookCreatedAndAdded, redirectToSignInForRouteBook, routeBookTitleDraft, selectedPoint])
 
+  const switchToBangumiDetail = useCallback(() => {
+    setDetailCardMode('bangumi')
+    setSelectedPointId(null)
+    setMobilePointPopupOpen(false)
+    setMapViewMode('map')
+  }, [])
+
   const tabs = bootstrap?.tabs || [
     { key: 'nearby' as const, label: label.nearby },
     { key: 'latest' as const, label: label.latest },
@@ -2712,6 +2740,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
             onClick={() => {
               setDetail(null)
+              setDetailCardMode('bangumi')
+              setSelectedPointId(null)
               setMobilePointPopupOpen(false)
               setMapViewMode('map')
             }}
@@ -2721,8 +2751,18 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         </div>
       </div>
 
-      {selectedPoint ? (
+      {detailCardMode === 'point' && selectedPoint ? (
         <div className="space-y-2 border-b border-slate-200 px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label.pointDetail}</div>
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+              onClick={switchToBangumiDetail}
+            >
+              {label.backToWorkDetail}
+            </button>
+          </div>
           <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
           {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
@@ -2736,25 +2776,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
-
-          <div className="rounded-lg border border-brand-100 bg-brand-50/70 px-2 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-brand-700">{label.quickPilgrimage}</div>
-                <div className="line-clamp-2 text-[11px] text-brand-600">{label.quickPilgrimageHint}</div>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
-                onClick={() => setShowQuickPilgrimage(true)}
-              >
-                {label.quickPilgrimage}
-              </button>
-            </div>
-            <div className="mt-1 text-[11px] text-brand-700">
-              {label.quickPilgrimageProgressPrefix} {quickPilgrimageProgress.checked}/{quickPilgrimageProgress.total}
-            </div>
-          </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
             <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
@@ -2808,13 +2829,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 {label.addToPointPool}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
-              onClick={openRouteBookPicker}
-            >
-              {label.addToRouteBook}
-            </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
                 type="button"
@@ -2826,81 +2840,156 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             )}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="space-y-3 border-b border-slate-200 px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label.workDetail}</div>
+            {detail.description ? (
+              <p className="text-xs leading-relaxed text-slate-700">{detail.description}</p>
+            ) : null}
+            {detail.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {detail.tags.slice(0, 8).map((tag) => (
+                  <span key={tag} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <div className="rounded-lg border border-brand-100 bg-brand-50/70 px-2 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-brand-700">{label.quickPilgrimage}</div>
+                  <div className="line-clamp-2 text-[11px] text-brand-600">{label.quickPilgrimageHint}</div>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
+                  onClick={() => setShowQuickPilgrimage(true)}
+                >
+                  {label.quickPilgrimage}
+                </button>
+              </div>
+              <div className="mt-1 text-[11px] text-brand-700">
+                {label.quickPilgrimageProgressPrefix} {quickPilgrimageProgress.checked}/{quickPilgrimageProgress.total}
+              </div>
+            </div>
+          </div>
 
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-1.5">
-        <div className="flex rounded bg-slate-200/50 p-0.5">
-          <button
-            type="button"
-            onClick={() => setViewFilter('all')}
-            className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
-              viewFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {label.allPoints}
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewFilter('marked')}
-            className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
-              viewFilter === 'marked' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {label.onlyMarked}
-          </button>
-        </div>
-
-        {viewFilter === 'marked' && (
-          <div className="flex items-center gap-1">
-            {(['want_to_go', 'planned', 'checked_in'] as const).map((s) => (
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+            <div className="flex rounded bg-slate-200/50 p-0.5">
               <button
-                key={s}
                 type="button"
-                onClick={() => {
-                  setStateFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
-                }}
-                className={`flex h-4 items-center gap-1 rounded-full px-1.5 text-[9px] font-medium transition ${
-                  stateFilter.includes(s) || stateFilter.length === 0
-                    ? s === 'checked_in'
-                      ? 'bg-green-500 text-white'
-                      : s === 'planned'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-blue-500 text-white'
-                    : 'bg-slate-200 text-slate-400'
+                onClick={() => setViewFilter('all')}
+                className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                  viewFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                <div className="h-1 w-1 rounded-full bg-white" />
-                {s === 'checked_in' ? label.checkedIn : s === 'planned' ? label.planned : label.wantToGo}
+                {label.allPoints}
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+              <button
+                type="button"
+                onClick={() => setViewFilter('marked')}
+                className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                  viewFilter === 'marked' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {label.onlyMarked}
+              </button>
+            </div>
 
-      <div className="max-h-[420px] overflow-auto px-3 py-2">
-        {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
-        <div className="space-y-1">
-          {detailPoints.map(({ point, distanceMeters: pointDistance }) => (
-            <button
-              key={point.id}
-              type="button"
-              className={`block w-full rounded px-2 py-1.5 text-left text-xs ${selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'}`}
-              onClick={() => {
-                setSelectedPointId(point.id)
-                if (!isDesktopRef.current) setMobilePointPopupOpen(false)
-                if (mapViewMode === 'panorama') return
-                if (point.geo && mapRef.current) {
-                  focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
-                }
-              }}
-            >
-              <span className="font-medium">{point.name}</span>
-              {point.ep ? <span className="ml-1 text-slate-500">EP {point.ep}</span> : null}
-              {pointDistance != null ? <span className="ml-1 text-slate-500">· ~{formatDistance(pointDistance)}</span> : null}
-            </button>
-          ))}
-        </div>
-      </div>
+            {viewFilter === 'marked' && (
+              <div className="flex items-center gap-1">
+                {(['want_to_go', 'planned', 'checked_in'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setStateFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+                    }}
+                    className={`flex h-4 items-center gap-1 rounded-full px-1.5 text-[9px] font-medium transition ${
+                      stateFilter.includes(s) || stateFilter.length === 0
+                        ? s === 'checked_in'
+                          ? 'bg-green-500 text-white'
+                          : s === 'planned'
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-blue-500 text-white'
+                        : 'bg-slate-200 text-slate-400'
+                    }`}
+                  >
+                    <div className="h-1 w-1 rounded-full bg-white" />
+                    {s === 'checked_in' ? label.checkedIn : s === 'planned' ? label.planned : label.wantToGo}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="max-h-[420px] overflow-auto px-3 py-2">
+            {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
+            {!detailLoading && detailPoints.length === 0 ? <div className="py-4 text-sm text-slate-500">{label.noData}</div> : null}
+            <div className="space-y-1">
+              {detailPoints.map(({ point, distanceMeters: pointDistance }) => {
+                const pointState = meState?.pointStates.find((ps) => ps.pointId === point.id)?.state || 'none'
+                const showPointWantToGo = pointState === 'none'
+                return (
+                  <div
+                    key={point.id}
+                    className={`block w-full rounded px-2 py-1.5 text-left text-xs ${
+                      selectedPoint?.id === point.id ? 'bg-brand-100 text-brand-800' : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          setDetailCardMode('point')
+                          setSelectedPointId(point.id)
+                          if (!isDesktopRef.current) setMobilePointPopupOpen(false)
+                          if (mapViewMode === 'panorama') return
+                          if (point.geo && mapRef.current) {
+                            focusGeo(point.geo, Math.max(mapRef.current.getZoom(), 13.5), true)
+                          }
+                        }}
+                      >
+                        <div className="line-clamp-1 font-medium">{point.name}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">
+                          {point.ep ? `EP ${point.ep}` : ''}
+                          {pointDistance != null ? `${point.ep ? ' · ' : ''}~${formatDistance(pointDistance)}` : ''}
+                        </div>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {pointState === 'want_to_go' ? (
+                          <span className="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{label.wantToGo}</span>
+                        ) : null}
+                        {pointState === 'planned' ? (
+                          <span className="rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{label.planned}</span>
+                        ) : null}
+                        {pointState === 'checked_in' ? (
+                          <span className="rounded-full bg-green-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{label.checkedIn}</span>
+                        ) : null}
+                        {showPointWantToGo ? (
+                          <button
+                            type="button"
+                            className="rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              addPointToPointPool(point.id).catch(() => null)
+                            }}
+                          >
+                            {label.wantToGo}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </>
   ) : null
 
@@ -3115,14 +3204,26 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     <div className="pointer-events-none absolute inset-x-3 z-30" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
       <div className="pointer-events-auto mx-auto max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur">
         <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-          <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{selectedPoint.name}</h3>
-          <button
-            type="button"
-            className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-            onClick={() => setMobilePointPopupOpen(false)}
-          >
-            {label.close}
-          </button>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label.pointDetail}</div>
+            <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{selectedPoint.name}</h3>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+              onClick={switchToBangumiDetail}
+            >
+              {label.backToWorkDetail}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+              onClick={() => setMobilePointPopupOpen(false)}
+            >
+              {label.close}
+            </button>
+          </div>
         </div>
         <div className="space-y-2 px-3 py-3">
           {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
@@ -3137,25 +3238,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               {selectedPoint.note}
             </div>
           ) : null}
-
-          <div className="rounded-lg border border-brand-100 bg-brand-50/70 px-2 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-brand-700">{label.quickPilgrimage}</div>
-                <div className="line-clamp-2 text-[11px] text-brand-600">{label.quickPilgrimageHint}</div>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 rounded bg-brand-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-600"
-                onClick={() => setShowQuickPilgrimage(true)}
-              >
-                {label.quickPilgrimage}
-              </button>
-            </div>
-            <div className="mt-1 text-[11px] text-brand-700">
-              {label.quickPilgrimageProgressPrefix} {quickPilgrimageProgress.checked}/{quickPilgrimageProgress.total}
-            </div>
-          </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
             <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
@@ -3209,13 +3291,6 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 {label.addToPointPool}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="rounded border border-brand-300 bg-brand-50 px-2 py-1 text-xs text-brand-700 hover:bg-brand-100"
-              onClick={openRouteBookPicker}
-            >
-              {label.addToRouteBook}
-            </button>
             {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
               <button
                 type="button"
@@ -3356,7 +3431,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 onClick={() => setMobilePanelOpen(true)}
                 className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-medium text-slate-700 shadow-lg backdrop-blur hover:bg-white"
               >
-                <span>{detail ? `${label.selected} · ${detail.card.title}` : label.openPanel}</span>
+                <span>
+                  {detailCardMode === 'point' && selectedPoint
+                    ? `${label.pointDetail} · ${selectedPoint.name}`
+                    : detail
+                      ? `${label.workDetail} · ${detail.card.title}`
+                      : label.openPanel}
+                </span>
               </button>
             </div>
           ) : null}
