@@ -272,31 +272,31 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     pointDetail: '点位详情',
     backToWorkDetail: '返回作品详情',
     signInToFavorite: '登录后可收藏',
-    signInToPointPool: '登录后可将点位加入全局想去池',
-    signInToRouteBook: '登录后可使用路书功能',
+    signInToPointPool: '登录后可将点位加入我的地图',
+    signInToRouteBook: '登录后可使用我的地图',
     quickStart: '开始',
     quickPilgrimage: '快速巡礼',
     quickPilgrimageHint: '站内逐点导航推进，可选打开 Google Maps',
     quickPilgrimageProgressPrefix: '已打卡',
-    routeBooks: '我的路书',
-    addToRouteBook: '加入路书',
-    addToRouteBookSuccess: '已加入路书',
-    addToRouteBookFailed: '加入路书失败，请稍后重试',
-    addToPointPool: '加入想去池',
-    addToPointPoolSuccess: '已加入全局想去池',
-    addToPointPoolFailed: '加入全局想去池失败，请稍后重试',
-    pointPoolGuide: '已加入全局想去池：前往「我的路书」可加入具体路线。',
-    stateAutoHint: '状态由行为自动更新：想去 -> 计划中 -> 打卡后已打卡',
-    pointAlreadyInPoolHint: '已在全局想去池。',
-    routeBookSelectTitle: '加入路书',
-    routeBookLoading: '正在加载路书…',
-    routeBookEmpty: '还没有路书，先创建一个吧',
-    routeBookPickOne: '选择一个路书',
-    routeBookCreatePlaceholder: '例如：东京圣地巡礼',
+    routeBooks: '我的地图',
+    addToRouteBook: '加入我的地图',
+    addToRouteBookSuccess: '已加入我的地图',
+    addToRouteBookFailed: '加入我的地图失败，请稍后重试',
+    addToPointPool: '加入我的地图',
+    addToPointPoolSuccess: '已加入我的地图',
+    addToPointPoolFailed: '加入我的地图失败，请稍后重试',
+    pointPoolGuide: '已加入我的地图：你可在「我的地图」中继续规划路线。',
+    stateAutoHint: '状态由行为自动更新：想去 -> 规划中 -> 打卡后已打卡',
+    pointAlreadyInPoolHint: '已在我的地图中。',
+    routeBookSelectTitle: '加入我的地图',
+    routeBookLoading: '正在加载我的地图…',
+    routeBookEmpty: '你还没有地图，先创建一个吧',
+    routeBookPickOne: '选择一个地图',
+    routeBookCreatePlaceholder: '例如：东京圣地巡礼地图',
     routeBookCreateAndAdd: '新建并加入',
-    routeBookCreatedAndAdded: '路书创建成功并已加入点位',
+    routeBookCreatedAndAdded: '地图创建成功并已加入点位',
     wantToGo: '想去',
-    planned: '计划中',
+    planned: '规划中',
     checkedIn: '已打卡',
     street: '街道',
     satellite: '卫星',
@@ -363,31 +363,31 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     pointDetail: 'Point Detail',
     backToWorkDetail: 'Back to Work',
     signInToFavorite: 'Sign in to favorite',
-    signInToPointPool: 'Sign in to add this point to the global want-to-go pool',
-    signInToRouteBook: 'Sign in to use routebooks',
+    signInToPointPool: 'Sign in to add this point to My Map',
+    signInToRouteBook: 'Sign in to use My Maps',
     quickStart: 'Start',
     quickPilgrimage: 'Quick Pilgrimage',
     quickPilgrimageHint: 'In-page step navigation with optional Google Maps handoff',
     quickPilgrimageProgressPrefix: 'Checked in',
-    routeBooks: 'My Routebooks',
-    addToRouteBook: 'Add to Routebook',
-    addToRouteBookSuccess: 'Added to routebook',
-    addToRouteBookFailed: 'Failed to add to routebook',
-    addToPointPool: 'Add to Pool',
-    addToPointPoolSuccess: 'Added to global want-to-go pool',
-    addToPointPoolFailed: 'Failed to add to global pool',
-    pointPoolGuide: 'Added to global pool. Open My Routebooks to place this point into a route.',
-    stateAutoHint: 'State is automatic: Want to go -> Planned -> Checked in after check-in.',
-    pointAlreadyInPoolHint: 'Already in the global pool.',
-    routeBookSelectTitle: 'Add to Routebook',
-    routeBookLoading: 'Loading routebooks…',
-    routeBookEmpty: 'No routebooks yet. Create one first.',
-    routeBookPickOne: 'Pick a routebook',
-    routeBookCreatePlaceholder: 'For example: Tokyo pilgrimage',
+    routeBooks: 'My Maps',
+    addToRouteBook: 'Add to My Map',
+    addToRouteBookSuccess: 'Added to My Map',
+    addToRouteBookFailed: 'Failed to add to My Map',
+    addToPointPool: 'Add to My Map',
+    addToPointPoolSuccess: 'Added to My Map',
+    addToPointPoolFailed: 'Failed to add to My Map',
+    pointPoolGuide: 'Added to My Map. You can continue planning in My Maps.',
+    stateAutoHint: 'State is automatic: Want to go -> Planning -> Checked in after check-in.',
+    pointAlreadyInPoolHint: 'Already in My Map.',
+    routeBookSelectTitle: 'Add to My Map',
+    routeBookLoading: 'Loading My Maps…',
+    routeBookEmpty: 'No maps yet. Create one first.',
+    routeBookPickOne: 'Pick a map',
+    routeBookCreatePlaceholder: 'For example: Tokyo pilgrimage map',
     routeBookCreateAndAdd: 'Create & Add',
-    routeBookCreatedAndAdded: 'Routebook created and point added',
+    routeBookCreatedAndAdded: 'Map created and point added',
     wantToGo: 'Want to go',
-    planned: 'Planned',
+    planned: 'Planning',
     checkedIn: 'Checked in',
     street: 'Street',
     satellite: 'Satellite',
@@ -454,29 +454,29 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     pointDetail: 'スポット詳細',
     backToWorkDetail: '作品詳細へ戻る',
     signInToFavorite: 'ログインしてお気に入り',
-    signInToPointPool: 'ログインして全体の行きたいプールに追加',
-    signInToRouteBook: '路書機能を使うにはログインしてください',
+    signInToPointPool: 'ログインしてマイマップに追加',
+    signInToRouteBook: 'マイマップ機能を使うにはログインしてください',
     quickStart: '開始',
     quickPilgrimage: 'クイック巡礼',
     quickPilgrimageHint: 'ページ内で順番に進行し、必要時のみ Google Maps を開けます',
     quickPilgrimageProgressPrefix: '巡礼済み',
-    routeBooks: 'マイルートブック',
-    addToRouteBook: '路書に追加',
-    addToRouteBookSuccess: '路書に追加しました',
-    addToRouteBookFailed: '路書への追加に失敗しました',
-    addToPointPool: '行きたいプールへ',
-    addToPointPoolSuccess: '全体の行きたいプールに追加しました',
-    addToPointPoolFailed: '全体プールへの追加に失敗しました',
-    pointPoolGuide: '全体の行きたいプールへ追加しました。マイルートブックからルートに追加できます。',
+    routeBooks: 'マイマップ',
+    addToRouteBook: 'マイマップに追加',
+    addToRouteBookSuccess: 'マイマップに追加しました',
+    addToRouteBookFailed: 'マイマップへの追加に失敗しました',
+    addToPointPool: 'マイマップに追加',
+    addToPointPoolSuccess: 'マイマップに追加しました',
+    addToPointPoolFailed: 'マイマップへの追加に失敗しました',
+    pointPoolGuide: 'マイマップに追加しました。マイマップでルート計画を続けられます。',
     stateAutoHint: '状態は自動更新です：行きたい -> 計画中 -> 打刻で巡礼済み',
-    pointAlreadyInPoolHint: 'すでに全体プールにあります。',
-    routeBookSelectTitle: '路書に追加',
-    routeBookLoading: '路書を読み込み中…',
-    routeBookEmpty: '路書がありません。先に作成してください。',
-    routeBookPickOne: '路書を選択',
-    routeBookCreatePlaceholder: '例：東京聖地巡礼',
+    pointAlreadyInPoolHint: 'すでにマイマップにあります。',
+    routeBookSelectTitle: 'マイマップに追加',
+    routeBookLoading: 'マイマップを読み込み中…',
+    routeBookEmpty: 'マイマップがありません。先に作成してください。',
+    routeBookPickOne: 'マップを選択',
+    routeBookCreatePlaceholder: '例：東京聖地巡礼マップ',
     routeBookCreateAndAdd: '作成して追加',
-    routeBookCreatedAndAdded: '路書を作成し、スポットを追加しました',
+    routeBookCreatedAndAdded: 'マップを作成し、スポットを追加しました',
     wantToGo: '行きたい',
     planned: '計画中',
     checkedIn: '巡礼済み',
@@ -2844,9 +2844,34 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         <>
           <div className="space-y-3 border-b border-slate-200 px-3 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label.workDetail}</div>
-            {detail.description ? (
-              <p className="text-xs leading-relaxed text-slate-700">{detail.description}</p>
-            ) : null}
+            <div className="flex items-start gap-3">
+              <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                {detail.card.cover ? (
+                  <img
+                    src={detail.card.cover}
+                    alt={detail.card.title}
+                    width={96}
+                    height={144}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="grid h-full w-full place-items-center bg-slate-200 text-base font-semibold text-slate-600">
+                    {detail.card.title.slice(0, 1)}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
+                <div className="text-[11px] text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
+                {detail.description ? (
+                  <p className="text-xs leading-relaxed text-slate-700">{detail.description}</p>
+                ) : (
+                  <p className="text-xs leading-relaxed text-slate-500">{label.noData}</p>
+                )}
+              </div>
+            </div>
             {detail.tags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {detail.tags.slice(0, 8).map((tag) => (
@@ -2978,7 +3003,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                               addPointToPointPool(point.id).catch(() => null)
                             }}
                           >
-                            {label.wantToGo}
+                            {label.addToPointPool}
                           </button>
                         ) : null}
                       </div>
