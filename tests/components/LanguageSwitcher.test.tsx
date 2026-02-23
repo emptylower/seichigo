@@ -8,7 +8,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...rest }: any) => (
+  default: ({ href, children, prefetch: _prefetch, ...rest }: any) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -27,6 +27,7 @@ describe('LanguageSwitcher', () => {
     vi.clearAllMocks()
     mockUseRouter.mockReturnValue({ push: mockPush })
     ;(globalThis as any).fetch = vi.fn()
+    document.cookie = 'NEXT_LOCALE=; path=/; max-age=0'
   })
 
   it('uses simple prefix for non-article pages', async () => {
@@ -154,8 +155,14 @@ describe('LanguageSwitcher', () => {
     })
   })
 
-  it('sets NEXT_LOCALE cookie after navigation on article page', async () => {
+  it('sets NEXT_LOCALE cookie before navigation on article page', async () => {
     mockUsePathname.mockReturnValue('/posts/my-article')
+    mockUseRouter.mockReturnValue({
+      push: (targetPath: string) => {
+        expect(document.cookie).toContain('NEXT_LOCALE=en')
+        mockPush(targetPath)
+      },
+    })
 
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ translatedSlug: 'my-article-en' }), {
