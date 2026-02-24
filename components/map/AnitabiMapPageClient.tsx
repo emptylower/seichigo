@@ -2257,7 +2257,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [])
 
   const renderPointImage = useCallback(
-    (imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null) => {
+    (imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null, eager = false) => {
       const src = String(imageUrl || '').trim()
       if (!src) {
         return (
@@ -2281,7 +2281,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             width={640}
             height={360}
             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
-            loading="lazy"
+            loading={eager ? 'eager' : 'lazy'}
+            fetchPriority={eager ? 'high' : 'auto'}
             decoding="async"
           />
           <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded bg-black/60 px-2 py-0.5 text-[11px] text-white">
@@ -2773,7 +2774,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
             </button>
           </div>
           <div className="text-sm font-medium text-slate-900">{selectedPoint.name}</div>
-          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
+          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl, true)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
@@ -2862,7 +2863,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                     width={96}
                     height={144}
                     className="h-full w-full object-cover"
-                    loading="lazy"
+                    loading="eager"
+                    fetchPriority="high"
                     decoding="async"
                   />
                 ) : (
@@ -3186,8 +3188,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
       {!showNearbyLocationCta ? (
         <>
           <div className="space-y-3">
-            {cards.map((card) => {
+            {cards.map((card, index) => {
               const swatchColor = card.color || '#ec4899'
+              const prioritizeCardCover = index < 3
               return (
                 <button
                   key={card.id}
@@ -3203,7 +3206,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                   <div className="flex items-start gap-3 p-3">
                     <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                       {card.cover ? (
-                        <img src={card.cover} alt={card.title} width={96} height={128} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                        <img
+                          src={card.cover}
+                          alt={card.title}
+                          width={96}
+                          height={128}
+                          className="h-full w-full object-cover"
+                          loading={prioritizeCardCover ? 'eager' : 'lazy'}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
+                          decoding="async"
+                        />
                       ) : (
                         <div className="grid h-full w-full place-items-center bg-slate-200 text-sm font-semibold text-slate-600">{card.title.slice(0, 1)}</div>
                       )}
@@ -3275,7 +3287,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
         </div>
         <div className="space-y-2 px-3 py-3">
-          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl)}
+          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl, true)}
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
             {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}

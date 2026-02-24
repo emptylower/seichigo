@@ -117,6 +117,8 @@ const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
   transit: 'transit',
   driving: 'driving',
 }
+const PREVIEW_POINT_BATCH_SIZE = 28
+const PREVIEW_FETCH_IDLE_TIMEOUT = 1200
 
 const DRAG_SAFE_CONTROL_PROPS = {
   onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
@@ -678,6 +680,30 @@ function DraggablePointPoolCard({
   )
 }
 
+function RouteBookDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-[30px] border border-pink-100/90 bg-white/90 p-5 shadow-sm sm:p-6">
+        <div className="space-y-4">
+          <div className="h-8 w-2/3 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
+          <div className="flex flex-wrap gap-2">
+            <div className="h-10 w-28 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-10 w-40 animate-pulse rounded-full bg-slate-100" />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
+        <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
+        <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
+      </section>
+
+      <section className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-white" />
+    </div>
+  )
+}
+
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const [routeBook, setRouteBook] = useState<RouteBookDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -690,6 +716,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [inAppNavOpen, setInAppNavOpen] = useState(false)
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
+  const [embedPreviewEnabled, setEmbedPreviewEnabled] = useState(false)
   const mapsEmbedApiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
@@ -727,47 +754,61 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  const hydrateAuxiliaryData = useCallback(async () => {
+    const [pointStateRes, pointPoolRes] = await Promise.allSettled([
+      fetch('/api/me/point-states?state=checked_in'),
+      fetch('/api/me/point-pool'),
+    ])
+
+    if (pointStateRes.status === 'fulfilled') {
+      const stateData = await pointStateRes.value.json().catch(() => ({}))
+      if (pointStateRes.value.ok && stateData?.ok && Array.isArray(stateData.items)) {
+        setCheckedInPointIds(new Set(stateData.items.map((item: { pointId: string }) => item.pointId)))
+      }
+    }
+
+    if (pointPoolRes.status === 'fulfilled') {
+      const poolData = await pointPoolRes.value.json().catch(() => ({}))
+      if (pointPoolRes.value.ok && poolData?.ok && Array.isArray(poolData.items)) {
+        setPointPoolItems(parsePointPoolItems(poolData.items))
+      } else {
+        setPointPoolItems([])
+      }
+    }
+  }, [parsePointPoolItems])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setPointPreviewById({})
+    setCheckedInPointIds(new Set())
+    setPointPoolItems([])
+    setEmbedPreviewEnabled(false)
     try {
-      const [rbRes, psRes, poolRes] = await Promise.all([
-        fetch(`/api/me/routebooks/${id}`),
-        fetch('/api/me/point-states?state=checked_in'),
-        fetch('/api/me/point-pool'),
-      ])
+      const rbRes = await fetch(`/api/me/routebooks/${id}`)
       const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
       if (!rbRes.ok || 'error' in rbData) {
         setError(('error' in rbData && rbData.error) || '加载失败')
+        setLoading(false)
         return
       }
 
       const detail = rbData.routeBook || rbData.item || null
       if (!detail) {
         setError('地图数据异常，请刷新重试')
+        setLoading(false)
         return
       }
 
       setRouteBook(detail)
       setTitleDraft(detail.title)
-
-      const psData = await psRes.json().catch(() => ({}))
-      if (psData.ok && Array.isArray(psData.items)) {
-        setCheckedInPointIds(new Set(psData.items.map((s: { pointId: string }) => s.pointId)))
-      }
-
-      const poolData = await poolRes.json().catch(() => ({}))
-      if (poolData.ok && Array.isArray(poolData.items)) {
-        setPointPoolItems(parsePointPoolItems(poolData.items))
-      } else {
-        setPointPoolItems([])
-      }
+      setLoading(false)
+      void hydrateAuxiliaryData()
     } catch {
       setError('加载失败')
-    } finally {
-      setLoading(false)
     }
-  }, [id, parsePointPoolItems])
+    setLoading(false)
+  }, [hydrateAuxiliaryData, id])
 
   useEffect(() => {
     void load()
@@ -792,14 +833,15 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const unresolvedPointIds = useMemo(() => {
     return allPointIds.filter((pointId) => !pointPreviewById[pointId])
   }, [allPointIds, pointPreviewById])
+  const previewFetchPointIds = useMemo(() => unresolvedPointIds.slice(0, PREVIEW_POINT_BATCH_SIZE), [unresolvedPointIds])
 
   useEffect(() => {
-    if (!unresolvedPointIds.length) return
+    if (!previewFetchPointIds.length) return
 
     const grouped = new Map<number, string[]>()
     const fallbackPreviews: Record<string, PointPreview> = {}
 
-    for (const pointId of unresolvedPointIds) {
+    for (const pointId of previewFetchPointIds) {
       const bangumiId = parseBangumiId(pointId)
       if (!bangumiId) {
         fallbackPreviews[pointId] = buildFallbackPreview(pointId)
@@ -817,8 +859,14 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     if (!grouped.size) return
 
     let cancelled = false
+    let timeoutId: number | null = null
+    let idleId: number | null = null
+    const win = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
 
-    void (async () => {
+    const run = async () => {
       const loadedPreviews: Record<string, PointPreview> = {}
 
       await Promise.all(
@@ -874,17 +922,31 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
       setPointPreviewById((prev) => {
         const next = { ...prev }
-        for (const pointId of unresolvedPointIds) {
+        for (const pointId of previewFetchPointIds) {
           next[pointId] = loadedPreviews[pointId] || next[pointId] || buildFallbackPreview(pointId)
         }
         return next
       })
-    })()
+    }
+
+    if (typeof win.requestIdleCallback === 'function' && typeof win.cancelIdleCallback === 'function') {
+      idleId = win.requestIdleCallback(() => {
+        void run()
+      }, { timeout: PREVIEW_FETCH_IDLE_TIMEOUT })
+    } else {
+      timeoutId = window.setTimeout(() => {
+        void run()
+      }, 180)
+    }
 
     return () => {
       cancelled = true
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+      if (idleId !== null && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId)
+      }
     }
-  }, [unresolvedPointIds])
+  }, [previewFetchPointIds])
 
   const getPointPreview = useCallback((pointId: string) => {
     return pointPreviewById[pointId] || buildFallbackPreview(pointId)
@@ -1061,7 +1123,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     }
   }
 
-  if (loading) return <div className="text-gray-600">加载中…</div>
+  if (loading) return <RouteBookDetailSkeleton />
   if (error) return (
     <div className="space-y-4">
       <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
@@ -1423,7 +1485,20 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                 <div className="overflow-hidden rounded-xl border border-slate-200">
                   <div className="aspect-[16/9] bg-slate-100">
                     {previewEmbedUrl ? (
-                      routeGoogleUrl ? (
+                      !embedPreviewEnabled ? (
+                        <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+                          <div className="max-w-sm text-xs text-slate-600">
+                            为了减少首屏阻塞，地图预览改为按需加载。你也可以直接在 Google Maps 打开完整路线。
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                            onClick={() => setEmbedPreviewEnabled(true)}
+                          >
+                            加载站内预览
+                          </button>
+                        </div>
+                      ) : routeGoogleUrl ? (
                         <a
                           href={routeGoogleUrl}
                           target="_blank"

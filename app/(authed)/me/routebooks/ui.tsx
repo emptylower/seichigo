@@ -243,12 +243,13 @@ export default function RouteBooksClient() {
 
       {items.length ? (
         <ul className="grid gap-4 md:grid-cols-2">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const metadata = parseMetadata(item.metadata)
             const cover = metadata.cover || '/images/home/chopper-map-base.webp'
             const fallbackGradient = pickRouteBookGradient(`${item.id}:${item.title}`)
             const description = metadata.description || STATUS_DESC[item.status]
             const chips = [metadata.city, `创建于 ${formatDate(item.createdAt)}`].filter(Boolean)
+            const prioritizeCover = index < 2
 
             return (
               <li
@@ -260,7 +261,8 @@ export default function RouteBooksClient() {
                     <img
                       src={cover}
                       alt={item.title}
-                      loading="lazy"
+                      loading={prioritizeCover ? 'eager' : 'lazy'}
+                      fetchPriority={index === 0 ? 'high' : 'auto'}
                       decoding="async"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                     />
@@ -271,7 +273,8 @@ export default function RouteBooksClient() {
                         src={cover}
                         alt=""
                         aria-hidden="true"
-                        loading="lazy"
+                        loading={prioritizeCover ? 'eager' : 'lazy'}
+                        fetchPriority={index === 0 ? 'high' : 'auto'}
                         decoding="async"
                         className="h-full w-full object-cover opacity-45 mix-blend-multiply"
                       />
