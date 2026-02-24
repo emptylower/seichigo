@@ -119,6 +119,7 @@ const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
 }
 const PREVIEW_POINT_BATCH_SIZE = 28
 const PREVIEW_FETCH_IDLE_TIMEOUT = 1200
+const ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS = 900
 
 const DRAG_SAFE_CONTROL_PROPS = {
   onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
@@ -716,7 +717,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [inAppNavOpen, setInAppNavOpen] = useState(false)
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
-  const [embedPreviewEnabled, setEmbedPreviewEnabled] = useState(false)
+  const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
+  const [stableRouteSignature, setStableRouteSignature] = useState('')
   const mapsEmbedApiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
@@ -783,7 +785,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     setPointPreviewById({})
     setCheckedInPointIds(new Set())
     setPointPoolItems([])
-    setEmbedPreviewEnabled(false)
+    setStableRouteEmbedUrl(null)
+    setStableRouteSignature('')
     try {
       const rbRes = await fetch(`/api/me/routebooks/${id}`)
       const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
@@ -1123,15 +1126,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     }
   }
 
-  if (loading) return <RouteBookDetailSkeleton />
-  if (error) return (
-    <div className="space-y-4">
-      <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
-      <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回地图列表</a>
-    </div>
-  )
-  if (!routeBook) return null
-
   const canAddToSorted = sorted.length < SORTED_LIMIT
   const sortedStops = sorted.map((point) => {
     const preview = getPointPreview(point.pointId)
@@ -1145,6 +1139,42 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const hasRouteStops = sortedStopValues.length >= 2
   const routeGoogleUrl = buildGoogleDirectionsUrl(sortedStopValues, travelMode)
   const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, travelMode, mapsEmbedApiKey)
+  const routePreviewSignature = `${travelMode}:${sorted.map((point) => point.id).join('|')}`
+  const hasUnresolvedRoutePreviews = sorted.some((point) => !pointPreviewById[point.pointId])
+
+  useEffect(() => {
+    if (!hasRouteStops) {
+      if (stableRouteEmbedUrl !== null) setStableRouteEmbedUrl(null)
+      if (stableRouteSignature !== '') setStableRouteSignature('')
+      return
+    }
+
+    if (stableRouteSignature !== routePreviewSignature) {
+      setStableRouteSignature(routePreviewSignature)
+      setStableRouteEmbedUrl(routeEmbedUrl)
+      return
+    }
+
+    if (stableRouteEmbedUrl === routeEmbedUrl) return
+
+    if (hasUnresolvedRoutePreviews) {
+      const timer = window.setTimeout(() => {
+        setStableRouteEmbedUrl(routeEmbedUrl)
+      }, ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS)
+      return () => window.clearTimeout(timer)
+    }
+
+    setStableRouteEmbedUrl(routeEmbedUrl)
+  }, [
+    hasRouteStops,
+    hasUnresolvedRoutePreviews,
+    routeEmbedUrl,
+    routePreviewSignature,
+    stableRouteEmbedUrl,
+    stableRouteSignature,
+  ])
+
+  const effectiveRouteEmbedUrl = hasRouteStops ? (stableRouteEmbedUrl ?? routeEmbedUrl) : null
   const routeLegs = sortedStops.slice(0, -1).map((from, index) => {
     const to = sortedStops[index + 1]
     if (!to) return null
@@ -1168,10 +1198,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const focusPoint = nextPoint || sorted[0] || null
   const focusPreview = focusPoint ? getPointPreview(focusPoint.pointId) : null
   const focusPointEmbedUrl = buildGooglePointEmbedUrl(focusPreview)
-  const previewEmbedUrl = hasRouteStops ? routeEmbedUrl : focusPointEmbedUrl
+  const previewEmbedUrl = hasRouteStops ? effectiveRouteEmbedUrl : focusPointEmbedUrl
   const nextPointNavUrl = nextPoint
     ? buildGoogleDirectionsUrl([formatGoogleStop(nextPoint, getPointPreview(nextPoint.pointId))], travelMode)
     : null
+
+  if (loading) return <RouteBookDetailSkeleton />
+  if (error) return (
+    <div className="space-y-4">
+      <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
+      <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回地图列表</a>
+    </div>
+  )
+  if (!routeBook) return null
 
   return (
     <div className="space-y-6">
@@ -1485,20 +1524,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                 <div className="overflow-hidden rounded-xl border border-slate-200">
                   <div className="aspect-[16/9] bg-slate-100">
                     {previewEmbedUrl ? (
-                      !embedPreviewEnabled ? (
-                        <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
-                          <div className="max-w-sm text-xs text-slate-600">
-                            为了减少首屏阻塞，地图预览改为按需加载。你也可以直接在 Google Maps 打开完整路线。
-                          </div>
-                          <button
-                            type="button"
-                            className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                            onClick={() => setEmbedPreviewEnabled(true)}
-                          >
-                            加载站内预览
-                          </button>
-                        </div>
-                      ) : routeGoogleUrl ? (
+                      routeGoogleUrl ? (
                         <a
                           href={routeGoogleUrl}
                           target="_blank"
@@ -1510,7 +1536,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                             title={hasRouteStops ? 'Google 路线预览（点击跳转）' : 'Google 点位预览（点击跳转）'}
                             src={previewEmbedUrl}
                             className="h-full w-full border-0 pointer-events-none"
-                            loading="lazy"
+                            loading="eager"
                             referrerPolicy="no-referrer-when-downgrade"
                           />
                           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-900/45 px-3 py-2 text-xs font-medium text-white">
@@ -1522,7 +1548,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                           title={hasRouteStops ? 'Google 路线预览' : 'Google 点位预览'}
                           src={previewEmbedUrl}
                           className="h-full w-full border-0"
-                          loading="lazy"
+                          loading="eager"
                           referrerPolicy="no-referrer-when-downgrade"
                         />
                       )
@@ -1540,7 +1566,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                         title="Google 点位预览"
                         src={focusPointEmbedUrl}
                         className="h-full w-full border-0"
-                        loading="lazy"
+                        loading="eager"
                         referrerPolicy="no-referrer-when-downgrade"
                       />
                     ) : (
@@ -1552,7 +1578,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                   <div className="space-y-1.5 p-3">
                     <div className="text-xs font-medium text-slate-500">
                       {hasRouteStops
-                        ? routeEmbedUrl
+                        ? effectiveRouteEmbedUrl
                           ? `Google 真实路线预览（${NAV_MODE_LABEL[travelMode]}）`
                           : `Google 真实路线（${NAV_MODE_LABEL[travelMode]}）`
                         : sortedStops.length === 1
