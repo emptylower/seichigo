@@ -79,6 +79,7 @@ import {
   DraggableUnsortedPointCard,
   DraggablePointPoolCard,
 } from './components/PointCard'
+import { RouteSidebar } from './components/RouteSidebar'
 import { DroppablePanel } from './components/DroppablePanel'
 
 
@@ -116,7 +117,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [checkedInPointIds, setCheckedInPointIds] = useState<Set<string>>(new Set())
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
   const [travelMode, setTravelMode] = useState<NavMode>('transit')
-  const [inAppNavOpen, setInAppNavOpen] = useState(false)
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
   const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
@@ -222,10 +222,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const unsorted = routeBook ? getUnsortedPoints(routeBook.points) : []
   const sorted = routeBook ? getSortedPoints(routeBook.points) : []
 
-  useEffect(() => {
-    if (sorted.length >= 2) return
-    if (inAppNavOpen) setInAppNavOpen(false)
-  }, [inAppNavOpen, sorted.length])
 
   const allPointIds = useMemo(() => {
     const pointIds = [
@@ -745,90 +741,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         />
       )}
 
-      {inAppNavOpen && (
-        <div className="fixed inset-0 z-50">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/55"
-            aria-label="关闭站内导航"
-            onClick={() => setInAppNavOpen(false)}
-          />
-          <div className="relative mx-auto mt-4 flex h-[calc(100dvh-2rem)] w-[min(1320px,calc(100%-1rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_35px_90px_-45px_rgba(15,23,42,0.6)]">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
-              <div>
-                <div className="text-base font-semibold text-slate-900">站内导航</div>
-                <div className="text-xs text-slate-500">Google Maps 嵌入路线（按当前排序自动更新）</div>
-              </div>
-              <button
-                type="button"
-                className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => setInAppNavOpen(false)}
-              >
-                关闭
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-              <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                {(['transit', 'driving'] as const).map((mode) => (
-                  <button
-                    key={`modal-${mode}`}
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      travelMode === mode
-                        ? 'bg-white text-slate-900 shadow'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                    onClick={() => setTravelMode(mode)}
-                  >
-                    {NAV_MODE_LABEL[mode]}
-                  </button>
-                ))}
-              </div>
-              {routeGoogleUrl ? (
-                <a
-                  href={routeGoogleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 no-underline hover:bg-slate-50"
-                >
-                  在 Google Maps 打开
-                </a>
-              ) : null}
-            </div>
-
-            <div className="min-h-0 flex-1 bg-slate-100">
-              {routeEmbedUrl ? (
-                <iframe
-                  title="站内导航地图"
-                  src={routeEmbedUrl}
-                  className="h-full w-full border-0"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              ) : routeGoogleUrl ? (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
-                  <div className="max-w-xl text-sm text-slate-600">
-                    当前环境暂不可用嵌入导航，请先跳转 Google Maps 查看真实线路。
-                  </div>
-                  <a
-                    href={routeGoogleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-h-10 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white no-underline hover:bg-slate-800"
-                  >
-                    打开 Google Maps
-                  </a>
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-500">
-                  请先在路线中添加至少 2 个点位，再进入站内导航。
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <DndContext
         sensors={sensors}
@@ -871,213 +783,27 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               )}
             </DroppablePanel>
 
-            <aside className="self-start rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm xl:sticky xl:top-20">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-slate-900">实时导航预览</h3>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                    {sorted.length} 个点位
-                  </span>
-                </div>
-
-                <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                  {(['transit', 'driving'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                        travelMode === mode
-                          ? 'bg-white text-slate-900 shadow'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                      onClick={() => setTravelMode(mode)}
-                    >
-                      {NAV_MODE_LABEL[mode]}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={!hasRouteStops}
-                    className="inline-flex min-h-9 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
-                    onClick={() => setInAppNavOpen(true)}
-                    title={hasRouteStops ? '进入站内导航' : '请先添加至少 2 个点位'}
-                  >
-                    进入站内导航
-                  </button>
-                  {routeGoogleUrl ? (
-                    <a
-                      href={routeGoogleUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 no-underline transition hover:bg-slate-50"
-                    >
-                      在 Google Maps 打开
-                    </a>
-                  ) : (
-                    <span className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-500">
-                      添加点位后可导航
-                    </span>
-                  )}
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <div className="aspect-[16/9] bg-slate-100">
-                    {previewEmbedUrl ? (
-                      routeGoogleUrl ? (
-                        <a
-                          href={routeGoogleUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group relative block h-full w-full no-underline"
-                          title="点击在 Google Maps 中查看真实线路"
-                        >
-                          <iframe
-                            title={hasRouteStops ? 'Google 路线预览（点击跳转）' : 'Google 点位预览（点击跳转）'}
-                            src={previewEmbedUrl}
-                            className="h-full w-full border-0 pointer-events-none"
-                            loading="eager"
-                            referrerPolicy="no-referrer-when-downgrade"
-                          />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-900/45 px-3 py-2 text-xs font-medium text-white">
-                            点击地图，在 Google Maps 查看真实线路
-                          </div>
-                        </a>
-                      ) : (
-                        <iframe
-                          title={hasRouteStops ? 'Google 路线预览' : 'Google 点位预览'}
-                          src={previewEmbedUrl}
-                          className="h-full w-full border-0"
-                          loading="eager"
-                          referrerPolicy="no-referrer-when-downgrade"
-                        />
-                      )
-                    ) : routeGoogleUrl ? (
-                      <a
-                        href={routeGoogleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex h-full items-center justify-center px-4 text-center text-sm font-medium text-slate-700 no-underline hover:bg-slate-50"
-                      >
-                        当前环境暂不支持站内嵌入路线，点击这里在 Google Maps 查看真实线路。
-                      </a>
-                    ) : focusPointEmbedUrl ? (
-                      <iframe
-                        title="Google 点位预览"
-                        src={focusPointEmbedUrl}
-                        className="h-full w-full border-0"
-                        loading="eager"
-                        referrerPolicy="no-referrer-when-downgrade"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-500">
-                        添加至少 1 个点位后可查看导航预览。
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-1.5 p-3">
-                    <div className="text-xs font-medium text-slate-500">
-                      {hasRouteStops
-                        ? effectiveRouteEmbedUrl
-                          ? `Google 真实路线预览（${NAV_MODE_LABEL[travelMode]}）`
-                          : `Google 真实路线（${NAV_MODE_LABEL[travelMode]}）`
-                        : sortedStops.length === 1
-                          ? 'Google 点位页预览'
-                          : '路线预览'}
-                    </div>
-                    {focusPoint && focusPreview ? (
-                      <>
-                        <div className="line-clamp-1 text-sm font-semibold text-slate-900">{focusPreview.title}</div>
-                        <div className="line-clamp-1 text-xs text-slate-500">{focusPreview.subtitle}</div>
-                        <div className="truncate text-xs text-slate-500">{focusPoint.pointId}</div>
-                      </>
-                    ) : (
-                      <div className="text-xs text-slate-500">添加点位后会实时更新路线图。</div>
-                    )}
-                  </div>
-                </div>
-
-                {routeBook.status === 'in_progress' && sorted.length > 0 && (
-                  <div className={`rounded-xl border p-3 ${
-                    allDone ? 'border-emerald-200 bg-emerald-50/80' : 'border-sky-200 bg-sky-50/80'
-                  }`}>
-                    {allDone ? (
-                      <div className="space-y-2">
-                        <div className="text-sm font-semibold text-emerald-700">全部打卡完成</div>
-                        <div className="text-xs text-emerald-600">{sorted.length}/{sorted.length} 已完成</div>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-                          onClick={() => void handleStatusChange('completed')}
-                        >
-                          标记为完成巡礼
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="text-sm font-semibold text-sky-700">
-                          巡礼进度 {checkedCount}/{sorted.length}
-                        </div>
-                        {nextPoint ? (
-                          <div className="flex flex-wrap gap-2">
-                            <a
-                              href={nextPointNavUrl ?? '#'}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white no-underline hover:bg-sky-600"
-                            >
-                              导航到下一站
-                            </a>
-                            <button
-                              type="button"
-                              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-                              onClick={() => setCheckInTarget(nextPoint.pointId)}
-                            >
-                              打卡下一站
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-slate-500">逐段导航（按当前排序自动更新）</div>
-                  {routeLegs.length > 0 ? (
-                    <div className="max-h-[32vh] space-y-2 overflow-y-auto pr-1">
-                      {routeLegs.map((leg) => (
-                        <div key={leg.id} className="rounded-xl border border-slate-200 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-xs font-medium text-slate-500">第 {leg.order} 段</div>
-                            <a
-                              href={leg.navUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 no-underline transition hover:bg-slate-50"
-                            >
-                              导航
-                            </a>
-                          </div>
-                          <div className="mt-1 line-clamp-1 text-sm font-semibold text-slate-900">
-                            {leg.from.preview.title} → {leg.to.preview.title}
-                          </div>
-                          <div className="mt-1 truncate text-[11px] text-slate-500">
-                            {leg.from.point.pointId} → {leg.to.point.pointId}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-300 p-3 text-xs text-slate-500">
-                      至少添加 2 个含坐标点位后显示逐段导航。
-                    </div>
-                  )}
-                </div>
-              </div>
-            </aside>
+            <RouteSidebar
+              previewEmbedUrl={previewEmbedUrl}
+              focusPointEmbedUrl={focusPointEmbedUrl}
+              focusPoint={focusPoint}
+              focusPreview={focusPreview}
+              routeBook={routeBook}
+              sorted={sorted}
+              checkedInPointIds={checkedInPointIds}
+              travelMode={travelMode}
+              setTravelMode={setTravelMode}
+              routeGoogleUrl={routeGoogleUrl}
+              onCheckIn={(pointId) => setCheckInTarget(pointId)}
+              onStatusChange={handleStatusChange}
+              getPointPreview={getPointPreview}
+              hasRouteStops={hasRouteStops}
+              effectiveRouteEmbedUrl={effectiveRouteEmbedUrl}
+              checkedCount={checkedCount}
+              allDone={allDone}
+              nextPoint={nextPoint}
+              nextPointNavUrl={nextPointNavUrl}
+            />
           </div>
         </section>
 
