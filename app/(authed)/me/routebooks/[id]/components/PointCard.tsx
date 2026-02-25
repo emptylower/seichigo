@@ -142,7 +142,7 @@ export const SortablePointCard = React.memo(function SortablePointCard({
   point: PointRecord
   preview: PointPreview
   onRemove: (pointId: string) => void
-  onMoveToUnsorted: () => void
+  onMoveToUnsorted?: () => void
   canMoveToSorted: boolean
 }) {
   const {

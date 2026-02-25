@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -12,11 +13,8 @@ import {
 } from '@dnd-kit/core'
 import {
   arrayMove,
-  SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import type {
   PointRecord,
@@ -32,9 +30,7 @@ import type {
 import {
   SORTED_LIMIT,
   SORTED_ZONE_ID,
-  UNSORTED_ZONE_ID,
   SORTED_DND_PREFIX,
-  UNSORTED_DND_PREFIX,
   POOL_DND_PREFIX,
   NAV_MODE_LABEL,
   NAV_MODE_PARAM,
@@ -50,10 +46,8 @@ import {
 import {
   isPointRecord,
   getSortedPoints,
-  getUnsortedPoints,
   rebuildPoints,
   reorderSortedInPoints,
-  movePointToZoneInPoints,
   addPointToZoneInPoints,
   formatGoogleStop,
   buildGooglePointEmbedUrl,
@@ -68,19 +62,16 @@ import {
   buildFallbackPreview,
   isGeoPair,
   sortedDragId,
-  unsortedDragId,
   poolDragId,
   parseDragRecordId,
 } from './utils'
 import {
   PointCard,
-  SortablePointCard,
   PointPoolCard,
-  DraggableUnsortedPointCard,
   DraggablePointPoolCard,
 } from './components/PointCard'
 import { RouteSidebar } from './components/RouteSidebar'
-import { DroppablePanel } from './components/DroppablePanel'
+import { RouteListPanel } from './components/RouteListPanel'
 
 
 
@@ -121,6 +112,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
   const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
   const [stableRouteSignature, setStableRouteSignature] = useState('')
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const mapsEmbedApiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
@@ -219,9 +211,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     void load()
   }, [load])
 
-  const unsorted = routeBook ? getUnsortedPoints(routeBook.points) : []
   const sorted = routeBook ? getSortedPoints(routeBook.points) : []
-
 
   const allPointIds = useMemo(() => {
     const pointIds = [
@@ -405,38 +395,17 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       setRouteBook((prev) => {
         if (!prev) return prev
         const nextSorted = getSortedPoints(prev.points).filter((point) => point.pointId !== pointId)
-        const nextUnsorted = getUnsortedPoints(prev.points).filter((point) => point.pointId !== pointId)
-        return { ...prev, points: rebuildPoints(nextSorted, nextUnsorted) }
+        return { ...prev, points: rebuildPoints(nextSorted, []) }
       })
       void refreshPointPool()
     }
   }
 
-  async function handleMoveToZone(pointId: string, targetZone: RouteBookZone, targetSortedIndex?: number) {
-    if (!routeBook) return
 
-    const nextPoints = movePointToZoneInPoints(routeBook.points, pointId, targetZone, targetSortedIndex)
-    setRouteBook({ ...routeBook, points: nextPoints })
-
-    const moveRes = await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ op: 'move', pointId, zone: targetZone }),
-    })
-    if (!moveRes.ok) {
-      void load()
-      return
-    }
-
-    if (targetZone === 'sorted') {
-      const sortedPointIds = getSortedPoints(nextPoints).map((point) => point.pointId)
-      await persistSortedOrder(sortedPointIds)
-    }
-  }
 
   async function handleAddFromPointPool(
     pointId: string,
-    targetZone: RouteBookZone = 'unsorted',
+    targetZone: 'sorted' = 'sorted',
     targetSortedIndex?: number
   ): Promise<boolean> {
     if (!routeBook) return false
@@ -483,6 +452,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       return found >= 0 ? found : sorted.length
     })()
 
+    // Flow 1: Sorted → Sorted (reorder)
     const activeSortedRecordId = parseDragRecordId(activeId, SORTED_DND_PREFIX)
     if (activeSortedRecordId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
       const oldIndex = sorted.findIndex((point) => point.id === activeSortedRecordId)
@@ -499,22 +469,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       return
     }
 
-    if (activeSortedRecordId && overId === UNSORTED_ZONE_ID) {
-      const source = sorted.find((point) => point.id === activeSortedRecordId)
-      if (!source) return
-      await handleMoveToZone(source.pointId, 'unsorted')
-      return
-    }
-
-    const activeUnsortedRecordId = parseDragRecordId(activeId, UNSORTED_DND_PREFIX)
-    if (activeUnsortedRecordId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
-      if (!canAddToSorted) return
-      const source = unsorted.find((point) => point.id === activeUnsortedRecordId)
-      if (!source) return
-      await handleMoveToZone(source.pointId, 'sorted', dropSortedIndex)
-      return
-    }
-
+    // Flow 2: Pool → Sorted (add)
     const activePoolItemId = parseDragRecordId(activeId, POOL_DND_PREFIX)
     if (activePoolItemId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
       if (!canAddToSorted) return
@@ -522,6 +477,24 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       if (!source) return
       await handleAddFromPointPool(source.pointId, 'sorted', dropSortedIndex)
     }
+  }
+
+  const renderDragOverlay = (id: string) => {
+    const sortedRecordId = parseDragRecordId(id, SORTED_DND_PREFIX)
+    if (sortedRecordId) {
+      const point = sorted.find((p) => p.id === sortedRecordId)
+      if (!point) return null
+      const preview = getPointPreview(point.pointId)
+      return <PointCard point={point} preview={preview} onRemove={() => {}} canMoveToSorted={false} isDragging />
+    }
+    const poolItemId = parseDragRecordId(id, POOL_DND_PREFIX)
+    if (poolItemId) {
+      const item = pointPoolItems.find((i) => i.id === poolItemId)
+      if (!item) return null
+      const preview = getPointPreview(item.pointId)
+      return <PointPoolCard item={item} preview={preview} onAdd={() => {}} isDragging />
+    }
+    return null
   }
 
   const canAddToSorted = sorted.length < SORTED_LIMIT
@@ -745,43 +718,30 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={(event) => {
+          setActiveDragId(event.active.id as string)
+        }}
         onDragEnd={(event) => {
+          setActiveDragId(null)
           void handleDragEnd(event)
         }}
       >
+        <DragOverlay>
+          {activeDragId ? renderDragOverlay(activeDragId) : null}
+        </DragOverlay>
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-900">路线排序 ({sorted.length}/{SORTED_LIMIT})</h2>
-            <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把待排/全局点位拖入路线</span>
+            <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把全局点位拖入路线</span>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
-            <DroppablePanel
-              id={SORTED_ZONE_ID}
-              className="rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm transition"
-              activeClassName="border-brand-300 bg-brand-50/35"
-            >
-              {sorted.length > 0 ? (
-                <SortableContext items={sorted.map((point) => sortedDragId(point.id))} strategy={verticalListSortingStrategy}>
-                  <div className="max-h-[72vh] space-y-3 overflow-y-auto pr-1">
-                    {sorted.map((point) => (
-                      <SortablePointCard
-                        key={point.id}
-                        point={point}
-                        preview={getPointPreview(point.pointId)}
-                        onRemove={handleRemovePoint}
-                        onMoveToUnsorted={() => void handleMoveToZone(point.pointId, 'unsorted')}
-                        canMoveToSorted={canAddToSorted}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                  从下方当前地图待排点或全局想去池中，直接拖拽点位到此处即可加入路线。
-                </div>
-              )}
-            </DroppablePanel>
+            <RouteListPanel
+              sorted={sorted}
+              getPointPreview={getPointPreview}
+              onRemove={handleRemovePoint}
+              canAddToSorted={canAddToSorted}
+            />
 
             <RouteSidebar
               previewEmbedUrl={previewEmbedUrl}
@@ -807,37 +767,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           </div>
         </section>
 
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">当前地图待排 ({unsorted.length})</h2>
-            <span className="text-xs text-slate-500">直接拖拽卡片到上方路线区可加入排序；也可把路线卡片拖到此区移出路线</span>
-          </div>
 
-          <DroppablePanel
-            id={UNSORTED_ZONE_ID}
-            className="rounded-3xl border border-transparent p-0 transition"
-            activeClassName="border-brand-300 bg-brand-50/20 p-2"
-          >
-            {unsorted.length > 0 ? (
-              <div className="space-y-3">
-                {unsorted.map((point) => (
-                  <DraggableUnsortedPointCard
-                    key={point.id}
-                    point={point}
-                    preview={getPointPreview(point.pointId)}
-                    onRemove={handleRemovePoint}
-                    onMoveToSorted={() => void handleMoveToZone(point.pointId, 'sorted')}
-                    canMoveToSorted={canAddToSorted}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                当前地图待排为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>添加点位到地图。
-              </div>
-            )}
-          </DroppablePanel>
-        </section>
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
