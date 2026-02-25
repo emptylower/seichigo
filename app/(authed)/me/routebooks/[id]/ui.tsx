@@ -20,363 +20,62 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { RouteBookStatus, RouteBookZone } from '@/lib/routeBook/repo'
 import CheckInModal from '@/components/checkin/CheckInModal'
+import type {
+  PointRecord,
+  PointPoolItem,
+  RouteBookDetail,
+  DetailResponse,
+  PointPreview,
+  BangumiResponse,
+  NavMode,
+  RouteBookStatus,
+  RouteBookZone,
+} from './types'
+import {
+  SORTED_LIMIT,
+  SORTED_ZONE_ID,
+  UNSORTED_ZONE_ID,
+  SORTED_DND_PREFIX,
+  UNSORTED_DND_PREFIX,
+  POOL_DND_PREFIX,
+  NAV_MODE_LABEL,
+  NAV_MODE_PARAM,
+  PREVIEW_POINT_BATCH_SIZE,
+  PREVIEW_FETCH_IDLE_TIMEOUT,
+  ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS,
+  DRAG_SAFE_CONTROL_PROPS,
+  POINT_FALLBACK_GRADIENTS,
+  STATUS_LABEL,
+  STATUS_STYLE,
+  STATUS_ACTION_CLASS,
+} from './types'
+import {
+  isPointRecord,
+  getSortedPoints,
+  getUnsortedPoints,
+  rebuildPoints,
+  reorderSortedInPoints,
+  movePointToZoneInPoints,
+  addPointToZoneInPoints,
+  formatGoogleStop,
+  buildGooglePointEmbedUrl,
+  buildGoogleDirectionsUrl,
+  buildGoogleDirectionsEmbedUrl,
+  buildGoogleLegDirectionsUrl,
+  formatDate,
+  parseBangumiId,
+  parsePointKey,
+  buildPointLookupCandidates,
+  pickPointGradient,
+  buildFallbackPreview,
+  isGeoPair,
+  sortedDragId,
+  unsortedDragId,
+  poolDragId,
+  parseDragRecordId,
+} from './utils'
 
-type PointRecord = {
-  id: string
-  routeBookId: string
-  pointId: string
-  sortOrder: number
-  zone: RouteBookZone
-  createdAt: string
-}
-
-type PointPoolItem = {
-  id: string
-  pointId: string
-  createdAt: string
-  updatedAt: string
-}
-
-type RouteBookDetail = {
-  id: string
-  title: string
-  status: RouteBookStatus
-  metadata: unknown | null
-  createdAt: string
-  updatedAt: string
-  points: PointRecord[]
-}
-
-type DetailResponse =
-  | { ok: true; routeBook?: RouteBookDetail; item?: RouteBookDetail }
-  | { error: string }
-
-type PointPreview = {
-  title: string
-  subtitle: string
-  image: string | null
-  geo: [number, number] | null
-}
-
-type BangumiResponse = {
-  card?: {
-    title?: string
-    titleZh?: string | null
-    cover?: string | null
-  }
-  points?: Array<{
-    id: string
-    name?: string | null
-    nameZh?: string | null
-    image?: string | null
-    geo?: [number, number] | null
-  }>
-}
-
-type NavMode = 'transit' | 'driving'
-
-const STATUS_LABEL: Record<RouteBookStatus, string> = {
-  draft: '草稿',
-  in_progress: '进行中',
-  completed: '已完成',
-}
-
-const STATUS_STYLE: Record<RouteBookStatus, string> = {
-  draft: 'bg-white/75 text-slate-700',
-  in_progress: 'bg-sky-500/85 text-white',
-  completed: 'bg-emerald-500/85 text-white',
-}
-
-const STATUS_ACTION_CLASS: Record<RouteBookStatus, string> = {
-  draft: 'bg-blue-500 hover:bg-blue-600 text-white',
-  in_progress: 'bg-green-500 hover:bg-green-600 text-white',
-  completed: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-}
-
-const POINT_FALLBACK_GRADIENTS = [
-  'from-sky-500/85 via-cyan-400/80 to-brand-300/80',
-  'from-brand-500/85 via-rose-400/80 to-orange-300/75',
-  'from-violet-500/80 via-fuchsia-400/75 to-brand-400/75',
-  'from-emerald-500/80 via-teal-400/75 to-cyan-300/75',
-] as const
-
-const SORTED_LIMIT = 25
-const SORTED_ZONE_ID = 'zone:sorted'
-const UNSORTED_ZONE_ID = 'zone:unsorted'
-const SORTED_DND_PREFIX = 'sorted:'
-const UNSORTED_DND_PREFIX = 'unsorted:'
-const POOL_DND_PREFIX = 'pool:'
-const NAV_MODE_LABEL: Record<NavMode, string> = {
-  transit: '公交 + 步行',
-  driving: '驾车',
-}
-
-const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
-  transit: 'transit',
-  driving: 'driving',
-}
-const PREVIEW_POINT_BATCH_SIZE = 28
-const PREVIEW_FETCH_IDLE_TIMEOUT = 1200
-const ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS = 900
-
-const DRAG_SAFE_CONTROL_PROPS = {
-  onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
-  onMouseDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
-  onTouchStart: (event: { stopPropagation: () => void }) => event.stopPropagation(),
-}
-
-function isGeoPair(value: unknown): value is [number, number] {
-  if (!Array.isArray(value) || value.length < 2) return false
-  const lat = Number(value[0])
-  const lng = Number(value[1])
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false
-  return true
-}
-
-function sortedDragId(recordId: string): string {
-  return `${SORTED_DND_PREFIX}${recordId}`
-}
-
-function unsortedDragId(recordId: string): string {
-  return `${UNSORTED_DND_PREFIX}${recordId}`
-}
-
-function poolDragId(poolItemId: string): string {
-  return `${POOL_DND_PREFIX}${poolItemId}`
-}
-
-function parseDragRecordId(rawId: string, prefix: string): string | null {
-  if (!rawId.startsWith(prefix)) return null
-  const value = rawId.slice(prefix.length)
-  return value || null
-}
-
-function isPointRecord(value: unknown): value is PointRecord {
-  if (!value || typeof value !== 'object') return false
-  const row = value as Record<string, unknown>
-  return (
-    typeof row.id === 'string' &&
-    typeof row.routeBookId === 'string' &&
-    typeof row.pointId === 'string' &&
-    typeof row.sortOrder === 'number' &&
-    (row.zone === 'sorted' || row.zone === 'unsorted') &&
-    typeof row.createdAt === 'string'
-  )
-}
-
-function getSortedPoints(points: PointRecord[]): PointRecord[] {
-  return points
-    .filter((point) => point.zone === 'sorted')
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-}
-
-function getUnsortedPoints(points: PointRecord[]): PointRecord[] {
-  return points
-    .filter((point) => point.zone === 'unsorted')
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-}
-
-function rebuildPoints(sorted: PointRecord[], unsorted: PointRecord[]): PointRecord[] {
-  const normalizedSorted = sorted.map((point, index) => ({ ...point, zone: 'sorted' as const, sortOrder: index }))
-  const normalizedUnsorted = unsorted.map((point, index) => ({ ...point, zone: 'unsorted' as const, sortOrder: index }))
-  return [...normalizedSorted, ...normalizedUnsorted]
-}
-
-function reorderSortedInPoints(points: PointRecord[], sortedPointIds: string[]): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const byPointId = new Map(sorted.map((point) => [point.pointId, point]))
-
-  const reordered: PointRecord[] = []
-  for (const pointId of sortedPointIds) {
-    const matched = byPointId.get(pointId)
-    if (!matched) continue
-    reordered.push({ ...matched, zone: 'sorted' })
-    byPointId.delete(pointId)
-  }
-
-  for (const point of sorted) {
-    if (byPointId.has(point.pointId)) {
-      reordered.push({ ...point, zone: 'sorted' })
-    }
-  }
-
-  return rebuildPoints(reordered, unsorted)
-}
-
-function movePointToZoneInPoints(
-  points: PointRecord[],
-  pointId: string,
-  targetZone: RouteBookZone,
-  targetSortedIndex?: number
-): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const source = sorted.find((point) => point.pointId === pointId) || unsorted.find((point) => point.pointId === pointId)
-  if (!source) return points
-
-  const nextSorted = sorted.filter((point) => point.id !== source.id)
-  const nextUnsorted = unsorted.filter((point) => point.id !== source.id)
-
-  if (targetZone === 'sorted') {
-    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : nextSorted.length, nextSorted.length))
-    nextSorted.splice(insertAt, 0, { ...source, zone: 'sorted' })
-    return rebuildPoints(nextSorted, nextUnsorted)
-  }
-
-  nextUnsorted.push({ ...source, zone: 'unsorted' })
-  return rebuildPoints(nextSorted, nextUnsorted)
-}
-
-function addPointToZoneInPoints(
-  points: PointRecord[],
-  created: PointRecord,
-  targetZone: RouteBookZone,
-  targetSortedIndex?: number
-): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const sanitized = { ...created, zone: targetZone }
-
-  if (targetZone === 'sorted') {
-    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : sorted.length, sorted.length))
-    sorted.splice(insertAt, 0, sanitized)
-    return rebuildPoints(sorted, unsorted)
-  }
-
-  unsorted.push(sanitized)
-  return rebuildPoints(sorted, unsorted)
-}
-
-function formatGoogleStop(point: PointRecord, preview: PointPreview): string {
-  if (isGeoPair(preview.geo)) return `${preview.geo[0]},${preview.geo[1]}`
-  return preview.title || point.pointId
-}
-
-function buildGooglePointEmbedUrl(preview: PointPreview | null): string | null {
-  if (!preview || !isGeoPair(preview.geo)) return null
-  const [lat, lng] = preview.geo
-  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=16&output=embed`
-}
-
-function formatDate(value: string): string {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '最近更新'
-  return parsed.toLocaleDateString('zh-CN')
-}
-
-function parseBangumiId(pointId: string): number | null {
-  const [raw] = pointId.split(':')
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-}
-
-function parsePointKey(pointId: string): string {
-  const sep = pointId.indexOf(':')
-  if (sep < 0) return pointId
-  return pointId.slice(sep + 1)
-}
-
-function buildPointLookupCandidates(pointId: string): string[] {
-  const raw = String(pointId || '').trim()
-  if (!raw) return []
-
-  const parsed = parsePointKey(raw)
-  const bangumiId = parseBangumiId(raw)
-  const out = new Set<string>()
-  const push = (value: string | null | undefined) => {
-    const normalized = String(value || '').trim()
-    if (!normalized) return
-    out.add(normalized)
-    out.add(normalized.toLowerCase())
-  }
-
-  push(raw)
-  push(parsed)
-  if (bangumiId && parsed) {
-    push(`${bangumiId}:${parsed}`)
-  }
-
-  return Array.from(out)
-}
-
-function pickPointGradient(seed: string): string {
-  let value = 0
-  for (const char of seed) value = (value * 29 + char.charCodeAt(0)) % 997
-  return POINT_FALLBACK_GRADIENTS[value % POINT_FALLBACK_GRADIENTS.length]
-}
-
-function buildFallbackPreview(pointId: string): PointPreview {
-  return {
-    title: `点位 ${parsePointKey(pointId)}`,
-    subtitle: `番剧 #${parseBangumiId(pointId) || '未知'}`,
-    image: null,
-    geo: null,
-  }
-}
-
-function buildGoogleDirectionsUrl(stops: string[], mode: NavMode): string | null {
-  if (!stops.length) return null
-
-  if (stops.length === 1) {
-    const params = new URLSearchParams({
-      api: '1',
-      destination: stops[0],
-      travelmode: NAV_MODE_PARAM[mode],
-    })
-    return `https://www.google.com/maps/dir/?${params.toString()}`
-  }
-
-  const origin = stops[0]
-  const destination = stops[stops.length - 1]
-  if (!origin || !destination) return null
-
-  const params = new URLSearchParams({
-    api: '1',
-    origin,
-    destination,
-    travelmode: NAV_MODE_PARAM[mode],
-  })
-  const waypoints = stops.slice(1, -1)
-  if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.join('|'))
-  }
-  return `https://www.google.com/maps/dir/?${params.toString()}`
-}
-
-function buildGoogleDirectionsEmbedUrl(stops: string[], mode: NavMode, apiKey: string): string | null {
-  const key = String(apiKey || '').trim()
-  if (!key || stops.length < 2) return null
-
-  const origin = stops[0]
-  const destination = stops[stops.length - 1]
-  if (!origin || !destination) return null
-
-  const params = new URLSearchParams({
-    key,
-    origin,
-    destination,
-    mode: NAV_MODE_PARAM[mode],
-  })
-  const waypoints = stops.slice(1, -1)
-  if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.join('|'))
-  }
-  return `https://www.google.com/maps/embed/v1/directions?${params.toString()}`
-}
-
-function buildGoogleLegDirectionsUrl(fromStop: string, toStop: string, mode: NavMode): string {
-  const params = new URLSearchParams({
-    api: '1',
-    origin: fromStop,
-    destination: toStop,
-    travelmode: NAV_MODE_PARAM[mode],
-  })
-  return `https://www.google.com/maps/dir/?${params.toString()}`
-}
 
 function PointThumb({ preview, seed }: { preview: PointPreview; seed: string }) {
   const gradient = pickPointGradient(seed)
