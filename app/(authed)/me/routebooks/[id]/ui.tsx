@@ -1,79 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable'
+import { useState } from 'react'
+import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import CheckInModal from '@/components/checkin/CheckInModal'
-import type {
-  PointRecord,
-  PointPoolItem,
-  RouteBookDetail,
-  DetailResponse,
-  PointPreview,
-  BangumiResponse,
-  NavMode,
-  RouteBookStatus,
-  RouteBookZone,
-} from './types'
-import {
-  SORTED_LIMIT,
-  SORTED_ZONE_ID,
-  SORTED_DND_PREFIX,
-  POOL_DND_PREFIX,
-  NAV_MODE_LABEL,
-  NAV_MODE_PARAM,
-  PREVIEW_POINT_BATCH_SIZE,
-  PREVIEW_FETCH_IDLE_TIMEOUT,
-  ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS,
-  DRAG_SAFE_CONTROL_PROPS,
-  POINT_FALLBACK_GRADIENTS,
-  STATUS_LABEL,
-  STATUS_STYLE,
-  STATUS_ACTION_CLASS,
-} from './types'
-import {
-  isPointRecord,
-  getSortedPoints,
-  rebuildPoints,
-  reorderSortedInPoints,
-  addPointToZoneInPoints,
-  formatGoogleStop,
-  buildGooglePointEmbedUrl,
-  buildGoogleDirectionsUrl,
-  buildGoogleDirectionsEmbedUrl,
-  buildGoogleLegDirectionsUrl,
-  formatDate,
-  parseBangumiId,
-  parsePointKey,
-  buildPointLookupCandidates,
-  pickPointGradient,
-  buildFallbackPreview,
-  isGeoPair,
-  sortedDragId,
-  poolDragId,
-  parseDragRecordId,
-} from './utils'
-import {
-  PointCard,
-  PointPoolCard,
-  DraggablePointPoolCard,
-} from './components/PointCard'
-import { RouteSidebar } from './components/RouteSidebar'
+import { useIsMobile } from '@/lib/hooks/useMediaQuery'
+import { SORTED_LIMIT } from './types'
+import { useRouteBookDetail } from './hooks/useRouteBookDetail'
+import { RouteBookHeader } from './components/RouteBookHeader'
 import { RouteListPanel } from './components/RouteListPanel'
-
-
+import { RouteSidebar } from './components/RouteSidebar'
+import { CollapsiblePointPool } from './components/CollapsiblePointPool'
+import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
+import TransitGuidance from './components/TransitGuidance'
 
 function RouteBookDetailSkeleton() {
   return (
@@ -88,718 +26,147 @@ function RouteBookDetailSkeleton() {
           </div>
         </div>
       </section>
-
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
         <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
         <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
       </section>
-
       <section className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-white" />
     </div>
   )
 }
 
 export default function RouteBookDetailClient({ id }: { id: string }) {
-  const [routeBook, setRouteBook] = useState<RouteBookDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingTitle, setEditingTitle] = useState(false)
-  const [titleDraft, setTitleDraft] = useState('')
-  const [checkedInPointIds, setCheckedInPointIds] = useState<Set<string>>(new Set())
-  const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
-  const [travelMode, setTravelMode] = useState<NavMode>('transit')
-  const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
-  const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
-  const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
-  const [stableRouteSignature, setStableRouteSignature] = useState('')
-  const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const mapsEmbedApiKey =
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY ||
-    ''
+  const isMobile = useIsMobile()
+  const [poolExpanded, setPoolExpanded] = useState(false)
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
 
-  const parsePointPoolItems = useCallback((items: unknown): PointPoolItem[] => {
-    if (!Array.isArray(items)) return []
-    return items.filter((item: unknown): item is PointPoolItem => {
-      if (!item || typeof item !== 'object') return false
-      const row = item as Record<string, unknown>
-      return (
-        typeof row.id === 'string' &&
-        typeof row.pointId === 'string' &&
-        typeof row.createdAt === 'string' &&
-        typeof row.updatedAt === 'string'
-      )
-    })
-  }, [])
+  const h = useRouteBookDetail(id)
 
-  const refreshPointPool = useCallback(async () => {
-    try {
-      const res = await fetch('/api/me/point-pool', { method: 'GET' })
-      const data = await res.json().catch(() => ({}))
-      if (res.ok && data?.ok) {
-        setPointPoolItems(parsePointPoolItems(data.items))
-      }
-    } catch {
-      // ignore background refresh failures
-    }
-  }, [parsePointPoolItems])
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 140, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  const hydrateAuxiliaryData = useCallback(async () => {
-    const [pointStateRes, pointPoolRes] = await Promise.allSettled([
-      fetch('/api/me/point-states?state=checked_in'),
-      fetch('/api/me/point-pool'),
-    ])
-
-    if (pointStateRes.status === 'fulfilled') {
-      const stateData = await pointStateRes.value.json().catch(() => ({}))
-      if (pointStateRes.value.ok && stateData?.ok && Array.isArray(stateData.items)) {
-        setCheckedInPointIds(new Set(stateData.items.map((item: { pointId: string }) => item.pointId)))
-      }
-    }
-
-    if (pointPoolRes.status === 'fulfilled') {
-      const poolData = await pointPoolRes.value.json().catch(() => ({}))
-      if (pointPoolRes.value.ok && poolData?.ok && Array.isArray(poolData.items)) {
-        setPointPoolItems(parsePointPoolItems(poolData.items))
-      } else {
-        setPointPoolItems([])
-      }
-    }
-  }, [parsePointPoolItems])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setPointPreviewById({})
-    setCheckedInPointIds(new Set())
-    setPointPoolItems([])
-    setStableRouteEmbedUrl(null)
-    setStableRouteSignature('')
-    try {
-      const rbRes = await fetch(`/api/me/routebooks/${id}`)
-      const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
-      if (!rbRes.ok || 'error' in rbData) {
-        setError(('error' in rbData && rbData.error) || '加载失败')
-        setLoading(false)
-        return
-      }
-
-      const detail = rbData.routeBook || rbData.item || null
-      if (!detail) {
-        setError('地图数据异常，请刷新重试')
-        setLoading(false)
-        return
-      }
-
-      setRouteBook(detail)
-      setTitleDraft(detail.title)
-      setLoading(false)
-      void hydrateAuxiliaryData()
-    } catch {
-      setError('加载失败')
-    }
-    setLoading(false)
-  }, [hydrateAuxiliaryData, id])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const sorted = routeBook ? getSortedPoints(routeBook.points) : []
-
-  const allPointIds = useMemo(() => {
-    const pointIds = [
-      ...(routeBook?.points.map((point) => point.pointId) ?? []),
-      ...pointPoolItems.map((item) => item.pointId),
-    ]
-    return Array.from(new Set(pointIds))
-  }, [routeBook, pointPoolItems])
-
-  const unresolvedPointIds = useMemo(() => {
-    return allPointIds.filter((pointId) => !pointPreviewById[pointId])
-  }, [allPointIds, pointPreviewById])
-  const previewFetchPointIds = useMemo(() => unresolvedPointIds.slice(0, PREVIEW_POINT_BATCH_SIZE), [unresolvedPointIds])
-
-  useEffect(() => {
-    if (!previewFetchPointIds.length) return
-
-    const grouped = new Map<number, string[]>()
-    const fallbackPreviews: Record<string, PointPreview> = {}
-
-    for (const pointId of previewFetchPointIds) {
-      const bangumiId = parseBangumiId(pointId)
-      if (!bangumiId) {
-        fallbackPreviews[pointId] = buildFallbackPreview(pointId)
-        continue
-      }
-      const list = grouped.get(bangumiId) ?? []
-      list.push(pointId)
-      grouped.set(bangumiId, list)
-    }
-
-    if (Object.keys(fallbackPreviews).length > 0) {
-      setPointPreviewById((prev) => ({ ...prev, ...fallbackPreviews }))
-    }
-
-    if (!grouped.size) return
-
-    let cancelled = false
-    let timeoutId: number | null = null
-    let idleId: number | null = null
-    const win = window as Window & {
-      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
-      cancelIdleCallback?: (handle: number) => void
-    }
-
-    const run = async () => {
-      const loadedPreviews: Record<string, PointPreview> = {}
-
-      await Promise.all(
-        Array.from(grouped.entries()).map(async ([bangumiId, ids]) => {
-          try {
-            const res = await fetch(`/api/anitabi/bangumi/${bangumiId}`)
-            if (!res.ok) return
-            const data = (await res.json().catch(() => null)) as BangumiResponse | null
-            if (!data) return
-
-            const pointMap = new Map<string, { title: string; image: string | null; geo: [number, number] | null }>()
-            for (const point of data.points || []) {
-              const rawPointId = String(point?.id || '').trim()
-              if (!rawPointId) continue
-              const title = (point.nameZh || point.name || rawPointId || '').trim()
-              if (!title) continue
-              const meta = {
-                title,
-                image: typeof point.image === 'string' ? point.image : null,
-                geo: isGeoPair(point.geo) ? ([point.geo[0], point.geo[1]] as [number, number]) : null,
-              }
-              for (const candidate of buildPointLookupCandidates(rawPointId)) {
-                pointMap.set(candidate, meta)
-              }
-            }
-
-            const subtitle =
-              (typeof data.card?.titleZh === 'string' && data.card.titleZh.trim()) ||
-              (typeof data.card?.title === 'string' && data.card.title.trim()) ||
-              `作品 #${bangumiId}`
-
-            for (const pointId of ids) {
-              const matched = buildPointLookupCandidates(pointId)
-                .map((candidate) => pointMap.get(candidate))
-                .find((entry) => Boolean(entry))
-              const key = parsePointKey(pointId)
-              loadedPreviews[pointId] = {
-                title: matched?.title || `点位 ${key}`,
-                subtitle,
-                image: matched?.image || null,
-                geo: matched?.geo || null,
-              }
-            }
-          } catch {
-            for (const pointId of ids) {
-              loadedPreviews[pointId] = buildFallbackPreview(pointId)
-            }
-          }
-        })
-      )
-
-      if (cancelled) return
-
-      setPointPreviewById((prev) => {
-        const next = { ...prev }
-        for (const pointId of previewFetchPointIds) {
-          next[pointId] = loadedPreviews[pointId] || next[pointId] || buildFallbackPreview(pointId)
-        }
-        return next
-      })
-    }
-
-    if (typeof win.requestIdleCallback === 'function' && typeof win.cancelIdleCallback === 'function') {
-      idleId = win.requestIdleCallback(() => {
-        void run()
-      }, { timeout: PREVIEW_FETCH_IDLE_TIMEOUT })
-    } else {
-      timeoutId = window.setTimeout(() => {
-        void run()
-      }, 180)
-    }
-
-    return () => {
-      cancelled = true
-      if (timeoutId !== null) window.clearTimeout(timeoutId)
-      if (idleId !== null && typeof win.cancelIdleCallback === 'function') {
-        win.cancelIdleCallback(idleId)
-      }
-    }
-  }, [previewFetchPointIds])
-
-  const getPointPreview = useCallback((pointId: string) => {
-    return pointPreviewById[pointId] || buildFallbackPreview(pointId)
-  }, [pointPreviewById])
-
-  async function handleTitleSave() {
-    const title = titleDraft.trim()
-    if (!title || !routeBook || title === routeBook.title) {
-      setEditingTitle(false)
-      return
-    }
-    const res = await fetch(`/api/me/routebooks/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
-    })
-    if (res.ok) {
-      setRouteBook((prev) => prev ? { ...prev, title } : prev)
-    }
-    setEditingTitle(false)
-  }
-
-  async function handleStatusChange(status: RouteBookStatus) {
-    if (!routeBook) return
-    const res = await fetch(`/api/me/routebooks/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    if (res.ok) {
-      setRouteBook((prev) => prev ? { ...prev, status } : prev)
-    }
-  }
-
-  const persistSortedOrder = useCallback(async (pointIds: string[]): Promise<boolean> => {
-    const res = await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ op: 'reorder', pointIds }),
-    })
-    if (!res.ok) {
-      void load()
-      return false
-    }
-    return true
-  }, [id, load])
-
-  async function handleRemovePoint(pointId: string) {
-    const res = await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pointId }),
-    })
-    if (res.ok) {
-      setRouteBook((prev) => {
-        if (!prev) return prev
-        const nextSorted = getSortedPoints(prev.points).filter((point) => point.pointId !== pointId)
-        return { ...prev, points: rebuildPoints(nextSorted, []) }
-      })
-      void refreshPointPool()
-    }
-  }
-
-
-
-  async function handleAddFromPointPool(
-    pointId: string,
-    targetZone: 'sorted' = 'sorted',
-    targetSortedIndex?: number
-  ): Promise<boolean> {
-    if (!routeBook) return false
-
-    const res = await fetch(`/api/me/routebooks/${id}/points`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pointId, zone: targetZone }),
-    })
-    if (!res.ok) return false
-
-    const payload = await res.json().catch(() => ({}))
-    const created = isPointRecord(payload?.item) ? payload.item : null
-    if (!created) {
-      void load()
-      return false
-    }
-
-    const nextPoints = addPointToZoneInPoints(routeBook.points, created, targetZone, targetSortedIndex)
-    setRouteBook({ ...routeBook, points: nextPoints })
-    setPointPoolItems((prev) => prev.filter((item) => item.pointId !== pointId))
-
-    if (targetZone === 'sorted') {
-      const sortedPointIds = getSortedPoints(nextPoints).map((point) => point.pointId)
-      await persistSortedOrder(sortedPointIds)
-    }
-
-    return true
-  }
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || !routeBook) return
-
-    const activeId = String(active.id)
-    const overId = String(over.id)
-    if (activeId === overId) return
-
-    const dropSortedIndex = (() => {
-      if (overId === SORTED_ZONE_ID) return sorted.length
-      const overSortedRecordId = parseDragRecordId(overId, SORTED_DND_PREFIX)
-      if (!overSortedRecordId) return sorted.length
-      const found = sorted.findIndex((point) => point.id === overSortedRecordId)
-      return found >= 0 ? found : sorted.length
-    })()
-
-    // Flow 1: Sorted → Sorted (reorder)
-    const activeSortedRecordId = parseDragRecordId(activeId, SORTED_DND_PREFIX)
-    if (activeSortedRecordId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
-      const oldIndex = sorted.findIndex((point) => point.id === activeSortedRecordId)
-      const newIndex = overId === SORTED_ZONE_ID
-        ? Math.max(sorted.length - 1, 0)
-        : sorted.findIndex((point) => sortedDragId(point.id) === overId)
-      if (oldIndex === -1 || newIndex === -1) return
-
-      const reordered = arrayMove(sorted, oldIndex, newIndex)
-      const reorderedPointIds = reordered.map((point) => point.pointId)
-      const updatedPoints = reorderSortedInPoints(routeBook.points, reorderedPointIds)
-      setRouteBook({ ...routeBook, points: updatedPoints })
-      await persistSortedOrder(reorderedPointIds)
-      return
-    }
-
-    // Flow 2: Pool → Sorted (add)
-    const activePoolItemId = parseDragRecordId(activeId, POOL_DND_PREFIX)
-    if (activePoolItemId && (overId === SORTED_ZONE_ID || overId.startsWith(SORTED_DND_PREFIX))) {
-      if (!canAddToSorted) return
-      const source = pointPoolItems.find((item) => item.id === activePoolItemId)
-      if (!source) return
-      await handleAddFromPointPool(source.pointId, 'sorted', dropSortedIndex)
-    }
-  }
-
-  const renderDragOverlay = (id: string) => {
-    const sortedRecordId = parseDragRecordId(id, SORTED_DND_PREFIX)
-    if (sortedRecordId) {
-      const point = sorted.find((p) => p.id === sortedRecordId)
-      if (!point) return null
-      const preview = getPointPreview(point.pointId)
-      return <PointCard point={point} preview={preview} onRemove={() => {}} canMoveToSorted={false} isDragging />
-    }
-    const poolItemId = parseDragRecordId(id, POOL_DND_PREFIX)
-    if (poolItemId) {
-      const item = pointPoolItems.find((i) => i.id === poolItemId)
-      if (!item) return null
-      const preview = getPointPreview(item.pointId)
-      return <PointPoolCard item={item} preview={preview} onAdd={() => {}} isDragging />
-    }
-    return null
-  }
-
-  const canAddToSorted = sorted.length < SORTED_LIMIT
-  const sortedStops = sorted.map((point) => {
-    const preview = getPointPreview(point.pointId)
-    return {
-      point,
-      preview,
-      stop: formatGoogleStop(point, preview),
-    }
-  })
-  const sortedStopValues = sortedStops.map((row) => row.stop)
-  const hasRouteStops = sortedStopValues.length >= 2
-  const routeGoogleUrl = buildGoogleDirectionsUrl(sortedStopValues, travelMode)
-  const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, travelMode, mapsEmbedApiKey)
-  const routePreviewSignature = `${travelMode}:${sorted.map((point) => point.id).join('|')}`
-  const hasUnresolvedRoutePreviews = sorted.some((point) => !pointPreviewById[point.pointId])
-
-  useEffect(() => {
-    if (!hasRouteStops) {
-      if (stableRouteEmbedUrl !== null) setStableRouteEmbedUrl(null)
-      if (stableRouteSignature !== '') setStableRouteSignature('')
-      return
-    }
-
-    if (stableRouteSignature !== routePreviewSignature) {
-      setStableRouteSignature(routePreviewSignature)
-      setStableRouteEmbedUrl(routeEmbedUrl)
-      return
-    }
-
-    if (stableRouteEmbedUrl === routeEmbedUrl) return
-
-    if (hasUnresolvedRoutePreviews) {
-      const timer = window.setTimeout(() => {
-        setStableRouteEmbedUrl(routeEmbedUrl)
-      }, ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS)
-      return () => window.clearTimeout(timer)
-    }
-
-    setStableRouteEmbedUrl(routeEmbedUrl)
-  }, [
-    hasRouteStops,
-    hasUnresolvedRoutePreviews,
-    routeEmbedUrl,
-    routePreviewSignature,
-    stableRouteEmbedUrl,
-    stableRouteSignature,
-  ])
-
-  const effectiveRouteEmbedUrl = hasRouteStops ? (stableRouteEmbedUrl ?? routeEmbedUrl) : null
-  const routeLegs = sortedStops.slice(0, -1).map((from, index) => {
-    const to = sortedStops[index + 1]
-    if (!to) return null
-    return {
-      id: `${from.point.id}:${to.point.id}`,
-      order: index + 1,
-      from,
-      to,
-      navUrl: buildGoogleLegDirectionsUrl(from.stop, to.stop, travelMode),
-    }
-  }).filter((item): item is {
-    id: string
-    order: number
-    from: { point: PointRecord; preview: PointPreview; stop: string }
-    to: { point: PointRecord; preview: PointPreview; stop: string }
-    navUrl: string
-  } => Boolean(item))
-  const checkedCount = sorted.filter((p) => checkedInPointIds.has(p.pointId)).length
-  const allDone = sorted.length > 0 && checkedCount === sorted.length
-  const nextPoint = sorted.find((p) => !checkedInPointIds.has(p.pointId)) || null
-  const focusPoint = nextPoint || sorted[0] || null
-  const focusPreview = focusPoint ? getPointPreview(focusPoint.pointId) : null
-  const focusPointEmbedUrl = buildGooglePointEmbedUrl(focusPreview)
-  const previewEmbedUrl = hasRouteStops ? effectiveRouteEmbedUrl : focusPointEmbedUrl
-  const nextPointNavUrl = nextPoint
-    ? buildGoogleDirectionsUrl([formatGoogleStop(nextPoint, getPointPreview(nextPoint.pointId))], travelMode)
-    : null
-
-  if (loading) return <RouteBookDetailSkeleton />
-  if (error) return (
+  if (h.loading) return <RouteBookDetailSkeleton />
+  if (h.error) return (
     <div className="space-y-4">
-      <div className="rounded-md bg-rose-50 p-3 text-rose-700">{error}</div>
+      <div className="rounded-md bg-rose-50 p-3 text-rose-700">{h.error}</div>
       <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回地图列表</a>
     </div>
   )
-  if (!routeBook) return null
+  if (!h.routeBook) return null
+
+  const transitStops = h.sorted.map((point) => {
+    const preview = h.getPointPreview(point.pointId)
+    return { lat: preview.geo?.[0] ?? 0, lng: preview.geo?.[1] ?? 0, title: preview.title }
+  })
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[30px] border border-pink-100/90 bg-[linear-gradient(150deg,rgba(255,255,255,0.95),rgba(253,242,248,0.88))] p-5 shadow-[0_22px_45px_-30px_rgba(219,39,119,0.45)] sm:p-6">
-        <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] [background-size:36px_36px]" />
-        <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-cyan-200/50 blur-3xl" />
-        <div className="pointer-events-none absolute -left-20 bottom-0 h-40 w-40 rounded-full bg-brand-200/50 blur-3xl" />
+      <RouteBookHeader
+        routeBook={h.routeBook}
+        editingTitle={h.editingTitle}
+        titleDraft={h.titleDraft}
+        setTitleDraft={h.setTitleDraft}
+        setEditingTitle={h.setEditingTitle}
+        onTitleSave={h.handleTitleSave}
+        onStatusChange={h.handleStatusChange}
+        travelMode={h.travelMode}
+        routeGoogleUrl={h.routeGoogleUrl}
+        sortedCount={h.sorted.length}
+      />
 
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
-            {editingTitle ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  maxLength={100}
-                  className="w-full max-w-xl rounded-xl border border-slate-300 bg-white px-3 py-2 text-lg font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleTitleSave()
-                    if (e.key === 'Escape') setEditingTitle(false)
-                  }}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
-                  onClick={() => void handleTitleSave()}
-                >
-                  保存
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  onClick={() => { setEditingTitle(false); setTitleDraft(routeBook.title) }}
-                >
-                  取消
-                </button>
-              </div>
-            ) : (
-              <h1
-                className="cursor-pointer text-2xl font-bold tracking-tight text-slate-900 transition hover:text-brand-600 sm:text-3xl"
-                onClick={() => setEditingTitle(true)}
-                title="点击编辑标题"
-              >
-                {routeBook.title}
-              </h1>
-            )}
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span className={`inline-flex rounded-full border border-white/50 px-2.5 py-1 text-xs font-semibold backdrop-blur-sm ${STATUS_STYLE[routeBook.status]}`}>
-                {STATUS_LABEL[routeBook.status]}
-              </span>
-              <span>更新于 {formatDate(routeBook.updatedAt)}</span>
-            </div>
-          </div>
-
-          <a
-            href="/me/routebooks"
-            className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50"
-          >
-            返回列表
-          </a>
-        </div>
-
-        <div className="relative mt-4 flex flex-wrap gap-2">
-          {routeBook.status === 'draft' && (
-            <button
-              type="button"
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.draft}`}
-              onClick={() => void handleStatusChange('in_progress')}
-            >
-              开始巡礼
-            </button>
-          )}
-          {routeBook.status === 'in_progress' && (
-            <>
-              <button
-                type="button"
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.in_progress}`}
-                onClick={() => void handleStatusChange('completed')}
-              >
-                完成巡礼
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                onClick={() => void handleStatusChange('draft')}
-              >
-                回到草稿
-              </button>
-            </>
-          )}
-          {routeBook.status === 'completed' && (
-            <button
-              type="button"
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.completed}`}
-              onClick={() => void handleStatusChange('draft')}
-            >
-              重新编辑
-            </button>
-          )}
-          {sorted.length > 0 && (
-            <a
-              href={routeGoogleUrl ?? '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 no-underline transition hover:bg-slate-50"
-            >
-              在 Google Maps 中查看路线（{NAV_MODE_LABEL[travelMode]}）
-            </a>
-          )}
-        </div>
-      </section>
-
-      {checkInTarget && (
+      {h.checkInTarget && (
         <CheckInModal
-          pointId={checkInTarget}
-          pointName={getPointPreview(checkInTarget).title}
-          onSuccess={() => {
-            setCheckedInPointIds((prev) => new Set([...prev, checkInTarget]))
-            setCheckInTarget(null)
-            const allChecked = sorted.every((p) =>
-              p.pointId === checkInTarget || checkedInPointIds.has(p.pointId)
-            )
-            if (allChecked) {
-              void handleStatusChange('completed')
-            }
-          }}
-          onClose={() => setCheckInTarget(null)}
+          pointId={h.checkInTarget}
+          pointName={h.getPointPreview(h.checkInTarget).title}
+          onSuccess={h.handleCheckInSuccess}
+          onClose={() => h.setCheckInTarget(null)}
         />
       )}
 
-
       <DndContext
-        sensors={sensors}
+        sensors={h.sensors}
         collisionDetection={closestCenter}
-        onDragStart={(event) => {
-          setActiveDragId(event.active.id as string)
-        }}
+        onDragStart={(event) => h.setActiveDragId(event.active.id as string)}
         onDragEnd={(event) => {
-          setActiveDragId(null)
-          void handleDragEnd(event)
+          h.setActiveDragId(null)
+          void h.handleDragEnd(event)
         }}
       >
         <DragOverlay>
-          {activeDragId ? renderDragOverlay(activeDragId) : null}
+          {h.activeDragId ? h.renderDragOverlay(h.activeDragId) : null}
         </DragOverlay>
+
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">路线排序 ({sorted.length}/{SORTED_LIMIT})</h2>
+            <h2 className="text-lg font-semibold text-slate-900">路线排序 ({h.sorted.length}/{SORTED_LIMIT})</h2>
             <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把全局点位拖入路线</span>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
             <RouteListPanel
-              sorted={sorted}
-              getPointPreview={getPointPreview}
-              onRemove={handleRemovePoint}
-              canAddToSorted={canAddToSorted}
+              sorted={h.sorted}
+              getPointPreview={h.getPointPreview}
+              onRemove={h.handleRemovePoint}
+              canAddToSorted={h.canAddToSorted}
             />
-
             <RouteSidebar
-              previewEmbedUrl={previewEmbedUrl}
-              focusPointEmbedUrl={focusPointEmbedUrl}
-              focusPoint={focusPoint}
-              focusPreview={focusPreview}
-              routeBook={routeBook}
-              sorted={sorted}
-              checkedInPointIds={checkedInPointIds}
-              travelMode={travelMode}
-              setTravelMode={setTravelMode}
-              routeGoogleUrl={routeGoogleUrl}
-              onCheckIn={(pointId) => setCheckInTarget(pointId)}
-              onStatusChange={handleStatusChange}
-              getPointPreview={getPointPreview}
-              hasRouteStops={hasRouteStops}
-              effectiveRouteEmbedUrl={effectiveRouteEmbedUrl}
-              checkedCount={checkedCount}
-              allDone={allDone}
-              nextPoint={nextPoint}
-              nextPointNavUrl={nextPointNavUrl}
-            />
+              previewEmbedUrl={h.previewEmbedUrl}
+              focusPointEmbedUrl={h.focusPointEmbedUrl}
+              focusPoint={h.focusPoint}
+              focusPreview={h.focusPreview}
+              routeBook={h.routeBook}
+              sorted={h.sorted}
+              checkedInPointIds={h.checkedInPointIds}
+              travelMode={h.travelMode}
+              setTravelMode={h.setTravelMode}
+              routeGoogleUrl={h.routeGoogleUrl}
+              onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
+              onStatusChange={h.handleStatusChange}
+              getPointPreview={h.getPointPreview}
+              hasRouteStops={h.hasRouteStops}
+              effectiveRouteEmbedUrl={h.effectiveRouteEmbedUrl}
+              checkedCount={h.checkedCount}
+              allDone={h.allDone}
+              nextPoint={h.nextPoint}
+              nextPointNavUrl={h.nextPointNavUrl}
+            >
+              <TransitGuidance
+                routeBookId={id}
+                sortedStops={transitStops}
+                travelMode={h.travelMode}
+                visible={h.hasRouteStops && h.travelMode === 'transit'}
+              />
+            </RouteSidebar>
           </div>
         </section>
 
-
-
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">全局想去池 ({pointPoolItems.length})</h2>
-            <span className="text-xs text-slate-500">支持把全局点位直接拖进路线区，减少按钮操作</span>
-          </div>
-
-          {pointPoolItems.length > 0 ? (
-            <div className="space-y-3">
-              {pointPoolItems.map((item) => {
-                const preview = getPointPreview(item.pointId)
-                return (
-                  <DraggablePointPoolCard
-                    key={item.id}
-                    item={item}
-                    preview={preview}
-                    onAdd={() => {
-                      void handleAddFromPointPool(item.pointId)
-                    }}
-                  />
-                )
-              })}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-              全局想去池为空。去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>点击“想去”来收集点位。
-            </div>
-          )}
-        </section>
+        {isMobile ? (
+          <MobilePointPoolSheet
+            pointPoolItems={h.pointPoolItems}
+            getPointPreview={h.getPointPreview}
+            onAddToRoute={h.handleAddFromPointPool}
+            isOpen={mobileSheetOpen}
+            onClose={() => setMobileSheetOpen(false)}
+          />
+        ) : (
+          <CollapsiblePointPool
+            pointPoolItems={h.pointPoolItems}
+            getPointPreview={h.getPointPreview}
+            onAddToRoute={h.handleAddFromPointPool}
+            isExpanded={poolExpanded}
+            onToggle={() => setPoolExpanded(!poolExpanded)}
+          />
+        )}
       </DndContext>
 
-      {!canAddToSorted && (
+      {isMobile && !mobileSheetOpen && h.pointPoolItems.length > 0 && (
+        <button
+          type="button"
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg hover:bg-brand-600"
+          onClick={() => setMobileSheetOpen(true)}
+        >
+          <span className="text-xl">+</span>
+        </button>
+      )}
+
+      {!h.canAddToSorted && (
         <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
           已排序路线已达上限 ({SORTED_LIMIT} 个点位)。如需添加新点位，请先移出部分已有点位。
         </div>
