@@ -10,7 +10,6 @@ import {
 import { 
   pickPointGradient, 
   sortedDragId, 
-  unsortedDragId, 
   poolDragId 
 } from '../utils'
 
@@ -44,7 +43,6 @@ export const PointCard = React.memo(function PointCard({
   indexLabel,
   onRemove,
   onMoveToSorted,
-  onMoveToUnsorted,
   canMoveToSorted,
   sortable,
   isDragging,
@@ -54,7 +52,6 @@ export const PointCard = React.memo(function PointCard({
   indexLabel?: string
   onRemove: (pointId: string) => void
   onMoveToSorted?: () => void
-  onMoveToUnsorted?: () => void
   canMoveToSorted: boolean
   sortable?: boolean
   isDragging?: boolean
@@ -107,19 +104,7 @@ export const PointCard = React.memo(function PointCard({
                 加入路线
               </button>
             ) : null}
-            {onMoveToUnsorted ? (
-              <button
-                type="button"
-                className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
-                onClick={onMoveToUnsorted}
-                {...DRAG_SAFE_CONTROL_PROPS}
-              >
-                移出路线
-              </button>
-            ) : null}
             <button
-              type="button"
-              className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
               onClick={() => onRemove(point.pointId)}
               {...DRAG_SAFE_CONTROL_PROPS}
             >
@@ -136,13 +121,11 @@ export const SortablePointCard = React.memo(function SortablePointCard({
   point,
   preview,
   onRemove,
-  onMoveToUnsorted,
   canMoveToSorted,
 }: {
   point: PointRecord
   preview: PointPreview
   onRemove: (pointId: string) => void
-  onMoveToUnsorted?: () => void
   canMoveToSorted: boolean
 }) {
   const {
@@ -167,7 +150,6 @@ export const SortablePointCard = React.memo(function SortablePointCard({
         preview={preview}
         indexLabel={`#${point.sortOrder + 1}`}
         onRemove={onRemove}
-        onMoveToUnsorted={onMoveToUnsorted}
         canMoveToSorted={canMoveToSorted}
         sortable
         isDragging={isDragging}
@@ -229,42 +211,6 @@ export function PointPoolCard({
   )
 }
 
-export function DraggableUnsortedPointCard({
-  point,
-  preview,
-  onRemove,
-  onMoveToSorted,
-  canMoveToSorted,
-}: {
-  point: PointRecord
-  preview: PointPreview
-  onRemove: (pointId: string) => void
-  onMoveToSorted: () => void
-  canMoveToSorted: boolean
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: unsortedDragId(point.id),
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    opacity: isDragging ? 0.6 : 1,
-  }
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-pan-y">
-      <PointCard
-        point={point}
-        preview={preview}
-        onRemove={onRemove}
-        onMoveToSorted={onMoveToSorted}
-        canMoveToSorted={canMoveToSorted}
-        sortable
-        isDragging={isDragging}
-      />
-    </div>
-  )
-}
 
 export function DraggablePointPoolCard({
   item,
