@@ -202,6 +202,21 @@ describe('directions handler - success', () => {
     expect(calledUrl).toContain('key=test-api-key')
   })
 
+  it('omits waypoints for transit requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(googleOkResponse([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const deps = makeDeps()
+    await createHandlers(deps).GET(
+      makeRequest({ origin: 'A', destination: 'C', waypoints: 'B', mode: 'transit' }),
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const calledUrl = fetchMock.mock.calls[0][0] as string
+    expect(calledUrl).toContain('mode=transit')
+    expect(calledUrl).not.toContain('waypoints=')
+  })
+
   it('defaults mode to transit', async () => {
     const fetchMock = vi.fn().mockResolvedValue(googleOkResponse([]))
     vi.stubGlobal('fetch', fetchMock)

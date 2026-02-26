@@ -155,6 +155,7 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       const destination = url.searchParams.get('destination')
       const waypoints = url.searchParams.get('waypoints') || ''
       const mode = url.searchParams.get('mode') || 'transit'
+      const normalizedWaypoints = mode === 'transit' ? '' : waypoints
 
       if (!origin || !destination) {
         return NextResponse.json(
@@ -179,7 +180,7 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       }
 
       // Cache check
-      const key = cacheKey(origin, destination, waypoints, mode)
+      const key = cacheKey(origin, destination, normalizedWaypoints, mode)
       const cached = getCached(key)
       if (cached) {
         return NextResponse.json(cached)
@@ -193,8 +194,8 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
         key: deps.apiKey,
         language: 'zh-CN',
       })
-      if (waypoints) {
-        params.set('waypoints', waypoints)
+      if (normalizedWaypoints) {
+        params.set('waypoints', normalizedWaypoints)
       }
 
       const apiUrl = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`
@@ -224,6 +225,15 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
           return NextResponse.json({ error: hint }, { status: 502 })
         }
         if (body.status === 'NOT_FOUND' || body.status === 'MAX_WAYPOINTS_EXCEEDED' || body.status === 'INVALID_REQUEST') {
+          if (body.status === 'INVALID_REQUEST' && mode === 'transit') {
+            const reason = String(body.error_message || '')
+            if (/waypoint/i.test(reason)) {
+              return NextResponse.json(
+                { error: '公共交通模式下不支持当前途经点组合，请减少中间点后重试' },
+                { status: 400 },
+              )
+            }
+          }
           const clientMsg =
             body.status === 'MAX_WAYPOINTS_EXCEEDED'
               ? '途经点过多，请减少路线点位后重试'
