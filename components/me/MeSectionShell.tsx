@@ -22,7 +22,7 @@ export default function MeSectionShell({ activeTab, title, description, children
   return (
     <section data-layout-wide="true" className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-6xl'} overflow-x-hidden px-4 sm:px-6 lg:px-8`}>
       <div className="grid gap-5 lg:grid-cols-[252px_minmax(0,1fr)] lg:gap-8">
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
           <div className="rounded-3xl border border-slate-200/90 bg-[radial-gradient(120%_120%_at_0%_0%,#fff1f7_0%,#ffffff_45%,#ffffff_100%)] p-3.5 shadow-[0_22px_40px_-32px_rgba(15,23,42,0.62)]">
             <div className="px-2 pb-2">
               <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">用户中心</p>
