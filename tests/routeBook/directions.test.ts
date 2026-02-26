@@ -162,6 +162,9 @@ describe('directions handler - success', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
+    expect(body.mode).toBe('transit')
+    expect(body.requestedMode).toBe('transit')
+    expect(body.fallbackApplied).toBe(false)
     expect(body.legs).toHaveLength(1)
 
     const leg = body.legs[0]
@@ -331,8 +334,11 @@ describe('directions handler - Google API errors', () => {
     expect(res.status).toBe(502)
   })
 
-  it('returns 400 with message for ZERO_RESULTS', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(googleErrorResponse('ZERO_RESULTS')))
+  it('returns 400 with message for ZERO_RESULTS after walking fallback fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(googleErrorResponse('ZERO_RESULTS'))
+      .mockResolvedValueOnce(googleErrorResponse('ZERO_RESULTS'))
+    vi.stubGlobal('fetch', fetchMock)
 
     const deps = makeDeps({
       getSession: vi.fn().mockResolvedValue({ user: { id: 'err-user-2' } }),
@@ -342,7 +348,51 @@ describe('directions handler - Google API errors', () => {
     )
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('未找到路线')
+    expect(body.error).toContain('未找到可用公共交通')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back to walking when transit has ZERO_RESULTS and returns walking legs', async () => {
+    const rawWalkingLeg = {
+      start_address: 'A',
+      end_address: 'B',
+      duration: { text: '12 min', value: 720 },
+      distance: { text: '900 m', value: 900 },
+      steps: [
+        {
+          travel_mode: 'WALKING',
+          html_instructions: 'Walk straight',
+          duration: { text: '12 min', value: 720 },
+          distance: { text: '900 m', value: 900 },
+        },
+      ],
+    }
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(googleErrorResponse('ZERO_RESULTS'))
+      .mockResolvedValueOnce(googleOkResponse([rawWalkingLeg]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const deps = makeDeps({
+      getSession: vi.fn().mockResolvedValue({ user: { id: 'err-user-fallback' } }),
+    })
+
+    const res = await createHandlers(deps).GET(
+      makeRequest({ origin: 'fb-A', destination: 'fb-B', waypoints: 'fb-W1|fb-W2', mode: 'transit' }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.mode).toBe('walking')
+    expect(body.requestedMode).toBe('transit')
+    expect(body.fallbackApplied).toBe(true)
+    expect(body.legs).toHaveLength(1)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const secondCalledUrl = String(fetchMock.mock.calls[1][0] || '')
+    expect(secondCalledUrl).toContain('mode=walking')
+    expect(secondCalledUrl).toContain('waypoints=fb-W1%7Cfb-W2')
   })
 
   it('returns 502 for REQUEST_DENIED with graceful message', async () => {

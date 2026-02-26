@@ -15,55 +15,60 @@ interface TransitGuidanceProps {
 }
 
 interface TransitDetail {
-  line: { short_name?: string; name?: string; vehicle?: { type?: string } }
-  departure_stop: { name: string }
-  arrival_stop: { name: string }
-  num_stops: number
+  lineName: string
+  departureStop: string
+  arrivalStop: string
+  numStops: number
 }
 
 interface DirectionStep {
-  travel_mode: 'TRANSIT' | 'WALKING' | 'DRIVING'
-  transit_details?: TransitDetail
-  distance: { text: string }
-  duration: { text: string }
-  html_instructions: string
+  travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING'
+  instruction: string
+  duration: string
+  durationSeconds: number
+  distance: string
+  distanceMeters: number
+  transitDetails: TransitDetail | null
 }
 
 interface DirectionLeg {
   steps: DirectionStep[]
-  distance: { text: string }
-  duration: { text: string }
-  start_address?: string
-  end_address?: string
+  distance: string
+  duration: string
+  startAddress: string
+  endAddress: string
 }
 
 interface DirectionsResponse {
-  routes: Array<{
-    legs: DirectionLeg[]
-  }>
+  ok: true
+  legs: DirectionLeg[]
+  mode: 'transit' | 'driving' | 'walking'
+  requestedMode: 'transit' | 'driving'
+  fallbackApplied: boolean
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').trim()
-}
-
 function stopsHash(stops: Array<{ lat: number; lng: number }>): string {
   return JSON.stringify(stops.map(s => s.lat + ',' + s.lng))
 }
 
 function stepIcon(step: DirectionStep) {
-  if (step.travel_mode === 'WALKING') {
+  if (step.travelMode === 'WALKING') {
     return <Footprints className="h-4 w-4 text-gray-500 shrink-0" />
   }
-  const vehicleType = step.transit_details?.line?.vehicle?.type
-  if (vehicleType === 'BUS' || vehicleType === 'INTERCITY_BUS') {
-    return <Bus className="h-4 w-4 text-blue-600 shrink-0" />
+
+  if (step.travelMode === 'TRANSIT') {
+    const line = step.transitDetails?.lineName || ''
+    if (/(bus|公交|巴士)/i.test(line)) {
+      return <Bus className="h-4 w-4 text-blue-600 shrink-0" />
+    }
+    return <Train className="h-4 w-4 text-brand-500 shrink-0" />
   }
-  return <Train className="h-4 w-4 text-brand-500 shrink-0" />
+
+  return <Bus className="h-4 w-4 text-slate-500 shrink-0" />
 }
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +163,8 @@ export default function TransitGuidance({
 
   /* ---- error ---- */
   if (error) {
+    const fallbackTravelMode = travelMode === 'transit' ? 'walking' : travelMode
+
     // Build a fallback Google Maps URL so users can still navigate
     const fallbackUrl = sortedStops.length >= 2
       ? (() => {
@@ -166,7 +173,7 @@ export default function TransitGuidance({
           const wps = sortedStops.length > 2
             ? sortedStops.slice(1, -1).map(s => `${s.lat},${s.lng}`).join('|')
             : ''
-          const p = new URLSearchParams({ api: '1', origin, destination: dest, travelmode: travelMode })
+          const p = new URLSearchParams({ api: '1', origin, destination: dest, travelmode: fallbackTravelMode })
           if (wps) p.set('waypoints', wps)
           return `https://www.google.com/maps/dir/?${p.toString()}`
         })()
@@ -203,7 +210,7 @@ export default function TransitGuidance({
   }
 
   /* ---- success ---- */
-  const legs = directions?.routes?.[0]?.legs ?? []
+  const legs = directions?.legs ?? []
 
   return (
     <div className="space-y-3">
@@ -219,6 +226,12 @@ export default function TransitGuidance({
         </button>
       )}
 
+      {directions?.fallbackApplied && directions.mode === 'walking' && travelMode === 'transit' ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-xs text-sky-700">
+          当前无可用公共交通，已自动切换为步行路线。
+        </div>
+      ) : null}
+
       {/* legs */}
       {legs.map((leg, legIdx) => (
         <div
@@ -228,7 +241,7 @@ export default function TransitGuidance({
           {/* leg header */}
           {legs.length > 1 && (
             <div className="border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500">
-              第 {legIdx + 1} 段 · {leg.distance.text} · {leg.duration.text}
+              第 {legIdx + 1} 段 · {leg.distance} · {leg.duration}
             </div>
           )}
 
@@ -242,34 +255,32 @@ export default function TransitGuidance({
                 <div className="mt-0.5">{stepIcon(step)}</div>
 
                 <div className="min-w-0 flex-1 text-sm">
-                  {step.travel_mode === 'WALKING' ? (
+                  {step.travelMode === 'WALKING' ? (
                     <p className="text-gray-600">
-                      步行 {step.distance.text}，约 {step.duration.text}
+                      步行 {step.distance}，约 {step.duration}
                     </p>
-                  ) : step.transit_details ? (
+                  ) : step.transitDetails ? (
                     <div className="space-y-1">
                       <p className="font-medium text-gray-800">
-                        {step.transit_details.line.short_name ||
-                          step.transit_details.line.name ||
-                          '未知线路'}
+                        {step.transitDetails.lineName || '未知线路'}
                       </p>
                       <p className="text-gray-500">
-                        {step.transit_details.departure_stop.name}
-                        {' → '}
-                        {step.transit_details.arrival_stop.name}
+                        {step.transitDetails.departureStop}
+                        {' -> '}
+                        {step.transitDetails.arrivalStop}
                         <span className="ml-1.5 text-gray-400">
-                          · {step.transit_details.num_stops} 站
+                          · {step.transitDetails.numStops} 站
                         </span>
                       </p>
                       <p className="text-xs text-gray-400">
-                        {step.duration.text}
+                        {step.duration}
                       </p>
                     </div>
                   ) : (
                     <p className="text-gray-600">
-                      {stripHtml(step.html_instructions)}
+                      {step.instruction}
                       <span className="ml-1.5 text-gray-400">
-                        · {step.distance.text} · {step.duration.text}
+                        · {step.distance} · {step.duration}
                       </span>
                     </p>
                   )}
@@ -283,7 +294,7 @@ export default function TransitGuidance({
       {/* total summary */}
       {legs.length === 1 && (
         <p className="text-center text-xs text-gray-400">
-          全程 {legs[0].distance.text} · 约 {legs[0].duration.text}
+          全程 {legs[0].distance} · 约 {legs[0].duration}
         </p>
       )}
     </div>

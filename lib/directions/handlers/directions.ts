@@ -35,10 +35,29 @@ export type DirectionLeg = {
 export type DirectionsResult = {
   ok: true
   legs: DirectionLeg[]
+  mode: 'transit' | 'driving' | 'walking'
+  requestedMode: 'transit' | 'driving'
+  fallbackApplied: boolean
+}
+
+type GoogleApiStatus =
+  | 'OK'
+  | 'ZERO_RESULTS'
+  | 'REQUEST_DENIED'
+  | 'OVER_QUERY_LIMIT'
+  | 'NOT_FOUND'
+  | 'MAX_WAYPOINTS_EXCEEDED'
+  | 'INVALID_REQUEST'
+  | string
+
+type GoogleDirectionsBody = {
+  status?: GoogleApiStatus
+  error_message?: string
+  routes?: unknown[]
 }
 
 // ---------------------------------------------------------------------------
-// In-memory cache (key → { data, expiresAt })
+// In-memory cache (key -> { data, expiresAt })
 // ---------------------------------------------------------------------------
 
 type CacheEntry = { data: DirectionsResult; expiresAt: number }
@@ -136,6 +155,36 @@ export type DirectionsHandlerDeps = {
   apiKey: string
 }
 
+async function fetchGoogleDirections(
+  origin: string,
+  destination: string,
+  waypoints: string,
+  mode: 'transit' | 'driving' | 'walking',
+  apiKey: string
+): Promise<{ ok: boolean; httpStatus: number; body: GoogleDirectionsBody | null }> {
+  const params = new URLSearchParams({
+    origin,
+    destination,
+    mode,
+    key: apiKey,
+    language: 'zh-CN',
+  })
+
+  if (waypoints) {
+    params.set('waypoints', waypoints)
+  }
+
+  const apiUrl = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`
+
+  const res = await fetch(apiUrl, { signal: AbortSignal.timeout(10_000) })
+  if (!res.ok) {
+    return { ok: false, httpStatus: res.status, body: null }
+  }
+
+  const body = (await res.json().catch(() => null)) as GoogleDirectionsBody | null
+  return { ok: true, httpStatus: res.status, body }
+}
+
 // ---------------------------------------------------------------------------
 // Handler factory
 // ---------------------------------------------------------------------------
@@ -154,8 +203,8 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       const origin = url.searchParams.get('origin')
       const destination = url.searchParams.get('destination')
       const waypoints = url.searchParams.get('waypoints') || ''
-      const mode = url.searchParams.get('mode') || 'transit'
-      const normalizedWaypoints = mode === 'transit' ? '' : waypoints
+      const requestedMode = (url.searchParams.get('mode') || 'transit') as 'transit' | 'driving'
+      const primaryWaypoints = requestedMode === 'transit' ? '' : waypoints
 
       if (!origin || !destination) {
         return NextResponse.json(
@@ -164,7 +213,7 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
         )
       }
 
-      if (mode !== 'transit' && mode !== 'driving') {
+      if (requestedMode !== 'transit' && requestedMode !== 'driving') {
         return NextResponse.json(
           { error: 'mode 必须为 transit 或 driving' },
           { status: 400 },
@@ -180,54 +229,60 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       }
 
       // Cache check
-      const key = cacheKey(origin, destination, normalizedWaypoints, mode)
+      const key = cacheKey(origin, destination, waypoints, requestedMode)
       const cached = getCached(key)
       if (cached) {
         return NextResponse.json(cached)
       }
 
-      // Build Google Directions API URL
-      const params = new URLSearchParams({
-        origin,
-        destination,
-        mode,
-        key: deps.apiKey,
-        language: 'zh-CN',
-      })
-      if (normalizedWaypoints) {
-        params.set('waypoints', normalizedWaypoints)
-      }
+      const primary = await fetchGoogleDirections(origin, destination, primaryWaypoints, requestedMode, deps.apiKey)
 
-      const apiUrl = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`
-
-      const res = await fetch(apiUrl, { signal: AbortSignal.timeout(10_000) })
-      if (!res.ok) {
-        console.error('[directions] Google API HTTP error', res.status)
+      if (!primary.ok) {
+        console.error('[directions] Google API HTTP error', primary.httpStatus)
         return NextResponse.json(
           { error: 'Google Directions API 请求失败' },
           { status: 502 },
         )
       }
 
-      const body = await res.json()
+      let googleBody = primary.body
+      let effectiveMode: 'transit' | 'driving' | 'walking' = requestedMode
+      let fallbackApplied = false
 
-      if (body.status !== 'OK') {
-        console.error('[directions] Google API status', body.status, body.error_message)
-        if (body.status === 'ZERO_RESULTS') {
-          return NextResponse.json({ error: '未找到路线' }, { status: 400 })
+      // In remote/sparse areas transit can return ZERO_RESULTS even when walking is valid.
+      // For the “公交 + 步行” tab, transparently retry with pure walking.
+      if (requestedMode === 'transit' && googleBody?.status === 'ZERO_RESULTS') {
+        const walkingFallback = await fetchGoogleDirections(origin, destination, waypoints, 'walking', deps.apiKey)
+        if (walkingFallback.ok && walkingFallback.body?.status === 'OK') {
+          googleBody = walkingFallback.body
+          effectiveMode = 'walking'
+          fallbackApplied = true
         }
-        if (body.status === 'REQUEST_DENIED' || body.status === 'OVER_QUERY_LIMIT') {
-          // Config / quota issue — degrade gracefully instead of leaking raw status
+      }
+
+      if (googleBody?.status !== 'OK') {
+        const status = String(googleBody?.status || 'UNKNOWN') as GoogleApiStatus
+        const message = String(googleBody?.error_message || '')
+
+        console.error('[directions] Google API status', status, message)
+
+        if (status === 'ZERO_RESULTS') {
+          const errorMessage =
+            requestedMode === 'transit'
+              ? '未找到可用公共交通，且步行回退也无可用路线'
+              : '未找到路线'
+          return NextResponse.json({ error: errorMessage }, { status: 400 })
+        }
+        if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
           const hint =
-            body.status === 'REQUEST_DENIED'
+            status === 'REQUEST_DENIED'
               ? '路线服务暂不可用（API 配置异常），请稍后重试或使用 Google Maps 链接查看路线'
               : '路线查询次数已达上限，请稍后再试'
           return NextResponse.json({ error: hint }, { status: 502 })
         }
-        if (body.status === 'NOT_FOUND' || body.status === 'MAX_WAYPOINTS_EXCEEDED' || body.status === 'INVALID_REQUEST') {
-          if (body.status === 'INVALID_REQUEST' && mode === 'transit') {
-            const reason = String(body.error_message || '')
-            if (/waypoint/i.test(reason)) {
+        if (status === 'NOT_FOUND' || status === 'MAX_WAYPOINTS_EXCEEDED' || status === 'INVALID_REQUEST') {
+          if (status === 'INVALID_REQUEST' && requestedMode === 'transit') {
+            if (/waypoint/i.test(message)) {
               return NextResponse.json(
                 { error: '公共交通模式下不支持当前途经点组合，请减少中间点后重试' },
                 { status: 400 },
@@ -235,29 +290,34 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
             }
           }
           const clientMsg =
-            body.status === 'MAX_WAYPOINTS_EXCEEDED'
+            status === 'MAX_WAYPOINTS_EXCEEDED'
               ? '途经点过多，请减少路线点位后重试'
               : '请求参数有误，请检查路线点位'
           return NextResponse.json({ error: clientMsg }, { status: 400 })
         }
-        // Unknown status — generic message
+
         return NextResponse.json(
           { error: '路线服务暂时不可用，请稍后重试' },
           { status: 502 },
         )
       }
 
-      // Parse routes
-      const route = body.routes?.[0]
-      if (!route) {
+      const route = googleBody.routes?.[0]
+      if (!route || typeof route !== 'object') {
         return NextResponse.json({ error: '未找到路线' }, { status: 400 })
       }
 
-      const legs: DirectionLeg[] = Array.isArray(route.legs)
-        ? route.legs.map(parseLeg)
-        : []
+      const routeRecord = route as Record<string, unknown>
+      const rawLegs = Array.isArray(routeRecord.legs) ? routeRecord.legs : []
+      const legs: DirectionLeg[] = rawLegs.map(parseLeg)
 
-      const result: DirectionsResult = { ok: true, legs }
+      const result: DirectionsResult = {
+        ok: true,
+        legs,
+        mode: effectiveMode,
+        requestedMode,
+        fallbackApplied,
+      }
 
       // Cache result
       setCache(key, result)
