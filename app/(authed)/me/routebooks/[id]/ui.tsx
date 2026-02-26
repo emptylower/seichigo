@@ -12,6 +12,7 @@ import { RouteSidebar } from './components/RouteSidebar'
 import { CollapsiblePointPool } from './components/CollapsiblePointPool'
 import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
 import TransitGuidance from './components/TransitGuidance'
+import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 
 function RouteBookDetailSkeleton() {
   return (
@@ -39,6 +40,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
   const [poolExpanded, setPoolExpanded] = useState(false)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
+  const [immersiveOpen, setImmersiveOpen] = useState(false)
 
   const h = useRouteBookDetail(id)
 
@@ -56,6 +58,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     return { lat: preview.geo?.[0] ?? 0, lng: preview.geo?.[1] ?? 0, title: preview.title }
   })
 
+  const handleStartPilgrimage = async () => {
+    await h.handleStatusChange('in_progress')
+    setImmersiveOpen(true)
+  }
+
   return (
     <div className="space-y-6">
       <RouteBookHeader
@@ -66,6 +73,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         setEditingTitle={h.setEditingTitle}
         onTitleSave={h.handleTitleSave}
         onStatusChange={h.handleStatusChange}
+        onStartPilgrimage={() => {
+          void handleStartPilgrimage()
+        }}
         travelMode={h.travelMode}
         routeGoogleUrl={h.routeGoogleUrl}
         sortedCount={h.sorted.length}
@@ -171,6 +181,17 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           已排序路线已达上限 ({SORTED_LIMIT} 个点位)。如需添加新点位，请先移出部分已有点位。
         </div>
       )}
+
+      {immersiveOpen ? (
+        <RouteBookImmersiveMode
+          routeBookTitle={h.routeBook.title}
+          sorted={h.sorted}
+          checkedInPointIds={h.checkedInPointIds}
+          getPointPreview={h.getPointPreview}
+          onCheckInSuccess={h.markPointCheckedIn}
+          onClose={() => setImmersiveOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }

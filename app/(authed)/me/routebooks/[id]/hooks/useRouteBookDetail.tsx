@@ -330,6 +330,18 @@ export function useRouteBookDetail(id: string) {
     }
   }
 
+  function markPointCheckedIn(pointId: string) {
+    setCheckedInPointIds((prev) => {
+      if (prev.has(pointId)) return prev
+      return new Set([...prev, pointId])
+    })
+
+    const allChecked = sorted.every((p) => p.pointId === pointId || checkedInPointIds.has(p.pointId))
+    if (allChecked) {
+      void handleStatusChange('completed')
+    }
+  }
+
   const persistSortedOrder = useCallback(async (pointIds: string[]): Promise<boolean> => {
     const res = await fetch(`/api/me/routebooks/${id}/points`, {
       method: 'PATCH',
@@ -532,14 +544,8 @@ export function useRouteBookDetail(id: string) {
 
   function handleCheckInSuccess() {
     if (!checkInTarget) return
-    setCheckedInPointIds((prev) => new Set([...prev, checkInTarget]))
+    markPointCheckedIn(checkInTarget)
     setCheckInTarget(null)
-    const allChecked = sorted.every((p) =>
-      p.pointId === checkInTarget || checkedInPointIds.has(p.pointId)
-    )
-    if (allChecked) {
-      void handleStatusChange('completed')
-    }
   }
 
   return {
@@ -585,6 +591,7 @@ export function useRouteBookDetail(id: string) {
     handleAddFromPointPool,
     handleDragEnd,
     handleCheckInSuccess,
+    markPointCheckedIn,
     getPointPreview,
     renderDragOverlay,
 
