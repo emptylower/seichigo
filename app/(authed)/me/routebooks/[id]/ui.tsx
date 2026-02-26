@@ -53,10 +53,13 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   )
   if (!h.routeBook) return null
 
-  const transitStops = h.sorted.map((point) => {
-    const preview = h.getPointPreview(point.pointId)
-    return { lat: preview.geo?.[0] ?? 0, lng: preview.geo?.[1] ?? 0, title: preview.title }
-  })
+  const nextTransitStop = h.nextPoint
+    ? (() => {
+        const preview = h.getPointPreview(h.nextPoint.pointId)
+        if (!preview.geo) return null
+        return { lat: preview.geo[0], lng: preview.geo[1], title: preview.title }
+      })()
+    : null
 
   const handleStartPilgrimage = async () => {
     await h.handleStatusChange('in_progress')
@@ -139,9 +142,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             >
               <TransitGuidance
                 routeBookId={id}
-                sortedStops={transitStops}
+                nextStop={nextTransitStop}
                 travelMode={h.travelMode}
-                visible={h.hasRouteStops && h.travelMode === 'transit'}
+                visible={Boolean(nextTransitStop) && h.travelMode === 'transit'}
               />
             </RouteSidebar>
           </div>
