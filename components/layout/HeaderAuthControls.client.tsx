@@ -51,11 +51,11 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
       <Link
         href="/auth/signin"
         prefetch={false}
-        className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+        className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
       >
         {labels.signin}
       </Link>
-      <Link href="/auth/signup" prefetch={false} className="inline-flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-600">
+      <Link href="/auth/signup" prefetch={false} className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600">
         {labels.signup}
       </Link>
     </div>
@@ -79,7 +79,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
           <Link
             href={prefixPath('/admin/panel', locale)}
             prefetch={false}
-            className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+            className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
           >
             {labels.admin}
           </Link>
@@ -87,7 +87,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
 
         {showAuthed ? (
           <>
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
               <Avatar src={session?.user?.image} name={userLabel} size={32} />
               <div className="min-w-0">
                 <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
@@ -96,25 +96,25 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             <Link
               href={prefixPath('/me/settings', locale)}
               prefetch={false}
-              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
             >
               {userCenterLabel}
             </Link>
             <a
               href={prefixPath('/me/favorites', locale)}
-              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
             >
               {labels.favorites}
             </a>
             <a
               href={prefixPath('/me/routebooks', locale)}
-              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
             >
               {myMapsLabel}
             </a>
             <a
               href="/api/auth/signout"
-              className="inline-flex h-11 items-center rounded-lg border border-slate-200 px-3 font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
+              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
             >
               {labels.signout}
             </a>
