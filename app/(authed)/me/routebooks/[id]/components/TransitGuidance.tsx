@@ -53,7 +53,7 @@ interface DirectionsResponse {
 
 async function getCurrentOrigin(): Promise<string> {
   if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-    throw new Error('当前环境不支持定位，请在 Google Maps 中打开导航')
+    throw new Error('当前环境不支持定位，请切换到系统地图应用查看导航')
   }
 
   return new Promise<string>((resolve, reject) => {
@@ -159,7 +159,7 @@ export default function TransitGuidance({
           onClick={fetchDirections}
           className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition hover:border-brand-300 hover:text-brand-600"
         >
-          获取下一站乘车导航
+          导航到下一站
         </button>
         <p className="text-xs text-slate-500">目标点位：{nextStop.title}</p>
       </div>
@@ -178,15 +178,6 @@ export default function TransitGuidance({
 
   /* ---- error ---- */
   if (error) {
-    const fallbackTravelMode = travelMode === 'transit' ? 'walking' : travelMode
-
-    const fallbackUrl = (() => {
-      const destination = `${nextStop.lat},${nextStop.lng}`
-      const p = new URLSearchParams({ api: '1', destination, travelmode: fallbackTravelMode })
-      if (currentOrigin) p.set('origin', currentOrigin)
-      return `https://www.google.com/maps/dir/?${p.toString()}`
-    })()
-
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
         <div className="flex items-center gap-2 text-sm text-amber-800">
@@ -194,7 +185,10 @@ export default function TransitGuidance({
           <span>{error}</span>
         </div>
         <div className="mt-2 text-xs text-amber-700">目标点位：{nextStop.title}</div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+        {currentOrigin ? (
+          <div className="mt-2 text-xs text-amber-700">出发位置：{currentOrigin}</div>
+        ) : null}
+        <div className="mt-3 flex items-center gap-3">
           <button
             type="button"
             onClick={fetchDirections}
@@ -203,14 +197,6 @@ export default function TransitGuidance({
             <RefreshCw className="h-3.5 w-3.5" />
             重试
           </button>
-          <a
-            href={fallbackUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-sm font-medium text-brand-600 transition hover:text-brand-800"
-          >
-            在 Google Maps 中查看路线 ↗
-          </a>
         </div>
       </div>
     )

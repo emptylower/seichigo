@@ -51,11 +51,6 @@ function buildEmbeddedNavigationUrl(to: [number, number] | null, userLocation: U
   return `https://www.google.com/maps?${params.toString()}`
 }
 
-function buildGoogleNavigationUrl(to: [number, number] | null): string | null {
-  if (!to) return null
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${to[0]},${to[1]}`)}&travelmode=walking`
-}
-
 export function RouteBookImmersiveMode({
   routeBookTitle,
   sorted,
@@ -196,20 +191,8 @@ export function RouteBookImmersiveMode({
                       <div className="mt-1 font-semibold text-white">{formatDistance(currentDistance)}</div>
                     </div>
                     <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                      <div className="text-slate-400">外部导航</div>
-                      {buildGoogleNavigationUrl(currentGeo) ? (
-                        <a
-                          href={buildGoogleNavigationUrl(currentGeo) || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-white no-underline hover:text-brand-300"
-                        >
-                          <Navigation size={12} />
-                          Google Maps
-                        </a>
-                      ) : (
-                        <div className="mt-1 text-slate-500">不可用</div>
-                      )}
+                      <div className="text-slate-400">导航模式</div>
+                      <div className="mt-1 text-white">站内地图导航</div>
                     </div>
                   </div>
                 </div>

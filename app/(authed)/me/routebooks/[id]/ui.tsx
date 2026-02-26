@@ -79,9 +79,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         onStartPilgrimage={() => {
           void handleStartPilgrimage()
         }}
-        travelMode={h.travelMode}
-        routeGoogleUrl={h.routeGoogleUrl}
-        sortedCount={h.sorted.length}
       />
 
       {h.checkInTarget && (
@@ -126,19 +123,15 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               focusPreview={h.focusPreview}
               routeBook={h.routeBook}
               sorted={h.sorted}
-              checkedInPointIds={h.checkedInPointIds}
               travelMode={h.travelMode}
               setTravelMode={h.setTravelMode}
-              routeGoogleUrl={h.routeGoogleUrl}
               onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
               onStatusChange={h.handleStatusChange}
-              getPointPreview={h.getPointPreview}
               hasRouteStops={h.hasRouteStops}
               effectiveRouteEmbedUrl={h.effectiveRouteEmbedUrl}
               checkedCount={h.checkedCount}
               allDone={h.allDone}
               nextPoint={h.nextPoint}
-              nextPointNavUrl={h.nextPointNavUrl}
             >
               <TransitGuidance
                 routeBookId={id}

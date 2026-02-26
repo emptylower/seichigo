@@ -15,20 +15,16 @@ interface RouteSidebarProps {
   focusPreview: PointPreview | null
   routeBook: RouteBookDetail
   sorted: PointRecord[]
-  checkedInPointIds: Set<string>
   travelMode: NavMode
   setTravelMode: (mode: NavMode) => void
-  routeGoogleUrl: string | null
   onCheckIn: (pointId: string) => void
   onStatusChange: (status: RouteBookStatus) => Promise<void>
-  getPointPreview: (pointId: string) => PointPreview | null
   hasRouteStops: boolean
   effectiveRouteEmbedUrl: string | null
   checkedCount: number
   allDone: boolean
   nextPoint: PointRecord | null
-  nextPointNavUrl: string | null
-  children?: ReactNode // Slot for TransitGuidance
+  children?: ReactNode
 }
 
 export function RouteSidebar({
@@ -38,19 +34,15 @@ export function RouteSidebar({
   focusPreview,
   routeBook,
   sorted,
-  checkedInPointIds,
   travelMode,
   setTravelMode,
-  routeGoogleUrl,
   onCheckIn,
   onStatusChange,
-  getPointPreview,
   hasRouteStops,
   effectiveRouteEmbedUrl,
   checkedCount,
   allDone,
   nextPoint,
-  nextPointNavUrl,
   children,
 }: RouteSidebarProps) {
   return (
@@ -80,46 +72,10 @@ export function RouteSidebar({
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {routeGoogleUrl ? (
-            <a
-              href={routeGoogleUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 no-underline transition hover:bg-slate-50"
-            >
-              在 Google Maps 打开
-            </a>
-          ) : (
-            <span className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-500">
-              添加点位后可导航
-            </span>
-          )}
-        </div>
-
         <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="aspect-[16/9] bg-slate-100">
+          <div className="relative aspect-[16/9] bg-slate-100">
             {previewEmbedUrl ? (
-              routeGoogleUrl ? (
-                <a
-                  href={routeGoogleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group relative block h-full w-full no-underline"
-                  title="点击在 Google Maps 中查看真实线路"
-                >
-                  <iframe
-                    title={hasRouteStops ? 'Google 路线预览（点击跳转）' : 'Google 点位预览（点击跳转）'}
-                    src={previewEmbedUrl}
-                    className="h-full w-full border-0 pointer-events-none"
-                    loading="eager"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-900/45 px-3 py-2 text-xs font-medium text-white">
-                    点击地图，在 Google Maps 查看真实线路
-                  </div>
-                </a>
-              ) : (
+              <>
                 <iframe
                   title={hasRouteStops ? 'Google 路线预览' : 'Google 点位预览'}
                   src={previewEmbedUrl}
@@ -127,16 +83,10 @@ export function RouteSidebar({
                   loading="eager"
                   referrerPolicy="no-referrer-when-downgrade"
                 />
-              )
-            ) : routeGoogleUrl ? (
-              <a
-                href={routeGoogleUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-full items-center justify-center px-4 text-center text-sm font-medium text-slate-700 no-underline hover:bg-slate-50"
-              >
-                当前环境暂不支持站内嵌入路线，点击这里在 Google Maps 查看真实线路。
-              </a>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-900/45 px-3 py-2 text-xs font-medium text-white">
+                  点击地图查看路线详情
+                </div>
+              </>
             ) : focusPointEmbedUrl ? (
               <iframe
                 title="Google 点位预览"
@@ -196,14 +146,6 @@ export function RouteSidebar({
                 </div>
                 {nextPoint ? (
                   <div className="flex flex-wrap gap-2">
-                    <a
-                      href={nextPointNavUrl ?? '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white no-underline hover:bg-sky-600"
-                    >
-                      导航到下一站
-                    </a>
                     <button
                       type="button"
                       className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"

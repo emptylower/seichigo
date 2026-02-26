@@ -39,7 +39,6 @@ import {
   reorderSortedInPoints,
   addPointToZoneInPoints,
   formatGoogleStop,
-  buildGoogleDirectionsUrl,
   buildGoogleDirectionsEmbedUrl,
   buildGoogleLegDirectionsUrl,
   buildGooglePointEmbedUrl,
@@ -458,7 +457,6 @@ export function useRouteBookDetail(id: string) {
   })
   const sortedStopValues = sortedStops.map((row) => row.stop)
   const hasRouteStops = sortedStopValues.length >= 2
-  const routeGoogleUrl = buildGoogleDirectionsUrl(sortedStopValues, travelMode)
   const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, travelMode, mapsEmbedApiKey)
   const routePreviewSignature = `${travelMode}:${sorted.map((point) => point.id).join('|')}`
   const hasUnresolvedRoutePreviews = sorted.some((point) => !pointPreviewById[point.pointId])
@@ -520,9 +518,6 @@ export function useRouteBookDetail(id: string) {
   const focusPreview = focusPoint ? getPointPreview(focusPoint.pointId) : null
   const focusPointEmbedUrl = buildGooglePointEmbedUrl(focusPreview)
   const previewEmbedUrl = hasRouteStops ? effectiveRouteEmbedUrl : focusPointEmbedUrl
-  const nextPointNavUrl = nextPoint
-    ? buildGoogleDirectionsUrl([formatGoogleStop(nextPoint, getPointPreview(nextPoint.pointId))], travelMode)
-    : null
 
   const renderDragOverlay = (dragId: string) => {
     const sortedRecordId = parseDragRecordId(dragId, SORTED_DND_PREFIX)
@@ -571,7 +566,6 @@ export function useRouteBookDetail(id: string) {
     sorted,
     canAddToSorted,
     hasRouteStops,
-    routeGoogleUrl,
     effectiveRouteEmbedUrl,
     focusPoint,
     focusPreview,
@@ -580,7 +574,6 @@ export function useRouteBookDetail(id: string) {
     checkedCount,
     allDone,
     nextPoint,
-    nextPointNavUrl,
     routeLegs,
     sortedStops,
 

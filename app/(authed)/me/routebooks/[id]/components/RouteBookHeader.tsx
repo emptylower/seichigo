@@ -1,7 +1,7 @@
 'use client'
 
-import type { RouteBookDetail, NavMode, RouteBookStatus } from '../types'
-import { STATUS_LABEL, STATUS_STYLE, STATUS_ACTION_CLASS, NAV_MODE_LABEL } from '../types'
+import type { RouteBookDetail, RouteBookStatus } from '../types'
+import { STATUS_LABEL, STATUS_STYLE, STATUS_ACTION_CLASS } from '../types'
 import { formatDate } from '../utils'
 
 interface RouteBookHeaderProps {
@@ -13,9 +13,6 @@ interface RouteBookHeaderProps {
   onTitleSave: () => void
   onStatusChange: (status: RouteBookStatus) => Promise<void>
   onStartPilgrimage: () => void
-  travelMode: NavMode
-  routeGoogleUrl: string | null
-  sortedCount: number
 }
 
 export function RouteBookHeader({
@@ -27,9 +24,6 @@ export function RouteBookHeader({
   onTitleSave,
   onStatusChange,
   onStartPilgrimage,
-  travelMode,
-  routeGoogleUrl,
-  sortedCount,
 }: RouteBookHeaderProps) {
   return (
     <section className="relative overflow-hidden rounded-[30px] border border-pink-100/90 bg-[linear-gradient(150deg,rgba(255,255,255,0.95),rgba(253,242,248,0.88))] p-5 shadow-[0_22px_45px_-30px_rgba(219,39,119,0.45)] sm:p-6">
@@ -128,16 +122,6 @@ export function RouteBookHeader({
           >
             重新编辑
           </button>
-        )}
-        {sortedCount > 0 && (
-          <a
-            href={routeGoogleUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 no-underline transition hover:bg-slate-50 sm:w-auto"
-          >
-            在 Google Maps 中查看路线（{NAV_MODE_LABEL[travelMode]}）
-          </a>
         )}
       </div>
     </section>
