@@ -20,7 +20,7 @@ type Session = {
 
 type Props = {
   locale: SiteLocale
-  layout?: 'inline' | 'stack'
+  layout?: 'inline' | 'stack' | 'drawer'
   labels: {
     admin: string
     favorites: string
@@ -46,7 +46,13 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   const showAuthed = Boolean(session?.user)
   const showAnon = !showAuthed
 
-  const anonControls = layout === 'stack' ? (
+  const stackButtonClass =
+    'inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700'
+
+  const drawerItemClass =
+    'group flex h-11 items-center justify-between rounded-lg px-2 text-[15px] font-medium text-slate-700 transition hover:bg-brand-50/60 hover:text-brand-700'
+
+  const anonStackControls = (
     <div className="grid gap-2">
       <Link
         href="/auth/signin"
@@ -59,17 +65,71 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
         {labels.signup}
       </Link>
     </div>
-  ) : (
-    <div className="flex items-center gap-2">
-      <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-      <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
+  )
+
+  const anonDrawerControls = (
+    <div className="grid gap-1">
+      <Link href="/auth/signin" prefetch={false} className={drawerItemClass}>
+        <span>{labels.signin}</span>
+      </Link>
+      <Link href="/auth/signup" prefetch={false} className="flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-[15px] font-semibold text-white transition hover:bg-brand-600">
+        {labels.signup}
+      </Link>
     </div>
   )
+
+  const anonControls = layout === 'drawer' ? anonDrawerControls : anonStackControls
 
   // Keep a stable initial render (avoid hydration mismatch) by rendering the
   // anonymous controls until session is loaded.
   if (!loaded) {
-    return anonControls
+    return layout === 'inline' ? (
+      <div className="flex items-center gap-2">
+        <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+        <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
+      </div>
+    ) : anonControls
+  }
+
+  if (layout === 'drawer') {
+    return (
+      <div className="grid gap-1 text-sm">
+        {session?.user?.isAdmin ? (
+          <Link
+            href={prefixPath('/admin/panel', locale)}
+            prefetch={false}
+            className={`${drawerItemClass} text-brand-700`}
+          >
+            <span>{labels.admin}</span>
+          </Link>
+        ) : null}
+
+        {showAuthed ? (
+          <>
+            <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-2">
+              <Avatar src={session?.user?.image} name={userLabel} size={32} />
+              <div className="min-w-0">
+                <div className="line-clamp-1 text-[15px] font-semibold text-slate-800">{userLabel}</div>
+              </div>
+            </div>
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{userCenterLabel}</span>
+            </Link>
+            <a href={prefixPath('/me/favorites', locale)} className={drawerItemClass}>
+              <span>{labels.favorites}</span>
+            </a>
+            <a href={prefixPath('/me/routebooks', locale)} className={drawerItemClass}>
+              <span>{myMapsLabel}</span>
+            </a>
+            <a href="/api/auth/signout" className={drawerItemClass}>
+              <span>{labels.signout}</span>
+            </a>
+          </>
+        ) : null}
+
+        {showAnon ? anonDrawerControls : null}
+      </div>
+    )
   }
 
   if (layout === 'stack') {
@@ -79,7 +139,7 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
           <Link
             href={prefixPath('/admin/panel', locale)}
             prefetch={false}
-            className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
+            className={stackButtonClass}
           >
             {labels.admin}
           </Link>
@@ -93,35 +153,22 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
               </div>
             </div>
-            <Link
-              href={prefixPath('/me/settings', locale)}
-              prefetch={false}
-              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
-            >
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={stackButtonClass}>
               {userCenterLabel}
             </Link>
-            <a
-              href={prefixPath('/me/favorites', locale)}
-              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
-            >
+            <a href={prefixPath('/me/favorites', locale)} className={stackButtonClass}>
               {labels.favorites}
             </a>
-            <a
-              href={prefixPath('/me/routebooks', locale)}
-              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
-            >
+            <a href={prefixPath('/me/routebooks', locale)} className={stackButtonClass}>
               {myMapsLabel}
             </a>
-            <a
-              href="/api/auth/signout"
-              className="inline-flex h-11 items-center rounded-xl border border-slate-200 px-3 font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
-            >
+            <a href="/api/auth/signout" className={stackButtonClass}>
               {labels.signout}
             </a>
           </>
         ) : null}
 
-        {showAnon ? anonControls : null}
+        {showAnon ? anonStackControls : null}
       </div>
     )
   }

@@ -23,7 +23,7 @@ function isArticlePage(pathname: string): boolean {
   return pathname.includes('/posts/')
 }
 
-function extractSlugFromPathname(pathname: string, locale: SiteLocale): string {
+function extractSlugFromPathname(pathname: string): string {
   const match = pathname.match(/\/posts\/([^/]+)/)
   return match ? match[1] : ''
 }
@@ -58,7 +58,7 @@ export default function LanguageSwitcher({ locale }: Props) {
       return
     }
 
-    const slug = extractSlugFromPathname(pathname, locale)
+    const slug = extractSlugFromPathname(pathname)
     if (!slug) {
       router.push(prefixPath(pathname, targetLocale))
       return
@@ -75,17 +75,20 @@ export default function LanguageSwitcher({ locale }: Props) {
   }
 
   return (
-    <details className="relative">
-      <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-600">
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>{LABELS[locale]}</span>
-        <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <details className="group relative z-[70]">
+      <summary className="flex h-11 cursor-pointer list-none items-center justify-between rounded-xl px-3 text-[15px] font-medium text-slate-700 transition hover:bg-slate-50 hover:text-brand-700 [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-2">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{LABELS[locale]}</span>
+        </span>
+        <svg className="h-4 w-4 text-slate-400 transition group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </summary>
-      <div className="absolute right-0 mt-2 w-28 rounded-xl border border-gray-200 bg-white p-1 shadow-lg z-50">
+
+      <div className="absolute left-0 top-[calc(100%+0.5rem)] z-[80] w-40 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
         {(Object.keys(LABELS) as SiteLocale[]).map((l) => (
           <Link
             key={l}
@@ -93,7 +96,7 @@ export default function LanguageSwitcher({ locale }: Props) {
             prefetch={false}
             onClick={(e) => handleLanguageClick(l, e)}
             className={`block rounded-lg px-3 py-2 text-sm ${
-              l === locale ? 'bg-pink-50 text-brand-600 font-medium' : 'text-gray-700 hover:bg-gray-50'
+              l === locale ? 'bg-brand-50 text-brand-700 font-medium' : 'text-slate-700 hover:bg-slate-50'
             }`}
           >
             {LABELS[l]}
