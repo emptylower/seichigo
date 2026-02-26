@@ -94,7 +94,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         </DragOverlay>
 
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-0">
             <h2 className="text-lg font-semibold text-slate-900">路线排序 ({h.sorted.length}/{SORTED_LIMIT})</h2>
             <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把全局点位拖入路线</span>
           </div>

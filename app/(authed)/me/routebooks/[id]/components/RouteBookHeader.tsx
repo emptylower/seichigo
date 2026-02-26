@@ -35,16 +35,16 @@ export function RouteBookHeader({
       <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-cyan-200/50 blur-3xl" />
       <div className="pointer-events-none absolute -left-20 bottom-0 h-40 w-40 rounded-full bg-brand-200/50 blur-3xl" />
 
-      <div className="relative flex flex-wrap items-start justify-between gap-4">
+      <div className="relative flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1 space-y-2">
           {editingTitle ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <input
                 type="text"
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
                 maxLength={100}
-                className="w-full max-w-xl rounded-xl border border-slate-300 bg-white px-3 py-2 text-lg font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-lg font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:max-w-xl"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void onTitleSave()
                   if (e.key === 'Escape') setEditingTitle(false)
@@ -52,14 +52,14 @@ export function RouteBookHeader({
               />
               <button
                 type="button"
-                className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+                className="w-full rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 sm:w-auto"
                 onClick={() => void onTitleSave()}
               >
                 保存
               </button>
               <button
                 type="button"
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto"
                 onClick={() => setEditingTitle(false)}
               >
                 取消
@@ -74,7 +74,7 @@ export function RouteBookHeader({
               {routeBook.title}
             </h1>
           )}
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm">
             <span className={`inline-flex rounded-full border border-white/50 px-2.5 py-1 text-xs font-semibold backdrop-blur-sm ${STATUS_STYLE[routeBook.status]}`}>
               {STATUS_LABEL[routeBook.status]}
             </span>
@@ -84,17 +84,17 @@ export function RouteBookHeader({
 
         <a
           href="/me/routebooks"
-          className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50"
+          className="inline-flex min-h-10 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50 sm:w-auto"
         >
           返回列表
         </a>
       </div>
 
-      <div className="relative mt-4 flex flex-wrap gap-2">
+      <div className="relative mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {routeBook.status === 'draft' && (
           <button
             type="button"
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.draft}`}
+            className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition sm:w-auto ${STATUS_ACTION_CLASS.draft}`}
             onClick={() => void onStatusChange('in_progress')}
           >
             开始巡礼
@@ -104,14 +104,14 @@ export function RouteBookHeader({
           <>
             <button
               type="button"
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.in_progress}`}
+              className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition sm:w-auto ${STATUS_ACTION_CLASS.in_progress}`}
               onClick={() => void onStatusChange('completed')}
             >
               完成巡礼
             </button>
             <button
               type="button"
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 sm:w-auto"
               onClick={() => void onStatusChange('draft')}
             >
               回到草稿
@@ -121,7 +121,7 @@ export function RouteBookHeader({
         {routeBook.status === 'completed' && (
           <button
             type="button"
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${STATUS_ACTION_CLASS.completed}`}
+            className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition sm:w-auto ${STATUS_ACTION_CLASS.completed}`}
             onClick={() => void onStatusChange('draft')}
           >
             重新编辑
@@ -132,7 +132,7 @@ export function RouteBookHeader({
             href={routeGoogleUrl ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 no-underline transition hover:bg-slate-50"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 no-underline transition hover:bg-slate-50 sm:w-auto"
           >
             在 Google Maps 中查看路线（{NAV_MODE_LABEL[travelMode]}）
           </a>
