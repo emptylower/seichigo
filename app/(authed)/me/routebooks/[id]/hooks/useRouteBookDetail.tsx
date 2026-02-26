@@ -5,6 +5,7 @@ import {
   useSensor,
   useSensors,
   PointerSensor,
+  TouchSensor,
   KeyboardSensor,
   type DragEndEvent,
 } from '@dnd-kit/core'
@@ -102,7 +103,8 @@ export function useRouteBookDetail(id: string) {
   }, [parsePointPoolItems])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 140, tolerance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 

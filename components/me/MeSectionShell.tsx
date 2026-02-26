@@ -20,7 +20,7 @@ const tabs: Array<{ key: MeTabKey; label: string; hint: string; href: string; ic
 
 export default function MeSectionShell({ activeTab, title, description, children, wide = false }: Props) {
   return (
-    <section data-layout-wide="true" className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-6xl'} px-4 sm:px-6 lg:px-8`}>
+    <section data-layout-wide="true" className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-6xl'} overflow-x-hidden px-4 sm:px-6 lg:px-8`}>
       <div className="grid gap-5 lg:grid-cols-[252px_minmax(0,1fr)] lg:gap-8">
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-3xl border border-slate-200/90 bg-[radial-gradient(120%_120%_at_0%_0%,#fff1f7_0%,#ffffff_45%,#ffffff_100%)] p-3.5 shadow-[0_22px_40px_-32px_rgba(15,23,42,0.62)]">
@@ -30,7 +30,7 @@ export default function MeSectionShell({ activeTab, title, description, children
             </div>
             <nav
               aria-label="用户中心导航"
-              className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:overflow-visible"
+              className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:gap-2.5 lg:overflow-visible"
             >
               {tabs.map((tab) => {
                 const active = tab.key === activeTab
@@ -40,7 +40,7 @@ export default function MeSectionShell({ activeTab, title, description, children
                     key={tab.key}
                     href={tab.href}
                     prefetch={false}
-                    className={`group inline-flex min-h-[64px] min-w-[170px] snap-start shrink-0 items-center gap-3 rounded-2xl border px-3 py-2.5 text-left no-underline transition-all duration-200 lg:w-full lg:min-w-0 ${
+                    className={`group inline-flex min-h-[56px] min-w-[140px] snap-start shrink-0 items-center gap-2.5 rounded-2xl border px-2.5 py-2 text-left no-underline transition-all duration-200 sm:min-h-[64px] sm:min-w-[170px] sm:gap-3 sm:px-3 sm:py-2.5 lg:w-full lg:min-w-0 ${
                       active
                         ? 'border-pink-200 bg-white text-slate-900 shadow-[0_12px_24px_-20px_rgba(236,72,153,0.8)]'
                         : 'border-transparent bg-white/70 text-slate-600 hover:border-pink-100 hover:bg-white hover:text-slate-900'

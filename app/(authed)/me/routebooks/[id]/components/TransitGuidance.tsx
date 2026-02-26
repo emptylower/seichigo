@@ -158,20 +158,46 @@ export default function TransitGuidance({
 
   /* ---- error ---- */
   if (error) {
+    // Build a fallback Google Maps URL so users can still navigate
+    const fallbackUrl = sortedStops.length >= 2
+      ? (() => {
+          const origin = `${sortedStops[0].lat},${sortedStops[0].lng}`
+          const dest = `${sortedStops[sortedStops.length - 1].lat},${sortedStops[sortedStops.length - 1].lng}`
+          const wps = sortedStops.length > 2
+            ? sortedStops.slice(1, -1).map(s => `${s.lat},${s.lng}`).join('|')
+            : ''
+          const p = new URLSearchParams({ api: '1', origin, destination: dest, travelmode: travelMode })
+          if (wps) p.set('waypoints', wps)
+          return `https://www.google.com/maps/dir/?${p.toString()}`
+        })()
+      : null
+
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4">
-        <div className="flex items-center gap-2 text-sm text-red-700">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
+        <div className="flex items-center gap-2 text-sm text-amber-800">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
-        <button
-          type="button"
-          onClick={fetchDirections}
-          className="mt-3 flex items-center gap-1.5 text-sm font-medium text-red-600 transition hover:text-red-800"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          重试
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={fetchDirections}
+            className="flex items-center gap-1.5 text-sm font-medium text-amber-700 transition hover:text-amber-900"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            重试
+          </button>
+          {fallbackUrl && (
+            <a
+              href={fallbackUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-sm font-medium text-brand-600 transition hover:text-brand-800"
+            >
+              在 Google Maps 中查看路线 ↗
+            </a>
+          )}
+        </div>
       </div>
     )
   }

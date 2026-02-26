@@ -330,7 +330,7 @@ describe('directions handler - Google API errors', () => {
     expect(body.error).toContain('未找到路线')
   })
 
-  it('returns 400 for other Google API status errors', async () => {
+  it('returns 502 for REQUEST_DENIED with graceful message', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(googleErrorResponse('REQUEST_DENIED', 'bad key')))
 
     const deps = makeDeps({
@@ -339,9 +339,9 @@ describe('directions handler - Google API errors', () => {
     const res = await createHandlers(deps).GET(
       makeRequest({ origin: 'deny-A', destination: 'deny-B' }),
     )
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(502)
     const body = await res.json()
-    expect(body.error).toContain('REQUEST_DENIED')
+    expect(body.error).toContain('API 配置异常')
   })
 
   it('returns 400 when no routes in response', async () => {

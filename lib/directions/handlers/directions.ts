@@ -212,11 +212,29 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
 
       if (body.status !== 'OK') {
         console.error('[directions] Google API status', body.status, body.error_message)
-        const msg =
-          body.status === 'ZERO_RESULTS'
-            ? '未找到路线'
-            : `Google API 错误: ${body.status}`
-        return NextResponse.json({ error: msg }, { status: 400 })
+        if (body.status === 'ZERO_RESULTS') {
+          return NextResponse.json({ error: '未找到路线' }, { status: 400 })
+        }
+        if (body.status === 'REQUEST_DENIED' || body.status === 'OVER_QUERY_LIMIT') {
+          // Config / quota issue — degrade gracefully instead of leaking raw status
+          const hint =
+            body.status === 'REQUEST_DENIED'
+              ? '路线服务暂不可用（API 配置异常），请稍后重试或使用 Google Maps 链接查看路线'
+              : '路线查询次数已达上限，请稍后再试'
+          return NextResponse.json({ error: hint }, { status: 502 })
+        }
+        if (body.status === 'NOT_FOUND' || body.status === 'MAX_WAYPOINTS_EXCEEDED' || body.status === 'INVALID_REQUEST') {
+          const clientMsg =
+            body.status === 'MAX_WAYPOINTS_EXCEEDED'
+              ? '途经点过多，请减少路线点位后重试'
+              : '请求参数有误，请检查路线点位'
+          return NextResponse.json({ error: clientMsg }, { status: 400 })
+        }
+        // Unknown status — generic message
+        return NextResponse.json(
+          { error: '路线服务暂时不可用，请稍后重试' },
+          { status: 502 },
+        )
       }
 
       // Parse routes

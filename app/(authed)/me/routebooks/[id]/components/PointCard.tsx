@@ -144,7 +144,7 @@ export const SortablePointCard = React.memo(function SortablePointCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-pan-y">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-none">
       <PointCard
         point={point}
         preview={preview}
@@ -231,7 +231,7 @@ export function DraggablePointPoolCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-pan-y">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="touch-none">
       <PointPoolCard
         item={item}
         preview={preview}
