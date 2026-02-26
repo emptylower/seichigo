@@ -91,7 +91,7 @@ export const PointCard = React.memo(function PointCard({
 
           <p className="truncate rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">{point.pointId}</p>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {onMoveToSorted ? (
               <button
                 type="button"
@@ -105,7 +105,9 @@ export const PointCard = React.memo(function PointCard({
               </button>
             ) : null}
             <button
+              type="button"
               onClick={() => onRemove(point.pointId)}
+              className="inline-flex min-h-8 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 focus-visible:ring-offset-1"
               {...DRAG_SAFE_CONTROL_PROPS}
             >
               移除
