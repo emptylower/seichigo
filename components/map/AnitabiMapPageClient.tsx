@@ -136,6 +136,35 @@ function readStoredUserLocation(): UserLocation | null {
       lat?: unknown
       lng?: unknown
       accuracy?: unknown
+      updatedAt?: unknown
+    }
+    const lat = typeof parsed.lat === 'number' ? parsed.lat : Number.NaN
+    const lng = typeof parsed.lng === 'number' ? parsed.lng : Number.NaN
+    if (!isValidLatLng(lat, lng)) return null
+
+    // Check TTL: 5 minutes = 300000ms
+    const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0
+    const age = Date.now() - updatedAt
+    if (age > 300000) return null
+
+    const accuracy = typeof parsed.accuracy === 'number' && Number.isFinite(parsed.accuracy)
+      ? Math.max(0, Math.round(parsed.accuracy))
+      : null
+    return { lat, lng, accuracy }
+  } catch {
+    return null
+  }
+}
+
+function readStoredUserLocationRaw(): UserLocation | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(USER_LOCATION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      lat?: unknown
+      lng?: unknown
+      accuracy?: unknown
     }
     const lat = typeof parsed.lat === 'number' ? parsed.lat : Number.NaN
     const lng = typeof parsed.lng === 'number' ? parsed.lng : Number.NaN
@@ -592,6 +621,28 @@ function extensionFromMimeType(mimeType: string | null | undefined): string {
 }
 
 function normalizePointImageUrl(input: string | null | undefined): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+
+  try {
+    const url = new URL(raw, 'https://seichigo.com')
+    const host = url.hostname.toLowerCase()
+    const isAnitabiHost = host === 'anitabi.cn' || host.endsWith('.anitabi.cn')
+    if (isAnitabiHost) {
+      url.searchParams.delete('plan')
+      // Add resize params if not present for optimized loading
+      if (!url.searchParams.has('w')) {
+        url.searchParams.set('w', '640')
+        url.searchParams.set('q', '80')
+      }
+    }
+    return url.toString()
+  } catch {
+    return raw
+  }
+}
+
+function normalizePointImageSaveUrl(input: string | null | undefined): string | null {
   const raw = String(input || '').trim()
   if (!raw) return null
 
@@ -1356,7 +1407,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     const previewUrl = normalizePointImageUrl(selectedPoint.image)
     const originUrl = String(selectedPoint.originUrl || '').trim()
-    const downloadUrl = looksLikeImageUrl(originUrl) ? originUrl : previewUrl
+    // Use stripped URL for download (full resolution)
+    const downloadUrl = looksLikeImageUrl(originUrl) ? normalizePointImageSaveUrl(originUrl) : normalizePointImageSaveUrl(selectedPoint.image)
 
     return { previewUrl, downloadUrl }
   }, [selectedPoint])
@@ -2578,11 +2630,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (autoLocateAttemptedRef.current) return
     autoLocateAttemptedRef.current = true
 
-    if (userLocation) {
-      focusGeo([userLocation.lat, userLocation.lng], resolveLocateZoom(userLocation.accuracy), false)
-      return
+    // Use cached location for instant initial display
+    const cachedLocation = readStoredUserLocationRaw()
+    if (cachedLocation) {
+      focusGeo([cachedLocation.lat, cachedLocation.lng], resolveLocateZoom(cachedLocation.accuracy), false)
     }
 
+    // Always fetch fresh location when permission is granted
     let canceled = false
     queryGeolocationPermissionState()
       .then((permissionState) => {
@@ -2596,7 +2650,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       canceled = true
     }
-  }, [focusGeo, locateUser, mapReady, parsed.hasViewport, userLocation])
+  }, [focusGeo, locateUser, mapReady, parsed.hasViewport])
 
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
