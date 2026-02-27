@@ -14,6 +14,7 @@ import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMod
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import { loadAllCards } from '@/lib/anitabi/client/bulkLoader'
+import { startDetailPrefetch } from '@/lib/anitabi/client/prefetcher'
 import { createProgressTracker } from '@/lib/anitabi/client/progressTracker'
 import type { CacheStore, LoadProgress } from '@/lib/anitabi/client/types'
 
@@ -1292,6 +1293,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const progressTrackerRef = useRef(createProgressTracker())
   const bulkCardsRef = useRef<AnitabiBangumiCard[]>([])
   const selectedCityRef = useRef('')
+  const detailPrefetchAbortRef = useRef<AbortController | null>(null)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1941,6 +1943,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const store = cacheStoreRef.current
     if (!store) return
 
+    // Abort any previous detail prefetch
+    detailPrefetchAbortRef.current?.abort()
+
     const requestToken = cardFeedTokenRef.current + 1
     cardFeedTokenRef.current = requestToken
     setLoading(true)
@@ -1961,6 +1966,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setCards(currentCity ? result.cards.filter(c => c.city === currentCity) : result.cards)
       setHasMoreCards(false)
       setLoadingMoreCards(false)
+
+      // Background-prefetch detail data for first 20 visible cards
+      const prefetchAc = new AbortController()
+      detailPrefetchAbortRef.current = prefetchAc
+      startDetailPrefetch({
+        bangumiIds: result.cards.slice(0, 20).map(c => c.id),
+        locale,
+        cacheStore: store,
+        signal: prefetchAc.signal,
+      })
     } catch {
       if (requestToken !== cardFeedTokenRef.current) return
       setCardsLoadError(label.loadMoreFailed)
@@ -2189,6 +2204,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
+      detailPrefetchAbortRef.current?.abort()
     }
   }, [])
 
