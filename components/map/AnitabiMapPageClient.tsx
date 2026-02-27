@@ -2030,7 +2030,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
     loadBootstrap().catch(() => null)
-  }, [loadBootstrap])
+  }, [tab, loadBootstrap])
 
   useEffect(() => {
     if (loading || loadingMoreCards || !hasMoreCards) return
