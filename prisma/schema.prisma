@@ -528,6 +528,8 @@ model AnitabiBangumi {
   @@index([sourceModifiedMs])
   @@index([datasetVersion])
   @@index([mapEnabled, updatedAt])
+  @@index([mapEnabled, sourceModifiedMs])
+  @@index([mapEnabled, createdAt])
 }
 
 model AnitabiPoint {

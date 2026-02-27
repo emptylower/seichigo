@@ -38,6 +38,9 @@ Code-first Next.js App Router blog for anime pilgrimage content.
 **Anitabi Sync On Vercel (store in Vercel Postgres / Nano DB)**
 - Required env vars in Vercel Project:
   - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (point to your Vercel Postgres)
+    - Use Neon pooled connection URL for `DATABASE_URL` (hostname contains `-pooler.`)
+    - Connection pool is automatically limited to 5 connections (suitable for Neon Nano tier)
+    - Use direct (non-pooled) URL for `DATABASE_URL_UNPOOLED` for migrations
   - `ANITABI_CRON_SECRET` (random long secret)
   - `ANITABI_SYNC_CONCURRENCY` (recommended `1-2` on Neon/Vercel)
   - Optional: `ANITABI_SYNC_MAX_ROWS_PER_RUN` (recommended `200-500` on Vercel Hobby)

@@ -12,6 +12,19 @@ import RouteBookCard from '@/components/share/RouteBookCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
 
+// --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
+const BANGUMI_CACHE_MAX = 30
+const bangumiDetailCache = new Map<number, AnitabiBangumiDTO>()
+function cachePut(id: number, data: AnitabiBangumiDTO) {
+  if (bangumiDetailCache.size >= BANGUMI_CACHE_MAX && !bangumiDetailCache.has(id)) {
+    const oldest = bangumiDetailCache.keys().next().value as number
+    bangumiDetailCache.delete(oldest)
+  }
+  bangumiDetailCache.set(id, data)
+}
+// AbortController for in-flight prefetch
+let prefetchAbort: AbortController | null = null
+
 type Props = {
   locale: SupportedLocale
 }
@@ -1867,10 +1880,58 @@ export default function AnitabiMapPageClient({ locale }: Props) {
         setMobilePanelOpen(false)
       }
       setDetailLoading(true)
+      const card = cards.find((c) => c.id === id)
+      if (card) {
+        setDetail({
+          card,
+          description: null,
+          tags: [],
+          points: [],
+          customEpNames: {},
+          theme: null,
+          contributors: [],
+        })
+        if (!isDesktop) {
+          setMobilePanelOpen(true)
+        }
+      }
       try {
+        const cached = bangumiDetailCache.get(id)
+        if (cached) {
+          setDetail(cached)
+          const map = mapRef.current
+          if (map) {
+            const geoPoints = collectPointCoords(cached.points)
+            const focusCluster = pickFocusCluster(geoPoints)
+            const focusPoints = focusCluster.length ? focusCluster : geoPoints
+            if (pointId) {
+              const target = cached.points.find((point) => matchPointId(point.id, pointId))
+              if (target && target.id !== pointId) setSelectedPointId(target.id)
+              if (!target) { setSelectedPointId(null); setDetailCardMode('bangumi') }
+              else if (target.geo) focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+              else fitBangumiBounds(focusPoints)
+            } else if (focusPoints.length >= 2) {
+              fitBangumiBounds(focusPoints)
+            } else if (focusPoints.length === 1) {
+              const single = focusPoints[0]!
+              focusGeo([single[1], single[0]], Math.max(map.getZoom(), 12.8), true)
+            } else if (cached.card.geo) {
+              focusGeo(cached.card.geo, cached.card.zoom || 10, true)
+            }
+          }
+          if (meStateRef.current) {
+            fetch('/api/anitabi/me/history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetType: 'bangumi', bangumiId: id }),
+            }).catch(() => null)
+          }
+          return
+        }
         const res = await fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, { method: 'GET' })
         if (!res.ok) throw new Error('load detail failed')
         const json = (await res.json()) as AnitabiBangumiDTO
+        cachePut(id, json)
         setDetail(json)
 
         const map = mapRef.current
@@ -1915,6 +1976,50 @@ export default function AnitabiMapPageClient({ locale }: Props) {
     },
     [fitBangumiBounds, focusGeo, isDesktop, locale]
   )
+
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prefetchBangumi = useCallback(
+    (id: number) => {
+      if (bangumiDetailCache.has(id)) return
+      if (prefetchAbort) prefetchAbort.abort()
+      const ac = new AbortController()
+      prefetchAbort = ac
+      fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, {
+        method: 'GET',
+        signal: ac.signal,
+        // @ts-ignore -- RequestInit.priority is supported in modern browsers
+        priority: 'low',
+      })
+        .then((res) => {
+          if (!res.ok) return
+          return res.json()
+        })
+        .then((json) => {
+          if (json && !ac.signal.aborted) cachePut(id, json as AnitabiBangumiDTO)
+        })
+        .catch(() => null)
+    },
+    [locale]
+  )
+  const handleCardPointerEnter = useCallback(
+    (id: number) => {
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
+      prefetchTimerRef.current = setTimeout(() => prefetchBangumi(id), 150)
+    },
+    [prefetchBangumi]
+  )
+  const handleCardPointerLeave = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current)
+      prefetchTimerRef.current = null
+    }
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
+      if (prefetchAbort) prefetchAbort.abort()
+    }
+  }, [])
 
   useEffect(() => {
     loadBootstrap().catch(() => null)
@@ -2875,8 +2980,20 @@ export default function AnitabiMapPageClient({ locale }: Props) {
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="line-clamp-1 text-sm font-semibold text-slate-900">{detail.card.title}</div>
-                <div className="text-[11px] text-slate-500">{detail.card.city || '-'} · {detail.points.length} {label.points}</div>
-                {detail.description ? (
+                <div className="text-[11px] text-slate-500">
+                  {detail.card.city || '-'} · {detailLoading ? (
+                    <span className="inline-block h-3 w-8 animate-pulse rounded bg-slate-100 align-middle" />
+                  ) : (
+                    detail.points.length
+                  )} {label.points}
+                </div>
+                {detailLoading ? (
+                  <div className="space-y-1 py-1">
+                    <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+                    <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
+                  </div>
+                ) : detail.description ? (
                   <div className="space-y-1">
                     <div className={workDetailExpanded ? 'max-h-40 overflow-y-auto pr-1' : ''}>
                       <p className={`text-xs leading-relaxed text-slate-700 ${workDetailExpanded ? '' : 'line-clamp-6'}`}>
@@ -2898,7 +3015,13 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                 )}
               </div>
             </div>
-            {detail.tags.length > 0 ? (
+            {detailLoading ? (
+              <div className="flex flex-wrap gap-1.5">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-4 w-12 animate-pulse rounded-full bg-slate-100" />
+                ))}
+              </div>
+            ) : detail.tags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {detail.tags.slice(0, 8).map((tag) => (
                   <span key={tag} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
@@ -2977,7 +3100,16 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </div>
 
           <div className="max-h-[420px] overflow-auto px-3 py-2">
-            {detailLoading ? <div className="py-4 text-sm text-slate-500">{label.loading}</div> : null}
+            {detailLoading ? (
+              <div className="space-y-3 py-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex flex-col gap-2 rounded px-2 py-1.5">
+                    <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {!detailLoading && detailPoints.length === 0 ? <div className="py-4 text-sm text-slate-500">{label.noData}</div> : null}
             <div className="space-y-1">
               {detailPoints.map(({ point, distanceMeters: pointDistance }) => {
@@ -3183,7 +3315,27 @@ export default function AnitabiMapPageClient({ locale }: Props) {
           </button>
         </div>
       ) : null}
-      {loading ? <div className="text-sm text-slate-500">{label.loading}</div> : null}
+      {loading ? (
+        <div className="space-y-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex animate-pulse items-start gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+              <div className="h-16 w-12 shrink-0 rounded-md bg-slate-200" />
+              <div className="min-w-0 flex-1 space-y-2 py-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="h-4 w-32 rounded bg-slate-200" />
+                  <div className="h-4 w-10 rounded-full bg-slate-200" />
+                </div>
+                <div className="h-3 w-48 rounded bg-slate-200" />
+                <div className="mt-2 flex gap-1.5">
+                  <div className="h-4 w-12 rounded-full bg-slate-100" />
+                  <div className="h-4 w-12 rounded-full bg-slate-100" />
+                  <div className="h-4 w-12 rounded-full bg-slate-100" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {!loading && (tab !== 'nearby' || userLocation) && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
       {!showNearbyLocationCta ? (
         <>
@@ -3201,6 +3353,9 @@ export default function AnitabiMapPageClient({ locale }: Props) {
                       ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
                       : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
                   }`}
+                  onMouseEnter={() => handleCardPointerEnter(card.id)}
+                  onMouseLeave={handleCardPointerLeave}
+                  onTouchStart={() => handleCardPointerEnter(card.id)}
                 >
                   <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
                   <div className="flex items-start gap-3 p-3">
