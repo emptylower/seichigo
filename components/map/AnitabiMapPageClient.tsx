@@ -1673,10 +1673,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
 
-    removePointLayer(map)
-    if (!detail) return true
+    // Fast path: if source already exists, update data in-place via setData()
+    // instead of tearing down and rebuilding all layers (avoids 1-3s blank/flash).
+    const existingSource = map.getSource(POINT_SOURCE_ID)
+
+    if (!detail) {
+      // No detail - remove layers if they exist
+      if (existingSource) removePointLayer(map)
+      return true
+    }
 
     const data = buildPointFeatureCollection(detail, selectedPointId, meStateRef.current, viewFilter, stateFilter)
+
+    if (existingSource && 'setData' in existingSource) {
+      // Source exists - update GeoJSON in-place (cheap, no layer teardown)
+      ;(existingSource as { setData(d: GeoJSON.GeoJSON): void }).setData(data)
+      return true
+    }
+
+    // First load or after style change - full setup needed
+    removePointLayer(map)
     map.addSource(POINT_SOURCE_ID, {
       type: 'geojson',
       data,
@@ -1762,11 +1778,25 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
 
-    removeRangeLayer(map)
+    const existingRangeSource = map.getSource(RANGE_SOURCE_ID)
 
     const overlay = rangeOverlayRef.current
-    if (!overlay) return true
+    if (!overlay) {
+      // No overlay - remove layers if they exist
+      if (existingRangeSource) removeRangeLayer(map)
+      return true
+    }
 
+    if (existingRangeSource && 'setData' in existingRangeSource) {
+      // Source exists - update GeoJSON in-place and refresh paint for color change
+      ;(existingRangeSource as { setData(d: GeoJSON.GeoJSON): void }).setData(overlay.data)
+      map.setPaintProperty(RANGE_FILL_LAYER_ID, 'fill-color', hexToRgba(overlay.color, 0.16))
+      map.setPaintProperty(RANGE_LINE_LAYER_ID, 'line-color', hexToRgba(overlay.color, 0.88))
+      return true
+    }
+
+    // First load or after style change - full setup needed
+    removeRangeLayer(map)
     map.addSource(RANGE_SOURCE_ID, {
       type: 'geojson',
       data: overlay.data,
@@ -1986,6 +2016,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         if (!res.ok) throw new Error('load detail failed')
         const json = (await res.json()) as AnitabiBangumiDTO
         cachePut(id, json)
+        // Guard: if user already switched to another bangumi, discard this response
+        if (detailRef.current?.card.id !== id) return
         setDetail(json)
 
         const map = mapRef.current
