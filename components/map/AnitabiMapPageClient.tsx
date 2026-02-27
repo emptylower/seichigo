@@ -1281,6 +1281,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const panoramaProgressTimerRef = useRef<number | null>(null)
   const panoramaProgressDoneTimerRef = useRef<number | null>(null)
   const autoLocateAttemptedRef = useRef(false)
+  const activeBangumiIdRef = useRef<number | null>(null)
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
@@ -1894,6 +1895,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const requestToken = cardFeedTokenRef.current + 1
     cardFeedTokenRef.current = requestToken
     setLoading(true)
+    setCards([])
     setLoadingMoreCards(false)
     setCardsLoadError(null)
     try {
@@ -1969,6 +1971,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const openBangumi = useCallback(
     async (id: number, pointId?: string | null) => {
       setSelectedBangumiId(id)
+      activeBangumiIdRef.current = id
       setSelectedPointId(pointId || null)
       setDetailCardMode(pointId ? 'point' : 'bangumi')
       setWorkDetailExpanded(false)
@@ -2031,7 +2034,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const json = (await res.json()) as AnitabiBangumiDTO
         cachePut(id, json)
         // Guard: if user already switched to another bangumi, discard this response
-        if (detailRef.current?.card.id !== id) return
+        if (activeBangumiIdRef.current !== id) return
         setDetail(json)
 
         const map = mapRef.current
@@ -2074,7 +2077,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         setDetailLoading(false)
       }
     },
-    [fitBangumiBounds, focusGeo, isDesktop, locale]
+    [cards, fitBangumiBounds, focusGeo, isDesktop, locale]
   )
 
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2707,9 +2710,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     queryGeolocationPermissionState()
       .then((permissionState) => {
         if (canceled) return
-        if (permissionState === 'granted') return
+        if (permissionState === 'granted') {
+          setTab('nearby')
+          return
+        }
         if (permissionState === 'denied') {
-          setTab('hot')
+          setTab('latest')
           return
         }
         // permissionState is 'prompt' or null (API not supported)
@@ -2718,7 +2724,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         } catch {
           // sessionStorage unavailable
         }
-        setTab('hot')
+        setTab('latest')
         setLocationDialogOpen(true)
       })
       .catch(() => null)
