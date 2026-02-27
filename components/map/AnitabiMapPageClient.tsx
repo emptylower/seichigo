@@ -92,6 +92,7 @@ const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
 const USER_LOCATION_STORAGE_KEY = 'anitabi-map-user-location'
 const POINT_POOL_HINT_SEEN_STORAGE_KEY = 'anitabi-map-point-pool-hint-seen'
+const LOCATION_DIALOG_DISMISSED_KEY = 'anitabi-map-location-dialog-dismissed'
 
 type CameraPadding = {
   top: number
@@ -355,6 +356,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     onlyMarked: '只看我的标记',
     expandWorkDetail: '展开',
     collapseWorkDetail: '收起',
+    locationDialogTitle: '发现附近的巡礼地点',
+    locationDialogBody: '授予位置权限可以查看你附近的巡礼地点和作品哦',
+    locationDialogGrant: '授予位置权限',
+    locationDialogSkip: '暂不需要',
   },
   en: {
     title: 'Pilgrimage Map',
@@ -448,6 +453,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     onlyMarked: 'My Markers',
     expandWorkDetail: 'Show more',
     collapseWorkDetail: 'Show less',
+    locationDialogTitle: 'Discover Nearby Spots',
+    locationDialogBody: 'Grant location access to find pilgrimage spots near you',
+    locationDialogGrant: 'Enable Location',
+    locationDialogSkip: 'Not Now',
   },
   ja: {
     title: '巡礼マップ',
@@ -541,6 +550,10 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     onlyMarked: 'マイマーク',
     expandWorkDetail: 'もっと見る',
     collapseWorkDetail: '折りたたむ',
+    locationDialogTitle: '近くのスポットを見つけよう',
+    locationDialogBody: '位置情報を許可すると近くの巡礼スポットが見られます',
+    locationDialogGrant: '位置情報を許可',
+    locationDialogSkip: '今はしない',
   },
 }
 
@@ -1324,6 +1337,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [routeBookTitleDraft, setRouteBookTitleDraft] = useState('')
   const [comparisonImageBlob, setComparisonImageBlob] = useState<Blob | null>(null)
   const [comparisonImageUrl, setComparisonImageUrl] = useState<string | null>(null)
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -2684,6 +2698,36 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [focusGeo, locateUser, mapReady, parsed.hasViewport])
 
+  // Location permission dialog for first-visit users
+  useEffect(() => {
+    if (!mapReady) return
+    if (parsed.hasViewport) return
+
+    let canceled = false
+    queryGeolocationPermissionState()
+      .then((permissionState) => {
+        if (canceled) return
+        if (permissionState === 'granted') return
+        if (permissionState === 'denied') {
+          setTab('hot')
+          return
+        }
+        // permissionState is 'prompt' or null (API not supported)
+        try {
+          if (window.sessionStorage.getItem(LOCATION_DIALOG_DISMISSED_KEY) === '1') return
+        } catch {
+          // sessionStorage unavailable
+        }
+        setTab('hot')
+        setLocationDialogOpen(true)
+      })
+      .catch(() => null)
+
+    return () => {
+      canceled = true
+    }
+  }, [mapReady, parsed.hasViewport])
+
   const onShare = useCallback(async () => {
     if (typeof window === 'undefined') return
     syncUrlRef.current()
@@ -3995,6 +4039,59 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
                 setShowCheckInCard(true)
               }}
             />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Location permission dialog for first-visit users */}
+      <Dialog.Root open={locationDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setLocationDialogOpen(false)
+          try {
+            window.sessionStorage.setItem(LOCATION_DIALOG_DISMISSED_KEY, '1')
+          } catch {
+            // sessionStorage unavailable
+          }
+        }
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/30 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[131] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-brand-100 bg-brand-50 p-5 shadow-2xl focus:outline-none">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-brand-100">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-brand-600">
+                <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Z" />
+                <circle cx="12" cy="9" r="2.5" />
+              </svg>
+            </div>
+            <Dialog.Title className="text-base font-semibold text-slate-900">{label.locationDialogTitle}</Dialog.Title>
+            <Dialog.Description className="mt-1.5 text-sm text-slate-600">{label.locationDialogBody}</Dialog.Description>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setLocationDialogOpen(false)
+                  try {
+                    window.sessionStorage.setItem(LOCATION_DIALOG_DISMISSED_KEY, '1')
+                  } catch {
+                    // sessionStorage unavailable
+                  }
+                }}
+              >
+                {label.locationDialogSkip}
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                onClick={() => {
+                  setLocationDialogOpen(false)
+                  locateUser()
+                  setTab('nearby')
+                }}
+              >
+                {label.locationDialogGrant}
+              </button>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
