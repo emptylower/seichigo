@@ -4,6 +4,8 @@ import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
 import { buildMapShareImageUrl, parseMapShareQuery, toUrlSearchParams } from '@/lib/anitabi/share'
 import { notFound } from 'next/navigation'
 import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
+import { getBootstrap } from '@/lib/anitabi/read'
+import { prisma } from '@/lib/db/prisma'
 
 type SearchParamsInput = Record<string, string | string[] | undefined>
 
@@ -37,10 +39,15 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export const revalidate = 3600
 
-export default function MapPageEn() {
+export default async function MapPageEn() {
   if (!isMapReplicaEnabled()) {
     notFound()
   }
-
-  return <AnitabiMapPageLazy locale="en" />
+  let initialBootstrap
+  try {
+    initialBootstrap = await getBootstrap({ prisma, locale: 'en', tab: 'latest' })
+  } catch {
+    initialBootstrap = undefined
+  }
+  return <AnitabiMapPageLazy locale="en" initialBootstrap={initialBootstrap} />
 }
