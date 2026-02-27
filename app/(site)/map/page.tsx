@@ -3,6 +3,8 @@ import { buildZhAlternates } from '@/lib/seo/alternates'
 import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
 import { buildMapShareImageUrl, parseMapShareQuery, toUrlSearchParams } from '@/lib/anitabi/share'
 import { notFound } from 'next/navigation'
+import { getBootstrap } from '@/lib/anitabi/read'
+import { prisma } from '@/lib/db/prisma'
 import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
 
 type SearchParamsInput = Record<string, string | string[] | undefined>
@@ -37,10 +39,17 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export const revalidate = 3600
 
-export default function MapPage() {
+export default async function MapPage() {
   if (!isMapReplicaEnabled()) {
     notFound()
   }
 
-  return <AnitabiMapPageLazy locale="zh" />
+  let initialBootstrap
+  try {
+    initialBootstrap = await getBootstrap({ prisma, locale: 'zh', tab: 'latest' })
+  } catch {
+    initialBootstrap = undefined
+  }
+
+  return <AnitabiMapPageLazy locale="zh" initialBootstrap={initialBootstrap} />
 }

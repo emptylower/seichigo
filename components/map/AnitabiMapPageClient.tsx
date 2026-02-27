@@ -27,6 +27,7 @@ let prefetchAbort: AbortController | null = null
 
 type Props = {
   locale: SupportedLocale
+  initialBootstrap?: AnitabiBootstrapDTO
 }
 
 type PointState = {
@@ -1192,7 +1193,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
 }
 
-export default function AnitabiMapPageClient({ locale }: Props) {
+export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props) {
   const label = L[locale]
 
   const parsed = useMemo(() => parseUrlState(), [])
@@ -1216,6 +1217,7 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const panoramaProgressTimerRef = useRef<number | null>(null)
   const panoramaProgressDoneTimerRef = useRef<number | null>(null)
   const autoLocateAttemptedRef = useRef(false)
+  const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1235,8 +1237,8 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
   const [workDetailExpanded, setWorkDetailExpanded] = useState(false)
 
-  const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(null)
-  const [cards, setCards] = useState<AnitabiBangumiCard[]>([])
+  const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(initialBootstrap ?? null)
+  const [cards, setCards] = useState<AnitabiBangumiCard[]>(initialBootstrap?.cards ?? [])
   const [detail, setDetail] = useState<AnitabiBangumiDTO | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingMoreCards, setLoadingMoreCards] = useState(false)
@@ -2022,6 +2024,11 @@ export default function AnitabiMapPageClient({ locale }: Props) {
   }, [])
 
   useEffect(() => {
+    if (ssrBootstrapUsedRef.current) {
+      ssrBootstrapUsedRef.current = false
+      setHasMoreCards((initialBootstrap?.cards.length ?? 0) >= CARD_PAGE_SIZE)
+      return
+    }
     loadBootstrap().catch(() => null)
   }, [loadBootstrap])
 
