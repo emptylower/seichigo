@@ -38,6 +38,7 @@ class InMemoryCacheStore implements CacheStore {
   }
 
   async putDetail(bangumiId: number, payload: CachedBangumiDetail): Promise<void> {
+    if (this.version === null) this.version = payload.datasetVersion
     this.details.set(bangumiId, payload)
   }
 
@@ -130,6 +131,8 @@ class IDBCacheStore implements CacheStore {
   }
 
   async putDetail(bangumiId: number, payload: CachedBangumiDetail): Promise<void> {
+    const ver = await this.getVersion()
+    if (ver === null) await idbPut(this.db, STORE_CARDS, META_KEY, payload.datasetVersion)
     await idbPut(this.db, STORE_DETAILS, bangumiId, payload)
   }
 
