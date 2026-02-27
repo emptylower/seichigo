@@ -327,14 +327,23 @@ export async function listAllBangumiCards(input: {
   prisma: PrismaClient
   locale: SupportedLocale
   tab: Exclude<AnitabiMapTab, 'nearby'>
-}): Promise<AnitabiBangumiCard[]> {
-  const bangumiWhere = buildBangumiWhere('', '')
+  city?: string | null
+  q?: string | null
+}): Promise<{ items: AnitabiBangumiCard[]; total: number }> {
+  const q = normalizeText(input.q)
+  const city = normalizeText(input.city)
+  const bangumiWhere = buildBangumiWhere(city, q)
 
-  const rows = await input.prisma.anitabiBangumi.findMany({
-    where: bangumiWhere,
-    include: buildCardInclude(input.locale),
-    orderBy: input.tab === 'recent' ? [{ createdAt: 'desc' }, { sourceModifiedMs: 'desc' }] : [{ sourceModifiedMs: 'desc' }, { updatedAt: 'desc' }],
-  })
+  const [rows, total] = await Promise.all([
+    input.prisma.anitabiBangumi.findMany({
+      where: bangumiWhere,
+      include: buildCardInclude(input.locale),
+      orderBy: input.tab === 'recent'
+        ? [{ createdAt: 'desc' }, { sourceModifiedMs: 'desc' }]
+        : [{ sourceModifiedMs: 'desc' }, { updatedAt: 'desc' }],
+    }),
+    input.prisma.anitabiBangumi.count({ where: bangumiWhere }),
+  ])
 
   const cards = rows.map((row) => toCard(input.locale, row))
 
@@ -361,10 +370,10 @@ export async function listAllBangumiCards(input: {
       if (a.card.pointsLength !== b.card.pointsLength) return b.card.pointsLength - a.card.pointsLength
       return (b.card.sourceModifiedMs || 0) - (a.card.sourceModifiedMs || 0)
     })
-    return ranked.map((item) => item.card)
+    return { items: ranked.map((item) => item.card), total }
   }
 
-  return cards
+  return { items: cards, total }
 }
 
 function toPointDto(

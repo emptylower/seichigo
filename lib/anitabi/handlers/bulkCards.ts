@@ -12,20 +12,25 @@ export function createHandlers(deps: AnitabiApiDeps) {
 
       if (tab === 'nearby') {
         return NextResponse.json(
-          { error: 'Nearby tab not supported for bulk loading' },
+          { error: 'nearby tab is not supported for bulk cards' },
           { status: 400 },
         )
       }
 
-      const [cards, datasetVersion] = await Promise.all([
-        listAllBangumiCards({ prisma: deps.prisma, locale, tab }),
+      const [datasetVersion, { items, total }] = await Promise.all([
         getActiveDatasetVersion(deps.prisma),
+        listAllBangumiCards({
+          prisma: deps.prisma,
+          locale,
+          tab,
+          city: url.searchParams.get('city'),
+          q: url.searchParams.get('q'),
+        }),
       ])
 
       return NextResponse.json(
-        { datasetVersion, items: cards, total: cards.length },
+        { datasetVersion, items, total },
         {
-          status: 200,
           headers: {
             'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
           },
