@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     anitabiBangumi: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      count: vi.fn(),
     },
     anitabiSourceCursor: {
       findUnique: vi.fn(),
@@ -46,6 +47,7 @@ describe('bulk cards api', () => {
         nearestDistanceMeters: null,
       },
     ])
+    mocks.prisma.anitabiBangumi.count.mockResolvedValue(1)
     mocks.prisma.anitabiSourceCursor.findUnique.mockResolvedValue({
       sourceName: 'activeDatasetVersion',
       value: 'v1.0.0',
@@ -84,6 +86,7 @@ describe('bulk cards api', () => {
         nearestDistanceMeters: 500,
       },
     ])
+    mocks.prisma.anitabiBangumi.count.mockResolvedValue(1)
     mocks.prisma.anitabiSourceCursor.findUnique.mockResolvedValue({
       sourceName: 'activeDatasetVersion',
       value: 'v2.0.0',
@@ -133,6 +136,7 @@ describe('bulk cards api', () => {
 
   it('response has correct Cache-Control header', async () => {
     mocks.prisma.anitabiBangumi.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiBangumi.count.mockResolvedValue(0)
     mocks.prisma.anitabiSourceCursor.findUnique.mockResolvedValue({
       sourceName: 'activeDatasetVersion',
       value: 'v3.0.0',
