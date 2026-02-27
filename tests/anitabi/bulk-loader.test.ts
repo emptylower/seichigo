@@ -105,7 +105,7 @@ describe('bulkLoader', () => {
 
   it('fetches from API and stores in cache when cache is empty', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Test Anime', lat: 35.6, lng: 139.7, imageUrl: '/test.jpg' }
+      { id: 1, title: 'Test Anime', titleZh: null, cat: null, city: null, cover: '/test.jpg', color: null, pointsLength: 0, imagesLength: 0, sourceModifiedMs: null, mapEnabled: true, geo: [35.6, 139.7], zoom: null, nearestDistanceMeters: null }
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',
@@ -150,7 +150,7 @@ describe('bulkLoader', () => {
 
   it('returns cached data immediately when cache is fresh', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Cached Anime', lat: 35.6, lng: 139.7, imageUrl: '/cached.jpg' }
+      { id: 1, title: 'Cached Anime', titleZh: null, cat: null, city: null, cover: '/cached.jpg', color: null, pointsLength: 0, imagesLength: 0, sourceModifiedMs: null, mapEnabled: true, geo: [35.6, 139.7], zoom: null, nearestDistanceMeters: null }
     ]
 
     const cacheStore = createMockCacheStore() as CacheStore & { _setVersion(v: string | null): void }
@@ -222,7 +222,7 @@ describe('bulkLoader', () => {
 
   it('returns cached data when fetch fails and cache exists', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Stale Anime', lat: 35.6, lng: 139.7, imageUrl: '/stale.jpg' }
+      { id: 1, title: 'Stale Anime', titleZh: null, cat: null, city: null, cover: '/stale.jpg', color: null, pointsLength: 0, imagesLength: 0, sourceModifiedMs: null, mapEnabled: true, geo: [35.6, 139.7], zoom: null, nearestDistanceMeters: null }
     ]
 
     const cacheStore = createMockCacheStore()
@@ -309,7 +309,7 @@ describe('bulkLoader', () => {
 
   it('handles fetch without ReadableStream body', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'No Stream', lat: 35.6, lng: 139.7, imageUrl: '/no-stream.jpg' }
+      { id: 1, title: 'No Stream', titleZh: null, cat: null, city: null, cover: '/no-stream.jpg', color: null, pointsLength: 0, imagesLength: 0, sourceModifiedMs: null, mapEnabled: true, geo: [35.6, 139.7], zoom: null, nearestDistanceMeters: null }
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',
@@ -345,7 +345,7 @@ describe('bulkLoader', () => {
 
   it('handles fetch without content-length header', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'No Length', lat: 35.6, lng: 139.7, imageUrl: '/no-length.jpg' }
+      { id: 1, title: 'No Length', titleZh: null, cat: null, city: null, cover: '/no-length.jpg', color: null, pointsLength: 0, imagesLength: 0, sourceModifiedMs: null, mapEnabled: true, geo: [35.6, 139.7], zoom: null, nearestDistanceMeters: null }
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',
