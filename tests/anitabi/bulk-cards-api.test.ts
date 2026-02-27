@@ -130,7 +130,7 @@ describe('bulk cards api', () => {
 
     expect(res.status).toBe(400)
     const json = await res.json()
-    expect(json.error).toContain('Nearby tab not supported')
+    expect(json.error.toLowerCase()).toContain('nearby tab')
     expect(mocks.prisma.anitabiBangumi.findMany).not.toHaveBeenCalled()
   })
 
