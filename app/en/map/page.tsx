@@ -39,13 +39,17 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export const revalidate = 3600
 
-export default async function MapPageEn() {
+export default async function MapPageEn({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   if (!isMapReplicaEnabled()) {
     notFound()
   }
+  const resolved = await searchParams
+  const params = toUrlSearchParams(resolved)
+  const tabParam = params.get('tab')
+  const tab = tabParam === 'recent' || tabParam === 'hot' || tabParam === 'nearby' ? tabParam : 'latest'
   let initialBootstrap
   try {
-    initialBootstrap = await getBootstrap({ prisma, locale: 'en', tab: 'latest' })
+    initialBootstrap = await getBootstrap({ prisma, locale: 'en', tab })
   } catch {
     initialBootstrap = undefined
   }

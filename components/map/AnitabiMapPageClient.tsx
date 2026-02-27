@@ -524,7 +524,7 @@ function parseUrlState(): UrlState {
       lat: DEFAULT_VIEW.lat,
       z: DEFAULT_VIEW.z,
       hasViewport: false,
-      tab: 'nearby',
+      tab: 'latest',
       q: '',
     }
   }
@@ -543,7 +543,7 @@ function parseUrlState(): UrlState {
     lat: lat ?? DEFAULT_VIEW.lat,
     z: z && z > 0 ? z : DEFAULT_VIEW.z,
     hasViewport: lng != null || lat != null || z != null,
-    tab: tabRaw === 'latest' || tabRaw === 'recent' || tabRaw === 'hot' || tabRaw === 'nearby' ? tabRaw : 'nearby',
+    tab: tabRaw === 'latest' || tabRaw === 'recent' || tabRaw === 'hot' || tabRaw === 'nearby' ? tabRaw : 'latest',
     q: params.get('q') || '',
   }
 }
@@ -2024,7 +2024,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   }, [])
 
   useEffect(() => {
-    if (ssrBootstrapUsedRef.current) {
+    if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
       ssrBootstrapUsedRef.current = false
       setHasMoreCards((initialBootstrap?.cards.length ?? 0) >= CARD_PAGE_SIZE)
       return
