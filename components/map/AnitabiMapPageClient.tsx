@@ -11,6 +11,11 @@ import CheckInCard from '@/components/share/CheckInCard'
 import RouteBookCard from '@/components/share/RouteBookCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
+import MapLoadingProgress from './MapLoadingProgress'
+import { createCacheStore } from '@/lib/anitabi/client/clientCache'
+import { loadAllCards } from '@/lib/anitabi/client/bulkLoader'
+import { createProgressTracker } from '@/lib/anitabi/client/progressTracker'
+import type { CacheStore, LoadProgress } from '@/lib/anitabi/client/types'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -1283,6 +1288,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const autoLocateAttemptedRef = useRef(false)
   const activeBangumiIdRef = useRef<number | null>(null)
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
+  const cacheStoreRef = useRef<CacheStore | null>(null)
+  const progressTrackerRef = useRef(createProgressTracker())
+  const bulkCardsRef = useRef<AnitabiBangumiCard[]>([])
+  const selectedCityRef = useRef('')
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1339,6 +1348,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [comparisonImageBlob, setComparisonImageBlob] = useState<Blob | null>(null)
   const [comparisonImageUrl, setComparisonImageUrl] = useState<string | null>(null)
   const [locationDialogOpen, setLocationDialogOpen] = useState(false)
+  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ phase: 'idle', loaded: 0, total: null, percent: 0 })
+  const [cacheStoreReady, setCacheStoreReady] = useState(false)
+
+  useEffect(() => { selectedCityRef.current = selectedCity }, [selectedCity])
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -1923,6 +1936,40 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [locale, query, selectedCity, tab, userLocation])
 
+  const loadBulkCardsForTab = useCallback(async () => {
+    if (tab === 'nearby') return
+    const store = cacheStoreRef.current
+    if (!store) return
+
+    const requestToken = cardFeedTokenRef.current + 1
+    cardFeedTokenRef.current = requestToken
+    setLoading(true)
+    setCards([])
+    setCardsLoadError(null)
+
+    try {
+      const result = await loadAllCards({
+        locale,
+        tab,
+        cacheStore: store,
+        progressTracker: progressTrackerRef.current,
+      })
+      if (!result || requestToken !== cardFeedTokenRef.current) return
+
+      bulkCardsRef.current = result.cards
+      const currentCity = selectedCityRef.current
+      setCards(currentCity ? result.cards.filter(c => c.city === currentCity) : result.cards)
+      setHasMoreCards(false)
+      setLoadingMoreCards(false)
+    } catch {
+      if (requestToken !== cardFeedTokenRef.current) return
+      setCardsLoadError(label.loadMoreFailed)
+    } finally {
+      if (requestToken !== cardFeedTokenRef.current) return
+      setLoading(false)
+    }
+  }, [locale, tab, label.loadMoreFailed])
+
   const loadMoreCards = useCallback(async () => {
     if (loading || loadingMoreCards || !hasMoreCards) return
     if (tab === 'nearby' && !userLocation) return
@@ -1997,6 +2044,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }
       }
       try {
+        // L2 → L1 promotion: check IndexedDB cache before FIFO memory cache
+        if (!bangumiDetailCache.has(id) && cacheStoreRef.current) {
+          try {
+            const cachedL2 = await cacheStoreRef.current.getDetail(id)
+            if (cachedL2) cachePut(id, cachedL2.detail)
+          } catch {
+            // L2 cache read failed, proceed with API fetch
+          }
+        }
         const cached = bangumiDetailCache.get(id)
         if (cached) {
           setDetail(cached)
@@ -2033,6 +2089,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         if (!res.ok) throw new Error('load detail failed')
         const json = (await res.json()) as AnitabiBangumiDTO
         cachePut(id, json)
+        // Persist to L2 cache (IndexedDB)
+        if (cacheStoreRef.current) {
+          cacheStoreRef.current.getVersion().then(version => {
+            if (!version) return
+            cacheStoreRef.current?.putDetail(id, {
+              datasetVersion: version,
+              bangumiId: id,
+              detail: json,
+              cachedAt: Date.now(),
+            }).catch(() => null)
+          }).catch(() => null)
+        }
         // Guard: if user already switched to another bangumi, discard this response
         if (activeBangumiIdRef.current !== id) return
         setDetail(json)
@@ -2124,7 +2192,25 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [])
 
+  // Initialize L2 cache store and progress tracker subscription
   useEffect(() => {
+    let cancelled = false
+    createCacheStore().then((store) => {
+      if (!cancelled) {
+        cacheStoreRef.current = store
+        setCacheStoreReady(true)
+      }
+    })
+    const unsub = progressTrackerRef.current.onProgress(setLoadProgress)
+    return () => {
+      cancelled = true
+      unsub()
+    }
+  }, [])
+
+  // Nearby tab: use existing bootstrap + chunks flow
+  useEffect(() => {
+    if (tab !== 'nearby') return
     if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
       ssrBootstrapUsedRef.current = false
       setHasMoreCards((initialBootstrap?.cards.length ?? 0) >= CARD_PAGE_SIZE)
@@ -2132,6 +2218,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
     loadBootstrap().catch(() => null)
   }, [tab, loadBootstrap])
+
+  // Non-nearby tabs: bulk load all cards
+  useEffect(() => {
+    if (tab === 'nearby') return
+    if (!cacheStoreReady) return
+    if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
+      ssrBootstrapUsedRef.current = false
+    }
+    loadBulkCardsForTab().catch(() => null)
+  }, [tab, loadBulkCardsForTab, cacheStoreReady])
+
+  // Client-side city filtering for non-nearby tabs
+  useEffect(() => {
+    if (tab === 'nearby') return
+    const all = bulkCardsRef.current
+    if (!all.length) return
+    if (selectedCity) {
+      setCards(all.filter(c => c.city === selectedCity))
+    } else {
+      setCards(all)
+    }
+  }, [selectedCity, tab])
 
   useEffect(() => {
     if (loading || loadingMoreCards || !hasMoreCards) return
@@ -3667,6 +3775,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
   return (
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
+      <MapLoadingProgress percent={loadProgress.percent} visible={loadProgress.phase === 'loading'} />
       <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
         {isDesktop ? (
           <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
