@@ -14,6 +14,10 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+}))
+
 vi.mock('node:fs/promises', () => ({
   default: mocks.fs,
 }))

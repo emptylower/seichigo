@@ -7,6 +7,11 @@ vi.mock('next/navigation', () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() })),
 }))
 
+vi.mock('next-auth/react', () => ({
+  useSession: vi.fn(() => ({ data: null, status: 'unauthenticated' })),
+  SessionProvider: ({ children }: { children: React.ReactNode }) => children,
+}))
+
 describe('HeaderPublic', () => {
   beforeEach(() => {
     vi.clearAllMocks()
