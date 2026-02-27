@@ -323,6 +323,50 @@ export async function listBangumiCards(input: {
   return cards.slice(0, take)
 }
 
+export async function listAllBangumiCards(input: {
+  prisma: PrismaClient
+  locale: SupportedLocale
+  tab: Exclude<AnitabiMapTab, 'nearby'>
+}): Promise<AnitabiBangumiCard[]> {
+  const bangumiWhere = buildBangumiWhere('', '')
+
+  const rows = await input.prisma.anitabiBangumi.findMany({
+    where: bangumiWhere,
+    include: buildCardInclude(input.locale),
+    orderBy: input.tab === 'recent' ? [{ createdAt: 'desc' }, { sourceModifiedMs: 'desc' }] : [{ sourceModifiedMs: 'desc' }, { updatedAt: 'desc' }],
+  })
+
+  const cards = rows.map((row) => toCard(input.locale, row))
+
+  if (input.tab === 'hot') {
+    const [hotSnapshot, hotSignalsByBangumiId] = await Promise.all([
+      getRecentHotSnapshot().catch(() => null),
+      getHotSignalsByBangumiId(input.prisma, rows.map((row) => row.id)).catch(() => new Map<number, HotSignalSeed>()),
+    ])
+
+    const ranked = rows.map((row, idx) => {
+      const seed = hotSignalsByBangumiId.get(row.id) || { titles: [], years: [] }
+      const titles = [row.titleJaRaw, row.titleZh, ...seed.titles].map((x) => normalizeText(x)).filter(Boolean)
+      const hotScore = resolveHotScore(hotSnapshot, { titles, years: seed.years })
+      return { card: cards[idx]!, hotScore }
+    })
+
+    ranked.sort((a, b) => {
+      const aHasScore = Number.isFinite(a.hotScore)
+      const bHasScore = Number.isFinite(b.hotScore)
+      if (aHasScore && !bHasScore) return -1
+      if (!aHasScore && bHasScore) return 1
+      if (aHasScore && bHasScore && a.hotScore !== b.hotScore) return (b.hotScore || 0) - (a.hotScore || 0)
+
+      if (a.card.pointsLength !== b.card.pointsLength) return b.card.pointsLength - a.card.pointsLength
+      return (b.card.sourceModifiedMs || 0) - (a.card.sourceModifiedMs || 0)
+    })
+    return ranked.map((item) => item.card)
+  }
+
+  return cards
+}
+
 function toPointDto(
   locale: SupportedLocale,
   row: {
