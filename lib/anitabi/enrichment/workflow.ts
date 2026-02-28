@@ -94,6 +94,7 @@ export async function enrichBatch(
               data: { anilistId: -1, anilistMatchConfidence: 0 },
             })
             results.skipped++ // No match
+          }
         } catch (err) {
           console.error(`[enrichBatch] Failed for bangumi ${item.id}:`, err)
           results.failed++
