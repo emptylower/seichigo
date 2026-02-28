@@ -88,8 +88,12 @@ export async function enrichBatch(
               results.skipped++ // Low confidence — still written but flagged
             }
           } else {
+            // No match — write sentinel anilistId=-1 so this entry is not re-queried
+            await prisma.anitabiBangumi.update({
+              where: { id: item.id },
+              data: { anilistId: -1, anilistMatchConfidence: 0 },
+            })
             results.skipped++ // No match
-          }
         } catch (err) {
           console.error(`[enrichBatch] Failed for bangumi ${item.id}:`, err)
           results.failed++
