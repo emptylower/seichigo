@@ -47,6 +47,23 @@ const WARMUP_IMAGE_POINTS_PER_DETAIL = 3
 const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 96
 const WARMUP_BG_DETAIL_CONCURRENCY = 4
 const WARMUP_BG_POINTS_PER_DETAIL = 2
+const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
+const WARMUP_MAP_TILE_TIMEOUT_MS = 15000
+const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
+  map: 20,
+  cards: 30,
+  details: 30,
+  images: 20,
+}
+
+function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
+  return {
+    map: { percent: 0, detail: '' },
+    cards: { percent: 0, detail: '' },
+    details: { percent: 0, detail: '' },
+    images: { percent: 0, detail: '' },
+  }
+}
 
 type WarmupProgress = {
   phase: 'idle' | 'loading' | 'done'
@@ -54,6 +71,13 @@ type WarmupProgress = {
   title: string
   detail: string
 }
+
+type WarmupTaskKey = 'map' | 'cards' | 'details' | 'images'
+
+type WarmupTaskProgress = Record<WarmupTaskKey, {
+  percent: number
+  detail: string
+}>
 
 type Props = {
   locale: SupportedLocale
@@ -367,9 +391,13 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadedAll: '已加载全部作品',
     loadMoreFailed: '加载更多失败，请重试',
     preloadTitle: '正在预加载地图数据',
-    preloadCards: '步骤 1/3：加载四个板块作品',
-    preloadDetails: '步骤 2/3：加载作品点位详情',
-    preloadImages: '步骤 3/3：预热点位截图',
+    preloadMap: '地图底片',
+    preloadMapPreparing: '初始化地图样式',
+    preloadMapTiles: '预加载地图底片瓦片',
+    preloadMapDone: '地图底片就绪',
+    preloadCards: '板块作品',
+    preloadDetails: '作品点位详情',
+    preloadImages: '点位截图预热',
     preloadDone: '预加载完成',
     preloadWait: '正在加载地图，请稍候…',
     retry: '重试',
@@ -471,9 +499,13 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadedAll: 'All titles loaded',
     loadMoreFailed: 'Failed to load more titles',
     preloadTitle: 'Preloading map data',
-    preloadCards: 'Step 1/3: Loading cards for all tabs',
-    preloadDetails: 'Step 2/3: Loading work details',
-    preloadImages: 'Step 3/3: Warming point images',
+    preloadMap: 'Map Base Layer',
+    preloadMapPreparing: 'Initializing map style',
+    preloadMapTiles: 'Warming map tiles',
+    preloadMapDone: 'Map base layer ready',
+    preloadCards: 'Tab Cards',
+    preloadDetails: 'Work Details',
+    preloadImages: 'Point Images',
     preloadDone: 'Preload complete',
     preloadWait: 'Preparing map data, please wait…',
     retry: 'Retry',
@@ -575,9 +607,13 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadedAll: 'すべての作品を読み込みました',
     loadMoreFailed: '追加読み込みに失敗しました',
     preloadTitle: '地図データを事前読み込み中',
-    preloadCards: 'ステップ 1/3：4タブの作品を読み込み',
-    preloadDetails: 'ステップ 2/3：作品のスポット詳細を読み込み',
-    preloadImages: 'ステップ 3/3：スポット画像を先読み',
+    preloadMap: '地図ベース',
+    preloadMapPreparing: '地図スタイルを初期化',
+    preloadMapTiles: '地図タイルを先読み',
+    preloadMapDone: '地図ベース準備完了',
+    preloadCards: 'タブ作品',
+    preloadDetails: '作品スポット詳細',
+    preloadImages: 'スポット画像先読み',
     preloadDone: '事前読み込み完了',
     preloadWait: '地図データを準備中です。少々お待ちください…',
     retry: '再試行',
@@ -1469,6 +1505,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const warmupAbortRef = useRef<AbortController | null>(null)
   const pointSyncRetryTimerRef = useRef<number | null>(null)
   const pointSyncRetryCountRef = useRef(0)
+  const mapInitWaitersRef = useRef<Array<() => void>>([])
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
@@ -1536,6 +1573,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     title: label.preloadTitle,
     detail: '',
   })
+  const [warmupTaskProgress, setWarmupTaskProgress] = useState<WarmupTaskProgress>(() => createEmptyWarmupTaskProgress())
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
 
@@ -2211,6 +2249,181 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }))
   }, [label.preloadTitle])
 
+  const computeWarmupPercent = useCallback((tasks: WarmupTaskProgress): number => {
+    let weightedSum = 0
+    let totalWeight = 0
+    for (const key of Object.keys(tasks) as WarmupTaskKey[]) {
+      const weight = WARMUP_TASK_WEIGHTS[key]
+      weightedSum += tasks[key].percent * weight
+      totalWeight += weight
+    }
+    if (!totalWeight) return 0
+    return Math.round(weightedSum / totalWeight)
+  }, [])
+
+  const resetWarmupTaskProgress = useCallback(() => {
+    setWarmupTaskProgress(createEmptyWarmupTaskProgress())
+  }, [])
+
+  const updateWarmupTask = useCallback((key: WarmupTaskKey, next: { percent?: number; detail?: string }) => {
+    setWarmupTaskProgress((prev) => {
+      const current = prev[key]
+      const merged: WarmupTaskProgress = {
+        ...prev,
+        [key]: {
+          percent: Math.max(0, Math.min(100, next.percent ?? current.percent)),
+          detail: next.detail ?? current.detail,
+        },
+      }
+      const combinedPercent = computeWarmupPercent(merged)
+      setWarmupProgress((prevWarmup) => ({
+        phase: prevWarmup.phase === 'idle' ? 'loading' : prevWarmup.phase,
+        percent: combinedPercent,
+        title: label.preloadTitle,
+        detail: next.detail ?? prevWarmup.detail,
+      }))
+      return merged
+    })
+  }, [computeWarmupPercent, label.preloadTitle])
+
+  const completeAllWarmupTasks = useCallback(() => {
+    setWarmupTaskProgress((prev) => ({
+      map: { percent: 100, detail: prev.map.detail || label.preloadMapDone },
+      cards: { percent: 100, detail: prev.cards.detail },
+      details: { percent: 100, detail: prev.details.detail },
+      images: { percent: 100, detail: prev.images.detail },
+    }))
+  }, [label.preloadMapDone])
+
+  const waitForMapInstance = useCallback((signal?: AbortSignal): Promise<maplibregl.Map | null> => {
+    if (mapRef.current) return Promise.resolve(mapRef.current)
+    if (signal?.aborted || typeof window === 'undefined') return Promise.resolve(null)
+
+    return new Promise((resolve) => {
+      const onReady = () => {
+        cleanup()
+        resolve(mapRef.current)
+      }
+      const cleanup = () => {
+        if (timeoutId != null) {
+          window.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        const idx = mapInitWaitersRef.current.indexOf(onReady)
+        if (idx >= 0) mapInitWaitersRef.current.splice(idx, 1)
+        if (signal) signal.removeEventListener('abort', onAbort)
+      }
+      const onAbort = () => {
+        cleanup()
+        resolve(null)
+      }
+
+      let timeoutId: number | null = window.setTimeout(() => {
+        cleanup()
+        resolve(mapRef.current)
+      }, WARMUP_MAP_WAIT_TIMEOUT_MS)
+
+      mapInitWaitersRef.current.push(onReady)
+      if (signal) signal.addEventListener('abort', onAbort, { once: true })
+    })
+  }, [])
+
+  const preloadMapBaseLayer = useCallback(async (signal?: AbortSignal) => {
+    updateWarmupTask('map', { percent: 2, detail: label.preloadMapPreparing })
+    const map = await waitForMapInstance(signal)
+    if (!map || signal?.aborted) return
+
+    let done = false
+    let peakPercent = 2
+    const updateMapTask = (percent: number, detail: string) => {
+      peakPercent = Math.max(peakPercent, percent)
+      updateWarmupTask('map', { percent: peakPercent, detail })
+    }
+
+    const maybeDone = (): boolean => {
+      try {
+        if (!map.areTilesLoaded()) return false
+        updateMapTask(100, label.preloadMapDone)
+        done = true
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    if (map.isStyleLoaded()) {
+      updateMapTask(35, label.preloadMapPreparing)
+    }
+    if (maybeDone()) return
+
+    await new Promise<void>((resolve) => {
+      const cleanup = () => {
+        if (timeoutId != null) {
+          window.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        map.off('load', onLoad)
+        map.off('render', onRender)
+        map.off('sourcedata', onSourceData)
+        map.off('idle', onIdle)
+        if (signal) signal.removeEventListener('abort', onAbort)
+      }
+
+      const finish = () => {
+        if (done) return
+        done = true
+        updateMapTask(100, label.preloadMapDone)
+        cleanup()
+        resolve()
+      }
+
+      const onLoad = () => {
+        updateMapTask(45, label.preloadMapPreparing)
+        maybeDone()
+      }
+      const onRender = () => {
+        updateMapTask(62, label.preloadMapTiles)
+      }
+      const onSourceData = () => {
+        updateMapTask(78, label.preloadMapTiles)
+        maybeDone()
+      }
+      const onIdle = () => {
+        updateMapTask(92, label.preloadMapTiles)
+        if (maybeDone()) {
+          cleanup()
+          resolve()
+        }
+      }
+      const onAbort = () => {
+        cleanup()
+        resolve()
+      }
+
+      let timeoutId: number | null = window.setTimeout(() => {
+        finish()
+      }, WARMUP_MAP_TILE_TIMEOUT_MS)
+
+      map.on('load', onLoad)
+      map.on('render', onRender)
+      map.on('sourcedata', onSourceData)
+      map.on('idle', onIdle)
+      if (signal) signal.addEventListener('abort', onAbort, { once: true })
+
+      // Trigger an immediate check in case everything is already hot in cache.
+      if (maybeDone()) {
+        cleanup()
+        resolve()
+      }
+    })
+  }, [
+    label.preloadMapDone,
+    label.preloadMapPreparing,
+    label.preloadMapTiles,
+    updateWarmupTask,
+    waitForMapInstance,
+  ])
+
   const loadNearbyCardsAll = useCallback(
     async (location: UserLocation, signal?: AbortSignal): Promise<AnitabiBangumiCard[]> => {
       const seen = new Set<number>()
@@ -2303,49 +2516,60 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!store || signal?.aborted) return
 
     setCardsLoadError(null)
-    updateWarmupProgress({ phase: 'loading', percent: 2, detail: label.preloadCards })
+    resetWarmupTaskProgress()
+    updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
+    updateWarmupTask('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
+    updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
+    updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
+
+    const mapWarmupPromise = preloadMapBaseLayer(signal).catch(() => {
+      if (signal?.aborted) return
+      updateWarmupTask('map', { percent: 100, detail: label.preloadMapDone })
+    })
 
     const tabsToLoad: AnitabiMapTab[] = userLocation
       ? ['nearby', ...NON_NEARBY_TABS]
       : [...NON_NEARBY_TABS]
     const loadedByTab: Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>> = {}
 
-    let tabsDone = 0
-    const tabQueue = tabsToLoad.slice()
-    const tabWorkers = Math.min(4, tabQueue.length)
-    await Promise.all(Array.from({ length: tabWorkers }, async () => {
-      for (;;) {
-        if (signal?.aborted) return
-        const currentTab = tabQueue.shift()
-        if (!currentTab) return
+    if (tabsToLoad.length > 0) {
+      let tabsDone = 0
+      const tabQueue = tabsToLoad.slice()
+      const tabWorkers = Math.min(4, tabQueue.length)
+      await Promise.all(Array.from({ length: tabWorkers }, async () => {
+        for (;;) {
+          if (signal?.aborted) return
+          const currentTab = tabQueue.shift()
+          if (!currentTab) return
 
-        let rows: AnitabiBangumiCard[] = []
-        try {
-          if (currentTab === 'nearby') {
-            rows = await loadNearbyCardsAll(userLocation!, signal)
-            tabCardsRef.current.nearby = rows
-            loadedTabsRef.current.add('nearby')
+          let rows: AnitabiBangumiCard[] = []
+          try {
+            if (currentTab === 'nearby') {
+              rows = await loadNearbyCardsAll(userLocation!, signal)
+              tabCardsRef.current.nearby = rows
+              loadedTabsRef.current.add('nearby')
+              setTabCardsVersion((prev) => prev + 1)
+            } else {
+              rows = await loadBulkCardsForTab(currentTab, signal)
+            }
+          } catch {
+            rows = []
+            tabCardsRef.current[currentTab] = rows
+            loadedTabsRef.current.add(currentTab)
             setTabCardsVersion((prev) => prev + 1)
-          } else {
-            rows = await loadBulkCardsForTab(currentTab, signal)
           }
-        } catch {
-          rows = []
-          tabCardsRef.current[currentTab] = rows
-          loadedTabsRef.current.add(currentTab)
-          setTabCardsVersion((prev) => prev + 1)
-        }
 
-        loadedByTab[currentTab] = rows
-        tabsDone += 1
-        const cardsPercent = 8 + Math.round((tabsDone / tabsToLoad.length) * 32)
-        updateWarmupProgress({
-          phase: 'loading',
-          percent: cardsPercent,
-          detail: `${label.preloadCards} (${tabsDone}/${tabsToLoad.length})`,
-        })
-      }
-    }))
+          loadedByTab[currentTab] = rows
+          tabsDone += 1
+          updateWarmupTask('cards', {
+            percent: Math.round((tabsDone / tabsToLoad.length) * 100),
+            detail: `${label.preloadCards} (${tabsDone}/${tabsToLoad.length})`,
+          })
+        }
+      }))
+    } else {
+      updateWarmupTask('cards', { percent: 100, detail: `${label.preloadCards} (0/0)` })
+    }
 
     const uniqueIds = Array.from(
       new Set(
@@ -2373,11 +2597,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const detailQueue = prioritizedIds.slice()
     const detailTarget = Math.min(prioritizedIds.length, WARMUP_DETAIL_MAX)
     if (detailTarget > 0) {
-      updateWarmupProgress({
-        phase: 'loading',
-        percent: 40,
-        detail: `${label.preloadDetails} (0/${detailTarget})`,
-      })
+      updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/${detailTarget})` })
       let detailDone = 0
       const workerCount = Math.min(WARMUP_DETAIL_CONCURRENCY, detailQueue.length)
 
@@ -2395,15 +2615,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
           detailDone += 1
           if (detailDone === detailTarget || detailDone % 6 === 0) {
-            const detailPercent = 40 + Math.round((detailDone / detailTarget) * 38)
-            updateWarmupProgress({
-              phase: 'loading',
-              percent: detailPercent,
+            updateWarmupTask('details', {
+              percent: Math.round((detailDone / detailTarget) * 100),
               detail: `${label.preloadDetails} (${detailDone}/${detailTarget})`,
             })
           }
         }
       }))
+    } else {
+      updateWarmupTask('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
     }
 
     const remainingDetailIds = detailQueue.slice()
@@ -2453,11 +2673,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     const blockingImageQueue = imageQueue.slice(0, WARMUP_IMAGE_MAX)
     if (blockingImageQueue.length > 0) {
-      updateWarmupProgress({
-        phase: 'loading',
-        percent: 80,
-        detail: `${label.preloadImages} (0/${blockingImageQueue.length})`,
-      })
+      updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/${blockingImageQueue.length})` })
 
       let imageDone = 0
       const imageQueueRef = blockingImageQueue.slice()
@@ -2476,17 +2692,21 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           await prefetchImageUrl(src, signal).catch(() => null)
           imageDone += 1
           if (imageDone === blockingImageQueue.length || imageDone % 8 === 0) {
-            const imagePercent = 80 + Math.round((imageDone / blockingImageQueue.length) * 20)
-            updateWarmupProgress({
-              phase: 'loading',
-              percent: imagePercent,
+            updateWarmupTask('images', {
+              percent: Math.round((imageDone / blockingImageQueue.length) * 100),
               detail: `${label.preloadImages} (${imageDone}/${blockingImageQueue.length})`,
             })
           }
         }
       }))
+    } else {
+      updateWarmupTask('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
     }
 
+    await mapWarmupPromise
+    if (signal?.aborted) return
+
+    completeAllWarmupTasks()
     updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
     window.setTimeout(() => {
       setWarmupProgress((prev) => (prev.phase === 'done'
@@ -2523,13 +2743,19 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       })).catch(() => null)
     }
   }, [
+    completeAllWarmupTasks,
     ensureBangumiDetailCached,
     label.preloadCards,
     label.preloadDetails,
     label.preloadDone,
     label.preloadImages,
+    label.preloadMapDone,
+    label.preloadMapPreparing,
     loadBulkCardsForTab,
     loadNearbyCardsAll,
+    preloadMapBaseLayer,
+    resetWarmupTaskProgress,
+    updateWarmupTask,
     updateWarmupProgress,
     userLocation,
   ])
@@ -2796,13 +3022,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     warmupAllTabsData(ac.signal).catch(() => {
       if (ac.signal.aborted) return
       setCardsLoadError(label.loadMoreFailed)
+      resetWarmupTaskProgress()
       updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
     })
     return () => {
       ac.abort()
       if (warmupAbortRef.current === ac) warmupAbortRef.current = null
     }
-  }, [cacheStoreReady, label.loadMoreFailed, updateWarmupProgress, warmupAllTabsData])
+  }, [cacheStoreReady, label.loadMoreFailed, resetWarmupTaskProgress, updateWarmupProgress, warmupAllTabsData])
 
   // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
@@ -2989,6 +3216,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     window.addEventListener('resize', resizeMap)
 
     mapRef.current = map
+    if (mapInitWaitersRef.current.length > 0) {
+      const waiters = mapInitWaitersRef.current.slice()
+      mapInitWaitersRef.current = []
+      for (const resume of waiters) resume()
+    }
 
     return () => {
       window.cancelAnimationFrame(rafId)
@@ -3012,6 +3244,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
+      mapInitWaitersRef.current = []
     }
   }, [clearPointLayerRetry, ensurePointLayerSynced, focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
 
@@ -3689,6 +3922,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'hot' as const, label: label.hot },
   ]
   const warmupBlocking = warmupProgress.phase === 'loading'
+  const warmupTaskRows = [
+    { key: 'map' as const, title: label.preloadMap, progress: warmupTaskProgress.map },
+    { key: 'cards' as const, title: label.preloadCards, progress: warmupTaskProgress.cards },
+    { key: 'details' as const, title: label.preloadDetails, progress: warmupTaskProgress.details },
+    { key: 'images' as const, title: label.preloadImages, progress: warmupTaskProgress.images },
+  ]
   const showNearbyLocationCta = !loading && tab === 'nearby' && !userLocation
   const hasSearchQuery = normalizeSearchKeyword(query).length > 0
 
@@ -4400,7 +4639,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       />
       {warmupBlocking ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-sm rounded-2xl border border-white/30 bg-white/95 p-4 text-center shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl border border-white/30 bg-white/95 p-4 text-center shadow-2xl">
             <div className="text-sm font-semibold text-slate-800">{label.preloadWait}</div>
             <div className="mt-1 text-xs text-slate-600">{warmupProgress.detail}</div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
@@ -4410,6 +4649,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               />
             </div>
             <div className="mt-2 text-xs font-medium text-slate-600">{Math.round(warmupProgress.percent)}%</div>
+
+            <div className="mt-3 space-y-2 text-left">
+              {warmupTaskRows.map((task) => (
+                <div key={task.key} className="rounded-lg border border-slate-200 bg-white/80 px-2 py-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-700">
+                    <span>{task.title}</span>
+                    <span>{Math.round(task.progress.percent)}%</span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-brand-500 transition-[width] duration-300 ease-out"
+                      style={{ width: `${Math.min(Math.max(task.progress.percent, 0), 100)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 line-clamp-1 text-[10px] text-slate-500">
+                    {task.progress.detail || label.loading}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
