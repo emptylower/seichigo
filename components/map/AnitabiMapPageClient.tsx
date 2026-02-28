@@ -32,9 +32,13 @@ let prefetchAbort: AbortController | null = null
 const POINT_IMAGE_PREFETCH_LIMIT = 24
 const POINT_IMAGE_PREFETCH_CACHE_MAX = 2400
 const prefetchedPointImageUrls = new Set<string>()
+const prefetchingPointImageUrls = new Set<string>()
 const NON_NEARBY_TABS: Array<Exclude<AnitabiMapTab, 'nearby'>> = ['latest', 'recent', 'hot']
 const NEARBY_PRELOAD_PAGE_SIZE = 120
 const NEARBY_PRELOAD_MAX_PAGES = 40
+const WARMUP_IMAGE_MAX = 25000
+const WARMUP_IMAGE_CONCURRENCY = 6
+const WARMUP_IMAGE_TIMEOUT_MS = 20000
 
 type WarmupProgress = {
   phase: 'idle' | 'loading' | 'done'
@@ -762,21 +766,84 @@ function normalizePointImageSaveUrl(input: string | null | undefined): string | 
   }
 }
 
+function normalizeCoverImageUrl(input: string | null | undefined): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+  return raw
+}
+
+async function prefetchImageUrl(src: string, signal?: AbortSignal): Promise<void> {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') return
+  if (!src || signal?.aborted) return
+  if (prefetchedPointImageUrls.has(src)) return
+  if (prefetchingPointImageUrls.has(src)) return
+
+  if (prefetchedPointImageUrls.size >= POINT_IMAGE_PREFETCH_CACHE_MAX) {
+    prefetchedPointImageUrls.clear()
+  }
+  prefetchingPointImageUrls.add(src)
+
+  try {
+    const loaded = await new Promise<boolean>((resolve) => {
+      const image = new Image()
+      let finished = false
+      let doneValue = false
+      const finish = (value: boolean) => {
+        if (finished) return
+        finished = true
+        doneValue = value
+        resolve(doneValue)
+      }
+
+      const timer = window.setTimeout(() => {
+        finish(false)
+      }, WARMUP_IMAGE_TIMEOUT_MS)
+
+      const onLoad = () => {
+        window.clearTimeout(timer)
+        finish(true)
+      }
+      const onFail = () => {
+        window.clearTimeout(timer)
+        finish(false)
+      }
+
+      if (signal) {
+        if (signal.aborted) {
+          onFail()
+          return
+        }
+        signal.addEventListener('abort', onFail, { once: true })
+      }
+
+      image.decoding = 'async'
+      image.loading = 'eager'
+      image.referrerPolicy = 'no-referrer'
+      image.onload = onLoad
+      image.onerror = onFail
+      image.src = src
+
+      if (image.complete && image.naturalWidth > 0) {
+        onLoad()
+      }
+    })
+
+    if (loaded) {
+      prefetchedPointImageUrls.add(src)
+    }
+  } finally {
+    prefetchingPointImageUrls.delete(src)
+  }
+}
+
 function warmPointImages(points: AnitabiBangumiDTO['points'], limit = POINT_IMAGE_PREFETCH_LIMIT): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return
   let count = 0
   for (const point of points) {
     if (count >= limit) break
     const src = normalizePointImageUrl(point.image)
-    if (!src || prefetchedPointImageUrls.has(src)) continue
-    if (prefetchedPointImageUrls.size >= POINT_IMAGE_PREFETCH_CACHE_MAX) {
-      prefetchedPointImageUrls.clear()
-    }
-    prefetchedPointImageUrls.add(src)
-    const img = new Image()
-    img.decoding = 'async'
-    img.loading = 'eager'
-    img.src = src
+    if (!src || prefetchedPointImageUrls.has(src) || prefetchingPointImageUrls.has(src)) continue
+    void prefetchImageUrl(src).catch(() => null)
     count += 1
   }
 }
@@ -1392,6 +1459,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
+  const pointSyncRetryTimerRef = useRef<number | null>(null)
+  const pointSyncRetryCountRef = useRef(0)
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
@@ -1810,101 +1879,111 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
 
-    // Fast path: if source already exists, update data in-place via setData()
-    // instead of tearing down and rebuilding all layers (avoids 1-3s blank/flash).
     const existingSource = map.getSource(POINT_SOURCE_ID)
+    const hasPointLayer = Boolean(map.getLayer(POINT_LAYER_ID))
+    const hasSelectedHaloLayer = Boolean(map.getLayer(POINT_SELECTED_HALO_LAYER_ID))
+    const hasSelectedLayer = Boolean(map.getLayer(POINT_SELECTED_LAYER_ID))
+    const hasAnyPointLayer = hasPointLayer || hasSelectedHaloLayer || hasSelectedLayer
+    const hasAllPointLayers = hasPointLayer && hasSelectedHaloLayer && hasSelectedLayer
 
     if (!detail) {
-      // No detail - remove layers if they exist
-      if (existingSource) removePointLayer(map)
+      if (existingSource || hasAnyPointLayer) removePointLayer(map)
       return true
     }
 
     const data = buildPointFeatureCollection(detail, selectedPointId, meStateRef.current, viewFilter, stateFilter)
 
-    if (existingSource && 'setData' in existingSource) {
-      // Source exists - update GeoJSON in-place (cheap, no layer teardown)
+    // Fast path only when source/layers are complete.
+    if (existingSource && hasAllPointLayers && 'setData' in existingSource) {
       ;(existingSource as { setData(d: GeoJSON.GeoJSON): void }).setData(data)
+      map.triggerRepaint()
       return true
     }
 
-    // First load or after style change - full setup needed
-    removePointLayer(map)
-    map.addSource(POINT_SOURCE_ID, {
-      type: 'geojson',
-      data,
-    })
+    try {
+      // Source/layer incomplete: rebuild atomically.
+      removePointLayer(map)
+      map.addSource(POINT_SOURCE_ID, {
+        type: 'geojson',
+        data,
+      })
 
-    map.addLayer({
-      id: POINT_LAYER_ID,
-      type: 'circle',
-      source: POINT_SOURCE_ID,
-      paint: {
-        'circle-color': [
-          'match',
-          ['get', 'userState'],
-          'checked_in',
-          '#22c55e',
-          'planned',
-          '#f97316',
-          'want_to_go',
-          '#3b82f6',
-          ['coalesce', ['get', 'color'], '#6d28d9'],
-        ],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 3.4, 8, 5.4, 12, 6.8],
-        'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.2, 12, 2.2],
-        'circle-opacity': 0.95,
-      },
-    })
+      map.addLayer({
+        id: POINT_LAYER_ID,
+        type: 'circle',
+        source: POINT_SOURCE_ID,
+        paint: {
+          'circle-color': [
+            'match',
+            ['get', 'userState'],
+            'checked_in',
+            '#22c55e',
+            'planned',
+            '#f97316',
+            'want_to_go',
+            '#3b82f6',
+            ['coalesce', ['get', 'color'], '#6d28d9'],
+          ],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 3.4, 8, 5.4, 12, 6.8],
+          'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.2, 12, 2.2],
+          'circle-opacity': 0.95,
+        },
+      })
 
-    map.addLayer({
-      id: POINT_SELECTED_HALO_LAYER_ID,
-      type: 'circle',
-      source: POINT_SOURCE_ID,
-      filter: ['==', ['get', 'selected'], 1],
-      paint: {
-        'circle-color': [
-          'match',
-          ['get', 'userState'],
-          'checked_in',
-          '#22c55e',
-          'planned',
-          '#f97316',
-          'want_to_go',
-          '#3b82f6',
-          ['coalesce', ['get', 'color'], '#6d28d9'],
-        ],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 8, 12, 12, 16],
-        'circle-opacity': 0.2,
-      },
-    })
+      map.addLayer({
+        id: POINT_SELECTED_HALO_LAYER_ID,
+        type: 'circle',
+        source: POINT_SOURCE_ID,
+        filter: ['==', ['get', 'selected'], 1],
+        paint: {
+          'circle-color': [
+            'match',
+            ['get', 'userState'],
+            'checked_in',
+            '#22c55e',
+            'planned',
+            '#f97316',
+            'want_to_go',
+            '#3b82f6',
+            ['coalesce', ['get', 'color'], '#6d28d9'],
+          ],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 8, 12, 12, 16],
+          'circle-opacity': 0.2,
+        },
+      })
 
-    map.addLayer({
-      id: POINT_SELECTED_LAYER_ID,
-      type: 'circle',
-      source: POINT_SOURCE_ID,
-      filter: ['==', ['get', 'selected'], 1],
-      paint: {
-        'circle-color': [
-          'match',
-          ['get', 'userState'],
-          'checked_in',
-          '#22c55e',
-          'planned',
-          '#f97316',
-          'want_to_go',
-          '#3b82f6',
-          ['coalesce', ['get', 'color'], '#6d28d9'],
-        ],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 5, 8, 7.2, 12, 8.8],
-        'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.8, 12, 2.6],
-        'circle-opacity': 0.98,
-      },
-    })
+      map.addLayer({
+        id: POINT_SELECTED_LAYER_ID,
+        type: 'circle',
+        source: POINT_SOURCE_ID,
+        filter: ['==', ['get', 'selected'], 1],
+        paint: {
+          'circle-color': [
+            'match',
+            ['get', 'userState'],
+            'checked_in',
+            '#22c55e',
+            'planned',
+            '#f97316',
+            'want_to_go',
+            '#3b82f6',
+            ['coalesce', ['get', 'color'], '#6d28d9'],
+          ],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 5, 8, 7.2, 12, 8.8],
+          'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.8, 12, 2.6],
+          'circle-opacity': 0.98,
+        },
+      })
 
-    return true
+      map.triggerRepaint()
+      return true
+    } catch {
+      // Clear partial state and let caller retry on next frame/idle.
+      removePointLayer(map)
+      return false
+    }
   }, [detail, selectedPointId, stateFilter, viewFilter])
 
   useEffect(() => {
@@ -1916,74 +1995,119 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!map || !map.isStyleLoaded()) return false
 
     const existingRangeSource = map.getSource(RANGE_SOURCE_ID)
+    const hasFillLayer = Boolean(map.getLayer(RANGE_FILL_LAYER_ID))
+    const hasLineLayer = Boolean(map.getLayer(RANGE_LINE_LAYER_ID))
+    const hasAnyRangeLayer = hasFillLayer || hasLineLayer
+    const hasAllRangeLayers = hasFillLayer && hasLineLayer
 
     const overlay = rangeOverlayRef.current
     if (!overlay) {
-      // No overlay - remove layers if they exist
-      if (existingRangeSource) removeRangeLayer(map)
+      if (existingRangeSource || hasAnyRangeLayer) removeRangeLayer(map)
       return true
     }
 
-    if (existingRangeSource && 'setData' in existingRangeSource) {
-      // Source exists - update GeoJSON in-place and refresh paint for color change
-      ;(existingRangeSource as { setData(d: GeoJSON.GeoJSON): void }).setData(overlay.data)
-      map.setPaintProperty(RANGE_FILL_LAYER_ID, 'fill-color', hexToRgba(overlay.color, 0.16))
-      map.setPaintProperty(RANGE_LINE_LAYER_ID, 'line-color', hexToRgba(overlay.color, 0.88))
+    try {
+      if (existingRangeSource && hasAllRangeLayers && 'setData' in existingRangeSource) {
+        ;(existingRangeSource as { setData(d: GeoJSON.GeoJSON): void }).setData(overlay.data)
+        map.setPaintProperty(RANGE_FILL_LAYER_ID, 'fill-color', hexToRgba(overlay.color, 0.16))
+        map.setPaintProperty(RANGE_LINE_LAYER_ID, 'line-color', hexToRgba(overlay.color, 0.88))
+        return true
+      }
+
+      removeRangeLayer(map)
+      map.addSource(RANGE_SOURCE_ID, {
+        type: 'geojson',
+        data: overlay.data,
+      })
+
+      // Keep range area below point circles.
+      const beforePointLayer = map.getLayer(POINT_LAYER_ID) ? POINT_LAYER_ID : undefined
+      map.addLayer({
+        id: RANGE_FILL_LAYER_ID,
+        type: 'fill',
+        source: RANGE_SOURCE_ID,
+        paint: {
+          'fill-color': hexToRgba(overlay.color, 0.16),
+          'fill-opacity': 1,
+        },
+      }, beforePointLayer)
+      map.addLayer({
+        id: RANGE_LINE_LAYER_ID,
+        type: 'line',
+        source: RANGE_SOURCE_ID,
+        paint: {
+          'line-color': hexToRgba(overlay.color, 0.88),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 12, 3.2],
+        },
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+      }, beforePointLayer)
+
       return true
+    } catch {
+      removeRangeLayer(map)
+      return false
     }
-
-    // First load or after style change - full setup needed
-    removeRangeLayer(map)
-    map.addSource(RANGE_SOURCE_ID, {
-      type: 'geojson',
-      data: overlay.data,
-    })
-
-    map.addLayer({
-      id: RANGE_FILL_LAYER_ID,
-      type: 'fill',
-      source: RANGE_SOURCE_ID,
-      paint: {
-        'fill-color': hexToRgba(overlay.color, 0.16),
-        'fill-opacity': 1,
-      },
-    })
-    map.addLayer({
-      id: RANGE_LINE_LAYER_ID,
-      type: 'line',
-      source: RANGE_SOURCE_ID,
-      paint: {
-        'line-color': hexToRgba(overlay.color, 0.88),
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 12, 3.2],
-      },
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-    })
-
-    return true
   }, [])
 
   useEffect(() => {
     syncRangeOverlayRef.current = syncRangeOverlay
   }, [syncRangeOverlay])
 
-  const ensurePointLayerSynced = useCallback(() => {
+  const clearPointLayerRetry = useCallback(() => {
+    if (pointSyncRetryTimerRef.current != null) {
+      window.clearTimeout(pointSyncRetryTimerRef.current)
+      pointSyncRetryTimerRef.current = null
+    }
+    pointSyncRetryCountRef.current = 0
+  }, [])
+
+  const ensurePointLayerSynced = useCallback((withRetry = false) => {
     const map = mapRef.current
     if (!map) return
-    if (!syncPointLayerRef.current()) {
-      map.once('idle', () => syncPointLayerRef.current())
+    const immediateOk = syncPointLayerRef.current()
+    if (immediateOk) {
+      clearPointLayerRetry()
+      return
     }
-  }, [])
+
+    if (!withRetry) return
+    clearPointLayerRetry()
+
+    const retry = () => {
+      const activeMap = mapRef.current
+      if (!activeMap) return
+
+      const ok = syncPointLayerRef.current()
+      if (ok) {
+        clearPointLayerRetry()
+        return
+      }
+
+      pointSyncRetryCountRef.current += 1
+      if (pointSyncRetryCountRef.current >= 45) {
+        clearPointLayerRetry()
+        return
+      }
+
+      // Keep canvas/layout in sync while source/layer is still warming up.
+      activeMap.resize()
+      activeMap.triggerRepaint()
+      pointSyncRetryTimerRef.current = window.setTimeout(retry, 80)
+    }
+
+    pointSyncRetryTimerRef.current = window.setTimeout(retry, 0)
+  }, [clearPointLayerRetry])
 
   const ensurePointLayerSyncedSoon = useCallback(() => {
     if (typeof window === 'undefined') {
-      ensurePointLayerSynced()
+      ensurePointLayerSynced(true)
       return
     }
     window.requestAnimationFrame(() => {
-      ensurePointLayerSynced()
+      ensurePointLayerSynced(true)
     })
   }, [ensurePointLayerSynced])
 
@@ -2257,29 +2381,75 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
 
     if (signal?.aborted) return
-    if (loadedDetails.length > 0) {
+    const queuedImages = new Set<string>()
+    const imageQueue: string[] = []
+    const enqueueImage = (src: string | null | undefined, priority = false) => {
+      const value = String(src || '').trim()
+      if (
+        !value
+        || queuedImages.has(value)
+        || prefetchedPointImageUrls.has(value)
+        || prefetchingPointImageUrls.has(value)
+      ) return
+      if (queuedImages.size >= WARMUP_IMAGE_MAX) return
+      queuedImages.add(value)
+      if (priority) imageQueue.unshift(value)
+      else imageQueue.push(value)
+    }
+
+    const activeDetail = activeId != null
+      ? loadedDetails.find((row) => row.card.id === activeId) || null
+      : null
+
+    if (activeDetail) {
+      enqueueImage(normalizeCoverImageUrl(activeDetail.card.cover), true)
+      for (const point of activeDetail.points) {
+        enqueueImage(normalizePointImageUrl(point.image), true)
+      }
+    }
+
+    for (const rows of Object.values(loadedByTab)) {
+      for (const card of rows || []) {
+        enqueueImage(normalizeCoverImageUrl(card.cover))
+      }
+    }
+
+    for (const detailRow of loadedDetails) {
+      const highPriority = Boolean(activeDetail && detailRow.card.id === activeDetail.card.id)
+      enqueueImage(normalizeCoverImageUrl(detailRow.card.cover), highPriority)
+      for (const point of detailRow.points) {
+        enqueueImage(normalizePointImageUrl(point.image), highPriority)
+      }
+    }
+
+    if (imageQueue.length > 0) {
       updateWarmupProgress({
         phase: 'loading',
         percent: 88,
-        detail: `${label.preloadImages} (0/${loadedDetails.length})`,
+        detail: `${label.preloadImages} (0/${imageQueue.length})`,
       })
+
       let imageDone = 0
-      for (const detailRow of loadedDetails) {
-        if (signal?.aborted) return
-        warmPointImages(detailRow.points, 8)
-        imageDone += 1
-        if (imageDone === loadedDetails.length || imageDone % 8 === 0) {
-          const imagePercent = 88 + Math.round((imageDone / loadedDetails.length) * 12)
-          updateWarmupProgress({
-            phase: 'loading',
-            percent: imagePercent,
-            detail: `${label.preloadImages} (${imageDone}/${loadedDetails.length})`,
-          })
+      const queue = imageQueue.slice()
+      const workers = Math.min(WARMUP_IMAGE_CONCURRENCY, queue.length)
+
+      await Promise.all(Array.from({ length: workers }, async () => {
+        for (;;) {
+          if (signal?.aborted) return
+          const src = queue.shift()
+          if (!src) return
+          await prefetchImageUrl(src, signal).catch(() => null)
+          imageDone += 1
+          if (imageDone === imageQueue.length || imageDone % 6 === 0) {
+            const imagePercent = 88 + Math.round((imageDone / imageQueue.length) * 12)
+            updateWarmupProgress({
+              phase: 'loading',
+              percent: imagePercent,
+              detail: `${label.preloadImages} (${imageDone}/${imageQueue.length})`,
+            })
+          }
         }
-        if (imageDone % 12 === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 0))
-        }
-      }
+      }))
     }
 
     updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
@@ -2388,6 +2558,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const cached = bangumiDetailCache.get(id)
         if (cached) {
           setDetail(cached)
+          const cachedCover = normalizeCoverImageUrl(cached.card.cover)
+          if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
           warmPointImages(cached.points)
           ensurePointLayerSyncedSoon()
           const map = mapRef.current
@@ -2438,6 +2610,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         // Guard: if user already switched to another bangumi, discard this response
         if (activeBangumiIdRef.current !== id) return
         setDetail(json)
+        const nextCover = normalizeCoverImageUrl(json.card.cover)
+        if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
         warmPointImages(json.points)
         ensurePointLayerSyncedSoon()
 
@@ -2526,8 +2700,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
       warmupAbortRef.current?.abort()
+      clearPointLayerRetry()
     }
-  }, [])
+  }, [clearPointLayerRetry])
 
   // Initialize L2 cache store
   useEffect(() => {
@@ -2743,7 +2918,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     map.once('load', () => {
       setMapReady(true)
       resizeMap()
-      syncPointLayerRef.current()
+      ensurePointLayerSynced(true)
       syncRangeOverlayRef.current()
     })
     const rafId = window.requestAnimationFrame(resizeMap)
@@ -2768,12 +2943,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.off('mouseout', resetPointer)
       map.off('moveend', syncMapViewState)
       map.off('zoomend', syncMapViewState)
+      clearPointLayerRetry()
       removePointLayer(map)
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
     }
-  }, [focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
+  }, [clearPointLayerRetry, ensurePointLayerSynced, focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2790,10 +2966,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    if (!syncPointLayer()) {
-      map.once('idle', () => syncPointLayerRef.current())
+    const ok = syncPointLayer()
+    if (!ok) {
+      ensurePointLayerSynced(true)
     }
-  }, [syncPointLayer])
+  }, [ensurePointLayerSynced, syncPointLayer])
 
   useEffect(() => {
     const map = mapRef.current
@@ -3969,7 +4146,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           <div className="space-y-3">
             {cards.map((card, index) => {
               const swatchColor = card.color || '#ec4899'
-              const prioritizeCardCover = index < 3
+              const prioritizeCardCover = index < 20
               return (
                 <button
                   key={card.id}
@@ -3995,7 +4172,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
                           height={128}
                           className="h-full w-full object-cover"
                           loading={prioritizeCardCover ? 'eager' : 'lazy'}
-                          fetchPriority={index === 0 ? 'high' : 'auto'}
+                          fetchPriority={index < 4 ? 'high' : 'auto'}
                           decoding="async"
                         />
                       ) : (
