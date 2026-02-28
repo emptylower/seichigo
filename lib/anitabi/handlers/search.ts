@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
-import { searchDataset } from '@/lib/anitabi/read'
+import { searchWithFallback } from '@/lib/anitabi/searchCache'
 import { normalizeLocale, normalizeText } from '@/lib/anitabi/utils'
 
 export function createHandlers(deps: AnitabiApiDeps) {
@@ -13,7 +13,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
         return NextResponse.json({ bangumi: [], points: [], cities: [] })
       }
 
-      const data = await searchDataset({ prisma: deps.prisma, locale, q })
+      const data = await searchWithFallback(deps.prisma, locale, q)
       return NextResponse.json(data, {
         headers: {
           'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
