@@ -2557,7 +2557,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
   const onSubmitQuery = useCallback(() => {
     setQuery(queryInput.trim())
-    setSearchOpen(false)
+    // Keep searchOpen so the dropdown results remain visible for the user to pick from
   }, [queryInput])
 
   const onRandom = useCallback(() => {
