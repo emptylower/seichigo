@@ -33,6 +33,7 @@ const POINT_IMAGE_PREFETCH_LIMIT = 24
 const POINT_IMAGE_PREFETCH_CACHE_MAX = 2400
 const prefetchedPointImageUrls = new Set<string>()
 const prefetchingPointImageUrls = new Set<string>()
+const prefetchedMapTileUrls = new Set<string>()
 const NON_NEARBY_TABS: Array<Exclude<AnitabiMapTab, 'nearby'>> = ['latest', 'recent', 'hot']
 const NEARBY_PRELOAD_PAGE_SIZE = 120
 const NEARBY_PRELOAD_MAX_PAGES = 40
@@ -49,6 +50,8 @@ const WARMUP_BG_DETAIL_CONCURRENCY = 4
 const WARMUP_BG_POINTS_PER_DETAIL = 2
 const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
 const WARMUP_MAP_TILE_TIMEOUT_MS = 15000
+const MAP_TILE_PREFETCH_TIMEOUT_MS = 3200
+const MAP_TILE_PREFETCH_RADIUS = 2
 const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   map: 20,
   cards: 30,
@@ -909,6 +912,91 @@ function looksLikeImageUrl(input: string | null | undefined): boolean {
   return false
 }
 
+function normalizeTileX(x: number, z: number): number {
+  const size = 2 ** z
+  let value = x % size
+  if (value < 0) value += size
+  return value
+}
+
+function lngLatToTile(lng: number, lat: number, z: number): { x: number; y: number } {
+  const size = 2 ** z
+  const x = Math.floor(((lng + 180) / 360) * size)
+  const latRad = (Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI) / 180
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * size)
+  return {
+    x: normalizeTileX(x, z),
+    y: Math.max(0, Math.min(size - 1, y)),
+  }
+}
+
+function buildMapTileUrl(mode: 'street' | 'satellite', z: number, x: number, y: number): string {
+  if (mode === 'satellite') {
+    return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
+  }
+  const shard = ['a', 'b', 'c'][(x + y) % 3] || 'a'
+  return `https://${shard}.tile.openstreetmap.org/${z}/${x}/${y}.png`
+}
+
+async function prefetchMapTileUrl(src: string, signal?: AbortSignal): Promise<void> {
+  if (!src || signal?.aborted) return
+  if (prefetchedMapTileUrls.has(src)) return
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), MAP_TILE_PREFETCH_TIMEOUT_MS)
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timer)
+        return
+      }
+      signal.addEventListener('abort', () => ctrl.abort(), { once: true })
+    }
+    await fetch(src, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'force-cache',
+      signal: ctrl.signal,
+    }).catch(() => null)
+    clearTimeout(timer)
+    prefetchedMapTileUrls.add(src)
+  } catch {
+    // ignore tile prefetch failures
+  }
+}
+
+async function prefetchMapTilesForView(
+  mode: 'street' | 'satellite',
+  center: [number, number],
+  zoom: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) return
+  const z = Math.max(2, Math.min(18, Math.round(zoom)))
+  const tile = lngLatToTile(center[0], center[1], z)
+  const urls: string[] = []
+  for (let dx = -MAP_TILE_PREFETCH_RADIUS; dx <= MAP_TILE_PREFETCH_RADIUS; dx += 1) {
+    for (let dy = -MAP_TILE_PREFETCH_RADIUS; dy <= MAP_TILE_PREFETCH_RADIUS; dy += 1) {
+      const x = normalizeTileX(tile.x + dx, z)
+      const y = tile.y + dy
+      const size = 2 ** z
+      if (y < 0 || y >= size) continue
+      urls.push(buildMapTileUrl(mode, z, x, y))
+    }
+  }
+  if (!urls.length) return
+
+  const queue = urls.slice()
+  const workers = Math.min(10, queue.length)
+  await Promise.all(Array.from({ length: workers }, async () => {
+    for (;;) {
+      if (signal?.aborted) return
+      const src = queue.shift()
+      if (!src) return
+      await prefetchMapTileUrl(src, signal)
+    }
+  }))
+}
+
 function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification {
   if (mode === 'satellite') {
     return {
@@ -1505,7 +1593,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const warmupAbortRef = useRef<AbortController | null>(null)
   const pointSyncRetryTimerRef = useRef<number | null>(null)
   const pointSyncRetryCountRef = useRef(0)
+  const pointLayerRecoveryAtRef = useRef(0)
   const mapInitWaitersRef = useRef<Array<() => void>>([])
+  const recoverPointLayerRef = useRef<() => void>(() => undefined)
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
@@ -1869,12 +1959,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.resize()
       map.stop()
       const offset = getCameraOffset(withDetailPanel)
+      const targetCenter: [number, number] = [geo[1], geo[0]]
+      void prefetchMapTilesForView(currentStyleModeRef.current, targetCenter, zoom).catch(() => null)
       map.flyTo({
-        center: [geo[1], geo[0]],
+        center: targetCenter,
         zoom,
         offset,
         essential: true,
-        duration: 780,
+        duration: 260,
       })
 
       // A second short recenter solves occasional visual drift while map canvas is still settling.
@@ -1882,14 +1974,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const activeMap = mapRef.current
         if (!activeMap) return
         activeMap.easeTo({
-          center: [geo[1], geo[0]],
+          center: targetCenter,
           zoom: Math.max(activeMap.getZoom(), zoom),
           offset,
           essential: true,
-          duration: 260,
+          duration: 120,
         })
         focusTimerRef.current = null
-      }, 360)
+      }, 180)
 
       return true
     },
@@ -1903,6 +1995,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const bounds = buildBounds(points)
       if (!bounds) return false
+      const center = bounds.getCenter()
 
       if (focusTimerRef.current != null) {
         window.clearTimeout(focusTimerRef.current)
@@ -1910,10 +2003,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
 
       map.resize()
+      void prefetchMapTilesForView(currentStyleModeRef.current, [center.lng, center.lat], Math.max(map.getZoom(), 11.8)).catch(() => null)
       map.fitBounds(bounds, {
         padding: getCameraPadding(true),
         maxZoom: 12.8,
-        duration: 840,
+        duration: 280,
         essential: true,
       })
       return true
@@ -2156,6 +2250,55 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ensurePointLayerSynced(true)
     })
   }, [ensurePointLayerSynced])
+
+  const recoverMissingPointLayer = useCallback(() => {
+    const map = mapRef.current
+    const activeDetail = detailRef.current
+    if (!map || !activeDetail || !map.isStyleLoaded()) return
+
+    const expectedCount = collectPointCoords(activeDetail.points).length
+    if (expectedCount === 0) return
+
+    const now = Date.now()
+    if (now - pointLayerRecoveryAtRef.current < 500) return
+
+    const hasMainLayer = Boolean(map.getLayer(POINT_LAYER_ID))
+    const hasSource = Boolean(map.getSource(POINT_SOURCE_ID))
+    let sourceCount = 0
+    try {
+      sourceCount = hasSource ? map.querySourceFeatures(POINT_SOURCE_ID).length : 0
+    } catch {
+      sourceCount = 0
+    }
+
+    let renderedCount = 0
+    try {
+      const canvas = map.getCanvas()
+      const viewport: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [0, 0],
+        [canvas.width, canvas.height],
+      ]
+      renderedCount = hasMainLayer
+        ? map.queryRenderedFeatures(viewport, { layers: [POINT_LAYER_ID, POINT_SELECTED_LAYER_ID] }).length
+        : 0
+    } catch {
+      renderedCount = 0
+    }
+
+    // If expected points exist but source/layer/render result is empty, rebuild aggressively.
+    if (!hasMainLayer || sourceCount === 0 || renderedCount === 0) {
+      pointLayerRecoveryAtRef.current = now
+      removePointLayer(map)
+      ensurePointLayerSynced(true)
+      window.setTimeout(() => {
+        ensurePointLayerSynced(true)
+      }, 90)
+    }
+  }, [ensurePointLayerSynced])
+
+  useEffect(() => {
+    recoverPointLayerRef.current = recoverMissingPointLayer
+  }, [recoverMissingPointLayer])
 
   const syncUrl = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -3148,12 +3291,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       renderWorldCopies: true,
       dragPan: true,
       scrollZoom: true,
+      fadeDuration: 0,
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     const syncMapViewState = () => {
       syncUrlRef.current()
       setMapZoom(map.getZoom())
+      recoverPointLayerRef.current()
     }
     map.on('moveend', syncMapViewState)
     map.on('zoomend', syncMapViewState)
@@ -3266,6 +3411,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const ok = syncPointLayer()
     if (!ok) {
       ensurePointLayerSynced(true)
+      return
+    }
+    if (detail) {
+      window.setTimeout(() => {
+        recoverPointLayerRef.current()
+      }, 60)
     }
   }, [ensurePointLayerSynced, syncPointLayer])
 
