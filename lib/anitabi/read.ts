@@ -83,7 +83,10 @@ function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: 
   return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(m)))
 }
 
-function buildBangumiWhere(city: string, q: string): Prisma.AnitabiBangumiWhereInput {
+export function buildBangumiWhere(input: { city?: string; q?: string; locale?: SupportedLocale }): Prisma.AnitabiBangumiWhereInput {
+  const city = normalizeText(input.city)
+  const q = normalizeText(input.q).toLowerCase()
+  const locale = input.locale
   return {
     mapEnabled: true,
     ...(city ? { city } : {}),
@@ -93,6 +96,11 @@ function buildBangumiWhere(city: string, q: string): Prisma.AnitabiBangumiWhereI
             { titleZh: { contains: q, mode: 'insensitive' } },
             { titleJaRaw: { contains: q, mode: 'insensitive' } },
             { city: { contains: q, mode: 'insensitive' } },
+            { i18n: { some: { ...(locale ? { language: locale } : {}), title: { contains: q, mode: 'insensitive' } } } },
+            { titleOriginal: { contains: q, mode: 'insensitive' } },
+            { titleRomaji: { contains: q, mode: 'insensitive' } },
+            { titleEnglish: { contains: q, mode: 'insensitive' } },
+            { aliases: { has: q } },
           ],
         }
       : {}),
@@ -228,7 +236,7 @@ export async function listBangumiCards(input: {
   const city = normalizeText(input.city)
   const take = clampInt(input.take, 18, 1, 200)
   const skip = clampInt(input.skip, 0, 0, 9999)
-  const bangumiWhere = buildBangumiWhere(city, q)
+  const bangumiWhere = buildBangumiWhere({ city, q, locale: input.locale })
 
   if (input.tab === 'nearby') {
     if (!input.userLocation) return []
@@ -332,7 +340,7 @@ export async function listAllBangumiCards(input: {
 }): Promise<{ items: AnitabiBangumiCard[]; total: number }> {
   const q = normalizeText(input.q)
   const city = normalizeText(input.city)
-  const bangumiWhere = buildBangumiWhere(city, q)
+  const bangumiWhere = buildBangumiWhere({ city, q, locale: input.locale })
 
   const [rows, total] = await Promise.all([
     input.prisma.anitabiBangumi.findMany({
@@ -549,7 +557,7 @@ export async function searchDataset(input: {
   locale: SupportedLocale
   q: string
 }): Promise<AnitabiSearchResultDTO> {
-  const q = normalizeText(input.q)
+  const q = normalizeText(input.q).toLowerCase()
   if (!q) return { bangumi: [], points: [], cities: [] }
 
   const [bangumiRows, pointRows, cityRows] = await Promise.all([
@@ -560,6 +568,11 @@ export async function searchDataset(input: {
           { titleZh: { contains: q, mode: 'insensitive' } },
           { titleJaRaw: { contains: q, mode: 'insensitive' } },
           { city: { contains: q, mode: 'insensitive' } },
+          { i18n: { some: { language: input.locale, title: { contains: q, mode: 'insensitive' } } } },
+          { titleOriginal: { contains: q, mode: 'insensitive' } },
+          { titleRomaji: { contains: q, mode: 'insensitive' } },
+          { titleEnglish: { contains: q, mode: 'insensitive' } },
+          { aliases: { has: q } },
         ],
       },
       include: {
@@ -607,8 +620,18 @@ export async function searchDataset(input: {
     }),
   ])
 
+  // Deduplicate bangumi by id (same bangumi may match multiple OR conditions)
+  const seenBangumiIds = new Set<number>()
+  const uniqueBangumi = bangumiRows
+    .filter((row) => {
+      if (seenBangumiIds.has(row.id)) return false
+      seenBangumiIds.add(row.id)
+      return true
+    })
+    .map((row) => toCard(input.locale, row))
+
   return {
-    bangumi: bangumiRows.map((row) => toCard(input.locale, row)),
+    bangumi: uniqueBangumi,
     points: pointRows.map((row) => toPointDto(input.locale, row)),
     cities: cityRows.map((row) => normalizeText(row.city)).filter(Boolean),
   }
