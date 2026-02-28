@@ -14,9 +14,8 @@ import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMod
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import { loadAllCards } from '@/lib/anitabi/client/bulkLoader'
-import { startDetailPrefetch } from '@/lib/anitabi/client/prefetcher'
 import { createProgressTracker } from '@/lib/anitabi/client/progressTracker'
-import type { CacheStore, LoadProgress } from '@/lib/anitabi/client/types'
+import type { CacheStore } from '@/lib/anitabi/client/types'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -33,6 +32,16 @@ let prefetchAbort: AbortController | null = null
 const POINT_IMAGE_PREFETCH_LIMIT = 24
 const POINT_IMAGE_PREFETCH_CACHE_MAX = 2400
 const prefetchedPointImageUrls = new Set<string>()
+const NON_NEARBY_TABS: Array<Exclude<AnitabiMapTab, 'nearby'>> = ['latest', 'recent', 'hot']
+const NEARBY_PRELOAD_PAGE_SIZE = 120
+const NEARBY_PRELOAD_MAX_PAGES = 40
+
+type WarmupProgress = {
+  phase: 'idle' | 'loading' | 'done'
+  percent: number
+  title: string
+  detail: string
+}
 
 type Props = {
   locale: SupportedLocale
@@ -345,6 +354,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: '正在加载更多作品…',
     loadedAll: '已加载全部作品',
     loadMoreFailed: '加载更多失败，请重试',
+    preloadTitle: '正在预加载地图数据',
+    preloadCards: '步骤 1/3：加载四个板块作品',
+    preloadDetails: '步骤 2/3：加载作品点位详情',
+    preloadImages: '步骤 3/3：预热点位截图',
+    preloadDone: '预加载完成',
     retry: '重试',
     noData: '暂无可用数据',
     searchNoData: '未找到匹配作品，试试更换关键词，或清空搜索查看附近点位',
@@ -443,6 +457,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: 'Loading more titles…',
     loadedAll: 'All titles loaded',
     loadMoreFailed: 'Failed to load more titles',
+    preloadTitle: 'Preloading map data',
+    preloadCards: 'Step 1/3: Loading cards for all tabs',
+    preloadDetails: 'Step 2/3: Loading work details',
+    preloadImages: 'Step 3/3: Warming point images',
+    preloadDone: 'Preload complete',
     retry: 'Retry',
     noData: 'No data yet',
     searchNoData: 'No matches found. Try another keyword, or clear search to see nearby works.',
@@ -541,6 +560,11 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: '作品をさらに読み込み中…',
     loadedAll: 'すべての作品を読み込みました',
     loadMoreFailed: '追加読み込みに失敗しました',
+    preloadTitle: '地図データを事前読み込み中',
+    preloadCards: 'ステップ 1/3：4タブの作品を読み込み',
+    preloadDetails: 'ステップ 2/3：作品のスポット詳細を読み込み',
+    preloadImages: 'ステップ 3/3：スポット画像を先読み',
+    preloadDone: '事前読み込み完了',
     retry: '再試行',
     noData: 'データがありません',
     searchNoData: '一致する作品が見つかりません。キーワードを変更するか、検索をクリアして近くの作品を表示してください',
@@ -1364,10 +1388,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const activeBangumiIdRef = useRef<number | null>(null)
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
-  const progressTrackerRef = useRef(createProgressTracker())
-  const bulkCardsRef = useRef<AnitabiBangumiCard[]>([])
-  const selectedCityRef = useRef('')
-  const detailPrefetchAbortRef = useRef<AbortController | null>(null)
+  const warmupAbortRef = useRef<AbortController | null>(null)
+  const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
+    initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
+  )
+  const loadedTabsRef = useRef<Set<AnitabiMapTab>>(new Set(initialBootstrap ? [initialBootstrap.tab] : []))
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1424,11 +1449,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [comparisonImageBlob, setComparisonImageBlob] = useState<Blob | null>(null)
   const [comparisonImageUrl, setComparisonImageUrl] = useState<string | null>(null)
   const [locationDialogOpen, setLocationDialogOpen] = useState(false)
-  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ phase: 'idle', loaded: 0, total: null, percent: 0 })
+  const [warmupProgress, setWarmupProgress] = useState<WarmupProgress>({
+    phase: 'idle',
+    percent: 0,
+    title: label.preloadTitle,
+    detail: '',
+  })
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
-  const [bulkCardsVersion, setBulkCardsVersion] = useState(0)
-
-  useEffect(() => { selectedCityRef.current = selectedCity }, [selectedCity])
+  const [tabCardsVersion, setTabCardsVersion] = useState(0)
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -2009,6 +2037,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (requestToken !== cardFeedTokenRef.current) return
       setBootstrap(json)
       setCards(json.cards)
+      tabCardsRef.current[tab] = json.cards
+      loadedTabsRef.current.add(tab)
+      setTabCardsVersion((prev) => prev + 1)
       setNextChunkIndex(1)
       setHasMoreCards(json.cards.length >= CARD_PAGE_SIZE)
     } finally {
@@ -2017,67 +2048,238 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [locale, query, selectedCity, tab, userLocation])
 
-  const loadBulkCardsForTab = useCallback(async () => {
-    if (tab === 'nearby') return
+  const updateWarmupProgress = useCallback((next: Partial<WarmupProgress>) => {
+    setWarmupProgress((prev) => ({
+      phase: next.phase || prev.phase,
+      percent: Math.max(0, Math.min(100, next.percent ?? prev.percent)),
+      title: next.title || label.preloadTitle,
+      detail: next.detail ?? prev.detail,
+    }))
+  }, [label.preloadTitle])
+
+  const loadNearbyCardsAll = useCallback(
+    async (location: UserLocation, signal?: AbortSignal): Promise<AnitabiBangumiCard[]> => {
+      const seen = new Set<number>()
+      const merged: AnitabiBangumiCard[] = []
+      for (let index = 0; index < NEARBY_PRELOAD_MAX_PAGES; index += 1) {
+        if (signal?.aborted) break
+        const params = new URLSearchParams()
+        params.set('locale', locale)
+        params.set('tab', 'nearby')
+        params.set('size', String(NEARBY_PRELOAD_PAGE_SIZE))
+        params.set('ulat', location.lat.toFixed(6))
+        params.set('ulng', location.lng.toFixed(6))
+        const res = await fetch(`/api/anitabi/chunks/${index}?${params.toString()}`, { method: 'GET', signal })
+        if (!res.ok) throw new Error(label.loadMoreFailed)
+        const json = (await res.json().catch(() => ({}))) as { items?: AnitabiBangumiCard[] }
+        const items = Array.isArray(json.items) ? json.items : []
+        for (const item of items) {
+          if (seen.has(item.id)) continue
+          seen.add(item.id)
+          merged.push(item)
+        }
+        if (items.length < NEARBY_PRELOAD_PAGE_SIZE) break
+      }
+      return merged
+    },
+    [label.loadMoreFailed, locale]
+  )
+
+  const loadBulkCardsForTab = useCallback(async (
+    targetTab: Exclude<AnitabiMapTab, 'nearby'>,
+    signal?: AbortSignal,
+  ): Promise<AnitabiBangumiCard[]> => {
     const store = cacheStoreRef.current
-    if (!store) return
+    if (!store) return []
+    const result = await loadAllCards({
+      locale,
+      tab: targetTab,
+      cacheStore: store,
+      progressTracker: createProgressTracker(),
+      signal,
+    })
+    const cardsRows = result?.cards || []
+    tabCardsRef.current[targetTab] = cardsRows
+    loadedTabsRef.current.add(targetTab)
+    setTabCardsVersion((prev) => prev + 1)
+    return cardsRows
+  }, [locale])
 
-    // Abort any previous detail prefetch
-    detailPrefetchAbortRef.current?.abort()
+  const ensureBangumiDetailCached = useCallback(async (id: number, signal?: AbortSignal): Promise<AnitabiBangumiDTO | null> => {
+    if (signal?.aborted) return null
+    if (!bangumiDetailCache.has(id) && cacheStoreRef.current) {
+      try {
+        const cachedL2 = await cacheStoreRef.current.getDetail(id)
+        if (cachedL2) {
+          cachePut(id, cachedL2.detail)
+        }
+      } catch {
+        // ignore L2 read failures
+      }
+    }
 
-    const requestToken = cardFeedTokenRef.current + 1
-    cardFeedTokenRef.current = requestToken
-    setLoading(true)
-    setCards([])
-    setCardsLoadError(null)
+    const cached = bangumiDetailCache.get(id)
+    if (cached) return cached
 
     try {
-      const result = await loadAllCards({
-        locale,
-        tab,
-        cacheStore: store,
-        progressTracker: progressTrackerRef.current,
+      const res = await fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, { method: 'GET', signal })
+      if (!res.ok || signal?.aborted) return null
+      const json = (await res.json()) as AnitabiBangumiDTO
+      if (signal?.aborted) return null
+      cachePut(id, json)
+      if (cacheStoreRef.current) {
+        cacheStoreRef.current.getVersion().then((version) => {
+          if (!version) return
+          cacheStoreRef.current?.putDetail(id, {
+            datasetVersion: version,
+            bangumiId: id,
+            detail: json,
+            cachedAt: Date.now(),
+          }).catch(() => null)
+        }).catch(() => null)
+      }
+      return json
+    } catch {
+      return null
+    }
+  }, [locale])
+
+  const warmupAllTabsData = useCallback(async (signal?: AbortSignal) => {
+    const store = cacheStoreRef.current
+    if (!store || signal?.aborted) return
+
+    setCardsLoadError(null)
+    updateWarmupProgress({ phase: 'loading', percent: 2, detail: label.preloadCards })
+
+    const tabsToLoad: AnitabiMapTab[] = userLocation
+      ? ['nearby', ...NON_NEARBY_TABS]
+      : [...NON_NEARBY_TABS]
+    const loadedByTab: Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>> = {}
+
+    for (let index = 0; index < tabsToLoad.length; index += 1) {
+      if (signal?.aborted) return
+      const currentTab = tabsToLoad[index]!
+      let rows: AnitabiBangumiCard[] = []
+      try {
+        if (currentTab === 'nearby') {
+          rows = await loadNearbyCardsAll(userLocation!, signal)
+          tabCardsRef.current.nearby = rows
+          loadedTabsRef.current.add('nearby')
+          setTabCardsVersion((prev) => prev + 1)
+        } else {
+          rows = await loadBulkCardsForTab(currentTab, signal)
+        }
+      } catch {
+        rows = []
+        tabCardsRef.current[currentTab] = rows
+        loadedTabsRef.current.add(currentTab)
+        setTabCardsVersion((prev) => prev + 1)
+      }
+      loadedByTab[currentTab] = rows
+      const cardsPercent = 8 + Math.round(((index + 1) / tabsToLoad.length) * 32)
+      updateWarmupProgress({
+        phase: 'loading',
+        percent: cardsPercent,
+        detail: `${label.preloadCards} (${index + 1}/${tabsToLoad.length})`,
       })
-      if (!result || requestToken !== cardFeedTokenRef.current) return
+    }
 
-      bulkCardsRef.current = result.cards
-      setBulkCardsVersion((prev) => prev + 1)
-      const currentCity = selectedCityRef.current
-      setCards(currentCity ? result.cards.filter(c => c.city === currentCity) : result.cards)
-      setHasMoreCards(false)
-      setLoadingMoreCards(false)
+    const uniqueIds = Array.from(
+      new Set(
+        Object.values(loadedByTab)
+          .flatMap((rows) => rows || [])
+          .map((row) => row.id)
+      )
+    )
+    const prioritizedIds = uniqueIds.slice()
+    const activeId = activeBangumiIdRef.current
+    if (activeId != null) {
+      const hit = prioritizedIds.indexOf(activeId)
+      if (hit > 0) {
+        prioritizedIds.splice(hit, 1)
+        prioritizedIds.unshift(activeId)
+      } else if (hit < 0) {
+        prioritizedIds.unshift(activeId)
+      }
+    }
 
-      // Background-prefetch all detail data with the currently opened title prioritized.
-      const prioritizedBangumiIds = result.cards.map((card) => card.id)
-      const activeBangumiId = activeBangumiIdRef.current
-      if (activeBangumiId != null) {
-        const idx = prioritizedBangumiIds.indexOf(activeBangumiId)
-        if (idx > 0) {
-          prioritizedBangumiIds.splice(idx, 1)
-          prioritizedBangumiIds.unshift(activeBangumiId)
-        } else if (idx < 0) {
-          prioritizedBangumiIds.unshift(activeBangumiId)
+    const loadedDetails: AnitabiBangumiDTO[] = []
+    if (prioritizedIds.length > 0) {
+      updateWarmupProgress({
+        phase: 'loading',
+        percent: 42,
+        detail: `${label.preloadDetails} (0/${prioritizedIds.length})`,
+      })
+      let done = 0
+      const queue = prioritizedIds.slice()
+      const workerCount = Math.min(6, queue.length)
+
+      await Promise.all(Array.from({ length: workerCount }, async () => {
+        for (;;) {
+          if (signal?.aborted) return
+          const id = queue.shift()
+          if (id == null) return
+          const detailRow = await ensureBangumiDetailCached(id, signal)
+          if (detailRow) loadedDetails.push(detailRow)
+          done += 1
+          if (done === prioritizedIds.length || done % 8 === 0) {
+            const detailPercent = 42 + Math.round((done / prioritizedIds.length) * 44)
+            updateWarmupProgress({
+              phase: 'loading',
+              percent: detailPercent,
+              detail: `${label.preloadDetails} (${done}/${prioritizedIds.length})`,
+            })
+          }
+        }
+      }))
+    }
+
+    if (signal?.aborted) return
+    if (loadedDetails.length > 0) {
+      updateWarmupProgress({
+        phase: 'loading',
+        percent: 88,
+        detail: `${label.preloadImages} (0/${loadedDetails.length})`,
+      })
+      let imageDone = 0
+      for (const detailRow of loadedDetails) {
+        if (signal?.aborted) return
+        warmPointImages(detailRow.points, 8)
+        imageDone += 1
+        if (imageDone === loadedDetails.length || imageDone % 8 === 0) {
+          const imagePercent = 88 + Math.round((imageDone / loadedDetails.length) * 12)
+          updateWarmupProgress({
+            phase: 'loading',
+            percent: imagePercent,
+            detail: `${label.preloadImages} (${imageDone}/${loadedDetails.length})`,
+          })
+        }
+        if (imageDone % 12 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0))
         }
       }
-      const prefetchAc = new AbortController()
-      detailPrefetchAbortRef.current = prefetchAc
-      startDetailPrefetch({
-        bangumiIds: prioritizedBangumiIds,
-        locale,
-        cacheStore: store,
-        signal: prefetchAc.signal,
-        concurrency: 4,
-      })
-    } catch {
-      if (requestToken !== cardFeedTokenRef.current) return
-      setCardsLoadError(label.loadMoreFailed)
-    } finally {
-      if (requestToken !== cardFeedTokenRef.current) return
-      setLoading(false)
     }
-  }, [locale, tab, label.loadMoreFailed])
+
+    updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
+    window.setTimeout(() => {
+      setWarmupProgress((prev) => (prev.phase === 'done'
+        ? { ...prev, phase: 'idle', percent: 100, detail: label.preloadDone }
+        : prev))
+    }, 700)
+  }, [
+    ensureBangumiDetailCached,
+    label.preloadCards,
+    label.preloadDetails,
+    label.preloadDone,
+    label.preloadImages,
+    loadBulkCardsForTab,
+    loadNearbyCardsAll,
+    updateWarmupProgress,
+    userLocation,
+  ])
 
   const loadMoreCards = useCallback(async () => {
+    if (tab !== 'nearby') return
     if (loading || loadingMoreCards || !hasMoreCards) return
     if (tab === 'nearby' && !userLocation) return
     const requestToken = cardFeedTokenRef.current
@@ -2136,6 +2338,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
       setDetailLoading(true)
       const card = cards.find((c) => c.id === id)
+        || Object.values(tabCardsRef.current).flatMap((rows) => rows || []).find((c) => c.id === id)
       if (card) {
         setDetail({
           card,
@@ -2298,11 +2501,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
-      detailPrefetchAbortRef.current?.abort()
+      warmupAbortRef.current?.abort()
     }
   }, [])
 
-  // Initialize L2 cache store and progress tracker subscription
+  // Initialize L2 cache store
   useEffect(() => {
     let cancelled = false
     createCacheStore().then((store) => {
@@ -2311,42 +2514,80 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         setCacheStoreReady(true)
       }
     })
-    const unsub = progressTrackerRef.current.onProgress(setLoadProgress)
     return () => {
       cancelled = true
-      unsub()
     }
   }, [])
 
-  // Nearby tab: use existing bootstrap + chunks flow
+  // Start full warmup once cache is ready; rerun when location becomes available.
+  useEffect(() => {
+    if (!cacheStoreReady) return
+    const ac = new AbortController()
+    warmupAbortRef.current?.abort()
+    warmupAbortRef.current = ac
+    const hasAnyPreloadedCards = Object.values(tabCardsRef.current).some((rows) => Array.isArray(rows) && rows.length > 0)
+    if (!hasAnyPreloadedCards) {
+      setLoading(true)
+      setCards([])
+    }
+    warmupAllTabsData(ac.signal).catch(() => {
+      if (ac.signal.aborted) return
+      setCardsLoadError(label.loadMoreFailed)
+      updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+    })
+    return () => {
+      ac.abort()
+      if (warmupAbortRef.current === ac) warmupAbortRef.current = null
+    }
+  }, [cacheStoreReady, label.loadMoreFailed, updateWarmupProgress, warmupAllTabsData])
+
+  // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
     if (tab !== 'nearby') return
+    const nearbyCards = tabCardsRef.current.nearby || []
+    if (loadedTabsRef.current.has('nearby')) {
+      const hasSyncedSearchResult = normalizeSearchKeyword(queryInput) === normalizeSearchKeyword(query)
+      setCards(filterBulkCardsBySearch(nearbyCards, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
+      setHasMoreCards(false)
+      setLoading(false)
+      return
+    }
+    if (!userLocation) {
+      setCards([])
+      setHasMoreCards(false)
+      setLoading(false)
+      return
+    }
+    if (warmupProgress.phase === 'loading') return
     if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
       ssrBootstrapUsedRef.current = false
+      tabCardsRef.current.nearby = initialBootstrap.cards
+      loadedTabsRef.current.add('nearby')
+      setTabCardsVersion((prev) => prev + 1)
       setHasMoreCards((initialBootstrap?.cards.length ?? 0) >= CARD_PAGE_SIZE)
       return
     }
     loadBootstrap().catch(() => null)
-  }, [tab, loadBootstrap])
-
-  // Non-nearby tabs: bulk load all cards
-  useEffect(() => {
-    if (tab === 'nearby') return
-    if (!cacheStoreReady) return
-    if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
-      ssrBootstrapUsedRef.current = false
-    }
-    loadBulkCardsForTab().catch(() => null)
-  }, [tab, loadBulkCardsForTab, cacheStoreReady])
+  }, [initialBootstrap, loadBootstrap, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, userLocation, warmupProgress.phase])
 
   // Client-side city + keyword filtering for non-nearby tabs
   useEffect(() => {
     if (tab === 'nearby') return
-    const all = bulkCardsRef.current
-    if (!all.length) return
+    const isTabLoaded = loadedTabsRef.current.has(tab)
+    if (!isTabLoaded) {
+      setCards([])
+      setHasMoreCards(false)
+      if (cacheStoreReady) {
+        setLoading(warmupProgress.phase === 'loading')
+      }
+      return
+    }
+    const all = tabCardsRef.current[tab] || []
     const hasSyncedSearchResult = normalizeSearchKeyword(queryInput) === normalizeSearchKeyword(query)
     setCards(filterBulkCardsBySearch(all, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
-  }, [bulkCardsVersion, query, queryInput, searchResult, selectedCity, tab])
+    setHasMoreCards(false)
+    setLoading(false)
+  }, [cacheStoreReady, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, warmupProgress.phase])
 
   useEffect(() => {
     if (loading || loadingMoreCards || !hasMoreCards) return
@@ -3883,7 +4124,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
   return (
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
-      <MapLoadingProgress percent={loadProgress.percent} visible={loadProgress.phase === 'loading'} />
+      <MapLoadingProgress
+        percent={warmupProgress.percent}
+        visible={warmupProgress.phase !== 'idle'}
+        title={warmupProgress.title}
+        detail={warmupProgress.detail}
+      />
       <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
         {isDesktop ? (
           <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
