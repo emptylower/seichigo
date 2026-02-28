@@ -21,14 +21,29 @@ let glossaryCache: Glossary | null = null
 function loadGlossary(): Glossary {
   if (glossaryCache) return glossaryCache
   
-  const glossaryPath = path.join(process.cwd(), 'lib/i18n/glossary.json')
-  if (!fs.existsSync(glossaryPath)) {
-    console.warn('⚠️  Glossary not found, term protection disabled')
-    glossaryCache = {}
-    return glossaryCache
+  const manualPath = path.join(process.cwd(), 'lib/i18n/glossary.json')
+  const generatedPath = path.join(process.cwd(), 'lib/i18n/glossary.generated.json')
+  
+  let manual: Glossary = {}
+  let generated: Glossary = {}
+  
+  if (fs.existsSync(manualPath)) {
+    manual = JSON.parse(fs.readFileSync(manualPath, 'utf-8')) as Glossary
+  } else {
+    console.warn('⚠️  Manual glossary not found')
   }
   
-  glossaryCache = JSON.parse(fs.readFileSync(glossaryPath, 'utf-8')) as Glossary
+  if (fs.existsSync(generatedPath)) {
+    generated = JSON.parse(fs.readFileSync(generatedPath, 'utf-8')) as Glossary
+  }
+  
+  // Merge: manual entries always win over generated
+  glossaryCache = { ...generated, ...manual }
+  
+  if (Object.keys(glossaryCache).length === 0) {
+    console.warn('⚠️  No glossary entries loaded, term protection disabled')
+  }
+  
   return glossaryCache
 }
 
