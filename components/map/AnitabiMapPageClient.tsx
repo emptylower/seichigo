@@ -30,6 +30,9 @@ function cachePut(id: number, data: AnitabiBangumiDTO) {
 }
 // AbortController for in-flight prefetch
 let prefetchAbort: AbortController | null = null
+const POINT_IMAGE_PREFETCH_LIMIT = 24
+const POINT_IMAGE_PREFETCH_CACHE_MAX = 2400
+const prefetchedPointImageUrls = new Set<string>()
 
 type Props = {
   locale: SupportedLocale
@@ -344,7 +347,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: '加载更多失败，请重试',
     retry: '重试',
     noData: '暂无可用数据',
-    searchNoData: '未找到匹配作品，试试更换关键词或清空搜索',
+    searchNoData: '未找到匹配作品，试试更换关键词，或清空搜索查看附近点位',
     points: '地标',
     screenshots: '截图',
     share: '分享',
@@ -442,7 +445,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: 'Failed to load more titles',
     retry: 'Retry',
     noData: 'No data yet',
-    searchNoData: 'No matches found. Try another keyword or clear search.',
+    searchNoData: 'No matches found. Try another keyword, or clear search to see nearby works.',
     points: 'Points',
     screenshots: 'Shots',
     share: 'Share',
@@ -540,7 +543,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: '追加読み込みに失敗しました',
     retry: '再試行',
     noData: 'データがありません',
-    searchNoData: '一致する作品が見つかりません。キーワードを変更するか検索をクリアしてください',
+    searchNoData: '一致する作品が見つかりません。キーワードを変更するか、検索をクリアして近くの作品を表示してください',
     points: 'スポット',
     screenshots: '画像',
     share: '共有',
@@ -729,6 +732,25 @@ function normalizePointImageSaveUrl(input: string | null | undefined): string | 
     return url.toString()
   } catch {
     return raw
+  }
+}
+
+function warmPointImages(points: AnitabiBangumiDTO['points'], limit = POINT_IMAGE_PREFETCH_LIMIT): void {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') return
+  let count = 0
+  for (const point of points) {
+    if (count >= limit) break
+    const src = normalizePointImageUrl(point.image)
+    if (!src || prefetchedPointImageUrls.has(src)) continue
+    if (prefetchedPointImageUrls.size >= POINT_IMAGE_PREFETCH_CACHE_MAX) {
+      prefetchedPointImageUrls.clear()
+    }
+    prefetchedPointImageUrls.add(src)
+    const img = new Image()
+    img.decoding = 'async'
+    img.loading = 'eager'
+    img.src = src
+    count += 1
   }
 }
 
@@ -1324,6 +1346,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
   const syncPointLayerRef = useRef<() => boolean>(() => false)
+  const syncRangeOverlayRef = useRef<() => boolean>(() => false)
   const detailRef = useRef<AnitabiBangumiDTO | null>(null)
   const cardsContainerRef = useRef<HTMLDivElement | null>(null)
   const cardsLoadMoreRef = useRef<HTMLDivElement | null>(null)
@@ -1910,6 +1933,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return true
   }, [])
 
+  useEffect(() => {
+    syncRangeOverlayRef.current = syncRangeOverlay
+  }, [syncRangeOverlay])
+
   const syncUrl = useCallback(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams()
@@ -2020,14 +2047,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setHasMoreCards(false)
       setLoadingMoreCards(false)
 
-      // Background-prefetch detail data for first 20 visible cards
+      // Background-prefetch all detail data with the currently opened title prioritized.
+      const prioritizedBangumiIds = result.cards.map((card) => card.id)
+      const activeBangumiId = activeBangumiIdRef.current
+      if (activeBangumiId != null) {
+        const idx = prioritizedBangumiIds.indexOf(activeBangumiId)
+        if (idx > 0) {
+          prioritizedBangumiIds.splice(idx, 1)
+          prioritizedBangumiIds.unshift(activeBangumiId)
+        } else if (idx < 0) {
+          prioritizedBangumiIds.unshift(activeBangumiId)
+        }
+      }
       const prefetchAc = new AbortController()
       detailPrefetchAbortRef.current = prefetchAc
       startDetailPrefetch({
-        bangumiIds: result.cards.slice(0, 20).map(c => c.id),
+        bangumiIds: prioritizedBangumiIds,
         locale,
         cacheStore: store,
         signal: prefetchAc.signal,
+        concurrency: 4,
       })
     } catch {
       if (requestToken !== cardFeedTokenRef.current) return
@@ -2124,6 +2163,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const cached = bangumiDetailCache.get(id)
         if (cached) {
           setDetail(cached)
+          warmPointImages(cached.points)
           const map = mapRef.current
           if (map) {
             const geoPoints = collectPointCoords(cached.points)
@@ -2172,6 +2212,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         // Guard: if user already switched to another bangumi, discard this response
         if (activeBangumiIdRef.current !== id) return
         setDetail(json)
+        warmPointImages(json.points)
 
         const map = mapRef.current
         if (map) {
@@ -2438,7 +2479,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setMapReady(true)
       resizeMap()
       syncPointLayerRef.current()
-      syncRangeOverlay()
+      syncRangeOverlayRef.current()
     })
     const rafId = window.requestAnimationFrame(resizeMap)
     window.addEventListener('resize', resizeMap)
@@ -2474,16 +2515,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!map) return
     map.once('idle', () => {
       syncPointLayerRef.current()
-      syncRangeOverlay()
+      syncRangeOverlayRef.current()
     })
     map.setStyle(buildStyle(styleMode))
-  }, [styleMode, syncRangeOverlay])
+  }, [styleMode])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     if (!syncPointLayer()) {
-      map.once('idle', () => syncPointLayer())
+      map.once('idle', () => syncPointLayerRef.current())
     }
   }, [syncPointLayer])
 
@@ -2494,7 +2535,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!detail) {
       rangeOverlayRef.current = null
       if (!syncRangeOverlay()) {
-        map.once('idle', () => syncRangeOverlay())
+        map.once('idle', () => syncRangeOverlayRef.current())
       }
       return
     }
@@ -2522,7 +2563,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       : null
 
     if (!syncRangeOverlay()) {
-      map.once('idle', () => syncRangeOverlay())
+      map.once('idle', () => syncRangeOverlayRef.current())
     }
   }, [detail, syncRangeOverlay])
 
