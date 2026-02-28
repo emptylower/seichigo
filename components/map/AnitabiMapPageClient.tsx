@@ -36,9 +36,17 @@ const prefetchingPointImageUrls = new Set<string>()
 const NON_NEARBY_TABS: Array<Exclude<AnitabiMapTab, 'nearby'>> = ['latest', 'recent', 'hot']
 const NEARBY_PRELOAD_PAGE_SIZE = 120
 const NEARBY_PRELOAD_MAX_PAGES = 40
-const WARMUP_IMAGE_MAX = 25000
-const WARMUP_IMAGE_CONCURRENCY = 6
-const WARMUP_IMAGE_TIMEOUT_MS = 20000
+const WARMUP_BLOCKING_BUDGET_MS = 35000
+const WARMUP_DETAIL_MIN = 72
+const WARMUP_DETAIL_MAX = 260
+const WARMUP_DETAIL_CONCURRENCY = 10
+const WARMUP_IMAGE_MAX = 1200
+const WARMUP_IMAGE_CONCURRENCY = 10
+const WARMUP_IMAGE_TIMEOUT_MS = 4500
+const WARMUP_IMAGE_POINTS_PER_DETAIL = 3
+const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 96
+const WARMUP_BG_DETAIL_CONCURRENCY = 4
+const WARMUP_BG_POINTS_PER_DETAIL = 2
 
 type WarmupProgress = {
   phase: 'idle' | 'loading' | 'done'
@@ -2302,33 +2310,42 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       : [...NON_NEARBY_TABS]
     const loadedByTab: Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>> = {}
 
-    for (let index = 0; index < tabsToLoad.length; index += 1) {
-      if (signal?.aborted) return
-      const currentTab = tabsToLoad[index]!
-      let rows: AnitabiBangumiCard[] = []
-      try {
-        if (currentTab === 'nearby') {
-          rows = await loadNearbyCardsAll(userLocation!, signal)
-          tabCardsRef.current.nearby = rows
-          loadedTabsRef.current.add('nearby')
+    let tabsDone = 0
+    const tabQueue = tabsToLoad.slice()
+    const tabWorkers = Math.min(4, tabQueue.length)
+    await Promise.all(Array.from({ length: tabWorkers }, async () => {
+      for (;;) {
+        if (signal?.aborted) return
+        const currentTab = tabQueue.shift()
+        if (!currentTab) return
+
+        let rows: AnitabiBangumiCard[] = []
+        try {
+          if (currentTab === 'nearby') {
+            rows = await loadNearbyCardsAll(userLocation!, signal)
+            tabCardsRef.current.nearby = rows
+            loadedTabsRef.current.add('nearby')
+            setTabCardsVersion((prev) => prev + 1)
+          } else {
+            rows = await loadBulkCardsForTab(currentTab, signal)
+          }
+        } catch {
+          rows = []
+          tabCardsRef.current[currentTab] = rows
+          loadedTabsRef.current.add(currentTab)
           setTabCardsVersion((prev) => prev + 1)
-        } else {
-          rows = await loadBulkCardsForTab(currentTab, signal)
         }
-      } catch {
-        rows = []
-        tabCardsRef.current[currentTab] = rows
-        loadedTabsRef.current.add(currentTab)
-        setTabCardsVersion((prev) => prev + 1)
+
+        loadedByTab[currentTab] = rows
+        tabsDone += 1
+        const cardsPercent = 8 + Math.round((tabsDone / tabsToLoad.length) * 32)
+        updateWarmupProgress({
+          phase: 'loading',
+          percent: cardsPercent,
+          detail: `${label.preloadCards} (${tabsDone}/${tabsToLoad.length})`,
+        })
       }
-      loadedByTab[currentTab] = rows
-      const cardsPercent = 8 + Math.round(((index + 1) / tabsToLoad.length) * 32)
-      updateWarmupProgress({
-        phase: 'loading',
-        percent: cardsPercent,
-        detail: `${label.preloadCards} (${index + 1}/${tabsToLoad.length})`,
-      })
-    }
+    }))
 
     const uniqueIds = Array.from(
       new Set(
@@ -2349,38 +2366,49 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
     }
 
+    const warmupStartedAt = Date.now()
+    const blockingDeadline = warmupStartedAt + WARMUP_BLOCKING_BUDGET_MS
+
     const loadedDetails: AnitabiBangumiDTO[] = []
-    if (prioritizedIds.length > 0) {
+    const detailQueue = prioritizedIds.slice()
+    const detailTarget = Math.min(prioritizedIds.length, WARMUP_DETAIL_MAX)
+    if (detailTarget > 0) {
       updateWarmupProgress({
         phase: 'loading',
-        percent: 42,
-        detail: `${label.preloadDetails} (0/${prioritizedIds.length})`,
+        percent: 40,
+        detail: `${label.preloadDetails} (0/${detailTarget})`,
       })
-      let done = 0
-      const queue = prioritizedIds.slice()
-      const workerCount = Math.min(6, queue.length)
+      let detailDone = 0
+      const workerCount = Math.min(WARMUP_DETAIL_CONCURRENCY, detailQueue.length)
 
       await Promise.all(Array.from({ length: workerCount }, async () => {
         for (;;) {
           if (signal?.aborted) return
-          const id = queue.shift()
+          if (detailDone >= detailTarget) return
+          if (Date.now() >= blockingDeadline && detailDone >= Math.min(WARMUP_DETAIL_MIN, detailTarget)) return
+
+          const id = detailQueue.shift()
           if (id == null) return
+
           const detailRow = await ensureBangumiDetailCached(id, signal)
           if (detailRow) loadedDetails.push(detailRow)
-          done += 1
-          if (done === prioritizedIds.length || done % 8 === 0) {
-            const detailPercent = 42 + Math.round((done / prioritizedIds.length) * 44)
+
+          detailDone += 1
+          if (detailDone === detailTarget || detailDone % 6 === 0) {
+            const detailPercent = 40 + Math.round((detailDone / detailTarget) * 38)
             updateWarmupProgress({
               phase: 'loading',
               percent: detailPercent,
-              detail: `${label.preloadDetails} (${done}/${prioritizedIds.length})`,
+              detail: `${label.preloadDetails} (${detailDone}/${detailTarget})`,
             })
           }
         }
       }))
     }
 
+    const remainingDetailIds = detailQueue.slice()
     if (signal?.aborted) return
+
     const queuedImages = new Set<string>()
     const imageQueue: string[] = []
     const enqueueImage = (src: string | null | undefined, priority = false) => {
@@ -2403,7 +2431,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     if (activeDetail) {
       enqueueImage(normalizeCoverImageUrl(activeDetail.card.cover), true)
-      for (const point of activeDetail.points) {
+      for (const point of activeDetail.points.slice(0, WARMUP_ACTIVE_DETAIL_IMAGE_MAX)) {
         enqueueImage(normalizePointImageUrl(point.image), true)
       }
     }
@@ -2417,35 +2445,42 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     for (const detailRow of loadedDetails) {
       const highPriority = Boolean(activeDetail && detailRow.card.id === activeDetail.card.id)
       enqueueImage(normalizeCoverImageUrl(detailRow.card.cover), highPriority)
-      for (const point of detailRow.points) {
+      const pointLimit = highPriority ? WARMUP_ACTIVE_DETAIL_IMAGE_MAX : WARMUP_IMAGE_POINTS_PER_DETAIL
+      for (const point of detailRow.points.slice(0, pointLimit)) {
         enqueueImage(normalizePointImageUrl(point.image), highPriority)
       }
     }
 
-    if (imageQueue.length > 0) {
+    const blockingImageQueue = imageQueue.slice(0, WARMUP_IMAGE_MAX)
+    if (blockingImageQueue.length > 0) {
       updateWarmupProgress({
         phase: 'loading',
-        percent: 88,
-        detail: `${label.preloadImages} (0/${imageQueue.length})`,
+        percent: 80,
+        detail: `${label.preloadImages} (0/${blockingImageQueue.length})`,
       })
 
       let imageDone = 0
-      const queue = imageQueue.slice()
-      const workers = Math.min(WARMUP_IMAGE_CONCURRENCY, queue.length)
+      const imageQueueRef = blockingImageQueue.slice()
+      const minImageTarget = Math.min(120, blockingImageQueue.length)
+      const workers = Math.min(WARMUP_IMAGE_CONCURRENCY, imageQueueRef.length)
 
       await Promise.all(Array.from({ length: workers }, async () => {
         for (;;) {
           if (signal?.aborted) return
-          const src = queue.shift()
+          if (imageDone >= blockingImageQueue.length) return
+          if (Date.now() >= blockingDeadline && imageDone >= minImageTarget) return
+
+          const src = imageQueueRef.shift()
           if (!src) return
+
           await prefetchImageUrl(src, signal).catch(() => null)
           imageDone += 1
-          if (imageDone === imageQueue.length || imageDone % 6 === 0) {
-            const imagePercent = 88 + Math.round((imageDone / imageQueue.length) * 12)
+          if (imageDone === blockingImageQueue.length || imageDone % 8 === 0) {
+            const imagePercent = 80 + Math.round((imageDone / blockingImageQueue.length) * 20)
             updateWarmupProgress({
               phase: 'loading',
               percent: imagePercent,
-              detail: `${label.preloadImages} (${imageDone}/${imageQueue.length})`,
+              detail: `${label.preloadImages} (${imageDone}/${blockingImageQueue.length})`,
             })
           }
         }
@@ -2458,6 +2493,35 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         ? { ...prev, phase: 'idle', percent: 100, detail: label.preloadDone }
         : prev))
     }, 700)
+
+    // Keep warming remaining details in background, but do not block map interaction.
+    if (!signal?.aborted && remainingDetailIds.length > 0) {
+      const bgQueue = remainingDetailIds.slice()
+      void Promise.all(Array.from({ length: Math.min(WARMUP_BG_DETAIL_CONCURRENCY, bgQueue.length) }, async () => {
+        for (;;) {
+          if (signal?.aborted) return
+          const id = bgQueue.shift()
+          if (id == null) return
+          const detailRow = await ensureBangumiDetailCached(id, signal)
+          if (!detailRow || signal?.aborted) continue
+
+          const cover = normalizeCoverImageUrl(detailRow.card.cover)
+          if (cover) {
+            await prefetchImageUrl(cover, signal).catch(() => null)
+          }
+
+          let warmed = 0
+          for (const point of detailRow.points) {
+            if (signal?.aborted) return
+            if (warmed >= WARMUP_BG_POINTS_PER_DETAIL) break
+            const src = normalizePointImageUrl(point.image)
+            if (!src || prefetchedPointImageUrls.has(src) || prefetchingPointImageUrls.has(src)) continue
+            warmed += 1
+            await prefetchImageUrl(src, signal).catch(() => null)
+          }
+        }
+      })).catch(() => null)
+    }
   }, [
     ensureBangumiDetailCached,
     label.preloadCards,
