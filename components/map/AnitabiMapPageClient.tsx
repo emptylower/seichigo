@@ -359,6 +359,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadDetails: '步骤 2/3：加载作品点位详情',
     preloadImages: '步骤 3/3：预热点位截图',
     preloadDone: '预加载完成',
+    preloadWait: '正在加载地图，请稍候…',
     retry: '重试',
     noData: '暂无可用数据',
     searchNoData: '未找到匹配作品，试试更换关键词，或清空搜索查看附近点位',
@@ -462,6 +463,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadDetails: 'Step 2/3: Loading work details',
     preloadImages: 'Step 3/3: Warming point images',
     preloadDone: 'Preload complete',
+    preloadWait: 'Preparing map data, please wait…',
     retry: 'Retry',
     noData: 'No data yet',
     searchNoData: 'No matches found. Try another keyword, or clear search to see nearby works.',
@@ -565,6 +567,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadDetails: 'ステップ 2/3：作品のスポット詳細を読み込み',
     preloadImages: 'ステップ 3/3：スポット画像を先読み',
     preloadDone: '事前読み込み完了',
+    preloadWait: '地図データを準備中です。少々お待ちください…',
     retry: '再試行',
     noData: 'データがありません',
     searchNoData: '一致する作品が見つかりません。キーワードを変更するか、検索をクリアして近くの作品を表示してください',
@@ -1389,6 +1392,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
+  const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
   )
@@ -1965,6 +1969,24 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     syncRangeOverlayRef.current = syncRangeOverlay
   }, [syncRangeOverlay])
 
+  const ensurePointLayerSynced = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!syncPointLayerRef.current()) {
+      map.once('idle', () => syncPointLayerRef.current())
+    }
+  }, [])
+
+  const ensurePointLayerSyncedSoon = useCallback(() => {
+    if (typeof window === 'undefined') {
+      ensurePointLayerSynced()
+      return
+    }
+    window.requestAnimationFrame(() => {
+      ensurePointLayerSynced()
+    })
+  }, [ensurePointLayerSynced])
+
   const syncUrl = useCallback(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams()
@@ -2367,6 +2389,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         if (cached) {
           setDetail(cached)
           warmPointImages(cached.points)
+          ensurePointLayerSyncedSoon()
           const map = mapRef.current
           if (map) {
             const geoPoints = collectPointCoords(cached.points)
@@ -2416,6 +2439,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         if (activeBangumiIdRef.current !== id) return
         setDetail(json)
         warmPointImages(json.points)
+        ensurePointLayerSyncedSoon()
 
         const map = mapRef.current
         if (map) {
@@ -2457,7 +2481,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         setDetailLoading(false)
       }
     },
-    [cards, fitBangumiBounds, focusGeo, isDesktop, locale]
+    [cards, ensurePointLayerSyncedSoon, fitBangumiBounds, focusGeo, isDesktop, locale]
   )
 
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2754,6 +2778,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    if (currentStyleModeRef.current === styleMode) return
+    currentStyleModeRef.current = styleMode
     map.once('idle', () => {
       syncPointLayerRef.current()
       syncRangeOverlayRef.current()
@@ -3421,6 +3447,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
   ]
+  const warmupBlocking = warmupProgress.phase === 'loading'
   const showNearbyLocationCta = !loading && tab === 'nearby' && !userLocation
   const hasSearchQuery = normalizeSearchKeyword(query).length > 0
 
@@ -4126,10 +4153,25 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <MapLoadingProgress
         percent={warmupProgress.percent}
-        visible={warmupProgress.phase !== 'idle'}
+        visible={warmupProgress.phase === 'loading'}
         title={warmupProgress.title}
         detail={warmupProgress.detail}
       />
+      {warmupBlocking ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-sm rounded-2xl border border-white/30 bg-white/95 p-4 text-center shadow-2xl">
+            <div className="text-sm font-semibold text-slate-800">{label.preloadWait}</div>
+            <div className="mt-1 text-xs text-slate-600">{warmupProgress.detail}</div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.min(Math.max(warmupProgress.percent, 0), 100)}%` }}
+              />
+            </div>
+            <div className="mt-2 text-xs font-medium text-slate-600">{Math.round(warmupProgress.percent)}%</div>
+          </div>
+        </div>
+      ) : null}
       <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] lg:grid-rows-1">
         {isDesktop ? (
           <aside className="flex h-full min-h-0 flex-col border-r border-slate-200 bg-white">
