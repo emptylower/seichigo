@@ -269,6 +269,54 @@ function getRouteBookIdFromCreateResponse(value: unknown): string | null {
   return null
 }
 
+function normalizeSearchKeyword(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function filterBulkCardsBySearch(
+  cards: AnitabiBangumiCard[],
+  query: string,
+  selectedCity: string,
+  searchResult: SearchResult | null
+): AnitabiBangumiCard[] {
+  const byCity = selectedCity
+    ? cards.filter((card) => card.city === selectedCity)
+    : cards
+
+  const normalizedQuery = normalizeSearchKeyword(query)
+  if (!normalizedQuery) return byCity
+
+  if (searchResult) {
+    const matchedBangumiIds = new Set<number>()
+    for (const item of searchResult.bangumi) {
+      matchedBangumiIds.add(item.id)
+    }
+    for (const point of searchResult.points) {
+      matchedBangumiIds.add(point.bangumiId)
+    }
+
+    const matchedCities = new Set(
+      searchResult.cities
+        .map((city) => String(city).trim())
+        .filter((city) => city.length > 0)
+    )
+
+    if (matchedBangumiIds.size > 0 || matchedCities.size > 0) {
+      return byCity.filter((card) => {
+        if (matchedBangumiIds.has(card.id)) return true
+        const city = String(card.city || '').trim()
+        return city ? matchedCities.has(city) : false
+      })
+    }
+  }
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean)
+  return byCity.filter((card) => {
+    const haystack = normalizeSearchKeyword([card.title, card.titleZh, card.city, card.cat].filter(Boolean).join(' '))
+    return tokens.every((token) => haystack.includes(token))
+  })
+}
+
 const L: Record<SupportedLocale, Record<string, string>> = {
   zh: {
     title: '巡礼地图',
@@ -296,6 +344,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: '加载更多失败，请重试',
     retry: '重试',
     noData: '暂无可用数据',
+    searchNoData: '未找到匹配作品，试试更换关键词或清空搜索',
     points: '地标',
     screenshots: '截图',
     share: '分享',
@@ -393,6 +442,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: 'Failed to load more titles',
     retry: 'Retry',
     noData: 'No data yet',
+    searchNoData: 'No matches found. Try another keyword or clear search.',
     points: 'Points',
     screenshots: 'Shots',
     share: 'Share',
@@ -490,6 +540,7 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: '追加読み込みに失敗しました',
     retry: '再試行',
     noData: 'データがありません',
+    searchNoData: '一致する作品が見つかりません。キーワードを変更するか検索をクリアしてください',
     points: 'スポット',
     screenshots: '画像',
     share: '共有',
@@ -1352,6 +1403,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [locationDialogOpen, setLocationDialogOpen] = useState(false)
   const [loadProgress, setLoadProgress] = useState<LoadProgress>({ phase: 'idle', loaded: 0, total: null, percent: 0 })
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
+  const [bulkCardsVersion, setBulkCardsVersion] = useState(0)
 
   useEffect(() => { selectedCityRef.current = selectedCity }, [selectedCity])
 
@@ -1962,6 +2014,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (!result || requestToken !== cardFeedTokenRef.current) return
 
       bulkCardsRef.current = result.cards
+      setBulkCardsVersion((prev) => prev + 1)
       const currentCity = selectedCityRef.current
       setCards(currentCity ? result.cards.filter(c => c.city === currentCity) : result.cards)
       setHasMoreCards(false)
@@ -2245,17 +2298,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     loadBulkCardsForTab().catch(() => null)
   }, [tab, loadBulkCardsForTab, cacheStoreReady])
 
-  // Client-side city filtering for non-nearby tabs
+  // Client-side city + keyword filtering for non-nearby tabs
   useEffect(() => {
     if (tab === 'nearby') return
     const all = bulkCardsRef.current
     if (!all.length) return
-    if (selectedCity) {
-      setCards(all.filter(c => c.city === selectedCity))
-    } else {
-      setCards(all)
-    }
-  }, [selectedCity, tab])
+    const hasSyncedSearchResult = normalizeSearchKeyword(queryInput) === normalizeSearchKeyword(query)
+    setCards(filterBulkCardsBySearch(all, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
+  }, [bulkCardsVersion, query, queryInput, searchResult, selectedCity, tab])
 
   useEffect(() => {
     if (loading || loadingMoreCards || !hasMoreCards) return
@@ -3090,6 +3140,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'hot' as const, label: label.hot },
   ]
   const showNearbyLocationCta = !loading && tab === 'nearby' && !userLocation
+  const hasSearchQuery = normalizeSearchKeyword(query).length > 0
 
   const detailPanelInner = detail ? (
     <>
@@ -3603,7 +3654,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           ))}
         </div>
       ) : null}
-      {!loading && (tab !== 'nearby' || userLocation) && cards.length === 0 ? <div className="text-sm text-slate-500">{label.noData}</div> : null}
+      {!loading && (tab !== 'nearby' || userLocation) && cards.length === 0 ? <div className="text-sm text-slate-500">{hasSearchQuery ? label.searchNoData : label.noData}</div> : null}
       {!showNearbyLocationCta ? (
         <>
           <div className="space-y-3">
