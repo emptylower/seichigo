@@ -138,6 +138,8 @@ async function executeBangumiTasks(
     select: {
       id: true,
       titleZh: true,
+      titleEnglish: true,
+      titleOriginal: true,
       description: true,
       city: true,
     },
@@ -171,7 +173,8 @@ async function executeBangumiTasks(
         city: string | null
       }
 
-      if (source.title) texts.push(source.title)
+      const hasAniListTitle = (targetLanguage === 'en' && row.titleEnglish) || (targetLanguage !== 'en' && row.titleOriginal)
+      if (source.title && !hasAniListTitle) texts.push(source.title)
       if (source.description) texts.push(source.description)
       if (source.city) texts.push(source.city)
     }
@@ -209,8 +212,17 @@ async function executeBangumiTasks(
           city: string | null
         }
 
+        // Use AniList official title when available; fallback to Gemini translation
+        const titleDraft = source.title
+          ? (targetLanguage === 'en' && row.titleEnglish)
+            ? row.titleEnglish
+            : (targetLanguage !== 'en' && row.titleOriginal)
+              ? row.titleOriginal
+              : (translated.get(source.title) || source.title)
+          : source.title
+
         const draftContent = {
-          title: source.title ? translated.get(source.title) || source.title : source.title,
+          title: titleDraft,
           description: source.description ? translated.get(source.description) || source.description : null,
           city: source.city ? translated.get(source.city) || source.city : null,
         }
