@@ -592,6 +592,8 @@ export async function searchDataset(input: {
           { name: { contains: q, mode: 'insensitive' } },
           { nameZh: { contains: q, mode: 'insensitive' } },
           { mark: { contains: q, mode: 'insensitive' } },
+          { i18n: { some: { name: { contains: q, mode: 'insensitive' } } } },
+          { i18n: { some: { note: { contains: q, mode: 'insensitive' } } } },
         ],
       },
       include: {
