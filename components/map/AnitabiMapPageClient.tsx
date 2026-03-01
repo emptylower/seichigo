@@ -21,6 +21,13 @@ import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMod
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import type { CacheStore } from '@/lib/anitabi/client/types'
+import type { PointFeatureProperties } from './types'
+import {
+  SIMPLE_POINT_LAYER_ID,
+  removeSimpleModeLayers,
+  readPointIdFromRendered as readPointIdFromRenderedImpl,
+  useMapLayers,
+} from './hooks/useMapLayers'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -147,10 +154,6 @@ const CARD_LIST_PREFETCH_ROOT_MARGIN = '0px 0px 320px 0px'
 const RANGE_SOURCE_ID = 'anitabi-bangumi-range-source'
 const RANGE_FILL_LAYER_ID = 'anitabi-bangumi-range-fill'
 const RANGE_LINE_LAYER_ID = 'anitabi-bangumi-range-line'
-const POINT_SOURCE_ID = 'anitabi-bangumi-point-source'
-const POINT_LAYER_ID = 'anitabi-bangumi-point-layer'
-const POINT_SELECTED_HALO_LAYER_ID = 'anitabi-bangumi-point-selected-halo-layer'
-const POINT_SELECTED_LAYER_ID = 'anitabi-bangumi-point-selected-layer'
 const DETAIL_PANEL_WIDTH = 340
 const DESKTOP_BREAKPOINT = 1024
 const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
@@ -169,12 +172,6 @@ type CameraPadding = {
 }
 
 type PointCoord = [number, number]
-type PointFeatureProperties = {
-  pointId: string
-  color: string
-  selected: number
-  userState: string
-}
 
 type PanoramaEmbed = {
   provider: 'google'
@@ -1620,12 +1617,6 @@ function removeRangeLayer(map: maplibregl.Map): void {
   if (map.getSource(RANGE_SOURCE_ID)) map.removeSource(RANGE_SOURCE_ID)
 }
 
-function removePointLayer(map: maplibregl.Map): void {
-  if (map.getLayer(POINT_SELECTED_LAYER_ID)) map.removeLayer(POINT_SELECTED_LAYER_ID)
-  if (map.getLayer(POINT_SELECTED_HALO_LAYER_ID)) map.removeLayer(POINT_SELECTED_HALO_LAYER_ID)
-  if (map.getLayer(POINT_LAYER_ID)) map.removeLayer(POINT_LAYER_ID)
-  if (map.getSource(POINT_SOURCE_ID)) map.removeSource(POINT_SOURCE_ID)
-}
 
 function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.trim().replace('#', '')
@@ -1650,7 +1641,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const mapRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const syncUrlRef = useRef<() => void>(() => undefined)
-  const syncPointLayerRef = useRef<() => boolean>(() => false)
   const syncRangeOverlayRef = useRef<() => boolean>(() => false)
   const detailRef = useRef<AnitabiBangumiDTO | null>(null)
   const cardsContainerRef = useRef<HTMLDivElement | null>(null)
@@ -1670,7 +1660,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
-  const pointLayerFallbackTimerRef = useRef<number | null>(null)
   const rangeOverlayFallbackTimerRef = useRef<number | null>(null)
   const pendingPointGeoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties>>(createEmptyPointFeatureCollection())
   const firstOpenPointStartedAtRef = useRef<number | null>(null)
@@ -1756,6 +1745,22 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [warmupTaskProgress, setWarmupTaskProgress] = useState<WarmupTaskProgress>(() => createEmptyWarmupTaskProgress())
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
+
+  // Layer management extracted to useMapLayers hook
+  const {
+    flushLayers: flushPointLayer,
+    flushLayersSoon: flushPointLayerSoon,
+    scheduleFlushFallback: schedulePointLayerFallbackFlush,
+    syncLayerRef: syncPointLayerRef,
+  } = useMapLayers(mapRef, 'simple', {
+    pendingGeoJsonRef: pendingPointGeoJsonRef,
+    hasDetail: () => Boolean(detailRef.current),
+    onFirstPointVisible: () => {
+      if (firstOpenPointStartedAtRef.current != null) {
+        warmupMetricRef.current.first_open_point_visible_ms = Math.round(performance.now() - firstOpenPointStartedAtRef.current)
+      }
+    },
+  })
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -2103,135 +2108,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     [getCameraPadding]
   )
 
-  const ensurePointSourceAndLayers = useCallback((map: maplibregl.Map): boolean => {
-    const existingSource = map.getSource(POINT_SOURCE_ID)
-    const hasPointLayer = Boolean(map.getLayer(POINT_LAYER_ID))
-    const hasSelectedHaloLayer = Boolean(map.getLayer(POINT_SELECTED_HALO_LAYER_ID))
-    const hasSelectedLayer = Boolean(map.getLayer(POINT_SELECTED_LAYER_ID))
-    const hasAllPointLayers = hasPointLayer && hasSelectedHaloLayer && hasSelectedLayer
-    if (existingSource && hasAllPointLayers) return true
-
-    try {
-      removePointLayer(map)
-      map.addSource(POINT_SOURCE_ID, {
-        type: 'geojson',
-        data: pendingPointGeoJsonRef.current,
-      })
-
-      map.addLayer({
-        id: POINT_LAYER_ID,
-        type: 'circle',
-        source: POINT_SOURCE_ID,
-        paint: {
-          'circle-color': [
-            'match',
-            ['get', 'userState'],
-            'checked_in',
-            '#22c55e',
-            'planned',
-            '#f97316',
-            'want_to_go',
-            '#3b82f6',
-            ['coalesce', ['get', 'color'], '#6d28d9'],
-          ],
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 3.4, 8, 5.4, 12, 6.8],
-          'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
-          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.2, 12, 2.2],
-          'circle-opacity': 0.95,
-        },
-      })
-
-      map.addLayer({
-        id: POINT_SELECTED_HALO_LAYER_ID,
-        type: 'circle',
-        source: POINT_SOURCE_ID,
-        filter: ['==', ['get', 'selected'], 1],
-        paint: {
-          'circle-color': [
-            'match',
-            ['get', 'userState'],
-            'checked_in',
-            '#22c55e',
-            'planned',
-            '#f97316',
-            'want_to_go',
-            '#3b82f6',
-            ['coalesce', ['get', 'color'], '#6d28d9'],
-          ],
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 7, 8, 12, 12, 16],
-          'circle-opacity': 0.2,
-        },
-      })
-
-      map.addLayer({
-        id: POINT_SELECTED_LAYER_ID,
-        type: 'circle',
-        source: POINT_SOURCE_ID,
-        filter: ['==', ['get', 'selected'], 1],
-        paint: {
-          'circle-color': [
-            'match',
-            ['get', 'userState'],
-            'checked_in',
-            '#22c55e',
-            'planned',
-            '#f97316',
-            'want_to_go',
-            '#3b82f6',
-            ['coalesce', ['get', 'color'], '#6d28d9'],
-          ],
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 5, 8, 7.2, 12, 8.8],
-          'circle-stroke-color': ['match', ['get', 'userState'], 'checked_in', '#15803d', '#ffffff'],
-          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 3, 1.8, 12, 2.6],
-          'circle-opacity': 0.98,
-        },
-      })
-      return true
-    } catch {
-      removePointLayer(map)
-      return false
-    }
-  }, [])
-
-  const flushPointLayer = useCallback(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return false
-
-    const hasDetail = Boolean(detailRef.current)
-    if (!hasDetail) {
-      const hasSource = Boolean(map.getSource(POINT_SOURCE_ID))
-      const hasAnyLayer = Boolean(map.getLayer(POINT_LAYER_ID) || map.getLayer(POINT_SELECTED_HALO_LAYER_ID) || map.getLayer(POINT_SELECTED_LAYER_ID))
-      if (hasSource || hasAnyLayer) removePointLayer(map)
-      map.triggerRepaint()
-      return true
-    }
-
-    if (!ensurePointSourceAndLayers(map)) return false
-    const source = map.getSource(POINT_SOURCE_ID)
-    if (!source || !('setData' in source)) return false
-    ;(source as { setData(d: GeoJSON.GeoJSON): void }).setData(pendingPointGeoJsonRef.current)
-    map.triggerRepaint()
-
-    if (!firstOpenPointVisibleRecordedRef.current && firstOpenPointStartedAtRef.current != null && pendingPointGeoJsonRef.current.features.length > 0) {
-      firstOpenPointVisibleRecordedRef.current = true
-      warmupMetricRef.current.first_open_point_visible_ms = Math.round(performance.now() - firstOpenPointStartedAtRef.current)
-    }
-    return true
-  }, [ensurePointSourceAndLayers])
-
-  useEffect(() => {
-    syncPointLayerRef.current = flushPointLayer
-  }, [flushPointLayer])
-
-  const schedulePointLayerFallbackFlush = useCallback(() => {
-    if (typeof window === 'undefined') return
-    if (pointLayerFallbackTimerRef.current != null) return
-    pointLayerFallbackTimerRef.current = window.setTimeout(() => {
-      pointLayerFallbackTimerRef.current = null
-      syncPointLayerRef.current()
-    }, 650)
-  }, [])
-
   const scheduleRangeOverlayFallbackFlush = useCallback(() => {
     if (typeof window === 'undefined') return
     if (rangeOverlayFallbackTimerRef.current != null) return
@@ -2247,23 +2123,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       : createEmptyPointFeatureCollection()
     const ok = syncPointLayerRef.current()
     if (!ok) schedulePointLayerFallbackFlush()
-  }, [detail, meState, schedulePointLayerFallbackFlush, selectedPointId, stateFilter, viewFilter])
+  }, [detail, meState, schedulePointLayerFallbackFlush, selectedPointId, stateFilter, viewFilter, syncPointLayerRef])
 
   useEffect(() => {
     refreshPendingPointGeoJson()
   }, [refreshPendingPointGeoJson])
-
-  const flushPointLayerSoon = useCallback(() => {
-    if (typeof window === 'undefined') {
-      const ok = syncPointLayerRef.current()
-      if (!ok) schedulePointLayerFallbackFlush()
-      return
-    }
-    window.requestAnimationFrame(() => {
-      const ok = syncPointLayerRef.current()
-      if (!ok) schedulePointLayerFallbackFlush()
-    })
-  }, [schedulePointLayerFallbackFlush])
 
   const syncRangeOverlay = useCallback(() => {
     const map = mapRef.current
@@ -2298,7 +2162,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       })
 
       // Keep range area below point circles.
-      const beforePointLayer = map.getLayer(POINT_LAYER_ID) ? POINT_LAYER_ID : undefined
+      const beforePointLayer = map.getLayer(SIMPLE_POINT_LAYER_ID) ? SIMPLE_POINT_LAYER_ID : undefined
       map.addLayer({
         id: RANGE_FILL_LAYER_ID,
         type: 'fill',
@@ -2335,10 +2199,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   }, [syncRangeOverlay])
 
   useEffect(() => () => {
-    if (pointLayerFallbackTimerRef.current != null) {
-      window.clearTimeout(pointLayerFallbackTimerRef.current)
-      pointLayerFallbackTimerRef.current = null
-    }
     if (rangeOverlayFallbackTimerRef.current != null) {
       window.clearTimeout(rangeOverlayFallbackTimerRef.current)
       rangeOverlayFallbackTimerRef.current = null
@@ -3200,10 +3060,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
       warmupAbortRef.current?.abort()
-      if (pointLayerFallbackTimerRef.current != null) {
-        window.clearTimeout(pointLayerFallbackTimerRef.current)
-        pointLayerFallbackTimerRef.current = null
-      }
       if (rangeOverlayFallbackTimerRef.current != null) {
         window.clearTimeout(rangeOverlayFallbackTimerRef.current)
         rangeOverlayFallbackTimerRef.current = null
@@ -3482,14 +3338,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
     map.on('moveend', syncMapViewState)
     map.on('zoomend', syncMapViewState)
-    const pointLayerIds = () => [POINT_SELECTED_LAYER_ID, POINT_LAYER_ID].filter((id) => Boolean(map.getLayer(id)))
-    const readPointIdFromRendered = (event: maplibregl.MapMouseEvent): string | null => {
-      const layers = pointLayerIds()
-      if (!layers.length) return null
-      const hit = map.queryRenderedFeatures(event.point, { layers })[0]
-      const pointId = hit?.properties?.pointId
-      return typeof pointId === 'string' ? pointId : null
-    }
+    const readPointIdFromRendered = (event: maplibregl.MapMouseEvent): string | null =>
+      readPointIdFromRenderedImpl(map, event.point)
     const handlePointClick = (event: maplibregl.MapMouseEvent) => {
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
@@ -3608,7 +3458,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.off('error', onMapError)
       clearStyleFailoverTimer()
       applyMapStyleRef.current = () => undefined
-      removePointLayer(map)
+      removeSimpleModeLayers(map)
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
