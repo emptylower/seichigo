@@ -58,6 +58,16 @@ const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
 const MAP_PRELOAD_V2_ENABLED = String(process.env.NEXT_PUBLIC_MAP_PRELOAD_V2 || '1').trim() !== '0'
 const MAP_VECTOR_ENABLED = String(process.env.NEXT_PUBLIC_MAP_VECTOR || '1').trim() !== '0'
 const MAPTILER_KEY = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
+const MAPBOX_TOKEN = String(process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '').trim()
+const STADIA_KEY = String(process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || '').trim()
+const MAP_STYLE_PROVIDER_ORDER = String(process.env.NEXT_PUBLIC_MAP_STYLE_PROVIDER_ORDER || 'maptiler,mapbox,stadia,raster').trim()
+const MAP_STYLE_FAILOVER_TIMEOUT_MS = (() => {
+  const parsed = Number.parseInt(String(process.env.NEXT_PUBLIC_MAP_STYLE_FAILOVER_TIMEOUT_MS || ''), 10)
+  if (!Number.isFinite(parsed)) return 9000
+  return Math.max(3000, Math.min(30000, parsed))
+})()
+const MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS = 2400
+const MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD = 3
 
 function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
   return {
@@ -172,6 +182,14 @@ type PanoramaEmbed = {
 } | {
   provider: 'mapillary'
   src: string
+}
+
+type MapStyleMode = 'street' | 'satellite'
+type MapStyleProvider = 'maptiler' | 'mapbox' | 'stadia' | 'raster'
+type MapStyleCandidate = {
+  provider: MapStyleProvider
+  label: string
+  style: maplibregl.StyleSpecification | string
 }
 
 function isValidLatLng(lat: number, lng: number): boolean {
@@ -954,12 +972,87 @@ function buildFallbackRasterStyle(mode: 'street' | 'satellite'): maplibregl.Styl
   }
 }
 
-function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification | string {
-  if (MAP_VECTOR_ENABLED && MAPTILER_KEY) {
-    const styleId = mode === 'satellite' ? 'hybrid' : 'streets-v2'
-    return `https://api.maptiler.com/maps/${styleId}/style.json?key=${encodeURIComponent(MAPTILER_KEY)}`
+function normalizeMapStyleProvider(raw: string): MapStyleProvider | null {
+  const value = String(raw || '').trim().toLowerCase()
+  if (value === 'maptiler') return 'maptiler'
+  if (value === 'mapbox') return 'mapbox'
+  if (value === 'stadia') return 'stadia'
+  if (value === 'raster') return 'raster'
+  return null
+}
+
+function parseMapStyleProviderOrder(): MapStyleProvider[] {
+  const out: MapStyleProvider[] = []
+  const seen = new Set<MapStyleProvider>()
+  for (const token of MAP_STYLE_PROVIDER_ORDER.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const provider = normalizeMapStyleProvider(token)
+    if (!provider || seen.has(provider)) continue
+    seen.add(provider)
+    out.push(provider)
   }
-  return buildFallbackRasterStyle(mode)
+  if (!seen.has('raster')) out.push('raster')
+  return out
+}
+
+function buildMapStyleCandidate(provider: MapStyleProvider, mode: MapStyleMode): MapStyleCandidate | null {
+  if (provider === 'raster') {
+    return {
+      provider,
+      label: 'raster',
+      style: buildFallbackRasterStyle(mode),
+    }
+  }
+  if (!MAP_VECTOR_ENABLED) return null
+
+  if (provider === 'maptiler') {
+    if (!MAPTILER_KEY) return null
+    const styleId = mode === 'satellite' ? 'hybrid' : 'streets-v2'
+    return {
+      provider,
+      label: 'MapTiler',
+      style: `https://api.maptiler.com/maps/${styleId}/style.json?key=${encodeURIComponent(MAPTILER_KEY)}`,
+    }
+  }
+
+  if (provider === 'mapbox') {
+    if (!MAPBOX_TOKEN) return null
+    const styleId = mode === 'satellite' ? 'satellite-streets-v12' : 'streets-v12'
+    return {
+      provider,
+      label: 'Mapbox',
+      style: `https://api.mapbox.com/styles/v1/mapbox/${styleId}?access_token=${encodeURIComponent(MAPBOX_TOKEN)}`,
+    }
+  }
+
+  if (provider === 'stadia') {
+    if (!STADIA_KEY) return null
+    const styleId = mode === 'satellite' ? 'alidade_satellite' : 'alidade_smooth'
+    return {
+      provider,
+      label: 'Stadia',
+      style: `https://tiles.stadiamaps.com/styles/${styleId}.json?api_key=${encodeURIComponent(STADIA_KEY)}`,
+    }
+  }
+
+  return null
+}
+
+function getMapStyleCandidates(mode: MapStyleMode): MapStyleCandidate[] {
+  const orderedProviders = parseMapStyleProviderOrder()
+  const out: MapStyleCandidate[] = []
+  for (const provider of orderedProviders) {
+    const candidate = buildMapStyleCandidate(provider, mode)
+    if (!candidate) continue
+    out.push(candidate)
+  }
+  if (!out.length || out[out.length - 1]?.provider !== 'raster') {
+    out.push({
+      provider: 'raster',
+      label: 'raster',
+      style: buildFallbackRasterStyle(mode),
+    })
+  }
+  return out
 }
 
 function geoLink(point: { geo: [number, number] | null }): string | null {
@@ -1587,6 +1680,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const warmupBlockingUiRef = useRef(true)
   const mapInitWaitersRef = useRef<Array<() => void>>([])
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
+  const styleProviderIndexRef = useRef<Record<MapStyleMode, number>>({ street: 0, satellite: 0 })
+  const styleFailoverTimerRef = useRef<number | null>(null)
+  const styleAttemptRef = useRef(0)
+  const styleErrorBurstRef = useRef<{ count: number; startedAt: number }>({ count: 0, startedAt: 0 })
+  const applyMapStyleRef = useRef<(mode: MapStyleMode, options?: { resetProvider?: boolean; reason?: string }) => void>(() => undefined)
   const preloadManifestRef = useRef<AnitabiPreloadManifestDTO | null>(null)
   const warmPointIndexByBangumiIdRef = useRef<Map<number, AnitabiPreloadChunkItemDTO>>(new Map())
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
@@ -3313,9 +3411,19 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const mapRoot = mapRootRef.current
     if (!mapRoot || mapRef.current) return
 
+    const streetCandidates = getMapStyleCandidates('street')
+    const initialStreetIndex = Math.max(0, Math.min(styleProviderIndexRef.current.street || 0, streetCandidates.length - 1))
+    const initialStreetCandidate = streetCandidates[initialStreetIndex] || {
+      provider: 'raster' as const,
+      label: 'raster',
+      style: buildFallbackRasterStyle('street'),
+    }
+    styleProviderIndexRef.current.street = initialStreetIndex
+    currentStyleModeRef.current = 'street'
+
     const map = new maplibregl.Map({
       container: mapRoot,
-      style: buildStyle('street'),
+      style: initialStreetCandidate.style,
       center: [parsed.lng, parsed.lat],
       zoom: parsed.z,
       pitchWithRotate: false,
@@ -3325,6 +3433,47 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       scrollZoom: true,
       fadeDuration: 0,
     })
+
+    const clearStyleFailoverTimer = () => {
+      if (styleFailoverTimerRef.current != null) {
+        window.clearTimeout(styleFailoverTimerRef.current)
+        styleFailoverTimerRef.current = null
+      }
+    }
+
+    const armStyleFailoverGuard = (mode: MapStyleMode, providerIndex: number) => {
+      clearStyleFailoverTimer()
+      styleAttemptRef.current += 1
+      const attempt = styleAttemptRef.current
+      styleErrorBurstRef.current = { count: 0, startedAt: 0 }
+      styleFailoverTimerRef.current = window.setTimeout(() => {
+        if (styleAttemptRef.current !== attempt) return
+        if (currentStyleModeRef.current !== mode) return
+        const candidates = getMapStyleCandidates(mode)
+        if (providerIndex >= candidates.length - 1) return
+        void switchStyleProvider(mode, providerIndex + 1, 'timeout')
+      }, MAP_STYLE_FAILOVER_TIMEOUT_MS)
+    }
+
+    function switchStyleProvider(mode: MapStyleMode, providerIndex: number, reason: string): boolean {
+      const candidates = getMapStyleCandidates(mode)
+      if (!candidates.length) return false
+      const safeIndex = Math.max(0, Math.min(providerIndex, candidates.length - 1))
+      const nextCandidate = candidates[safeIndex]
+      if (!nextCandidate) return false
+      currentStyleModeRef.current = mode
+      styleProviderIndexRef.current[mode] = safeIndex
+      armStyleFailoverGuard(mode, safeIndex)
+      map.setStyle(nextCandidate.style)
+      return true
+    }
+
+    applyMapStyleRef.current = (mode, options) => {
+      const resetProvider = Boolean(options?.resetProvider)
+      const providerIndex = resetProvider ? 0 : (styleProviderIndexRef.current[mode] || 0)
+      void switchStyleProvider(mode, providerIndex, options?.reason || 'external')
+    }
+    armStyleFailoverGuard('street', initialStreetIndex)
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     const syncMapViewState = () => {
@@ -3392,11 +3541,36 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       flushLayers()
     }
     const onMapIdle = () => {
+      clearStyleFailoverTimer()
       flushLayers()
+    }
+    const onMapError = (event: maplibregl.ErrorEvent) => {
+      const msg = String((event as { error?: { message?: unknown } })?.error?.message || '').trim()
+      if (!msg) return
+      if (!/(401|403|429|unauthor|forbidden|access token|api key|quota|rate)/i.test(msg)) return
+
+      const now = Date.now()
+      if (now - styleErrorBurstRef.current.startedAt > MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS) {
+        styleErrorBurstRef.current = { count: 1, startedAt: now }
+      } else {
+        styleErrorBurstRef.current = {
+          count: styleErrorBurstRef.current.count + 1,
+          startedAt: styleErrorBurstRef.current.startedAt || now,
+        }
+      }
+      if (styleErrorBurstRef.current.count < MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD) return
+
+      styleErrorBurstRef.current = { count: 0, startedAt: now }
+      const mode = currentStyleModeRef.current
+      const candidates = getMapStyleCandidates(mode)
+      const idx = styleProviderIndexRef.current[mode] || 0
+      if (idx >= candidates.length - 1) return
+      void switchStyleProvider(mode, idx + 1, 'error')
     }
 
     map.on('styledata', onMapStyleData)
     map.on('idle', onMapIdle)
+    map.on('error', onMapError)
     map.once('load', () => {
       setMapReady(true)
       resizeMap()
@@ -3431,6 +3605,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.off('zoomend', syncMapViewState)
       map.off('styledata', onMapStyleData)
       map.off('idle', onMapIdle)
+      map.off('error', onMapError)
+      clearStyleFailoverTimer()
+      applyMapStyleRef.current = () => undefined
       removePointLayer(map)
       removeRangeLayer(map)
       map.remove()
@@ -3443,8 +3620,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!map) return
     if (currentStyleModeRef.current === styleMode) return
-    currentStyleModeRef.current = styleMode
-    map.setStyle(buildStyle(styleMode))
+    applyMapStyleRef.current(styleMode, { resetProvider: true, reason: 'mode-change' })
   }, [styleMode])
 
   useEffect(() => {
