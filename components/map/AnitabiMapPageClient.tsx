@@ -21,13 +21,31 @@ import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMod
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import type { CacheStore } from '@/lib/anitabi/client/types'
-import type { PointFeatureProperties } from './types'
+import type { PointFeatureProperties, GlobalPointFeatureProperties } from './types'
 import {
   SIMPLE_POINT_LAYER_ID,
   removeSimpleModeLayers,
   readPointIdFromRendered as readPointIdFromRenderedImpl,
   useMapLayers,
 } from './hooks/useMapLayers'
+import { useMapMode } from './hooks/useMapMode'
+import { buildGlobalFeatureCollection } from './utils/globalFeatureCollection'
+import { createClusterEngine, LOD_THUMBNAILS_MIN_ZOOM } from './utils/clusterEngine'
+import { ThumbnailLoader } from './utils/thumbnailLoader'
+import {
+  ensureCompleteModeSources,
+  ensureCompleteModePointLayers,
+  updateCompleteModeSources,
+  removeCompleteModeLayers,
+  COMPLETE_DOTS_LAYER_ID,
+  COMPLETE_THUMBNAILS_LAYER_ID,
+} from './CompleteModeLayers'
+import {
+  ensureClusterLayers,
+  removeClusterLayers,
+  getClusterExpansionTarget,
+  CLUSTER_CIRCLE_LAYER_ID,
+} from './ClusterLayers'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -1636,6 +1654,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const label = L[locale]
 
   const parsed = useMemo(() => parseUrlState(), [])
+  const { mode, isComplete, isSimple } = useMapMode()
 
   const mapRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -1680,6 +1699,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
   )
   const loadedTabsRef = useRef<Set<AnitabiMapTab>>(new Set(initialBootstrap ? [initialBootstrap.tab] : []))
+  const clusterEngineRef = useRef<ReturnType<typeof createClusterEngine> | null>(null)
+  const thumbnailLoaderRef = useRef<ThumbnailLoader | null>(null)
+  const loadedThumbIdsRef = useRef<Set<string>>(new Set())
+  const syncCompleteModeRef = useRef<() => void>(() => {})
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1752,7 +1775,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     flushLayersSoon: flushPointLayerSoon,
     scheduleFlushFallback: schedulePointLayerFallbackFlush,
     syncLayerRef: syncPointLayerRef,
-  } = useMapLayers(mapRef, 'simple', {
+  } = useMapLayers(mapRef, mode, {
     pendingGeoJsonRef: pendingPointGeoJsonRef,
     hasDetail: () => Boolean(detailRef.current),
     onFirstPointVisible: () => {
@@ -3386,6 +3409,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (!pointOk) schedulePointLayerFallbackFlush()
       const rangeOk = syncRangeOverlayRef.current()
       if (!rangeOk) scheduleRangeOverlayFallbackFlush()
+      syncCompleteModeRef.current()
     }
     const onMapStyleData = () => {
       flushLayers()
@@ -3460,6 +3484,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       applyMapStyleRef.current = () => undefined
       removeSimpleModeLayers(map)
       removeRangeLayer(map)
+      removeCompleteModeLayers(map)
+      removeClusterLayers(map)
+      thumbnailLoaderRef.current = null
+      clusterEngineRef.current = null
       map.remove()
       mapRef.current = null
       mapInitWaitersRef.current = []
@@ -3481,6 +3509,174 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       flushPointLayerSoon()
     }
   }, [detail, flushPointLayerSoon, selectedPointId, stateFilter, viewFilter, meState])
+
+  // ---------------------------------------------------------------------------
+  // Complete Mode: global data initialization + viewport handler
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isComplete || !map || !mapReady) return
+
+    // Build card index from all tab cards
+    const cardIndex = new Map<number, AnitabiBangumiCard>()
+    for (const rows of Object.values(tabCardsRef.current)) {
+      if (!rows) continue
+      for (const card of rows) {
+        if (!cardIndex.has(card.id)) cardIndex.set(card.id, card)
+      }
+    }
+
+    // Build global feature collection from warmup data
+    const globalFeatures = buildGlobalFeatureCollection(
+      warmPointIndexByBangumiIdRef.current,
+      cardIndex,
+    )
+
+    if (globalFeatures.features.length === 0) {
+      // No data yet – clean up any stale layers
+      removeCompleteModeLayers(map)
+      removeClusterLayers(map)
+      clusterEngineRef.current = null
+      syncCompleteModeRef.current = () => {}
+      return
+    }
+
+    // Create cluster engine and load data
+    const engine = createClusterEngine()
+    engine.load(globalFeatures.features)
+    clusterEngineRef.current = engine
+
+    // Initialize thumbnail loader (reuse if already exists)
+    if (!thumbnailLoaderRef.current) {
+      thumbnailLoaderRef.current = new ThumbnailLoader({ map, maxLoaded: 200 })
+    }
+
+    // Viewport change handler – updates sources with clustered data
+    const handleViewportChange = () => {
+      if (!clusterEngineRef.current || !map.isStyleLoaded()) return
+
+      // Ensure sources and layers exist (idempotent, handles style reloads)
+      ensureCompleteModeSources(map)
+      ensureCompleteModePointLayers(map)
+      ensureClusterLayers(map)
+
+      const bounds = map.getBounds()
+      const zoom = map.getZoom()
+      const bbox: [number, number, number, number] = [
+        bounds.getWest(), bounds.getSouth(),
+        bounds.getEast(), bounds.getNorth(),
+      ]
+      const clusters = clusterEngineRef.current.getClusters(bbox, Math.floor(zoom))
+      const fc: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: clusters,
+      }
+
+      // Immediate update with currently known loaded thumbs
+      updateCompleteModeSources(map, fc, loadedThumbIdsRef.current)
+
+      // Async load thumbnails at high zoom
+      if (zoom >= LOD_THUMBNAILS_MIN_ZOOM && thumbnailLoaderRef.current) {
+        const nonClusterProps = clusters
+          .filter((f) => !(f.properties as Record<string, unknown>)?.cluster)
+          .map((f) => f.properties as unknown as GlobalPointFeatureProperties)
+
+        void thumbnailLoaderRef.current.updateViewport(nonClusterProps).then((ids) => {
+          loadedThumbIdsRef.current = ids
+          if (map.isStyleLoaded()) {
+            updateCompleteModeSources(map, fc, ids)
+          }
+        }).catch(() => {})
+      }
+    }
+
+    // Register as the sync function for style reloads
+    syncCompleteModeRef.current = handleViewportChange
+
+    // Wire map events
+    map.on('moveend', handleViewportChange)
+    map.on('zoomend', handleViewportChange)
+
+    // Initial render
+    handleViewportChange()
+
+    return () => {
+      map.off('moveend', handleViewportChange)
+      map.off('zoomend', handleViewportChange)
+      syncCompleteModeRef.current = () => {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete, tabCardsVersion, mapReady])
+
+  // ---------------------------------------------------------------------------
+  // Complete Mode: click handler for clusters and points
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!isComplete || !map || !mapReady) return
+
+    const handleCompleteClick = (e: maplibregl.MapMouseEvent) => {
+      // Query all Complete Mode layers
+      const queryLayers = [
+        CLUSTER_CIRCLE_LAYER_ID,
+        COMPLETE_DOTS_LAYER_ID,
+        COMPLETE_THUMBNAILS_LAYER_ID,
+      ].filter((id) => Boolean(map.getLayer(id)))
+      if (!queryLayers.length) return
+
+      const features = map.queryRenderedFeatures(e.point, { layers: queryLayers })
+      if (!features.length) return
+
+      const feature = features[0]
+      const props = feature.properties as Record<string, unknown>
+
+      // Cluster click → zoom to expand
+      if (props?.cluster && clusterEngineRef.current) {
+        const target = getClusterExpansionTarget(
+          feature as unknown as { properties: { cluster_id: number; [k: string]: unknown }; geometry: { coordinates: [number, number] } },
+          clusterEngineRef.current,
+        )
+        map.flyTo({ center: [target.center.lng, target.center.lat], zoom: target.zoom })
+        return
+      }
+
+      // Point click → open bangumi detail (reuse existing openBangumi)
+      const pointId = typeof props?.pointId === 'string' ? props.pointId : null
+      const bangumiId = typeof props?.bangumiId === 'number'
+        ? props.bangumiId
+        : typeof props?.bangumiId === 'string' ? Number(props.bangumiId) : null
+      if (pointId && bangumiId && Number.isFinite(bangumiId)) {
+        void openBangumi(bangumiId, pointId).catch(() => null)
+      }
+    }
+
+    map.on('click', handleCompleteClick)
+
+    return () => {
+      map.off('click', handleCompleteClick)
+    }
+  }, [isComplete, mapReady, openBangumi])
+
+  // ---------------------------------------------------------------------------
+  // Mode switch: cleanup when switching away from Complete Mode
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !isSimple) return
+
+    // Remove Complete Mode layers when switching to Simple Mode
+    removeCompleteModeLayers(map)
+    removeClusterLayers(map)
+
+    // Cleanup loaders
+    thumbnailLoaderRef.current = null
+    clusterEngineRef.current = null
+    loadedThumbIdsRef.current = new Set()
+    syncCompleteModeRef.current = () => {}
+
+    // Reflush Simple Mode layers now that mode is simple
+    flushPointLayerSoon()
+  }, [isSimple, flushPointLayerSoon])
 
   useEffect(() => {
     const map = mapRef.current

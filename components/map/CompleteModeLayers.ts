@@ -120,16 +120,16 @@ export function updateCompleteModeSources(
 
   // Build thumbnail FC with thumbImageId set based on loaded state
   const thumbFeatures: GeoJSON.Feature[] = features.features.map((f) => {
-    const id = (f.properties as Record<string, unknown>)?.id as string ?? '';
+    const pointId = (f.properties as Record<string, unknown>)?.pointId as string ?? '';
+    const thumbId = pointId ? `thumb-${pointId}` : '';
     return {
       ...f,
       properties: {
         ...f.properties,
-        thumbImageId: loadedThumbIds.has(id) ? id : '',
+        thumbImageId: loadedThumbIds.has(thumbId) ? thumbId : '',
       },
     };
   });
-
   const thumbFC: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
     features: thumbFeatures,

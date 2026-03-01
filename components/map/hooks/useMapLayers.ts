@@ -207,7 +207,7 @@ export type UseMapLayersReturn = {
 
 export function useMapLayers(
   mapRef: React.RefObject<maplibregl.Map | null>,
-  _mode: MapMode,
+  mode: MapMode,
   options: UseMapLayersOptions
 ): UseMapLayersReturn {
   const { pendingGeoJsonRef, hasDetail, onFirstPointVisible } = options
@@ -230,6 +230,12 @@ export function useMapLayers(
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
 
+    // In complete mode, skip simple mode layer flushing
+    if (mode === 'complete') {
+      removeSimpleModeLayers(map)
+      return true
+    }
+
     const detail = hasDetail()
     const ok = flushSimpleModeLayers(map, pendingGeoJsonRef.current, detail)
 
@@ -245,7 +251,7 @@ export function useMapLayers(
     }
 
     return ok
-  }, [mapRef, hasDetail, pendingGeoJsonRef, onFirstPointVisible])
+  }, [mode, mapRef, hasDetail, pendingGeoJsonRef, onFirstPointVisible])
 
   // Stable ref so external event handlers always call the latest flush
   const syncLayerRef = useRef<() => boolean>(flushLayers)
