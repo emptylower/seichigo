@@ -29,6 +29,7 @@ import {
   useMapLayers,
 } from './hooks/useMapLayers'
 import { useMapMode } from './hooks/useMapMode'
+import { MapModeToggle } from './MapModeToggle'
 import { buildGlobalFeatureCollection } from './utils/globalFeatureCollection'
 import { createClusterEngine, LOD_THUMBNAILS_MIN_ZOOM } from './utils/clusterEngine'
 import { ThumbnailLoader } from './utils/thumbnailLoader'
@@ -1654,7 +1655,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const label = L[locale]
 
   const parsed = useMemo(() => parseUrlState(), [])
-  const { mode, isComplete, isSimple } = useMapMode()
+  const { mode, setMode, isComplete, isSimple } = useMapMode()
 
   const mapRootRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -5100,6 +5101,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               ref={mapRootRef}
               className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
             />
+            {mapViewMode === 'map' ? (
+              <MapModeToggle mode={mode} onModeChange={setMode} />
+            ) : null}
             <div
               className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}
             >
