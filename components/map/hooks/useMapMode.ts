@@ -50,6 +50,21 @@ export function useMapMode(): UseMapModeReturn {
     window.history.replaceState(null, '', url.toString())
   }, [])
 
+  // Listen for browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      const urlMode = params.get('mode')
+      if (urlMode === 'complete' || urlMode === 'simple') {
+        setModeState(urlMode)
+        localStorage.setItem(STORAGE_KEY, urlMode)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   return {
     mode,
     setMode,
