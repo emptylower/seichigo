@@ -1578,6 +1578,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
   const pointLayerFallbackTimerRef = useRef<number | null>(null)
+  const rangeOverlayFallbackTimerRef = useRef<number | null>(null)
   const pendingPointGeoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties>>(createEmptyPointFeatureCollection())
   const firstOpenPointStartedAtRef = useRef<number | null>(null)
   const firstOpenPointVisibleRecordedRef = useRef(false)
@@ -2132,6 +2133,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }, 650)
   }, [])
 
+  const scheduleRangeOverlayFallbackFlush = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (rangeOverlayFallbackTimerRef.current != null) return
+    rangeOverlayFallbackTimerRef.current = window.setTimeout(() => {
+      rangeOverlayFallbackTimerRef.current = null
+      syncRangeOverlayRef.current()
+    }, 650)
+  }, [])
+
   const refreshPendingPointGeoJson = useCallback(() => {
     pendingPointGeoJsonRef.current = detail
       ? buildPointFeatureCollection(detail, selectedPointId, meState, viewFilter, stateFilter)
@@ -2169,6 +2179,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const overlay = rangeOverlayRef.current
     if (!overlay) {
       if (existingRangeSource || hasAnyRangeLayer) removeRangeLayer(map)
+      map.triggerRepaint()
       return true
     }
 
@@ -2177,6 +2188,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         ;(existingRangeSource as { setData(d: GeoJSON.GeoJSON): void }).setData(overlay.data)
         map.setPaintProperty(RANGE_FILL_LAYER_ID, 'fill-color', hexToRgba(overlay.color, 0.16))
         map.setPaintProperty(RANGE_LINE_LAYER_ID, 'line-color', hexToRgba(overlay.color, 0.88))
+        map.triggerRepaint()
         return true
       }
 
@@ -2211,6 +2223,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         },
       }, beforePointLayer)
 
+      map.triggerRepaint()
       return true
     } catch {
       removeRangeLayer(map)
@@ -2226,6 +2239,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (pointLayerFallbackTimerRef.current != null) {
       window.clearTimeout(pointLayerFallbackTimerRef.current)
       pointLayerFallbackTimerRef.current = null
+    }
+    if (rangeOverlayFallbackTimerRef.current != null) {
+      window.clearTimeout(rangeOverlayFallbackTimerRef.current)
+      rangeOverlayFallbackTimerRef.current = null
     }
   }, [])
 
@@ -2957,6 +2974,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         window.clearTimeout(pointLayerFallbackTimerRef.current)
         pointLayerFallbackTimerRef.current = null
       }
+      if (rangeOverlayFallbackTimerRef.current != null) {
+        window.clearTimeout(rangeOverlayFallbackTimerRef.current)
+        rangeOverlayFallbackTimerRef.current = null
+      }
       if (firstOpenPointGuardTimerRef.current != null) {
         window.clearTimeout(firstOpenPointGuardTimerRef.current)
         firstOpenPointGuardTimerRef.current = null
@@ -3210,8 +3231,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     const resizeMap = () => map.resize()
     const flushLayers = () => {
-      syncPointLayerRef.current()
-      syncRangeOverlayRef.current()
+      const pointOk = syncPointLayerRef.current()
+      if (!pointOk) schedulePointLayerFallbackFlush()
+      const rangeOk = syncRangeOverlayRef.current()
+      if (!rangeOk) scheduleRangeOverlayFallbackFlush()
     }
     const onMapStyleData = () => {
       flushLayers()
@@ -3262,7 +3285,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       mapRef.current = null
       mapInitWaitersRef.current = []
     }
-  }, [focusGeo, parsed.lat, parsed.lng, parsed.z])
+  }, [focusGeo, parsed.lat, parsed.lng, parsed.z, schedulePointLayerFallbackFlush, scheduleRangeOverlayFallbackFlush])
 
   useEffect(() => {
     const map = mapRef.current
@@ -3288,7 +3311,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!detail) {
       rangeOverlayRef.current = null
       if (!syncRangeOverlay()) {
-        map.once('idle', () => syncRangeOverlayRef.current())
+        scheduleRangeOverlayFallbackFlush()
       }
       return
     }
@@ -3316,9 +3339,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       : null
 
     if (!syncRangeOverlay()) {
-      map.once('idle', () => syncRangeOverlayRef.current())
+      scheduleRangeOverlayFallbackFlush()
     }
-  }, [detail, syncRangeOverlay])
+  }, [detail, scheduleRangeOverlayFallbackFlush, syncRangeOverlay])
 
   useEffect(() => {
     syncUrl()
