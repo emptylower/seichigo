@@ -9,6 +9,7 @@
     "lint": "eslint . --ext .ts,.tsx || true",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "seo:audit": "node scripts/seo-audit.js",
     "seo:sync": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-sync.ts",
     "seo:rank": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-rank.ts",
@@ -68,6 +69,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^20.12.12",
