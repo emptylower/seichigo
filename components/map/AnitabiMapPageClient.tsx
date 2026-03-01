@@ -4291,6 +4291,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'details' as const, title: label.preloadDetails, progress: warmupTaskProgress.details },
     { key: 'images' as const, title: label.preloadImages, progress: warmupTaskProgress.images },
   ]
+  const activeWarmupTask = warmupTaskRows.find((task) => task.progress.percent < 100) || warmupTaskRows[warmupTaskRows.length - 1] || null
   const showNearbyLocationCta = !loading && tab === 'nearby' && !userLocation
   const hasSearchQuery = normalizeSearchKeyword(query).length > 0
 
@@ -4996,41 +4997,43 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <MapLoadingProgress
         percent={warmupProgress.percent}
-        visible={false}
+        visible={warmupBlocking}
         title={warmupProgress.title}
         detail={warmupProgress.detail}
       />
       {warmupBlocking ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-md rounded-2xl border border-white/30 bg-white/95 p-4 text-center shadow-2xl">
-            <div className="text-sm font-semibold text-slate-800">{label.preloadWait}</div>
-            <div className="mt-1 text-xs text-slate-600">{warmupProgress.detail}</div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full rounded-full bg-brand-500 transition-[width] duration-300 ease-out"
-                style={{ width: `${Math.min(Math.max(warmupProgress.percent, 0), 100)}%` }}
-              />
-            </div>
-            <div className="mt-2 text-xs font-medium text-slate-600">{Math.round(warmupProgress.percent)}%</div>
-
-            <div className="mt-3 space-y-2 text-left">
-              {warmupTaskRows.map((task) => (
-                <div key={task.key} className="rounded-lg border border-slate-200 bg-white/80 px-2 py-2">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-700">
-                    <span>{task.title}</span>
-                    <span>{Math.round(task.progress.percent)}%</span>
+        <div className="fixed inset-0 z-50 cursor-progress">
+          <div className="pointer-events-none absolute left-1/2 top-[max(76px,env(safe-area-inset-top,0px)+52px)] w-[min(520px,calc(100%-20px))] -translate-x-1/2">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/88 px-3 py-2 shadow-lg backdrop-blur-md">
+              <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-700">
+                <span>{label.preloadWait}</span>
+                <span>{Math.round(warmupProgress.percent)}%</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200/80">
+                <div
+                  className="h-full rounded-full bg-brand-500 transition-[width] duration-300 ease-out"
+                  style={{ width: `${Math.min(Math.max(warmupProgress.percent, 0), 100)}%` }}
+                />
+              </div>
+              <div className="mt-1.5 line-clamp-1 text-[11px] text-slate-600">
+                {activeWarmupTask?.progress.detail || warmupProgress.detail || label.loading}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {warmupTaskRows.map((task) => (
+                  <div key={task.key} className="rounded-md border border-slate-200/80 bg-white/70 px-1.5 py-1">
+                    <div className="flex items-center justify-between gap-1 text-[10px] text-slate-600">
+                      <span className="line-clamp-1">{task.title}</span>
+                      <span>{Math.round(task.progress.percent)}%</span>
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200/80">
+                      <div
+                        className="h-full rounded-full bg-brand-500/90 transition-[width] duration-300 ease-out"
+                        style={{ width: `${Math.min(Math.max(task.progress.percent, 0), 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                    <div
-                      className="h-full rounded-full bg-brand-500 transition-[width] duration-300 ease-out"
-                      style={{ width: `${Math.min(Math.max(task.progress.percent, 0), 100)}%` }}
-                    />
-                  </div>
-                  <div className="mt-1 line-clamp-1 text-[10px] text-slate-500">
-                    {task.progress.detail || label.loading}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
