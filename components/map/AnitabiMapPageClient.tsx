@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import maplibregl from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiBootstrapDTO, AnitabiMapTab } from '@/lib/anitabi/types'
+import type {
+  AnitabiBangumiCard,
+  AnitabiBangumiDTO,
+  AnitabiBootstrapDTO,
+  AnitabiMapTab,
+  AnitabiPreloadChunkItemDTO,
+  AnitabiPreloadManifestDTO,
+} from '@/lib/anitabi/types'
 import { extractLatLngFromGoogleMapsUrl } from '@/lib/route/google'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import CheckInCard from '@/components/share/CheckInCard'
@@ -13,8 +20,6 @@ import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGen
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
-import { loadAllCards } from '@/lib/anitabi/client/bulkLoader'
-import { createProgressTracker } from '@/lib/anitabi/client/progressTracker'
 import type { CacheStore } from '@/lib/anitabi/client/types'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
@@ -33,31 +38,26 @@ const POINT_IMAGE_PREFETCH_LIMIT = 24
 const POINT_IMAGE_PREFETCH_CACHE_MAX = 2400
 const prefetchedPointImageUrls = new Set<string>()
 const prefetchingPointImageUrls = new Set<string>()
-const prefetchedMapTileUrls = new Set<string>()
 const NON_NEARBY_TABS: Array<Exclude<AnitabiMapTab, 'nearby'>> = ['latest', 'recent', 'hot']
-const NEARBY_PRELOAD_PAGE_SIZE = 120
-const NEARBY_PRELOAD_MAX_PAGES = 40
-const WARMUP_BLOCKING_BUDGET_MS = 35000
-const WARMUP_DETAIL_MIN = 72
-const WARMUP_DETAIL_MAX = 260
-const WARMUP_DETAIL_CONCURRENCY = 10
-const WARMUP_IMAGE_MAX = 1200
-const WARMUP_IMAGE_CONCURRENCY = 10
-const WARMUP_IMAGE_TIMEOUT_MS = 4500
-const WARMUP_IMAGE_POINTS_PER_DETAIL = 3
-const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 96
-const WARMUP_BG_DETAIL_CONCURRENCY = 4
-const WARMUP_BG_POINTS_PER_DETAIL = 2
+const WARMUP_BLOCKING_BUDGET_MS = 40000
+const PRELOAD_CHUNK_CONCURRENCY = 3
+const PRELOAD_IMAGE_BLOCKING_MAX = 280
+const PRELOAD_IMAGE_BACKGROUND_MAX = 2200
+const PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY = 6
+const PRELOAD_IMAGE_BACKGROUND_CONCURRENCY = 4
+const WARMUP_IMAGE_TIMEOUT_MS = 1800
+const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 120
 const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
-const WARMUP_MAP_TILE_TIMEOUT_MS = 15000
-const MAP_TILE_PREFETCH_TIMEOUT_MS = 3200
-const MAP_TILE_PREFETCH_RADIUS = 2
+const WARMUP_MAP_READY_TIMEOUT_MS = 15000
 const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   map: 20,
   cards: 30,
-  details: 30,
+  details: 35,
   images: 20,
 }
+const MAP_PRELOAD_V2_ENABLED = String(process.env.NEXT_PUBLIC_MAP_PRELOAD_V2 || '1').trim() !== '0'
+const MAP_VECTOR_ENABLED = String(process.env.NEXT_PUBLIC_MAP_VECTOR || '1').trim() !== '0'
+const MAPTILER_KEY = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
 
 function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
   return {
@@ -394,15 +394,15 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadedAll: '已加载全部作品',
     loadMoreFailed: '加载更多失败，请重试',
     preloadTitle: '正在预加载地图数据',
-    preloadMap: '地图底片',
-    preloadMapPreparing: '初始化地图样式',
-    preloadMapTiles: '预加载地图底片瓦片',
-    preloadMapDone: '地图底片就绪',
-    preloadCards: '板块作品',
-    preloadDetails: '作品点位详情',
-    preloadImages: '点位截图预热',
+    preloadMap: '地图底图',
+    preloadMapPreparing: '初始化地图底图',
+    preloadMapTiles: '等待地图底图可用',
+    preloadMapDone: '地图底图就绪',
+    preloadCards: '四板块卡片',
+    preloadDetails: '点位分块',
+    preloadImages: '图片预热',
     preloadDone: '预加载完成',
-    preloadWait: '正在加载地图，请稍候…',
+    preloadWait: '地图数据加载中，请耐心等待…',
     retry: '重试',
     noData: '暂无可用数据',
     searchNoData: '未找到匹配作品，试试更换关键词，或清空搜索查看附近点位',
@@ -503,14 +503,14 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: 'Failed to load more titles',
     preloadTitle: 'Preloading map data',
     preloadMap: 'Map Base Layer',
-    preloadMapPreparing: 'Initializing map style',
-    preloadMapTiles: 'Warming map tiles',
-    preloadMapDone: 'Map base layer ready',
-    preloadCards: 'Tab Cards',
-    preloadDetails: 'Work Details',
-    preloadImages: 'Point Images',
+    preloadMapPreparing: 'Preparing map base',
+    preloadMapTiles: 'Waiting for base map',
+    preloadMapDone: 'Map base ready',
+    preloadCards: 'Four Tab Cards',
+    preloadDetails: 'Point Chunks',
+    preloadImages: 'Image Warmup',
     preloadDone: 'Preload complete',
-    preloadWait: 'Preparing map data, please wait…',
+    preloadWait: 'Map data is loading, please wait…',
     retry: 'Retry',
     noData: 'No data yet',
     searchNoData: 'No matches found. Try another keyword, or clear search to see nearby works.',
@@ -611,14 +611,14 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadMoreFailed: '追加読み込みに失敗しました',
     preloadTitle: '地図データを事前読み込み中',
     preloadMap: '地図ベース',
-    preloadMapPreparing: '地図スタイルを初期化',
-    preloadMapTiles: '地図タイルを先読み',
+    preloadMapPreparing: '地図ベースを初期化',
+    preloadMapTiles: '地図ベースの準備待ち',
     preloadMapDone: '地図ベース準備完了',
-    preloadCards: 'タブ作品',
-    preloadDetails: '作品スポット詳細',
-    preloadImages: 'スポット画像先読み',
+    preloadCards: '4タブ作品カード',
+    preloadDetails: 'スポット分割データ',
+    preloadImages: '画像ウォームアップ',
     preloadDone: '事前読み込み完了',
-    preloadWait: '地図データを準備中です。少々お待ちください…',
+    preloadWait: '地図データを読み込み中です。しばらくお待ちください…',
     retry: '再試行',
     noData: 'データがありません',
     searchNoData: '一致する作品が見つかりません。キーワードを変更するか、検索をクリアして近くの作品を表示してください',
@@ -819,8 +819,16 @@ function normalizeCoverImageUrl(input: string | null | undefined): string | null
   return raw
 }
 
-async function prefetchImageUrl(src: string, signal?: AbortSignal): Promise<void> {
+async function prefetchImageUrl(
+  src: string,
+  options?: {
+    signal?: AbortSignal
+    timeoutMs?: number
+  },
+): Promise<void> {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return
+  const signal = options?.signal
+  const timeoutMs = Math.max(200, options?.timeoutMs ?? WARMUP_IMAGE_TIMEOUT_MS)
   if (!src || signal?.aborted) return
   if (prefetchedPointImageUrls.has(src)) return
   if (prefetchingPointImageUrls.has(src)) return
@@ -844,7 +852,7 @@ async function prefetchImageUrl(src: string, signal?: AbortSignal): Promise<void
 
       const timer = window.setTimeout(() => {
         finish(false)
-      }, WARMUP_IMAGE_TIMEOUT_MS)
+      }, timeoutMs)
 
       const onLoad = () => {
         window.clearTimeout(timer)
@@ -912,92 +920,7 @@ function looksLikeImageUrl(input: string | null | undefined): boolean {
   return false
 }
 
-function normalizeTileX(x: number, z: number): number {
-  const size = 2 ** z
-  let value = x % size
-  if (value < 0) value += size
-  return value
-}
-
-function lngLatToTile(lng: number, lat: number, z: number): { x: number; y: number } {
-  const size = 2 ** z
-  const x = Math.floor(((lng + 180) / 360) * size)
-  const latRad = (Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI) / 180
-  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * size)
-  return {
-    x: normalizeTileX(x, z),
-    y: Math.max(0, Math.min(size - 1, y)),
-  }
-}
-
-function buildMapTileUrl(mode: 'street' | 'satellite', z: number, x: number, y: number): string {
-  if (mode === 'satellite') {
-    return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-  }
-  const shard = ['a', 'b', 'c'][(x + y) % 3] || 'a'
-  return `https://${shard}.tile.openstreetmap.org/${z}/${x}/${y}.png`
-}
-
-async function prefetchMapTileUrl(src: string, signal?: AbortSignal): Promise<void> {
-  if (!src || signal?.aborted) return
-  if (prefetchedMapTileUrls.has(src)) return
-  try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), MAP_TILE_PREFETCH_TIMEOUT_MS)
-    if (signal) {
-      if (signal.aborted) {
-        clearTimeout(timer)
-        return
-      }
-      signal.addEventListener('abort', () => ctrl.abort(), { once: true })
-    }
-    await fetch(src, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'force-cache',
-      signal: ctrl.signal,
-    }).catch(() => null)
-    clearTimeout(timer)
-    prefetchedMapTileUrls.add(src)
-  } catch {
-    // ignore tile prefetch failures
-  }
-}
-
-async function prefetchMapTilesForView(
-  mode: 'street' | 'satellite',
-  center: [number, number],
-  zoom: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (signal?.aborted) return
-  const z = Math.max(2, Math.min(18, Math.round(zoom)))
-  const tile = lngLatToTile(center[0], center[1], z)
-  const urls: string[] = []
-  for (let dx = -MAP_TILE_PREFETCH_RADIUS; dx <= MAP_TILE_PREFETCH_RADIUS; dx += 1) {
-    for (let dy = -MAP_TILE_PREFETCH_RADIUS; dy <= MAP_TILE_PREFETCH_RADIUS; dy += 1) {
-      const x = normalizeTileX(tile.x + dx, z)
-      const y = tile.y + dy
-      const size = 2 ** z
-      if (y < 0 || y >= size) continue
-      urls.push(buildMapTileUrl(mode, z, x, y))
-    }
-  }
-  if (!urls.length) return
-
-  const queue = urls.slice()
-  const workers = Math.min(10, queue.length)
-  await Promise.all(Array.from({ length: workers }, async () => {
-    for (;;) {
-      if (signal?.aborted) return
-      const src = queue.shift()
-      if (!src) return
-      await prefetchMapTileUrl(src, signal)
-    }
-  }))
-}
-
-function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification {
+function buildFallbackRasterStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification {
   if (mode === 'satellite') {
     return {
       version: 8,
@@ -1029,6 +952,14 @@ function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification
     },
     layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
   }
+}
+
+function buildStyle(mode: 'street' | 'satellite'): maplibregl.StyleSpecification | string {
+  if (MAP_VECTOR_ENABLED && MAPTILER_KEY) {
+    const styleId = mode === 'satellite' ? 'hybrid' : 'streets-v2'
+    return `https://api.maptiler.com/maps/${styleId}/style.json?key=${encodeURIComponent(MAPTILER_KEY)}`
+  }
+  return buildFallbackRasterStyle(mode)
 }
 
 function geoLink(point: { geo: [number, number] | null }): string | null {
@@ -1156,6 +1087,61 @@ function buildPointFeatureCollection(
   return {
     type: 'FeatureCollection',
     features,
+  }
+}
+
+function createEmptyPointFeatureCollection(): GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties> {
+  return {
+    type: 'FeatureCollection',
+    features: [],
+  }
+}
+
+function getImageWarmupConcurrency(background = false): number {
+  if (typeof navigator === 'undefined') {
+    return background ? PRELOAD_IMAGE_BACKGROUND_CONCURRENCY : PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY
+  }
+  const connection = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection
+  const effectiveType = String(connection?.effectiveType || '')
+  if (effectiveType === 'slow-2g' || effectiveType === '2g') return background ? 2 : 4
+  if (effectiveType === '3g') return background ? 3 : 5
+  return background ? PRELOAD_IMAGE_BACKGROUND_CONCURRENCY : PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY
+}
+
+function toWarmDetailPoints(
+  bangumiId: number,
+  points: AnitabiPreloadChunkItemDTO['points'],
+): AnitabiBangumiDTO['points'] {
+  return points.map((point) => ({
+    id: point.id,
+    bangumiId,
+    name: point.name,
+    nameZh: point.nameZh,
+    note: point.note,
+    geo: point.geo,
+    ep: point.ep,
+    s: point.s,
+    image: point.image,
+    origin: null,
+    originUrl: null,
+    originLink: null,
+    density: point.density,
+    mark: point.note,
+  }))
+}
+
+function buildWarmDetail(
+  card: AnitabiBangumiCard,
+  preloadItem: AnitabiPreloadChunkItemDTO | null,
+): AnitabiBangumiDTO {
+  return {
+    card,
+    description: null,
+    tags: [],
+    points: preloadItem ? toWarmDetailPoints(card.id, preloadItem.points) : [],
+    customEpNames: {},
+    theme: preloadItem?.theme || null,
+    contributors: [],
   }
 }
 
@@ -1591,12 +1577,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
-  const pointSyncRetryTimerRef = useRef<number | null>(null)
-  const pointSyncRetryCountRef = useRef(0)
-  const pointLayerRecoveryAtRef = useRef(0)
+  const pointLayerFallbackTimerRef = useRef<number | null>(null)
+  const pendingPointGeoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties>>(createEmptyPointFeatureCollection())
+  const firstOpenPointStartedAtRef = useRef<number | null>(null)
+  const firstOpenPointVisibleRecordedRef = useRef(false)
+  const firstOpenPointGuardTimerRef = useRef<number | null>(null)
+  const warmupMetricRef = useRef<Record<string, number>>({})
   const mapInitWaitersRef = useRef<Array<() => void>>([])
-  const recoverPointLayerRef = useRef<() => void>(() => undefined)
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
+  const preloadManifestRef = useRef<AnitabiPreloadManifestDTO | null>(null)
+  const warmPointIndexByBangumiIdRef = useRef<Map<number, AnitabiPreloadChunkItemDTO>>(new Map())
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
   )
@@ -1626,7 +1616,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [loading, setLoading] = useState(false)
   const [loadingMoreCards, setLoadingMoreCards] = useState(false)
   const [cardsLoadError, setCardsLoadError] = useState<string | null>(null)
-  const [hasMoreCards, setHasMoreCards] = useState(true)
+  const [hasMoreCards, setHasMoreCards] = useState(false)
   const [nextChunkIndex, setNextChunkIndex] = useState(1)
   const [detailLoading, setDetailLoading] = useState(false)
   const [searchResult, setSearchResult] = useState<SearchResult>({ bangumi: [], points: [], cities: [] })
@@ -1960,7 +1950,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.stop()
       const offset = getCameraOffset(withDetailPanel)
       const targetCenter: [number, number] = [geo[1], geo[0]]
-      void prefetchMapTilesForView(currentStyleModeRef.current, targetCenter, zoom).catch(() => null)
       map.flyTo({
         center: targetCenter,
         zoom,
@@ -2003,7 +1992,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
 
       map.resize()
-      void prefetchMapTilesForView(currentStyleModeRef.current, [center.lng, center.lat], Math.max(map.getZoom(), 11.8)).catch(() => null)
       map.fitBounds(bounds, {
         padding: getCameraPadding(true),
         maxZoom: 12.8,
@@ -2015,37 +2003,19 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     [getCameraPadding]
   )
 
-  const syncPointLayer = useCallback(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return false
-
+  const ensurePointSourceAndLayers = useCallback((map: maplibregl.Map): boolean => {
     const existingSource = map.getSource(POINT_SOURCE_ID)
     const hasPointLayer = Boolean(map.getLayer(POINT_LAYER_ID))
     const hasSelectedHaloLayer = Boolean(map.getLayer(POINT_SELECTED_HALO_LAYER_ID))
     const hasSelectedLayer = Boolean(map.getLayer(POINT_SELECTED_LAYER_ID))
-    const hasAnyPointLayer = hasPointLayer || hasSelectedHaloLayer || hasSelectedLayer
     const hasAllPointLayers = hasPointLayer && hasSelectedHaloLayer && hasSelectedLayer
-
-    if (!detail) {
-      if (existingSource || hasAnyPointLayer) removePointLayer(map)
-      return true
-    }
-
-    const data = buildPointFeatureCollection(detail, selectedPointId, meStateRef.current, viewFilter, stateFilter)
-
-    // Fast path only when source/layers are complete.
-    if (existingSource && hasAllPointLayers && 'setData' in existingSource) {
-      ;(existingSource as { setData(d: GeoJSON.GeoJSON): void }).setData(data)
-      map.triggerRepaint()
-      return true
-    }
+    if (existingSource && hasAllPointLayers) return true
 
     try {
-      // Source/layer incomplete: rebuild atomically.
       removePointLayer(map)
       map.addSource(POINT_SOURCE_ID, {
         type: 'geojson',
-        data,
+        data: pendingPointGeoJsonRef.current,
       })
 
       map.addLayer({
@@ -2116,19 +2086,75 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           'circle-opacity': 0.98,
         },
       })
-
-      map.triggerRepaint()
       return true
     } catch {
-      // Clear partial state and let caller retry on next frame/idle.
       removePointLayer(map)
       return false
     }
-  }, [detail, selectedPointId, stateFilter, viewFilter])
+  }, [])
+
+  const flushPointLayer = useCallback(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) return false
+
+    const hasDetail = Boolean(detailRef.current)
+    if (!hasDetail) {
+      const hasSource = Boolean(map.getSource(POINT_SOURCE_ID))
+      const hasAnyLayer = Boolean(map.getLayer(POINT_LAYER_ID) || map.getLayer(POINT_SELECTED_HALO_LAYER_ID) || map.getLayer(POINT_SELECTED_LAYER_ID))
+      if (hasSource || hasAnyLayer) removePointLayer(map)
+      map.triggerRepaint()
+      return true
+    }
+
+    if (!ensurePointSourceAndLayers(map)) return false
+    const source = map.getSource(POINT_SOURCE_ID)
+    if (!source || !('setData' in source)) return false
+    ;(source as { setData(d: GeoJSON.GeoJSON): void }).setData(pendingPointGeoJsonRef.current)
+    map.triggerRepaint()
+
+    if (!firstOpenPointVisibleRecordedRef.current && firstOpenPointStartedAtRef.current != null && pendingPointGeoJsonRef.current.features.length > 0) {
+      firstOpenPointVisibleRecordedRef.current = true
+      warmupMetricRef.current.first_open_point_visible_ms = Math.round(performance.now() - firstOpenPointStartedAtRef.current)
+    }
+    return true
+  }, [ensurePointSourceAndLayers])
 
   useEffect(() => {
-    syncPointLayerRef.current = syncPointLayer
-  }, [syncPointLayer])
+    syncPointLayerRef.current = flushPointLayer
+  }, [flushPointLayer])
+
+  const schedulePointLayerFallbackFlush = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (pointLayerFallbackTimerRef.current != null) return
+    pointLayerFallbackTimerRef.current = window.setTimeout(() => {
+      pointLayerFallbackTimerRef.current = null
+      syncPointLayerRef.current()
+    }, 650)
+  }, [])
+
+  const refreshPendingPointGeoJson = useCallback(() => {
+    pendingPointGeoJsonRef.current = detail
+      ? buildPointFeatureCollection(detail, selectedPointId, meState, viewFilter, stateFilter)
+      : createEmptyPointFeatureCollection()
+    const ok = syncPointLayerRef.current()
+    if (!ok) schedulePointLayerFallbackFlush()
+  }, [detail, meState, schedulePointLayerFallbackFlush, selectedPointId, stateFilter, viewFilter])
+
+  useEffect(() => {
+    refreshPendingPointGeoJson()
+  }, [refreshPendingPointGeoJson])
+
+  const flushPointLayerSoon = useCallback(() => {
+    if (typeof window === 'undefined') {
+      const ok = syncPointLayerRef.current()
+      if (!ok) schedulePointLayerFallbackFlush()
+      return
+    }
+    window.requestAnimationFrame(() => {
+      const ok = syncPointLayerRef.current()
+      if (!ok) schedulePointLayerFallbackFlush()
+    })
+  }, [schedulePointLayerFallbackFlush])
 
   const syncRangeOverlay = useCallback(() => {
     const map = mapRef.current
@@ -2196,109 +2222,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     syncRangeOverlayRef.current = syncRangeOverlay
   }, [syncRangeOverlay])
 
-  const clearPointLayerRetry = useCallback(() => {
-    if (pointSyncRetryTimerRef.current != null) {
-      window.clearTimeout(pointSyncRetryTimerRef.current)
-      pointSyncRetryTimerRef.current = null
+  useEffect(() => () => {
+    if (pointLayerFallbackTimerRef.current != null) {
+      window.clearTimeout(pointLayerFallbackTimerRef.current)
+      pointLayerFallbackTimerRef.current = null
     }
-    pointSyncRetryCountRef.current = 0
   }, [])
-
-  const ensurePointLayerSynced = useCallback((withRetry = false) => {
-    const map = mapRef.current
-    if (!map) return
-    const immediateOk = syncPointLayerRef.current()
-    if (immediateOk) {
-      clearPointLayerRetry()
-      return
-    }
-
-    if (!withRetry) return
-    clearPointLayerRetry()
-
-    const retry = () => {
-      const activeMap = mapRef.current
-      if (!activeMap) return
-
-      const ok = syncPointLayerRef.current()
-      if (ok) {
-        clearPointLayerRetry()
-        return
-      }
-
-      pointSyncRetryCountRef.current += 1
-      if (pointSyncRetryCountRef.current >= 45) {
-        clearPointLayerRetry()
-        return
-      }
-
-      // Keep canvas/layout in sync while source/layer is still warming up.
-      activeMap.resize()
-      activeMap.triggerRepaint()
-      pointSyncRetryTimerRef.current = window.setTimeout(retry, 80)
-    }
-
-    pointSyncRetryTimerRef.current = window.setTimeout(retry, 0)
-  }, [clearPointLayerRetry])
-
-  const ensurePointLayerSyncedSoon = useCallback(() => {
-    if (typeof window === 'undefined') {
-      ensurePointLayerSynced(true)
-      return
-    }
-    window.requestAnimationFrame(() => {
-      ensurePointLayerSynced(true)
-    })
-  }, [ensurePointLayerSynced])
-
-  const recoverMissingPointLayer = useCallback(() => {
-    const map = mapRef.current
-    const activeDetail = detailRef.current
-    if (!map || !activeDetail || !map.isStyleLoaded()) return
-
-    const expectedCount = collectPointCoords(activeDetail.points).length
-    if (expectedCount === 0) return
-
-    const now = Date.now()
-    if (now - pointLayerRecoveryAtRef.current < 500) return
-
-    const hasMainLayer = Boolean(map.getLayer(POINT_LAYER_ID))
-    const hasSource = Boolean(map.getSource(POINT_SOURCE_ID))
-    let sourceCount = 0
-    try {
-      sourceCount = hasSource ? map.querySourceFeatures(POINT_SOURCE_ID).length : 0
-    } catch {
-      sourceCount = 0
-    }
-
-    let renderedCount = 0
-    try {
-      const canvas = map.getCanvas()
-      const viewport: [maplibregl.PointLike, maplibregl.PointLike] = [
-        [0, 0],
-        [canvas.width, canvas.height],
-      ]
-      renderedCount = hasMainLayer
-        ? map.queryRenderedFeatures(viewport, { layers: [POINT_LAYER_ID, POINT_SELECTED_LAYER_ID] }).length
-        : 0
-    } catch {
-      renderedCount = 0
-    }
-
-    // If expected points exist but source/layer/render result is empty, rebuild aggressively.
-    if (!hasMainLayer || sourceCount === 0 || renderedCount === 0) {
-      pointLayerRecoveryAtRef.current = now
-      removePointLayer(map)
-      ensurePointLayerSynced(true)
-      window.setTimeout(() => {
-        ensurePointLayerSynced(true)
-      }, 90)
-    }
-  }, [ensurePointLayerSynced])
-
-  useEffect(() => {
-    recoverPointLayerRef.current = recoverMissingPointLayer
-  }, [recoverMissingPointLayer])
 
   const syncUrl = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -2476,87 +2405,57 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = await waitForMapInstance(signal)
     if (!map || signal?.aborted) return
 
-    let done = false
-    let peakPercent = 2
-    const updateMapTask = (percent: number, detail: string) => {
-      peakPercent = Math.max(peakPercent, percent)
-      updateWarmupTask('map', { percent: peakPercent, detail })
-    }
-
-    const maybeDone = (): boolean => {
-      try {
-        if (!map.areTilesLoaded()) return false
-        updateMapTask(100, label.preloadMapDone)
-        done = true
-        return true
-      } catch {
-        return false
-      }
-    }
-
-    if (map.isStyleLoaded()) {
-      updateMapTask(35, label.preloadMapPreparing)
-    }
-    if (maybeDone()) return
-
     await new Promise<void>((resolve) => {
+      let finished = false
       const cleanup = () => {
         if (timeoutId != null) {
           window.clearTimeout(timeoutId)
           timeoutId = null
         }
-        map.off('load', onLoad)
-        map.off('render', onRender)
-        map.off('sourcedata', onSourceData)
+        map.off('styledata', onStyleData)
+        map.off('load', onLoadOrIdle)
         map.off('idle', onIdle)
         if (signal) signal.removeEventListener('abort', onAbort)
       }
 
-      const finish = () => {
-        if (done) return
-        done = true
-        updateMapTask(100, label.preloadMapDone)
+      const finish = (percent = 100, detail = label.preloadMapDone) => {
+        if (finished) return
+        finished = true
+        updateWarmupTask('map', { percent, detail })
         cleanup()
         resolve()
       }
 
-      const onLoad = () => {
-        updateMapTask(45, label.preloadMapPreparing)
-        maybeDone()
+      const onStyleData = () => {
+        updateWarmupTask('map', { percent: 45, detail: label.preloadMapPreparing })
       }
-      const onRender = () => {
-        updateMapTask(62, label.preloadMapTiles)
-      }
-      const onSourceData = () => {
-        updateMapTask(78, label.preloadMapTiles)
-        maybeDone()
+      const onLoadOrIdle = () => {
+        updateWarmupTask('map', { percent: 78, detail: label.preloadMapTiles })
       }
       const onIdle = () => {
-        updateMapTask(92, label.preloadMapTiles)
-        if (maybeDone()) {
-          cleanup()
-          resolve()
-        }
+        finish(100, label.preloadMapDone)
       }
       const onAbort = () => {
-        cleanup()
-        resolve()
+        finish(100, label.preloadMapDone)
       }
 
       let timeoutId: number | null = window.setTimeout(() => {
-        finish()
-      }, WARMUP_MAP_TILE_TIMEOUT_MS)
+        finish(100, label.preloadMapDone)
+      }, WARMUP_MAP_READY_TIMEOUT_MS)
 
-      map.on('load', onLoad)
-      map.on('render', onRender)
-      map.on('sourcedata', onSourceData)
+      map.on('styledata', onStyleData)
+      map.on('load', onLoadOrIdle)
       map.on('idle', onIdle)
       if (signal) signal.addEventListener('abort', onAbort, { once: true })
 
-      // Trigger an immediate check in case everything is already hot in cache.
-      if (maybeDone()) {
-        cleanup()
-        resolve()
+      if (map.isStyleLoaded()) onStyleData()
+      try {
+        if (map.areTilesLoaded()) {
+          finish(100, label.preloadMapDone)
+          return
+        }
+      } catch {
+        // noop
       }
     })
   }, [
@@ -2567,97 +2466,92 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     waitForMapInstance,
   ])
 
-  const loadNearbyCardsAll = useCallback(
-    async (location: UserLocation, signal?: AbortSignal): Promise<AnitabiBangumiCard[]> => {
-      const seen = new Set<number>()
-      const merged: AnitabiBangumiCard[] = []
-      for (let index = 0; index < NEARBY_PRELOAD_MAX_PAGES; index += 1) {
-        if (signal?.aborted) break
-        const params = new URLSearchParams()
-        params.set('locale', locale)
-        params.set('tab', 'nearby')
-        params.set('size', String(NEARBY_PRELOAD_PAGE_SIZE))
-        params.set('ulat', location.lat.toFixed(6))
-        params.set('ulng', location.lng.toFixed(6))
-        const res = await fetch(`/api/anitabi/chunks/${index}?${params.toString()}`, { method: 'GET', signal })
-        if (!res.ok) throw new Error(label.loadMoreFailed)
-        const json = (await res.json().catch(() => ({}))) as { items?: AnitabiBangumiCard[] }
-        const items = Array.isArray(json.items) ? json.items : []
-        for (const item of items) {
-          if (seen.has(item.id)) continue
-          seen.add(item.id)
-          merged.push(item)
-        }
-        if (items.length < NEARBY_PRELOAD_PAGE_SIZE) break
-      }
-      return merged
-    },
-    [label.loadMoreFailed, locale]
-  )
-
-  const loadBulkCardsForTab = useCallback(async (
-    targetTab: Exclude<AnitabiMapTab, 'nearby'>,
-    signal?: AbortSignal,
-  ): Promise<AnitabiBangumiCard[]> => {
+  const fetchPreloadManifest = useCallback(async (signal?: AbortSignal): Promise<AnitabiPreloadManifestDTO | null> => {
     const store = cacheStoreRef.current
-    if (!store) return []
-    const result = await loadAllCards({
-      locale,
-      tab: targetTab,
-      cacheStore: store,
-      progressTracker: createProgressTracker(),
-      signal,
-    })
-    const cardsRows = result?.cards || []
-    tabCardsRef.current[targetTab] = cardsRows
-    loadedTabsRef.current.add(targetTab)
-    setTabCardsVersion((prev) => prev + 1)
-    return cardsRows
-  }, [locale])
+    if (!store) return null
 
-  const ensureBangumiDetailCached = useCallback(async (id: number, signal?: AbortSignal): Promise<AnitabiBangumiDTO | null> => {
-    if (signal?.aborted) return null
-    if (!bangumiDetailCache.has(id) && cacheStoreRef.current) {
-      try {
-        const cachedL2 = await cacheStoreRef.current.getDetail(id)
-        if (cachedL2) {
-          cachePut(id, cachedL2.detail)
-        }
-      } catch {
-        // ignore L2 read failures
-      }
-    }
-
-    const cached = bangumiDetailCache.get(id)
-    if (cached) return cached
+    const cached = await store.getPreloadManifest().catch(() => null)
+    const fallback = cached?.manifest || null
+    if (fallback) preloadManifestRef.current = fallback
 
     try {
-      const res = await fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, { method: 'GET', signal })
-      if (!res.ok || signal?.aborted) return null
-      const json = (await res.json()) as AnitabiBangumiDTO
-      if (signal?.aborted) return null
-      cachePut(id, json)
-      if (cacheStoreRef.current) {
-        cacheStoreRef.current.getVersion().then((version) => {
-          if (!version) return
-          cacheStoreRef.current?.putDetail(id, {
-            datasetVersion: version,
-            bangumiId: id,
-            detail: json,
-            cachedAt: Date.now(),
-          }).catch(() => null)
-        }).catch(() => null)
-      }
-      return json
+      const res = await fetch(`/api/anitabi/preload/manifest?locale=${encodeURIComponent(locale)}`, {
+        method: 'GET',
+        signal,
+      })
+      if (!res.ok) throw new Error('load preload manifest failed')
+      const manifest = (await res.json()) as AnitabiPreloadManifestDTO
+      preloadManifestRef.current = manifest
+      await store.putPreloadManifest({
+        datasetVersion: manifest.datasetVersion,
+        manifest,
+        cachedAt: Date.now(),
+      }).catch(() => null)
+      return manifest
     } catch {
-      return null
+      return fallback
     }
   }, [locale])
+
+  const fetchPreloadChunkByIndex = useCallback(async (
+    manifest: AnitabiPreloadManifestDTO,
+    index: number,
+    signal?: AbortSignal,
+  ): Promise<AnitabiPreloadChunkItemDTO[]> => {
+    const store = cacheStoreRef.current
+    if (!store) return []
+
+    const cached = await store.getPreloadChunk(index).catch(() => null)
+    if (cached && cached.datasetVersion === manifest.datasetVersion && Array.isArray(cached.chunk.items)) {
+      return cached.chunk.items
+    }
+
+    const res = await fetch(
+      `/api/anitabi/preload/chunks/${index}?locale=${encodeURIComponent(locale)}`,
+      { method: 'GET', signal },
+    )
+    if (!res.ok) throw new Error(`load preload chunk failed: ${index}`)
+    const chunk = (await res.json()) as {
+      datasetVersion: string
+      index: number
+      items?: AnitabiPreloadChunkItemDTO[]
+    }
+    if (chunk.datasetVersion && chunk.datasetVersion !== manifest.datasetVersion) {
+      return []
+    }
+    const safeItems = Array.isArray(chunk.items) ? chunk.items : []
+    await store.putPreloadChunk(index, {
+      datasetVersion: manifest.datasetVersion,
+      index,
+      chunk: {
+        datasetVersion: manifest.datasetVersion,
+        index,
+        items: safeItems,
+      },
+      cachedAt: Date.now(),
+    }).catch(() => null)
+    return safeItems
+  }, [locale])
+
+  const hydrateTabCardsFromManifest = useCallback((manifest: AnitabiPreloadManifestDTO) => {
+    preloadManifestRef.current = manifest
+    tabCardsRef.current.nearby = Array.isArray(manifest.tabs.nearby) ? manifest.tabs.nearby : []
+    tabCardsRef.current.latest = Array.isArray(manifest.tabs.latest) ? manifest.tabs.latest : []
+    tabCardsRef.current.recent = Array.isArray(manifest.tabs.recent) ? manifest.tabs.recent : []
+    tabCardsRef.current.hot = Array.isArray(manifest.tabs.hot) ? manifest.tabs.hot : []
+    loadedTabsRef.current.add('nearby')
+    loadedTabsRef.current.add('latest')
+    loadedTabsRef.current.add('recent')
+    loadedTabsRef.current.add('hot')
+    setBootstrap((prev) => (prev ? { ...prev, datasetVersion: manifest.datasetVersion } : prev))
+    setTabCardsVersion((prev) => prev + 1)
+  }, [])
 
   const warmupAllTabsData = useCallback(async (signal?: AbortSignal) => {
     const store = cacheStoreRef.current
     if (!store || signal?.aborted) return
 
+    const startedAt = performance.now()
     setCardsLoadError(null)
     resetWarmupTaskProgress()
     updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
@@ -2665,179 +2559,111 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
     updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
 
-    const mapWarmupPromise = preloadMapBaseLayer(signal).catch(() => {
-      if (signal?.aborted) return
-      updateWarmupTask('map', { percent: 100, detail: label.preloadMapDone })
+    const mapStartedAt = performance.now()
+    const mapWarmupPromise = preloadMapBaseLayer(signal).finally(() => {
+      warmupMetricRef.current.map_ms = Math.round(performance.now() - mapStartedAt)
     })
 
-    const tabsToLoad: AnitabiMapTab[] = userLocation
-      ? ['nearby', ...NON_NEARBY_TABS]
-      : [...NON_NEARBY_TABS]
-    const loadedByTab: Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>> = {}
+    const manifestStartedAt = performance.now()
+    const manifest = await fetchPreloadManifest(signal)
+    if (signal?.aborted) return
+    if (!manifest) throw new Error('preload manifest unavailable')
+    warmupMetricRef.current.manifest_ms = Math.round(performance.now() - manifestStartedAt)
+    updateWarmupTask('cards', { percent: 25, detail: `${label.preloadCards} (1/4)` })
 
-    if (tabsToLoad.length > 0) {
-      let tabsDone = 0
-      const tabQueue = tabsToLoad.slice()
-      const tabWorkers = Math.min(4, tabQueue.length)
-      await Promise.all(Array.from({ length: tabWorkers }, async () => {
+    hydrateTabCardsFromManifest(manifest)
+    updateWarmupTask('cards', { percent: 100, detail: `${label.preloadCards} (4/4)` })
+    setLoading(false)
+
+    const chunkCount = Math.max(0, manifest.chunkCount)
+    warmPointIndexByBangumiIdRef.current.clear()
+    const chunkQueue = Array.from({ length: chunkCount }, (_, idx) => idx)
+    let chunkDone = 0
+    let pointsLoaded = 0
+    if (chunkCount > 0) {
+      updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/${chunkCount})` })
+      const chunkStartedAt = performance.now()
+      const workers = Math.min(PRELOAD_CHUNK_CONCURRENCY, chunkQueue.length)
+      await Promise.all(Array.from({ length: workers }, async () => {
         for (;;) {
           if (signal?.aborted) return
-          const currentTab = tabQueue.shift()
-          if (!currentTab) return
+          const index = chunkQueue.shift()
+          if (index == null) return
 
-          let rows: AnitabiBangumiCard[] = []
-          try {
-            if (currentTab === 'nearby') {
-              rows = await loadNearbyCardsAll(userLocation!, signal)
-              tabCardsRef.current.nearby = rows
-              loadedTabsRef.current.add('nearby')
-              setTabCardsVersion((prev) => prev + 1)
-            } else {
-              rows = await loadBulkCardsForTab(currentTab, signal)
-            }
-          } catch {
-            rows = []
-            tabCardsRef.current[currentTab] = rows
-            loadedTabsRef.current.add(currentTab)
-            setTabCardsVersion((prev) => prev + 1)
+          const items = await fetchPreloadChunkByIndex(manifest, index, signal)
+          for (const item of items) {
+            warmPointIndexByBangumiIdRef.current.set(item.bangumiId, item)
+            pointsLoaded += item.points.length
           }
 
-          loadedByTab[currentTab] = rows
-          tabsDone += 1
-          updateWarmupTask('cards', {
-            percent: Math.round((tabsDone / tabsToLoad.length) * 100),
-            detail: `${label.preloadCards} (${tabsDone}/${tabsToLoad.length})`,
+          chunkDone += 1
+          updateWarmupTask('details', {
+            percent: Math.round((chunkDone / chunkCount) * 100),
+            detail: `${label.preloadDetails} (${chunkDone}/${chunkCount}) · ${pointsLoaded}`,
           })
         }
       }))
-    } else {
-      updateWarmupTask('cards', { percent: 100, detail: `${label.preloadCards} (0/0)` })
-    }
-
-    const uniqueIds = Array.from(
-      new Set(
-        Object.values(loadedByTab)
-          .flatMap((rows) => rows || [])
-          .map((row) => row.id)
-      )
-    )
-    const prioritizedIds = uniqueIds.slice()
-    const activeId = activeBangumiIdRef.current
-    if (activeId != null) {
-      const hit = prioritizedIds.indexOf(activeId)
-      if (hit > 0) {
-        prioritizedIds.splice(hit, 1)
-        prioritizedIds.unshift(activeId)
-      } else if (hit < 0) {
-        prioritizedIds.unshift(activeId)
-      }
-    }
-
-    const warmupStartedAt = Date.now()
-    const blockingDeadline = warmupStartedAt + WARMUP_BLOCKING_BUDGET_MS
-
-    const loadedDetails: AnitabiBangumiDTO[] = []
-    const detailQueue = prioritizedIds.slice()
-    const detailTarget = Math.min(prioritizedIds.length, WARMUP_DETAIL_MAX)
-    if (detailTarget > 0) {
-      updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/${detailTarget})` })
-      let detailDone = 0
-      const workerCount = Math.min(WARMUP_DETAIL_CONCURRENCY, detailQueue.length)
-
-      await Promise.all(Array.from({ length: workerCount }, async () => {
-        for (;;) {
-          if (signal?.aborted) return
-          if (detailDone >= detailTarget) return
-          if (Date.now() >= blockingDeadline && detailDone >= Math.min(WARMUP_DETAIL_MIN, detailTarget)) return
-
-          const id = detailQueue.shift()
-          if (id == null) return
-
-          const detailRow = await ensureBangumiDetailCached(id, signal)
-          if (detailRow) loadedDetails.push(detailRow)
-
-          detailDone += 1
-          if (detailDone === detailTarget || detailDone % 6 === 0) {
-            updateWarmupTask('details', {
-              percent: Math.round((detailDone / detailTarget) * 100),
-              detail: `${label.preloadDetails} (${detailDone}/${detailTarget})`,
-            })
-          }
-        }
-      }))
+      warmupMetricRef.current.chunks_ms = Math.round(performance.now() - chunkStartedAt)
+      setTabCardsVersion((prev) => prev + 1)
     } else {
       updateWarmupTask('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
     }
 
-    const remainingDetailIds = detailQueue.slice()
     if (signal?.aborted) return
+    const activeId = activeBangumiIdRef.current
+    if (activeId != null) {
+      const activeCard = Object.values(tabCardsRef.current).flatMap((rows) => rows || []).find((row) => row.id === activeId)
+      const activeChunk = warmPointIndexByBangumiIdRef.current.get(activeId) || null
+      if (activeCard && activeChunk) {
+        setDetail((prev) => {
+          if (!prev || prev.card.id !== activeCard.id) return prev
+          if (prev.points.length > 0) return prev
+          return buildWarmDetail(activeCard, activeChunk)
+        })
+      }
+    }
 
-    const queuedImages = new Set<string>()
-    const imageQueue: string[] = []
-    const enqueueImage = (src: string | null | undefined, priority = false) => {
+    const blockingImages = new Set<string>()
+    const blockingImageQueue: string[] = []
+    const pushBlockingImage = (src: string | null | undefined) => {
       const value = String(src || '').trim()
-      if (
-        !value
-        || queuedImages.has(value)
-        || prefetchedPointImageUrls.has(value)
-        || prefetchingPointImageUrls.has(value)
-      ) return
-      if (queuedImages.size >= WARMUP_IMAGE_MAX) return
-      queuedImages.add(value)
-      if (priority) imageQueue.unshift(value)
-      else imageQueue.push(value)
+      if (!value || blockingImages.has(value) || prefetchedPointImageUrls.has(value) || prefetchingPointImageUrls.has(value)) return
+      if (blockingImageQueue.length >= PRELOAD_IMAGE_BLOCKING_MAX) return
+      blockingImages.add(value)
+      blockingImageQueue.push(value)
     }
 
-    const activeDetail = activeId != null
-      ? loadedDetails.find((row) => row.card.id === activeId) || null
-      : null
-
-    if (activeDetail) {
-      enqueueImage(normalizeCoverImageUrl(activeDetail.card.cover), true)
-      for (const point of activeDetail.points.slice(0, WARMUP_ACTIVE_DETAIL_IMAGE_MAX)) {
-        enqueueImage(normalizePointImageUrl(point.image), true)
+    const currentCards = tabCardsRef.current[tab] || tabCardsRef.current.latest || []
+    for (const card of currentCards.slice(0, 32)) {
+      pushBlockingImage(normalizeCoverImageUrl(card.cover))
+    }
+    if (activeId != null) {
+      const item = warmPointIndexByBangumiIdRef.current.get(activeId) || null
+      if (item) {
+        for (const point of item.points.slice(0, WARMUP_ACTIVE_DETAIL_IMAGE_MAX)) {
+          pushBlockingImage(normalizePointImageUrl(point.image))
+        }
       }
     }
 
-    for (const rows of Object.values(loadedByTab)) {
-      for (const card of rows || []) {
-        enqueueImage(normalizeCoverImageUrl(card.cover))
-      }
-    }
-
-    for (const detailRow of loadedDetails) {
-      const highPriority = Boolean(activeDetail && detailRow.card.id === activeDetail.card.id)
-      enqueueImage(normalizeCoverImageUrl(detailRow.card.cover), highPriority)
-      const pointLimit = highPriority ? WARMUP_ACTIVE_DETAIL_IMAGE_MAX : WARMUP_IMAGE_POINTS_PER_DETAIL
-      for (const point of detailRow.points.slice(0, pointLimit)) {
-        enqueueImage(normalizePointImageUrl(point.image), highPriority)
-      }
-    }
-
-    const blockingImageQueue = imageQueue.slice(0, WARMUP_IMAGE_MAX)
     if (blockingImageQueue.length > 0) {
       updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/${blockingImageQueue.length})` })
-
-      let imageDone = 0
-      const imageQueueRef = blockingImageQueue.slice()
-      const minImageTarget = Math.min(120, blockingImageQueue.length)
-      const workers = Math.min(WARMUP_IMAGE_CONCURRENCY, imageQueueRef.length)
-
+      const queue = blockingImageQueue.slice()
+      let done = 0
+      const blockingDeadline = Date.now() + WARMUP_BLOCKING_BUDGET_MS
+      const workers = Math.min(getImageWarmupConcurrency(false), queue.length)
       await Promise.all(Array.from({ length: workers }, async () => {
         for (;;) {
           if (signal?.aborted) return
-          if (imageDone >= blockingImageQueue.length) return
-          if (Date.now() >= blockingDeadline && imageDone >= minImageTarget) return
-
-          const src = imageQueueRef.shift()
+          if (Date.now() > blockingDeadline) return
+          const src = queue.shift()
           if (!src) return
-
-          await prefetchImageUrl(src, signal).catch(() => null)
-          imageDone += 1
-          if (imageDone === blockingImageQueue.length || imageDone % 8 === 0) {
+          await prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null)
+          done += 1
+          if (done === blockingImageQueue.length || done % 8 === 0) {
             updateWarmupTask('images', {
-              percent: Math.round((imageDone / blockingImageQueue.length) * 100),
-              detail: `${label.preloadImages} (${imageDone}/${blockingImageQueue.length})`,
+              percent: Math.round((done / blockingImageQueue.length) * 100),
+              detail: `${label.preloadImages} (${done}/${blockingImageQueue.length})`,
             })
           }
         }
@@ -2851,56 +2677,58 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     completeAllWarmupTasks()
     updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
+    warmupMetricRef.current.unlock_ms = Math.round(performance.now() - startedAt)
     window.setTimeout(() => {
       setWarmupProgress((prev) => (prev.phase === 'done'
         ? { ...prev, phase: 'idle', percent: 100, detail: label.preloadDone }
         : prev))
     }, 700)
 
-    // Keep warming remaining details in background, but do not block map interaction.
-    if (!signal?.aborted && remainingDetailIds.length > 0) {
-      const bgQueue = remainingDetailIds.slice()
-      void Promise.all(Array.from({ length: Math.min(WARMUP_BG_DETAIL_CONCURRENCY, bgQueue.length) }, async () => {
+    const backgroundStartedAt = performance.now()
+    const backgroundImages = new Set<string>()
+    for (const rows of Object.values(tabCardsRef.current)) {
+      for (const card of rows || []) {
+        const cover = normalizeCoverImageUrl(card.cover)
+        if (cover) backgroundImages.add(cover)
+      }
+    }
+    for (const item of warmPointIndexByBangumiIdRef.current.values()) {
+      for (const point of item.points) {
+        const img = normalizePointImageUrl(point.image)
+        if (img) backgroundImages.add(img)
+        if (backgroundImages.size >= PRELOAD_IMAGE_BACKGROUND_MAX) break
+      }
+      if (backgroundImages.size >= PRELOAD_IMAGE_BACKGROUND_MAX) break
+    }
+    const bgQueue = Array.from(backgroundImages).filter((src) => !prefetchedPointImageUrls.has(src))
+    if (!signal?.aborted && bgQueue.length > 0) {
+      void Promise.all(Array.from({ length: Math.min(getImageWarmupConcurrency(true), bgQueue.length) }, async () => {
         for (;;) {
           if (signal?.aborted) return
-          const id = bgQueue.shift()
-          if (id == null) return
-          const detailRow = await ensureBangumiDetailCached(id, signal)
-          if (!detailRow || signal?.aborted) continue
-
-          const cover = normalizeCoverImageUrl(detailRow.card.cover)
-          if (cover) {
-            await prefetchImageUrl(cover, signal).catch(() => null)
-          }
-
-          let warmed = 0
-          for (const point of detailRow.points) {
-            if (signal?.aborted) return
-            if (warmed >= WARMUP_BG_POINTS_PER_DETAIL) break
-            const src = normalizePointImageUrl(point.image)
-            if (!src || prefetchedPointImageUrls.has(src) || prefetchingPointImageUrls.has(src)) continue
-            warmed += 1
-            await prefetchImageUrl(src, signal).catch(() => null)
-          }
+          const src = bgQueue.shift()
+          if (!src) return
+          await prefetchImageUrl(src, { signal, timeoutMs: 2200 }).catch(() => null)
         }
-      })).catch(() => null)
+      })).finally(() => {
+        warmupMetricRef.current.bg_images_ms = Math.round(performance.now() - backgroundStartedAt)
+      })
+    } else {
+      warmupMetricRef.current.bg_images_ms = 0
     }
   }, [
     completeAllWarmupTasks,
-    ensureBangumiDetailCached,
+    fetchPreloadChunkByIndex,
+    fetchPreloadManifest,
+    hydrateTabCardsFromManifest,
     label.preloadCards,
     label.preloadDetails,
     label.preloadDone,
     label.preloadImages,
-    label.preloadMapDone,
     label.preloadMapPreparing,
-    loadBulkCardsForTab,
-    loadNearbyCardsAll,
+    updateWarmupTask,
     preloadMapBaseLayer,
     resetWarmupTaskProgress,
-    updateWarmupTask,
     updateWarmupProgress,
-    userLocation,
   ])
 
   const loadMoreCards = useCallback(async () => {
@@ -2951,6 +2779,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
   const openBangumi = useCallback(
     async (id: number, pointId?: string | null) => {
+      if (firstOpenPointGuardTimerRef.current != null) {
+        window.clearTimeout(firstOpenPointGuardTimerRef.current)
+        firstOpenPointGuardTimerRef.current = null
+      }
+      firstOpenPointStartedAtRef.current = performance.now()
+      firstOpenPointVisibleRecordedRef.current = false
+
       setSelectedBangumiId(id)
       activeBangumiIdRef.current = id
       setSelectedPointId(pointId || null)
@@ -2964,20 +2799,59 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setDetailLoading(true)
       const card = cards.find((c) => c.id === id)
         || Object.values(tabCardsRef.current).flatMap((rows) => rows || []).find((c) => c.id === id)
+      const warmChunk = warmPointIndexByBangumiIdRef.current.get(id) || null
+      const pushHistory = () => {
+        if (!meStateRef.current) return
+        fetch('/api/anitabi/me/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetType: 'bangumi', bangumiId: id }),
+        }).catch(() => null)
+      }
+      const focusByDetail = (nextDetail: AnitabiBangumiDTO, targetPointId?: string | null) => {
+        const map = mapRef.current
+        if (!map) return
+        const geoPoints = collectPointCoords(nextDetail.points)
+        const focusCluster = pickFocusCluster(geoPoints)
+        const focusPoints = focusCluster.length ? focusCluster : geoPoints
+
+        if (targetPointId) {
+          const target = nextDetail.points.find((point) => matchPointId(point.id, targetPointId))
+          if (target && target.id !== targetPointId) setSelectedPointId(target.id)
+          if (!target) {
+            setSelectedPointId(null)
+            setDetailCardMode('bangumi')
+          } else if (target.geo) {
+            focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
+          } else {
+            fitBangumiBounds(focusPoints)
+          }
+          return
+        }
+
+        if (focusPoints.length >= 2) {
+          fitBangumiBounds(focusPoints)
+        } else if (focusPoints.length === 1) {
+          const single = focusPoints[0]!
+          focusGeo([single[1], single[0]], Math.max(map.getZoom(), 12.8), true)
+        } else if (nextDetail.card.geo) {
+          focusGeo(nextDetail.card.geo, nextDetail.card.zoom || 10, true)
+        }
+      }
+
       if (card) {
-        setDetail({
-          card,
-          description: null,
-          tags: [],
-          points: [],
-          customEpNames: {},
-          theme: null,
-          contributors: [],
-        })
+        const warmDetail = buildWarmDetail(card, warmChunk)
+        setDetail(warmDetail)
+        if (warmDetail.points.length > 0) {
+          warmPointImages(warmDetail.points)
+          focusByDetail(warmDetail, pointId)
+        }
+        flushPointLayerSoon()
         if (!isDesktop) {
           setMobilePanelOpen(true)
         }
       }
+
       try {
         // L2 → L1 promotion: check IndexedDB cache before FIFO memory cache
         if (!bangumiDetailCache.has(id) && cacheStoreRef.current) {
@@ -2994,36 +2868,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           const cachedCover = normalizeCoverImageUrl(cached.card.cover)
           if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
           warmPointImages(cached.points)
-          ensurePointLayerSyncedSoon()
-          const map = mapRef.current
-          if (map) {
-            const geoPoints = collectPointCoords(cached.points)
-            const focusCluster = pickFocusCluster(geoPoints)
-            const focusPoints = focusCluster.length ? focusCluster : geoPoints
-            if (pointId) {
-              const target = cached.points.find((point) => matchPointId(point.id, pointId))
-              if (target && target.id !== pointId) setSelectedPointId(target.id)
-              if (!target) { setSelectedPointId(null); setDetailCardMode('bangumi') }
-              else if (target.geo) focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
-              else fitBangumiBounds(focusPoints)
-            } else if (focusPoints.length >= 2) {
-              fitBangumiBounds(focusPoints)
-            } else if (focusPoints.length === 1) {
-              const single = focusPoints[0]!
-              focusGeo([single[1], single[0]], Math.max(map.getZoom(), 12.8), true)
-            } else if (cached.card.geo) {
-              focusGeo(cached.card.geo, cached.card.zoom || 10, true)
-            }
-          }
-          if (meStateRef.current) {
-            fetch('/api/anitabi/me/history', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targetType: 'bangumi', bangumiId: id }),
-            }).catch(() => null)
-          }
+          flushPointLayerSoon()
+          focusByDetail(cached, pointId)
+          pushHistory()
           return
         }
+
         const res = await fetch(`/api/anitabi/bangumi/${id}?locale=${encodeURIComponent(locale)}`, { method: 'GET' })
         if (!res.ok) throw new Error('load detail failed')
         const json = (await res.json()) as AnitabiBangumiDTO
@@ -3046,49 +2896,19 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const nextCover = normalizeCoverImageUrl(json.card.cover)
         if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
         warmPointImages(json.points)
-        ensurePointLayerSyncedSoon()
-
-        const map = mapRef.current
-        if (map) {
-          const geoPoints = collectPointCoords(json.points)
-          const focusCluster = pickFocusCluster(geoPoints)
-          const focusPoints = focusCluster.length ? focusCluster : geoPoints
-
-          if (pointId) {
-            const target = json.points.find((point) => matchPointId(point.id, pointId))
-            if (target && target.id !== pointId) {
-              setSelectedPointId(target.id)
-            }
-            if (!target) {
-              setSelectedPointId(null)
-              setDetailCardMode('bangumi')
-            } else if (target.geo) {
-              focusGeo(target.geo, Math.max(map.getZoom(), 13.5), true)
-            } else {
-              fitBangumiBounds(focusPoints)
-            }
-          } else if (focusPoints.length >= 2) {
-            fitBangumiBounds(focusPoints)
-          } else if (focusPoints.length === 1) {
-            const single = focusPoints[0]!
-            focusGeo([single[1], single[0]], Math.max(map.getZoom(), 12.8), true)
-          } else if (json.card.geo) {
-            focusGeo(json.card.geo, json.card.zoom || 10, true)
-          }
-        }
-
-        if (meStateRef.current) {
-          fetch('/api/anitabi/me/history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetType: 'bangumi', bangumiId: id }),
-          }).catch(() => null)
-        }
+        flushPointLayerSoon()
+        focusByDetail(json, pointId)
+        pushHistory()
       } finally {
+        firstOpenPointGuardTimerRef.current = window.setTimeout(() => {
+          if (activeBangumiIdRef.current !== id) return
+          if (firstOpenPointVisibleRecordedRef.current) return
+          warmupMetricRef.current.first_open_point_missing = (warmupMetricRef.current.first_open_point_missing || 0) + 1
+        }, 1800)
         setDetailLoading(false)
       }
     },
-    [cards, ensurePointLayerSyncedSoon, fitBangumiBounds, focusGeo, isDesktop, locale]
+    [cards, fitBangumiBounds, flushPointLayerSoon, focusGeo, isDesktop, locale]
   )
 
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -3133,9 +2953,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
       warmupAbortRef.current?.abort()
-      clearPointLayerRetry()
+      if (pointLayerFallbackTimerRef.current != null) {
+        window.clearTimeout(pointLayerFallbackTimerRef.current)
+        pointLayerFallbackTimerRef.current = null
+      }
+      if (firstOpenPointGuardTimerRef.current != null) {
+        window.clearTimeout(firstOpenPointGuardTimerRef.current)
+        firstOpenPointGuardTimerRef.current = null
+      }
     }
-  }, [clearPointLayerRetry])
+  }, [])
 
   // Initialize L2 cache store
   useEffect(() => {
@@ -3151,9 +2978,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [])
 
-  // Start full warmup once cache is ready; rerun when location becomes available.
+  // Start full warmup once cache is ready.
   useEffect(() => {
     if (!cacheStoreReady) return
+    if (!MAP_PRELOAD_V2_ENABLED) {
+      loadBootstrap().catch(() => null)
+      return
+    }
     const ac = new AbortController()
     warmupAbortRef.current?.abort()
     warmupAbortRef.current = ac
@@ -3172,7 +3003,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ac.abort()
       if (warmupAbortRef.current === ac) warmupAbortRef.current = null
     }
-  }, [cacheStoreReady, label.loadMoreFailed, resetWarmupTaskProgress, updateWarmupProgress, warmupAllTabsData])
+  }, [cacheStoreReady, label.loadMoreFailed, loadBootstrap, resetWarmupTaskProgress, updateWarmupProgress, warmupAllTabsData])
 
   // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
@@ -3180,7 +3011,35 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const nearbyCards = tabCardsRef.current.nearby || []
     if (loadedTabsRef.current.has('nearby')) {
       const hasSyncedSearchResult = normalizeSearchKeyword(queryInput) === normalizeSearchKeyword(query)
-      setCards(filterBulkCardsBySearch(nearbyCards, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
+      const rankedByLocation = userLocation
+        ? nearbyCards
+            .map((card) => {
+              const preload = warmPointIndexByBangumiIdRef.current.get(card.id)
+              let nearest: number | null = null
+              if (preload?.points?.length) {
+                for (const point of preload.points) {
+                  if (!isValidGeoPair(point.geo)) continue
+                  const dist = distanceMeters([userLocation.lng, userLocation.lat], [point.geo[1], point.geo[0]])
+                  if (nearest == null || dist < nearest) nearest = dist
+                }
+              } else if (isValidGeoPair(card.geo)) {
+                nearest = distanceMeters([userLocation.lng, userLocation.lat], [card.geo[1], card.geo[0]])
+              }
+              return {
+                ...card,
+                nearestDistanceMeters: nearest != null ? Math.round(nearest) : null,
+              }
+            })
+            .sort((a, b) => {
+              const aDist = a.nearestDistanceMeters
+              const bDist = b.nearestDistanceMeters
+              if (aDist != null && bDist != null && aDist !== bDist) return aDist - bDist
+              if (aDist != null) return -1
+              if (bDist != null) return 1
+              return a.id - b.id
+            })
+        : nearbyCards
+      setCards(filterBulkCardsBySearch(rankedByLocation, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
       setHasMoreCards(false)
       setLoading(false)
       return
@@ -3298,7 +3157,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const syncMapViewState = () => {
       syncUrlRef.current()
       setMapZoom(map.getZoom())
-      recoverPointLayerRef.current()
     }
     map.on('moveend', syncMapViewState)
     map.on('zoomend', syncMapViewState)
@@ -3351,11 +3209,23 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     map.on('mouseout', resetPointer)
 
     const resizeMap = () => map.resize()
+    const flushLayers = () => {
+      syncPointLayerRef.current()
+      syncRangeOverlayRef.current()
+    }
+    const onMapStyleData = () => {
+      flushLayers()
+    }
+    const onMapIdle = () => {
+      flushLayers()
+    }
+
+    map.on('styledata', onMapStyleData)
+    map.on('idle', onMapIdle)
     map.once('load', () => {
       setMapReady(true)
       resizeMap()
-      ensurePointLayerSynced(true)
-      syncRangeOverlayRef.current()
+      flushLayers()
     })
     const rafId = window.requestAnimationFrame(resizeMap)
     window.addEventListener('resize', resizeMap)
@@ -3384,41 +3254,32 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.off('mouseout', resetPointer)
       map.off('moveend', syncMapViewState)
       map.off('zoomend', syncMapViewState)
-      clearPointLayerRetry()
+      map.off('styledata', onMapStyleData)
+      map.off('idle', onMapIdle)
       removePointLayer(map)
       removeRangeLayer(map)
       map.remove()
       mapRef.current = null
       mapInitWaitersRef.current = []
     }
-  }, [clearPointLayerRetry, ensurePointLayerSynced, focusGeo, parsed.lat, parsed.lng, parsed.z, syncRangeOverlay])
+  }, [focusGeo, parsed.lat, parsed.lng, parsed.z])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     if (currentStyleModeRef.current === styleMode) return
     currentStyleModeRef.current = styleMode
-    map.once('idle', () => {
-      syncPointLayerRef.current()
-      syncRangeOverlayRef.current()
-    })
     map.setStyle(buildStyle(styleMode))
   }, [styleMode])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const ok = syncPointLayer()
+    const ok = syncPointLayerRef.current()
     if (!ok) {
-      ensurePointLayerSynced(true)
-      return
+      flushPointLayerSoon()
     }
-    if (detail) {
-      window.setTimeout(() => {
-        recoverPointLayerRef.current()
-      }, 60)
-    }
-  }, [ensurePointLayerSynced, syncPointLayer])
+  }, [detail, flushPointLayerSoon, selectedPointId, stateFilter, viewFilter, meState])
 
   useEffect(() => {
     const map = mapRef.current
@@ -4784,7 +4645,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <MapLoadingProgress
         percent={warmupProgress.percent}
-        visible={warmupProgress.phase === 'loading'}
+        visible={false}
         title={warmupProgress.title}
         detail={warmupProgress.detail}
       />

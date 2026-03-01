@@ -1,15 +1,20 @@
 import type { AnitabiMapTab } from '../types'
 import type {
   CacheStore,
-  CachedCardsPayload,
   CachedBangumiDetail,
+  CachedCardsPayload,
+  CachedPreloadChunk,
+  CachedPreloadManifest,
 } from './types'
 
 const DB_NAME = 'anitabi-cache'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_CARDS = 'cards'
 const STORE_DETAILS = 'details'
+const STORE_PRELOAD_MANIFEST = 'preloadManifest'
+const STORE_PRELOAD_CHUNKS = 'preloadChunks'
 const META_KEY = '__datasetVersion__'
+const PRELOAD_MANIFEST_KEY = '__manifest__'
 
 // ---------------------------------------------------------------------------
 // In-memory fallback (Safari Private Browsing, SSR, missing IndexedDB, etc.)
@@ -18,18 +23,26 @@ const META_KEY = '__datasetVersion__'
 class InMemoryCacheStore implements CacheStore {
   private cards = new Map<AnitabiMapTab, CachedCardsPayload>()
   private details = new Map<number, CachedBangumiDetail>()
+  private preloadChunks = new Map<number, CachedPreloadChunk>()
+  private preloadManifest: CachedPreloadManifest | null = null
   private version: string | null = null
+
+  private syncVersion(nextVersion: string) {
+    if (this.version !== null && this.version !== nextVersion) {
+      this.cards.clear()
+      this.details.clear()
+      this.preloadChunks.clear()
+      this.preloadManifest = null
+    }
+    this.version = nextVersion
+  }
 
   async getCards(tab: AnitabiMapTab): Promise<CachedCardsPayload | null> {
     return this.cards.get(tab) ?? null
   }
 
   async putCards(tab: AnitabiMapTab, payload: CachedCardsPayload): Promise<void> {
-    const prev = this.version
-    if (prev !== null && prev !== payload.datasetVersion) {
-      this.details.clear()
-    }
-    this.version = payload.datasetVersion
+    this.syncVersion(payload.datasetVersion)
     this.cards.set(tab, payload)
   }
 
@@ -38,8 +51,26 @@ class InMemoryCacheStore implements CacheStore {
   }
 
   async putDetail(bangumiId: number, payload: CachedBangumiDetail): Promise<void> {
-    if (this.version === null) this.version = payload.datasetVersion
+    this.syncVersion(payload.datasetVersion)
     this.details.set(bangumiId, payload)
+  }
+
+  async getPreloadManifest(): Promise<CachedPreloadManifest | null> {
+    return this.preloadManifest
+  }
+
+  async putPreloadManifest(payload: CachedPreloadManifest): Promise<void> {
+    this.syncVersion(payload.datasetVersion)
+    this.preloadManifest = payload
+  }
+
+  async getPreloadChunk(index: number): Promise<CachedPreloadChunk | null> {
+    return this.preloadChunks.get(index) ?? null
+  }
+
+  async putPreloadChunk(index: number, payload: CachedPreloadChunk): Promise<void> {
+    this.syncVersion(payload.datasetVersion)
+    this.preloadChunks.set(index, payload)
   }
 
   async getVersion(): Promise<string | null> {
@@ -49,6 +80,8 @@ class InMemoryCacheStore implements CacheStore {
   async clear(): Promise<void> {
     this.cards.clear()
     this.details.clear()
+    this.preloadChunks.clear()
+    this.preloadManifest = null
     this.version = null
   }
 }
@@ -68,6 +101,12 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_DETAILS)) {
         db.createObjectStore(STORE_DETAILS)
+      }
+      if (!db.objectStoreNames.contains(STORE_PRELOAD_MANIFEST)) {
+        db.createObjectStore(STORE_PRELOAD_MANIFEST)
+      }
+      if (!db.objectStoreNames.contains(STORE_PRELOAD_CHUNKS)) {
+        db.createObjectStore(STORE_PRELOAD_CHUNKS)
       }
     }
 
@@ -111,17 +150,26 @@ function idbClearStore(db: IDBDatabase, store: string): Promise<void> {
 class IDBCacheStore implements CacheStore {
   constructor(private db: IDBDatabase) {}
 
+  private async syncVersion(nextVersion: string): Promise<void> {
+    const prev = await this.getVersion()
+    if (prev !== null && prev !== nextVersion) {
+      await Promise.all([
+        idbClearStore(this.db, STORE_CARDS),
+        idbClearStore(this.db, STORE_DETAILS),
+        idbClearStore(this.db, STORE_PRELOAD_MANIFEST),
+        idbClearStore(this.db, STORE_PRELOAD_CHUNKS),
+      ])
+    }
+    await idbPut(this.db, STORE_CARDS, META_KEY, nextVersion)
+  }
+
   async getCards(tab: AnitabiMapTab): Promise<CachedCardsPayload | null> {
     const val = await idbGet<CachedCardsPayload>(this.db, STORE_CARDS, tab)
     return val ?? null
   }
 
   async putCards(tab: AnitabiMapTab, payload: CachedCardsPayload): Promise<void> {
-    const prev = await this.getVersion()
-    if (prev !== null && prev !== payload.datasetVersion) {
-      await idbClearStore(this.db, STORE_DETAILS)
-    }
-    await idbPut(this.db, STORE_CARDS, META_KEY, payload.datasetVersion)
+    await this.syncVersion(payload.datasetVersion)
     await idbPut(this.db, STORE_CARDS, tab, payload)
   }
 
@@ -131,9 +179,28 @@ class IDBCacheStore implements CacheStore {
   }
 
   async putDetail(bangumiId: number, payload: CachedBangumiDetail): Promise<void> {
-    const ver = await this.getVersion()
-    if (ver === null) await idbPut(this.db, STORE_CARDS, META_KEY, payload.datasetVersion)
+    await this.syncVersion(payload.datasetVersion)
     await idbPut(this.db, STORE_DETAILS, bangumiId, payload)
+  }
+
+  async getPreloadManifest(): Promise<CachedPreloadManifest | null> {
+    const val = await idbGet<CachedPreloadManifest>(this.db, STORE_PRELOAD_MANIFEST, PRELOAD_MANIFEST_KEY)
+    return val ?? null
+  }
+
+  async putPreloadManifest(payload: CachedPreloadManifest): Promise<void> {
+    await this.syncVersion(payload.datasetVersion)
+    await idbPut(this.db, STORE_PRELOAD_MANIFEST, PRELOAD_MANIFEST_KEY, payload)
+  }
+
+  async getPreloadChunk(index: number): Promise<CachedPreloadChunk | null> {
+    const val = await idbGet<CachedPreloadChunk>(this.db, STORE_PRELOAD_CHUNKS, index)
+    return val ?? null
+  }
+
+  async putPreloadChunk(index: number, payload: CachedPreloadChunk): Promise<void> {
+    await this.syncVersion(payload.datasetVersion)
+    await idbPut(this.db, STORE_PRELOAD_CHUNKS, index, payload)
   }
 
   async getVersion(): Promise<string | null> {
@@ -142,8 +209,12 @@ class IDBCacheStore implements CacheStore {
   }
 
   async clear(): Promise<void> {
-    await idbClearStore(this.db, STORE_CARDS)
-    await idbClearStore(this.db, STORE_DETAILS)
+    await Promise.all([
+      idbClearStore(this.db, STORE_CARDS),
+      idbClearStore(this.db, STORE_DETAILS),
+      idbClearStore(this.db, STORE_PRELOAD_MANIFEST),
+      idbClearStore(this.db, STORE_PRELOAD_CHUNKS),
+    ])
   }
 }
 

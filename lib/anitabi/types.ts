@@ -73,6 +73,44 @@ export type AnitabiBootstrapDTO = {
   changelog: AnitabiChangelogDTO[]
 }
 
+export type AnitabiPreloadChunkPointDTO = {
+  id: string
+  name: string
+  nameZh: string | null
+  geo: [number, number] | null
+  ep: string | null
+  s: string | null
+  image: string | null
+  density: number | null
+  note: string | null
+}
+
+export type AnitabiPreloadChunkItemDTO = {
+  bangumiId: number
+  modifiedMs: number
+  points: AnitabiPreloadChunkPointDTO[]
+  theme: unknown | null
+}
+
+export type AnitabiPreloadChunkDTO = {
+  datasetVersion: string
+  index: number
+  items: AnitabiPreloadChunkItemDTO[]
+}
+
+export type AnitabiPreloadManifestDTO = {
+  datasetVersion: string
+  modifiedMs: number
+  chunkSize: number
+  chunkCount: number
+  tabs: {
+    nearby: AnitabiBangumiCard[]
+    latest: AnitabiBangumiCard[]
+    recent: AnitabiBangumiCard[]
+    hot: AnitabiBangumiCard[]
+  }
+}
+
 export type AnitabiSearchResultDTO = {
   bangumi: AnitabiBangumiCard[]
   points: AnitabiPointDTO[]

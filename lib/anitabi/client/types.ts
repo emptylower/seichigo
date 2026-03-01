@@ -1,4 +1,10 @@
-import type { AnitabiBangumiCard, AnitabiBangumiDTO, AnitabiMapTab } from '../types'
+import type {
+  AnitabiBangumiCard,
+  AnitabiBangumiDTO,
+  AnitabiMapTab,
+  AnitabiPreloadChunkDTO,
+  AnitabiPreloadManifestDTO,
+} from '../types'
 
 export type CachedCardsPayload = {
   datasetVersion: string
@@ -14,11 +20,28 @@ export type CachedBangumiDetail = {
   cachedAt: number
 }
 
+export type CachedPreloadManifest = {
+  datasetVersion: string
+  manifest: AnitabiPreloadManifestDTO
+  cachedAt: number
+}
+
+export type CachedPreloadChunk = {
+  datasetVersion: string
+  index: number
+  chunk: AnitabiPreloadChunkDTO
+  cachedAt: number
+}
+
 export interface CacheStore {
   getCards(tab: AnitabiMapTab): Promise<CachedCardsPayload | null>
   putCards(tab: AnitabiMapTab, payload: CachedCardsPayload): Promise<void>
   getDetail(bangumiId: number): Promise<CachedBangumiDetail | null>
   putDetail(bangumiId: number, payload: CachedBangumiDetail): Promise<void>
+  getPreloadManifest(): Promise<CachedPreloadManifest | null>
+  putPreloadManifest(payload: CachedPreloadManifest): Promise<void>
+  getPreloadChunk(index: number): Promise<CachedPreloadChunk | null>
+  putPreloadChunk(index: number, payload: CachedPreloadChunk): Promise<void>
   getVersion(): Promise<string | null>
   clear(): Promise<void>
 }

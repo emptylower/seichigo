@@ -23,6 +23,14 @@ function createMockCacheStore(): CacheStore {
       return null
     },
     async putDetail() {},
+    async getPreloadManifest() {
+      return null
+    },
+    async putPreloadManifest() {},
+    async getPreloadChunk() {
+      return null
+    },
+    async putPreloadChunk() {},
     async getVersion() {
       return version
     },
@@ -35,6 +43,25 @@ function createMockCacheStore(): CacheStore {
       version = v
     }
   } as CacheStore & { _setVersion(v: string | null): void }
+}
+
+function makeCard(id: number, title = 'Test Anime'): AnitabiBangumiCard {
+  return {
+    id,
+    title,
+    titleZh: title,
+    cat: 'TV',
+    city: 'Tokyo',
+    cover: null,
+    color: null,
+    pointsLength: 0,
+    imagesLength: 0,
+    sourceModifiedMs: Date.now(),
+    mapEnabled: true,
+    geo: [35.6, 139.7],
+    zoom: 10,
+    nearestDistanceMeters: null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +132,7 @@ describe('bulkLoader', () => {
 
   it('fetches from API and stores in cache when cache is empty', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Test Anime', lat: 35.6, lng: 139.7, imageUrl: '/test.jpg' }
+      makeCard(1, 'Test Anime')
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',
@@ -150,7 +177,7 @@ describe('bulkLoader', () => {
 
   it('returns cached data immediately when cache is fresh', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Cached Anime', lat: 35.6, lng: 139.7, imageUrl: '/cached.jpg' }
+      makeCard(1, 'Cached Anime')
     ]
 
     const cacheStore = createMockCacheStore() as CacheStore & { _setVersion(v: string | null): void }
@@ -222,7 +249,7 @@ describe('bulkLoader', () => {
 
   it('returns cached data when fetch fails and cache exists', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'Stale Anime', lat: 35.6, lng: 139.7, imageUrl: '/stale.jpg' }
+      makeCard(1, 'Stale Anime')
     ]
 
     const cacheStore = createMockCacheStore()
@@ -309,7 +336,7 @@ describe('bulkLoader', () => {
 
   it('handles fetch without ReadableStream body', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'No Stream', lat: 35.6, lng: 139.7, imageUrl: '/no-stream.jpg' }
+      makeCard(1, 'No Stream')
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',
@@ -345,7 +372,7 @@ describe('bulkLoader', () => {
 
   it('handles fetch without content-length header', async () => {
     const mockCards: AnitabiBangumiCard[] = [
-      { id: 1, name: 'No Length', lat: 35.6, lng: 139.7, imageUrl: '/no-length.jpg' }
+      makeCard(1, 'No Length')
     ]
     const mockResponse: BulkCardsResponse = {
       datasetVersion: 'v1',

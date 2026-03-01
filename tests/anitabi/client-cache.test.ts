@@ -1,7 +1,12 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { createCacheStore, InMemoryCacheStore } from '@/lib/anitabi/client/clientCache'
-import type { CachedCardsPayload, CachedBangumiDetail } from '@/lib/anitabi/client/types'
+import type {
+  CachedBangumiDetail,
+  CachedCardsPayload,
+  CachedPreloadChunk,
+  CachedPreloadManifest,
+} from '@/lib/anitabi/client/types'
 import type { AnitabiMapTab, AnitabiBangumiCard, AnitabiBangumiDTO } from '@/lib/anitabi/types'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +53,53 @@ function makeDetail(bangumiId: number, version: string): CachedBangumiDetail {
   return { datasetVersion: version, bangumiId, detail, cachedAt: Date.now() }
 }
 
+function makePreloadManifest(version: string): CachedPreloadManifest {
+  return {
+    datasetVersion: version,
+    manifest: {
+      datasetVersion: version,
+      modifiedMs: Date.now(),
+      chunkSize: 200,
+      chunkCount: 1,
+      tabs: {
+        nearby: [makeCard(1)],
+        latest: [makeCard(1)],
+        recent: [makeCard(1)],
+        hot: [makeCard(1)],
+      },
+    },
+    cachedAt: Date.now(),
+  }
+}
+
+function makePreloadChunk(index: number, version: string): CachedPreloadChunk {
+  return {
+    datasetVersion: version,
+    index,
+    chunk: {
+      datasetVersion: version,
+      index,
+      items: [{
+        bangumiId: 1,
+        modifiedMs: Date.now(),
+        points: [{
+          id: 'p1',
+          name: 'Point 1',
+          nameZh: null,
+          geo: [35.68, 139.76],
+          ep: '1',
+          s: null,
+          image: null,
+          density: null,
+          note: null,
+        }],
+        theme: null,
+      }],
+    },
+    cachedAt: Date.now(),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB-backed tests (fake-indexeddb provides global indexedDB)
 // ---------------------------------------------------------------------------
@@ -65,6 +117,10 @@ describe('clientCache (IndexedDB)', () => {
     expect(typeof store.putCards).toBe('function')
     expect(typeof store.getDetail).toBe('function')
     expect(typeof store.putDetail).toBe('function')
+    expect(typeof store.getPreloadManifest).toBe('function')
+    expect(typeof store.putPreloadManifest).toBe('function')
+    expect(typeof store.getPreloadChunk).toBe('function')
+    expect(typeof store.putPreloadChunk).toBe('function')
     expect(typeof store.getVersion).toBe('function')
     expect(typeof store.clear).toBe('function')
   })
@@ -115,13 +171,40 @@ describe('clientCache (IndexedDB)', () => {
     await store.putCards('latest', makeCardsPayload('latest', 'v1'))
     await store.putCards('hot', makeCardsPayload('hot', 'v1'))
     await store.putDetail(1, makeDetail(1, 'v1'))
+    await store.putPreloadManifest(makePreloadManifest('v1'))
+    await store.putPreloadChunk(0, makePreloadChunk(0, 'v1'))
 
     await store.clear()
 
     expect(await store.getCards('latest')).toBeNull()
     expect(await store.getCards('hot')).toBeNull()
     expect(await store.getDetail(1)).toBeNull()
+    expect(await store.getPreloadManifest()).toBeNull()
+    expect(await store.getPreloadChunk(0)).toBeNull()
     expect(await store.getVersion()).toBeNull()
+  })
+
+  it('put/get preload manifest and chunk roundtrip', async () => {
+    const store = await createCacheStore()
+    await store.putPreloadManifest(makePreloadManifest('v2'))
+    await store.putPreloadChunk(3, makePreloadChunk(3, 'v2'))
+
+    const manifest = await store.getPreloadManifest()
+    const chunk = await store.getPreloadChunk(3)
+    expect(manifest?.datasetVersion).toBe('v2')
+    expect(manifest?.manifest.chunkCount).toBe(1)
+    expect(chunk?.chunk.index).toBe(3)
+    expect(chunk?.chunk.items[0]?.points.length).toBe(1)
+  })
+
+  it('version change invalidates preload stores', async () => {
+    const store = await createCacheStore()
+    await store.putPreloadManifest(makePreloadManifest('v1'))
+    await store.putPreloadChunk(0, makePreloadChunk(0, 'v1'))
+    await store.putCards('latest', makeCardsPayload('latest', 'v2'))
+
+    expect(await store.getPreloadManifest()).toBeNull()
+    expect(await store.getPreloadChunk(0)).toBeNull()
   })
 
   it('getVersion() returns latest stored version', async () => {
@@ -175,10 +258,14 @@ describe('clientCache (in-memory fallback)', () => {
 
     await store.putCards('latest', makeCardsPayload('latest', 'v1'))
     await store.putDetail(1, makeDetail(1, 'v1'))
+    await store.putPreloadManifest(makePreloadManifest('v1'))
+    await store.putPreloadChunk(0, makePreloadChunk(0, 'v1'))
     expect(await store.getDetail(1)).not.toBeNull()
 
     await store.putCards('latest', makeCardsPayload('latest', 'v2'))
     expect(await store.getDetail(1)).toBeNull()
+    expect(await store.getPreloadManifest()).toBeNull()
+    expect(await store.getPreloadChunk(0)).toBeNull()
   })
 
   it('in-memory: clear removes all data', async () => {
