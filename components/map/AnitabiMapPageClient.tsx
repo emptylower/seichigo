@@ -1584,6 +1584,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const firstOpenPointVisibleRecordedRef = useRef(false)
   const firstOpenPointGuardTimerRef = useRef<number | null>(null)
   const warmupMetricRef = useRef<Record<string, number>>({})
+  const warmupBlockingUiRef = useRef(true)
   const mapInitWaitersRef = useRef<Array<() => void>>([])
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
   const preloadManifestRef = useRef<AnitabiPreloadManifestDTO | null>(null)
@@ -2390,7 +2391,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
       const combinedPercent = computeWarmupPercent(merged)
       setWarmupProgress((prevWarmup) => ({
-        phase: prevWarmup.phase === 'idle' ? 'loading' : prevWarmup.phase,
+        phase: prevWarmup.phase === 'idle' && warmupBlockingUiRef.current ? 'loading' : prevWarmup.phase,
         percent: combinedPercent,
         title: label.preloadTitle,
         detail: next.detail ?? prevWarmup.detail,
@@ -2609,14 +2610,66 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [])
 
-  const warmupAllTabsData = useCallback(async (signal?: AbortSignal) => {
+  const hydrateTabCardsFromCache = useCallback(async (signal?: AbortSignal): Promise<boolean> => {
+    const store = cacheStoreRef.current
+    if (!store || signal?.aborted) return false
+
+    let hydrated = false
+    const cachedManifest = await store.getPreloadManifest().catch(() => null)
+    if (signal?.aborted) return false
+    if (cachedManifest?.manifest) {
+      preloadManifestRef.current = cachedManifest.manifest
+      const manifestTabs = cachedManifest.manifest.tabs
+      tabCardsRef.current.nearby = Array.isArray(manifestTabs.nearby) ? manifestTabs.nearby : []
+      tabCardsRef.current.latest = Array.isArray(manifestTabs.latest) ? manifestTabs.latest : []
+      tabCardsRef.current.recent = Array.isArray(manifestTabs.recent) ? manifestTabs.recent : []
+      tabCardsRef.current.hot = Array.isArray(manifestTabs.hot) ? manifestTabs.hot : []
+      loadedTabsRef.current.add('nearby')
+      loadedTabsRef.current.add('latest')
+      loadedTabsRef.current.add('recent')
+      loadedTabsRef.current.add('hot')
+      hydrated = true
+    }
+
+    const tabs: AnitabiMapTab[] = ['nearby', 'latest', 'recent', 'hot']
+    const cachedTabs = await Promise.all(
+      tabs.map((tabKey) => store.getCards(tabKey).catch(() => null))
+    )
+    if (signal?.aborted) return hydrated
+    for (let idx = 0; idx < tabs.length; idx += 1) {
+      const tabKey = tabs[idx]!
+      const payload = cachedTabs[idx]
+      if (!payload || !Array.isArray(payload.cards)) continue
+      tabCardsRef.current[tabKey] = payload.cards
+      loadedTabsRef.current.add(tabKey)
+      hydrated = true
+    }
+
+    if (hydrated) {
+      setTabCardsVersion((prev) => prev + 1)
+      setLoading(false)
+    }
+    return hydrated
+  }, [])
+
+  const warmupAllTabsData = useCallback(async (options?: {
+    signal?: AbortSignal
+    background?: boolean
+  }) => {
+    const signal = options?.signal
+    const background = Boolean(options?.background)
     const store = cacheStoreRef.current
     if (!store || signal?.aborted) return
 
     const startedAt = performance.now()
+    warmupBlockingUiRef.current = !background
     setCardsLoadError(null)
     resetWarmupTaskProgress()
-    updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
+    if (!background) {
+      updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
+    } else {
+      updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+    }
     updateWarmupTask('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
     updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
     updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
@@ -3088,22 +3141,39 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const ac = new AbortController()
     warmupAbortRef.current?.abort()
     warmupAbortRef.current = ac
-    const hasAnyPreloadedCards = Object.values(tabCardsRef.current).some((rows) => Array.isArray(rows) && rows.length > 0)
-    if (!hasAnyPreloadedCards) {
-      setLoading(true)
-      setCards([])
-    }
-    warmupAllTabsData(ac.signal).catch(() => {
+    ;(async () => {
+      const hydratedFromCache = await hydrateTabCardsFromCache(ac.signal)
       if (ac.signal.aborted) return
-      setCardsLoadError(label.loadMoreFailed)
-      resetWarmupTaskProgress()
-      updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
-    })
+
+      const hasAnyPreloadedCards = Object.values(tabCardsRef.current).some((rows) => Array.isArray(rows) && rows.length > 0)
+      const runInBackground = hydratedFromCache || hasAnyPreloadedCards
+      if (!runInBackground) {
+        setLoading(true)
+        setCards([])
+      } else {
+        setLoading(false)
+      }
+
+      warmupAllTabsData({ signal: ac.signal, background: runInBackground }).catch(() => {
+        if (ac.signal.aborted) return
+        setCardsLoadError(label.loadMoreFailed)
+        resetWarmupTaskProgress()
+        updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+      })
+    })().catch(() => null)
     return () => {
       ac.abort()
       if (warmupAbortRef.current === ac) warmupAbortRef.current = null
     }
-  }, [cacheStoreReady, label.loadMoreFailed, loadBootstrap, resetWarmupTaskProgress, updateWarmupProgress, warmupAllTabsData])
+  }, [
+    cacheStoreReady,
+    hydrateTabCardsFromCache,
+    label.loadMoreFailed,
+    loadBootstrap,
+    resetWarmupTaskProgress,
+    updateWarmupProgress,
+    warmupAllTabsData,
+  ])
 
   // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
