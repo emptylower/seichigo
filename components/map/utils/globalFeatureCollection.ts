@@ -50,7 +50,7 @@ export function buildGlobalFeatureCollection(
           bangumiId: item.bangumiId,
           color,
           imageUrl: point.image,
-          userState: null,
+          userState: 'none',
           selected: 0,
         },
         geometry: {

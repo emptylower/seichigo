@@ -81,7 +81,7 @@ describe('buildGlobalFeatureCollection', () => {
       expect(feature.properties.pointId).toBeTruthy()
       expect(feature.properties.bangumiId).toBeGreaterThan(0)
       expect(feature.properties.selected).toBe(0)
-      expect(feature.properties.userState).toBeNull()
+      expect(feature.properties.userState).toBe('none')
     }
   })
 

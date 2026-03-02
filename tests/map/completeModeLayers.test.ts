@@ -89,7 +89,7 @@ function sampleFC(count = 3): GeoJSON.FeatureCollection {
   for (let i = 0; i < count; i++) {
     features.push({
       type: 'Feature',
-      properties: { id: `pt-${i}`, color: '#ff0000', thumbImageId: '' },
+      properties: { pointId: `pt-${i}`, color: '#ff0000', thumbImageId: '' },
       geometry: { type: 'Point', coordinates: [135 + i * 0.01, 35 + i * 0.01] },
     });
   }
@@ -213,7 +213,7 @@ describe('CompleteModeLayers', () => {
 
     it('sets thumbImageId on features whose id is in loadedThumbIds', () => {
       const fc = sampleFC(3);
-      const loaded = new Set<string>(['pt-0', 'pt-2']);
+      const loaded = new Set<string>(['thumb-pt-0', 'thumb-pt-2']);
       updateCompleteModeSources(map as any, fc, loaded);
 
       const thumbSrc = map._sources.get(COMPLETE_THUMBNAILS_SOURCE_ID)!;
@@ -226,19 +226,19 @@ describe('CompleteModeLayers', () => {
       expect(thumbFeatures.length).toBe(3);
 
       const feat0 = thumbFeatures.find(
-        (f) => (f.properties as any).id === 'pt-0'
+        (f) => (f.properties as any).pointId === 'pt-0'
       )!;
-      expect((feat0.properties as any).thumbImageId).toBe('pt-0');
+      expect((feat0.properties as any).thumbImageId).toBe('thumb-pt-0');
 
       const feat1 = thumbFeatures.find(
-        (f) => (f.properties as any).id === 'pt-1'
+        (f) => (f.properties as any).pointId === 'pt-1'
       )!;
       expect((feat1.properties as any).thumbImageId).toBe('');
 
       const feat2 = thumbFeatures.find(
-        (f) => (f.properties as any).id === 'pt-2'
+        (f) => (f.properties as any).pointId === 'pt-2'
       )!;
-      expect((feat2.properties as any).thumbImageId).toBe('pt-2');
+      expect((feat2.properties as any).thumbImageId).toBe('thumb-pt-2');
     });
   });
 
