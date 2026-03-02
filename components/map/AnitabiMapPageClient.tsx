@@ -21,6 +21,25 @@ import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMod
 import MapLoadingProgress from './MapLoadingProgress'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import type { CacheStore } from '@/lib/anitabi/client/types'
+import { isValidTheme } from './types'
+import type { AnitabiTheme } from './types'
+import { createGlobalFeatureCollection } from './utils/globalFeatureCollection'
+import type { InputPoint } from './utils/globalFeatureCollection'
+import { cutSpriteSheet } from './utils/spriteRenderer'
+import type { ImageLoader } from './utils/spriteRenderer'
+import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+import {
+  COMPLETE_DOTS_LAYER_ID,
+  COMPLETE_ICONS_LAYER_ID,
+  ensureCompleteModeSources,
+  ensureCompleteModeSymbolLayer,
+  updateCompleteModeSources,
+  removeCompleteModeLayers,
+  ensureLabelLayer,
+  updateLabelSource,
+  removeLabelLayer,
+  buildLabelFeatureCollection,
+} from './CompleteModeLayers'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -1670,6 +1689,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const ssrBootstrapUsedRef = useRef(Boolean(initialBootstrap))
   const cacheStoreRef = useRef<CacheStore | null>(null)
   const warmupAbortRef = useRef<AbortController | null>(null)
+  const syncCompleteModeRef = useRef<() => boolean>(() => false)
+  const spriteImageIdsRef = useRef<Set<string>>(new Set())
+  const completeAbortRef = useRef<AbortController | null>(null)
+  const completeFeatureCollectionRef = useRef<ReturnType<typeof createGlobalFeatureCollection> | null>(null)
   const pointLayerFallbackTimerRef = useRef<number | null>(null)
   const rangeOverlayFallbackTimerRef = useRef<number | null>(null)
   const pendingPointGeoJsonRef = useRef<GeoJSON.FeatureCollection<GeoJSON.Point, PointFeatureProperties>>(createEmptyPointFeatureCollection())
@@ -2333,6 +2356,282 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   useEffect(() => {
     syncRangeOverlayRef.current = syncRangeOverlay
   }, [syncRangeOverlay])
+
+  // ---------------------------------------------------------------------------
+  // Complete Mode — show all preloaded bangumi points on the map at once
+  // ---------------------------------------------------------------------------
+
+  const flushCompleteMode = useCallback(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) return false
+
+    const fc = completeFeatureCollectionRef.current
+    // When a single bangumi is selected (detail is set), hide complete mode
+    if (detailRef.current || !fc || fc.features.length === 0) {
+      removeCompleteModeLayers(map)
+      removeLabelLayer(map)
+      return true
+    }
+
+    try {
+      ensureCompleteModeSources(map)
+      ensureCompleteModeSymbolLayer(map)
+      updateCompleteModeSources(map, fc)
+
+      // Re-register sprite images if they were lost during a style change
+      // (MapLibre removes all images on setStyle)
+      for (const imageId of spriteImageIdsRef.current) {
+        if (!map.hasImage(imageId)) {
+          // Images were lost — a re-init is needed.
+          // The data-init useEffect will re-run when detail toggles.
+          break
+        }
+      }
+
+      map.triggerRepaint()
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    syncCompleteModeRef.current = flushCompleteMode
+  }, [flushCompleteMode])
+
+  // Complete Mode useEffect 1 — Global data init + sprite cutting
+  useEffect(() => {
+    // Only activate when no single bangumi is selected and warmup is done
+    if (detail) {
+      // When viewing a single bangumi, clear complete mode layers
+      completeFeatureCollectionRef.current = null
+      const map = mapRef.current
+      if (map && map.isStyleLoaded()) {
+        removeCompleteModeLayers(map)
+        removeLabelLayer(map)
+      }
+      return
+    }
+
+    if (warmupProgress.phase !== 'done') return
+
+    // Abort any in-flight previous operation
+    completeAbortRef.current?.abort()
+    const controller = new AbortController()
+    completeAbortRef.current = controller
+
+    const run = async () => {
+      const map = mapRef.current
+      if (!map) return
+
+      // Collect all points from all preloaded bangumi
+      const allInputPoints: InputPoint[] = []
+      const bangumiDataList: Array<{
+        bangumiId: number
+        color: string
+        theme: unknown | null
+        points: Array<{ id: string; geo: [number, number] }>
+      }> = []
+
+      // Get all cards from all tabs for color info
+      const allCards = new Map<number, AnitabiBangumiCard>()
+      for (const rows of Object.values(tabCardsRef.current)) {
+        if (!rows) continue
+        for (const card of rows) {
+          allCards.set(card.id, card)
+        }
+      }
+
+      // Build input points from warmup data
+      for (const [bangumiId, chunk] of warmPointIndexByBangumiIdRef.current.entries()) {
+        if (controller.signal.aborted) return
+        const card = allCards.get(bangumiId)
+        const color = card?.color || '#333'
+
+        const validPoints: Array<{ id: string; geo: [number, number] }> = []
+        for (const point of chunk.points) {
+          if (!point.geo || !isValidGeoPair(point.geo)) continue
+          validPoints.push({ id: point.id, geo: point.geo })
+          allInputPoints.push({
+            lat: point.geo[0],
+            lng: point.geo[1],
+            bangumiId: String(bangumiId),
+            color,
+            pointId: point.id,
+          })
+        }
+
+        if (validPoints.length > 0) {
+          bangumiDataList.push({
+            bangumiId,
+            color,
+            theme: chunk.theme,
+            points: validPoints,
+          })
+        }
+      }
+
+      if (controller.signal.aborted) return
+      if (allInputPoints.length === 0) return
+
+      // Build global feature collection with priority
+      const fc = createGlobalFeatureCollection(allInputPoints)
+      if (controller.signal.aborted) return
+
+      // Create an image loader that uses our CORS proxy
+      const imageLoader: ImageLoader = (url: string) => {
+        return new Promise<HTMLImageElement>((resolve, reject) => {
+          if (controller.signal.aborted) {
+            reject(new Error('Aborted'))
+            return
+          }
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => resolve(img)
+          img.onerror = () => reject(new Error(`Failed to load: ${url}`))
+          img.src = toCanvasSafeImageUrl(url)
+
+          controller.signal.addEventListener('abort', () => {
+            img.src = ''
+            reject(new Error('Aborted'))
+          }, { once: true })
+        })
+      }
+
+      // Cut sprites for each bangumi with a valid theme
+      const newSpriteIds = new Set<string>()
+
+      for (const bangumi of bangumiDataList) {
+        if (controller.signal.aborted) return
+
+        const theme = bangumi.theme
+        if (!isValidTheme(theme)) continue
+
+        try {
+          const sprites = await cutSpriteSheet(
+            bangumi.bangumiId,
+            theme as AnitabiTheme,
+            bangumi.points.map((p) => ({ id: p.id })),
+            bangumi.color,
+            imageLoader,
+          )
+          if (controller.signal.aborted) return
+
+          // Add sprite images to the map and set icon on features
+          for (const [imageId, sprite] of sprites.entries()) {
+            if (controller.signal.aborted) return
+            if (!map.hasImage(imageId)) {
+              map.addImage(imageId, sprite.imageData, { pixelRatio: 2 })
+            }
+            newSpriteIds.add(imageId)
+          }
+
+          // Set icon property on matching features
+          for (const feature of fc.features) {
+            const spriteKey = `sprite-${bangumi.bangumiId}-${feature.properties.pointId}`
+            if (sprites.has(spriteKey)) {
+              feature.properties.icon = spriteKey
+            }
+          }
+        } catch {
+          // Sprite loading failed for this bangumi — features will use dot fallback
+        }
+      }
+
+      if (controller.signal.aborted) return
+
+      // Track sprite image IDs for cleanup
+      spriteImageIdsRef.current = newSpriteIds
+
+      // Store the feature collection and flush to map
+      completeFeatureCollectionRef.current = fc
+      syncCompleteModeRef.current()
+
+      // Set up label layer for bangumi names
+      const labelPoints: Array<{ lng: number; lat: number; text: string }> = []
+      for (const [bangumiId] of warmPointIndexByBangumiIdRef.current.entries()) {
+        const card = allCards.get(bangumiId)
+        if (!card) continue
+        const chunk = warmPointIndexByBangumiIdRef.current.get(bangumiId)
+        if (!chunk) continue
+        const firstValid = chunk.points.find((p) => p.geo && isValidGeoPair(p.geo))
+        if (firstValid?.geo) {
+          labelPoints.push({
+            lng: firstValid.geo[1],
+            lat: firstValid.geo[0],
+            text: card.titleZh || card.title,
+          })
+        }
+      }
+
+      if (controller.signal.aborted) return
+      if (labelPoints.length > 0 && map.isStyleLoaded()) {
+        ensureLabelLayer(map)
+        updateLabelSource(map, buildLabelFeatureCollection(labelPoints))
+      }
+    }
+
+    run().catch(() => {
+      // Silently handle errors — complete mode is optional enhancement
+    })
+
+    return () => {
+      controller.abort()
+    }
+  }, [detail, warmupProgress.phase])
+
+  // Complete Mode useEffect 2 — Click handler for complete mode layers
+  // Uses openBangumiRef to avoid declaration-order issues with openBangumi callback
+  const openBangumiRef = useRef<((id: number, pointId?: string | null) => Promise<void>) | null>(null)
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (detail) return
+
+    const handleCompleteModeClick = (event: maplibregl.MapMouseEvent) => {
+      const completeLayerIds = [COMPLETE_ICONS_LAYER_ID, COMPLETE_DOTS_LAYER_ID].filter(
+        (id) => Boolean(map.getLayer(id))
+      )
+      if (!completeLayerIds.length) return
+
+      const hit = map.queryRenderedFeatures(event.point, { layers: completeLayerIds })[0]
+      if (!hit) return
+
+      const pointId = hit.properties?.pointId
+      const bangumiId = hit.properties?.bangumiId
+      if (typeof pointId !== 'string' || !bangumiId) return
+
+      const numericBangumiId = typeof bangumiId === 'string' ? parseInt(bangumiId, 10) : Number(bangumiId)
+      if (!Number.isFinite(numericBangumiId)) return
+
+      openBangumiRef.current?.(numericBangumiId, pointId)?.catch(() => null)
+    }
+
+    map.on('click', handleCompleteModeClick)
+    return () => {
+      map.off('click', handleCompleteModeClick)
+    }
+  }, [detail, mapReady])
+
+  // Complete Mode useEffect 3 — Cleanup on unmount
+  useEffect(() => () => {
+    completeAbortRef.current?.abort()
+    completeAbortRef.current = null
+
+    const map = mapRef.current
+    if (map) {
+      for (const imageId of spriteImageIdsRef.current) {
+        if (map.hasImage(imageId)) {
+          map.removeImage(imageId)
+        }
+      }
+      removeCompleteModeLayers(map)
+      removeLabelLayer(map)
+    }
+    spriteImageIdsRef.current.clear()
+    completeFeatureCollectionRef.current = null
+  }, [])
 
   useEffect(() => () => {
     if (pointLayerFallbackTimerRef.current != null) {
@@ -3158,6 +3457,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     [cards, fitBangumiBounds, flushPointLayerSoon, focusGeo, isDesktop, locale]
   )
 
+  // Keep openBangumiRef in sync for Complete Mode click handler
+  useEffect(() => {
+    openBangumiRef.current = openBangumi
+  }, [openBangumi])
+
+
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefetchBangumi = useCallback(
     (id: number) => {
@@ -3536,6 +3841,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (!pointOk) schedulePointLayerFallbackFlush()
       const rangeOk = syncRangeOverlayRef.current()
       if (!rangeOk) scheduleRangeOverlayFallbackFlush()
+      syncCompleteModeRef.current()
     }
     const onMapStyleData = () => {
       flushLayers()
@@ -3610,6 +3916,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       applyMapStyleRef.current = () => undefined
       removePointLayer(map)
       removeRangeLayer(map)
+      removeCompleteModeLayers(map)
+      removeLabelLayer(map)
       map.remove()
       mapRef.current = null
       mapInitWaitersRef.current = []
