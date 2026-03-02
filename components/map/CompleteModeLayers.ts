@@ -166,3 +166,140 @@ export function removeCompleteModeLayers(map: maplibregl.Map): void {
     map.removeSource(COMPLETE_THUMBNAILS_SOURCE_ID);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Label Layer / Source IDs
+// ---------------------------------------------------------------------------
+
+export const COMPLETE_LABELS_SOURCE_ID = 'complete-labels';
+export const COMPLETE_LABELS_LAYER_ID = 'complete-labels';
+
+/** Min zoom at which anime title labels become visible */
+const LABEL_MIN_ZOOM = 8;
+
+// ---------------------------------------------------------------------------
+// buildLabelFeatureCollection
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a GeoJSON FeatureCollection of label points from bangumi cards.
+ *
+ * Each feature is placed at the bangumi centroid (`geo` swapped from
+ * [lat, lng] → [lng, lat]) and carries `title` (Chinese name, falling back
+ * to romaji) and `color` (anime-specific color).
+ *
+ * Bangumis without `geo` are silently skipped.
+ */
+export function buildLabelFeatureCollection(
+  cards: ReadonlyArray<{
+    id: number;
+    title: string;
+    titleZh: string | null;
+    color: string | null;
+    geo: [number, number] | null;
+  }>,
+): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+
+  for (const card of cards) {
+    if (!card.geo) continue;
+
+    // geo is stored as [lat, lng]; GeoJSON needs [lng, lat]
+    const [lat, lng] = card.geo;
+
+    features.push({
+      type: 'Feature',
+      properties: {
+        title: card.titleZh || card.title,
+        color: card.color || '#6d28d9',
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [lng, lat],
+      },
+    });
+  }
+
+  return { type: 'FeatureCollection', features };
+}
+
+// ---------------------------------------------------------------------------
+// ensureLabelLayer
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates the label GeoJSON source and text symbol layer if they don't
+ * already exist.
+ *
+ * Styling:
+ * - `text-field` driven by feature `title` property
+ * - `text-color` driven by feature `color` property (anime-specific)
+ * - White text halo for readability over any background
+ * - Font size interpolates by zoom for progressive reveal
+ * - Visible between zoom 8 and LOD_ICONS_MAX_ZOOM (14)
+ */
+export function ensureLabelLayer(map: maplibregl.Map): void {
+  if (!map.getSource(COMPLETE_LABELS_SOURCE_ID)) {
+    map.addSource(COMPLETE_LABELS_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_FC,
+    });
+  }
+
+  if (!map.getLayer(COMPLETE_LABELS_LAYER_ID)) {
+    map.addLayer({
+      id: COMPLETE_LABELS_LAYER_ID,
+      type: 'symbol',
+      source: COMPLETE_LABELS_SOURCE_ID,
+      minzoom: LABEL_MIN_ZOOM,
+      maxzoom: LOD_ICONS_MAX_ZOOM,
+      layout: {
+        'text-field': ['get', 'title'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 12, 13, 14, 15],
+        'text-anchor': 'top',
+        'text-offset': [0, 0.8],
+        'text-allow-overlap': false,
+        'text-optional': true,
+      },
+      paint: {
+        'text-color': ['get', 'color'],
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1.5,
+        'text-halo-blur': 0.5,
+      },
+    } as maplibregl.LayerSpecification);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// updateLabelSource
+// ---------------------------------------------------------------------------
+
+/**
+ * Replaces the label source data with the given feature collection.
+ */
+export function updateLabelSource(
+  map: maplibregl.Map,
+  fc: GeoJSON.FeatureCollection,
+): void {
+  const src = map.getSource(COMPLETE_LABELS_SOURCE_ID) as maplibregl.GeoJSONSource | null;
+  if (src) {
+    src.setData(fc);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// removeLabelLayer
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes the label layer and source. Safe to call when they don't exist.
+ */
+export function removeLabelLayer(map: maplibregl.Map): void {
+  if (map.getLayer(COMPLETE_LABELS_LAYER_ID)) {
+    map.removeLayer(COMPLETE_LABELS_LAYER_ID);
+  }
+  if (map.getSource(COMPLETE_LABELS_SOURCE_ID)) {
+    map.removeSource(COMPLETE_LABELS_SOURCE_ID);
+  }
+}
