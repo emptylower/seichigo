@@ -10,7 +10,7 @@ import {
   buildSymbolLayerSpec,
 } from '@/components/map/CompleteModeLayers';
 import type { AnitabiTheme } from '@/components/map/types';
-import type { Map as MapboxMap } from 'mapbox-gl';
+import type { Map as MapboxMap } from 'maplibre-gl';
 
 // Mock infrastructure
 class MockImageData {

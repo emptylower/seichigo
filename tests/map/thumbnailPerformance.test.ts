@@ -21,7 +21,7 @@ function createMockMap() {
     loadImage: vi.fn(async (_url: string) => {
       return { data: { width: 64, height: 64 } }
     }),
-  } satisfies MapLike & { images: Map<string, unknown>; loadImage: ReturnType<typeof vi.fn> }
+  } satisfies MapLike & { images: Map<string, unknown>; loadImage: ReturnType<typeof vi.fn>; hasImage: (id: string) => boolean }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

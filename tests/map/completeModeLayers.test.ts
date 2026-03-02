@@ -48,17 +48,17 @@ describe('buildDotsLayerSpec', () => {
     const spec = buildDotsLayerSpec();
     expect(spec.id).toBe('complete-dots');
     expect(spec.type).toBe('circle');
-    expect(spec.source).toBe('complete-points');
+    expect((spec as any).source).toBe('complete-points');
   });
 
   it('uses point color from feature property', () => {
     const spec = buildDotsLayerSpec();
-    expect(spec.paint!['circle-color']).toEqual(['get', 'color']);
+    expect((spec as any).paint['circle-color']).toEqual(['get', 'color']);
   });
 
   it('applies the same priority filter as the symbol layer', () => {
     const spec = buildDotsLayerSpec();
-    expect(spec.filter).toEqual(ZOOM_PRIORITY_FILTER);
+    expect((spec as any).filter).toEqual(ZOOM_PRIORITY_FILTER);
   });
 });
 
@@ -70,32 +70,32 @@ describe('buildSymbolLayerSpec', () => {
     const spec = buildSymbolLayerSpec();
     expect(spec.id).toBe('complete-icons');
     expect(spec.type).toBe('symbol');
-    expect(spec.source).toBe('complete-points');
+    expect((spec as any).source).toBe('complete-points');
   });
 
   it('uses icon-image from feature property', () => {
     const spec = buildSymbolLayerSpec();
-    expect(spec.layout!['icon-image']).toEqual(['get', 'icon']);
+    expect((spec as any).layout['icon-image']).toEqual(['get', 'icon']);
   });
 
   it('has icon-allow-overlap: true', () => {
     const spec = buildSymbolLayerSpec();
-    expect(spec.layout!['icon-allow-overlap']).toBe(true);
+    expect((spec as any).layout['icon-allow-overlap']).toBe(true);
   });
 
   it('has icon-ignore-placement: true', () => {
     const spec = buildSymbolLayerSpec();
-    expect(spec.layout!['icon-ignore-placement']).toBe(true);
+    expect((spec as any).layout['icon-ignore-placement']).toBe(true);
   });
 
   it('has icon-anchor: bottom', () => {
     const spec = buildSymbolLayerSpec();
-    expect(spec.layout!['icon-anchor']).toBe('bottom');
+    expect((spec as any).layout['icon-anchor']).toBe('bottom');
   });
 
   it('applies the 20-tier zoom-step priority filter', () => {
     const spec = buildSymbolLayerSpec();
-    expect(spec.filter).toEqual(ZOOM_PRIORITY_FILTER);
+    expect((spec as any).filter).toEqual(ZOOM_PRIORITY_FILTER);
   });
 });
 
@@ -104,28 +104,28 @@ describe('buildSymbolLayerSpec', () => {
 // ---------------------------------------------------------------------------
 describe('ZOOM_PRIORITY_FILTER', () => {
   it('is a step expression on zoom', () => {
-    expect(ZOOM_PRIORITY_FILTER[0]).toBe('step');
-    expect(ZOOM_PRIORITY_FILTER[1]).toEqual(['zoom']);
+    expect((ZOOM_PRIORITY_FILTER as any)[0]).toBe('step');
+    expect((ZOOM_PRIORITY_FILTER as any)[1]).toEqual(['zoom']);
   });
 
   it('has correct length (default + 17 zoom stops + final true)', () => {
     // ["step", ["zoom"], defaultExpr, z3, expr3, ..., z19, true]
     // = 3 + 17*2 = 37
-    expect(ZOOM_PRIORITY_FILTER.length).toBe(37);
+    expect((ZOOM_PRIORITY_FILTER as any).length).toBe(37);
   });
 
   it('default (zoom < 3) filters priority > 48000', () => {
-    expect(ZOOM_PRIORITY_FILTER[2]).toEqual(['>', ['get', 'priority'], 48000]);
+    expect((ZOOM_PRIORITY_FILTER as any)[2]).toEqual(['>', ['get', 'priority'], 48000]);
   });
 
   it('at zoom 19 shows all points (true)', () => {
-    expect(ZOOM_PRIORITY_FILTER[ZOOM_PRIORITY_FILTER.length - 1]).toBe(true);
+    expect((ZOOM_PRIORITY_FILTER as any)[(ZOOM_PRIORITY_FILTER as any).length - 1]).toBe(true);
   });
 
   it('thresholds decrease as zoom increases', () => {
     const thresholds: number[] = [];
-    for (let i = 4; i < ZOOM_PRIORITY_FILTER.length - 2; i += 2) {
-      const expr = ZOOM_PRIORITY_FILTER[i] as unknown as [string, [string, string], number];
+    for (let i = 4; i < (ZOOM_PRIORITY_FILTER as any).length - 2; i += 2) {
+      const expr = (ZOOM_PRIORITY_FILTER as any)[i] as unknown as [string, [string, string], number];
       thresholds.push(expr[2]);
     }
     for (let i = 1; i < thresholds.length; i++) {

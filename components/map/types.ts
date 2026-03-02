@@ -54,3 +54,44 @@ export function isValidTheme(value: unknown): value is AnitabiTheme {
 
   return true;
 }
+
+/**
+ * Map display mode
+ */
+export type MapMode = 'complete' | 'simple'
+
+/**
+ * Base properties for point features
+ */
+export type PointFeatureProperties = {
+  pointId: string
+  color: string
+  selected: number
+  userState: string
+}
+
+/**
+ * Properties for global point features with additional metadata
+ */
+export type GlobalPointFeatureProperties = PointFeatureProperties & {
+  bangumiId: number
+  imageUrl: string | null
+}
+
+/**
+ * State for managing thumbnail image loading
+ */
+export type ThumbnailLoadState = {
+  loaded: Map<string, HTMLImageElement>
+  pending: Set<string>
+  queue: string[]
+}
+
+/**
+ * Properties for cluster features
+ */
+export type ClusterFeatureProperties = {
+  cluster: boolean
+  cluster_id: number
+  point_count: number
+}
