@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   CLUSTER_CIRCLE_LAYER_ID,
   CLUSTER_COUNT_LAYER_ID,
-  COMPLETE_POINTS_SOURCE_ID,
   ensureClusterLayers,
   removeClusterLayers,
   getClusterExpansionTarget,
-} from '@/components/map/ClusterLayers';
+  } from '@/components/map/ClusterLayers';
+import { COMPLETE_POINTS_SOURCE_ID } from '@/components/map/CompleteModeLayers';
 import { LOD_THUMBNAILS_MIN_ZOOM } from '@/components/map/utils/clusterEngine';
 
 // ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ function isValidGeo(geo: [number, number] | null): geo is [number, number] {
  * features with GlobalPointFeatureProperties, using card color (with fallback).
  * Points with invalid coordinates are skipped.
  *
- * `geo` is already in `[lng, lat]` GeoJSON order — used directly as coordinates.
+ * `geo` is in `[lat, lng]` order from the DB — swap to `[lng, lat]` for GeoJSON.
  */
 export function buildGlobalFeatureCollection(
   warmupData: Map<number, AnitabiPreloadChunkItemDTO>,
@@ -55,7 +55,7 @@ export function buildGlobalFeatureCollection(
         },
         geometry: {
           type: 'Point',
-          coordinates: point.geo,
+          coordinates: [point.geo[1], point.geo[0]],
         },
       })
     }

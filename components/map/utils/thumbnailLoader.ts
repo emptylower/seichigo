@@ -2,7 +2,6 @@ import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { normalizePointThumbnailUrl } from '@/components/map/utils/normalizePointThumbnailUrl'
 
 export interface MapLike {
-  hasImage(id: string): boolean
   addImage(id: string, data: unknown): void
   removeImage(id: string): void
   loadImage(url: string): Promise<{ data: unknown }>
@@ -23,7 +22,6 @@ export class ThumbnailLoader {
   private readonly lru = new Map<string, number>()
   private accessCounter = 0
   private loadTimes: number[] = []
-  private loadStartTimes = new Map<string, number>()
 
   constructor(options: ThumbnailLoaderOptions) {
     this.map = options.map

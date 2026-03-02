@@ -1,11 +1,11 @@
 import type maplibregl from 'maplibre-gl';
 import { LOD_THUMBNAILS_MIN_ZOOM } from '@/components/map/utils/clusterEngine';
+import { COMPLETE_POINTS_SOURCE_ID } from '@/components/map/CompleteModeLayers';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-export const COMPLETE_POINTS_SOURCE_ID = 'complete-points';
 export const CLUSTER_CIRCLE_LAYER_ID = 'complete-clusters';
 export const CLUSTER_COUNT_LAYER_ID = 'complete-cluster-count';
 

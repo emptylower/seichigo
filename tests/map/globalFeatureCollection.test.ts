@@ -236,12 +236,12 @@ describe('buildGlobalFeatureCollection', () => {
     expect(fc.features[0].properties.imageUrl).toBeNull()
   })
 
-  it('should use geo directly as GeoJSON coordinates [lng, lat]', () => {
+  it('should swap geo from [lat, lng] to [lng, lat] for GeoJSON coordinates', () => {
     const item: AnitabiPreloadChunkItemDTO = {
       bangumiId: 100,
       modifiedMs: Date.now(),
       points: [
-        { id: 'p1', name: 'tokyo', nameZh: null, geo: [139.6917, 35.6895], ep: null, s: null, image: null, density: null, note: null },
+        { id: 'p1', name: 'tokyo', nameZh: null, geo: [35.6895, 139.6917], ep: null, s: null, image: null, density: null, note: null },
       ],
       theme: null,
     }
