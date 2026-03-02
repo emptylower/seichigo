@@ -2494,7 +2494,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           img.crossOrigin = 'anonymous'
           img.onload = () => resolve(img)
           img.onerror = () => reject(new Error(`Failed to load: ${url}`))
-          img.src = toCanvasSafeImageUrl(url)
+          // Resolve relative paths (e.g. /images/ptheme/...) against anitabi.cn
+          // so toCanvasSafeImageUrl routes them through the CORS proxy
+          const absoluteUrl = url.startsWith('/') ? `https://www.anitabi.cn${url}` : url
+          img.src = toCanvasSafeImageUrl(absoluteUrl)
 
           controller.signal.addEventListener('abort', () => {
             img.src = ''
