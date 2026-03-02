@@ -2476,6 +2476,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       // Build global feature collection with priority
       const fc = createGlobalFeatureCollection(allInputPoints)
+
+      // Store the feature collection and flush to map immediately
+      // This ensures dots appear even if sprite cutting is aborted
+      completeFeatureCollectionRef.current = fc
+      syncCompleteModeRef.current()
       if (controller.signal.aborted) return
 
       // Create an image loader that uses our CORS proxy
@@ -2544,7 +2549,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       spriteImageIdsRef.current = newSpriteIds
 
       // Store the feature collection and flush to map
-      completeFeatureCollectionRef.current = fc
+      // Update feature collection again with sprite icons
       syncCompleteModeRef.current()
 
       // Set up label layer for bangumi names
