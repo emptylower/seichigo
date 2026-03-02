@@ -9,6 +9,7 @@ import type {
   AnitabiBangumiDTO,
   AnitabiBootstrapDTO,
   AnitabiMapTab,
+  AnitabiPointDTO,
   AnitabiPreloadChunkItemDTO,
   AnitabiPreloadManifestDTO,
 } from '@/lib/anitabi/types'
@@ -19,6 +20,7 @@ import RouteBookCard from '@/components/share/RouteBookCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
 import MapLoadingProgress from './MapLoadingProgress'
+import { PointPopupCard } from './PointPopupCard'
 import { createCacheStore } from '@/lib/anitabi/client/clientCache'
 import type { CacheStore } from '@/lib/anitabi/client/types'
 import type { PointFeatureProperties, GlobalPointFeatureProperties } from './types'
@@ -1773,6 +1775,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [warmupTaskProgress, setWarmupTaskProgress] = useState<WarmupTaskProgress>(() => createEmptyWarmupTaskProgress())
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
+
+  // Complete mode popup card state
+  const [completePopupPoint, setCompletePopupPoint] = useState<AnitabiPointDTO | null>(null)
+  const [completePopupBangumi, setCompletePopupBangumi] = useState<AnitabiBangumiCard | null>(null)
+  const [completePopupPosition, setCompletePopupPosition] = useState<{ x: number; y: number } | null>(null)
 
   // Layer management extracted to useMapLayers hook
   const {
@@ -3655,20 +3662,76 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         return
       }
 
-      // Point click → open bangumi detail (reuse existing openBangumi)
+      // Point click → show popup card from warmup cache
       const pointId = typeof props?.pointId === 'string' ? props.pointId : null
       const bangumiId = typeof props?.bangumiId === 'number'
         ? props.bangumiId
         : typeof props?.bangumiId === 'string' ? Number(props.bangumiId) : null
-      if (pointId && bangumiId && Number.isFinite(bangumiId)) {
+      if (!pointId || !bangumiId || !Number.isFinite(bangumiId)) return
+
+      // Look up full point data from warmup cache
+      const warmChunk = warmPointIndexByBangumiIdRef.current.get(bangumiId)
+      if (!warmChunk) {
+        // Fallback: open bangumi detail if warmup data missing
         void openBangumi(bangumiId, pointId).catch(() => null)
+        return
       }
+
+      const rawPoint = warmChunk.points.find((p) => p.id === pointId)
+      if (!rawPoint) {
+        void openBangumi(bangumiId, pointId).catch(() => null)
+        return
+      }
+
+      // Convert preload chunk point to AnitabiPointDTO shape
+      const pointDTO: AnitabiPointDTO = {
+        id: rawPoint.id,
+        bangumiId,
+        name: rawPoint.name,
+        nameZh: rawPoint.nameZh,
+        note: rawPoint.note,
+        geo: rawPoint.geo,
+        ep: rawPoint.ep,
+        s: rawPoint.s,
+        image: rawPoint.image,
+        origin: null,
+        originUrl: null,
+        originLink: null,
+        density: rawPoint.density,
+        mark: rawPoint.note,
+      }
+
+      // Look up bangumi card from tab cards index
+      let bangumiCard: AnitabiBangumiCard | null = null
+      for (const rows of Object.values(tabCardsRef.current)) {
+        if (!rows) continue
+        const found = rows.find((c) => c.id === bangumiId)
+        if (found) { bangumiCard = found; break }
+      }
+      if (!bangumiCard) {
+        void openBangumi(bangumiId, pointId).catch(() => null)
+        return
+      }
+
+      // Compute screen position from click event
+      setCompletePopupPoint(pointDTO)
+      setCompletePopupBangumi(bangumiCard)
+      setCompletePopupPosition({ x: e.point.x, y: e.point.y })
+    }
+
+    // Dismiss popup on map drag
+    const handleDragStart = () => {
+      setCompletePopupPoint(null)
+      setCompletePopupBangumi(null)
+      setCompletePopupPosition(null)
     }
 
     map.on('click', handleCompleteClick)
+    map.on('dragstart', handleDragStart)
 
     return () => {
       map.off('click', handleCompleteClick)
+      map.off('dragstart', handleDragStart)
     }
   }, [isComplete, mapReady, openBangumi])
 
@@ -3681,6 +3744,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     // Remove Complete Mode layers when switching to Simple Mode
     removeCompleteModeLayers(map)
+
+    // Dismiss any open popup card
+    setCompletePopupPoint(null)
+    setCompletePopupBangumi(null)
+    setCompletePopupPosition(null)
     removeClusterLayers(map)
     removeLabelLayer(map)
 
@@ -5118,6 +5186,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             />
             {mapViewMode === 'map' ? (
               <MapModeToggle mode={mode} onModeChange={setMode} />
+            ) : null}
+            {completePopupPoint && completePopupBangumi && completePopupPosition ? (
+              <PointPopupCard
+                point={completePopupPoint}
+                bangumi={completePopupBangumi}
+                anchorPosition={completePopupPosition}
+                onClose={() => {
+                  setCompletePopupPoint(null)
+                  setCompletePopupBangumi(null)
+                  setCompletePopupPosition(null)
+                }}
+              />
             ) : null}
             <div
               className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}
