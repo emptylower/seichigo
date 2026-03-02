@@ -1,14 +1,14 @@
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { normalizePointThumbnailUrl } from '@/components/map/utils/normalizePointThumbnailUrl'
 
-interface MapLike {
+export interface MapLike {
   hasImage(id: string): boolean
   addImage(id: string, data: unknown): void
   removeImage(id: string): void
   loadImage(url: string): Promise<{ data: unknown }>
 }
 
-interface ThumbnailLoaderOptions {
+export interface ThumbnailLoaderOptions {
   map: MapLike
   maxLoaded?: number
 }
@@ -22,6 +22,8 @@ export class ThumbnailLoader {
 
   private readonly lru = new Map<string, number>()
   private accessCounter = 0
+  private loadTimes: number[] = []
+  private loadStartTimes = new Map<string, number>()
 
   constructor(options: ThumbnailLoaderOptions) {
     this.map = options.map
@@ -59,6 +61,21 @@ export class ThumbnailLoader {
 
     this.evict()
 
+    // Log when cap is reached
+    if (this.lru.size >= this.maxLoaded) {
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug(`[ThumbnailLoader] Cap reached: ${this.lru.size}/${this.maxLoaded}`)
+      }
+    }
+
+    // Memory guard (Chrome only)
+    if (this.lru.size > 100 && typeof performance !== 'undefined' && (performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory) {
+      const mem = (performance as unknown as { memory: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug(`[ThumbnailLoader] Heap: ${(mem.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1024 / 1024).toFixed(1)}MB`)
+      }
+    }
+
     return new Set(this.lru.keys())
   }
 
@@ -70,11 +87,20 @@ export class ThumbnailLoader {
     const next = async (): Promise<void> => {
       while (index < items.length) {
         const current = items[index++]
+        const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
         try {
           const result = await this.map.loadImage(current.url)
           this.map.addImage(current.imageId, result.data)
           this.lru.set(current.imageId, ++this.accessCounter)
+
+          // Track load duration
+          const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime
+          this.loadTimes.push(duration)
+          if (this.loadTimes.length > 100) {
+            this.loadTimes.shift()
+          }
         } catch {
+          // Failed loads are silently skipped
         }
       }
     }
@@ -97,5 +123,19 @@ export class ThumbnailLoader {
       this.map.removeImage(imageId)
       this.lru.delete(imageId)
     }
+  }
+
+  /** Get performance statistics for monitoring */
+  getStats(): { avg: number; p95: number; count: number } {
+    if (this.loadTimes.length === 0) {
+      return { avg: 0, p95: 0, count: this.lru.size }
+    }
+
+    const sorted = [...this.loadTimes].sort((a, b) => a - b)
+    const avg = sorted.reduce((a, b) => a + b, 0) / sorted.length
+    const p95Index = Math.floor(sorted.length * 0.95)
+    const p95 = sorted[p95Index] ?? 0
+
+    return { avg, p95, count: this.lru.size }
   }
 }
