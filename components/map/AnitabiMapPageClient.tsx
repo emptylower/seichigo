@@ -40,6 +40,10 @@ import {
   removeCompleteModeLayers,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_THUMBNAILS_LAYER_ID,
+  ensureLabelLayer,
+  buildLabelFeatureCollection,
+  updateLabelSource,
+  removeLabelLayer,
 } from './CompleteModeLayers'
 import {
   ensureClusterLayers,
@@ -3487,6 +3491,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       removeRangeLayer(map)
       removeCompleteModeLayers(map)
       removeClusterLayers(map)
+      removeLabelLayer(map)
       thumbnailLoaderRef.current = null
       clusterEngineRef.current = null
       map.remove()
@@ -3518,6 +3523,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!isComplete || !map || !mapReady) return
 
+    // Hide range overlays in complete mode
+    removeRangeLayer(map)
+
     // Build card index from all tab cards
     const cardIndex = new Map<number, AnitabiBangumiCard>()
     for (const rows of Object.values(tabCardsRef.current)) {
@@ -3537,6 +3545,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       // No data yet – clean up any stale layers
       removeCompleteModeLayers(map)
       removeClusterLayers(map)
+      removeLabelLayer(map)
       clusterEngineRef.current = null
       syncCompleteModeRef.current = () => {}
       return
@@ -3552,6 +3561,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       thumbnailLoaderRef.current = new ThumbnailLoader({ map, maxLoaded: 200 })
     }
 
+    // Build label feature collection from card centroids
+    const labelFC = buildLabelFeatureCollection(Array.from(cardIndex.values()))
+
     // Viewport change handler – updates sources with clustered data
     const handleViewportChange = () => {
       if (!clusterEngineRef.current || !map.isStyleLoaded()) return
@@ -3560,6 +3572,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ensureCompleteModeSources(map)
       ensureCompleteModePointLayers(map)
       ensureClusterLayers(map)
+      ensureLabelLayer(map)
 
       const bounds = map.getBounds()
       const zoom = map.getZoom()
@@ -3575,6 +3588,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       // Immediate update with currently known loaded thumbs
       updateCompleteModeSources(map, fc, loadedThumbIdsRef.current)
+      updateLabelSource(map, labelFC)
 
       // Async load thumbnails at high zoom
       if (zoom >= LOD_THUMBNAILS_MIN_ZOOM && thumbnailLoaderRef.current) {
@@ -3668,6 +3682,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     // Remove Complete Mode layers when switching to Simple Mode
     removeCompleteModeLayers(map)
     removeClusterLayers(map)
+    removeLabelLayer(map)
 
     // Cleanup loaders
     thumbnailLoaderRef.current = null
