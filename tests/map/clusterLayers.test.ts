@@ -148,7 +148,7 @@ describe('ClusterLayers', () => {
         },
         geometry: {
           type: 'Point' as const,
-          coordinates: [139.7, 35.7],
+          coordinates: [139.7, 35.7] as [number, number],
         },
       };
 
@@ -175,7 +175,7 @@ describe('ClusterLayers', () => {
         },
         geometry: {
           type: 'Point' as const,
-          coordinates: [140.0, 36.0],
+          coordinates: [140.0, 36.0] as [number, number],
         },
       };
 
