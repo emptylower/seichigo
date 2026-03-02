@@ -1,0 +1,56 @@
+/**
+ * Anitabi theme sprite configuration
+ */
+export interface AnitabiTheme {
+  /** Theme IDs that use this sprite */
+  ids: string[];
+  /** Sprite image URL */
+  src: string;
+  /** Sprite width in pixels (optional, defaults to DEFAULT_THEME_WIDTH) */
+  w?: number;
+  /** Sprite height in pixels (optional, defaults to DEFAULT_THEME_HEIGHT) */
+  h?: number;
+}
+
+export const DEFAULT_THEME_WIDTH = 72;
+export const DEFAULT_THEME_HEIGHT = 54;
+
+/**
+ * Runtime type guard for AnitabiTheme
+ */
+export function isValidTheme(value: unknown): value is AnitabiTheme {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  // Validate ids: non-empty array of strings
+  if (!Array.isArray(obj.ids) || obj.ids.length === 0) {
+    return false;
+  }
+  if (!obj.ids.every((id) => typeof id === 'string')) {
+    return false;
+  }
+
+  // Validate src: non-empty string
+  if (typeof obj.src !== 'string' || obj.src.length === 0) {
+    return false;
+  }
+
+  // Validate w: optional positive number
+  if (obj.w !== undefined) {
+    if (typeof obj.w !== 'number' || obj.w <= 0) {
+      return false;
+    }
+  }
+
+  // Validate h: optional positive number
+  if (obj.h !== undefined) {
+    if (typeof obj.h !== 'number' || obj.h <= 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
