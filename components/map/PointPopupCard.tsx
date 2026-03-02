@@ -70,7 +70,7 @@ export function PointPopupCard({
     <div ref={cardRef} style={getCardStyle()} className="w-80 bg-white rounded-lg shadow-lg overflow-hidden">
       {hasImage ? (
         <div className="relative w-full h-48">
-          <img src={point.image} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
+          <img src={point.image ?? undefined} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
           {hasEp && (
             <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-sm font-medium">
               {point.ep}
