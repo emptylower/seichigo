@@ -76,6 +76,8 @@ const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
 const WARMUP_MAP_READY_TIMEOUT_MS = 15000
 const WARMUP_WATCHDOG_INTERVAL_MS = 3000
 const WARMUP_STALL_WARN_MS = 10000
+const COMPLETE_MODE_SPRITE_MAX_BANGUMI = 220
+const COMPLETE_MODE_SPRITE_BUDGET_MS = 9000
 const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   map: 20,
   cards: 30,
@@ -2631,9 +2633,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
 
-    // Treat percent>=100 as ready, even if phase lingers at loading due async tail tasks.
-    const warmupComplete = warmupProgress.percent >= 100 || warmupProgress.phase === 'done'
-    if (!warmupComplete) return
+    // Render points as soon as map/cards/details are ready; image preheat may continue in background.
+    const warmupCoreReady = warmupTaskProgress.map.percent >= 100
+      && warmupTaskProgress.cards.percent >= 100
+      && warmupTaskProgress.details.percent >= 100
+    if (!warmupCoreReady) return
 
     // Don't re-initialize if feature collection already exists
     if (completeFeatureCollectionRef.current) return
@@ -2784,17 +2788,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       // Cut sprites for each bangumi with a valid theme
       const newSpriteIds = new Set<string>()
+      const spriteCandidates = bangumiDataList
+        .filter((bangumi) => isValidTheme(bangumi.theme))
+        .sort((a, b) => b.points.length - a.points.length)
+        .slice(0, COMPLETE_MODE_SPRITE_MAX_BANGUMI)
+      const spriteDeadline = performance.now() + COMPLETE_MODE_SPRITE_BUDGET_MS
+      warmupMetricRef.current.complete_sprite_cut_total = spriteCandidates.length
+      warmupMetricRef.current.complete_sprite_cut_done = 0
+      warmupMetricRef.current.complete_sprite_cut_budget_hit = 0
 
-      for (const bangumi of bangumiDataList) {
+      for (let idx = 0; idx < spriteCandidates.length; idx += 1) {
+        const bangumi = spriteCandidates[idx]!
         if (controller.signal.aborted) return
 
-        const theme = bangumi.theme
-        if (!isValidTheme(theme)) continue
+        if (performance.now() > spriteDeadline) {
+          warmupMetricRef.current.complete_sprite_cut_budget_hit = 1
+          break
+        }
 
         try {
           const sprites = await cutSpriteSheet(
             bangumi.bangumiId,
-            theme as AnitabiTheme,
+            bangumi.theme as AnitabiTheme,
             bangumi.points.map((p) => ({ id: p.id })),
             bangumi.color,
             imageLoader,
@@ -2819,6 +2834,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           }
         } catch {
           // Sprite loading failed for this bangumi — features will use dot fallback
+        }
+        warmupMetricRef.current.complete_sprite_cut_done = idx + 1
+        if ((idx + 1) % 2 === 0) {
+          await yieldToMainThread(controller.signal)
         }
       }
 
@@ -2864,7 +2883,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       controller.abort()
     }
-  }, [detail, mapMode, warmupProgress.phase, warmupProgress.percent])
+  }, [
+    detail,
+    mapMode,
+    warmupTaskProgress.cards.percent,
+    warmupTaskProgress.details.percent,
+    warmupTaskProgress.map.percent,
+  ])
 
   // Complete Mode useEffect 2 — Click handler for complete mode layers
   // Uses openBangumiRef to avoid declaration-order issues with openBangumi callback
@@ -3046,7 +3071,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
   }, [locale, query, selectedCity, tab, userLocation])
 
-  const updateWarmupProgress = useCallback((next: Partial<WarmupProgress>) => {
+  const updateWarmupProgress = useCallback((next: Partial<WarmupProgress>, options?: { runToken?: number }) => {
+    const runToken = options?.runToken
+    if (runToken != null && runToken !== warmupRunTokenRef.current) return
     setWarmupProgress((prev) => ({
       phase: next.phase || prev.phase,
       percent: Math.max(0, Math.min(100, next.percent ?? prev.percent)),
@@ -3076,14 +3103,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     setWarmupTaskProgress(createEmptyWarmupTaskProgress())
   }, [])
 
-  const updateWarmupTask = useCallback((key: WarmupTaskKey, next: { percent?: number; detail?: string }) => {
+  const updateWarmupTask = useCallback((
+    key: WarmupTaskKey,
+    next: { percent?: number; detail?: string },
+    options?: { runToken?: number },
+  ) => {
+    const runToken = options?.runToken
+    if (runToken != null && runToken !== warmupRunTokenRef.current) return
     setWarmupTaskProgress((prev) => {
       const current = prev[key]
+      const incomingPercent = Math.max(0, Math.min(100, next.percent ?? current.percent))
+      const nextPercent = incomingPercent < current.percent ? current.percent : incomingPercent
+      if (incomingPercent < current.percent) {
+        const blocked = Number(warmupMetricRef.current.progress_regression_blocked || 0)
+        warmupMetricRef.current.progress_regression_blocked = blocked + 1
+      }
       const merged: WarmupTaskProgress = {
         ...prev,
         [key]: {
-          percent: Math.max(0, Math.min(100, next.percent ?? current.percent)),
-          detail: next.detail ?? current.detail,
+          percent: nextPercent,
+          detail: incomingPercent < current.percent ? current.detail : (next.detail ?? current.detail),
         },
       }
       const combinedPercent = computeWarmupPercent(merged)
@@ -3103,7 +3142,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     })
   }, [computeWarmupPercent, label.preloadTitle])
 
-  const completeAllWarmupTasks = useCallback(() => {
+  const completeAllWarmupTasks = useCallback((options?: { runToken?: number }) => {
+    const runToken = options?.runToken
+    if (runToken != null && runToken !== warmupRunTokenRef.current) return
     setWarmupTaskProgress((prev) => ({
       map: { percent: 100, detail: prev.map.detail || label.preloadMapDone },
       cards: { percent: 100, detail: prev.cards.detail },
@@ -3145,8 +3186,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     })
   }, [])
 
-  const preloadMapBaseLayer = useCallback(async (signal?: AbortSignal) => {
-    updateWarmupTask('map', { percent: 2, detail: label.preloadMapPreparing })
+  const preloadMapBaseLayer = useCallback(async (signal?: AbortSignal, runToken?: number) => {
+    updateWarmupTask('map', { percent: 2, detail: label.preloadMapPreparing }, { runToken })
     const map = await waitForMapInstance(signal)
     if (!map || signal?.aborted) return
 
@@ -3166,16 +3207,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const finish = (percent = 100, detail = label.preloadMapDone) => {
         if (finished) return
         finished = true
-        updateWarmupTask('map', { percent, detail })
+        updateWarmupTask('map', { percent, detail }, { runToken })
         cleanup()
         resolve()
       }
 
       const onStyleData = () => {
-        updateWarmupTask('map', { percent: 45, detail: label.preloadMapPreparing })
+        updateWarmupTask('map', { percent: 45, detail: label.preloadMapPreparing }, { runToken })
       }
       const onLoadOrIdle = () => {
-        updateWarmupTask('map', { percent: 78, detail: label.preloadMapTiles })
+        updateWarmupTask('map', { percent: 78, detail: label.preloadMapTiles }, { runToken })
       }
       const onIdle = () => {
         finish(100, label.preloadMapDone)
@@ -3388,6 +3429,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const runToken = warmupRunTokenRef.current + 1
     warmupRunTokenRef.current = runToken
     const isActiveRun = () => warmupRunTokenRef.current === runToken
+    const updateProgressSafe = (next: Partial<WarmupProgress>) => {
+      updateWarmupProgress(next, { runToken })
+    }
+    const updateTaskSafe = (key: WarmupTaskKey, next: { percent?: number; detail?: string }) => {
+      updateWarmupTask(key, next, { runToken })
+    }
+    const completeTasksSafe = () => {
+      completeAllWarmupTasks({ runToken })
+    }
 
     const startedAt = performance.now()
     warmupBlockingUiRef.current = !background
@@ -3414,15 +3464,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     warmupMetricRef.current.images_queue_remaining = 0
     warmupMetricRef.current.images_blocking_truncated = 0
     resetWarmupTaskProgress()
-    updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
-    updateWarmupTask('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
-    updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
-    updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
+    updateProgressSafe({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
+    updateTaskSafe('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
+    updateTaskSafe('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
+    updateTaskSafe('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
     if (signal?.aborted || !isActiveRun()) return
 
     const mapStartedAt = performance.now()
     warmupMetricRef.current.promise_map_state = 1
-    const mapWarmupPromise = preloadMapBaseLayer(signal)
+    const mapWarmupPromise = preloadMapBaseLayer(signal, runToken)
       .then(() => {
         warmupMetricRef.current.promise_map_state = 2
       })
@@ -3438,12 +3488,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const manifestPromise = (async (): Promise<AnitabiPreloadManifestDTO> => {
       const manifestStartedAt = performance.now()
       const manifest = await fetchPreloadManifest(signal)
-      if (signal?.aborted) throw new Error('aborted')
+      if (signal?.aborted || !isActiveRun()) throw new Error('aborted')
       if (!manifest) throw new Error('preload manifest unavailable')
       warmupMetricRef.current.manifest_ms = Math.round(performance.now() - manifestStartedAt)
-      updateWarmupTask('cards', { percent: 25, detail: `${label.preloadCards} (1/4)` })
+      updateTaskSafe('cards', { percent: 25, detail: `${label.preloadCards} (1/4)` })
       hydrateTabCardsFromManifest(manifest)
-      updateWarmupTask('cards', { percent: 100, detail: `${label.preloadCards} (4/4)` })
+      updateTaskSafe('cards', { percent: 100, detail: `${label.preloadCards} (4/4)` })
       setLoading(false)
       return manifest
     })()
@@ -3459,7 +3509,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     warmupMetricRef.current.promise_details_state = 1
     const detailsWarmupPromise = (async () => {
       const manifest = await manifestPromise
-      if (signal?.aborted) return
+      if (signal?.aborted || !isActiveRun()) return
 
       const chunkCount = Math.max(0, manifest.chunkCount)
       warmupMetricRef.current.details_chunk_total = chunkCount
@@ -3469,7 +3519,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       let pointsLoaded = 0
       let lastVisualSyncAt = 0
       if (chunkCount > 0) {
-        updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/${chunkCount})` })
+        updateTaskSafe('details', { percent: 0, detail: `${label.preloadDetails} (0/${chunkCount})` })
         const chunkStartedAt = performance.now()
         const workers = Math.min(PRELOAD_CHUNK_CONCURRENCY, chunkQueue.length)
         await Promise.all(Array.from({ length: workers }, async () => {
@@ -3484,6 +3534,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               [] as AnitabiPreloadChunkItemDTO[],
               signal,
             )
+            if (signal?.aborted || !isActiveRun()) return
             for (const item of items) {
               warmPointIndexByBangumiIdRef.current.set(item.bangumiId, item)
               pointsLoaded += item.points.length
@@ -3492,7 +3543,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             chunkDone += 1
             warmupMetricRef.current.details_chunk_done = chunkDone
             warmupMetricRef.current.details_points_loaded = pointsLoaded
-            updateWarmupTask('details', {
+            updateTaskSafe('details', {
               percent: Math.round((chunkDone / chunkCount) * 100),
               detail: `${label.preloadDetails} (${chunkDone}/${chunkCount}) · ${pointsLoaded}`,
             })
@@ -3509,7 +3560,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }))
         warmupMetricRef.current.chunks_ms = Math.round(performance.now() - chunkStartedAt)
       } else {
-        updateWarmupTask('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
+        updateTaskSafe('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
       }
 
       if (signal?.aborted || !isActiveRun()) return
@@ -3564,14 +3615,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const deadline = Date.now() + WARMUP_BLOCKING_BUDGET_MS
       const updateImagesProgress = (total: number, force = false) => {
         if (total <= 0) {
-          updateWarmupTask('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
+          updateTaskSafe('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
           return
         }
         const clampedDone = Math.min(done, total)
         const percentRaw = Math.floor((clampedDone / total) * 100)
         const percent = clampedDone >= total ? 100 : Math.max(0, Math.min(99, percentRaw))
         if (!force && clampedDone !== total && clampedDone % 8 !== 0) return
-        updateWarmupTask('images', {
+        updateTaskSafe('images', {
           percent,
           detail: `${label.preloadImages} (${clampedDone}/${total})`,
         })
@@ -3601,6 +3652,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               inFlight = Math.max(0, inFlight - 1)
               warmupMetricRef.current.images_inflight = inFlight
             }
+            if (signal?.aborted || !isActiveRun()) return
             done += 1
             warmupMetricRef.current.images_done = done
             updateImagesProgress(total)
@@ -3611,7 +3663,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }))
       }
 
-      updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/${queueCovers.length})` })
+      updateTaskSafe('images', { percent: 0, detail: `${label.preloadImages} (0/${queueCovers.length})` })
       await runQueue(queueCovers, queueCovers.length)
       if (signal?.aborted || !isActiveRun()) return
       if (Date.now() > deadline) {
@@ -3641,7 +3693,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const total = done + queueActive.length
       if (total <= 0) {
-        updateWarmupTask('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
+        updateTaskSafe('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
         return
       }
       if (queueActive.length > 0) {
@@ -3668,13 +3720,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         warmupMetricRef.current.warmup_aborted = 1
         warmupBlockingUiRef.current = false
         setWarmupUiBlocking(false)
-        updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+        updateProgressSafe({ phase: 'idle', percent: 0, detail: '' })
       }
       return
     }
 
-    completeAllWarmupTasks()
-    updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
+    completeTasksSafe()
+    updateProgressSafe({ phase: 'done', percent: 100, detail: label.preloadDone })
     warmupBlockingUiRef.current = false
     setWarmupUiBlocking(false)
     warmupMetricRef.current.warmup_aborted = 0
