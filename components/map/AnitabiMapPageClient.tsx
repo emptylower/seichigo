@@ -2515,8 +2515,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
 
-    // Wait for warmup to complete — phase is 'done' briefly, then 'idle' with percent=100
-    const warmupComplete = warmupProgress.phase === 'done' || (warmupProgress.phase === 'idle' && warmupProgress.percent >= 100)
+    // Treat percent>=100 as ready, even if phase lingers at loading due async tail tasks.
+    const warmupComplete = warmupProgress.percent >= 100 || warmupProgress.phase === 'done'
     if (!warmupComplete) return
 
     // Don't re-initialize if feature collection already exists
@@ -3779,6 +3779,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     warmupAllTabsData,
   ])
 
+  // If progress reaches 100 but async tail tasks keep phase in loading, unlock UI and
+  // normalize phase so complete-mode rendering is not blocked.
+  useEffect(() => {
+    if (warmupProgress.phase !== 'loading') return
+    if (warmupProgress.percent < 100) return
+    const timer = window.setTimeout(() => {
+      setWarmupUiBlocking(false)
+      setWarmupProgress((prev) => {
+        if (prev.phase !== 'loading' || prev.percent < 100) return prev
+        return { ...prev, phase: 'done', percent: 100, detail: prev.detail || label.preloadDone }
+      })
+      window.setTimeout(() => {
+        setWarmupProgress((prev) => (
+          prev.phase === 'done'
+            ? { ...prev, phase: 'idle', percent: 100, detail: prev.detail || label.preloadDone }
+            : prev
+        ))
+      }, 450)
+    }, 650)
+    return () => window.clearTimeout(timer)
+  }, [label.preloadDone, warmupProgress.percent, warmupProgress.phase])
+
   // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
     if (tab !== 'nearby') return
@@ -3825,7 +3847,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setLoading(false)
       return
     }
-    if (warmupProgress.phase === 'loading') return
+    if (warmupProgress.phase === 'loading' && warmupProgress.percent < 100) return
     if (ssrBootstrapUsedRef.current && initialBootstrap && initialBootstrap.tab === tab) {
       ssrBootstrapUsedRef.current = false
       tabCardsRef.current.nearby = initialBootstrap.cards
@@ -3835,7 +3857,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
     loadBootstrap().catch(() => null)
-  }, [initialBootstrap, loadBootstrap, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, userLocation, warmupProgress.phase])
+  }, [initialBootstrap, loadBootstrap, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, userLocation, warmupProgress.percent, warmupProgress.phase])
 
   // Client-side city + keyword filtering for non-nearby tabs
   useEffect(() => {
@@ -3846,7 +3868,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setCards([])
       setHasMoreCards(false)
       if (cacheStoreReady) {
-        setLoading(warmupProgress.phase === 'loading')
+        setLoading(warmupProgress.phase === 'loading' && warmupProgress.percent < 100)
       }
       return
     }
@@ -3856,7 +3878,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     setCards(filterBulkCardsBySearch(all, query, selectedCity, hasSyncedSearchResult ? searchResult : null))
     setHasMoreCards(false)
     setLoading(false)
-  }, [cacheStoreReady, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, warmupProgress.phase])
+  }, [cacheStoreReady, query, queryInput, searchResult, selectedCity, tab, tabCardsVersion, warmupProgress.percent, warmupProgress.phase])
 
   useEffect(() => {
     if (loading || loadingMoreCards || !hasMoreCards) return
@@ -4796,8 +4818,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
   ]
-  const warmupActive = warmupProgress.phase === 'loading'
-  const warmupBlocking = warmupActive && warmupUiBlocking
+  const warmupReady = warmupProgress.percent >= 100
+  const warmupActive = warmupProgress.phase === 'loading' && !warmupReady
+  const warmupBlocking = warmupUiBlocking && warmupProgress.phase === 'loading' && !warmupReady
   const warmupTaskRows = [
     { key: 'map' as const, title: label.preloadMap, progress: warmupTaskProgress.map },
     { key: 'cards' as const, title: label.preloadCards, progress: warmupTaskProgress.cards },
@@ -5507,16 +5530,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   ) : null
 
   return (
-    <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
-      <MapLoadingProgress
-        percent={warmupProgress.percent}
-        visible={warmupActive}
-        title={warmupProgress.title}
-        detail={warmupProgress.detail}
-      />
+    <div data-layout-wide="true" className="relative h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       {warmupBlocking ? (
-        <div className="fixed inset-0 z-50 cursor-progress">
-          <div className="pointer-events-none absolute left-1/2 top-[max(76px,env(safe-area-inset-top,0px)+52px)] w-[min(520px,calc(100%-20px))] -translate-x-1/2">
+        <div className="pointer-events-none absolute right-4 top-[max(76px,env(safe-area-inset-top,0px)+52px)] z-40 w-[min(420px,calc(100%-1.25rem))]">
+          <div className="cursor-progress">
             <div className="rounded-2xl border border-slate-200/80 bg-white/88 px-3 py-2 shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-700">
                 <span>{label.preloadWait}</span>
@@ -5566,6 +5583,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             <div
               ref={mapRootRef}
               className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
+            />
+            <MapLoadingProgress
+              percent={warmupProgress.percent}
+              visible={warmupActive}
+              title={warmupProgress.title}
+              detail={warmupProgress.detail}
+              className="pointer-events-none absolute right-4 top-[max(62px,env(safe-area-inset-top,0px)+42px)] z-30 w-[min(320px,calc(100%-1rem))]"
             />
             {mapViewMode === 'map' && (
               <>
