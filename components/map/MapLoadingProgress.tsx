@@ -50,7 +50,7 @@ export default function MapLoadingProgress({
 
   return (
     <div
-      className={className || 'pointer-events-none absolute right-4 top-[72px] z-30 w-[min(320px,calc(100%-1rem))]'}
+      className={className || 'pointer-events-none absolute left-4 top-[72px] z-30 w-[min(320px,calc(100%-1rem))]'}
       role="progressbar"
       aria-valuenow={width}
       aria-valuemin={0}

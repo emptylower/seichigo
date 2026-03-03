@@ -70,6 +70,7 @@ const PRELOAD_IMAGE_BACKGROUND_MAX = 2200
 const PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY = 6
 const PRELOAD_IMAGE_BACKGROUND_CONCURRENCY = 4
 const WARMUP_IMAGE_TIMEOUT_MS = 1800
+const WARMUP_PRELOAD_FETCH_TIMEOUT_MS = 12000
 const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 120
 const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
 const WARMUP_MAP_READY_TIMEOUT_MS = 15000
@@ -859,6 +860,37 @@ function normalizeCoverImageUrl(input: string | null | undefined): string | null
   const raw = String(input || '').trim()
   if (!raw) return null
   return raw
+}
+
+function createRequestSignalWithTimeout(
+  parent: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController()
+  const safeTimeout = Math.max(1000, timeoutMs)
+  const timer = window.setTimeout(() => {
+    controller.abort()
+  }, safeTimeout)
+
+  const onParentAbort = () => {
+    controller.abort()
+  }
+
+  if (parent) {
+    if (parent.aborted) {
+      controller.abort()
+    } else {
+      parent.addEventListener('abort', onParentAbort, { once: true })
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      window.clearTimeout(timer)
+      if (parent) parent.removeEventListener('abort', onParentAbort)
+    },
+  }
 }
 
 async function prefetchImageUrl(
@@ -3093,10 +3125,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (fallback) preloadManifestRef.current = fallback
 
     try {
-      const res = await fetch(`/api/anitabi/preload/manifest?locale=${encodeURIComponent(locale)}`, {
-        method: 'GET',
-        signal,
-      })
+      const { signal: requestSignal, cleanup } = createRequestSignalWithTimeout(signal, WARMUP_PRELOAD_FETCH_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(`/api/anitabi/preload/manifest?locale=${encodeURIComponent(locale)}`, {
+          method: 'GET',
+          signal: requestSignal,
+        })
+      } finally {
+        cleanup()
+      }
       if (!res.ok) throw new Error('load preload manifest failed')
       const manifest = (await res.json()) as AnitabiPreloadManifestDTO
       preloadManifestRef.current = manifest
@@ -3124,10 +3162,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return cached.chunk.items
     }
 
-    const res = await fetch(
-      `/api/anitabi/preload/chunks/${index}?locale=${encodeURIComponent(locale)}`,
-      { method: 'GET', signal },
-    )
+    const { signal: requestSignal, cleanup } = createRequestSignalWithTimeout(signal, WARMUP_PRELOAD_FETCH_TIMEOUT_MS)
+    let res: Response
+    try {
+      res = await fetch(
+        `/api/anitabi/preload/chunks/${index}?locale=${encodeURIComponent(locale)}`,
+        { method: 'GET', signal: requestSignal },
+      )
+    } finally {
+      cleanup()
+    }
     if (!res.ok) throw new Error(`load preload chunk failed: ${index}`)
     const chunk = (await res.json()) as {
       datasetVersion: string
@@ -4820,7 +4864,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   ]
   const warmupReady = warmupProgress.percent >= 100
   const warmupActive = warmupProgress.phase === 'loading' && !warmupReady
-  const warmupBlocking = warmupUiBlocking && warmupProgress.phase === 'loading' && !warmupReady
+  const warmupBlocking = false
   const warmupTaskRows = [
     { key: 'map' as const, title: label.preloadMap, progress: warmupTaskProgress.map },
     { key: 'cards' as const, title: label.preloadCards, progress: warmupTaskProgress.cards },
@@ -5532,7 +5576,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   return (
     <div data-layout-wide="true" className="relative h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       {warmupBlocking ? (
-        <div className="pointer-events-none absolute right-4 top-[max(76px,env(safe-area-inset-top,0px)+52px)] z-40 w-[min(420px,calc(100%-1.25rem))]">
+        <div className="pointer-events-none absolute left-4 top-[max(76px,env(safe-area-inset-top,0px)+52px)] z-40 w-[min(420px,calc(100%-1.25rem))]">
           <div className="cursor-progress">
             <div className="rounded-2xl border border-slate-200/80 bg-white/88 px-3 py-2 shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-700">
@@ -5589,7 +5633,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               visible={warmupActive}
               title={warmupProgress.title}
               detail={warmupProgress.detail}
-              className="pointer-events-none absolute right-4 top-[max(62px,env(safe-area-inset-top,0px)+42px)] z-30 w-[min(320px,calc(100%-1rem))]"
+              className="pointer-events-none absolute left-4 top-[max(62px,env(safe-area-inset-top,0px)+42px)] z-30 w-[min(320px,calc(100%-1rem))]"
             />
             {mapViewMode === 'map' && (
               <>
