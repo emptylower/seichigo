@@ -40,6 +40,8 @@ import {
   removeLabelLayer,
   buildLabelFeatureCollection,
 } from './CompleteModeLayers'
+import { MapModeToggle } from './MapModeToggle'
+import { useMapMode } from './hooks/useMapMode'
 
 // --- Client-side FIFO cache for bangumi detail (max 30 entries) ---
 const BANGUMI_CACHE_MAX = 30
@@ -1736,6 +1738,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(initialBootstrap ?? null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>(initialBootstrap?.cards ?? [])
   const [detail, setDetail] = useState<AnitabiBangumiDTO | null>(null)
+  const { mode: mapMode, setMode: setMapMode, isComplete } = useMapMode()
+  const mapModeRef = useRef(mapMode)
   const [loading, setLoading] = useState(false)
   const [loadingMoreCards, setLoadingMoreCards] = useState(false)
   const [cardsLoadError, setCardsLoadError] = useState<string | null>(null)
@@ -2366,10 +2370,31 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!map || !map.isStyleLoaded()) return false
 
     const fc = completeFeatureCollectionRef.current
-    // When a single bangumi is selected (detail is set), hide complete mode
-    if (detailRef.current || !fc || fc.features.length === 0) {
+    // In simple mode, hide complete mode
+    if (mapModeRef.current === 'simple') {
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
+      return true
+    }
+
+    if (!fc || fc.features.length === 0) {
+      removeCompleteModeLayers(map)
+      removeLabelLayer(map)
+      return true
+    }
+
+    // If a bangumi is selected in complete mode, filter to just that bangumi
+    if (detailRef.current) {
+      const filteredFc = {
+        type: 'FeatureCollection' as const,
+        features: fc.features.filter(
+          (f) => f.properties.bangumiId === String(detailRef.current!.card.id)
+        ),
+      }
+      ensureCompleteModeSources(map)
+      ensureCompleteModeSymbolLayer(map)
+      updateCompleteModeSources(map, filteredFc)
+      map.triggerRepaint()
       return true
     }
 
@@ -2399,11 +2424,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     syncCompleteModeRef.current = flushCompleteMode
   }, [flushCompleteMode])
 
+  useEffect(() => { mapModeRef.current = mapMode }, [mapMode])
+
   // Complete Mode useEffect 1 — Global data init + sprite cutting
   useEffect(() => {
-    // Only activate when no single bangumi is selected and warmup is done
-    if (detail) {
-      // When viewing a single bangumi, clear complete mode layers
+    // In simple mode, clear complete mode layers
+    if (mapMode === 'simple') {
       completeFeatureCollectionRef.current = null
       const map = mapRef.current
       if (map && map.isStyleLoaded()) {
@@ -2411,6 +2437,17 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         removeLabelLayer(map)
       }
       return
+    }
+
+    // In complete mode with detail selected, re-flush to filter
+    if (detail && completeFeatureCollectionRef.current) {
+      syncCompleteModeRef.current()
+      return
+    }
+
+    // In complete mode with detail just deselected, re-flush to show all
+    if (!detail && completeFeatureCollectionRef.current) {
+      syncCompleteModeRef.current()
     }
 
     if (warmupProgress.phase !== 'done') return
@@ -2586,7 +2623,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       controller.abort()
     }
-  }, [detail, warmupProgress.phase])
+  }, [detail, mapMode, warmupProgress.phase])
 
   // Complete Mode useEffect 2 — Click handler for complete mode layers
   // Uses openBangumiRef to avoid declaration-order issues with openBangumi callback
@@ -5370,6 +5407,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               ref={mapRootRef}
               className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
             />
+            {mapViewMode === 'map' && (
+              <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+            )}
             <div
               className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}
             >
