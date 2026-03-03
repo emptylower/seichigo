@@ -2448,9 +2448,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     // In complete mode with detail just deselected, re-flush to show all
     if (!detail && completeFeatureCollectionRef.current) {
       syncCompleteModeRef.current()
+      return
     }
 
-    if (warmupProgress.phase !== 'done') return
+    // Wait for warmup to complete — phase is 'done' briefly, then 'idle' with percent=100
+    const warmupComplete = warmupProgress.phase === 'done' || (warmupProgress.phase === 'idle' && warmupProgress.percent >= 100)
+    if (!warmupComplete) return
+
+    // Don't re-initialize if feature collection already exists
+    if (completeFeatureCollectionRef.current) return
 
     // Abort any in-flight previous operation
     completeAbortRef.current?.abort()
@@ -2623,7 +2629,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       controller.abort()
     }
-  }, [detail, mapMode, warmupProgress.phase])
+  }, [detail, mapMode, warmupProgress.phase, warmupProgress.percent])
 
   // Complete Mode useEffect 2 — Click handler for complete mode layers
   // Uses openBangumiRef to avoid declaration-order issues with openBangumi callback
