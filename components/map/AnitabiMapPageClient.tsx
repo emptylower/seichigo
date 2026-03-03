@@ -74,6 +74,8 @@ const WARMUP_PRELOAD_FETCH_TIMEOUT_MS = 12000
 const WARMUP_ACTIVE_DETAIL_IMAGE_MAX = 120
 const WARMUP_MAP_WAIT_TIMEOUT_MS = 12000
 const WARMUP_MAP_READY_TIMEOUT_MS = 15000
+const WARMUP_WATCHDOG_INTERVAL_MS = 3000
+const WARMUP_STALL_WARN_MS = 10000
 const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   map: 20,
   cards: 30,
@@ -116,6 +118,9 @@ type WarmupTaskProgress = Record<WarmupTaskKey, {
   percent: number
   detail: string
 }>
+
+type WarmupMetricValue = number | string
+type WarmupMetrics = Record<string, WarmupMetricValue>
 
 type Props = {
   locale: SupportedLocale
@@ -935,6 +940,29 @@ function withPromiseTimeout<T>(
         if (signal) signal.removeEventListener('abort', onAbort)
         finish(fallback)
       })
+  })
+}
+
+function yieldToMainThread(signal?: AbortSignal): Promise<void> {
+  if (typeof window === 'undefined' || signal?.aborted) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    let timer: number | null = null
+    const onAbort = () => {
+      if (timer != null) {
+        window.clearTimeout(timer)
+        timer = null
+      }
+      if (signal) signal.removeEventListener('abort', onAbort)
+      resolve()
+    }
+
+    timer = window.setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, 0)
+
+    if (signal) signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -1781,7 +1809,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const firstOpenPointStartedAtRef = useRef<number | null>(null)
   const firstOpenPointVisibleRecordedRef = useRef(false)
   const firstOpenPointGuardTimerRef = useRef<number | null>(null)
-  const warmupMetricRef = useRef<Record<string, number>>({})
+  const warmupMetricRef = useRef<WarmupMetrics>({})
+  const warmupRunTokenRef = useRef(0)
   const warmupBlockingUiRef = useRef(true)
   const mapInitWaitersRef = useRef<Array<() => void>>([])
   const currentStyleModeRef = useRef<'street' | 'satellite'>('street')
@@ -1869,6 +1898,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [warmupUiBlocking, setWarmupUiBlocking] = useState(false)
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
+  const warmupProgressRef = useRef<WarmupProgress>(warmupProgress)
+  const warmupTaskProgressRef = useRef<WarmupTaskProgress>(warmupTaskProgress)
+
+  useEffect(() => {
+    warmupProgressRef.current = warmupProgress
+  }, [warmupProgress])
+
+  useEffect(() => {
+    warmupTaskProgressRef.current = warmupTaskProgress
+  }, [warmupTaskProgress])
 
   const selectedPoint = useMemo(() => {
     if (!detail || !selectedPointId) return null
@@ -3019,13 +3058,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const computeWarmupPercent = useCallback((tasks: WarmupTaskProgress): number => {
     let weightedSum = 0
     let totalWeight = 0
+    let allDone = true
     for (const key of Object.keys(tasks) as WarmupTaskKey[]) {
       const weight = WARMUP_TASK_WEIGHTS[key]
-      weightedSum += tasks[key].percent * weight
+      const taskPercent = Math.max(0, Math.min(100, tasks[key].percent))
+      if (taskPercent < 100) allDone = false
+      weightedSum += taskPercent * weight
       totalWeight += weight
     }
     if (!totalWeight) return 0
-    return Math.round(weightedSum / totalWeight)
+    const raw = weightedSum / totalWeight
+    if (allDone) return 100
+    return Math.max(0, Math.min(99, Math.floor(raw)))
   }, [])
 
   const resetWarmupTaskProgress = useCallback(() => {
@@ -3043,6 +3087,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         },
       }
       const combinedPercent = computeWarmupPercent(merged)
+      warmupMetricRef.current.last_progress_at = Date.now()
+      warmupMetricRef.current.last_progress_key = key
+      warmupMetricRef.current.last_progress_percent = combinedPercent
+      warmupMetricRef.current.last_progress_detail = next.detail ?? current.detail
       setWarmupProgress((prevWarmup) => ({
         phase: prevWarmup.phase === 'idle' && warmupBlockingUiRef.current && combinedPercent < 100
           ? 'loading'
@@ -3337,22 +3385,56 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const background = Boolean(options?.background)
     const store = cacheStoreRef.current
     if (!store || signal?.aborted) return
+    const runToken = warmupRunTokenRef.current + 1
+    warmupRunTokenRef.current = runToken
+    const isActiveRun = () => warmupRunTokenRef.current === runToken
 
     const startedAt = performance.now()
     warmupBlockingUiRef.current = !background
     setWarmupUiBlocking(!background)
     setCardsLoadError(null)
+    warmupMetricRef.current.warmup_run_token = runToken
+    warmupMetricRef.current.warmup_session_started_at = Date.now()
+    warmupMetricRef.current.warmup_session_background = background ? 1 : 0
+    warmupMetricRef.current.last_progress_at = Date.now()
+    warmupMetricRef.current.last_progress_key = 'map'
+    warmupMetricRef.current.last_progress_percent = 0
+    warmupMetricRef.current.last_progress_detail = label.preloadMapPreparing
+    warmupMetricRef.current.promise_map_state = 0
+    warmupMetricRef.current.promise_manifest_state = 0
+    warmupMetricRef.current.promise_details_state = 0
+    warmupMetricRef.current.promise_images_state = 0
+    warmupMetricRef.current.details_chunk_done = 0
+    warmupMetricRef.current.details_chunk_total = 0
+    warmupMetricRef.current.details_points_loaded = 0
+    warmupMetricRef.current.images_inflight = 0
+    warmupMetricRef.current.images_last_src = ''
+    warmupMetricRef.current.images_done = 0
+    warmupMetricRef.current.images_total = 0
+    warmupMetricRef.current.images_queue_remaining = 0
+    warmupMetricRef.current.images_blocking_truncated = 0
     resetWarmupTaskProgress()
     updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
     updateWarmupTask('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
     updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
     updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
+    if (signal?.aborted || !isActiveRun()) return
 
     const mapStartedAt = performance.now()
-    const mapWarmupPromise = preloadMapBaseLayer(signal).finally(() => {
-      warmupMetricRef.current.map_ms = Math.round(performance.now() - mapStartedAt)
-    })
+    warmupMetricRef.current.promise_map_state = 1
+    const mapWarmupPromise = preloadMapBaseLayer(signal)
+      .then(() => {
+        warmupMetricRef.current.promise_map_state = 2
+      })
+      .catch((error) => {
+        warmupMetricRef.current.promise_map_state = -1
+        throw error
+      })
+      .finally(() => {
+        warmupMetricRef.current.map_ms = Math.round(performance.now() - mapStartedAt)
+      })
 
+    warmupMetricRef.current.promise_manifest_state = 1
     const manifestPromise = (async (): Promise<AnitabiPreloadManifestDTO> => {
       const manifestStartedAt = performance.now()
       const manifest = await fetchPreloadManifest(signal)
@@ -3365,12 +3447,22 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setLoading(false)
       return manifest
     })()
+      .then((manifest) => {
+        warmupMetricRef.current.promise_manifest_state = 2
+        return manifest
+      })
+      .catch((error) => {
+        warmupMetricRef.current.promise_manifest_state = -1
+        throw error
+      })
 
+    warmupMetricRef.current.promise_details_state = 1
     const detailsWarmupPromise = (async () => {
       const manifest = await manifestPromise
       if (signal?.aborted) return
 
       const chunkCount = Math.max(0, manifest.chunkCount)
+      warmupMetricRef.current.details_chunk_total = chunkCount
       warmPointIndexByBangumiIdRef.current.clear()
       const chunkQueue = Array.from({ length: chunkCount }, (_, idx) => idx)
       let chunkDone = 0
@@ -3382,7 +3474,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         const workers = Math.min(PRELOAD_CHUNK_CONCURRENCY, chunkQueue.length)
         await Promise.all(Array.from({ length: workers }, async () => {
           for (;;) {
-            if (signal?.aborted) return
+            if (signal?.aborted || !isActiveRun()) return
             const index = chunkQueue.shift()
             if (index == null) return
 
@@ -3398,6 +3490,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             }
 
             chunkDone += 1
+            warmupMetricRef.current.details_chunk_done = chunkDone
+            warmupMetricRef.current.details_points_loaded = pointsLoaded
             updateWarmupTask('details', {
               percent: Math.round((chunkDone / chunkCount) * 100),
               detail: `${label.preloadDetails} (${chunkDone}/${chunkCount}) · ${pointsLoaded}`,
@@ -3408,6 +3502,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               lastVisualSyncAt = now
               setTabCardsVersion((prev) => prev + 1)
             }
+            if (chunkDone % 2 === 0) {
+              await yieldToMainThread(signal)
+            }
           }
         }))
         warmupMetricRef.current.chunks_ms = Math.round(performance.now() - chunkStartedAt)
@@ -3415,7 +3512,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         updateWarmupTask('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
       }
 
-      if (signal?.aborted) return
+      if (signal?.aborted || !isActiveRun()) return
       const activeId = activeBangumiIdRef.current
       if (activeId == null) return
       const activeCard = Object.values(tabCardsRef.current).flatMap((rows) => rows || []).find((row) => row.id === activeId)
@@ -3427,10 +3524,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         return buildWarmDetail(activeCard, activeChunk)
       })
     })()
+      .then(() => {
+        warmupMetricRef.current.promise_details_state = 2
+      })
+      .catch((error) => {
+        warmupMetricRef.current.promise_details_state = -1
+        throw error
+      })
 
+    warmupMetricRef.current.promise_images_state = 1
     const imagesWarmupPromise = (async () => {
       const manifest = await manifestPromise
-      if (signal?.aborted) return
+      if (signal?.aborted || !isActiveRun()) return
 
       const blockingImages = new Set<string>()
       const queueCovers: string[] = []
@@ -3455,27 +3560,52 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
 
       let done = 0
+      let inFlight = 0
       const deadline = Date.now() + WARMUP_BLOCKING_BUDGET_MS
+      const updateImagesProgress = (total: number, force = false) => {
+        if (total <= 0) {
+          updateWarmupTask('images', { percent: 100, detail: `${label.preloadImages} (0/0)` })
+          return
+        }
+        const clampedDone = Math.min(done, total)
+        const percentRaw = Math.floor((clampedDone / total) * 100)
+        const percent = clampedDone >= total ? 100 : Math.max(0, Math.min(99, percentRaw))
+        if (!force && clampedDone !== total && clampedDone % 8 !== 0) return
+        updateWarmupTask('images', {
+          percent,
+          detail: `${label.preloadImages} (${clampedDone}/${total})`,
+        })
+      }
       const runQueue = async (queue: string[], total: number) => {
         if (!queue.length || total <= 0) return
+        warmupMetricRef.current.images_total = total
+        warmupMetricRef.current.images_queue_remaining = queue.length
         const workers = Math.min(getImageWarmupConcurrency(false), queue.length)
         await Promise.all(Array.from({ length: workers }, async () => {
           for (;;) {
-            if (signal?.aborted || Date.now() > deadline) return
+            if (signal?.aborted || Date.now() > deadline || !isActiveRun()) return
             const src = queue.shift()
             if (!src) return
-            await withPromiseTimeout(
-              prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
-              WARMUP_IMAGE_TIMEOUT_MS + 300,
-              undefined,
-              signal,
-            )
+            warmupMetricRef.current.images_queue_remaining = queue.length
+            inFlight += 1
+            warmupMetricRef.current.images_inflight = inFlight
+            warmupMetricRef.current.images_last_src = src
+            try {
+              await withPromiseTimeout(
+                prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
+                WARMUP_IMAGE_TIMEOUT_MS + 300,
+                undefined,
+                signal,
+              )
+            } finally {
+              inFlight = Math.max(0, inFlight - 1)
+              warmupMetricRef.current.images_inflight = inFlight
+            }
             done += 1
-            if (done === total || done % 8 === 0) {
-              updateWarmupTask('images', {
-                percent: Math.round((done / total) * 100),
-                detail: `${label.preloadImages} (${done}/${total})`,
-              })
+            warmupMetricRef.current.images_done = done
+            updateImagesProgress(total)
+            if (done % 6 === 0) {
+              await yieldToMainThread(signal)
             }
           }
         }))
@@ -3483,10 +3613,20 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/${queueCovers.length})` })
       await runQueue(queueCovers, queueCovers.length)
-      if (signal?.aborted || Date.now() > deadline) return
+      if (signal?.aborted || !isActiveRun()) return
+      if (Date.now() > deadline) {
+        warmupMetricRef.current.images_blocking_truncated = 1
+        updateImagesProgress(queueCovers.length, true)
+        return
+      }
 
       await detailsWarmupPromise
-      if (signal?.aborted || Date.now() > deadline) return
+      if (signal?.aborted || !isActiveRun()) return
+      if (Date.now() > deadline) {
+        warmupMetricRef.current.images_blocking_truncated = 1
+        updateImagesProgress(queueCovers.length, true)
+        return
+      }
 
       const queueActive: string[] = []
       const activeId = activeBangumiIdRef.current
@@ -3505,16 +3645,31 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         return
       }
       if (queueActive.length > 0) {
-        updateWarmupTask('images', { percent: Math.round((done / total) * 100), detail: `${label.preloadImages} (${done}/${total})` })
+        updateImagesProgress(total, true)
       }
       await runQueue(queueActive, total)
-      updateWarmupTask('images', { percent: 100, detail: `${label.preloadImages} (${Math.min(done, total)}/${total})` })
+      if (signal?.aborted || !isActiveRun()) return
+      if (Date.now() > deadline) {
+        warmupMetricRef.current.images_blocking_truncated = 1
+      }
+      updateImagesProgress(total, true)
     })()
+      .then(() => {
+        warmupMetricRef.current.promise_images_state = 2
+      })
+      .catch((error) => {
+        warmupMetricRef.current.promise_images_state = -1
+        throw error
+      })
 
     await Promise.all([mapWarmupPromise, detailsWarmupPromise, imagesWarmupPromise])
-    if (signal?.aborted) {
-      warmupBlockingUiRef.current = false
-      setWarmupUiBlocking(false)
+    if (signal?.aborted || !isActiveRun()) {
+      if (isActiveRun()) {
+        warmupMetricRef.current.warmup_aborted = 1
+        warmupBlockingUiRef.current = false
+        setWarmupUiBlocking(false)
+        updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+      }
       return
     }
 
@@ -3522,8 +3677,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
     warmupBlockingUiRef.current = false
     setWarmupUiBlocking(false)
+    warmupMetricRef.current.warmup_aborted = 0
     warmupMetricRef.current.unlock_ms = Math.round(performance.now() - startedAt)
     window.setTimeout(() => {
+      if (!isActiveRun()) return
       setWarmupProgress((prev) => (prev.phase === 'done'
         ? { ...prev, phase: 'idle', percent: 100, detail: label.preloadDone }
         : prev))
@@ -3546,10 +3703,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (backgroundImages.size >= PRELOAD_IMAGE_BACKGROUND_MAX) break
     }
     const bgQueue = Array.from(backgroundImages).filter((src) => !prefetchedPointImageUrls.has(src))
-    if (!signal?.aborted && bgQueue.length > 0) {
+    if (!signal?.aborted && isActiveRun() && bgQueue.length > 0) {
       void Promise.all(Array.from({ length: Math.min(getImageWarmupConcurrency(true), bgQueue.length) }, async () => {
         for (;;) {
-          if (signal?.aborted) return
+          if (signal?.aborted || !isActiveRun()) return
           const src = bgQueue.shift()
           if (!src) return
           await prefetchImageUrl(src, { signal, timeoutMs: 2200 }).catch(() => null)
@@ -3748,7 +3905,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         firstOpenPointGuardTimerRef.current = window.setTimeout(() => {
           if (activeBangumiIdRef.current !== id) return
           if (firstOpenPointVisibleRecordedRef.current) return
-          warmupMetricRef.current.first_open_point_missing = (warmupMetricRef.current.first_open_point_missing || 0) + 1
+          const currentMissing = Number(warmupMetricRef.current.first_open_point_missing || 0)
+          warmupMetricRef.current.first_open_point_missing = currentMissing + 1
         }, 1800)
         setDetailLoading(false)
       }
@@ -3803,6 +3961,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return () => {
       if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current)
       if (prefetchAbort) prefetchAbort.abort()
+      warmupRunTokenRef.current += 1
       warmupAbortRef.current?.abort()
       if (pointLayerFallbackTimerRef.current != null) {
         window.clearTimeout(pointLayerFallbackTimerRef.current)
@@ -3842,6 +4001,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
     const ac = new AbortController()
+    warmupRunTokenRef.current += 1
     warmupAbortRef.current?.abort()
     warmupAbortRef.current = ac
     ;(async () => {
@@ -3879,6 +4039,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       })
     })().catch(() => null)
     return () => {
+      warmupRunTokenRef.current += 1
       ac.abort()
       warmupBlockingUiRef.current = false
       setWarmupUiBlocking(false)
@@ -3916,6 +4077,58 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }, 650)
     return () => window.clearTimeout(timer)
   }, [label.preloadDone, warmupProgress.percent, warmupProgress.phase])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (warmupProgress.phase !== 'loading') return
+
+    type WarmupDebugWindow = Window & {
+      __SEICHIGO_WARMUP_DEBUG__?: Record<string, unknown>
+      __SEICHIGO_WARMUP_DEBUG_HISTORY__?: Array<Record<string, unknown>>
+    }
+    const target = window as WarmupDebugWindow
+    const emitSnapshot = (reason: string, warn = false) => {
+      const now = Date.now()
+      const lastProgressAt = Number(warmupMetricRef.current.last_progress_at || 0)
+      const idleMs = lastProgressAt > 0 ? now - lastProgressAt : 0
+      const snapshot = {
+        reason,
+        now,
+        idleMs,
+        runToken: warmupMetricRef.current.warmup_run_token || 0,
+        phase: warmupProgressRef.current.phase,
+        percent: warmupProgressRef.current.percent,
+        detail: warmupProgressRef.current.detail,
+        taskProgress: warmupTaskProgressRef.current,
+        metrics: { ...warmupMetricRef.current },
+      }
+      target.__SEICHIGO_WARMUP_DEBUG__ = snapshot
+      const history = target.__SEICHIGO_WARMUP_DEBUG_HISTORY__ || []
+      history.push(snapshot)
+      if (history.length > 36) history.shift()
+      target.__SEICHIGO_WARMUP_DEBUG_HISTORY__ = history
+      if (warn) {
+        console.warn('[warmup-debug]', snapshot)
+      } else {
+        console.debug('[warmup-debug]', snapshot)
+      }
+    }
+
+    emitSnapshot('loading-start')
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      const lastProgressAt = Number(warmupMetricRef.current.last_progress_at || 0)
+      const idleMs = lastProgressAt > 0 ? now - lastProgressAt : 0
+      warmupMetricRef.current.watchdog_last_tick = now
+      warmupMetricRef.current.watchdog_idle_ms = idleMs
+      emitSnapshot('watchdog-tick', idleMs >= WARMUP_STALL_WARN_MS)
+    }, WARMUP_WATCHDOG_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(timer)
+      emitSnapshot('loading-stop')
+    }
+  }, [warmupProgress.phase])
 
   // Nearby tab: prefer preloaded full dataset; fallback to bootstrap+chunks when unavailable.
   useEffect(() => {
