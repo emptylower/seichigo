@@ -45,6 +45,7 @@ export default function MapLoadingProgress({
   }
 
   const width = Math.min(Math.max(percent, 0), 100)
+  const displayPercent = width >= 100 ? 100 : Math.floor(width)
   const label = title?.trim() || '地图预加载'
   const hint = detail?.trim() || ''
 
@@ -59,7 +60,7 @@ export default function MapLoadingProgress({
       <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
         <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-700">
           <span className="line-clamp-1">{label}</span>
-          <span>{Math.round(width)}%</span>
+          <span>{displayPercent}%</span>
         </div>
         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200/90">
           <div

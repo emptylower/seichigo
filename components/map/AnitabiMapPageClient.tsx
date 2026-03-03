@@ -3464,7 +3464,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             if (signal?.aborted || Date.now() > deadline) return
             const src = queue.shift()
             if (!src) return
-            await prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null)
+            await withPromiseTimeout(
+              prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
+              WARMUP_IMAGE_TIMEOUT_MS + 300,
+              undefined,
+              signal,
+            )
             done += 1
             if (done === total || done % 8 === 0) {
               updateWarmupTask('images', {
