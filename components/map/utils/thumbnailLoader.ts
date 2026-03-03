@@ -5,6 +5,7 @@ export interface MapLike {
   addImage(id: string, data: unknown): void
   removeImage(id: string): void
   loadImage(url: string): Promise<{ data: unknown }>
+  hasImage?(id: string): boolean
 }
 
 export interface ThumbnailLoaderOptions {
@@ -48,9 +49,15 @@ export class ThumbnailLoader {
 
       const imageId = `thumb-${feature.pointId}`
 
-      if (this.lru.has(imageId)) {
+      const imageStillOnMap = typeof this.map.hasImage === 'function'
+        ? this.map.hasImage(imageId)
+        : true
+      if (this.lru.has(imageId) && imageStillOnMap) {
         this.lru.set(imageId, ++this.accessCounter)
       } else {
+        if (this.lru.has(imageId) && !imageStillOnMap) {
+          this.lru.delete(imageId)
+        }
         toLoad.push({ imageId, url })
       }
     }

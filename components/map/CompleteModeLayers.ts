@@ -5,7 +5,8 @@
  * - A single GeoJSON source for all points (no Supercluster)
  * - A circle "dots" layer as colored fallback
  * - A symbol "icons" layer with sprite-based markers
- * - Both layers share a 20-tier zoom-step filter on `priority`
+ * - An optional symbol layer for bangumi cover avatars
+ * - Both point layers share a 20-tier zoom-step filter on `priority`
  * - Label layer helpers (unchanged)
  */
 
@@ -17,9 +18,16 @@ import type * as maplibregl from 'maplibre-gl';
 export const COMPLETE_POINTS_SOURCE_ID = 'complete-points';
 export const COMPLETE_DOTS_LAYER_ID = 'complete-dots';
 export const COMPLETE_ICONS_LAYER_ID = 'complete-icons';
+export const COMPLETE_BANGUMI_COVERS_SOURCE_ID = 'complete-bangumi-covers-source';
+export const COMPLETE_BANGUMI_COVERS_LAYER_ID = 'complete-bangumi-covers';
 
 const LABEL_SOURCE_ID = 'complete-labels';
 const LABEL_LAYER_ID = 'complete-label-layer';
+
+const EMPTY_FC: GeoJSON.FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 // ---------------------------------------------------------------------------
 // 20-tier zoom-step priority filter (from Anitabi)
@@ -32,13 +40,13 @@ export const ZOOM_PRIORITY_FILTER: maplibregl.FilterSpecification = [
   ['zoom'],
   // default (zoom < 3): only priority > 48000
   ['>', ['get', 'priority'], 48000],
-  3,  ['>', ['get', 'priority'], 24000],
-  4,  ['>', ['get', 'priority'], 12000],
-  5,  ['>', ['get', 'priority'], 6000],
-  6,  ['>', ['get', 'priority'], 3000],
-  7,  ['>', ['get', 'priority'], 1600],
-  8,  ['>', ['get', 'priority'], 800],
-  9,  ['>', ['get', 'priority'], 400],
+  3, ['>', ['get', 'priority'], 24000],
+  4, ['>', ['get', 'priority'], 12000],
+  5, ['>', ['get', 'priority'], 6000],
+  6, ['>', ['get', 'priority'], 3000],
+  7, ['>', ['get', 'priority'], 1600],
+  8, ['>', ['get', 'priority'], 800],
+  9, ['>', ['get', 'priority'], 400],
   10, ['>', ['get', 'priority'], 200],
   11, ['>', ['get', 'priority'], 100],
   12, ['>', ['get', 'priority'], 50],
@@ -105,14 +113,21 @@ export function buildSymbolLayerSpec(): maplibregl.LayerSpecification {
 // Map interaction helpers
 // ---------------------------------------------------------------------------
 
-/** Add the GeoJSON source to the map if it doesn't exist. */
+/** Add complete mode sources to map if absent. */
 export function ensureCompleteModeSources(map: maplibregl.Map): void {
   if (!map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
     map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
   }
+
+  if (!map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID)) {
+    map.addSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_FC,
+    });
+  }
 }
 
-/** Add the dots + symbol layers if they don't exist. */
+/** Add point layers if absent. */
 export function ensureCompleteModeSymbolLayer(map: maplibregl.Map): void {
   if (!map.getLayer(COMPLETE_DOTS_LAYER_ID)) {
     map.addLayer(buildDotsLayerSpec());
@@ -120,9 +135,28 @@ export function ensureCompleteModeSymbolLayer(map: maplibregl.Map): void {
   if (!map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
     map.addLayer(buildSymbolLayerSpec());
   }
+  if (!map.getLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID)) {
+    map.addLayer({
+      id: COMPLETE_BANGUMI_COVERS_LAYER_ID,
+      type: 'symbol',
+      source: COMPLETE_BANGUMI_COVERS_SOURCE_ID,
+      minzoom: 4,
+      maxzoom: 13.5,
+      filter: ['!=', ['get', 'coverImageId'], ''],
+      layout: {
+        'icon-image': ['get', 'coverImageId'],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.18, 6, 0.22, 8, 0.26, 10, 0.3, 12, 0.35, 13.5, 0.4],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-opacity': 0.95,
+      },
+    } as maplibregl.LayerSpecification);
+  }
 }
 
-/** Update the GeoJSON source data with new features. */
+/** Update the point source data with new features. */
 export function updateCompleteModeSources(
   map: maplibregl.Map,
   featureCollection: GeoJSON.FeatureCollection,
@@ -133,13 +167,49 @@ export function updateCompleteModeSources(
   }
 }
 
-/** Remove complete mode layers and source from the map. */
+/** Update the bangumi cover source for loaded cover images. */
+export function updateCompleteModeCoverSource(
+  map: maplibregl.Map,
+  features: GeoJSON.FeatureCollection,
+  loadedCoverIds: Set<string>,
+): void {
+  const coverFeatures: GeoJSON.Feature[] = features.features.map((f) => {
+    const bangumiIdRaw = (f.properties as Record<string, unknown>)?.bangumiId;
+    const bangumiId = typeof bangumiIdRaw === 'number'
+      ? bangumiIdRaw
+      : typeof bangumiIdRaw === 'string'
+        ? Number.parseInt(bangumiIdRaw, 10)
+        : Number.NaN;
+
+    const imageId = Number.isFinite(bangumiId) ? `cover-${bangumiId}` : '';
+    return {
+      ...f,
+      properties: {
+        ...f.properties,
+        coverImageId: imageId && loadedCoverIds.has(imageId) ? imageId : '',
+      },
+    };
+  });
+
+  const source = map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+  if (source) {
+    source.setData({ type: 'FeatureCollection', features: coverFeatures });
+  }
+}
+
+/** Remove complete mode layers and sources from the map. */
 export function removeCompleteModeLayers(map: maplibregl.Map): void {
+  if (map.getLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID)) {
+    map.removeLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID);
+  }
   if (map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
     map.removeLayer(COMPLETE_ICONS_LAYER_ID);
   }
   if (map.getLayer(COMPLETE_DOTS_LAYER_ID)) {
     map.removeLayer(COMPLETE_DOTS_LAYER_ID);
+  }
+  if (map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID)) {
+    map.removeSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID);
   }
   if (map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
     map.removeSource(COMPLETE_POINTS_SOURCE_ID);

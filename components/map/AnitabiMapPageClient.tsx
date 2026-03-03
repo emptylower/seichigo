@@ -27,13 +27,16 @@ import { createGlobalFeatureCollection } from './utils/globalFeatureCollection'
 import type { InputPoint } from './utils/globalFeatureCollection'
 import { cutSpriteSheet } from './utils/spriteRenderer'
 import type { ImageLoader } from './utils/spriteRenderer'
+import { CoverAvatarLoader } from './utils/coverAvatarLoader'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 import {
+  COMPLETE_BANGUMI_COVERS_LAYER_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
   ensureCompleteModeSources,
   ensureCompleteModeSymbolLayer,
   updateCompleteModeSources,
+  updateCompleteModeCoverSource,
   removeCompleteModeLayers,
   ensureLabelLayer,
   updateLabelSource,
@@ -1716,6 +1719,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     initialBootstrap ? { [initialBootstrap.tab]: initialBootstrap.cards } : {}
   )
   const loadedTabsRef = useRef<Set<AnitabiMapTab>>(new Set(initialBootstrap ? [initialBootstrap.tab] : []))
+  const coverAvatarLoaderRef = useRef<CoverAvatarLoader | null>(null)
+  const loadedCoverIdsRef = useRef<Set<string>>(new Set())
+  const completeCoverFeatureCollectionRef = useRef<GeoJSON.FeatureCollection | null>(null)
+  const completeCoverCandidatesRef = useRef<Array<{ bangumiId: number; coverUrl: string }>>([])
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -1782,6 +1789,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     detail: '',
   })
   const [warmupTaskProgress, setWarmupTaskProgress] = useState<WarmupTaskProgress>(() => createEmptyWarmupTaskProgress())
+  const [warmupUiBlocking, setWarmupUiBlocking] = useState(false)
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
 
@@ -2375,12 +2383,19 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (mapModeRef.current === 'simple') {
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
+      coverAvatarLoaderRef.current = null
+      loadedCoverIdsRef.current = new Set()
+      completeCoverFeatureCollectionRef.current = null
+      completeCoverCandidatesRef.current = []
       return true
     }
 
     if (!fc || fc.features.length === 0) {
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
+      loadedCoverIdsRef.current = new Set()
+      completeCoverFeatureCollectionRef.current = null
+      completeCoverCandidatesRef.current = []
       return true
     }
 
@@ -2395,6 +2410,32 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ensureCompleteModeSources(map)
       ensureCompleteModeSymbolLayer(map)
       updateCompleteModeSources(map, filteredFc)
+      const detailBangumiId = detailRef.current.card.id
+      const coverBase = completeCoverFeatureCollectionRef.current
+      const detailCoverCollection: GeoJSON.FeatureCollection = coverBase
+        ? {
+            type: 'FeatureCollection',
+            features: coverBase.features.filter((feature) => {
+              const raw = (feature.properties as { bangumiId?: unknown } | undefined)?.bangumiId
+              if (typeof raw === 'number') return raw === detailBangumiId
+              if (typeof raw === 'string') return Number.parseInt(raw, 10) === detailBangumiId
+              return false
+            }),
+          }
+        : { type: 'FeatureCollection', features: [] }
+      updateCompleteModeCoverSource(map, detailCoverCollection, loadedCoverIdsRef.current)
+
+      if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
+        const coverCandidates = completeCoverCandidatesRef.current
+        void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids) => {
+          loadedCoverIdsRef.current = ids
+          const liveMap = mapRef.current
+          if (!liveMap || !liveMap.isStyleLoaded()) return
+          updateCompleteModeCoverSource(liveMap, detailCoverCollection, ids)
+          liveMap.triggerRepaint()
+        }).catch(() => null)
+      }
+
       map.triggerRepaint()
       return true
     }
@@ -2403,6 +2444,23 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ensureCompleteModeSources(map)
       ensureCompleteModeSymbolLayer(map)
       updateCompleteModeSources(map, fc)
+      updateCompleteModeCoverSource(
+        map,
+        completeCoverFeatureCollectionRef.current || { type: 'FeatureCollection', features: [] },
+        loadedCoverIdsRef.current,
+      )
+
+      if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
+        const coverCandidates = completeCoverCandidatesRef.current
+        void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids) => {
+          loadedCoverIdsRef.current = ids
+          const liveMap = mapRef.current
+          const coverFc = completeCoverFeatureCollectionRef.current
+          if (!liveMap || !liveMap.isStyleLoaded() || !coverFc) return
+          updateCompleteModeCoverSource(liveMap, coverFc, ids)
+          liveMap.triggerRepaint()
+        }).catch(() => null)
+      }
 
       // Re-register sprite images if they were lost during a style change
       // (MapLibre removes all images on setStyle)
@@ -2432,6 +2490,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     // In simple mode, clear complete mode layers
     if (mapMode === 'simple') {
       completeFeatureCollectionRef.current = null
+      completeCoverFeatureCollectionRef.current = null
+      completeCoverCandidatesRef.current = []
+      loadedCoverIdsRef.current = new Set()
+      coverAvatarLoaderRef.current = null
       setCompleteModeLoading(false)
       const map = mapRef.current
       if (map && map.isStyleLoaded()) {
@@ -2487,6 +2549,47 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }
       }
 
+      const coverCandidates = Array.from(allCards.values())
+        .filter((card) => Boolean(card.cover) && Boolean(card.geo) && isValidGeoPair(card.geo!))
+        .sort((a, b) => {
+          const pointDelta = (b.pointsLength || 0) - (a.pointsLength || 0)
+          if (pointDelta !== 0) return pointDelta
+          const imageDelta = (b.imagesLength || 0) - (a.imagesLength || 0)
+          if (imageDelta !== 0) return imageDelta
+          return (b.sourceModifiedMs || 0) - (a.sourceModifiedMs || 0)
+        })
+        .slice(0, 180)
+        .map((card) => ({
+          bangumiId: card.id,
+          coverUrl: card.cover as string,
+        }))
+
+      const coverFeatures: GeoJSON.Feature[] = []
+      for (const item of coverCandidates) {
+        const card = allCards.get(item.bangumiId)
+        if (!card?.geo || !isValidGeoPair(card.geo)) continue
+        const [lat, lng] = card.geo
+        coverFeatures.push({
+          type: 'Feature',
+          properties: {
+            bangumiId: item.bangumiId,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat],
+          },
+        })
+      }
+      completeCoverCandidatesRef.current = coverCandidates
+      completeCoverFeatureCollectionRef.current = {
+        type: 'FeatureCollection',
+        features: coverFeatures,
+      }
+      loadedCoverIdsRef.current = new Set()
+      if (!coverAvatarLoaderRef.current) {
+        coverAvatarLoaderRef.current = new CoverAvatarLoader({ map, maxLoaded: 160 })
+      }
+
       // Build input points from warmup data
       for (const [bangumiId, chunk] of warmPointIndexByBangumiIdRef.current.entries()) {
         if (controller.signal.aborted) return
@@ -2527,6 +2630,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       completeFeatureCollectionRef.current = fc
       syncCompleteModeRef.current()
       if (controller.signal.aborted) return
+
+      if (coverAvatarLoaderRef.current && coverCandidates.length > 0) {
+        void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids) => {
+          if (controller.signal.aborted) return
+          loadedCoverIdsRef.current = ids
+          const liveMap = mapRef.current
+          const coverFc = completeCoverFeatureCollectionRef.current
+          if (!liveMap || !liveMap.isStyleLoaded() || !coverFc) return
+          updateCompleteModeCoverSource(liveMap, coverFc, ids)
+          liveMap.triggerRepaint()
+        }).catch(() => null)
+      }
 
       // Create an image loader that uses our CORS proxy
       const imageLoader: ImageLoader = (url: string) => {
@@ -2645,7 +2760,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (detail) return
 
     const handleCompleteModeClick = (event: maplibregl.MapMouseEvent) => {
-      const completeLayerIds = [COMPLETE_ICONS_LAYER_ID, COMPLETE_DOTS_LAYER_ID].filter(
+      const completeLayerIds = [COMPLETE_ICONS_LAYER_ID, COMPLETE_BANGUMI_COVERS_LAYER_ID, COMPLETE_DOTS_LAYER_ID].filter(
         (id) => Boolean(map.getLayer(id))
       )
       if (!completeLayerIds.length) return
@@ -2655,12 +2770,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const pointId = hit.properties?.pointId
       const bangumiId = hit.properties?.bangumiId
-      if (typeof pointId !== 'string' || !bangumiId) return
+      if (!bangumiId) return
 
       const numericBangumiId = typeof bangumiId === 'string' ? parseInt(bangumiId, 10) : Number(bangumiId)
       if (!Number.isFinite(numericBangumiId)) return
 
-      openBangumiRef.current?.(numericBangumiId, pointId)?.catch(() => null)
+      if (typeof pointId === 'string') {
+        openBangumiRef.current?.(numericBangumiId, pointId)?.catch(() => null)
+      } else {
+        openBangumiRef.current?.(numericBangumiId)?.catch(() => null)
+      }
     }
 
     map.on('click', handleCompleteModeClick)
@@ -2686,7 +2805,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
     spriteImageIdsRef.current.clear()
     completeFeatureCollectionRef.current = null
-      setCompleteModeLoading(false)
+    coverAvatarLoaderRef.current = null
+    loadedCoverIdsRef.current = new Set()
+    completeCoverFeatureCollectionRef.current = null
+    completeCoverCandidatesRef.current = []
+    setCompleteModeLoading(false)
   }, [])
 
   useEffect(() => () => {
@@ -3116,13 +3239,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     const startedAt = performance.now()
     warmupBlockingUiRef.current = !background
+    setWarmupUiBlocking(!background)
     setCardsLoadError(null)
     resetWarmupTaskProgress()
-    if (!background) {
-      updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
-    } else {
-      updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
-    }
+    updateWarmupProgress({ phase: 'loading', percent: 0, detail: label.preloadMapPreparing })
     updateWarmupTask('cards', { percent: 0, detail: `${label.preloadCards} (0/0)` })
     updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/0)` })
     updateWarmupTask('images', { percent: 0, detail: `${label.preloadImages} (0/0)` })
@@ -3154,6 +3274,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const chunkQueue = Array.from({ length: chunkCount }, (_, idx) => idx)
       let chunkDone = 0
       let pointsLoaded = 0
+      let lastVisualSyncAt = 0
       if (chunkCount > 0) {
         updateWarmupTask('details', { percent: 0, detail: `${label.preloadDetails} (0/${chunkCount})` })
         const chunkStartedAt = performance.now()
@@ -3175,10 +3296,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               percent: Math.round((chunkDone / chunkCount) * 100),
               detail: `${label.preloadDetails} (${chunkDone}/${chunkCount}) · ${pointsLoaded}`,
             })
+
+            const now = performance.now()
+            if (chunkDone === 1 || chunkDone === chunkCount || now - lastVisualSyncAt >= 900) {
+              lastVisualSyncAt = now
+              setTabCardsVersion((prev) => prev + 1)
+            }
           }
         }))
         warmupMetricRef.current.chunks_ms = Math.round(performance.now() - chunkStartedAt)
-        setTabCardsVersion((prev) => prev + 1)
       } else {
         updateWarmupTask('details', { percent: 100, detail: `${label.preloadDetails} (0/0)` })
       }
@@ -3275,10 +3401,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     })()
 
     await Promise.all([mapWarmupPromise, detailsWarmupPromise, imagesWarmupPromise])
-    if (signal?.aborted) return
+    if (signal?.aborted) {
+      setWarmupUiBlocking(false)
+      return
+    }
 
     completeAllWarmupTasks()
     updateWarmupProgress({ phase: 'done', percent: 100, detail: label.preloadDone })
+    setWarmupUiBlocking(false)
     warmupMetricRef.current.unlock_ms = Math.round(performance.now() - startedAt)
     window.setTimeout(() => {
       setWarmupProgress((prev) => (prev.phase === 'done'
@@ -3594,6 +3724,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   useEffect(() => {
     if (!cacheStoreReady) return
     if (!MAP_PRELOAD_V2_ENABLED) {
+      setWarmupUiBlocking(false)
       loadBootstrap().catch(() => null)
       return
     }
@@ -3604,8 +3735,20 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const hydratedFromCache = await hydrateTabCardsFromCache(ac.signal)
       if (ac.signal.aborted) return
 
-      const hasAnyPreloadedCards = Object.values(tabCardsRef.current).some((rows) => Array.isArray(rows) && rows.length > 0)
-      const runInBackground = hydratedFromCache || hasAnyPreloadedCards
+      let hasCachedWarmPointData = false
+      if (cacheStoreRef.current) {
+        const cachedManifest = await cacheStoreRef.current.getPreloadManifest().catch(() => null)
+        if (ac.signal.aborted) return
+        const chunkCount = cachedManifest?.manifest?.chunkCount || 0
+        if (chunkCount <= 0) {
+          hasCachedWarmPointData = true
+        } else {
+          const firstChunk = await cacheStoreRef.current.getPreloadChunk(0).catch(() => null)
+          if (ac.signal.aborted) return
+          hasCachedWarmPointData = Boolean(firstChunk?.chunk?.items?.length)
+        }
+      }
+      const runInBackground = hydratedFromCache && hasCachedWarmPointData
       if (!runInBackground) {
         setLoading(true)
         setCards([])
@@ -3618,10 +3761,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         setCardsLoadError(label.loadMoreFailed)
         resetWarmupTaskProgress()
         updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
+        setWarmupUiBlocking(false)
       })
     })().catch(() => null)
     return () => {
       ac.abort()
+      setWarmupUiBlocking(false)
       if (warmupAbortRef.current === ac) warmupAbortRef.current = null
     }
   }, [
@@ -3974,6 +4119,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       removeRangeLayer(map)
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
+      coverAvatarLoaderRef.current = null
+      loadedCoverIdsRef.current = new Set()
+      completeCoverFeatureCollectionRef.current = null
+      completeCoverCandidatesRef.current = []
       map.remove()
       mapRef.current = null
       mapInitWaitersRef.current = []
@@ -3995,7 +4144,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       flushPointLayerSoon()
     }
   }, [detail, flushPointLayerSoon, selectedPointId, stateFilter, viewFilter, meState])
-
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -4648,7 +4796,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
   ]
-  const warmupBlocking = warmupProgress.phase === 'loading'
+  const warmupActive = warmupProgress.phase === 'loading'
+  const warmupBlocking = warmupActive && warmupUiBlocking
   const warmupTaskRows = [
     { key: 'map' as const, title: label.preloadMap, progress: warmupTaskProgress.map },
     { key: 'cards' as const, title: label.preloadCards, progress: warmupTaskProgress.cards },
@@ -5361,7 +5510,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     <div data-layout-wide="true" className="h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       <MapLoadingProgress
         percent={warmupProgress.percent}
-        visible={warmupBlocking}
+        visible={warmupActive}
         title={warmupProgress.title}
         detail={warmupProgress.detail}
       />
