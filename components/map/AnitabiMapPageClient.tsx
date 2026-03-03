@@ -1768,6 +1768,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [routeBookPickerOpen, setRouteBookPickerOpen] = useState(false)
   const [routeBookItems, setRouteBookItems] = useState<RouteBookListItem[]>([])
   const [routeBookPickerLoading, setRouteBookPickerLoading] = useState(false)
+  const [completeModeLoading, setCompleteModeLoading] = useState(false)
   const [routeBookPickerSaving, setRouteBookPickerSaving] = useState(false)
   const [routeBookPickerError, setRouteBookPickerError] = useState<string | null>(null)
   const [routeBookTitleDraft, setRouteBookTitleDraft] = useState('')
@@ -2431,6 +2432,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     // In simple mode, clear complete mode layers
     if (mapMode === 'simple') {
       completeFeatureCollectionRef.current = null
+      setCompleteModeLoading(false)
       const map = mapRef.current
       if (map && map.isStyleLoaded()) {
         removeCompleteModeLayers(map)
@@ -2621,9 +2623,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         updateLabelSource(map, buildLabelFeatureCollection(labelPoints))
       }
     }
-
+    setCompleteModeLoading(true)
     run().catch(() => {
       // Silently handle errors — complete mode is optional enhancement
+    }).finally(() => {
+      setCompleteModeLoading(false)
     })
 
     return () => {
@@ -2682,6 +2686,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     }
     spriteImageIdsRef.current.clear()
     completeFeatureCollectionRef.current = null
+      setCompleteModeLoading(false)
   }, [])
 
   useEffect(() => () => {
@@ -5414,7 +5419,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
             />
             {mapViewMode === 'map' && (
-              <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+              <>
+                <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+                {completeModeLoading && (
+                  <div className="pointer-events-none absolute bottom-[52px] right-2 z-10 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 shadow-md backdrop-blur-sm">
+                    <svg className="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span className="text-xs font-medium text-slate-600">加载图标中…</span>
+                  </div>
+                )}
+              </>
             )}
             <div
               className={`absolute inset-0 bg-black ${mapViewMode === 'panorama' ? '' : 'hidden'}`}

@@ -95,20 +95,18 @@ describe('cutSpriteSheet', () => {
     ids, src: '/images/ptheme/test_100_76.webp', w, h,
   });
 
-  const makePoints = (count: number) =>
-    Array.from({ length: count }, (_, i) => ({
-      id: `pt-${i}`, name: `Point ${i}`, nameZh: null,
-      geo: [139.0 + i * 0.01, 35.0 + i * 0.01] as [number, number],
-      ep: null, s: null, image: null, density: null, note: null,
-    }));
+  /** Create points whose IDs match the given theme IDs */
+  const makePoints = (themeIds: string[]) =>
+    themeIds.map((id) => ({ id }));
 
   it('produces correct number of ImageData entries for 3 IDs', async () => {
-    const theme = makeTheme(['a', 'b', 'c']);
-    const points = makePoints(3);
+    const ids = ['a', 'b', 'c'];
+    const theme = makeTheme(ids);
+    const points = makePoints(ids);
     const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
     expect(result.size).toBe(3);
-    for (let i = 0; i < 3; i++) {
-      const key = `sprite-${bangumiId}-pt-${i}`;
+    for (const id of ids) {
+      const key = `sprite-${bangumiId}-${id}`;
       expect(result.has(key)).toBe(true);
       const entry = result.get(key)!;
       expect(entry.imageData).toBeDefined();
@@ -118,8 +116,9 @@ describe('cutSpriteSheet', () => {
   });
 
   it('calculates grid layout as cols = floor(sqrt(n))', async () => {
-    const theme = makeTheme(Array.from({ length: 9 }, (_, i) => `id-${i}`));
-    const points = makePoints(9);
+    const ids = Array.from({ length: 9 }, (_, i) => `id-${i}`);
+    const theme = makeTheme(ids);
+    const points = makePoints(ids);
     const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
     expect(result.size).toBe(9);
     const drawCalls = lastCanvas._ctx._calls.filter((c) => c.method === 'drawImage');
@@ -128,16 +127,16 @@ describe('cutSpriteSheet', () => {
 
   it('includes colored pin shape in output dimensions', async () => {
     const theme = makeTheme(['only'], 100, 76);
-    const points = makePoints(1);
+    const points = makePoints(['only']);
     const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
-    const entry = result.get(`sprite-${bangumiId}-pt-0`)!;
+    const entry = result.get(`sprite-${bangumiId}-only`)!;
     expect(entry.width).toBe(100);
     expect(entry.height).toBe(89); // 76 + 13
   });
 
   it('uses pixelRatio 2 for retina canvas sizing', async () => {
     const theme = makeTheme(['r'], 100, 76);
-    const points = makePoints(1);
+    const points = makePoints(['r']);
     await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
     const getImageDataCalls = lastCanvas._ctx.getImageData.mock.calls;
     expect(getImageDataCalls.length).toBe(1);
@@ -147,48 +146,69 @@ describe('cutSpriteSheet', () => {
   });
 
   it('returns empty Map for null theme', async () => {
-    const result = await cutSpriteSheet(bangumiId, null as any, makePoints(2), color, mockImageLoader);
+    const result = await cutSpriteSheet(bangumiId, null as any, [{ id: 'x' }], color, mockImageLoader);
     expect(result.size).toBe(0);
   });
 
   it('returns empty Map for theme with missing src', async () => {
-    const result = await cutSpriteSheet(bangumiId, { ids: ['a'], src: '' } as AnitabiTheme, makePoints(1), color, mockImageLoader);
+    const result = await cutSpriteSheet(bangumiId, { ids: ['a'], src: '' } as AnitabiTheme, [{ id: 'a' }], color, mockImageLoader);
     expect(result.size).toBe(0);
   });
 
   it('returns empty Map for theme with empty ids', async () => {
-    const result = await cutSpriteSheet(bangumiId, { ids: [], src: '/img.webp' } as AnitabiTheme, makePoints(0), color, mockImageLoader);
+    const result = await cutSpriteSheet(bangumiId, { ids: [], src: '/img.webp' } as AnitabiTheme, [], color, mockImageLoader);
     expect(result.size).toBe(0);
   });
 
   it('returns empty Map on image load failure (no throw)', async () => {
     const theme = makeTheme(['a', 'b']);
-    const result = await cutSpriteSheet(bangumiId, theme, makePoints(2), color, failingImageLoader);
+    const result = await cutSpriteSheet(bangumiId, theme, makePoints(['a', 'b']), color, failingImageLoader);
     expect(result.size).toBe(0);
   });
 
   it('output keys follow sprite-{bangumiId}-{pointId} format', async () => {
     const theme = makeTheme(['x', 'y']);
-    const points = [
-      { id: 'hello-world', name: 'HW', nameZh: null, geo: [0, 0] as [number, number], ep: null, s: null, image: null, density: null, note: null },
-      { id: 'foo-bar', name: 'FB', nameZh: null, geo: [1, 1] as [number, number], ep: null, s: null, image: null, density: null, note: null },
-    ];
+    const points = [{ id: 'x' }, { id: 'y' }];
     const result = await cutSpriteSheet(42, theme, points, color, mockImageLoader);
-    expect(result.has('sprite-42-hello-world')).toBe(true);
-    expect(result.has('sprite-42-foo-bar')).toBe(true);
+    expect(result.has('sprite-42-x')).toBe(true);
+    expect(result.has('sprite-42-y')).toBe(true);
   });
 
   it('handles more points than theme IDs (extra points get no sprite)', async () => {
     const theme = makeTheme(['a', 'b']);
-    const result = await cutSpriteSheet(bangumiId, theme, makePoints(5), color, mockImageLoader);
+    // 5 points but only 'a' and 'b' match theme IDs
+    const points = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
+    const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
     expect(result.size).toBe(2);
   });
 
   it('uses default dimensions when w/h are omitted', async () => {
     const theme: AnitabiTheme = { ids: ['a'], src: '/img.webp' };
-    const result = await cutSpriteSheet(bangumiId, theme, makePoints(1), color, mockImageLoader);
-    const entry = result.get(`sprite-${bangumiId}-pt-0`)!;
+    const points = [{ id: 'a' }];
+    const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
+    const entry = result.get(`sprite-${bangumiId}-a`)!;
     expect(entry.width).toBe(72);
     expect(entry.height).toBe(67); // 54 + 13
+  });
+
+  it('matches points to sprites by ID regardless of order', async () => {
+    // Theme IDs in one order, points in a different order
+    const theme = makeTheme(['alpha', 'beta', 'gamma', 'delta']);
+    const points = [{ id: 'delta' }, { id: 'beta' }, { id: 'alpha' }, { id: 'gamma' }];
+    const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
+    expect(result.size).toBe(4);
+    expect(result.has(`sprite-${bangumiId}-alpha`)).toBe(true);
+    expect(result.has(`sprite-${bangumiId}-beta`)).toBe(true);
+    expect(result.has(`sprite-${bangumiId}-gamma`)).toBe(true);
+    expect(result.has(`sprite-${bangumiId}-delta`)).toBe(true);
+  });
+
+  it('only cuts sprites for points whose IDs exist in theme.ids', async () => {
+    const theme = makeTheme(['a', 'b', 'c']);
+    // Only 'b' matches a theme ID
+    const points = [{ id: 'x' }, { id: 'b' }, { id: 'z' }];
+    const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
+    expect(result.size).toBe(1);
+    expect(result.has(`sprite-${bangumiId}-b`)).toBe(true);
   });
 });

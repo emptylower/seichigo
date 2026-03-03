@@ -175,8 +175,10 @@ describe('Complete Mode Integration', () => {
       expect(featureCollection.features[0].properties).toHaveProperty('priority');
       expect(featureCollection.features[0].properties).toHaveProperty('icon', '');
 
-      const theme = makeTheme(['a', 'b', 'c']);
-      const points = makePoints(3);
+      const themeIds = ['a', 'b', 'c'];
+      const theme = makeTheme(themeIds);
+      // Points must have IDs matching theme.ids for sprite cutting
+      const points = themeIds.map((id) => ({ id }));
       const spriteMap = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
 
       expect(spriteMap.size).toBe(3);
@@ -243,8 +245,10 @@ describe('Complete Mode Integration', () => {
     it('should handle style reload by re-adding all resources', async () => {
       const map = createMockMap();
       const mapPoints = makeMapPoints(2);
-      const theme = makeTheme(['a', 'b']);
-      const points = makePoints(2);
+      const themeIds = ['a', 'b'];
+      const theme = makeTheme(themeIds);
+      // Points must have IDs matching theme.ids for sprite cutting
+      const points = themeIds.map((id) => ({ id }));
       const spriteMap = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
 
       map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());

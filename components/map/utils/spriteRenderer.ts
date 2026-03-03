@@ -9,6 +9,10 @@
  *   cols = floor(sqrt(ids.length))
  *   sprite[i] at x = (i % cols) * w, y = floor(i / cols) * h
  *
+ * theme.ids defines the grid order: theme.ids[0] is at grid position 0,
+ * theme.ids[1] at position 1, etc. Points are matched by ID to their
+ * grid position (point IDs and theme IDs may be in different order).
+ *
  * Output includes a 13px pin tail below each thumbnail.
  * Uses pixelRatio=2 for retina displays.
  */
@@ -86,15 +90,22 @@ export async function cutSpriteSheet(
   const canvasW = outW * PIXEL_RATIO;
   const canvasH = outH * PIXEL_RATIO;
 
-  // Cut each sprite that has a matching point
-  const count = Math.min(ids.length, points.length);
+  // Build a lookup from theme ID -> grid index.
+  // theme.ids defines the grid order: ids[0] at grid position 0, etc.
+  // Points are matched by their ID to their grid position.
+  const themeIdToGridIndex = new Map<string, number>();
+  for (let i = 0; i < ids.length; i++) {
+    themeIdToGridIndex.set(ids[i], i);
+  }
 
-  for (let i = 0; i < count; i++) {
-    const point = points[i];
+  // Cut each sprite whose point ID exists in the theme
+  for (const point of points) {
+    const gridIndex = themeIdToGridIndex.get(point.id);
+    if (gridIndex === undefined) continue; // point not in sprite sheet
 
-    // Source coordinates in the sprite sheet
-    const srcX = (i % cols) * w;
-    const srcY = Math.floor(i / cols) * h;
+    // Source coordinates in the sprite sheet based on grid position
+    const srcX = (gridIndex % cols) * w;
+    const srcY = Math.floor(gridIndex / cols) * h;
 
     // Create a fresh canvas for each sprite
     const canvas = document.createElement('canvas');
