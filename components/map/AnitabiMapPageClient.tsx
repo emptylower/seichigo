@@ -78,6 +78,8 @@ const WARMUP_WATCHDOG_INTERVAL_MS = 3000
 const WARMUP_STALL_WARN_MS = 10000
 const COMPLETE_MODE_SPRITE_MAX_BANGUMI = 220
 const COMPLETE_MODE_SPRITE_BUDGET_MS = 9000
+const COMPLETE_MODE_COVER_CANDIDATES_MAX = 120
+const COMPLETE_MODE_COVER_MAX_LOADED = 96
 const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   map: 20,
   cards: 30,
@@ -2678,7 +2680,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           if (imageDelta !== 0) return imageDelta
           return (b.sourceModifiedMs || 0) - (a.sourceModifiedMs || 0)
         })
-        .slice(0, 180)
+        .slice(0, COMPLETE_MODE_COVER_CANDIDATES_MAX)
         .map((card) => ({
           bangumiId: card.id,
           coverUrl: card.cover as string,
@@ -2707,7 +2709,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
       loadedCoverIdsRef.current = new Set()
       if (!coverAvatarLoaderRef.current) {
-        coverAvatarLoaderRef.current = new CoverAvatarLoader({ map, maxLoaded: 160 })
+        coverAvatarLoaderRef.current = new CoverAvatarLoader({ map, maxLoaded: COMPLETE_MODE_COVER_MAX_LOADED })
       }
 
       // Build input points from warmup data

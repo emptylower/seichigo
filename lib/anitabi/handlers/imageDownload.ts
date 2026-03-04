@@ -5,6 +5,7 @@ import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 
 const FETCH_TIMEOUT_MS = 12_000
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
+const EXTRA_ALLOWED_IMAGE_HOSTS = ['anitabi.cn', 'bgm.tv']
 
 function normalizeHost(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '')
@@ -229,7 +230,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
       const hostAllowed =
         hostMatches(targetHost, reqHost) ||
         hostMatches(targetHost, siteHost) ||
-        hostMatches(targetHost, 'anitabi.cn')
+        EXTRA_ALLOWED_IMAGE_HOSTS.some((allowedHost) => hostMatches(targetHost, allowedHost))
 
       if (!hostAllowed || isDisallowedHost(targetHost) || (await resolvesToDisallowedIp(targetHost))) {
         return NextResponse.json({ error: '不支持该图片来源' }, { status: 400 })
@@ -258,7 +259,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
         const finalHostAllowed =
           hostMatches(finalHost, reqHost) ||
           hostMatches(finalHost, siteHost) ||
-          hostMatches(finalHost, 'anitabi.cn')
+          EXTRA_ALLOWED_IMAGE_HOSTS.some((allowedHost) => hostMatches(finalHost, allowedHost))
 
         if (!finalHostAllowed || isDisallowedHost(finalHost) || (await resolvesToDisallowedIp(finalHost))) {
           return NextResponse.json({ error: '图片读取失败' }, { status: 502 })
