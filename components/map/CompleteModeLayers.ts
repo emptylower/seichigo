@@ -141,11 +141,10 @@ export function ensureCompleteModeSymbolLayer(map: maplibregl.Map): void {
       type: 'symbol',
       source: COMPLETE_BANGUMI_COVERS_SOURCE_ID,
       minzoom: 5.2,
-      maxzoom: 12.8,
       filter: ['!=', ['get', 'coverImageId'], ''],
       layout: {
         'icon-image': ['get', 'coverImageId'],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 5.2, 0.24, 7, 0.28, 9, 0.34, 11, 0.4, 12.8, 0.46],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 5.2, 0.24, 7, 0.28, 9, 0.34, 11, 0.4, 12.8, 0.46, 16, 0.52, 20, 0.56],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
       },

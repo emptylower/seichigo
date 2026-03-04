@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import maplibregl from 'maplibre-gl'
+import maplibregl, { type MapStyleImageMissingEvent } from 'maplibre-gl'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type {
   AnitabiBangumiCard,
@@ -99,6 +99,11 @@ const MAP_STYLE_FAILOVER_TIMEOUT_MS = (() => {
 })()
 const MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS = 2400
 const MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD = 3
+const MAP_STYLE_MISSING_IMAGE_FALLBACK_MAX = 256
+
+function shouldSkipMissingStyleImageFallback(imageId: string): boolean {
+  return imageId.startsWith('sprite-') || imageId.startsWith('cover-') || imageId.startsWith('thumb-')
+}
 
 function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
   return {
@@ -4479,10 +4484,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (idx >= candidates.length - 1) return
       void switchStyleProvider(mode, idx + 1, 'error')
     }
+    const missingStyleImageIds = new Set<string>()
+    const onMapStyleImageMissing = (event: MapStyleImageMissingEvent) => {
+      const imageId = String(event.id || '').trim()
+      if (!imageId || shouldSkipMissingStyleImageFallback(imageId)) return
+      if (map.hasImage(imageId)) return
+      if (missingStyleImageIds.size >= MAP_STYLE_MISSING_IMAGE_FALLBACK_MAX && !missingStyleImageIds.has(imageId)) return
+      try {
+        map.addImage(imageId, {
+          width: 1,
+          height: 1,
+          data: new Uint8Array([0, 0, 0, 0]),
+        })
+        missingStyleImageIds.add(imageId)
+      } catch {
+        // Ignore duplicate/invalid image add attempts.
+      }
+    }
 
     map.on('styledata', onMapStyleData)
     map.on('idle', onMapIdle)
     map.on('error', onMapError)
+    map.on('styleimagemissing', onMapStyleImageMissing)
     map.once('load', () => {
       setMapReady(true)
       resizeMap()
@@ -4518,6 +4541,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       map.off('styledata', onMapStyleData)
       map.off('idle', onMapIdle)
       map.off('error', onMapError)
+      map.off('styleimagemissing', onMapStyleImageMissing)
       clearStyleFailoverTimer()
       applyMapStyleRef.current = () => undefined
       removePointLayer(map)
