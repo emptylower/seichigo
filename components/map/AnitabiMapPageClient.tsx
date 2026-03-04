@@ -460,6 +460,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadImages: '图片预热',
     preloadDone: '预加载完成',
     preloadWait: '地图数据加载中，请耐心等待…',
+    preloadIconsTitle: '正在处理地图图标',
+    preloadIconsDetail: '图标渲染中，请稍候…',
     retry: '重试',
     noData: '暂无可用数据',
     searchNoData: '未找到匹配作品，试试更换关键词，或清空搜索查看附近点位',
@@ -568,6 +570,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadImages: 'Image Warmup',
     preloadDone: 'Preload complete',
     preloadWait: 'Map data is loading, please wait…',
+    preloadIconsTitle: 'Preparing map icons',
+    preloadIconsDetail: 'Rendering marker icons, please wait…',
     retry: 'Retry',
     noData: 'No data yet',
     searchNoData: 'No matches found. Try another keyword, or clear search to see nearby works.',
@@ -676,6 +680,8 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     preloadImages: '画像ウォームアップ',
     preloadDone: '事前読み込み完了',
     preloadWait: '地図データを読み込み中です。しばらくお待ちください…',
+    preloadIconsTitle: '地図アイコンを準備中',
+    preloadIconsDetail: 'マーカーアイコンを描画中です…',
     retry: '再試行',
     noData: 'データがありません',
     searchNoData: '一致する作品が見つかりません。キーワードを変更するか、検索をクリアして近くの作品を表示してください',
@@ -5227,6 +5233,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   ]
   const warmupReady = warmupProgress.percent >= 100
   const warmupActive = warmupProgress.phase === 'loading' && !warmupReady
+  const iconPreppingActive = completeModeLoading && !warmupActive
+  const mergedLoadingVisible = warmupActive || iconPreppingActive
+  const mergedLoadingPercent = iconPreppingActive ? 99 : warmupProgress.percent
+  const mergedLoadingTitle = iconPreppingActive ? label.preloadIconsTitle : warmupProgress.title
+  const mergedLoadingDetail = iconPreppingActive ? label.preloadIconsDetail : warmupProgress.detail
   const warmupBlocking = false
   const warmupTaskRows = [
     { key: 'map' as const, title: label.preloadMap, progress: warmupTaskProgress.map },
@@ -5992,24 +6003,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               className={`absolute inset-0 ${mapViewMode === 'map' ? '' : 'hidden'}`}
             />
             <MapLoadingProgress
-              percent={warmupProgress.percent}
-              visible={warmupActive}
-              title={warmupProgress.title}
-              detail={warmupProgress.detail}
+              percent={mergedLoadingPercent}
+              visible={mergedLoadingVisible}
+              title={mergedLoadingTitle}
+              detail={mergedLoadingDetail}
               className="pointer-events-none absolute left-4 top-[max(62px,env(safe-area-inset-top,0px)+42px)] z-30 w-[min(320px,calc(100%-1rem))]"
             />
             {mapViewMode === 'map' && (
               <>
                 <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
-                {completeModeLoading && (
-                  <div className="pointer-events-none absolute bottom-[52px] right-2 z-10 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 shadow-md backdrop-blur-sm">
-                    <svg className="h-3.5 w-3.5 animate-spin text-brand-500" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    <span className="text-xs font-medium text-slate-600">加载图标中…</span>
-                  </div>
-                )}
               </>
             )}
             <div

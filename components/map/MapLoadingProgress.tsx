@@ -57,21 +57,21 @@ export default function MapLoadingProgress({
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
-        <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-700">
+      <div className="overflow-hidden rounded-2xl border border-white/30 bg-slate-900/34 px-3 py-2.5 shadow-[0_12px_34px_rgba(15,23,42,0.28)] backdrop-blur-lg">
+        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-white/90">
           <span className="line-clamp-1">{label}</span>
-          <span>{displayPercent}%</span>
+          <span className="text-white/75">{displayPercent}%</span>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200/90">
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/25">
           <div
-            className={`h-full rounded-full bg-brand-500 transition-all duration-300 ease-out ${
+            className={`h-full rounded-full bg-gradient-to-r from-brand-300 via-brand-400 to-brand-500 transition-all duration-300 ease-out ${
               isComplete ? 'opacity-0' : 'opacity-100'
             }`}
             style={{ width: `${width}%` }}
           />
         </div>
         {hint ? (
-          <div className="mt-1.5 line-clamp-1 text-[11px] text-slate-600">{hint}</div>
+          <div className="mt-1.5 line-clamp-1 text-[11px] text-white/70">{hint}</div>
         ) : null}
       </div>
     </div>
