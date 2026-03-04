@@ -103,4 +103,18 @@ describe("calculatePriority", () => {
       expect(typeof p).toBe("number");
     });
   });
+
+  it("handles large datasets without returning Infinity for multi-point input", () => {
+    const points = Array.from({ length: 50_000 }, (_, i) => {
+      const row = Math.floor(i / 250);
+      const col = i % 250;
+      return {
+        lng: 120 + col * 0.01,
+        lat: 20 + row * 0.01,
+      };
+    });
+    const result = calculatePriority(points);
+    expect(result).toHaveLength(points.length);
+    expect(result.every((p) => Number.isFinite(p) && p >= 0)).toBe(true);
+  });
 });
