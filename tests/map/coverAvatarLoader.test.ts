@@ -40,9 +40,9 @@ describe('CoverAvatarLoader', () => {
   })
 
   it('deduplicates in-flight image loads across rapid updates', async () => {
-    let release: (() => void) | null = null
+    const releaseRef: { current: (() => void) | null } = { current: null }
     const loadBlocked = new Promise<void>((resolve) => {
-      release = resolve
+      releaseRef.current = resolve
     })
     const map = {
       addImage: vi.fn(),
@@ -58,7 +58,9 @@ describe('CoverAvatarLoader', () => {
 
     const p1 = loader.updateViewport(candidates)
     const p2 = loader.updateViewport(candidates)
-    release?.()
+    if (releaseRef.current) {
+      releaseRef.current()
+    }
     await Promise.all([p1, p2])
 
     expect(map.loadImage).toHaveBeenCalledTimes(1)

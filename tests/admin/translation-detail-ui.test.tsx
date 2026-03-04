@@ -195,14 +195,14 @@ describe('TranslationDetailUI', () => {
     const push = vi.fn()
     ;(useRouter as any).mockReturnValue({ push })
 
-    let resolveApprove: (() => void) | null = null
+    const approveDeferred: { resolve: (() => void) | null } = { resolve: null }
     ;(global.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ task: mockTask }),
       })
       .mockImplementationOnce(() => new Promise((resolve) => {
-        resolveApprove = () => resolve({
+        approveDeferred.resolve = () => resolve({
           ok: true,
           json: async () => ({ ok: true }),
         })
@@ -216,7 +216,9 @@ describe('TranslationDetailUI', () => {
 
     expect(screen.getByRole('button', { name: '处理中...' })).toBeDisabled()
 
-    resolveApprove?.()
+    if (approveDeferred.resolve) {
+      approveDeferred.resolve()
+    }
 
     await waitFor(() =>
       expect(global.fetch).toHaveBeenCalledWith('/api/admin/translations/task-1/approve', { method: 'POST' })

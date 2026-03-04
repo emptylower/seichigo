@@ -1,19 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getServerAuthSession } from '@/lib/auth/session'
-import { prisma } from '@/lib/db/prisma'
+import { getTranslationApiDeps } from '@/lib/translation/api'
+import { createHandlers } from '@/lib/translation/handlers/pendingCount'
 
 export async function GET() {
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const count = await prisma.translationTask.count({
-      where: { status: 'ready' },
-    })
-
-    return NextResponse.json({ count })
+    const deps = await getTranslationApiDeps()
+    return createHandlers(deps).GET()
   } catch (error) {
     console.error('[api/admin/translations/pending-count] GET failed', error)
     return NextResponse.json(

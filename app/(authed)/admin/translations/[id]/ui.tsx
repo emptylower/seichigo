@@ -13,6 +13,15 @@ import { useAdminToast } from '@/hooks/useAdminToast'
 import { useAdminConfirm } from '@/hooks/useAdminConfirm'
 import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
 import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
+import type { HistoryItem, RelatedArticle, TranslatedArticle, TranslationDetailProps, TranslationTask } from './types'
+import {
+  ENTITY_TYPE_LABELS,
+  LANGUAGE_LABELS,
+  STATUS_LABELS,
+  getContentJson,
+  hasEditableContent,
+  isTipTapContent,
+} from './utils'
 
 const TipTapPreview = dynamic(() => import('@/components/translation/TipTapPreview'), {
   ssr: false,
@@ -24,30 +33,7 @@ const TipTapBubbleMenu = dynamic(
   { ssr: false }
 )
 
-type TranslationTask = {
-  id: string
-  entityType: string
-  entityId: string
-  targetLanguage: string
-  status: string
-  sourceContent: any
-  draftContent: any
-  error?: string
-  createdAt: string
-}
-
-type HistoryItem = {
-  id: string
-  createdAt: string
-  operatorName: string | null
-  action: string
-}
-
-type Props = {
-  id: string
-}
-
-export default function TranslationDetailUI({ id }: Props) {
+export default function TranslationDetailUI({ id }: TranslationDetailProps) {
   const router = useRouter()
   const toast = useAdminToast()
   const askForConfirm = useAdminConfirm()
@@ -72,8 +58,8 @@ export default function TranslationDetailUI({ id }: Props) {
   const [selectedText, setSelectedText] = useState<string>('')
 
   const [updating, setUpdating] = useState(false)
-  const [relatedArticle, setRelatedArticle] = useState<{ updatedAt: string, contentJson: any } | null>(null)
-  const [translatedArticle, setTranslatedArticle] = useState<{ id: string, title: string, description: string, seoTitle: string, contentJson: any, updatedAt: string } | null>(null)
+  const [relatedArticle, setRelatedArticle] = useState<RelatedArticle | null>(null)
+  const [translatedArticle, setTranslatedArticle] = useState<TranslatedArticle | null>(null)
 
   const { saveState, saveError } = useTranslationAutoSave({
     translationId: id,
@@ -371,45 +357,6 @@ export default function TranslationDetailUI({ id }: Props) {
     return <AdminErrorState message={error || '未找到翻译任务'} onRetry={() => void loadTask()} />
   }
 
-  const languageLabels: Record<string, string> = {
-    en: 'English',
-    ja: '日本語',
-  }
-
-  const entityTypeLabels: Record<string, string> = {
-    article: '文章',
-    city: '城市',
-    anime: '动漫',
-    anitabi_bangumi: '地图作品',
-    anitabi_point: '地图地标',
-  }
-
-  const statusLabels: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    ready: '待审核',
-    approved: '已上架',
-    failed: '失败',
-  }
-
-  const isTipTapContent = (content: any) => {
-    return content && typeof content === 'object' && content.type === 'doc'
-  }
-
-  // Extract TipTap content (supports two formats)
-  const getContentJson = (content: any) => {
-    if (!content) return null
-    // If content itself is TipTap format
-    if (content.type === 'doc') return content
-    // If content has contentJson property (article translation format)
-    if (content.contentJson && content.contentJson.type === 'doc') return content.contentJson
-    return null
-  }
-
-  const hasEditableContent = (content: any) => {
-    return getContentJson(content) !== null
-  }
-
   const isArticleTask = task.entityType === 'article'
   const isMapBangumiTask = task.entityType === 'anitabi_bangumi'
   const isMapPointTask = task.entityType === 'anitabi_point'
@@ -433,16 +380,16 @@ export default function TranslationDetailUI({ id }: Props) {
           </Link>
           <h1 className="mt-2 text-2xl font-bold">翻译详情</h1>
           <div className="mt-2 flex items-center gap-2">
-            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-              {entityTypeLabels[task.entityType]}
-            </span>
+	            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+	              {ENTITY_TYPE_LABELS[task.entityType]}
+	            </span>
             <span className="text-sm text-gray-600">→</span>
-            <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-              {languageLabels[task.targetLanguage]}
-            </span>
-            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
-              {statusLabels[task.status] || task.status}
-            </span>
+	            <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+	              {LANGUAGE_LABELS[task.targetLanguage]}
+	            </span>
+	            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+	              {STATUS_LABELS[task.status] || task.status}
+	            </span>
           </div>
         </div>
         <div className="flex items-center gap-4">

@@ -2,229 +2,33 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
-
-export type ReportListItem = {
-  id: string
-  source: string
-  dateKey: string
-  triggerMode: string
-  status: string
-  totalDeployments: number
-  totalLogs: number
-  severeCount: number
-  warningCount: number
-  truncated: boolean
-  windowStart: string
-  windowEnd: string
-  createdAt: string
-}
-
-export type ReportDetail = ReportListItem & {
-  markdownSummary: string
-  rawSummary: unknown
-}
-
-export type OpsLogEvent = {
-  id: string
-  severity: 'severe' | 'warning' | string
-  fingerprint: string
-  timestamp: string | null
-  deploymentId: string | null
-  requestId: string | null
-  path: string | null
-  method: string | null
-  statusCode: number | null
-  message: string
-  raw: unknown
-  createdAt: string
-}
-
-type ReportsResponse =
-  | {
-      ok: true
-      items: ReportListItem[]
-      nextCursor: string | null
-    }
-  | {
-      error: string
-    }
-
-type RunResponse =
-  | {
-      ok: true
-      report: {
-        reportId: string
-      }
-    }
-  | {
-      error: string
-    }
-
-type DetailResponse =
-  | {
-      ok: true
-      report: ReportDetail
-      events: OpsLogEvent[]
-    }
-  | {
-      error: string
-    }
-
-type AnitabiProgress = {
-  activeDatasetVersion: string
-  sourceBangumiTotal: number
-  importedBangumi: number
-  importedMapEnabled: number
-  pendingBangumi: number | null
-  importedPoints: number
-  expectedPointsInImportedBangumi: number
-  pointTotal: number | null
-  pointTotalMode: 'exact' | 'estimated' | 'unknown'
-  pendingPoints: number | null
-  worksCompletionRate: number | null
-  pointsCompletionRate: number | null
-  importedPointCoverageRate: number | null
-  latestRun: {
-    id: string
-    mode: string
-    status: string
-    changedCount: number
-    startedAt: string
-    endedAt: string | null
-    errorSummary: string | null
-  } | null
-  updatedAt: string
-}
-
-type AnitabiProgressResponse =
-  | {
-      ok: true
-      progress: AnitabiProgress
-    }
-  | {
-      error: string
-    }
-
-type AnitabiSyncResponse =
-  | {
-      runId: string
-      mode: 'full' | 'delta' | 'dryRun'
-      status: 'ok' | 'failed'
-      datasetVersion: string | null
-      scanned: number
-      changed: number
-      message?: string
-    }
-  | {
-      error: string
-    }
-
-type AnitabiDiffItem = {
-  id: number
-  title: string
-  sourceModifiedMs: string | null
-  localModifiedMs: string | null
-  expectedPoints: number | null
-  importedPoints: number | null
-  missingPoints: number | null
-}
-
-type AnitabiDiff = {
-  activeDatasetVersion: string
-  sourceTotal: number
-  localTotal: number
-  needsSync: boolean
-  recommendedMode: 'delta' | 'full'
-  works: {
-    sourceOnlyCount: number
-    localOnlyCount: number
-    modifiedCount: number
-    pointGapCount: number
-    syncCandidateCount: number
-  }
-  points: {
-    expectedInLocalWorks: number
-    importedInLocalWorks: number
-    missingInLocalWorks: number
-  }
-  status: {
-    mapEnabledWorks: number
-    mapDisabledWorks: number
-    mappedWorks: number
-    unmappedWorks: number
-    hiddenAnimeLinkedWorks: number
-  }
-  examples: {
-    sourceOnly: AnitabiDiffItem[]
-    localOnly: AnitabiDiffItem[]
-    modified: AnitabiDiffItem[]
-    pointGap: AnitabiDiffItem[]
-  }
-  checkedAt: string
-}
-
-type AnitabiDiffResponse =
-  | {
-      ok: true
-      diff: AnitabiDiff
-    }
-  | {
-      error: string
-    }
+import type {
+  AdminOpsInitialData,
+  AnitabiDiff,
+  AnitabiDiffResponse,
+  AnitabiProgress,
+  AnitabiProgressResponse,
+  AnitabiSyncResponse,
+  DetailResponse,
+  OpsLogEvent,
+  ReportDetail,
+  ReportListItem,
+  ReportsResponse,
+  RunResponse,
+} from './types'
+import {
+  formatAnitabiDiffItem,
+  formatDateTime,
+  formatPercent,
+  formatWindow,
+  prettyJson,
+  severityColor,
+  statusColor,
+} from './utils'
 
 const LIST_LIMIT = 20
 
-export type AdminOpsInitialData = {
-  items: ReportListItem[]
-  nextCursor: string | null
-  selectedId: string | null
-  detailReport: ReportDetail | null
-  detailEvents: OpsLogEvent[]
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '-'
-  const ms = Date.parse(value)
-  if (!Number.isFinite(ms)) return value
-  return new Date(ms).toLocaleString('zh-CN')
-}
-
-function formatWindow(start: string, end: string): string {
-  return `${formatDateTime(start)} → ${formatDateTime(end)}`
-}
-
-function prettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
-function formatPercent(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return '-'
-  return `${(value * 100).toFixed(1)}%`
-}
-
-function statusColor(status: string): string {
-  if (status === 'ok') return 'text-emerald-700 bg-emerald-50 border-emerald-200'
-  if (status === 'partial') return 'text-amber-700 bg-amber-50 border-amber-200'
-  if (status === 'failed') return 'text-rose-700 bg-rose-50 border-rose-200'
-  return 'text-gray-700 bg-gray-50 border-gray-200'
-}
-
-function severityColor(severity: string): string {
-  if (severity === 'severe') return 'text-rose-700 bg-rose-50 border-rose-200'
-  return 'text-amber-700 bg-amber-50 border-amber-200'
-}
-
-function formatAnitabiDiffItem(item: AnitabiDiffItem): string {
-  const points =
-    item.expectedPoints != null && item.importedPoints != null
-      ? `点位 ${item.importedPoints}/${item.expectedPoints}`
-      : '点位 -'
-  return `#${item.id} ${item.title} · ${points}`
-}
+export type { AdminOpsInitialData, ReportListItem }
 
 export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInitialData }) {
   const [loading, setLoading] = useState(() => !initialData)

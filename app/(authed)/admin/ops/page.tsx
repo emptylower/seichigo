@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import AdminOpsUi from './ui'
-import type { AdminOpsInitialData, ReportListItem } from './ui'
+import type { AdminOpsInitialData, ReportListItem } from './types'
 
 const LIST_LIMIT = 20
 

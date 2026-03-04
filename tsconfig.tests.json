@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vitest/globals", "node"]
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.d.ts",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "vitest.config.ts"
+  ],
+  "exclude": ["node_modules", "tests/e2e/**", "playwright.config.ts"]
+}

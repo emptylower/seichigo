@@ -39,7 +39,7 @@ export class OpsExternalError extends Error {
 }
 
 export function resolveOpsVercelConfigFromEnv(
-  env: NodeJS.ProcessEnv = process.env
+  env: Record<string, string | undefined> = process.env
 ): { ok: true; value: OpsVercelConfig } | { ok: false; error: string } {
   const token = String(env.OPS_VERCEL_API_TOKEN || '').trim()
   const projectId = String(env.OPS_VERCEL_PROJECT_ID || env.VERCEL_PROJECT_ID || '').trim()

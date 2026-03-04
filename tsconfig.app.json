@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }]
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "content/**/*.ts",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "middleware.ts",
+    "instrumentation.ts",
+    "instrumentation-client.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "tests/**", "playwright.config.ts"]
+}

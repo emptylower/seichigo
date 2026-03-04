@@ -32,14 +32,22 @@ import { SORTED_DND_PREFIX, UNSORTED_DND_PREFIX, POOL_DND_PREFIX } from '@/app/(
 // ---------------------------------------------------------------------------
 
 function makePoint(overrides: Partial<PointRecord> & { pointId: string }): PointRecord {
+  const {
+    pointId,
+    id,
+    sortOrder,
+    zone,
+    ...rest
+  } = overrides
+
   return {
-    id: overrides.id ?? overrides.pointId,
+    id: id ?? pointId,
     routeBookId: 'rb-1',
-    pointId: overrides.pointId,
-    sortOrder: overrides.sortOrder ?? 0,
-    zone: overrides.zone ?? 'sorted',
+    pointId,
+    sortOrder: sortOrder ?? 0,
+    zone: zone ?? 'sorted',
     createdAt: '2025-01-01T00:00:00Z',
-    ...overrides,
+    ...rest,
   }
 }
 

@@ -8,7 +8,7 @@ function makeDeps(options?: {
   >
   listDeploymentEvents?: Record<string, Array<Record<string, unknown>>>
   throwOnDeployment?: boolean
-  env?: NodeJS.ProcessEnv
+  env?: Partial<NodeJS.ProcessEnv>
 }) {
   let listDeploymentsCallCount = 0
   const listDeployments = vi.fn(async () => {
@@ -55,6 +55,7 @@ function makeDeps(options?: {
       }),
       now: () => new Date('2026-02-09T00:00:00.000Z'),
       env: {
+        NODE_ENV: 'test',
         OPS_MAX_DEPLOYMENTS_PER_RUN: '8',
         OPS_MAX_LOG_LINES_PER_RUN: '20000',
         OPS_MAX_STORED_EVENTS_PER_RUN: '2000',

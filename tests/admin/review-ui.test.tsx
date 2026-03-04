@@ -104,10 +104,10 @@ describe('admin review ui', () => {
   it('shows loading skeleton then empty state', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
-    let resolveFetch: ((res: Response) => void) | null = null
+    const deferredFetch: { resolve: ((res: Response) => void) | null } = { resolve: null }
     const fetchMock = vi.fn(async () => {
       return await new Promise<Response>((resolve) => {
-        resolveFetch = resolve
+        deferredFetch.resolve = resolve
       })
     })
     vi.stubGlobal('fetch', fetchMock as any)
@@ -119,13 +119,17 @@ describe('admin review ui', () => {
       expect(document.querySelector('.animate-pulse')).toBeTruthy()
     })
 
-    resolveFetch?.(jsonResponse({
-      ok: true,
-      items: [],
-      total: 0,
-      page: 1,
-      pageSize: 20,
-    }))
+    if (deferredFetch.resolve) {
+      deferredFetch.resolve(
+        jsonResponse({
+          ok: true,
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+        })
+      )
+    }
 
     expect(await screen.findByText('暂无待审核内容')).toBeInTheDocument()
   })

@@ -6,87 +6,16 @@ import { TrendingUp, Database, Zap, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAdminToast } from '@/hooks/useAdminToast'
 import { useAdminConfirm } from '@/hooks/useAdminConfirm'
-
-type Keyword = {
-  id: string
-  keyword: string
-  language: string
-  category: string
-  priority: number
-  isActive: boolean
-  rankHistory: Array<{
-    position: number | null
-    checkedAt: Date
-  }>
-}
-
-type TopQuery = {
-  query: string
-  _sum: {
-    clicks: number | null
-    impressions: number | null
-  }
-}
-
-type SerpUsage = {
-  count: number
-} | null
-
-type Props = {
-  keywords: Keyword[]
-  topQueries: TopQuery[]
-  serpUsage: SerpUsage
-}
-
-type KeywordDraft = {
-  keyword: string
-  priority: number
-  isActive: boolean
-}
-
-const emptyDraft: KeywordDraft = {
-  keyword: '',
-  priority: 0,
-  isActive: true,
-}
-
-type BulkImportResult = {
-  inserted: number
-  updated: number
-  total: number
-  errors: Array<{ line: number; raw: string; reason: string }>
-}
-
-type RankCheckResult = {
-  keyword: string
-  position: number | null
-  url: string | null
-  quota?: { used: number; limit: number }
-}
-
-type RankCheckResponse = {
-  message?: string
-  result?: RankCheckResult
-}
-
-type BulkCheckItem = {
-  keywordId: string
-  keyword: string
-  priority: number
-  ok: boolean
-  position: number | null
-  message: string
-}
-
-type BulkCheckReport = {
-  startedAt: number
-  finishedAt: number
-  total: number
-  success: number
-  failed: number
-  cancelled: boolean
-  items: BulkCheckItem[]
-}
+import type {
+  BulkCheckItem,
+  BulkCheckReport,
+  BulkImportResult,
+  Keyword,
+  KeywordDraft,
+  Props,
+  RankCheckResponse,
+} from './types'
+import { emptyDraft } from './types'
 
 export default function SeoUi({ keywords, topQueries, serpUsage }: Props) {
   const router = useRouter()

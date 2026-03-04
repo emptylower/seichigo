@@ -21,6 +21,56 @@ vi.mock('@/lib/db/prisma', () => {
   return { prisma }
 })
 
+function installLocalStorageShim() {
+  const storage = (globalThis as { localStorage?: Partial<Storage> }).localStorage
+  const hasNativeStorage =
+    typeof storage?.getItem === 'function' &&
+    typeof storage?.setItem === 'function' &&
+    typeof storage?.removeItem === 'function' &&
+    typeof storage?.clear === 'function'
+
+  if (hasNativeStorage) return
+
+  const store = new Map<string, string>()
+  const shim: Storage = {
+    get length() {
+      return store.size
+    },
+    clear() {
+      store.clear()
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null
+    },
+    key(index: number) {
+      const keys = Array.from(store.keys())
+      return keys[index] ?? null
+    },
+    removeItem(key: string) {
+      store.delete(key)
+    },
+    setItem(key: string, value: string) {
+      store.set(String(key), String(value))
+    },
+  }
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: shim,
+    writable: true,
+    configurable: true,
+  })
+
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'localStorage', {
+      value: shim,
+      writable: true,
+      configurable: true,
+    })
+  }
+}
+
+installLocalStorageShim()
+
 function rect() {
   return {
     x: 0,
