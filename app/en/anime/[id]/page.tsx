@@ -5,6 +5,7 @@ import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
+import { localizeCityNames } from '@/lib/city/db'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -60,7 +61,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: 'Anime not found', robots: { index: false, follow: false } }
   }
 
-  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, posts, 'en')
+  const cityMap = await localizeCityNames(
+    [...new Set(posts.map((p) => p.city).filter(Boolean))],
+    'en'
+  )
+  const localizedPosts = posts.map((p) => ({ ...p, city: p.city ? (cityMap[p.city] ?? p.city) : p.city }))
+  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, localizedPosts, 'en')
   const displayName = anime?.name_en ?? anime?.name ?? canonicalId
   const summary = String(anime?.summary_en || anime?.summary || '').trim()
   const fallback = `Explore ${posts.length} real-world anime pilgrimage spots from ${displayName}. Detailed route maps, transit info & photography tips for your anime tourism in Japan.`

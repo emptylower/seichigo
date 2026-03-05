@@ -125,3 +125,31 @@ export async function countPublishedArticlesByCityIds(
   }
   return counts
 }
+
+/**
+ * Look up cities by their Chinese names and return a mapping
+ * from name_zh to the locale-appropriate name.
+ * Used by anime detail pages to localize city names in titles.
+ */
+export async function localizeCityNames(
+  zhNames: string[],
+  locale: 'en' | 'ja'
+): Promise<Record<string, string>> {
+  const names = zhNames.filter((n) => n.trim() !== '')
+  if (!names.length) return {}
+
+  const cities = await prisma.city.findMany({
+    where: { name_zh: { in: names } },
+    select: { name_zh: true, name_en: true, name_ja: true },
+  })
+
+  const map: Record<string, string> = {}
+  for (const c of cities) {
+    const localized =
+      locale === 'en'
+        ? c.name_en ?? c.name_zh
+        : c.name_ja ?? c.name_zh
+    map[c.name_zh] = localized
+  }
+  return map
+}

@@ -6,6 +6,7 @@ import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
+import { localizeCityNames } from '@/lib/city/db'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -75,7 +76,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '作品が見つかりません', robots: { index: false, follow: false } }
   }
 
-  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, posts, 'ja')
+  const cityMap = await localizeCityNames(
+    [...new Set(posts.map((p) => p.city).filter(Boolean))],
+    'ja'
+  )
+  const localizedPosts = posts.map((p) => ({ ...p, city: p.city ? (cityMap[p.city] ?? p.city) : p.city }))
+  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, localizedPosts, 'ja')
   const displayName = anime?.name_ja ?? anime?.name ?? canonicalId
   const summary = String(anime?.summary_ja || anime?.summary || '').trim()
   const fallback = `『${displayName}』のアニメ聖地巡礼ガイド。${posts.length}件のルート記事、交通情報、撮影アングル、マナー注意点を網羅。`
