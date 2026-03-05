@@ -1,3 +1,5 @@
+import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+
 /**
  * Normalize point thumbnail URL for optimized loading.
  * 
@@ -29,7 +31,7 @@ export function normalizePointThumbnailUrl(input: string | null | undefined): st
         url.searchParams.set('q', '60')
       }
     }
-    return url.toString()
+    return toCanvasSafeImageUrl(url.toString())
   } catch {
     return raw
   }
