@@ -979,38 +979,18 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const currentZoom = map.getZoom()
       const detailBangumiId = detailRef.current?.card.id ?? null
 
-      // If a bangumi is selected in complete mode, filter to just that bangumi
-      const filteredFc: GeoJSON.FeatureCollection = detailBangumiId == null
-        ? fc
-        : {
-            type: 'FeatureCollection',
-            features: fc.features.filter(
-              (f) => String((f.properties as { bangumiId?: unknown } | undefined)?.bangumiId ?? '') === String(detailBangumiId)
-            ),
-          }
-
       ensureCompleteModeSources(map)
       ensureCompleteModeSymbolLayer(map, {
         avatarMaxZoom: COMPLETE_AVATAR_MAX_ZOOM,
         detailThemeMinZoom: COMPLETE_DETAIL_THEME_MIN_ZOOM,
         imageShowZoom: completeImageShowZoom,
       })
-      updateCompleteModeSources(map, filteredFc)
+      updateCompleteModeSources(map, fc)
 
       const coverBase = completeCoverFeatureCollectionRef.current
-      const detailCoverCollection: GeoJSON.FeatureCollection = detailBangumiId != null && coverBase
-        ? {
-            type: 'FeatureCollection',
-            features: coverBase.features.filter((feature) => {
-              const raw = (feature.properties as { bangumiId?: unknown } | undefined)?.bangumiId
-              if (typeof raw === 'number') return raw === detailBangumiId
-              if (typeof raw === 'string') return Number.parseInt(raw, 10) === detailBangumiId
-              return false
-            }),
-          }
-        : (coverBase || { type: 'FeatureCollection', features: [] })
+      const coverCollection: GeoJSON.FeatureCollection = coverBase || { type: 'FeatureCollection', features: [] }
 
-      updateCompleteModeCoverSource(map, detailCoverCollection, loadedCoverIdsRef.current)
+      updateCompleteModeCoverSource(map, coverCollection, loadedCoverIdsRef.current)
 
       if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
         const coverCandidates = completeCoverCandidatesRef.current
@@ -1018,7 +998,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           loadedCoverIdsRef.current = ids
           const liveMap = mapRef.current
           if (!liveMap || !liveMap.isStyleLoaded()) return
-          updateCompleteModeCoverSource(liveMap, detailCoverCollection, ids)
+          updateCompleteModeCoverSource(liveMap, coverCollection, ids)
           liveMap.triggerRepaint()
         }).catch(() => null)
       }
@@ -1047,7 +1027,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }
 
         const pointById = new Map<string, GeoJSON.Feature<GeoJSON.Point>>()
-        for (const feature of filteredFc.features) {
+        for (const feature of fc.features) {
           const props = feature.properties as { pointId?: unknown; bangumiId?: unknown } | undefined
           const pointId = String(props?.pointId ?? '')
           if (!pointId) continue
@@ -1486,46 +1466,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     warmupTaskProgress.map.percent,
   ])
 
-  // Complete Mode useEffect 2 — Click handler for complete mode layers
-  // Uses openBangumiRef to avoid declaration-order issues with openBangumi callback
+  // Keep complete-mode open callback in a ref for map click handlers.
   const openBangumiRef = useRef<((id: number, pointId?: string | null) => Promise<void>) | null>(null)
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapReady) return
-    if (detail) return
-
-    const handleCompleteModeClick = (event: maplibregl.MapMouseEvent) => {
-      const completeLayerIds = [
-        COMPLETE_POINT_IMAGES_LAYER_ID,
-        COMPLETE_ICONS_LAYER_ID,
-        COMPLETE_BANGUMI_COVERS_LAYER_ID,
-        COMPLETE_DOTS_LAYER_ID,
-      ].filter((id) => Boolean(map.getLayer(id)))
-      if (!completeLayerIds.length) return
-
-      const hit = map.queryRenderedFeatures(event.point, { layers: completeLayerIds })[0]
-      if (!hit) return
-
-      const pointId = hit.properties?.pointId
-      const bangumiId = hit.properties?.bangumiId
-      if (!bangumiId) return
-
-      const numericBangumiId = typeof bangumiId === 'string' ? parseInt(bangumiId, 10) : Number(bangumiId)
-      if (!Number.isFinite(numericBangumiId)) return
-
-      if (typeof pointId === 'string') {
-        openBangumiRef.current?.(numericBangumiId, pointId)?.catch(() => null)
-      } else {
-        openBangumiRef.current?.(numericBangumiId)?.catch(() => null)
-      }
-    }
-
-    map.on('click', handleCompleteModeClick)
-    return () => {
-      map.off('click', handleCompleteModeClick)
-    }
-  }, [detail, mapReady])
 
   // Complete Mode useEffect 3 — Cleanup on unmount
   useEffect(() => () => {
@@ -2507,9 +2449,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           focusByDetail(warmDetail, pointId)
         }
         flushPointLayerSoon()
-        if (!isDesktop) {
-          setMobilePanelOpen(true)
-        }
       }
 
       try {
@@ -3001,6 +2940,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     map.on('moveend', syncMapViewState)
     map.on('zoomend', syncMapViewState)
     const pointLayerIds = () => [POINT_SELECTED_LAYER_ID, POINT_LAYER_ID].filter((id) => Boolean(map.getLayer(id)))
+    const completeLayerIds = () => [
+      COMPLETE_POINT_IMAGES_LAYER_ID,
+      COMPLETE_ICONS_LAYER_ID,
+      COMPLETE_BANGUMI_COVERS_LAYER_ID,
+      COMPLETE_DOTS_LAYER_ID,
+    ].filter((id) => Boolean(map.getLayer(id)))
     const readPointIdFromRendered = (event: maplibregl.MapMouseEvent): string | null => {
       const layers = pointLayerIds()
       if (!layers.length) return null
@@ -3008,7 +2953,31 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const pointId = hit?.properties?.pointId
       return typeof pointId === 'string' ? pointId : null
     }
+    const readCompleteTargetFromRendered = (
+      event: maplibregl.MapMouseEvent
+    ): { bangumiId: number; pointId: string | null } | null => {
+      const layers = completeLayerIds()
+      if (!layers.length) return null
+      const hit = map.queryRenderedFeatures(event.point, { layers })[0]
+      if (!hit) return null
+      const bangumiId = hit.properties?.bangumiId
+      if (!bangumiId) return null
+      const numericBangumiId = typeof bangumiId === 'string' ? Number.parseInt(bangumiId, 10) : Number(bangumiId)
+      if (!Number.isFinite(numericBangumiId)) return null
+      const pointId = hit.properties?.pointId
+      return {
+        bangumiId: numericBangumiId,
+        pointId: typeof pointId === 'string' ? pointId : null,
+      }
+    }
     const handlePointClick = (event: maplibregl.MapMouseEvent) => {
+      if (mapModeRef.current === 'complete') {
+        const completeTarget = readCompleteTargetFromRendered(event)
+        if (completeTarget) {
+          openBangumiRef.current?.(completeTarget.bangumiId, completeTarget.pointId)?.catch(() => null)
+          return
+        }
+      }
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
       const prevPointId = selectedPointIdRef.current
@@ -3037,7 +3006,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
     }
     const handlePointerMove = (event: maplibregl.MapMouseEvent) => {
-      map.getCanvas().style.cursor = readPointIdFromRendered(event) ? 'pointer' : ''
+      const pointHit = readPointIdFromRendered(event)
+      const completeHit = mapModeRef.current === 'complete' ? readCompleteTargetFromRendered(event) : null
+      map.getCanvas().style.cursor = pointHit || completeHit ? 'pointer' : ''
     }
     const resetPointer = () => {
       map.getCanvas().style.cursor = ''
