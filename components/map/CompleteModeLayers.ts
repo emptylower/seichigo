@@ -4,7 +4,8 @@
  * Provides:
  * - A single GeoJSON source for all points (no Supercluster)
  * - A circle "dots" layer as colored fallback
- * - A symbol "icons" layer with sprite-based markers
+ * - A symbol "theme icons" layer with sprite-based markers
+ * - A symbol "point images" layer with viewport thumbnail markers
  * - An optional symbol layer for bangumi cover avatars
  * - Both point layers share a 20-tier zoom-step filter on `priority`
  * - Label layer helpers (unchanged)
@@ -17,7 +18,10 @@ import type * as maplibregl from 'maplibre-gl';
 // ---------------------------------------------------------------------------
 export const COMPLETE_POINTS_SOURCE_ID = 'complete-points';
 export const COMPLETE_DOTS_LAYER_ID = 'complete-dots';
-export const COMPLETE_ICONS_LAYER_ID = 'complete-icons';
+export const COMPLETE_THEME_ICONS_LAYER_ID = 'complete-icons';
+export const COMPLETE_ICONS_LAYER_ID = COMPLETE_THEME_ICONS_LAYER_ID; // backward-compatible alias
+export const COMPLETE_POINT_IMAGES_SOURCE_ID = 'complete-point-images-source';
+export const COMPLETE_POINT_IMAGES_LAYER_ID = 'complete-point-images';
 export const COMPLETE_BANGUMI_COVERS_SOURCE_ID = 'complete-bangumi-covers-source';
 export const COMPLETE_BANGUMI_COVERS_LAYER_ID = 'complete-bangumi-covers';
 
@@ -88,8 +92,41 @@ export function buildDotsLayerSpec(): maplibregl.LayerSpecification {
 }
 
 // ---------------------------------------------------------------------------
-// Symbol layer spec (icon markers with priority filter)
+// Symbol layer spec (theme icon markers with priority filter)
 // ---------------------------------------------------------------------------
+export function buildThemeSymbolLayerSpec(
+  detailThemeMinZoom = 15.8,
+  imageShowZoom = 17.9,
+): maplibregl.LayerSpecification {
+  const filter: maplibregl.FilterSpecification = [
+    'all',
+    ZOOM_PRIORITY_FILTER,
+    ['!=', ['get', 'icon'], ''],
+  ] as unknown as maplibregl.FilterSpecification;
+  return {
+    id: COMPLETE_THEME_ICONS_LAYER_ID,
+    type: 'symbol',
+    source: COMPLETE_POINTS_SOURCE_ID,
+    minzoom: detailThemeMinZoom,
+    maxzoom: imageShowZoom,
+    filter,
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'bottom',
+      'icon-offset': [0, 0],
+    },
+    paint: {
+      'icon-opacity': 1,
+    },
+  } as maplibregl.LayerSpecification;
+}
+
+/**
+ * Legacy symbol layer builder kept for compatibility with existing tests/tools.
+ * Runtime complete-mode rendering uses `buildThemeSymbolLayerSpec`.
+ */
 export function buildSymbolLayerSpec(): maplibregl.LayerSpecification {
   return {
     id: COMPLETE_ICONS_LAYER_ID,
@@ -110,6 +147,33 @@ export function buildSymbolLayerSpec(): maplibregl.LayerSpecification {
 }
 
 // ---------------------------------------------------------------------------
+// Symbol layer spec (viewport point-image thumbnails)
+// ---------------------------------------------------------------------------
+export function buildPointImagesLayerSpec(
+  imageShowZoom = 17.9,
+): maplibregl.LayerSpecification {
+  return {
+    id: COMPLETE_POINT_IMAGES_LAYER_ID,
+    type: 'symbol',
+    source: COMPLETE_POINT_IMAGES_SOURCE_ID,
+    minzoom: imageShowZoom,
+    filter: ['!=', ['get', 'image'], ''],
+    layout: {
+      'icon-image': ['get', 'image'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], imageShowZoom, 0.9, 20, 1.15],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'bottom',
+      'icon-offset': [0, -1],
+      'symbol-sort-key': ['get', 'y'],
+    },
+    paint: {
+      'icon-opacity': 1,
+    },
+  } as maplibregl.LayerSpecification;
+}
+
+// ---------------------------------------------------------------------------
 // Map interaction helpers
 // ---------------------------------------------------------------------------
 
@@ -117,6 +181,12 @@ export function buildSymbolLayerSpec(): maplibregl.LayerSpecification {
 export function ensureCompleteModeSources(map: maplibregl.Map): void {
   if (!map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
     map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
+  }
+  if (!map.getSource(COMPLETE_POINT_IMAGES_SOURCE_ID)) {
+    map.addSource(COMPLETE_POINT_IMAGES_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_FC,
+    });
   }
 
   if (!map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID)) {
@@ -128,12 +198,26 @@ export function ensureCompleteModeSources(map: maplibregl.Map): void {
 }
 
 /** Add point layers if absent. */
-export function ensureCompleteModeSymbolLayer(map: maplibregl.Map): void {
+export function ensureCompleteModeSymbolLayer(
+  map: maplibregl.Map,
+  options?: {
+    avatarMaxZoom?: number;
+    detailThemeMinZoom?: number;
+    imageShowZoom?: number;
+  },
+): void {
+  const avatarMaxZoom = options?.avatarMaxZoom ?? 13;
+  const detailThemeMinZoom = options?.detailThemeMinZoom ?? 15.8;
+  const imageShowZoom = options?.imageShowZoom ?? 17.9;
+
   if (!map.getLayer(COMPLETE_DOTS_LAYER_ID)) {
     map.addLayer(buildDotsLayerSpec());
   }
-  if (!map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
-    map.addLayer(buildSymbolLayerSpec());
+  if (!map.getLayer(COMPLETE_THEME_ICONS_LAYER_ID)) {
+    map.addLayer(buildThemeSymbolLayerSpec(detailThemeMinZoom, imageShowZoom));
+  }
+  if (!map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
+    map.addLayer(buildPointImagesLayerSpec(imageShowZoom));
   }
   if (!map.getLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID)) {
     map.addLayer({
@@ -141,6 +225,7 @@ export function ensureCompleteModeSymbolLayer(map: maplibregl.Map): void {
       type: 'symbol',
       source: COMPLETE_BANGUMI_COVERS_SOURCE_ID,
       minzoom: 5.2,
+      maxzoom: avatarMaxZoom,
       filter: ['!=', ['get', 'coverImageId'], ''],
       layout: {
         'icon-image': ['get', 'coverImageId'],
@@ -164,6 +249,40 @@ export function updateCompleteModeSources(
   if (source) {
     source.setData(featureCollection);
   }
+}
+
+/** Update point-image source data. */
+export function updateCompleteModePointImageSource(
+  map: maplibregl.Map,
+  featureCollection: GeoJSON.FeatureCollection,
+): void {
+  const source = map.getSource(COMPLETE_POINT_IMAGES_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+  if (source) {
+    source.setData(featureCollection);
+  }
+}
+
+export type CompleteModeVisibilityState = {
+  showCovers: boolean;
+  showThemeIcons: boolean;
+  showPointImages: boolean;
+};
+
+function setLayerVisibility(map: maplibregl.Map, layerId: string, visible: boolean): void {
+  if (!map.getLayer(layerId)) return;
+  map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+}
+
+/** Toggle complete-mode layers based on interaction state and zoom. */
+export function updateCompleteModeLayerVisibility(
+  map: maplibregl.Map,
+  visibility: CompleteModeVisibilityState,
+): void {
+  setLayerVisibility(map, COMPLETE_BANGUMI_COVERS_LAYER_ID, visibility.showCovers);
+  setLayerVisibility(map, COMPLETE_THEME_ICONS_LAYER_ID, visibility.showThemeIcons);
+  setLayerVisibility(map, COMPLETE_POINT_IMAGES_LAYER_ID, visibility.showPointImages);
+  // Dots stay visible as a resilient fallback.
+  setLayerVisibility(map, COMPLETE_DOTS_LAYER_ID, true);
 }
 
 /** Update the bangumi cover source for loaded cover images. */
@@ -198,14 +317,20 @@ export function updateCompleteModeCoverSource(
 
 /** Remove complete mode layers and sources from the map. */
 export function removeCompleteModeLayers(map: maplibregl.Map): void {
+  if (map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
+    map.removeLayer(COMPLETE_POINT_IMAGES_LAYER_ID);
+  }
   if (map.getLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID)) {
     map.removeLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID);
   }
-  if (map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
-    map.removeLayer(COMPLETE_ICONS_LAYER_ID);
+  if (map.getLayer(COMPLETE_THEME_ICONS_LAYER_ID)) {
+    map.removeLayer(COMPLETE_THEME_ICONS_LAYER_ID);
   }
   if (map.getLayer(COMPLETE_DOTS_LAYER_ID)) {
     map.removeLayer(COMPLETE_DOTS_LAYER_ID);
+  }
+  if (map.getSource(COMPLETE_POINT_IMAGES_SOURCE_ID)) {
+    map.removeSource(COMPLETE_POINT_IMAGES_SOURCE_ID);
   }
   if (map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID)) {
     map.removeSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID);

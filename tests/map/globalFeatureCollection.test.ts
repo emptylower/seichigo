@@ -33,6 +33,8 @@ describe('createGlobalFeatureCollection', () => {
     expect(feature1.properties.bangumiId).toBe('123');
     expect(feature1.properties.color).toBe('#ff0000');
     expect(feature1.properties.pointId).toBe('p1');
+    expect(feature1.properties.imageUrl).toBeNull();
+    expect(feature1.properties.density).toBeNull();
 
     // Check second feature
     const feature2 = result.features[1];
@@ -43,6 +45,8 @@ describe('createGlobalFeatureCollection', () => {
     expect(feature2.properties.bangumiId).toBe('456');
     expect(feature2.properties.color).toBe('#00ff00');
     expect(feature2.properties.pointId).toBe('p2');
+    expect(feature2.properties.imageUrl).toBeNull();
+    expect(feature2.properties.density).toBeNull();
   });
 
   it('should calculate priority correctly for single point', () => {
@@ -79,7 +83,15 @@ describe('createGlobalFeatureCollection', () => {
 
   it('should preserve all input properties in output features', () => {
     const points = [
-      { lat: 35.6762, lng: 139.6503, bangumiId: '123', color: '#ff0000', pointId: 'p1' },
+      {
+        lat: 35.6762,
+        lng: 139.6503,
+        bangumiId: '123',
+        color: '#ff0000',
+        pointId: 'p1',
+        imageUrl: 'https://example.com/p1.jpg',
+        density: 12.5,
+      },
     ];
 
     const result = createGlobalFeatureCollection(points);
@@ -88,6 +100,8 @@ describe('createGlobalFeatureCollection', () => {
     expect(props).toHaveProperty('bangumiId', '123');
     expect(props).toHaveProperty('color', '#ff0000');
     expect(props).toHaveProperty('pointId', 'p1');
+    expect(props).toHaveProperty('imageUrl', 'https://example.com/p1.jpg');
+    expect(props).toHaveProperty('density', 12.5);
     expect(props).toHaveProperty('priority');
     expect(props).toHaveProperty('icon', '');
   });

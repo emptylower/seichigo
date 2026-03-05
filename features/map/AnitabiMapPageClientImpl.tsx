@@ -32,8 +32,11 @@ import {
   COMPLETE_BANGUMI_COVERS_LAYER_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
+  COMPLETE_POINT_IMAGES_LAYER_ID,
   ensureCompleteModeSources,
   ensureCompleteModeSymbolLayer,
+  updateCompleteModeLayerVisibility,
+  updateCompleteModePointImageSource,
   updateCompleteModeSources,
   updateCompleteModeCoverSource,
   removeCompleteModeLayers,
@@ -42,6 +45,8 @@ import {
   removeLabelLayer,
   buildLabelFeatureCollection,
 } from '@/components/map/CompleteModeLayers'
+import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
+import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { MapModeToggle } from '@/components/map/MapModeToggle'
 import { useMapMode } from '@/components/map/hooks/useMapMode'
 import {
@@ -74,6 +79,8 @@ import {
   COMPLETE_MODE_SPRITE_BUDGET_MS,
   COMPLETE_MODE_COVER_CANDIDATES_MAX,
   COMPLETE_MODE_COVER_MAX_LOADED,
+  COMPLETE_AVATAR_MAX_ZOOM,
+  COMPLETE_DETAIL_THEME_MIN_ZOOM,
   WARMUP_TASK_WEIGHTS,
   MAP_PRELOAD_V2_ENABLED,
   MAP_STYLE_FAILOVER_TIMEOUT_MS,
@@ -87,6 +94,8 @@ import {
   shouldSkipMissingStyleImageFallback,
   createEmptyWarmupTaskProgress,
   resolveLocateZoom,
+  resolveImageBuildZoom,
+  resolveImageShowZoom,
   readStoredUserLocation,
   readStoredUserLocationRaw,
   writeStoredUserLocation,
@@ -217,6 +226,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const loadedCoverIdsRef = useRef<Set<string>>(new Set())
   const completeCoverFeatureCollectionRef = useRef<GeoJSON.FeatureCollection | null>(null)
   const completeCoverCandidatesRef = useRef<Array<{ bangumiId: number; coverUrl: string }>>([])
+  const completePointImageLoaderRef = useRef<ThumbnailLoader | null>(null)
+  const completePointImageSyncTokenRef = useRef(0)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -288,6 +299,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
   const warmupProgressRef = useRef<WarmupProgress>(warmupProgress)
   const warmupTaskProgressRef = useRef<WarmupTaskProgress>(warmupTaskProgress)
+  const completeImageBuildZoom = useMemo(
+    () => resolveImageBuildZoom(PANORAMA_TRIGGER_ZOOM),
+    []
+  )
+  const completeImageShowZoom = useMemo(
+    () => resolveImageShowZoom(PANORAMA_TRIGGER_ZOOM),
+    []
+  )
 
   useEffect(() => {
     warmupProgressRef.current = warmupProgress
@@ -882,12 +901,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return false
 
+    const clearThumbImages = () => {
+      const imageIds = map.listImages().filter((id) => id.startsWith('thumb-'))
+      for (const imageId of imageIds) {
+        if (map.hasImage(imageId)) {
+          map.removeImage(imageId)
+        }
+      }
+    }
+
+    const clearPointImageSource = () => {
+      updateCompleteModePointImageSource(map, { type: 'FeatureCollection', features: [] })
+    }
+
     const fc = completeFeatureCollectionRef.current
     // In simple mode, hide complete mode
     if (mapModeRef.current === 'simple') {
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
       coverAvatarLoaderRef.current = null
+      completePointImageLoaderRef.current = null
+      completePointImageSyncTokenRef.current += 1
+      clearThumbImages()
       loadedCoverIdsRef.current = new Set()
       completeCoverFeatureCollectionRef.current = null
       completeCoverCandidatesRef.current = []
@@ -897,26 +932,40 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (!fc || fc.features.length === 0) {
       removeCompleteModeLayers(map)
       removeLabelLayer(map)
+      coverAvatarLoaderRef.current = null
+      completePointImageLoaderRef.current = null
+      completePointImageSyncTokenRef.current += 1
+      clearThumbImages()
       loadedCoverIdsRef.current = new Set()
       completeCoverFeatureCollectionRef.current = null
       completeCoverCandidatesRef.current = []
       return true
     }
 
-    // If a bangumi is selected in complete mode, filter to just that bangumi
-    if (detailRef.current) {
-      const filteredFc = {
-        type: 'FeatureCollection' as const,
-        features: fc.features.filter(
-          (f) => f.properties.bangumiId === String(detailRef.current!.card.id)
-        ),
-      }
+    try {
+      const currentZoom = map.getZoom()
+      const detailBangumiId = detailRef.current?.card.id ?? null
+
+      // If a bangumi is selected in complete mode, filter to just that bangumi
+      const filteredFc: GeoJSON.FeatureCollection = detailBangumiId == null
+        ? fc
+        : {
+            type: 'FeatureCollection',
+            features: fc.features.filter(
+              (f) => String((f.properties as { bangumiId?: unknown } | undefined)?.bangumiId ?? '') === String(detailBangumiId)
+            ),
+          }
+
       ensureCompleteModeSources(map)
-      ensureCompleteModeSymbolLayer(map)
+      ensureCompleteModeSymbolLayer(map, {
+        avatarMaxZoom: COMPLETE_AVATAR_MAX_ZOOM,
+        detailThemeMinZoom: COMPLETE_DETAIL_THEME_MIN_ZOOM,
+        imageShowZoom: completeImageShowZoom,
+      })
       updateCompleteModeSources(map, filteredFc)
-      const detailBangumiId = detailRef.current.card.id
+
       const coverBase = completeCoverFeatureCollectionRef.current
-      const detailCoverCollection: GeoJSON.FeatureCollection = coverBase
+      const detailCoverCollection: GeoJSON.FeatureCollection = detailBangumiId != null && coverBase
         ? {
             type: 'FeatureCollection',
             features: coverBase.features.filter((feature) => {
@@ -926,7 +975,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
               return false
             }),
           }
-        : { type: 'FeatureCollection', features: [] }
+        : (coverBase || { type: 'FeatureCollection', features: [] })
+
       updateCompleteModeCoverSource(map, detailCoverCollection, loadedCoverIdsRef.current)
 
       if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
@@ -940,30 +990,148 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }).catch(() => null)
       }
 
-      map.triggerRepaint()
-      return true
-    }
+      const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
+      const shouldShowThemeIcons = detailBangumiId != null
+        && currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
+        && currentZoom < completeImageShowZoom
+      const shouldBuildPointImages = currentZoom >= completeImageBuildZoom
+      const shouldShowPointImages = shouldBuildPointImages && currentZoom >= completeImageShowZoom
 
-    try {
-      ensureCompleteModeSources(map)
-      ensureCompleteModeSymbolLayer(map)
-      updateCompleteModeSources(map, fc)
-      updateCompleteModeCoverSource(
-        map,
-        completeCoverFeatureCollectionRef.current || { type: 'FeatureCollection', features: [] },
-        loadedCoverIdsRef.current,
-      )
+      updateCompleteModeLayerVisibility(map, {
+        showCovers: shouldShowCovers,
+        showThemeIcons: shouldShowThemeIcons,
+        showPointImages: shouldShowPointImages,
+      })
 
-      if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
-        const coverCandidates = completeCoverCandidatesRef.current
-        void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids) => {
-          loadedCoverIdsRef.current = ids
-          const liveMap = mapRef.current
-          const coverFc = completeCoverFeatureCollectionRef.current
-          if (!liveMap || !liveMap.isStyleLoaded() || !coverFc) return
-          updateCompleteModeCoverSource(liveMap, coverFc, ids)
-          liveMap.triggerRepaint()
-        }).catch(() => null)
+      if (!shouldBuildPointImages) {
+        completePointImageSyncTokenRef.current += 1
+        clearPointImageSource()
+      } else {
+        if (!completePointImageLoaderRef.current) {
+          completePointImageLoaderRef.current = new ThumbnailLoader({
+            map,
+            maxLoaded: isDesktopRef.current ? 140 : 80,
+          })
+        }
+
+        const pointById = new Map<string, GeoJSON.Feature<GeoJSON.Point>>()
+        for (const feature of filteredFc.features) {
+          const pointId = String((feature.properties as { pointId?: unknown } | undefined)?.pointId ?? '')
+          if (!pointId) continue
+          pointById.set(pointId, feature as GeoJSON.Feature<GeoJSON.Point>)
+        }
+
+        const rendered = map.getLayer(COMPLETE_DOTS_LAYER_ID)
+          ? map.queryRenderedFeatures({ layers: [COMPLETE_DOTS_LAYER_ID] })
+          : []
+
+        const priorityThreshold = Math.pow(2, 19 - currentZoom) * 3
+        const candidateByPointId = new Map<
+          string,
+          {
+            pointId: string;
+            bangumiId: number;
+            color: string;
+            imageUrl: string | null;
+            priority: number;
+            density: number | null;
+            geometry: [number, number];
+          }
+        >()
+
+        for (const hit of rendered) {
+          const rawPointId = String((hit.properties as { pointId?: unknown } | undefined)?.pointId ?? '')
+          if (!rawPointId || candidateByPointId.has(rawPointId)) continue
+          const sourceFeature = pointById.get(rawPointId)
+          if (!sourceFeature) continue
+          const props = sourceFeature.properties as {
+            pointId?: unknown;
+            bangumiId?: unknown;
+            color?: unknown;
+            imageUrl?: unknown;
+            priority?: unknown;
+            density?: unknown;
+          }
+          const imageUrl = typeof props.imageUrl === 'string' ? props.imageUrl : null
+          if (!imageUrl) continue
+          const priority = typeof props.priority === 'number' && Number.isFinite(props.priority) ? props.priority : 0
+          if (priority < priorityThreshold) continue
+          const bangumiId = Number.parseInt(String(props.bangumiId ?? ''), 10)
+          if (!Number.isFinite(bangumiId)) continue
+          const color = typeof props.color === 'string' ? props.color : '#333'
+          const coords = sourceFeature.geometry?.coordinates
+          if (!Array.isArray(coords) || coords.length < 2) continue
+          const geometry: [number, number] = [Number(coords[0]), Number(coords[1])]
+          if (!Number.isFinite(geometry[0]) || !Number.isFinite(geometry[1])) continue
+          const density = typeof props.density === 'number' && Number.isFinite(props.density) ? props.density : null
+          candidateByPointId.set(rawPointId, {
+            pointId: rawPointId,
+            bangumiId,
+            color,
+            imageUrl,
+            priority,
+            density,
+            geometry,
+          })
+        }
+
+        const maxCandidates = isDesktopRef.current ? 120 : 72
+        const candidates = Array.from(candidateByPointId.values())
+          .sort((a, b) => b.priority - a.priority)
+          .slice(0, maxCandidates)
+
+        if (candidates.length === 0) {
+          completePointImageSyncTokenRef.current += 1
+          clearPointImageSource()
+        } else {
+          const loaderInput: GlobalPointFeatureProperties[] = candidates.map((candidate) => ({
+            pointId: candidate.pointId,
+            color: candidate.color,
+            selected: 0,
+            userState: 'none',
+            bangumiId: candidate.bangumiId,
+            imageUrl: candidate.imageUrl,
+            priority: candidate.priority,
+            density: candidate.density,
+          }))
+          const token = completePointImageSyncTokenRef.current + 1
+          completePointImageSyncTokenRef.current = token
+
+          void completePointImageLoaderRef.current.updateViewport(loaderInput).then((loadedIds) => {
+            if (completePointImageSyncTokenRef.current !== token) return
+            const liveMap = mapRef.current
+            if (!liveMap || !liveMap.isStyleLoaded()) return
+
+            const imageFeatures: GeoJSON.Feature<GeoJSON.Point>[] = candidates
+              .filter((candidate) => loadedIds.has(`thumb-${candidate.pointId}`))
+              .map((candidate) => ({
+                type: 'Feature',
+                geometry: {
+                  type: 'Point',
+                  coordinates: candidate.geometry,
+                },
+                properties: {
+                  pointId: candidate.pointId,
+                  bangumiId: candidate.bangumiId,
+                  image: `thumb-${candidate.pointId}`,
+                  y: candidate.geometry[1] * -1,
+                  priority: candidate.priority,
+                  density: candidate.density,
+                },
+              }))
+
+            updateCompleteModePointImageSource(liveMap, {
+              type: 'FeatureCollection',
+              features: imageFeatures,
+            })
+            updateCompleteModeLayerVisibility(liveMap, {
+              showCovers: shouldShowCovers,
+              showThemeIcons: shouldShowThemeIcons,
+              showPointImages: shouldShowPointImages,
+            })
+            liveMap.triggerRepaint()
+          }).catch(() => null)
+        }
       }
 
       // Re-register sprite images if they were lost during a style change
@@ -981,7 +1149,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     } catch {
       return false
     }
-  }, [])
+  }, [completeImageBuildZoom, completeImageShowZoom])
 
   useEffect(() => {
     syncCompleteModeRef.current = flushCompleteMode
@@ -1112,6 +1280,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             bangumiId: String(bangumiId),
             color,
             pointId: point.id,
+            imageUrl: point.image ?? null,
+            density: point.density ?? null,
           })
         }
 
@@ -1287,9 +1457,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     if (detail) return
 
     const handleCompleteModeClick = (event: maplibregl.MapMouseEvent) => {
-      const completeLayerIds = [COMPLETE_ICONS_LAYER_ID, COMPLETE_BANGUMI_COVERS_LAYER_ID, COMPLETE_DOTS_LAYER_ID].filter(
-        (id) => Boolean(map.getLayer(id))
-      )
+      const completeLayerIds = [
+        COMPLETE_POINT_IMAGES_LAYER_ID,
+        COMPLETE_ICONS_LAYER_ID,
+        COMPLETE_BANGUMI_COVERS_LAYER_ID,
+        COMPLETE_DOTS_LAYER_ID,
+      ].filter((id) => Boolean(map.getLayer(id)))
       if (!completeLayerIds.length) return
 
       const hit = map.queryRenderedFeatures(event.point, { layers: completeLayerIds })[0]
@@ -1322,6 +1495,12 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     const map = mapRef.current
     if (map) {
+      const thumbImageIds = map.listImages().filter((id) => id.startsWith('thumb-'))
+      for (const imageId of thumbImageIds) {
+        if (map.hasImage(imageId)) {
+          map.removeImage(imageId)
+        }
+      }
       for (const imageId of spriteImageIdsRef.current) {
         if (map.hasImage(imageId)) {
           map.removeImage(imageId)
@@ -1333,6 +1512,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     spriteImageIdsRef.current.clear()
     completeFeatureCollectionRef.current = null
     coverAvatarLoaderRef.current = null
+    completePointImageLoaderRef.current = null
+    completePointImageSyncTokenRef.current += 1
     loadedCoverIdsRef.current = new Set()
     completeCoverFeatureCollectionRef.current = null
     completeCoverCandidatesRef.current = []
@@ -2774,6 +2955,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const syncMapViewState = () => {
       syncUrlRef.current()
       setMapZoom(map.getZoom())
+      if (mapModeRef.current === 'complete') {
+        syncCompleteModeRef.current()
+      }
     }
     map.on('moveend', syncMapViewState)
     map.on('zoomend', syncMapViewState)

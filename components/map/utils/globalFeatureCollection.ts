@@ -16,6 +16,8 @@ export interface InputPoint {
   bangumiId: string;
   color: string;
   pointId: string;
+  imageUrl?: string | null;
+  density?: number | null;
 }
 
 export interface FeatureProperties {
@@ -24,6 +26,8 @@ export interface FeatureProperties {
   bangumiId: string;
   color: string;
   pointId: string;
+  imageUrl: string | null;
+  density: number | null;
 }
 
 export interface Feature {
@@ -79,6 +83,8 @@ export function createGlobalFeatureCollection(
       bangumiId: point.bangumiId,
       color: point.color,
       pointId: point.pointId,
+      imageUrl: point.imageUrl ?? null,
+      density: point.density ?? null,
     },
   }));
 

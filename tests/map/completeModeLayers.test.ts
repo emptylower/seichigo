@@ -3,9 +3,13 @@ import {
   COMPLETE_POINTS_SOURCE_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
+  COMPLETE_POINT_IMAGES_SOURCE_ID,
+  COMPLETE_POINT_IMAGES_LAYER_ID,
   buildCompleteSourceSpec,
   buildDotsLayerSpec,
   buildSymbolLayerSpec,
+  buildThemeSymbolLayerSpec,
+  buildPointImagesLayerSpec,
   ZOOM_PRIORITY_FILTER,
 } from '@/components/map/CompleteModeLayers';
 
@@ -23,6 +27,11 @@ describe('layer/source IDs', () => {
 
   it('exports stable symbol layer ID', () => {
     expect(COMPLETE_ICONS_LAYER_ID).toBe('complete-icons');
+  });
+
+  it('exports stable point-images source/layer IDs', () => {
+    expect(COMPLETE_POINT_IMAGES_SOURCE_ID).toBe('complete-point-images-source');
+    expect(COMPLETE_POINT_IMAGES_LAYER_ID).toBe('complete-point-images');
   });
 });
 
@@ -96,6 +105,34 @@ describe('buildSymbolLayerSpec', () => {
   it('applies the 20-tier zoom-step priority filter', () => {
     const spec = buildSymbolLayerSpec();
     expect((spec as any).filter).toEqual(ZOOM_PRIORITY_FILTER);
+  });
+});
+
+describe('buildThemeSymbolLayerSpec', () => {
+  it('applies min/max zoom window for detail-mode theme icons', () => {
+    const spec = buildThemeSymbolLayerSpec(15.8, 17.9);
+    expect((spec as any).minzoom).toBe(15.8);
+    expect((spec as any).maxzoom).toBe(17.9);
+  });
+
+  it('requires non-empty icon property', () => {
+    const spec = buildThemeSymbolLayerSpec();
+    expect((spec as any).filter).toEqual(['all', ZOOM_PRIORITY_FILTER, ['!=', ['get', 'icon'], '']]);
+  });
+});
+
+describe('buildPointImagesLayerSpec', () => {
+  it('creates a symbol layer on point-images source', () => {
+    const spec = buildPointImagesLayerSpec(17.9);
+    expect(spec.id).toBe('complete-point-images');
+    expect(spec.type).toBe('symbol');
+    expect((spec as any).source).toBe('complete-point-images-source');
+  });
+
+  it('reads icon from image property and sets minzoom', () => {
+    const spec = buildPointImagesLayerSpec(17.7);
+    expect((spec as any).layout['icon-image']).toEqual(['get', 'image']);
+    expect((spec as any).minzoom).toBe(17.7);
   });
 });
 

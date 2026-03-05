@@ -76,6 +76,8 @@ export type PointFeatureProperties = {
 export type GlobalPointFeatureProperties = PointFeatureProperties & {
   bangumiId: number
   imageUrl: string | null
+  priority?: number
+  density?: number | null
 }
 
 /**

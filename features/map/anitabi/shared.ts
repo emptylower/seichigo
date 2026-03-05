@@ -156,6 +156,8 @@ const CLUSTER_JOIN_DISTANCE_MIN_METERS = 120000
 const CLUSTER_JOIN_DISTANCE_MAX_METERS = 900000
 const CLUSTER_JOIN_DISTANCE_SCALE = 8
 const PANORAMA_TRIGGER_ZOOM = 18.4
+const COMPLETE_AVATAR_MAX_ZOOM = 13
+const COMPLETE_DETAIL_THEME_MIN_ZOOM = 15.8
 const USER_LOCATION_STORAGE_KEY = 'anitabi-map-user-location'
 const POINT_POOL_HINT_SEEN_STORAGE_KEY = 'anitabi-map-point-pool-hint-seen'
 const LOCATION_DIALOG_DISMISSED_KEY = 'anitabi-map-location-dialog-dismissed'
@@ -189,6 +191,16 @@ type MapStyleCandidate = {
   provider: MapStyleProvider
   label: string
   style: maplibregl.StyleSpecification | string
+}
+
+function resolveImageBuildZoom(panoramaZoom: number): number {
+  if (!Number.isFinite(panoramaZoom)) return 17.5
+  return Math.max(16.8, panoramaZoom - 0.9)
+}
+
+function resolveImageShowZoom(panoramaZoom: number): number {
+  if (!Number.isFinite(panoramaZoom)) return 17.9
+  return Math.max(17.2, panoramaZoom - 0.5)
 }
 
 function isValidLatLng(lat: number, lng: number): boolean {
@@ -733,6 +745,7 @@ export {
   filterBulkCardsBySearch, L, DEFAULT_VIEW, CARD_PAGE_SIZE, CARD_LIST_PREFETCH_ROOT_MARGIN, RANGE_SOURCE_ID, RANGE_FILL_LAYER_ID, RANGE_LINE_LAYER_ID,
   POINT_SOURCE_ID, POINT_LAYER_ID, POINT_SELECTED_HALO_LAYER_ID, POINT_SELECTED_LAYER_ID, DETAIL_PANEL_WIDTH, DESKTOP_BREAKPOINT,
   CLUSTER_JOIN_DISTANCE_MIN_METERS, CLUSTER_JOIN_DISTANCE_MAX_METERS, CLUSTER_JOIN_DISTANCE_SCALE, PANORAMA_TRIGGER_ZOOM,
+  COMPLETE_AVATAR_MAX_ZOOM, COMPLETE_DETAIL_THEME_MIN_ZOOM, resolveImageBuildZoom, resolveImageShowZoom,
   USER_LOCATION_STORAGE_KEY, POINT_POOL_HINT_SEEN_STORAGE_KEY, LOCATION_DIALOG_DISMISSED_KEY,
 }
 
