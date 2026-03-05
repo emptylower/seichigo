@@ -195,12 +195,12 @@ type MapStyleCandidate = {
 
 function resolveImageBuildZoom(panoramaZoom: number): number {
   if (!Number.isFinite(panoramaZoom)) return 17.3
-  return Math.max(16.7, panoramaZoom - 1.1)
+  return Math.max(16.4, panoramaZoom - 1.5)
 }
 
 function resolveImageShowZoom(panoramaZoom: number): number {
   if (!Number.isFinite(panoramaZoom)) return 17.6
-  return Math.max(17.0, panoramaZoom - 0.8)
+  return Math.max(16.9, panoramaZoom - 1.2)
 }
 
 function isValidLatLng(lat: number, lng: number): boolean {

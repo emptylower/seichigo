@@ -1024,8 +1024,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
 
       const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
-      const shouldShowThemeIcons = detailBangumiId != null
-        && currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
+      const shouldShowThemeIcons = currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
         && currentZoom < completeImageShowZoom
       const shouldBuildPointImages = currentZoom >= completeImageBuildZoom
       const shouldShowPointImages = shouldBuildPointImages && currentZoom >= completeImageShowZoom
