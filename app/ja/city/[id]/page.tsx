@@ -5,7 +5,10 @@ import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildJaAlternates } from '@/lib/seo/alternates'
+import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
+import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
+import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -40,11 +43,26 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '都市が見つかりません', robots: { index: false, follow: false } }
   }
 
-  const title = city.name_ja || city.name_en || city.name_zh
-  const description = city.description_ja || city.description_zh || city.description_en || `${title}の聖地巡礼ルートとスポットリスト。`
+  const cityPostsForMeta = await listPublishedDbPostsByCityId(city.id, 'ja').catch(() => [])
+  const uniqueAnimeIds = [...new Set(
+    cityPostsForMeta
+      .flatMap((p: any) => Array.isArray(p.animeIds) ? p.animeIds : [])
+      .filter((id: string) => id && id !== 'unknown')
+  )].slice(0, 3)
+  const allAnime = uniqueAnimeIds.length > 0 ? await getAllAnime().catch(() => []) : []
+  const animeNames = uniqueAnimeIds
+    .map((id: string) => allAnime.find((a) => a.id === id)?.name_ja ?? allAnime.find((a) => a.id === id)?.name)
+    .filter((n): n is string => Boolean(n))
+
+
+  const seoTitle = buildCitySeoTitle(city, animeNames, 'ja')
+  const displayCity = city.name_ja || city.name_en || city.name_zh
+  const topAnimeStr = animeNames.slice(0, 2).map((n) => `『${n}』`).join('')
+  const description = city.description_ja || city.description_zh || city.description_en ||
+    `${displayCity}のアニメ聖地巡礼ルートページ。${topAnimeStr || ''}などの聖地スポット、交通情報、マップリンクを集約。`
 
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: buildJaAlternates({
       zhPath: `/city/${encodeURIComponent(city.slug)}`,
@@ -52,14 +70,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     }),
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/ja/city/${encodeURIComponent(city.slug)}`,
       images: ['/opengraph-image'],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
       images: ['/twitter-image'],
     },
@@ -120,14 +138,14 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
     { name: city.name_ja || city.name_en || city.name_zh, url: canonicalUrl },
   ])
 
-  const placeJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Place',
+  const touristAttractionJsonLd = buildTouristAttractionJsonLd({
     name: city.name_ja || city.name_en || city.name_zh,
-    ...(city.description_ja || city.description_zh || city.description_en ? { description: city.description_ja || city.description_zh || city.description_en } : {}),
-    ...(city.name_zh || city.name_en ? { alternateName: [city.name_zh, city.name_en].filter(Boolean) } : {}),
-    ...(canonicalUrl ? { url: canonicalUrl } : {}),
-  }
+    description: city.description_ja || city.description_zh || city.description_en || null,
+    url: canonicalUrl,
+    touristType: 'アニメ聖地巡礼',
+    inLanguage: 'ja',
+    alternateName: [city.name_zh, city.name_en].filter((n): n is string => Boolean(n)),
+  })
 
   const heroCover = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
 
@@ -136,7 +154,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
       ) : null}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(placeJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(touristAttractionJsonLd) }} />
 
       <div className="space-y-8">
         <Breadcrumbs

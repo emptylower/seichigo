@@ -6,23 +6,23 @@ import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'アニメ — 聖地巡礼ハブを探す',
+  title: 'アニメ聖地巡礼作品一覧｜作品別に巡礼ルートを探す',
   description:
-    '公開されたアニメ聖地巡礼ハブを閲覧：各作品ページには関連記事、スポットリスト、撮影のコツ、ナビゲーション対応のマップリンクが集約されています。',
+    'アニメ聖地巡礼の作品別ガイド：実写ロケ地、巡礼ルート、スポットリスト、撮影のコツを集約した各作品ページで、日本のアニメツーリズムを計画できます。',
   alternates: buildJaAlternates({ zhPath: '/anime' }),
   openGraph: {
     type: 'website',
     url: '/ja/anime',
-    title: 'アニメ — 聖地巡礼ハブを探す',
+    title: 'アニメ聖地巡礼｜作品一覧',
     description:
-      '公開されたアニメ聖地巡礼ハブを閲覧：各作品ページには関連記事、スポットリスト、撮影のコツ、ナビゲーション対応のマップリンクが集約されています。',
+      'アニメ聖地巡礼の作品別ガイド：実写ロケ地、巡礼ルート、スポットリスト、撮影のコツを集約した各作品ページで、日本のアニメツーリズムを計画できます。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'アニメ — 聖地巡礼ハブを探す',
+    title: 'アニメ聖地巡礼｜作品一覧',
     description:
-      '公開されたアニメ聖地巡礼ハブを閲覧：各作品ページには関連記事、スポットリスト、撮影のコツ、ナビゲーション対応のマップリンクが集約されています。',
+      'アニメ聖地巡礼の作品別ガイド：実写ロケ地、巡礼ルート、スポットリスト、撮影のコツを集約した各作品ページで、日本のアニメツーリズムを計画できます。',
     images: ['/twitter-image'],
   },
 }

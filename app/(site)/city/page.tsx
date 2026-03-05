@@ -4,23 +4,23 @@ import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '城市索引｜按目的地浏览圣地巡礼路线',
+  title: '动漫圣地城市导览｜按目的地查找巡礼路线',
   description:
-    '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
+    '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
   alternates: buildZhAlternates({ path: '/city' }),
   openGraph: {
     type: 'website',
     url: '/city',
-    title: '城市索引',
+    title: '动漫圣地｜城市导览',
     description:
-      '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
+      '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '城市索引',
+    title: '动漫圣地｜城市导览',
     description:
-      '按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
+      '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/twitter-image'],
   },
 }

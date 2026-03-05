@@ -7,6 +7,20 @@ import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJso
 import Providers from '@/components/providers/Providers'
 import { serializeJsonLd } from '@/lib/seo/jsonld'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import { Inter, Noto_Sans_SC } from 'next/font/google'
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+})
+
+const notoSansSC = Noto_Sans_SC({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-noto-sans-sc',
+  weight: ['400', '500', '700'],
+})
 
 export const metadata: Metadata = {
   title: {
@@ -46,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const jsonLdOrg = serializeJsonLd(buildOrganizationJsonLd())
 
   return (
-    <html lang="zh">
+    <html lang="zh" className={`${inter.variable} ${notoSansSC.variable}`}>
       <body>
         <HtmlLangSync />
         <Script id="jsonld-website" type="application/ld+json" strategy="beforeInteractive">

@@ -4,6 +4,7 @@ import { splitSeoSpokePosts } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -76,13 +77,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '未找到作品', robots: { index: false, follow: false } }
   }
 
-  const title = anime?.name || canonicalId
+  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, posts, 'zh')
+  const displayName = anime?.name || canonicalId
   const summary = String(anime?.summary || '').trim()
-  const fallback = `${title} 圣地巡礼作品聚合页，汇总相关路线与文章（${posts.length} 篇），提供地图导航与点位清单。`
+  const fallback = `探索《${displayName}》动画中的真实取景地，汇总 ${posts.length} 篇圣地巡礼攻略、路线地图与机位建议。`
   const description = summary ? `${summary} ${fallback}` : fallback
 
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: {
       ...buildHreflangAlternates({
@@ -94,13 +96,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     },
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
     },
   }

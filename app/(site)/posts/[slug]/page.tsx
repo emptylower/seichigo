@@ -4,6 +4,7 @@ import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNo
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { extractSeichiRouteEmbedsFromTipTapJson } from '@/lib/route/extract'
 import { buildBlogPostingJsonLd, buildBreadcrumbListJsonLd, buildRouteItemListJsonLd } from '@/lib/seo/jsonld'
+import { buildPostFallbackTitle } from '@/lib/seo/titleBuilder'
 import { buildFAQPageJsonLd } from '@/lib/seo/faqJsonLd'
 import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
@@ -85,7 +86,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
           animeId: found.article.animeIds?.[0] || 'unknown',
           city: found.article.city || '',
         }
-  const title = String((frontmatter as any).seoTitle || frontmatter.title || 'SeichiGo')
+  const rawSeoTitle = String((frontmatter as any).seoTitle || '').trim()
+  const seoTitle = rawSeoTitle
+    ? { absolute: rawSeoTitle }
+    : buildPostFallbackTitle(
+        String(frontmatter.title || 'SeichiGo'),
+        String((frontmatter as any).animeId || ''),
+        String((frontmatter as any).city || '') || null,
+        'zh'
+      )
   const description =
     String((frontmatter as any).description || '').trim() ||
     (found.source === 'db'
@@ -93,7 +102,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         `${frontmatter.animeId} · ${frontmatter.city || ''}`.trim()
       : `${frontmatter.animeId} · ${frontmatter.city || ''}`.trim())
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: {
       canonical: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
@@ -106,13 +115,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     },
     openGraph: {
       type: 'article',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
     },
   }

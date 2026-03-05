@@ -4,23 +4,23 @@ import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '都市 — 聖地巡礼ルートを探す',
+  title: 'アニメ聖地巡礼 都市ガイド｜目的地別に巡礼スポットを探す',
   description:
-    '目的地別にアニメ聖地巡礼ルートを閲覧：スポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に旅行を計画。',
+    'アニメ聖地巡礼の都市別ガイド：東京・京都などの旅行プランに役立つスポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に計画。',
   alternates: buildJaAlternates({ zhPath: '/city' }),
   openGraph: {
     type: 'website',
     url: '/ja/city',
-    title: '都市',
+    title: 'アニメ聖地巡礼｜都市一覧',
     description:
-      '目的地別にアニメ聖地巡礼ルートを閲覧：スポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に旅行を計画。',
+      'アニメ聖地巡礼の都市別ガイド：東京・京都などの旅行プランに役立つスポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に計画。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '都市',
+    title: 'アニメ聖地巡礼｜都市一覧',
     description:
-      '目的地別にアニメ聖地巡礼ルートを閲覧：スポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に旅行を計画。',
+      'アニメ聖地巡礼の都市別ガイド：東京・京都などの旅行プランに役立つスポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に計画。',
     images: ['/twitter-image'],
   },
 }

@@ -5,6 +5,7 @@ import { buildJaAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
+import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -74,14 +75,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '作品が見つかりません', robots: { index: false, follow: false } }
   }
 
-  const title = anime?.name_ja ?? anime?.name ?? canonicalId
-  const summary = String(anime?.summary || '').trim()
-  const fallback = `${title} 聖地巡礼作品ページ。関連ルートと記事（${posts.length} 件）をまとめ、地図ナビと巡礼スポット一覧を提供。`
+  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, posts, 'ja')
+  const displayName = anime?.name_ja ?? anime?.name ?? canonicalId
+  const summary = String(anime?.summary_ja || anime?.summary || '').trim()
+  const fallback = `『${displayName}』のアニメ聖地巡礼ガイド。${posts.length}件のルート記事、交通情報、撮影アングル、マナー注意点を網羅。`
   const description = summary ? `${summary} ${fallback}` : fallback
 
   const path = `/anime/${encodeAnimeIdForPath(canonicalId)}`
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: {
       ...buildJaAlternates({
@@ -91,13 +93,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     },
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/ja${path}`,
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
     },
   }
