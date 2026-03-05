@@ -194,13 +194,13 @@ type MapStyleCandidate = {
 }
 
 function resolveImageBuildZoom(panoramaZoom: number): number {
-  if (!Number.isFinite(panoramaZoom)) return 17.5
-  return Math.max(16.8, panoramaZoom - 0.9)
+  if (!Number.isFinite(panoramaZoom)) return 17.3
+  return Math.max(16.7, panoramaZoom - 1.1)
 }
 
 function resolveImageShowZoom(panoramaZoom: number): number {
-  if (!Number.isFinite(panoramaZoom)) return 17.9
-  return Math.max(17.2, panoramaZoom - 0.5)
+  if (!Number.isFinite(panoramaZoom)) return 17.6
+  return Math.max(17.0, panoramaZoom - 0.8)
 }
 
 function isValidLatLng(lat: number, lng: number): boolean {

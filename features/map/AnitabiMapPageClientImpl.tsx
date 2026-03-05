@@ -1049,19 +1049,22 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
         const pointById = new Map<string, GeoJSON.Feature<GeoJSON.Point>>()
         for (const feature of filteredFc.features) {
-          const pointId = String((feature.properties as { pointId?: unknown } | undefined)?.pointId ?? '')
+          const props = feature.properties as { pointId?: unknown; bangumiId?: unknown } | undefined
+          const pointId = String(props?.pointId ?? '')
           if (!pointId) continue
-          pointById.set(pointId, feature as GeoJSON.Feature<GeoJSON.Point>)
+          const bangumiId = Number.parseInt(String(props?.bangumiId ?? ''), 10)
+          if (!Number.isFinite(bangumiId)) continue
+          pointById.set(`${bangumiId}:${pointId}`, feature as GeoJSON.Feature<GeoJSON.Point>)
         }
 
         const rendered = map.getLayer(COMPLETE_DOTS_LAYER_ID)
           ? map.queryRenderedFeatures({ layers: [COMPLETE_DOTS_LAYER_ID] })
           : []
 
-        const priorityThreshold = Math.pow(2, 19 - currentZoom) * 3
         const candidateByPointId = new Map<
           string,
           {
+            thumbnailKey: string;
             pointId: string;
             bangumiId: number;
             color: string;
@@ -1073,9 +1076,13 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         >()
 
         for (const hit of rendered) {
-          const rawPointId = String((hit.properties as { pointId?: unknown } | undefined)?.pointId ?? '')
-          if (!rawPointId || candidateByPointId.has(rawPointId)) continue
-          const sourceFeature = pointById.get(rawPointId)
+          const hitProps = hit.properties as { pointId?: unknown; bangumiId?: unknown } | undefined
+          const rawPointId = String(hitProps?.pointId ?? '')
+          const hitBangumiId = Number.parseInt(String(hitProps?.bangumiId ?? ''), 10)
+          if (!rawPointId || !Number.isFinite(hitBangumiId)) continue
+          const pointKey = `${hitBangumiId}:${rawPointId}`
+          if (candidateByPointId.has(pointKey)) continue
+          const sourceFeature = pointById.get(pointKey)
           if (!sourceFeature) continue
           const props = sourceFeature.properties as {
             pointId?: unknown;
@@ -1088,7 +1095,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           const imageUrl = typeof props.imageUrl === 'string' ? props.imageUrl : null
           if (!imageUrl) continue
           const priority = typeof props.priority === 'number' && Number.isFinite(props.priority) ? props.priority : 0
-          if (priority < priorityThreshold) continue
           const bangumiId = Number.parseInt(String(props.bangumiId ?? ''), 10)
           if (!Number.isFinite(bangumiId)) continue
           const color = typeof props.color === 'string' ? props.color : '#333'
@@ -1097,7 +1103,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           const geometry: [number, number] = [Number(coords[0]), Number(coords[1])]
           if (!Number.isFinite(geometry[0]) || !Number.isFinite(geometry[1])) continue
           const density = typeof props.density === 'number' && Number.isFinite(props.density) ? props.density : null
-          candidateByPointId.set(rawPointId, {
+          candidateByPointId.set(pointKey, {
+            thumbnailKey: pointKey,
             pointId: rawPointId,
             bangumiId,
             color,
@@ -1118,7 +1125,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           clearPointImageSource()
         } else {
           const loaderInput: GlobalPointFeatureProperties[] = candidates.map((candidate) => ({
-            pointId: candidate.pointId,
+            pointId: candidate.thumbnailKey,
             color: candidate.color,
             selected: 0,
             userState: 'none',
@@ -1136,7 +1143,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             if (!liveMap || !liveMap.isStyleLoaded()) return
 
             const imageFeatures: GeoJSON.Feature<GeoJSON.Point>[] = candidates
-              .filter((candidate) => loadedIds.has(`thumb-${candidate.pointId}`))
+              .filter((candidate) => loadedIds.has(`thumb-${candidate.thumbnailKey}`))
               .map((candidate) => ({
                 type: 'Feature',
                 geometry: {
@@ -1146,7 +1153,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
                 properties: {
                   pointId: candidate.pointId,
                   bangumiId: candidate.bangumiId,
-                  image: `thumb-${candidate.pointId}`,
+                  image: `thumb-${candidate.thumbnailKey}`,
                   y: candidate.geometry[1] * -1,
                   priority: candidate.priority,
                   density: candidate.density,
@@ -1527,7 +1534,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     completeAbortRef.current = null
 
     const map = mapRef.current
-    if (map) {
+    if (map && map.isStyleLoaded()) {
       const thumbImageIds = map.listImages().filter((id) => id.startsWith('thumb-'))
       for (const imageId of thumbImageIds) {
         if (map.hasImage(imageId)) {
