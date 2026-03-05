@@ -22,6 +22,14 @@ export function normalizePointThumbnailUrl(input: string | null | undefined): st
     const host = url.hostname.toLowerCase()
     const isAnitabiHost = host === 'anitabi.cn' || host.endsWith('.anitabi.cn')
     if (isAnitabiHost) {
+      // Canonicalize to image.anitabi.cn (CORS-friendly) for map icon loading.
+      if (host === 'anitabi.cn' || host === 'www.anitabi.cn') {
+        url.hostname = 'image.anitabi.cn'
+      }
+      if (url.pathname.startsWith('/images/')) {
+        url.pathname = url.pathname.slice('/images'.length)
+      }
+
       // anitabi hosts use `plan` for real thumbnail variants.
       // Keep existing plan when present; otherwise default to a small one.
       const plan = url.searchParams.get('plan')
@@ -33,6 +41,9 @@ export function normalizePointThumbnailUrl(input: string | null | undefined): st
       url.searchParams.delete('w')
       url.searchParams.delete('h')
       url.searchParams.delete('q')
+
+      // Directly use image.anitabi.cn to avoid proxy bottlenecks/timeouts.
+      return url.toString()
     }
     return toCanvasSafeImageUrl(url.toString())
   } catch {
