@@ -993,10 +993,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         imageShowZoom: focusedImageShowZoom,
       })
       if (map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
-        map.setLayerZoomRange(COMPLETE_ICONS_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, focusedImageShowZoom)
+        map.setLayerZoomRange(COMPLETE_ICONS_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, 24)
       }
       if (map.getLayer(COMPLETE_THEME_FALLBACK_LAYER_ID)) {
-        map.setLayerZoomRange(COMPLETE_THEME_FALLBACK_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, focusedImageShowZoom)
+        map.setLayerZoomRange(COMPLETE_THEME_FALLBACK_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, 24)
       }
       if (map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
         map.setLayerZoomRange(COMPLETE_POINT_IMAGES_LAYER_ID, focusedImageShowZoom, 24)
@@ -1021,7 +1021,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
       const shouldShowThemeIcons = currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
-        && currentZoom < focusedImageShowZoom
       const shouldBuildPointImages = currentZoom >= focusedImageBuildZoom
       const shouldShowPointImages = shouldBuildPointImages && currentZoom >= focusedImageShowZoom
 
