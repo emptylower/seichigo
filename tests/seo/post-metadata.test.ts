@@ -39,7 +39,7 @@ describe('post metadata', () => {
     const { generateMetadata } = await import('@/app/(site)/posts/[slug]/page')
     const meta = await generateMetadata({ params: Promise.resolve({ slug: 'btr-shimo' }) })
 
-    expect(meta.title).toBe('SEO 标题')
+    expect(meta.title).toEqual({ absolute: 'SEO 标题' })
     expect(meta.description).toBe('文章摘要')
     expect(meta.alternates?.canonical).toBe('/posts/btr-shimo')
     expect(meta.openGraph?.url).toBe('/posts/btr-shimo')

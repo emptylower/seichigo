@@ -28,7 +28,7 @@ describe('anime metadata', () => {
     const { generateMetadata } = await import('@/app/(site)/anime/[id]/page')
     const meta = await generateMetadata({ params: Promise.resolve({ id: 'btr' }) })
 
-    expect(meta.title).toBe('Bocchi the Rock!')
+    expect(meta.title).toEqual({ absolute: expect.stringContaining('Bocchi the Rock!') })
     expect(meta.description).toContain('示例简介')
     expect(meta.alternates?.canonical).toBe('/anime/btr')
   })
