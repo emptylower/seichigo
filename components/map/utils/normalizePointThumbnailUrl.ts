@@ -18,18 +18,21 @@ export function normalizePointThumbnailUrl(input: string | null | undefined): st
   if (!raw) return null
 
   try {
-    const url = new URL(raw, 'https://seichigo.com')
+    const url = new URL(raw, raw.startsWith('/') ? 'https://www.anitabi.cn' : 'https://seichigo.com')
     const host = url.hostname.toLowerCase()
     const isAnitabiHost = host === 'anitabi.cn' || host.endsWith('.anitabi.cn')
     if (isAnitabiHost) {
-      url.searchParams.delete('plan')
-      // Add resize params if not present for optimized loading
-      if (!url.searchParams.has('w')) {
-        url.searchParams.set('w', '64')
+      // anitabi hosts use `plan` for real thumbnail variants.
+      // Keep existing plan when present; otherwise default to a small one.
+      const plan = url.searchParams.get('plan')
+      if (!plan || !plan.trim()) {
+        url.searchParams.set('plan', 'h160')
       }
-      if (!url.searchParams.has('q')) {
-        url.searchParams.set('q', '60')
-      }
+      // Avoid mixing `plan` with free-form resize params that can unexpectedly
+      // return full-size assets on some anitabi hosts.
+      url.searchParams.delete('w')
+      url.searchParams.delete('h')
+      url.searchParams.delete('q')
     }
     return toCanvasSafeImageUrl(url.toString())
   } catch {

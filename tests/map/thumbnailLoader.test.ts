@@ -236,11 +236,11 @@ describe('ThumbnailLoader', () => {
     const features = [makeFeature('p1', 'https://anitabi.cn/img/test.jpg?plan=123')]
     await loader.updateViewport(features)
 
-    // The normalized URL should have ?plan removed and ?w=64&q=60 added
+    // The normalized URL should preserve plan and avoid w/q params.
     const callUrl = map.loadImage.mock.calls[0][0]
-    expect(callUrl).not.toContain('plan=123')
-    expect(callUrl).toContain('w=64')
-    expect(callUrl).toContain('q=60')
+    expect(callUrl).toContain('plan=123')
+    expect(callUrl).not.toContain('w=')
+    expect(callUrl).not.toContain('q=')
   })
 
   // 15. Multiple load failures don't affect successful loads

@@ -15,28 +15,34 @@ describe('normalizePointThumbnailUrl', () => {
     expect(normalizePointThumbnailUrl('   ')).toBe(null)
   })
 
-  it('returns URL with w=64&q=60 for anitabi.cn host', () => {
+  it('returns URL with plan=h160 for anitabi.cn host', () => {
     const input = 'https://anitabi.cn/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://anitabi.cn/image.jpg?w=64&q=60')
+    expect(result).toBe('https://anitabi.cn/image.jpg?plan=h160')
   })
 
-  it('returns URL with w=64&q=60 for subdomain.anitabi.cn host', () => {
+  it('returns URL with plan=h160 for subdomain.anitabi.cn host', () => {
     const input = 'https://cdn.anitabi.cn/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://cdn.anitabi.cn/image.jpg?w=64&q=60')
+    expect(result).toBe('https://cdn.anitabi.cn/image.jpg?plan=h160')
   })
 
-  it('removes existing plan param and adds w=64&q=60 for anitabi host', () => {
+  it('preserves existing plan param for anitabi host', () => {
     const input = 'https://anitabi.cn/image.jpg?plan=h160'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://anitabi.cn/image.jpg?w=64&q=60')
+    expect(result).toBe('https://anitabi.cn/image.jpg?plan=h160')
   })
 
-  it('preserves existing w and q params for anitabi host', () => {
+  it('drops w and q params and forces plan for anitabi host', () => {
     const input = 'https://anitabi.cn/image.jpg?w=128&q=90'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://anitabi.cn/image.jpg?w=128&q=90')
+    expect(result).toBe('https://anitabi.cn/image.jpg?plan=h160')
+  })
+
+  it('preserves plan and drops resize params for anitabi host', () => {
+    const input = 'https://anitabi.cn/image.jpg?plan=h320&w=128&q=90'
+    const result = normalizePointThumbnailUrl(input)
+    expect(result).toBe('https://anitabi.cn/image.jpg?plan=h320')
   })
 
   it('returns original URL for non-anitabi host', () => {
@@ -52,9 +58,9 @@ describe('normalizePointThumbnailUrl', () => {
     expect(result).toBe('https://seichigo.com/not-a-valid-url')
   })
 
-  it('handles relative URL by converting to absolute with base', () => {
+  it('handles relative URL by converting to absolute anitabi URL', () => {
     const input = '/path/to/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://seichigo.com/path/to/image.jpg')
+    expect(result).toBe('https://www.anitabi.cn/path/to/image.jpg?plan=h160')
   })
 })
