@@ -56,23 +56,35 @@ export default function MapLoadingProgress({
       aria-valuenow={width}
       aria-valuemin={0}
       aria-valuemax={100}
+      aria-valuetext={`${label} ${displayPercent}%${hint ? `，${hint}` : ''}`}
     >
-      <div className="overflow-hidden rounded-2xl border border-white/30 bg-slate-900/34 px-3 py-2.5 shadow-[0_12px_34px_rgba(15,23,42,0.28)] backdrop-blur-lg">
-        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-white/90">
-          <span className="line-clamp-1">{label}</span>
-          <span className="text-white/75">{displayPercent}%</span>
+      <div className="relative overflow-hidden rounded-2xl border border-white/30 bg-slate-900/75 px-3.5 py-3 shadow-[0_14px_38px_rgba(15,23,42,0.38)] backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-slate-900/60">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(255,255,255,0.24),rgba(255,255,255,0)_52%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+        <div className="relative">
+          <div className="flex items-center justify-between gap-2 text-xs font-semibold text-white">
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-300 shadow-[0_0_0_3px_rgba(244,114,182,0.24)]" />
+              <span className="line-clamp-1">{label}</span>
+            </span>
+            <span className="rounded-full border border-white/40 bg-black/25 px-2 py-0.5 text-[11px] text-white">
+              {displayPercent}%
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/20 bg-black/30">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r from-brand-200 via-brand-400 to-brand-500 shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_2px_12px_rgba(236,72,153,0.55)] transition-[width,opacity] duration-300 ease-out ${
+                isComplete ? 'opacity-0' : 'opacity-100'
+              }`}
+              style={{ width: `${width}%` }}
+            />
+          </div>
+          {hint ? (
+            <div className="mt-2 rounded-md border border-white/20 bg-black/20 px-2 py-1 text-[11px] text-white/90">
+              <div className="line-clamp-1">{hint}</div>
+            </div>
+          ) : null}
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/25">
-          <div
-            className={`h-full rounded-full bg-gradient-to-r from-brand-300 via-brand-400 to-brand-500 transition-all duration-300 ease-out ${
-              isComplete ? 'opacity-0' : 'opacity-100'
-            }`}
-            style={{ width: `${width}%` }}
-          />
-        </div>
-        {hint ? (
-          <div className="mt-1.5 line-clamp-1 text-[11px] text-white/70">{hint}</div>
-        ) : null}
       </div>
     </div>
   )
