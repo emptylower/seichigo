@@ -4,7 +4,10 @@ import { withSentryConfig } from '@sentry/nextjs'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
-    remotePatterns: [],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'www.anitabi.cn' },
+      { protocol: 'https', hostname: 'anitabi.cn' },
+    ],
   },
   async headers() {
     const noIndexHeaders = [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
