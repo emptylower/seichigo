@@ -32,6 +32,7 @@ import {
   COMPLETE_BANGUMI_COVERS_LAYER_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
+  COMPLETE_THEME_FALLBACK_LAYER_ID,
   COMPLETE_POINT_IMAGES_LAYER_ID,
   ensureCompleteModeSources,
   ensureCompleteModeSymbolLayer,
@@ -978,13 +979,28 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     try {
       const currentZoom = map.getZoom()
       const detailBangumiId = detailRef.current?.card.id ?? null
+      const focusedImageShowZoom = detailBangumiId == null
+        ? completeImageShowZoom
+        : Math.max(COMPLETE_DETAIL_THEME_MIN_ZOOM + 0.2, completeImageShowZoom - 0.9)
+      const focusedImageBuildZoom = detailBangumiId == null
+        ? completeImageBuildZoom
+        : Math.max(COMPLETE_DETAIL_THEME_MIN_ZOOM, completeImageBuildZoom - 0.9)
 
       ensureCompleteModeSources(map)
       ensureCompleteModeSymbolLayer(map, {
         avatarMaxZoom: COMPLETE_AVATAR_MAX_ZOOM,
         detailThemeMinZoom: COMPLETE_DETAIL_THEME_MIN_ZOOM,
-        imageShowZoom: completeImageShowZoom,
+        imageShowZoom: focusedImageShowZoom,
       })
+      if (map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
+        map.setLayerZoomRange(COMPLETE_ICONS_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, focusedImageShowZoom)
+      }
+      if (map.getLayer(COMPLETE_THEME_FALLBACK_LAYER_ID)) {
+        map.setLayerZoomRange(COMPLETE_THEME_FALLBACK_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, focusedImageShowZoom)
+      }
+      if (map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
+        map.setLayerZoomRange(COMPLETE_POINT_IMAGES_LAYER_ID, focusedImageShowZoom, 24)
+      }
       updateCompleteModeSources(map, fc)
 
       const coverBase = completeCoverFeatureCollectionRef.current
@@ -1005,9 +1021,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
       const shouldShowThemeIcons = currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
-        && currentZoom < completeImageShowZoom
-      const shouldBuildPointImages = currentZoom >= completeImageBuildZoom
-      const shouldShowPointImages = shouldBuildPointImages && currentZoom >= completeImageShowZoom
+        && currentZoom < focusedImageShowZoom
+      const shouldBuildPointImages = currentZoom >= focusedImageBuildZoom
+      const shouldShowPointImages = shouldBuildPointImages && currentZoom >= focusedImageShowZoom
 
       updateCompleteModeLayerVisibility(map, {
         showCovers: shouldShowCovers,
@@ -1026,8 +1042,16 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           })
         }
 
+        const featurePool = detailBangumiId == null
+          ? fc.features
+          : fc.features.filter((feature) => {
+              const props = feature.properties as { bangumiId?: unknown } | undefined
+              const bangumiId = Number.parseInt(String(props?.bangumiId ?? ''), 10)
+              return Number.isFinite(bangumiId) && bangumiId === detailBangumiId
+            })
+
         const pointById = new Map<string, GeoJSON.Feature<GeoJSON.Point>>()
-        for (const feature of fc.features) {
+        for (const feature of featurePool) {
           const props = feature.properties as { pointId?: unknown; bangumiId?: unknown } | undefined
           const pointId = String(props?.pointId ?? '')
           if (!pointId) continue
@@ -1059,6 +1083,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           const rawPointId = String(hitProps?.pointId ?? '')
           const hitBangumiId = Number.parseInt(String(hitProps?.bangumiId ?? ''), 10)
           if (!rawPointId || !Number.isFinite(hitBangumiId)) continue
+          if (detailBangumiId != null && hitBangumiId !== detailBangumiId) continue
           const pointKey = `${hitBangumiId}:${rawPointId}`
           if (candidateByPointId.has(pointKey)) continue
           const sourceFeature = pointById.get(pointKey)
@@ -2943,6 +2968,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     const completeLayerIds = () => [
       COMPLETE_POINT_IMAGES_LAYER_ID,
       COMPLETE_ICONS_LAYER_ID,
+      COMPLETE_THEME_FALLBACK_LAYER_ID,
       COMPLETE_BANGUMI_COVERS_LAYER_ID,
       COMPLETE_DOTS_LAYER_ID,
     ].filter((id) => Boolean(map.getLayer(id)))

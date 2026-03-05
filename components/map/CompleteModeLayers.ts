@@ -18,6 +18,7 @@ import type * as maplibregl from 'maplibre-gl';
 // ---------------------------------------------------------------------------
 export const COMPLETE_POINTS_SOURCE_ID = 'complete-points';
 export const COMPLETE_DOTS_LAYER_ID = 'complete-dots';
+export const COMPLETE_THEME_FALLBACK_LAYER_ID = 'complete-icons-fallback';
 export const COMPLETE_THEME_ICONS_LAYER_ID = 'complete-icons';
 export const COMPLETE_ICONS_LAYER_ID = COMPLETE_THEME_ICONS_LAYER_ID; // backward-compatible alias
 export const COMPLETE_POINT_IMAGES_SOURCE_ID = 'complete-point-images-source';
@@ -123,6 +124,33 @@ export function buildThemeSymbolLayerSpec(
   } as maplibregl.LayerSpecification;
 }
 
+export function buildThemeFallbackLayerSpec(
+  detailThemeMinZoom = 15.8,
+  imageShowZoom = 17.9,
+): maplibregl.LayerSpecification {
+  const filter: maplibregl.FilterSpecification = [
+    'all',
+    ZOOM_PRIORITY_FILTER,
+    ['==', ['get', 'icon'], ''],
+  ] as unknown as maplibregl.FilterSpecification;
+
+  return {
+    id: COMPLETE_THEME_FALLBACK_LAYER_ID,
+    type: 'circle',
+    source: COMPLETE_POINTS_SOURCE_ID,
+    minzoom: detailThemeMinZoom,
+    maxzoom: imageShowZoom,
+    filter,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], detailThemeMinZoom, 5.1, imageShowZoom, 6.4],
+      'circle-color': ['get', 'color'],
+      'circle-stroke-width': 1.6,
+      'circle-stroke-color': '#ffffff',
+      'circle-opacity': 0.92,
+    },
+  } as maplibregl.LayerSpecification;
+}
+
 /**
  * Legacy symbol layer builder kept for compatibility with existing tests/tools.
  * Runtime complete-mode rendering uses `buildThemeSymbolLayerSpec`.
@@ -213,6 +241,9 @@ export function ensureCompleteModeSymbolLayer(
   if (!map.getLayer(COMPLETE_DOTS_LAYER_ID)) {
     map.addLayer(buildDotsLayerSpec());
   }
+  if (!map.getLayer(COMPLETE_THEME_FALLBACK_LAYER_ID)) {
+    map.addLayer(buildThemeFallbackLayerSpec(detailThemeMinZoom, imageShowZoom));
+  }
   if (!map.getLayer(COMPLETE_THEME_ICONS_LAYER_ID)) {
     map.addLayer(buildThemeSymbolLayerSpec(detailThemeMinZoom, imageShowZoom));
   }
@@ -279,6 +310,7 @@ export function updateCompleteModeLayerVisibility(
   visibility: CompleteModeVisibilityState,
 ): void {
   setLayerVisibility(map, COMPLETE_BANGUMI_COVERS_LAYER_ID, visibility.showCovers);
+  setLayerVisibility(map, COMPLETE_THEME_FALLBACK_LAYER_ID, visibility.showThemeIcons);
   setLayerVisibility(map, COMPLETE_THEME_ICONS_LAYER_ID, visibility.showThemeIcons);
   setLayerVisibility(map, COMPLETE_POINT_IMAGES_LAYER_ID, visibility.showPointImages);
   // Dots stay visible as a resilient fallback.
@@ -319,6 +351,9 @@ export function updateCompleteModeCoverSource(
 export function removeCompleteModeLayers(map: maplibregl.Map): void {
   if (map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
     map.removeLayer(COMPLETE_POINT_IMAGES_LAYER_ID);
+  }
+  if (map.getLayer(COMPLETE_THEME_FALLBACK_LAYER_ID)) {
+    map.removeLayer(COMPLETE_THEME_FALLBACK_LAYER_ID);
   }
   if (map.getLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID)) {
     map.removeLayer(COMPLETE_BANGUMI_COVERS_LAYER_ID);
