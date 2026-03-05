@@ -188,7 +188,7 @@ export function buildCitySeoTitle(
  */
 export function buildPostFallbackTitle(
   title: string,
-  animeId: string | null | undefined,
+  _animeId: string | null | undefined,
   city: string | null | undefined,
   locale: Locale
 ): { absolute: string } {
