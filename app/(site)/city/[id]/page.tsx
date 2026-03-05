@@ -2,9 +2,11 @@ import { getCityBySlugOrRedirect } from '@/lib/city/db'
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { listPublishedDbPostsByCityId } from '@/lib/city/posts'
 import { prisma } from '@/lib/db/prisma'
+import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
+import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -51,11 +53,25 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '未找到城市', robots: { index: false, follow: false } }
   }
 
-  const title = city.name_zh
-  const description = city.description_zh || `${title} 圣地巡礼路线聚合页，汇总相关路线与文章，提供地图导航与点位清单。`
+  // Fetch posts to get related anime names for SEO title
+  const cityPostsForMeta = await listPublishedDbPostsByCityId(city.id, 'zh').catch(() => [])
+  const uniqueAnimeIds = [...new Set(
+    cityPostsForMeta
+      .flatMap((p: any) => Array.isArray(p.animeIds) ? p.animeIds : [])
+      .filter((id: string) => id && id !== 'unknown')
+  )].slice(0, 3)
+  const allAnime = uniqueAnimeIds.length > 0 ? await getAllAnime().catch(() => []) : []
+  const animeNames = uniqueAnimeIds
+    .map((id: string) => allAnime.find((a) => a.id === id)?.name)
+    .filter((n): n is string => Boolean(n))
+
+  const seoTitle = buildCitySeoTitle(city, animeNames, 'zh')
+  const topAnimeStr = animeNames.slice(0, 2).map((n) => `《${n}》`).join('')
+  const description = city.description_zh || 
+    `${city.name_zh} 动漫圣地巡礼路线聚合,汇总${topAnimeStr}等作品的取景地点清单、路线建议与地图导航入口。`
 
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: {
       ...buildHreflangAlternates({
@@ -67,13 +83,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     },
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/city/${encodeURIComponent(city.slug)}`,
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
     },
   }

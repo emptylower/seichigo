@@ -4,6 +4,7 @@ import { splitSeoSpokePosts } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -59,14 +60,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: 'Anime not found', robots: { index: false, follow: false } }
   }
 
-  const title = anime?.name_en ?? anime?.name ?? canonicalId
-  const summary = String(anime?.summary || '').trim()
-  const fallback = `Pilgrimage hub page for ${title}. ${posts.length} posts available.`
+  const seoTitle = buildAnimeSeoTitle(anime ?? { name: canonicalId }, posts, 'en')
+  const displayName = anime?.name_en ?? anime?.name ?? canonicalId
+  const summary = String(anime?.summary_en || anime?.summary || '').trim()
+  const fallback = `Explore ${posts.length} real-world anime pilgrimage spots from ${displayName}. Detailed route maps, transit info & photography tips for your anime tourism in Japan.`
   const description = summary ? `${summary} ${fallback}` : fallback
 
   const path = `/anime/${encodeAnimeIdForPath(canonicalId)}`
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: {
       ...buildHreflangAlternates({
@@ -78,14 +80,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     },
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/en${path}`,
       images: ['/opengraph-image'],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
       images: ['/twitter-image'],
     },

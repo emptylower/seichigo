@@ -5,6 +5,8 @@ import { prisma } from '@/lib/db/prisma'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildJaAlternates } from '@/lib/seo/alternates'
+import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
+import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -40,11 +42,26 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '都市が見つかりません', robots: { index: false, follow: false } }
   }
 
-  const title = city.name_ja || city.name_en || city.name_zh
-  const description = city.description_ja || city.description_zh || city.description_en || `${title}の聖地巡礼ルートとスポットリスト。`
+  const cityPostsForMeta = await listPublishedDbPostsByCityId(city.id, 'ja').catch(() => [])
+  const uniqueAnimeIds = [...new Set(
+    cityPostsForMeta
+      .flatMap((p: any) => Array.isArray(p.animeIds) ? p.animeIds : [])
+      .filter((id: string) => id && id !== 'unknown')
+  )].slice(0, 3)
+  const allAnime = uniqueAnimeIds.length > 0 ? await getAllAnime().catch(() => []) : []
+  const animeNames = uniqueAnimeIds
+    .map((id: string) => allAnime.find((a) => a.id === id)?.name_ja ?? allAnime.find((a) => a.id === id)?.name)
+    .filter((n): n is string => Boolean(n))
+
+
+  const seoTitle = buildCitySeoTitle(city, animeNames, 'ja')
+  const displayCity = city.name_ja || city.name_en || city.name_zh
+  const topAnimeStr = animeNames.slice(0, 2).map((n) => `『${n}』`).join('')
+  const description = city.description_ja || city.description_zh || city.description_en ||
+    `${displayCity}のアニメ聖地巡礼ルートページ。${topAnimeStr || ''}などの聖地スポット、交通情報、マップリンクを集約。`
 
   return {
-    title,
+    title: seoTitle,
     description,
     alternates: buildJaAlternates({
       zhPath: `/city/${encodeURIComponent(city.slug)}`,
@@ -52,14 +69,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     }),
     openGraph: {
       type: 'website',
-      title,
+      title: seoTitle.absolute,
       description,
       url: `/ja/city/${encodeURIComponent(city.slug)}`,
       images: ['/opengraph-image'],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: seoTitle.absolute,
       description,
       images: ['/twitter-image'],
     },
