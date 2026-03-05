@@ -8,6 +8,7 @@ import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
+import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -149,14 +150,14 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
     { name: city.name_zh, url: canonicalUrl },
   ])
 
-  const placeJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Place',
+  const touristAttractionJsonLd = buildTouristAttractionJsonLd({
     name: city.name_zh,
-    ...(city.description_zh ? { description: city.description_zh } : {}),
-    ...(city.name_en || city.name_ja ? { alternateName: [city.name_en, city.name_ja].filter(Boolean) } : {}),
-    ...(canonicalUrl ? { url: canonicalUrl } : {}),
-  }
+    description: city.description_zh || null,
+    url: canonicalUrl,
+    touristType: '动漫圣地巡礼',
+    inLanguage: 'zh',
+    alternateName: [city.name_en, city.name_ja].filter((n): n is string => Boolean(n)),
+  })
 
   const heroCover = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
   const heroDescription = city.description_zh || `${city.name_zh} 圣地巡礼路线聚合页，汇总相关路线与文章，提供地图导航与点位清单。`
@@ -175,7 +176,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
       {breadcrumbJsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
       ) : null}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(placeJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(touristAttractionJsonLd) }} />
 
       <div className="space-y-8">
         <Breadcrumbs
