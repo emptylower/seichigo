@@ -516,8 +516,41 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
     if (mapViewMode !== 'map') return
-    if (!selectedPointPanorama) return
     if (autoPanoramaDismissedRef.current) return
+
+    if (!selectedPointPanorama) {
+      // Fallback: when a bangumi detail is open but no specific point is selected,
+      // auto-pick the nearest point that supports panorama at high zoom.
+      if (selectedPointIdRef.current) return
+      const detailCard = detailRef.current
+      if (!detailCard) return
+      const center = mapRef.current?.getCenter()
+      let nearestPointId: string | null = null
+      let nearestDistance = Number.POSITIVE_INFINITY
+      let firstAvailablePointId: string | null = null
+
+      for (const point of detailCard.points) {
+        if (!resolvePanoramaEmbed(point)) continue
+        const pointId = String(point.id || '')
+        if (!pointId) continue
+        if (!firstAvailablePointId) firstAvailablePointId = pointId
+        if (!center || !isValidGeoPair(point.geo)) continue
+        const dLat = point.geo[0] - center.lat
+        const dLng = point.geo[1] - center.lng
+        const distance = dLat * dLat + dLng * dLng
+        if (distance < nearestDistance) {
+          nearestDistance = distance
+          nearestPointId = pointId
+        }
+      }
+
+      const targetPointId = nearestPointId || firstAvailablePointId
+      if (!targetPointId) return
+      setDetailCardMode('point')
+      setSelectedPointId(targetPointId)
+      return
+    }
+
     setPanoramaError(null)
     setMapViewMode('panorama')
   }, [mapViewMode, mapZoom, selectedPointPanorama])
