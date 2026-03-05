@@ -5,19 +5,19 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: { absolute: 'SeichiGo — アニメ聖地巡礼ガイド' },
-  description: '読みやすい長文、美しいレイアウト、実用的なスポットリストで、アニメファンの初めての聖地巡礼の計画をサポートし、ナビゲーション可能なルートポイントリストを提供します。',
+  description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
   alternates: buildJaAlternates({ zhPath: '/' }),
   openGraph: {
     type: 'website',
     url: '/ja',
     title: 'SeichiGo — アニメ聖地巡礼ガイド',
-    description: '読みやすい長文、美しいレイアウト、実用的なスポットリストで、アニメファンの初めての聖地巡礼の計画をサポートし、ナビゲーション可能なルートポイントリストを提供します。',
+    description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'SeichiGo — アニメ聖地巡礼ガイド',
-    description: '読みやすい長文、美しいレイアウト、実用的なスポットリストで、アニメファンの初めての聖地巡礼の計画をサポートし、ナビゲーション可能なルートポイントリストを提供します。',
+    description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
     images: ['/twitter-image'],
   },
 }

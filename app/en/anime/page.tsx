@@ -6,23 +6,23 @@ import AnimeCard from '@/components/anime/AnimeCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Anime — browse pilgrimage hubs',
+  title: 'Anime Pilgrimage Index | Browse by Anime Title',
   description:
-    'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
+    'Browse anime pilgrimage guides by title: each work page aggregates real-world filming locations, route maps, spot lists, and photography tips for Japan anime tourism.',
   alternates: buildEnAlternates({ zhPath: '/anime' }),
   openGraph: {
     type: 'website',
     url: '/en/anime',
-    title: 'Anime — browse pilgrimage hubs',
+    title: 'Anime Pilgrimage Index',
     description:
-      'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
+      'Browse anime pilgrimage guides by title: each work page aggregates real-world filming locations, route maps, spot lists, and photography tips for Japan anime tourism.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Anime — browse pilgrimage hubs',
+    title: 'Anime Pilgrimage Index',
     description:
-      'Browse published anime pilgrimage hubs: each work page aggregates related posts, spot lists, photography tips, and navigation-ready map links for planning.',
+      'Browse anime pilgrimage guides by title: each work page aggregates real-world filming locations, route maps, spot lists, and photography tips for Japan anime tourism.',
     images: ['/twitter-image'],
   },
 }

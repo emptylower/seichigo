@@ -4,23 +4,23 @@ import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Cities — browse pilgrimage routes',
+  title: 'Anime Pilgrimage Cities | Japan Travel by Destination',
   description:
-    'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
+    'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
   alternates: buildEnAlternates({ zhPath: '/city' }),
   openGraph: {
     type: 'website',
     url: '/en/city',
-    title: 'Cities',
+    title: 'Anime Pilgrimage Cities',
     description:
-      'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
+      'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Cities',
+    title: 'Anime Pilgrimage Cities',
     description:
-      'Browse anime pilgrimage routes by destination: explore city pages with spot lists, route summaries, and map navigation links to plan your trip efficiently.',
+      'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
     images: ['/twitter-image'],
   },
 }

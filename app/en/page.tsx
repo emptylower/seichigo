@@ -5,19 +5,19 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: { absolute: 'SeichiGo — Anime Pilgrimage Guides' },
-  description: 'Long-form anime pilgrimage guides with practical spot lists, route maps, and photography tips.',
+  description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
   alternates: buildEnAlternates({ zhPath: '/' }),
   openGraph: {
     type: 'website',
     url: '/en',
     title: 'SeichiGo — Anime Pilgrimage Guides',
-    description: 'Long-form anime pilgrimage guides with practical spot lists, route maps, and photography tips.',
+    description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'SeichiGo — Anime Pilgrimage Guides',
-    description: 'Long-form anime pilgrimage guides with practical spot lists, route maps, and photography tips.',
+    description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
     images: ['/twitter-image'],
   },
 }
