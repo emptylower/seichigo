@@ -23,6 +23,7 @@ export class ThumbnailLoader {
   private readonly lru = new Map<string, number>()
   private accessCounter = 0
   private loadTimes: number[] = []
+  private updateQueue: Promise<void> = Promise.resolve()
 
   constructor(options: ThumbnailLoaderOptions) {
     this.map = options.map
@@ -32,56 +33,65 @@ export class ThumbnailLoader {
   async updateViewport(
     visibleFeatures: GlobalPointFeatureProperties[]
   ): Promise<Set<string>> {
-    const seen = new Set<string>()
-    const uniqueFeatures: GlobalPointFeatureProperties[] = []
-    for (const f of visibleFeatures) {
-      if (!seen.has(f.pointId)) {
-        seen.add(f.pointId)
-        uniqueFeatures.push(f)
-      }
-    }
+    let snapshot = new Set<string>()
 
-    const toLoad: { imageId: string; url: string }[] = []
-
-    for (const feature of uniqueFeatures) {
-      const url = normalizePointThumbnailUrl(feature.imageUrl)
-      if (!url) continue
-
-      const imageId = `thumb-${feature.pointId}`
-
-      const imageStillOnMap = typeof this.map.hasImage === 'function'
-        ? this.map.hasImage(imageId)
-        : true
-      if (this.lru.has(imageId) && imageStillOnMap) {
-        this.lru.set(imageId, ++this.accessCounter)
-      } else {
-        if (this.lru.has(imageId) && !imageStillOnMap) {
-          this.lru.delete(imageId)
+    const run = async () => {
+      const seen = new Set<string>()
+      const uniqueFeatures: GlobalPointFeatureProperties[] = []
+      for (const f of visibleFeatures) {
+        if (!seen.has(f.pointId)) {
+          seen.add(f.pointId)
+          uniqueFeatures.push(f)
         }
-        toLoad.push({ imageId, url })
       }
+
+      const toLoad: { imageId: string; url: string }[] = []
+
+      for (const feature of uniqueFeatures) {
+        const url = normalizePointThumbnailUrl(feature.imageUrl)
+        if (!url) continue
+
+        const imageId = `thumb-${feature.pointId}`
+
+        const imageStillOnMap = typeof this.map.hasImage === 'function'
+          ? this.map.hasImage(imageId)
+          : true
+        if (this.lru.has(imageId) && imageStillOnMap) {
+          this.lru.set(imageId, ++this.accessCounter)
+        } else {
+          if (this.lru.has(imageId) && !imageStillOnMap) {
+            this.lru.delete(imageId)
+          }
+          toLoad.push({ imageId, url })
+        }
+      }
+
+      await this.loadBatch(toLoad)
+
+      this.evict()
+
+      // Log when cap is reached
+      if (this.lru.size >= this.maxLoaded) {
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug(`[ThumbnailLoader] Cap reached: ${this.lru.size}/${this.maxLoaded}`)
+        }
+      }
+
+      // Memory guard (Chrome only)
+      if (this.lru.size > 100 && typeof performance !== 'undefined' && (performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory) {
+        const mem = (performance as unknown as { memory: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug(`[ThumbnailLoader] Heap: ${(mem.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1024 / 1024).toFixed(1)}MB`)
+        }
+      }
+
+      snapshot = new Set(this.lru.keys())
     }
 
-    await this.loadBatch(toLoad)
-
-    this.evict()
-
-    // Log when cap is reached
-    if (this.lru.size >= this.maxLoaded) {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug(`[ThumbnailLoader] Cap reached: ${this.lru.size}/${this.maxLoaded}`)
-      }
-    }
-
-    // Memory guard (Chrome only)
-    if (this.lru.size > 100 && typeof performance !== 'undefined' && (performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory) {
-      const mem = (performance as unknown as { memory: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug(`[ThumbnailLoader] Heap: ${(mem.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1024 / 1024).toFixed(1)}MB`)
-      }
-    }
-
-    return new Set(this.lru.keys())
+    const queued = this.updateQueue.then(run, run)
+    this.updateQueue = queued.then(() => undefined, () => undefined)
+    await queued
+    return snapshot
   }
 
   private async loadBatch(
@@ -105,7 +115,11 @@ export class ThumbnailLoader {
             this.loadTimes.shift()
           }
         } catch {
-          // Failed loads are silently skipped
+          // In fast successive updates, a concurrent run may already have
+          // inserted the same image. Treat it as loaded in that case.
+          if (typeof this.map.hasImage === 'function' && this.map.hasImage(current.imageId)) {
+            this.lru.set(current.imageId, ++this.accessCounter)
+          }
         }
       }
     }
