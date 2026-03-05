@@ -4,6 +4,7 @@ const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
+    './features/**/*.{ts,tsx}',
     './content/**/*.{md,mdx}',
   ],
   theme: {
@@ -33,4 +34,3 @@ const config: Config = {
 }
 
 export default config
-
