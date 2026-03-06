@@ -3,6 +3,7 @@ import { createGlobalFeatureCollection } from '@/components/map/utils/globalFeat
 import { cutSpriteSheet } from '@/components/map/utils/spriteRenderer';
 import {
   COMPLETE_POINTS_SOURCE_ID,
+  COMPLETE_THEME_SOURCE_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
   buildCompleteSourceSpec,
@@ -193,13 +194,14 @@ describe('Complete Mode Integration', () => {
 
       const map = createMockMap();
       map.addSource(COMPLETE_POINTS_SOURCE_ID, sourceSpec);
+      map.addSource(COMPLETE_THEME_SOURCE_ID, sourceSpec);
       for (const [key, { imageData }] of spriteMap) {
         map.addImage(key, imageData);
       }
       map.addLayer(dotsLayer);
       map.addLayer(symbolLayer);
 
-      expect(map._state.sources.size).toBe(1);
+      expect(map._state.sources.size).toBe(2);
       expect(map._state.layers.size).toBe(2);
       expect(map._state.images.size).toBe(3);
     });
@@ -210,12 +212,13 @@ describe('Complete Mode Integration', () => {
       const map = createMockMap();
 
       map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
+      map.addSource(COMPLETE_THEME_SOURCE_ID, buildCompleteSourceSpec());
       map.addLayer(buildDotsLayerSpec());
       map.addLayer(buildSymbolLayerSpec());
       map.addImage('sprite-123-pt-0', new MockImageData(100, 89));
       map.addImage('sprite-123-pt-1', new MockImageData(100, 89));
 
-      expect(map._state.sources.size).toBe(1);
+      expect(map._state.sources.size).toBe(2);
       expect(map._state.layers.size).toBe(2);
       expect(map._state.images.size).toBe(2);
 
@@ -227,6 +230,9 @@ describe('Complete Mode Integration', () => {
       }
       if (map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
         map.removeSource(COMPLETE_POINTS_SOURCE_ID);
+      }
+      if (map.getSource(COMPLETE_THEME_SOURCE_ID)) {
+        map.removeSource(COMPLETE_THEME_SOURCE_ID);
       }
       if (map.hasImage('sprite-123-pt-0')) {
         map.removeImage('sprite-123-pt-0');
@@ -252,6 +258,7 @@ describe('Complete Mode Integration', () => {
       const spriteMap = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
 
       map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
+      map.addSource(COMPLETE_THEME_SOURCE_ID, buildCompleteSourceSpec());
       map.addLayer(buildDotsLayerSpec());
       map.addLayer(buildSymbolLayerSpec());
       for (const [key, { imageData }] of spriteMap) {
@@ -267,6 +274,7 @@ describe('Complete Mode Integration', () => {
 
       if (map.isStyleLoaded() && !map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
         map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
+        map.addSource(COMPLETE_THEME_SOURCE_ID, buildCompleteSourceSpec());
         map.addLayer(buildDotsLayerSpec());
         map.addLayer(buildSymbolLayerSpec());
         for (const [key, { imageData }] of spriteMap) {
@@ -274,7 +282,7 @@ describe('Complete Mode Integration', () => {
         }
       }
 
-      expect(map._state.sources.size).toBe(1);
+      expect(map._state.sources.size).toBe(2);
       expect(map._state.layers.size).toBe(2);
       expect(map._state.images.size).toBe(2);
     });

@@ -39,6 +39,7 @@ import {
   updateCompleteModeLayerVisibility,
   updateCompleteModePointImageSource,
   updateCompleteModeSources,
+  updateCompleteModeThemeSource,
   updateCompleteModeCoverSource,
   removeCompleteModeLayers,
   ensureLabelLayer,
@@ -949,6 +950,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       updateCompleteModePointImageSource(map, { type: 'FeatureCollection', features: [] })
     }
 
+    const clearThemeSource = () => {
+      updateCompleteModeThemeSource(map, { type: 'FeatureCollection', features: [] })
+    }
+
     const fc = completeFeatureCollectionRef.current
     // In simple mode, hide complete mode
     if (mapModeRef.current === 'simple') {
@@ -1021,10 +1026,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       }
 
       const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
-      const shouldShowThemeIcons = currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
+      const shouldShowThemeIcons = detailBangumiId != null
+        && currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
         && currentZoom < COMPLETE_DETAIL_THEME_MAX_ZOOM
-      const shouldBuildPointImages = currentZoom >= focusedImageBuildZoom
+      const shouldPopulateThemeSource = shouldShowThemeIcons
+      const shouldBuildPointImages = detailBangumiId != null && currentZoom >= focusedImageBuildZoom
       const shouldShowPointImages = shouldBuildPointImages && currentZoom >= focusedImageShowZoom
+
+      if (!shouldPopulateThemeSource) {
+        clearThemeSource()
+      } else {
+        const themeFeatures = fc.features.filter((feature) => {
+          const props = feature.properties as { bangumiId?: unknown } | undefined
+          const bangumiId = Number.parseInt(String(props?.bangumiId ?? ''), 10)
+          return Number.isFinite(bangumiId) && bangumiId === detailBangumiId
+        })
+        updateCompleteModeThemeSource(map, {
+          type: 'FeatureCollection',
+          features: themeFeatures,
+        })
+      }
 
       updateCompleteModeLayerVisibility(map, {
         showCovers: shouldShowCovers,
@@ -1035,6 +1056,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (!shouldBuildPointImages) {
         completePointImageSyncTokenRef.current += 1
         clearPointImageSource()
+        if (detailBangumiId == null) {
+          clearThumbImages()
+        }
       } else {
         if (!completePointImageLoaderRef.current) {
           completePointImageLoaderRef.current = new ThumbnailLoader({
@@ -1043,13 +1067,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           })
         }
 
-        const featurePool = detailBangumiId == null
-          ? fc.features
-          : fc.features.filter((feature) => {
-              const props = feature.properties as { bangumiId?: unknown } | undefined
-              const bangumiId = Number.parseInt(String(props?.bangumiId ?? ''), 10)
-              return Number.isFinite(bangumiId) && bangumiId === detailBangumiId
-            })
+        const featurePool = fc.features.filter((feature) => {
+          const props = feature.properties as { bangumiId?: unknown } | undefined
+          const bangumiId = Number.parseInt(String(props?.bangumiId ?? ''), 10)
+          return Number.isFinite(bangumiId) && bangumiId === detailBangumiId
+        })
 
         const pointById = new Map<string, GeoJSON.Feature<GeoJSON.Point>>()
         for (const feature of featurePool) {

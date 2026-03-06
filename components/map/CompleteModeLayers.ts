@@ -17,6 +17,7 @@ import type * as maplibregl from 'maplibre-gl';
 // Source & Layer IDs
 // ---------------------------------------------------------------------------
 export const COMPLETE_POINTS_SOURCE_ID = 'complete-points';
+export const COMPLETE_THEME_SOURCE_ID = 'complete-theme-source';
 export const COMPLETE_DOTS_LAYER_ID = 'complete-dots';
 export const COMPLETE_THEME_FALLBACK_LAYER_ID = 'complete-icons-fallback';
 export const COMPLETE_THEME_ICONS_LAYER_ID = 'complete-icons';
@@ -107,7 +108,7 @@ export function buildThemeSymbolLayerSpec(
   return {
     id: COMPLETE_THEME_ICONS_LAYER_ID,
     type: 'symbol',
-    source: COMPLETE_POINTS_SOURCE_ID,
+    source: COMPLETE_THEME_SOURCE_ID,
     minzoom: detailThemeMinZoom,
     maxzoom: imageShowZoom,
     filter,
@@ -137,7 +138,7 @@ export function buildThemeFallbackLayerSpec(
   return {
     id: COMPLETE_THEME_FALLBACK_LAYER_ID,
     type: 'circle',
-    source: COMPLETE_POINTS_SOURCE_ID,
+    source: COMPLETE_THEME_SOURCE_ID,
     minzoom: detailThemeMinZoom,
     maxzoom: imageShowZoom,
     filter,
@@ -159,7 +160,7 @@ export function buildSymbolLayerSpec(): maplibregl.LayerSpecification {
   return {
     id: COMPLETE_ICONS_LAYER_ID,
     type: 'symbol',
-    source: COMPLETE_POINTS_SOURCE_ID,
+    source: COMPLETE_THEME_SOURCE_ID,
     filter: ZOOM_PRIORITY_FILTER,
     layout: {
       'icon-image': ['get', 'icon'],
@@ -209,6 +210,9 @@ export function buildPointImagesLayerSpec(
 export function ensureCompleteModeSources(map: maplibregl.Map): void {
   if (!map.getSource(COMPLETE_POINTS_SOURCE_ID)) {
     map.addSource(COMPLETE_POINTS_SOURCE_ID, buildCompleteSourceSpec());
+  }
+  if (!map.getSource(COMPLETE_THEME_SOURCE_ID)) {
+    map.addSource(COMPLETE_THEME_SOURCE_ID, buildCompleteSourceSpec());
   }
   if (!map.getSource(COMPLETE_POINT_IMAGES_SOURCE_ID)) {
     map.addSource(COMPLETE_POINT_IMAGES_SOURCE_ID, {
@@ -277,6 +281,17 @@ export function updateCompleteModeSources(
   featureCollection: GeoJSON.FeatureCollection,
 ): void {
   const source = map.getSource(COMPLETE_POINTS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+  if (source) {
+    source.setData(featureCollection);
+  }
+}
+
+/** Update theme source data for on-demand theme/fallback rendering. */
+export function updateCompleteModeThemeSource(
+  map: maplibregl.Map,
+  featureCollection: GeoJSON.FeatureCollection,
+): void {
+  const source = map.getSource(COMPLETE_THEME_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
   if (source) {
     source.setData(featureCollection);
   }
@@ -366,6 +381,9 @@ export function removeCompleteModeLayers(map: maplibregl.Map): void {
   }
   if (map.getSource(COMPLETE_POINT_IMAGES_SOURCE_ID)) {
     map.removeSource(COMPLETE_POINT_IMAGES_SOURCE_ID);
+  }
+  if (map.getSource(COMPLETE_THEME_SOURCE_ID)) {
+    map.removeSource(COMPLETE_THEME_SOURCE_ID);
   }
   if (map.getSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID)) {
     map.removeSource(COMPLETE_BANGUMI_COVERS_SOURCE_ID);

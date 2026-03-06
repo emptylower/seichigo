@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   COMPLETE_POINTS_SOURCE_ID,
+  COMPLETE_THEME_SOURCE_ID,
   COMPLETE_DOTS_LAYER_ID,
   COMPLETE_ICONS_LAYER_ID,
   COMPLETE_POINT_IMAGES_SOURCE_ID,
@@ -19,6 +20,10 @@ import {
 describe('layer/source IDs', () => {
   it('exports stable source ID', () => {
     expect(COMPLETE_POINTS_SOURCE_ID).toBe('complete-points');
+  });
+
+  it('exports stable theme source ID', () => {
+    expect(COMPLETE_THEME_SOURCE_ID).toBe('complete-theme-source');
   });
 
   it('exports stable dots layer ID', () => {
@@ -79,7 +84,7 @@ describe('buildSymbolLayerSpec', () => {
     const spec = buildSymbolLayerSpec();
     expect(spec.id).toBe('complete-icons');
     expect(spec.type).toBe('symbol');
-    expect((spec as any).source).toBe('complete-points');
+    expect((spec as any).source).toBe('complete-theme-source');
   });
 
   it('uses icon-image from feature property', () => {
@@ -118,6 +123,7 @@ describe('buildThemeSymbolLayerSpec', () => {
   it('requires non-empty icon property', () => {
     const spec = buildThemeSymbolLayerSpec();
     expect((spec as any).filter).toEqual(['all', ZOOM_PRIORITY_FILTER, ['!=', ['get', 'icon'], '']]);
+    expect((spec as any).source).toBe('complete-theme-source');
   });
 });
 
@@ -192,6 +198,13 @@ describe('updateCompleteModeSources', () => {
   it('is exported as a function', async () => {
     const mod = await import('@/components/map/CompleteModeLayers');
     expect(typeof mod.updateCompleteModeSources).toBe('function');
+  });
+});
+
+describe('updateCompleteModeThemeSource', () => {
+  it('is exported as a function', async () => {
+    const mod = await import('@/components/map/CompleteModeLayers');
+    expect(typeof mod.updateCompleteModeThemeSource).toBe('function');
   });
 });
 
