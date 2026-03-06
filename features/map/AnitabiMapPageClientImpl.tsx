@@ -190,7 +190,6 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const isDesktopRef = useRef(true)
   const meStateRef = useRef<MeState | null>(null)
   const selectedPointIdRef = useRef<string | null>(parsed.p)
-  const initialOpenBangumiDoneRef = useRef(false)
   const autoPanoramaDismissedRef = useRef(false)
   const panoramaProgressTimerRef = useRef<number | null>(null)
   const panoramaProgressDoneTimerRef = useRef<number | null>(null)
@@ -2915,10 +2914,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   }, [loadMe])
 
   useEffect(() => {
-    if (!parsed.b || initialOpenBangumiDoneRef.current) return
-    initialOpenBangumiDoneRef.current = true
-    openBangumi(parsed.b, parsed.p).catch(() => null)
-  }, [openBangumi, parsed.b, parsed.p])
+    if (selectedBangumiId == null || detailLoading) return
+
+    const sameBangumi = detail?.card.id === selectedBangumiId
+    const samePoint = selectedPointId == null || selectedPoint != null
+    if (sameBangumi && samePoint) return
+
+    openBangumi(selectedBangumiId, selectedPointId).catch(() => null)
+  }, [detail?.card.id, detailLoading, openBangumi, selectedBangumiId, selectedPoint, selectedPointId])
 
   useEffect(() => {
     const mapRoot = mapRootRef.current
