@@ -211,4 +211,13 @@ describe('cutSpriteSheet', () => {
     expect(result.size).toBe(1);
     expect(result.has(`sprite-${bangumiId}-b`)).toBe(true);
   });
+
+  it('matches scoped point IDs against raw theme IDs from preload data', async () => {
+    const theme = makeTheme(['raw-a', 'raw-b']);
+    const points = [{ id: `${bangumiId}:raw-a` }, { id: `${bangumiId}:raw-b` }];
+    const result = await cutSpriteSheet(bangumiId, theme, points, color, mockImageLoader);
+    expect(result.size).toBe(2);
+    expect(result.has(`sprite-${bangumiId}-${bangumiId}:raw-a`)).toBe(true);
+    expect(result.has(`sprite-${bangumiId}-${bangumiId}:raw-b`)).toBe(true);
+  });
 });

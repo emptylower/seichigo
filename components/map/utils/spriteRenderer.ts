@@ -12,6 +12,8 @@
  * theme.ids defines the grid order: theme.ids[0] is at grid position 0,
  * theme.ids[1] at position 1, etc. Points are matched by ID to their
  * grid position (point IDs and theme IDs may be in different order).
+ * Real preload data may mix raw IDs (`abc`) and scoped IDs (`123:abc`),
+ * so scoped point IDs are normalized back to raw IDs for matching.
  *
  * Output includes a 13px pin tail below each thumbnail.
  * Uses pixelRatio=2 for retina displays.
@@ -37,6 +39,14 @@ export interface SpriteRenderResult {
 
 /** Callback type for loading sprite sheet images */
 export type ImageLoader = (url: string) => Promise<HTMLImageElement>;
+
+function resolveThemePointId(pointId: string, bangumiId: number): string {
+  const scopedPrefix = `${bangumiId}:`;
+  if (pointId.startsWith(scopedPrefix)) {
+    return pointId.slice(scopedPrefix.length);
+  }
+  return pointId;
+}
 
 /**
  * Cut a sprite sheet into individual marker images with colored pin tails.
@@ -100,7 +110,8 @@ export async function cutSpriteSheet(
 
   // Cut each sprite whose point ID exists in the theme
   for (const point of points) {
-    const gridIndex = themeIdToGridIndex.get(point.id);
+    const themePointId = resolveThemePointId(point.id, bangumiId);
+    const gridIndex = themeIdToGridIndex.get(themePointId);
     if (gridIndex === undefined) continue; // point not in sprite sheet
 
     // Source coordinates in the sprite sheet based on grid position
