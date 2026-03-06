@@ -988,6 +988,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     try {
       const currentZoom = map.getZoom()
       const detailBangumiId = detailRef.current?.card.id ?? null
+      const focusedThemeMinZoom = detailBangumiId == null ? COMPLETE_DETAIL_THEME_MIN_ZOOM : 0
       const focusedImageShowZoom = detailBangumiId == null
         ? completeImageShowZoom
         : Math.max(COMPLETE_DETAIL_THEME_MIN_ZOOM + 0.2, completeImageShowZoom - 0.9)
@@ -998,14 +999,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       ensureCompleteModeSources(map)
       ensureCompleteModeSymbolLayer(map, {
         avatarMaxZoom: COMPLETE_AVATAR_MAX_ZOOM,
-        detailThemeMinZoom: COMPLETE_DETAIL_THEME_MIN_ZOOM,
+        detailThemeMinZoom: focusedThemeMinZoom,
         imageShowZoom: focusedImageShowZoom,
       })
       if (map.getLayer(COMPLETE_ICONS_LAYER_ID)) {
-        map.setLayerZoomRange(COMPLETE_ICONS_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, COMPLETE_DETAIL_THEME_MAX_ZOOM)
+        map.setLayerZoomRange(COMPLETE_ICONS_LAYER_ID, focusedThemeMinZoom, COMPLETE_DETAIL_THEME_MAX_ZOOM)
       }
       if (map.getLayer(COMPLETE_THEME_FALLBACK_LAYER_ID)) {
-        map.setLayerZoomRange(COMPLETE_THEME_FALLBACK_LAYER_ID, COMPLETE_DETAIL_THEME_MIN_ZOOM, COMPLETE_DETAIL_THEME_MAX_ZOOM)
+        map.setLayerZoomRange(COMPLETE_THEME_FALLBACK_LAYER_ID, focusedThemeMinZoom, COMPLETE_DETAIL_THEME_MAX_ZOOM)
       }
       if (map.getLayer(COMPLETE_POINT_IMAGES_LAYER_ID)) {
         map.setLayerZoomRange(COMPLETE_POINT_IMAGES_LAYER_ID, focusedImageShowZoom, 24)
@@ -1030,9 +1031,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
       const shouldShowThemeIcons = detailBangumiId != null
-        && currentZoom >= COMPLETE_DETAIL_THEME_MIN_ZOOM
         && currentZoom < COMPLETE_DETAIL_THEME_MAX_ZOOM
-      const shouldPopulateThemeSource = shouldShowThemeIcons
+      const shouldPopulateThemeSource = detailBangumiId != null
       const shouldBuildPointImages = detailBangumiId != null && currentZoom >= focusedImageBuildZoom
       const shouldShowPointImages = shouldBuildPointImages && currentZoom >= focusedImageShowZoom
 
