@@ -2443,6 +2443,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setSelectedBangumiId(id)
       activeBangumiIdRef.current = id
       setSelectedPointId(pointId || null)
+      selectedPointIdRef.current = pointId || null
       setDetailCardMode(pointId ? 'point' : 'bangumi')
       setWorkDetailExpanded(false)
       setMapViewMode('map')
@@ -2495,12 +2496,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
       if (card) {
         const warmDetail = buildWarmDetail(card, warmChunk)
+        detailRef.current = warmDetail
         setDetail(warmDetail)
         if (warmDetail.points.length > 0) {
           warmPointImages(warmDetail.points)
           focusByDetail(warmDetail, pointId)
         }
         flushPointLayerSoon()
+        syncCompleteModeRef.current()
       }
 
       try {
@@ -2515,12 +2518,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }
         const cached = bangumiDetailCache.get(id)
         if (cached) {
+          detailRef.current = cached
           setDetail(cached)
           const cachedCover = normalizeCoverImageUrl(cached.card.cover)
           if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
           warmPointImages(cached.points)
           flushPointLayerSoon()
           focusByDetail(cached, pointId)
+          syncCompleteModeRef.current()
           pushHistory()
           return
         }
@@ -2543,12 +2548,14 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         }
         // Guard: if user already switched to another bangumi, discard this response
         if (activeBangumiIdRef.current !== id) return
+        detailRef.current = json
         setDetail(json)
         const nextCover = normalizeCoverImageUrl(json.card.cover)
         if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
         warmPointImages(json.points)
         flushPointLayerSoon()
         focusByDetail(json, pointId)
+        syncCompleteModeRef.current()
         pushHistory()
       } finally {
         firstOpenPointGuardTimerRef.current = window.setTimeout(() => {
