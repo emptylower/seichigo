@@ -50,6 +50,7 @@ import {
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { MapModeToggle } from '@/components/map/MapModeToggle'
+import { WindowExcerptOverlay } from '@/components/map/WindowExcerptOverlay'
 import { useMapMode } from '@/components/map/hooks/useMapMode'
 import {
   L,
@@ -84,6 +85,9 @@ import {
   COMPLETE_AVATAR_MAX_ZOOM,
   COMPLETE_DETAIL_THEME_MIN_ZOOM,
   COMPLETE_DETAIL_THEME_MAX_ZOOM,
+  COMPLETE_WINDOW_EXCERPT_MIN_ZOOM,
+  COMPLETE_WINDOW_POINT_EXCERPT_MAX,
+  COMPLETE_WINDOW_BANGUMI_EXCERPT_MAX,
   WARMUP_TASK_WEIGHTS,
   MAP_PRELOAD_V2_ENABLED,
   MAP_STYLE_FAILOVER_TIMEOUT_MS,
@@ -167,6 +171,8 @@ import {
   hexToRgba,
 } from './anitabi/geo'
 import { useMapInteractionActions } from './anitabi/useMapInteractionActions'
+import { computeWindowExcerpt } from './anitabi/windowExcerpt'
+import type { WindowExcerptBangumiItem, WindowExcerptPointItem } from './anitabi/windowExcerpt'
 
 let prefetchAbort: AbortController | null = null
 
@@ -248,6 +254,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
   const [workDetailExpanded, setWorkDetailExpanded] = useState(false)
+  const [windowExcerptPoints, setWindowExcerptPoints] = useState<WindowExcerptPointItem[]>([])
+  const [windowExcerptBangumis, setWindowExcerptBangumis] = useState<WindowExcerptBangumiItem[]>([])
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(initialBootstrap ?? null)
   const [cards, setCards] = useState<AnitabiBangumiCard[]>(initialBootstrap?.cards ?? [])
@@ -957,6 +965,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       updateCompleteModeThemeSource(map, { type: 'FeatureCollection', features: [] })
     }
 
+    const clearWindowExcerpt = () => {
+      setWindowExcerptPoints([])
+      setWindowExcerptBangumis([])
+    }
+
     const fc = completeFeatureCollectionRef.current
     // In simple mode, hide complete mode
     if (mapModeRef.current === 'simple') {
@@ -969,6 +982,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       loadedCoverIdsRef.current = new Set()
       completeCoverFeatureCollectionRef.current = null
       completeCoverCandidatesRef.current = []
+      clearWindowExcerpt()
       return true
     }
 
@@ -982,6 +996,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       loadedCoverIdsRef.current = new Set()
       completeCoverFeatureCollectionRef.current = null
       completeCoverCandidatesRef.current = []
+      clearWindowExcerpt()
       return true
     }
 
@@ -1055,6 +1070,42 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
         showThemeIcons: shouldShowThemeIcons,
         showPointImages: shouldShowPointImages,
       })
+
+      if (currentZoom < COMPLETE_WINDOW_EXCERPT_MIN_ZOOM) {
+        clearWindowExcerpt()
+      } else {
+        const center = map.getCenter()
+        const renderedDots = map.getLayer(COMPLETE_DOTS_LAYER_ID)
+          ? map.queryRenderedFeatures(undefined, { layers: [COMPLETE_DOTS_LAYER_ID] })
+          : []
+
+        const visiblePointKeys = renderedDots.flatMap((hit) => {
+          const bangumiId = Number.parseInt(String(hit.properties?.bangumiId ?? ''), 10)
+          const pointId = String(hit.properties?.pointId ?? '')
+          if (!Number.isFinite(bangumiId) || !pointId) return []
+          return [{ bangumiId, pointId }]
+        })
+
+        const allCards = new Map<number, AnitabiBangumiCard>()
+        for (const rows of Object.values(tabCardsRef.current)) {
+          if (!rows) continue
+          for (const card of rows) {
+            allCards.set(card.id, card)
+          }
+        }
+
+        const excerpt = computeWindowExcerpt({
+          center: [center.lng, center.lat],
+          visiblePointKeys,
+          warmPointIndexByBangumiId: warmPointIndexByBangumiIdRef.current,
+          allCards,
+          maxPointItems: COMPLETE_WINDOW_POINT_EXCERPT_MAX,
+          maxBangumiItems: COMPLETE_WINDOW_BANGUMI_EXCERPT_MAX,
+        })
+
+        setWindowExcerptPoints(excerpt.points)
+        setWindowExcerptBangumis(excerpt.bangumis)
+      }
 
       if (!shouldBuildPointImages) {
         completePointImageSyncTokenRef.current += 1
@@ -4104,6 +4155,26 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     </div>
   ) : null
 
+  const windowExcerptOverlay = isDesktop
+    && mapViewMode === 'map'
+    && mapMode === 'complete'
+    && (windowExcerptBangumis.length > 0 || windowExcerptPoints.length > 0)
+    ? (
+        <WindowExcerptOverlay
+          bangumis={windowExcerptBangumis}
+          points={windowExcerptPoints}
+          activeBangumiId={selectedBangumiId}
+          activePointId={selectedPointId}
+          onBangumiClick={(bangumiId) => {
+            openBangumi(bangumiId).catch(() => null)
+          }}
+          onPointClick={(bangumiId, pointId) => {
+            openBangumi(bangumiId, pointId).catch(() => null)
+          }}
+        />
+      )
+    : null
+
   return (
     <div data-layout-wide="true" className="relative h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       {warmupBlocking ? (
@@ -4269,6 +4340,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             </div>
           ) : null}
 
+          {windowExcerptOverlay}
           {mobilePointPopup}
 
           {!isDesktop ? (
