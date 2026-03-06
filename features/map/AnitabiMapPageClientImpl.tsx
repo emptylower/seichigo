@@ -50,6 +50,7 @@ import {
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { MapModeToggle } from '@/components/map/MapModeToggle'
+import { PointPopupCard } from '@/components/map/PointPopupCard'
 import { useMapMode } from '@/components/map/hooks/useMapMode'
 import {
   L,
@@ -247,6 +248,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   })
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
+  const [desktopPointPopupAnchor, setDesktopPointPopupAnchor] = useState<{ x: number; y: number } | null>(null)
   const [workDetailExpanded, setWorkDetailExpanded] = useState(false)
 
   const [bootstrap, setBootstrap] = useState<AnitabiBootstrapDTO | null>(initialBootstrap ?? null)
@@ -332,6 +334,41 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setDetailCardMode('bangumi')
     }
   }, [detailCardMode, selectedPoint])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !isDesktop || detailCardMode !== 'point' || !selectedPoint?.geo) {
+      setDesktopPointPopupAnchor(null)
+      return
+    }
+
+    let frame = 0
+    const updateAnchor = () => {
+      frame = 0
+      if (!selectedPoint.geo) {
+        setDesktopPointPopupAnchor(null)
+        return
+      }
+      const projected = map.project([selectedPoint.geo[1], selectedPoint.geo[0]])
+      setDesktopPointPopupAnchor({ x: projected.x, y: projected.y })
+    }
+    const scheduleUpdate = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(updateAnchor)
+    }
+
+    scheduleUpdate()
+    map.on('move', scheduleUpdate)
+    map.on('zoom', scheduleUpdate)
+    map.on('resize', scheduleUpdate)
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      map.off('move', scheduleUpdate)
+      map.off('zoom', scheduleUpdate)
+      map.off('resize', scheduleUpdate)
+    }
+  }, [detailCardMode, isDesktop, selectedPoint])
 
   const selectedPointState = useMemo(() => {
     if (!selectedPoint || !meState) return null
@@ -4104,6 +4141,25 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     </div>
   ) : null
 
+  const desktopPointPopup = isDesktop
+    && mapViewMode === 'map'
+    && detailCardMode === 'point'
+    && selectedPoint
+    && detail
+    && desktopPointPopupAnchor
+    ? (
+        <PointPopupCard
+          point={selectedPoint}
+          bangumi={detail.card}
+          anchorPosition={desktopPointPopupAnchor}
+          onClose={() => {
+            setSelectedPointId(null)
+            setDetailCardMode('bangumi')
+          }}
+        />
+      )
+    : null
+
   return (
     <div data-layout-wide="true" className="relative h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
       {warmupBlocking ? (
@@ -4269,6 +4325,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             </div>
           ) : null}
 
+          {desktopPointPopup}
           {mobilePointPopup}
 
           {!isDesktop ? (
