@@ -2,7 +2,7 @@
 
 Code-first Next.js App Router app for anime pilgrimage content, with rich-text authoring, admin moderation, and Anitabi map/sync workflows.
 
-> This README is aligned with root and scoped `AGENTS.md` files (`app/api`, `app/(authed)/admin`, `components/editor`, `lib/article`, `lib/anitabi`, `tests`).
+> This README is aligned with root and scoped `AGENTS.md` files (`app/api`, `app/(authed)/admin`, `components/editor`, `components/map`, `lib/article`, `lib/anitabi`, `lib/translation`, `lib/seo`, `tests`).
 
 ## Tech Stack
 
@@ -89,6 +89,24 @@ Avoid:
 - Adding new tags/attrs/styles without sanitizer alignment.
 - Removing ProseMirror/TipTap DOM shims from `tests/setup.ts`.
 
+### `components/map` (MapLibre UI)
+
+- Keep layer/source IDs and ordering stable across hooks and layer components.
+- Keep heavy feature transforms in map utils, not render paths.
+- Preserve map feature property contracts used by popups/cards.
+
+### `lib/translation` (Task Queue + Batch Execution)
+
+- Keep task lifecycle idempotent with explicit status/error transitions.
+- Route wrappers stay thin; Gemini and TipTap transforms stay in translation services.
+- Batch/backfill flows should remain bounded and progress-aware.
+
+### `lib/seo` (JSON-LD + Spoke Factory)
+
+- Keep JSON-LD generation deterministic and server-rendered.
+- Keep locale canonical/alternate behavior centralized in SEO helpers.
+- Preserve spoke-factory pipeline order: candidate extraction -> validation -> MDX generation.
+
 ### `lib/article` (Article Lifecycle)
 
 - `lib/article/api.ts`: dependency wiring via `getArticleApiDeps`.
@@ -129,7 +147,9 @@ Avoid:
 - Rich text safety: user HTML must pass `sanitizeRichTextHtml`.
 - Error style: explicit HTTP status + Chinese user-facing strings in many endpoints.
 - Alias usage: `@/lib/*`, `@/components/*`, `@/*`.
-- Build behavior: `npm run build` runs Prisma migrate + generate before Next build.
+- Build behavior:
+  - Local/default `npm run build` runs Prisma migrate + generate before Next build.
+  - Vercel build skips `prisma migrate deploy` and only runs `prisma generate + next build`.
 - Lint policy: lint is advisory (`eslint ... || true`), not a release gate.
 
 ## Getting Started
