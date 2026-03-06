@@ -324,6 +324,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     return detail.points.find((point) => matchPointId(point.id, selectedPointId)) || null
   }, [detail, selectedPointId])
 
+  // Keep imperative map callbacks aligned with the latest selection state.
+  detailRef.current = detail
+  selectedPointIdRef.current = selectedPointId
+
   useEffect(() => {
     if (detailCardMode === 'point' && !selectedPoint) {
       setDetailCardMode('bangumi')
