@@ -1225,6 +1225,27 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     syncCompleteModeRef.current = flushCompleteMode
   }, [flushCompleteMode])
 
+  useEffect(() => {
+    if (mapMode !== 'complete' || !mapReady) return
+    if (!detail?.card.id || !completeFeatureCollectionRef.current) return
+
+    const timer = window.setTimeout(() => {
+      syncCompleteModeRef.current()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    detail?.card.id,
+    mapMode,
+    mapReady,
+    selectedPointId,
+    warmupTaskProgress.cards.percent,
+    warmupTaskProgress.details.percent,
+    warmupTaskProgress.map.percent,
+  ])
+
   useEffect(() => { mapModeRef.current = mapMode }, [mapMode])
 
   // Complete Mode useEffect 1 — Global data init + sprite cutting
