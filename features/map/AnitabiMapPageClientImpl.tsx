@@ -91,6 +91,9 @@ import {
   WARMUP_TASK_WEIGHTS,
   MAP_PRELOAD_V2_ENABLED,
   MAP_STYLE_FAILOVER_TIMEOUT_MS,
+  MAP_TILE_FADE_DURATION_MS,
+  MAP_TILE_CACHE_ZOOM_LEVELS,
+  MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM,
   MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS,
   MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD,
   MAP_STYLE_MISSING_IMAGE_FALLBACK_MAX,
@@ -3019,7 +3022,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       renderWorldCopies: true,
       dragPan: true,
       scrollZoom: true,
-      fadeDuration: 0,
+      // Keep nearby zoom levels and in-flight tile requests alive so fast zooming
+      // reuses parent/child tiles instead of exposing a checkerboard-like catch-up.
+      maxTileCacheZoomLevels: MAP_TILE_CACHE_ZOOM_LEVELS,
+      cancelPendingTileRequestsWhileZooming: !MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM,
+      fadeDuration: MAP_TILE_FADE_DURATION_MS,
     })
 
     const clearStyleFailoverTimer = () => {
