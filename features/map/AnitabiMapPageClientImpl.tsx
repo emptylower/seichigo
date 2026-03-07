@@ -227,6 +227,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const styleAttemptRef = useRef(0)
   const styleErrorBurstRef = useRef<{ count: number; startedAt: number }>({ count: 0, startedAt: 0 })
   const applyMapStyleRef = useRef<(mode: MapStyleMode, options?: { resetProvider?: boolean; reason?: string }) => void>(() => undefined)
+  const clearActiveBangumiSelectionRef = useRef<(() => void) | null>(null)
   const preloadManifestRef = useRef<AnitabiPreloadManifestDTO | null>(null)
   const warmPointIndexByBangumiIdRef = useRef<Map<number, AnitabiPreloadChunkItemDTO>>(new Map())
   const tabCardsRef = useRef<Partial<Record<AnitabiMapTab, AnitabiBangumiCard[]>>>(
@@ -1278,6 +1279,29 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   useEffect(() => {
     syncCompleteModeRef.current = flushCompleteMode
   }, [flushCompleteMode])
+
+  const clearActiveBangumiSelection = useCallback((options?: { closeMobilePanel?: boolean }) => {
+    activeBangumiIdRef.current = null
+    detailRef.current = null
+    setSelectedBangumiId(null)
+    setDetail(null)
+    setDetailCardMode('bangumi')
+    setWorkDetailExpanded(false)
+    setSelectedPointId(null)
+    selectedPointIdRef.current = null
+    setMobilePointPopupOpen(false)
+    if (options?.closeMobilePanel) {
+      setMobilePanelOpen(false)
+    }
+    setPanoramaError(null)
+    setMapViewMode('map')
+    flushPointLayerSoon()
+    syncCompleteModeRef.current()
+  }, [flushPointLayerSoon])
+
+  useEffect(() => {
+    clearActiveBangumiSelectionRef.current = clearActiveBangumiSelection
+  }, [clearActiveBangumiSelection])
 
   useEffect(() => {
     if (mapMode !== 'complete' || !mapReady) return
@@ -3119,6 +3143,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           openBangumiRef.current?.(completeTarget.bangumiId, completeTarget.pointId)?.catch(() => null)
           return
         }
+        if (detailRef.current) {
+          clearActiveBangumiSelectionRef.current?.()
+          return
+        }
       }
       const pointId = readPointIdFromRendered(event)
       if (!pointId) return
@@ -3492,14 +3520,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-            onClick={() => {
-              setDetail(null)
-              setDetailCardMode('bangumi')
-              setWorkDetailExpanded(false)
-              setSelectedPointId(null)
-              setMobilePointPopupOpen(false)
-              setMapViewMode('map')
-            }}
+            onClick={() => clearActiveBangumiSelection()}
           >
             {label.close}
           </button>
