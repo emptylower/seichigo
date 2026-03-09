@@ -45,7 +45,7 @@ export function MobileVisualCenterBangumiRow({
 
   return (
     <div className="pointer-events-auto min-w-0 flex-1 overflow-x-auto">
-      <div className="flex w-max min-w-full items-center justify-center gap-2 px-1">
+      <div className="flex w-max min-w-full items-center justify-start gap-2 px-1">
         {bangumis.map((item) => {
           const active = item.bangumiId === activeBangumiId
           return (
