@@ -50,6 +50,7 @@ import {
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { MapModeToggle } from '@/components/map/MapModeToggle'
+import { MobileVisualCenterBangumiRow, MobileVisualCenterPointStrip } from '@/components/map/MobileVisualCenterOverlay'
 import { PointPopupCard, resolvePointPopupAnchor } from '@/components/map/PointPopupCard'
 import { WindowExcerptOverlay } from '@/components/map/WindowExcerptOverlay'
 import { useMapMode } from '@/components/map/hooks/useMapMode'
@@ -245,6 +246,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const completeCoverCandidatesRef = useRef<Array<{ bangumiId: number; coverUrl: string }>>([])
   const completePointImageLoaderRef = useRef<ThumbnailLoader | null>(null)
   const completePointImageSyncTokenRef = useRef(0)
+  const completeBaseBuildVersionRef = useRef(-1)
+  const completeSpriteBuildVersionRef = useRef(-1)
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
@@ -317,6 +320,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   const [warmupUiBlocking, setWarmupUiBlocking] = useState(false)
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
+  const [warmPointDataVersion, setWarmPointDataVersion] = useState(0)
   const warmupProgressRef = useRef<WarmupProgress>(warmupProgress)
   const warmupTaskProgressRef = useRef<WarmupTaskProgress>(warmupTaskProgress)
   const completeImageBuildZoom = useMemo(
@@ -1401,6 +1405,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       completeCoverCandidatesRef.current = []
       loadedCoverIdsRef.current = new Set()
       coverAvatarLoaderRef.current = null
+      completeBaseBuildVersionRef.current = -1
+      completeSpriteBuildVersionRef.current = -1
       setCompleteModeLoading(false)
       const map = mapRef.current
       if (map && map.isStyleLoaded()) {
@@ -1410,26 +1416,21 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       return
     }
 
-    // In complete mode with detail selected, re-flush to filter
-    if (detail && completeFeatureCollectionRef.current) {
-      syncCompleteModeRef.current()
-      return
-    }
-
-    // In complete mode with detail just deselected, re-flush to show all
-    if (!detail && completeFeatureCollectionRef.current) {
-      syncCompleteModeRef.current()
-      return
-    }
-
-    // Render points as soon as map/cards/details are ready; image preheat may continue in background.
-    const warmupCoreReady = warmupTaskProgress.map.percent >= 100
+    const warmupBaseReady = warmupTaskProgress.map.percent >= 100
       && warmupTaskProgress.cards.percent >= 100
-      && warmupTaskProgress.details.percent >= 100
-    if (!warmupCoreReady) return
+    const hasWarmPointData = warmPointIndexByBangumiIdRef.current.size > 0
+    if (!warmupBaseReady || !hasWarmPointData) return
 
-    // Don't re-initialize if feature collection already exists
-    if (completeFeatureCollectionRef.current) return
+    const shouldEnhanceCompleteMode = warmupTaskProgress.details.percent >= 100
+    const needsBaseRebuild = !completeFeatureCollectionRef.current
+      || completeBaseBuildVersionRef.current !== warmPointDataVersion
+    const needsSpriteEnhancement = shouldEnhanceCompleteMode
+      && completeSpriteBuildVersionRef.current !== warmPointDataVersion
+
+    if (!needsBaseRebuild && !needsSpriteEnhancement) {
+      syncCompleteModeRef.current()
+      return
+    }
 
     // Abort any in-flight previous operation
     completeAbortRef.current?.abort()
@@ -1539,6 +1540,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       // Store the feature collection and flush to map immediately
       // This ensures dots appear even if sprite cutting is aborted
       completeFeatureCollectionRef.current = fc
+      completeBaseBuildVersionRef.current = warmPointDataVersion
       syncCompleteModeRef.current()
       if (controller.signal.aborted) return
 
@@ -1552,6 +1554,33 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           updateCompleteModeCoverSource(liveMap, coverFc, ids)
           liveMap.triggerRepaint()
         }).catch(() => null)
+      }
+
+      const labelPoints: Array<{ lng: number; lat: number; text: string }> = []
+      for (const [bangumiId] of warmPointIndexByBangumiIdRef.current.entries()) {
+        const card = allCards.get(bangumiId)
+        if (!card) continue
+        const chunk = warmPointIndexByBangumiIdRef.current.get(bangumiId)
+        if (!chunk) continue
+        const firstValid = chunk.points.find((p) => p.geo && isValidGeoPair(p.geo))
+        if (firstValid?.geo) {
+          labelPoints.push({
+            lng: firstValid.geo[1],
+            lat: firstValid.geo[0],
+            text: card.titleZh || card.title,
+          })
+        }
+      }
+
+      if (controller.signal.aborted) return
+      if (labelPoints.length > 0 && map.isStyleLoaded()) {
+        ensureLabelLayer(map)
+        updateLabelSource(map, buildLabelFeatureCollection(labelPoints))
+      }
+
+      if (!shouldEnhanceCompleteMode) {
+        completeSpriteBuildVersionRef.current = -1
+        return
       }
 
       // Create an image loader that uses our CORS proxy
@@ -1640,31 +1669,9 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       // Store the feature collection and flush to map
       // Update feature collection again with sprite icons
       syncCompleteModeRef.current()
-
-      // Set up label layer for bangumi names
-      const labelPoints: Array<{ lng: number; lat: number; text: string }> = []
-      for (const [bangumiId] of warmPointIndexByBangumiIdRef.current.entries()) {
-        const card = allCards.get(bangumiId)
-        if (!card) continue
-        const chunk = warmPointIndexByBangumiIdRef.current.get(bangumiId)
-        if (!chunk) continue
-        const firstValid = chunk.points.find((p) => p.geo && isValidGeoPair(p.geo))
-        if (firstValid?.geo) {
-          labelPoints.push({
-            lng: firstValid.geo[1],
-            lat: firstValid.geo[0],
-            text: card.titleZh || card.title,
-          })
-        }
-      }
-
-      if (controller.signal.aborted) return
-      if (labelPoints.length > 0 && map.isStyleLoaded()) {
-        ensureLabelLayer(map)
-        updateLabelSource(map, buildLabelFeatureCollection(labelPoints))
-      }
+      completeSpriteBuildVersionRef.current = warmPointDataVersion
     }
-    setCompleteModeLoading(true)
+    setCompleteModeLoading(needsSpriteEnhancement)
     run().catch(() => {
       // Silently handle errors — complete mode is optional enhancement
     }).finally(() => {
@@ -1677,6 +1684,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   }, [
     detail,
     mapMode,
+    warmPointDataVersion,
     warmupTaskProgress.cards.percent,
     warmupTaskProgress.details.percent,
     warmupTaskProgress.map.percent,
@@ -2278,6 +2286,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       const chunkCount = Math.max(0, manifest.chunkCount)
       warmupMetricRef.current.details_chunk_total = chunkCount
       warmPointIndexByBangumiIdRef.current.clear()
+      setWarmPointDataVersion((prev) => prev + 1)
       const chunkQueue = Array.from({ length: chunkCount }, (_, idx) => idx)
       let chunkDone = 0
       let pointsLoaded = 0
@@ -2316,6 +2325,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             if (chunkDone === 1 || chunkDone === chunkCount || now - lastVisualSyncAt >= 900) {
               lastVisualSyncAt = now
               setTabCardsVersion((prev) => prev + 1)
+              setWarmPointDataVersion((prev) => prev + 1)
             }
             if (chunkDone % 2 === 0) {
               await yieldToMainThread(signal)
@@ -4195,26 +4205,10 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       )
     : null
 
-  const mobileWindowExcerptOverlay = !isDesktop
+  const showMobileVisualCenter = !isDesktop
     && !mobilePanelOpen
     && !mobilePointPopupOpen
     && showWindowExcerptOverlay
-    ? (
-        <WindowExcerptOverlay
-          bangumis={windowExcerptBangumis}
-          points={windowExcerptPoints}
-          activeBangumiId={selectedBangumiId}
-          activePointId={selectedPointId}
-          layout="mobile"
-          onBangumiClick={(bangumiId) => {
-            openBangumi(bangumiId).catch(() => null)
-          }}
-          onPointClick={(bangumiId, pointId) => {
-            openBangumi(bangumiId, pointId, { keepMobilePointPopup: true }).catch(() => null)
-          }}
-        />
-      )
-    : null
 
   return (
     <div data-layout-wide="true" className="relative h-[calc(100dvh-84px)] w-full overflow-hidden bg-slate-50">
@@ -4334,19 +4328,32 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-center justify-between gap-2">
-            {mapViewMode === 'panorama' ? (
-              <button
-                className="pointer-events-auto rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white"
-                type="button"
-                onClick={exitPanorama}
-              >
-                {label.exitPanorama}
-              </button>
+          <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-center gap-2">
+            <div className="pointer-events-auto shrink-0">
+              {mapViewMode === 'panorama' ? (
+                <button
+                  className="rounded-md bg-white/90 px-3 py-1.5 text-xs text-slate-700 shadow hover:bg-white"
+                  type="button"
+                  onClick={exitPanorama}
+                >
+                  {label.exitPanorama}
+                </button>
+              ) : (
+                <div className="h-9 w-9" />
+              )}
+            </div>
+            {showMobileVisualCenter ? (
+              <MobileVisualCenterBangumiRow
+                bangumis={windowExcerptBangumis}
+                activeBangumiId={selectedBangumiId}
+                onBangumiClick={(bangumiId) => {
+                  openBangumi(bangumiId).catch(() => null)
+                }}
+              />
             ) : (
-              <div />
+              <div className="flex-1" />
             )}
-            <div className="pointer-events-auto flex items-center gap-2">
+            <div className="pointer-events-auto flex shrink-0 items-center gap-2">
               {mapViewMode === 'map' ? (
                 <button
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -4382,7 +4389,15 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           ) : null}
 
           {desktopWindowExcerptOverlay}
-          {mobileWindowExcerptOverlay}
+          {showMobileVisualCenter ? (
+            <MobileVisualCenterPointStrip
+              points={windowExcerptPoints}
+              activePointId={selectedPointId}
+              onPointClick={(bangumiId, pointId) => {
+                openBangumi(bangumiId, pointId, { keepMobilePointPopup: true }).catch(() => null)
+              }}
+            />
+          ) : null}
           {mobilePointPopup}
 
           {!isDesktop ? (
