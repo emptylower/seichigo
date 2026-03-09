@@ -1,5 +1,6 @@
 'use client'
 
+import type { Dispatch, SetStateAction } from 'react'
 import Link from 'next/link'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Loader2, X } from 'lucide-react'
@@ -7,9 +8,110 @@ import Button from '@/components/shared/Button'
 import { AdminSkeleton } from '@/components/admin/state/AdminSkeleton'
 import { AdminEmptyState } from '@/components/admin/state/AdminEmptyState'
 import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
+import type { TranslationTaskListItem } from '@/lib/translation/adminDashboard'
+import type {
+  BatchExecutionProgress,
+  MapOpsProgress,
+  StatusKey,
+  UntranslatedItem,
+} from './helpers'
+import type { BatchScopeMode } from './useTranslationBatchExecution'
+import TranslationsBatchDialog from './TranslationsBatchDialog'
 
-export default function TranslationsPageView(props: any) {
-  const { view, setView, setShowBatchModal, batchExecuting, showMapOpsPanel, setShowMapOpsPanel, mapActions, mapControlsBusy, approveAllReadyRunning, sampleApproving, bangumiBackfillCursor, pointBackfillCursor, mapOpsMessage, batchProgress, cancelBatchExecution, setBatchProgress, mapOpsProgress, setMapOpsProgress, mapOpsProgressPercent, formatMetricCount, oneKeyProgressPercent, q, setQ, setPage, entityType, setEntityType, targetLanguage, setTargetLanguage, pageSize, setPageSize, clampInt, setStatus, statusTabs, stats, statsLoading, status, tasksError, loadTasks, tasksLoading, tasks, buildPublicLinks, entityTypeLabels, languageLabels, statusLabels, articleStatusLabels, formatDateTime, total, page, totalPages, untranslatedQuery, setUntranslatedQuery, setUntranslatedPage, loadUntranslated, untranslatedLoading, untranslatedItems, untranslatedTotal, untranslatedPage, untranslatedPageSize, createTranslationTask, showBatchModal, batchTaskItems, batchSelectedIds, toggleBatchSelectAll, batchLoading, setBatchSelectedIds, batchError, toggleBatchItem, handleBatchSubmit } = props as any
+type TranslationsPageViewProps = {
+  view: 'tasks' | 'untranslated'
+  setView: Dispatch<SetStateAction<'tasks' | 'untranslated'>>
+  setShowBatchModal: Dispatch<SetStateAction<boolean>>
+  batchExecuting: boolean
+  showMapOpsPanel: boolean
+  setShowMapOpsPanel: Dispatch<SetStateAction<boolean>>
+  mapActions: {
+    handleMapBackfill: (entityType: 'anitabi_bangumi' | 'anitabi_point') => Promise<void>
+    handleMapIncrementalRefill: () => Promise<void>
+    executeMapPendingBatch: () => Promise<void>
+    executeMapFailedBatch: () => Promise<void>
+    handleManualAdvanceMapQueue: (maxRounds?: number) => Promise<void>
+    handleOneKeyAdvanceMapQueue: () => Promise<void>
+    approveAllReadyTasks: () => Promise<void>
+    approveMapSampleBatch: () => Promise<void>
+  }
+  mapControlsBusy: boolean
+  approveAllReadyRunning: boolean
+  sampleApproving: boolean
+  bangumiBackfillCursor: string | null
+  pointBackfillCursor: string | null
+  mapOpsMessage: string | null
+  batchProgress: BatchExecutionProgress | null
+  cancelBatchExecution: () => void
+  setBatchProgress: Dispatch<SetStateAction<BatchExecutionProgress | null>>
+  mapOpsProgress: MapOpsProgress | null
+  setMapOpsProgress: Dispatch<SetStateAction<MapOpsProgress | null>>
+  mapOpsProgressPercent: number
+  formatMetricCount: (value: number | null) => string
+  oneKeyProgressPercent: number
+  q: string
+  setQ: Dispatch<SetStateAction<string>>
+  setPage: Dispatch<SetStateAction<number>>
+  entityType: string
+  setEntityType: Dispatch<SetStateAction<string>>
+  targetLanguage: string
+  setTargetLanguage: Dispatch<SetStateAction<string>>
+  pageSize: number
+  setPageSize: Dispatch<SetStateAction<number>>
+  clampInt: (
+    value: string | null,
+    fallback: number,
+    opts?: { min?: number; max?: number }
+  ) => number
+  setStatus: Dispatch<SetStateAction<StatusKey>>
+  statusTabs: Array<{ key: StatusKey; label: string }>
+  stats: Record<string, number> | null
+  statsLoading: boolean
+  status: StatusKey
+  tasksError: string | null
+  loadTasks: () => Promise<void>
+  tasksLoading: boolean
+  tasks: TranslationTaskListItem[]
+  buildPublicLinks: (
+    task: TranslationTaskListItem
+  ) => { source?: string; target?: string }
+  entityTypeLabels: Record<string, string>
+  languageLabels: Record<string, string>
+  statusLabels: Record<string, string>
+  articleStatusLabels: Record<string, string>
+  formatDateTime: (value: string) => string
+  total: number
+  page: number
+  totalPages: number
+  untranslatedQuery: string
+  setUntranslatedQuery: Dispatch<SetStateAction<string>>
+  setUntranslatedPage: Dispatch<SetStateAction<number>>
+  loadUntranslated: () => Promise<void>
+  untranslatedLoading: boolean
+  untranslatedItems: UntranslatedItem[]
+  untranslatedTotal: number
+  untranslatedPage: number
+  untranslatedPageSize: number
+  createTranslationTask: (item: UntranslatedItem) => Promise<void>
+  showBatchModal: boolean
+  batchTaskItems: TranslationTaskListItem[]
+  batchSelectedIds: string[]
+  batchScopeMode: BatchScopeMode
+  setBatchScopeMode: Dispatch<SetStateAction<BatchScopeMode>>
+  batchPage: number
+  setBatchPage: Dispatch<SetStateAction<number>>
+  batchPageSize: number
+  batchTotal: number
+  toggleBatchSelectAll: () => void
+  batchLoading: boolean
+  setBatchSelectedIds: Dispatch<SetStateAction<string[]>>
+  batchError: string | null
+  toggleBatchItem: (id: string) => void
+  handleBatchSubmit: () => Promise<void>
+}
+
+export default function TranslationsPageView(props: TranslationsPageViewProps) {
+  const { view, setView, setShowBatchModal, batchExecuting, showMapOpsPanel, setShowMapOpsPanel, mapActions, mapControlsBusy, approveAllReadyRunning, sampleApproving, bangumiBackfillCursor, pointBackfillCursor, mapOpsMessage, batchProgress, cancelBatchExecution, setBatchProgress, mapOpsProgress, setMapOpsProgress, mapOpsProgressPercent, formatMetricCount, oneKeyProgressPercent, q, setQ, setPage, entityType, setEntityType, targetLanguage, setTargetLanguage, pageSize, setPageSize, clampInt, setStatus, statusTabs, stats, statsLoading, status, tasksError, loadTasks, tasksLoading, tasks, buildPublicLinks, entityTypeLabels, languageLabels, statusLabels, articleStatusLabels, formatDateTime, total, page, totalPages, untranslatedQuery, setUntranslatedQuery, setUntranslatedPage, loadUntranslated, untranslatedLoading, untranslatedItems, untranslatedTotal, untranslatedPage, untranslatedPageSize, createTranslationTask, showBatchModal, batchTaskItems, batchSelectedIds, batchScopeMode, setBatchScopeMode, batchPage, setBatchPage, batchPageSize, batchTotal, toggleBatchSelectAll, batchLoading, setBatchSelectedIds, batchError, toggleBatchItem, handleBatchSubmit } = props
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -382,7 +484,7 @@ export default function TranslationsPageView(props: any) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {statusTabs.map((t: any) => {
+            {statusTabs.map((t) => {
               const count = stats ? stats[t.key] : null
               const isActive = status === t.key
               return (
@@ -423,7 +525,7 @@ export default function TranslationsPageView(props: any) {
               {tasks.length === 0 ? (
                 <AdminEmptyState title="暂无匹配的翻译任务" />
               ) : (
-                tasks.map((task: any) => {
+                tasks.map((task) => {
                   const links = buildPublicLinks(task)
                   const canOpenTarget = task.status === 'approved' || Boolean(task.target)
                   const dateLabel =
@@ -588,7 +690,7 @@ export default function TranslationsPageView(props: any) {
             <AdminEmptyState title="所有内容都已有翻译任务" />
           ) : (
             <div className="space-y-3">
-              {untranslatedItems.map((item: any) => (
+              {untranslatedItems.map((item) => (
                 <div
                   key={`${item.entityType}-${item.entityId}`}
                   className="rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 transition-colors"
@@ -657,115 +759,28 @@ export default function TranslationsPageView(props: any) {
         </div>
       )}
 
-      <Dialog.Root open={showBatchModal} onOpenChange={setShowBatchModal}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 fade-in-0 animate-in" />
-          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 animate-in fade-in-0 zoom-in-95 sm:rounded-lg">
-            <div className="flex flex-col space-y-1.5 text-center sm:text-left">
-              <Dialog.Title className="text-lg font-semibold leading-none tracking-tight">
-                批量翻译
-              </Dialog.Title>
-              <Dialog.Description className="text-sm text-gray-500">
-                选择已创建但未执行的翻译任务，然后一键执行翻译。
-              </Dialog.Description>
-            </div>
-            
-            <div className="space-y-3 py-4">
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-gray-600">
-                  共 {batchTaskItems.length} 个待翻译任务，已选择 {batchSelectedIds.length} 个
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    className="h-8 px-3 text-xs"
-                    onClick={toggleBatchSelectAll}
-                    disabled={batchLoading || batchTaskItems.length === 0}
-                  >
-                    {batchSelectedIds.length === batchTaskItems.length ? '取消全选' : '全选'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-8 px-3 text-xs"
-                    onClick={() => setBatchSelectedIds([])}
-                    disabled={batchLoading || batchSelectedIds.length === 0}
-                  >
-                    清空
-                  </Button>
-                </div>
-              </div>
-
-              {batchError ? (
-                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {batchError}
-                </div>
-              ) : null}
-
-              {batchLoading ? (
-                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-                  正在加载待翻译任务...
-                </div>
-              ) : batchTaskItems.length === 0 ? (
-                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-6 text-center text-sm text-green-700">
-                  当前没有待执行翻译的任务
-                </div>
-              ) : (
-                <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-md border border-gray-200 p-2">
-                  {batchTaskItems.map((task: any) => (
-                    <label
-                      key={task.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-100 p-2 hover:bg-gray-50"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                        checked={batchSelectedIds.includes(task.id)}
-                        onChange={() => toggleBatchItem(task.id)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                            {entityTypeLabels[task.entityType] || task.entityType}
-                          </span>
-                          <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                            {languageLabels[task.targetLanguage] || task.targetLanguage}
-                          </span>
-                          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                            {statusLabels[task.status] || task.status}
-                          </span>
-                        </div>
-                        <div className="mt-1 truncate text-sm font-medium text-gray-900">
-                          {task.subject.title || '(未命名内容)'}
-                        </div>
-                        <div className="mt-0.5 text-xs text-gray-500">
-                          {task.subject.subtitle || `任务 ID: ${task.id}`}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
-              <Button variant="ghost" onClick={() => setShowBatchModal(false)}>
-                取消
-              </Button>
-              <Button 
-                onClick={handleBatchSubmit} 
-                disabled={batchLoading || batchExecuting || batchSelectedIds.length === 0}
-              >
-                {batchExecuting ? '执行中...' : '执行翻译'}
-              </Button>
-            </div>
-            
-            <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500">
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </Dialog.Close>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <TranslationsBatchDialog
+        open={showBatchModal}
+        onOpenChange={setShowBatchModal}
+        batchScopeMode={batchScopeMode}
+        setBatchScopeMode={setBatchScopeMode}
+        batchTaskItems={batchTaskItems}
+        batchSelectedIds={batchSelectedIds}
+        batchLoading={batchLoading}
+        batchExecuting={batchExecuting}
+        batchError={batchError}
+        batchPage={batchPage}
+        setBatchPage={setBatchPage}
+        batchPageSize={batchPageSize}
+        batchTotal={batchTotal}
+        toggleBatchSelectAll={toggleBatchSelectAll}
+        clearSelection={() => setBatchSelectedIds([])}
+        toggleBatchItem={toggleBatchItem}
+        entityTypeLabels={entityTypeLabels}
+        languageLabels={languageLabels}
+        statusLabels={statusLabels}
+        onSubmit={handleBatchSubmit}
+      />
 
     </div>
   )

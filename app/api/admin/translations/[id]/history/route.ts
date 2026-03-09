@@ -1,30 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerAuthSession } from '@/lib/auth/session'
-import { prisma } from '@/lib/db/prisma'
+import { NextRequest } from 'next/server'
+import { getTranslationApiDeps } from '@/lib/translation/api'
+import { routeError } from '@/lib/translation/handlers/common'
+import { createHandlers } from '@/lib/translation/handlers/taskHistory'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params
-    const session = await getServerAuthSession()
-    if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const history = await prisma.translationHistory.findMany({
-      where: { translationTaskId: id },
-      orderBy: { createdAt: 'desc' },
-      include: { createdBy: { select: { name: true, email: true } } },
-    })
-
-    return NextResponse.json({ history })
+    const deps = await getTranslationApiDeps()
+    return createHandlers(deps).GET(req, ctx)
   } catch (error) {
     console.error('[api/admin/translations/[id]/history] GET failed', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return routeError(error)
   }
 }

@@ -14,6 +14,7 @@ import { AdminErrorState } from '@/components/admin/state/AdminErrorState'
 import type { TranslationTaskListItem } from '@/lib/translation/adminDashboard'
 import { createTranslationsMapActions } from './mapActions'
 import TranslationsPageView from './TranslationsPageView'
+import { useTranslationBatchExecution } from './useTranslationBatchExecution'
 import {
   buildPublicLinks,
   buildStatsSignature,
@@ -25,8 +26,6 @@ import {
   formatMetricCount,
   isAbortError,
   isStatusKey,
-  loadOneKeyMapQueueSnapshot,
-  type BatchExecutionProgress,
   type MapOpsProgress,
   type StatusKey,
   type TranslationsUIProps,
@@ -79,14 +78,6 @@ export default function TranslationsUI({
   const [untranslatedPage, setUntranslatedPage] = useState(1)
   const [untranslatedPageSize] = useState(30)
   const [untranslatedTotal, setUntranslatedTotal] = useState(0)
-
-  const [showBatchModal, setShowBatchModal] = useState(false)
-  const [batchTaskItems, setBatchTaskItems] = useState<TranslationTaskListItem[]>([])
-  const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([])
-  const [batchLoading, setBatchLoading] = useState(false)
-  const [batchExecuting, setBatchExecuting] = useState(false)
-  const [batchError, setBatchError] = useState<string | null>(null)
-  const [batchProgress, setBatchProgress] = useState<BatchExecutionProgress | null>(null)
   const [mapOpsLoading, setMapOpsLoading] = useState(false)
   const [mapOpsMessage, setMapOpsMessage] = useState<string | null>(null)
   const [showMapOpsPanel, setShowMapOpsPanel] = useState<boolean>(
@@ -140,7 +131,6 @@ export default function TranslationsUI({
 
   const taskAbort = useRef<AbortController | null>(null)
   const statsAbort = useRef<AbortController | null>(null)
-  const batchCancelRef = useRef(false)
   const initialTaskSignatureRef = useRef<string | null>(
     initialQuery
       ? buildTaskSignature({
@@ -201,183 +191,6 @@ export default function TranslationsUI({
     if (current === desired) return
     router.replace(desired ? `/admin/translations?${desired}` : '/admin/translations', { scroll: false })
   }, [entityType, page, pageSize, q, router, searchParams, status, targetLanguage])
-
-  async function loadBatchTaskItems() {
-    setBatchLoading(true)
-    setBatchError(null)
-    try {
-      const pageSize = 100
-      let nextPage = 1
-      let total = 0
-      const all: TranslationTaskListItem[] = []
-
-      while (nextPage <= 100) {
-        const params = new URLSearchParams()
-        params.set('status', 'pending')
-        params.set('page', String(nextPage))
-        params.set('pageSize', String(pageSize))
-
-        const res = await fetch(`/api/admin/translations?${params.toString()}`, { method: 'GET' })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error || '加载待翻译任务失败')
-
-        const rows = Array.isArray(data.tasks) ? (data.tasks as TranslationTaskListItem[]) : []
-        all.push(...rows)
-        total = typeof data.total === 'number' ? data.total : Number.parseInt(String(data.total || 0), 10) || 0
-
-        if (all.length >= total || rows.length === 0) break
-        nextPage += 1
-      }
-
-      setBatchTaskItems(all)
-      setBatchSelectedIds(all.map((t) => t.id))
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : '加载待翻译任务失败'
-      setBatchTaskItems([])
-      setBatchSelectedIds([])
-      setBatchError(msg)
-    } finally {
-      setBatchLoading(false)
-    }
-  }
-
-  async function handleBatchSubmit() {
-    if (batchSelectedIds.length === 0) return
-
-    const selectedIds = [...batchSelectedIds]
-    const aggregate = {
-      processed: 0,
-      success: 0,
-      failed: 0,
-      skipped: 0,
-    }
-
-    batchCancelRef.current = false
-    setBatchExecuting(true)
-    setBatchError(null)
-    setShowBatchModal(false)
-    setBatchProgress({
-      total: selectedIds.length,
-      processed: 0,
-      success: 0,
-      failed: 0,
-      skipped: 0,
-      running: true,
-      cancelled: false,
-      startedAt: Date.now(),
-      finishedAt: null,
-      currentTaskId: null,
-    })
-
-    let lastError = ''
-    try {
-      for (const taskId of selectedIds) {
-        if (batchCancelRef.current) break
-
-        setBatchProgress((prev) => (prev ? { ...prev, currentTaskId: taskId } : prev))
-
-        try {
-          const res = await fetch('/api/admin/translations/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskIds: [taskId] }),
-          })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error || '批量执行失败')
-
-          aggregate.success += Number(data.success || 0)
-          aggregate.failed += Number(data.failed || 0)
-          aggregate.skipped += Number(data.skipped || 0)
-        } catch (error: any) {
-          aggregate.failed += 1
-          lastError = String(error?.message || '批量执行失败')
-        } finally {
-          aggregate.processed += 1
-          setBatchProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  processed: aggregate.processed,
-                  success: aggregate.success,
-                  failed: aggregate.failed,
-                  skipped: aggregate.skipped,
-                }
-              : prev
-          )
-        }
-      }
-
-      const cancelled = batchCancelRef.current
-      setBatchProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              running: false,
-              cancelled,
-              finishedAt: Date.now(),
-              currentTaskId: null,
-            }
-          : prev
-      )
-
-      if (lastError) {
-        setBatchError(lastError)
-      }
-
-      if (cancelled) {
-        toast.info(
-          `已中断，已处理 ${aggregate.processed} / ${selectedIds.length} 个（成功 ${aggregate.success}，失败 ${aggregate.failed}，跳过 ${aggregate.skipped}）`,
-          '批量翻译已中断'
-        )
-      } else {
-        toast.success(`已执行 ${aggregate.processed} 个，成功 ${aggregate.success} 个，失败 ${aggregate.failed} 个，跳过 ${aggregate.skipped} 个`)
-      }
-
-      setBatchSelectedIds([])
-      await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
-    } catch (error: any) {
-      const msg = error?.message || '操作失败'
-      setBatchError(msg)
-      setBatchProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              running: false,
-              cancelled: false,
-              finishedAt: Date.now(),
-              currentTaskId: null,
-            }
-          : prev
-      )
-      toast.error(msg)
-    } finally {
-      setBatchExecuting(false)
-    }
-  }
-
-  function cancelBatchExecution() {
-    batchCancelRef.current = true
-  }
-
-  function toggleBatchSelectAll() {
-    if (batchSelectedIds.length === batchTaskItems.length) {
-      setBatchSelectedIds([])
-      return
-    }
-    setBatchSelectedIds(batchTaskItems.map((t) => t.id))
-  }
-
-  function toggleBatchItem(id: string) {
-    setBatchSelectedIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id)
-      return [...prev, id]
-    })
-  }
-
-  useEffect(() => {
-    if (!showBatchModal) return
-    void loadBatchTaskItems()
-  }, [showBatchModal])
 
   async function loadTasks() {
     if (view !== 'tasks') return
@@ -489,11 +302,43 @@ export default function TranslationsUI({
     }
   }
 
+  const reloadAll = async () => {
+    await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+  }
+
+  const {
+    showBatchModal,
+    setShowBatchModal,
+    batchTaskItems,
+    batchSelectedIds,
+    setBatchSelectedIds,
+    batchLoading,
+    batchExecuting,
+    batchError,
+    batchProgress,
+    setBatchProgress,
+    batchScopeMode,
+    setBatchScopeMode,
+    batchPage,
+    setBatchPage,
+    batchPageSize,
+    batchTotal,
+    cancelBatchExecution,
+    toggleBatchSelectAll,
+    toggleBatchItem,
+    handleBatchSubmit,
+  } = useTranslationBatchExecution({
+    entityType,
+    targetLanguage,
+    q: debouncedQ,
+    toast,
+    reloadAll,
+  })
+
   const mapActions = createTranslationsMapActions({
     targetLanguage,
     bangumiBackfillCursor,
     pointBackfillCursor,
-    mapOpsProgress,
     entityTypeLabels,
     askForConfirm,
     toast,
@@ -505,10 +350,7 @@ export default function TranslationsUI({
     setApproveAllReadyRunning,
     beginMapOpsProgress,
     patchMapOpsProgress,
-    loadOneKeyMapQueueSnapshot,
-    reloadAll: async () => {
-      await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
-    },
+    reloadAll,
   })
 
   async function createTranslationTask(item: UntranslatedItem) {
@@ -539,8 +381,8 @@ export default function TranslationsUI({
       // Refresh related UI
       await Promise.all([loadTasks(), loadUntranslated(), loadStats()])
       toast.success(`已为 "${item.title}" 创建翻译任务`)
-    } catch (error: any) {
-      toast.error(error.message || '操作失败')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '操作失败')
     }
   }
 
@@ -633,6 +475,12 @@ export default function TranslationsUI({
       showBatchModal={showBatchModal}
       batchTaskItems={batchTaskItems}
       batchSelectedIds={batchSelectedIds}
+      batchScopeMode={batchScopeMode}
+      setBatchScopeMode={setBatchScopeMode}
+      batchPage={batchPage}
+      setBatchPage={setBatchPage}
+      batchPageSize={batchPageSize}
+      batchTotal={batchTotal}
       toggleBatchSelectAll={toggleBatchSelectAll}
       batchLoading={batchLoading}
       setBatchSelectedIds={setBatchSelectedIds}

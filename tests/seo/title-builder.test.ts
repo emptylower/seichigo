@@ -12,7 +12,7 @@ describe('buildAnimeSeoTitle', () => {
       name_en: 'Bocchi the Rock!',
       name_ja: 'ぼっち・ざ・ろっく',
     }
-    const posts = [
+    const posts: Array<{ city?: string | null }> = [
       { city: '下北泽' },
       { city: '江之岛' },
       { city: '下北泽' }, // duplicate
@@ -156,7 +156,7 @@ describe('buildAnimeSeoTitle', () => {
         'This is an Extremely Long Anime Name That Exceeds Sixty Characters Even Without Any Additional Suffix',
       name_ja: 'ショート',
     }
-    const posts = []
+    const posts: Array<{ city?: string | null }> = []
 
     const result = buildAnimeSeoTitle(anime, posts, 'en')
 
