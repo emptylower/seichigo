@@ -50,6 +50,7 @@ import {
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { MapModeToggle } from '@/components/map/MapModeToggle'
+import { PointPopupCard, resolvePointPopupAnchor } from '@/components/map/PointPopupCard'
 import { WindowExcerptOverlay } from '@/components/map/WindowExcerptOverlay'
 import { useMapMode } from '@/components/map/hooks/useMapMode'
 import {
@@ -179,6 +180,10 @@ import type { WindowExcerptBangumiItem, WindowExcerptPointItem } from './anitabi
 
 let prefetchAbort: AbortController | null = null
 
+type OpenBangumiOptions = {
+  keepMobilePointPopup?: boolean
+}
+
 export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props) {
   const label = L[locale]
 
@@ -257,6 +262,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   })
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [mobilePointPopupOpen, setMobilePointPopupOpen] = useState(false)
+  const [mobilePointPopupAnchor, setMobilePointPopupAnchor] = useState<ReturnType<typeof resolvePointPopupAnchor> | null>(null)
   const [workDetailExpanded, setWorkDetailExpanded] = useState(false)
   const [windowExcerptPoints, setWindowExcerptPoints] = useState<WindowExcerptPointItem[]>([])
   const [windowExcerptBangumis, setWindowExcerptBangumis] = useState<WindowExcerptBangumiItem[]>([])
@@ -421,6 +427,66 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
 
     return { previewUrl, downloadUrl }
   }, [selectedPoint])
+
+  useEffect(() => {
+    if (isDesktop || mobilePanelOpen || !mobilePointPopupOpen || mapViewMode !== 'map' || !selectedPoint || !isValidGeoPair(selectedPoint.geo)) {
+      setMobilePointPopupAnchor(null)
+      return
+    }
+
+    const map = mapRef.current
+    const mapRoot = mapRootRef.current
+    if (!map || !mapRoot) {
+      setMobilePointPopupAnchor(null)
+      return
+    }
+
+    let frame = 0
+    const syncAnchor = () => {
+      const liveMap = mapRef.current
+      const liveRoot = mapRootRef.current
+      if (!liveMap || !liveRoot || !selectedPoint || !isValidGeoPair(selectedPoint.geo)) {
+        setMobilePointPopupAnchor(null)
+        return
+      }
+
+      const projected = liveMap.project([selectedPoint.geo[1], selectedPoint.geo[0]])
+      const rect = liveRoot.getBoundingClientRect()
+      const margin = 48
+      const offscreen =
+        projected.x < -margin
+        || projected.x > rect.width + margin
+        || projected.y < -margin
+        || projected.y > rect.height + margin
+
+      if (offscreen) {
+        setMobilePointPopupAnchor(null)
+        return
+      }
+
+      setMobilePointPopupAnchor(resolvePointPopupAnchor({
+        x: projected.x,
+        y: projected.y,
+        viewportWidth: rect.width,
+        viewportHeight: rect.height,
+      }))
+    }
+
+    const scheduleSync = () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(syncAnchor)
+    }
+
+    syncAnchor()
+    map.on('move', scheduleSync)
+    map.on('zoom', scheduleSync)
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      map.off('move', scheduleSync)
+      map.off('zoom', scheduleSync)
+    }
+  }, [isDesktop, mapViewMode, mobilePanelOpen, mobilePointPopupOpen, selectedPoint])
 
   const { isBangumiCompleted, totalRouteDistance, checkedInThumbnails } = useMemo(() => {
     if (!detail || !meState) {
@@ -1617,7 +1683,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   ])
 
   // Keep complete-mode open callback in a ref for map click handlers.
-  const openBangumiRef = useRef<((id: number, pointId?: string | null) => Promise<void>) | null>(null)
+  const openBangumiRef = useRef<((id: number, pointId?: string | null, options?: OpenBangumiOptions) => Promise<void>) | null>(null)
 
   // Complete Mode useEffect 3 — Cleanup on unmount
   useEffect(() => () => {
@@ -2530,7 +2596,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
   }, [hasMoreCards, label.loadMoreFailed, loading, loadingMoreCards, locale, nextChunkIndex, query, selectedCity, tab, userLocation])
 
   const openBangumi = useCallback(
-    async (id: number, pointId?: string | null) => {
+    async (id: number, pointId?: string | null, options?: OpenBangumiOptions) => {
       if (firstOpenPointGuardTimerRef.current != null) {
         window.clearTimeout(firstOpenPointGuardTimerRef.current)
         firstOpenPointGuardTimerRef.current = null
@@ -2546,7 +2612,7 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       setWorkDetailExpanded(false)
       setMapViewMode('map')
       if (!isDesktop) {
-        setMobilePointPopupOpen(false)
+        setMobilePointPopupOpen(Boolean(options?.keepMobilePointPopup && pointId))
         setMobilePanelOpen(false)
       }
       setDetailLoading(true)
@@ -3140,7 +3206,11 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
       if (mapModeRef.current === 'complete') {
         const completeTarget = readCompleteTargetFromRendered(event)
         if (completeTarget) {
-          openBangumiRef.current?.(completeTarget.bangumiId, completeTarget.pointId)?.catch(() => null)
+          openBangumiRef.current?.(
+            completeTarget.bangumiId,
+            completeTarget.pointId,
+            { keepMobilePointPopup: Boolean(!isDesktopRef.current && completeTarget.pointId) }
+          )?.catch(() => null)
           return
         }
         if (detailRef.current) {
@@ -4077,116 +4147,38 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
     </>
   )
 
-  const mobilePointPopup = !isDesktop && !mobilePanelOpen && mobilePointPopupOpen && selectedPoint ? (
-    <div className="pointer-events-none absolute inset-x-3 z-30" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
-      <div className="pointer-events-auto mx-auto max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur">
-        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label.pointDetail}</div>
-            <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">{selectedPoint.name}</h3>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-              onClick={switchToBangumiDetail}
-            >
-              {label.backToWorkDetail}
-            </button>
-            <button
-              type="button"
-              className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-              onClick={() => setMobilePointPopupOpen(false)}
-            >
-              {label.close}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-2 px-3 py-3">
-          {renderPointImage(selectedPointImage.previewUrl, selectedPoint.name, selectedPointImage.downloadUrl, true)}
-          <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
-            {selectedPoint.ep ? <span>EP {selectedPoint.ep}</span> : null}
-            {selectedPoint.s ? <span>· {selectedPoint.s}</span> : null}
-            {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
-            {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
-          </div>
-          {selectedPoint.note ? (
-            <div className="rounded-md bg-slate-50 px-2 py-1 text-xs leading-relaxed text-slate-700">
-              {selectedPoint.note}
-            </div>
-          ) : null}
-
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-            <div className="text-[11px] text-slate-600">{label.stateAutoHint}</div>
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
-              {(['want_to_go', 'planned', 'checked_in'] as const).map((state) => (
-                <span
-                  key={state}
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                    selectedPointState === state
-                      ? state === 'checked_in'
-                        ? 'bg-green-500 text-white'
-                        : state === 'planned'
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-blue-500 text-white'
-                      : 'bg-white text-slate-500 ring-1 ring-slate-200'
-                  }`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                  {state === 'checked_in' ? label.checkedIn : state === 'planned' ? label.planned : label.wantToGo}
-                </span>
-              ))}
-            </div>
-            {selectedPointState === 'want_to_go' ? (
-              <div className="mt-2 text-[11px] text-blue-600">{label.pointAlreadyInPoolHint}</div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {geoLink(selectedPoint) ? (
-              <a className="inline-flex min-w-[92px] items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoLink(selectedPoint) || '#'} target="_blank" rel="noreferrer">
-                {label.openInGoogle}
-              </a>
-            ) : null}
-            <button
-              type="button"
-              className="inline-flex min-w-[92px] items-center justify-center rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
-              onClick={enterPanorama}
-              disabled={!selectedPointPanorama}
-              title={selectedPointPanorama ? undefined : label.panoramaUnavailable}
-            >
-              {label.enterPanorama}
-            </button>
-            {showWantToGoAction ? (
-              <button
-                type="button"
-                className="inline-flex min-w-[108px] items-center justify-center rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                onClick={() => {
-                  addPointToPointPool(selectedPoint.id).catch(() => null)
-                }}
-              >
-                {label.addToPointPool}
-              </button>
-            ) : null}
-            {meState?.pointStates.find((ps) => ps.pointId === selectedPoint.id && ps.state === 'checked_in') && (
-              <button
-                type="button"
-                className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
-                onClick={() => setShowCheckInCard(true)}
-              >
-                打卡卡片
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+  const mobilePointPopup = !isDesktop && !mobilePanelOpen && mobilePointPopupOpen && selectedPoint && mobilePointPopupAnchor ? (
+    <PointPopupCard
+      point={selectedPoint}
+      anchor={mobilePointPopupAnchor}
+      imageUrl={selectedPointImage.previewUrl}
+      distanceLabel={selectedPointDistanceMeters != null ? `~${formatDistance(selectedPointDistanceMeters)}` : null}
+      googleHref={geoLink(selectedPoint)}
+      labels={{
+        pointDetail: label.pointDetail,
+        workDetail: label.workDetail,
+        openInGoogle: label.openInGoogle,
+        enterPanorama: label.enterPanorama,
+        close: label.close,
+      }}
+      onShowWorkDetail={() => {
+        setDetailCardMode('bangumi')
+        setMobilePointPopupOpen(false)
+        setMobilePanelOpen(true)
+        setMapViewMode('map')
+      }}
+      onEnterPanorama={enterPanorama}
+      onClose={() => setMobilePointPopupOpen(false)}
+      panoramaAvailable={Boolean(selectedPointPanorama)}
+      panoramaUnavailableLabel={label.panoramaUnavailable}
+    />
   ) : null
 
-  const windowExcerptOverlay = isDesktop
-    && mapViewMode === 'map'
+  const showWindowExcerptOverlay = mapViewMode === 'map'
     && mapMode === 'complete'
     && (windowExcerptBangumis.length > 0 || windowExcerptPoints.length > 0)
+
+  const desktopWindowExcerptOverlay = isDesktop && showWindowExcerptOverlay
     ? (
         <WindowExcerptOverlay
           bangumis={windowExcerptBangumis}
@@ -4198,6 +4190,27 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
           }}
           onPointClick={(bangumiId, pointId) => {
             openBangumi(bangumiId, pointId).catch(() => null)
+          }}
+        />
+      )
+    : null
+
+  const mobileWindowExcerptOverlay = !isDesktop
+    && !mobilePanelOpen
+    && !mobilePointPopupOpen
+    && showWindowExcerptOverlay
+    ? (
+        <WindowExcerptOverlay
+          bangumis={windowExcerptBangumis}
+          points={windowExcerptPoints}
+          activeBangumiId={selectedBangumiId}
+          activePointId={selectedPointId}
+          layout="mobile"
+          onBangumiClick={(bangumiId) => {
+            openBangumi(bangumiId).catch(() => null)
+          }}
+          onPointClick={(bangumiId, pointId) => {
+            openBangumi(bangumiId, pointId, { keepMobilePointPopup: true }).catch(() => null)
           }}
         />
       )
@@ -4368,7 +4381,8 @@ export default function AnitabiMapPageClient({ locale, initialBootstrap }: Props
             </div>
           ) : null}
 
-          {windowExcerptOverlay}
+          {desktopWindowExcerptOverlay}
+          {mobileWindowExcerptOverlay}
           {mobilePointPopup}
 
           {!isDesktop ? (

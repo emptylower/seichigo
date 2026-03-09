@@ -1,110 +1,222 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import type { AnitabiPointDTO, AnitabiBangumiCard } from '@/lib/anitabi/types'
+import type { CSSProperties } from 'react'
+import { ExternalLink, Layers3, MapPinned, X } from 'lucide-react'
+import type { AnitabiPointDTO } from '@/lib/anitabi/types'
 
-export interface PointPopupCardProps {
+export type PointPopupAnchor = {
+  x: number
+  y: number
+  placement: 'top' | 'bottom'
+  tipOffsetX: number
+}
+
+type ResolvePointPopupAnchorOptions = {
+  x: number
+  y: number
+  viewportWidth: number
+  viewportHeight: number
+  cardWidth?: number
+  edgePadding?: number
+}
+
+type PointPopupCardLabels = {
+  pointDetail: string
+  workDetail: string
+  openInGoogle: string
+  enterPanorama: string
+  close: string
+}
+
+export type PointPopupCardProps = {
   point: AnitabiPointDTO
-  bangumi: AnitabiBangumiCard
+  anchor: PointPopupAnchor
+  imageUrl: string | null
+  distanceLabel?: string | null
+  googleHref?: string | null
+  labels: PointPopupCardLabels
+  onShowWorkDetail: () => void
+  onEnterPanorama: () => void
   onClose: () => void
-  anchorPosition: { x: number; y: number }
+  panoramaAvailable: boolean
+  panoramaUnavailableLabel?: string
+}
+
+export function resolvePointPopupAnchor({
+  x,
+  y,
+  viewportWidth,
+  viewportHeight,
+  cardWidth = 248,
+  edgePadding = 16,
+}: ResolvePointPopupAnchorOptions): PointPopupAnchor {
+  const halfWidth = cardWidth / 2
+  const minCenterX = halfWidth + edgePadding
+  const maxCenterX = Math.max(minCenterX, viewportWidth - halfWidth - edgePadding)
+  const centerX = Math.min(Math.max(x, minCenterX), maxCenterX)
+  const placement = y > viewportHeight * 0.42 ? 'top' : 'bottom'
+  const maxTipOffset = Math.max(0, halfWidth - 26)
+  const tipOffsetX = Math.min(Math.max(x - centerX, -maxTipOffset), maxTipOffset)
+
+  return {
+    x: centerX,
+    y,
+    placement,
+    tipOffsetX,
+  }
+}
+
+function buildMetaChips(point: AnitabiPointDTO, distanceLabel?: string | null): string[] {
+  const chips: string[] = []
+  if (point.origin) chips.push(point.origin)
+  if (distanceLabel) chips.push(distanceLabel)
+  return chips
 }
 
 export function PointPopupCard({
   point,
-  bangumi,
+  anchor,
+  imageUrl,
+  distanceLabel,
+  googleHref,
+  labels,
+  onShowWorkDetail,
+  onEnterPanorama,
   onClose,
-  anchorPosition,
+  panoramaAvailable,
+  panoramaUnavailableLabel,
 }: PointPopupCardProps) {
-  const cardRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [onClose])
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside)
-    }, 100)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [onClose])
-
-  const getCardStyle = (): React.CSSProperties => {
-    const cardWidth = 320
-    const cardHeight = 400
-    const padding = 16
-    let left = anchorPosition.x
-    let top = anchorPosition.y + 10
-    if (left + cardWidth > window.innerWidth - padding) {
-      left = window.innerWidth - cardWidth - padding
-    }
-    if (left < padding) left = padding
-    if (top + cardHeight > window.innerHeight - padding) {
-      top = anchorPosition.y - cardHeight - 10
-    }
-    if (top < padding) top = padding
-    return { position: 'fixed', left: `${left}px`, top: `${top}px`, zIndex: 1000 }
+  const displayName = point.nameZh || point.name
+  const metaChips = buildMetaChips(point, distanceLabel)
+  const imageSrc = String(imageUrl || '').trim()
+  const floatingStyle: CSSProperties = {
+    left: `${anchor.x}px`,
+    top: `${anchor.y + (anchor.placement === 'top' ? -18 : 18)}px`,
+    transform: anchor.placement === 'top' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
   }
 
-  const displayName = point.nameZh || point.name
-  const displayTitle = bangumi.titleZh || bangumi.title
-  const hasImage = point.image && point.image.trim() !== ''
-  const hasEp = point.ep && point.ep.trim() !== ''
-  const googleMapsUrl = point.geo
-    ? `https://www.google.com/maps/search/?api=1&query=${point.geo[0]},${point.geo[1]}`
-    : null
-
   return (
-    <div ref={cardRef} style={getCardStyle()} className="w-80 bg-white rounded-lg shadow-lg overflow-hidden">
-      {hasImage ? (
-        <div className="relative w-full h-48">
-          <img src={point.image ?? undefined} alt={displayName} className="w-full h-full object-cover" loading="lazy" />
-          {hasEp && (
-            <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-sm font-medium">
-              {point.ep}
+    <div className="pointer-events-none absolute inset-0 z-30">
+      <div
+        className="pointer-events-auto absolute w-[248px] max-w-[calc(100%-1.5rem)]"
+        style={floatingStyle}
+      >
+        <div className="relative overflow-hidden rounded-[22px] border border-white/80 bg-white/95 shadow-[0_24px_64px_rgba(15,23,42,0.3)] backdrop-blur-md">
+          <div
+            className={`absolute h-4 w-4 rotate-45 border border-white/80 bg-white/95 ${
+              anchor.placement === 'top' ? '-bottom-2' : '-top-2'
+            }`}
+            style={{ left: `calc(50% + ${anchor.tipOffsetX}px - 8px)` }}
+            aria-hidden="true"
+          />
+
+          <div className="relative aspect-[16/10] overflow-hidden bg-slate-200">
+            {imageSrc ? (
+              <img
+                src={imageSrc}
+                alt={displayName}
+                width={496}
+                height={310}
+                className="h-full w-full object-cover"
+                loading="eager"
+                decoding="async"
+              />
+            ) : (
+              <div className="grid h-full w-full place-items-center bg-slate-200 text-xs font-medium text-slate-500">
+                {labels.pointDetail}
+              </div>
+            )}
+
+            <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
+              <span className="rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/90 backdrop-blur-sm">
+                {labels.pointDetail}
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-black/40 text-white/90 backdrop-blur-sm hover:bg-black/55"
+                aria-label={labels.close}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
-          <div className="text-gray-400 text-sm">暂无图片</div>
-        </div>
-      )}
-      <div className="p-4 space-y-3">
-        <h3 className="font-bold text-lg text-gray-900 line-clamp-2">{displayName}</h3>
-        <p className="text-sm font-medium line-clamp-1" style={{ color: bangumi.color || '#ec4899' }}>
-          {displayTitle}
-        </p>
-        {point.note && <p className="text-sm text-gray-600 line-clamp-2">{point.note}</p>}
-        <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-          {googleMapsUrl && (
-            <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-              </svg>
-              <span>地图</span>
-            </a>
-          )}
-          {point.originUrl && (
-            <a href={point.originUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-700">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              <span>来源</span>
-            </a>
-          )}
+
+            {(point.ep || point.s) ? (
+              <div className="absolute inset-x-3 bottom-3 flex items-center justify-end gap-1.5">
+                {point.ep ? (
+                  <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                    EP {point.ep}
+                  </span>
+                ) : null}
+                {point.s ? (
+                  <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                    {point.s}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-3 px-3 pb-3 pt-2.5">
+            <div className="space-y-2">
+              <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-slate-900">
+                {displayName}
+              </div>
+
+              {metaChips.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {metaChips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {point.note ? (
+                <p className="line-clamp-2 text-[11px] leading-4 text-slate-600">
+                  {point.note}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onShowWorkDetail}
+                className="inline-flex min-w-[90px] flex-1 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
+                {labels.workDetail}
+              </button>
+
+              {googleHref ? (
+                <a
+                  href={googleHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-w-[90px] flex-1 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-900 px-3 py-2 text-[11px] font-medium text-white no-underline hover:bg-slate-700"
+                >
+                  <MapPinned className="h-3.5 w-3.5" aria-hidden="true" />
+                  {labels.openInGoogle}
+                </a>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={onEnterPanorama}
+                disabled={!panoramaAvailable}
+                title={panoramaAvailable ? undefined : panoramaUnavailableLabel}
+                className="inline-flex min-w-[90px] flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-500 px-3 py-2 text-[11px] font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                {labels.enterPanorama}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
