@@ -6,18 +6,21 @@
 ## STRUCTURE
 ```text
 components/editor/
-|- RichTextEditor.tsx
+|- RichTextEditor.tsx           # Main editor (612 lines, allowlisted hotspot)
+|- richtext/
+|  `- BubbleToolbar.tsx          # Bubble menu (560 lines, hotspot)
 `- extensions/
-   |- SeichiCallout.tsx
-   |- SeichiRoute.tsx
-   `- FigureImage.tsx
+   |- SeichiCallout.tsx          # Custom callout node
+   |- SeichiRoute.tsx            # Route embed node
+   `- FigureImage.tsx            # Figure image node
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Main editor behavior | `components/editor/RichTextEditor.tsx` | Large integration surface |
-| Custom node behavior | `components/editor/extensions/*` | TipTap extension definitions |
+| Main editor behavior | `RichTextEditor.tsx` | 612-line integration surface; line-budget allowlisted |
+| Bubble menu | `richtext/BubbleToolbar.tsx` | 560-line formatting toolbar; line-budget allowlisted |
+| Custom nodes | `extensions/*` | TipTap extension definitions |
 | Sanitization contract | `lib/richtext/sanitize.ts` | Allowed tags/attrs/styles must match editor output |
 | Test shims | `tests/setup.ts` | ProseMirror DOM polyfills required in JSDOM |
 

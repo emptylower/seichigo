@@ -17,6 +17,11 @@ yarn-error.log*
 # Local agent artifacts
 .sisyphus/
 .cache/
+.claude/worktrees/*/
+.firecrawl/
+output/
+test-results/
+bundle.js
 
 # TypeScript incremental build info
 *.tsbuildinfo

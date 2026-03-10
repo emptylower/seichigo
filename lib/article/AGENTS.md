@@ -7,7 +7,11 @@
 ```text
 lib/article/
 |- api.ts                # getArticleApiDeps factory
-|- handlers/             # route-facing business handlers
+|- handlers/             # 10 handler files split by role:
+|  |- articles.ts / articleById.ts     # Main CRUD
+|  |- submit.ts / withdraw.ts          # Author workflow
+|  |- adminApprove/Reject/Unpublish.ts # Admin moderation
+|  `- adminReviewList/Article/ArticlesList.ts  # Admin queries
 |- workflow.ts           # lifecycle and WorkflowResult types
 |- repo*.ts              # repo contracts + implementations
 `- slug.ts / repair*.ts  # slug generation and data repair helpers
@@ -33,3 +37,7 @@ lib/article/
 - Do not collapse admin and author flows into one oversized handler.
 - Do not throw opaque errors when `WorkflowResult`/typed outcomes exist.
 - Do not bypass HTML sanitization on article rich-text fields.
+
+## NOTES
+- Article **revisions** are a separate domain in `lib/articleRevision/` — do not conflate.
+- 18 files, 1863 lines. Handlers split by user vs admin action.

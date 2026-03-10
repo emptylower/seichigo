@@ -5,6 +5,7 @@ import SettingsForm from '@/components/me/SettingsForm.client'
 import MeSectionShell from '@/components/me/MeSectionShell'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 export const metadata = {
   title: '用户设置 - SeichiGo',

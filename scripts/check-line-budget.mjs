@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
 const ROOT = process.cwd()
-const BUDGET_TARGETS = ['app', 'components', 'lib']
+const BUDGET_TARGETS = ['app', 'components', 'features', 'lib', 'tests']
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 const ALLOWLIST_PATH = path.join(ROOT, 'line-budget.allowlist.json')
 
