@@ -1,4 +1,5 @@
 import {
+  MAP_ONE_KEY_MAX_ROUNDS,
   normalizeFetchErrorMessage,
   type MapExecuteStatusScope,
   type MapOpsProgress,
@@ -25,7 +26,7 @@ type MapOpsResponse = {
   bangumiBackfillCursor: string | null
   pointBackfillCursor: string | null
   continuation: Record<string, unknown> | null
-  snapshot: Omit<MapOpsProgress, 'title' | 'running'> & {
+  snapshot: Omit<MapOpsProgress, 'title' | 'running' | 'terminalState'> & {
     oneKey: MapOpsProgress['oneKey']
   }
 }
@@ -50,9 +51,8 @@ type CreateTranslationsMapActionsDeps = {
   }) => void
   patchMapOpsProgress: (patch: Partial<MapOpsProgress>) => void
   reloadAll: () => Promise<void>
+  oneKeyMaxRequests?: number
 }
-
-const MAX_ONE_KEY_REQUESTS = 80
 
 async function postMapOps(
   body: Record<string, unknown>
@@ -88,19 +88,29 @@ export function createTranslationsMapActions(
     beginMapOpsProgress,
     patchMapOpsProgress,
     reloadAll,
+    oneKeyMaxRequests = MAP_ONE_KEY_MAX_ROUNDS,
   } = deps
 
   function applyMapOpsResult(
     title: string,
     result: MapOpsResponse,
-    input?: { running?: boolean }
+    input?: {
+      running?: boolean
+      terminalState?: MapOpsProgress['terminalState']
+    }
   ) {
+    const running = input?.running ?? !result.done
+    const terminalState =
+      input?.terminalState ||
+      (running ? 'running' : result.done ? 'done' : 'paused')
+
     setMapOpsMessage(result.message)
     setBangumiBackfillCursor(result.bangumiBackfillCursor)
     setPointBackfillCursor(result.pointBackfillCursor)
     patchMapOpsProgress({
       title,
-      running: input?.running ?? !result.done,
+      running,
+      terminalState,
       currentStep: result.snapshot.currentStep,
       totalSteps: result.snapshot.totalSteps,
       processed: result.snapshot.processed,
@@ -143,6 +153,7 @@ export function createTranslationsMapActions(
       setMapOpsMessage(message)
       patchMapOpsProgress({
         running: false,
+        terminalState: 'error',
         failed: 1,
         errors: [message],
         detail: message,
@@ -251,8 +262,9 @@ export function createTranslationsMapActions(
         pointBackfillCursor,
       }
       let lastResult: MapOpsResponse | null = null
+      let stoppedByClientCap = true
 
-      for (let index = 0; index < MAX_ONE_KEY_REQUESTS; index += 1) {
+      for (let index = 0; index < oneKeyMaxRequests; index += 1) {
         const result = await postMapOps({
           action: 'advance_one_key',
           targetLanguage,
@@ -261,7 +273,10 @@ export function createTranslationsMapActions(
         })
         lastResult = result
         applyMapOpsResult('一键推进地图队列', result)
-        if (result.done || !result.continuation) break
+        if (result.done || !result.continuation) {
+          stoppedByClientCap = false
+          break
+        }
         continuation = result.continuation
       }
 
@@ -269,6 +284,15 @@ export function createTranslationsMapActions(
         applyMapOpsResult('一键推进地图队列', lastResult, { running: false })
         if (lastResult.done) {
           toast.success(lastResult.message)
+        } else if (stoppedByClientCap && lastResult.continuation) {
+          const clientCapMessage = `一键推进达到前端安全上限（${oneKeyMaxRequests} 轮请求），已暂停，可继续执行`
+          setMapOpsMessage(clientCapMessage)
+          patchMapOpsProgress({
+            running: false,
+            terminalState: 'paused',
+            detail: clientCapMessage,
+          })
+          toast.info(clientCapMessage)
         } else if (!lastResult.continuation) {
           toast.info(lastResult.message)
         } else {
@@ -281,6 +305,7 @@ export function createTranslationsMapActions(
       setMapOpsMessage(message)
       patchMapOpsProgress({
         running: false,
+        terminalState: 'error',
         failed: 1,
         errors: [message],
         detail: message,

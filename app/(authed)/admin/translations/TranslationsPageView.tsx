@@ -112,6 +112,15 @@ type TranslationsPageViewProps = {
 
 export default function TranslationsPageView(props: TranslationsPageViewProps) {
   const { view, setView, setShowBatchModal, batchExecuting, showMapOpsPanel, setShowMapOpsPanel, mapActions, mapControlsBusy, approveAllReadyRunning, sampleApproving, bangumiBackfillCursor, pointBackfillCursor, mapOpsMessage, batchProgress, cancelBatchExecution, setBatchProgress, mapOpsProgress, setMapOpsProgress, mapOpsProgressPercent, formatMetricCount, oneKeyProgressPercent, q, setQ, setPage, entityType, setEntityType, targetLanguage, setTargetLanguage, pageSize, setPageSize, clampInt, setStatus, statusTabs, stats, statsLoading, status, tasksError, loadTasks, tasksLoading, tasks, buildPublicLinks, entityTypeLabels, languageLabels, statusLabels, articleStatusLabels, formatDateTime, total, page, totalPages, untranslatedQuery, setUntranslatedQuery, setUntranslatedPage, loadUntranslated, untranslatedLoading, untranslatedItems, untranslatedTotal, untranslatedPage, untranslatedPageSize, createTranslationTask, showBatchModal, batchTaskItems, batchSelectedIds, batchScopeMode, setBatchScopeMode, batchPage, setBatchPage, batchPageSize, batchTotal, toggleBatchSelectAll, batchLoading, setBatchSelectedIds, batchError, toggleBatchItem, handleBatchSubmit } = props
+  const mapOpsStatusLabel =
+    mapOpsProgress?.terminalState === 'error'
+      ? '失败'
+      : mapOpsProgress?.terminalState === 'paused'
+        ? '已暂停'
+        : mapOpsProgress?.terminalState === 'done'
+          ? '已完成'
+          : '处理中'
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -297,7 +306,7 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                     <span>
-                      {mapOpsProgress.running ? '处理中' : '已完成'}
+                      {mapOpsStatusLabel}
                     </span>
                     <span>
                       步骤 {Math.max(0, Math.min(mapOpsProgress.currentStep, mapOpsProgress.totalSteps))} / {mapOpsProgress.totalSteps}

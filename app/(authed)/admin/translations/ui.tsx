@@ -156,6 +156,7 @@ export default function TranslationsUI({
       title: input.title,
       detail: input.detail,
       running: true,
+      terminalState: 'running',
       currentStep: 0,
       totalSteps: Math.max(1, input.totalSteps),
       processed: 0,

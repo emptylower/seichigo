@@ -86,6 +86,7 @@ export type MapOpsProgress = {
   title: string
   detail: string
   running: boolean
+  terminalState?: 'running' | 'done' | 'paused' | 'error'
   currentStep: number
   totalSteps: number
   processed: number

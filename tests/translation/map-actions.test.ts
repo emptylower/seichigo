@@ -158,4 +158,56 @@ describe('createTranslationsMapActions', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(deps.setApproveAllReadyRunning).not.toHaveBeenCalled()
   })
+
+  it('pauses with a client-cap message instead of implying completion', async () => {
+    const deps = createDeps({
+      oneKeyMaxRequests: 2,
+    })
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        action: 'advance_one_key',
+        done: false,
+        message: '继续推进',
+        bangumiBackfillCursor: 'b-next',
+        pointBackfillCursor: 'p-next',
+        continuation: {
+          processed: 8,
+          success: 8,
+          failed: 0,
+          reclaimed: 0,
+          skipped: 0,
+          errors: [],
+        },
+        snapshot: {
+          processed: 8,
+          success: 8,
+          failed: 0,
+          reclaimed: 0,
+          skipped: 0,
+          currentStep: 8,
+          totalSteps: 100,
+          detail: '继续推进',
+          errors: [],
+          oneKey: null,
+        },
+      })
+    )
+    global.fetch = fetchMock as any
+
+    const actions = createTranslationsMapActions(deps)
+    await actions.handleOneKeyAdvanceMapQueue()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(deps.toast.info).toHaveBeenCalledWith(
+      '一键推进达到前端安全上限（2 轮请求），已暂停，可继续执行'
+    )
+    expect(deps.patchMapOpsProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        running: false,
+        terminalState: 'paused',
+        detail: '一键推进达到前端安全上限（2 轮请求），已暂停，可继续执行',
+      })
+    )
+  })
 })
