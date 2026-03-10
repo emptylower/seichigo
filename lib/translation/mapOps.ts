@@ -157,6 +157,112 @@ async function loadReadyTasks(
   })
 }
 
+const ONE_KEY_LOW_WATER_PENDING_LIKE = {
+  anitabi_bangumi: 40,
+  anitabi_point: 300,
+} as const
+
+const ONE_KEY_BACKFILL_SCAN_LIMIT = {
+  anitabi_bangumi: 100,
+  anitabi_point: 1000,
+} as const
+
+type OneKeyBackfillSummary = {
+  triggered: boolean
+  scanned: number
+  enqueued: number
+  updated: number
+  detail: string | null
+}
+
+function shouldBackfillEntity(
+  queue: MapQueueSnapshot,
+  entityType: 'anitabi_bangumi' | 'anitabi_point',
+  force = false
+) {
+  const remaining =
+    entityType === 'anitabi_bangumi'
+      ? Number(queue.bangumiRemaining || 0)
+      : Number(queue.pointRemaining || 0)
+  if (remaining <= 0) return false
+  if (force) return true
+
+  const pendingLike =
+    entityType === 'anitabi_bangumi'
+      ? Number(queue.bangumiPendingLike || 0)
+      : Number(queue.pointPendingLike || 0)
+
+  return pendingLike < ONE_KEY_LOW_WATER_PENDING_LIKE[entityType]
+}
+
+async function backfillOneKeyLowWater(
+  prisma: PrismaClient,
+  continuation: MapOpsContinuation,
+  queue: MapQueueSnapshot,
+  options: { force?: boolean } = {}
+): Promise<OneKeyBackfillSummary> {
+  const force = options.force === true
+  const detailParts: string[] = []
+  let scanned = 0
+  let enqueued = 0
+  let updated = 0
+
+  if (shouldBackfillEntity(queue, 'anitabi_bangumi', force)) {
+    const result = await enqueueMapTranslationTasksForBackfill({
+      prisma,
+      entityType: 'anitabi_bangumi',
+      targetLanguages: ['en', 'ja'],
+      mode: 'missing',
+      limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_bangumi,
+      cursor: continuation.bangumiBackfillCursor,
+    })
+    continuation.bangumiBackfillCursor = result.done
+      ? null
+      : result.nextCursor
+    continuation.bangumiBackfilledTotal += result.enqueued + result.updated
+    continuation.bangumiBatch += 1
+    continuation.success += result.enqueued
+    continuation.skipped += result.updated
+    scanned += result.scanned
+    enqueued += result.enqueued
+    updated += result.updated
+    detailParts.push(`作品 新建 ${result.enqueued}/更新 ${result.updated}`)
+  }
+
+  if (shouldBackfillEntity(queue, 'anitabi_point', force)) {
+    const result = await enqueueMapTranslationTasksForBackfill({
+      prisma,
+      entityType: 'anitabi_point',
+      targetLanguages: ['en', 'ja'],
+      mode: 'missing',
+      limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_point,
+      cursor: continuation.pointBackfillCursor,
+    })
+    continuation.pointBackfillCursor = result.done
+      ? null
+      : result.nextCursor
+    continuation.pointBackfilledEnqueued += result.enqueued
+    continuation.pointBackfilledUpdated += result.updated
+    continuation.success += result.enqueued
+    continuation.skipped += result.updated
+    scanned += result.scanned
+    enqueued += result.enqueued
+    updated += result.updated
+    detailParts.push(`点位 新建 ${result.enqueued}/更新 ${result.updated}`)
+  }
+
+  return {
+    triggered: detailParts.length > 0,
+    scanned,
+    enqueued,
+    updated,
+    detail:
+      detailParts.length > 0
+        ? `${force ? '补队完成' : '低水位自动补队'}：${detailParts.join('，')}`
+        : null,
+  }
+}
+
 function buildOneKeySnapshot(
   continuation: MapOpsContinuation,
   queue: MapQueueSnapshot,
@@ -571,6 +677,16 @@ export async function runMapOps(
       break
     }
 
+    const lowWaterBackfill = await backfillOneKeyLowWater(
+      prisma,
+      continuation,
+      queueBefore
+    )
+    if (lowWaterBackfill.triggered && lowWaterBackfill.detail) {
+      roundProcessed = lowWaterBackfill.scanned
+      lastDetail = lowWaterBackfill.detail
+    }
+
     const failedRound = await executeMapRound(prisma, {
       targetLanguage: input.targetLanguage,
       statusScope: 'failed',
@@ -587,8 +703,10 @@ export async function runMapOps(
         continuation.errors,
         failedRound.errorMessages
       )
-      roundProcessed = failedRound.processed
-      lastDetail = `失败任务优先推进：处理 ${failedRound.processed}，成功 ${failedRound.success}，失败 ${Math.max(0, failedRound.failed - failedRound.reclaimedProcessing)}`
+      roundProcessed = failedRound.processed + lowWaterBackfill.scanned
+      lastDetail = lowWaterBackfill.detail
+        ? `失败任务优先推进：处理 ${failedRound.processed}，成功 ${failedRound.success}，失败 ${Math.max(0, failedRound.failed - failedRound.reclaimedProcessing)}；${lowWaterBackfill.detail}`
+        : `失败任务优先推进：处理 ${failedRound.processed}，成功 ${failedRound.success}，失败 ${Math.max(0, failedRound.failed - failedRound.reclaimedProcessing)}`
     } else {
       const pendingRound = await executeMapRound(prisma, {
         targetLanguage: input.targetLanguage,
@@ -606,46 +724,24 @@ export async function runMapOps(
           continuation.errors,
           pendingRound.errorMessages
         )
-        roundProcessed = pendingRound.processed
-        lastDetail = `Pending 推进：处理 ${pendingRound.processed}，成功 ${pendingRound.success}，失败 ${Math.max(0, pendingRound.failed - pendingRound.reclaimedProcessing)}`
+        roundProcessed = pendingRound.processed + lowWaterBackfill.scanned
+        lastDetail = lowWaterBackfill.detail
+          ? `Pending 推进：处理 ${pendingRound.processed}，成功 ${pendingRound.success}，失败 ${Math.max(0, pendingRound.failed - pendingRound.reclaimedProcessing)}；${lowWaterBackfill.detail}`
+          : `Pending 推进：处理 ${pendingRound.processed}，成功 ${pendingRound.success}，失败 ${Math.max(0, pendingRound.failed - pendingRound.reclaimedProcessing)}`
       } else {
-        const bangumiResult = await enqueueMapTranslationTasksForBackfill({
-          prisma,
-          entityType: 'anitabi_bangumi',
-          targetLanguages: ['en', 'ja'],
-          mode: 'missing',
-          limit: 20,
-          cursor: continuation.bangumiBackfillCursor,
-        })
-        continuation.bangumiBackfillCursor = bangumiResult.done
-          ? null
-          : bangumiResult.nextCursor
-        continuation.bangumiBackfilledTotal += bangumiResult.enqueued + bangumiResult.updated
-        continuation.bangumiBatch += 1
-
-        const pointResult = await enqueueMapTranslationTasksForBackfill({
-          prisma,
-          entityType: 'anitabi_point',
-          targetLanguages: ['en', 'ja'],
-          mode: 'missing',
-          limit: 20,
-          cursor: continuation.pointBackfillCursor,
-        })
-        continuation.pointBackfillCursor = pointResult.done
-          ? null
-          : pointResult.nextCursor
-        continuation.pointBackfilledEnqueued += pointResult.enqueued
-        continuation.pointBackfilledUpdated += pointResult.updated
-        continuation.skipped += bangumiResult.updated + pointResult.updated
-        continuation.success += bangumiResult.enqueued + pointResult.enqueued
-        roundProcessed = bangumiResult.scanned + pointResult.scanned
-        lastDetail = `补队完成：作品 新建 ${bangumiResult.enqueued}/更新 ${bangumiResult.updated}，点位 新建 ${pointResult.enqueued}/更新 ${pointResult.updated}`
+        const forcedBackfill = lowWaterBackfill.triggered
+          ? lowWaterBackfill
+          : await backfillOneKeyLowWater(prisma, continuation, queueBefore, {
+              force: true,
+            })
+        if (forcedBackfill.triggered && forcedBackfill.detail) {
+          roundProcessed = forcedBackfill.scanned
+          lastDetail = forcedBackfill.detail
+        }
 
         if (
-          bangumiResult.enqueued === 0 &&
-          bangumiResult.updated === 0 &&
-          pointResult.enqueued === 0 &&
-          pointResult.updated === 0
+          !forcedBackfill.triggered ||
+          (forcedBackfill.enqueued === 0 && forcedBackfill.updated === 0)
         ) {
           const queueAfterIdle = await loadMapQueueSnapshot(prisma, input.targetLanguage)
           if (
