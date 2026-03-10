@@ -4,11 +4,7 @@ import {
   selectBangumiSourceForTarget,
   selectPointSourceForTarget,
 } from '@/lib/translation/mapLocale'
-
-const MAP_BATCH_CALL_OPTIONS = {
-  maxRetries: 0,
-  requestTimeoutMs: 8_000,
-} as const
+import { getMapTaskExecutionProfile } from '@/lib/translation/runtimeProfile'
 
 export type MapTaskExecutionInputTask = {
   id: string
@@ -63,12 +59,17 @@ async function translateTextsByLanguage(texts: string[], targetLanguage: string)
   const normalized = Array.from(new Set(texts.map((text) => String(text || '').trim()).filter(Boolean)))
   if (normalized.length === 0) return new Map()
 
-  const batches = splitIntoBatches(normalized, BATCH_SIZE, MAX_BATCH_CHARS)
+  const executionProfile = getMapTaskExecutionProfile()
+  const batches = splitIntoBatches(
+    normalized,
+    Math.min(BATCH_SIZE, executionProfile.batchSize),
+    Math.min(MAX_BATCH_CHARS, executionProfile.batchChars)
+  )
   const translated = new Map<string, string>()
 
   for (const batch of batches) {
     const result = await translateTextBatch(batch, targetLanguage, {
-      callOptions: MAP_BATCH_CALL_OPTIONS,
+      callOptions: executionProfile.callOptions,
       fallbackMode: 'error',
     })
     for (const original of batch) {

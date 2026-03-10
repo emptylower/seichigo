@@ -86,6 +86,16 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    error.name === 'TimeoutError' ||
+    message.includes('aborted due to timeout') ||
+    message.includes('timed out')
+  )
+}
+
 type CallGeminiOptions = {
   responseMimeType?: string
   initialBackoffMs?: number
@@ -113,11 +123,11 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
     initialBackoffMs * Math.pow(2, retryCount),
     maxBackoffMs
   )
+  const timeoutMs = Number.isFinite(options.requestTimeoutMs)
+    ? Math.max(1, Math.floor(Number(options.requestTimeoutMs)))
+    : null
 
   try {
-    const timeoutMs = Number.isFinite(options.requestTimeoutMs)
-      ? Math.max(1, Math.floor(Number(options.requestTimeoutMs)))
-      : null
     const response = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
@@ -194,7 +204,12 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
     }
 
     return text
-  } catch (error) {
+  } catch (rawError) {
+    const error =
+      timeoutMs && isTimeoutError(rawError)
+        ? new Error(`Gemini request timed out after ${timeoutMs}ms`)
+        : rawError
+
     if (error instanceof Error && error.message.includes('Rate limit')) {
       throw error
     }

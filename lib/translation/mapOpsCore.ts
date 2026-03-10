@@ -18,6 +18,7 @@ import {
   type MapQueueSnapshot,
   type RunMapOpsInput,
 } from '@/lib/translation/mapOpsShared'
+import { getMapOneKeyPolicy } from '@/lib/translation/runtimeProfile'
 
 const ONE_KEY_LOW_WATER_PENDING_LIKE = {
   anitabi_bangumi: 40,
@@ -34,10 +35,6 @@ const ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND = {
   anitabi_point: 1,
 } as const
 
-const ONE_KEY_APPROVE_LIMIT = 30
-const ONE_KEY_FAILED_LIMIT_PER_TYPE = 4
-const ONE_KEY_PENDING_LIMIT_PER_TYPE = 6
-const ONE_KEY_EXECUTION_CONCURRENCY = 1
 const ONE_KEY_MAX_STAGNATION_ROUNDS = 3
 
 type MapReadyTask = { id: string; entityType: string }
@@ -427,8 +424,9 @@ async function approveReadyMapRound(
   prisma: PrismaClient,
   targetLanguage: MapSummaryTargetLanguage
 ): Promise<ReadyApprovalSummary> {
+  const oneKeyPolicy = getMapOneKeyPolicy()
   const readyTasks = await loadReadyTasks(prisma, {
-    limit: ONE_KEY_APPROVE_LIMIT,
+    limit: oneKeyPolicy.approveLimit,
     targetLanguage,
     mapOnly: true,
   })
@@ -575,6 +573,7 @@ export async function runAdvanceOneKeyMapOps(
   prisma: PrismaClient,
   input: RunMapOpsInput
 ): Promise<MapOpsResult> {
+  const oneKeyPolicy = getMapOneKeyPolicy()
   const nextContinuation: MapOpsContinuation = emptyContinuation(
     input.continuation || {}
   )
@@ -658,8 +657,8 @@ export async function runAdvanceOneKeyMapOps(
     failedRound = await executeMapRound(prisma, {
       targetLanguage: input.targetLanguage,
       statusScope: 'failed',
-      limitPerType: ONE_KEY_FAILED_LIMIT_PER_TYPE,
-      concurrency: ONE_KEY_EXECUTION_CONCURRENCY,
+      limitPerType: oneKeyPolicy.failedLimitPerType,
+      concurrency: oneKeyPolicy.executionConcurrency,
     })
 
     if (failedRound.total > 0) {
@@ -672,8 +671,8 @@ export async function runAdvanceOneKeyMapOps(
       pendingRound = await executeMapRound(prisma, {
         targetLanguage: input.targetLanguage,
         statusScope: 'pending',
-        limitPerType: ONE_KEY_PENDING_LIMIT_PER_TYPE,
-        concurrency: ONE_KEY_EXECUTION_CONCURRENCY,
+        limitPerType: oneKeyPolicy.pendingLimitPerType,
+        concurrency: oneKeyPolicy.executionConcurrency,
       })
 
       if (pendingRound.total > 0) {

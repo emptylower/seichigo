@@ -51,6 +51,8 @@ function createPrismaMock(readyTasks: Array<{ id: string }> = []) {
 describe('runMapOps advance_one_key', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    delete process.env.VERCEL
+    delete process.env.VERCEL_ENV
     mocks.approveBatchMapTranslationTasks.mockResolvedValue({
       total: 0,
       approved: 0,
@@ -321,6 +323,72 @@ describe('runMapOps advance_one_key', () => {
       roundProcessed: 6,
       stagnationCount: 0,
     })
+  })
+
+  it('uses smaller one-key execution batches on Vercel', async () => {
+    process.env.VERCEL = '1'
+
+    const prisma = createPrismaMock()
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) =>
+        Promise.resolve(
+          entityType === 'anitabi_point'
+            ? { pending: 360, processing: 0, ready: 0, failed: 0 }
+            : { pending: 0, processing: 0, ready: 0, failed: 0 }
+        )
+    )
+    mocks.getTranslationMapSummary.mockResolvedValue({
+      targetLanguage: 'all',
+      bangumiRemaining: 0,
+      pointRemaining: 0,
+    })
+    mocks.executeTranslationTasks.mockImplementation(
+      (_prisma: unknown, input: { entityType?: string; statusScope?: string }) => {
+        if (input.statusScope === 'pending' && input.entityType === 'anitabi_point') {
+          return Promise.resolve({
+            reclaimedProcessing: 0,
+            total: 4,
+            processed: 4,
+            success: 4,
+            failed: 0,
+            skipped: 0,
+            results: [{ taskId: 'point-1', status: 'ready' }],
+          })
+        }
+
+        return Promise.resolve({
+          reclaimedProcessing: 0,
+          total: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          skipped: 0,
+          results: [],
+        })
+      }
+    )
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      maxRounds: 1,
+    })
+
+    expect(mocks.executeTranslationTasks.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          prisma,
+          expect.objectContaining({
+            entityType: 'anitabi_point',
+            statusScope: 'pending',
+            limit: 4,
+            concurrency: 1,
+          }),
+        ],
+      ])
+    )
   })
 
   it('does not report done while ready map tasks still need approval', async () => {

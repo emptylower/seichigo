@@ -72,4 +72,25 @@ describe('translateTextBatch', () => {
     ).rejects.toThrow('Batch translation returned malformed JSON')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('reports a readable timeout error with the configured request budget', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(
+      Object.assign(new Error('The operation was aborted due to timeout'), {
+        name: 'TimeoutError',
+      })
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      translateTextBatch(['东京'], 'en', {
+        fallbackMode: 'error',
+        callOptions: {
+          maxRetries: 0,
+          requestTimeoutMs: 12_345,
+        },
+      })
+    ).rejects.toThrow('Gemini request timed out after 12345ms')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })

@@ -4,7 +4,7 @@ import { routeError } from '@/lib/translation/handlers/common'
 import { createHandlers } from '@/lib/translation/handlers/mapOps'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   try {
