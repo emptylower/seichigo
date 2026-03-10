@@ -190,6 +190,155 @@ describe('runMapOps advance_one_key', () => {
     })
   })
 
+  it('keeps advancing the backfill cursor without tripping stagnation when sparse gaps are later in the dataset', async () => {
+    const prisma = createPrismaMock()
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) =>
+        Promise.resolve(
+          entityType === 'anitabi_point'
+            ? { pending: 0, processing: 0, ready: 0, failed: 0 }
+            : { pending: 0, processing: 0, ready: 0, failed: 0 }
+        )
+    )
+    mocks.getTranslationMapSummary.mockResolvedValue({
+      targetLanguage: 'all',
+      bangumiRemaining: 0,
+      pointRemaining: 1736,
+    })
+    mocks.executeTranslationTasks.mockResolvedValue({
+      reclaimedProcessing: 0,
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      results: [],
+    })
+    for (let index = 1; index <= 15; index += 1) {
+      mocks.enqueueMapTranslationTasksForBackfill.mockResolvedValueOnce({
+        scanned: 1000,
+        enqueued: 0,
+        updated: 0,
+        nextCursor: `point-cursor-${index}`,
+        done: false,
+      })
+    }
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    const result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      maxRounds: 3,
+    })
+
+    expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(15)
+    expect(result.done).toBe(false)
+    expect(result.continuation).toBeTruthy()
+    expect(result.message).toContain('继续向后扫描')
+    expect(result.snapshot.oneKey).toMatchObject({
+      pointBackfilledEnqueued: 0,
+      stagnationCount: 0,
+    })
+    expect(result.pointBackfillCursor).toBe('point-cursor-15')
+  })
+
+  it('keeps scanning later backfill pages in the same round until it hits missing point tasks', async () => {
+    const prisma = createPrismaMock()
+    let statsCall = 0
+    let summaryCall = 0
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) => {
+        const phase = Math.min(Math.floor(statsCall / 2), 2)
+        statsCall += 1
+
+        if (entityType === 'anitabi_point') {
+          if (phase === 0) {
+            return Promise.resolve({
+              pending: 0,
+              processing: 0,
+              ready: 0,
+              failed: 0,
+            })
+          }
+
+          return Promise.resolve({
+            pending: 50,
+            processing: 0,
+            ready: 0,
+            failed: 0,
+          })
+        }
+
+        return Promise.resolve({
+          pending: 0,
+          processing: 0,
+          ready: 0,
+          failed: 0,
+        })
+      }
+    )
+    mocks.getTranslationMapSummary.mockImplementation(() => {
+      const phase = Math.min(summaryCall, 2)
+      summaryCall += 1
+      return Promise.resolve({
+        targetLanguage: 'all',
+        bangumiRemaining: 0,
+        pointRemaining: phase === 0 ? 50 : 0,
+      })
+    })
+    mocks.executeTranslationTasks.mockResolvedValue({
+      reclaimedProcessing: 0,
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      results: [],
+    })
+    mocks.enqueueMapTranslationTasksForBackfill
+      .mockResolvedValueOnce({
+        scanned: 1000,
+        enqueued: 0,
+        updated: 0,
+        nextCursor: 'point-cursor-1000',
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        scanned: 1000,
+        enqueued: 0,
+        updated: 0,
+        nextCursor: 'point-cursor-2000',
+        done: false,
+      })
+      .mockResolvedValueOnce({
+        scanned: 200,
+        enqueued: 50,
+        updated: 0,
+        nextCursor: null,
+        done: true,
+      })
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    const result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      maxRounds: 1,
+    })
+
+    expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(3)
+    expect(result.done).toBe(false)
+    expect(result.continuation).toBeTruthy()
+    expect(result.message).toContain('点位 扫描 2200，新建 50/更新 0')
+    expect(result.snapshot.oneKey).toMatchObject({
+      pointBackfilledEnqueued: 50,
+      pointQueueOpen: 50,
+      pointUnqueuedEstimate: 0,
+      stagnationCount: 0,
+    })
+  })
+
   it('does not report done while ready map tasks still need approval', async () => {
     const prisma = createPrismaMock(
       Array.from({ length: 100 }, (_value, index) => ({

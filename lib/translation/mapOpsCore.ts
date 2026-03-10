@@ -29,6 +29,11 @@ const ONE_KEY_BACKFILL_SCAN_LIMIT = {
   anitabi_point: 1000,
 } as const
 
+const ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND = {
+  anitabi_bangumi: 5,
+  anitabi_point: 5,
+} as const
+
 const ONE_KEY_APPROVE_LIMIT = 100
 const ONE_KEY_MAX_STAGNATION_ROUNDS = 3
 const ONE_KEY_MAX_REQUEST_MS = 10_000
@@ -43,6 +48,7 @@ type OneKeyBackfillSummary = {
   scanned: number
   enqueued: number
   updated: number
+  cursorAdvanced: boolean
   detail: string | null
 }
 
@@ -286,45 +292,118 @@ async function backfillOneKeyLowWater(
   let scanned = 0
   let enqueued = 0
   let updated = 0
+  let cursorAdvanced = false
 
   if (shouldBackfillEntity(queue, 'anitabi_bangumi', force)) {
-    const result = await enqueueMapTranslationTasksForBackfill({
-      prisma,
-      entityType: 'anitabi_bangumi',
-      targetLanguages,
-      mode: 'missing',
-      limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_bangumi,
-      cursor: continuation.bangumiBackfillCursor,
-    })
-    continuation.bangumiBackfillCursor = result.done ? null : result.nextCursor
-    continuation.bangumiBackfilledTotal += result.enqueued + result.updated
-    continuation.bangumiBatch += 1
-    continuation.success += result.enqueued
-    continuation.skipped += result.updated
-    scanned += result.scanned
-    enqueued += result.enqueued
-    updated += result.updated
-    detailParts.push(`作品 新建 ${result.enqueued}/更新 ${result.updated}`)
+    let entityScanned = 0
+    let entityEnqueued = 0
+    let entityUpdated = 0
+    let entityCursorAdvanced = false
+
+    for (
+      let page = 0;
+      page < ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND.anitabi_bangumi;
+      page += 1
+    ) {
+      const cursorBefore = continuation.bangumiBackfillCursor
+      const result = await enqueueMapTranslationTasksForBackfill({
+        prisma,
+        entityType: 'anitabi_bangumi',
+        targetLanguages,
+        mode: 'missing',
+        limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_bangumi,
+        cursor: cursorBefore,
+      })
+      continuation.bangumiBackfillCursor = result.done ? null : result.nextCursor
+      continuation.bangumiBackfilledTotal += result.enqueued + result.updated
+      continuation.bangumiBatch += 1
+      continuation.success += result.enqueued
+      continuation.skipped += result.updated
+      entityScanned += result.scanned
+      entityEnqueued += result.enqueued
+      entityUpdated += result.updated
+      if (
+        !result.done &&
+        result.nextCursor &&
+        result.nextCursor !== cursorBefore
+      ) {
+        entityCursorAdvanced = true
+      }
+      if (result.enqueued > 0 || result.updated > 0 || result.done) {
+        break
+      }
+    }
+
+    scanned += entityScanned
+    enqueued += entityEnqueued
+    updated += entityUpdated
+    cursorAdvanced ||= entityCursorAdvanced
+
+    if (entityScanned > 0 || entityEnqueued > 0 || entityUpdated > 0) {
+      detailParts.push(
+        entityEnqueued > 0 || entityUpdated > 0
+          ? `作品 扫描 ${entityScanned}，新建 ${entityEnqueued}/更新 ${entityUpdated}`
+          : entityCursorAdvanced
+            ? `作品 扫描 ${entityScanned}，暂未命中缺口，继续向后扫描`
+            : `作品 扫描 ${entityScanned}，本轮未命中缺口`
+      )
+    }
   }
 
   if (shouldBackfillEntity(queue, 'anitabi_point', force)) {
-    const result = await enqueueMapTranslationTasksForBackfill({
-      prisma,
-      entityType: 'anitabi_point',
-      targetLanguages,
-      mode: 'missing',
-      limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_point,
-      cursor: continuation.pointBackfillCursor,
-    })
-    continuation.pointBackfillCursor = result.done ? null : result.nextCursor
-    continuation.pointBackfilledEnqueued += result.enqueued
-    continuation.pointBackfilledUpdated += result.updated
-    continuation.success += result.enqueued
-    continuation.skipped += result.updated
-    scanned += result.scanned
-    enqueued += result.enqueued
-    updated += result.updated
-    detailParts.push(`点位 新建 ${result.enqueued}/更新 ${result.updated}`)
+    let entityScanned = 0
+    let entityEnqueued = 0
+    let entityUpdated = 0
+    let entityCursorAdvanced = false
+
+    for (
+      let page = 0;
+      page < ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND.anitabi_point;
+      page += 1
+    ) {
+      const cursorBefore = continuation.pointBackfillCursor
+      const result = await enqueueMapTranslationTasksForBackfill({
+        prisma,
+        entityType: 'anitabi_point',
+        targetLanguages,
+        mode: 'missing',
+        limit: ONE_KEY_BACKFILL_SCAN_LIMIT.anitabi_point,
+        cursor: cursorBefore,
+      })
+      continuation.pointBackfillCursor = result.done ? null : result.nextCursor
+      continuation.pointBackfilledEnqueued += result.enqueued
+      continuation.pointBackfilledUpdated += result.updated
+      continuation.success += result.enqueued
+      continuation.skipped += result.updated
+      entityScanned += result.scanned
+      entityEnqueued += result.enqueued
+      entityUpdated += result.updated
+      if (
+        !result.done &&
+        result.nextCursor &&
+        result.nextCursor !== cursorBefore
+      ) {
+        entityCursorAdvanced = true
+      }
+      if (result.enqueued > 0 || result.updated > 0 || result.done) {
+        break
+      }
+    }
+
+    scanned += entityScanned
+    enqueued += entityEnqueued
+    updated += entityUpdated
+    cursorAdvanced ||= entityCursorAdvanced
+
+    if (entityScanned > 0 || entityEnqueued > 0 || entityUpdated > 0) {
+      detailParts.push(
+        entityEnqueued > 0 || entityUpdated > 0
+          ? `点位 扫描 ${entityScanned}，新建 ${entityEnqueued}/更新 ${entityUpdated}`
+          : entityCursorAdvanced
+            ? `点位 扫描 ${entityScanned}，暂未命中缺口，继续向后扫描`
+            : `点位 扫描 ${entityScanned}，本轮未命中缺口`
+      )
+    }
   }
 
   return {
@@ -332,6 +411,7 @@ async function backfillOneKeyLowWater(
     scanned,
     enqueued,
     updated,
+    cursorAdvanced,
     detail:
       detailParts.length > 0
         ? `${force ? '补队完成' : '低水位自动补队'}：${detailParts.join('，')}`
@@ -393,6 +473,7 @@ function hasMeaningfulProgress(input: {
   return (
     input.backfill.enqueued > 0 ||
     input.backfill.updated > 0 ||
+    input.backfill.cursorAdvanced ||
     input.approvals.approved > 0 ||
     input.failedRound.success > 0 ||
     input.failedRound.reclaimedProcessing > 0 ||
