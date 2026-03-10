@@ -505,6 +505,54 @@ describe('GET /api/admin/translations/untranslated', () => {
     expect(mocks.prisma.anime.findMany).not.toHaveBeenCalled()
   })
 
+  it('chunks large map point coverage queries to stay below Prisma bind variable limits', async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
+
+    const totalPoints = 20_050
+    const pointRows = Array.from({ length: totalPoints }, (_, index) => ({
+      id: `point-${String(index + 1).padStart(5, '0')}`,
+      name: `Point ${index + 1}`,
+      nameZh: `点位 ${index + 1}`,
+      updatedAt: new Date('2024-04-01T00:00:00.000Z'),
+    }))
+
+    mocks.prisma.article.findMany.mockResolvedValue([])
+    mocks.prisma.city.findMany.mockResolvedValue([])
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiPoint.findMany.mockResolvedValue(pointRows)
+    mocks.prisma.translationTask.findMany.mockResolvedValue([])
+    mocks.prisma.anitabiPointI18n.findMany.mockResolvedValue([])
+
+    const handlers = await import('app/api/admin/translations/untranslated/route')
+    const res = await handlers.GET(
+      getReq('http://localhost/api/admin/translations/untranslated?entityType=anitabi_point&page=1&pageSize=5')
+    )
+
+    expect(res.status).toBe(200)
+    const j = await res.json()
+
+    expect(j.total).toBe(totalPoints)
+    expect(j.items).toHaveLength(5)
+
+    const pointTaskCalls = mocks.prisma.translationTask.findMany.mock.calls.filter(
+      ([opts]) => opts?.where?.entityType === 'anitabi_point'
+    )
+    const pointI18nCalls = mocks.prisma.anitabiPointI18n.findMany.mock.calls
+
+    expect(pointTaskCalls).toHaveLength(3)
+    expect(pointI18nCalls).toHaveLength(3)
+    expect(
+      pointTaskCalls.every(
+        ([opts]) => Array.isArray(opts?.where?.entityId?.in) && opts.where.entityId.in.length <= 10_000
+      )
+    ).toBe(true)
+    expect(
+      pointI18nCalls.every(
+        ([opts]) => Array.isArray(opts?.where?.pointId?.in) && opts.where.pointId.in.length <= 10_000
+      )
+    ).toBe(true)
+  })
+
   it('returns 401 for unauthenticated', async () => {
     mocks.getSession.mockResolvedValue(null)
 

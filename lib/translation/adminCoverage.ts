@@ -99,8 +99,55 @@ type ArticleTranslationRow = {
   language: string
 }
 
+type TranslationTaskLanguageRow = {
+  entityId: string
+  targetLanguage: string
+}
+
+const IN_FILTER_CHUNK_SIZE = 10_000
+
 function toDateIso(value: Date | null | undefined): string {
   return (value ?? new Date(0)).toISOString()
+}
+
+async function collectRowsInChunks<
+  TValue extends string | number,
+  TRow,
+>(
+  values: readonly TValue[],
+  loader: (chunk: TValue[]) => Promise<TRow[]>
+): Promise<TRow[]> {
+  const deduped = Array.from(new Set(values))
+  if (deduped.length === 0) return []
+
+  const rows: TRow[] = []
+  for (let index = 0; index < deduped.length; index += IN_FILTER_CHUNK_SIZE) {
+    const chunk = deduped.slice(index, index + IN_FILTER_CHUNK_SIZE)
+    rows.push(...(await loader(chunk)))
+  }
+
+  return rows
+}
+
+async function loadTaskRowsByEntityIds(
+  prisma: PrismaClient,
+  entityType: AdminTranslationEntityType,
+  entityIds: readonly string[],
+  targetLanguages: AdminTranslationTargetLanguage[]
+): Promise<TranslationTaskLanguageRow[]> {
+  return collectRowsInChunks(entityIds, (chunk) =>
+    prisma.translationTask.findMany({
+      where: {
+        entityType,
+        entityId: { in: chunk },
+        targetLanguage: { in: targetLanguages },
+      },
+      select: {
+        entityId: true,
+        targetLanguage: true,
+      },
+    })
+  )
 }
 
 export function parseAdminTranslationEntityType(
@@ -188,28 +235,20 @@ async function loadArticleCoverage(
   const groupIds = Array.from(new Set(Array.from(groupById.values())))
 
   const [taskRows, translatedRows] = await Promise.all([
-    prisma.translationTask.findMany({
-      where: {
-        entityType: 'article',
-        entityId: { in: entityIds },
-        targetLanguage: { in: targetLanguages },
-      },
-      select: {
-        entityId: true,
-        targetLanguage: true,
-      },
-    }),
-    prisma.article.findMany({
-      where: {
-        translationGroupId: { in: groupIds },
-        language: { in: targetLanguages },
-        status: 'published',
-      },
-      select: {
-        translationGroupId: true,
-        language: true,
-      },
-    }) as Promise<ArticleTranslationRow[]>,
+    loadTaskRowsByEntityIds(prisma, 'article', entityIds, targetLanguages),
+    collectRowsInChunks(groupIds, (chunk) =>
+      prisma.article.findMany({
+        where: {
+          translationGroupId: { in: chunk },
+          language: { in: targetLanguages },
+          status: 'published',
+        },
+        select: {
+          translationGroupId: true,
+          language: true,
+        },
+      }) as Promise<ArticleTranslationRow[]>
+    ),
   ])
 
   const taskLanguagesById = buildTaskLanguageMap(taskRows)
@@ -358,27 +397,24 @@ async function loadBangumiCoverage(
 
   const ids = rows.map((row) => row.id)
   const [taskRows, translatedRows] = await Promise.all([
-    prisma.translationTask.findMany({
-      where: {
-        entityType: 'anitabi_bangumi',
-        entityId: { in: ids.map((id) => String(id)) },
-        targetLanguage: { in: targetLanguages },
-      },
-      select: {
-        entityId: true,
-        targetLanguage: true,
-      },
-    }),
-    prisma.anitabiBangumiI18n.findMany({
-      where: {
-        bangumiId: { in: ids },
-        language: { in: targetLanguages },
-      },
-      select: {
-        bangumiId: true,
-        language: true,
-      },
-    }),
+    loadTaskRowsByEntityIds(
+      prisma,
+      'anitabi_bangumi',
+      ids.map((id) => String(id)),
+      targetLanguages
+    ),
+    collectRowsInChunks(ids, (chunk) =>
+      prisma.anitabiBangumiI18n.findMany({
+        where: {
+          bangumiId: { in: chunk },
+          language: { in: targetLanguages },
+        },
+        select: {
+          bangumiId: true,
+          language: true,
+        },
+      })
+    ),
   ])
 
   const taskLanguagesById = buildTaskLanguageMap(taskRows)
@@ -422,27 +458,24 @@ async function loadPointCoverage(
 
   const ids = rows.map((row) => row.id)
   const [taskRows, translatedRows] = await Promise.all([
-    prisma.translationTask.findMany({
-      where: {
-        entityType: 'anitabi_point',
-        entityId: { in: ids },
-        targetLanguage: { in: targetLanguages },
-      },
-      select: {
-        entityId: true,
-        targetLanguage: true,
-      },
-    }),
-    prisma.anitabiPointI18n.findMany({
-      where: {
-        pointId: { in: ids },
-        language: { in: targetLanguages },
-      },
-      select: {
-        pointId: true,
-        language: true,
-      },
-    }),
+    loadTaskRowsByEntityIds(
+      prisma,
+      'anitabi_point',
+      ids,
+      targetLanguages
+    ),
+    collectRowsInChunks(ids, (chunk) =>
+      prisma.anitabiPointI18n.findMany({
+        where: {
+          pointId: { in: chunk },
+          language: { in: targetLanguages },
+        },
+        select: {
+          pointId: true,
+          language: true,
+        },
+      })
+    ),
   ])
 
   const taskLanguagesById = buildTaskLanguageMap(taskRows)

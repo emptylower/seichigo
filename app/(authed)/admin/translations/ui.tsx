@@ -303,7 +303,11 @@ export default function TranslationsUI({
   }
 
   const reloadAll = async () => {
-    await Promise.all([loadTasks(), loadStats(), loadUntranslated()])
+    await Promise.all([
+      loadTasks(),
+      loadStats(),
+      view === 'untranslated' ? loadUntranslated() : Promise.resolve(),
+    ])
   }
 
   const {
