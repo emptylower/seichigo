@@ -200,4 +200,90 @@ describe('mapTaskExecutor', () => {
       }
     )
   })
+
+  it('splits timed out batches and only fails tasks whose source text still times out', async () => {
+    process.env.VERCEL = '1'
+
+    const prisma = createPrismaMock()
+    prisma.anitabiPoint.findMany.mockResolvedValue([
+      {
+        id: 'point-1',
+        name: 'Point A fallback',
+        nameZh: 'Point A',
+        mark: 'Note A',
+      },
+      {
+        id: 'point-2',
+        name: 'Point B fallback',
+        nameZh: 'Point B',
+        mark: 'Note B',
+      },
+    ])
+
+    mocks.translateTextBatch
+      .mockRejectedValueOnce(new Error('Gemini request timed out after 15000ms'))
+      .mockResolvedValueOnce(
+        new Map([
+          ['Point A', 'Point A EN'],
+          ['Note A', 'Note A EN'],
+        ])
+      )
+      .mockRejectedValueOnce(new Error('Gemini request timed out after 25000ms'))
+      .mockRejectedValueOnce(new Error('Gemini request timed out after 25000ms'))
+      .mockResolvedValueOnce(new Map([['Note B', 'Note B EN']]))
+
+    const { executeMapTranslationTasks } = await import('@/lib/translation/mapTaskExecutor')
+    const results = await executeMapTranslationTasks({
+      prisma: prisma as any,
+      tasks: [
+        { id: 'task-1', entityType: 'anitabi_point', entityId: 'point-1', targetLanguage: 'en' },
+        { id: 'task-2', entityType: 'anitabi_point', entityId: 'point-2', targetLanguage: 'en' },
+      ],
+      concurrency: 1,
+    })
+
+    expect(results).toEqual([
+      { taskId: 'task-1', status: 'ready' },
+      {
+        taskId: 'task-2',
+        status: 'failed',
+        error: 'Gemini request timed out after 25000ms',
+      },
+    ])
+    expect(mocks.translateTextBatch).toHaveBeenNthCalledWith(
+      2,
+      ['Point A', 'Note A'],
+      'en',
+      {
+        callOptions: {
+          maxRetries: 1,
+          requestTimeoutMs: 25_000,
+          initialBackoffMs: 500,
+          maxBackoffMs: 1_500,
+        },
+        fallbackMode: 'error',
+      }
+    )
+    expect(prisma.translationTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'task-1' },
+        data: expect.objectContaining({
+          status: 'ready',
+          draftContent: {
+            name: 'Point A EN',
+            note: 'Note A EN',
+          },
+        }),
+      })
+    )
+    expect(prisma.translationTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'task-2' },
+        data: expect.objectContaining({
+          status: 'failed',
+          error: 'Gemini request timed out after 25000ms',
+        }),
+      })
+    )
+  })
 })

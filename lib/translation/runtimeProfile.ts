@@ -9,6 +9,12 @@ export type MapTaskExecutionProfile = {
     initialBackoffMs?: number
     maxBackoffMs?: number
   }
+  timeoutFallbackCallOptions?: {
+    maxRetries: number
+    requestTimeoutMs: number
+    initialBackoffMs?: number
+    maxBackoffMs?: number
+  }
 }
 
 export type MapOneKeyPolicy = {
@@ -40,6 +46,12 @@ export function getMapTaskExecutionProfile(
         requestTimeoutMs: 15_000,
         initialBackoffMs: 250,
         maxBackoffMs: 1_000,
+      },
+      timeoutFallbackCallOptions: {
+        maxRetries: 1,
+        requestTimeoutMs: 25_000,
+        initialBackoffMs: 500,
+        maxBackoffMs: 1_500,
       },
     }
   }

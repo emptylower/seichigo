@@ -25,6 +25,11 @@ export type ExecuteMapTranslationTasksInput = {
   concurrency?: number
 }
 
+type TranslateTextsResult = {
+  translated: Map<string, string>
+  failed: Map<string, string>
+}
+
 function normalizeConcurrency(input: number | null | undefined): number {
   if (!Number.isFinite(input)) return 4
   return Math.max(1, Math.min(12, Math.floor(Number(input))))
@@ -55,9 +60,129 @@ function splitIntoBatches(texts: string[], maxCount: number, maxChars: number): 
   return batches
 }
 
-async function translateTextsByLanguage(texts: string[], targetLanguage: string): Promise<Map<string, string>> {
-  const normalized = Array.from(new Set(texts.map((text) => String(text || '').trim()).filter(Boolean)))
-  if (normalized.length === 0) return new Map()
+function isGeminiTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.message.toLowerCase().includes('timed out')
+}
+
+function mergeTextResults(target: TranslateTextsResult, incoming: TranslateTextsResult): void {
+  for (const [original, translated] of incoming.translated.entries()) {
+    target.translated.set(original, translated)
+  }
+  for (const [original, error] of incoming.failed.entries()) {
+    if (!target.failed.has(original)) {
+      target.failed.set(original, error)
+    }
+  }
+}
+
+async function translateBatchWithTimeoutFallback(
+  texts: string[],
+  targetLanguage: string,
+  executionProfile: ReturnType<typeof getMapTaskExecutionProfile>,
+  useTimeoutFallback = false
+): Promise<TranslateTextsResult> {
+  if (texts.length === 0) {
+    return {
+      translated: new Map(),
+      failed: new Map(),
+    }
+  }
+
+  const callOptions =
+    useTimeoutFallback && executionProfile.timeoutFallbackCallOptions
+      ? executionProfile.timeoutFallbackCallOptions
+      : executionProfile.callOptions
+
+  try {
+    const translated = await translateTextBatch(texts, targetLanguage, {
+      callOptions,
+      fallbackMode: 'error',
+    })
+    return {
+      translated,
+      failed: new Map(),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Translation failed'
+
+    if (isGeminiTimeoutError(error)) {
+      if (
+        texts.length === 1 &&
+        !useTimeoutFallback &&
+        executionProfile.timeoutFallbackCallOptions
+      ) {
+        return translateBatchWithTimeoutFallback(
+          texts,
+          targetLanguage,
+          executionProfile,
+          true
+        )
+      }
+
+      if (texts.length > 1) {
+        const midpoint = Math.ceil(texts.length / 2)
+        const merged: TranslateTextsResult = {
+          translated: new Map(),
+          failed: new Map(),
+        }
+
+        mergeTextResults(
+          merged,
+          await translateBatchWithTimeoutFallback(
+            texts.slice(0, midpoint),
+            targetLanguage,
+            executionProfile,
+            true
+          )
+        )
+        mergeTextResults(
+          merged,
+          await translateBatchWithTimeoutFallback(
+            texts.slice(midpoint),
+            targetLanguage,
+            executionProfile,
+            true
+          )
+        )
+
+        return merged
+      }
+    }
+
+    return {
+      translated: new Map(),
+      failed: new Map(texts.map((text) => [text, message])),
+    }
+  }
+}
+
+function resolveTextFailure(
+  failedTexts: Map<string, string>,
+  values: Array<string | null | undefined>
+): string | null {
+  for (const value of values) {
+    const text = String(value || '').trim()
+    if (!text) continue
+    const error = failedTexts.get(text)
+    if (error) return error
+  }
+  return null
+}
+
+async function translateTextsByLanguage(
+  texts: string[],
+  targetLanguage: string
+): Promise<TranslateTextsResult> {
+  const normalized = Array.from(
+    new Set(texts.map((text) => String(text || '').trim()).filter(Boolean))
+  )
+  if (normalized.length === 0) {
+    return {
+      translated: new Map(),
+      failed: new Map(),
+    }
+  }
 
   const executionProfile = getMapTaskExecutionProfile()
   const batches = splitIntoBatches(
@@ -65,19 +190,28 @@ async function translateTextsByLanguage(texts: string[], targetLanguage: string)
     Math.min(BATCH_SIZE, executionProfile.batchSize),
     Math.min(MAX_BATCH_CHARS, executionProfile.batchChars)
   )
-  const translated = new Map<string, string>()
+  const merged: TranslateTextsResult = {
+    translated: new Map(),
+    failed: new Map(),
+  }
 
   for (const batch of batches) {
-    const result = await translateTextBatch(batch, targetLanguage, {
-      callOptions: executionProfile.callOptions,
-      fallbackMode: 'error',
-    })
+    const result = await translateBatchWithTimeoutFallback(
+      batch,
+      targetLanguage,
+      executionProfile
+    )
+    mergeTextResults(merged, result)
     for (const original of batch) {
-      translated.set(original, result.get(original) || original)
+      if (result.failed.has(original)) continue
+      merged.translated.set(
+        original,
+        result.translated.get(original) || original
+      )
     }
   }
 
-  return translated
+  return merged
 }
 
 async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
@@ -201,9 +335,9 @@ async function executeBangumiTasks(
       if (source.city) texts.push(source.city)
     }
 
-    let translated: Map<string, string>
+    let translationResult: TranslateTextsResult
     try {
-      translated = await translateTextsByLanguage(texts, targetLanguage)
+      translationResult = await translateTextsByLanguage(texts, targetLanguage)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Translation failed'
       await runWithConcurrency(languageTasks, concurrency, async (task) => {
@@ -234,10 +368,26 @@ async function executeBangumiTasks(
           city: string | null
         }
 
+        const translateError = resolveTextFailure(
+          translationResult.failed,
+          [source.title, source.description, source.city]
+        )
+        if (translateError) {
+          await updateTaskFailed(prisma, task.id, translateError)
+          results.set(task.id, { taskId: task.id, status: 'failed', error: translateError })
+          return
+        }
+
         const draftContent = {
-          title: source.title ? translated.get(source.title) || source.title : source.title,
-          description: source.description ? translated.get(source.description) || source.description : null,
-          city: source.city ? translated.get(source.city) || source.city : null,
+          title: source.title
+            ? translationResult.translated.get(source.title) || source.title
+            : source.title,
+          description: source.description
+            ? translationResult.translated.get(source.description) || source.description
+            : null,
+          city: source.city
+            ? translationResult.translated.get(source.city) || source.city
+            : null,
         }
 
         await updateTaskReady({
@@ -320,9 +470,9 @@ async function executePointTasks(
       if (source.note) texts.push(source.note)
     }
 
-    let translated: Map<string, string>
+    let translationResult: TranslateTextsResult
     try {
-      translated = await translateTextsByLanguage(texts, targetLanguage)
+      translationResult = await translateTextsByLanguage(texts, targetLanguage)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Translation failed'
       await runWithConcurrency(languageTasks, concurrency, async (task) => {
@@ -352,9 +502,23 @@ async function executePointTasks(
           note: string | null
         }
 
+        const translateError = resolveTextFailure(
+          translationResult.failed,
+          [source.name, source.note]
+        )
+        if (translateError) {
+          await updateTaskFailed(prisma, task.id, translateError)
+          results.set(task.id, { taskId: task.id, status: 'failed', error: translateError })
+          return
+        }
+
         const draftContent = {
-          name: source.name ? translated.get(source.name) || source.name : source.name,
-          note: source.note ? translated.get(source.note) || source.note : null,
+          name: source.name
+            ? translationResult.translated.get(source.name) || source.name
+            : source.name,
+          note: source.note
+            ? translationResult.translated.get(source.note) || source.note
+            : null,
         }
 
         await updateTaskReady({
