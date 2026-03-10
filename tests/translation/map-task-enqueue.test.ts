@@ -21,6 +21,7 @@ describe('mapTaskEnqueue', () => {
       },
       translationTask: {
         findMany: vi.fn().mockResolvedValue([]),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
         create: vi.fn().mockResolvedValue({ id: 't1' }),
         update: vi.fn(),
       },
@@ -42,7 +43,8 @@ describe('mapTaskEnqueue', () => {
       done: true,
       nextCursor: 'p1',
     })
-    expect(prisma.translationTask.create).toHaveBeenCalledTimes(1)
+    expect(prisma.translationTask.createMany).toHaveBeenCalledTimes(1)
+    expect(prisma.translationTask.create).not.toHaveBeenCalled()
   })
 
   it('updates stale tasks when source hash changes', async () => {

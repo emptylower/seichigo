@@ -26,12 +26,12 @@ const ONE_KEY_LOW_WATER_PENDING_LIKE = {
 
 const ONE_KEY_BACKFILL_SCAN_LIMIT = {
   anitabi_bangumi: 100,
-  anitabi_point: 1000,
+  anitabi_point: 500,
 } as const
 
 const ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND = {
-  anitabi_bangumi: 5,
-  anitabi_point: 5,
+  anitabi_bangumi: 3,
+  anitabi_point: 3,
 } as const
 
 const ONE_KEY_APPROVE_LIMIT = 100

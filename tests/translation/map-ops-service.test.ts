@@ -121,7 +121,7 @@ describe('runMapOps advance_one_key', () => {
       expect.objectContaining({
         entityType: 'anitabi_point',
         mode: 'missing',
-        limit: 1000,
+        limit: 500,
         cursor: null,
       })
     )
@@ -215,9 +215,9 @@ describe('runMapOps advance_one_key', () => {
       skipped: 0,
       results: [],
     })
-    for (let index = 1; index <= 15; index += 1) {
+    for (let index = 1; index <= 9; index += 1) {
       mocks.enqueueMapTranslationTasksForBackfill.mockResolvedValueOnce({
-        scanned: 1000,
+        scanned: 500,
         enqueued: 0,
         updated: 0,
         nextCursor: `point-cursor-${index}`,
@@ -232,7 +232,7 @@ describe('runMapOps advance_one_key', () => {
       maxRounds: 3,
     })
 
-    expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(15)
+    expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(9)
     expect(result.done).toBe(false)
     expect(result.continuation).toBeTruthy()
     expect(result.message).toContain('继续向后扫描')
@@ -240,7 +240,7 @@ describe('runMapOps advance_one_key', () => {
       pointBackfilledEnqueued: 0,
       stagnationCount: 0,
     })
-    expect(result.pointBackfillCursor).toBe('point-cursor-15')
+    expect(result.pointBackfillCursor).toBe('point-cursor-9')
   })
 
   it('keeps scanning later backfill pages in the same round until it hits missing point tasks', async () => {
@@ -299,14 +299,14 @@ describe('runMapOps advance_one_key', () => {
     })
     mocks.enqueueMapTranslationTasksForBackfill
       .mockResolvedValueOnce({
-        scanned: 1000,
+        scanned: 500,
         enqueued: 0,
         updated: 0,
         nextCursor: 'point-cursor-1000',
         done: false,
       })
       .mockResolvedValueOnce({
-        scanned: 1000,
+        scanned: 500,
         enqueued: 0,
         updated: 0,
         nextCursor: 'point-cursor-2000',
@@ -330,7 +330,7 @@ describe('runMapOps advance_one_key', () => {
     expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(3)
     expect(result.done).toBe(false)
     expect(result.continuation).toBeTruthy()
-    expect(result.message).toContain('点位 扫描 2200，新建 50/更新 0')
+    expect(result.message).toContain('点位 扫描 1200，新建 50/更新 0')
     expect(result.snapshot.oneKey).toMatchObject({
       pointBackfilledEnqueued: 50,
       pointQueueOpen: 50,

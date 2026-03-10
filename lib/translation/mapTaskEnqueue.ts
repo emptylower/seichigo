@@ -98,6 +98,14 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
   })
 
   const existingByKey = new Map(existingRows.map((row) => [`${row.entityId}:${row.targetLanguage}`, row]))
+  const createRows: Array<{
+    entityType: MapTranslationEntityType
+    entityId: string
+    targetLanguage: MapTranslationTargetLanguage
+    sourceHash: string
+    status: 'pending'
+  }> = []
+  const updateRows: Array<{ id: string; sourceHash: string }> = []
   let enqueued = 0
   let updated = 0
 
@@ -106,16 +114,13 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
     const existing = existingByKey.get(key)
 
     if (!existing) {
-      await prisma.translationTask.create({
-        data: {
-          entityType: candidate.entityType,
-          entityId: candidate.entityId,
-          targetLanguage: candidate.targetLanguage,
-          sourceHash: candidate.sourceHash,
-          status: 'pending',
-        },
+      createRows.push({
+        entityType: candidate.entityType,
+        entityId: candidate.entityId,
+        targetLanguage: candidate.targetLanguage,
+        sourceHash: candidate.sourceHash,
+        status: 'pending',
       })
-      enqueued += 1
       continue
     }
 
@@ -126,10 +131,40 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
 
     if (!mustResetPending) continue
 
+    updateRows.push({
+      id: existing.id,
+      sourceHash: candidate.sourceHash,
+    })
+  }
+
+  if (createRows.length > 0) {
+    const createMany = (prisma.translationTask as { createMany?: unknown }).createMany
+    if (typeof createMany === 'function') {
+      const result = await (
+        createMany as (args: {
+          data: typeof createRows
+          skipDuplicates: boolean
+        }) => Promise<{ count: number }>
+      )({
+        data: createRows,
+        skipDuplicates: true,
+      })
+      enqueued += Number(result?.count || 0)
+    } else {
+      for (const row of createRows) {
+        await prisma.translationTask.create({
+          data: row,
+        })
+        enqueued += 1
+      }
+    }
+  }
+
+  for (const row of updateRows) {
     await prisma.translationTask.update({
-      where: { id: existing.id },
+      where: { id: row.id },
       data: {
-        sourceHash: candidate.sourceHash,
+        sourceHash: row.sourceHash,
         status: 'pending',
         sourceContent: null,
         draftContent: null,
@@ -138,7 +173,6 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
         updatedAt: new Date(),
       } as any,
     })
-
     updated += 1
   }
 
