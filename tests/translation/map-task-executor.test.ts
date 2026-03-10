@@ -56,6 +56,17 @@ describe('mapTaskExecutor', () => {
     })
 
     expect(results).toEqual([{ taskId: 'task-1', status: 'ready' }])
+    expect(mocks.translateTextBatch).toHaveBeenCalledWith(
+      ['Source title', 'Source description', 'Tokyo'],
+      'en',
+      {
+        callOptions: {
+          maxRetries: 0,
+          requestTimeoutMs: 8_000,
+        },
+        fallbackMode: 'error',
+      }
+    )
     expect(prisma.translationTask.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'task-1' },
@@ -108,4 +119,3 @@ describe('mapTaskExecutor', () => {
     })
   })
 })
-

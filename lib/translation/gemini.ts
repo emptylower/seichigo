@@ -88,6 +88,10 @@ async function sleep(ms: number): Promise<void> {
 
 type CallGeminiOptions = {
   responseMimeType?: string
+  initialBackoffMs?: number
+  maxBackoffMs?: number
+  maxRetries?: number
+  requestTimeoutMs?: number
 }
 
 export async function callGemini(prompt: string, retryCount = 0, options: CallGeminiOptions = {}): Promise<string> {
@@ -96,18 +100,31 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
     throw new Error('GEMINI_API_KEY environment variable is not set')
   }
 
+  const maxRetries = Number.isFinite(options.maxRetries)
+    ? Math.max(0, Math.floor(Number(options.maxRetries)))
+    : MAX_RETRIES
+  const initialBackoffMs = Number.isFinite(options.initialBackoffMs)
+    ? Math.max(0, Math.floor(Number(options.initialBackoffMs)))
+    : INITIAL_BACKOFF_MS
+  const maxBackoffMs = Number.isFinite(options.maxBackoffMs)
+    ? Math.max(initialBackoffMs, Math.floor(Number(options.maxBackoffMs)))
+    : MAX_BACKOFF_MS
   const backoffMs = Math.min(
-    INITIAL_BACKOFF_MS * Math.pow(2, retryCount),
-    MAX_BACKOFF_MS
+    initialBackoffMs * Math.pow(2, retryCount),
+    maxBackoffMs
   )
 
   try {
+    const timeoutMs = Number.isFinite(options.requestTimeoutMs)
+      ? Math.max(1, Math.floor(Number(options.requestTimeoutMs)))
+      : null
     const response = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-goog-api-key': apiKey,
       },
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
       body: JSON.stringify({
         contents: [
           {
@@ -123,8 +140,8 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
     })
 
     if (response.status === 429) {
-      if (retryCount >= MAX_RETRIES) {
-        throw new Error(`Rate limit exceeded after ${MAX_RETRIES} retries`)
+      if (retryCount >= maxRetries) {
+        throw new Error(`Rate limit exceeded after ${maxRetries} retries`)
       }
       await sleep(backoffMs)
       return callGemini(prompt, retryCount + 1, options)
@@ -182,7 +199,7 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
       throw error
     }
 
-    if (retryCount < MAX_RETRIES) {
+    if (retryCount < maxRetries) {
       await sleep(backoffMs)
       return callGemini(prompt, retryCount + 1, options)
     }
@@ -191,7 +208,15 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
   }
 }
 
-export async function translateText(text: string, targetLang: string): Promise<string> {
+type TranslateTextOptions = {
+  callOptions?: CallGeminiOptions
+}
+
+export async function translateText(
+  text: string,
+  targetLang: string,
+  options: TranslateTextOptions = {}
+): Promise<string> {
   if (!text || !text.trim()) {
     throw new Error('Text to translate cannot be empty')
   }
@@ -202,7 +227,7 @@ export async function translateText(text: string, targetLang: string): Promise<s
   const targetLangName = LANGUAGE_NAMES[targetLang] || targetLang
   const prompt = `Translate the following text to ${targetLangName}. Preserve any placeholders like {{TERM_0}}. Only return the translation, no explanations:\n\n${protectedText}`
   
-  const translated = await callGemini(prompt)
+  const translated = await callGemini(prompt, 0, options.callOptions)
   
   let cleanedTranslation = translated.trim()
   if (cleanedTranslation.startsWith('```')) {
@@ -301,13 +326,27 @@ function parseBatchJsonResponse(response: string): Record<string, string> | null
   }
 }
 
-async function fallbackTranslateTextIndividually(texts: string[], targetLang: string): Promise<Map<string, string>> {
+type TranslateTextBatchOptions = {
+  callOptions?: CallGeminiOptions
+  fallbackMode?: 'single' | 'error'
+}
+
+async function fallbackTranslateTextIndividually(
+  texts: string[],
+  targetLang: string,
+  options: TranslateTextBatchOptions = {}
+): Promise<Map<string, string>> {
   const uniqueTexts = Array.from(new Set(texts.map((text) => String(text || ''))))
   const result = new Map<string, string>()
 
   for (const text of uniqueTexts) {
     try {
-      result.set(text, await translateText(text, targetLang))
+      result.set(
+        text,
+        await translateText(text, targetLang, {
+          callOptions: options.callOptions,
+        })
+      )
     } catch (error) {
       console.error('[translateTextBatch] fallback single translation failed', error)
       result.set(text, text)
@@ -317,7 +356,11 @@ async function fallbackTranslateTextIndividually(texts: string[], targetLang: st
   return result
 }
 
-export async function translateTextBatch(texts: string[], targetLang: string): Promise<Map<string, string>> {
+export async function translateTextBatch(
+  texts: string[],
+  targetLang: string,
+  options: TranslateTextBatchOptions = {}
+): Promise<Map<string, string>> {
   if (!texts || texts.length === 0) {
     return new Map()
   }
@@ -343,11 +386,17 @@ ${JSON.stringify(inputJson, null, 2)}
 
 Output the translated JSON:`
   
-  const response = await callGemini(prompt, 0, { responseMimeType: 'application/json' })
+  const response = await callGemini(prompt, 0, {
+    ...options.callOptions,
+    responseMimeType: 'application/json',
+  })
   const parsed = parseBatchJsonResponse(response)
   if (!parsed) {
+    if (options.fallbackMode === 'error') {
+      throw new Error('Batch translation returned malformed JSON')
+    }
     console.error('[translateTextBatch] failed to parse batch JSON response, fallback to single mode')
-    return fallbackTranslateTextIndividually(texts, targetLang)
+    return fallbackTranslateTextIndividually(texts, targetLang, options)
   }
   
   // Restore glossary terms per-text and build result map

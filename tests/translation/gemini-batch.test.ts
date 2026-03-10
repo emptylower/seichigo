@@ -56,5 +56,20 @@ describe('translateTextBatch', () => {
     expect(result.get('大阪')).toBe('Osaka')
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
-})
 
+  it('can fail fast on malformed batch JSON when fallback is disabled', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(geminiTextResponse('{"0":"Tokyo","1":"Osaka'))
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      translateTextBatch(['东京', '大阪'], 'en', {
+        fallbackMode: 'error',
+        callOptions: { maxRetries: 0 },
+      })
+    ).rejects.toThrow('Batch translation returned malformed JSON')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})

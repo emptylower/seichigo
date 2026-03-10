@@ -52,6 +52,8 @@ type CreateTranslationsMapActionsDeps = {
   reloadAll: () => Promise<void>
 }
 
+const MAX_ONE_KEY_REQUESTS = 80
+
 async function postMapOps(
   body: Record<string, unknown>
 ): Promise<MapOpsResponse> {
@@ -250,10 +252,11 @@ export function createTranslationsMapActions(
       }
       let lastResult: MapOpsResponse | null = null
 
-      for (let index = 0; index < 25; index += 1) {
+      for (let index = 0; index < MAX_ONE_KEY_REQUESTS; index += 1) {
         const result = await postMapOps({
           action: 'advance_one_key',
           targetLanguage,
+          maxRounds: 1,
           continuation,
         })
         lastResult = result

@@ -50,6 +50,7 @@ describe('createTranslationsMapActions', () => {
         expect(body).toMatchObject({
           action: 'advance_one_key',
           targetLanguage: 'ja',
+          maxRounds: 1,
           continuation: {
             bangumiBackfillCursor: 'bangumi-cursor',
             pointBackfillCursor: 'point-cursor',
@@ -90,6 +91,7 @@ describe('createTranslationsMapActions', () => {
         expect(body).toMatchObject({
           action: 'advance_one_key',
           targetLanguage: 'ja',
+          maxRounds: 1,
           continuation: {
             processed: 12,
             success: 10,
