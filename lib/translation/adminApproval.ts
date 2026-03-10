@@ -65,6 +65,7 @@ export async function approveTranslationTaskById(
       status: 'approved',
       sourceHash: result.sourceHash,
       finalContent: result.finalContent as any,
+      error: null,
       updatedAt: new Date(),
     } as any,
   })
@@ -140,6 +141,13 @@ export async function approveBatchMapTranslationTasks(
     }
 
     if (!task.draftContent || typeof task.draftContent !== 'object') {
+      await prisma.translationTask.update({
+        where: { id: taskId },
+        data: {
+          error: 'No draft content to approve',
+          updatedAt: new Date(),
+        },
+      })
       results.push({
         taskId,
         status: 'failed',
@@ -161,16 +169,25 @@ export async function approveBatchMapTranslationTasks(
           status: 'approved',
           finalContent: task.draftContent as any,
           sourceHash: resolveTaskSourceHash(task),
+          error: null,
           updatedAt: new Date(),
         } as any,
       })
 
       results.push({ taskId, status: 'approved' })
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Approve failed'
+      await prisma.translationTask.update({
+        where: { id: taskId },
+        data: {
+          error: message,
+          updatedAt: new Date(),
+        },
+      })
       results.push({
         taskId,
         status: 'failed',
-        error: error instanceof Error ? error.message : 'Approve failed',
+        error: message,
       })
     }
   }

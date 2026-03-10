@@ -23,6 +23,10 @@ export type MapOpsContinuation = {
   pointBackfilledEnqueued: number
   pointBackfilledUpdated: number
   bangumiBatch: number
+  approved: number
+  approvalFailed: number
+  baselineEstimatedTotal: number
+  stagnationCount: number
 }
 
 export type MapOpsSnapshot = {
@@ -39,6 +43,8 @@ export type MapOpsSnapshot = {
     bangumiBatch: number
     bangumiBackfilledTotal: number
     bangumiRemaining: number | null
+    readyTotal: number | null
+    unfinishedTotal: number | null
     pointBackfilledEnqueued: number
     pointBackfilledUpdated: number
     pointBackfilledTotal: number
@@ -47,6 +53,9 @@ export type MapOpsSnapshot = {
     pointUnfinishedTotal: number | null
     roundProcessed: number
     totalProcessed: number
+    approvedTotal: number
+    approvalFailedTotal: number
+    stagnationCount: number
     estimatedTotal: number | null
     completionPercent: number
   } | null
@@ -80,6 +89,8 @@ export type MapQueueSnapshot = {
   pointQueueOpen: number | null
   bangumiPendingLike: number | null
   pointPendingLike: number | null
+  bangumiReady: number | null
+  pointReady: number | null
   estimatedUnfinishedTasks: number | null
 }
 
@@ -155,5 +166,9 @@ export function emptyContinuation(
     pointBackfilledEnqueued: input.pointBackfilledEnqueued || 0,
     pointBackfilledUpdated: input.pointBackfilledUpdated || 0,
     bangumiBatch: input.bangumiBatch || 0,
+    approved: input.approved || 0,
+    approvalFailed: input.approvalFailed || 0,
+    baselineEstimatedTotal: input.baselineEstimatedTotal || 0,
+    stagnationCount: input.stagnationCount || 0,
   }
 }

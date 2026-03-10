@@ -36,6 +36,14 @@ vi.mock('@/lib/translation/adminMapSummary', () => ({
     mocks.getTranslationMapSummary(...args),
 }))
 
+function createPrismaMock(readyTasks: Array<{ id: string; entityType: string }> = []) {
+  return {
+    translationTask: {
+      findMany: vi.fn().mockResolvedValue(readyTasks),
+    },
+  }
+}
+
 describe('runMapOps advance_one_key', () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -50,6 +58,8 @@ describe('runMapOps advance_one_key', () => {
   })
 
   it('tops up missing point tasks before the pending queue is fully drained', async () => {
+    const prisma = createPrismaMock()
+
     mocks.getTranslationTaskStatsForAdmin.mockImplementation(
       ({ entityType }: { entityType: string }) =>
         Promise.resolve(
@@ -100,7 +110,7 @@ describe('runMapOps advance_one_key', () => {
     })
 
     const { runMapOps } = await import('@/lib/translation/mapOps')
-    const result = await runMapOps({} as never, {
+    const result = await runMapOps(prisma as never, {
       action: 'advance_one_key',
       targetLanguage: 'all',
       maxRounds: 1,
@@ -120,16 +130,18 @@ describe('runMapOps advance_one_key', () => {
     ).toBeLessThan(mocks.executeTranslationTasks.mock.invocationCallOrder[0]!)
 
     expect(result.done).toBe(false)
-    expect(result.message).toContain('Pending 推进')
+    expect(result.message).toContain('待翻译推进')
     expect(result.message).toContain('低水位自动补队')
     expect(result.pointBackfillCursor).toBe('point-cursor-1000')
     expect(result.snapshot.oneKey).toMatchObject({
       pointBackfilledEnqueued: 640,
-      roundProcessed: 1020,
+      roundProcessed: 660,
     })
   })
 
   it('forces a missing-task refill when no failed or pending tasks can be executed', async () => {
+    const prisma = createPrismaMock()
+
     mocks.getTranslationTaskStatsForAdmin.mockImplementation(
       ({ entityType }: { entityType: string }) =>
         Promise.resolve(
@@ -161,7 +173,7 @@ describe('runMapOps advance_one_key', () => {
     })
 
     const { runMapOps } = await import('@/lib/translation/mapOps')
-    const result = await runMapOps({} as never, {
+    const result = await runMapOps(prisma as never, {
       action: 'advance_one_key',
       targetLanguage: 'all',
       maxRounds: 1,
@@ -170,11 +182,144 @@ describe('runMapOps advance_one_key', () => {
     expect(mocks.executeTranslationTasks).toHaveBeenCalledTimes(4)
     expect(mocks.enqueueMapTranslationTasksForBackfill).toHaveBeenCalledTimes(1)
     expect(result.message).toContain('补队完成')
-    expect(result.message).not.toContain('Pending 推进')
+    expect(result.message).not.toContain('待翻译推进')
     expect(result.snapshot.oneKey).toMatchObject({
       pointBackfilledEnqueued: 500,
       pointBackfilledUpdated: 40,
-      roundProcessed: 1000,
+      roundProcessed: 540,
+    })
+  })
+
+  it('does not report done while ready map tasks still need approval', async () => {
+    const prisma = createPrismaMock(
+      Array.from({ length: 100 }, (_value, index) => ({
+        id: `ready-${index + 1}`,
+        entityType: 'anitabi_point',
+      }))
+    )
+    let statsCall = 0
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) => {
+        const phase = Math.floor(statsCall / 2)
+        statsCall += 1
+
+        if (entityType === 'anitabi_point') {
+          const ready = phase === 0 ? 120 : 20
+          return Promise.resolve({
+            pending: 0,
+            processing: 0,
+            ready,
+            failed: 0,
+          })
+        }
+
+        return Promise.resolve({
+          pending: 0,
+          processing: 0,
+          ready: 0,
+          failed: 0,
+        })
+      }
+    )
+    mocks.getTranslationMapSummary.mockResolvedValue({
+      targetLanguage: 'all',
+      bangumiRemaining: 0,
+      pointRemaining: 0,
+    })
+    mocks.executeTranslationTasks.mockResolvedValue({
+      reclaimedProcessing: 0,
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      results: [],
+    })
+    mocks.approveBatchMapTranslationTasks.mockResolvedValue({
+      total: 100,
+      approved: 100,
+      skipped: 0,
+      failed: 0,
+      results: Array.from({ length: 100 }, (_value, index) => ({
+        taskId: `ready-${index + 1}`,
+        status: 'approved',
+      })),
+    })
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    const result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      maxRounds: 1,
+    })
+
+    expect(result.done).toBe(false)
+    expect(result.continuation).toBeTruthy()
+    expect(result.message).toContain('自动审核')
+    expect(mocks.approveBatchMapTranslationTasks).toHaveBeenCalledTimes(1)
+    expect(result.snapshot.oneKey).toMatchObject({
+      readyTotal: 20,
+      approvedTotal: 100,
+    })
+  })
+
+  it('pauses after repeated approval failures without effective progress', async () => {
+    const prisma = createPrismaMock(
+      Array.from({ length: 10 }, (_value, index) => ({
+        id: `ready-${index + 1}`,
+        entityType: 'anitabi_point',
+      }))
+    )
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) =>
+        Promise.resolve(
+          entityType === 'anitabi_point'
+            ? { pending: 0, processing: 0, ready: 10, failed: 0 }
+            : { pending: 0, processing: 0, ready: 0, failed: 0 }
+        )
+    )
+    mocks.getTranslationMapSummary.mockResolvedValue({
+      targetLanguage: 'all',
+      bangumiRemaining: 0,
+      pointRemaining: 0,
+    })
+    mocks.executeTranslationTasks.mockResolvedValue({
+      reclaimedProcessing: 0,
+      total: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      results: [],
+    })
+    mocks.approveBatchMapTranslationTasks.mockResolvedValue({
+      total: 10,
+      approved: 0,
+      skipped: 0,
+      failed: 10,
+      results: Array.from({ length: 10 }, (_value, index) => ({
+        taskId: `ready-${index + 1}`,
+        status: 'failed',
+        error: 'approve failed',
+      })),
+    })
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    const result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      maxRounds: 3,
+    })
+
+    expect(result.done).toBe(false)
+    expect(result.continuation).toBeNull()
+    expect(result.message).toContain('自动推进暂停')
+    expect(result.snapshot.errors).toContain('approve failed')
+    expect(result.snapshot.oneKey).toMatchObject({
+      approvalFailedTotal: 30,
+      stagnationCount: 3,
     })
   })
 })

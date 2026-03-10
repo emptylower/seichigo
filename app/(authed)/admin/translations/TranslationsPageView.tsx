@@ -327,7 +327,10 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
                     <div className="text-[11px] font-medium text-gray-600">一键自动推进实时指标</div>
                     <div className="mt-1 space-y-0.5 text-[11px] text-gray-600">
                       <div>
-                        作品批次：第 {mapOpsProgress.oneKey.bangumiBatch} 批，剩余作品 {formatMetricCount(mapOpsProgress.oneKey.bangumiRemaining)}
+                        作品补队：第 {mapOpsProgress.oneKey.bangumiBatch} 批，剩余缺口 {formatMetricCount(mapOpsProgress.oneKey.bangumiRemaining)}
+                      </div>
+                      <div>
+                        待审核任务：{formatMetricCount(mapOpsProgress.oneKey.readyTotal)}，自动审核累计通过 {mapOpsProgress.oneKey.approvedTotal} / 失败 {mapOpsProgress.oneKey.approvalFailedTotal}
                       </div>
                       <div>
                         点位补队：累计 {mapOpsProgress.oneKey.pointBackfilledTotal}（新建 {mapOpsProgress.oneKey.pointBackfilledEnqueued} / 更新 {mapOpsProgress.oneKey.pointBackfilledUpdated}）
@@ -336,7 +339,10 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
                         未完成点位：{formatMetricCount(mapOpsProgress.oneKey.pointUnfinishedTotal)}（已入队 {formatMetricCount(mapOpsProgress.oneKey.pointQueueOpen)} + 未入队估算 {formatMetricCount(mapOpsProgress.oneKey.pointUnqueuedEstimate)}）
                       </div>
                       <div>
-                        翻译推进：本轮 {mapOpsProgress.oneKey.roundProcessed}，累计 {mapOpsProgress.oneKey.totalProcessed} / 预计总量 {formatMetricCount(mapOpsProgress.oneKey.estimatedTotal)}
+                        自动推进：本轮动作 {mapOpsProgress.oneKey.roundProcessed}，累计处理 {mapOpsProgress.oneKey.totalProcessed}，总未完成 {formatMetricCount(mapOpsProgress.oneKey.unfinishedTotal)}
+                      </div>
+                      <div>
+                        防死循环：连续无进展 {mapOpsProgress.oneKey.stagnationCount} 轮
                       </div>
                     </div>
                     <div className="mt-2">
@@ -364,7 +370,7 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
                     成功 {mapOpsProgress.success}
                   </div>
                   <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-center text-rose-700">
-                    翻译失败 {mapOpsProgress.failed}
+                    失败 {mapOpsProgress.failed}
                   </div>
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-center text-amber-700">
                     回收 {mapOpsProgress.reclaimed}

@@ -56,6 +56,8 @@ export type OneKeyMapQueueSnapshot = {
   pointQueueOpen: number | null
   bangumiPendingLike: number | null
   pointPendingLike: number | null
+  bangumiReady: number | null
+  pointReady: number | null
   estimatedUnfinishedTasks: number | null
 }
 
@@ -63,6 +65,8 @@ export type OneKeyMapMetrics = {
   bangumiBatch: number
   bangumiBackfilledTotal: number
   bangumiRemaining: number | null
+  readyTotal: number | null
+  unfinishedTotal: number | null
   pointBackfilledEnqueued: number
   pointBackfilledUpdated: number
   pointBackfilledTotal: number
@@ -71,6 +75,9 @@ export type OneKeyMapMetrics = {
   pointUnfinishedTotal: number | null
   roundProcessed: number
   totalProcessed: number
+  approvedTotal: number
+  approvalFailedTotal: number
+  stagnationCount: number
   estimatedTotal: number | null
   completionPercent: number
 }
@@ -417,17 +424,18 @@ export async function loadOneKeyMapQueueSnapshot(targetLanguage: string): Promis
   const pointStats = pointStatsResult.status === 'fulfilled' ? pointStatsResult.value : null
   const mapSummary = mapSummaryResult.status === 'fulfilled' ? mapSummaryResult.value : null
 
-  const langMultiplier = targetLanguage === 'all' ? 2 : 1
   const bangumiQueueOpen = bangumiStats ? sumUnfinishedTaskCount(bangumiStats) : null
   const pointQueueOpen = pointStats ? sumUnfinishedTaskCount(pointStats) : null
   const bangumiPendingLike = bangumiStats ? sumPendingLikeTaskCount(bangumiStats) : null
   const pointPendingLike = pointStats ? sumPendingLikeTaskCount(pointStats) : null
+  const bangumiReady = bangumiStats ? Number(bangumiStats.ready || 0) : null
+  const pointReady = pointStats ? Number(pointStats.ready || 0) : null
   const bangumiRemaining = mapSummary ? Number(mapSummary.bangumiRemaining || 0) : null
   const pointRemaining = mapSummary ? Number(mapSummary.pointRemaining || 0) : null
   const estimatedUnfinishedTasks =
-    bangumiPendingLike === null || pointPendingLike === null || bangumiRemaining === null || pointRemaining === null
+    bangumiQueueOpen === null || pointQueueOpen === null || bangumiRemaining === null || pointRemaining === null
       ? null
-      : bangumiPendingLike + pointPendingLike + (bangumiRemaining + pointRemaining) * langMultiplier
+      : bangumiQueueOpen + pointQueueOpen + bangumiRemaining + pointRemaining
 
   return {
     bangumiRemaining,
@@ -436,6 +444,8 @@ export async function loadOneKeyMapQueueSnapshot(targetLanguage: string): Promis
     pointQueueOpen,
     bangumiPendingLike,
     pointPendingLike,
+    bangumiReady,
+    pointReady,
     estimatedUnfinishedTasks,
   }
 }

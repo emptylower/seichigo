@@ -266,6 +266,8 @@ export function createTranslationsMapActions(
         applyMapOpsResult('一键推进地图队列', lastResult, { running: false })
         if (lastResult.done) {
           toast.success(lastResult.message)
+        } else if (!lastResult.continuation) {
+          toast.info(lastResult.message)
         } else {
           toast.info('一键推进已暂停，可继续执行')
         }

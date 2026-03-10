@@ -37,6 +37,10 @@ const mapOpsSchema = z.object({
       pointBackfilledEnqueued: z.number().int().min(0).optional(),
       pointBackfilledUpdated: z.number().int().min(0).optional(),
       bangumiBatch: z.number().int().min(0).optional(),
+      approved: z.number().int().min(0).optional(),
+      approvalFailed: z.number().int().min(0).optional(),
+      baselineEstimatedTotal: z.number().int().min(0).optional(),
+      stagnationCount: z.number().int().min(0).optional(),
     })
     .nullable()
     .optional(),

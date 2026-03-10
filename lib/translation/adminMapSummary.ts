@@ -34,59 +34,51 @@ function toCount(value: bigint | number | null | undefined): number {
 }
 
 function buildBangumiMissingSql(langs: Array<'en' | 'ja'>) {
-  const langLiterals = langs.map((lang) => Prisma.sql`${lang}`)
-  const missingConds = langs.map(
-    (lang) => Prisma.sql`
-      NOT EXISTS (
-        SELECT 1
-        FROM "AnitabiBangumiI18n" i
-        WHERE i."bangumiId" = b."id"
-          AND i."language" = ${lang}
-      )
-    `
-  )
-
   return Prisma.sql`
     SELECT COUNT(*)::bigint AS count
     FROM "AnitabiBangumi" b
+    CROSS JOIN (VALUES ${Prisma.join(
+      langs.map((lang) => Prisma.sql`(${lang})`)
+    )}) AS langs("language")
     WHERE b."mapEnabled" = true
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "AnitabiBangumiI18n" i
+        WHERE i."bangumiId" = b."id"
+          AND i."language" = langs."language"
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM "TranslationTask" t
         WHERE t."entityType" = 'anitabi_bangumi'
           AND t."entityId" = b."id"::text
-          AND t."targetLanguage" IN (${Prisma.join(langLiterals)})
+          AND t."targetLanguage" = langs."language"
       )
-      AND (${Prisma.join(missingConds, ' OR ')})
   `
 }
 
 function buildPointMissingSql(langs: Array<'en' | 'ja'>) {
-  const langLiterals = langs.map((lang) => Prisma.sql`${lang}`)
-  const missingConds = langs.map(
-    (lang) => Prisma.sql`
-      NOT EXISTS (
-        SELECT 1
-        FROM "AnitabiPointI18n" i
-        WHERE i."pointId" = p."id"
-          AND i."language" = ${lang}
-      )
-    `
-  )
-
   return Prisma.sql`
     SELECT COUNT(*)::bigint AS count
     FROM "AnitabiPoint" p
     INNER JOIN "AnitabiBangumi" b ON b."id" = p."bangumiId"
+    CROSS JOIN (VALUES ${Prisma.join(
+      langs.map((lang) => Prisma.sql`(${lang})`)
+    )}) AS langs("language")
     WHERE b."mapEnabled" = true
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "AnitabiPointI18n" i
+        WHERE i."pointId" = p."id"
+          AND i."language" = langs."language"
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM "TranslationTask" t
         WHERE t."entityType" = 'anitabi_point'
           AND t."entityId" = p."id"
-          AND t."targetLanguage" IN (${Prisma.join(langLiterals)})
+          AND t."targetLanguage" = langs."language"
       )
-      AND (${Prisma.join(missingConds, ' OR ')})
   `
 }
 
