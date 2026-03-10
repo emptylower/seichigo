@@ -41,6 +41,7 @@ const mapOpsSchema = z.object({
       approvalFailed: z.number().int().min(0).optional(),
       baselineEstimatedTotal: z.number().int().min(0).optional(),
       stagnationCount: z.number().int().min(0).optional(),
+      retryableStagnationCount: z.number().int().min(0).optional(),
     })
     .nullable()
     .optional(),

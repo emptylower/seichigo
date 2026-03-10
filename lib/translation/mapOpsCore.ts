@@ -18,6 +18,11 @@ import {
   type MapQueueSnapshot,
   type RunMapOpsInput,
 } from '@/lib/translation/mapOpsShared'
+import {
+  buildStagnationMessage,
+  hasMeaningfulProgress,
+} from '@/lib/translation/mapOpsProgress'
+import { isRetryableProviderRound } from '@/lib/translation/retryableProviderError'
 import { getMapOneKeyPolicy } from '@/lib/translation/runtimeProfile'
 
 const ONE_KEY_LOW_WATER_PENDING_LIKE = {
@@ -36,6 +41,7 @@ const ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND = {
 } as const
 
 const ONE_KEY_MAX_STAGNATION_ROUNDS = 3
+const ONE_KEY_MAX_RETRYABLE_STAGNATION_ROUNDS = 10
 
 type MapReadyTask = { id: string; entityType: string }
 
@@ -457,33 +463,6 @@ async function approveReadyMapRound(
   }
 }
 
-function hasMeaningfulProgress(input: {
-  queueBefore: MapQueueSnapshot
-  queueAfter: MapQueueSnapshot
-  backfill: OneKeyBackfillSummary
-  approvals: ReadyApprovalSummary
-  failedRound: MapExecutionSummary
-  pendingRound: MapExecutionSummary
-}) {
-  if (
-    Number(input.queueAfter.estimatedUnfinishedTasks || 0) <
-    Number(input.queueBefore.estimatedUnfinishedTasks || 0)
-  ) {
-    return true
-  }
-
-  return (
-    input.backfill.enqueued > 0 ||
-    input.backfill.updated > 0 ||
-    input.backfill.cursorAdvanced ||
-    input.approvals.approved > 0 ||
-    input.failedRound.success > 0 ||
-    input.failedRound.reclaimedProcessing > 0 ||
-    input.pendingRound.success > 0 ||
-    input.pendingRound.reclaimedProcessing > 0
-  )
-}
-
 function calcCompletionPercent(
   continuation: MapOpsContinuation,
   queue: MapQueueSnapshot
@@ -560,13 +539,6 @@ function buildOneKeySnapshot(input: {
       ),
     },
   }
-}
-
-function buildStagnationMessage(
-  continuation: MapOpsContinuation,
-  queue: MapQueueSnapshot
-) {
-  return `自动推进暂停：连续 ${continuation.stagnationCount} 轮无有效进展。待审核 ${Number(queue.bangumiReady || 0) + Number(queue.pointReady || 0)}，待执行/失败 ${Number(queue.bangumiPendingLike || 0) + Number(queue.pointPendingLike || 0)}，未入队 ${Number(queue.bangumiRemaining || 0) + Number(queue.pointRemaining || 0)}`
 }
 
 export async function runAdvanceOneKeyMapOps(
@@ -708,8 +680,16 @@ export async function runAdvanceOneKeyMapOps(
     failedRound,
     pendingRound,
   })
-
-  nextContinuation.stagnationCount = progressed
+  const retryableFailureRound =
+    !progressed &&
+    (isRetryableProviderRound(failedRound) ||
+      isRetryableProviderRound(pendingRound))
+  nextContinuation.retryableStagnationCount = progressed
+    ? 0
+    : retryableFailureRound
+      ? nextContinuation.retryableStagnationCount + 1
+      : 0
+  nextContinuation.stagnationCount = progressed || retryableFailureRound
     ? 0
     : nextContinuation.stagnationCount + 1
 
@@ -721,7 +701,11 @@ export async function runAdvanceOneKeyMapOps(
   if (isMapQueueFullyDone(queue)) {
     done = true
     lastDetail = '地图翻译与审核已全部完成'
-  } else if (nextContinuation.stagnationCount >= ONE_KEY_MAX_STAGNATION_ROUNDS) {
+  } else if (
+    nextContinuation.stagnationCount >= ONE_KEY_MAX_STAGNATION_ROUNDS ||
+    nextContinuation.retryableStagnationCount >=
+      ONE_KEY_MAX_RETRYABLE_STAGNATION_ROUNDS
+  ) {
     halted = true
     lastDetail = buildStagnationMessage(nextContinuation, queue)
   }

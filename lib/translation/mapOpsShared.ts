@@ -27,6 +27,7 @@ export type MapOpsContinuation = {
   approvalFailed: number
   baselineEstimatedTotal: number
   stagnationCount: number
+  retryableStagnationCount: number
 }
 
 export type MapOpsSnapshot = {
@@ -170,5 +171,6 @@ export function emptyContinuation(
     approvalFailed: input.approvalFailed || 0,
     baselineEstimatedTotal: input.baselineEstimatedTotal || 0,
     stagnationCount: input.stagnationCount || 0,
+    retryableStagnationCount: input.retryableStagnationCount || 0,
   }
 }

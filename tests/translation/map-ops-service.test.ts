@@ -536,4 +536,85 @@ describe('runMapOps advance_one_key', () => {
       stagnationCount: 3,
     })
   })
+
+  it('does not pause after three retryable provider-error rounds', async () => {
+    const prisma = createPrismaMock()
+
+    mocks.getTranslationTaskStatsForAdmin.mockImplementation(
+      ({ entityType }: { entityType: string }) =>
+        Promise.resolve(
+          entityType === 'anitabi_point'
+            ? { pending: 0, processing: 0, ready: 0, failed: 1 }
+            : { pending: 0, processing: 0, ready: 0, failed: 0 }
+        )
+    )
+    mocks.getTranslationMapSummary.mockResolvedValue({
+      targetLanguage: 'all',
+      bangumiRemaining: 0,
+      pointRemaining: 0,
+    })
+    mocks.executeTranslationTasks.mockImplementation(
+      (_prisma: unknown, input: { entityType?: string; statusScope?: string }) => {
+        if (input.statusScope === 'failed' && input.entityType === 'anitabi_point') {
+          return Promise.resolve({
+            reclaimedProcessing: 0,
+            total: 1,
+            processed: 1,
+            success: 0,
+            failed: 1,
+            skipped: 0,
+            results: [
+              {
+                taskId: 'point-1',
+                status: 'failed',
+                error: 'Gemini API error (503): Service Unavailable',
+              },
+            ],
+          })
+        }
+
+        return Promise.resolve({
+          reclaimedProcessing: 0,
+          total: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          skipped: 0,
+          results: [],
+        })
+      }
+    )
+
+    const { runMapOps } = await import('@/lib/translation/mapOps')
+    let continuation: Record<string, unknown> | null = null
+    let result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      continuation,
+    })
+
+    continuation = result.continuation
+    result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      continuation,
+    })
+
+    continuation = result.continuation
+    result = await runMapOps(prisma as never, {
+      action: 'advance_one_key',
+      targetLanguage: 'all',
+      continuation,
+    })
+
+    expect(result.done).toBe(false)
+    expect(result.continuation).toBeTruthy()
+    expect(result.message).toContain('失败重试')
+    expect(result.snapshot.oneKey).toMatchObject({
+      stagnationCount: 0,
+    })
+    expect(result.continuation).toMatchObject({
+      retryableStagnationCount: 3,
+    })
+  })
 })
