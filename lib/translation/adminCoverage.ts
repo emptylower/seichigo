@@ -1,9 +1,19 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AdminTranslationEntityType } from '@/lib/translation/adminDashboard'
+import {
+  getBangumiApprovedLanguages,
+  getPointApprovedLanguages,
+} from '@/lib/translation/mapLocale'
+import {
+  MAP_TRANSLATION_TARGET_LANGUAGES,
+  type MapTranslationTargetLanguage,
+} from '@/lib/translation/mapSourceHash'
 
 export const ADMIN_TRANSLATION_TARGET_LANGUAGES = ['en', 'ja'] as const
 
-export type AdminTranslationTargetLanguage = (typeof ADMIN_TRANSLATION_TARGET_LANGUAGES)[number]
+export type AdminTranslationTargetLanguage =
+  | (typeof ADMIN_TRANSLATION_TARGET_LANGUAGES)[number]
+  | MapTranslationTargetLanguage
 export type AdminTranslationEntityTypeFilter = AdminTranslationEntityType | 'all'
 
 export type TranslationCoverageItem = {
@@ -84,6 +94,10 @@ type BangumiRow = {
   id: number
   titleZh: string | null
   titleJaRaw: string | null
+  titleOriginal: string | null
+  titleEnglish: string | null
+  description: string | null
+  city: string | null
   updatedAt: Date
 }
 
@@ -91,6 +105,7 @@ type PointRow = {
   id: string
   name: string
   nameZh: string | null
+  mark: string | null
   updatedAt: Date
 }
 
@@ -104,16 +119,28 @@ type TranslationTaskLanguageRow = {
   targetLanguage: string
 }
 
+type BangumiI18nRow = {
+  bangumiId: number
+  language: string
+  title: string | null
+  description: string | null
+  city: string | null
+}
+
+type PointI18nRow = {
+  pointId: string
+  language: string
+  name: string | null
+  note: string | null
+}
+
 const IN_FILTER_CHUNK_SIZE = 10_000
 
 function toDateIso(value: Date | null | undefined): string {
   return (value ?? new Date(0)).toISOString()
 }
 
-async function collectRowsInChunks<
-  TValue extends string | number,
-  TRow,
->(
+async function collectRowsInChunks<TValue extends string | number, TRow>(
   values: readonly TValue[],
   loader: (chunk: TValue[]) => Promise<TRow[]>
 ): Promise<TRow[]> {
@@ -174,12 +201,29 @@ function buildTaskLanguageMap(
 ): Map<string, Set<AdminTranslationTargetLanguage>> {
   const out = new Map<string, Set<AdminTranslationTargetLanguage>>()
   for (const row of rows) {
-    if (row.targetLanguage !== 'en' && row.targetLanguage !== 'ja') continue
+    if (row.targetLanguage !== 'zh' && row.targetLanguage !== 'en' && row.targetLanguage !== 'ja') {
+      continue
+    }
     const existing = out.get(row.entityId) || new Set<AdminTranslationTargetLanguage>()
-    existing.add(row.targetLanguage)
+    existing.add(row.targetLanguage as AdminTranslationTargetLanguage)
     out.set(row.entityId, existing)
   }
   return out
+}
+
+function getSupportedTargetLanguages(
+  entityType: AdminTranslationEntityType
+): AdminTranslationTargetLanguage[] {
+  return entityType === 'anitabi_bangumi' || entityType === 'anitabi_point' ? [...MAP_TRANSLATION_TARGET_LANGUAGES] : [...ADMIN_TRANSLATION_TARGET_LANGUAGES]
+}
+
+function filterTargetLanguagesForEntity(
+  entityType: AdminTranslationEntityType,
+  targetLanguages: readonly AdminTranslationTargetLanguage[]
+): AdminTranslationTargetLanguage[] {
+  const supported = new Set(getSupportedTargetLanguages(entityType))
+  const filtered = Array.from(new Set(targetLanguages.filter((language) => supported.has(language))))
+  return filtered.length > 0 ? filtered : getSupportedTargetLanguages(entityType)
 }
 
 function hasColumnTranslation(
@@ -389,6 +433,10 @@ async function loadBangumiCoverage(
       id: true,
       titleZh: true,
       titleJaRaw: true,
+      titleOriginal: true,
+      titleEnglish: true,
+      description: true,
+      city: true,
       updatedAt: true,
     },
   }) as BangumiRow[]
@@ -412,33 +460,44 @@ async function loadBangumiCoverage(
         select: {
           bangumiId: true,
           language: true,
+          title: true,
+          description: true,
+          city: true,
         },
-      })
+      }) as Promise<BangumiI18nRow[]>
     ),
   ])
 
   const taskLanguagesById = buildTaskLanguageMap(taskRows)
-  const approvedById = new Map<string, Set<AdminTranslationTargetLanguage>>()
+  const i18nById = new Map<string, BangumiI18nRow[]>()
 
   for (const row of translatedRows) {
-    if (row.language !== 'en' && row.language !== 'ja') continue
     const key = String(row.bangumiId)
-    const existing =
-      approvedById.get(key) || new Set<AdminTranslationTargetLanguage>()
-    existing.add(row.language)
-    approvedById.set(key, existing)
+    const list = i18nById.get(key) || []
+    list.push(row)
+    i18nById.set(key, list)
   }
 
-  return rows.map((row) => ({
-    entityType: 'anitabi_bangumi',
-    entityId: String(row.id),
-    title: row.titleZh || row.titleJaRaw || String(row.id),
-    date: toDateIso(row.updatedAt),
-    approvedLanguages:
-      approvedById.get(String(row.id)) || new Set<AdminTranslationTargetLanguage>(),
-    taskLanguages:
-      taskLanguagesById.get(String(row.id)) || new Set<AdminTranslationTargetLanguage>(),
-  }))
+  return rows.map((row) => {
+    const entityId = String(row.id)
+    const approvedLanguages = getBangumiApprovedLanguages(
+      {
+        ...row,
+        i18n: i18nById.get(entityId) || [],
+      },
+      targetLanguages as MapTranslationTargetLanguage[]
+    )
+
+    return {
+      entityType: 'anitabi_bangumi',
+      entityId,
+      title: row.titleZh || row.titleJaRaw || row.titleEnglish || String(row.id),
+      date: toDateIso(row.updatedAt),
+      approvedLanguages,
+      taskLanguages:
+        taskLanguagesById.get(entityId) || new Set<AdminTranslationTargetLanguage>(),
+    }
+  })
 }
 
 async function loadPointCoverage(
@@ -450,6 +509,7 @@ async function loadPointCoverage(
       id: true,
       name: true,
       nameZh: true,
+      mark: true,
       updatedAt: true,
     },
   }) as PointRow[]
@@ -473,20 +533,20 @@ async function loadPointCoverage(
         select: {
           pointId: true,
           language: true,
+          name: true,
+          note: true,
         },
-      })
+      }) as Promise<PointI18nRow[]>
     ),
   ])
 
   const taskLanguagesById = buildTaskLanguageMap(taskRows)
-  const approvedById = new Map<string, Set<AdminTranslationTargetLanguage>>()
+  const i18nById = new Map<string, PointI18nRow[]>()
 
   for (const row of translatedRows) {
-    if (row.language !== 'en' && row.language !== 'ja') continue
-    const existing =
-      approvedById.get(row.pointId) || new Set<AdminTranslationTargetLanguage>()
-    existing.add(row.language)
-    approvedById.set(row.pointId, existing)
+    const list = i18nById.get(row.pointId) || []
+    list.push(row)
+    i18nById.set(row.pointId, list)
   }
 
   return rows.map((row) => ({
@@ -494,8 +554,13 @@ async function loadPointCoverage(
     entityId: row.id,
     title: row.nameZh || row.name || row.id,
     date: toDateIso(row.updatedAt),
-    approvedLanguages:
-      approvedById.get(row.id) || new Set<AdminTranslationTargetLanguage>(),
+    approvedLanguages: getPointApprovedLanguages(
+      {
+        ...row,
+        i18n: i18nById.get(row.id) || [],
+      },
+      targetLanguages as MapTranslationTargetLanguage[]
+    ),
     taskLanguages:
       taskLanguagesById.get(row.id) || new Set<AdminTranslationTargetLanguage>(),
   }))
@@ -509,26 +574,50 @@ export async function listTranslationCoverage(
   } = {}
 ): Promise<TranslationCoverageItem[]> {
   const entityType = input.entityType || 'all'
-  const targetLanguages =
-    input.targetLanguages && input.targetLanguages.length > 0
-      ? input.targetLanguages
-      : [...ADMIN_TRANSLATION_TARGET_LANGUAGES]
+  const requestedTargetLanguages = input.targetLanguages && input.targetLanguages.length > 0
+    ? input.targetLanguages
+    : [...MAP_TRANSLATION_TARGET_LANGUAGES]
 
   const tasks: Array<Promise<TranslationCoverageItem[]>> = []
   if (entityType === 'all' || entityType === 'article') {
-    tasks.push(loadArticleCoverage(prisma, targetLanguages))
+    tasks.push(
+      loadArticleCoverage(
+        prisma,
+        filterTargetLanguagesForEntity('article', requestedTargetLanguages)
+      )
+    )
   }
   if (entityType === 'all' || entityType === 'city') {
-    tasks.push(loadCityCoverage(prisma, targetLanguages))
+    tasks.push(
+      loadCityCoverage(
+        prisma,
+        filterTargetLanguagesForEntity('city', requestedTargetLanguages)
+      )
+    )
   }
   if (entityType === 'all' || entityType === 'anime') {
-    tasks.push(loadAnimeCoverage(prisma, targetLanguages))
+    tasks.push(
+      loadAnimeCoverage(
+        prisma,
+        filterTargetLanguagesForEntity('anime', requestedTargetLanguages)
+      )
+    )
   }
   if (entityType === 'all' || entityType === 'anitabi_bangumi') {
-    tasks.push(loadBangumiCoverage(prisma, targetLanguages))
+    tasks.push(
+      loadBangumiCoverage(
+        prisma,
+        filterTargetLanguagesForEntity('anitabi_bangumi', requestedTargetLanguages)
+      )
+    )
   }
   if (entityType === 'all' || entityType === 'anitabi_point') {
-    tasks.push(loadPointCoverage(prisma, targetLanguages))
+    tasks.push(
+      loadPointCoverage(
+        prisma,
+        filterTargetLanguagesForEntity('anitabi_point', requestedTargetLanguages)
+      )
+    )
   }
 
   return (await Promise.all(tasks)).flat()
@@ -538,7 +627,10 @@ export async function createTranslationTasksFromCoverage(
   prisma: PrismaClient,
   input: TranslationBatchInput
 ): Promise<TranslationBatchResult> {
-  const targetLanguages = Array.from(new Set(input.targetLanguages))
+  const targetLanguages = filterTargetLanguagesForEntity(
+    input.entityType,
+    Array.from(new Set(input.targetLanguages))
+  )
   const coverageItems = await listTranslationCoverage(prisma, {
     entityType: input.entityType,
     targetLanguages,
@@ -559,7 +651,11 @@ export async function createTranslationTasksFromCoverage(
   }
 
   for (const item of coverageItems) {
-    for (const language of targetLanguages) {
+    const itemTargetLanguages = filterTargetLanguagesForEntity(
+      item.entityType,
+      targetLanguages
+    )
+    for (const language of itemTargetLanguages) {
       if (item.approvedLanguages.has(language) || item.taskLanguages.has(language)) {
         skipped += 1
         continue
@@ -607,15 +703,17 @@ export async function listUntranslatedItemsForAdmin(
 ): Promise<UntranslatedListResult> {
   const coverageItems = await listTranslationCoverage(prisma, {
     entityType: query.entityType,
-    targetLanguages: [...ADMIN_TRANSLATION_TARGET_LANGUAGES],
+    targetLanguages: [...MAP_TRANSLATION_TARGET_LANGUAGES],
   })
 
   const q = normalizeQuery(query.q)
   const items = coverageItems
-    .filter((item) => item.taskLanguages.size === 0)
     .map<UntranslatedItem | null>((item) => {
-      const missingLanguages = ADMIN_TRANSLATION_TARGET_LANGUAGES.filter(
-        (language) => !item.approvedLanguages.has(language)
+      const supportedLanguages = getSupportedTargetLanguages(item.entityType)
+      const missingLanguages = supportedLanguages.filter(
+        (language) =>
+          !item.approvedLanguages.has(language) &&
+          !item.taskLanguages.has(language)
       )
       if (missingLanguages.length === 0) return null
       return {

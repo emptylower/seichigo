@@ -11,7 +11,7 @@ const batchSchema = z.object({
     'anitabi_bangumi',
     'anitabi_point',
   ]),
-  targetLanguages: z.array(z.enum(['en', 'ja'])).min(1),
+  targetLanguages: z.array(z.enum(['zh', 'en', 'ja'])).min(1),
 })
 
 export function createHandlers(deps: TranslationApiDeps) {
@@ -27,6 +27,17 @@ export function createHandlers(deps: TranslationApiDeps) {
       if (!parsed.success) {
         return NextResponse.json(
           { error: parsed.error.issues[0]?.message || '参数错误' },
+          { status: 400 }
+        )
+      }
+
+      const includesZh = parsed.data.targetLanguages.includes('zh')
+      const isMapEntity =
+        parsed.data.entityType === 'anitabi_bangumi' ||
+        parsed.data.entityType === 'anitabi_point'
+      if (includesZh && !isMapEntity) {
+        return NextResponse.json(
+          { error: '当前仅地图作品/点位支持创建中文补全任务' },
           { status: 400 }
         )
       }

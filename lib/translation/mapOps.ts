@@ -72,7 +72,7 @@ export async function runMapOps(
     const result = await enqueueMapTranslationTasksForBackfill({
       prisma,
       entityType,
-      targetLanguages: ['en', 'ja'],
+      targetLanguages: ['zh', 'en', 'ja'],
       mode: input.mode || 'all',
       limit: 1000,
       cursor:
@@ -94,7 +94,7 @@ export async function runMapOps(
       enqueueMapTranslationTasksForBackfill({
         prisma,
         entityType: 'anitabi_bangumi',
-        targetLanguages: ['en', 'ja'],
+        targetLanguages: ['zh', 'en', 'ja'],
         mode: 'stale',
         limit: 1000,
         cursor: null,
@@ -102,7 +102,7 @@ export async function runMapOps(
       enqueueMapTranslationTasksForBackfill({
         prisma,
         entityType: 'anitabi_point',
-        targetLanguages: ['en', 'ja'],
+        targetLanguages: ['zh', 'en', 'ja'],
         mode: 'stale',
         limit: 1000,
         cursor: null,

@@ -14,7 +14,7 @@ const mapOpsSchema = z.object({
     'approve_sample',
     'advance_one_key',
   ]),
-  targetLanguage: z.enum(['all', 'en', 'ja']).default('all'),
+  targetLanguage: z.enum(['all', 'zh', 'en', 'ja']).default('all'),
   entityType: z.enum(['anitabi_bangumi', 'anitabi_point']).optional(),
   mode: z.enum(['missing', 'stale', 'all']).optional(),
   statusScope: z.enum(['pending', 'failed', 'pending_or_failed']).optional(),

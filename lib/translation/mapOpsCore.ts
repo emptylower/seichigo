@@ -25,23 +25,22 @@ const ONE_KEY_LOW_WATER_PENDING_LIKE = {
 } as const
 
 const ONE_KEY_BACKFILL_SCAN_LIMIT = {
-  anitabi_bangumi: 100,
-  anitabi_point: 500,
+  anitabi_bangumi: 60,
+  anitabi_point: 200,
 } as const
 
 const ONE_KEY_BACKFILL_MAX_PAGES_PER_ROUND = {
-  anitabi_bangumi: 3,
-  anitabi_point: 3,
+  anitabi_bangumi: 1,
+  anitabi_point: 1,
 } as const
 
-const ONE_KEY_APPROVE_LIMIT = 100
+const ONE_KEY_APPROVE_LIMIT = 30
+const ONE_KEY_FAILED_LIMIT_PER_TYPE = 4
+const ONE_KEY_PENDING_LIMIT_PER_TYPE = 6
+const ONE_KEY_EXECUTION_CONCURRENCY = 1
 const ONE_KEY_MAX_STAGNATION_ROUNDS = 3
-const ONE_KEY_MAX_REQUEST_MS = 10_000
 
-type MapReadyTask = {
-  id: string
-  entityType: string
-}
+type MapReadyTask = { id: string; entityType: string }
 
 type OneKeyBackfillSummary = {
   triggered: boolean
@@ -63,10 +62,11 @@ type ReadyApprovalSummary = {
 
 function resolveBackfillTargetLanguages(
   targetLanguage: MapSummaryTargetLanguage
-): Array<'en' | 'ja'> {
+): Array<'zh' | 'en' | 'ja'> {
+  if (targetLanguage === 'zh') return ['zh']
   if (targetLanguage === 'en') return ['en']
   if (targetLanguage === 'ja') return ['ja']
-  return ['en', 'ja']
+  return ['zh', 'en', 'ja']
 }
 
 function sumQueueOpen(stats: Record<string, unknown>) {
@@ -277,6 +277,10 @@ function shouldBackfillEntity(
       : Number(queue.pointPendingLike || 0)
 
   return pendingLike < ONE_KEY_LOW_WATER_PENDING_LIKE[entityType]
+}
+
+function shouldRunLowWaterBackfill(queue: MapQueueSnapshot) {
+  return shouldBackfillEntity(queue, 'anitabi_bangumi') || shouldBackfillEntity(queue, 'anitabi_point')
 }
 
 async function backfillOneKeyLowWater(
@@ -571,140 +575,156 @@ export async function runAdvanceOneKeyMapOps(
   prisma: PrismaClient,
   input: RunMapOpsInput
 ): Promise<MapOpsResult> {
-  const maxRounds = Math.max(1, Math.min(20, Math.floor(input.maxRounds || 10)))
   const nextContinuation: MapOpsContinuation = emptyContinuation(
     input.continuation || {}
   )
+  const emptyBackfill: OneKeyBackfillSummary = {
+    triggered: false,
+    scanned: 0,
+    enqueued: 0,
+    updated: 0,
+    cursorAdvanced: false,
+    detail: null,
+  }
+  const emptyApprovals: ReadyApprovalSummary = {
+    total: 0,
+    approved: 0,
+    failed: 0,
+    skipped: 0,
+    errorMessages: [],
+    detail: null,
+  }
+  const emptyExecution: MapExecutionSummary = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    reclaimedProcessing: 0,
+    errorMessages: [],
+  }
 
-  const startedAt = Date.now()
-  let done = false
-  let halted = false
+  let done = false, halted = false
   let lastDetail = '一键推进进行中'
   let roundProcessed = 0
+  const queueBefore = await loadMapQueueSnapshot(prisma, input.targetLanguage)
+  rememberBaseline(nextContinuation, queueBefore)
 
-  for (let cycle = 1; cycle <= maxRounds; cycle += 1) {
-    const queueBefore = await loadMapQueueSnapshot(prisma, input.targetLanguage)
-    rememberBaseline(nextContinuation, queueBefore)
-
-    if (isMapQueueFullyDone(queueBefore)) {
-      done = true
-      lastDetail = '地图翻译与审核已全部完成'
-      break
+  if (isMapQueueFullyDone(queueBefore)) {
+    done = true
+    lastDetail = '地图翻译与审核已全部完成'
+    return {
+      ok: true,
+      action: input.action,
+      done,
+      message: lastDetail,
+      bangumiBackfillCursor: nextContinuation.bangumiBackfillCursor,
+      pointBackfillCursor: nextContinuation.pointBackfillCursor,
+      continuation: null,
+      snapshot: buildOneKeySnapshot({
+        continuation: nextContinuation,
+        queue: queueBefore,
+        roundProcessed,
+        detail: lastDetail,
+      }),
     }
+  }
 
-    const detailParts: string[] = []
-    const lowWaterBackfill = await backfillOneKeyLowWater(
+  const detailParts: string[] = []
+  let backfill = emptyBackfill
+  let approvals = emptyApprovals
+  let failedRound = emptyExecution
+  let pendingRound = emptyExecution
+
+  if (Number(queueBefore.bangumiReady || 0) + Number(queueBefore.pointReady || 0) > 0) {
+    approvals = await approveReadyMapRound(prisma, input.targetLanguage)
+    if (approvals.total > 0) {
+      applyApprovalSummary(nextContinuation, approvals)
+      roundProcessed = approvals.total
+      if (approvals.detail) detailParts.push(approvals.detail)
+    }
+  } else if (shouldRunLowWaterBackfill(queueBefore)) {
+    backfill = await backfillOneKeyLowWater(
       prisma,
       nextContinuation,
       queueBefore,
       input.targetLanguage
     )
-    if (lowWaterBackfill.detail) {
-      detailParts.push(lowWaterBackfill.detail)
+    roundProcessed = backfill.enqueued + backfill.updated
+    if (backfill.detail) {
+      detailParts.push(backfill.detail)
     }
-
-    const approvalRound = await approveReadyMapRound(prisma, input.targetLanguage)
-    if (approvalRound.total > 0) {
-      applyApprovalSummary(nextContinuation, approvalRound)
-      if (approvalRound.detail) detailParts.push(approvalRound.detail)
-    }
-
-    const failedRound = await executeMapRound(prisma, {
+  } else {
+    failedRound = await executeMapRound(prisma, {
       targetLanguage: input.targetLanguage,
       statusScope: 'failed',
-      limitPerType: 10,
-      concurrency: 1,
+      limitPerType: ONE_KEY_FAILED_LIMIT_PER_TYPE,
+      concurrency: ONE_KEY_EXECUTION_CONCURRENCY,
     })
+
     if (failedRound.total > 0) {
       applyExecutionSummary(nextContinuation, failedRound)
+      roundProcessed = failedRound.processed
       detailParts.push(
         `失败重试：处理 ${failedRound.processed}，成功 ${failedRound.success}，失败 ${translateFailures(failedRound)}`
       )
-    }
+    } else {
+      pendingRound = await executeMapRound(prisma, {
+        targetLanguage: input.targetLanguage,
+        statusScope: 'pending',
+        limitPerType: ONE_KEY_PENDING_LIMIT_PER_TYPE,
+        concurrency: ONE_KEY_EXECUTION_CONCURRENCY,
+      })
 
-    const pendingRound = await executeMapRound(prisma, {
-      targetLanguage: input.targetLanguage,
-      statusScope: 'pending',
-      limitPerType: 20,
-      concurrency: 2,
-    })
-    if (pendingRound.total > 0) {
-      applyExecutionSummary(nextContinuation, pendingRound)
-      detailParts.push(
-        `待翻译推进：处理 ${pendingRound.processed}，成功 ${pendingRound.success}，失败 ${translateFailures(pendingRound)}`
-      )
-    }
-
-    let effectiveBackfill = lowWaterBackfill
-    if (
-      approvalRound.total === 0 &&
-      failedRound.total === 0 &&
-      pendingRound.total === 0 &&
-      !lowWaterBackfill.triggered
-    ) {
-      effectiveBackfill = await backfillOneKeyLowWater(
-        prisma,
-        nextContinuation,
-        queueBefore,
-        input.targetLanguage,
-        { force: true }
-      )
-      if (effectiveBackfill.detail) {
-        detailParts.push(effectiveBackfill.detail)
+      if (pendingRound.total > 0) {
+        applyExecutionSummary(nextContinuation, pendingRound)
+        roundProcessed = pendingRound.processed
+        detailParts.push(
+          `待翻译推进：处理 ${pendingRound.processed}，成功 ${pendingRound.success}，失败 ${translateFailures(pendingRound)}`
+        )
+      } else {
+        backfill = await backfillOneKeyLowWater(
+          prisma,
+          nextContinuation,
+          queueBefore,
+          input.targetLanguage,
+          { force: true }
+        )
+        roundProcessed = backfill.enqueued + backfill.updated
+        if (backfill.detail) {
+          detailParts.push(backfill.detail)
+        }
       }
-    }
-
-    const queueAfter = await loadMapQueueSnapshot(prisma, input.targetLanguage)
-    rememberBaseline(nextContinuation, queueAfter)
-
-    roundProcessed =
-      approvalRound.total +
-      failedRound.processed +
-      pendingRound.processed +
-      effectiveBackfill.enqueued +
-      effectiveBackfill.updated
-
-    const progressed = hasMeaningfulProgress({
-      queueBefore,
-      queueAfter,
-      backfill: effectiveBackfill,
-      approvals: approvalRound,
-      failedRound,
-      pendingRound,
-    })
-
-    nextContinuation.stagnationCount = progressed
-      ? 0
-      : nextContinuation.stagnationCount + 1
-
-    lastDetail =
-      detailParts.length > 0
-        ? detailParts.join('；')
-        : '本轮没有可推进的地图任务'
-
-    if (isMapQueueFullyDone(queueAfter)) {
-      done = true
-      lastDetail = '地图翻译与审核已全部完成'
-      break
-    }
-
-    if (nextContinuation.stagnationCount >= ONE_KEY_MAX_STAGNATION_ROUNDS) {
-      halted = true
-      lastDetail = buildStagnationMessage(nextContinuation, queueAfter)
-      break
-    }
-
-    if (Date.now() - startedAt >= ONE_KEY_MAX_REQUEST_MS) {
-      break
     }
   }
 
   const queue = await loadMapQueueSnapshot(prisma, input.targetLanguage)
   rememberBaseline(nextContinuation, queue)
+
+  const progressed = hasMeaningfulProgress({
+    queueBefore,
+    queueAfter: queue,
+    backfill,
+    approvals,
+    failedRound,
+    pendingRound,
+  })
+
+  nextContinuation.stagnationCount = progressed
+    ? 0
+    : nextContinuation.stagnationCount + 1
+
+  lastDetail =
+    detailParts.length > 0
+      ? detailParts.join('；')
+      : '本轮没有可推进的地图任务'
+
   if (isMapQueueFullyDone(queue)) {
     done = true
-    halted = false
     lastDetail = '地图翻译与审核已全部完成'
+  } else if (nextContinuation.stagnationCount >= ONE_KEY_MAX_STAGNATION_ROUNDS) {
+    halted = true
+    lastDetail = buildStagnationMessage(nextContinuation, queue)
   }
 
   return {

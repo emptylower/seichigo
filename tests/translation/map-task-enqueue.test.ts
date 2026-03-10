@@ -54,9 +54,20 @@ describe('mapTaskEnqueue', () => {
           {
             id: 100,
             titleZh: '作品A',
+            titleJaRaw: '作品A-ja',
+            titleOriginal: '作品A-ja',
+            titleEnglish: null,
             description: '描述A',
             city: '东京',
-            i18n: [{ language: 'en', sourceHash: 'old-hash' }],
+            i18n: [
+              {
+                language: 'en',
+                sourceHash: 'old-hash',
+                title: 'Work A',
+                description: 'Old description',
+                city: 'Tokyo',
+              },
+            ],
           },
         ]),
       },

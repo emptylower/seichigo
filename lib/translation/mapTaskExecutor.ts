@@ -1,6 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
 import { BATCH_SIZE, MAX_BATCH_CHARS, translateTextBatch } from '@/lib/translation/gemini'
-import { buildMapSourceContentByEntity } from '@/lib/translation/mapTaskEnqueue'
+import {
+  selectBangumiSourceForTarget,
+  selectPointSourceForTarget,
+} from '@/lib/translation/mapLocale'
+
+const MAP_BATCH_CALL_OPTIONS = {
+  maxRetries: 0,
+  requestTimeoutMs: 8_000,
+} as const
 
 export type MapTaskExecutionInputTask = {
   id: string
@@ -59,7 +67,10 @@ async function translateTextsByLanguage(texts: string[], targetLanguage: string)
   const translated = new Map<string, string>()
 
   for (const batch of batches) {
-    const result = await translateTextBatch(batch, targetLanguage)
+    const result = await translateTextBatch(batch, targetLanguage, {
+      callOptions: MAP_BATCH_CALL_OPTIONS,
+      fallbackMode: 'error',
+    })
     for (const original of batch) {
       translated.set(original, result.get(original) || original)
     }
@@ -138,10 +149,21 @@ async function executeBangumiTasks(
     select: {
       id: true,
       titleZh: true,
+      titleJaRaw: true,
       titleEnglish: true,
       titleOriginal: true,
       description: true,
       city: true,
+      i18n: {
+        where: { language: { in: ['zh', 'en', 'ja'] } },
+        select: {
+          language: true,
+          sourceHash: true,
+          title: true,
+          description: true,
+          city: true,
+        },
+      },
     },
   })
 
@@ -164,17 +186,16 @@ async function executeBangumiTasks(
       const row = rowById.get(task.entityId)
       if (!row) continue
 
-      const source = buildMapSourceContentByEntity({
-        entityType: 'anitabi_bangumi',
+      const source = selectBangumiSourceForTarget(
         row,
-      }).sourceContent as {
+        targetLanguage as 'zh' | 'en' | 'ja'
+      ).sourceContent as {
         title: string
         description: string | null
         city: string | null
       }
 
-      const hasAniListTitle = (targetLanguage === 'en' && row.titleEnglish) || (targetLanguage !== 'en' && row.titleOriginal)
-      if (source.title && !hasAniListTitle) texts.push(source.title)
+      if (source.title) texts.push(source.title)
       if (source.description) texts.push(source.description)
       if (source.city) texts.push(source.city)
     }
@@ -201,10 +222,10 @@ async function executeBangumiTasks(
       }
 
       try {
-        const { sourceHash, sourceContent } = buildMapSourceContentByEntity({
-          entityType: 'anitabi_bangumi',
+        const { sourceHash, sourceContent } = selectBangumiSourceForTarget(
           row,
-        })
+          targetLanguage as 'zh' | 'en' | 'ja'
+        )
 
         const source = sourceContent as {
           title: string
@@ -212,17 +233,8 @@ async function executeBangumiTasks(
           city: string | null
         }
 
-        // Use AniList official title when available; fallback to Gemini translation
-        const titleDraft = source.title
-          ? (targetLanguage === 'en' && row.titleEnglish)
-            ? row.titleEnglish
-            : (targetLanguage !== 'en' && row.titleOriginal)
-              ? row.titleOriginal
-              : (translated.get(source.title) || source.title)
-          : source.title
-
         const draftContent = {
-          title: titleDraft,
+          title: source.title ? translated.get(source.title) || source.title : source.title,
           description: source.description ? translated.get(source.description) || source.description : null,
           city: source.city ? translated.get(source.city) || source.city : null,
         }
@@ -264,6 +276,15 @@ async function executePointTasks(
       name: true,
       nameZh: true,
       mark: true,
+      i18n: {
+        where: { language: { in: ['zh', 'en', 'ja'] } },
+        select: {
+          language: true,
+          sourceHash: true,
+          name: true,
+          note: true,
+        },
+      },
     },
   })
 
@@ -286,10 +307,10 @@ async function executePointTasks(
       const row = rowById.get(task.entityId)
       if (!row) continue
 
-      const source = buildMapSourceContentByEntity({
-        entityType: 'anitabi_point',
+      const source = selectPointSourceForTarget(
         row,
-      }).sourceContent as {
+        targetLanguage as 'zh' | 'en' | 'ja'
+      ).sourceContent as {
         name: string
         note: string | null
       }
@@ -320,10 +341,10 @@ async function executePointTasks(
       }
 
       try {
-        const { sourceHash, sourceContent } = buildMapSourceContentByEntity({
-          entityType: 'anitabi_point',
+        const { sourceHash, sourceContent } = selectPointSourceForTarget(
           row,
-        })
+          targetLanguage as 'zh' | 'en' | 'ja'
+        )
 
         const source = sourceContent as {
           name: string

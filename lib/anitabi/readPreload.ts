@@ -32,10 +32,8 @@ function toPreloadPointDto(
     i18n: Array<{ name: string | null; note: string | null }>
   }
 ): AnitabiPreloadChunkPointDTO {
-  const localizedName =
-    locale === 'zh' ? null : normalizeText(row.i18n?.[0]?.name)
-  const localizedNote =
-    locale === 'zh' ? null : normalizeText(row.i18n?.[0]?.note)
+  const localizedName = normalizeText(row.i18n?.[0]?.name)
+  const localizedNote = normalizeText(row.i18n?.[0]?.note)
 
   return {
     id: row.id,

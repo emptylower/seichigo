@@ -149,7 +149,7 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
           <div>
             <div className="text-sm font-semibold text-gray-900">地图翻译控制区</div>
             <div className="mt-1 text-xs text-gray-500">
-              回填历史任务、增量补队、一键自动推进/手动推进队列，以及一键审核全部待审核（en + ja，不依赖 cron）。
+              回填历史任务、增量补队、一键自动推进/手动推进队列，以及一键审核全部待审核（zh + en + ja，不依赖 cron）。
             </div>
           </div>
           <Button type="button" variant="ghost" onClick={() => setShowMapOpsPanel((prev: boolean) => !prev)}>
@@ -175,19 +175,10 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
               >
                 点位回填（1000）
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => void mapActions.handleMapIncrementalRefill()}
-                disabled={mapControlsBusy}
-              >
+              <Button type="button" variant="ghost" onClick={() => void mapActions.handleMapIncrementalRefill()} disabled={mapControlsBusy}>
                 增量补队
               </Button>
-              <Button
-                type="button"
-                onClick={() => void mapActions.handleOneKeyAdvanceMapQueue()}
-                disabled={mapControlsBusy}
-              >
+              <Button type="button" onClick={() => void mapActions.handleOneKeyAdvanceMapQueue()} disabled={mapControlsBusy}>
                 一键自动推进
               </Button>
               <Button
@@ -213,18 +204,10 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
               >
                 手动推进队列（10轮）
               </Button>
-              <Button
-                type="button"
-                onClick={() => void mapActions.approveAllReadyTasks()}
-                disabled={mapControlsBusy}
-              >
+              <Button type="button" onClick={() => void mapActions.approveAllReadyTasks()} disabled={mapControlsBusy}>
                 {approveAllReadyRunning ? '一键审核中...' : '一键审核全部待审核'}
               </Button>
-              <Button
-                type="button"
-                onClick={() => void mapActions.approveMapSampleBatch()}
-                disabled={mapControlsBusy}
-              >
+              <Button type="button" onClick={() => void mapActions.approveMapSampleBatch()} disabled={mapControlsBusy}>
                 {sampleApproving ? '抽检发布中...' : '抽检并批量发布'}
               </Button>
             </div>
@@ -452,6 +435,7 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               >
                 <option value="all">全部</option>
+                <option value="zh">中文</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
               </select>
@@ -787,7 +771,6 @@ export default function TranslationsPageView(props: TranslationsPageViewProps) {
         statusLabels={statusLabels}
         onSubmit={handleBatchSubmit}
       />
-
     </div>
   )
 }

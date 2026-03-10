@@ -1,4 +1,5 @@
 export const LANGUAGE_LABELS: Record<string, string> = {
+  zh: '中文',
   en: 'English',
   ja: '日本語',
 }

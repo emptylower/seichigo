@@ -1,6 +1,6 @@
 import { hashText } from '@/lib/anitabi/utils'
 
-export const MAP_TRANSLATION_TARGET_LANGUAGES = ['en', 'ja'] as const
+export const MAP_TRANSLATION_TARGET_LANGUAGES = ['zh', 'en', 'ja'] as const
 
 export type MapTranslationTargetLanguage = (typeof MAP_TRANSLATION_TARGET_LANGUAGES)[number]
 
@@ -15,7 +15,7 @@ export function normalizeMapTargetLanguages(input: readonly string[] | null | un
 
   const set = new Set<MapTranslationTargetLanguage>()
   for (const raw of input) {
-    if (raw === 'en' || raw === 'ja') set.add(raw)
+    if (raw === 'zh' || raw === 'en' || raw === 'ja') set.add(raw)
   }
 
   if (set.size === 0) return [...MAP_TRANSLATION_TARGET_LANGUAGES]
@@ -48,7 +48,18 @@ export function buildBangumiSourceHash(input: {
   city: string | null | undefined
 }): string {
   const source = buildBangumiSourceContent(input)
-  return hashText(`title:${source.title}\ndescription:${source.description || ''}\ncity:${source.city || ''}`)
+  return buildBangumiSourceHashFromContent(source)
+}
+
+export function buildBangumiSourceHashFromContent(input: {
+  title: string | null | undefined
+  description: string | null | undefined
+  city: string | null | undefined
+}): string {
+  const title = normalize(input.title)
+  const description = normalize(input.description)
+  const city = normalize(input.city)
+  return hashText(`title:${title}\ndescription:${description}\ncity:${city}`)
 }
 
 export function buildPointSourceContent(input: {
@@ -73,5 +84,14 @@ export function buildPointSourceHash(input: {
   mark: string | null | undefined
 }): string {
   const source = buildPointSourceContent(input)
-  return hashText(`name:${source.name}\nnote:${source.note || ''}`)
+  return buildPointSourceHashFromContent(source)
+}
+
+export function buildPointSourceHashFromContent(input: {
+  name: string | null | undefined
+  note: string | null | undefined
+}): string {
+  const name = normalize(input.name)
+  const note = normalize(input.note)
+  return hashText(`name:${name}\nnote:${note}`)
 }

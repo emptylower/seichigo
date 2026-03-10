@@ -23,7 +23,7 @@ const retranslateSchema = z.object({
     'text',
   ]),
   entityId: z.string().optional(),
-  targetLang: z.enum(['en', 'ja']),
+  targetLang: z.enum(['zh', 'en', 'ja']),
   field: z.string().optional(),
   text: z.string().optional(),
 })
@@ -36,7 +36,7 @@ type PreviewResponse = {
 async function previewArticleFromExistingTask(
   prisma: TranslationApiDeps['prisma'],
   entityId: string,
-  targetLang: 'en' | 'ja'
+  targetLang: 'zh' | 'en' | 'ja'
 ): Promise<PreviewResponse | null> {
   let existingTask: { sourceContent: unknown } | null = null
   try {
@@ -109,6 +109,13 @@ export function createHandlers(deps: TranslationApiDeps) {
       }
 
       const { entityType, entityId, field, targetLang, text } = parsed.data
+
+      if ((entityType === 'city' || entityType === 'anime') && targetLang === 'zh') {
+        return NextResponse.json(
+          { error: '当前实体暂不支持中文回填预览' },
+          { status: 400 }
+        )
+      }
 
       if (entityType === 'text') {
         if (!text) {

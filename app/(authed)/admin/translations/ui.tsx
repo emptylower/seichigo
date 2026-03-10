@@ -109,6 +109,7 @@ export default function TranslationsUI({
 
   const languageLabels: Record<string, string> = {
     all: '全部',
+    zh: '中文',
     en: 'English',
     ja: '日本語',
   }

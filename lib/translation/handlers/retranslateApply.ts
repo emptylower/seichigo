@@ -13,7 +13,7 @@ const applySchema = z.object({
     'anitabi_point',
   ]),
   entityId: z.string().min(1),
-  targetLang: z.enum(['en', 'ja']),
+  targetLang: z.enum(['zh', 'en', 'ja']),
   preview: z.record(z.any()),
   translationTaskId: z.string().optional(),
 })
@@ -67,6 +67,13 @@ export function createHandlers(deps: TranslationApiDeps) {
       const { entityType, entityId, preview, targetLang, translationTaskId } = parsed.data
 
       try {
+        if ((entityType === 'city' || entityType === 'anime') && targetLang === 'zh') {
+          return NextResponse.json(
+            { error: '当前实体暂不支持中文回填应用' },
+            { status: 400 }
+          )
+        }
+
         if (
           entityType === 'article' ||
           entityType === 'anitabi_bangumi' ||
@@ -101,7 +108,7 @@ export function createHandlers(deps: TranslationApiDeps) {
             if ('name' in preview) updateData.name_en = preview.name
             if ('description' in preview) updateData.description_en = preview.description
             if ('transportTips' in preview) updateData.transportTips_en = preview.transportTips
-          } else {
+          } else if (targetLang === 'ja') {
             if ('name' in preview) updateData.name_ja = preview.name
             if ('description' in preview) updateData.description_ja = preview.description
             if ('transportTips' in preview) updateData.transportTips_ja = preview.transportTips
@@ -119,7 +126,7 @@ export function createHandlers(deps: TranslationApiDeps) {
         if (targetLang === 'en') {
           if ('name' in preview) updateData.name_en = preview.name
           if ('summary' in preview) updateData.summary_en = preview.summary
-        } else {
+        } else if (targetLang === 'ja') {
           if ('name' in preview) updateData.name_ja = preview.name
           if ('summary' in preview) updateData.summary_ja = preview.summary
         }

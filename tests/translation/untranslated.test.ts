@@ -156,7 +156,7 @@ describe('GET /api/admin/translations/untranslated', () => {
     )
   })
 
-  it('filters out entities that already have TranslationTask', async () => {
+  it('keeps showing entities that still have uncovered languages after partial task creation', async () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'admin-1', isAdmin: true } })
 
     mocks.prisma.article.findMany.mockImplementation((opts: any) => {
@@ -215,8 +215,12 @@ describe('GET /api/admin/translations/untranslated', () => {
 
     expect(res.status).toBe(200)
     const j = await res.json()
-    expect(j.total).toBe(0)
-    expect(j.items).toEqual([])
+    expect(j.total).toBe(3)
+
+    const byKey = new Map<string, any>(j.items.map((it: any) => [`${it.entityType}:${it.entityId}`, it] as const))
+    expect(byKey.get('article:a1')).toMatchObject({ missingLanguages: ['ja'] })
+    expect(byKey.get('city:c1')).toMatchObject({ missingLanguages: ['en'] })
+    expect(byKey.get('anime:an1')).toMatchObject({ missingLanguages: ['ja'] })
   })
 
   it('computes missingLanguages correctly for article translation groups', async () => {

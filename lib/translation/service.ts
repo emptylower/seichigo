@@ -2,7 +2,10 @@ import { translateText, translateTextBatch, BATCH_SIZE, MAX_BATCH_CHARS } from '
 import { extractTextNodes, replaceTextNodes, type TipTapNode } from './tiptap'
 import { prisma } from '@/lib/db/prisma'
 import { renderArticleContentHtmlFromJson } from '@/lib/article/repair'
-import { buildMapSourceContentByEntity } from '@/lib/translation/mapTaskEnqueue'
+import {
+  selectBangumiSourceForTarget,
+  selectPointSourceForTarget,
+} from '@/lib/translation/mapLocale'
 
 export type TranslationResult = {
   success: boolean
@@ -179,8 +182,21 @@ export async function translateAnitabiBangumi(bangumiId: string, targetLang: str
       select: {
         id: true,
         titleZh: true,
+        titleJaRaw: true,
+        titleOriginal: true,
+        titleEnglish: true,
         description: true,
         city: true,
+        i18n: {
+          where: { language: { in: ['zh', 'en', 'ja'] } },
+          select: {
+            language: true,
+            sourceHash: true,
+            title: true,
+            description: true,
+            city: true,
+          },
+        },
       },
     })
 
@@ -188,10 +204,10 @@ export async function translateAnitabiBangumi(bangumiId: string, targetLang: str
       return { success: false, error: 'Bangumi not found' }
     }
 
-    const { sourceHash, sourceContent } = buildMapSourceContentByEntity({
-      entityType: 'anitabi_bangumi',
-      row: bangumi,
-    })
+    const { sourceHash, sourceContent } = selectBangumiSourceForTarget(
+      bangumi,
+      targetLang as 'zh' | 'en' | 'ja'
+    )
 
     const source = sourceContent as {
       title: string
@@ -199,7 +215,9 @@ export async function translateAnitabiBangumi(bangumiId: string, targetLang: str
       city: string | null
     }
 
-    const translatedTitle = source.title ? await translateText(source.title, targetLang) : source.title
+    const translatedTitle = source.title
+      ? await translateText(source.title, targetLang)
+      : source.title
     const translatedDescription = source.description
       ? await translateText(source.description, targetLang)
       : null
@@ -229,6 +247,15 @@ export async function translateAnitabiPoint(pointId: string, targetLang: string)
         name: true,
         nameZh: true,
         mark: true,
+        i18n: {
+          where: { language: { in: ['zh', 'en', 'ja'] } },
+          select: {
+            language: true,
+            sourceHash: true,
+            name: true,
+            note: true,
+          },
+        },
       },
     })
 
@@ -236,10 +263,10 @@ export async function translateAnitabiPoint(pointId: string, targetLang: string)
       return { success: false, error: 'Point not found' }
     }
 
-    const { sourceHash, sourceContent } = buildMapSourceContentByEntity({
-      entityType: 'anitabi_point',
-      row: point,
-    })
+    const { sourceHash, sourceContent } = selectPointSourceForTarget(
+      point,
+      targetLang as 'zh' | 'en' | 'ja'
+    )
 
     const source = sourceContent as {
       name: string

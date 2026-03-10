@@ -12,7 +12,7 @@ const executeByFilterSchema = z.object({
   entityType: z
     .enum(['article', 'city', 'anime', 'anitabi_bangumi', 'anitabi_point'])
     .optional(),
-  targetLanguage: z.enum(['en', 'ja']).optional(),
+  targetLanguage: z.enum(['zh', 'en', 'ja']).optional(),
   q: z.string().max(200).optional(),
   limit: z.number().int().min(1).max(1000).optional(),
   includeFailed: z.boolean().optional(),

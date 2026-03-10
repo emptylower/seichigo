@@ -8,6 +8,14 @@ import {
   type MapTranslationEntityType,
   type MapTranslationTargetLanguage,
 } from '@/lib/translation/mapSourceHash'
+import {
+  getBangumiApprovedLanguages,
+  getBangumiStoredSourceHash,
+  getPointApprovedLanguages,
+  getPointStoredSourceHash,
+  selectBangumiSourceForTarget,
+  selectPointSourceForTarget,
+} from '@/lib/translation/mapLocale'
 
 export type MapTaskEnqueueMode = 'missing' | 'stale' | 'all'
 
@@ -182,22 +190,31 @@ async function enqueueTaskCandidates(prisma: PrismaClient, candidates: TaskCandi
 function buildBangumiCandidates(rows: Array<{
   id: number
   titleZh: string | null
+  titleJaRaw: string | null
+  titleOriginal: string | null
+  titleEnglish: string | null
   description: string | null
   city: string | null
-  i18n: Array<{ language: string; sourceHash: string | null }>
+  i18n: Array<{
+    language: string
+    sourceHash: string | null
+    title: string | null
+    description: string | null
+    city: string | null
+  }>
 }>,
 mode: MapTaskEnqueueMode,
 langs: MapTranslationTargetLanguage[]): TaskCandidate[] {
   const out: TaskCandidate[] = []
 
   for (const row of rows) {
-    const sourceHash = buildBangumiSourceHash(row)
-    const i18nByLang = new Map(row.i18n.map((item) => [item.language, item]))
+    const approvedLanguages = getBangumiApprovedLanguages(row, langs)
 
     for (const lang of langs) {
-      const translated = i18nByLang.get(lang)
-      const hasTranslation = Boolean(translated)
-      const stale = hasTranslation && String(translated?.sourceHash || '') !== sourceHash
+      const hasTranslation = approvedLanguages.has(lang)
+      const { sourceHash } = selectBangumiSourceForTarget(row, lang)
+      const storedSourceHash = getBangumiStoredSourceHash(row, lang)
+      const stale = Boolean(storedSourceHash) && storedSourceHash !== sourceHash
       if (!shouldQueueByMode(mode, { hasTranslation, stale })) continue
 
       out.push({
@@ -218,20 +235,25 @@ function buildPointCandidates(rows: Array<{
   name: string
   nameZh: string | null
   mark: string | null
-  i18n: Array<{ language: string; sourceHash: string | null }>
+  i18n: Array<{
+    language: string
+    sourceHash: string | null
+    name: string | null
+    note: string | null
+  }>
 }>,
 mode: MapTaskEnqueueMode,
 langs: MapTranslationTargetLanguage[]): TaskCandidate[] {
   const out: TaskCandidate[] = []
 
   for (const row of rows) {
-    const sourceHash = buildPointSourceHash(row)
-    const i18nByLang = new Map(row.i18n.map((item) => [item.language, item]))
+    const approvedLanguages = getPointApprovedLanguages(row, langs)
 
     for (const lang of langs) {
-      const translated = i18nByLang.get(lang)
-      const hasTranslation = Boolean(translated)
-      const stale = hasTranslation && String(translated?.sourceHash || '') !== sourceHash
+      const hasTranslation = approvedLanguages.has(lang)
+      const { sourceHash } = selectPointSourceForTarget(row, lang)
+      const storedSourceHash = getPointStoredSourceHash(row, lang)
+      const stale = Boolean(storedSourceHash) && storedSourceHash !== sourceHash
       if (!shouldQueueByMode(mode, { hasTranslation, stale })) continue
 
       out.push({
@@ -266,6 +288,9 @@ export async function enqueueMapTranslationTasksForBackfill(input: MapTaskBackfi
       select: {
         id: true,
         titleZh: true,
+        titleJaRaw: true,
+        titleOriginal: true,
+        titleEnglish: true,
         description: true,
         city: true,
         i18n: {
@@ -273,6 +298,9 @@ export async function enqueueMapTranslationTasksForBackfill(input: MapTaskBackfi
           select: {
             language: true,
             sourceHash: true,
+            title: true,
+            description: true,
+            city: true,
           },
         },
       },
@@ -311,6 +339,8 @@ export async function enqueueMapTranslationTasksForBackfill(input: MapTaskBackfi
         select: {
           language: true,
           sourceHash: true,
+          name: true,
+          note: true,
         },
       },
     },
@@ -354,6 +384,9 @@ export async function enqueueMapTranslationTasksForBangumiIds(
       select: {
         id: true,
         titleZh: true,
+        titleJaRaw: true,
+        titleOriginal: true,
+        titleEnglish: true,
         description: true,
         city: true,
         i18n: {
@@ -361,6 +394,9 @@ export async function enqueueMapTranslationTasksForBangumiIds(
           select: {
             language: true,
             sourceHash: true,
+            title: true,
+            description: true,
+            city: true,
           },
         },
       },
@@ -379,6 +415,8 @@ export async function enqueueMapTranslationTasksForBangumiIds(
           select: {
             language: true,
             sourceHash: true,
+            name: true,
+            note: true,
           },
         },
       },

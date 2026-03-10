@@ -10,10 +10,8 @@ function pickLocalizedTitle(
     i18n?: Array<{ title: string | null }>
   }
 ): string {
-  if (locale !== 'zh') {
-    const translated = normalizeText(row.i18n?.[0]?.title)
-    if (translated) return translated
-  }
+  const translated = normalizeText(row.i18n?.[0]?.title)
+  if (translated) return translated
   return normalizeText(row.titleZh) || normalizeText(row.titleJaRaw) || '#'
 }
 
