@@ -17,7 +17,9 @@ import type {
   PointRecord,
   PointPoolItem,
   RouteBookDetail,
+  RouteBookSummary,
   DetailResponse,
+  RouteBookListResponse,
   PointPreview,
   BangumiResponse,
   NavMode,
@@ -40,6 +42,7 @@ import {
   addPointToZoneInPoints,
   formatGoogleStop,
   buildGoogleDirectionsEmbedUrl,
+  buildGoogleDirectionsUrl,
   buildGoogleLegDirectionsUrl,
   buildGooglePointEmbedUrl,
   parseBangumiId,
@@ -57,6 +60,7 @@ import {
 
 export function useRouteBookDetail(id: string) {
   const [routeBook, setRouteBook] = useState<RouteBookDetail | null>(null)
+  const [routeBooks, setRouteBooks] = useState<RouteBookSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -88,6 +92,35 @@ export function useRouteBookDetail(id: string) {
       )
     })
   }, [])
+
+  const parseRouteBookItems = useCallback((items: unknown): RouteBookSummary[] => {
+    if (!Array.isArray(items)) return []
+    return items.filter((item: unknown): item is RouteBookSummary => {
+      if (!item || typeof item !== 'object') return false
+      const row = item as Record<string, unknown>
+      return (
+        typeof row.id === 'string' &&
+        typeof row.title === 'string' &&
+        typeof row.status === 'string' &&
+        typeof row.createdAt === 'string' &&
+        typeof row.updatedAt === 'string'
+      )
+    })
+  }, [])
+
+  const loadRouteBooks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/me/routebooks')
+      const data = (await res.json().catch(() => ({}))) as RouteBookListResponse
+      if (!res.ok || 'error' in data) {
+        setRouteBooks([])
+        return
+      }
+      setRouteBooks(parseRouteBookItems(data.items))
+    } catch {
+      setRouteBooks([])
+    }
+  }, [parseRouteBookItems])
 
   const refreshPointPool = useCallback(async () => {
     try {
@@ -138,6 +171,7 @@ export function useRouteBookDetail(id: string) {
     setPointPoolItems([])
     setStableRouteEmbedUrl(null)
     setStableRouteSignature('')
+    void loadRouteBooks()
     try {
       const rbRes = await fetch(`/api/me/routebooks/${id}`)
       const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
@@ -162,7 +196,7 @@ export function useRouteBookDetail(id: string) {
       setError('加载失败')
     }
     setLoading(false)
-  }, [hydrateAuxiliaryData, id])
+  }, [hydrateAuxiliaryData, id, loadRouteBooks])
 
   useEffect(() => {
     void load()
@@ -494,6 +528,7 @@ export function useRouteBookDetail(id: string) {
   ])
 
   const effectiveRouteEmbedUrl = hasRouteStops ? (stableRouteEmbedUrl ?? routeEmbedUrl) : null
+  const googleNavUrl = buildGoogleDirectionsUrl(sortedStopValues, travelMode)
   const routeLegs = sortedStops.slice(0, -1).map((from, index) => {
     const to = sortedStops[index + 1]
     if (!to) return null
@@ -546,6 +581,7 @@ export function useRouteBookDetail(id: string) {
   return {
     // State
     routeBook,
+    routeBooks,
     loading,
     error,
     editingTitle,
@@ -571,6 +607,7 @@ export function useRouteBookDetail(id: string) {
     focusPreview,
     focusPointEmbedUrl,
     previewEmbedUrl,
+    googleNavUrl,
     checkedCount,
     allDone,
     nextPoint,

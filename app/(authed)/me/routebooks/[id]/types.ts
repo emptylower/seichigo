@@ -28,8 +28,21 @@ export type RouteBookDetail = {
   points: PointRecord[]
 }
 
+export type RouteBookSummary = {
+  id: string
+  title: string
+  status: RouteBookStatus
+  metadata: unknown | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type DetailResponse =
   | { ok: true; routeBook?: RouteBookDetail; item?: RouteBookDetail }
+  | { error: string }
+
+export type RouteBookListResponse =
+  | { ok: true; items: RouteBookSummary[] }
   | { error: string }
 
 export type PointPreview = {

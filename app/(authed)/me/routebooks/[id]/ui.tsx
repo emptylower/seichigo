@@ -1,57 +1,44 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
+import { Navigation } from 'lucide-react'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
-import { SORTED_LIMIT } from './types'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
-import { RouteBookHeader } from './components/RouteBookHeader'
-import { RouteListPanel } from './components/RouteListPanel'
-import { RouteSidebar } from './components/RouteSidebar'
-import { CollapsiblePointPool } from './components/CollapsiblePointPool'
-import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
+import { POOL_DND_PREFIX, SORTED_DND_PREFIX } from './types'
+import { parseDragRecordId, poolDragId } from './utils'
 import TransitGuidance from './components/TransitGuidance'
 import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
+import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
+import { PlannerMapStage } from './components/PlannerMapStage'
+import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel, type PlannerPoolItem } from './components/PlannerPointPoolPanel'
+import { PlannerRouteDragOverlay, PlannerRoutePanel } from './components/PlannerRoutePanel'
 
 function RouteBookDetailSkeleton() {
   return (
-    <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[30px] border border-pink-100/90 bg-white/90 p-5 shadow-sm sm:p-6">
-        <div className="space-y-4">
-          <div className="h-8 w-2/3 animate-pulse rounded bg-slate-200" />
-          <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
-          <div className="flex flex-wrap gap-2">
-            <div className="h-10 w-28 animate-pulse rounded-full bg-slate-100" />
-            <div className="h-10 w-40 animate-pulse rounded-full bg-slate-100" />
-          </div>
-        </div>
+    <div className="space-y-5">
+      <section className="h-56 animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+      <section className="hidden gap-4 xl:grid xl:grid-cols-[340px_minmax(0,1fr)_320px]">
+        <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+        <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+        <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
       </section>
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
-        <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
-        <div className="h-[56vh] min-h-[520px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
+      <section className="space-y-4 xl:hidden">
+        <div className="h-12 animate-pulse rounded-[24px] bg-pink-100/70" />
+        <div className="h-80 animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+        <div className="h-64 animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
       </section>
-      <section className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-white" />
     </div>
   )
 }
 
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
-  const [poolExpanded, setPoolExpanded] = useState(false)
-  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
+  const [mobileTab, setMobileTab] = useState<'route' | 'pool'>('route')
   const [immersiveOpen, setImmersiveOpen] = useState(false)
 
   const h = useRouteBookDetail(id)
-
-  if (h.loading) return <RouteBookDetailSkeleton />
-  if (h.error) return (
-    <div className="space-y-4">
-      <div className="rounded-md bg-rose-50 p-3 text-rose-700">{h.error}</div>
-      <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">返回地图列表</a>
-    </div>
-  )
-  if (!h.routeBook) return null
 
   const nextTransitStop = h.nextPoint
     ? (() => {
@@ -61,122 +48,231 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       })()
     : null
 
-  const handleStartPilgrimage = async () => {
-    await h.handleStatusChange('in_progress')
+  const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
+  const routeBookSelectorItems = useMemo(() => {
+    if (!h.routeBook) return h.routeBooks
+    if (h.routeBooks.some((item) => item.id === h.routeBook?.id)) return h.routeBooks
+    return [
+      {
+        id: h.routeBook.id,
+        title: h.routeBook.title,
+        status: h.routeBook.status,
+        metadata: h.routeBook.metadata,
+        createdAt: h.routeBook.createdAt,
+        updatedAt: h.routeBook.updatedAt,
+      },
+      ...h.routeBooks,
+    ]
+  }, [h.routeBook, h.routeBooks])
+
+  const plannerPoolItems = useMemo<PlannerPoolItem[]>(() => {
+    if (!h.routeBook) return []
+
+    const selectedItems = h.routeBook.points.map((point, index) => ({
+      id: `selected:${point.id}:${index}`,
+      pointId: point.pointId,
+      preview: h.getPointPreview(point.pointId),
+      selected: true,
+    }))
+
+    const poolItems = h.pointPoolItems
+      .filter((item) => !selectedPointIds.has(item.pointId))
+      .map((item) => ({
+        id: item.id,
+        pointId: item.pointId,
+        preview: h.getPointPreview(item.pointId),
+        selected: false,
+        dragId: poolDragId(item.id),
+        onAdd: () => {
+          void h.handleAddFromPointPool(item.pointId)
+        },
+      }))
+
+    return [...selectedItems, ...poolItems]
+  }, [h, selectedPointIds])
+
+  const primaryActionLabel = useMemo(() => {
+    if (!h.sorted.length) return '先加入点位'
+    if (h.routeBook?.status === 'draft') return `开始巡礼 · ${h.sorted.length} 个点位`
+    if (h.routeBook?.status === 'in_progress') return `继续巡礼 · ${h.sorted.length} 个点位`
+    return `回顾路线 · ${h.sorted.length} 个点位`
+  }, [h.routeBook?.status, h.sorted.length])
+
+  const handlePrimaryAction = async () => {
+    if (!h.sorted.length || !h.routeBook) return
+    if (h.routeBook.status === 'draft') {
+      await h.handleStatusChange('in_progress')
+    }
     setImmersiveOpen(true)
   }
 
+  const dragOverlay = useMemo(() => {
+    if (!h.activeDragId) return null
+
+    const sortedRecordId = parseDragRecordId(h.activeDragId, SORTED_DND_PREFIX)
+    if (sortedRecordId) {
+      const point = h.sorted.find((row) => row.id === sortedRecordId)
+      if (!point) return null
+      return <PlannerRouteDragOverlay point={point} preview={h.getPointPreview(point.pointId)} />
+    }
+
+    const poolRecordId = parseDragRecordId(h.activeDragId, POOL_DND_PREFIX)
+    if (poolRecordId) {
+      const item = plannerPoolItems.find((row) => row.id === poolRecordId)
+      if (!item) return null
+      return <PlannerPointPoolDragOverlay item={item} />
+    }
+
+    return null
+  }, [h.activeDragId, h.getPointPreview, h.sorted, plannerPoolItems])
+
+  if (h.loading) return <RouteBookDetailSkeleton />
+  if (h.error) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl bg-rose-50 p-4 text-rose-700">{h.error}</div>
+        <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">
+          返回地图列表
+        </a>
+      </div>
+    )
+  }
+  if (!h.routeBook) return null
+
+  const mapStage = (
+    <PlannerMapStage
+      status={h.routeBook.status}
+      sortedCount={h.sorted.length}
+      checkedCount={h.checkedCount}
+      allDone={h.allDone}
+      previewEmbedUrl={h.previewEmbedUrl}
+      hasRouteStops={h.hasRouteStops}
+      travelMode={h.travelMode}
+      setTravelMode={h.setTravelMode}
+      focusPreview={h.focusPreview}
+      nextPoint={h.nextPoint}
+      nextPreview={h.nextPoint ? h.getPointPreview(h.nextPoint.pointId) : null}
+      googleNavUrl={h.googleNavUrl}
+      onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
+      onMarkComplete={() => void h.handleStatusChange('completed')}
+      onPrimaryAction={() => {
+        void handlePrimaryAction()
+      }}
+      primaryActionLabel={primaryActionLabel}
+      primaryActionDisabled={!h.sorted.length}
+      compact={isMobile}
+    >
+      <TransitGuidance
+        routeBookId={id}
+        nextStop={nextTransitStop}
+        travelMode={h.travelMode}
+        visible={Boolean(nextTransitStop) && h.travelMode === 'transit'}
+      />
+    </PlannerMapStage>
+  )
+
+  const routePanel = (
+    <PlannerRoutePanel
+      sorted={h.sorted}
+      getPointPreview={h.getPointPreview}
+      onRemove={h.handleRemovePoint}
+      enableDrag={!isMobile}
+    />
+  )
+
+  const poolPanel = <PlannerPointPoolPanel items={plannerPoolItems} compact={isMobile} enableDrag={!isMobile} />
+
   return (
-    <div className="space-y-6">
-      <RouteBookHeader
+    <div className="space-y-5 pb-24 md:pb-10">
+      <RouteBookPlannerHeader
         routeBook={h.routeBook}
+        routeBooks={routeBookSelectorItems}
+        sortedCount={h.sorted.length}
+        checkedCount={h.checkedCount}
         editingTitle={h.editingTitle}
         titleDraft={h.titleDraft}
         setTitleDraft={h.setTitleDraft}
         setEditingTitle={h.setEditingTitle}
         onTitleSave={h.handleTitleSave}
         onStatusChange={h.handleStatusChange}
-        onStartPilgrimage={() => {
-          void handleStartPilgrimage()
-        }}
       />
 
-      {h.checkInTarget && (
+      {h.checkInTarget ? (
         <CheckInModal
           pointId={h.checkInTarget}
           pointName={h.getPointPreview(h.checkInTarget).title}
           onSuccess={h.handleCheckInSuccess}
           onClose={() => h.setCheckInTarget(null)}
         />
-      )}
+      ) : null}
 
-      <DndContext
-        sensors={h.sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(event) => h.setActiveDragId(event.active.id as string)}
-        onDragEnd={(event) => {
-          h.setActiveDragId(null)
-          void h.handleDragEnd(event)
-        }}
-      >
-        <DragOverlay>
-          {h.activeDragId ? h.renderDragOverlay(h.activeDragId) : null}
-        </DragOverlay>
-
-        <section className="space-y-3">
-          <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-0">
-            <h2 className="text-lg font-semibold text-slate-900">路线排序 ({h.sorted.length}/{SORTED_LIMIT})</h2>
-            <span className="text-xs text-slate-500">按住卡片拖动排序；可直接把全局点位拖入路线</span>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.95fr)]">
-            <RouteListPanel
-              sorted={h.sorted}
-              getPointPreview={h.getPointPreview}
-              onRemove={h.handleRemovePoint}
-              canAddToSorted={h.canAddToSorted}
-            />
-            <RouteSidebar
-              previewEmbedUrl={h.previewEmbedUrl}
-              focusPointEmbedUrl={h.focusPointEmbedUrl}
-              focusPoint={h.focusPoint}
-              focusPreview={h.focusPreview}
-              routeBook={h.routeBook}
-              sorted={h.sorted}
-              travelMode={h.travelMode}
-              setTravelMode={h.setTravelMode}
-              onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
-              onStatusChange={h.handleStatusChange}
-              hasRouteStops={h.hasRouteStops}
-              effectiveRouteEmbedUrl={h.effectiveRouteEmbedUrl}
-              checkedCount={h.checkedCount}
-              allDone={h.allDone}
-              nextPoint={h.nextPoint}
-            >
-              <TransitGuidance
-                routeBookId={id}
-                nextStop={nextTransitStop}
-                travelMode={h.travelMode}
-                visible={Boolean(nextTransitStop) && h.travelMode === 'transit'}
-              />
-            </RouteSidebar>
-          </div>
-        </section>
-
-        {isMobile ? (
-          <MobilePointPoolSheet
-            pointPoolItems={h.pointPoolItems}
-            getPointPreview={h.getPointPreview}
-            onAddToRoute={h.handleAddFromPointPool}
-            isOpen={mobileSheetOpen}
-            onClose={() => setMobileSheetOpen(false)}
-          />
-        ) : (
-          <CollapsiblePointPool
-            pointPoolItems={h.pointPoolItems}
-            getPointPreview={h.getPointPreview}
-            onAddToRoute={h.handleAddFromPointPool}
-            isExpanded={poolExpanded}
-            onToggle={() => setPoolExpanded(!poolExpanded)}
-          />
-        )}
-      </DndContext>
-
-      {isMobile && !mobileSheetOpen && h.pointPoolItems.length > 0 && (
-        <button
-          type="button"
-          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg hover:bg-brand-600"
-          onClick={() => setMobileSheetOpen(true)}
+      {!isMobile ? (
+        <DndContext
+          sensors={h.sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(event) => h.setActiveDragId(String(event.active.id))}
+          onDragEnd={(event) => {
+            h.setActiveDragId(null)
+            void h.handleDragEnd(event)
+          }}
+          onDragCancel={() => h.setActiveDragId(null)}
         >
-          <span className="text-xl">+</span>
-        </button>
+          <DragOverlay>{dragOverlay}</DragOverlay>
+
+          <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)_320px]">
+            <div className="min-h-0">{routePanel}</div>
+            <div className="min-h-0">{mapStage}</div>
+            <div className="min-h-0">{poolPanel}</div>
+          </section>
+        </DndContext>
+      ) : (
+        <section className="space-y-4">
+          <div className="inline-flex w-full rounded-[26px] bg-pink-50/80 p-1">
+            {([
+              ['route', `路线 (${h.sorted.length})`],
+              ['pool', '点位池'],
+            ] as const).map(([key, label]) => {
+              const active = mobileTab === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`inline-flex min-h-12 flex-1 items-center justify-center rounded-[22px] px-3 text-sm font-semibold transition ${
+                    active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                  }`}
+                  onClick={() => setMobileTab(key)}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {mobileTab === 'route' ? (
+            <div className="space-y-4">
+              {mapStage}
+              {routePanel}
+            </div>
+          ) : (
+            poolPanel
+          )}
+        </section>
       )}
 
-      {!h.canAddToSorted && (
-        <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
-          已排序路线已达上限 ({SORTED_LIMIT} 个点位)。如需添加新点位，请先移出部分已有点位。
+      {isMobile && h.sorted.length > 0 ? (
+        <div className="fixed inset-x-4 bottom-4 z-40">
+          <button
+            type="button"
+            className="inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-[26px] bg-brand-400 px-6 text-lg font-semibold text-white shadow-[0_18px_34px_-22px_rgba(225,29,72,0.7)] transition hover:bg-brand-500"
+            onClick={() => {
+              void handlePrimaryAction()
+            }}
+          >
+            <Navigation className="h-5 w-5" />
+            {primaryActionLabel}
+          </button>
         </div>
-      )}
+      ) : null}
 
       {immersiveOpen ? (
         <RouteBookImmersiveMode
