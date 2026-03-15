@@ -72,8 +72,28 @@ export function RouteBookPlannerHeader({
       </div>
 
       <article className="rounded-[30px] border border-pink-100/90 bg-white/95 p-5 shadow-[0_22px_42px_-34px_rgba(15,23,42,0.34)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[routeBook.status]}`}>
+            {STATUS_LABEL[routeBook.status]}
+          </span>
+          <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
+            {sortedCount} 个点位
+          </span>
+          <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
+            已打卡 {checkedCount}
+          </span>
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+            更新于 {formatDate(routeBook.updatedAt)}
+          </span>
+          {metadata.city ? (
+            <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+              {metadata.city}
+            </span>
+          ) : null}
+        </div>
+
         {editingTitle ? (
-          <div className="space-y-3">
+          <div className="mt-4 space-y-3">
             <input
               type="text"
               value={titleDraft}
@@ -103,32 +123,13 @@ export function RouteBookPlannerHeader({
             </div>
           </div>
         ) : (
-          <button type="button" className="w-full text-left" onClick={() => setEditingTitle(true)} title="点击编辑标题">
-            <h1 className="text-[34px] font-bold tracking-tight text-slate-900">{routeBook.title}</h1>
-          </button>
+          <div className="mt-4">
+            <button type="button" className="w-full text-left" onClick={() => setEditingTitle(true)} title="点击编辑标题">
+              <div className="text-base font-semibold text-slate-900">{routeBook.title}</div>
+            </button>
+            <p className="mt-2 text-sm leading-7 text-slate-500">{description}</p>
+          </div>
         )}
-
-        <p className="mt-3 text-lg leading-8 text-slate-500">{description}</p>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[routeBook.status]}`}>
-            {STATUS_LABEL[routeBook.status]}
-          </span>
-          <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
-            {sortedCount} 个点位
-          </span>
-          <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
-            已打卡 {checkedCount}
-          </span>
-          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-            更新于 {formatDate(routeBook.updatedAt)}
-          </span>
-          {metadata.city ? (
-            <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-              {metadata.city}
-            </span>
-          ) : null}
-        </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {routeBook.status === 'in_progress' ? (
@@ -149,13 +150,6 @@ export function RouteBookPlannerHeader({
               重新编辑
             </button>
           ) : null}
-          <Link
-            href="/me/routebooks"
-            prefetch={false}
-            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50"
-          >
-            管理全部地图
-          </Link>
         </div>
       </article>
     </section>

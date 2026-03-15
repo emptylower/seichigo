@@ -221,8 +221,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           >
             <DragOverlay>{dragOverlay}</DragOverlay>
 
-            <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px]">
-              <div className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-15rem)]">
+            <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px] lg:min-h-[calc(100dvh-9.5rem)]">
+              <div className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-9.5rem)]">
                 <RouteBookPlannerHeader
                   routeBook={h.routeBook}
                   routeBooks={routeBookSelectorItems}
@@ -237,8 +237,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                 />
                 <div className="min-h-0 flex-1">{routePanel}</div>
               </div>
-              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{mapStage}</div>
-              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{poolPanel}</div>
+              <div className="min-h-0 lg:h-[calc(100dvh-9.5rem)]">{mapStage}</div>
+              <div className="min-h-0 lg:h-[calc(100dvh-9.5rem)]">{poolPanel}</div>
             </section>
           </DndContext>
         ) : (
