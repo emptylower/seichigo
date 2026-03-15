@@ -50,7 +50,7 @@ function RouteStopCard({
           </div>
         </div>
 
-        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[24px] bg-slate-100 sm:h-24 sm:w-24">
+        <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[24px] bg-slate-100 sm:h-28 sm:w-28">
           {preview.image ? (
             <img
               src={preview.image}
@@ -70,7 +70,7 @@ function RouteStopCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
-              <h3 className="line-clamp-1 text-base font-semibold text-slate-900 sm:text-[17px]">{preview.title}</h3>
+              <h3 className="line-clamp-2 text-base font-semibold leading-6 text-slate-900 sm:text-[17px]">{preview.title}</h3>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-full bg-pink-50 px-2.5 py-1 text-xs font-medium text-brand-600">
                   {preview.subtitle}
@@ -87,9 +87,9 @@ function RouteStopCard({
               <X className="h-4.5 w-4.5" />
             </button>
           </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-            <MapPin className="h-3 w-3 text-brand-500" />
-            <span className="truncate">{point.pointId}</span>
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+            <MapPin className="h-3 w-3 text-brand-400" />
+            <span className="truncate">点位 ID: {point.pointId}</span>
           </div>
         </div>
       </div>
@@ -201,7 +201,7 @@ export function PlannerRoutePanel({
   }
 
   return (
-    <section className="flex min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,250,0.9))] p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
+    <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,250,0.9))] p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">路线顺序</h2>
@@ -217,7 +217,7 @@ export function PlannerRoutePanel({
         className="min-h-0 flex-1 rounded-[28px] border border-transparent bg-white/75 p-1 transition"
         activeClassName="border-brand-200 bg-brand-50/40"
       >
-        <div className="max-h-[calc(100vh-26rem)] min-h-[24rem] space-y-3 overflow-y-auto p-2">
+        <div className="h-full min-h-0 space-y-3 overflow-y-auto p-2">
           {content}
         </div>
       </DroppablePanel>

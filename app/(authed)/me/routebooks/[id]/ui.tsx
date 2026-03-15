@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import Link from 'next/link'
-import { ArrowLeft, Bell, MapPinned, Navigation, Settings2 } from 'lucide-react'
+import { ArrowLeft, MapPinned, Navigation } from 'lucide-react'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
@@ -18,14 +18,14 @@ function RouteBookDetailSkeleton() {
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
       <section className="border-b border-pink-100/80 bg-white/80 px-4 py-4 backdrop-blur-md sm:px-6">
-        <div className="mx-auto h-16 max-w-[1680px] animate-pulse rounded-[28px] bg-white/80 shadow-sm" />
+        <div className="mx-auto h-14 max-w-[1920px] animate-pulse rounded-[28px] bg-white/80 shadow-sm" />
       </section>
-      <div className="mx-auto max-w-[1680px] space-y-5 px-4 py-5 sm:px-6">
-        <section className="h-56 animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
-        <section className="hidden gap-4 lg:grid lg:grid-cols-[360px_minmax(0,1fr)_360px]">
-          <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
-          <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
-          <div className="h-[70vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+      <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        <section className="h-36 animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+        <section className="hidden gap-5 lg:grid lg:grid-cols-[420px_minmax(0,1fr)_420px]">
+          <div className="h-[74vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+          <div className="h-[74vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
+          <div className="h-[74vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
         </section>
         <section className="space-y-4 lg:hidden">
           <div className="h-12 animate-pulse rounded-[24px] bg-pink-100/70" />
@@ -168,7 +168,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
       <section className="border-b border-pink-100/80 bg-white/82 px-4 py-4 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-[1920px] items-center gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
               <MapPinned className="h-6 w-6" />
@@ -178,28 +178,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
               <div className="text-sm text-slate-500">我的朝圣之旅</div>
             </div>
           </div>
-
-          <div className="hidden items-center gap-8 md:flex">
-            <div className="text-center">
-              <div className="text-2xl font-semibold text-brand-500">{routeBookSelectorItems.length}</div>
-              <div className="text-xs text-slate-500">地图</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-semibold text-brand-500">{h.checkedCount}</div>
-              <div className="text-xs text-slate-500">已打卡</div>
-            </div>
-            <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-pink-50 hover:text-brand-600">
-              <Bell className="h-5 w-5" />
-            </button>
-            <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-pink-50 hover:text-brand-600">
-              <Settings2 className="h-5 w-5" />
-            </button>
-          </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1680px] space-y-5 px-4 py-5 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/me/routebooks"
             prefetch={false}
@@ -208,8 +191,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             <ArrowLeft className="h-4 w-4" />
             返回我的地图
           </Link>
-          <span className="inline-flex rounded-full border border-pink-100 bg-white/85 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
-            编辑当前地图点位、顺序与导航入口
+          <span className="inline-flex rounded-full border border-slate-200 bg-white/85 px-4 py-2 text-sm font-medium text-slate-500 shadow-sm">
+            当前地图共 {h.sorted.length} 个点位
           </span>
         </div>
 
@@ -248,10 +231,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           >
             <DragOverlay>{dragOverlay}</DragOverlay>
 
-            <section className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)_360px]">
-              <div className="min-h-0">{routePanel}</div>
-              <div className="min-h-0">{mapStage}</div>
-              <div className="min-h-0">{poolPanel}</div>
+            <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px]">
+              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{routePanel}</div>
+              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{mapStage}</div>
+              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{poolPanel}</div>
             </section>
           </DndContext>
         ) : (

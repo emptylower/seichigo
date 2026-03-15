@@ -476,7 +476,7 @@ export function useRouteBookDetail(id: string) {
   }
 
   const canAddToSorted = sorted.length < SORTED_LIMIT
-  const routePreviewMode: NavMode = 'transit'
+  const routePreviewMode: NavMode = 'driving'
   const sortedStops = sorted.map((point) => {
     const preview = getPointPreview(point.pointId)
     return {

@@ -194,7 +194,7 @@ export function PlannerPointPoolPanel({
   }
 
   return (
-    <section className={`flex min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)] ${compact ? 'p-4' : 'p-4'}`}>
+    <section className={`flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)] ${compact ? 'p-4' : 'p-4'}`}>
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -264,7 +264,7 @@ export function PlannerPointPoolPanel({
 
       <div className={`mt-4 min-h-0 flex-1 ${compact ? '' : ''}`}>
         {filteredItems.length > 0 ? (
-          <div className={`${showList ? 'space-y-3' : 'grid grid-cols-2 gap-3'} ${compact ? 'pb-24' : 'max-h-[calc(100vh-26rem)] overflow-y-auto pr-1'}`}>
+          <div className={`${showList ? 'space-y-3' : 'grid grid-cols-2 gap-4'} ${compact ? 'pb-24' : 'h-full overflow-y-auto pr-1'}`}>
             {filteredItems.map((item) =>
               enableDrag ? (
                 <DraggablePoolCard key={item.id} item={item} compact={compact} list={showList} />
