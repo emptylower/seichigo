@@ -9,10 +9,30 @@
   --fg: 17 24 39; /* gray-900 */
   --site-header-h: 64px;
   --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --font-inter: 'Inter', 'Helvetica Neue', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --font-noto-sans-sc: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 html, body {
   @apply bg-white text-gray-900 font-body antialiased;
+}
+
+.site-shell-public:has([data-layout-immersive='true']) {
+  background:
+    radial-gradient(circle at top left, rgba(252, 231, 243, 0.72), transparent 28%),
+    radial-gradient(circle at top right, rgba(224, 242, 254, 0.6), transparent 22%),
+    linear-gradient(180deg, #fffafc 0%, #fffdfd 46%, #fff7fb 100%);
+}
+
+.site-shell-public:has([data-layout-immersive='true']) > header,
+.site-shell-public:has([data-layout-immersive='true']) > footer {
+  display: none;
+}
+
+.site-shell-public:has([data-layout-immersive='true']) > .site-shell-public__main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .mobile-safe-bottom {

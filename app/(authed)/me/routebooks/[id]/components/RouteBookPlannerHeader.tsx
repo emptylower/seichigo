@@ -159,12 +159,6 @@ export function RouteBookPlannerHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <a
-            href="/me/routebooks"
-            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50"
-          >
-            返回地图列表
-          </a>
           {routeBook.status === 'in_progress' ? (
             <button
               type="button"

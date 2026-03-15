@@ -1,7 +1,6 @@
 import { getServerAuthSession } from '@/lib/auth/session'
 import RouteBookDetailClient from './ui'
 import type { Metadata } from 'next'
-import MeSectionShell from '@/components/me/MeSectionShell'
 
 export const metadata: Metadata = {
   title: '地图详情',
@@ -24,30 +23,19 @@ export default async function RouteBookDetailPage({ params }: { params: Promise<
 
   if (!session?.user?.id) {
     return (
-      <MeSectionShell
-        activeTab="routebooks"
-        title="地图详情"
-        description="编辑当前地图点位、调整顺序并导出路线。"
-        wide
-      >
-        <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-          <p className="text-gray-600">请先登录后查看地图。</p>
-          <a className="btn-primary mt-4 inline-flex w-fit no-underline" href={`/auth/signin?callbackUrl=${encodeURIComponent(`/me/routebooks/${id}`)}`}>
-            去登录
-          </a>
+      <section data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh px-4 py-10 sm:px-6">
+        <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
+          <div className="w-full rounded-[32px] border border-pink-100/90 bg-white/90 p-8 shadow-[0_30px_60px_-40px_rgba(15,23,42,0.42)]">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">地图详情</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">请先登录后查看并编辑你的巡礼路线。</p>
+            <a className="btn-primary mt-5 inline-flex w-fit no-underline" href={`/auth/signin?callbackUrl=${encodeURIComponent(`/me/routebooks/${id}`)}`}>
+              去登录
+            </a>
+          </div>
         </div>
-      </MeSectionShell>
+      </section>
     )
   }
 
-  return (
-    <MeSectionShell
-      activeTab="routebooks"
-      title="地图详情"
-      description="编辑当前地图点位、调整顺序并导出路线。"
-      wide
-    >
-      <RouteBookDetailClient id={id} />
-    </MeSectionShell>
-  )
+  return <RouteBookDetailClient id={id} />
 }
