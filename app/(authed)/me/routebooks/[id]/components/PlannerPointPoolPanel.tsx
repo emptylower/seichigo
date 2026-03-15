@@ -131,12 +131,16 @@ export function PlannerPointPoolDragOverlay({ item }: { item: PlannerPoolItem })
 
 interface PlannerPointPoolPanelProps {
   items: PlannerPoolItem[]
+  selectedCount?: number
+  totalCount?: number
   compact?: boolean
   enableDrag?: boolean
 }
 
 export function PlannerPointPoolPanel({
   items,
+  selectedCount = 0,
+  totalCount = items.length,
   compact = false,
   enableDrag = false,
 }: PlannerPointPoolPanelProps) {
@@ -144,7 +148,6 @@ export function PlannerPointPoolPanel({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [activeTag, setActiveTag] = useState('全部')
 
-  const selectedCount = items.filter((item) => item.selected).length
   const tags = useMemo(() => {
     const values = Array.from(new Set(items.map((item) => item.preview.subtitle).filter(Boolean)))
     return ['全部', ...values]
@@ -203,9 +206,7 @@ export function PlannerPointPoolPanel({
             </span>
             <div>
               <h2 className="text-lg font-semibold text-slate-900">点位池</h2>
-              <p className="text-xs text-slate-500">
-                {items.length} 个候选点位，已加入 {selectedCount} 个
-              </p>
+              <p className="text-xs text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个</p>
             </div>
           </div>
           {!compact ? (
@@ -239,7 +240,7 @@ export function PlannerPointPoolPanel({
           />
         </label>
 
-        <div className="overflow-x-auto pb-1">
+        <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex min-w-max gap-2">
             {tags.map((tag) => {
               const active = tag === activeTag

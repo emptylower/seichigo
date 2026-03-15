@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import Link from 'next/link'
-import { ArrowLeft, MapPinned, Navigation } from 'lucide-react'
+import Image from 'next/image'
+import { ArrowLeft, Navigation } from 'lucide-react'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
@@ -63,13 +64,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const plannerPoolItems = useMemo<PlannerPoolItem[]>(() => {
     if (!h.routeBook) return []
 
-    const selectedItems = h.routeBook.points.map((point, index) => ({
-      id: `selected:${point.id}:${index}`,
-      pointId: point.pointId,
-      preview: h.getPointPreview(point.pointId),
-      selected: true,
-    }))
-
     const poolItems = h.pointPoolItems
       .filter((item) => !selectedPointIds.has(item.pointId))
       .map((item) => ({
@@ -83,7 +77,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         },
       }))
 
-    return [...selectedItems, ...poolItems]
+    return poolItems
   }, [h, selectedPointIds])
 
   const primaryActionLabel = useMemo(() => {
@@ -163,52 +157,48 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     />
   )
 
-  const poolPanel = <PlannerPointPoolPanel items={plannerPoolItems} compact={isMobile} enableDrag={!isMobile} />
+  const poolPanel = (
+    <PlannerPointPoolPanel
+      items={plannerPoolItems}
+      selectedCount={h.routeBook.points.length}
+      totalCount={plannerPoolItems.length + h.routeBook.points.length}
+      compact={isMobile}
+      enableDrag={!isMobile}
+    />
+  )
 
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
       <section className="border-b border-pink-100/80 bg-white/82 px-4 py-4 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex max-w-[1920px] items-center gap-4">
+        <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
-              <MapPinned className="h-6 w-6" />
-            </span>
+            <Link href="/" prefetch={false} className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm no-underline">
+              <Image
+                src="/brand/app-logo.png"
+                alt="SeichiGo"
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-xl object-cover"
+              />
+            </Link>
             <div className="min-w-0">
-              <div className="text-[28px] font-bold tracking-tight text-slate-900">圣地巡礼</div>
-              <div className="text-sm text-slate-500">我的朝圣之旅</div>
+              <div className="text-lg font-semibold tracking-tight text-slate-900">SeichiGo</div>
+              <div className="text-sm text-slate-500">我的地图 · 路线规划</div>
             </div>
           </div>
-        </div>
-      </section>
 
-      <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/me/routebooks"
             prefetch={false}
-            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-pink-100 bg-white/85 px-4 text-sm font-medium text-slate-700 no-underline shadow-sm transition hover:bg-pink-50/70"
+            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-pink-100 bg-white/90 px-4 text-sm font-medium text-slate-700 no-underline shadow-sm transition hover:bg-pink-50/70"
           >
             <ArrowLeft className="h-4 w-4" />
             返回我的地图
           </Link>
-          <span className="inline-flex rounded-full border border-slate-200 bg-white/85 px-4 py-2 text-sm font-medium text-slate-500 shadow-sm">
-            当前地图共 {h.sorted.length} 个点位
-          </span>
         </div>
+      </section>
 
-        <RouteBookPlannerHeader
-          routeBook={h.routeBook}
-          routeBooks={routeBookSelectorItems}
-          sortedCount={h.sorted.length}
-          checkedCount={h.checkedCount}
-          editingTitle={h.editingTitle}
-          titleDraft={h.titleDraft}
-          setTitleDraft={h.setTitleDraft}
-          setEditingTitle={h.setEditingTitle}
-          onTitleSave={h.handleTitleSave}
-          onStatusChange={h.handleStatusChange}
-        />
-
+      <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
         {h.checkInTarget ? (
           <CheckInModal
             pointId={h.checkInTarget}
@@ -232,7 +222,21 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             <DragOverlay>{dragOverlay}</DragOverlay>
 
             <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px]">
-              <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{routePanel}</div>
+              <div className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-15rem)]">
+                <RouteBookPlannerHeader
+                  routeBook={h.routeBook}
+                  routeBooks={routeBookSelectorItems}
+                  sortedCount={h.sorted.length}
+                  checkedCount={h.checkedCount}
+                  editingTitle={h.editingTitle}
+                  titleDraft={h.titleDraft}
+                  setTitleDraft={h.setTitleDraft}
+                  setEditingTitle={h.setEditingTitle}
+                  onTitleSave={h.handleTitleSave}
+                  onStatusChange={h.handleStatusChange}
+                />
+                <div className="min-h-0 flex-1">{routePanel}</div>
+              </div>
               <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{mapStage}</div>
               <div className="min-h-0 lg:h-[calc(100dvh-15rem)]">{poolPanel}</div>
             </section>
@@ -262,6 +266,18 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
             {mobileTab === 'route' ? (
               <div className="space-y-4">
+                <RouteBookPlannerHeader
+                  routeBook={h.routeBook}
+                  routeBooks={routeBookSelectorItems}
+                  sortedCount={h.sorted.length}
+                  checkedCount={h.checkedCount}
+                  editingTitle={h.editingTitle}
+                  titleDraft={h.titleDraft}
+                  setTitleDraft={h.setTitleDraft}
+                  setEditingTitle={h.setEditingTitle}
+                  onTitleSave={h.handleTitleSave}
+                  onStatusChange={h.handleStatusChange}
+                />
                 {mapStage}
                 {routePanel}
               </div>

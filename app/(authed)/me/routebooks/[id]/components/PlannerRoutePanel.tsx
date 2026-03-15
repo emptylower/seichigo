@@ -76,10 +76,10 @@ function RouteStopCard({
             <button
               type="button"
               aria-label="移出路线"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-rose-100 bg-rose-50/70 text-rose-400 transition hover:border-rose-200 hover:bg-rose-100 hover:text-rose-600"
               onClick={() => onRemove(point.pointId)}
             >
-              <X className="h-4.5 w-4.5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
           <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
