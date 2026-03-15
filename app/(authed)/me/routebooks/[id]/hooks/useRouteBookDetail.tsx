@@ -43,7 +43,6 @@ import {
   formatGoogleStop,
   buildGoogleDirectionsEmbedUrl,
   buildGoogleDirectionsUrl,
-  buildGoogleLegDirectionsUrl,
   buildGooglePointEmbedUrl,
   parseBangumiId,
   parsePointKey,
@@ -53,10 +52,7 @@ import {
   sortedDragId,
   parseDragRecordId,
 } from '../utils'
-import {
-  PointCard,
-  PointPoolCard,
-} from '../components/PointCard'
+import { PointCard, PointPoolCard } from '../components/PointCard'
 
 export function useRouteBookDetail(id: string) {
   const [routeBook, setRouteBook] = useState<RouteBookDetail | null>(null)
@@ -67,7 +63,6 @@ export function useRouteBookDetail(id: string) {
   const [titleDraft, setTitleDraft] = useState('')
   const [checkedInPointIds, setCheckedInPointIds] = useState<Set<string>>(new Set())
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
-  const [travelMode, setTravelMode] = useState<NavMode>('transit')
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
   const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
@@ -481,6 +476,7 @@ export function useRouteBookDetail(id: string) {
   }
 
   const canAddToSorted = sorted.length < SORTED_LIMIT
+  const routePreviewMode: NavMode = 'transit'
   const sortedStops = sorted.map((point) => {
     const preview = getPointPreview(point.pointId)
     return {
@@ -491,8 +487,8 @@ export function useRouteBookDetail(id: string) {
   })
   const sortedStopValues = sortedStops.map((row) => row.stop)
   const hasRouteStops = sortedStopValues.length >= 2
-  const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, travelMode, mapsEmbedApiKey)
-  const routePreviewSignature = `${travelMode}:${sorted.map((point) => point.id).join('|')}`
+  const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, routePreviewMode, mapsEmbedApiKey)
+  const routePreviewSignature = sorted.map((point) => point.id).join('|')
   const hasUnresolvedRoutePreviews = sorted.some((point) => !pointPreviewById[point.pointId])
 
   useEffect(() => {
@@ -528,24 +524,7 @@ export function useRouteBookDetail(id: string) {
   ])
 
   const effectiveRouteEmbedUrl = hasRouteStops ? (stableRouteEmbedUrl ?? routeEmbedUrl) : null
-  const googleNavUrl = buildGoogleDirectionsUrl(sortedStopValues, travelMode)
-  const routeLegs = sortedStops.slice(0, -1).map((from, index) => {
-    const to = sortedStops[index + 1]
-    if (!to) return null
-    return {
-      id: `${from.point.id}:${to.point.id}`,
-      order: index + 1,
-      from,
-      to,
-      navUrl: buildGoogleLegDirectionsUrl(from.stop, to.stop, travelMode),
-    }
-  }).filter((item): item is {
-    id: string
-    order: number
-    from: { point: PointRecord; preview: PointPreview; stop: string }
-    to: { point: PointRecord; preview: PointPreview; stop: string }
-    navUrl: string
-  } => Boolean(item))
+  const googleNavUrl = buildGoogleDirectionsUrl(sortedStopValues)
   const checkedCount = sorted.filter((p) => checkedInPointIds.has(p.pointId)).length
   const allDone = sorted.length > 0 && checkedCount === sorted.length
   const nextPoint = sorted.find((p) => !checkedInPointIds.has(p.pointId)) || null
@@ -592,8 +571,6 @@ export function useRouteBookDetail(id: string) {
     setCheckedInPointIds,
     checkInTarget,
     setCheckInTarget,
-    travelMode,
-    setTravelMode,
     pointPoolItems,
     activeDragId,
     setActiveDragId,
@@ -611,7 +588,6 @@ export function useRouteBookDetail(id: string) {
     checkedCount,
     allDone,
     nextPoint,
-    routeLegs,
     sortedStops,
 
     // Handlers

@@ -165,15 +165,17 @@ export function buildFallbackPreview(pointId: string): PointPreview {
   }
 }
 
-export function buildGoogleDirectionsUrl(stops: string[], mode: NavMode): string | null {
+export function buildGoogleDirectionsUrl(stops: string[], mode?: NavMode): string | null {
   if (!stops.length) return null
 
   if (stops.length === 1) {
     const params = new URLSearchParams({
       api: '1',
       destination: stops[0],
-      travelmode: NAV_MODE_PARAM[mode],
     })
+    if (mode) {
+      params.set('travelmode', NAV_MODE_PARAM[mode])
+    }
     return `https://www.google.com/maps/dir/?${params.toString()}`
   }
 
@@ -185,8 +187,10 @@ export function buildGoogleDirectionsUrl(stops: string[], mode: NavMode): string
     api: '1',
     origin,
     destination,
-    travelmode: NAV_MODE_PARAM[mode],
   })
+  if (mode) {
+    params.set('travelmode', NAV_MODE_PARAM[mode])
+  }
   const waypoints = stops.slice(1, -1)
   if (waypoints.length > 0) {
     params.set('waypoints', waypoints.join('|'))

@@ -1,9 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { ArrowRight, ExternalLink, LocateFixed, Navigation, Route, Sparkles } from 'lucide-react'
-import type { NavMode, PointPreview, PointRecord, RouteBookStatus } from '../types'
-import { NAV_MODE_LABEL } from '../types'
+import { ArrowRight, LocateFixed, Navigation, Route } from 'lucide-react'
+import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
 
 interface PlannerMapStageProps {
   status: RouteBookStatus
@@ -12,19 +10,15 @@ interface PlannerMapStageProps {
   allDone: boolean
   previewEmbedUrl: string | null
   hasRouteStops: boolean
-  travelMode: NavMode
-  setTravelMode: (mode: NavMode) => void
   focusPreview: PointPreview | null
   nextPoint: PointRecord | null
   nextPreview: PointPreview | null
-  googleNavUrl: string | null
   onCheckIn: (pointId: string) => void
   onMarkComplete: () => void
   onPrimaryAction: () => void
   primaryActionLabel: string
   primaryActionDisabled?: boolean
   compact?: boolean
-  children?: ReactNode
 }
 
 export function PlannerMapStage({
@@ -34,19 +28,15 @@ export function PlannerMapStage({
   allDone,
   previewEmbedUrl,
   hasRouteStops,
-  travelMode,
-  setTravelMode,
   focusPreview,
   nextPoint,
   nextPreview,
-  googleNavUrl,
   onCheckIn,
   onMarkComplete,
   onPrimaryAction,
   primaryActionLabel,
   primaryActionDisabled = false,
   compact = false,
-  children,
 }: PlannerMapStageProps) {
   const progressRatio = sortedCount > 0 ? Math.min(100, Math.round((checkedCount / sortedCount) * 100)) : 0
 
@@ -63,37 +53,6 @@ export function PlannerMapStage({
               {sortedCount > 0 ? `${sortedCount} 个点位，已打卡 ${checkedCount} 个` : '加入点位后自动生成路线预览'}
             </p>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-2xl bg-slate-100 p-1">
-            {(['transit', 'driving'] as const).map((mode) => {
-              const active = travelMode === mode
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`inline-flex min-h-9 items-center justify-center rounded-xl px-3 text-xs font-medium transition ${
-                    active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  }`}
-                  onClick={() => setTravelMode(mode)}
-                >
-                  {NAV_MODE_LABEL[mode]}
-                </button>
-              )
-            })}
-          </div>
-          {googleNavUrl ? (
-            <a
-              href={googleNavUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 no-underline transition hover:bg-slate-50"
-            >
-              Google Maps
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          ) : null}
         </div>
       </div>
 
@@ -125,7 +84,7 @@ export function PlannerMapStage({
           </div>
           {hasRouteStops ? (
             <div className="rounded-full border border-white/50 bg-white/90 px-3 py-2 text-xs font-semibold text-brand-600 shadow-sm backdrop-blur-sm">
-              {NAV_MODE_LABEL[travelMode]}
+              Google 路线预览
             </div>
           ) : null}
         </div>
@@ -189,19 +148,18 @@ export function PlannerMapStage({
               </button>
             ) : null}
           </div>
-          {children ? <div className="mt-4">{children}</div> : null}
         </div>
 
         <div className="rounded-[28px] border border-pink-100/80 bg-[linear-gradient(180deg,rgba(252,231,243,0.55),rgba(255,255,255,0.95))] p-4">
           <div className="text-sm font-semibold text-slate-900">导航提示</div>
           <div className="mt-1 text-xs leading-5 text-slate-500">
             {hasRouteStops
-              ? '路线预览使用当前点位顺序生成，可随时切换交通方式。'
+              ? '这里仅用于确认路线顺序与大致走向，开始导航后会直接打开 Google Maps。'
               : '只有一个点位时会展示单点地图，两个以上点位才会显示完整路线。'}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-medium text-slate-600">
-              主模式：{NAV_MODE_LABEL[travelMode]}
+              预览模式：Google 路线
             </span>
             {nextPreview ? (
               <span className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-medium text-slate-600">

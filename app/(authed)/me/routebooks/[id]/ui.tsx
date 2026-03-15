@@ -8,8 +8,6 @@ import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
 import { POOL_DND_PREFIX, SORTED_DND_PREFIX } from './types'
 import { parseDragRecordId, poolDragId } from './utils'
-import TransitGuidance from './components/TransitGuidance'
-import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
 import { PlannerMapStage } from './components/PlannerMapStage'
 import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel, type PlannerPoolItem } from './components/PlannerPointPoolPanel'
@@ -36,17 +34,8 @@ function RouteBookDetailSkeleton() {
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
   const [mobileTab, setMobileTab] = useState<'route' | 'pool'>('route')
-  const [immersiveOpen, setImmersiveOpen] = useState(false)
 
   const h = useRouteBookDetail(id)
-
-  const nextTransitStop = h.nextPoint
-    ? (() => {
-        const preview = h.getPointPreview(h.nextPoint.pointId)
-        if (!preview.geo) return null
-        return { lat: preview.geo[0], lng: preview.geo[1], title: preview.title }
-      })()
-    : null
 
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
   const routeBookSelectorItems = useMemo(() => {
@@ -93,17 +82,15 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
   const primaryActionLabel = useMemo(() => {
     if (!h.sorted.length) return '先加入点位'
-    if (h.routeBook?.status === 'draft') return `开始巡礼 · ${h.sorted.length} 个点位`
-    if (h.routeBook?.status === 'in_progress') return `继续巡礼 · ${h.sorted.length} 个点位`
-    return `回顾路线 · ${h.sorted.length} 个点位`
-  }, [h.routeBook?.status, h.sorted.length])
+    return `开始导航 · ${h.sorted.length} 个点位`
+  }, [h.sorted.length])
 
   const handlePrimaryAction = async () => {
-    if (!h.sorted.length || !h.routeBook) return
+    if (!h.sorted.length || !h.routeBook || !h.googleNavUrl) return
     if (h.routeBook.status === 'draft') {
       await h.handleStatusChange('in_progress')
     }
-    setImmersiveOpen(true)
+    window.open(h.googleNavUrl, '_blank', 'noopener,noreferrer')
   }
 
   const dragOverlay = useMemo(() => {
@@ -147,28 +134,18 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       allDone={h.allDone}
       previewEmbedUrl={h.previewEmbedUrl}
       hasRouteStops={h.hasRouteStops}
-      travelMode={h.travelMode}
-      setTravelMode={h.setTravelMode}
       focusPreview={h.focusPreview}
       nextPoint={h.nextPoint}
       nextPreview={h.nextPoint ? h.getPointPreview(h.nextPoint.pointId) : null}
-      googleNavUrl={h.googleNavUrl}
       onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
       onMarkComplete={() => void h.handleStatusChange('completed')}
       onPrimaryAction={() => {
         void handlePrimaryAction()
       }}
       primaryActionLabel={primaryActionLabel}
-      primaryActionDisabled={!h.sorted.length}
+      primaryActionDisabled={!h.sorted.length || !h.googleNavUrl}
       compact={isMobile}
-    >
-      <TransitGuidance
-        routeBookId={id}
-        nextStop={nextTransitStop}
-        travelMode={h.travelMode}
-        visible={Boolean(nextTransitStop) && h.travelMode === 'transit'}
-      />
-    </PlannerMapStage>
+    />
   )
 
   const routePanel = (
@@ -272,17 +249,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             {primaryActionLabel}
           </button>
         </div>
-      ) : null}
-
-      {immersiveOpen ? (
-        <RouteBookImmersiveMode
-          routeBookTitle={h.routeBook.title}
-          sorted={h.sorted}
-          checkedInPointIds={h.checkedInPointIds}
-          getPointPreview={h.getPointPreview}
-          onCheckInSuccess={h.markPointCheckedIn}
-          onClose={() => setImmersiveOpen(false)}
-        />
       ) : null}
     </div>
   )
