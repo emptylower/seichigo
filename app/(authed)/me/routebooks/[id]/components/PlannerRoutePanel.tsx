@@ -11,7 +11,6 @@ import { DroppablePanel } from './DroppablePanel'
 function RouteStopCard({
   point,
   preview,
-  order,
   onRemove,
   dragHandleProps,
   dragging,
@@ -19,7 +18,6 @@ function RouteStopCard({
 }: {
   point: PointRecord
   preview: PointPreview
-  order: number
   onRemove: (pointId: string) => void
   dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
   dragging?: boolean
@@ -45,9 +43,7 @@ function RouteStopCard({
               <GripVertical className="h-4 w-4" />
             </button>
           ) : null}
-          <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-400 text-base font-bold text-white shadow-[0_10px_24px_-18px_rgba(225,29,72,0.8)]">
-            {order}
-          </div>
+          <span className="inline-flex h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b from-brand-300 to-pink-100" />
         </div>
 
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[24px] bg-slate-100 sm:h-28 sm:w-28">
@@ -75,7 +71,6 @@ function RouteStopCard({
                 <span className="inline-flex rounded-full bg-pink-50 px-2.5 py-1 text-xs font-medium text-brand-600">
                   {preview.subtitle}
                 </span>
-                <span className="hidden text-xs text-slate-400 sm:inline">第 {order} 站</span>
               </div>
             </div>
             <button
@@ -100,12 +95,10 @@ function RouteStopCard({
 function SortableRouteStop({
   point,
   preview,
-  order,
   onRemove,
 }: {
   point: PointRecord
   preview: PointPreview
-  order: number
   onRemove: (pointId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -120,7 +113,6 @@ function SortableRouteStop({
       <RouteStopCard
         point={point}
         preview={preview}
-        order={order}
         onRemove={onRemove}
         dragHandleProps={{ ...attributes, ...listeners }}
         dragging={isDragging}
@@ -147,24 +139,22 @@ export function PlannerRoutePanel({
       {enableDrag ? (
         <SortableContext items={sorted.map((point) => sortedDragId(point.id))} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
-            {sorted.map((point, index) => (
+            {sorted.map((point) => (
               <SortableRouteStop
                 key={point.id}
                 point={point}
                 preview={getPointPreview(point.pointId)}
-                order={index + 1}
                 onRemove={onRemove}
               />
             ))}
           </div>
         </SortableContext>
       ) : (
-        sorted.map((point, index) => (
+        sorted.map((point) => (
           <RouteStopCard
             key={point.id}
             point={point}
             preview={getPointPreview(point.pointId)}
-            order={index + 1}
             onRemove={onRemove}
             compact
           />
@@ -217,7 +207,7 @@ export function PlannerRoutePanel({
         className="min-h-0 flex-1 rounded-[28px] border border-transparent bg-white/75 p-1 transition"
         activeClassName="border-brand-200 bg-brand-50/40"
       >
-        <div className="h-full min-h-0 space-y-3 overflow-y-auto p-2">
+        <div className="seichi-soft-scrollbar h-full min-h-0 space-y-3 overflow-y-auto p-2 pr-3">
           {content}
         </div>
       </DroppablePanel>
@@ -232,5 +222,5 @@ export function PlannerRouteDragOverlay({
   point: PointRecord
   preview: PointPreview
 }) {
-  return <RouteStopCard point={point} preview={preview} order={point.sortOrder + 1} onRemove={() => {}} dragging />
+  return <RouteStopCard point={point} preview={preview} onRemove={() => {}} dragging />
 }

@@ -35,6 +35,33 @@ html, body {
   padding: 0;
 }
 
+.seichi-soft-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+}
+
+.seichi-soft-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.seichi-soft-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.seichi-soft-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.18), rgba(148, 163, 184, 0.42));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.seichi-soft-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.28), rgba(100, 116, 139, 0.5));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 .mobile-safe-bottom {
   padding-bottom: calc(1rem + var(--mobile-safe-bottom));
 }

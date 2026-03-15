@@ -264,7 +264,7 @@ export function PlannerPointPoolPanel({
 
       <div className={`mt-4 min-h-0 flex-1 ${compact ? '' : ''}`}>
         {filteredItems.length > 0 ? (
-          <div className={`${showList ? 'space-y-3' : 'grid grid-cols-2 gap-4'} ${compact ? 'pb-24' : 'h-full overflow-y-auto pr-1'}`}>
+          <div className={`${showList ? 'space-y-3' : 'grid grid-cols-2 gap-4'} ${compact ? 'pb-24' : 'seichi-soft-scrollbar h-full overflow-y-auto pr-2'}`}>
             {filteredItems.map((item) =>
               enableDrag ? (
                 <DraggablePoolCard key={item.id} item={item} compact={compact} list={showList} />
