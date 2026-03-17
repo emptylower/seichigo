@@ -1,0 +1,4 @@
+
+> seichigo@0.1.0 typecheck:app
+> tsc -p tsconfig.app.json --noEmit
+

@@ -1,0 +1,270 @@
+
+> seichigo@0.1.0 build
+> node scripts/build-app.mjs
+
+Skipping `prisma migrate deploy` during build.
+$ prisma generate
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v5.22.0) to ./../../../node_modules/@prisma/client in 139ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Help us improve the Prisma ORM for everyone. Share your feedback in a short 2-min survey: https://pris.ly/orm/survey/release-5-22
+
+$ next build
+ ⚠ Mismatching @next/swc version, detected: 15.5.7 while Next.js is on 15.5.11. Please ensure these match
+[@sentry/nextjs] ACTION REQUIRED: To instrument navigations, the Sentry SDK requires you to export an `onRouterTransitionStart` hook from your `instrumentation-client.(js|ts)` file. You can do so by adding `export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;` to the file.
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/mac/Desktop/seichigo/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/mac/Desktop/seichigo/.claude/worktrees/my-map-ux-redesign/package-lock.json
+
+   ▲ Next.js 15.5.11
+   - Experiments (use with caution):
+     · serverActions
+     · clientTraceMetadata
+
+   Creating an optimized production build ...
+[@sentry/nextjs] It seems like you don't have a global error handler set up. It is recommended that you add a 'global-error.js' file with Sentry instrumentation so that React rendering errors are reported to Sentry. Read more: https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/#react-render-errors-in-app-router (you can suppress this warning by setting SENTRY_SUPPRESS_GLOBAL_ERROR_HANDLER_FILE_WARNING=1 as environment variable)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (189kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (139kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully in 12.5s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/245) ...
+   Generating static pages (61/245) 
+   Generating static pages (122/245) 
+   Generating static pages (183/245) 
+ ✓ Generating static pages (245/245)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                            Size  First Load JS  Revalidate  Expire
+┌ ○ /                                                 315 B         205 kB          2m      1y
+├ ○ /_not-found                                     1.16 kB         179 kB
+├ ○ /about                                            679 B         179 kB          1d      1y
+├ ƒ /admin                                            679 B         179 kB
+├ ƒ /admin/dashboard                                4.52 kB         193 kB
+├ ƒ /admin/maintenance                              3.34 kB         181 kB
+├ ƒ /admin/ops                                      6.19 kB         184 kB
+├ ƒ /admin/panel                                      679 B         179 kB
+├ ƒ /admin/panel/anime                              3.52 kB         183 kB
+├ ƒ /admin/panel/anime/[id]                         5.05 kB         189 kB
+├ ƒ /admin/panel/articles                           2.58 kB         182 kB
+├ ƒ /admin/panel/articles/[id]                      3.73 kB         184 kB
+├ ƒ /admin/panel/city                               2.65 kB         182 kB
+├ ƒ /admin/panel/city/[id]                          5.33 kB         190 kB
+├ ƒ /admin/review                                   2.71 kB         182 kB
+├ ƒ /admin/review/[id]                               4.2 kB         184 kB
+├ ƒ /admin/seo                                        373 B         180 kB
+├ ƒ /admin/seo/rankings                             7.01 kB         193 kB
+├ ƒ /admin/seo/spoke-factory                        4.15 kB         182 kB
+├ ƒ /admin/settings                                 1.68 kB         180 kB
+├ ƒ /admin/translations                             13.1 kB         205 kB
+├ ƒ /admin/translations/[id]                        8.14 kB         188 kB
+├ ƒ /admin/users                                    3.66 kB         192 kB
+├ ƒ /admin/users/[id]                               3.93 kB         192 kB
+├ ƒ /admin/waitlist                                 2.58 kB         182 kB
+├ ○ /anime                                            374 B         180 kB          2m      1y
+├ ● /anime/[id]                                     20.4 kB         349 kB
+├ ƒ /anime/[id]/opengraph-image-bk8xs7                679 B         179 kB
+├ ƒ /api/admin/anime                                  681 B         179 kB
+├ ƒ /api/admin/anime/[id]                             679 B         179 kB
+├ ƒ /api/admin/anitabi/diff                           681 B         179 kB
+├ ƒ /api/admin/anitabi/progress                       681 B         179 kB
+├ ƒ /api/admin/anitabi/sync                           682 B         179 kB
+├ ƒ /api/admin/anitabi/sync-runs                      680 B         179 kB
+├ ƒ /api/admin/articles                               680 B         179 kB
+├ ƒ /api/admin/articles/[id]/repair                   681 B         179 kB
+├ ƒ /api/admin/city                                   681 B         179 kB
+├ ƒ /api/admin/city/[id]                              679 B         179 kB
+├ ƒ /api/admin/city/[id]/aliases                      681 B         179 kB
+├ ƒ /api/admin/city/[id]/aliases/[aliasId]            681 B         179 kB
+├ ƒ /api/admin/city/[id]/merge                        682 B         179 kB
+├ ƒ /api/admin/dashboard/summary                      684 B         179 kB
+├ ƒ /api/admin/maintenance/backfill-article-cities    678 B         179 kB
+├ ƒ /api/admin/ops/reports                            680 B         179 kB
+├ ƒ /api/admin/ops/reports/[id]                       680 B         179 kB
+├ ƒ /api/admin/repair-article                         679 B         179 kB
+├ ƒ /api/admin/retranslate                            680 B         179 kB
+├ ƒ /api/admin/retranslate/apply                      682 B         179 kB
+├ ƒ /api/admin/review/articles                        680 B         179 kB
+├ ƒ /api/admin/review/articles/[id]                   680 B         179 kB
+├ ƒ /api/admin/review/articles/[id]/approve           678 B         179 kB
+├ ƒ /api/admin/review/articles/[id]/reject            679 B         179 kB
+├ ƒ /api/admin/review/articles/[id]/unpublish         680 B         179 kB
+├ ƒ /api/admin/review/queue                           681 B         179 kB
+├ ƒ /api/admin/review/revisions                       681 B         179 kB
+├ ƒ /api/admin/review/revisions/[id]/approve          680 B         179 kB
+├ ƒ /api/admin/review/revisions/[id]/reject           681 B         179 kB
+├ ƒ /api/admin/seo                                    680 B         179 kB
+├ ƒ /api/admin/seo/keywords                           682 B         179 kB
+├ ƒ /api/admin/seo/keywords/[id]                      682 B         179 kB
+├ ƒ /api/admin/seo/keywords/bulk                      680 B         179 kB
+├ ƒ /api/admin/seo/rank                               681 B         179 kB
+├ ƒ /api/admin/seo/spoke-factory/run                  679 B         179 kB
+├ ƒ /api/admin/seo/spoke-factory/runs                 682 B         179 kB
+├ ƒ /api/admin/seo/spoke-factory/runs/[id]            681 B         179 kB
+├ ƒ /api/admin/seo/sync                               681 B         179 kB
+├ ƒ /api/admin/stats                                  679 B         179 kB
+├ ƒ /api/admin/translations                           680 B         179 kB
+├ ƒ /api/admin/translations/[id]                      679 B         179 kB
+├ ƒ /api/admin/translations/[id]/approve              680 B         179 kB
+├ ƒ /api/admin/translations/[id]/history              680 B         179 kB
+├ ƒ /api/admin/translations/[id]/rollback             679 B         179 kB
+├ ƒ /api/admin/translations/[id]/translate            681 B         179 kB
+├ ƒ /api/admin/translations/[id]/update-published     681 B         179 kB
+├ ƒ /api/admin/translations/approve-batch             680 B         179 kB
+├ ƒ /api/admin/translations/backfill                  679 B         179 kB
+├ ƒ /api/admin/translations/batch                     680 B         179 kB
+├ ƒ /api/admin/translations/execute                   680 B         179 kB
+├ ƒ /api/admin/translations/map-ops                   680 B         179 kB
+├ ƒ /api/admin/translations/map-summary               680 B         179 kB
+├ ƒ /api/admin/translations/pending-count             680 B         179 kB
+├ ƒ /api/admin/translations/stats                     680 B         179 kB
+├ ƒ /api/admin/translations/untranslated              680 B         179 kB
+├ ƒ /api/admin/users                                  681 B         179 kB
+├ ƒ /api/admin/users/[id]                             682 B         179 kB
+├ ƒ /api/admin/waitlist                               681 B         179 kB
+├ ƒ /api/ai                                           680 B         179 kB
+├ ƒ /api/ai/[...path]                                 679 B         179 kB
+├ ƒ /api/ai/articles                                  678 B         179 kB
+├ ƒ /api/ai/articles/[id]                             680 B         179 kB
+├ ƒ /api/ai/articles/[id]/import                      679 B         179 kB
+├ ƒ /api/ai/articles/[id]/submit                      681 B         179 kB
+├ ƒ /api/ai/assets                                    680 B         179 kB
+├ ƒ /api/anime                                        679 B         179 kB
+├ ƒ /api/anitabi/bangumi/[id]                         680 B         179 kB
+├ ƒ /api/anitabi/bootstrap                            682 B         179 kB
+├ ƒ /api/anitabi/bulk-cards                           680 B         179 kB
+├ ƒ /api/anitabi/changelog                            680 B         179 kB
+├ ƒ /api/anitabi/chunks/[index]                       680 B         179 kB
+├ ƒ /api/anitabi/geo/place                            681 B         179 kB
+├ ƒ /api/anitabi/icons.svg                            678 B         179 kB
+├ ƒ /api/anitabi/image-download                       679 B         179 kB
+├ ƒ /api/anitabi/me/favorites                         682 B         179 kB
+├ ƒ /api/anitabi/me/history                           681 B         179 kB
+├ ƒ /api/anitabi/me/state                             680 B         179 kB
+├ ƒ /api/anitabi/preload/chunks/[index]               679 B         179 kB
+├ ƒ /api/anitabi/preload/manifest                     679 B         179 kB
+├ ƒ /api/anitabi/search                               683 B         179 kB
+├ ƒ /api/anitabi/share-image                          682 B         179 kB
+├ ƒ /api/articles                                     679 B         179 kB
+├ ƒ /api/articles/[id]                                679 B         179 kB
+├ ƒ /api/articles/[id]/revision                       681 B         179 kB
+├ ƒ /api/articles/[id]/submit                         681 B         179 kB
+├ ƒ /api/articles/[id]/withdraw                       681 B         179 kB
+├ ƒ /api/articles/translations                        679 B         179 kB
+├ ƒ /api/assets                                       680 B         179 kB
+├ ƒ /api/auth/[...nextauth]                           680 B         179 kB
+├ ƒ /api/auth/change-password                         682 B         179 kB
+├ ƒ /api/auth/request-code                            679 B         179 kB
+├ ƒ /api/auth/set-password                            677 B         179 kB
+├ ƒ /api/city/resolve                                 680 B         179 kB
+├ ƒ /api/city/search                                  680 B         179 kB
+├ ƒ /api/comments                                     681 B         179 kB
+├ ƒ /api/comments/[id]                                681 B         179 kB
+├ ƒ /api/comments/[id]/like                           682 B         179 kB
+├ ƒ /api/cron/anitabi/daily                           677 B         179 kB
+├ ƒ /api/cron/anitabi/enrich                          680 B         179 kB
+├ ƒ /api/cron/anitabi/hourly                          681 B         179 kB
+├ ƒ /api/cron/anitabi/translate                       683 B         179 kB
+├ ƒ /api/cron/ops/daily                               680 B         179 kB
+├ ƒ /api/favorites                                    679 B         179 kB
+├ ƒ /api/favorites/[articleId]                        679 B         179 kB
+├ ƒ /api/favorites/mdx/[slug]                         679 B         179 kB
+├ ƒ /api/link-preview                                 679 B         179 kB
+├ ƒ /api/me/point-pool                                679 B         179 kB
+├ ƒ /api/me/point-states                              680 B         179 kB
+├ ƒ /api/me/profile                                   680 B         179 kB
+├ ƒ /api/me/routebooks                                679 B         179 kB
+├ ƒ /api/me/routebooks/[id]                           679 B         179 kB
+├ ƒ /api/me/routebooks/[id]/directions                679 B         179 kB
+├ ƒ /api/me/routebooks/[id]/points                    680 B         179 kB
+├ ƒ /api/me/routebooks/[id]/route-geometry            683 B         179 kB
+├ ƒ /api/revisions/[id]                               678 B         179 kB
+├ ƒ /api/revisions/[id]/submit                        680 B         179 kB
+├ ƒ /api/revisions/[id]/withdraw                      681 B         179 kB
+├ ƒ /api/submissions                                  681 B         179 kB
+├ ƒ /api/waitlist                                     681 B         179 kB
+├ ƒ /assets/[id]                                      680 B         179 kB
+├ ƒ /auth/change-password                           1.52 kB         179 kB
+├ ƒ /auth/set-password                              2.54 kB         186 kB
+├ ○ /auth/signin                                     3.7 kB         196 kB
+├ ○ /auth/signup                                    2.88 kB         197 kB
+├ ○ /city                                             373 B         180 kB          1h      1y
+├ ƒ /city/[id]                                        362 B         180 kB
+├ ƒ /city/[id]/opengraph-image-lyc5km                 680 B         179 kB
+├ ○ /en                                               317 B         205 kB          2m      1y
+├ ○ /en/about                                         679 B         179 kB          1d      1y
+├ ○ /en/anime                                         370 B         180 kB          2m      1y
+├ ● /en/anime/[id]                                    361 B         180 kB
+├ ○ /en/city                                          373 B         180 kB          1h      1y
+├ ƒ /en/city/[id]                                     361 B         180 kB
+├ ƒ /en/map                                         2.16 kB         180 kB
+├ ● /en/posts/[slug]                                  312 B         199 kB          1h      1y
+├   ├ /en/posts/1-sound-euphonium                                                   1h      1y
+├   ├ /en/posts/2-sound-euphonium                                                   1h      1y
+├   ├ /en/posts/3-sound-euphonium                                                   1h      1y
+├   └ [+38 more paths]
+├ ○ /en/privacy                                       680 B         179 kB          1d      1y
+├ ƒ /en/resources                                   1.76 kB         195 kB
+├ ƒ /en/resources/[id]                               2.3 kB         182 kB
+├ ○ /en/terms                                         680 B         179 kB          1d      1y
+├ ○ /ja                                               317 B         205 kB          2m      1y
+├ ○ /ja/about                                         679 B         179 kB          1d      1y
+├ ○ /ja/anime                                         374 B         180 kB          2m      1y
+├ ● /ja/anime/[id]                                    363 B         180 kB
+├ ○ /ja/city                                          373 B         180 kB          1h      1y
+├ ƒ /ja/city/[id]                                     364 B         180 kB
+├ ƒ /ja/map                                         2.16 kB         180 kB
+├ ● /ja/posts/[slug]                                  311 B         199 kB          1h      1y
+├   ├ /ja/posts/1-sound-euphonium                                                   1h      1y
+├   ├ /ja/posts/2-sound-euphonium                                                   1h      1y
+├   ├ /ja/posts/3-sound-euphonium                                                   1h      1y
+├   └ [+38 more paths]
+├ ○ /ja/privacy                                       680 B         179 kB          1d      1y
+├ ƒ /ja/resources                                   1.76 kB         195 kB
+├ ƒ /ja/resources/[id]                               2.3 kB         182 kB
+├ ƒ /ja/submit                                      2.85 kB         181 kB
+├ ○ /ja/terms                                         681 B         179 kB          1d      1y
+├ ○ /manifest.webmanifest                             679 B         179 kB
+├ ƒ /map                                            2.16 kB         180 kB
+├ ƒ /me/favorites                                   2.79 kB         183 kB
+├ ƒ /me/routebooks                                   3.8 kB         184 kB
+├ ƒ /me/routebooks/[id]                              320 kB         662 kB
+├ ƒ /me/settings                                    2.59 kB         196 kB
+├ ○ /opengraph-image                                  681 B         179 kB
+├ ● /posts/[slug]                                     312 B         199 kB          1h      1y
+├   ├ /posts/1-sound-euphonium                                                      1h      1y
+├   ├ /posts/2-sound-euphonium                                                      1h      1y
+├   ├ /posts/3-sound-euphonium                                                      1h      1y
+├   └ [+38 more paths]
+├ ƒ /posts/[slug]/opengraph-image-1tl6ux              680 B         179 kB
+├ ƒ /posts/[slug]/twitter-image-1tl6ux                678 B         179 kB
+├ ○ /privacy                                          681 B         179 kB          1d      1y
+├ ƒ /resources                                      1.76 kB         195 kB
+├ ƒ /resources/[id]                                  2.3 kB         182 kB
+├ ○ /robots.txt                                       680 B         179 kB
+├ ○ /sitemap.xml                                      679 B         179 kB          2m      1y
+├ ƒ /submit                                         2.85 kB         181 kB
+├ ƒ /submit/[id]                                      303 B         186 kB
+├ ƒ /submit/new                                       304 B         186 kB
+├ ƒ /submit/revisions/[id]                            303 B         186 kB
+├ ○ /terms                                            679 B         179 kB          1d      1y
+└ ○ /twitter-image                                    679 B         179 kB
++ First Load JS shared by all                        178 kB
+  ├ chunks/0937d497-3733331de65b4f03.js             54.4 kB
+  ├ chunks/5646-635842f79ee66b04.js                  120 kB
+  └ other shared chunks (total)                     3.71 kB
+
+
+ƒ Middleware                                        94.8 kB
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+

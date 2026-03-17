@@ -8,12 +8,14 @@ import { ArrowLeft, Navigation } from 'lucide-react'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
+import { useRouteGeometry } from './hooks/useRouteGeometry'
 import { POOL_DND_PREFIX, SORTED_DND_PREFIX } from './types'
 import { parseDragRecordId, poolDragId } from './utils'
 import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
 import { PlannerMapStage } from './components/PlannerMapStage'
 import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel, type PlannerPoolItem } from './components/PlannerPointPoolPanel'
 import { PlannerRouteDragOverlay, PlannerRoutePanel } from './components/PlannerRoutePanel'
+import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 
 function RouteBookDetailSkeleton() {
   return (
@@ -41,8 +43,19 @@ function RouteBookDetailSkeleton() {
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
   const [mobileTab, setMobileTab] = useState<'route' | 'pool'>('route')
+  const [showImmersive, setShowImmersive] = useState(false)
 
   const h = useRouteBookDetail(id)
+  const { geometry: routeGeometry } = useRouteGeometry(h.routeBook?.id ?? '', h.sorted, h.getPointPreview)
+
+  const routePoints = useMemo(() => {
+    return h.sorted
+      .map((p, i) => {
+        const geo = h.getPointPreview(p.pointId).geo
+        return geo ? { lat: geo[0], lng: geo[1], label: String(i + 1) } : null
+      })
+      .filter((p): p is { lat: number; lng: number; label: string } => p !== null)
+  }, [h.sorted, h.getPointPreview])
 
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
   const routeBookSelectorItems = useMemo(() => {
@@ -86,11 +99,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   }, [h.sorted.length])
 
   const handlePrimaryAction = async () => {
-    if (!h.sorted.length || !h.routeBook || !h.googleNavUrl) return
+    if (!h.sorted.length || !h.routeBook) return
     if (h.routeBook.status === 'draft') {
       await h.handleStatusChange('in_progress')
     }
-    window.open(h.googleNavUrl, '_blank', 'noopener,noreferrer')
+    setShowImmersive(true)
   }
 
   const dragOverlay = useMemo(() => {
@@ -132,7 +145,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       sortedCount={h.sorted.length}
       checkedCount={h.checkedCount}
       allDone={h.allDone}
-      previewEmbedUrl={h.previewEmbedUrl}
+      routePoints={routePoints}
+      routeGeometry={routeGeometry}
       hasRouteStops={h.hasRouteStops}
       focusPreview={h.focusPreview}
       nextPoint={h.nextPoint}
@@ -143,7 +157,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         void handlePrimaryAction()
       }}
       primaryActionLabel={primaryActionLabel}
-      primaryActionDisabled={!h.sorted.length || !h.googleNavUrl}
+      primaryActionDisabled={!h.sorted.length}
       compact={isMobile}
     />
   )
@@ -199,6 +213,16 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       </section>
 
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        {showImmersive && h.routeBook ? (
+          <RouteBookImmersiveMode
+            routeBookTitle={h.routeBook.title}
+            sorted={h.sorted}
+            checkedInPointIds={h.checkedInPointIds}
+            getPointPreview={h.getPointPreview}
+            onCheckInSuccess={h.handleCheckInSuccess}
+            onClose={() => setShowImmersive(false)}
+          />
+        ) : null}
         {h.checkInTarget ? (
           <CheckInModal
             pointId={h.checkInTarget}

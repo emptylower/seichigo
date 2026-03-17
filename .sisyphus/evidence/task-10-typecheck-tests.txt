@@ -1,0 +1,4 @@
+
+> seichigo@0.1.0 typecheck:tests
+> tsc -p tsconfig.tests.json --noEmit
+

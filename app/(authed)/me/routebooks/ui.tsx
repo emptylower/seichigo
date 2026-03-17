@@ -8,6 +8,7 @@ type RouteBookItem = {
   title: string
   status: RouteBookStatus
   metadata: unknown | null
+  firstPointImage?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -245,7 +246,8 @@ export default function RouteBooksClient() {
         <ul className="grid gap-4 md:grid-cols-2">
           {items.map((item, index) => {
             const metadata = parseMetadata(item.metadata)
-            const cover = metadata.cover || '/images/home/chopper-map-base.webp'
+            const resolvedCover = metadata.cover || item.firstPointImage || null
+            const cover = resolvedCover || '/images/home/chopper-map-base.webp'
             const fallbackGradient = pickRouteBookGradient(`${item.id}:${item.title}`)
             const description = metadata.description || STATUS_DESC[item.status]
             const chips = [metadata.city, `创建于 ${formatDate(item.createdAt)}`].filter(Boolean)
@@ -257,7 +259,7 @@ export default function RouteBooksClient() {
                 className="group overflow-hidden rounded-[26px] border border-pink-100/90 bg-white shadow-[0_20px_38px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_26px_45px_-28px_rgba(219,39,119,0.35)]"
               >
                 <div className="relative isolate aspect-[16/10] overflow-hidden">
-                  {metadata.cover ? (
+                  {resolvedCover ? (
                     <img
                       src={cover}
                       alt={item.title}

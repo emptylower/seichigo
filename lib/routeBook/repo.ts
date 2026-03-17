@@ -15,6 +15,10 @@ export type RouteBook = {
   updatedAt: Date
 }
 
+export type RouteBookListItem = RouteBook & {
+  firstPointImage?: string | null
+}
+
 export type RouteBookPoint = {
   id: string
   routeBookId: string
@@ -52,7 +56,7 @@ export interface RouteBookRepo {
   update(id: string, userId: string, data: RouteBookUpdateInput): Promise<RouteBook | null>
   delete(id: string, userId: string): Promise<RouteBook | null>
   getById(id: string, userId: string): Promise<RouteBookWithPoints | null>
-  listByUser(userId: string, filters?: RouteBookListFilters): Promise<RouteBook[]>
+  listByUser(userId: string, filters?: RouteBookListFilters): Promise<RouteBookListItem[]>
 
   addPoint(routeBookId: string, userId: string, pointId: string, zone: RouteBookZone): Promise<RouteBookPoint>
   removePoint(routeBookId: string, userId: string, pointId: string): Promise<boolean>
