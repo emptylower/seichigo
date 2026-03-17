@@ -14,6 +14,7 @@ import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
 import { PlannerMapStage } from './components/PlannerMapStage'
 import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel, type PlannerPoolItem } from './components/PlannerPointPoolPanel'
 import { PlannerRouteDragOverlay, PlannerRoutePanel } from './components/PlannerRoutePanel'
+import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 
 function RouteBookDetailSkeleton() {
   return (
@@ -41,6 +42,7 @@ function RouteBookDetailSkeleton() {
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
   const [mobileTab, setMobileTab] = useState<'route' | 'pool'>('route')
+  const [showImmersive, setShowImmersive] = useState(false)
 
   const h = useRouteBookDetail(id)
 
@@ -86,11 +88,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   }, [h.sorted.length])
 
   const handlePrimaryAction = async () => {
-    if (!h.sorted.length || !h.routeBook || !h.googleNavUrl) return
+    if (!h.sorted.length || !h.routeBook) return
     if (h.routeBook.status === 'draft') {
       await h.handleStatusChange('in_progress')
     }
-    window.open(h.googleNavUrl, '_blank', 'noopener,noreferrer')
+    setShowImmersive(true)
   }
 
   const dragOverlay = useMemo(() => {
@@ -143,7 +145,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         void handlePrimaryAction()
       }}
       primaryActionLabel={primaryActionLabel}
-      primaryActionDisabled={!h.sorted.length || !h.googleNavUrl}
+      primaryActionDisabled={!h.sorted.length}
       compact={isMobile}
     />
   )
@@ -199,6 +201,16 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       </section>
 
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        {showImmersive && h.routeBook ? (
+          <RouteBookImmersiveMode
+            routeBookTitle={h.routeBook.title}
+            sorted={h.sorted}
+            checkedInPointIds={h.checkedInPointIds}
+            getPointPreview={h.getPointPreview}
+            onCheckInSuccess={h.handleCheckInSuccess}
+            onClose={() => setShowImmersive(false)}
+          />
+        ) : null}
         {h.checkInTarget ? (
           <CheckInModal
             pointId={h.checkInTarget}

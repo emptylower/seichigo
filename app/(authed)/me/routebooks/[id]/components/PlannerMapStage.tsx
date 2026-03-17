@@ -136,7 +136,7 @@ export function PlannerMapStage({
             </span>
           ) : null}
           <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
-            开始导航后直接跳转 Google Maps
+            开始导航后进入站内巡礼模式
           </span>
         </div>
 
