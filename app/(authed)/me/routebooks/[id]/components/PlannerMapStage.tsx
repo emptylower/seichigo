@@ -16,7 +16,6 @@ interface PlannerMapStageProps {
   nextPoint: PointRecord | null
   nextPreview: PointPreview | null
   onCheckIn: (pointId: string) => void
-  onMarkComplete: () => void
   onPrimaryAction: () => void
   primaryActionLabel: string
   primaryActionDisabled?: boolean
@@ -35,7 +34,6 @@ export function PlannerMapStage({
   nextPoint,
   nextPreview,
   onCheckIn,
-  onMarkComplete,
   onPrimaryAction,
   primaryActionLabel,
   primaryActionDisabled = false,
@@ -151,15 +149,6 @@ export function PlannerMapStage({
             >
               打卡下一站
               <ArrowRight className="h-4 w-4" />
-            </button>
-          ) : null}
-          {sortedCount > 0 && (allDone || status === 'in_progress') ? (
-            <button
-              type="button"
-              className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              onClick={onMarkComplete}
-            >
-              {allDone ? '标记全部完成' : '结束本次巡礼'}
             </button>
           ) : null}
         </div>

@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react'
 import { CheckCircle2, GripVertical, MapPin, RotateCcw, Route, Settings2, Trash2 } from 'lucide-react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { PointPreview, PointRecord } from '../types'
-import { SORTED_ZONE_ID } from '../types'
+import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
+import { SORTED_ZONE_ID, STATUS_LABEL, STATUS_STYLE } from '../types'
+import { formatDate } from '../utils'
 import { sortedDragId } from '../utils'
 import { DroppablePanel } from './DroppablePanel'
 
@@ -83,11 +84,10 @@ function RouteStopCard({
               <button
                 type="button"
                 aria-label="移出路线"
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
                 onClick={() => onRemove(point.pointId)}
               >
                 <Trash2 className="h-4 w-4" />
-                删除
               </button>
             ) : null}
           </div>
@@ -99,15 +99,14 @@ function RouteStopCard({
         </div>
 
         {mobileManageAction ? (
-          <div className="mt-3 flex">
+          <div className="mt-3 flex justify-end">
             <button
               type="button"
               aria-label="移出路线"
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
               onClick={() => onRemove(point.pointId)}
             >
               <Trash2 className="h-4 w-4" />
-              从路线中删除
             </button>
           </div>
         ) : null}
@@ -195,6 +194,14 @@ function CheckedInCard({
 }
 
 interface PlannerRoutePanelProps {
+  routeTitle: string
+  routeStatus: RouteBookStatus
+  updatedAt: string
+  editingTitle: boolean
+  titleDraft: string
+  setTitleDraft: (value: string) => void
+  setEditingTitle: (value: boolean) => void
+  onTitleSave: () => void
   sorted: PointRecord[]
   checkedIn: PointRecord[]
   getPointPreview: (pointId: string) => PointPreview
@@ -204,6 +211,14 @@ interface PlannerRoutePanelProps {
 }
 
 export function PlannerRoutePanel({
+  routeTitle,
+  routeStatus,
+  updatedAt,
+  editingTitle,
+  titleDraft,
+  setTitleDraft,
+  setEditingTitle,
+  onTitleSave,
   sorted,
   checkedIn,
   getPointPreview,
@@ -278,18 +293,61 @@ export function PlannerRoutePanel({
   const header = (
     <>
       <div className="rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(252,244,247,0.92))] p-4 shadow-[0_18px_36px_-30px_rgba(225,29,72,0.32)] ring-1 ring-pink-100/60">
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-50 via-white to-rose-100 text-brand-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-            <Route className="h-5 w-5" />
-          </span>
+        <div className="flex flex-col gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-400">Route workspace</div>
-            <h2 className="mt-1 text-lg font-semibold text-slate-900">路线管理</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">切换查看路线中或已打卡点位，管理动作只在对应模式下显示。</p>
-          </div>
-        </div>
+            {editingTitle ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  maxLength={100}
+                  className="w-full rounded-2xl border border-pink-200 bg-white px-4 py-3 text-lg font-semibold text-slate-900 outline-none ring-0 transition focus:border-brand-400"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void onTitleSave()
+                    if (event.key === 'Escape') setEditingTitle(false)
+                  }}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-10 items-center justify-center rounded-2xl bg-brand-500 px-4 text-sm font-semibold text-white transition hover:bg-brand-600"
+                    onClick={() => void onTitleSave()}
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    onClick={() => setEditingTitle(false)}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="w-full text-left" onClick={() => setEditingTitle(true)} title="点击编辑标题">
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900">{routeTitle}</h2>
+              </button>
+            )}
 
-        <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[routeStatus]}`}>
+                {STATUS_LABEL[routeStatus]}
+              </span>
+              <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
+                {sorted.length} 个点位
+              </span>
+              <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-medium text-slate-600">
+                已打卡 {checkedIn.length}
+              </span>
+              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                更新于 {formatDate(updatedAt)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="grid grid-cols-2 rounded-[22px] bg-slate-100/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ring-1 ring-pink-100/70 sm:inline-flex">
           {([
             ['route', `路线中 ${sorted.length}`],
@@ -321,6 +379,7 @@ export function PlannerRoutePanel({
           ) : (
             <span className="inline-flex min-h-11 w-full shrink-0 items-center justify-center whitespace-nowrap rounded-2xl bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200/80 xl:min-h-0 xl:w-auto xl:rounded-full xl:text-xs">恢复已打卡</span>
           )}
+          </div>
         </div>
       </div>
     </>
