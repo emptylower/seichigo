@@ -1,0 +1,21 @@
+
+ RUN  v3.2.4 /Users/mac/Desktop/seichigo/.claude/worktrees/my-map-ux-redesign
+
+stderr | tests/routeBook/directions.test.ts > directions handler - Google API errors > returns 502 when Google API returns HTTP error
+[directions] Google API HTTP error [33m500[39m
+
+stderr | tests/routeBook/directions.test.ts > directions handler - Google API errors > returns 400 with message for ZERO_RESULTS after walking fallback fails
+[directions] Google API status ZERO_RESULTS 
+
+stderr | tests/routeBook/directions.test.ts > directions handler - Google API errors > returns 502 for REQUEST_DENIED with graceful message
+[directions] Google API status REQUEST_DENIED bad key
+
+ ✓ |node| tests/routeBook/utils.test.ts (63 tests) 16ms
+ ✓ |node| tests/routeBook/directions.test.ts (17 tests) 12ms
+ ✓ |node| tests/routeBook/point-pool-sync.test.ts (1 test) 4ms
+
+ Test Files  3 passed (3)
+      Tests  81 passed (81)
+   Start at  17:13:13
+   Duration  308ms (transform 95ms, setup 211ms, collect 133ms, tests 33ms, environment 0ms, prepare 137ms)
+
