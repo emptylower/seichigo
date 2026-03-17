@@ -1,14 +1,16 @@
 'use client'
 
-import { ArrowRight, LocateFixed, Navigation, Route } from 'lucide-react'
+import { ArrowRight, LocateFixed, Navigation } from 'lucide-react'
 import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
+import { RoutePreviewMap } from './RoutePreviewMap'
 
 interface PlannerMapStageProps {
   status: RouteBookStatus
   sortedCount: number
   checkedCount: number
   allDone: boolean
-  previewEmbedUrl: string | null
+  routePoints: Array<{ lat: number; lng: number; label: string }>
+  routeGeometry: { type: 'LineString'; coordinates: [number, number][] } | null
   hasRouteStops: boolean
   focusPreview: PointPreview | null
   nextPoint: PointRecord | null
@@ -26,7 +28,8 @@ export function PlannerMapStage({
   sortedCount,
   checkedCount,
   allDone,
-  previewEmbedUrl,
+  routePoints,
+  routeGeometry,
   hasRouteStops,
   focusPreview,
   nextPoint,
@@ -57,7 +60,7 @@ export function PlannerMapStage({
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-semibold text-brand-600">
-            {hasRouteStops ? 'Google 路线预览' : '单点预览'}
+            {hasRouteStops ? '路线预览' : '单点预览'}
           </span>
           {nextPreview ? (
             <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
@@ -68,18 +71,17 @@ export function PlannerMapStage({
       </div>
 
       <div className={`relative overflow-hidden rounded-[28px] border border-pink-100/80 bg-slate-100 ${compact ? 'min-h-[17rem]' : 'min-h-0 flex-1'}`}>
-        {previewEmbedUrl ? (
-          <iframe
-            title={hasRouteStops ? '路线预览' : '点位预览'}
-            src={previewEmbedUrl}
-            className="absolute inset-0 h-full w-full border-0"
-            loading="eager"
-            referrerPolicy="no-referrer-when-downgrade"
+        {routePoints.length > 0 ? (
+          <RoutePreviewMap
+            points={routePoints}
+            routeGeometry={routeGeometry}
+            className="absolute inset-0 h-full w-full"
+            compact={compact}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,#fff1f7,transparent_55%),linear-gradient(180deg,#f8fafc,#fdf2f8)] px-8 text-center">
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-white text-brand-500 shadow-sm">
-              <Route className="h-6 w-6" />
+              <Navigation className="h-6 w-6" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-900">路线预览会出现在这里</h3>
             <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">

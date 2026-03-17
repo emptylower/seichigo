@@ -32,7 +32,6 @@ import {
   POOL_DND_PREFIX,
   PREVIEW_POINT_BATCH_SIZE,
   PREVIEW_FETCH_IDLE_TIMEOUT,
-  ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS,
 } from '../types'
 import {
   isPointRecord,
@@ -41,9 +40,7 @@ import {
   reorderSortedInPoints,
   addPointToZoneInPoints,
   formatGoogleStop,
-  buildGoogleDirectionsEmbedUrl,
   buildGoogleDirectionsUrl,
-  buildGooglePointEmbedUrl,
   parseBangumiId,
   parsePointKey,
   buildPointLookupCandidates,
@@ -65,14 +62,7 @@ export function useRouteBookDetail(id: string) {
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
   const [pointPoolItems, setPointPoolItems] = useState<PointPoolItem[]>([])
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
-  const [stableRouteEmbedUrl, setStableRouteEmbedUrl] = useState<string | null>(null)
-  const [stableRouteSignature, setStableRouteSignature] = useState('')
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const mapsEmbedApiKey =
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY ||
-    ''
 
   const parsePointPoolItems = useCallback((items: unknown): PointPoolItem[] => {
     if (!Array.isArray(items)) return []
@@ -164,8 +154,6 @@ export function useRouteBookDetail(id: string) {
     setPointPreviewById({})
     setCheckedInPointIds(new Set())
     setPointPoolItems([])
-    setStableRouteEmbedUrl(null)
-    setStableRouteSignature('')
     void loadRouteBooks()
     try {
       const rbRes = await fetch(`/api/me/routebooks/${id}`)
@@ -476,7 +464,6 @@ export function useRouteBookDetail(id: string) {
   }
 
   const canAddToSorted = sorted.length < SORTED_LIMIT
-  const routePreviewMode: NavMode = 'driving'
   const sortedStops = sorted.map((point) => {
     const preview = getPointPreview(point.pointId)
     return {
@@ -487,51 +474,12 @@ export function useRouteBookDetail(id: string) {
   })
   const sortedStopValues = sortedStops.map((row) => row.stop)
   const hasRouteStops = sortedStopValues.length >= 2
-  const routeEmbedUrl = buildGoogleDirectionsEmbedUrl(sortedStopValues, routePreviewMode, mapsEmbedApiKey)
-  const routePreviewSignature = sorted.map((point) => point.id).join('|')
-  const hasUnresolvedRoutePreviews = sorted.some((point) => !pointPreviewById[point.pointId])
-
-  useEffect(() => {
-    if (!hasRouteStops) {
-      if (stableRouteEmbedUrl !== null) setStableRouteEmbedUrl(null)
-      if (stableRouteSignature !== '') setStableRouteSignature('')
-      return
-    }
-
-    if (stableRouteSignature !== routePreviewSignature) {
-      setStableRouteSignature(routePreviewSignature)
-      setStableRouteEmbedUrl(routeEmbedUrl)
-      return
-    }
-
-    if (stableRouteEmbedUrl === routeEmbedUrl) return
-
-    if (hasUnresolvedRoutePreviews) {
-      const timer = window.setTimeout(() => {
-        setStableRouteEmbedUrl(routeEmbedUrl)
-      }, ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS)
-      return () => window.clearTimeout(timer)
-    }
-
-    setStableRouteEmbedUrl(routeEmbedUrl)
-  }, [
-    hasRouteStops,
-    hasUnresolvedRoutePreviews,
-    routeEmbedUrl,
-    routePreviewSignature,
-    stableRouteEmbedUrl,
-    stableRouteSignature,
-  ])
-
-  const effectiveRouteEmbedUrl = hasRouteStops ? (stableRouteEmbedUrl ?? routeEmbedUrl) : null
   const googleNavUrl = buildGoogleDirectionsUrl(sortedStopValues)
   const checkedCount = sorted.filter((p) => checkedInPointIds.has(p.pointId)).length
   const allDone = sorted.length > 0 && checkedCount === sorted.length
   const nextPoint = sorted.find((p) => !checkedInPointIds.has(p.pointId)) || null
   const focusPoint = nextPoint || sorted[0] || null
   const focusPreview = focusPoint ? getPointPreview(focusPoint.pointId) : null
-  const focusPointEmbedUrl = buildGooglePointEmbedUrl(focusPreview)
-  const previewEmbedUrl = hasRouteStops ? effectiveRouteEmbedUrl : focusPointEmbedUrl
 
   const renderDragOverlay = (dragId: string) => {
     const sortedRecordId = parseDragRecordId(dragId, SORTED_DND_PREFIX)
@@ -579,11 +527,8 @@ export function useRouteBookDetail(id: string) {
     sorted,
     canAddToSorted,
     hasRouteStops,
-    effectiveRouteEmbedUrl,
     focusPoint,
     focusPreview,
-    focusPointEmbedUrl,
-    previewEmbedUrl,
     googleNavUrl,
     checkedCount,
     allDone,

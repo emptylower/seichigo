@@ -103,11 +103,6 @@ export function formatGoogleStop(point: PointRecord, preview: PointPreview): str
   return preview.title || point.pointId
 }
 
-export function buildGooglePointEmbedUrl(preview: PointPreview | null): string | null {
-  if (!preview || !isGeoPair(preview.geo)) return null
-  const [lat, lng] = preview.geo
-  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=16&output=embed`
-}
 
 export function formatDate(value: string): string {
   const parsed = new Date(value)
@@ -198,26 +193,6 @@ export function buildGoogleDirectionsUrl(stops: string[], mode?: NavMode): strin
   return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
-export function buildGoogleDirectionsEmbedUrl(stops: string[], mode: NavMode, apiKey: string): string | null {
-  const key = String(apiKey || '').trim()
-  if (!key || stops.length < 2) return null
-
-  const origin = stops[0]
-  const destination = stops[stops.length - 1]
-  if (!origin || !destination) return null
-
-  const params = new URLSearchParams({
-    key,
-    origin,
-    destination,
-    mode: NAV_MODE_PARAM[mode],
-  })
-  const waypoints = stops.slice(1, -1)
-  if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.join('|'))
-  }
-  return `https://www.google.com/maps/embed/v1/directions?${params.toString()}`
-}
 
 export function buildGoogleLegDirectionsUrl(fromStop: string, toStop: string, mode: NavMode): string {
   const params = new URLSearchParams({

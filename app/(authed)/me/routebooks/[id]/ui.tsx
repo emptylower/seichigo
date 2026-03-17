@@ -50,12 +50,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
   const routePoints = useMemo(() => {
     return h.sorted
-      .map((p) => {
-        const preview = h.getPointPreview(p.pointId)
-        if (!preview.geo) return null
-        return { lat: preview.geo[1], lng: preview.geo[0], label: preview.title }
+      .map((p, i) => {
+        const geo = h.getPointPreview(p.pointId).geo
+        return geo ? { lat: geo[0], lng: geo[1], label: String(i + 1) } : null
       })
-      .filter((p): p is { lat: number; lng: number; label: string } => p != null)
+      .filter((p): p is { lat: number; lng: number; label: string } => p !== null)
   }, [h.sorted, h.getPointPreview])
 
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
