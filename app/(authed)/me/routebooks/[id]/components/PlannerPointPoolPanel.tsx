@@ -60,11 +60,11 @@ function PoolCardContent({
         {manageMode ? (
           <button
             type="button"
-            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 sm:h-10 sm:w-auto"
+            aria-label="从点位池删除"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
             onClick={() => item.onRemove?.()}
           >
             <Trash2 className="h-4 w-4" />
-            删除
           </button>
         ) : (
           <button
@@ -98,11 +98,11 @@ function PoolCardContent({
         {manageMode && !mobileManageAction ? (
           <button
             type="button"
-            className="absolute right-3 top-3 inline-flex h-11 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 shadow-sm backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            aria-label="从点位池删除"
+            className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 shadow-sm backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
             onClick={() => item.onRemove?.()}
           >
             <Trash2 className="h-4 w-4" />
-            删除
           </button>
         ) : (
           <button
@@ -122,14 +122,14 @@ function PoolCardContent({
         </div>
       </div>
       {mobileManageAction ? (
-        <div className="border-t border-rose-100 bg-white px-3 py-3">
+        <div className="border-t border-rose-100 bg-white px-3 py-3 flex justify-end">
           <button
             type="button"
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            aria-label="从点位池删除"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
             onClick={() => item.onRemove?.()}
           >
             <Trash2 className="h-4 w-4" />
-            从点位池删除
           </button>
         </div>
       ) : null}
@@ -248,7 +248,7 @@ export function PlannerPointPoolPanel({
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-400">Point reservoir</div>
               <h2 className="text-lg font-semibold text-slate-900">点位池</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。切到管理模式可删除池内点位。</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。</p>
             </div>
           </div>
 
@@ -297,15 +297,15 @@ export function PlannerPointPoolPanel({
           />
         </label>
 
-        <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-w-max gap-2">
+        <div className="relative -mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1 touch-pan-x [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-6 before:bg-[linear-gradient(90deg,rgba(255,250,252,0.96),rgba(255,250,252,0))] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-[linear-gradient(270deg,rgba(255,250,252,0.96),rgba(255,250,252,0))]">
+          <div className="inline-flex w-max gap-2 pr-6">
             {tags.map((tag) => {
               const active = tag === activeTag
               return (
                 <button
                   key={tag}
                   type="button"
-                  className={`inline-flex min-h-10 items-center justify-center rounded-full border px-4 text-sm font-medium transition ${
+                  className={`inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-4 text-sm font-medium transition ${
                     active
                       ? 'border-brand-500 bg-brand-500 text-white'
                       : 'border-pink-100 bg-white text-slate-700 hover:border-pink-200 hover:bg-pink-50/60'
