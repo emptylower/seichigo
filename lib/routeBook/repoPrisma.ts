@@ -1,9 +1,11 @@
 import { Prisma, type RouteBook as PrismaRouteBook, type RouteBookPoint as PrismaRouteBookPoint } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import {
   SORTED_ZONE_LIMIT,
   SortedZoneLimitError,
   type RouteBook,
+  type RouteBookListItem,
   type RouteBookPointRef,
   type RouteBookPoint,
   type RouteBookPointListFilters,
@@ -144,15 +146,27 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     }
   }
 
-  async listByUser(userId: string, filters?: { status?: RouteBookStatus }): Promise<RouteBook[]> {
+  async listByUser(userId: string, filters?: { status?: RouteBookStatus }): Promise<RouteBookListItem[]> {
     const list = await prisma.routeBook.findMany({
       where: {
         userId,
         ...(filters?.status ? { status: filters.status } : {}),
       },
       orderBy: { updatedAt: 'desc' },
+      include: {
+        points: {
+          where: { zone: 'sorted' },
+          orderBy: { sortOrder: 'asc' },
+          take: 1,
+          include: { point: { select: { image: true } } },
+        },
+      },
     })
-    return list.map(toRouteBook)
+    return list.map((item) => {
+      const rawImage = item.points[0]?.point?.image ?? null
+      const firstPointImage = rawImage ? resolveAnitabiAssetUrl(rawImage) : null
+      return { ...toRouteBook(item), firstPointImage }
+    })
   }
 
   async addPoint(routeBookId: string, userId: string, pointId: string, zone: RouteBookZone): Promise<RouteBookPoint> {

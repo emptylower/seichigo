@@ -3,6 +3,7 @@ import {
   SORTED_ZONE_LIMIT,
   SortedZoneLimitError,
   type RouteBook,
+  type RouteBookListItem,
   type RouteBookPoint,
   type RouteBookPointListFilters,
   type RouteBookPointRef,
@@ -148,11 +149,12 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     }
   }
 
-  async listByUser(userId: string, filters?: { status?: RouteBookStatus }): Promise<RouteBook[]> {
+  async listByUser(userId: string, filters?: { status?: RouteBookStatus }): Promise<RouteBookListItem[]> {
     return Array.from(this.byId.values())
       .filter((b) => b.userId === userId)
       .filter((b) => !filters?.status || b.status === filters.status)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .map((b) => ({ ...b, firstPointImage: null }))
   }
 
   async addPoint(routeBookId: string, userId: string, pointId: string, zone: RouteBookZone): Promise<RouteBookPoint> {
