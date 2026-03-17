@@ -358,6 +358,28 @@ export function useRouteBookDetail(id: string) {
     }
   }
 
+  async function unmarkPointCheckedIn(pointId: string): Promise<boolean> {
+    const res = await fetch('/api/me/point-states', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pointId }),
+    })
+    if (!res.ok) return false
+
+    setCheckedInPointIds((prev) => {
+      if (!prev.has(pointId)) return prev
+      const next = new Set(prev)
+      next.delete(pointId)
+      return next
+    })
+
+    if (routeBook?.status === 'completed') {
+      await handleStatusChange('in_progress')
+    }
+
+    return true
+  }
+
   const persistSortedOrder = useCallback(async (pointIds: string[]): Promise<boolean> => {
     const res = await fetch(`/api/me/routebooks/${id}/points`, {
       method: 'PATCH',
@@ -385,6 +407,17 @@ export function useRouteBookDetail(id: string) {
       })
       void refreshPointPool()
     }
+  }
+
+  async function handleRemoveFromPointPool(pointId: string): Promise<boolean> {
+    const res = await fetch('/api/me/point-pool', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pointId }),
+    })
+    if (!res.ok) return false
+    setPointPoolItems((prev) => prev.filter((item) => item.pointId !== pointId))
+    return true
   }
 
   async function handleAddFromPointPool(
@@ -539,10 +572,12 @@ export function useRouteBookDetail(id: string) {
     handleTitleSave,
     handleStatusChange,
     handleRemovePoint,
+    handleRemoveFromPointPool,
     handleAddFromPointPool,
     handleDragEnd,
     handleCheckInSuccess,
     markPointCheckedIn,
+    unmarkPointCheckedIn,
     getPointPreview,
     renderDragOverlay,
 

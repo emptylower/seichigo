@@ -57,6 +57,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       .filter((p): p is { lat: number; lng: number; label: string } => p !== null)
   }, [h.sorted, h.getPointPreview])
 
+  const checkedInSorted = useMemo(() => {
+    return h.sorted.filter((point) => h.checkedInPointIds.has(point.pointId))
+  }, [h.checkedInPointIds, h.sorted])
+
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
   const routeBookSelectorItems = useMemo(() => {
     if (!h.routeBook) return h.routeBooks
@@ -87,6 +91,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         dragId: poolDragId(item.id),
         onAdd: () => {
           void h.handleAddFromPointPool(item.pointId)
+        },
+        onRemove: () => {
+          void h.handleRemoveFromPointPool(item.pointId)
         },
       }))
 
@@ -152,7 +159,6 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       nextPoint={h.nextPoint}
       nextPreview={h.nextPoint ? h.getPointPreview(h.nextPoint.pointId) : null}
       onCheckIn={(pointId) => h.setCheckInTarget(pointId)}
-      onMarkComplete={() => void h.handleStatusChange('completed')}
       onPrimaryAction={() => {
         void handlePrimaryAction()
       }}
@@ -164,9 +170,21 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
   const routePanel = (
     <PlannerRoutePanel
+      routeTitle={h.routeBook.title}
+      routeStatus={h.routeBook.status}
+      updatedAt={h.routeBook.updatedAt}
+      editingTitle={h.editingTitle}
+      titleDraft={h.titleDraft}
+      setTitleDraft={h.setTitleDraft}
+      setEditingTitle={h.setEditingTitle}
+      onTitleSave={h.handleTitleSave}
       sorted={h.sorted}
+      checkedIn={checkedInSorted}
       getPointPreview={h.getPointPreview}
       onRemove={h.handleRemovePoint}
+      onRestoreCheckedIn={(pointId) => {
+        void h.unmarkPointCheckedIn(pointId)
+      }}
       enableDrag={!isMobile}
     />
   )
@@ -220,6 +238,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             checkedInPointIds={h.checkedInPointIds}
             getPointPreview={h.getPointPreview}
             onCheckInSuccess={h.handleCheckInSuccess}
+            onUndoCheckIn={h.unmarkPointCheckedIn}
             onClose={() => setShowImmersive(false)}
           />
         ) : null}
@@ -248,16 +267,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px] lg:min-h-[calc(100dvh-9.5rem)]">
               <div className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-9.5rem)]">
                 <RouteBookPlannerHeader
-                  routeBook={h.routeBook}
+                  routeBookId={h.routeBook.id}
                   routeBooks={routeBookSelectorItems}
-                  sortedCount={h.sorted.length}
-                  checkedCount={h.checkedCount}
-                  editingTitle={h.editingTitle}
-                  titleDraft={h.titleDraft}
-                  setTitleDraft={h.setTitleDraft}
-                  setEditingTitle={h.setEditingTitle}
-                  onTitleSave={h.handleTitleSave}
-                  onStatusChange={h.handleStatusChange}
                 />
                 <div className="min-h-0 flex-1">{routePanel}</div>
               </div>
@@ -291,16 +302,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             {mobileTab === 'route' ? (
               <div className="space-y-4">
                 <RouteBookPlannerHeader
-                  routeBook={h.routeBook}
+                  routeBookId={h.routeBook.id}
                   routeBooks={routeBookSelectorItems}
-                  sortedCount={h.sorted.length}
-                  checkedCount={h.checkedCount}
-                  editingTitle={h.editingTitle}
-                  titleDraft={h.titleDraft}
-                  setTitleDraft={h.setTitleDraft}
-                  setEditingTitle={h.setEditingTitle}
-                  onTitleSave={h.handleTitleSave}
-                  onStatusChange={h.handleStatusChange}
                 />
                 {mapStage}
                 {routePanel}
