@@ -26,6 +26,8 @@ function RouteStopCard({
   showRemoveAction?: boolean
   compact?: boolean
 }) {
+  const mobileManageAction = compact && showRemoveAction
+
   return (
     <article
       className={`group relative overflow-hidden rounded-[28px] border bg-white transition ${
@@ -34,7 +36,8 @@ function RouteStopCard({
           : 'border-pink-100/90 shadow-[0_18px_32px_-28px_rgba(15,23,42,0.34)]'
       }`}
     >
-      <div className={`flex items-center gap-3 px-3 py-3 ${compact ? 'sm:px-4' : 'sm:px-4 sm:py-4'}`}>
+      <div className={`px-3 py-3 ${compact ? 'sm:px-4' : 'sm:px-4 sm:py-4'}`}>
+        <div className={`flex gap-3 ${compact ? 'flex-col sm:flex-row sm:items-center' : 'items-center'}`}>
         <div className="flex items-center gap-2">
           {dragHandleProps ? (
             <button
@@ -49,7 +52,7 @@ function RouteStopCard({
           <span className="inline-flex h-10 w-1.5 shrink-0 rounded-full bg-gradient-to-b from-brand-300 to-pink-100" />
         </div>
 
-        <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[24px] bg-slate-100 sm:h-28 sm:w-28">
+        <div className={`relative overflow-hidden rounded-[24px] bg-slate-100 ${compact ? 'h-40 w-full sm:h-28 sm:w-28 sm:shrink-0' : 'h-24 w-24 shrink-0 sm:h-28 sm:w-28'}`}>
           {preview.image ? (
             <img
               src={preview.image}
@@ -76,7 +79,7 @@ function RouteStopCard({
                 </span>
               </div>
             </div>
-            {showRemoveAction ? (
+            {showRemoveAction && !mobileManageAction ? (
               <button
                 type="button"
                 aria-label="移出路线"
@@ -93,6 +96,21 @@ function RouteStopCard({
             <span className="truncate">点位 ID: {point.pointId}</span>
           </div>
         </div>
+        </div>
+
+        {mobileManageAction ? (
+          <div className="mt-3 flex">
+            <button
+              type="button"
+              aria-label="移出路线"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+              onClick={() => onRemove(point.pointId)}
+            >
+              <Trash2 className="h-4 w-4" />
+              从路线中删除
+            </button>
+          </div>
+        ) : null}
       </div>
     </article>
   )
@@ -138,7 +156,7 @@ function CheckedInCard({
 }) {
   return (
     <article className="overflow-hidden rounded-[26px] border border-emerald-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,253,244,0.92))] shadow-[0_18px_32px_-28px_rgba(21,128,61,0.28)]">
-      <div className="flex items-center gap-3 px-3 py-3 sm:px-4">
+      <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
         <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[20px] bg-slate-100">
           {preview.image ? (
             <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
@@ -165,11 +183,11 @@ function CheckedInCard({
 
         <button
           type="button"
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 sm:h-11 sm:w-auto sm:rounded-full"
           onClick={() => onRestore(point.pointId)}
         >
           <RotateCcw className="h-4 w-4" />
-          恢复
+          恢复到路线
         </button>
       </div>
     </article>
@@ -259,8 +277,8 @@ export function PlannerRoutePanel({
 
   const header = (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-900">路线管理</h2>
           <p className="text-xs text-slate-500">切换查看路线中或已打卡点位，管理动作只在对应模式下显示。</p>
         </div>
@@ -268,7 +286,7 @@ export function PlannerRoutePanel({
           <button
             type="button"
             onClick={() => setRouteManageMode((prev) => !prev)}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${routeManageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:min-h-0 sm:w-auto sm:rounded-full sm:text-xs ${routeManageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
           >
             <Settings2 className="h-3.5 w-3.5" />
             {routeManageMode ? '完成管理' : '管理路线'}
@@ -278,7 +296,7 @@ export function PlannerRoutePanel({
         )}
       </div>
 
-      <div className="inline-flex rounded-2xl bg-white/80 p-1 shadow-sm ring-1 ring-pink-100/80">
+      <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 shadow-sm ring-1 ring-pink-100/80 sm:inline-flex">
         {([
           ['route', `路线中 ${sorted.length}`],
           ['checked', `已打卡 ${checkedIn.length}`],
@@ -289,7 +307,7 @@ export function PlannerRoutePanel({
               key={key}
               type="button"
               onClick={() => setActiveTab(key)}
-              className={`inline-flex min-h-10 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${active ? 'bg-brand-500 text-white shadow-[0_12px_24px_-18px_rgba(225,29,72,0.7)]' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${active ? 'bg-brand-500 text-white shadow-[0_12px_24px_-18px_rgba(225,29,72,0.7)]' : 'text-slate-500 hover:text-slate-700'}`}
             >
               {label}
             </button>

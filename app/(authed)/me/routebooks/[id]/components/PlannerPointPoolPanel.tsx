@@ -27,6 +27,8 @@ function PoolCardContent({
   list?: boolean
   manageMode?: boolean
 }) {
+  const mobileManageAction = compact && manageMode
+
   const buttonClass = item.selected
     ? 'bg-brand-500 text-white'
     : 'bg-white/85 text-slate-700 hover:bg-brand-500 hover:text-white'
@@ -58,7 +60,7 @@ function PoolCardContent({
         {manageMode ? (
           <button
             type="button"
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 sm:h-10 sm:w-auto"
             onClick={() => item.onRemove?.()}
           >
             <Trash2 className="h-4 w-4" />
@@ -93,7 +95,7 @@ function PoolCardContent({
           </div>
         )}
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(15,23,42,0.68)_6%,rgba(15,23,42,0.12)_54%,rgba(15,23,42,0)_82%)]" />
-        {manageMode ? (
+        {manageMode && !mobileManageAction ? (
           <button
             type="button"
             className="absolute right-3 top-3 inline-flex h-11 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 shadow-sm backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
@@ -119,6 +121,18 @@ function PoolCardContent({
           </span>
         </div>
       </div>
+      {mobileManageAction ? (
+        <div className="border-t border-rose-100 bg-white px-3 py-3">
+          <button
+            type="button"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            onClick={() => item.onRemove?.()}
+          >
+            <Trash2 className="h-4 w-4" />
+            从点位池删除
+          </button>
+        </div>
+      ) : null}
     </article>
   )
 }
@@ -227,7 +241,7 @@ export function PlannerPointPoolPanel({
   return (
     <section className={`flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)] ${compact ? 'p-4' : 'p-4'}`}>
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
               <Sparkles className="h-5 w-5" />
@@ -237,11 +251,11 @@ export function PlannerPointPoolPanel({
               <p className="text-xs text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。切到管理模式可删除池内点位。</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={() => setManageMode((prev) => !prev)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${manageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+              className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:min-h-0 sm:w-auto sm:rounded-full sm:text-xs ${manageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
             >
               <Settings2 className="h-3.5 w-3.5" />
               {manageMode ? '完成管理' : '管理点位池'}
