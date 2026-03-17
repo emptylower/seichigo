@@ -240,44 +240,49 @@ export function PlannerPointPoolPanel({
 
   return (
     <section className={`flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)] ${compact ? 'p-4' : 'p-4'}`}>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-3">
+      <div className="space-y-4 rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(252,244,247,0.92))] p-4 shadow-[0_18px_36px_-30px_rgba(225,29,72,0.3)] ring-1 ring-pink-100/60">
+        <div className="flex items-start gap-3">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
               <Sparkles className="h-5 w-5" />
             </span>
-            <div>
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-400">Point reservoir</div>
               <h2 className="text-lg font-semibold text-slate-900">点位池</h2>
-              <p className="text-xs text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。切到管理模式可删除池内点位。</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。切到管理模式可删除池内点位。</p>
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={() => setManageMode((prev) => !prev)}
-              className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:min-h-0 sm:w-auto sm:rounded-full sm:text-xs ${manageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              {manageMode ? '完成管理' : '管理点位池'}
-            </button>
+
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center justify-end gap-2">
             {!compact ? (
-              <div className="inline-flex rounded-2xl bg-slate-100 p-1">
+              <div className="inline-flex rounded-[22px] bg-slate-100/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ring-1 ring-pink-100/70">
                 <button
                   type="button"
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${!showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl transition ${!showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'}`}
                   onClick={() => setViewMode('grid')}
                 >
                   <Grid2X2 className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl transition ${showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'}`}
                   onClick={() => setViewMode('list')}
                 >
                   <List className="h-4 w-4" />
                 </button>
               </div>
             ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+            <button
+              type="button"
+              onClick={() => setManageMode((prev) => !prev)}
+              className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-semibold transition xl:w-auto xl:rounded-full xl:text-xs ${manageMode ? 'bg-rose-100 text-rose-700 shadow-[0_12px_24px_-22px_rgba(244,63,94,0.5)] ring-1 ring-rose-200/80' : 'bg-white text-slate-700 shadow-[0_12px_24px_-24px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/80 hover:bg-slate-50'}`}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {manageMode ? '完成管理' : '管理点位池'}
+            </button>
           </div>
         </div>
 

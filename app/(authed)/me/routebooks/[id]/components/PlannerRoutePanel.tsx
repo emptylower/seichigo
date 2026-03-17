@@ -277,42 +277,51 @@ export function PlannerRoutePanel({
 
   const header = (
     <>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-900">路线管理</h2>
-          <p className="text-xs text-slate-500">切换查看路线中或已打卡点位，管理动作只在对应模式下显示。</p>
+      <div className="rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(252,244,247,0.92))] p-4 shadow-[0_18px_36px_-30px_rgba(225,29,72,0.32)] ring-1 ring-pink-100/60">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-50 via-white to-rose-100 text-brand-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <Route className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-400">Route workspace</div>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">路线管理</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">切换查看路线中或已打卡点位，管理动作只在对应模式下显示。</p>
+          </div>
         </div>
-        {activeTab === 'route' ? (
-          <button
-            type="button"
-            onClick={() => setRouteManageMode((prev) => !prev)}
-            className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition sm:min-h-0 sm:w-auto sm:rounded-full sm:text-xs ${routeManageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            {routeManageMode ? '完成管理' : '管理路线'}
-          </button>
-        ) : (
-          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">恢复已打卡</span>
-        )}
-      </div>
 
-      <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 shadow-sm ring-1 ring-pink-100/80 sm:inline-flex">
-        {([
-          ['route', `路线中 ${sorted.length}`],
-          ['checked', `已打卡 ${checkedIn.length}`],
-        ] as const).map(([key, label]) => {
-          const active = activeTab === key
-          return (
+        <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="grid grid-cols-2 rounded-[22px] bg-slate-100/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ring-1 ring-pink-100/70 sm:inline-flex">
+          {([
+            ['route', `路线中 ${sorted.length}`],
+            ['checked', `已打卡 ${checkedIn.length}`],
+          ] as const).map(([key, label]) => {
+            const active = activeTab === key
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={`inline-flex min-h-11 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition ${active ? 'bg-[linear-gradient(135deg,#ec4899,#f43f5e)] text-white shadow-[0_16px_28px_-20px_rgba(225,29,72,0.78)]' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'}`}
+              >
+                {label}
+              </button>
+            )
+          })}
+          </div>
+
+          {activeTab === 'route' ? (
             <button
-              key={key}
               type="button"
-              onClick={() => setActiveTab(key)}
-              className={`inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${active ? 'bg-brand-500 text-white shadow-[0_12px_24px_-18px_rgba(225,29,72,0.7)]' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => setRouteManageMode((prev) => !prev)}
+              className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-semibold transition xl:w-auto xl:rounded-full xl:text-xs ${routeManageMode ? 'bg-rose-100 text-rose-700 shadow-[0_12px_24px_-22px_rgba(244,63,94,0.5)] ring-1 ring-rose-200/80' : 'bg-white text-slate-700 shadow-[0_12px_24px_-24px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/80 hover:bg-slate-50'}`}
             >
-              {label}
+              <Settings2 className="h-3.5 w-3.5" />
+              {routeManageMode ? '完成管理' : '管理路线'}
             </button>
-          )
-        })}
+          ) : (
+            <span className="inline-flex min-h-11 w-full shrink-0 items-center justify-center whitespace-nowrap rounded-2xl bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200/80 xl:min-h-0 xl:w-auto xl:rounded-full xl:text-xs">恢复已打卡</span>
+          )}
+        </div>
       </div>
     </>
   )
