@@ -57,6 +57,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       .filter((p): p is { lat: number; lng: number; label: string } => p !== null)
   }, [h.sorted, h.getPointPreview])
 
+  const checkedInSorted = useMemo(() => {
+    return h.sorted.filter((point) => h.checkedInPointIds.has(point.pointId))
+  }, [h.checkedInPointIds, h.sorted])
+
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
   const routeBookSelectorItems = useMemo(() => {
     if (!h.routeBook) return h.routeBooks
@@ -87,6 +91,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         dragId: poolDragId(item.id),
         onAdd: () => {
           void h.handleAddFromPointPool(item.pointId)
+        },
+        onRemove: () => {
+          void h.handleRemoveFromPointPool(item.pointId)
         },
       }))
 
@@ -165,8 +172,12 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const routePanel = (
     <PlannerRoutePanel
       sorted={h.sorted}
+      checkedIn={checkedInSorted}
       getPointPreview={h.getPointPreview}
       onRemove={h.handleRemovePoint}
+      onRestoreCheckedIn={(pointId) => {
+        void h.unmarkPointCheckedIn(pointId)
+      }}
       enableDrag={!isMobile}
     />
   )
@@ -220,6 +231,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             checkedInPointIds={h.checkedInPointIds}
             getPointPreview={h.getPointPreview}
             onCheckInSuccess={h.handleCheckInSuccess}
+            onUndoCheckIn={h.unmarkPointCheckedIn}
             onClose={() => setShowImmersive(false)}
           />
         ) : null}
