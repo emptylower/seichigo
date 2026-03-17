@@ -8,6 +8,7 @@ import { ArrowLeft, Navigation } from 'lucide-react'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useRouteBookDetail } from './hooks/useRouteBookDetail'
+import { useRouteGeometry } from './hooks/useRouteGeometry'
 import { POOL_DND_PREFIX, SORTED_DND_PREFIX } from './types'
 import { parseDragRecordId, poolDragId } from './utils'
 import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
@@ -45,6 +46,17 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [showImmersive, setShowImmersive] = useState(false)
 
   const h = useRouteBookDetail(id)
+  const { geometry: routeGeometry } = useRouteGeometry(h.routeBook?.id ?? '', h.sorted, h.getPointPreview)
+
+  const routePoints = useMemo(() => {
+    return h.sorted
+      .map((p) => {
+        const preview = h.getPointPreview(p.pointId)
+        if (!preview.geo) return null
+        return { lat: preview.geo[1], lng: preview.geo[0], label: preview.title }
+      })
+      .filter((p): p is { lat: number; lng: number; label: string } => p != null)
+  }, [h.sorted, h.getPointPreview])
 
   const selectedPointIds = useMemo(() => new Set((h.routeBook?.points || []).map((point) => point.pointId)), [h.routeBook])
   const routeBookSelectorItems = useMemo(() => {
@@ -134,7 +146,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       sortedCount={h.sorted.length}
       checkedCount={h.checkedCount}
       allDone={h.allDone}
-      previewEmbedUrl={h.previewEmbedUrl}
+      routePoints={routePoints}
+      routeGeometry={routeGeometry}
       hasRouteStops={h.hasRouteStops}
       focusPreview={h.focusPreview}
       nextPoint={h.nextPoint}
