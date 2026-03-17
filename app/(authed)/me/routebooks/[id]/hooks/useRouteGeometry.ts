@@ -12,6 +12,8 @@ type GeoJSONLineString = {
   coordinates: [number, number][]
 }
 
+type RouteBookGeo = [number, number]
+
 export type UseRouteGeometryResult = {
   geometry: GeoJSONLineString | null
   loading: boolean
@@ -25,24 +27,24 @@ export type UseRouteGeometryResult = {
 /** Build a cache key from geolocated points (lng,lat pairs joined by |). */
 function computeSignature(
   sortedPoints: PointRecord[],
-  getGeo: (pointId: string) => [number, number] | null,
+  getGeo: (pointId: string) => RouteBookGeo | null,
 ): string {
   return sortedPoints
     .map((p) => getGeo(p.pointId))
-    .filter((g): g is [number, number] => g != null)
-    .map(([lng, lat]) => `${lng},${lat}`)
+    .filter((g): g is RouteBookGeo => g != null)
+    .map(([lat, lng]) => `${lng},${lat}`)
     .join('|')
 }
 
 /** Extract geolocated coordinate pairs from sorted points. */
 function resolveGeoPoints(
   sortedPoints: PointRecord[],
-  getGeo: (pointId: string) => [number, number] | null,
+  getGeo: (pointId: string) => RouteBookGeo | null,
 ): [number, number][] {
   const result: [number, number][] = []
   for (const p of sortedPoints) {
     const geo = getGeo(p.pointId)
-    if (geo) result.push(geo)
+    if (geo) result.push([geo[1], geo[0]])
   }
   return result
 }
@@ -72,7 +74,7 @@ export function useRouteGeometry(
   const cacheRef = useRef<Map<string, GeoJSONLineString>>(new Map())
 
   // Stable getter: extract geo from PointPreview
-  const getGeo = (pointId: string): [number, number] | null => {
+  const getGeo = (pointId: string): RouteBookGeo | null => {
     return getPointPreview(pointId).geo
   }
 

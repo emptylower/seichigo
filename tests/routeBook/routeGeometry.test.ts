@@ -33,7 +33,6 @@ type PointPreview = {
 // Pure functions under test (mirrored from useRouteGeometry.ts)
 // ---------------------------------------------------------------------------
 
-/** Build a cache key from geolocated points (lng,lat pairs joined by |). */
 function computeSignature(
   sortedPoints: PointRecord[],
   getGeo: (pointId: string) => [number, number] | null,
@@ -41,7 +40,7 @@ function computeSignature(
   return sortedPoints
     .map((p) => getGeo(p.pointId))
     .filter((g): g is [number, number] => g != null)
-    .map(([lng, lat]) => `${lng},${lat}`)
+    .map(([lat, lng]) => `${lng},${lat}`)
     .join('|')
 }
 
@@ -53,7 +52,7 @@ function resolveGeoPoints(
   const result: [number, number][] = []
   for (const p of sortedPoints) {
     const geo = getGeo(p.pointId)
-    if (geo) result.push(geo)
+    if (geo) result.push([geo[1], geo[0]])
   }
   return result
 }
@@ -84,11 +83,11 @@ function makeGeoLookup(
 // ---------------------------------------------------------------------------
 
 describe('computeSignature', () => {
-  it('builds pipe-separated lng,lat string for geolocated points', () => {
+  it('builds pipe-separated lng,lat string from [lat,lng] geo tuples', () => {
     const points = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     expect(computeSignature(points, getGeo)).toBe('139.7,35.6|135.5,34.7')
@@ -97,9 +96,9 @@ describe('computeSignature', () => {
   it('skips points without geo data', () => {
     const points = [makePoint('a', 0), makePoint('b', 1), makePoint('c', 2)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
+      a: [35.6, 139.7],
       b: null,
-      c: [135.5, 34.7],
+      c: [34.7, 135.5],
     })
 
     expect(computeSignature(points, getGeo)).toBe('139.7,35.6|135.5,34.7')
@@ -121,8 +120,8 @@ describe('computeSignature', () => {
     const ab = [makePoint('a', 0), makePoint('b', 1)]
     const ba = [makePoint('b', 0), makePoint('a', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     const sigAB = computeSignature(ab, getGeo)
@@ -134,8 +133,8 @@ describe('computeSignature', () => {
     const points1 = [makePoint('a', 0), makePoint('b', 1)]
     const points2 = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     expect(computeSignature(points1, getGeo)).toBe(
@@ -145,14 +144,14 @@ describe('computeSignature', () => {
 
   it('handles single geolocated point', () => {
     const points = [makePoint('a', 0)]
-    const getGeo = makeGeoLookup({ a: [139.7, 35.6] })
+    const getGeo = makeGeoLookup({ a: [35.6, 139.7] })
 
     expect(computeSignature(points, getGeo)).toBe('139.7,35.6')
   })
 
   it('preserves decimal precision in signature', () => {
     const points = [makePoint('a', 0)]
-    const getGeo = makeGeoLookup({ a: [139.691706, 35.689487] })
+    const getGeo = makeGeoLookup({ a: [35.689487, 139.691706] })
 
     expect(computeSignature(points, getGeo)).toBe('139.691706,35.689487')
   })
@@ -163,11 +162,11 @@ describe('computeSignature', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveGeoPoints', () => {
-  it('extracts geo coordinates from geolocated points', () => {
+  it('converts [lat,lng] route-book geo tuples into [lng,lat] map coordinates', () => {
     const points = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     expect(resolveGeoPoints(points, getGeo)).toEqual([
@@ -179,9 +178,9 @@ describe('resolveGeoPoints', () => {
   it('filters out points without geo data', () => {
     const points = [makePoint('a', 0), makePoint('b', 1), makePoint('c', 2)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
+      a: [35.6, 139.7],
       b: null,
-      c: [135.5, 34.7],
+      c: [34.7, 135.5],
     })
 
     expect(resolveGeoPoints(points, getGeo)).toEqual([
@@ -205,7 +204,7 @@ describe('resolveGeoPoints', () => {
   it('returns < 2 points when only one is geolocated (triggers null geometry in hook)', () => {
     const points = [makePoint('a', 0), makePoint('b', 1), makePoint('c', 2)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
+      a: [35.6, 139.7],
       b: null,
       c: null,
     })
@@ -227,8 +226,8 @@ describe('signature-based cache behavior', () => {
 
     const points = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     // First fetch: compute signature and store
@@ -245,8 +244,8 @@ describe('signature-based cache behavior', () => {
     const cache = new Map<string, { type: string }>()
 
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     const original = [makePoint('a', 0), makePoint('b', 1)]
@@ -263,9 +262,9 @@ describe('signature-based cache behavior', () => {
     const cache = new Map<string, { type: string }>()
 
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
-      c: [136.9, 35.2],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
+      c: [35.2, 136.9],
     })
 
     const twoPoints = [makePoint('a', 0), makePoint('b', 1)]
@@ -285,9 +284,9 @@ describe('signature-based cache behavior', () => {
     const cache = new Map<string, { type: string }>()
 
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
+      a: [35.6, 139.7],
       b: null,
-      c: [135.5, 34.7],
+      c: [34.7, 135.5],
     })
 
     const withNonGeo = [
@@ -321,7 +320,7 @@ describe('geometry resolution threshold (< 2 geolocated points)', () => {
   it('1 geolocated point → no route geometry', () => {
     const points = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
+      a: [35.6, 139.7],
       b: null,
     })
 
@@ -332,8 +331,8 @@ describe('geometry resolution threshold (< 2 geolocated points)', () => {
   it('2 geolocated points → sufficient for route geometry', () => {
     const points = [makePoint('a', 0), makePoint('b', 1)]
     const getGeo = makeGeoLookup({
-      a: [139.7, 35.6],
-      b: [135.5, 34.7],
+      a: [35.6, 139.7],
+      b: [34.7, 135.5],
     })
 
     const geoPoints = resolveGeoPoints(points, getGeo)
@@ -351,7 +350,7 @@ describe('geometry resolution threshold (< 2 geolocated points)', () => {
     const getGeo = makeGeoLookup({
       a: null,
       b: null,
-      c: [135.5, 34.7],
+      c: [34.7, 135.5],
       d: null,
       e: null,
     })
