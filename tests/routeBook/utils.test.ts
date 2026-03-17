@@ -7,10 +7,8 @@ import {
   addPointToZoneInPoints,
   movePointToZoneInPoints,
   buildGoogleDirectionsUrl,
-  buildGoogleDirectionsEmbedUrl,
   buildPointLookupCandidates,
   isGeoPair,
-  buildGooglePointEmbedUrl,
   buildGoogleLegDirectionsUrl,
   parseBangumiId,
   parsePointKey,
@@ -300,41 +298,6 @@ describe('buildGoogleDirectionsUrl', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// buildGoogleDirectionsEmbedUrl
-// ---------------------------------------------------------------------------
-
-describe('buildGoogleDirectionsEmbedUrl', () => {
-  it('returns null when apiKey is empty', () => {
-    expect(buildGoogleDirectionsEmbedUrl(['A', 'B'], 'transit', '')).toBeNull()
-  })
-
-  it('returns null for fewer than 2 stops', () => {
-    expect(buildGoogleDirectionsEmbedUrl([], 'transit', 'key123')).toBeNull()
-    expect(buildGoogleDirectionsEmbedUrl(['A'], 'transit', 'key123')).toBeNull()
-  })
-
-  it('builds embed URL for 2 stops', () => {
-    const url = buildGoogleDirectionsEmbedUrl(['A', 'B'], 'driving', 'mykey')!
-    expect(url).toContain('google.com/maps/embed/v1/directions')
-    expect(url).toContain('key=mykey')
-    expect(url).toContain('origin=A')
-    expect(url).toContain('destination=B')
-    expect(url).toContain('mode=driving')
-  })
-
-  it('includes waypoints for 3+ stops', () => {
-    const url = buildGoogleDirectionsEmbedUrl(['A', 'B', 'C'], 'transit', 'k')!
-    expect(url).toContain('waypoints=B')
-  })
-
-  it('handles 25 stops', () => {
-    const stops = Array.from({ length: 25 }, (_, i) => `S${i}`)
-    const url = buildGoogleDirectionsEmbedUrl(stops, 'transit', 'k')!
-    expect(url).toContain('origin=S0')
-    expect(url).toContain('destination=S24')
-  })
-})
 
 // ---------------------------------------------------------------------------
 // buildPointLookupCandidates
@@ -487,28 +450,6 @@ describe('formatGoogleStop', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// buildGooglePointEmbedUrl
-// ---------------------------------------------------------------------------
-
-describe('buildGooglePointEmbedUrl', () => {
-  it('returns embed URL for valid geo', () => {
-    const preview: PointPreview = { title: 'X', subtitle: '', image: null, geo: [35.6, 139.7] }
-    const url = buildGooglePointEmbedUrl(preview)!
-    expect(url).toContain('google.com/maps')
-    expect(url).toContain('35.6')
-    expect(url).toContain('139.7')
-  })
-
-  it('returns null for null preview', () => {
-    expect(buildGooglePointEmbedUrl(null)).toBeNull()
-  })
-
-  it('returns null when geo is null', () => {
-    const preview: PointPreview = { title: 'X', subtitle: '', image: null, geo: null }
-    expect(buildGooglePointEmbedUrl(preview)).toBeNull()
-  })
-})
 
 // ---------------------------------------------------------------------------
 // DnD id helpers
