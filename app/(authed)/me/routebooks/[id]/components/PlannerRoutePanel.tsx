@@ -1,6 +1,7 @@
 'use client'
 
-import { GripVertical, MapPin, Route, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { CheckCircle2, GripVertical, MapPin, RotateCcw, Route, Settings2, Trash2 } from 'lucide-react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { PointPreview, PointRecord } from '../types'
@@ -14,6 +15,7 @@ function RouteStopCard({
   onRemove,
   dragHandleProps,
   dragging,
+  showRemoveAction = false,
   compact = false,
 }: {
   point: PointRecord
@@ -21,6 +23,7 @@ function RouteStopCard({
   onRemove: (pointId: string) => void
   dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
   dragging?: boolean
+  showRemoveAction?: boolean
   compact?: boolean
 }) {
   return (
@@ -53,7 +56,7 @@ function RouteStopCard({
               alt={preview.title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover object-center"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-100 via-white to-cyan-100 px-3 text-center text-xs font-semibold text-slate-500">
@@ -73,14 +76,17 @@ function RouteStopCard({
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              aria-label="移出路线"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-rose-100 bg-rose-50/70 text-rose-400 transition hover:border-rose-200 hover:bg-rose-100 hover:text-rose-600"
-              onClick={() => onRemove(point.pointId)}
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {showRemoveAction ? (
+              <button
+                type="button"
+                aria-label="移出路线"
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+                onClick={() => onRemove(point.pointId)}
+              >
+                <Trash2 className="h-4 w-4" />
+                删除
+              </button>
+            ) : null}
           </div>
           <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
             <MapPin className="h-3 w-3 text-brand-400" />
@@ -96,45 +102,101 @@ function SortableRouteStop({
   point,
   preview,
   onRemove,
+  showRemoveAction,
 }: {
   point: PointRecord
   preview: PointPreview
   onRemove: (pointId: string) => void
+  showRemoveAction: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: sortedDragId(point.id),
   })
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.72 : 1 }}
-    >
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.72 : 1 }}>
       <RouteStopCard
         point={point}
         preview={preview}
         onRemove={onRemove}
         dragHandleProps={{ ...attributes, ...listeners }}
         dragging={isDragging}
+        showRemoveAction={showRemoveAction}
       />
     </div>
   )
 }
 
+function CheckedInCard({
+  point,
+  preview,
+  onRestore,
+}: {
+  point: PointRecord
+  preview: PointPreview
+  onRestore: (pointId: string) => void
+}) {
+  return (
+    <article className="overflow-hidden rounded-[26px] border border-emerald-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,253,244,0.92))] shadow-[0_18px_32px_-28px_rgba(21,128,61,0.28)]">
+      <div className="flex items-center gap-3 px-3 py-3 sm:px-4">
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[20px] bg-slate-100">
+          {preview.image ? (
+            <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-100 via-white to-cyan-100 px-2 text-center text-[11px] font-medium text-slate-500">
+              暂无图片
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              已打卡
+            </span>
+            <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-medium text-slate-500 shadow-sm">
+              #{point.sortOrder + 1}
+            </span>
+          </div>
+          <h3 className="mt-2 line-clamp-1 text-sm font-semibold text-slate-900 sm:text-base">{preview.title}</h3>
+          <p className="mt-1 line-clamp-1 text-xs text-slate-500">{preview.subtitle}</p>
+        </div>
+
+        <button
+          type="button"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          onClick={() => onRestore(point.pointId)}
+        >
+          <RotateCcw className="h-4 w-4" />
+          恢复
+        </button>
+      </div>
+    </article>
+  )
+}
+
 interface PlannerRoutePanelProps {
   sorted: PointRecord[]
+  checkedIn: PointRecord[]
   getPointPreview: (pointId: string) => PointPreview
   onRemove: (pointId: string) => void
+  onRestoreCheckedIn: (pointId: string) => void
   enableDrag?: boolean
 }
 
 export function PlannerRoutePanel({
   sorted,
+  checkedIn,
   getPointPreview,
   onRemove,
+  onRestoreCheckedIn,
   enableDrag = false,
 }: PlannerRoutePanelProps) {
-  const content = sorted.length > 0 ? (
+  const [activeTab, setActiveTab] = useState<'route' | 'checked'>('route')
+  const [routeManageMode, setRouteManageMode] = useState(false)
+
+  const routeContent = sorted.length > 0 ? (
     <div className="space-y-3">
       {enableDrag ? (
         <SortableContext items={sorted.map((point) => sortedDragId(point.id))} strategy={verticalListSortingStrategy}>
@@ -145,6 +207,7 @@ export function PlannerRoutePanel({
                 point={point}
                 preview={getPointPreview(point.pointId)}
                 onRemove={onRemove}
+                showRemoveAction={routeManageMode}
               />
             ))}
           </div>
@@ -156,6 +219,7 @@ export function PlannerRoutePanel({
             point={point}
             preview={getPointPreview(point.pointId)}
             onRemove={onRemove}
+            showRemoveAction={routeManageMode}
             compact
           />
         ))
@@ -166,51 +230,99 @@ export function PlannerRoutePanel({
       <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-pink-100 text-brand-600">
         <Route className="h-6 w-6" />
       </div>
-      <h3 className="mt-4 text-base font-semibold text-slate-900">先从右侧点位池挑选想去的圣地</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-500">
-        {enableDrag ? '桌面端支持直接拖进路线区并调整顺序。' : '添加点位后会自动出现在这里。'}
-      </p>
+      <h3 className="mt-4 text-base font-semibold text-slate-900">先从点位池挑选想去的圣地</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-500">{enableDrag ? '桌面端支持直接拖进路线区并调整顺序。' : '添加点位后会自动出现在这里。'}</p>
     </div>
+  )
+
+  const checkedContent = useMemo(() => {
+    if (!checkedIn.length) {
+      return (
+        <div className="rounded-[28px] border border-dashed border-emerald-200 bg-emerald-50/40 px-6 py-10 text-center">
+          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <CheckCircle2 className="h-6 w-6" />
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-slate-900">还没有已打卡点位</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">打卡后的点位会出现在这里，误操作时也可以从这里恢复。</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-3">
+        {checkedIn.map((point) => (
+          <CheckedInCard key={point.id} point={point} preview={getPointPreview(point.pointId)} onRestore={onRestoreCheckedIn} />
+        ))}
+      </div>
+    )
+  }, [checkedIn, getPointPreview, onRestoreCheckedIn])
+
+  const header = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">路线管理</h2>
+          <p className="text-xs text-slate-500">切换查看路线中或已打卡点位，管理动作只在对应模式下显示。</p>
+        </div>
+        {activeTab === 'route' ? (
+          <button
+            type="button"
+            onClick={() => setRouteManageMode((prev) => !prev)}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${routeManageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            {routeManageMode ? '完成管理' : '管理路线'}
+          </button>
+        ) : (
+          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">恢复已打卡</span>
+        )}
+      </div>
+
+      <div className="inline-flex rounded-2xl bg-white/80 p-1 shadow-sm ring-1 ring-pink-100/80">
+        {([
+          ['route', `路线中 ${sorted.length}`],
+          ['checked', `已打卡 ${checkedIn.length}`],
+        ] as const).map(([key, label]) => {
+          const active = activeTab === key
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              className={`inline-flex min-h-10 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${active ? 'bg-brand-500 text-white shadow-[0_12px_24px_-18px_rgba(225,29,72,0.7)]' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+    </>
   )
 
   if (!enableDrag) {
     return (
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">路线</h2>
-            <p className="text-xs text-slate-500">按执行顺序整理今天的巡礼节奏</p>
-          </div>
-          <span className="inline-flex rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-brand-600">
-            {sorted.length} 个点位
-          </span>
-        </div>
-        {content}
+        {header}
+        {activeTab === 'route' ? routeContent : checkedContent}
       </section>
     )
   }
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,250,0.9))] p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">路线顺序</h2>
-          <p className="text-xs text-slate-500">拖动卡片可调整巡礼顺序</p>
-        </div>
-        <span className="inline-flex rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-brand-600">
-          {sorted.length} 个点位
-        </span>
-      </div>
+      <div className="mb-4 space-y-4">{header}</div>
 
-      <DroppablePanel
-        id={SORTED_ZONE_ID}
-        className="min-h-0 flex-1 rounded-[28px] border border-transparent bg-white/75 p-1 transition"
-        activeClassName="border-brand-200 bg-brand-50/40"
-      >
-        <div className="seichi-soft-scrollbar h-full min-h-0 space-y-3 overflow-y-auto p-2 pr-3">
-          {content}
-        </div>
-      </DroppablePanel>
+      {activeTab === 'route' ? (
+        <DroppablePanel
+          id={SORTED_ZONE_ID}
+          className="min-h-0 flex-1 rounded-[28px] border border-transparent bg-white/75 p-1 transition"
+          activeClassName="border-brand-200 bg-brand-50/40"
+        >
+          <div className="seichi-soft-scrollbar h-full min-h-0 space-y-3 overflow-y-auto p-2 pr-3">{routeContent}</div>
+        </DroppablePanel>
+      ) : (
+        <div className="seichi-soft-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">{checkedContent}</div>
+      )}
     </section>
   )
 }

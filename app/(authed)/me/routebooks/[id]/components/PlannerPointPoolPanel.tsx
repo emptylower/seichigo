@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Check, Grid2X2, List, Plus, Search, Sparkles } from 'lucide-react'
+import { Check, Grid2X2, List, Plus, Search, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { PointPreview } from '../types'
@@ -13,16 +13,19 @@ export type PlannerPoolItem = {
   selected: boolean
   dragId?: string
   onAdd?: () => void
+  onRemove?: () => void
 }
 
 function PoolCardContent({
   item,
   compact = false,
   list = false,
+  manageMode = false,
 }: {
   item: PlannerPoolItem
   compact?: boolean
   list?: boolean
+  manageMode?: boolean
 }) {
   const buttonClass = item.selected
     ? 'bg-brand-500 text-white'
@@ -37,7 +40,7 @@ function PoolCardContent({
       >
         <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-[18px] bg-slate-100">
           {item.preview.image ? (
-            <img src={item.preview.image} alt={item.preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            <img src={item.preview.image} alt={item.preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-100 via-white to-cyan-100 text-[11px] font-medium text-slate-500">
               暂无图
@@ -52,14 +55,25 @@ function PoolCardContent({
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          disabled={item.selected || !item.onAdd}
-          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-transparent transition ${buttonClass} disabled:cursor-default`}
-          onClick={() => item.onAdd?.()}
-        >
-          {item.selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-        </button>
+        {manageMode ? (
+          <button
+            type="button"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            onClick={() => item.onRemove?.()}
+          >
+            <Trash2 className="h-4 w-4" />
+            删除
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={item.selected || !item.onAdd}
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-transparent transition ${buttonClass} disabled:cursor-default`}
+            onClick={() => item.onAdd?.()}
+          >
+            {item.selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          </button>
+        )}
       </article>
     )
   }
@@ -72,21 +86,32 @@ function PoolCardContent({
     >
       <div className={`relative overflow-hidden ${compact ? 'aspect-[1.08/1]' : 'aspect-[1.02/1]'}`}>
         {item.preview.image ? (
-          <img src={item.preview.image} alt={item.preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+          <img src={item.preview.image} alt={item.preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center transition duration-300 group-hover:scale-[1.03]" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-100 via-white to-cyan-100 px-4 text-center text-xs font-medium text-slate-500">
             暂无图片
           </div>
         )}
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(15,23,42,0.68)_6%,rgba(15,23,42,0.12)_54%,rgba(15,23,42,0)_82%)]" />
-        <button
-          type="button"
-          disabled={item.selected || !item.onAdd}
-          className={`absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full shadow-sm backdrop-blur-sm transition ${buttonClass} disabled:cursor-default`}
-          onClick={() => item.onAdd?.()}
-        >
-          {item.selected ? <Check className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-        </button>
+        {manageMode ? (
+          <button
+            type="button"
+            className="absolute right-3 top-3 inline-flex h-11 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 shadow-sm backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+            onClick={() => item.onRemove?.()}
+          >
+            <Trash2 className="h-4 w-4" />
+            删除
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={item.selected || !item.onAdd}
+            className={`absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full shadow-sm backdrop-blur-sm transition ${buttonClass} disabled:cursor-default`}
+            onClick={() => item.onAdd?.()}
+          >
+            {item.selected ? <Check className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+          </button>
+        )}
         <div className="absolute inset-x-0 bottom-0 p-3">
           <h3 className="line-clamp-2 text-base font-semibold leading-6 text-white">{item.preview.title}</h3>
           <span className="mt-2 inline-flex rounded-full bg-black/35 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
@@ -102,14 +127,16 @@ function DraggablePoolCard({
   item,
   compact = false,
   list = false,
+  manageMode = false,
 }: {
   item: PlannerPoolItem
   compact?: boolean
   list?: boolean
+  manageMode?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.dragId || item.id,
-    disabled: item.selected || !item.dragId,
+    disabled: manageMode || item.selected || !item.dragId,
   })
 
   return (
@@ -118,9 +145,9 @@ function DraggablePoolCard({
       style={{ transform: CSS.Transform.toString(transform), opacity: isDragging ? 0.72 : 1 }}
       {...attributes}
       {...listeners}
-      className={item.selected ? '' : 'touch-none'}
+      className={item.selected || manageMode ? '' : 'touch-none'}
     >
-      <PoolCardContent item={item} compact={compact} list={list} />
+      <PoolCardContent item={item} compact={compact} list={list} manageMode={manageMode} />
     </div>
   )
 }
@@ -146,6 +173,7 @@ export function PlannerPointPoolPanel({
 }: PlannerPointPoolPanelProps) {
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [manageMode, setManageMode] = useState(false)
   const [activeTag, setActiveTag] = useState('全部')
 
   const tags = useMemo(() => {
@@ -206,27 +234,37 @@ export function PlannerPointPoolPanel({
             </span>
             <div>
               <h2 className="text-lg font-semibold text-slate-900">点位池</h2>
-              <p className="text-xs text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个</p>
+              <p className="text-xs text-slate-500">{totalCount} 个候选点位，已加入 {selectedCount} 个。切到管理模式可删除池内点位。</p>
             </div>
           </div>
-          {!compact ? (
-            <div className="inline-flex rounded-2xl bg-slate-100 p-1">
-              <button
-                type="button"
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${!showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                onClick={() => setViewMode('grid')}
-              >
-                <Grid2X2 className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                onClick={() => setViewMode('list')}
-              >
-                <List className="h-4 w-4" />
-              </button>
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setManageMode((prev) => !prev)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${manageMode ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {manageMode ? '完成管理' : '管理点位池'}
+            </button>
+            {!compact ? (
+              <div className="inline-flex rounded-2xl bg-slate-100 p-1">
+                <button
+                  type="button"
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${!showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  <Grid2X2 className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${showList ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <label className="relative block">
@@ -263,14 +301,14 @@ export function PlannerPointPoolPanel({
         </div>
       </div>
 
-      <div className={`mt-4 min-h-0 flex-1 ${compact ? '' : ''}`}>
+      <div className="mt-4 min-h-0 flex-1">
         {filteredItems.length > 0 ? (
           <div className={`${showList ? 'space-y-3' : 'grid grid-cols-2 gap-4'} ${compact ? 'pb-24' : 'seichi-soft-scrollbar h-full overflow-y-auto pr-2'}`}>
             {filteredItems.map((item) =>
               enableDrag ? (
-                <DraggablePoolCard key={item.id} item={item} compact={compact} list={showList} />
+                <DraggablePoolCard key={item.id} item={item} compact={compact} list={showList} manageMode={manageMode} />
               ) : (
-                <PoolCardContent key={item.id} item={item} compact={compact} list={showList} />
+                <PoolCardContent key={item.id} item={item} compact={compact} list={showList} manageMode={manageMode} />
               )
             )}
           </div>
