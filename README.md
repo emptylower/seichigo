@@ -240,6 +240,27 @@ npm run seo:audit -- --base-url https://seichigo.com
 npm run seo:audit -- --base-url http://localhost:3000 --include-private
 ```
 
+## Cloudflare Deployment (OpenNext)
+
+`@cloudflare/next-on-pages` is deprecated and requires Edge runtime on every non-static route.
+This repo is configured for OpenNext + Workers:
+
+```bash
+npm run cf:build
+npm run cf:preview
+npm run cf:deploy
+```
+
+Added config files:
+
+- `open-next.config.ts`
+- `wrangler.jsonc`
+- `public/_headers`
+
+Build note:
+
+- `scripts/build-app.mjs` auto-skips `prisma migrate deploy` for Cloudflare CI (`CF_PAGES=1` or `WORKERS_CI=1`) while keeping local behavior unchanged.
+
 ## Content
 
 - Chinese articles live at `content/zh/posts/*.mdx`.

@@ -19,7 +19,15 @@ function isVercelBuildEnv() {
     || typeof process.env.VERCEL_URL === 'string'
 }
 
-const shouldSkipMigrate = process.env.SKIP_DB_MIGRATE_DURING_BUILD === '1' || isVercelBuildEnv()
+function isCloudflareBuildEnv() {
+  return process.env.CF_PAGES === '1'
+    || typeof process.env.CF_PAGES_URL === 'string'
+    || process.env.WORKERS_CI === '1'
+}
+
+const shouldSkipMigrate = process.env.SKIP_DB_MIGRATE_DURING_BUILD === '1'
+  || isVercelBuildEnv()
+  || isCloudflareBuildEnv()
 
 if (process.argv.includes('--print-plan')) {
   console.log(JSON.stringify({
