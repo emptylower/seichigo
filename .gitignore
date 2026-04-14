@@ -22,6 +22,10 @@ yarn-error.log*
 output/
 test-results/
 bundle.js
+.open-next/
+.wrangler/
+.dev.vars
 
 # TypeScript incremental build info
 *.tsbuildinfo
+.omx/
