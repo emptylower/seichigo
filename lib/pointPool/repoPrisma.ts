@@ -1,5 +1,6 @@
-import { Prisma, type UserPointPool as PrismaUserPointPool } from '@prisma/client'
+import type { Prisma, UserPointPool as PrismaUserPointPool } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
 import type { ListPointPoolFilters, PointPoolRepo, UserPointPoolItem } from '@/lib/pointPool/repo'
 
 function toItem(record: PrismaUserPointPool): UserPointPoolItem {
@@ -28,7 +29,7 @@ export class PrismaPointPoolRepo implements PointPoolRepo {
       await prisma.userPointPool.delete({ where: { userId_pointId: { userId, pointId } } })
       return true
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      if (isPrismaKnownRequestError(err) && err.code === 'P2025') {
         return false
       }
       throw err

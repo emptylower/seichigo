@@ -1,5 +1,6 @@
-import { Prisma, type ArticleRevision as PrismaArticleRevision } from '@prisma/client'
+import type { ArticleRevision as PrismaArticleRevision } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
 import type {
   ArticleRevision,
   ArticleRevisionSummary,
@@ -81,7 +82,7 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
       })
       return toRevision(created)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isPrismaKnownRequestError(err) && err.code === 'P2002') {
         const conflict = await this.findActiveByArticleId(article.id)
         if (conflict) return conflict
       }
@@ -137,7 +138,7 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
       })
       return toRevision(updated)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err
@@ -161,7 +162,7 @@ export class PrismaArticleRevisionRepo implements ArticleRevisionRepo {
       })
       return toRevision(updated)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err

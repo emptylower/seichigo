@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 
+import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 
 function getAdminEmails(): string[] {
@@ -9,8 +10,21 @@ function getAdminEmails(): string[] {
     .filter(Boolean)
 }
 
+function createPrismaClient() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set')
+  }
+
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+    }),
+  })
+}
+
 async function main() {
-  const prisma = new PrismaClient()
+  const prisma = createPrismaClient()
   
   try {
     const adminEmails = getAdminEmails()

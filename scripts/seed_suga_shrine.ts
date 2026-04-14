@@ -1,4 +1,5 @@
 
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { generateJSON } from '@tiptap/html';
 import StarterKit from '@tiptap/starter-kit';
@@ -6,7 +7,20 @@ import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import { randomUUID } from 'crypto';
 
-const prisma = new PrismaClient();
+function createPrismaClient() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set');
+  }
+
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+    }),
+  });
+}
+
+const prisma = createPrismaClient();
 
 const extensions = [
   StarterKit,

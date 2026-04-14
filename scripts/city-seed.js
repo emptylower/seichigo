@@ -2,9 +2,23 @@
 
 const fs = require('node:fs/promises')
 const path = require('node:path')
+const { PrismaPg } = require('@prisma/adapter-pg')
 const { PrismaClient } = require('@prisma/client')
 
-const prisma = new PrismaClient()
+function createPrismaClient() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set')
+  }
+
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+    }),
+  })
+}
+
+const prisma = createPrismaClient()
 
 function normalizeAlias(input) {
   const raw = String(input || '')

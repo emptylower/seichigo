@@ -1,5 +1,14 @@
+import { createRequire } from 'node:module'
+import path from 'node:path'
 import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
+
+const require = createRequire(import.meta.url)
+const prismaWasmEntry = require.resolve('@prisma/client/wasm')
+const sentryShimEntry = path.resolve('./lib/observability/sentryCloudflareShim.ts')
+const isCloudflareDeploy = process.env.CLOUDFLARE_DEPLOY === '1'
+  || process.env.WORKERS_CI === '1'
+  || process.env.CF_PAGES === '1'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -25,6 +34,21 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  webpack(config, { isServer }) {
+    if (isCloudflareDeploy) {
+      config.resolve ??= {}
+      config.resolve.alias ??= {}
+      config.resolve.alias['@sentry/nextjs'] = sentryShimEntry
+    }
+
+    if (isServer) {
+      config.resolve ??= {}
+      config.resolve.alias ??= {}
+      config.resolve.alias['@prisma/client$'] = prismaWasmEntry
+    }
+
+    return config
+  },
 }
 
 const sentryWebpackPluginOptions = {
@@ -35,4 +59,6 @@ const sentryWebpackPluginOptions = {
   dryRun: !process.env.SENTRY_AUTH_TOKEN,
 }
 
-export default withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+export default isCloudflareDeploy
+  ? nextConfig
+  : withSentryConfig(nextConfig, sentryWebpackPluginOptions)

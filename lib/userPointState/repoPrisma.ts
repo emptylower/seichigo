@@ -1,5 +1,6 @@
-import { Prisma, type UserPointState as PrismaUserPointState } from '@prisma/client'
+import type { Prisma, UserPointState as PrismaUserPointState } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
 import type { UserPointState, UserPointStateRepo, UserPointStateValue, UpsertUserPointStateOpts, ListByUserFilters } from './repo'
 
 function toUserPointState(record: PrismaUserPointState): UserPointState {
@@ -46,7 +47,7 @@ export class PrismaUserPointStateRepo implements UserPointStateRepo {
       })
       return true
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      if (isPrismaKnownRequestError(err) && err.code === 'P2025') {
         return false
       }
       throw err

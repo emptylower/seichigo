@@ -20,7 +20,8 @@ function isVercelBuildEnv() {
 }
 
 function isCloudflareBuildEnv() {
-  return process.env.CF_PAGES === '1'
+  return process.env.CLOUDFLARE_DEPLOY === '1'
+    || process.env.CF_PAGES === '1'
     || typeof process.env.CF_PAGES_URL === 'string'
     || process.env.WORKERS_CI === '1'
 }
@@ -47,3 +48,4 @@ if (shouldSkipMigrate) {
 
 run('prisma generate')
 run('next build')
+run('node scripts/patch-prisma-nft.mjs')

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client/wasm'
 
 export type MapSummaryTargetLanguage = 'all' | 'zh' | 'en' | 'ja'
 

@@ -1,5 +1,7 @@
-import { Prisma, type RouteBook as PrismaRouteBook, type RouteBookPoint as PrismaRouteBookPoint } from '@prisma/client'
+import { Prisma } from '@prisma/client/wasm'
+import type { RouteBook as PrismaRouteBook, RouteBookPoint as PrismaRouteBookPoint } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
 import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import {
   SORTED_ZONE_LIMIT,
@@ -85,7 +87,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
       })
       return toRouteBook(created)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isPrismaKnownRequestError(err) && err.code === 'P2002') {
         throw err
       }
       throw err
@@ -107,7 +109,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
       })
       return toRouteBook(updated)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err
@@ -122,7 +124,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
       const deleted = await prisma.routeBook.delete({ where: { id } })
       return toRouteBook(deleted)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err

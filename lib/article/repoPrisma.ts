@@ -1,5 +1,6 @@
-import { Prisma, type Article as PrismaArticle } from '@prisma/client'
+import type { Article as PrismaArticle } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
+import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
 import { ArticleSlugExistsError, type Article, type ArticleRepo, type ArticleSummary, type CreateDraftInput, type UpdateDraftInput, type UpdateStateInput } from './repo'
 
 function toArticle(record: PrismaArticle): Article {
@@ -50,7 +51,7 @@ export class PrismaArticleRepo implements ArticleRepo {
       })
       return toArticle(created)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isPrismaKnownRequestError(err) && err.code === 'P2002') {
         throw new ArticleSlugExistsError(input.slug)
       }
       throw err
@@ -137,7 +138,7 @@ export class PrismaArticleRepo implements ArticleRepo {
       })
       return toArticle(updated)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
         if (err.code === 'P2002' && input.slug) throw new ArticleSlugExistsError(input.slug)
       }
@@ -159,7 +160,7 @@ export class PrismaArticleRepo implements ArticleRepo {
       })
       return toArticle(updated)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err
@@ -171,7 +172,7 @@ export class PrismaArticleRepo implements ArticleRepo {
       const deleted = await prisma.article.delete({ where: { id } })
       return toArticle(deleted)
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (isPrismaKnownRequestError(err)) {
         if (err.code === 'P2025') return null
       }
       throw err

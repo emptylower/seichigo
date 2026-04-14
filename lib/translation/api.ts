@@ -1,5 +1,5 @@
 import type { Session } from 'next-auth'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client/wasm'
 import { prisma } from '@/lib/db/prisma'
 import {
   getTranslationTaskStatsForAdmin,
