@@ -42,6 +42,8 @@ type HomeDataDeps = {
   getCityCountsByLocale: typeof getCityCountsByLocale
 }
 
+const HOME_DATA_TIMEOUT_MS = 8_000
+
 type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
 
 function normalizeAnimeKey(input: string): string {
@@ -143,6 +145,23 @@ function buildPopularCities(cityData: CityCountData, locale: SupportedLocale): H
     .slice(0, 6)
 }
 
+async function withTimeout<T>(label: string, task: Promise<T>, fallback: T): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
+      console.warn(`[home] ${label} timed out after ${HOME_DATA_TIMEOUT_MS}ms`)
+      resolve(fallback)
+    }, HOME_DATA_TIMEOUT_MS)
+  })
+
+  try {
+    return await Promise.race([task, timeout])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 export async function getHomePortalData(
   locale: SupportedLocale,
   deps: Partial<HomeDataDeps> = {}
@@ -155,9 +174,21 @@ export async function getHomePortalData(
   }
 
   const [posts, animeList, cityData] = await Promise.all([
-    effectiveDeps.getAllPublicPosts(locale).catch(() => []),
-    effectiveDeps.getAllAnime().catch(() => []),
-    effectiveDeps.getCityCountsByLocale(locale).catch(() => ({ cities: [], counts: {} })),
+    withTimeout(
+      'getAllPublicPosts',
+      effectiveDeps.getAllPublicPosts(locale).catch(() => []),
+      [] as PublicPostListItem[]
+    ),
+    withTimeout(
+      'getAllAnime',
+      effectiveDeps.getAllAnime().catch(() => []),
+      [] as Anime[]
+    ),
+    withTimeout(
+      'getCityCountsByLocale',
+      effectiveDeps.getCityCountsByLocale(locale).catch(() => ({ cities: [], counts: {} })),
+      { cities: [], counts: {} } as CityCountData
+    ),
   ])
 
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
