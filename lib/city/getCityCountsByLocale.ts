@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/db'
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
@@ -10,7 +11,7 @@ type CityCountsByLocale = {
   counts: Record<string, number>
 }
 
-export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
+async function loadCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
   const cities = await listCitiesForIndex().catch(() => [])
   if (!cities.length) return { cities: [], counts: {} }
 
@@ -49,4 +50,14 @@ export async function getCityCountsByLocale(locale: SupportedLocale): Promise<Ci
   }
 
   return { cities, counts }
+}
+
+const getCachedCityCountsByLocale = unstable_cache(
+  async (locale: SupportedLocale) => loadCityCountsByLocale(locale),
+  ['city:getCityCountsByLocale'],
+  { revalidate: 300 }
+)
+
+export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
+  return getCachedCityCountsByLocale(locale)
 }

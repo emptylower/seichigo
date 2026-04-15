@@ -206,11 +206,12 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/" prefetch={false} className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm no-underline">
               <Image
-                src="/brand/app-logo.png"
+                src="/brand/app-logo-64.png"
                 alt="SeichiGo"
                 width={40}
                 height={40}
                 className="h-10 w-10 rounded-xl object-cover"
+                unoptimized
               />
             </Link>
             <div className="min-w-0">

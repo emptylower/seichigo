@@ -87,4 +87,23 @@ describe('getAllAnime', () => {
     expect(result.find((x) => x.id === 'bocchi-the-rock')).toBeTruthy()
     expect(result.find((x) => x.id === 'btr')).toBeFalsy()
   })
+
+  it('falls back to db records when worker fs APIs are unavailable', async () => {
+    mocks.fs.readdir.mockImplementation(() => {
+      throw new Error('[unenv] fs.readdir is not implemented yet!')
+    })
+    mocks.prisma.anime.findMany.mockResolvedValue([
+      { id: 'your-name', name: '你的名字', hidden: false, cover: '/assets/your-name' },
+    ])
+
+    const result = await getAllAnime()
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'your-name',
+        name: '你的名字',
+        cover: '/assets/your-name',
+      }),
+    ])
+  })
 })

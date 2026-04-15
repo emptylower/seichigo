@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import type { ArticleRepo } from '@/lib/article/repo'
 import type { PostFrontmatter } from '@/lib/mdx/types'
 import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
@@ -84,7 +85,10 @@ function normalizeDb(article: any): PublicPostListItem {
   }
 }
 
-export async function getAllPublicPosts(language: string = 'zh', options?: GetAllPublicPostsOptions): Promise<PublicPostListItem[]> {
+async function loadAllPublicPosts(
+  language: string = 'zh',
+  options?: GetAllPublicPostsOptions
+): Promise<PublicPostListItem[]> {
   const mdx = options?.mdx ?? { getAllPosts: getAllMdxPosts }
   const mdxPosts = await mdx.getAllPosts(language).catch(() => [])
 
@@ -110,4 +114,21 @@ export async function getAllPublicPosts(language: string = 'zh', options?: GetAl
     if (dt !== 0) return dt
     return a.path.localeCompare(b.path)
   })
+}
+
+const getCachedAllPublicPosts = unstable_cache(
+  async (language: string) => loadAllPublicPosts(language),
+  ['posts:getAllPublicPosts'],
+  { revalidate: 120 }
+)
+
+export async function getAllPublicPosts(
+  language: string = 'zh',
+  options?: GetAllPublicPostsOptions
+): Promise<PublicPostListItem[]> {
+  if (options?.mdx || options?.articleRepo) {
+    return loadAllPublicPosts(language, options)
+  }
+
+  return getCachedAllPublicPosts(language)
 }

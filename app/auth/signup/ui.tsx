@@ -119,7 +119,7 @@ export default function SignUpClient() {
       <div className="mx-auto flex max-w-md flex-col px-4 py-8 sm:py-12">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm">
-            <Image src="/brand/app-logo.png" alt="SeichiGo" width={44} height={44} className="h-11 w-11 object-cover" priority />
+            <Image src="/brand/app-logo-64.png" alt="SeichiGo" width={44} height={44} className="h-11 w-11 object-cover" priority unoptimized />
           </div>
           <div className="min-w-0">
             <div className="font-display text-2xl font-bold leading-tight">SeichiGo</div>

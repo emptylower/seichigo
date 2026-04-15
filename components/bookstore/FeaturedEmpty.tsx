@@ -28,12 +28,13 @@ export default function FeaturedEmpty({ locale }: { locale: SiteLocale }) {
         <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm">
           <div className="relative aspect-[16/10] w-full">
             <Image
-              src="/brand/web-logo.png"
+              src="/brand/web-logo-256.png"
               alt="SeichiGo"
               fill
               className="object-cover"
               sizes="(min-width: 768px) 320px, 100vw"
               priority
+              unoptimized
             />
           </div>
         </div>
@@ -41,4 +42,3 @@ export default function FeaturedEmpty({ locale }: { locale: SiteLocale }) {
     </section>
   )
 }
-

@@ -22,14 +22,19 @@ export type GetAllAnimeOptions = {
 
 async function readAnimeListFromContent(): Promise<Anime[]> {
   const dir = path.join(process.cwd(), 'content', 'anime')
-  const files = await fs.readdir(dir).catch(() => [])
+  let files: string[] = []
+  try {
+    files = await fs.readdir(dir)
+  } catch {
+    return []
+  }
   const jsonFiles = files.filter((name) => name.endsWith('.json'))
 
   const rows = await Promise.all(
     jsonFiles.map(async (name) => {
-      const raw = await fs.readFile(path.join(dir, name), 'utf-8').catch(() => '')
-      if (!raw) return null
       try {
+        const raw = await fs.readFile(path.join(dir, name), 'utf-8')
+        if (!raw) return null
         return JSON.parse(raw) as Anime
       } catch {
         return null
