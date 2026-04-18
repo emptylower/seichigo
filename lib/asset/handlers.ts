@@ -46,6 +46,15 @@ function sanitizeFilename(value: string | null | undefined, fallback: string): s
   return cleaned || fallback
 }
 
+function getRuntimeCache(): Cache | null {
+  const runtimeCaches = (globalThis as typeof globalThis & {
+    caches?: { default?: Cache }
+  }).caches
+
+  if (!runtimeCaches?.default) return null
+  return runtimeCaches.default
+}
+
 export function createPostAssetsHandler(options: {
   assetRepo: AssetRepo
   getSession: GetSession
@@ -140,6 +149,12 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
         return null
       }
     })()
+    const runtimeCache = requestUrl ? getRuntimeCache() : null
+
+    if (runtimeCache && requestUrl) {
+      const cached = await runtimeCache.match(requestUrl.toString()).catch(() => null)
+      if (cached) return cached
+    }
 
     const variant = requestUrl ? parseImageVariantRequest(requestUrl) : null
     const hasVariant = Boolean(variant)
@@ -151,7 +166,11 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
         const rendered = await renderWebpVariant(asset.bytes, variant!)
         headers.set('content-type', 'image/webp')
         headers.set('cache-control', 'public, max-age=31536000, immutable')
-        return new Response(toArrayBuffer(rendered), { status: 200, headers })
+        const response = new Response(toArrayBuffer(rendered), { status: 200, headers })
+        if (runtimeCache && requestUrl) {
+          await runtimeCache.put(requestUrl.toString(), response.clone()).catch(() => undefined)
+        }
+        return response
       } catch {
         // Fallback to original bytes (compat over failure).
       }
@@ -159,7 +178,11 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
 
     headers.set('content-type', asset.contentType || 'application/octet-stream')
     headers.set('cache-control', 'public, max-age=31536000, immutable')
-    return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
+    const response = new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
+    if (runtimeCache && requestUrl) {
+      await runtimeCache.put(requestUrl.toString(), response.clone()).catch(() => undefined)
+    }
+    return response
   }
 }
 

@@ -18,6 +18,7 @@ import { useMapStyleFailover } from './useMapStyleFailover'
 import { usePanoramaController } from './usePanoramaController'
 import { usePointAndRangeLayers } from './usePointAndRangeLayers'
 import { useWarmupProgressState } from './useWarmupProgressState'
+import { beginFirstViewSession, markFirstViewAnchor } from './firstView'
 import {
   L,
   createEmptyWarmupTaskProgress,
@@ -94,6 +95,8 @@ export function useAnitabiMapController(
   const firstOpenPointVisibleRecordedRef = useRef(false)
   const firstOpenPointGuardTimerRef = useRef<number | null>(null)
   const warmupMetricRef = useRef<WarmupMetrics>({})
+  const firstViewMapShellReadyMarkedRef = useRef(false)
+  const firstViewBootstrapReadyMarkedRef = useRef(false)
   const warmupRunTokenRef = useRef(0)
   const warmupBlockingUiRef = useRef(true)
   const mapInitWaitersRef = useRef<Array<() => void>>([])
@@ -172,7 +175,7 @@ export function useAnitabiMapController(
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
   const [panoramaLoading, setPanoramaLoading] = useState(false)
   const [panoramaProgress, setPanoramaProgress] = useState(0)
-  const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string } | null>(null)
+  const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string; fallbackSrc?: string | null } | null>(null)
   const [imageSaving, setImageSaving] = useState(false)
   const [imageSaveError, setImageSaveError] = useState<string | null>(null)
   const [showCheckInCard, setShowCheckInCard] = useState(false)
@@ -216,6 +219,24 @@ export function useAnitabiMapController(
   useEffect(() => {
     warmupTaskProgressRef.current = warmupTaskProgress
   }, [warmupTaskProgress])
+
+  useEffect(() => {
+    beginFirstViewSession(warmupMetricRef, `map-first-view:${locale}`)
+    firstViewMapShellReadyMarkedRef.current = false
+    firstViewBootstrapReadyMarkedRef.current = false
+  }, [locale])
+
+  useEffect(() => {
+    if (!mapReady || firstViewMapShellReadyMarkedRef.current) return
+    firstViewMapShellReadyMarkedRef.current = true
+    markFirstViewAnchor(warmupMetricRef, 'map_shell_ready')
+  }, [mapReady])
+
+  useEffect(() => {
+    if (!bootstrap?.cards?.length || firstViewBootstrapReadyMarkedRef.current) return
+    firstViewBootstrapReadyMarkedRef.current = true
+    markFirstViewAnchor(warmupMetricRef, 'bootstrap_ready')
+  }, [bootstrap])
 
   const {
     detailPoints,

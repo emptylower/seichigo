@@ -6,6 +6,7 @@ import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import CheckInCard from '@/components/share/CheckInCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 import RouteBookCard from '@/components/share/RouteBookCard'
 import { L, LOCATION_DIALOG_DISMISSED_KEY, type RouteBookListItem } from './shared'
 
@@ -13,6 +14,7 @@ type ImagePreview = {
   src: string
   name: string
   saveUrl: string
+  fallbackSrc?: string | null
 }
 
 type MapDialogsProps = {
@@ -230,11 +232,31 @@ export default function MapDialogs(props: MapDialogsProps) {
             ) : null}
             {imagePreview?.src ? (
               <div className="max-h-[78dvh] overflow-auto rounded-lg bg-slate-100 p-1 sm:p-2">
-                <img
-                  src={imagePreview.src}
-                  alt={imagePreview.name || label.previewImage}
-                  className="mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain"
-                />
+                <div className="relative mx-auto min-h-[220px] min-w-[280px]">
+                  {imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? (
+                    <img
+                      src={imagePreview.fallbackSrc}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 z-0 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain opacity-90"
+                    />
+                  ) : null}
+                  <ResilientMapImage
+                    src={imagePreview.src}
+                    alt={imagePreview.name || label.previewImage}
+                    className="relative z-10 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain"
+                    kind="point-preview"
+                    loading="eager"
+                    decoding="async"
+                    fallback={
+                      imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? null : (
+                        <div className="grid min-h-[220px] min-w-[280px] place-items-center rounded-lg bg-slate-200 px-4 text-xs font-medium text-slate-500">
+                          {label.previewImage}
+                        </div>
+                      )
+                    }
+                  />
+                </div>
               </div>
             ) : null}
           </Dialog.Content>

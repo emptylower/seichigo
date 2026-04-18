@@ -1,4 +1,4 @@
-import { getAllPosts } from '@/lib/mdx/getAllPosts'
+import { getSnapshotPostFrontmatters } from '@/lib/mdx/publicSnapshot'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNotice'
 import { getAnimeById } from '@/lib/anime/getAllAnime'
@@ -15,8 +15,10 @@ import ArticleShareButtons from '@/components/content/ArticleShareButtons'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import EmergencyNotice from '@/components/public/EmergencyNotice'
 import ArticleToc from '@/components/toc/ArticleToc'
 import type { Metadata } from 'next'
+import { resolvePublicOverrideForPost } from '@/lib/publicOverride/service'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 export const revalidate = 3600
@@ -62,12 +64,26 @@ function encodeAnimeIdForPath(id: string): string {
 }
 
 export async function generateStaticParams() {
-  const posts = await getAllPosts('zh')
+  const posts = await getSnapshotPostFrontmatters('zh')
   return posts.map((p) => ({ slug: p.slug }))
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
+  const override = await resolvePublicOverrideForPost(slug, 'en')
+  if (override?.action === 'hide') {
+    return { title: 'Post unavailable', robots: { index: false, follow: false } }
+  }
+  if (override?.action === 'redirect') {
+    return { title: 'Content moved', robots: { index: false, follow: false } }
+  }
+  if (override?.action === 'replace-with-emergency-copy') {
+    return {
+      title: override.title || 'Emergency notice',
+      description: override.bodyText || 'Content temporarily replaced',
+      robots: { index: false, follow: false },
+    }
+  }
   // Try to find English translation first, fallback to Chinese
   let found = await getPublicPostBySlug(slug, 'en')
   const hasEnTranslation = !!found
@@ -133,6 +149,26 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function PostEnPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const override = await resolvePublicOverrideForPost(slug, 'en')
+  if (override?.action === 'hide') {
+    return notFound()
+  }
+  if (override?.action === 'redirect' && override.redirectUrl) {
+    permanentRedirect(override.redirectUrl)
+  }
+  if (override?.action === 'replace-with-emergency-copy' && override.title && override.bodyText) {
+    return (
+      <div className="mx-auto w-full max-w-5xl px-6 py-12 lg:px-10">
+        <EmergencyNotice
+          title={override.title}
+          bodyText={override.bodyText}
+          ctaLabel={override.ctaLabel}
+          ctaHref={override.ctaHref}
+          badgeLabel="Emergency Notice"
+        />
+      </div>
+    )
+  }
   
   // Try to find English translation first, fallback to Chinese
   let found = await getPublicPostBySlug(slug, 'en')
@@ -333,7 +369,7 @@ export default async function PostEnPage({ params }: { params: Promise<{ slug: s
             </div>
             <div className="mt-6" />
             {found.source === 'mdx' ? (
-              found.post.content
+              found.post.contentHtml ? <div dangerouslySetInnerHTML={{ __html: found.post.contentHtml }} /> : found.post.content
             ) : (
               <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
             )}

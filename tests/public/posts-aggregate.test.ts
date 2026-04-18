@@ -62,6 +62,26 @@ describe('public posts aggregation', () => {
     expect(list.map((x) => x.path)).toEqual([`/posts/db-1`, '/posts/mdx-1'])
   })
 
+  it('getAllPublicPosts: falls back to DB when the MDX provider throws a worker fs error', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'db-worker-safe', title: 'DB Worker Safe' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-03T00:00:00.000Z') })
+
+    const mdx = {
+      async getAllPosts() {
+        throw new Error('[unenv] fs.readdir is not implemented yet!')
+      },
+      async getPostBySlug() {
+        return null
+      },
+    }
+
+    const list = await getAllPublicPosts('zh', { mdx, articleRepo: repo })
+
+    expect(list.map((x) => x.path)).toEqual(['/posts/db-worker-safe'])
+    expect(list[0]?.source).toBe('db')
+  })
+
   it('getAllPublicPosts: keeps order by first published time (ignores lastApprovedAt bumps)', async () => {
     const repo = new InMemoryArticleRepo()
 
@@ -134,6 +154,26 @@ describe('public posts aggregation', () => {
 
     expect(found?.source).toBe('db')
     expect(found && found.source === 'db' ? found.article.title : null).toBe('DB Only')
+  })
+
+  it('getPublicPostBySlug: falls through to DB when the MDX provider throws a worker fs error', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'db-worker-fallback', title: 'DB Worker Fallback' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const mdx = {
+      async getAllPosts() {
+        return []
+      },
+      async getPostBySlug() {
+        throw new Error('[unenv] fs.readFile is not implemented yet!')
+      },
+    }
+
+    const found = await getPublicPostBySlug('db-worker-fallback', 'zh', { mdx, articleRepo: repo })
+
+    expect(found?.source).toBe('db')
+    expect(found && found.source === 'db' ? found.article.slug : null).toBe('db-worker-fallback')
   })
 
   it('getPublicPostBySlug: id-only and id-slug key both resolve DB', async () => {

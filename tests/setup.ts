@@ -15,6 +15,7 @@ vi.mock('@/lib/db/prisma', () => {
     submissionCity: { findMany: noop, createMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
     favorite: { findUnique: async () => null, create: async () => ({}), delete: async () => ({}) },
     mdxFavorite: { findUnique: async () => null, create: async () => ({}), delete: async () => ({}) },
+    publicOverride: { findMany: noop, create: async () => ({}), delete: async () => ({}) },
     $transaction: async (fn: any) => fn(prisma),
     $disconnect: async () => {},
   }

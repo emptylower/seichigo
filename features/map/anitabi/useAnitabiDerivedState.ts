@@ -4,6 +4,7 @@ import {
   isValidGeoPair,
   looksLikeImageUrl,
   matchPointId,
+  normalizePointInlineImageUrl,
   normalizePointImageSaveUrl,
   normalizePointImageUrl,
   resolvePanoramaEmbed,
@@ -91,15 +92,22 @@ export function useAnitabiDerivedState(ctx: any) {
   }, [selectedPoint])
 
   const selectedPointImage = useMemo(() => {
-    if (!selectedPoint) return { previewUrl: null as string | null, downloadUrl: null as string | null }
+    if (!selectedPoint) {
+      return {
+        inlineUrl: null as string | null,
+        previewUrl: null as string | null,
+        downloadUrl: null as string | null,
+      }
+    }
 
+    const inlineUrl = normalizePointInlineImageUrl(selectedPoint.image)
     const previewUrl = normalizePointImageUrl(selectedPoint.image)
     const originUrl = String(selectedPoint.originUrl || '').trim()
     const downloadUrl = looksLikeImageUrl(originUrl)
       ? normalizePointImageSaveUrl(originUrl)
       : normalizePointImageSaveUrl(selectedPoint.image)
 
-    return { previewUrl, downloadUrl }
+    return { inlineUrl, previewUrl, downloadUrl }
   }, [selectedPoint])
 
   const routeSummary = useMemo(() => {

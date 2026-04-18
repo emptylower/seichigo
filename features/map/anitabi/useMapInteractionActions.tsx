@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import maplibregl from 'maplibre-gl'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 import type { UserLocation } from './shared'
 import {
   DESKTOP_BREAKPOINT,
@@ -134,13 +135,24 @@ export function useMapInteractionActions(ctx: any) {
     }
   }, [selectedPointPanorama])
 
-  const openImagePreview = useCallback((imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null) => {
+  const openImagePreview = useCallback((
+    imageUrl: string | null | undefined,
+    pointName: string,
+    saveUrl?: string | null,
+    fallbackSrc?: string | null,
+  ) => {
     const src = String(imageUrl || '').trim()
     if (!src) return
     const saveTarget = String(saveUrl || '').trim() || src
+    const fallbackTarget = String(fallbackSrc || '').trim()
     setImageSaving(false)
     setImageSaveError(null)
-    setImagePreview({ src, name: pointName, saveUrl: saveTarget })
+    setImagePreview({
+      src,
+      name: pointName,
+      saveUrl: saveTarget,
+      fallbackSrc: fallbackTarget && fallbackTarget !== src ? fallbackTarget : null,
+    })
   }, [])
 
   const onImagePreviewOpenChange = useCallback((open: boolean) => {
@@ -152,7 +164,13 @@ export function useMapInteractionActions(ctx: any) {
   }, [])
 
   const renderPointImage = useCallback(
-    (imageUrl: string | null | undefined, pointName: string, saveUrl?: string | null, eager = false) => {
+    (
+      imageUrl: string | null | undefined,
+      pointName: string,
+      saveUrl?: string | null,
+      eager = false,
+      previewImageUrl?: string | null,
+    ) => {
       const src = String(imageUrl || '').trim()
       if (!src) {
         return (
@@ -166,19 +184,20 @@ export function useMapInteractionActions(ctx: any) {
         <button
           type="button"
           className="group relative block h-40 w-full overflow-hidden rounded-md"
-          onClick={() => openImagePreview(src, pointName, saveUrl)}
+          onClick={() => openImagePreview(previewImageUrl || src, pointName, saveUrl, src)}
           title={label.previewImage}
           aria-label={label.previewImage}
         >
-          <img
+          <ResilientMapImage
             src={src}
             alt={pointName}
             width={640}
             height={360}
             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.01]"
             loading={eager ? 'eager' : 'lazy'}
-            fetchPriority={eager ? 'high' : 'auto'}
             decoding="async"
+            kind="point"
+            fallback={<div className="h-full w-full bg-slate-200" />}
           />
           <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded bg-black/60 px-2 py-0.5 text-[11px] text-white">
             {label.previewImage}

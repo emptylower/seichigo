@@ -40,5 +40,6 @@ export type PostFrontmatter = {
 
 export type Post = {
   frontmatter: PostFrontmatter
-  content: React.ReactNode
+  content?: React.ReactNode | null
+  contentHtml?: string | null
 }

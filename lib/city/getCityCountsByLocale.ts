@@ -1,8 +1,9 @@
+import { unstable_cache } from 'next/cache'
 import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/db'
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
-import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 
 type CityCountsByLocale = {
@@ -10,7 +11,7 @@ type CityCountsByLocale = {
   counts: Record<string, number>
 }
 
-export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
+async function loadCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
   const cities = await listCitiesForIndex().catch(() => [])
   if (!cities.length) return { cities: [], counts: {} }
 
@@ -32,21 +33,31 @@ export async function getCityCountsByLocale(locale: SupportedLocale): Promise<Ci
     if (c.name_ja) aliasToCityId.set(normalizeCityAlias(c.name_ja), c.id)
   }
 
-  const mdxPosts = await getAllMdxPosts(locale).catch(() => [])
-  const mdxCounts: Record<string, number> = {}
-  for (const p of mdxPosts) {
+  const publicPosts = await getAllPublicPosts(locale).catch(() => [])
+  const publicCounts: Record<string, number> = {}
+  for (const p of publicPosts) {
     if (isSeoSpokePost(p)) continue
     const norm = normalizeCityAlias(String((p as any).city || ''))
     if (!norm) continue
     const cityId = aliasToCityId.get(norm)
     if (!cityId) continue
-    mdxCounts[cityId] = (mdxCounts[cityId] || 0) + 1
+    publicCounts[cityId] = (publicCounts[cityId] || 0) + 1
   }
 
   const counts: Record<string, number> = {}
   for (const c of cities) {
-    counts[c.id] = (dbCounts[c.id] || 0) + (mdxCounts[c.id] || 0)
+    counts[c.id] = Math.max(dbCounts[c.id] || 0, publicCounts[c.id] || 0)
   }
 
   return { cities, counts }
+}
+
+const getCachedCityCountsByLocale = unstable_cache(
+  async (locale: SupportedLocale) => loadCityCountsByLocale(locale),
+  ['city:getCityCountsByLocale'],
+  { revalidate: 300 }
+)
+
+export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
+  return getCachedCityCountsByLocale(locale)
 }

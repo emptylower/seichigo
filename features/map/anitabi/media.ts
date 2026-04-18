@@ -31,6 +31,7 @@ import type {
   PointFeatureProperties,
   UrlState,
 } from './shared'
+import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 
 function parseUrlState(): UrlState {
   if (typeof window === 'undefined') {
@@ -125,6 +126,17 @@ function normalizePointImageUrl(input: string | null | undefined): string | null
       }
     }
     return url.toString()
+  } catch {
+    return raw
+  }
+}
+
+function normalizePointInlineImageUrl(input: string | null | undefined): string | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+
+  try {
+    return toMapDisplayImageUrl(raw, { kind: 'point-thumbnail' })
   } catch {
     return raw
   }
@@ -662,6 +674,7 @@ export {
   sanitizeDownloadFileNameBase,
   parseContentDispositionFilename,
   extensionFromMimeType,
+  normalizePointInlineImageUrl,
   normalizePointImageUrl,
   normalizePointImageSaveUrl,
   normalizeCoverImageUrl,

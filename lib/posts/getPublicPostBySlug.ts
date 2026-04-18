@@ -1,6 +1,6 @@
 import type { ArticleRepo } from '@/lib/article/repo'
 import type { Post } from '@/lib/mdx/types'
-import { getPostBySlug as getMdxPostBySlug } from '@/lib/mdx/getPostBySlug'
+import { getSnapshotPostBySlug } from '@/lib/mdx/publicSnapshot'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
 import type { PublicPost } from './types'
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
@@ -67,7 +67,7 @@ export async function getPublicPostBySlug(
   const trimmed = decoded.trim()
   if (!trimmed) return null
 
-  const mdx = options?.mdx ?? { getPostBySlug: getMdxPostBySlug }
+  const mdx = options?.mdx ?? { getPostBySlug: getSnapshotPostBySlug }
   for (const candidate of uniqueNonEmpty([trimmed, raw.trim()])) {
     const mdxPost = await mdx.getPostBySlug(candidate, language).catch(() => null)
     if (mdxPost) return { source: 'mdx', post: mdxPost }

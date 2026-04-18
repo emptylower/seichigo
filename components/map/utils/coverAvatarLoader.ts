@@ -1,4 +1,4 @@
-import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+import { getMapDisplayImageCandidates, toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface MapLike {
   addImage(id: string, data: unknown, options?: { pixelRatio?: number }): void
@@ -15,11 +15,14 @@ export type CoverAvatarCandidate = {
 export interface CoverAvatarLoaderOptions {
   map: MapLike
   maxLoaded?: number
+  firstViewTrackedLimit?: number
+  onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
+  onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
 }
 
 const DEFAULT_MAX_LOADED = 160
 const MAX_CONCURRENT_LOADS = 6
-const FAILED_RETRY_COOLDOWN_MS = 180_000
+const FAILED_RETRY_COOLDOWN_MS = 8_000
 const AVATAR_SIZE = 72
 const AVATAR_BORDER = 3
 const EXTRA_ALLOWED_COVER_HOSTS = ['anitabi.cn', 'bgm.tv']
@@ -27,6 +30,9 @@ const EXTRA_ALLOWED_COVER_HOSTS = ['anitabi.cn', 'bgm.tv']
 export class CoverAvatarLoader {
   private readonly map: MapLike
   private readonly maxLoaded: number
+  private readonly firstViewTrackedLimit: number
+  private readonly onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
+  private readonly onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
   private readonly lru = new Map<string, number>()
   private readonly failedAt = new Map<string, number>()
   private readonly loading = new Set<string>()
@@ -35,13 +41,17 @@ export class CoverAvatarLoader {
   constructor(options: CoverAvatarLoaderOptions) {
     this.map = options.map
     this.maxLoaded = options.maxLoaded ?? DEFAULT_MAX_LOADED
+    this.firstViewTrackedLimit = Math.max(0, options.firstViewTrackedLimit ?? 0)
+    this.onTrackedSlotRequestStart = options.onTrackedSlotRequestStart
+    this.onTrackedSlotSettle = options.onTrackedSlotSettle
   }
 
   async updateViewport(candidates: CoverAvatarCandidate[]): Promise<Set<string>> {
     const seen = new Set<number>()
-    const toLoad: { imageId: string; url: string }[] = []
+    const toLoad: { imageId: string; urls: string[]; tracked: boolean }[] = []
     const now = Date.now()
     const candidateLimit = Math.max(1, this.maxLoaded)
+    let visibleIndex = 0
 
     for (const candidate of candidates) {
       if (seen.size >= candidateLimit) break
@@ -53,14 +63,27 @@ export class CoverAvatarLoader {
       if (!this.isAllowedCoverHost(rawCover)) continue
 
       const imageId = `cover-${candidate.bangumiId}`
+      const candidateUrls = getMapDisplayImageCandidates(rawCover, { kind: 'cover' })
+      const safeUrl = candidateUrls[0] || toMapDisplayImageUrl(rawCover, { kind: 'cover' })
+      if (!safeUrl || candidateUrls.length === 0) continue
+      const tracked = visibleIndex < this.firstViewTrackedLimit
+      visibleIndex += 1
       const failedAt = this.failedAt.get(imageId)
-      if (failedAt && now - failedAt < FAILED_RETRY_COOLDOWN_MS) continue
-      if (failedAt) this.failedAt.delete(imageId)
+      if (failedAt != null && now - failedAt < FAILED_RETRY_COOLDOWN_MS) {
+        if (tracked) {
+          this.onTrackedSlotSettle?.({ slotKey: imageId, src: safeUrl, state: 'fallback' })
+        }
+        continue
+      }
+      if (failedAt != null) this.failedAt.delete(imageId)
       const imageStillOnMap = typeof this.map.hasImage === 'function'
         ? this.map.hasImage(imageId)
         : true
       if (this.lru.has(imageId) && imageStillOnMap) {
         this.lru.set(imageId, ++this.accessCounter)
+        if (tracked) {
+          this.onTrackedSlotSettle?.({ slotKey: imageId, src: safeUrl, state: 'visible' })
+        }
         continue
       }
       if (this.lru.has(imageId) && !imageStillOnMap) {
@@ -68,10 +91,8 @@ export class CoverAvatarLoader {
       }
       if (this.loading.has(imageId)) continue
 
-      const safeUrl = toCanvasSafeImageUrl(rawCover, `cover-${candidate.bangumiId}.jpg`)
-      if (!safeUrl) continue
       this.loading.add(imageId)
-      toLoad.push({ imageId, url: safeUrl })
+      toLoad.push({ imageId, urls: candidateUrls, tracked })
     }
 
     await this.loadBatch(toLoad)
@@ -79,14 +100,31 @@ export class CoverAvatarLoader {
     return new Set(this.lru.keys())
   }
 
-  private async loadBatch(items: Array<{ imageId: string; url: string }>): Promise<void> {
+  private async loadBatch(items: Array<{ imageId: string; urls: string[]; tracked: boolean }>): Promise<void> {
     let index = 0
 
     const worker = async (): Promise<void> => {
       while (index < items.length) {
         const current = items[index++]
         try {
-          const result = await this.map.loadImage(current.url)
+          if (current.tracked) {
+            this.onTrackedSlotRequestStart?.({ slotKey: current.imageId, src: current.urls[0] || '' })
+          }
+          let result: { data: unknown } | null = null
+          let finalUrl = current.urls[0] || ''
+          let lastError: unknown = null
+          for (const candidateUrl of current.urls) {
+            finalUrl = candidateUrl
+            try {
+              result = await this.map.loadImage(candidateUrl)
+              break
+            } catch (error) {
+              lastError = error
+            }
+          }
+          if (!result) {
+            throw lastError || new Error('load failed')
+          }
           const existsOnMap = typeof this.map.hasImage === 'function' ? this.map.hasImage(current.imageId) : false
           if (!existsOnMap) {
             const avatarData = this.toAvatarImageData(result.data)
@@ -98,8 +136,14 @@ export class CoverAvatarLoader {
           }
           this.lru.set(current.imageId, ++this.accessCounter)
           this.failedAt.delete(current.imageId)
+          if (current.tracked) {
+            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: finalUrl, state: 'visible' })
+          }
         } catch {
           this.failedAt.set(current.imageId, Date.now())
+          if (current.tracked) {
+            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: current.urls.at(-1) || current.urls[0] || '', state: 'fallback' })
+          }
           // Skip failed images; dots and labels remain as fallback.
         } finally {
           this.loading.delete(current.imageId)

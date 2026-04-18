@@ -174,10 +174,11 @@ export default function AnitabiMapLayout(props: any) {
       stateFilter={stateFilter}
       detailPoints={detailPoints}
       selectedPointImage={renderPointImage(
-        selectedPointImage.previewUrl,
+        selectedPointImage.inlineUrl,
         selectedPoint?.name || '',
         selectedPointImage.downloadUrl,
-        true
+        true,
+        selectedPointImage.previewUrl,
       )}
       showWantToGoAction={showWantToGoAction}
       checkedInSelectedPoint={Boolean(
@@ -273,7 +274,7 @@ export default function AnitabiMapLayout(props: any) {
     <PointPopupCard
       point={selectedPoint}
       anchor={mobilePointPopupAnchor}
-      imageUrl={selectedPointImage.previewUrl}
+      imageUrl={selectedPointImage.inlineUrl}
       distanceLabel={selectedPointDistanceMeters != null ? `~${formatDistance(selectedPointDistanceMeters)}` : null}
       googleHref={geoLink(selectedPoint)}
       labels={{

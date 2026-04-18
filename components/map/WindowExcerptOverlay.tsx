@@ -1,6 +1,7 @@
 'use client'
 
 import type { WindowExcerptBangumiItem, WindowExcerptPointItem } from '@/features/map/anitabi/windowExcerpt'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 
 type Props = {
   bangumis: WindowExcerptBangumiItem[]
@@ -49,7 +50,18 @@ function BangumiAvatar({
       style={{ boxShadow: active ? `0 0 0 2px ${item.color}66` : undefined }}
     >
       {item.coverUrl ? (
-        <img src={item.coverUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+        <ResilientMapImage
+          src={item.coverUrl}
+          alt={item.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          kind="cover"
+          fallback={
+            <div className="grid h-full w-full place-items-center text-xs font-semibold text-slate-600">
+              {item.title.slice(0, 1)}
+            </div>
+          }
+        />
       ) : (
         <div className="grid h-full w-full place-items-center text-xs font-semibold text-slate-600">
           {item.title.slice(0, 1)}
@@ -92,11 +104,13 @@ function PointCard({
       style={{ backgroundColor: compact ? undefined : `${item.bangumiColor}10` }}
       title={item.pointName}
     >
-      <img
+      <ResilientMapImage
         src={item.imageUrl}
         alt={item.pointName}
         className={`${compact ? 'h-24' : 'h-20'} w-full object-cover transition group-hover:scale-[1.03]`}
         loading="lazy"
+        kind="point"
+        fallback={<div className={`${compact ? 'h-24' : 'h-20'} w-full bg-slate-200`} />}
       />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-2.5 pb-2 pt-6 text-white">
         <div className={`${compact ? 'line-clamp-2 text-[11px]' : 'line-clamp-1 text-[11px]'} font-medium`}>

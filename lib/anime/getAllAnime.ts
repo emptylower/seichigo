@@ -1,6 +1,5 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { unstable_cache } from 'next/cache'
+import { getBundledAnimeById, getBundledAnimeList } from './publicSnapshot'
 
 export type Anime = {
   id: string
@@ -18,30 +17,11 @@ export type Anime = {
 
 export type GetAllAnimeOptions = {
   includeHidden?: boolean
+  baseList?: Anime[]
 }
 
-async function readAnimeListFromContent(): Promise<Anime[]> {
-  const dir = path.join(process.cwd(), 'content', 'anime')
-  const files = await fs.readdir(dir).catch(() => [])
-  const jsonFiles = files.filter((name) => name.endsWith('.json'))
-
-  const rows = await Promise.all(
-    jsonFiles.map(async (name) => {
-      const raw = await fs.readFile(path.join(dir, name), 'utf-8').catch(() => '')
-      if (!raw) return null
-      try {
-        return JSON.parse(raw) as Anime
-      } catch {
-        return null
-      }
-    })
-  )
-
-  return rows.filter((row): row is Anime => Boolean(row && row.id))
-}
-
-async function loadMergedAnime(includeHidden: boolean): Promise<Anime[]> {
-  const list = await readAnimeListFromContent()
+async function loadMergedAnime(includeHidden: boolean, baseList?: Anime[]): Promise<Anime[]> {
+  const list = baseList ?? getBundledAnimeList()
   const byId = new Map<string, Anime>()
 
   for (const anime of list) {
@@ -109,18 +89,17 @@ const getCachedMergedAnime = unstable_cache(
 )
 
 export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]> {
+  if (options?.baseList) {
+    return loadMergedAnime(Boolean(options?.includeHidden), options.baseList)
+  }
   return getCachedMergedAnime(Boolean(options?.includeHidden))
 }
 
 export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Promise<Anime | null> {
-  const dir = path.join(process.cwd(), 'content', 'anime')
-  let fromJson: Anime | null = null
-  try {
-    const raw = await fs.readFile(path.join(dir, `${id}.json`), 'utf-8')
-    fromJson = JSON.parse(raw)
-  } catch {
-    // ignore
-  }
+  const baseList = options?.baseList
+  const fromJson = baseList
+    ? baseList.find((anime) => anime.id === id) ?? null
+    : getBundledAnimeById(id)
 
   if (process.env.DATABASE_URL) {
     try {

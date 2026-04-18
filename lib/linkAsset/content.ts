@@ -1,5 +1,4 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
+import { getBundledLinkAssetMarkdown } from './static'
 
 function normalizeContentPath(input: string): string | null {
   const raw = String(input || '').trim()
@@ -12,8 +11,5 @@ function normalizeContentPath(input: string): string | null {
 export async function readLinkAssetMarkdown(contentFile: string | undefined): Promise<string | null> {
   const normalized = typeof contentFile === 'string' ? normalizeContentPath(contentFile) : null
   if (!normalized) return null
-
-  const fsPath = path.join(process.cwd(), normalized.replace(/^[\/]+/, ''))
-  const raw = await fs.readFile(fsPath, 'utf-8').catch(() => null)
-  return raw
+  return getBundledLinkAssetMarkdown(normalized)
 }

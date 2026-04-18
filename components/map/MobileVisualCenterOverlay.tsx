@@ -1,6 +1,7 @@
 'use client'
 
 import type { WindowExcerptBangumiItem, WindowExcerptPointItem } from '@/features/map/anitabi/windowExcerpt'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 
 type BangumiRowProps = {
   bangumis: WindowExcerptBangumiItem[]
@@ -60,7 +61,18 @@ export function MobileVisualCenterBangumiRow({
               style={{ boxShadow: active ? `0 0 0 2px ${item.color}55` : undefined }}
             >
               {item.coverUrl ? (
-                <img src={item.coverUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+                <ResilientMapImage
+                  src={item.coverUrl}
+                  alt={item.title}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  kind="cover"
+                  fallback={
+                    <div className="grid h-full w-full place-items-center text-xs font-semibold text-slate-600">
+                      {item.title.slice(0, 1)}
+                    </div>
+                  }
+                />
               ) : (
                 <div className="grid h-full w-full place-items-center text-xs font-semibold text-slate-600">
                   {item.title.slice(0, 1)}
@@ -105,11 +117,13 @@ export function MobileVisualCenterPointStrip({
               }`}
               title={item.pointName}
             >
-              <img
+              <ResilientMapImage
                 src={item.imageUrl}
                 alt={item.pointName}
                 className="h-24 w-full object-cover transition group-hover:scale-[1.03]"
                 loading="lazy"
+                kind="point"
+                fallback={<div className="h-24 w-full bg-slate-200" />}
               />
               <div className="absolute left-2.5 top-2.5 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm">
                 {item.bangumiTitle}

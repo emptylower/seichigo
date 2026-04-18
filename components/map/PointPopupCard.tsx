@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import { ExternalLink, Layers3, MapPinned, X } from 'lucide-react'
 import type { AnitabiPointDTO } from '@/lib/anitabi/types'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 
 export type PointPopupAnchor = {
   x: number
@@ -112,7 +113,7 @@ export function PointPopupCard({
 
           <div className="relative aspect-[16/10] overflow-hidden bg-slate-200">
             {imageSrc ? (
-              <img
+              <ResilientMapImage
                 src={imageSrc}
                 alt={displayName}
                 width={496}
@@ -120,6 +121,12 @@ export function PointPopupCard({
                 className="h-full w-full object-cover"
                 loading="eager"
                 decoding="async"
+                kind="point"
+                fallback={
+                  <div className="grid h-full w-full place-items-center bg-slate-200 text-xs font-medium text-slate-500">
+                    {labels.pointDetail}
+                  </div>
+                }
               />
             ) : (
               <div className="grid h-full w-full place-items-center bg-slate-200 text-xs font-medium text-slate-500">

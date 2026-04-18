@@ -252,10 +252,51 @@ describe('ThumbnailLoader', () => {
       return { data: { width: 64, height: 64, url: '' } }
     })
 
-    const features = makeFeatures(10)
+    const features = Array.from({ length: 10 }, (_, index) =>
+      makeFeature(`p${index + 1}`, `https://example.com/img/p${index + 1}.jpg`)
+    )
     const loaded = await loader.updateViewport(features)
 
     // Half should succeed (odd calls)
     expect(loaded.size).toBe(5)
+  })
+
+  it('tracks first-view request and settlement callbacks for the prioritized slice', async () => {
+    const requestStart = vi.fn()
+    const settle = vi.fn()
+    loader = new ThumbnailLoader({
+      map: map as any,
+      maxLoaded: 200,
+      firstViewTrackedLimit: 2,
+      onTrackedSlotRequestStart: requestStart,
+      onTrackedSlotSettle: settle,
+    })
+
+    await loader.updateViewport(makeFeatures(4))
+
+    expect(requestStart.mock.calls.map((call) => call[0].slotKey)).toEqual(['thumb-p1', 'thumb-p2'])
+    expect(settle.mock.calls.map((call) => [call[0].slotKey, call[0].state])).toEqual([
+      ['thumb-p1', 'visible'],
+      ['thumb-p2', 'visible'],
+    ])
+  })
+
+  it('marks tracked thumbnail failures as stable fallback during cooldown', async () => {
+    const settle = vi.fn()
+    map.loadImage.mockImplementation(async () => {
+      throw new Error('Network error')
+    })
+    loader = new ThumbnailLoader({
+      map: map as any,
+      maxLoaded: 200,
+      firstViewTrackedLimit: 1,
+      onTrackedSlotSettle: settle,
+    })
+
+    await loader.updateViewport([makeFeature('p1', 'https://example.com/img/p1.jpg')])
+    await loader.updateViewport([makeFeature('p1', 'https://example.com/img/p1.jpg')])
+
+    expect(map.loadImage).toHaveBeenCalledTimes(1)
+    expect(settle.mock.calls.map((call) => call[0].state)).toEqual(['fallback', 'fallback'])
   })
 })

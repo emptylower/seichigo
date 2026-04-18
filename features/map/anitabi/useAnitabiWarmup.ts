@@ -5,6 +5,11 @@ import type {
   AnitabiPreloadChunkItemDTO,
   AnitabiPreloadManifestDTO,
 } from '@/lib/anitabi/types'
+import {
+  createFirstViewSlotKey,
+  getFirstViewTrackedSlotCount,
+  markFirstViewRequestStart,
+} from './firstView'
 import { withPromiseTimeout, createRequestSignalWithTimeout, yieldToMainThread, normalizeCoverImageUrl, normalizePointImageUrl, prefetchImageUrl, buildWarmDetail, getImageWarmupConcurrency } from './media'
 import {
   COMPLETE_MODE_SPRITE_BUDGET_MS,
@@ -479,18 +484,33 @@ export function useAnitabiWarmup(ctx: any) {
       if (signal?.aborted || !isActiveRun()) return
 
       const blockingImages = new Set<string>()
-      const queueCovers: string[] = []
-      const pushBlockingImage = (src: string | null | undefined, targetQueue: string[]) => {
+      const queueCovers: Array<{ src: string; slotKey: string | null }> = []
+      const pushBlockingImage = (
+        src: string | null | undefined,
+        targetQueue: Array<{ src: string; slotKey: string | null }>,
+        slotKey: string | null = null,
+      ) => {
         const value = String(src || '').trim()
         if (!value || blockingImages.has(value) || prefetchedPointImageUrls.has(value) || prefetchingPointImageUrls.has(value)) return
         if (blockingImages.size >= PRELOAD_IMAGE_BLOCKING_MAX) return
         blockingImages.add(value)
-        targetQueue.push(value)
+        targetQueue.push({ src: value, slotKey })
       }
 
       const preferredTabs: AnitabiMapTab[] = ['latest', 'recent', 'hot', 'nearby']
       const currentTabCards = tabCardsRef.current[ctx.tab] || []
-      for (const card of currentTabCards.slice(0, 40)) {
+      const firstViewTrackedCount = getFirstViewTrackedSlotCount(typeof window !== 'undefined' ? window.innerWidth : 1440)
+      const firstViewCards = currentTabCards.slice(0, firstViewTrackedCount)
+      const currentTabOverflow = currentTabCards.slice(firstViewTrackedCount, 40)
+
+      for (const card of firstViewCards) {
+        pushBlockingImage(
+          normalizeCoverImageUrl(card.cover),
+          queueCovers,
+          createFirstViewSlotKey('cover', card.id),
+        )
+      }
+      for (const card of currentTabOverflow) {
         pushBlockingImage(normalizeCoverImageUrl(card.cover), queueCovers)
       }
       for (const tabKey of preferredTabs) {
@@ -499,6 +519,7 @@ export function useAnitabiWarmup(ctx: any) {
           pushBlockingImage(normalizeCoverImageUrl(card.cover), queueCovers)
         }
       }
+      warmupMetricRef.current.first_view_warmup_cover_count = firstViewCards.length
 
       let done = 0
       let inFlight = 0
@@ -517,7 +538,7 @@ export function useAnitabiWarmup(ctx: any) {
           detail: `${label.preloadImages} (${clampedDone}/${total})`,
         })
       }
-      const runQueue = async (queue: string[], total: number) => {
+      const runQueue = async (queue: Array<{ src: string; slotKey: string | null }>, total: number) => {
         if (!queue.length || total <= 0) return
         warmupMetricRef.current.images_total = total
         warmupMetricRef.current.images_queue_remaining = queue.length
@@ -525,15 +546,23 @@ export function useAnitabiWarmup(ctx: any) {
         await Promise.all(Array.from({ length: workers }, async () => {
           for (;;) {
             if (signal?.aborted || Date.now() > deadline || !isActiveRun()) return
-            const src = queue.shift()
-            if (!src) return
+            const entry = queue.shift()
+            if (!entry) return
             warmupMetricRef.current.images_queue_remaining = queue.length
             inFlight += 1
             warmupMetricRef.current.images_inflight = inFlight
-            warmupMetricRef.current.images_last_src = src
+            warmupMetricRef.current.images_last_src = entry.src
             try {
+              if (entry.slotKey) {
+                markFirstViewRequestStart(warmupMetricRef, {
+                  slotKey: entry.slotKey,
+                  slotType: 'cover-avatar',
+                  src: entry.src,
+                  owner: 'warmup',
+                })
+              }
               await withPromiseTimeout(
-                prefetchImageUrl(src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
+                prefetchImageUrl(entry.src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
                 WARMUP_IMAGE_TIMEOUT_MS + 300,
                 undefined,
                 signal,
@@ -570,7 +599,7 @@ export function useAnitabiWarmup(ctx: any) {
         return
       }
 
-      const queueActive: string[] = []
+      const queueActive: Array<{ src: string; slotKey: string | null }> = []
       const activeId = ctx.activeBangumiIdRef.current
       if (activeId != null) {
         const item = warmPointIndexByBangumiIdRef.current.get(activeId) || null

@@ -45,6 +45,7 @@ model User {
   userPointPools       UserPointPool[]
   routeBooks           RouteBook[]
   badges               UserBadge[]
+  publicOverrides      PublicOverride[]
 }
 
 model Account {
@@ -154,6 +155,31 @@ model Article {
   @@index([status])
   @@index([status, updatedAt])
   @@index([translationGroupId])
+}
+
+model PublicOverride {
+  id                      String   @id @default(cuid())
+  targetType              String
+  targetKey               String
+  locale                  String?
+  action                  String
+  redirectUrl             String?  @db.Text
+  title                   String?  @db.Text
+  bodyText                String?  @db.Text
+  ctaLabel                String?  @db.Text
+  ctaHref                 String?  @db.Text
+  expiresAt               DateTime
+  rollbackSnapshotVersion String
+  note                    String?  @db.Text
+  createdById             String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetKey, locale, expiresAt])
+  @@index([expiresAt])
+  @@index([createdById])
 }
 
 model Favorite {

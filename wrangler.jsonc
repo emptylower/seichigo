@@ -7,6 +7,9 @@
     "nodejs_compat",
     "no_handle_cross_request_promise_resolution"
   ],
+  "images": {
+    "binding": "IMAGES"
+  },
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"

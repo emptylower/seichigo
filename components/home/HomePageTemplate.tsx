@@ -199,11 +199,12 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
                 <div className="flex flex-col items-center gap-5 md:flex-row md:items-start">
                   <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/10 shadow-inner ring-1 ring-white/20 backdrop-blur-md">
                     <Image
-                      src="/brand/app-logo.png"
+                      src="/brand/app-logo-64.png"
                       alt="SeichiGo App Logo"
                       width={56}
                       height={56}
                       className="rounded-xl shadow-lg"
+                      unoptimized
                     />
                   </span>
                   <div className="space-y-2 pt-1">

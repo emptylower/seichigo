@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
+import EmergencyNotice from '@/components/public/EmergencyNotice'
 import { getLinkAssetById } from '@/lib/linkAsset/getLinkAssetById'
 import { aggregateSpots } from '@/lib/linkAsset/aggregateSpots'
 import MapAssetView from '@/components/resources/MapAssetView'
 import ChecklistAssetView from '@/components/resources/ChecklistAssetView'
 import EtiquetteAssetView from '@/components/resources/EtiquetteAssetView'
+import { resolvePublicOverrideForResource } from '@/lib/publicOverride/service'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, buildRouteItemListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
@@ -14,6 +16,20 @@ export const revalidate = 3600
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
+  const override = await resolvePublicOverrideForResource(String(id || '').trim(), 'en')
+  if (override?.action === 'hide') {
+    return { title: 'Resource unavailable', robots: { index: false, follow: false } }
+  }
+  if (override?.action === 'redirect') {
+    return { title: 'Resource moved', robots: { index: false, follow: false } }
+  }
+  if (override?.action === 'replace-with-emergency-copy') {
+    return {
+      title: override.title || 'Emergency notice',
+      description: override.bodyText || 'Resource temporarily replaced',
+      robots: { index: false, follow: false },
+    }
+  }
   const asset = await getLinkAssetById(String(id || '').trim())
 
   if (!asset) {
@@ -52,6 +68,24 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function ResourceEnPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const override = await resolvePublicOverrideForResource(String(id || '').trim(), 'en')
+  if (override?.action === 'hide') return notFound()
+  if (override?.action === 'redirect' && override.redirectUrl) {
+    permanentRedirect(override.redirectUrl)
+  }
+  if (override?.action === 'replace-with-emergency-copy' && override.title && override.bodyText) {
+    return (
+      <div className="mx-auto w-full max-w-5xl px-6 py-12 lg:px-10">
+        <EmergencyNotice
+          title={override.title}
+          bodyText={override.bodyText}
+          ctaLabel={override.ctaLabel}
+          ctaHref={override.ctaHref}
+          badgeLabel="Emergency Notice"
+        />
+      </div>
+    )
+  }
   const asset = await getLinkAssetById(String(id || '').trim())
   if (!asset) return notFound()
 

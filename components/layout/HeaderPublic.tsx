@@ -26,12 +26,13 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
       <div className="mx-auto flex min-h-[var(--site-header-h)] max-w-5xl items-center justify-between gap-3 px-4 py-2 sm:gap-4">
         <Link href={prefixPath('/', locale)} prefetch={false} className="shrink-0 flex min-h-11 items-center gap-2">
           <Image
-            src="/brand/app-logo.png"
+            src="/brand/app-logo-64.png"
             alt="SeichiGo"
             width={32}
             height={32}
             className="h-8 w-8 rounded-md bg-white object-cover"
             priority
+            unoptimized
           />
           <span className="font-display text-lg">SeichiGo</span>
         </Link>

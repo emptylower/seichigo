@@ -28,6 +28,11 @@ import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import { computeWindowExcerpt } from './windowExcerpt'
 import { yieldToMainThread } from './media'
 import {
+  getFirstViewTrackedSlotCount,
+  markFirstViewRequestStart,
+  markFirstViewSettlement,
+} from './firstView'
+import {
   COMPLETE_AVATAR_MAX_ZOOM,
   COMPLETE_DETAIL_THEME_MAX_ZOOM,
   COMPLETE_DETAIL_THEME_MIN_ZOOM,
@@ -75,6 +80,26 @@ export function useCompleteMode(ctx: any) {
     warmupMetricRef,
     setCompleteModeLoading,
   } = ctx
+
+  const createTrackedMetricCallbacks = (slotType: 'point-thumbnail' | 'cover-avatar') => ({
+    onTrackedSlotRequestStart: ({ slotKey, src }: { slotKey: string; src: string }) => {
+      markFirstViewRequestStart(warmupMetricRef, {
+        slotKey,
+        slotType,
+        src,
+        owner: 'viewport-loader',
+      })
+    },
+    onTrackedSlotSettle: ({ slotKey, src, state }: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => {
+      markFirstViewSettlement(warmupMetricRef, {
+        slotKey,
+        slotType,
+        src,
+        owner: 'viewport-loader',
+        state,
+      })
+    },
+  })
 
   useEffect(() => {
     const flushCompleteMode = () => {
@@ -248,6 +273,8 @@ export function useCompleteMode(ctx: any) {
             completePointImageLoaderRef.current = new ThumbnailLoader({
               map,
               maxLoaded: isDesktopRef.current ? 140 : 80,
+              firstViewTrackedLimit: getFirstViewTrackedSlotCount(isDesktopRef.current ? 1440 : 390),
+              ...createTrackedMetricCallbacks('point-thumbnail'),
             })
           }
 
@@ -325,7 +352,11 @@ export function useCompleteMode(ctx: any) {
 
           const maxCandidates = isDesktopRef.current ? 120 : 72
           const candidates = Array.from(candidateByPointId.values())
-            .sort((a, b) => b.priority - a.priority)
+            .sort((a, b) => {
+              const priorityDelta = b.priority - a.priority
+              if (priorityDelta !== 0) return priorityDelta
+              return a.thumbnailKey.localeCompare(b.thumbnailKey)
+            })
             .slice(0, maxCandidates)
 
           if (candidates.length === 0) {
@@ -549,7 +580,12 @@ export function useCompleteMode(ctx: any) {
       }
       loadedCoverIdsRef.current = new Set()
       if (!coverAvatarLoaderRef.current) {
-        coverAvatarLoaderRef.current = new CoverAvatarLoader({ map, maxLoaded: COMPLETE_MODE_COVER_MAX_LOADED })
+        coverAvatarLoaderRef.current = new CoverAvatarLoader({
+          map,
+          maxLoaded: COMPLETE_MODE_COVER_MAX_LOADED,
+          firstViewTrackedLimit: getFirstViewTrackedSlotCount(isDesktopRef.current ? 1440 : 390),
+          ...createTrackedMetricCallbacks('cover-avatar'),
+        })
       }
 
       for (const [bangumiId, chunk] of warmPointIndexByBangumiIdRef.current.entries()) {

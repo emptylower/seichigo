@@ -1,9 +1,8 @@
 import { getCityBySlugOrRedirect } from '@/lib/city/db'
 import { normalizeCityAlias } from '@/lib/city/normalize'
-import { listPublishedDbPostsByCityId } from '@/lib/city/posts'
 import { prisma } from '@/lib/db/prisma'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
-import { getAllPosts as getAllMdxPosts } from '@/lib/mdx/getAllPosts'
+import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
@@ -38,6 +37,14 @@ function formatDateLabel(input: unknown): string {
   return `${y}-${m}-${d}`
 }
 
+function buildCityAliasSet(city: { slug: string; name_zh: string; name_en?: string | null; name_ja?: string | null }) {
+  return new Set(
+    [city.slug, city.name_zh, city.name_en || '', city.name_ja || '']
+      .map((value) => normalizeCityAlias(String(value || '')))
+      .filter(Boolean)
+  )
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
   const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
@@ -54,8 +61,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return { title: '未找到城市', robots: { index: false, follow: false } }
   }
 
-  // Fetch posts to get related anime names for SEO title
-  const cityPostsForMeta = await listPublishedDbPostsByCityId(city.id, 'zh').catch(() => [])
+  const aliasSet = buildCityAliasSet(city)
+  const cityPostsForMeta = (await getAllPublicPosts('zh').catch(() => [])).filter((post) => {
+    const norm = normalizeCityAlias(String((post as any).city || ''))
+    return norm ? aliasSet.has(norm) : false
+  })
   const uniqueAnimeIds = [...new Set(
     cityPostsForMeta
       .flatMap((p: any) => Array.isArray(p.animeIds) ? p.animeIds : [])
@@ -105,39 +115,17 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
   }
   if (!city) return notFound()
 
-  const dbPosts = await listPublishedDbPostsByCityId(city.id, 'zh').catch(() => [])
-
   const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch(() => [])
-  const aliasSet = new Set<string>()
+  const aliasSet = buildCityAliasSet(city)
   for (const r of aliasRows) {
     if (r?.aliasNorm) aliasSet.add(r.aliasNorm)
   }
-  aliasSet.add(normalizeCityAlias(city.slug))
-  aliasSet.add(normalizeCityAlias(city.name_zh))
-  if (city.name_en) aliasSet.add(normalizeCityAlias(city.name_en))
-  if (city.name_ja) aliasSet.add(normalizeCityAlias(city.name_ja))
 
-  const mdx = await getAllMdxPosts('zh').catch(() => [])
-  const mdxPosts = mdx
+  const posts = (await getAllPublicPosts('zh').catch(() => []))
     .filter((p) => {
       const norm = normalizeCityAlias(String((p as any).city || ''))
       return norm ? aliasSet.has(norm) : false
     })
-    .map((p) => ({
-      title: p.title,
-      path: `/posts/${p.slug}`,
-      animeIds: [p.animeId || 'unknown'].filter(Boolean),
-      city: p.city || '',
-      routeLength: p.routeLength,
-      tags: p.tags || [],
-      publishDate: p.publishDate,
-      cover: null,
-    }))
-
-  const byPath = new Map<string, any>()
-  for (const p of mdxPosts) byPath.set(p.path, p)
-  for (const p of dbPosts) byPath.set(p.path, p)
-  const posts = Array.from(byPath.values())
     .filter((p) => !isSeoSpokePost(p))
     .sort((a, b) => String(b.publishDate || '').localeCompare(String(a.publishDate || '')))
 

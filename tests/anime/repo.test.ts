@@ -2,10 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 
 const mocks = vi.hoisted(() => ({
-  fs: {
-    readdir: vi.fn(),
-    readFile: vi.fn(),
-  },
   prisma: {
     anime: {
       findMany: vi.fn(),
@@ -18,10 +14,6 @@ vi.mock('next/cache', () => ({
   unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
 }))
 
-vi.mock('node:fs/promises', () => ({
-  default: mocks.fs,
-}))
-
 vi.mock('@/lib/db/prisma', () => ({
   prisma: mocks.prisma,
 }))
@@ -32,15 +24,18 @@ describe('getAllAnime', () => {
     process.env.DATABASE_URL = 'mock'
   })
 
+  const baseList = [
+    { id: 'a', name: 'File A' },
+    { id: 'b', name: 'File B' },
+  ]
+
   it('merges file and db records', async () => {
-    mocks.fs.readdir.mockResolvedValue(['a.json'])
-    mocks.fs.readFile.mockResolvedValue(JSON.stringify({ id: 'a', name: 'File A' }))
     mocks.prisma.anime.findMany.mockResolvedValue([
       { id: 'a', name: 'DB A', hidden: false },
       { id: 'b', name: 'DB B', hidden: false },
     ])
 
-    const result = await getAllAnime()
+    const result = await getAllAnime({ baseList })
     expect(result).toHaveLength(2)
     const a = result.find((x) => x.id === 'a')
     expect(a?.name).toBe('DB A') // DB overrides file
@@ -49,42 +44,49 @@ describe('getAllAnime', () => {
   })
 
   it('hides records marked as hidden in DB', async () => {
-    mocks.fs.readdir.mockResolvedValue(['a.json', 'b.json'])
-    mocks.fs.readFile.mockImplementation(async (path: string) => {
-      if (path.includes('a.json')) return JSON.stringify({ id: 'a', name: 'File A' })
-      if (path.includes('b.json')) return JSON.stringify({ id: 'b', name: 'File B' })
-      return '{}'
-    })
     mocks.prisma.anime.findMany.mockResolvedValue([
       { id: 'a', name: 'DB A', hidden: true },
     ])
 
-    const result = await getAllAnime()
+    const result = await getAllAnime({ baseList })
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('b')
   })
 
   it('includes hidden records if requested', async () => {
-    mocks.fs.readdir.mockResolvedValue(['a.json'])
-    mocks.fs.readFile.mockResolvedValue(JSON.stringify({ id: 'a', name: 'File A' }))
     mocks.prisma.anime.findMany.mockResolvedValue([
       { id: 'a', name: 'DB A', hidden: true },
     ])
 
-    const result = await getAllAnime({ includeHidden: true })
-    expect(result).toHaveLength(1)
-    expect(result[0].hidden).toBe(true)
+    const result = await getAllAnime({ includeHidden: true, baseList })
+    expect(result).toHaveLength(2)
+    expect(result.find((anime) => anime.id === 'a')?.hidden).toBe(true)
+    expect(result.find((anime) => anime.id === 'b')?.hidden).toBeFalsy()
   })
 
   it('hides legacy id entries shadowed by visible db alias ids', async () => {
-    mocks.fs.readdir.mockResolvedValue(['btr.json'])
-    mocks.fs.readFile.mockResolvedValue(JSON.stringify({ id: 'btr', name: 'Bocchi the Rock (file)' }))
     mocks.prisma.anime.findMany.mockResolvedValue([
       { id: 'bocchi-the-rock', name: '孤独摇滚!', alias: ['btr'], hidden: false },
     ])
 
-    const result = await getAllAnime()
+    const result = await getAllAnime({ baseList: [{ id: 'btr', name: 'Bocchi the Rock (file)' }] })
     expect(result.find((x) => x.id === 'bocchi-the-rock')).toBeTruthy()
     expect(result.find((x) => x.id === 'btr')).toBeFalsy()
+  })
+
+  it('falls back to db records when the bundled base list is empty', async () => {
+    mocks.prisma.anime.findMany.mockResolvedValue([
+      { id: 'your-name', name: '你的名字', hidden: false, cover: '/assets/your-name' },
+    ])
+
+    const result = await getAllAnime({ baseList: [] })
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'your-name',
+        name: '你的名字',
+        cover: '/assets/your-name',
+      }),
+    ])
   })
 })
