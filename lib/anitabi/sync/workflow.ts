@@ -40,11 +40,11 @@ function getSyncMaxRowsPerRun(overrideValue?: number | null): number | null {
   return clampInt(raw, 1, 10000)
 }
 
-function getSyncMaxRuntimeMs(): number | null {
+function getSyncMaxRuntimeMs(): number {
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_RUNTIME_MS || ''), 10)
   if (Number.isFinite(raw)) return clampInt(raw, 1000, 120000)
   if (process.env.VERCEL === '1') return 7000
-  return null
+  return 20000
 }
 
 async function upsertCursor(
@@ -187,35 +187,50 @@ async function syncBangumiOne(
     where: { bangumiId: normalized.id },
     select: { id: true },
   })
+  const existingPointIdSet = new Set(existingPointRows.map((row) => row.id))
   const incomingPointIdSet = new Set(normalizedPoints.map((point) => point.id))
   const stalePointIds = existingPointRows
     .map((row) => row.id)
     .filter((id) => !incomingPointIdSet.has(id))
 
-  for (const point of normalizedPoints) {
-    await deps.prisma.anitabiPoint.upsert({
-      where: { id: point.id },
-      create: point,
-      update: {
-        bangumiId: point.bangumiId,
-        name: point.name,
-        nameZh: point.nameZh,
-        geoLat: point.geoLat,
-        geoLng: point.geoLng,
-        ep: point.ep,
-        s: point.s,
-        image: point.image,
-        origin: point.origin,
-        originUrl: point.originUrl,
-        originLink: point.originLink,
-        density: point.density,
-        mark: point.mark,
-        folder: point.folder,
-        uid: point.uid,
-        reviewUid: point.reviewUid,
-        datasetVersion: point.datasetVersion,
-      },
-    })
+  const newPoints = normalizedPoints.filter((p) => !existingPointIdSet.has(p.id))
+  const existingPoints = normalizedPoints.filter((p) => existingPointIdSet.has(p.id))
+
+  // Batch insert new points
+  if (newPoints.length > 0) {
+    await deps.prisma.anitabiPoint.createMany({ data: newPoints })
+  }
+
+  // Batch update existing points in transaction chunks
+  const BATCH_SIZE = 50
+  for (let i = 0; i < existingPoints.length; i += BATCH_SIZE) {
+    const batch = existingPoints.slice(i, i + BATCH_SIZE)
+    await deps.prisma.$transaction(
+      batch.map((point) =>
+        deps.prisma.anitabiPoint.update({
+          where: { id: point.id },
+          data: {
+            bangumiId: point.bangumiId,
+            name: point.name,
+            nameZh: point.nameZh,
+            geoLat: point.geoLat,
+            geoLng: point.geoLng,
+            ep: point.ep,
+            s: point.s,
+            image: point.image,
+            origin: point.origin,
+            originUrl: point.originUrl,
+            originLink: point.originLink,
+            density: point.density,
+            mark: point.mark,
+            folder: point.folder,
+            uid: point.uid,
+            reviewUid: point.reviewUid,
+            datasetVersion: point.datasetVersion,
+          },
+        })
+      )
+    )
   }
 
   if (stalePointIds.length > 0) {
@@ -347,7 +362,7 @@ export async function runAnitabiSync(
     const rowsToProcess = maxRowsPerRun ? changedRows.slice(0, maxRowsPerRun) : changedRows
 
     const maxRuntimeMs = getSyncMaxRuntimeMs()
-    const deadlineAt = maxRuntimeMs == null ? null : Date.now() + maxRuntimeMs
+    const deadlineAt = Date.now() + maxRuntimeMs
     const queue = rowsToProcess.slice()
     let processedCount = 0
     let stoppedByTimeBudget = false
@@ -357,7 +372,7 @@ export async function runAnitabiSync(
     await Promise.all(
       Array.from({ length: workers }, async () => {
         while (true) {
-          if (deadlineAt != null && Date.now() >= deadlineAt) {
+          if (Date.now() >= deadlineAt) {
             stoppedByTimeBudget = true
             break
           }
@@ -410,10 +425,12 @@ export async function runAnitabiSync(
       : undefined
     const message = [progressMessage, enqueueMessage].filter(Boolean).join('；') || undefined
 
+    const hasMore = stoppedByTimeBudget && queue.length > 0
+
     await deps.prisma.anitabiSyncRun.update({
       where: { id: run.id },
       data: {
-        status: 'ok',
+        status: hasMore ? 'partial' : 'ok',
         endedAt: deps.now(),
         changedCount: processedCount,
         sourceSnapshotHash: snapshotHash,
@@ -427,6 +444,8 @@ export async function runAnitabiSync(
       datasetVersion: dryRun ? null : datasetVersion,
       scanned: bangumi.length,
       changed: processedCount,
+      totalCandidates: changedRows.length,
+      hasMore,
       ...(message ? { message } : {}),
     }
   } catch (error) {
@@ -448,6 +467,8 @@ export async function runAnitabiSync(
       datasetVersion: null,
       scanned: 0,
       changed: 0,
+      totalCandidates: 0,
+      hasMore: false,
       message,
     }
   }

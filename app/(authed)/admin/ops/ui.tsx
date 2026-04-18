@@ -50,7 +50,8 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
   const [anitabiDiffLoading, setAnitabiDiffLoading] = useState(false)
   const [anitabiDiff, setAnitabiDiff] = useState<AnitabiDiff | null>(null)
   const [anitabiDiffError, setAnitabiDiffError] = useState<string | null>(null)
-  const [anitabiMaxRowsInput, setAnitabiMaxRowsInput] = useState('300')
+  const [anitabiMaxRowsInput, setAnitabiMaxRowsInput] = useState('50')
+  const [anitabiBatchStatus, setAnitabiBatchStatus] = useState<string | null>(null)
 
   const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -117,24 +118,42 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
     if (data.status === 'failed') {
       throw new Error(data.message || '同步失败')
     }
+
+    return data
   }
 
   async function runAnitabiSync(mode: 'delta' | 'full' | 'dryRun') {
     setAnitabiRunning(true)
     setAnitabiError(null)
+    setAnitabiBatchStatus(null)
+    let batchCount = 0
+    let totalChanged = 0
     try {
-      await executeAnitabiSync(mode)
-      await Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])
+      let hasMore = true
+      while (hasMore) {
+        batchCount++
+        const result = await executeAnitabiSync(mode)
+        totalChanged += result.changed
+        hasMore = result.hasMore === true
+        setAnitabiBatchStatus(`第 ${batchCount} 批完成，已处理 ${totalChanged} / ${result.totalCandidates} 个作品${hasMore ? '，继续下一批…' : ''}`)
+        await loadAnitabiProgress()
+        if (hasMore) mode = 'delta'
+      }
+      await loadAnitabiDiff()
     } catch (e) {
       setAnitabiError(e instanceof Error ? e.message : '执行同步失败')
     } finally {
       setAnitabiRunning(false)
+      setAnitabiBatchStatus(null)
     }
   }
 
   async function runAnitabiDetectAndSync() {
     setAnitabiRunning(true)
     setAnitabiError(null)
+    setAnitabiBatchStatus(null)
+    let batchCount = 0
+    let totalChanged = 0
     try {
       const diff = await loadAnitabiDiff()
       if (!diff) return
@@ -143,13 +162,23 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
         return
       }
 
-      const mode = diff.recommendedMode === 'full' ? 'full' : 'delta'
-      await executeAnitabiSync(mode)
-      await Promise.all([loadAnitabiProgress(), loadAnitabiDiff()])
+      let mode: 'delta' | 'full' = diff.recommendedMode === 'full' ? 'full' : 'delta'
+      let hasMore = true
+      while (hasMore) {
+        batchCount++
+        const result = await executeAnitabiSync(mode)
+        totalChanged += result.changed
+        hasMore = result.hasMore === true
+        setAnitabiBatchStatus(`第 ${batchCount} 批完成，已处理 ${totalChanged} / ${result.totalCandidates} 个作品${hasMore ? '，继续下一批…' : ''}`)
+        await loadAnitabiProgress()
+        if (hasMore) mode = 'delta'
+      }
+      await loadAnitabiDiff()
     } catch (e) {
       setAnitabiError(e instanceof Error ? e.message : '检测并同步失败')
     } finally {
       setAnitabiRunning(false)
+      setAnitabiBatchStatus(null)
     }
   }
 
@@ -370,6 +399,7 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
 
         {anitabiError ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{anitabiError}</div> : null}
         {anitabiDiffError ? <div className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{anitabiDiffError}</div> : null}
+        {anitabiBatchStatus ? <div className="mb-4 rounded-md bg-blue-50 p-3 text-sm text-blue-700">{anitabiBatchStatus}</div> : null}
         {anitabiLoading ? <div className="text-sm text-gray-600">加载进度中…</div> : null}
 
         {!anitabiLoading && anitabiProgress ? (

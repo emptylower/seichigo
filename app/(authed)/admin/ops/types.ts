@@ -89,6 +89,7 @@ export type AnitabiProgress = {
     errorSummary: string | null
   } | null
   updatedAt: string
+  isRunning: boolean
 }
 
 export type AnitabiProgressResponse =
@@ -108,6 +109,8 @@ export type AnitabiSyncResponse =
       datasetVersion: string | null
       scanned: number
       changed: number
+      totalCandidates: number
+      hasMore: boolean
       message?: string
     }
   | {

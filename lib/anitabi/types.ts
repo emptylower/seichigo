@@ -126,5 +126,7 @@ export type AnitabiSyncReport = {
   datasetVersion: string | null
   scanned: number
   changed: number
+  totalCandidates: number
+  hasMore: boolean
   message?: string
 }

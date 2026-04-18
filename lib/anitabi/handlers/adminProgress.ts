@@ -25,7 +25,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
-      const [sourceBangumiCursor, activeDatasetCursor, importedBangumi, importedMapEnabled, importedPoints, expectedPointsAgg, latestRun] = await Promise.all([
+      const [sourceBangumiCursor, activeDatasetCursor, importedBangumi, importedMapEnabled, importedPoints, expectedPointsAgg, latestRun, runningCount] = await Promise.all([
         deps.prisma.anitabiSourceCursor.findUnique({ where: { sourceName: 'bangumi' }, select: { value: true } }),
         deps.prisma.anitabiSourceCursor.findUnique({ where: { sourceName: 'activeDatasetVersion' }, select: { value: true } }),
         deps.prisma.anitabiBangumi.count(),
@@ -44,6 +44,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
             errorSummary: true,
           },
         }),
+        deps.prisma.anitabiSyncRun.count({ where: { status: { in: ['running', 'partial'] } } }),
       ])
 
       let sourceBangumiTotal = toIntOrNull(sourceBangumiCursor?.value)
@@ -102,6 +103,7 @@ export function createHandlers(deps: AnitabiApiDeps) {
               }
             : null,
           updatedAt: deps.now().toISOString(),
+          isRunning: runningCount > 0,
         },
       })
     },
