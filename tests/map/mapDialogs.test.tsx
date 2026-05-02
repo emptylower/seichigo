@@ -1,7 +1,14 @@
 import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import MapDialogs from '@/features/map/anitabi/MapDialogs'
+import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
+import { resetMapImageRequestSchedulerForTest } from '@/features/map/anitabi/mapImageRequestScheduler'
+
+beforeEach(() => {
+  resetDegradedMapImageHostsForTest()
+  resetMapImageRequestSchedulerForTest()
+})
 
 function createProps() {
   return {
@@ -65,7 +72,7 @@ function createProps() {
 }
 
 describe('MapDialogs image preview', () => {
-  it('retries preview images instead of leaving the dialog on a dead blank image', () => {
+  it('retries preview images instead of leaving the dialog on a dead blank image', async () => {
     render(<MapDialogs {...createProps()} />)
 
     const lowResFallback = document.querySelector('img[aria-hidden="true"]') as HTMLImageElement | null
@@ -73,19 +80,59 @@ describe('MapDialogs image preview', () => {
       'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?plan=h160',
     )
 
-    const img = screen.getByAltText('JR水道橋駅 西口') as HTMLImageElement
-    expect(img.src).toBe('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80')
+    const img = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
+    expect(decodeURIComponent(img.src)).toContain(
+      '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
+    )
 
     fireEvent.error(img)
-    const retried = screen.getByAltText('JR水道橋駅 西口') as HTMLImageElement
-    expect(retried.src).toBe(
-      'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
+    const retried = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
+    expect(decodeURIComponent(retried.src)).toContain(
+      '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
     )
 
     fireEvent.error(retried)
-    const proxied = screen.getByAltText('JR水道橋駅 西口') as HTMLImageElement
+    const proxied = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
     expect(decodeURIComponent(proxied.src)).toContain(
-      '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
+      '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
+    )
+  })
+
+  it('forwards preview diagnostics into the resilient image path when configured', async () => {
+    const onPreviewDiagnosticRequestStart = vi.fn((input: any) => ({
+      requestUrl: `${input.requestedCandidateUrl}?__mi_request=preview-1`,
+      requestId: 'preview-1',
+    }))
+    const onPreviewDiagnosticRequestTerminal = vi.fn()
+
+    render(
+      <MapDialogs
+        {...createProps()}
+        imagePreview={{
+          ...createProps().imagePreview,
+          diagnosticSurface: 'map',
+          diagnosticSlotKey: 'preview-217249',
+        }}
+        onPreviewDiagnosticRequestStart={onPreviewDiagnosticRequestStart}
+        onPreviewDiagnosticRequestTerminal={onPreviewDiagnosticRequestTerminal}
+      />
+    )
+
+    const img = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
+    expect(onPreviewDiagnosticRequestStart).toHaveBeenCalledTimes(1)
+    expect(onPreviewDiagnosticRequestStart.mock.calls[0]?.[0]).toMatchObject({
+      slotKey: 'preview-217249',
+      surface: 'map',
+    })
+    expect(img.getAttribute('src')).toContain('__mi_request=preview-1')
+
+    fireEvent.load(img)
+    expect(onPreviewDiagnosticRequestTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        handle: { requestId: 'preview-1', requestUrl: expect.stringContaining('__mi_request=preview-1') },
+        terminalState: 'succeeded',
+        displayOutcome: 'visible',
+      }),
     )
   })
 })

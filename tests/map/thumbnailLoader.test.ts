@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
+import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
+import { resetMapImageRequestSchedulerForTest } from '@/features/map/anitabi/mapImageRequestScheduler'
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 
 // ── Mock Map ──────────────────────────────────────────────────────────────
@@ -54,6 +56,8 @@ describe('ThumbnailLoader', () => {
   let loader: ThumbnailLoader
 
   beforeEach(() => {
+    resetDegradedMapImageHostsForTest()
+    resetMapImageRequestSchedulerForTest()
     map = createMockMap()
     loader = new ThumbnailLoader({ map: map as any, maxLoaded: 200 })
   })
@@ -175,6 +179,50 @@ describe('ThumbnailLoader', () => {
     expect(loaded.size).toBe(2)
   })
 
+  it('retries a transient thumbnail failure once before leaving the slot blank', async () => {
+    let attempts = 0
+    map.loadImage.mockImplementation(async (url: string) => {
+      attempts += 1
+      if (attempts <= 2) {
+        throw new Error(`Transient error for ${url}`)
+      }
+      return { data: { width: 64, height: 64, url } }
+    })
+
+    const loaded = await loader.updateViewport([
+      makeFeature('p1', 'https://image.anitabi.cn/points/1/p1.jpg?plan=h160'),
+    ])
+
+    expect(loaded.has('thumb-p1')).toBe(true)
+    expect(map.loadImage).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not perform an extra loader-level retry after a timeout-shaped failure', async () => {
+    map.loadImage.mockImplementation(async (url: string) => {
+      if (decodeURIComponent(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
+        && !decodeURIComponent(url).includes('_retry=1')) {
+        return await new Promise(() => {})
+      }
+      if (decodeURIComponent(url).includes('_retry=1')) {
+        return await new Promise(() => {})
+      }
+      return { data: { width: 64, height: 64, url } }
+    })
+
+    const timedLoader = new ThumbnailLoader({
+      map: map as any,
+      maxLoaded: 200,
+      proxyRequestTimeoutMs: 5,
+    })
+
+    const loaded = await timedLoader.updateViewport([
+      makeFeature('p1', 'https://image.anitabi.cn/points/1/p1.jpg?plan=h160'),
+    ])
+
+    expect(loaded.has('thumb-p1')).toBe(false)
+    expect(map.loadImage).toHaveBeenCalledTimes(2)
+  })
+
   // 9. Concurrent load limiting (max 10 parallel)
   it('should limit concurrent loads to 10', async () => {
     let concurrentCount = 0
@@ -231,25 +279,88 @@ describe('ThumbnailLoader', () => {
     expect(map.images.has('thumb-abc-123')).toBe(true)
   })
 
+  it('bounds local waiting and advances to the next candidate when a direct request stalls', async () => {
+    map.loadImage.mockImplementation(async (url: string) => {
+      if (decodeURIComponent(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
+        && !decodeURIComponent(url).includes('_retry=1')) {
+        return await new Promise(() => {})
+      }
+      return { data: { width: 64, height: 64, url } }
+    })
+
+    const timedLoader = new ThumbnailLoader({
+      map: map as any,
+      maxLoaded: 200,
+      directRequestTimeoutMs: 5,
+      proxyRequestTimeoutMs: 5,
+    })
+
+    const loaded = await timedLoader.updateViewport([
+      makeFeature('p1', 'https://image.anitabi.cn/points/1/p1.jpg?plan=h160'),
+    ])
+
+    expect(loaded.has('thumb-p1')).toBe(true)
+    expect(map.loadImage).toHaveBeenCalledTimes(2)
+    expect(decodeURIComponent(String(map.loadImage.mock.calls[1]?.[0] || ''))).toContain(
+      '/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160&_retry=1',
+    )
+  })
+
+  it('aborts stale viewport work so a newer update can acquire the shared lane', async () => {
+    map.loadImage.mockImplementation(async (url: string) => {
+      if (url.includes('/points/1/p1.jpg')) {
+        return await new Promise(() => {})
+      }
+      return { data: { width: 64, height: 64, url } }
+    })
+
+    const first = loader.updateViewport([
+      makeFeature('p1', 'https://image.anitabi.cn/points/1/p1.jpg?plan=h160'),
+    ])
+    await Promise.resolve()
+
+    const second = loader.updateViewport([
+      makeFeature('p2', 'https://image.anitabi.cn/points/2/p2.jpg?plan=h160'),
+    ])
+
+    const loaded = await second
+    await first
+
+    expect(loaded.has('thumb-p2')).toBe(true)
+    expect(loaded.has('thumb-p1')).toBe(false)
+    expect(
+      map.loadImage.mock.calls.some((call) =>
+        decodeURIComponent(String(call[0] || '')).includes(
+          '/api/anitabi/image-render?url=https://image.anitabi.cn/points/2/p2.jpg?plan=h160',
+        )),
+    ).toBe(true)
+  })
+
   // 14. normalizePointThumbnailUrl is used for URL normalization
   it('should normalize URLs via normalizePointThumbnailUrl', async () => {
     const features = [makeFeature('p1', 'https://anitabi.cn/img/test.jpg?plan=123')]
     await loader.updateViewport(features)
 
-    // The normalized URL should preserve plan and avoid w/q params.
-    const callUrl = map.loadImage.mock.calls[0][0]
-    expect(callUrl).toContain('plan=123')
+    const callUrl = decodeURIComponent(String(map.loadImage.mock.calls[0][0] || ''))
+    expect(callUrl).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/img/test.jpg?plan=123')
     expect(callUrl).not.toContain('w=')
     expect(callUrl).not.toContain('q=')
   })
 
   // 15. Multiple load failures don't affect successful loads
   it('should load all successful images even when some fail', async () => {
-    let callCount = 0
-    map.loadImage.mockImplementation(async () => {
-      callCount++
-      if (callCount % 2 === 0) throw new Error('fail')
-      return { data: { width: 64, height: 64, url: '' } }
+    map.loadImage.mockImplementation(async (url: string) => {
+      const decoded = decodeURIComponent(url)
+      if (
+        decoded.includes('p2.jpg')
+        || decoded.includes('p4.jpg')
+        || decoded.includes('p6.jpg')
+        || decoded.includes('p8.jpg')
+        || decoded.includes('p10.jpg')
+      ) {
+        throw new Error('fail')
+      }
+      return { data: { width: 64, height: 64, url } }
     })
 
     const features = Array.from({ length: 10 }, (_, index) =>
@@ -263,26 +374,29 @@ describe('ThumbnailLoader', () => {
 
   it('tracks first-view request and settlement callbacks for the prioritized slice', async () => {
     const requestStart = vi.fn()
-    const settle = vi.fn()
+    const terminal = vi.fn()
     loader = new ThumbnailLoader({
       map: map as any,
       maxLoaded: 200,
       firstViewTrackedLimit: 2,
-      onTrackedSlotRequestStart: requestStart,
-      onTrackedSlotSettle: settle,
+      onTrackedRequestStart: (input) => {
+        requestStart(input)
+        return { requestUrl: input.requestedCandidateUrl, requestId: `${input.slotKey}:${input.candidateIndex}` }
+      },
+      onTrackedRequestTerminal: terminal,
     })
 
     await loader.updateViewport(makeFeatures(4))
 
     expect(requestStart.mock.calls.map((call) => call[0].slotKey)).toEqual(['thumb-p1', 'thumb-p2'])
-    expect(settle.mock.calls.map((call) => [call[0].slotKey, call[0].state])).toEqual([
-      ['thumb-p1', 'visible'],
-      ['thumb-p2', 'visible'],
+    expect(terminal.mock.calls.map((call) => [call[0].handle?.requestId, call[0].terminalState])).toEqual([
+      ['thumb-p1:0', 'succeeded'],
+      ['thumb-p2:0', 'succeeded'],
     ])
   })
 
-  it('marks tracked thumbnail failures as stable fallback during cooldown', async () => {
-    const settle = vi.fn()
+  it('does not re-emit tracked thumbnail terminal events during retry cooldown', async () => {
+    const terminal = vi.fn()
     map.loadImage.mockImplementation(async () => {
       throw new Error('Network error')
     })
@@ -290,13 +404,23 @@ describe('ThumbnailLoader', () => {
       map: map as any,
       maxLoaded: 200,
       firstViewTrackedLimit: 1,
-      onTrackedSlotSettle: settle,
+      onTrackedRequestStart: (input) => ({ requestUrl: input.requestedCandidateUrl, requestId: `${input.slotKey}:0` }),
+      onTrackedRequestTerminal: terminal,
     })
 
     await loader.updateViewport([makeFeature('p1', 'https://example.com/img/p1.jpg')])
+    const loadCallsAfterFirstAttempt = map.loadImage.mock.calls.length
+    const terminalCallsAfterFirstAttempt = terminal.mock.calls.length
     await loader.updateViewport([makeFeature('p1', 'https://example.com/img/p1.jpg')])
 
-    expect(map.loadImage).toHaveBeenCalledTimes(1)
-    expect(settle.mock.calls.map((call) => call[0].state)).toEqual(['fallback', 'fallback'])
+    expect(loadCallsAfterFirstAttempt).toBe(4)
+    expect(terminalCallsAfterFirstAttempt).toBe(4)
+    expect(map.loadImage).toHaveBeenCalledTimes(loadCallsAfterFirstAttempt)
+    expect(terminal).toHaveBeenCalledTimes(terminalCallsAfterFirstAttempt)
+    const firstTerminalCall = terminal.mock.calls.at(0) as any[] | undefined
+    expect(firstTerminalCall?.[0]).toMatchObject({
+      terminalState: 'failed',
+      outcome: 'network_error',
+    })
   })
 })

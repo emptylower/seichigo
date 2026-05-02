@@ -9,7 +9,6 @@ export type FirstViewSlotType =
   | 'point-thumbnail'
   | 'point-preview'
   | 'dom-image'
-
 export type FirstViewSlotOwner = 'warmup' | 'viewport-loader' | 'dom-image'
 export type FirstViewSlotSettleState = 'visible' | 'fallback'
 export type FirstViewAnchor = 'map_shell_ready' | 'bootstrap_ready'

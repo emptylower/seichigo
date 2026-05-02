@@ -490,6 +490,8 @@ export default function AnitabiMapLayout(props: any) {
         routeBookPickerError={routeBookPickerError}
         imagePreview={imagePreview}
         onImagePreviewOpenChange={onImagePreviewOpenChange}
+        onPreviewDiagnosticRequestStart={props.onPreviewDiagnosticRequestStart}
+        onPreviewDiagnosticRequestTerminal={props.onPreviewDiagnosticRequestTerminal}
         imageSaving={imageSaving}
         saveOriginalImage={saveOriginalImage}
         imageSaveError={imageSaveError}

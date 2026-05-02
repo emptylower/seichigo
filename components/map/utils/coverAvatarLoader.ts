@@ -1,4 +1,5 @@
-import { getMapDisplayImageCandidates, toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
+import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
 
 export interface MapLike {
   addImage(id: string, data: unknown, options?: { pixelRatio?: number }): void
@@ -16,8 +17,26 @@ export interface CoverAvatarLoaderOptions {
   map: MapLike
   maxLoaded?: number
   firstViewTrackedLimit?: number
-  onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
-  onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
+  directRequestTimeoutMs?: number
+  proxyRequestTimeoutMs?: number
+  onTrackedRequestStart?: (input: {
+    slotKey: string
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+    queueWaitMs?: number
+  }) => {
+    requestUrl: string
+    requestId: string
+  } | null
+  onTrackedRequestTerminal?: (input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => void
 }
 
 const DEFAULT_MAX_LOADED = 160
@@ -27,104 +46,141 @@ const AVATAR_SIZE = 72
 const AVATAR_BORDER = 3
 const EXTRA_ALLOWED_COVER_HOSTS = ['anitabi.cn', 'bgm.tv']
 
+function buildCoverViewportSignature(candidates: CoverAvatarCandidate[]): string {
+  return candidates
+    .map((candidate) => `${candidate.bangumiId}:${String(candidate.coverUrl || '')}`)
+    .join('|')
+}
+
 export class CoverAvatarLoader {
   private readonly map: MapLike
   private readonly maxLoaded: number
   private readonly firstViewTrackedLimit: number
-  private readonly onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
-  private readonly onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
+  private readonly directRequestTimeoutMs?: number
+  private readonly proxyRequestTimeoutMs?: number
+  private readonly onTrackedRequestStart?: CoverAvatarLoaderOptions['onTrackedRequestStart']
+  private readonly onTrackedRequestTerminal?: CoverAvatarLoaderOptions['onTrackedRequestTerminal']
   private readonly lru = new Map<string, number>()
   private readonly failedAt = new Map<string, number>()
   private readonly loading = new Set<string>()
   private accessCounter = 0
+  private activeUpdateAbortController: AbortController | null = null
+  private activeViewportSignature: string | null = null
+  private activeViewportConsumers = 0
+  private updateQueue: Promise<void> = Promise.resolve()
 
   constructor(options: CoverAvatarLoaderOptions) {
     this.map = options.map
     this.maxLoaded = options.maxLoaded ?? DEFAULT_MAX_LOADED
     this.firstViewTrackedLimit = Math.max(0, options.firstViewTrackedLimit ?? 0)
-    this.onTrackedSlotRequestStart = options.onTrackedSlotRequestStart
-    this.onTrackedSlotSettle = options.onTrackedSlotSettle
+    this.directRequestTimeoutMs = options.directRequestTimeoutMs
+    this.proxyRequestTimeoutMs = options.proxyRequestTimeoutMs
+    this.onTrackedRequestStart = options.onTrackedRequestStart
+    this.onTrackedRequestTerminal = options.onTrackedRequestTerminal
   }
 
   async updateViewport(candidates: CoverAvatarCandidate[]): Promise<Set<string>> {
-    const seen = new Set<number>()
-    const toLoad: { imageId: string; urls: string[]; tracked: boolean }[] = []
-    const now = Date.now()
-    const candidateLimit = Math.max(1, this.maxLoaded)
-    let visibleIndex = 0
-
-    for (const candidate of candidates) {
-      if (seen.size >= candidateLimit) break
-      if (!Number.isFinite(candidate.bangumiId) || seen.has(candidate.bangumiId)) continue
-      seen.add(candidate.bangumiId)
-
-      const rawCover = this.normalizeCoverUrl(String(candidate.coverUrl || '').trim())
-      if (!rawCover) continue
-      if (!this.isAllowedCoverHost(rawCover)) continue
-
-      const imageId = `cover-${candidate.bangumiId}`
-      const candidateUrls = getMapDisplayImageCandidates(rawCover, { kind: 'cover' })
-      const safeUrl = candidateUrls[0] || toMapDisplayImageUrl(rawCover, { kind: 'cover' })
-      if (!safeUrl || candidateUrls.length === 0) continue
-      const tracked = visibleIndex < this.firstViewTrackedLimit
-      visibleIndex += 1
-      const failedAt = this.failedAt.get(imageId)
-      if (failedAt != null && now - failedAt < FAILED_RETRY_COOLDOWN_MS) {
-        if (tracked) {
-          this.onTrackedSlotSettle?.({ slotKey: imageId, src: safeUrl, state: 'fallback' })
-        }
-        continue
-      }
-      if (failedAt != null) this.failedAt.delete(imageId)
-      const imageStillOnMap = typeof this.map.hasImage === 'function'
-        ? this.map.hasImage(imageId)
-        : true
-      if (this.lru.has(imageId) && imageStillOnMap) {
-        this.lru.set(imageId, ++this.accessCounter)
-        if (tracked) {
-          this.onTrackedSlotSettle?.({ slotKey: imageId, src: safeUrl, state: 'visible' })
-        }
-        continue
-      }
-      if (this.lru.has(imageId) && !imageStillOnMap) {
-        this.lru.delete(imageId)
-      }
-      if (this.loading.has(imageId)) continue
-
-      this.loading.add(imageId)
-      toLoad.push({ imageId, urls: candidateUrls, tracked })
+    let snapshot = new Set<string>()
+    const viewportSignature = buildCoverViewportSignature(candidates)
+    const sameViewport = this.activeViewportSignature === viewportSignature
+      && this.activeUpdateAbortController != null
+    if (sameViewport) {
+      await this.updateQueue
+      return new Set(this.lru.keys())
     }
 
-    await this.loadBatch(toLoad)
-    this.evict()
-    return new Set(this.lru.keys())
+    this.activeUpdateAbortController?.abort()
+    this.activeUpdateAbortController = new AbortController()
+    this.activeViewportSignature = viewportSignature
+    this.activeViewportConsumers = 0
+
+    const abortController = this.activeUpdateAbortController!
+    this.activeViewportConsumers += 1
+    const run = async () => {
+      if (abortController.signal.aborted) {
+        snapshot = new Set(this.lru.keys())
+        return
+      }
+      const seen = new Set<number>()
+      const toLoad: { imageId: string; urls: string[]; tracked: boolean }[] = []
+      const now = Date.now()
+      const candidateLimit = Math.max(1, this.maxLoaded)
+      let visibleIndex = 0
+
+      for (const candidate of candidates) {
+        if (seen.size >= candidateLimit) break
+        if (!Number.isFinite(candidate.bangumiId) || seen.has(candidate.bangumiId)) continue
+        seen.add(candidate.bangumiId)
+
+        const rawCover = this.normalizeCoverUrl(String(candidate.coverUrl || '').trim())
+        if (!rawCover) continue
+        if (!this.isAllowedCoverHost(rawCover)) continue
+
+        const imageId = `cover-${candidate.bangumiId}`
+        const candidateUrls = getMapDisplayImageCandidates(rawCover, { kind: 'cover' })
+        if (candidateUrls.length === 0) continue
+        const tracked = visibleIndex < this.firstViewTrackedLimit
+        visibleIndex += 1
+        const failedAt = this.failedAt.get(imageId)
+        if (failedAt != null && now - failedAt < FAILED_RETRY_COOLDOWN_MS) {
+          continue
+        }
+        if (failedAt != null) this.failedAt.delete(imageId)
+        const imageStillOnMap = typeof this.map.hasImage === 'function'
+          ? this.map.hasImage(imageId)
+          : true
+        if (this.lru.has(imageId) && imageStillOnMap) {
+          this.lru.set(imageId, ++this.accessCounter)
+          continue
+        }
+        if (this.lru.has(imageId) && !imageStillOnMap) {
+          this.lru.delete(imageId)
+        }
+        if (this.loading.has(imageId)) continue
+
+        this.loading.add(imageId)
+        toLoad.push({ imageId, urls: candidateUrls, tracked })
+      }
+
+      await this.loadBatch(toLoad, abortController.signal)
+      this.evict()
+      snapshot = new Set(this.lru.keys())
+    }
+
+    const queued = this.updateQueue.then(run, run)
+    this.updateQueue = queued.then(() => undefined, () => undefined)
+    await queued.finally(() => {
+      if (this.activeUpdateAbortController === abortController) {
+        this.activeViewportConsumers = Math.max(0, this.activeViewportConsumers - 1)
+        if (this.activeViewportConsumers === 0) {
+          this.activeUpdateAbortController = null
+          this.activeViewportSignature = null
+        }
+      }
+    })
+    return snapshot
   }
 
-  private async loadBatch(items: Array<{ imageId: string; urls: string[]; tracked: boolean }>): Promise<void> {
+  private async loadBatch(items: Array<{ imageId: string; urls: string[]; tracked: boolean }>, signal: AbortSignal): Promise<void> {
     let index = 0
 
     const worker = async (): Promise<void> => {
-      while (index < items.length) {
+      while (index < items.length && !signal.aborted) {
         const current = items[index++]
         try {
-          if (current.tracked) {
-            this.onTrackedSlotRequestStart?.({ slotKey: current.imageId, src: current.urls[0] || '' })
-          }
-          let result: { data: unknown } | null = null
-          let finalUrl = current.urls[0] || ''
-          let lastError: unknown = null
-          for (const candidateUrl of current.urls) {
-            finalUrl = candidateUrl
-            try {
-              result = await this.map.loadImage(candidateUrl)
-              break
-            } catch (error) {
-              lastError = error
-            }
-          }
-          if (!result) {
-            throw lastError || new Error('load failed')
-          }
+          const result = await loadMapImageWithCandidates({
+            map: this.map,
+            slotKey: current.imageId,
+            urls: current.urls,
+            tracked: current.tracked,
+            requestLane: 'viewport-visible',
+            hostPolicyScope: 'cover',
+            directRequestTimeoutMs: this.directRequestTimeoutMs,
+            proxyRequestTimeoutMs: this.proxyRequestTimeoutMs,
+            onTrackedRequestStart: this.onTrackedRequestStart,
+            onTrackedRequestTerminal: this.onTrackedRequestTerminal,
+            requestSignal: signal,
+          })
           const existsOnMap = typeof this.map.hasImage === 'function' ? this.map.hasImage(current.imageId) : false
           if (!existsOnMap) {
             const avatarData = this.toAvatarImageData(result.data)
@@ -136,14 +192,11 @@ export class CoverAvatarLoader {
           }
           this.lru.set(current.imageId, ++this.accessCounter)
           this.failedAt.delete(current.imageId)
-          if (current.tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: finalUrl, state: 'visible' })
+        } catch (error) {
+          if ((error as Error)?.name === 'AbortError' || signal.aborted) {
+            return
           }
-        } catch {
           this.failedAt.set(current.imageId, Date.now())
-          if (current.tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: current.urls.at(-1) || current.urls[0] || '', state: 'fallback' })
-          }
           // Skip failed images; dots and labels remain as fallback.
         } finally {
           this.loading.delete(current.imageId)

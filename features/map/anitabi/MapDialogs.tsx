@@ -15,6 +15,8 @@ type ImagePreview = {
   name: string
   saveUrl: string
   fallbackSrc?: string | null
+  diagnosticSurface?: 'map' | 'nearby'
+  diagnosticSlotKey?: string | null
 }
 
 type MapDialogsProps = {
@@ -38,6 +40,25 @@ type MapDialogsProps = {
   routeBookPickerError: string | null
   imagePreview: ImagePreview | null
   onImagePreviewOpenChange: (open: boolean) => void
+  onPreviewDiagnosticRequestStart?: (input: {
+    slotKey: string
+    surface: 'map' | 'nearby'
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+  }) => {
+    requestUrl: string
+    requestId: string
+  } | null
+  onPreviewDiagnosticRequestTerminal?: (input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted' | 'superseded'
+    displayOutcome?: 'visible' | 'fallback'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => void
   imageSaving: boolean
   saveOriginalImage: () => Promise<void>
   imageSaveError: string | null
@@ -81,6 +102,8 @@ export default function MapDialogs(props: MapDialogsProps) {
     routeBookPickerError,
     imagePreview,
     onImagePreviewOpenChange,
+    onPreviewDiagnosticRequestStart,
+    onPreviewDiagnosticRequestTerminal,
     imageSaving,
     saveOriginalImage,
     imageSaveError,
@@ -248,6 +271,10 @@ export default function MapDialogs(props: MapDialogsProps) {
                     kind="point-preview"
                     loading="eager"
                     decoding="async"
+                    diagnosticSurface={imagePreview.diagnosticSlotKey ? imagePreview.diagnosticSurface : undefined}
+                    diagnosticSlotKey={imagePreview.diagnosticSlotKey}
+                    onDiagnosticRequestStart={onPreviewDiagnosticRequestStart}
+                    onDiagnosticRequestTerminal={onPreviewDiagnosticRequestTerminal}
                     fallback={
                       imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? null : (
                         <div className="grid min-h-[220px] min-w-[280px] place-items-center rounded-lg bg-slate-200 px-4 text-xs font-medium text-slate-500">

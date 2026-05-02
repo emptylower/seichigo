@@ -2,6 +2,9 @@ import { useCallback, useEffect } from 'react'
 import maplibregl from 'maplibre-gl'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import type { UserLocation } from './shared'
+import { createFirstViewSlotKey } from './firstView'
+import { resolveMapImageDiagSurface } from './mapImageSessionManager'
+import { finishPreviewImageDiagnostic, startPreviewImageDiagnostic } from './previewImageDiagnostics'
 import {
   DESKTOP_BREAKPOINT,
   LOCATION_DIALOG_DISMISSED_KEY,
@@ -68,6 +71,9 @@ export function useMapInteractionActions(ctx: any) {
     setRouteBookTitleDraft,
     setDetailCardMode,
     setSelectedPointId,
+    selectedPointId,
+    tab,
+    mapImageDiagManagerRef,
   } = ctx
 
   useEffect(() => {
@@ -152,8 +158,10 @@ export function useMapInteractionActions(ctx: any) {
       name: pointName,
       saveUrl: saveTarget,
       fallbackSrc: fallbackTarget && fallbackTarget !== src ? fallbackTarget : null,
+      diagnosticSurface: resolveMapImageDiagSurface(tab),
+      diagnosticSlotKey: selectedPointId ? createFirstViewSlotKey('preview', selectedPointId) : null,
     })
-  }, [])
+  }, [selectedPointId, tab])
 
   const onImagePreviewOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -162,6 +170,26 @@ export function useMapInteractionActions(ctx: any) {
       setImageSaveError(null)
     }
   }, [])
+
+  const onPreviewDiagnosticRequestStart = useCallback((input: {
+    slotKey: string
+    surface: 'map' | 'nearby'
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+  }) => startPreviewImageDiagnostic(mapImageDiagManagerRef.current, imagePreview, input), [imagePreview, mapImageDiagManagerRef])
+
+  const onPreviewDiagnosticRequestTerminal = useCallback((input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted' | 'superseded'
+    displayOutcome?: 'visible' | 'fallback'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => {
+    finishPreviewImageDiagnostic(mapImageDiagManagerRef.current, input)
+  }, [mapImageDiagManagerRef])
 
   const renderPointImage = useCallback(
     (
@@ -172,6 +200,8 @@ export function useMapInteractionActions(ctx: any) {
       previewImageUrl?: string | null,
     ) => {
       const src = String(imageUrl || '').trim()
+      const diagnosticSurface = resolveMapImageDiagSurface(tab)
+      const diagnosticSlotKey = selectedPointId ? createFirstViewSlotKey('dom', selectedPointId) : null
       if (!src) {
         return (
           <div className="grid h-40 w-full place-items-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
@@ -197,6 +227,37 @@ export function useMapInteractionActions(ctx: any) {
             loading={eager ? 'eager' : 'lazy'}
             decoding="async"
             kind="point"
+            diagnosticSurface={diagnosticSlotKey ? diagnosticSurface : undefined}
+            diagnosticSlotKey={diagnosticSlotKey}
+            onDiagnosticRequestStart={(input) => {
+              if (!diagnosticSlotKey) return null
+              return mapImageDiagManagerRef.current?.startRequest({
+                surface: input.surface,
+                slotKey: input.slotKey,
+                slotType: 'dom-image',
+                owner: 'dom-image',
+                requestedCandidateUrl: input.requestedCandidateUrl,
+                candidateIndex: input.candidateIndex,
+                candidateCount: input.candidateCount,
+                reuseChain: input.reuseChain,
+                evidence: {
+                  view: 'detail-panel',
+                  queue_wait_ms: input.queueWaitMs ?? 0,
+                },
+              }) ?? null
+            }}
+            onDiagnosticRequestTerminal={(input) => {
+              mapImageDiagManagerRef.current?.finishRequest(input.handle, {
+                terminalState: input.terminalState,
+                displayOutcome: input.displayOutcome,
+                finalUrl: input.finalUrl,
+                chainTerminal: input.chainTerminal,
+                outcome: input.outcome,
+                evidence: {
+                  view: 'detail-panel',
+                },
+              })
+            }}
             fallback={<div className="h-full w-full bg-slate-200" />}
           />
           <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded bg-black/60 px-2 py-0.5 text-[11px] text-white">
@@ -205,7 +266,7 @@ export function useMapInteractionActions(ctx: any) {
         </button>
       )
     },
-    [label.noImage, label.previewImage, openImagePreview]
+    [label.noImage, label.previewImage, mapImageDiagManagerRef, openImagePreview, selectedPointId, tab]
   )
 
   const saveOriginalImage = useCallback(async () => {
@@ -665,6 +726,8 @@ export function useMapInteractionActions(ctx: any) {
     onRandom,
     enterPanorama,
     onImagePreviewOpenChange,
+    onPreviewDiagnosticRequestStart,
+    onPreviewDiagnosticRequestTerminal,
     renderPointImage,
     saveOriginalImage,
     exitPanorama,

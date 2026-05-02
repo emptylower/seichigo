@@ -3,12 +3,8 @@ import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 /**
  * Normalize point thumbnail URL for optimized loading.
  * 
- * For anitabi.cn hosts:
- * - Removes ?plan= param
- * - Adds ?w=64&q=60 if not already present
- * 
- * For other hosts:
- * - Returns URL as-is
+ * Point thumbnails are rendered through our image proxy so browser clients do
+ * not depend on direct Anitabi availability.
  * 
  * @param input - Raw URL string (may be null/undefined/empty)
  * @returns Normalized URL string or null if input is empty

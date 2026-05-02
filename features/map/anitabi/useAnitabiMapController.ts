@@ -18,6 +18,8 @@ import { useMapStyleFailover } from './useMapStyleFailover'
 import { usePanoramaController } from './usePanoramaController'
 import { usePointAndRangeLayers } from './usePointAndRangeLayers'
 import { useWarmupProgressState } from './useWarmupProgressState'
+import { MapImageSessionManager, resolveMapImageDiagSurface } from './mapImageSessionManager'
+import { createMapImageDiagManager, type ImagePreviewState } from './mapImageDiagManagerFactory'
 import { beginFirstViewSession, markFirstViewAnchor } from './firstView'
 import {
   L,
@@ -95,6 +97,8 @@ export function useAnitabiMapController(
   const firstOpenPointVisibleRecordedRef = useRef(false)
   const firstOpenPointGuardTimerRef = useRef<number | null>(null)
   const warmupMetricRef = useRef<WarmupMetrics>({})
+  const mapImageDiagManagerRef = useRef<MapImageSessionManager | null>(null)
+  const forceCaptureConfigRef = useRef(false)
   const firstViewMapShellReadyMarkedRef = useRef(false)
   const firstViewBootstrapReadyMarkedRef = useRef(false)
   const warmupRunTokenRef = useRef(0)
@@ -133,6 +137,7 @@ export function useAnitabiMapController(
   const warmupTaskProgressRef = useRef<WarmupTaskProgress>(createEmptyWarmupTaskProgress())
 
   const [tab, setTab] = useState<AnitabiMapTab>(parsed.tab)
+  const tabRef = useRef<AnitabiMapTab>(parsed.tab)
   const [queryInput, setQueryInput] = useState(parsed.q)
   const [query, setQuery] = useState(parsed.q)
   const [selectedCity, setSelectedCity] = useState('')
@@ -175,7 +180,7 @@ export function useAnitabiMapController(
   const [panoramaError, setPanoramaError] = useState<string | null>(null)
   const [panoramaLoading, setPanoramaLoading] = useState(false)
   const [panoramaProgress, setPanoramaProgress] = useState(0)
-  const [imagePreview, setImagePreview] = useState<{ src: string; name: string; saveUrl: string; fallbackSrc?: string | null } | null>(null)
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null)
   const [imageSaving, setImageSaving] = useState(false)
   const [imageSaveError, setImageSaveError] = useState<string | null>(null)
   const [showCheckInCard, setShowCheckInCard] = useState(false)
@@ -203,6 +208,10 @@ export function useAnitabiMapController(
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
   const [warmPointDataVersion, setWarmPointDataVersion] = useState(0)
 
+  useEffect(() => {
+    tabRef.current = tab
+  }, [tab])
+
   const completeImageBuildZoom = useMemo(
     () => resolveImageBuildZoom(mapZoom),
     [mapZoom]
@@ -211,6 +220,13 @@ export function useAnitabiMapController(
     () => resolveImageShowZoom(mapZoom),
     [mapZoom]
   )
+
+  if (!mapImageDiagManagerRef.current) {
+    mapImageDiagManagerRef.current = createMapImageDiagManager({
+      warmupMetricRef,
+      forceCaptureConfigRef,
+    })
+  }
 
   useEffect(() => {
     warmupProgressRef.current = warmupProgress
@@ -227,16 +243,45 @@ export function useAnitabiMapController(
   }, [locale])
 
   useEffect(() => {
+    const manager = mapImageDiagManagerRef.current
+    return () => {
+      manager?.destroy()
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const syncCaptureConfig = () => {
+      void fetch('/api/map-image-diagnostics/config', { method: 'GET' })
+        .then((res) => res.json().catch(() => ({})))
+        .then((data) => {
+          if (cancelled) return
+          forceCaptureConfigRef.current = Boolean((data as any)?.config?.fullCaptureEnabled)
+        })
+        .catch(() => null)
+    }
+
+    syncCaptureConfig()
+    const intervalId = window.setInterval(syncCaptureConfig, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!mapReady || firstViewMapShellReadyMarkedRef.current) return
     firstViewMapShellReadyMarkedRef.current = true
     markFirstViewAnchor(warmupMetricRef, 'map_shell_ready')
-  }, [mapReady])
+    mapImageDiagManagerRef.current?.recordAnchor(resolveMapImageDiagSurface(tab), 'map_shell_ready')
+  }, [mapReady, tab])
 
   useEffect(() => {
     if (!bootstrap?.cards?.length || firstViewBootstrapReadyMarkedRef.current) return
     firstViewBootstrapReadyMarkedRef.current = true
     markFirstViewAnchor(warmupMetricRef, 'bootstrap_ready')
-  }, [bootstrap])
+    mapImageDiagManagerRef.current?.recordAnchor(resolveMapImageDiagSurface(tab), 'bootstrap_ready')
+  }, [bootstrap, tab])
 
   const {
     detailPoints,
@@ -465,7 +510,10 @@ export function useAnitabiMapController(
     setWindowExcerptPoints,
     spriteImageIdsRef,
     syncCompleteModeRef,
+    tab,
+    tabRef,
     tabCardsRef,
+    mapImageDiagManagerRef,
     warmPointDataVersion,
     warmPointIndexByBangumiIdRef,
     warmupMetricRef,
@@ -495,6 +543,7 @@ export function useAnitabiMapController(
     tabCardsRef,
     updateWarmupProgress,
     updateWarmupTask,
+    mapImageDiagManagerRef,
     warmPointIndexByBangumiIdRef,
     warmupBlockingUiRef,
     warmupMetricRef,
@@ -622,6 +671,8 @@ export function useAnitabiMapController(
     onRandom,
     enterPanorama,
     onImagePreviewOpenChange,
+    onPreviewDiagnosticRequestStart,
+    onPreviewDiagnosticRequestTerminal,
     renderPointImage,
     saveOriginalImage,
     exitPanorama,
@@ -692,6 +743,9 @@ export function useAnitabiMapController(
     setRouteBookTitleDraft,
     setDetailCardMode,
     setSelectedPointId,
+    tab,
+    selectedPointId,
+    mapImageDiagManagerRef,
   })
 
   return {
@@ -745,6 +799,8 @@ export function useAnitabiMapController(
     mobilePointPopupAnchor,
     mobilePointPopupOpen,
     onImagePreviewOpenChange,
+    onPreviewDiagnosticRequestStart,
+    onPreviewDiagnosticRequestTerminal,
     onLocate,
     onRandom,
     onShare,

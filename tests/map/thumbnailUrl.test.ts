@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizePointThumbnailUrl } from '@/components/map/utils/normalizePointThumbnailUrl'
-import { getMapDisplayImageCandidates, toCanvasSafeImageUrl, toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
+import {
+  appendMapImageDiagnosticParams,
+  getMapDisplayImageCandidates,
+  readMapImageDiagnosticParams,
+  stripMapImageDiagnosticParams,
+  toCanvasSafeImageUrl,
+  toMapDisplayImageUrl,
+} from '@/lib/anitabi/imageProxy'
 
 const originalWindow = globalThis.window
 
@@ -63,23 +70,23 @@ describe('toMapDisplayImageUrl', () => {
     )
   })
 
-  it('keeps anitabi point images direct and requests a smaller display plan', () => {
+  it('routes anitabi point images through the render proxy', () => {
     expect(toMapDisplayImageUrl('https://www.anitabi.cn/images/user/0/a.jpg', { kind: 'point' })).toBe(
-      'https://image.anitabi.cn/user/0/a.jpg?plan=h320',
+      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fuser%2F0%2Fa.jpg%3Fplan%3Dh320',
     )
   })
 
-  it('keeps anitabi point-photo paths direct and uses width-based resizing instead of an unsupported display plan', () => {
+  it('routes anitabi point-photo paths through the render proxy with width-based resizing preserved', () => {
     expect(
       toMapDisplayImageUrl('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80', { kind: 'point' }),
     ).toBe(
-      'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
+      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fw%3D640%26q%3D80',
     )
   })
 
-  it('uses a smaller direct plan for point thumbnail displays', () => {
+  it('routes point thumbnail displays through the render proxy', () => {
     expect(toMapDisplayImageUrl('https://www.anitabi.cn/images/user/0/a.jpg', { kind: 'point-thumbnail' })).toBe(
-      'https://image.anitabi.cn/user/0/a.jpg?plan=h160',
+      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fuser%2F0%2Fa.jpg%3Fplan%3Dh160',
     )
   })
 
@@ -94,19 +101,48 @@ describe('toMapDisplayImageUrl', () => {
     )
   })
 
-  it('prefers direct point-photo urls with retry and proxy fallback candidates', () => {
+  it('keeps point-photo urls on the proxy-only lane with proxy retry fallback', () => {
     expect(
       getMapDisplayImageCandidates('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80', { kind: 'point' }),
     ).toEqual([
-      'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
-      'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
       'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fw%3D640%26q%3D80',
+      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fw%3D640%26q%3D80&_retry=1',
     ])
   })
 
   it('adds a retry nonce when asked', () => {
     expect(toMapDisplayImageUrl('https://bgm.tv/cover.jpg', { kind: 'cover', retryNonce: 1 })).toBe(
       'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fbgm.tv%2Fcover.jpg&_retry=1',
+    )
+  })
+
+  it('adds diagnostic params only to render-proxy urls', () => {
+    expect(
+      appendMapImageDiagnosticParams(
+        'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fbgm.tv%2Fcover.jpg',
+        { sessionId: 's1', chainId: 'c1', requestId: 'r1' },
+      ),
+    ).toContain('__mi_request=r1')
+
+    expect(
+      appendMapImageDiagnosticParams('https://image.anitabi.cn/bangumi/290980.jpg', {
+        sessionId: 's1',
+        chainId: 'c1',
+        requestId: 'r1',
+      }),
+    ).toBe('https://image.anitabi.cn/bangumi/290980.jpg')
+  })
+
+  it('reads and strips diagnostic params', () => {
+    const raw = 'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fbgm.tv%2Fcover.jpg&__mi_session=s1&__mi_chain=c1&__mi_request=r1'
+
+    expect(readMapImageDiagnosticParams(raw)).toEqual({
+      sessionId: 's1',
+      chainId: 'c1',
+      requestId: 'r1',
+    })
+    expect(stripMapImageDiagnosticParams(raw).toString()).toBe(
+      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fbgm.tv%2Fcover.jpg',
     )
   })
 })
@@ -125,40 +161,40 @@ describe('normalizePointThumbnailUrl', () => {
     expect(normalizePointThumbnailUrl('   ')).toBe(null)
   })
 
-  it('returns URL with plan=h160 for anitabi.cn host', () => {
+  it('routes anitabi.cn thumbnail hosts through the render proxy', () => {
     const input = 'https://anitabi.cn/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/image.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fimage.jpg%3Fplan%3Dh160')
   })
 
-  it('returns URL with plan=h160 for subdomain.anitabi.cn host', () => {
+  it('routes subdomain anitabi hosts through the render proxy', () => {
     const input = 'https://cdn.anitabi.cn/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://cdn.anitabi.cn/image.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fcdn.anitabi.cn%2Fimage.jpg%3Fplan%3Dh160')
   })
 
-  it('preserves existing plan param for anitabi host', () => {
+  it('preserves existing plan param when proxying anitabi host', () => {
     const input = 'https://anitabi.cn/image.jpg?plan=h160'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/image.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fimage.jpg%3Fplan%3Dh160')
   })
 
-  it('drops w and q params and forces plan for anitabi host', () => {
+  it('drops w and q params and proxies the normalized anitabi host', () => {
     const input = 'https://anitabi.cn/image.jpg?w=128&q=90'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/image.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fimage.jpg%3Fplan%3Dh160')
   })
 
-  it('preserves plan and drops resize params for anitabi host', () => {
+  it('preserves plan and drops resize params before proxying anitabi host', () => {
     const input = 'https://anitabi.cn/image.jpg?plan=h320&w=128&q=90'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/image.jpg?plan=h320')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fimage.jpg%3Fplan%3Dh320')
   })
 
-  it('rewrites www.anitabi.cn /images path to image.anitabi.cn', () => {
+  it('rewrites www.anitabi.cn /images path before proxying', () => {
     const input = 'https://www.anitabi.cn/images/user/0/a.jpg?plan=h160'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/user/0/a.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fuser%2F0%2Fa.jpg%3Fplan%3Dh160')
   })
 
   it('routes non-anitabi host thumbnails through the render proxy', () => {
@@ -170,13 +206,12 @@ describe('normalizePointThumbnailUrl', () => {
   it('handles invalid URL gracefully by returning original string', () => {
     const input = 'not-a-valid-url'
     const result = normalizePointThumbnailUrl(input)
-    // URL constructor with base converts relative paths to absolute
     expect(result).toBe('https://seichigo.com/not-a-valid-url')
   })
 
-  it('handles relative URL by converting to absolute anitabi URL', () => {
+  it('handles relative URL by converting to absolute anitabi URL and proxying it', () => {
     const input = '/path/to/image.jpg'
     const result = normalizePointThumbnailUrl(input)
-    expect(result).toBe('https://image.anitabi.cn/path/to/image.jpg?plan=h160')
+    expect(result).toBe('https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpath%2Fto%2Fimage.jpg%3Fplan%3Dh160')
   })
 })

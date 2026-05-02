@@ -5,11 +5,13 @@ import type {
   AnitabiPreloadChunkItemDTO,
   AnitabiPreloadManifestDTO,
 } from '@/lib/anitabi/types'
+import { acquireTimedMapImageRequestSlot } from '@/features/map/anitabi/mapImageRequestScheduler'
 import {
   createFirstViewSlotKey,
   getFirstViewTrackedSlotCount,
   markFirstViewRequestStart,
 } from './firstView'
+import { resolveMapImageDiagSurface } from './mapImageSessionManager'
 import { withPromiseTimeout, createRequestSignalWithTimeout, yieldToMainThread, normalizeCoverImageUrl, normalizePointImageUrl, prefetchImageUrl, buildWarmDetail, getImageWarmupConcurrency } from './media'
 import {
   COMPLETE_MODE_SPRITE_BUDGET_MS,
@@ -43,10 +45,12 @@ export function useAnitabiWarmup(ctx: any) {
     setCardsLoadError,
     setWarmPointDataVersion,
     setTabCardsVersion,
+    tab,
     warmupRunTokenRef,
     warmupBlockingUiRef,
     setWarmupUiBlocking,
     warmupMetricRef,
+    mapImageDiagManagerRef,
     updateWarmupProgress,
     updateWarmupTask,
     completeAllWarmupTasks,
@@ -144,7 +148,6 @@ export function useAnitabiWarmup(ctx: any) {
       }
     })
   }, [label.preloadMapDone, label.preloadMapPreparing, label.preloadMapTiles, updateWarmupTask, waitForMapInstance])
-
   const fetchPreloadManifest = useCallback(async (signal?: AbortSignal): Promise<AnitabiPreloadManifestDTO | null> => {
     const store = cacheStoreRef.current
     if (!store) return null
@@ -182,7 +185,6 @@ export function useAnitabiWarmup(ctx: any) {
       return fallback
     }
   }, [cacheStoreRef, locale, preloadManifestRef])
-
   const fetchPreloadChunkByIndex = useCallback(async (
     manifest: AnitabiPreloadManifestDTO,
     index: number,
@@ -542,6 +544,7 @@ export function useAnitabiWarmup(ctx: any) {
         if (!queue.length || total <= 0) return
         warmupMetricRef.current.images_total = total
         warmupMetricRef.current.images_queue_remaining = queue.length
+        const surface = resolveMapImageDiagSurface(tab)
         const workers = Math.min(getImageWarmupConcurrency(false), queue.length)
         await Promise.all(Array.from({ length: workers }, async () => {
           for (;;) {
@@ -552,21 +555,58 @@ export function useAnitabiWarmup(ctx: any) {
             inFlight += 1
             warmupMetricRef.current.images_inflight = inFlight
             warmupMetricRef.current.images_last_src = entry.src
+            const startedAt = performance.now()
+            let handle: { requestUrl: string; requestId: string } | null = null
             try {
+              const { lease, queueWaitMs } = await acquireTimedMapImageRequestSlot({ lane: 'warmup', signal })
+              try {
+                handle = entry.slotKey
+                  ? mapImageDiagManagerRef.current?.startRequest({
+                      surface,
+                      slotKey: entry.slotKey,
+                      slotType: 'cover-avatar',
+                      owner: 'warmup',
+                      requestedCandidateUrl: entry.src,
+                      candidateIndex: 0,
+                      candidateCount: 1,
+                      reuseChain: false,
+                      evidence: {
+                        phase: 'warmup',
+                        queue_wait_ms: queueWaitMs,
+                      },
+                    }) ?? null
+                  : null
               if (entry.slotKey) {
-                markFirstViewRequestStart(warmupMetricRef, {
-                  slotKey: entry.slotKey,
-                  slotType: 'cover-avatar',
-                  src: entry.src,
-                  owner: 'warmup',
+                  markFirstViewRequestStart(warmupMetricRef, {
+                    slotKey: entry.slotKey,
+                    slotType: 'cover-avatar',
+                    src: entry.src,
+                    owner: 'warmup',
+                  })
+                }
+                const loaded = await withPromiseTimeout(
+                  prefetchImageUrl(entry.src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).then(() => true).catch(() => false),
+                  WARMUP_IMAGE_TIMEOUT_MS + 300,
+                  false,
+                  signal,
+                )
+                mapImageDiagManagerRef.current?.finishRequest(handle, {
+                  terminalState: signal?.aborted ? 'aborted' : loaded ? 'succeeded' : 'failed',
+                  chainTerminal: true,
+                  finalUrl: handle?.requestUrl || entry.src,
+                  durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+                  outcome: loaded || signal?.aborted ? undefined : 'network_error',
+                  evidence: {
+                    phase: 'warmup',
+                    queue_wait_ms: queueWaitMs,
+                  },
                 })
+              } finally {
+                lease.release()
               }
-              await withPromiseTimeout(
-                prefetchImageUrl(entry.src, { signal, timeoutMs: WARMUP_IMAGE_TIMEOUT_MS }).catch(() => null),
-                WARMUP_IMAGE_TIMEOUT_MS + 300,
-                undefined,
-                signal,
-              )
+            } catch (error) {
+              if ((error as Error)?.name === 'AbortError') return
+              throw error
             } finally {
               inFlight = Math.max(0, inFlight - 1)
               warmupMetricRef.current.images_inflight = inFlight
@@ -680,7 +720,17 @@ export function useAnitabiWarmup(ctx: any) {
           if (signal?.aborted || !isActiveRun()) return
           const src = bgQueue.shift()
           if (!src) return
-          await prefetchImageUrl(src, { signal, timeoutMs: 2200 }).catch(() => null)
+          try {
+            const { lease } = await acquireTimedMapImageRequestSlot({ lane: 'warmup', signal })
+            try {
+              await prefetchImageUrl(src, { signal, timeoutMs: 2200 }).catch(() => null)
+            } finally {
+              lease.release()
+            }
+          } catch (error) {
+            if ((error as Error)?.name === 'AbortError') return
+            throw error
+          }
         }
       })).finally(() => {
         warmupMetricRef.current.bg_images_ms = Math.round(performance.now() - backgroundStartedAt)
@@ -714,6 +764,7 @@ export function useAnitabiWarmup(ctx: any) {
     warmupBlockingUiRef,
     warmupMetricRef,
     warmupRunTokenRef,
+    tab,
   ])
 
   return {

@@ -1,5 +1,6 @@
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { normalizePointThumbnailUrl } from '@/components/map/utils/normalizePointThumbnailUrl'
+import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
 import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 
 export interface MapLike {
@@ -13,41 +14,116 @@ export interface ThumbnailLoaderOptions {
   map: MapLike
   maxLoaded?: number
   firstViewTrackedLimit?: number
-  onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
-  onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
+  directRequestTimeoutMs?: number
+  proxyRequestTimeoutMs?: number
+  onTrackedRequestStart?: (input: {
+    slotKey: string
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+    queueWaitMs?: number
+  }) => {
+    requestUrl: string
+    requestId: string
+  } | null
+  onTrackedRequestTerminal?: (input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => void
 }
 
 const DEFAULT_MAX_LOADED = 200
 const MAX_CONCURRENT_LOADS = 10
 const FAILED_RETRY_COOLDOWN_MS = 8_000
+const DEFAULT_THUMBNAIL_PROXY_TIMEOUT_MS = 5_000
+const IMMEDIATE_RETRY_DELAY_MS = 300
+const IMMEDIATE_RETRY_ATTEMPTS = 1
+
+function waitForRetryWindow(signal: AbortSignal, delayMs: number): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException('Aborted', 'AbortError'))
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, delayMs)
+
+    const onAbort = () => {
+      globalThis.clearTimeout(timeoutId)
+      signal.removeEventListener('abort', onAbort)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+function buildViewportSignature(features: GlobalPointFeatureProperties[]): string {
+  return features
+    .map((feature) => `${feature.pointId}:${String(feature.imageUrl || '')}`)
+    .join('|')
+}
+
+function shouldRetryImmediately(error: unknown): boolean {
+  const message = String((error as Error | null)?.message || '').trim().toLowerCase()
+  return message !== 'timeout'
+}
 
 export class ThumbnailLoader {
   private readonly map: MapLike
   private readonly maxLoaded: number
   private readonly firstViewTrackedLimit: number
-  private readonly onTrackedSlotRequestStart?: (input: { slotKey: string; src: string }) => void
-  private readonly onTrackedSlotSettle?: (input: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => void
+  private readonly directRequestTimeoutMs?: number
+  private readonly proxyRequestTimeoutMs?: number
+  private readonly onTrackedRequestStart?: ThumbnailLoaderOptions['onTrackedRequestStart']
+  private readonly onTrackedRequestTerminal?: ThumbnailLoaderOptions['onTrackedRequestTerminal']
 
   private readonly lru = new Map<string, number>()
   private readonly failedAt = new Map<string, number>()
   private accessCounter = 0
   private loadTimes: number[] = []
   private updateQueue: Promise<void> = Promise.resolve()
+  private activeUpdateAbortController: AbortController | null = null
+  private activeViewportSignature: string | null = null
+  private activeViewportConsumers = 0
 
   constructor(options: ThumbnailLoaderOptions) {
     this.map = options.map
     this.maxLoaded = options.maxLoaded ?? DEFAULT_MAX_LOADED
     this.firstViewTrackedLimit = Math.max(0, options.firstViewTrackedLimit ?? 0)
-    this.onTrackedSlotRequestStart = options.onTrackedSlotRequestStart
-    this.onTrackedSlotSettle = options.onTrackedSlotSettle
+    this.directRequestTimeoutMs = options.directRequestTimeoutMs
+    this.proxyRequestTimeoutMs = options.proxyRequestTimeoutMs ?? DEFAULT_THUMBNAIL_PROXY_TIMEOUT_MS
+    this.onTrackedRequestStart = options.onTrackedRequestStart
+    this.onTrackedRequestTerminal = options.onTrackedRequestTerminal
   }
 
   async updateViewport(
     visibleFeatures: GlobalPointFeatureProperties[]
   ): Promise<Set<string>> {
     let snapshot = new Set<string>()
+    const viewportSignature = buildViewportSignature(visibleFeatures)
+    const sameViewport = this.activeViewportSignature === viewportSignature
+      && this.activeUpdateAbortController != null
+    if (!sameViewport) {
+      this.activeUpdateAbortController?.abort()
+      this.activeUpdateAbortController = new AbortController()
+      this.activeViewportSignature = viewportSignature
+      this.activeViewportConsumers = 0
+    }
+    const abortController = this.activeUpdateAbortController!
+    this.activeViewportConsumers += 1
 
     const run = async () => {
+      if (abortController.signal.aborted) {
+        snapshot = new Set(this.lru.keys())
+        return
+      }
       const seen = new Set<string>()
       const uniqueFeatures: GlobalPointFeatureProperties[] = []
       for (const f of visibleFeatures) {
@@ -57,7 +133,7 @@ export class ThumbnailLoader {
         }
       }
 
-      const toLoad: { imageId: string; url: string; urls: string[]; tracked: boolean }[] = []
+      const toLoad: { imageId: string; urls: string[]; tracked: boolean }[] = []
       const now = Date.now()
       let visibleIndex = 0
 
@@ -72,9 +148,6 @@ export class ThumbnailLoader {
         visibleIndex += 1
         const failedAt = this.failedAt.get(imageId)
         if (failedAt != null && now - failedAt < FAILED_RETRY_COOLDOWN_MS) {
-          if (tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: imageId, src: url, state: 'fallback' })
-          }
           continue
         }
         if (failedAt != null) {
@@ -86,18 +159,15 @@ export class ThumbnailLoader {
           : true
         if (this.lru.has(imageId) && imageStillOnMap) {
           this.lru.set(imageId, ++this.accessCounter)
-          if (tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: imageId, src: url, state: 'visible' })
-          }
         } else {
           if (this.lru.has(imageId) && !imageStillOnMap) {
             this.lru.delete(imageId)
           }
-          toLoad.push({ imageId, url, urls: resolvedUrls, tracked })
+          toLoad.push({ imageId, urls: resolvedUrls, tracked })
         }
       }
 
-      await this.loadBatch(toLoad)
+      await this.loadBatch(toLoad, abortController.signal)
 
       this.evict()
 
@@ -121,66 +191,85 @@ export class ThumbnailLoader {
 
     const queued = this.updateQueue.then(run, run)
     this.updateQueue = queued.then(() => undefined, () => undefined)
-    await queued
+    await queued.finally(() => {
+      if (this.activeUpdateAbortController === abortController) {
+        this.activeViewportConsumers = Math.max(0, this.activeViewportConsumers - 1)
+        if (this.activeViewportConsumers === 0) {
+          this.activeUpdateAbortController = null
+          this.activeViewportSignature = null
+        }
+      }
+    })
     return snapshot
   }
 
   private async loadBatch(
-    items: { imageId: string; url: string; urls: string[]; tracked: boolean }[]
+    items: { imageId: string; urls: string[]; tracked: boolean }[],
+    signal: AbortSignal,
   ): Promise<void> {
     let index = 0
 
     const next = async (): Promise<void> => {
-      while (index < items.length) {
+      while (index < items.length && !signal.aborted) {
         const current = items[index++]
         const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        try {
-          if (current.tracked) {
-            this.onTrackedSlotRequestStart?.({ slotKey: current.imageId, src: current.url })
-          }
-          let result: { data: unknown } | null = null
-          let finalUrl = current.url
-          let lastError: unknown = null
-          for (const candidateUrl of current.urls) {
-            finalUrl = candidateUrl
-            try {
-              result = await this.map.loadImage(candidateUrl)
+        let loaded = false
+        let lastError: unknown = null
+
+        for (let attempt = 0; attempt <= IMMEDIATE_RETRY_ATTEMPTS && !signal.aborted; attempt += 1) {
+          try {
+            const result = await loadMapImageWithCandidates({
+              map: this.map,
+              slotKey: current.imageId,
+              urls: current.urls,
+              tracked: current.tracked,
+              requestLane: 'viewport-thumbnail',
+              hostPolicyScope: 'point-thumbnail',
+              directRequestTimeoutMs: this.directRequestTimeoutMs,
+              proxyRequestTimeoutMs: this.proxyRequestTimeoutMs,
+              onTrackedRequestStart: this.onTrackedRequestStart,
+              onTrackedRequestTerminal: this.onTrackedRequestTerminal,
+              requestSignal: signal,
+            })
+            this.map.addImage(current.imageId, result.data)
+            this.lru.set(current.imageId, ++this.accessCounter)
+            this.failedAt.delete(current.imageId)
+
+            const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime
+            this.loadTimes.push(duration)
+            if (this.loadTimes.length > 100) {
+              this.loadTimes.shift()
+            }
+
+            loaded = true
+            break
+          } catch (error) {
+            if ((error as Error)?.name === 'AbortError' || signal.aborted) {
+              return
+            }
+            lastError = error
+            if (attempt >= IMMEDIATE_RETRY_ATTEMPTS || !shouldRetryImmediately(error)) {
               break
-            } catch (error) {
-              lastError = error
+            }
+            await waitForRetryWindow(signal, IMMEDIATE_RETRY_DELAY_MS).catch((retryError) => {
+              lastError = retryError
+            })
+            if ((lastError as Error | null)?.name === 'AbortError' || signal.aborted) {
+              return
             }
           }
-          if (!result) {
-            throw lastError || new Error('load failed')
-          }
-          this.map.addImage(current.imageId, result.data)
-          this.lru.set(current.imageId, ++this.accessCounter)
-          this.failedAt.delete(current.imageId)
-          if (current.tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: finalUrl, state: 'visible' })
-          }
+        }
 
-          // Track load duration
-          const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime
-          this.loadTimes.push(duration)
-          if (this.loadTimes.length > 100) {
-            this.loadTimes.shift()
-          }
-        } catch {
+        if (!loaded) {
           this.failedAt.set(current.imageId, Date.now())
           // In fast successive updates, a concurrent run may already have
           // inserted the same image. Treat it as loaded in that case.
           if (typeof this.map.hasImage === 'function' && this.map.hasImage(current.imageId)) {
             this.lru.set(current.imageId, ++this.accessCounter)
             this.failedAt.delete(current.imageId)
-            if (current.tracked) {
-              this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: current.url, state: 'visible' })
-            }
             continue
           }
-          if (current.tracked) {
-            this.onTrackedSlotSettle?.({ slotKey: current.imageId, src: current.url, state: 'fallback' })
-          }
+          void lastError
         }
       }
     }
