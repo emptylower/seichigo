@@ -70,6 +70,31 @@ export function readMapImageHost(url: string): string | null {
   }
 }
 
+function isMapImageHostPolicyProxyAwareEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_MAP_IMAGE_HOST_POLICY_PROXY_AWARE === '1'
+}
+
+export function readMapImageUpstreamHost(url: string): string | null {
+  try {
+    const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
+    const parsed = new URL(url, baseOrigin)
+    if (parsed.pathname !== '/api/anitabi/image-render') return null
+    const upstream = parsed.searchParams.get('url')
+    if (!upstream) return null
+    return new URL(upstream).hostname.trim().toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
+export function readMapImageEffectiveHost(url: string): string | null {
+  if (isMapImageHostPolicyProxyAwareEnabled() && isMapImageProxyUrl(url)) {
+    const upstreamHost = readMapImageUpstreamHost(url)
+    if (upstreamHost) return upstreamHost
+  }
+  return readMapImageHost(url)
+}
+
 export function markMapImageHostDegraded(
   host: string | null,
   scope: MapImageHostPolicyScope = 'default',

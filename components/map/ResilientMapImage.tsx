@@ -8,6 +8,7 @@ import {
   markMapImageHostDegraded,
   type MapImageHostPolicyScope,
   prioritizeMapImageCandidates,
+  readMapImageEffectiveHost,
   readMapImageHost,
   resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
@@ -75,7 +76,7 @@ function resolveRequestTimeoutMs(
     ? 8_500
     : 6_000
   const scope = resolveHostPolicyScope(kind)
-  const host = readMapImageHost(url)
+  const host = readMapImageEffectiveHost(url)
   return resolveHostTimeoutMs(host, scope, baseTimeoutMs, Date.now())
 }
 
@@ -179,8 +180,9 @@ export default function ResilientMapImage({
 
   const advanceAfterFailure = (outcome: 'network_error' | 'timeout') => {
     if (candidateIndex + 1 < candidates.length) {
-      if (!isMapImageProxyUrl(currentCandidate)) {
-        markMapImageHostDegraded(readMapImageHost(currentCandidate), hostPolicyScope)
+      const failureHost = readMapImageEffectiveHost(currentCandidate)
+      if (failureHost) {
+        markMapImageHostDegraded(failureHost, hostPolicyScope)
       }
       finishActiveRequest({
         terminalState: 'failed',
