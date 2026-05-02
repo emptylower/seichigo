@@ -191,6 +191,49 @@ export function useMapInteractionActions(ctx: any) {
     finishPreviewImageDiagnostic(mapImageDiagManagerRef.current, input)
   }, [mapImageDiagManagerRef])
 
+  const onWindowExcerptDiagnosticRequestStart = useCallback((input: {
+    slotKey: string
+    surface: 'map' | 'nearby'
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+    queueWaitMs?: number
+  }) => {
+    return mapImageDiagManagerRef.current?.startRequest({
+      surface: input.surface,
+      slotKey: input.slotKey,
+      slotType: 'dom-image',
+      owner: 'dom-image',
+      requestedCandidateUrl: input.requestedCandidateUrl,
+      candidateIndex: input.candidateIndex,
+      candidateCount: input.candidateCount,
+      reuseChain: input.reuseChain,
+      evidence: {
+        view: 'window-excerpt',
+        queue_wait_ms: input.queueWaitMs ?? 0,
+      },
+    }) ?? null
+  }, [mapImageDiagManagerRef])
+
+  const onWindowExcerptDiagnosticRequestTerminal = useCallback((input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted' | 'superseded'
+    displayOutcome?: 'visible' | 'fallback'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => {
+    mapImageDiagManagerRef.current?.finishRequest(input.handle, {
+      terminalState: input.terminalState,
+      displayOutcome: input.displayOutcome,
+      finalUrl: input.finalUrl,
+      chainTerminal: input.chainTerminal,
+      outcome: input.outcome,
+      evidence: { view: 'window-excerpt' },
+    })
+  }, [mapImageDiagManagerRef])
+
   const renderPointImage = useCallback(
     (
       imageUrl: string | null | undefined,
@@ -728,6 +771,8 @@ export function useMapInteractionActions(ctx: any) {
     onImagePreviewOpenChange,
     onPreviewDiagnosticRequestStart,
     onPreviewDiagnosticRequestTerminal,
+    onWindowExcerptDiagnosticRequestStart,
+    onWindowExcerptDiagnosticRequestTerminal,
     renderPointImage,
     saveOriginalImage,
     exitPanorama,
