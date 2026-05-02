@@ -3,8 +3,6 @@ const DEGRADED_HOST_FAILURE_THRESHOLD = 2
 const BLOCKED_HOST_FAILURE_THRESHOLD = 3
 const BLOCKED_HOST_FAILURE_WINDOW_MS = 10_000
 const DEGRADED_HOST_TIMEOUT_MS = 2_000
-const MAP_IMAGE_BREAKER_V2_ENV = 'NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED'
-
 export type MapImageHostPolicyScope = 'cover' | 'point' | 'point-thumbnail' | 'default'
 export type MapImageHostState = 'healthy' | 'degraded' | 'blocked'
 
@@ -23,7 +21,7 @@ function toScopedHostKey(host: string | null, scope: MapImageHostPolicyScope): s
 }
 
 function isMapImageBreakerV2Enabled(): boolean {
-  return process.env[MAP_IMAGE_BREAKER_V2_ENV] === '1'
+  return process.env.NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED === '1'
 }
 
 function trimRecentFailures(failures: number[], now: number): number[] {

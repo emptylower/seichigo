@@ -22,6 +22,24 @@ function startDomImageRequest(
   })
 }
 
+function startDirectDomImageRequest(
+  manager: MapImageSessionManager,
+  slotKey: string,
+  imageId: string,
+  candidateCount = 1,
+) {
+  return manager.startRequest({
+    surface: 'map',
+    slotKey,
+    slotType: 'dom-image',
+    owner: 'dom-image',
+    requestedCandidateUrl: `https://example.com/${imageId}.jpg`,
+    candidateIndex: 0,
+    candidateCount,
+    reuseChain: false,
+  })
+}
+
 describe('MapImageSessionManager', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -225,6 +243,28 @@ describe('MapImageSessionManager', () => {
     expect(first.requestUrl).toContain('__mi_session=')
     expect(second.requestUrl).toContain('__mi_session=')
     expect(third.requestUrl).not.toContain('__mi_session=')
+  })
+
+  it('does not spend force-decoration quota on direct-first requests', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '2'
+
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const directFirst = startDirectDomImageRequest(manager, 'dom-direct-1', 'direct-1', 4)
+    const directSecond = startDirectDomImageRequest(manager, 'dom-direct-2', 'direct-2', 4)
+    const proxyFirst = startDomImageRequest(manager, 'dom-proxy-1', 'proxy-1', 4)
+    const proxySecond = startDomImageRequest(manager, 'dom-proxy-2', 'proxy-2', 4)
+    const proxyThird = startDomImageRequest(manager, 'dom-proxy-3', 'proxy-3', 4)
+
+    expect(directFirst.requestUrl).not.toContain('__mi_session=')
+    expect(directSecond.requestUrl).not.toContain('__mi_session=')
+    expect(proxyFirst.requestUrl).toContain('__mi_session=')
+    expect(proxySecond.requestUrl).toContain('__mi_session=')
+    expect(proxyThird.requestUrl).not.toContain('__mi_session=')
   })
 
   it('does not force-decorate when the flag is unset or zero', () => {

@@ -89,7 +89,6 @@ const EVENT_BATCH_MAX = 40
 const MAX_DWELL_MS = 2000
 const SLOW_REQUEST_MS = 1200
 const DEFAULT_ENDPOINT = '/api/map-image-diagnostics'
-const FORCE_DECORATE_FIRST_N_ENV = 'NEXT_PUBLIC_MAP_IMAGE_FORCE_DECORATE_FIRST_N'
 
 let fallbackIdCounter = 0
 const DIAG_FORCE_STORAGE_KEY = 'seichigo_map_image_diag_force'
@@ -133,6 +132,16 @@ function toTargetHostBucket(rawUrl: string | null | undefined): string | undefin
 
 function buildEvidence(extra?: Record<string, unknown>): Record<string, unknown> {
   return extra ? { source: 'client', ...extra } : { source: 'client' }
+}
+
+function isRenderableProxyRequestUrl(rawUrl: string): boolean {
+  try {
+    const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
+    const url = new URL(rawUrl, baseOrigin)
+    return url.origin === baseOrigin && url.pathname === '/api/anitabi/image-render'
+  } catch {
+    return false
+  }
 }
 
 export function readMapImageDiagForceOverride(): boolean {
@@ -264,18 +273,19 @@ export class MapImageSessionManager {
     }
 
     const requestId = createId('mi-request')
-    const requestUrl = this.shouldDecorateProxyRequests()
-        ? appendMapImageDiagnosticParams(input.requestedCandidateUrl, {
-          sessionId,
-          chainId: chain.chainId,
-          requestId,
-          sampled: this.sampled,
-          escalationReason: this.escalationReason,
-          surface: input.surface,
-          slotKey: input.slotKey,
-          slotType: input.slotType,
-          owner: input.owner,
-        })
+    const shouldDecorateRequestUrl = this.shouldDecorateProxyRequest(input.requestedCandidateUrl)
+    const requestUrl = shouldDecorateRequestUrl
+      ? appendMapImageDiagnosticParams(input.requestedCandidateUrl, {
+        sessionId,
+        chainId: chain.chainId,
+        requestId,
+        sampled: this.sampled,
+        escalationReason: this.escalationReason,
+        surface: input.surface,
+        slotKey: input.slotKey,
+        slotType: input.slotType,
+        owner: input.owner,
+      })
       : input.requestedCandidateUrl
 
     const handle: MapImageDiagRequestHandle = {
@@ -563,7 +573,8 @@ export class MapImageSessionManager {
     }
   }
 
-  private shouldDecorateProxyRequests(): boolean {
+  private shouldDecorateProxyRequest(requestUrl: string): boolean {
+    if (!isRenderableProxyRequestUrl(requestUrl)) return false
     if (this.isFlushEligible()) return true
 
     const forceDecorateFirstN = this.resolveForceDecorateFirstN()
@@ -576,7 +587,7 @@ export class MapImageSessionManager {
   }
 
   private resolveForceDecorateFirstN(): number {
-    const rawValue = String(process.env[FORCE_DECORATE_FIRST_N_ENV] || '').trim()
+    const rawValue = String(process.env.NEXT_PUBLIC_MAP_IMAGE_FORCE_DECORATE_FIRST_N || '').trim()
     const parsedValue = Number.parseInt(rawValue, 10)
     if (!Number.isFinite(parsedValue) || parsedValue < 0) return 0
     return Math.min(parsedValue, 50)

@@ -1,5 +1,4 @@
 type MapDisplayImageKind = 'cover' | 'point-thumbnail' | 'point-preview' | 'point' | 'default'
-const MAP_IMAGE_LADDER_BGM_FALLBACK_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_LADDER_BGM_FALLBACK_ENABLED'
 export type MapImageDiagnosticQuery = {
   sessionId: string
   chainId: string
@@ -267,7 +266,7 @@ export function getMapDisplayImageCandidates(
       isDirectSafeAnitabiHost(url)
       && kind === 'cover'
     const shouldEnableProxyRetryAndDirectFallback =
-      process.env[MAP_IMAGE_LADDER_BGM_FALLBACK_FLAG] === '1'
+      process.env.NEXT_PUBLIC_MAP_IMAGE_LADDER_BGM_FALLBACK_ENABLED === '1'
       && kind === 'cover'
       && !isDirectSafeAnitabiHost(url)
 
