@@ -4,6 +4,7 @@ import {
   markMapImageHostDegraded,
   type MapImageHostPolicyScope,
   prioritizeMapImageCandidates,
+  readMapImageEffectiveHost,
   readMapImageHost,
   resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
@@ -71,7 +72,7 @@ function resolveRequestTimeoutMs(
   const baseMs = isMapImageProxyUrl(url)
     ? proxyRequestTimeoutMs
     : directRequestTimeoutMs
-  return resolveHostTimeoutMs(readMapImageHost(url), hostPolicyScope, baseMs, Date.now())
+  return resolveHostTimeoutMs(readMapImageEffectiveHost(url), hostPolicyScope, baseMs, Date.now())
 }
 
 async function loadImageWithTimeout(
@@ -204,8 +205,9 @@ export async function loadMapImageWithCandidates(
     }
 
     lastError = result.error || new Error(result.outcome)
-    if (!isMapImageProxyUrl(candidateUrl)) {
-      markMapImageHostDegraded(readMapImageHost(candidateUrl), hostPolicyScope)
+    const failureHost = readMapImageEffectiveHost(candidateUrl)
+    if (failureHost) {
+      markMapImageHostDegraded(failureHost, hostPolicyScope)
     }
     if (options.tracked) {
       options.onTrackedRequestTerminal?.({

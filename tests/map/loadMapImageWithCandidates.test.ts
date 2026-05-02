@@ -319,4 +319,145 @@ describe('loadMapImageWithCandidates', () => {
       vi.useRealTimers()
     }
   })
+
+  describe('with proxy-aware host policy', () => {
+    const PROXY_AWARE_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_HOST_POLICY_PROXY_AWARE'
+    const originalProxyAwareFlag = process.env[PROXY_AWARE_FLAG]
+
+    beforeEach(() => {
+      delete process.env[PROXY_AWARE_FLAG]
+    })
+
+    afterEach(() => {
+      if (originalProxyAwareFlag === undefined) {
+        delete process.env[PROXY_AWARE_FLAG]
+        return
+      }
+      process.env[PROXY_AWARE_FLAG] = originalProxyAwareFlag
+    })
+
+    it('attributes proxy-URL failures to the upstream host (flag ON)', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(1_000)
+        process.env[PROXY_AWARE_FLAG] = '1'
+        process.env[BREAKER_FLAG] = '1'
+
+        const proxyUrl = 'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F1%2Fa.jpg%3Fplan%3Dh160'
+        const map = {
+          loadImage: vi.fn(async (): Promise<{ data: { url: string } }> => {
+            return await new Promise(() => {})
+          }),
+        }
+
+        // Two proxy failures: first should record image.anitabi.cn fail,
+        // second should push it into degraded state (threshold=2).
+        const first = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-upstream-1',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 1_000,
+        })
+        const firstAssertion = expect(first).rejects.toThrow()
+        await vi.advanceTimersByTimeAsync(1_001)
+        await firstAssertion
+
+        vi.setSystemTime(2_000)
+        const second = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-upstream-2',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 1_000,
+        })
+        const secondAssertion = expect(second).rejects.toThrow()
+        await vi.advanceTimersByTimeAsync(1_001)
+        await secondAssertion
+
+        // Third request: image.anitabi.cn should now be degraded → 2000ms clamp,
+        // even though the request URL is a proxy URL.
+        vi.setSystemTime(3_500)
+        const third = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-upstream-3',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 5_000,
+        })
+        const thirdAssertion = expect(third).rejects.toThrow()
+        // 1999ms in: timeout should NOT have fired yet
+        await vi.advanceTimersByTimeAsync(1_999)
+        // 2001ms in: clamped 2000ms timeout fires (proves clamp engaged via upstream attribution)
+        await vi.advanceTimersByTimeAsync(2)
+        await thirdAssertion
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does NOT clamp proxy-URL timeouts when flag is OFF (legacy)', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(1_000)
+        // PROXY_AWARE_FLAG intentionally NOT set
+        process.env[BREAKER_FLAG] = '1'
+
+        const proxyUrl = 'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F4%2Fd.jpg%3Fplan%3Dh160'
+        const map = {
+          loadImage: vi.fn(async (): Promise<{ data: { url: string } }> => {
+            return await new Promise(() => {})
+          }),
+        }
+
+        // Two proxy failures (would push upstream into degraded if flag were ON).
+        const first = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-legacy-1',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 1_000,
+        })
+        const firstAssertion = expect(first).rejects.toThrow()
+        await vi.advanceTimersByTimeAsync(1_001)
+        await firstAssertion
+
+        vi.setSystemTime(2_000)
+        const second = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-legacy-2',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 1_000,
+        })
+        const secondAssertion = expect(second).rejects.toThrow()
+        await vi.advanceTimersByTimeAsync(1_001)
+        await secondAssertion
+
+        // Third request: full 5000ms timeout should still apply (no clamp).
+        vi.setSystemTime(3_500)
+        const third = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-legacy-3',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 5_000,
+        })
+        const thirdAssertion = expect(third).rejects.toThrow()
+        // Past 2000ms: clamp did NOT engage; no timeout yet
+        await vi.advanceTimersByTimeAsync(2_001)
+        // 5001ms in total: now the full proxy timeout fires
+        await vi.advanceTimersByTimeAsync(3_000)
+        await thirdAssertion
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
 })
