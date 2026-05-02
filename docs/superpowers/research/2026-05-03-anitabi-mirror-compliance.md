@@ -7,7 +7,7 @@
 ## Findings
 1. **Rate limit / QPS**: No documented limit was found in `README.md`, `api.md`, or any repository file matching `镜像|mirror|rate|User-Agent|robots`. PR3's planned `5 req/s` remains a self-imposed conservative limit rather than an upstream requirement.
 2. **User-Agent requirements**: No documented `User-Agent` requirement was found in the documentation repo or the fetched `robots.txt` endpoints.
-3. **Attribution requirements**: `api.md` explicitly says consumers of point-detail image data should display `origin` text and link `originURL`, and states the shared data follows `CC BY-NC-SA 4.0`. This is the only explicit usage/compliance requirement found in the docs.
+3. **Attribution requirements**: `api.md` explicitly says consumers of point-detail image data should display `origin` text and link `originURL`, and states the shared data follows `CC BY-NC-SA 4.0`. This is the only explicit attribution/display requirement found in the docs.
 4. **Cache TTL minimums**: No documented minimum cache TTL was found. PR3's `s-maxage=86400` does not conflict with any published requirement.
 5. **Disallowed resources**: `api.md` explicitly says not to request the main domain `https://anitabi.cn/` for resources or data structures because stability is not guaranteed. `api.md` also warns against using full-size screenshots in display UIs because heavy full-size traffic puts pressure on the server.
 6. **Contact channel**: No direct mirror/compliance contact channel was documented. The repo exposes GitHub issues as a public discussion path, and the README says to "contact" the maintainer for admin access but gives no handle or email.
