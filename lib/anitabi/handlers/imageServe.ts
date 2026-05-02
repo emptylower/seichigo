@@ -648,26 +648,29 @@ export async function serveImageRequest(
   ) {
     const mirrored = await getMirroredImage(deps.env.MAP_IMAGE_CACHE, target.toString()).catch(() => null)
     if (mirrored) {
-      emitProxyEvent({
-        stage: 'image_cache_state',
-        outcome: 'cache_hit_r2_primary',
-        terminalState: 'succeeded',
-        targetHostBucket: normalizeHost(target.hostname),
-        evidence: { mirrorSource: mirrored.customMetadata.mirrorSource, r2Key: mirrored.key },
-      })
-      const headers = new Headers({
-        'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
-        'Cache-Control': RENDER_CACHE_CONTROL,
-        'Content-Disposition': 'inline',
-        'Content-Length': String(mirrored.size ?? mirrored.bytes.byteLength),
-        'X-Content-Type-Options': 'nosniff',
-        'X-Seichigo-Image-Source': 'r2-primary',
-        'X-Original-Source': mirrored.customMetadata.originalUrl || target.toString(),
-      })
-      if (mirrored.customMetadata.mirroredAt) {
-        headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
+      const mirroredSize = mirrored.size ?? mirrored.bytes.byteLength
+      if (mirroredSize <= MAX_IMAGE_BYTES) {
+        emitProxyEvent({
+          stage: 'image_cache_state',
+          outcome: 'cache_hit_r2_primary',
+          terminalState: 'succeeded',
+          targetHostBucket: normalizeHost(target.hostname),
+          evidence: { mirrorSource: mirrored.customMetadata.mirrorSource, r2Key: mirrored.key },
+        })
+        const headers = new Headers({
+          'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
+          'Cache-Control': RENDER_CACHE_CONTROL,
+          'Content-Disposition': 'inline',
+          'Content-Length': String(mirroredSize),
+          'X-Content-Type-Options': 'nosniff',
+          'X-Seichigo-Image-Source': 'r2-primary',
+          'X-Original-Source': mirrored.customMetadata.originalUrl || target.toString(),
+        })
+        if (mirrored.customMetadata.mirroredAt) {
+          headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
+        }
+        return await storeRenderCache(requestUrl, new Response(mirrored.bytes, { status: 200, headers }))
       }
-      return await storeRenderCache(requestUrl, new Response(mirrored.bytes, { status: 200, headers }))
     }
   }
   if (mode === 'render') {

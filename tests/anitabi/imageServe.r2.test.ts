@@ -16,6 +16,7 @@ vi.mock('node:dns/promises', () => ({
 
 const SAFE_LOOKUP_RESULT = [{ address: '93.184.216.34', family: 4 as const }]
 const PNG_BYTES = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 type StoredObject = {
   body: ArrayBuffer
@@ -85,6 +86,13 @@ class FakeBucket implements R2MirrorBucket {
       httpMetadata: options?.httpMetadata ? { ...options.httpMetadata } : undefined,
     })
     return { key, size: body.byteLength }
+  }
+}
+
+class ThrowingGetBucket extends FakeBucket {
+  override async get(key: string): Promise<Awaited<ReturnType<FakeBucket['get']>>> {
+    this.getCalls.push(key)
+    throw new Error(`R2 read failed for ${key}`)
   }
 }
 
@@ -217,6 +225,77 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.status).toBe(200)
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(bucket.getCalls).toEqual([])
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+  })
+
+  it('treats an oversized R2 object as a miss and falls through to upstream fetch', async () => {
+    const bucket = new FakeBucket()
+    const seeded = await seedMirroredObject(bucket)
+    const stored = bucket.objects.get(seeded.key)
+    if (!stored) throw new Error('expected seeded R2 object')
+    stored.size = MAX_IMAGE_BYTES + 1
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(seeded.rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(response.headers.get('Content-Type')).toBe('image/png')
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+    expect(response.headers.get('X-Seichigo-Render-Cache')).toBe('MISS')
+    expect(mocks.cachePut).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls through to upstream fetch when the mirrored R2 object is missing', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/cover.png'
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+  })
+
+  it('falls through to upstream fetch when reading the mirrored R2 object errors', async () => {
+    const bucket = new ThrowingGetBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/cover.png'
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+    expect(fetch).toHaveBeenCalledTimes(1)
     expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
   })
 
