@@ -3,6 +3,30 @@
 import type { WindowExcerptBangumiItem, WindowExcerptPointItem } from '@/features/map/anitabi/windowExcerpt'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 
+export type WindowExcerptDiagnostics = {
+  surface: 'map' | 'nearby'
+  onPointRequestStart: (input: {
+    slotKey: string
+    surface: 'map' | 'nearby'
+    requestedCandidateUrl: string
+    candidateIndex: number
+    candidateCount: number
+    reuseChain: boolean
+    queueWaitMs?: number
+  }) => {
+    requestUrl: string
+    requestId: string
+  } | null
+  onPointRequestTerminal: (input: {
+    handle: { requestUrl: string; requestId: string } | null
+    terminalState: 'succeeded' | 'failed' | 'aborted' | 'superseded'
+    displayOutcome?: 'visible' | 'fallback'
+    finalUrl: string
+    chainTerminal: boolean
+    outcome?: string
+  }) => void
+}
+
 type Props = {
   bangumis: WindowExcerptBangumiItem[]
   points: WindowExcerptPointItem[]
@@ -11,6 +35,7 @@ type Props = {
   onBangumiClick: (bangumiId: number) => void
   onPointClick: (bangumiId: number, pointId: string) => void
   layout?: 'desktop' | 'mobile'
+  diagnostics?: WindowExcerptDiagnostics
 }
 
 function timeLabel(value: string | null): string | null {
@@ -84,11 +109,13 @@ function PointCard({
   active,
   onClick,
   compact,
+  diagnostics,
 }: {
   item: WindowExcerptPointItem
   active: boolean
   onClick: () => void
   compact: boolean
+  diagnostics?: WindowExcerptDiagnostics
 }) {
   return (
     <button
@@ -110,6 +137,10 @@ function PointCard({
         className={`${compact ? 'h-24' : 'h-20'} w-full object-cover transition group-hover:scale-[1.03]`}
         loading="lazy"
         kind="point"
+        diagnosticSurface={diagnostics ? diagnostics.surface : undefined}
+        diagnosticSlotKey={diagnostics ? `dom-window-excerpt-${item.pointId}` : undefined}
+        onDiagnosticRequestStart={diagnostics?.onPointRequestStart}
+        onDiagnosticRequestTerminal={diagnostics?.onPointRequestTerminal}
         fallback={<div className={`${compact ? 'h-24' : 'h-20'} w-full bg-slate-200`} />}
       />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-2.5 pb-2 pt-6 text-white">
@@ -138,6 +169,7 @@ export function WindowExcerptOverlay({
   onBangumiClick,
   onPointClick,
   layout = 'desktop',
+  diagnostics,
 }: Props) {
   if (!bangumis.length && !points.length) return null
 
@@ -167,6 +199,7 @@ export function WindowExcerptOverlay({
                 active={item.pointId === activePointId}
                 onClick={() => onPointClick(item.bangumiId, item.pointId)}
                 compact
+                diagnostics={diagnostics}
               />
             ))}
           </div>
@@ -200,6 +233,7 @@ export function WindowExcerptOverlay({
               active={item.pointId === activePointId}
               onClick={() => onPointClick(item.bangumiId, item.pointId)}
               compact={false}
+              diagnostics={diagnostics}
             />
           ))}
         </div>
