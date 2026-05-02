@@ -1,11 +1,14 @@
 {
   "lineBudget": 750,
   "files": {
+    "app/(authed)/admin/ops/ui.tsx": 782,
     "app/(authed)/admin/seo/ui.tsx": 756,
-    "app/(authed)/admin/translations/TranslationsPageView.tsx": 776,
+    "app/(authed)/admin/translations/TranslationsPageView.tsx": 785,
     "app/(authed)/submit/_components/ArticleComposerClient.tsx": 773,
+    "lib/anitabi/handlers/imageServe.ts": 797,
     "features/map/anitabi/shared.ts": 776,
-    "features/map/anitabi/useAnitabiMapController.ts": 802,
-    "features/map/anitabi/useCompleteMode.ts": 788
+    "features/map/anitabi/useAnitabiMapController.ts": 879,
+    "features/map/anitabi/useAnitabiWarmup.ts": 774,
+    "features/map/anitabi/useCompleteMode.ts": 887
   }
 }

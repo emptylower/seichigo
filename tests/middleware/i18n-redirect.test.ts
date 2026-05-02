@@ -163,6 +163,24 @@ describe('i18n IP-based redirect middleware', () => {
     })
   })
 
+  describe('admin routes - skip locale redirect', () => {
+    it('does not redirect /admin/ops for non-zh countries', () => {
+      const req = createRequest('/admin/ops', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+
+    it('does not redirect /admin/ops/map-image-diagnostics for JP users', () => {
+      const req = createRequest('/admin/ops/map-image-diagnostics', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+  })
+
   describe('static files - skip redirect', () => {
     it('does not redirect /manifest.webmanifest', () => {
       const req = createRequest('/manifest.webmanifest', { country: 'US' })
@@ -216,6 +234,26 @@ describe('i18n IP-based redirect middleware', () => {
       expect(res.status).not.toBe(307)
       expect(res.headers.get('location')).toBeNull()
       expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/auth/signup?callbackUrl=%2Fja%2Fsubmit')
+    })
+  })
+
+  describe('admin locale alias rewrite', () => {
+    it('rewrites /en/admin/ops to /admin/ops', () => {
+      const req = createRequest('/en/admin/ops', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/admin/ops')
+    })
+
+    it('rewrites /ja/admin/ops/map-image-diagnostics preserving query string', () => {
+      const req = createRequest('/ja/admin/ops/map-image-diagnostics?tab=recent', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/admin/ops/map-image-diagnostics?tab=recent')
     })
   })
 

@@ -36,7 +36,7 @@ describe('useAnitabiDerivedState selectedPointImage', () => {
     )
 
     expect(result.current.selectedPointImage).toMatchObject({
-      inlineUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?plan=h160',
+      inlineUrl: 'http://localhost:3000/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fplan%3Dh160',
       previewUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
       downloadUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg',
     })
