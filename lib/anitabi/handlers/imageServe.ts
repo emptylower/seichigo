@@ -56,6 +56,27 @@ function resolveRenderOriginalSource(requestUrl: URL): string | null {
   return parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)?.toString() ?? null
 }
 
+function parseAbsoluteHttpUrl(rawInput: string | null | undefined): string | null {
+  const raw = String(rawInput || '').trim()
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) {
+      return null
+    }
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+function resolveRenderCacheDiagnosticSource(input: {
+  cachedOriginalSource?: string | null
+  requestUrl: URL
+}): string | null {
+  return parseAbsoluteHttpUrl(input.cachedOriginalSource) ?? resolveRenderOriginalSource(input.requestUrl)
+}
+
 function normalizeUrlHostname(input: string | null | undefined): string | undefined {
   const raw = String(input || '').trim()
   if (!raw) return undefined
@@ -78,15 +99,21 @@ function withRenderCacheState(
   }
   return new Response(response.body, { status: response.status, headers })
 }
-async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
+async function matchRenderCache(requestUrl: URL): Promise<{
+  response: Response
+  cachedOriginalSource: string | null
+} | null> {
   const cache = getWorkerRenderCache()
   if (!cache) return null
   try {
     const cached = await cache.match(buildRenderCacheKey(requestUrl))
     if (!cached) return null
-    return withRenderCacheState(cached, 'HIT', {
-      originalSource: resolveRenderOriginalSource(requestUrl),
-    })
+    return {
+      response: withRenderCacheState(cached, 'HIT', {
+        originalSource: resolveRenderOriginalSource(requestUrl),
+      }),
+      cachedOriginalSource: cached.headers.get('X-Original-Source'),
+    }
   } catch {
     return null
   }
@@ -677,14 +704,17 @@ export async function serveImageRequest(
         outcome: 'cache_hit',
         terminalState: 'succeeded',
       })
-      const originalSource = resolveRenderOriginalSource(requestUrl)
+      const originalSource = resolveRenderCacheDiagnosticSource({
+        cachedOriginalSource: cached.cachedOriginalSource,
+        requestUrl,
+      })
       emitImageCacheState({
         outcome: 'cache_hit_cf',
         terminalState: 'succeeded',
         targetHostBucket: normalizeUrlHostname(originalSource),
         evidence: originalSource ? { originalSource } : undefined,
       })
-      return cached
+      return cached.response
     }
     emitProxyEvent({
       stage: 'proxy_cache_state',

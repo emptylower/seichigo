@@ -90,16 +90,11 @@ class FakeBucket implements R2MirrorBucket {
   }
 }
 
-class MissThenHitBucket extends FakeBucket {
-  constructor(private missesBeforeHit: number) {
-    super()
-  }
+class PhaseControlledFallbackBucket extends FakeBucket {
+  phase: 'primary' | 'fallback' = 'primary'
 
   override async get(key: string): Promise<Awaited<ReturnType<FakeBucket['get']>>> {
-    if (this.missesBeforeHit > 0) {
-      this.missesBeforeHit -= 1
-      return null
-    }
+    if (this.phase === 'primary') return null
     return super.get(key)
   }
 }
@@ -138,16 +133,22 @@ function createImageResponse(input?: { contentType?: string; contentLength?: num
   })
 }
 
-function createCachedRenderResponse() {
+function createCachedRenderResponse(input?: { originalSource?: string }) {
+  const headers: Record<string, string> = {
+    'content-type': 'image/png',
+    'content-length': String(PNG_BYTES.byteLength),
+    'cache-control': 'public, s-maxage=86400, stale-while-revalidate=604800',
+    'content-disposition': 'inline',
+    'x-content-type-options': 'nosniff',
+  }
+
+  if (input?.originalSource) {
+    headers['x-original-source'] = input.originalSource
+  }
+
   return new Response(PNG_BYTES, {
     status: 200,
-    headers: {
-      'content-type': 'image/png',
-      'content-length': String(PNG_BYTES.byteLength),
-      'cache-control': 'public, s-maxage=86400, stale-while-revalidate=604800',
-      'content-disposition': 'inline',
-      'x-content-type-options': 'nosniff',
-    },
+    headers,
   })
 }
 
@@ -214,8 +215,11 @@ describe('serveImageRequest image cache diagnostics', () => {
     ])
   })
 
-  it('emits cache_hit_cf exactly once on a worker cache hit and skips upstream fetch', async () => {
-    mocks.cacheMatch.mockResolvedValueOnce(createCachedRenderResponse())
+  it('emits cache_hit_cf exactly once using the cached original source when it differs from the request target', async () => {
+    const cachedOriginalSource = 'https://cdn.example.com/mirrored/final-cover.webp'
+    mocks.cacheMatch.mockResolvedValueOnce(createCachedRenderResponse({
+      originalSource: cachedOriginalSource,
+    }))
 
     const response = await serveImageRequest(
       createRenderRequest('https://bgm.tv/subject/1/cover.png'),
@@ -229,6 +233,10 @@ describe('serveImageRequest image cache diagnostics', () => {
       expect.objectContaining({
         outcome: 'cache_hit_cf',
         terminalState: 'succeeded',
+        targetHostBucket: 'cdn.example.com',
+        evidence: {
+          originalSource: cachedOriginalSource,
+        },
       }),
     ])
   })
@@ -258,9 +266,12 @@ describe('serveImageRequest image cache diagnostics', () => {
   })
 
   it('emits cache_hit_r2_fallback exactly once on a fallback recovery and does not emit a failed terminal fetch event', async () => {
-    const bucket = new MissThenHitBucket(6)
+    const bucket = new PhaseControlledFallbackBucket()
     const seeded = await seedMirroredObject(bucket)
-    vi.mocked(fetch).mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+    vi.mocked(fetch).mockImplementationOnce(async () => {
+      bucket.phase = 'fallback'
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+    })
 
     const response = await serveImageRequest(
       createRenderRequest(seeded.rawUrl),
