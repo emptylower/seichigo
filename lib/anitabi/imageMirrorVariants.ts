@@ -89,20 +89,16 @@ export function enumerateBangumiCoverVariants(rawUrl: string | null | undefined)
       return []
     }
 
-    const largePath = replaceBgmCoverSegment(parsed.pathname, 'l')
     const mediumPath = replaceBgmCoverSegment(parsed.pathname, 'm')
-    if (!largePath || !mediumPath) {
+    if (!mediumPath) {
       return []
     }
 
-    const large = buildCanonicalVariant(parsed, 'cover-l', (candidate) => {
-      candidate.pathname = largePath
-    })
     const medium = buildCanonicalVariant(parsed, 'cover-m', (candidate) => {
       candidate.pathname = mediumPath
     })
 
-    return large && medium ? [large, medium] : []
+    return medium ? [medium] : []
   } catch {
     return []
   }

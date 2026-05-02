@@ -20,17 +20,30 @@ describe('enumerateBangumiCoverVariants', () => {
     ])
   })
 
-  it('returns cover-l and cover-m labels for bgm covers even though canonicalization collapses both to /m/', () => {
+  it('returns only the distinct canonical bgm cover variant', () => {
     expect(
       enumerateBangumiCoverVariants('https://lain.bgm.tv/pic/cover/l/abcd.jpg'),
     ).toEqual([
       {
-        label: 'cover-l',
+        label: 'cover-m',
         url: 'https://lain.bgm.tv/pic/cover/m/abcd.jpg',
+      },
+    ])
+  })
+
+  it('removes conflicting resize params from apex and /images anitabi cover inputs', () => {
+    expect(
+      enumerateBangumiCoverVariants(
+        'https://www.anitabi.cn/images/bangumi/123/cover.jpg?plan=h160&w=999&h=111&q=10',
+      ),
+    ).toEqual([
+      {
+        label: 'cover-l',
+        url: 'https://image.anitabi.cn/bangumi/123/cover.jpg?plan=l',
       },
       {
         label: 'cover-m',
-        url: 'https://lain.bgm.tv/pic/cover/m/abcd.jpg',
+        url: 'https://image.anitabi.cn/bangumi/123/cover.jpg',
       },
     ])
   })
