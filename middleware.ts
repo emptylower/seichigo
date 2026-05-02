@@ -6,6 +6,7 @@ const JAPANESE_ZONES = new Set(['JP'])
 const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
 const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanifest|favicon\.ico|favicon\.png|brand\/app-logo\.png)$/
 const LOCALE_PREFIXED_AUTH_ALIAS_PATTERN = /^\/(en|ja)\/auth(?:\/.*)?$/
+const LOCALE_PREFIXED_ADMIN_ALIAS_PATTERN = /^\/(en|ja)\/admin(?:\/.*)?$/
 
 const BOT_PATTERN = /bot|crawler|spider|crawling|slurp|externalhit/i
 
@@ -24,6 +25,10 @@ function getLocaleForCountry(country: string): 'zh' | 'en' | 'ja' {
 
 function isApiRoute(pathname: string): boolean {
   return pathname.startsWith('/api/')
+}
+
+function isAdminRoute(pathname: string): boolean {
+  return pathname === '/admin' || pathname.startsWith('/admin/')
 }
 
 function isStaticAssetRoute(pathname: string): boolean {
@@ -47,6 +52,11 @@ function resolveLocaleStaticAlias(pathname: string): string | null {
 function resolveLocaleAuthAlias(pathname: string): string | null {
   if (!LOCALE_PREFIXED_AUTH_ALIAS_PATTERN.test(pathname)) return null
   return pathname.replace(/^\/(en|ja)(?=\/auth(?:\/|$))/, '')
+}
+
+function resolveLocaleAdminAlias(pathname: string): string | null {
+  if (!LOCALE_PREFIXED_ADMIN_ALIAS_PATTERN.test(pathname)) return null
+  return pathname.replace(/^\/(en|ja)(?=\/admin(?:\/|$))/, '')
 }
 
 function hasLocaleCookie(req: NextRequest): boolean {
@@ -77,11 +87,18 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(url, { request: { headers } })
   }
 
+  const adminAliasPath = resolveLocaleAdminAlias(pathname)
+  if (adminAliasPath) {
+    const url = req.nextUrl.clone()
+    url.pathname = adminAliasPath
+    return NextResponse.rewrite(url, { request: { headers } })
+  }
+
   if (hasLocaleCookie(req)) {
     return NextResponse.next({ request: { headers } })
   }
 
-  if (isApiRoute(pathname) || isStaticAssetRoute(pathname)) {
+  if (isApiRoute(pathname) || isStaticAssetRoute(pathname) || isAdminRoute(pathname)) {
     return NextResponse.next({ request: { headers } })
   }
 

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   lookup: vi.fn(),
   cacheMatch: vi.fn(),
   cachePut: vi.fn(),
+  emitMapImageProxyEvent: vi.fn(),
 }))
 
 vi.mock('node:dns/promises', () => ({
@@ -20,6 +21,11 @@ vi.mock('@/lib/anitabi/api', async () => {
     getAnitabiApiDeps: mocks.getAnitabiApiDeps,
   }
 })
+
+vi.mock('@/lib/mapImageDiag/proxy', () => ({
+  emitMapImageProxyEvent: (...args: any[]) => mocks.emitMapImageProxyEvent(...args),
+  dispatchMapImageProxyEvent: (...args: any[]) => mocks.emitMapImageProxyEvent(...args),
+}))
 
 const SAFE_LOOKUP_RESULT = [{ address: '93.184.216.34', family: 4 as const }]
 const PNG_BYTES = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])
@@ -66,7 +72,7 @@ function createImageResponse(input?: {
   }
 
   return setResponseUrl(
-    new Response(input?.streamBody ?? input?.body ?? PNG_BYTES, {
+    new Response((input?.streamBody ?? input?.body ?? PNG_BYTES) as any, {
       status: 200,
       headers,
     }),
@@ -101,6 +107,13 @@ function createRenderRequest(url: string, name?: string) {
   return new Request(reqUrl)
 }
 
+function createRetryRenderRequest(url: string, retry = 1) {
+  const reqUrl = new URL('http://localhost/api/anitabi/image-render')
+  reqUrl.searchParams.set('url', url)
+  reqUrl.searchParams.set('_retry', String(retry))
+  return new Request(reqUrl)
+}
+
 async function importRenderRouteModule() {
   const moduleHref = new URL('../../app/api/anitabi/image-render/route.ts', import.meta.url).href
   return import(moduleHref) as Promise<{ GET(req: Request): Promise<Response> }>
@@ -115,6 +128,7 @@ describe('anitabi image proxy phase 2', () => {
     vi.stubGlobal('fetch', vi.fn())
     mocks.cacheMatch.mockResolvedValue(undefined)
     mocks.cachePut.mockResolvedValue(undefined)
+    mocks.emitMapImageProxyEvent.mockResolvedValue(undefined)
     vi.stubGlobal('caches', {
       default: {
         match: (...args: any[]) => mocks.cacheMatch(...args),
@@ -267,6 +281,21 @@ describe('anitabi image proxy phase 2', () => {
       expect(mocks.cachePut).not.toHaveBeenCalled()
     })
 
+    it('normalizes retry render requests onto the canonical cache key', async () => {
+      mocks.cacheMatch.mockResolvedValueOnce(createImageResponse())
+      const { GET } = await importRenderRouteModule()
+
+      const res = await GET(createRetryRenderRequest('https://bgm.tv/subject/1/cover.png'))
+
+      expect(res.status).toBe(200)
+      expect(res.headers.get('X-Seichigo-Render-Cache')).toBe('HIT')
+      expect(fetch).not.toHaveBeenCalled()
+      const cacheRequest = mocks.cacheMatch.mock.calls[0]?.[0] as Request | undefined
+      expect(cacheRequest?.url).toBe(
+        'http://localhost/api/anitabi/image-render?url=https%3A%2F%2Fbgm.tv%2Fsubject%2F1%2Fcover.png',
+      )
+    })
+
     it('uses Cloudflare cache hints when fetching uncached render responses', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
       const { GET } = await importRenderRouteModule()
@@ -332,6 +361,13 @@ describe('anitabi image proxy phase 2', () => {
 
       expect(res.status).toBe(413)
       await expect(res.json()).resolves.toEqual({ error: '图片文件过大' })
+      const streamTerminalCalls = mocks.emitMapImageProxyEvent.mock.calls
+        .filter((call) => call[2]?.stage === 'proxy_stream_terminal')
+      expect(streamTerminalCalls).toHaveLength(1)
+      expect(streamTerminalCalls[0]?.[2]).toMatchObject({
+        terminalState: 'failed',
+        outcome: 'response_too_large',
+      })
     })
 
     it('fast-fails render timeouts', async () => {
@@ -350,10 +386,8 @@ describe('anitabi image proxy phase 2', () => {
         createImageResponse({
           contentLength: 1,
           streamBody: new ReadableStream<Uint8Array>({
-            async pull(controller) {
-              await new Promise((resolve) => setTimeout(resolve, 50))
-              controller.enqueue(Uint8Array.from([1]))
-              controller.close()
+            async pull() {
+              await new Promise(() => {})
             },
           }),
         }),
@@ -363,7 +397,16 @@ describe('anitabi image proxy phase 2', () => {
       try {
         const res = await GET(createRenderRequest('https://bgm.tv/subject/1/cover.png'))
         expect(res.status).toBe(200)
-        await expect(res.arrayBuffer()).rejects.toBeDefined()
+        const streamOutcome = await res.arrayBuffer()
+          .then((buffer) => ({ rejected: false, byteLength: buffer.byteLength }))
+          .catch(() => ({ rejected: true, byteLength: 0 }))
+        expect(streamOutcome.rejected || streamOutcome.byteLength === 0).toBe(true)
+        const streamTerminalCalls = mocks.emitMapImageProxyEvent.mock.calls
+          .filter((call) => call[2]?.stage === 'proxy_stream_terminal')
+        expect(streamTerminalCalls).toHaveLength(1)
+        expect(streamTerminalCalls[0]?.[2]).toMatchObject({
+          outcome: 'timeout',
+        })
       } finally {
         delete process.env.ANITABI_IMAGE_RENDER_TIMEOUT_MS
       }

@@ -2,26 +2,25 @@ import { NextResponse } from 'next/server'
 import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
-
+import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
+const POINT_RENDER_FETCH_TIMEOUT_MS = 8_500
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const EXTRA_ALLOWED_IMAGE_HOSTS = ['anitabi.cn', 'bgm.tv']
 const RENDER_CACHE_CONTROL = 'public, s-maxage=86400, stale-while-revalidate=604800'
 const RENDER_UPSTREAM_CACHE_TTL_SECONDS = 86400
-
 type ImageRouteMode = 'download' | 'render'
 type RenderCacheState = 'HIT' | 'MISS' | 'BYPASS'
 type WorkerRenderCache = {
   match(request: Request | string): Promise<Response | undefined>
   put(request: Request | string, response: Response): Promise<unknown>
 }
-
 function normalizeHost(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '')
 }
-
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value)
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -29,11 +28,16 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   }
   return fallback
 }
-
-function getRenderTimeoutMs(): number {
-  return parsePositiveInt(process.env.ANITABI_IMAGE_RENDER_TIMEOUT_MS, RENDER_FETCH_TIMEOUT_MS)
+function resolveRenderTimeoutMs(target: URL): number {
+  const baseTimeoutMs = parsePositiveInt(process.env.ANITABI_IMAGE_RENDER_TIMEOUT_MS, RENDER_FETCH_TIMEOUT_MS)
+  const path = target.pathname.trim().toLowerCase()
+  return path.startsWith('/points/') || path.includes('/points/')
+    ? Math.max(
+        baseTimeoutMs,
+        parsePositiveInt(process.env.ANITABI_POINT_IMAGE_RENDER_TIMEOUT_MS, POINT_RENDER_FETCH_TIMEOUT_MS),
+      )
+    : baseTimeoutMs
 }
-
 function parseContentLength(rawValue: string | null): number | null {
   if (rawValue == null) return null
   const trimmed = rawValue.trim()
@@ -42,20 +46,17 @@ function parseContentLength(rawValue: string | null): number | null {
   if (!Number.isFinite(parsed) || parsed < 0) return null
   return parsed
 }
-
 function getWorkerRenderCache(): WorkerRenderCache | null {
   const cacheStorage = (globalThis as typeof globalThis & {
     caches?: { default?: WorkerRenderCache }
   }).caches
   return cacheStorage?.default ?? null
 }
-
 function buildRenderCacheKey(requestUrl: URL): Request {
-  const canonicalUrl = new URL(requestUrl)
-  canonicalUrl.searchParams.delete('name')
+  const canonicalUrl = stripMapImageDiagnosticParams(requestUrl)
+  for (const key of ['name', '_retry']) canonicalUrl.searchParams.delete(key)
   return new Request(canonicalUrl.toString(), { method: 'GET' })
 }
-
 function withRenderCacheState(response: Response, state: RenderCacheState): Response {
   const headers = new Headers(response.headers)
   headers.set('X-Seichigo-Render-Cache', state)
@@ -77,7 +78,6 @@ async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
     return null
   }
 }
-
 async function storeRenderCache(requestUrl: URL, response: Response): Promise<Response> {
   const cache = getWorkerRenderCache()
   const responseWithState = withRenderCacheState(response, cache ? 'MISS' : 'BYPASS')
@@ -91,7 +91,6 @@ async function storeRenderCache(requestUrl: URL, response: Response): Promise<Re
 
   return responseWithState
 }
-
 function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
   const raw = String(rawInput || '').trim()
   if (!raw) return null
@@ -483,37 +482,36 @@ function buildStreamWithLimit(input: {
   maxBytes: number
   onLimitExceeded: () => void
   timeoutMs: number
+  onStreamSuccess?: () => void
+  onStreamError?: (outcome: string) => void
 }): ReadableStream<Uint8Array> {
   const reader = input.body.getReader()
   let total = 0
   let finished = false
-  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null
-
-  const timeout = setTimeout(() => {
-    if (finished) return
-    finished = true
-    input.onLimitExceeded()
-    controllerRef?.error(new Error('stream_timeout'))
-    void reader.cancel().catch(() => {})
-  }, input.timeoutMs)
-
-  function stop() {
-    clearTimeout(timeout)
-  }
 
   return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controllerRef = controller
-    },
     async pull(controller) {
       if (finished) return
 
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
       try {
-        const { done, value } = await reader.read()
+        const result = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error('stream_timeout'))
+            }, input.timeoutMs)
+          }),
+        ])
+        if (timeoutId != null) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        const { done, value } = result
         if (finished) return
         if (done) {
           finished = true
-          stop()
+          input.onStreamSuccess?.()
           controller.close()
           return
         }
@@ -522,10 +520,9 @@ function buildStreamWithLimit(input: {
         total += value.byteLength
         if (total > input.maxBytes) {
           finished = true
-          stop()
           input.onLimitExceeded()
+          input.onStreamError?.('response_too_large')
           controller.error(new Error('response_too_large'))
-          await reader.cancel().catch(() => {})
           return
         }
 
@@ -533,15 +530,25 @@ function buildStreamWithLimit(input: {
       } catch (err) {
         if (finished) return
         finished = true
-        stop()
+        if (timeoutId != null) {
+          clearTimeout(timeoutId)
+        }
+        if ((err as Error)?.message === 'stream_timeout') {
+          input.onLimitExceeded()
+          input.onStreamError?.('timeout')
+        } else if ((err as Error)?.message === 'response_too_large') {
+          input.onStreamError?.('response_too_large')
+        } else {
+          input.onStreamError?.('aborted')
+        }
         controller.error(err)
       }
     },
     async cancel(reason) {
       if (finished) return
       finished = true
-      stop()
       input.onLimitExceeded()
+      input.onStreamError?.('aborted')
       await reader.cancel(reason).catch(() => {})
     },
   })
@@ -552,6 +559,8 @@ async function buildRenderResponse(input: {
   mimeType: string
   abort: () => void
   timeoutMs: number
+  onStreamSuccess?: () => void
+  onStreamError?: (outcome: string) => void
 }): Promise<Response> {
   const contentLength = parseContentLength(input.upstream.headers.get('content-length'))
   const headers = new Headers({
@@ -573,6 +582,8 @@ async function buildRenderResponse(input: {
         maxBytes: MAX_IMAGE_BYTES,
         onLimitExceeded: input.abort,
         timeoutMs: input.timeoutMs,
+        onStreamSuccess: input.onStreamSuccess,
+        onStreamError: input.onStreamError,
       }),
       {
         status: 200,
@@ -583,6 +594,7 @@ async function buildRenderResponse(input: {
 
   const bytes = await readBytesWithLimit(input.upstream, MAX_IMAGE_BYTES)
   headers.set('Content-Length', String(bytes.byteLength))
+  input.onStreamSuccess?.()
   return new Response(bytes, {
     status: 200,
     headers,
@@ -621,41 +633,139 @@ export async function serveImageRequest(
   mode: ImageRouteMode
 ): Promise<Response> {
   const requestUrl = new URL(req.url)
+  const emitProxyEvent = (input: Parameters<typeof dispatchMapImageProxyEvent>[2]) => {
+    if (mode !== 'render') return
+    dispatchMapImageProxyEvent(deps.prisma, requestUrl, input)
+  }
   if (mode === 'render' && requestUrl.searchParams.has('name')) {
     const canonicalUrl = new URL(requestUrl)
     canonicalUrl.searchParams.delete('name')
     return NextResponse.redirect(canonicalUrl, { status: 307 })
   }
-  const renderTimeoutMs = getRenderTimeoutMs()
   if (mode === 'render') {
     const cached = await matchRenderCache(requestUrl)
-    if (cached) return cached
+    if (cached) {
+      emitProxyEvent({
+        stage: 'proxy_cache_state',
+        outcome: 'cache_hit',
+        terminalState: 'succeeded',
+      })
+      return cached
+    }
+    emitProxyEvent({
+      stage: 'proxy_cache_state',
+      outcome: 'cache_miss',
+    })
   }
   const target = parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)
-  if (!target) {
+    if (!target) {
+      if (mode === 'render') {
+      emitProxyEvent({
+        stage: 'proxy_target_parse',
+        outcome: 'rejected',
+        terminalState: 'failed',
+      })
+    }
     return NextResponse.json({ error: '参数错误' }, { status: 400 })
   }
-
+  const renderTimeoutMs = mode === 'render' ? resolveRenderTimeoutMs(target) : DOWNLOAD_FETCH_TIMEOUT_MS
+  if (mode === 'render') {
+    emitProxyEvent({
+      stage: 'proxy_target_parse',
+      targetHostBucket: normalizeHost(target.hostname),
+      evidence: { target: target.toString() },
+    })
+    emitProxyEvent({
+      stage: 'proxy_fetch_start',
+      targetHostBucket: normalizeHost(target.hostname),
+      evidence: { target: target.toString() },
+    })
+  }
+  const fetchStartedAt = Date.now()
   const fetched = await fetchValidatedImage({
     target,
     requestUrl,
     deps,
-    timeoutMs: mode === 'render' ? renderTimeoutMs : DOWNLOAD_FETCH_TIMEOUT_MS,
+    timeoutMs: renderTimeoutMs,
     userAgent: mode === 'render' ? 'SeichiGoImageRenderProxy/1.0' : 'SeichiGoImageDownload/1.0',
     useUpstreamEdgeCache: mode === 'render',
   })
 
   try {
     if (!fetched.ok) {
+      if (mode === 'render') {
+        const durationMs = Math.max(0, Date.now() - fetchStartedAt)
+        if (fetched.response.status === 400) {
+          emitProxyEvent({
+            stage: 'proxy_allow_check',
+            outcome: 'rejected',
+            terminalState: 'failed',
+            durationMs,
+            targetHostBucket: normalizeHost(target.hostname),
+          })
+        } else if (fetched.response.status === 415) {
+          emitProxyEvent({
+            stage: 'proxy_content_validate',
+            outcome: 'content_invalid',
+            terminalState: 'failed',
+            durationMs,
+            targetHostBucket: normalizeHost(target.hostname),
+          })
+        } else {
+          emitProxyEvent({
+            stage: 'proxy_fetch_terminal',
+            outcome: fetched.response.status === 504 ? 'timeout' : 'network_error',
+            terminalState: 'failed',
+            durationMs,
+            targetHostBucket: normalizeHost(target.hostname),
+          })
+        }
+      }
       return fetched.response
     }
 
     if (mode === 'render') {
+      const fetchDurationMs = Math.max(0, Date.now() - fetchStartedAt)
+      emitProxyEvent({
+        stage: 'proxy_fetch_terminal',
+        durationMs: fetchDurationMs,
+        targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
+        evidence: { finalUrl: fetched.finalUrl.toString() },
+      })
+      emitProxyEvent({
+        stage: 'proxy_content_validate',
+        targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
+        evidence: { mimeType: fetched.mimeType },
+      })
+      let streamTerminalEmitted = false
+      const emitStreamTerminal = async (payload: {
+        terminalState: 'succeeded' | 'failed' | 'aborted'
+        outcome?: string
+      }) => {
+        if (streamTerminalEmitted) return
+        streamTerminalEmitted = true
+        emitProxyEvent({
+          stage: 'proxy_stream_terminal',
+          terminalState: payload.terminalState,
+          outcome: payload.outcome,
+          targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
+          evidence: { mimeType: fetched.mimeType },
+        })
+      }
       const renderResponse = await buildRenderResponse({
         upstream: fetched.response,
         mimeType: fetched.mimeType,
         abort: fetched.abort,
         timeoutMs: renderTimeoutMs,
+        onStreamSuccess: () => {
+          void emitStreamTerminal({ terminalState: 'succeeded' })
+        },
+        onStreamError: (outcome) => {
+          void emitStreamTerminal({
+            terminalState: outcome === 'aborted' ? 'aborted' : 'failed',
+            outcome,
+          })
+        },
       })
       return await storeRenderCache(requestUrl, renderResponse)
     }
@@ -668,6 +778,15 @@ export async function serveImageRequest(
     })
   } catch (err: any) {
     if (String(err?.message || '') === 'response_too_large') {
+      if (mode === 'render') {
+        emitProxyEvent({
+          stage: 'proxy_stream_terminal',
+          terminalState: 'failed',
+          outcome: 'response_too_large',
+          targetHostBucket: fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname),
+          evidence: fetched.ok ? { mimeType: fetched.mimeType } : undefined,
+        })
+      }
       return NextResponse.json({ error: '图片文件过大' }, { status: 413 })
     }
     const message = mode === 'render' ? '图片代理失败' : '图片下载失败'
