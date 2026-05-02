@@ -349,6 +349,14 @@ export default function AdminOpsUi({ initialData }: { initialData?: AdminOpsInit
       <div>
         <h1 className="text-2xl font-bold text-gray-900">运维检查</h1>
         <p className="mt-1 text-sm text-gray-600">每日巡检 Vercel 日志并提取异常，可导出 Markdown 与 JSON。</p>
+        <div className="mt-3">
+          <a
+            href="/admin/ops/map-image-diagnostics"
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            打开地图图片诊断
+          </a>
+        </div>
       </div>
 
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
