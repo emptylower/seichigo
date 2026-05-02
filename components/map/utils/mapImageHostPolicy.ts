@@ -38,11 +38,13 @@ function readActiveHostRecord(key: string, now: number): DegradedHostRecord | nu
   const current = degradedDirectHosts.get(key)
   if (!current) return null
 
-  const degradedAt = hasExpired(current.degradedAt, now) ? null : current.degradedAt
+  const degradedExpired = hasExpired(current.degradedAt, now)
+  const degradedAt = degradedExpired ? null : current.degradedAt
   const blockedAt = hasExpired(current.blockedAt, now) ? null : current.blockedAt
   const recentFailures = trimRecentFailures(current.recentFailures, now)
+  const failures = degradedExpired ? 0 : current.failures
 
-  if (degradedAt == null && blockedAt == null && recentFailures.length === 0) {
+  if (degradedAt == null && blockedAt == null && recentFailures.length === 0 && failures === 0) {
     degradedDirectHosts.delete(key)
     return null
   }
@@ -50,7 +52,7 @@ function readActiveHostRecord(key: string, now: number): DegradedHostRecord | nu
   const nextRecord: DegradedHostRecord = {
     degradedAt,
     blockedAt,
-    failures: current.failures,
+    failures,
     recentFailures,
   }
   degradedDirectHosts.set(key, nextRecord)

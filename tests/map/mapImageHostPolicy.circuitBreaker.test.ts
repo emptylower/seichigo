@@ -64,6 +64,17 @@ describe('mapImageHostPolicy circuit breaker', () => {
     expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 10_001)).toBe(2_000)
   })
 
+  it('still degrades after two failures outside the 10s blocker window', () => {
+    process.env[BREAKER_FLAG] = '1'
+
+    recordHostFailure('image.anitabi.cn', 'cover', 0)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 10_999)).toBe('healthy')
+
+    recordHostFailure('image.anitabi.cn', 'cover', 11_000)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 11_000)).toBe('degraded')
+    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 11_000)).toBe(2_000)
+  })
+
   it('exits blocked and expired state after 60s TTL', () => {
     process.env[BREAKER_FLAG] = '1'
 
