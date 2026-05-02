@@ -71,6 +71,27 @@ describe('enumeratePointImageVariants', () => {
     }
   })
 
+  it('removes conflicting point resize params for each returned variant', () => {
+    const variants = enumeratePointImageVariants(
+      'https://image.anitabi.cn/points/abc.jpg?plan=h320&w=999&h=111&q=10',
+    )
+
+    expect(variants).toEqual([
+      {
+        label: 'h160',
+        url: 'https://image.anitabi.cn/points/abc.jpg?plan=h160',
+      },
+      {
+        label: 'h320',
+        url: 'https://image.anitabi.cn/points/abc.jpg?plan=h320',
+      },
+      {
+        label: 'w640q80',
+        url: 'https://image.anitabi.cn/points/abc.jpg?q=80&w=640',
+      },
+    ])
+  })
+
   it('returns an empty list for non-anitabi point URLs and invalid inputs', () => {
     expect(enumeratePointImageVariants('https://lain.bgm.tv/pic/cover/l/abcd.jpg')).toEqual([])
     expect(enumeratePointImageVariants(null)).toEqual([])
