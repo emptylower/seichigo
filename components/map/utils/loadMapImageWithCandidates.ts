@@ -5,6 +5,7 @@ import {
   type MapImageHostPolicyScope,
   prioritizeMapImageCandidates,
   readMapImageHost,
+  resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
 import {
   acquireTimedMapImageRequestSlot,
@@ -63,12 +64,14 @@ function resolveDefaultProxyRequestTimeoutMs(hostPolicyScope: MapImageHostPolicy
 
 function resolveRequestTimeoutMs(
   url: string,
+  hostPolicyScope: MapImageHostPolicyScope,
   directRequestTimeoutMs: number,
   proxyRequestTimeoutMs: number,
 ): number {
-  return isMapImageProxyUrl(url)
+  const baseMs = isMapImageProxyUrl(url)
     ? proxyRequestTimeoutMs
     : directRequestTimeoutMs
+  return resolveHostTimeoutMs(readMapImageHost(url), hostPolicyScope, baseMs, Date.now())
 }
 
 async function loadImageWithTimeout(
@@ -79,6 +82,9 @@ async function loadImageWithTimeout(
 ): Promise<{ ok: true; result: { data: unknown } } | { ok: false; outcome: 'timeout' | 'network_error' | 'aborted'; error?: unknown }> {
   if (signal?.aborted) {
     return { ok: false, outcome: 'aborted' }
+  }
+  if (timeoutMs <= 0) {
+    return { ok: false, outcome: 'timeout' }
   }
 
   return new Promise((resolve) => {
@@ -158,7 +164,7 @@ export async function loadMapImageWithCandidates(
         return await loadImageWithTimeout(
           options.map,
           requestUrl,
-          resolveRequestTimeoutMs(requestUrl, directRequestTimeoutMs, proxyRequestTimeoutMs),
+          resolveRequestTimeoutMs(requestUrl, hostPolicyScope, directRequestTimeoutMs, proxyRequestTimeoutMs),
           options.requestSignal,
         )
       } finally {

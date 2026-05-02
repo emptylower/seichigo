@@ -9,6 +9,7 @@ import {
   type MapImageHostPolicyScope,
   prioritizeMapImageCandidates,
   readMapImageHost,
+  resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
 import {
   acquireTimedMapImageRequestSlot,
@@ -68,12 +69,14 @@ function resolveRequestTimeoutMs(
   kind: ResilientMapImageProps['kind'],
 ): number {
   const isProxyRequest = url.includes('/api/anitabi/image-render')
-  if (!isProxyRequest) {
-    return 4_000
-  }
-  return kind === 'point' || kind === 'point-preview'
+  const baseTimeoutMs = !isProxyRequest
+    ? 4_000
+    : kind === 'point' || kind === 'point-preview'
     ? 8_500
     : 6_000
+  const scope = resolveHostPolicyScope(kind)
+  const host = readMapImageHost(url)
+  return resolveHostTimeoutMs(host, scope, baseTimeoutMs, Date.now())
 }
 
 function resolveRequestLane(): 'interaction-critical' {
