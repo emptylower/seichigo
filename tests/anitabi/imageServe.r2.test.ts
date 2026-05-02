@@ -237,10 +237,16 @@ describe('serveImageRequest R2 primary read', () => {
     expect(mocks.cachePut).toHaveBeenCalledTimes(1)
   })
 
-  it('falls through to upstream fetch when the read flag is disabled', async () => {
+  it('returns upstream render headers with the final redirected source when R2 is unavailable', async () => {
     const bucket = new FakeBucket()
     const seeded = await seedMirroredObject(bucket)
-    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+    const redirectedUrl = 'https://api.anitabi.cn/points/1/image.png'
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { location: redirectedUrl },
+      }))
+      .mockResolvedValueOnce(createImageResponse())
 
     const response = await serveImageRequest(
       createRenderRequest(seeded.rawUrl),
@@ -254,9 +260,10 @@ describe('serveImageRequest R2 primary read', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
     expect(bucket.getCalls).toEqual([])
-    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+    expect(response.headers.get('X-Original-Source')).toBe(redirectedUrl)
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-no-r2')
   })
 
   it('writes upstream render bytes to R2 via waitUntil when the write flag is enabled', async () => {
@@ -282,6 +289,8 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('image/png')
+    expect(response.headers.get('X-Original-Source')).toBe(computeCanonicalImageUrl(rawUrl))
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-with-r2-write')
     expect(response.headers.get('X-Seichigo-Render-Cache')).toBe('MISS')
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES)
     expect(waitUntil).toHaveBeenCalledTimes(1)
@@ -348,7 +357,8 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.status).toBe(200)
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(response.headers.get('Content-Type')).toBe('image/png')
-    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+    expect(response.headers.get('X-Original-Source')).toBe(computeCanonicalImageUrl(seeded.rawUrl))
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-no-r2')
     expect(response.headers.get('X-Seichigo-Render-Cache')).toBe('MISS')
     expect(mocks.cachePut).toHaveBeenCalledTimes(1)
   })
@@ -537,7 +547,8 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.status).toBe(200)
     expect(bucket.getCalls.length).toBeGreaterThan(0)
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+    expect(response.headers.get('X-Original-Source')).toBe(rawUrl)
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-no-r2')
   })
 
   it('falls through to upstream fetch when reading the mirrored R2 object errors', async () => {
@@ -559,7 +570,8 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.status).toBe(200)
     expect(bucket.getCalls.length).toBeGreaterThan(0)
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+    expect(response.headers.get('X-Original-Source')).toBe(rawUrl)
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-no-r2')
   })
 
   it('does not touch R2 or upstream fetch for disallowed targets', async () => {

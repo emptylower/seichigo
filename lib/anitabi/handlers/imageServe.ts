@@ -514,6 +514,8 @@ function buildStreamWithLimit(input: {
 async function buildRenderResponse(input: {
   upstream: Response
   mimeType: string
+  originalSource: string
+  imageSource: 'upstream-no-r2' | 'upstream-with-r2-write'
   abort: () => void
   timeoutMs: number
   onStreamSuccess?: () => void
@@ -525,6 +527,8 @@ async function buildRenderResponse(input: {
     'Cache-Control': RENDER_CACHE_CONTROL,
     'Content-Disposition': 'inline',
     'X-Content-Type-Options': 'nosniff',
+    'X-Original-Source': input.originalSource,
+    'X-Seichigo-Image-Source': input.imageSource,
   })
 
   if (contentLength != null && contentLength > MAX_IMAGE_BYTES) {
@@ -809,6 +813,10 @@ export async function serveImageRequest(
       const renderResponse = await buildRenderResponse({
         upstream: fetched.response,
         mimeType: fetched.mimeType,
+        originalSource: fetched.finalUrl.toString(),
+        imageSource: deps.env?.MAP_IMAGE_CACHE && deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED === '1'
+          ? 'upstream-with-r2-write'
+          : 'upstream-no-r2',
         abort: fetched.abort,
         timeoutMs: renderTimeoutMs,
         onStreamSuccess: () => {
