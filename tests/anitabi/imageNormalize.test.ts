@@ -22,10 +22,33 @@ describe('anitabi image normalization', () => {
     ).toBe('https://image.anitabi.cn/points/1/photo.jpg?plan=h320&q=80&w=640&z=9')
   })
 
+  it('treats reordered query strings as the same canonical URL', () => {
+    const first = computeCanonicalImageUrl(
+      'https://image.anitabi.cn/points/1/photo.jpg?plan=h320&q=80&w=640&z=9',
+    )
+    const second = computeCanonicalImageUrl(
+      'https://image.anitabi.cn/points/1/photo.jpg?z=9&w=640&plan=h320&q=80',
+    )
+
+    expect(first).toBe(second)
+  })
+
   it('lowercases protocol and host in the canonical output', () => {
     expect(
       computeCanonicalImageUrl('HTTPS://WWW.ANITABI.CN/images/bangumi/123/cover.jpg?plan=h320'),
     ).toBe('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320')
+  })
+
+  it('rejects relative URLs for mirror canonicalization', () => {
+    expect(() => computeCanonicalImageUrl('/images/bangumi/123/cover.jpg?plan=h320')).toThrow('invalid_image_url')
+  })
+
+  it('rejects unsupported URL schemes for mirror canonicalization', () => {
+    expect(() => computeCanonicalImageUrl('ftp://anitabi.cn/images/bangumi/123/cover.jpg')).toThrow('invalid_image_url')
+  })
+
+  it('rejects empty inputs for mirror canonicalization', () => {
+    expect(() => computeCanonicalImageUrl('   ')).toThrow('invalid_image_url')
   })
 })
 

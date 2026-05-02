@@ -4,6 +4,7 @@ const DEFAULT_BASE_ORIGIN = 'https://seichigo.com'
 const MAP_IMAGE_DIAGNOSTIC_PARAM_PREFIX = '__mi_'
 const STRIPPED_CANONICAL_QUERY_PARAMS = new Set(['_retry', 'name'])
 const MIRROR_KEY_VERSION = 'mirror/v1'
+const INVALID_IMAGE_URL_ERROR = 'invalid_image_url'
 
 function getBaseOrigin(): string {
   return typeof window !== 'undefined' ? window.location.origin : DEFAULT_BASE_ORIGIN
@@ -57,6 +58,26 @@ function bytesToHex(input: ArrayBuffer): string {
   return [...new Uint8Array(input)]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('')
+}
+
+function parseAbsoluteHttpUrl(input: string): URL {
+  const raw = String(input || '').trim()
+  if (!raw) {
+    throw new Error(INVALID_IMAGE_URL_ERROR)
+  }
+
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error(INVALID_IMAGE_URL_ERROR)
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(INVALID_IMAGE_URL_ERROR)
+  }
+
+  return url
 }
 
 export function stripMapImageDiagnosticParams(src: string | URL): URL {
@@ -124,7 +145,7 @@ export function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKi
 }
 
 export function computeCanonicalImageUrl(input: string): string {
-  const url = new URL(String(input || '').trim(), DEFAULT_BASE_ORIGIN)
+  const url = parseAbsoluteHttpUrl(input)
   normalizeBangumiCoverVariant(url, 'cover')
   normalizeAnitabiMirrorUrl(url)
   stripCanonicalQueryParams(url)
