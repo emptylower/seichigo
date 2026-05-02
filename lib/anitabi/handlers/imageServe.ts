@@ -52,9 +52,20 @@ function buildRenderCacheKey(requestUrl: URL): Request {
   for (const key of ['name', '_retry']) canonicalUrl.searchParams.delete(key)
   return new Request(canonicalUrl.toString(), { method: 'GET' })
 }
-function withRenderCacheState(response: Response, state: RenderCacheState): Response {
+function resolveRenderOriginalSource(requestUrl: URL): string | null {
+  return parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)?.toString() ?? null
+}
+function withRenderCacheState(
+  response: Response,
+  state: RenderCacheState,
+  input?: { originalSource?: string | null }
+): Response {
   const headers = new Headers(response.headers)
   headers.set('X-Seichigo-Render-Cache', state)
+  const originalSource = String(headers.get('X-Original-Source') || input?.originalSource || '').trim()
+  if (originalSource) {
+    headers.set('X-Original-Source', originalSource)
+  }
   return new Response(response.body, { status: response.status, headers })
 }
 async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
@@ -63,7 +74,9 @@ async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
   try {
     const cached = await cache.match(buildRenderCacheKey(requestUrl))
     if (!cached) return null
-    return withRenderCacheState(cached, 'HIT')
+    return withRenderCacheState(cached, 'HIT', {
+      originalSource: resolveRenderOriginalSource(requestUrl),
+    })
   } catch {
     return null
   }
