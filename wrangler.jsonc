@@ -8,8 +8,16 @@
     "no_handle_cross_request_promise_resolution"
   ],
   "vars": {
-    "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1"
+    "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1",
+    "NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "0",
+    "NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "0"
   },
+  "r2_buckets": [
+    {
+      "binding": "MAP_IMAGE_CACHE",
+      "bucket_name": "seichigo-anitabi-images"
+    }
+  ],
   "images": {
     "binding": "IMAGES"
   },
