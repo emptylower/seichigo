@@ -525,6 +525,66 @@ model OpsLogEvent {
   @@index([reportId, severity, timestamp, fingerprint])
 }
 
+model MapImageDiagSession {
+  id                 String              @id @default(cuid())
+  sessionKey         String              @unique
+  surface            String              @default("unknown")
+  sampled            Boolean             @default(false)
+  escalationReason   String?
+  routeContext       Json?
+  sessionOutcome     String?
+  firstViewSummary   Json?
+  firstDegradedStage String?
+  firstDegradedAt    DateTime?
+  lastTerminalState  String?
+  proxyInvolved      Boolean             @default(false)
+  eventCount         Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  events             MapImageDiagEvent[]
+
+  @@index([createdAt, surface])
+  @@index([surface, sessionOutcome, createdAt])
+}
+
+model MapImageDiagControl {
+  id                 String   @id @default("singleton")
+  fullCaptureEnabled Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
+
+model MapImageDiagEvent {
+  id                    String              @id @default(cuid())
+  eventKey              String              @unique
+  sessionRefId          String
+  chainId               String
+  requestId             String
+  slotKey               String?
+  surface               String?
+  slotType              String?
+  owner                 String?
+  stage                 String
+  outcome               String?
+  terminalState         String?
+  displayOutcome        String?
+  durationMs            Int?
+  severity              String?
+  attemptIndex          Int?
+  candidateIndex        Int?
+  candidateCount        Int?
+  requestedCandidateUrl String?             @db.Text
+  finalUrl              String?             @db.Text
+  proxyJoinValue        String?
+  targetHostBucket      String?
+  evidence              Json?
+  createdAt             DateTime            @default(now())
+  session               MapImageDiagSession @relation(fields: [sessionRefId], references: [id], onDelete: Cascade)
+
+  @@index([sessionRefId, createdAt])
+  @@index([sessionRefId, chainId, requestId, createdAt])
+  @@index([sessionRefId, stage, createdAt])
+}
+
 model AnitabiBangumi {
   id               Int      @id
   titleZh          String?
