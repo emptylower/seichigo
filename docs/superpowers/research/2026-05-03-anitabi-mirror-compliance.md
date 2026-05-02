@@ -123,6 +123,28 @@ Interpretation:
 - The text output is oldest-first for this account, so `head -30` did not surface the latest May 2 deployments.
 - I used `npm exec wrangler -- deployments list --json` plus `npm exec wrangler -- deployments status --json` to identify the actual latest three production deployments and confirm the current production version is `a3f83153-7049-4eca-9bd6-3b6fb6c08177` at `100%`.
 
+Derived excerpt from JSON output:
+
+```json
+{
+  "current": {
+    "created_on": "2026-05-02T17:04:19.775851Z",
+    "version_id": "a3f83153-7049-4eca-9bd6-3b6fb6c08177",
+    "percentage": 100
+  },
+  "second_most_recent": {
+    "created_on": "2026-05-02T14:18:33.625987Z",
+    "version_id": "628bf58a-fcc3-401e-a0f5-222dec785a02",
+    "percentage": 100
+  },
+  "third_most_recent": {
+    "created_on": "2026-05-02T13:58:13.399599Z",
+    "version_id": "a324d761-d133-4a07-8bbe-7f8498b8763e",
+    "percentage": 100
+  }
+}
+```
+
 Timestamp: `2026-05-03 02:55:53 CST (+0800)`
 
 ```text
@@ -145,4 +167,4 @@ Evidence from `npm exec wrangler -- versions view <version-id> --json` on the la
 - All three versions expose the same high-level OpenNext worker shape: `handlers=["fetch"]`, named handlers `BucketCachePurge`, `DOQueueHandler`, and `DOShardedTagCache`, `compatibility_date="2026-04-14"`, and flags `nodejs_compat` plus `no_handle_cross_request_promise_resolution`.
 - All three versions expose the same asset-serving header rules for `/_next/static/*` and `/brand/*`, with `serve_directly=true` and `run_worker_first=false`.
 - All three versions carry the same `ASSETS:assets` and `IMAGES:images` bindings. Only the script `etag` differs between versions, which indicates code changes without a deployment-shape change.
-- Local config matches that deployment shape: [`wrangler.jsonc`](../../../../wrangler.jsonc) points `main` to `.open-next/worker.js` and binds `.open-next/assets`, and [`open-next.config.ts`](../../../../open-next.config.ts) uses `defineCloudflareConfig` from `@opennextjs/cloudflare`.
+- Local config matches that deployment shape: [`wrangler.jsonc`](../../../wrangler.jsonc) points `main` to `.open-next/worker.js` and binds `.open-next/assets`, and [`open-next.config.ts`](../../../open-next.config.ts) uses `defineCloudflareConfig` from `@opennextjs/cloudflare`.
