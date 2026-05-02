@@ -1,13 +1,58 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MapImageSessionManager } from '@/features/map/anitabi/mapImageSessionManager'
 
+const FORCE_DECORATE_FIRST_N_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_FORCE_DECORATE_FIRST_N'
+const originalForceDecorateFirstN = process.env[FORCE_DECORATE_FIRST_N_FLAG]
+
+function startDomImageRequest(
+  manager: MapImageSessionManager,
+  slotKey: string,
+  imageId: string,
+  candidateCount = 1,
+) {
+  return manager.startRequest({
+    surface: 'map',
+    slotKey,
+    slotType: 'dom-image',
+    owner: 'dom-image',
+    requestedCandidateUrl: `https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fexample.com%2F${imageId}.jpg`,
+    candidateIndex: 0,
+    candidateCount,
+    reuseChain: false,
+  })
+}
+
+function startDirectDomImageRequest(
+  manager: MapImageSessionManager,
+  slotKey: string,
+  imageId: string,
+  candidateCount = 1,
+) {
+  return manager.startRequest({
+    surface: 'map',
+    slotKey,
+    slotType: 'dom-image',
+    owner: 'dom-image',
+    requestedCandidateUrl: `https://example.com/${imageId}.jpg`,
+    candidateIndex: 0,
+    candidateCount,
+    reuseChain: false,
+  })
+}
+
 describe('MapImageSessionManager', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    delete process.env[FORCE_DECORATE_FIRST_N_FLAG]
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    if (originalForceDecorateFirstN === undefined) {
+      delete process.env[FORCE_DECORATE_FIRST_N_FLAG]
+      return
+    }
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = originalForceDecorateFirstN
   })
 
   it('keeps retries in one chain while rotating request ids', () => {
@@ -160,6 +205,134 @@ describe('MapImageSessionManager', () => {
       sampled: false,
       escalationReason: null,
     })
+  })
+
+  it('force-decorates the first N requests when the flag is set, even if the session is not sampled or escalated', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '2'
+
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const first = startDomImageRequest(manager, 'dom-p1', 'p1', 3)
+    const second = startDomImageRequest(manager, 'dom-p2', 'p2', 3)
+
+    expect(first.requestUrl).toContain('__mi_session=')
+    expect(second.requestUrl).toContain('__mi_session=')
+    expect(manager.readSessionState()).toMatchObject({
+      sampled: false,
+      escalationReason: null,
+    })
+  })
+
+  it('stops force-decorating after the first N requests when the session stays clean', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '2'
+
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const first = startDomImageRequest(manager, 'dom-p1', 'p1', 3)
+    const second = startDomImageRequest(manager, 'dom-p2', 'p2', 3)
+    const third = startDomImageRequest(manager, 'dom-p3', 'p3', 3)
+
+    expect(first.requestUrl).toContain('__mi_session=')
+    expect(second.requestUrl).toContain('__mi_session=')
+    expect(third.requestUrl).not.toContain('__mi_session=')
+  })
+
+  it('does not spend force-decoration quota on direct-first requests', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '2'
+
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const directFirst = startDirectDomImageRequest(manager, 'dom-direct-1', 'direct-1', 4)
+    const directSecond = startDirectDomImageRequest(manager, 'dom-direct-2', 'direct-2', 4)
+    const proxyFirst = startDomImageRequest(manager, 'dom-proxy-1', 'proxy-1', 4)
+    const proxySecond = startDomImageRequest(manager, 'dom-proxy-2', 'proxy-2', 4)
+    const proxyThird = startDomImageRequest(manager, 'dom-proxy-3', 'proxy-3', 4)
+
+    expect(directFirst.requestUrl).not.toContain('__mi_session=')
+    expect(directSecond.requestUrl).not.toContain('__mi_session=')
+    expect(proxyFirst.requestUrl).toContain('__mi_session=')
+    expect(proxySecond.requestUrl).toContain('__mi_session=')
+    expect(proxyThird.requestUrl).not.toContain('__mi_session=')
+  })
+
+  it('does not force-decorate when the flag is unset or zero', () => {
+    const managerWithoutFlag = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const withoutFlag = startDomImageRequest(managerWithoutFlag, 'dom-p1', 'p1')
+
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '0'
+
+    const managerWithZeroFlag = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const withZeroFlag = startDomImageRequest(managerWithZeroFlag, 'dom-p2', 'p2')
+
+    expect(withoutFlag.requestUrl).not.toContain('__mi_session=')
+    expect(withZeroFlag.requestUrl).not.toContain('__mi_session=')
+  })
+
+  it('treats invalid and negative force-decoration values as zero', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = 'banana'
+
+    const managerWithInvalidFlag = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const withInvalidFlag = startDomImageRequest(managerWithInvalidFlag, 'dom-p1', 'p1')
+
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '-3'
+
+    const managerWithNegativeFlag = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const withNegativeFlag = startDomImageRequest(managerWithNegativeFlag, 'dom-p2', 'p2')
+
+    expect(withInvalidFlag.requestUrl).not.toContain('__mi_session=')
+    expect(withNegativeFlag.requestUrl).not.toContain('__mi_session=')
+  })
+
+  it('caps the force-decoration count at 50 requests', () => {
+    process.env[FORCE_DECORATE_FIRST_N_FLAG] = '999'
+
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      transport: vi.fn(),
+    })
+
+    const handles = Array.from(
+      { length: 51 },
+      (_, index) => startDomImageRequest(manager, `dom-p${index + 1}`, `p${index + 1}`),
+    )
+
+    for (const handle of handles.slice(0, 50)) {
+      expect(handle.requestUrl).toContain('__mi_session=')
+    }
+    expect(handles[50]?.requestUrl).not.toContain('__mi_session=')
   })
 
   it('decorates retry requests after failure escalates an unsampled session', () => {

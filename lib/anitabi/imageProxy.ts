@@ -265,11 +265,17 @@ export function getMapDisplayImageCandidates(
     const shouldPreferDirect =
       isDirectSafeAnitabiHost(url)
       && kind === 'cover'
+    const shouldEnableProxyRetryAndDirectFallback =
+      process.env.NEXT_PUBLIC_MAP_IMAGE_LADDER_BGM_FALLBACK_ENABLED === '1'
+      && kind === 'cover'
+      && !isDirectSafeAnitabiHost(url)
 
     return dedupeCandidates(
       shouldPreferDirect
         ? [directUrl, buildRetryDirectUrl(url), proxyUrl]
-        : [proxyUrl]
+        : shouldEnableProxyRetryAndDirectFallback
+          ? [proxyUrl, buildRetryProxyUrl(url), directUrl]
+          : [proxyUrl]
     )
   } catch {
     return [raw]

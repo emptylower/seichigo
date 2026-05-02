@@ -1,18 +1,35 @@
 import React from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { createCompleteModeTrackedMetricCallbacks } from '@/features/map/anitabi/completeModeDiagnostics'
-import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
+import {
+  recordHostFailure,
+  resetDegradedMapImageHostsForTest,
+} from '@/components/map/utils/mapImageHostPolicy'
 import {
   acquireMapImageRequestSlot,
   resetMapImageRequestSchedulerForTest,
 } from '@/features/map/anitabi/mapImageRequestScheduler'
 
+const BREAKER_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED'
+
 describe('ResilientMapImage', () => {
+  const originalBreakerFlag = process.env[BREAKER_FLAG]
+
   beforeEach(() => {
     resetDegradedMapImageHostsForTest()
     resetMapImageRequestSchedulerForTest()
+    delete process.env[BREAKER_FLAG]
+  })
+
+  afterEach(() => {
+    resetDegradedMapImageHostsForTest()
+    if (originalBreakerFlag === undefined) {
+      delete process.env[BREAKER_FLAG]
+      return
+    }
+    process.env[BREAKER_FLAG] = originalBreakerFlag
   })
 
   it('retries once with a retry nonce before falling back', async () => {
@@ -411,6 +428,76 @@ describe('ResilientMapImage', () => {
     })
 
     vi.useRealTimers()
+  })
+
+  it('shortens degraded direct cover retries to 2000ms when breaker v2 is enabled', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(0)
+      process.env[BREAKER_FLAG] = '1'
+      recordHostFailure('image.anitabi.cn', 'cover', 0)
+
+      const requestStart = vi.fn((input) => ({
+        requestUrl: input.requestedCandidateUrl,
+        requestId: `req-${input.candidateIndex}`,
+      }))
+
+      render(
+        <ResilientMapImage
+          src="https://www.anitabi.cn/bangumi/290980.jpg"
+          alt="degraded-cover"
+          kind="cover"
+          diagnosticSurface="map"
+          diagnosticSlotKey="degraded-cover"
+          onDiagnosticRequestStart={requestStart}
+          fallback={<div>fallback</div>}
+        />,
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(requestStart).toHaveBeenCalledTimes(1)
+      const initial = screen.getByAltText('degraded-cover') as HTMLImageElement
+      expect(initial.src).toBe('https://image.anitabi.cn/bangumi/290980.jpg')
+
+      fireEvent.error(initial)
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(requestStart).toHaveBeenCalledTimes(2)
+      expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
+        candidateIndex: 1,
+        requestedCandidateUrl: 'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
+      })
+
+      await act(async () => {
+        vi.advanceTimersByTime(1999)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(requestStart).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        vi.advanceTimersByTime(1)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(requestStart).toHaveBeenCalledTimes(3)
+      expect(requestStart.mock.calls[2]?.[0]).toMatchObject({ candidateIndex: 2 })
+      expect(decodeURIComponent(String(requestStart.mock.calls[2]?.[0]?.requestedCandidateUrl || ''))).toContain(
+        '/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg',
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses the point timeout window for encoded user bangumi point-preview urls', async () => {

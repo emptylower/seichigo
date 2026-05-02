@@ -52,15 +52,38 @@ export function isDegradedEvent(event: {
     || (event.durationMs ?? 0) >= 1200
 }
 
+function isOutcomeV2Enabled(): boolean {
+  return process.env.MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED === '1'
+}
+
 export function deriveSessionOutcome(events: Array<{
   terminalState?: string | null
   displayOutcome?: string | null
+  candidateCount?: number | null
+  outcome?: string | null
 }>): string {
-  if (events.some((event) => event.terminalState === 'failed')) return 'failed'
+  const failedEvents = events.filter((event) => event.terminalState === 'failed')
+  if (!isOutcomeV2Enabled()) {
+    if (failedEvents.length > 0) return 'failed'
+  } else if (failedEvents.length > 0) {
+    const hasOnlySingleCandidateTimeoutFailures = failedEvents.every((event) => (
+      event.candidateCount === 1 && event.outcome === 'timeout'
+    ))
+    if (!hasOnlySingleCandidateTimeoutFailures) return 'failed'
+  }
+
   if (events.some((event) => event.displayOutcome === 'fallback')) return 'fallback'
 
   const terminal = [...events].reverse().find((event) => Boolean(event.terminalState))
   if (!terminal?.terminalState) return 'pending'
+  if (
+    isOutcomeV2Enabled()
+    && terminal.terminalState === 'failed'
+    && failedEvents.length > 0
+    && failedEvents.every((event) => event.candidateCount === 1 && event.outcome === 'timeout')
+  ) {
+    return 'no_data'
+  }
   return terminal.terminalState
 }
 

@@ -1,15 +1,32 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
-import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
+import {
+  recordHostFailure,
+  resetDegradedMapImageHostsForTest,
+} from '@/components/map/utils/mapImageHostPolicy'
 import {
   acquireMapImageRequestSlot,
   resetMapImageRequestSchedulerForTest,
 } from '@/features/map/anitabi/mapImageRequestScheduler'
 
+const BREAKER_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED'
+
 describe('loadMapImageWithCandidates', () => {
+  const originalBreakerFlag = process.env[BREAKER_FLAG]
+
   beforeEach(() => {
     resetDegradedMapImageHostsForTest()
     resetMapImageRequestSchedulerForTest()
+    delete process.env[BREAKER_FLAG]
+  })
+
+  afterEach(() => {
+    resetDegradedMapImageHostsForTest()
+    if (originalBreakerFlag === undefined) {
+      delete process.env[BREAKER_FLAG]
+      return
+    }
+    process.env[BREAKER_FLAG] = originalBreakerFlag
   })
 
   it('promotes the proxy candidate earlier after the direct host degrades in-session', async () => {
@@ -209,5 +226,97 @@ describe('loadMapImageWithCandidates', () => {
     })
 
     expect(map.loadImage.mock.calls[0]?.[0]).toBe('https://image.anitabi.cn/points/9/a.jpg?plan=h160')
+  })
+
+  it('clamps degraded direct host timeouts to 2000ms when breaker v2 is enabled', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_000)
+      process.env[BREAKER_FLAG] = '1'
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 0)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 1_000)
+
+      const map = {
+        loadImage: vi.fn(async (url: string): Promise<{ data: { url: string } }> => {
+          if (url === 'https://image.anitabi.cn/points/1/a.jpg?plan=h160') {
+            return await new Promise(() => {})
+          }
+          return { data: { url } }
+        }),
+      }
+
+      const pending = loadMapImageWithCandidates({
+        map,
+        slotKey: 'thumb-degraded',
+        urls: [
+          'https://image.anitabi.cn/points/1/a.jpg?plan=h160',
+          'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F1%2Fa.jpg%3Fplan%3Dh160',
+        ],
+        tracked: false,
+        hostPolicyScope: 'point-thumbnail',
+      })
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(map.loadImage).toHaveBeenCalledTimes(1)
+      expect(map.loadImage.mock.calls[0]?.[0]).toBe('https://image.anitabi.cn/points/1/a.jpg?plan=h160')
+
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(map.loadImage).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(1)
+      const result = await pending
+
+      expect(map.loadImage).toHaveBeenCalledTimes(2)
+      expect(result.finalUrl).toContain('/api/anitabi/image-render?url=')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('fail-fasts blocked direct hosts without calling map.loadImage when breaker v2 is enabled', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(9_999)
+      process.env[BREAKER_FLAG] = '1'
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 0)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 3_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 9_999)
+
+      const requestStart = vi.fn((input) => ({
+        requestUrl: input.requestedCandidateUrl,
+        requestId: 'req-0',
+      }))
+      const requestTerminal = vi.fn()
+      const map = {
+        loadImage: vi.fn(async (): Promise<{ data: { url: string } }> => {
+          return await new Promise<{ data: { url: string } }>(() => {})
+        }),
+      }
+
+      await expect(loadMapImageWithCandidates({
+        map,
+        slotKey: 'thumb-blocked',
+        urls: ['https://image.anitabi.cn/points/2/b.jpg?plan=h160'],
+        tracked: true,
+        hostPolicyScope: 'point-thumbnail',
+        onTrackedRequestStart: requestStart,
+        onTrackedRequestTerminal: requestTerminal,
+      })).rejects.toThrow('timeout')
+
+      expect(map.loadImage).not.toHaveBeenCalled()
+      expect(requestStart).toHaveBeenCalledTimes(1)
+      expect(requestTerminal).toHaveBeenCalledWith({
+        handle: {
+          requestId: 'req-0',
+          requestUrl: 'https://image.anitabi.cn/points/2/b.jpg?plan=h160',
+        },
+        terminalState: 'failed',
+        finalUrl: 'https://image.anitabi.cn/points/2/b.jpg?plan=h160',
+        chainTerminal: true,
+        outcome: 'timeout',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

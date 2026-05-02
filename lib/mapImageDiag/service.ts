@@ -70,7 +70,9 @@ async function refreshSessionSummary(
       stage: true,
       terminalState: true,
       displayOutcome: true,
+      candidateCount: true,
       durationMs: true,
+      outcome: true,
       evidence: true,
       createdAt: true,
     },
@@ -270,6 +272,23 @@ function percentile(values: number[], ratio: number): number | null {
   return sorted[index] ?? null
 }
 
+function summarizeDurationStats(values: number[]): { avgDurationMs: number | null; p95DurationMs: number | null } {
+  const avgDurationMs = average(values)
+  const p95DurationMs = percentile(values, 0.95)
+  if (avgDurationMs == null || p95DurationMs == null) {
+    return {
+      avgDurationMs: null,
+      p95DurationMs: null,
+    }
+  }
+
+  // Clamp the displayed p95 so skewed small samples never show avg > p95 in the dashboard.
+  return {
+    avgDurationMs,
+    p95DurationMs: Math.max(p95DurationMs, avgDurationMs),
+  }
+}
+
 function formatBucketLabel(date: Date, bucketMinutes: number): string {
   if (bucketMinutes >= 1440) {
     return date.toISOString().slice(0, 10)
@@ -361,8 +380,7 @@ export async function summarizeMapImageDiagRange(
       stage: item.stage,
       count: item.count,
       degradedCount: item.degradedCount,
-      avgDurationMs: average(item.durations),
-      p95DurationMs: percentile(item.durations, 0.95),
+      ...summarizeDurationStats(item.durations),
     }))
     .sort((a, b) => b.degradedCount - a.degradedCount || b.count - a.count)
     .slice(0, 8)
@@ -414,8 +432,7 @@ export async function summarizeMapImageDiagRange(
       fallbackSessions: sessions.filter((session) => session.sessionOutcome === 'fallback').length,
       proxySessions: sessions.filter((session) => session.proxyInvolved).length,
       sampledSessions: sessions.filter((session) => session.sampled).length,
-      avgDurationMs: average(durationValues),
-      p95DurationMs: percentile(durationValues, 0.95),
+      ...summarizeDurationStats(durationValues),
     },
     durationBuckets,
     outcomes,
