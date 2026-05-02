@@ -89,6 +89,7 @@ const EVENT_BATCH_MAX = 40
 const MAX_DWELL_MS = 2000
 const SLOW_REQUEST_MS = 1200
 const DEFAULT_ENDPOINT = '/api/map-image-diagnostics'
+const FORCE_DECORATE_FIRST_N_ENV = 'NEXT_PUBLIC_MAP_IMAGE_FORCE_DECORATE_FIRST_N'
 
 let fallbackIdCounter = 0
 const DIAG_FORCE_STORAGE_KEY = 'seichigo_map_image_diag_force'
@@ -184,6 +185,7 @@ export class MapImageSessionManager {
   private sessionId: string | null = null
   private sampled = false
   private escalationReason: MapImageDiagEscalationReason | null = null
+  private decoratedCount = 0
   private bufferedEvents: MapImageDiagBufferedEvent[] = []
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private flushing = false
@@ -562,7 +564,22 @@ export class MapImageSessionManager {
   }
 
   private shouldDecorateProxyRequests(): boolean {
-    return this.isFlushEligible()
+    if (this.isFlushEligible()) return true
+
+    const forceDecorateFirstN = this.resolveForceDecorateFirstN()
+    if (forceDecorateFirstN > 0 && this.decoratedCount < forceDecorateFirstN) {
+      this.decoratedCount += 1
+      return true
+    }
+
+    return false
+  }
+
+  private resolveForceDecorateFirstN(): number {
+    const rawValue = String(process.env[FORCE_DECORATE_FIRST_N_ENV] || '').trim()
+    const parsedValue = Number.parseInt(rawValue, 10)
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) return 0
+    return Math.min(parsedValue, 50)
   }
 
   private async sendPayload(payload: FlushPayload, reason: 'batch' | 'teardown'): Promise<void> {
