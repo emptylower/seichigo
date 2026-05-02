@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
-import { getMirroredImage } from '@/lib/anitabi/r2Mirror'
+import { getMirroredImage, putMirroredImage } from '@/lib/anitabi/r2Mirror'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -24,19 +24,13 @@ function normalizeHost(hostname: string): string {
 }
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value)
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return Math.floor(parsed)
-  }
-  return fallback
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
 }
 function resolveRenderTimeoutMs(target: URL): number {
   const baseTimeoutMs = parsePositiveInt(process.env.ANITABI_IMAGE_RENDER_TIMEOUT_MS, RENDER_FETCH_TIMEOUT_MS)
   const path = target.pathname.trim().toLowerCase()
   return path.startsWith('/points/') || path.includes('/points/')
-    ? Math.max(
-        baseTimeoutMs,
-        parsePositiveInt(process.env.ANITABI_POINT_IMAGE_RENDER_TIMEOUT_MS, POINT_RENDER_FETCH_TIMEOUT_MS),
-      )
+    ? Math.max(baseTimeoutMs, parsePositiveInt(process.env.ANITABI_POINT_IMAGE_RENDER_TIMEOUT_MS, POINT_RENDER_FETCH_TIMEOUT_MS))
     : baseTimeoutMs
 }
 function parseContentLength(rawValue: string | null): number | null {
@@ -44,8 +38,7 @@ function parseContentLength(rawValue: string | null): number | null {
   const trimmed = rawValue.trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed) || parsed < 0) return null
-  return parsed
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 function getWorkerRenderCache(): WorkerRenderCache | null {
   const cacheStorage = (globalThis as typeof globalThis & {
@@ -85,6 +78,17 @@ async function storeRenderCache(requestUrl: URL, response: Response): Promise<Re
   }
   return responseWithState
 }
+function scheduleLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: string, response: Response): void {
+  const bucket = deps.env?.MAP_IMAGE_CACHE
+  if (!bucket || deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED !== '1') return
+  const writePromise = readBytesWithLimit(response.clone(), MAX_IMAGE_BYTES)
+    .then((bytes) => putMirroredImage(bucket, target.toString(), bytes, mimeType, 'lazy'))
+    .catch((error: unknown) => {
+      if (String((error as Error)?.message || '') !== 'response_too_large') console.warn('[anitabi/imageServe] lazy mirror write failed', error)
+    })
+  if (deps.ctx?.waitUntil) deps.ctx.waitUntil(writePromise)
+  else void writePromise
+}
 function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
   const raw = String(rawInput || '').trim()
   if (!raw) return null
@@ -101,7 +105,6 @@ function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): U
 function hostMatches(host: string, allowed: string): boolean {
   return Boolean(host && allowed) && (host === allowed || host.endsWith(`.${allowed}`))
 }
-
 function isPrivateIp(hostname: string): boolean {
   const ipType = net.isIP(hostname)
   if (!ipType) return false
@@ -766,6 +769,7 @@ export async function serveImageRequest(
           })
         },
       })
+      scheduleLazyMirrorWrite(deps, target, fetched.mimeType, renderResponse)
       return await storeRenderCache(requestUrl, renderResponse)
     }
 

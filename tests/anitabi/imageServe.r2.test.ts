@@ -100,6 +100,7 @@ function createDeps(overrides?: {
   env?: {
     MAP_IMAGE_CACHE?: R2MirrorBucket
     NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
+    NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
   }
   ctx?: {
     waitUntil?: (promise: Promise<unknown>) => void
@@ -226,6 +227,73 @@ describe('serveImageRequest R2 primary read', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(bucket.getCalls).toEqual([])
     expect(response.headers.get('X-Seichigo-Image-Source')).toBeNull()
+  })
+
+  it('writes upstream render bytes to R2 via waitUntil when the write flag is enabled', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/cover.png?download=0'
+    let writePromise: Promise<unknown> | undefined
+    const waitUntil = vi.fn((promise: Promise<unknown>) => {
+      writePromise = promise
+    })
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
+        },
+        ctx: { waitUntil },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('image/png')
+    expect(response.headers.get('X-Seichigo-Render-Cache')).toBe('MISS')
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES)
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(writePromise).toBeDefined()
+
+    await writePromise
+
+    const canonicalUrl = computeCanonicalImageUrl(rawUrl)
+    const key = await computeMirrorKey(canonicalUrl, 'image/png')
+    const stored = bucket.objects.get(key)
+
+    expect(stored).toBeDefined()
+    expect(stored?.size).toBe(PNG_BYTES.byteLength)
+    expect(new Uint8Array(stored?.body || new ArrayBuffer(0))).toEqual(PNG_BYTES)
+    expect(stored?.httpMetadata).toEqual({ contentType: 'image/png' })
+    expect(stored?.customMetadata.originalUrl).toBe(canonicalUrl)
+    expect(stored?.customMetadata.mimeType).toBe('image/png')
+    expect(stored?.customMetadata.mirrorSource).toBe('lazy')
+  })
+
+  it('does not write upstream render bytes to R2 when the write flag is disabled', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/cover.png'
+    const waitUntil = vi.fn()
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0',
+        },
+        ctx: { waitUntil },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES)
+    expect(waitUntil).not.toHaveBeenCalled()
+    expect(bucket.objects.size).toBe(0)
   })
 
   it('treats an oversized R2 object as a miss and falls through to upstream fetch', async () => {
