@@ -86,6 +86,8 @@ export default function AnitabiMapLayout(props: any) {
     selectedPointPanoramaAvailable,
     windowExcerptBangumis,
     windowExcerptPoints,
+    onWindowExcerptDiagnosticRequestStart,
+    onWindowExcerptDiagnosticRequestTerminal,
     mapMode,
     showQuickPilgrimage,
     quickPilgrimageStates,
@@ -302,6 +304,13 @@ export default function AnitabiMapLayout(props: any) {
         <WindowExcerptOverlay
           bangumis={windowExcerptBangumis}
           points={windowExcerptPoints}
+          diagnostics={onWindowExcerptDiagnosticRequestStart && onWindowExcerptDiagnosticRequestTerminal
+            ? {
+                surface: 'nearby',
+                onPointRequestStart: onWindowExcerptDiagnosticRequestStart,
+                onPointRequestTerminal: onWindowExcerptDiagnosticRequestTerminal,
+              }
+            : undefined}
           activeBangumiId={selectedBangumiId}
           activePointId={props.selectedPointId}
           onBangumiClick={(bangumiId) => {
