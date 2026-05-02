@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
-import { getMirroredImage, putMirroredImage } from '@/lib/anitabi/r2Mirror'
+import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -15,6 +15,7 @@ const RENDER_CACHE_CONTROL = 'public, s-maxage=86400, stale-while-revalidate=604
 const RENDER_UPSTREAM_CACHE_TTL_SECONDS = 86400
 type ImageRouteMode = 'download' | 'render'
 type RenderCacheState = 'HIT' | 'MISS' | 'BYPASS'
+type MirroredImage = NonNullable<Awaited<ReturnType<typeof getMirroredImage>>>
 type WorkerRenderCache = {
   match(request: Request | string): Promise<Response | undefined>
   put(request: Request | string, response: Response): Promise<unknown>
@@ -583,6 +584,38 @@ async function buildDownloadResponse(input: {
   })
 }
 
+async function loadMirroredRenderResponse(
+  bucket: R2MirrorBucket,
+  rawUrl: string,
+  source: 'r2-primary' | 'r2-fallback',
+): Promise<{ mirrored: MirroredImage; response: Response } | null> {
+  const mirrored = await getMirroredImage(bucket, rawUrl).catch(() => null)
+  if (!mirrored) return null
+
+  const mirroredSize = mirrored.size ?? mirrored.bytes.byteLength
+  if (mirroredSize > MAX_IMAGE_BYTES) return null
+
+  const headers = new Headers({
+    'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
+    'Cache-Control': RENDER_CACHE_CONTROL,
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Seichigo-Image-Source': source,
+    'X-Original-Source': mirrored.customMetadata.originalUrl || rawUrl,
+  })
+  if (mirroredSize >= 0) {
+    headers.set('Content-Length', String(mirroredSize))
+  }
+  if (mirrored.customMetadata.mirroredAt) {
+    headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
+  }
+
+  return {
+    mirrored,
+    response: new Response(mirrored.bytes, { status: 200, headers }),
+  }
+}
+
 export async function serveImageRequest(
   req: Request,
   deps: AnitabiApiDeps,
@@ -649,31 +682,16 @@ export async function serveImageRequest(
     && deps.env?.MAP_IMAGE_CACHE
     && (deps.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
   ) {
-    const mirrored = await getMirroredImage(deps.env.MAP_IMAGE_CACHE, target.toString()).catch(() => null)
+    const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
     if (mirrored) {
-      const mirroredSize = mirrored.size ?? mirrored.bytes.byteLength
-      if (mirroredSize <= MAX_IMAGE_BYTES) {
-        emitProxyEvent({
-          stage: 'image_cache_state',
-          outcome: 'cache_hit_r2_primary',
-          terminalState: 'succeeded',
-          targetHostBucket: normalizeHost(target.hostname),
-          evidence: { mirrorSource: mirrored.customMetadata.mirrorSource, r2Key: mirrored.key },
-        })
-        const headers = new Headers({
-          'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
-          'Cache-Control': RENDER_CACHE_CONTROL,
-          'Content-Disposition': 'inline',
-          'Content-Length': String(mirroredSize),
-          'X-Content-Type-Options': 'nosniff',
-          'X-Seichigo-Image-Source': 'r2-primary',
-          'X-Original-Source': mirrored.customMetadata.originalUrl || target.toString(),
-        })
-        if (mirrored.customMetadata.mirroredAt) {
-          headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
-        }
-        return await storeRenderCache(requestUrl, new Response(mirrored.bytes, { status: 200, headers }))
-      }
+      emitProxyEvent({
+        stage: 'image_cache_state',
+        outcome: 'cache_hit_r2_primary',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeHost(target.hostname),
+        evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
+      })
+      return await storeRenderCache(requestUrl, mirrored.response)
     }
   }
   if (mode === 'render') {
@@ -721,6 +739,28 @@ export async function serveImageRequest(
             durationMs,
             targetHostBucket: normalizeHost(target.hostname),
           })
+          if (
+            deps.env?.MAP_IMAGE_CACHE
+            && (deps.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
+          ) {
+            const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+            if (mirrored) {
+              emitProxyEvent({
+                stage: 'image_cache_state',
+                outcome: 'cache_hit_r2_fallback',
+                terminalState: 'succeeded',
+                targetHostBucket: normalizeHost(target.hostname),
+                evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
+              })
+              return await storeRenderCache(requestUrl, mirrored.response)
+            }
+            emitProxyEvent({
+              stage: 'image_cache_state',
+              outcome: 'cache_full_miss_failed',
+              terminalState: 'failed',
+              targetHostBucket: normalizeHost(target.hostname),
+            })
+          }
         }
       }
       return fetched.response
