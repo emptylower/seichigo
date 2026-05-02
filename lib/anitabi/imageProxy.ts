@@ -1,4 +1,10 @@
-type MapDisplayImageKind = 'cover' | 'point-thumbnail' | 'point-preview' | 'point' | 'default'
+import {
+  normalizeAnitabiDisplayVariant,
+  normalizeBangumiCoverVariant,
+} from '@/lib/anitabi/imageNormalize'
+import type { MapDisplayImageKind } from '@/lib/anitabi/imageNormalize'
+export { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageNormalize'
+
 export type MapImageDiagnosticQuery = {
   sessionId: string
   chainId: string
@@ -47,17 +53,6 @@ export function readMapImageDiagnosticParams(
   }
 }
 
-export function stripMapImageDiagnosticParams(src: string | URL): URL {
-  const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
-  const url = src instanceof URL ? new URL(src.toString()) : new URL(src, baseOrigin)
-  for (const key of [...url.searchParams.keys()]) {
-    if (key.startsWith('__mi_')) {
-      url.searchParams.delete(key)
-    }
-  }
-  return url
-}
-
 function isDirectSafeAnitabiHost(url: URL): boolean {
   const host = url.hostname.toLowerCase()
   return host === 'image.anitabi.cn' || host.endsWith('.anitabi.cn')
@@ -99,73 +94,6 @@ function dedupeCandidates(values: string[]): string[] {
     out.push(normalized)
   }
   return out
-}
-
-function isAnitabiPointPhotoPath(url: URL): boolean {
-  return url.pathname.startsWith('/points/')
-}
-
-function normalizeBangumiCoverVariant(url: URL, kind: MapDisplayImageKind): void {
-  if (kind !== 'cover') return
-  const host = url.hostname.toLowerCase()
-  const isBangumiHost = host === 'bgm.tv' || host.endsWith('.bgm.tv')
-  if (!isBangumiHost) return
-
-  url.pathname = url.pathname.replace('/pic/cover/l/', '/pic/cover/m/')
-}
-
-function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKind): void {
-  const host = url.hostname.toLowerCase()
-  const isAnitabiHost = host === 'anitabi.cn' || host === 'www.anitabi.cn' || host.endsWith('.anitabi.cn')
-  if (!isAnitabiHost) return
-
-  if (host === 'anitabi.cn' || host === 'www.anitabi.cn') {
-    url.hostname = 'image.anitabi.cn'
-  }
-  if (url.pathname.startsWith('/images/')) {
-    url.pathname = url.pathname.slice('/images'.length)
-  }
-  if (isAnitabiPointPhotoPath(url)) {
-    if (kind === 'point' || kind === 'point-preview') {
-      const hasWidthBasedResize =
-        url.searchParams.has('w')
-        || url.searchParams.has('h')
-        || url.searchParams.has('q')
-      const hasNamedPlan = Boolean(String(url.searchParams.get('plan') || '').trim())
-
-      if (hasWidthBasedResize || !hasNamedPlan) {
-        url.searchParams.delete('plan')
-        if (!url.searchParams.has('w') && !url.searchParams.has('h')) {
-          url.searchParams.set('w', '640')
-        }
-        if (!url.searchParams.has('q')) {
-          url.searchParams.set('q', '80')
-        }
-      }
-      return
-    }
-
-    if (kind === 'point-thumbnail') {
-      const plan = url.searchParams.get('plan')
-      if (!plan || !plan.trim()) {
-        url.searchParams.set('plan', 'h160')
-      }
-      url.searchParams.delete('w')
-      url.searchParams.delete('h')
-      url.searchParams.delete('q')
-      return
-    }
-  }
-  if (kind === 'point' || kind === 'point-preview' || kind === 'point-thumbnail') {
-    const desiredPlan = kind === 'point-thumbnail' ? 'h160' : 'h320'
-    const plan = url.searchParams.get('plan')
-    if (!plan || !plan.trim()) {
-      url.searchParams.set('plan', desiredPlan)
-    }
-    url.searchParams.delete('w')
-    url.searchParams.delete('h')
-    url.searchParams.delete('q')
-  }
 }
 
 function appendRetryNonce(url: URL, retryNonce: number | null | undefined): void {
