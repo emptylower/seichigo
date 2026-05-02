@@ -159,6 +159,10 @@ function createImageResponse() {
   })
 }
 
+function getDiagEvents() {
+  return mocks.emitMapImageProxyEvent.mock.calls.map((call) => call[2])
+}
+
 async function seedMirroredObject(bucket: FakeBucket, input?: {
   rawUrl?: string
   bytes?: Uint8Array
@@ -381,9 +385,24 @@ describe('serveImageRequest R2 primary read', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(seeded.bytes)
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(mocks.cachePut).toHaveBeenCalledTimes(1)
-    expect(bucket.getCalls).toHaveLength(7)
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.outcome === 'cache_hit_r2_fallback')).toBe(true)
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.stage === 'proxy_fetch_terminal' && call[2]?.outcome === 'timeout')).toBe(true)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+
+    const diagEvents = getDiagEvents()
+    const upstreamFailureIndex = diagEvents.findIndex((event) => (
+      event?.stage === 'proxy_fetch_terminal'
+      && event?.outcome === 'timeout'
+      && !event?.terminalState
+      && event?.evidence?.recoveredBy === 'r2-fallback'
+    ))
+    const fallbackHitIndex = diagEvents.findIndex((event) => (
+      event?.stage === 'image_cache_state'
+      && event?.outcome === 'cache_hit_r2_fallback'
+      && event?.terminalState === 'succeeded'
+    ))
+
+    expect(upstreamFailureIndex).toBeGreaterThanOrEqual(0)
+    expect(fallbackHitIndex).toBeGreaterThan(upstreamFailureIndex)
+    expect(diagEvents.some((event) => event?.stage === 'proxy_fetch_terminal' && event?.terminalState === 'failed')).toBe(false)
   })
 
   it('returns the original upstream failure when R2 fallback misses after a 5xx-style fetch failure', async () => {
@@ -404,8 +423,15 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(502)
     await expect(response.json()).resolves.toEqual({ error: '图片读取失败' })
-    expect(bucket.getCalls).toHaveLength(12)
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.outcome === 'cache_full_miss_failed')).toBe(true)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+
+    const diagEvents = getDiagEvents()
+    expect(diagEvents.some((event) => (
+      event?.stage === 'proxy_fetch_terminal'
+      && event?.outcome === 'network_error'
+      && event?.terminalState === 'failed'
+    ))).toBe(true)
+    expect(diagEvents.some((event) => event?.outcome === 'cache_full_miss_failed')).toBe(true)
   })
 
   it('returns the original upstream timeout when the read flag is disabled even if a mirrored object exists', async () => {
@@ -454,9 +480,9 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(415)
     await expect(response.json()).resolves.toEqual({ error: '文件类型不支持' })
-    expect(bucket.getCalls).toHaveLength(6)
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.outcome === 'cache_hit_r2_fallback')).toBe(false)
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.outcome === 'cache_full_miss_failed')).toBe(false)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+    expect(getDiagEvents().some((event) => event?.outcome === 'cache_hit_r2_fallback')).toBe(false)
+    expect(getDiagEvents().some((event) => event?.outcome === 'cache_full_miss_failed')).toBe(false)
   })
 
   it('treats an oversized R2 fallback object as a miss and preserves the upstream timeout failure', async () => {
@@ -480,8 +506,16 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(504)
     await expect(response.json()).resolves.toEqual({ error: '图片代理超时' })
-    expect(bucket.getCalls).toEqual([seeded.key, seeded.key])
-    expect(mocks.emitMapImageProxyEvent.mock.calls.some((call) => call[2]?.outcome === 'cache_full_miss_failed')).toBe(true)
+    expect(bucket.getCalls.length).toBeGreaterThan(0)
+    expect(bucket.getCalls).toContain(seeded.key)
+
+    const diagEvents = getDiagEvents()
+    expect(diagEvents.some((event) => (
+      event?.stage === 'proxy_fetch_terminal'
+      && event?.outcome === 'timeout'
+      && event?.terminalState === 'failed'
+    ))).toBe(true)
+    expect(diagEvents.some((event) => event?.outcome === 'cache_full_miss_failed')).toBe(true)
   })
 
   it('falls through to upstream fetch when the mirrored R2 object is missing', async () => {

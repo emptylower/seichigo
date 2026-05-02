@@ -658,6 +658,11 @@ export async function serveImageRequest(
     return NextResponse.json({ error: '参数错误' }, { status: 400 })
   }
   const renderTimeoutMs = mode === 'render' ? resolveRenderTimeoutMs(target) : DOWNLOAD_FETCH_TIMEOUT_MS
+  const renderR2ReadEnabled = (
+    mode === 'render'
+    && Boolean(deps.env?.MAP_IMAGE_CACHE)
+    && (deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
+  )
   if (mode === 'render') {
     emitProxyEvent({
       stage: 'proxy_target_parse',
@@ -677,11 +682,7 @@ export async function serveImageRequest(
     }
     return blocked
   }
-  if (
-    mode === 'render'
-    && deps.env?.MAP_IMAGE_CACHE
-    && (deps.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
-  ) {
+  if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
     const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
     if (mirrored) {
       emitProxyEvent({
@@ -715,13 +716,14 @@ export async function serveImageRequest(
     if (!fetched.ok) {
       if (mode === 'render') {
         const durationMs = Math.max(0, Date.now() - fetchStartedAt)
+        const targetHostBucket = normalizeHost(target.hostname)
         if (fetched.response.status === 400) {
           emitProxyEvent({
             stage: 'proxy_allow_check',
             outcome: 'rejected',
             terminalState: 'failed',
             durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
+            targetHostBucket,
           })
         } else if (fetched.response.status === 415) {
           emitProxyEvent({
@@ -729,36 +731,46 @@ export async function serveImageRequest(
             outcome: 'content_invalid',
             terminalState: 'failed',
             durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
+            targetHostBucket,
           })
         } else {
-          emitProxyEvent({
-            stage: 'proxy_fetch_terminal',
-            outcome: fetched.response.status === 504 ? 'timeout' : 'network_error',
-            terminalState: 'failed',
-            durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
-          })
-          if (
-            deps.env?.MAP_IMAGE_CACHE
-            && (deps.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
-          ) {
+          const upstreamFailureOutcome = fetched.response.status === 504 ? 'timeout' : 'network_error'
+          if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
             const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
             if (mirrored) {
+              emitProxyEvent({
+                stage: 'proxy_fetch_terminal',
+                outcome: upstreamFailureOutcome,
+                durationMs,
+                targetHostBucket,
+                evidence: {
+                  recoveredBy: 'r2-fallback',
+                  fallbackStatus: mirrored.response.status,
+                },
+              })
               emitProxyEvent({
                 stage: 'image_cache_state',
                 outcome: 'cache_hit_r2_fallback',
                 terminalState: 'succeeded',
-                targetHostBucket: normalizeHost(target.hostname),
+                targetHostBucket,
                 evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
               })
               return await storeRenderCache(requestUrl, mirrored.response)
             }
+          }
+          emitProxyEvent({
+            stage: 'proxy_fetch_terminal',
+            outcome: upstreamFailureOutcome,
+            terminalState: 'failed',
+            durationMs,
+            targetHostBucket,
+          })
+          if (renderR2ReadEnabled) {
             emitProxyEvent({
               stage: 'image_cache_state',
               outcome: 'cache_full_miss_failed',
               terminalState: 'failed',
-              targetHostBucket: normalizeHost(target.hostname),
+              targetHostBucket,
             })
           }
         }
