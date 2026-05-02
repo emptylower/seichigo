@@ -1,5 +1,6 @@
 import type { Session } from 'next-auth'
 import { prisma } from '@/lib/db/prisma'
+import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 
 export type AnitabiApiDeps = {
   prisma: typeof prisma
@@ -8,6 +9,14 @@ export type AnitabiApiDeps = {
   getCronSecret: () => string
   getApiBase: () => string
   getSiteBase: () => string
+  env?: {
+    MAP_IMAGE_CACHE?: R2MirrorBucket
+    NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
+    NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
+  }
+  ctx?: {
+    waitUntil?: (promise: Promise<unknown>) => void
+  }
 }
 
 let cached: AnitabiApiDeps | null = null

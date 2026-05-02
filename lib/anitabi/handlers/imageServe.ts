@@ -3,6 +3,7 @@ import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { getMirroredImage } from '@/lib/anitabi/r2Mirror'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -60,16 +61,11 @@ function buildRenderCacheKey(requestUrl: URL): Request {
 function withRenderCacheState(response: Response, state: RenderCacheState): Response {
   const headers = new Headers(response.headers)
   headers.set('X-Seichigo-Render-Cache', state)
-  return new Response(response.body, {
-    status: response.status,
-    headers,
-  })
+  return new Response(response.body, { status: response.status, headers })
 }
-
 async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
   const cache = getWorkerRenderCache()
   if (!cache) return null
-
   try {
     const cached = await cache.match(buildRenderCacheKey(requestUrl))
     if (!cached) return null
@@ -82,36 +78,28 @@ async function storeRenderCache(requestUrl: URL, response: Response): Promise<Re
   const cache = getWorkerRenderCache()
   const responseWithState = withRenderCacheState(response, cache ? 'MISS' : 'BYPASS')
   if (!cache) return responseWithState
-
   try {
     await cache.put(buildRenderCacheKey(requestUrl), responseWithState.clone())
   } catch {
     // Cache write failures should not block image delivery.
   }
-
   return responseWithState
 }
 function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
   const raw = String(rawInput || '').trim()
   if (!raw) return null
-
   try {
     const url = raw.includes('://')
       ? new URL(raw)
       : new URL(raw.startsWith('/') ? raw : `/${raw.replace(/^\/+/, '')}`, requestUrl.origin)
-
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
-    if (url.username || url.password) return null
-    return url
+    return url.protocol === 'http:' || url.protocol === 'https:' ? (url.username || url.password ? null : url) : null
   } catch {
     return null
   }
 }
-
 function hostMatches(host: string, allowed: string): boolean {
-  if (!host || !allowed) return false
-  if (host === allowed) return true
-  return host.endsWith(`.${allowed}`)
+  return Boolean(host && allowed) && (host === allowed || host.endsWith(`.${allowed}`))
 }
 
 function isPrivateIp(hostname: string): boolean {
@@ -143,10 +131,7 @@ function isPrivateIp(hostname: string): boolean {
 
 function isDisallowedHost(hostname: string): boolean {
   const host = normalizeHost(hostname)
-  if (!host) return true
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true
-  if (isPrivateIp(host)) return true
-  return false
+  return !host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || isPrivateIp(host)
 }
 
 async function resolvesToDisallowedIp(hostname: string): Promise<boolean> {
@@ -208,7 +193,6 @@ async function readBytesWithLimit(res: Response, maxBytes: number): Promise<Arra
 
 function parseContentDispositionFilename(value: string | null): string | null {
   if (!value) return null
-
   const utf8Match = value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
   if (utf8Match?.[1]) {
     try {
@@ -224,7 +208,6 @@ function parseContentDispositionFilename(value: string | null): string | null {
     const name = plainMatch[1].trim()
     if (name) return name
   }
-
   return null
 }
 
@@ -258,9 +241,7 @@ function sanitizeFilenameBase(input: string | null | undefined): string {
   return cleaned.slice(0, 80)
 }
 
-function trimFileExtension(input: string): string {
-  return input.replace(/\.[a-zA-Z0-9]{2,6}$/, '')
-}
+function trimFileExtension(input: string): string { return input.replace(/\.[a-zA-Z0-9]{2,6}$/, '') }
 
 function buildDownloadFilename(input: {
   mimeType: string
@@ -289,13 +270,7 @@ function buildContentDisposition(filename: string): string {
   return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encodeURIComponent(safeUtf8)}`
 }
 
-async function resolveSiteHost(deps: AnitabiApiDeps): Promise<string> {
-  try {
-    return normalizeHost(new URL(deps.getSiteBase()).hostname)
-  } catch {
-    return ''
-  }
-}
+function resolveSiteHost(deps: AnitabiApiDeps): string { try { return normalizeHost(new URL(deps.getSiteBase()).hostname) } catch { return '' } }
 
 async function assertAllowedTargetUrl(
   target: URL,
@@ -303,7 +278,7 @@ async function assertAllowedTargetUrl(
   deps: AnitabiApiDeps
 ): Promise<NextResponse | null> {
   const reqHost = normalizeHost(requestUrl.hostname)
-  const siteHost = await resolveSiteHost(deps)
+  const siteHost = resolveSiteHost(deps)
   const targetHost = normalizeHost(target.hostname)
   const hostAllowed =
     hostMatches(targetHost, reqHost) ||
@@ -325,31 +300,9 @@ async function fetchValidatedImage(input: {
   userAgent: string
   useUpstreamEdgeCache?: boolean
 }): Promise<
-  | {
-      ok: true
-      response: Response
-      finalUrl: URL
-      mimeType: string
-      clearTimeout: () => void
-      abort: () => void
-    }
-  | {
-      ok: false
-      response: NextResponse
-      clearTimeout: () => void
-      abort: () => void
-    }
+  | { ok: true; response: Response; finalUrl: URL; mimeType: string; clearTimeout: () => void; abort: () => void }
+  | { ok: false; response: NextResponse; clearTimeout: () => void; abort: () => void }
 > {
-  const blocked = await assertAllowedTargetUrl(input.target, input.requestUrl, input.deps)
-  if (blocked) {
-    return {
-      ok: false,
-      response: blocked,
-      clearTimeout: () => {},
-      abort: () => {},
-    }
-  }
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs)
   let current = input.target
@@ -675,6 +628,49 @@ export async function serveImageRequest(
       targetHostBucket: normalizeHost(target.hostname),
       evidence: { target: target.toString() },
     })
+  }
+  const blocked = await assertAllowedTargetUrl(target, requestUrl, deps)
+  if (blocked) {
+    if (mode === 'render') {
+      emitProxyEvent({
+        stage: 'proxy_allow_check',
+        outcome: 'rejected',
+        terminalState: 'failed',
+        targetHostBucket: normalizeHost(target.hostname),
+      })
+    }
+    return blocked
+  }
+  if (
+    mode === 'render'
+    && deps.env?.MAP_IMAGE_CACHE
+    && (deps.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
+  ) {
+    const mirrored = await getMirroredImage(deps.env.MAP_IMAGE_CACHE, target.toString()).catch(() => null)
+    if (mirrored) {
+      emitProxyEvent({
+        stage: 'image_cache_state',
+        outcome: 'cache_hit_r2_primary',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeHost(target.hostname),
+        evidence: { mirrorSource: mirrored.customMetadata.mirrorSource, r2Key: mirrored.key },
+      })
+      const headers = new Headers({
+        'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
+        'Cache-Control': RENDER_CACHE_CONTROL,
+        'Content-Disposition': 'inline',
+        'Content-Length': String(mirrored.size ?? mirrored.bytes.byteLength),
+        'X-Content-Type-Options': 'nosniff',
+        'X-Seichigo-Image-Source': 'r2-primary',
+        'X-Original-Source': mirrored.customMetadata.originalUrl || target.toString(),
+      })
+      if (mirrored.customMetadata.mirroredAt) {
+        headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
+      }
+      return await storeRenderCache(requestUrl, new Response(mirrored.bytes, { status: 200, headers }))
+    }
+  }
+  if (mode === 'render') {
     emitProxyEvent({
       stage: 'proxy_fetch_start',
       targetHostBucket: normalizeHost(target.hostname),
