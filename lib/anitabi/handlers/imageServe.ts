@@ -55,6 +55,16 @@ function buildRenderCacheKey(requestUrl: URL): Request {
 function resolveRenderOriginalSource(requestUrl: URL): string | null {
   return parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)?.toString() ?? null
 }
+
+function normalizeUrlHostname(input: string | null | undefined): string | undefined {
+  const raw = String(input || '').trim()
+  if (!raw) return undefined
+  try {
+    return normalizeHost(new URL(raw).hostname) || undefined
+  } catch {
+    return undefined
+  }
+}
 function withRenderCacheState(
   response: Response,
   state: RenderCacheState,
@@ -639,9 +649,20 @@ export async function serveImageRequest(
   mode: ImageRouteMode
 ): Promise<Response> {
   const requestUrl = new URL(req.url)
+  let imageCacheStateEmitted = false
   const emitProxyEvent = (input: Parameters<typeof dispatchMapImageProxyEvent>[2]) => {
     if (mode !== 'render') return
     dispatchMapImageProxyEvent(deps.prisma, requestUrl, input)
+  }
+  const emitImageCacheState = (
+    input: Omit<Parameters<typeof dispatchMapImageProxyEvent>[2], 'stage'>
+  ) => {
+    if (mode !== 'render' || imageCacheStateEmitted) return
+    imageCacheStateEmitted = true
+    emitProxyEvent({
+      stage: 'image_cache_state',
+      ...input,
+    })
   }
   if (mode === 'render' && requestUrl.searchParams.has('name')) {
     const canonicalUrl = new URL(requestUrl)
@@ -655,6 +676,13 @@ export async function serveImageRequest(
         stage: 'proxy_cache_state',
         outcome: 'cache_hit',
         terminalState: 'succeeded',
+      })
+      const originalSource = resolveRenderOriginalSource(requestUrl)
+      emitImageCacheState({
+        outcome: 'cache_hit_cf',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeUrlHostname(originalSource),
+        evidence: originalSource ? { originalSource } : undefined,
       })
       return cached
     }
@@ -702,8 +730,7 @@ export async function serveImageRequest(
   if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
     const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
     if (mirrored) {
-      emitProxyEvent({
-        stage: 'image_cache_state',
+      emitImageCacheState({
         outcome: 'cache_hit_r2_primary',
         terminalState: 'succeeded',
         targetHostBucket: normalizeHost(target.hostname),
@@ -765,8 +792,7 @@ export async function serveImageRequest(
                   fallbackStatus: mirrored.response.status,
                 },
               })
-              emitProxyEvent({
-                stage: 'image_cache_state',
+              emitImageCacheState({
                 outcome: 'cache_hit_r2_fallback',
                 terminalState: 'succeeded',
                 targetHostBucket,
@@ -782,14 +808,11 @@ export async function serveImageRequest(
             durationMs,
             targetHostBucket,
           })
-          if (renderR2ReadEnabled) {
-            emitProxyEvent({
-              stage: 'image_cache_state',
-              outcome: 'cache_full_miss_failed',
-              terminalState: 'failed',
-              targetHostBucket,
-            })
-          }
+          emitImageCacheState({
+            outcome: 'cache_full_miss_failed',
+            terminalState: 'failed',
+            targetHostBucket,
+          })
         }
       }
       return fetched.response
@@ -840,6 +863,15 @@ export async function serveImageRequest(
             terminalState: outcome === 'aborted' ? 'aborted' : 'failed',
             outcome,
           })
+        },
+      })
+      emitImageCacheState({
+        outcome: 'cache_miss_all',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
+        evidence: {
+          finalUrl: fetched.finalUrl.toString(),
+          mimeType: fetched.mimeType,
         },
       })
       scheduleLazyMirrorWrite(deps, target, fetched.mimeType, renderResponse)
