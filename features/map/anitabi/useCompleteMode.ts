@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AnitabiBangumiCard } from '@/lib/anitabi/types'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 import { isValidTheme } from '@/components/map/types'
@@ -29,9 +29,15 @@ import { computeWindowExcerpt } from './windowExcerpt'
 import { yieldToMainThread } from './media'
 import {
   getFirstViewTrackedSlotCount,
-  markFirstViewRequestStart,
-  markFirstViewSettlement,
 } from './firstView'
+import { shouldLoadCompleteModeCovers } from './completeModeCoverPolicy'
+import {
+  buildCompleteModeCoverDemandSignature,
+  buildCompleteModePointDemandSignature,
+  shouldSkipCompleteModeDemandUpdate,
+} from './completeModeDemand'
+import { createCompleteModeTrackedMetricCallbacks } from './completeModeDiagnostics'
+import { resolveMapImageDiagSurface } from './mapImageSessionManager'
 import {
   COMPLETE_AVATAR_MAX_ZOOM,
   COMPLETE_DETAIL_THEME_MAX_ZOOM,
@@ -61,6 +67,8 @@ export function useCompleteMode(ctx: any) {
     completeImageBuildZoom,
     completeImageShowZoom,
     syncCompleteModeRef,
+    tab,
+    tabRef,
     completeFeatureCollectionRef,
     coverAvatarLoaderRef,
     completePointImageLoaderRef,
@@ -73,6 +81,7 @@ export function useCompleteMode(ctx: any) {
     tabCardsRef,
     warmPointIndexByBangumiIdRef,
     isDesktopRef,
+    mapImageDiagManagerRef,
     spriteImageIdsRef,
     completeBaseBuildVersionRef,
     completeSpriteBuildVersionRef,
@@ -80,26 +89,10 @@ export function useCompleteMode(ctx: any) {
     warmupMetricRef,
     setCompleteModeLoading,
   } = ctx
-
-  const createTrackedMetricCallbacks = (slotType: 'point-thumbnail' | 'cover-avatar') => ({
-    onTrackedSlotRequestStart: ({ slotKey, src }: { slotKey: string; src: string }) => {
-      markFirstViewRequestStart(warmupMetricRef, {
-        slotKey,
-        slotType,
-        src,
-        owner: 'viewport-loader',
-      })
-    },
-    onTrackedSlotSettle: ({ slotKey, src, state }: { slotKey: string; src: string; state: 'visible' | 'fallback' }) => {
-      markFirstViewSettlement(warmupMetricRef, {
-        slotKey,
-        slotType,
-        src,
-        owner: 'viewport-loader',
-        state,
-      })
-    },
-  })
+  const coverDemandSignatureRef = useRef<string | null>(null)
+  const coverDemandInFlightSignatureRef = useRef<string | null>(null)
+  const pointDemandSignatureRef = useRef<string | null>(null)
+  const pointDemandInFlightSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
     const flushCompleteMode = () => {
@@ -136,6 +129,10 @@ export function useCompleteMode(ctx: any) {
         completePointImageLoaderRef.current = null
         completePointImageSyncTokenRef.current += 1
         clearThumbImages()
+        pointDemandSignatureRef.current = null
+        pointDemandInFlightSignatureRef.current = null
+        coverDemandSignatureRef.current = null
+        coverDemandInFlightSignatureRef.current = null
         loadedCoverIdsRef.current = new Set()
         completeCoverFeatureCollectionRef.current = null
         completeCoverCandidatesRef.current = []
@@ -150,6 +147,10 @@ export function useCompleteMode(ctx: any) {
         completePointImageLoaderRef.current = null
         completePointImageSyncTokenRef.current += 1
         clearThumbImages()
+        pointDemandSignatureRef.current = null
+        pointDemandInFlightSignatureRef.current = null
+        coverDemandSignatureRef.current = null
+        coverDemandInFlightSignatureRef.current = null
         loadedCoverIdsRef.current = new Set()
         completeCoverFeatureCollectionRef.current = null
         completeCoverCandidatesRef.current = []
@@ -185,22 +186,42 @@ export function useCompleteMode(ctx: any) {
         }
         updateCompleteModeSources(map, fc)
 
+        const shouldShowCovers = shouldLoadCompleteModeCovers(detailBangumiId, currentZoom)
         const coverBase = completeCoverFeatureCollectionRef.current
         const coverCollection: GeoJSON.FeatureCollection = coverBase || { type: 'FeatureCollection', features: [] }
         updateCompleteModeCoverSource(map, coverCollection, loadedCoverIdsRef.current)
 
-        if (coverAvatarLoaderRef.current && completeCoverCandidatesRef.current.length > 0) {
-          const coverCandidates = completeCoverCandidatesRef.current
-          void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids: Set<string>) => {
-            loadedCoverIdsRef.current = ids
-            const liveMap = mapRef.current
-            if (!liveMap || !liveMap.isStyleLoaded()) return
-            updateCompleteModeCoverSource(liveMap, coverCollection, ids)
-            liveMap.triggerRepaint()
-          }).catch(() => null)
+        if (
+          shouldShowCovers
+          && coverAvatarLoaderRef.current
+          && completeCoverCandidatesRef.current.length > 0
+        ) {
+          const coverCandidates: Array<{ bangumiId: number; coverUrl: string }> = completeCoverCandidatesRef.current
+          const coverSignature = buildCompleteModeCoverDemandSignature(coverCandidates)
+          const expectedCoverIds = coverCandidates.map((candidate) => `cover-${candidate.bangumiId}`)
+          if (!shouldSkipCompleteModeDemandUpdate({
+            map,
+            signature: coverSignature,
+            currentSignature: coverDemandSignatureRef.current,
+            inFlightSignature: coverDemandInFlightSignatureRef.current,
+            expectedImageIds: expectedCoverIds,
+          })) {
+            coverDemandInFlightSignatureRef.current = coverSignature
+            void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids: Set<string>) => {
+              loadedCoverIdsRef.current = ids
+              coverDemandSignatureRef.current = coverSignature
+              const liveMap = mapRef.current
+              if (!liveMap || !liveMap.isStyleLoaded()) return
+              updateCompleteModeCoverSource(liveMap, coverCollection, ids)
+              liveMap.triggerRepaint()
+            }).catch(() => null).finally(() => {
+              if (coverDemandInFlightSignatureRef.current === coverSignature) {
+                coverDemandInFlightSignatureRef.current = null
+              }
+            })
+          }
         }
 
-        const shouldShowCovers = detailBangumiId == null && currentZoom < COMPLETE_AVATAR_MAX_ZOOM
         const shouldShowThemeIcons = detailBangumiId != null && currentZoom < COMPLETE_DETAIL_THEME_MAX_ZOOM
         const shouldPopulateThemeSource = detailBangumiId != null
         const shouldBuildPointImages = detailBangumiId != null && currentZoom >= focusedImageBuildZoom
@@ -264,6 +285,8 @@ export function useCompleteMode(ctx: any) {
 
         if (!shouldBuildPointImages) {
           completePointImageSyncTokenRef.current += 1
+          pointDemandSignatureRef.current = null
+          pointDemandInFlightSignatureRef.current = null
           clearPointImageSource()
           if (detailBangumiId == null) {
             clearThumbImages()
@@ -274,7 +297,11 @@ export function useCompleteMode(ctx: any) {
               map,
               maxLoaded: isDesktopRef.current ? 140 : 80,
               firstViewTrackedLimit: getFirstViewTrackedSlotCount(isDesktopRef.current ? 1440 : 390),
-              ...createTrackedMetricCallbacks('point-thumbnail'),
+              ...createCompleteModeTrackedMetricCallbacks(
+                mapImageDiagManagerRef,
+                () => resolveMapImageDiagSurface(tabRef.current),
+                'point-thumbnail',
+              ),
             })
           }
 
@@ -361,8 +388,12 @@ export function useCompleteMode(ctx: any) {
 
           if (candidates.length === 0) {
             completePointImageSyncTokenRef.current += 1
+            pointDemandSignatureRef.current = null
+            pointDemandInFlightSignatureRef.current = null
             clearPointImageSource()
           } else {
+            const pointSignature = buildCompleteModePointDemandSignature(candidates)
+            const expectedPointImageIds = candidates.map((candidate) => `thumb-${candidate.thumbnailKey}`)
             const loaderInput: GlobalPointFeatureProperties[] = candidates.map((candidate) => ({
               pointId: candidate.thumbnailKey,
               color: candidate.color,
@@ -373,43 +404,57 @@ export function useCompleteMode(ctx: any) {
               priority: candidate.priority,
               density: candidate.density,
             }))
-            const token = completePointImageSyncTokenRef.current + 1
-            completePointImageSyncTokenRef.current = token
+            if (!shouldSkipCompleteModeDemandUpdate({
+              map,
+              signature: pointSignature,
+              currentSignature: pointDemandSignatureRef.current,
+              inFlightSignature: pointDemandInFlightSignatureRef.current,
+              expectedImageIds: expectedPointImageIds,
+            })) {
+              const token = completePointImageSyncTokenRef.current + 1
+              completePointImageSyncTokenRef.current = token
+              pointDemandInFlightSignatureRef.current = pointSignature
 
-            void completePointImageLoaderRef.current.updateViewport(loaderInput).then((loadedIds: Set<string>) => {
-              if (completePointImageSyncTokenRef.current !== token) return
-              const liveMap = mapRef.current
-              if (!liveMap || !liveMap.isStyleLoaded()) return
+              void completePointImageLoaderRef.current.updateViewport(loaderInput).then((loadedIds: Set<string>) => {
+                if (completePointImageSyncTokenRef.current !== token) return
+                pointDemandSignatureRef.current = pointSignature
+                const liveMap = mapRef.current
+                if (!liveMap || !liveMap.isStyleLoaded()) return
 
-              const imageFeatures: GeoJSON.Feature<GeoJSON.Point>[] = candidates
-                .filter((candidate) => loadedIds.has(`thumb-${candidate.thumbnailKey}`))
-                .map((candidate) => ({
-                  type: 'Feature',
-                  geometry: {
-                    type: 'Point',
-                    coordinates: candidate.geometry,
-                  },
-                  properties: {
-                    pointId: candidate.pointId,
-                    bangumiId: candidate.bangumiId,
-                    image: `thumb-${candidate.thumbnailKey}`,
-                    y: candidate.geometry[1] * -1,
-                    priority: candidate.priority,
-                    density: candidate.density,
-                  },
-                }))
+                const imageFeatures: GeoJSON.Feature<GeoJSON.Point>[] = candidates
+                  .filter((candidate) => loadedIds.has(`thumb-${candidate.thumbnailKey}`))
+                  .map((candidate) => ({
+                    type: 'Feature',
+                    geometry: {
+                      type: 'Point',
+                      coordinates: candidate.geometry,
+                    },
+                    properties: {
+                      pointId: candidate.pointId,
+                      bangumiId: candidate.bangumiId,
+                      image: `thumb-${candidate.thumbnailKey}`,
+                      y: candidate.geometry[1] * -1,
+                      priority: candidate.priority,
+                      density: candidate.density,
+                    },
+                  }))
 
-              updateCompleteModePointImageSource(liveMap, {
-                type: 'FeatureCollection',
-                features: imageFeatures,
+                updateCompleteModePointImageSource(liveMap, {
+                  type: 'FeatureCollection',
+                  features: imageFeatures,
+                })
+                updateCompleteModeLayerVisibility(liveMap, {
+                  showCovers: shouldShowCovers,
+                  showThemeIcons: shouldShowThemeIcons,
+                  showPointImages: shouldShowPointImages,
+                })
+                liveMap.triggerRepaint()
+              }).catch(() => null).finally(() => {
+                if (pointDemandInFlightSignatureRef.current === pointSignature) {
+                  pointDemandInFlightSignatureRef.current = null
+                }
               })
-              updateCompleteModeLayerVisibility(liveMap, {
-                showCovers: shouldShowCovers,
-                showThemeIcons: shouldShowThemeIcons,
-                showPointImages: shouldShowPointImages,
-              })
-              liveMap.triggerRepaint()
-            }).catch(() => null)
+            }
           }
         }
 
@@ -578,13 +623,19 @@ export function useCompleteMode(ctx: any) {
         type: 'FeatureCollection',
         features: coverFeatures,
       }
+      coverDemandSignatureRef.current = null
+      coverDemandInFlightSignatureRef.current = null
       loadedCoverIdsRef.current = new Set()
       if (!coverAvatarLoaderRef.current) {
         coverAvatarLoaderRef.current = new CoverAvatarLoader({
           map,
           maxLoaded: COMPLETE_MODE_COVER_MAX_LOADED,
           firstViewTrackedLimit: getFirstViewTrackedSlotCount(isDesktopRef.current ? 1440 : 390),
-          ...createTrackedMetricCallbacks('cover-avatar'),
+          ...createCompleteModeTrackedMetricCallbacks(
+            mapImageDiagManagerRef,
+            () => resolveMapImageDiagSurface(tabRef.current),
+            'cover-avatar',
+          ),
         })
       }
 
@@ -624,10 +675,18 @@ export function useCompleteMode(ctx: any) {
       const fc = createGlobalFeatureCollection(allInputPoints)
       completeFeatureCollectionRef.current = fc
       completeBaseBuildVersionRef.current = warmPointDataVersion
+      pointDemandSignatureRef.current = null
+      pointDemandInFlightSignatureRef.current = null
       syncCompleteModeRef.current()
       if (controller.signal.aborted) return
 
-      if (coverAvatarLoaderRef.current && coverCandidates.length > 0) {
+      const currentZoom = map.getZoom()
+      const detailBangumiId = detailRef.current?.card.id ?? null
+      if (
+        shouldLoadCompleteModeCovers(detailBangumiId, currentZoom)
+        && coverAvatarLoaderRef.current
+        && coverCandidates.length > 0
+      ) {
         void coverAvatarLoaderRef.current.updateViewport(coverCandidates).then((ids: Set<string>) => {
           if (controller.signal.aborted) return
           loadedCoverIdsRef.current = ids
@@ -801,11 +860,15 @@ export function useCompleteMode(ctx: any) {
     }
     spriteImageIdsRef.current.clear()
     completeFeatureCollectionRef.current = null
-    coverAvatarLoaderRef.current = null
-    completePointImageLoaderRef.current = null
-    completePointImageSyncTokenRef.current += 1
-    loadedCoverIdsRef.current = new Set()
-    completeCoverFeatureCollectionRef.current = null
+      coverAvatarLoaderRef.current = null
+      completePointImageLoaderRef.current = null
+      completePointImageSyncTokenRef.current += 1
+      pointDemandSignatureRef.current = null
+      pointDemandInFlightSignatureRef.current = null
+      coverDemandSignatureRef.current = null
+      coverDemandInFlightSignatureRef.current = null
+      loadedCoverIdsRef.current = new Set()
+      completeCoverFeatureCollectionRef.current = null
     completeCoverCandidatesRef.current = []
     setCompleteModeLoading(false)
   }, [
