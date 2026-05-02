@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "seichigo-anitabi-mirror",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": {
+    "crons": ["*/5 * * * *", "0 * * * *"]
+  },
+  "vars": {
+    "MAP_IMAGE_MIRROR_CRON_ENABLED": "0"
+  },
+  "r2_buckets": [
+    { "binding": "MAP_IMAGE_CACHE", "bucket_name": "seichigo-anitabi-images" }
+  ]
+}

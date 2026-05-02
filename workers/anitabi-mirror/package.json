@@ -1,0 +1,10 @@
+{
+  "name": "@seichigo/anitabi-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typegen": "wrangler types"
+  }
+}
