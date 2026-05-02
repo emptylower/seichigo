@@ -94,3 +94,55 @@ Rationale:
   - `admin-tutorial/import-from-google.md` public issues discussion path:
     `https://github.com/anitabi/anitabi.cn-document/blob/adb62b65ef7f5c18e6c98051a6b69000d5e02013/admin-tutorial/import-from-google.md#L46`
     Short excerpt: "欢迎在 .../issues 讨论"
+
+## Wrangler rollback verification
+- Last 3 version IDs: `a3f83153-7049-4eca-9bd6-3b6fb6c08177` (current, deployed `2026-05-02T17:04:19.775851Z`), `628bf58a-fcc3-401e-a0f5-222dec785a02` (second-most-recent, deployed `2026-05-02T14:18:33.625987Z`), `a324d761-d133-4a07-8bbe-7f8498b8763e` (third-most-recent, deployed `2026-05-02T13:58:13.399599Z`)
+- Rollback path: `PARTIAL` — Cloudflare auth and deployment/version inspection worked, but Wrangler `4.82.2` does not support `rollback --dry-run`, so a non-destructive end-to-end rollback could not be executed locally. Fallback verification shows the three latest deployed versions share the same OpenNext worker shape and binding/header layout, which makes a live rollback plausible.
+- Implication for PR3: emergency whole-worker rollback appears mechanically compatible with the current OpenNext deployment format, but it is a live operation with no dry-run guard on this Wrangler version. Prefer a flag-only mitigation first for PR3-specific incidents; use rollback only when reverting the entire Worker is acceptable.
+
+### Command log
+
+Timestamp: `2026-05-03 02:53:30 CST (+0800)`
+
+```text
+$ npm exec wrangler -- deployments list 2>&1 | head -30
+
+⛅️ wrangler 4.82.2 (update available 4.87.0)
+─────────────────────────────────────────────
+Created:     2026-04-18T15:52:42.933Z
+Version(s):  (100%) 13b23981-c4df-4011-ada4-2bac852b3eba
+
+Created:     2026-04-18T16:23:11.624Z
+Version(s):  (100%) 5c2c5a64-c375-4fd9-a338-0f023644cbda
+
+Created:     2026-04-18T16:36:06.682Z
+Version(s):  (100%) 3bb17ead-7d1b-4190-b55f-c76563962797
+```
+
+Interpretation:
+- The text output is oldest-first for this account, so `head -30` did not surface the latest May 2 deployments.
+- I used `npm exec wrangler -- deployments list --json` plus `npm exec wrangler -- deployments status --json` to identify the actual latest three production deployments and confirm the current production version is `a3f83153-7049-4eca-9bd6-3b6fb6c08177` at `100%`.
+
+Timestamp: `2026-05-03 02:55:53 CST (+0800)`
+
+```text
+$ npm exec wrangler -- rollback 628bf58a-fcc3-401e-a0f5-222dec785a02 --dry-run 2>&1
+
+✘ [ERROR] Unknown arguments: dry-run, dryRun
+
+wrangler rollback [version-id]
+
+🔙 Rollback a deployment for a Worker
+```
+
+Interpretation:
+- On Wrangler `4.82.2`, `rollback` accepts `version-id`, `--name`, `--message`, and `--yes`, but no `--dry-run`.
+- Cloudflare's Wrangler docs for `rollback` match the CLI help shape, so the missing dry-run is a product limitation rather than a local config issue.
+
+Timestamp: `2026-05-03 02:54-02:56 CST (+0800)`
+
+Evidence from `npm exec wrangler -- versions view <version-id> --json` on the latest three deployed versions:
+- All three versions expose the same high-level OpenNext worker shape: `handlers=["fetch"]`, named handlers `BucketCachePurge`, `DOQueueHandler`, and `DOShardedTagCache`, `compatibility_date="2026-04-14"`, and flags `nodejs_compat` plus `no_handle_cross_request_promise_resolution`.
+- All three versions expose the same asset-serving header rules for `/_next/static/*` and `/brand/*`, with `serve_directly=true` and `run_worker_first=false`.
+- All three versions carry the same `ASSETS:assets` and `IMAGES:images` bindings. Only the script `etag` differs between versions, which indicates code changes without a deployment-shape change.
+- Local config matches that deployment shape: [`wrangler.jsonc`](../../../../wrangler.jsonc) points `main` to `.open-next/worker.js` and binds `.open-next/assets`, and [`open-next.config.ts`](../../../../open-next.config.ts) uses `defineCloudflareConfig` from `@opennextjs/cloudflare`.
