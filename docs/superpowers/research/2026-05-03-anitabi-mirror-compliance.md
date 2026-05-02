@@ -174,3 +174,19 @@ Evidence from `npm exec wrangler -- versions view <version-id> --json` on the la
 - Last successful sync: `UNKNOWN (DB verification blocked locally)`. At `2026-05-03 03:15:02 CST (+0800)`, shell env inspection found no present `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, or `POSTGRES_*` runtime vars, and `rg --files -g '.env*'` found only `.env.example`. At `2026-05-03 03:15:20 CST (+0800)`, `npx prisma db execute --stdin --schema prisma/schema.prisma` failed before executing the read-only query with Prisma `P1012`: `Environment variable not found: DATABASE_URL_UNPOOLED` at `prisma/schema.prisma:11`. I could not confirm the last 5 `AnitabiBangumi.datasetVersion` groups or a recent successful sync from this worktree without credentials.
 - Diff output reliable: `YES (for admin diff summary ordering), with local evidence`. `buildAnitabiSyncDiffSummary()` explicitly sorts `sourceOnly`, `localOnly`, and `modified` by `id`, and sorts `pointGap` by `missingPoints DESC` then `id ASC`, which makes the sampled output deterministic for the same inputs. At `2026-05-03 03:15:20 CST (+0800)`, `npx vitest run tests/anitabi/diff.test.ts` passed (`1` file, `2` tests), covering both full and delta recommendation paths. Scope note: this verifies diff summary stability, not production sync freshness.
 - Implication for PR3 §7: `PARTIAL / can proceed with reconcile-hook work, but production sync recency is still unverified`. The code path shows the sync workflow is wired for scheduled and manual execution, and the diff summary path itself appears stable. However, a credentialed read-only DB check is still required before claiming recent sync health or using sync freshness as rollout evidence.
+
+## DB capacity verification
+- Current DB size: `UNKNOWN (read-only query blocked locally; no DATABASE_URL/DATABASE_URL_UNPOOLED/POSTGRES_* vars present in this worktree shell, so pg_database_size(current_database()) could not be executed)`
+- Provider plan: `UNKNOWN (repo docs indicate Vercel Storage -> Neon(Postgres) as the intended production provider, but no local non-secret source identifies the live Neon plan/tier or storage quota)`
+- Headroom: `UNKNOWN (cannot compute without both a credentialed DB size query and a confirmed live plan storage cap)`
+- PR3 expected delta: `~160MB (320k rows x ~500B + indexes)`
+- Verdict: `PARTIAL / UNKNOWN - schema and code work can proceed, but rollout must not enable the full PR3 backfill until a credentialed read-only DB capacity check confirms both current size and available storage headroom`
+
+Evidence:
+- `2026-05-03 03:27 CST (+0800)`: shell env presence check reported `DATABASE_URL=absent` and `DATABASE_URL_UNPOOLED=absent`; no `POSTGRES_*` vars were present.
+- `2026-05-03 03:27 CST (+0800)`: `rg --files -g '.env*'` found only `.env.example`, so this worktree does not contain a checked-in local DB credential file.
+- `2026-05-03 03:27 CST (+0800)`: piping the required read-only SQL into `npx prisma db execute --stdin --schema prisma/schema.prisma` failed during Prisma config loading with `P1012` because `DATABASE_URL_UNPOOLED` is missing at `prisma/schema.prisma:11`, before any SQL reached Postgres.
+- Provider inference comes from local non-secret docs, not live infra metadata:
+  - `README.md` says Anitabi sync on Vercel should use Neon pooled/direct URLs for `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+  - `doc/worklog/WORKLOG_2025-12-17_vercel_neon_deploy_fixes.md` records the move to `Vercel Storage -> Neon(Postgres)`.
+  - `.env.example` includes Neon-specific guidance (`-pooler.` host and a 5-connection note "suitable for Neon Nano tier"), but that is example configuration only and does not prove the current deployed plan.
