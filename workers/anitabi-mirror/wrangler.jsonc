@@ -10,6 +10,9 @@
   "vars": {
     "MAP_IMAGE_MIRROR_CRON_ENABLED": "0"
   },
+  "secrets": {
+    "required": ["DATABASE_URL"]
+  },
   "r2_buckets": [
     { "binding": "MAP_IMAGE_CACHE", "bucket_name": "seichigo-anitabi-images" }
   ]

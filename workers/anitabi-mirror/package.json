@@ -5,6 +5,8 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "typegen": "wrangler types"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typegen": "wrangler types worker-configuration.d.ts",
+    "typegen:check": "wrangler types worker-configuration.d.ts --check"
   }
 }
