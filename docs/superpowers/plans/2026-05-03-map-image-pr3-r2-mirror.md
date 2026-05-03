@@ -346,9 +346,9 @@ describe('computeCanonicalImageUrl', () => {
     expect(result).toBe('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320')
   })
 
-  it('collapses bgm.tv /pic/cover/l/ to /pic/cover/m/', () => {
+  it('preserves bgm.tv cover size variants as distinct canonical URLs', () => {
     const result = computeCanonicalImageUrl('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
-    expect(result).toBe('https://lain.bgm.tv/pic/cover/m/abcd.jpg')
+    expect(result).toBe('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
   })
 
   it('strips diagnostic params (__mi_*) and _retry / name', () => {
@@ -392,7 +392,7 @@ describe('computeMirrorKey', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-npm test -- --run tests/anitabi/imageNormalize.test.ts
+npx vitest run tests/anitabi/imageNormalize.test.ts
 ```
 
 Expected: FAIL with "Cannot find module '@/lib/anitabi/imageNormalize'".
@@ -422,9 +422,6 @@ export function computeCanonicalImageUrl(input: string): string {
   }
   if (url.hostname.endsWith('anitabi.cn') && url.pathname.startsWith('/images/')) {
     url.pathname = url.pathname.slice('/images'.length)
-  }
-  if (url.hostname.endsWith('bgm.tv')) {
-    url.pathname = url.pathname.replace('/pic/cover/l/', '/pic/cover/m/')
   }
   const sortedParams = new URLSearchParams()
   const keys = [...url.searchParams.keys()].sort()
@@ -494,7 +491,7 @@ it('webp mime → .webp extension', async () => {
 - [ ] **Step 5: Run tests to verify pass**
 
 ```bash
-npm test -- --run tests/anitabi/imageNormalize.test.ts
+npx vitest run tests/anitabi/imageNormalize.test.ts
 ```
 
 Expected: all 8 tests PASS. These assertions cover canonicalization semantics only for `computeCanonicalImageUrl` and `computeMirrorKey`; they must not become display-variant tests for per-kind map image rewrites.
@@ -507,7 +504,7 @@ Extract only the shared URL-cleaning and canonicalization pieces into `lib/anita
 
 Task 1.3's `imageMirrorVariants.ts` should call `computeCanonicalImageUrl` when building stable R2 variant keys. That helper is a sibling to the display-variant functions, not a replacement for them.
 
-If `imageProxy.ts` reuses any extracted helper, limit that reuse to URL-cleaning/canonicalization that is independent of `MapDisplayImageKind`. Do not collapse or delete the per-kind display transforms in `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, or the `getMapDisplayImageCandidates` call flow. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
+If `imageProxy.ts` reuses any extracted helper, limit that reuse to URL-cleaning/canonicalization that is independent of `MapDisplayImageKind`. Size/variant rewrites stay in the kind-aware display helpers and in mirror variant enumerators, not in the generic canonicalizer. Do not collapse or delete the per-kind display transforms in `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, or the `getMapDisplayImageCandidates` call flow. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
 
 - [ ] **Step 7: Run full test suite**
 
@@ -515,7 +512,7 @@ If `imageProxy.ts` reuses any extracted helper, limit that reuse to URL-cleaning
 npm test
 ```
 
-Expected: all tests pass, including the existing image-proxy tests.
+Expected: this is a repo-wide gate, and it is currently blocked by pre-existing unrelated line-budget failures unless those are fixed first. Do not treat a line-budget failure here as a Task 1.2 regression; the task-local proof is the direct Vitest runs above, plus the existing image-proxy tests.
 
 - [ ] **Step 8: Commit**
 
@@ -532,8 +529,9 @@ Rejected: Replace normalizeBangumiCoverVariant and normalizeAnitabiDisplayVarian
 Confidence: high
 Scope-risk: narrow
 Directive: Keep canonicalization helpers separate from per-kind display variant rewrites
-Tested: npm test -- --run tests/anitabi/imageNormalize.test.ts
-Tested: npm test -- --run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-proxy-phase2.test.ts
+Tested: npx vitest run tests/anitabi/imageNormalize.test.ts
+Tested: npx vitest run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-proxy-phase2.test.ts
+Not-tested: npm test repo-wide gate remains blocked by pre-existing unrelated line-budget failures unless those are fixed first
 EOF
 )"
 ```
@@ -568,6 +566,8 @@ describe('enumerateBangumiCoverVariants', () => {
     const variants = enumerateBangumiCoverVariants('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
     expect(variants).toHaveLength(2)
     expect(variants.map((v) => v.label).sort()).toEqual(['cover-l', 'cover-m'])
+    expect(variants.find((v) => v.label === 'cover-l')?.url).toBe('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
+    expect(variants.find((v) => v.label === 'cover-m')?.url).toBe('https://lain.bgm.tv/pic/cover/m/abcd.jpg')
   })
 
   it('returns empty array for null / empty input', () => {
@@ -599,7 +599,7 @@ describe('enumeratePointImageVariants', () => {
 - [ ] **Step 2: Run test — expect fail**
 
 ```bash
-npm test -- --run tests/anitabi/imageMirrorVariants.test.ts
+npx vitest run tests/anitabi/imageMirrorVariants.test.ts
 ```
 
 Expected: FAIL with module-not-found.
@@ -674,7 +674,7 @@ export function enumeratePointImageVariants(rawUrl: string | null | undefined): 
 - [ ] **Step 4: Run tests — expect pass**
 
 ```bash
-npm test -- --run tests/anitabi/imageMirrorVariants.test.ts
+npx vitest run tests/anitabi/imageMirrorVariants.test.ts
 ```
 
 Expected: all PASS.
@@ -683,7 +683,21 @@ Expected: all PASS.
 
 ```bash
 git add lib/anitabi/imageMirrorVariants.ts tests/anitabi/imageMirrorVariants.test.ts
-git commit -m "feat(map): enumerate bangumi/point image variants for R2 mirror"
+git commit -m "$(cat <<'EOF'
+Preserve distinct mirror variants for bangumi covers and point plans
+
+Task 1.3 enumerates stable mirror variants while keeping bgm `cover-l`
+and `cover-m` as separate canonical URLs and keys.
+
+Constraint: Task-local verification must bypass npm test because unrelated line-budget checks currently block the repo-wide gate
+Rejected: Collapse bgm /pic/cover/l/ into /pic/cover/m/ during canonicalization | would merge distinct mirror variants into one key
+Confidence: high
+Scope-risk: narrow
+Directive: Keep variant expansion in imageMirrorVariants.ts and display fallbacks in kind-aware image proxy helpers, not in computeCanonicalImageUrl
+Tested: npx vitest run tests/anitabi/imageMirrorVariants.test.ts
+Not-tested: npm test repo-wide gate remains blocked by pre-existing unrelated line-budget failures unless those are fixed first
+EOF
+)"
 ```
 
 ---
