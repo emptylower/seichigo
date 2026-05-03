@@ -2669,6 +2669,16 @@ export async function cronTick(deps: CronTickDeps, mode: 'seed' | 'delta'): Prom
 
 Do not import `@/workers/anitabi-mirror/src/*` from `lib/anitabi/mirror/cronTick.ts`. If Tasks 3.2–3.6 have already created helper modules under `workers/anitabi-mirror/src/`, move that logic into the matching `lib/anitabi/mirror/*` modules and leave the worker subtree as entrypoint/config only. The shared `lib` code must typecheck under the app tsconfig, so use the repo-owned `R2MirrorBucket` abstraction instead of raw Cloudflare `R2Bucket`.
 
+Before wiring `cronTick`, migrate any tests/imports produced by Tasks 3.2–3.6 from worker-relative paths to shared paths:
+
+- `workers/anitabi-mirror/src/__tests__/reclaim.test.ts` → `tests/anitabi/mirror/reclaim.test.ts`, importing `@/lib/anitabi/mirror/reclaim`
+- `workers/anitabi-mirror/src/__tests__/bootstrap.test.ts` → `tests/anitabi/mirror/bootstrap.test.ts`, importing `@/lib/anitabi/mirror/bootstrap`
+- `workers/anitabi-mirror/src/__tests__/seed.test.ts` → `tests/anitabi/mirror/seed.test.ts`, importing `@/lib/anitabi/mirror/seed`
+- `workers/anitabi-mirror/src/__tests__/delta.test.ts` → `tests/anitabi/mirror/delta.test.ts`, importing `@/lib/anitabi/mirror/delta`
+- `workers/anitabi-mirror/src/__tests__/throttle.test.ts` → `tests/anitabi/mirror/throttle.test.ts`, importing `@/lib/anitabi/mirror/throttle`
+
+If keeping worker-local compatibility files is useful, they must be thin re-export shims only; implementation and tests live under `lib/anitabi/mirror/*` / `tests/anitabi/mirror/*`.
+
 - [ ] **Step 4: Update `src/index.ts` to wire it**
 
 ```ts
@@ -2714,10 +2724,10 @@ export default {
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- --run tests/anitabi/mirror/cronTick.test.ts workers/anitabi-mirror
+npm test -- --run tests/anitabi/mirror
 ```
 
-Expected: all worker tests PASS.
+Expected: all shared mirror tests PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -2729,7 +2739,7 @@ git commit -m "Keep mirror cron orchestration on a shared boundary" \
   -m "Rejected: Leave cronTick under workers/anitabi-mirror/src | it creates a cross-worker import boundary into the app bundle" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: worker mirror tests plus shared cronTick coverage" \
+  -m "Tested: npm test -- --run tests/anitabi/mirror" \
   -m "Not-tested: production worker schedule"
 ```
 
@@ -2741,6 +2751,8 @@ git commit -m "Keep mirror cron orchestration on a shared boundary" \
 
 **Files:**
 - Create: `app/api/admin/anitabi/image-mirror/bootstrap/route.ts`
+- Create: `lib/anitabi/handlers/adminImageMirrorBootstrap.ts`
+- Modify: `lib/anitabi/api.ts` (inject node-safe `R2MirrorBucket | null` binding accessor)
 - Create: `tests/route/image-mirror-bootstrap.test.ts`
 
 - [ ] **Step 1: Failing test**
@@ -2751,6 +2763,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { POST } from '@/app/api/admin/anitabi/image-mirror/bootstrap/route'
 
 const cronTick = vi.fn().mockResolvedValue({ reclaimed: 0, processed: 1, throttled: false })
+const bucket = {} as any
 vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: vi.fn().mockResolvedValue({
     prisma: {
@@ -2761,6 +2774,7 @@ vi.mock('@/lib/anitabi/api', () => ({
         groupBy: vi.fn().mockResolvedValue([{ status: 'pending', _count: { _all: 1 } }]),
       },
     },
+    getImageMirrorBucket: vi.fn(() => bucket),
   }),
 }))
 vi.mock('@/lib/auth/session', () => ({ getServerAuthSession: vi.fn().mockResolvedValue({ user: { isAdmin: true } }) }))
@@ -2793,22 +2807,32 @@ describe('POST /bootstrap', () => {
 
 - [ ] **Step 3: Implement**
 
-Create `app/api/admin/anitabi/image-mirror/bootstrap/route.ts`:
+Extend `lib/anitabi/api.ts` so `AnitabiApiDeps` exposes a node-safe bucket accessor:
 ```ts
-export const runtime = 'nodejs'
+import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 
+export type AnitabiApiDeps = {
+  // ...existing deps...
+  getImageMirrorBucket?: () => R2MirrorBucket | null
+}
+```
+
+If no binding is available, the accessor returns `null` and the handler returns a clear `503` instead of reading raw globals in the route.
+
+Create `lib/anitabi/handlers/adminImageMirrorBootstrap.ts`:
+```ts
 import { NextResponse } from 'next/server'
-import { getAnitabiApiDeps } from '@/lib/anitabi/api'
-import { getServerAuthSession } from '@/lib/auth/session'
+import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 
-export async function POST(req: Request) {
-  const session = await getServerAuthSession()
-  if (!session?.user?.isAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiDeps) {
+  const bucket = deps.getImageMirrorBucket?.()
+  if (!bucket) {
+    return NextResponse.json({ error: 'MAP_IMAGE_CACHE binding unavailable' }, { status: 503 })
   }
+
   let body: { mode?: 'advance' | 'force-complete' } = {}
   try {
     body = await req.json()
@@ -2816,11 +2840,13 @@ export async function POST(req: Request) {
     body = { mode: 'advance' }
   }
 
-  const deps = await getAnitabiApiDeps()
-  const env = (globalThis as any)?.cloudflare?.env ?? (process.env as any)
-  const bucket = env.MAP_IMAGE_CACHE
   const startedAt = Date.now()
-  const runDeps = { prisma: deps.prisma, bucket, env, source: 'manual' as const }
+  const runDeps = {
+    prisma: deps.prisma,
+    bucket,
+    env: { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' },
+    source: 'manual' as const,
+  }
 
   if (body.mode === 'force-complete') {
     while (Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS) {
@@ -2849,6 +2875,25 @@ export async function POST(req: Request) {
 }
 ```
 
+Create `app/api/admin/anitabi/image-mirror/bootstrap/route.ts` as a thin wrapper:
+```ts
+export const runtime = 'nodejs'
+
+import { NextResponse } from 'next/server'
+import { getAnitabiApiDeps } from '@/lib/anitabi/api'
+import { getServerAuthSession } from '@/lib/auth/session'
+import { handleImageMirrorBootstrap } from '@/lib/anitabi/handlers/adminImageMirrorBootstrap'
+
+export async function POST(req: Request) {
+  const session = await getServerAuthSession()
+  if (!session?.user?.isAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const deps = await getAnitabiApiDeps()
+  return handleImageMirrorBootstrap(req, deps)
+}
+```
+
 Use the existing inline session-admin guard pattern from other `/admin/...` routes.
 
 - [ ] **Step 4: Run — expect pass**
@@ -2856,14 +2901,14 @@ Use the existing inline session-admin guard pattern from other `/admin/...` rout
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/admin/anitabi/image-mirror/bootstrap/route.ts tests/route/image-mirror-bootstrap.test.ts
+git add app/api/admin/anitabi/image-mirror/bootstrap/route.ts lib/anitabi/api.ts lib/anitabi/handlers/adminImageMirrorBootstrap.ts tests/route/image-mirror-bootstrap.test.ts
 git commit -m "Add a documented admin bootstrap route pattern that matches existing auth flows" \
-  -m "The PR3 plan now uses getServerAuthSession for the bootstrap endpoint and its test snippet so the implementation guidance matches current admin-route conventions." \
+  -m "The PR3 plan now keeps the bootstrap route thin, uses getServerAuthSession for auth, and delegates mirror orchestration to a handler with an injected R2 mirror bucket." \
   -m "Constraint: Admin routes in this codebase use inline session checks rather than a dedicated helper" \
   -m "Rejected: Introduce a new admin-only guard helper in the plan | it would diverge from existing route patterns" \
   -m "Confidence: high" \
-  -m "Scope-risk: narrow" \
-  -m "Tested: route snippet and test snippet updated to the session-based guard pattern" \
+  -m "Scope-risk: moderate" \
+  -m "Tested: route snippet and test snippet updated to the session-based guard pattern; handler owns bootstrap orchestration and missing bucket response" \
   -m "Not-tested: generated implementation outside the plan document"
 ```
 
