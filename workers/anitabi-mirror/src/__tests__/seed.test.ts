@@ -81,6 +81,18 @@ function encodeBytes(input: string): ArrayBuffer {
   return new TextEncoder().encode(input).buffer
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+
+  return { promise, resolve, reject }
+}
+
 function buildPrismaMock(
   items: Array<{
     id: string
@@ -88,22 +100,29 @@ function buildPrismaMock(
     attempts: number | null
     createdAt: Date
   }>,
+  opts?: {
+    updateManyImpl?: ProcessSeedBatchPrisma['mapImageMirrorState']['updateMany']
+  },
 ) {
   const findMany = vi
     .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['findMany']>()
     .mockResolvedValue(items)
-  const update = vi
-    .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['update']>()
-    .mockResolvedValue(null)
+  const updateMany = vi
+    .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['updateMany']>()
+    .mockResolvedValue({ count: 1 })
+
+  if (opts?.updateManyImpl) {
+    updateMany.mockImplementation(opts.updateManyImpl)
+  }
 
   const prisma = {
     mapImageMirrorState: {
       findMany,
-      update,
+      updateMany,
     },
   } satisfies ProcessSeedBatchPrisma
 
-  return { prisma, findMany, update }
+  return { prisma, findMany, updateMany }
 }
 
 afterEach(() => {
@@ -126,7 +145,7 @@ describe('processSeedBatch', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
-    const { prisma, findMany, update } = buildPrismaMock([
+    const { prisma, findMany, updateMany } = buildPrismaMock([
       {
         id: 'seed-1',
         canonicalUrl: 'https://image.anitabi.cn/point/1.jpg',
@@ -141,6 +160,7 @@ describe('processSeedBatch', () => {
       mirrored: 0,
       failed: 0,
       skipped404: 1,
+      retried: 0,
     })
 
     expect(findMany).toHaveBeenCalledWith({
@@ -148,18 +168,27 @@ describe('processSeedBatch', () => {
       orderBy: { createdAt: 'asc' },
       take: 3,
     })
-    expect(update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'seed-1' },
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: 'seed-1', status: 'pending' },
       data: {
         status: 'in_progress',
         lastAttemptAt: new Date('2026-05-03T12:00:00Z'),
         attempts: { increment: 1 },
       },
     })
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-1',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:00:00Z'),
+      },
+      data: { status: 'skipped_404' },
+    })
     expect(fetchMock).toHaveBeenCalledWith('https://image.anitabi.cn/point/1.jpg', {
       headers: { 'user-agent': 'SeichiGoMirror/1.0 (+https://seichigo.com)' },
       signal: expect.any(AbortSignal),
     })
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('writes fetched images to R2 and marks the row mirrored', async () => {
@@ -174,7 +203,7 @@ describe('processSeedBatch', () => {
       attempts: 0,
       createdAt: new Date('2026-05-03T12:00:00Z'),
     }
-    const { prisma, update } = buildPrismaMock([item])
+    const { prisma, updateMany } = buildPrismaMock([item])
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(bytes, {
         status: 200,
@@ -192,6 +221,7 @@ describe('processSeedBatch', () => {
       mirrored: 1,
       failed: 0,
       skipped404: 0,
+      retried: 0,
     })
 
     const canonicalUrl = computeCanonicalImageUrl(item.canonicalUrl)
@@ -207,8 +237,12 @@ describe('processSeedBatch', () => {
       contentLength: String(bytes.byteLength),
       mirroredAt: '2026-05-03T12:30:00.000Z',
     }))
-    expect(update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'seed-2' },
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-2',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:30:00Z'),
+      },
       data: {
         status: 'mirrored',
         mirroredAt: new Date('2026-05-03T12:30:00Z'),
@@ -223,7 +257,10 @@ describe('processSeedBatch', () => {
   })
 
   it('marks 404 responses as skipped without counting a failure', async () => {
-    const { prisma, update } = buildPrismaMock([
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:10:00Z'))
+
+    const { prisma, updateMany } = buildPrismaMock([
       {
         id: 'seed-3',
         canonicalUrl: 'https://image.anitabi.cn/missing.jpg',
@@ -240,16 +277,24 @@ describe('processSeedBatch', () => {
       mirrored: 0,
       failed: 0,
       skipped404: 1,
+      retried: 0,
     })
 
-    expect(update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'seed-3' },
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-3',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:10:00Z'),
+      },
       data: { status: 'skipped_404' },
     })
   })
 
   it('returns retryable errors to pending when the attempt ceiling has not been reached', async () => {
-    const { prisma, update } = buildPrismaMock([
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:20:00Z'))
+
+    const { prisma, updateMany } = buildPrismaMock([
       {
         id: 'seed-4',
         canonicalUrl: 'https://image.anitabi.cn/error.jpg',
@@ -266,10 +311,15 @@ describe('processSeedBatch', () => {
       mirrored: 0,
       failed: 0,
       skipped404: 0,
+      retried: 1,
     })
 
-    expect(update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'seed-4' },
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-4',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:20:00Z'),
+      },
       data: {
         status: 'pending',
         lastError: 'Error: upstream 502',
@@ -278,7 +328,10 @@ describe('processSeedBatch', () => {
   })
 
   it('marks max-attempt and non-image responses as failed', async () => {
-    const { prisma, update } = buildPrismaMock([
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:40:00Z'))
+
+    const { prisma, updateMany } = buildPrismaMock([
       {
         id: 'seed-5',
         canonicalUrl: 'https://image.anitabi.cn/maxed.jpg',
@@ -307,21 +360,208 @@ describe('processSeedBatch', () => {
       mirrored: 0,
       failed: 2,
       skipped404: 0,
+      retried: 0,
     })
 
-    expect(update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'seed-5' },
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-5',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:40:00Z'),
+      },
       data: {
         status: 'failed',
         lastError: 'Error: upstream 503',
       },
     })
-    expect(update).toHaveBeenNthCalledWith(4, {
-      where: { id: 'seed-6' },
+    expect(updateMany).toHaveBeenNthCalledWith(4, {
+      where: {
+        id: 'seed-6',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T12:40:00Z'),
+      },
       data: {
         status: 'failed',
         lastError: 'Error: non_image_response',
       },
     })
+  })
+
+  it('skips rows that lose the compare-and-set claim without fetching or recording counts', async () => {
+    const { prisma, updateMany } = buildPrismaMock(
+      [
+        {
+          id: 'seed-7',
+          canonicalUrl: 'https://image.anitabi.cn/claimed-elsewhere.jpg',
+          attempts: 0,
+          createdAt: new Date('2026-05-03T12:00:00Z'),
+        },
+      ],
+      {
+        updateManyImpl: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    )
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(processSeedBatch(prisma, new FakeBucket(), { batchSize: 1 })).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+    })
+
+    expect(updateMany).toHaveBeenCalledTimes(1)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not count terminal outcomes when the fenced update loses ownership', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:00:00Z'))
+
+    const { prisma, updateMany } = buildPrismaMock(
+      [
+        {
+          id: 'seed-8',
+          canonicalUrl: 'https://image.anitabi.cn/stale-worker.jpg',
+          attempts: 2,
+          createdAt: new Date('2026-05-03T12:00:00Z'),
+        },
+      ],
+      {
+        updateManyImpl: vi
+          .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['updateMany']>()
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 }),
+      },
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 })),
+    )
+
+    await expect(processSeedBatch(prisma, new FakeBucket(), { batchSize: 1 })).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+    })
+
+    expect(updateMany).toHaveBeenCalledTimes(2)
+  })
+
+  it('persists the existing object size when R2 skips overwriting a fresh mirror', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:10:00Z'))
+
+    const bucket = new FakeBucket()
+    const item = {
+      id: 'seed-9',
+      canonicalUrl: 'https://anitabi.cn/images/bangumi/999/cover.jpg?plan=h320',
+      attempts: 0,
+      createdAt: new Date('2026-05-03T12:00:00Z'),
+    }
+    const existingBytes = encodeBytes('existing-mirror')
+    const canonicalUrl = computeCanonicalImageUrl(item.canonicalUrl)
+    const key = await computeMirrorKey(canonicalUrl, 'image/jpeg')
+
+    await bucket.put(key, existingBytes, {
+      httpMetadata: { contentType: 'image/jpeg' },
+      customMetadata: {
+        originalUrl: canonicalUrl,
+        mimeType: 'image/jpeg',
+        mirroredAt: '2026-05-03T13:05:00.000Z',
+        mirrorSource: 'lazy',
+        contentLength: String(existingBytes.byteLength),
+      },
+    })
+
+    const { prisma, updateMany } = buildPrismaMock([item])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(encodeBytes('newer-but-skipped'), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        }),
+      ),
+    )
+
+    await expect(processSeedBatch(prisma, bucket, { batchSize: 1 })).resolves.toEqual({
+      mirrored: 1,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+    })
+
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-9',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T13:10:00Z'),
+      },
+      data: {
+        status: 'mirrored',
+        mirroredAt: new Date('2026-05-03T13:10:00Z'),
+        contentBytes: existingBytes.byteLength,
+        lastError: null,
+      },
+    })
+    expect(bucket.putCalls).toBe(1)
+  })
+
+  it('waits between items and does not sleep after the last item', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:20:00Z'))
+
+    const firstFetch = createDeferred<Response>()
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockReturnValueOnce(firstFetch.promise)
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { prisma } = buildPrismaMock([
+      {
+        id: 'seed-10',
+        canonicalUrl: 'https://image.anitabi.cn/one.jpg',
+        attempts: 0,
+        createdAt: new Date('2026-05-03T12:00:00Z'),
+      },
+      {
+        id: 'seed-11',
+        canonicalUrl: 'https://image.anitabi.cn/two.jpg',
+        attempts: 0,
+        createdAt: new Date('2026-05-03T12:05:00Z'),
+      },
+    ])
+
+    const runPromise = processSeedBatch(prisma, new FakeBucket(), {
+      batchSize: 2,
+      perRequestDelayMs: 250,
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    firstFetch.resolve(new Response(null, { status: 404 }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(249)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await expect(runPromise).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 2,
+      retried: 0,
+    })
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

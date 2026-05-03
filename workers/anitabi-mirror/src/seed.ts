@@ -20,6 +20,10 @@ type SeedBatchUpdateData = {
   lastError?: string | null
 }
 
+type SeedBatchUpdateManyResult = {
+  count: number
+}
+
 export type ProcessSeedBatchPrisma = {
   mapImageMirrorState: {
     findMany(args: {
@@ -27,10 +31,12 @@ export type ProcessSeedBatchPrisma = {
       orderBy: { createdAt: 'asc' }
       take: number
     }): Promise<SeedBatchRow[]>
-    update(args: {
-      where: { id: string }
+    updateMany(args: {
+      where:
+        | { id: string; status: 'pending' }
+        | { id: string; status: 'in_progress'; lastAttemptAt: Date }
       data: SeedBatchUpdateData
-    }): Promise<unknown>
+    }): Promise<SeedBatchUpdateManyResult>
   }
 }
 
@@ -44,15 +50,21 @@ export type ProcessSeedBatchResult = {
   mirrored: number
   failed: number
   skipped404: number
+  retried: number
 }
 
-function buildTimeoutSignal(): AbortSignal | undefined {
-  const abortSignal = globalThis.AbortSignal as typeof AbortSignal & {
-    timeout?: (ms: number) => AbortSignal
+function createFetchTimeout(): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort()
+  }, FETCH_TIMEOUT_MS)
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer)
+    },
   }
-  return typeof abortSignal?.timeout === 'function'
-    ? abortSignal.timeout(FETCH_TIMEOUT_MS)
-    : undefined
 }
 
 function normalizeDelay(delayMs: number | undefined): number {
@@ -77,6 +89,41 @@ function sleep(delayMs: number): Promise<void> {
   })
 }
 
+async function claimSeedItem(
+  prisma: ProcessSeedBatchPrisma,
+  itemId: string,
+  claimTime: Date,
+): Promise<boolean> {
+  const result = await prisma.mapImageMirrorState.updateMany({
+    where: { id: itemId, status: 'pending' },
+    data: {
+      status: 'in_progress',
+      lastAttemptAt: claimTime,
+      attempts: { increment: 1 },
+    },
+  })
+
+  return result.count === 1
+}
+
+async function finalizeSeedItem(
+  prisma: ProcessSeedBatchPrisma,
+  itemId: string,
+  claimTime: Date,
+  data: SeedBatchUpdateData,
+): Promise<boolean> {
+  const result = await prisma.mapImageMirrorState.updateMany({
+    where: {
+      id: itemId,
+      status: 'in_progress',
+      lastAttemptAt: claimTime,
+    },
+    data,
+  })
+
+  return result.count === 1
+}
+
 export async function processSeedBatch(
   prisma: ProcessSeedBatchPrisma,
   bucket: R2MirrorBucket,
@@ -97,76 +144,81 @@ export async function processSeedBatch(
     mirrored: 0,
     failed: 0,
     skipped404: 0,
+    retried: 0,
   }
 
   for (const [index, item] of items.entries()) {
-    const now = new Date()
+    const claimTime = new Date()
     const nextAttempt = (item.attempts ?? 0) + 1
 
-    await prisma.mapImageMirrorState.update({
-      where: { id: item.id },
-      data: {
-        status: 'in_progress',
-        lastAttemptAt: now,
-        attempts: { increment: 1 },
-      },
-    })
+    const claimed = await claimSeedItem(prisma, item.id, claimTime)
+    if (!claimed) {
+      continue
+    }
 
     try {
+      const timeout = createFetchTimeout()
       const response = await fetch(item.canonicalUrl, {
         headers: { 'user-agent': userAgent },
-        signal: buildTimeoutSignal(),
+        signal: timeout.signal,
       })
 
-      if (response.status === 404) {
-        await prisma.mapImageMirrorState.update({
-          where: { id: item.id },
-          data: { status: 'skipped_404' },
-        })
-        result.skipped404 += 1
-      } else {
-        if (!response.ok) {
-          throw new Error(`upstream ${response.status}`)
-        }
+      try {
+        if (response.status === 404) {
+          const skipped = await finalizeSeedItem(prisma, item.id, claimTime, {
+            status: 'skipped_404',
+          })
+          if (skipped) {
+            result.skipped404 += 1
+          }
+        } else {
+          if (!response.ok) {
+            throw new Error(`upstream ${response.status}`)
+          }
 
-        const mimeType = String(response.headers.get('content-type') || '').trim()
-        if (!mimeType.toLowerCase().startsWith('image/')) {
-          throw new Error('non_image_response')
-        }
+          const mimeType = String(response.headers.get('content-type') || '').trim()
+          if (!mimeType.toLowerCase().startsWith('image/')) {
+            throw new Error('non_image_response')
+          }
 
-        const bytes = await response.arrayBuffer()
-        const mirrored = await putMirroredImage(
-          bucket,
-          item.canonicalUrl,
-          bytes,
-          mimeType,
-          'cron-seed',
-        )
+          const bytes = await response.arrayBuffer()
+          const mirrored = await putMirroredImage(
+            bucket,
+            item.canonicalUrl,
+            bytes,
+            mimeType,
+            'cron-seed',
+          )
 
-        await prisma.mapImageMirrorState.update({
-          where: { id: item.id },
-          data: {
+          const completed = await finalizeSeedItem(prisma, item.id, claimTime, {
             status: 'mirrored',
             mirroredAt: new Date(),
-            contentBytes: mirrored.bytesWritten,
+            contentBytes: mirrored.existingSize ?? mirrored.bytesWritten,
             lastError: null,
-          },
-        })
-        result.mirrored += 1
+          })
+          if (completed) {
+            result.mirrored += 1
+          }
+        }
+      } finally {
+        timeout.cleanup()
       }
     } catch (error) {
       const maxedOut = nextAttempt >= MAX_ATTEMPTS
 
-      await prisma.mapImageMirrorState.update({
-        where: { id: item.id },
-        data: {
-          status: maxedOut ? 'failed' : 'pending',
-          lastError: toErrorMessage(error),
-        },
+      const completed = await finalizeSeedItem(prisma, item.id, claimTime, {
+        status: maxedOut ? 'failed' : 'pending',
+        lastError: toErrorMessage(error),
       })
+
+      if (!completed) {
+        continue
+      }
 
       if (maxedOut) {
         result.failed += 1
+      } else {
+        result.retried += 1
       }
     }
 
