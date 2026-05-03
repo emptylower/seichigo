@@ -1805,6 +1805,8 @@ Create `workers/anitabi-mirror/package.json`:
 }
 ```
 
+Keep the nested worker package dependency-light and resolve Prisma packages from the repo root. Before Task 3.7 wires the runtime entrypoint, add `@prisma/pg-worker` to the root `package.json` dependencies alongside the existing Prisma packages (`@prisma/adapter-pg`, `@prisma/client`, `prisma`) and run `npm install` from `/Users/mac/Desktop/seichigo`. Match the repo's Prisma version family (currently `^6.16.0`) so `workers/anitabi-mirror/src/index.ts` can import `@prisma/pg-worker` via upward Node resolution without creating a separate `workers/anitabi-mirror/node_modules` tree.
+
 Create `workers/anitabi-mirror/scripts/build.mjs`:
 ```js
 import fs from 'node:fs/promises'
@@ -1855,6 +1857,8 @@ main().catch((error) => {
 ```
 
 This worker does **not** add a worker-local Prisma install. It imports `@prisma/client/wasm` from the repo install that Node actually resolves from `workers/anitabi-mirror/scripts/build.mjs`, so the build script must verify the real module chain that Wrangler bundles: `@prisma/client/wasm` -> `.prisma/client/wasm.js` -> `.prisma/client/wasm-worker-loader.mjs` -> `query_compiler_bg.wasm`. Fail fast if `prisma generate` has not run, if the resolution lands somewhere unexpected, or if Prisma changes the loader import away from `./query_compiler_bg.wasm`; a silent no-op would ship a broken cron worker. Do **not** patch a fake worker-local client or `node_modules/.prisma/client/index.js` unless a future upstream Prisma change leaves no narrower fallback.
+
+The same root-level install must also provide `@prisma/pg-worker` for the raw Worker entrypoint in Task 3.7. The main app can keep its repo-style adapter patterns on Node, but this standalone Cloudflare Worker cannot construct `PrismaPg` from plain object options because that path resolves the local `@prisma/adapter-pg` package and its Node `pg` transport. The Worker must instead wrap a bounded `@prisma/pg-worker` `Pool`, while still importing `@prisma/client/wasm` from the root-generated client.
 
 Create `workers/anitabi-mirror/tsconfig.json`:
 ```json
@@ -1916,6 +1920,7 @@ Build + deploy from repo root:
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror && npm run typegen
 cd /Users/mac/Desktop/seichigo
+rg -n "\"@prisma/pg-worker\"|\"@prisma/adapter-pg\"|\"@prisma/client\"|\"prisma\"" package.json
 node workers/anitabi-mirror/scripts/build.mjs
 node --input-type=module <<'EOF'
 import path from 'node:path'
@@ -1941,7 +1946,7 @@ rg -n "export default import\\('./query_compiler_bg\\.wasm'\\)" "$loader_path"
 cd workers/anitabi-mirror && npm run deploy -- --dry-run 2>&1 | tail -20
 ```
 
-Expected: `worker-configuration.d.ts` is generated; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
+Expected: `worker-configuration.d.ts` is generated; the root `package.json` includes `@prisma/pg-worker` plus the repo Prisma packages; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
 
 - [ ] **Step 6: Commit**
 
@@ -1950,12 +1955,12 @@ cd /Users/mac/Desktop/seichigo
 git add workers/anitabi-mirror
 git commit -m "Package Prisma WASM before deploying the mirror worker" \
   -m "The worker scaffold includes a build step that verifies the resolved Prisma WASM module chain before Wrangler deploy so the cron entrypoint matches the actual package resolution path used by @prisma/client/wasm." \
-  -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine" \
-  -m "Rejected: Add a worker-local Prisma install | unnecessary duplicate package surface for a single worker" \
+  -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine and the raw worker entrypoint must get @prisma/pg-worker from the repo-root Prisma install" \
+  -m "Rejected: Add a worker-local Prisma install | unnecessary duplicate package surface for a single worker when the nested package resolves root-installed Prisma modules" \
   -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
+  -m "Tested: cd workers/anitabi-mirror && npm run typegen; rg -n \"\\\"@prisma/pg-worker\\\"|\\\"@prisma/adapter-pg\\\"|\\\"@prisma/client\\\"|\\\"prisma\\\"\" package.json; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
   -m "Not-tested: production cron execution"
 ```
 
@@ -2772,6 +2777,7 @@ If keeping worker-local compatibility files is useful, they must be thin re-expo
 ```ts
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client/wasm'
+import { Pool } from '@prisma/pg-worker'
 import { cronTick, type CronTickDeps } from '@/lib/anitabi/mirror/cronTick'
 
 type Env = {
@@ -2786,14 +2792,11 @@ export default {
       console.log('[mirror] cron disabled by flag')
       return
     }
-    const adapter = new PrismaPg({
+    const pool = new Pool({
       connectionString: env.DATABASE_URL,
       max: 4,
-      connectionTimeoutMillis: 8_000,
-      query_timeout: 12_000,
-      statement_timeout: 12_000,
-      idleTimeoutMillis: 30_000,
     })
+    const adapter = new PrismaPg(pool)
     const prisma = new PrismaClient({ adapter })
     try {
       const deps: CronTickDeps = {
@@ -2813,18 +2816,22 @@ export default {
       console.error('[mirror] tick failed', err)
     } finally {
       await prisma.$disconnect()
+      await pool.end()
     }
   },
 }
 ```
 
+Keep `@prisma/client/wasm` and do **not** add `datasources` here. The main Next.js app can continue to use its existing repo-style adapter configuration on Node, but this raw mirror Worker must use the Workers-compatible `@prisma/pg-worker` transport. `new PrismaPg({ ...plain options... })` is not acceptable for the Worker because it resolves `@prisma/adapter-pg`'s local Node `pg` transport instead of the Workers-safe pool. Keep the mirror pool bounded (`max: 4`) so hourly/5-minute cron overlap does not monopolize shared Postgres connections.
+
 - [ ] **Step 5: Run tests**
 
 ```bash
 npm test -- --run tests/anitabi/mirror
+rg -n "@prisma/pg-worker|new Pool|new PrismaPg\\(pool\\)|datasources|@prisma/client/wasm" workers/anitabi-mirror/src/index.ts
 ```
 
-Expected: all shared mirror tests PASS.
+Expected: all shared mirror tests PASS, the worker entrypoint imports `@prisma/pg-worker` and `@prisma/client/wasm`, constructs `new Pool(...)` and `new PrismaPg(pool)`, and does not reintroduce `datasources`.
 
 - [ ] **Step 6: Commit**
 
@@ -2832,11 +2839,12 @@ Expected: all shared mirror tests PASS.
 git add lib/anitabi/mirror workers/anitabi-mirror/src/index.ts tests/anitabi/mirror
 git commit -m "Keep mirror cron orchestration on a shared boundary" \
   -m "The worker entrypoint and admin bootstrap route both rely on cronTick, so the plan moves that orchestrator into lib/anitabi/mirror to avoid importing worker source into the Next.js bundle." \
-  -m "Constraint: Next admin routes must not import worker-only modules" \
+  -m "Constraint: Next admin routes must not import worker-only modules, and the raw mirror Worker must create PrismaPg from a bounded @prisma/pg-worker Pool rather than adapter-pg's plain-object Node transport" \
   -m "Rejected: Leave cronTick under workers/anitabi-mirror/src | it creates a cross-worker import boundary into the app bundle" \
+  -m "Rejected: Construct PrismaPg from plain object options in the Worker | @prisma/adapter-pg resolves the local Node pg transport instead of the Workers-compatible pool" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: npm test -- --run tests/anitabi/mirror" \
+  -m "Tested: npm test -- --run tests/anitabi/mirror; rg -n \"@prisma/pg-worker|new Pool|new PrismaPg\\(pool\\)|datasources|@prisma/client/wasm\" workers/anitabi-mirror/src/index.ts" \
   -m "Not-tested: production worker schedule"
 ```
 
