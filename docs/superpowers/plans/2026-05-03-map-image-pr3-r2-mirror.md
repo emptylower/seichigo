@@ -1296,14 +1296,15 @@ function buildFakeDeps() {
   } as any
 }
 
-describe('imageServe — R2 read path', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks()
-  })
+beforeEach(() => {
+  vi.restoreAllMocks()
+})
 
-  afterEach(() => {
-    delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
-  })
+afterEach(() => {
+  delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
+})
+
+describe('imageServe — R2 read path', () => {
 
   it('returns R2 hit with X-Seichigo-Image-Source: r2-primary', async () => {
     const bucket = buildFakeBucket()
@@ -1428,7 +1429,13 @@ Expected: all PASS.
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
-git commit -m "feat(map): R2 primary read path in imageServe with flag gating"
+git commit -m "Prefer mirrored map images before hitting anitabi upstream" \
+  -m "Add the initial imageServe R2 read-path coverage and route request-scoped binding access through getCfBindings so render requests can short-circuit to MAP_IMAGE_CACHE without route-level env plumbing." \
+  --trailer "Constraint: Main-worker bindings must stay on getCfBindings/__openNextAls rather than dependency-injected env fields or runtime-global fallbacks" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/imageServe.r2.test.ts" \
+  --trailer "Tested: npm test -- --run tests/anitabi"
 ```
 
 ---
@@ -1496,6 +1503,39 @@ describe('imageServe — R2 write path', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(bucket.store.size).toBe(0)
   })
+
+  it('does not commit a mirror object when the mirrored branch aborts or exceeds the byte limit', async () => {
+    const bucket = buildFakeBucket()
+    const waitUntil = vi.fn((promise: Promise<unknown>) => {
+      void promise.catch(() => undefined)
+    })
+    installOpenNextBindings({
+      env: {
+        MAP_IMAGE_CACHE: bucket,
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
+      },
+      ctx: { waitUntil },
+    })
+    const oversized = new Uint8Array(6 * 1024 * 1024)
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(oversized, {
+        status: 200,
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': String(oversized.byteLength),
+        },
+      }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/too-large.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps(), 'render')
+    await res.arrayBuffer().catch(() => undefined)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(bucket.store.size).toBe(0)
+  })
 })
 ```
 
@@ -1516,31 +1556,41 @@ const bucket = bindings?.env?.MAP_IMAGE_CACHE
 const r2WriteEnabled = bindings?.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED === '1'
 const waitUntil = bindings?.ctx?.waitUntil ?? bindings?.waitUntil
 
-if (r2WriteEnabled && bucket) {
-  // Read body bytes for R2 write (need to clone the response since the body stream is consumed by client)
-  const cloned = renderResponse.clone()
-  const bodyPromise = (async () => {
+let responseForClient = renderResponse
+
+if (r2WriteEnabled && bucket && renderResponse.body) {
+  const [clientBody, mirrorBody] = renderResponse.body.tee()
+  const mirrorBytesPromise = readBytesWithLimit(mirrorBody, MAX_IMAGE_BYTES)
+
+  responseForClient = new Response(clientBody, {
+    status: renderResponse.status,
+    headers: renderResponse.headers,
+  })
+
+  const commitMirror = async () => {
     try {
-      const bytes = await cloned.arrayBuffer()
-      await putMirroredImage(
-        bucket,
-        target.toString(),
-        bytes,
-        fetched.mimeType,
-        'lazy',
-      )
+      const bytes = await mirrorBytesPromise
+      await putMirroredImage(bucket, target.toString(), bytes, fetched.mimeType, 'lazy')
     } catch (err) {
-      console.warn('[imageServe] R2 write failed', err)
+      console.warn('[imageServe] R2 write skipped', err)
     }
-  })()
-  if (waitUntil) waitUntil(bodyPromise)
-  else void bodyPromise
+  }
+
+  responseForClient = attachStreamLifecycle(responseForClient, {
+    onStreamSuccess: () => {
+      if (waitUntil) waitUntil(commitMirror())
+      else void commitMirror()
+    },
+    onStreamError: () => {
+      void mirrorBytesPromise.catch(() => undefined)
+    },
+  })
 }
+
+return responseForClient
 ```
 
-Note: streaming responses (where `buildRenderResponse` returns a streamed body) make `clone()` problematic. Adjust by reading bytes once into `readBytesWithLimit`, then constructing two responses (one for the user, one feeding `putMirroredImage`). The simpler approach: change `buildRenderResponse` to always buffer-then-return for paths where R2 write is enabled, falling back to streaming otherwise.
-
-Task B.7 will revise the body-handling strategy in detail. For this task, only replace binding/context access with `getCfBindings()` so the plan stops depending on ad-hoc dependency/env plumbing or legacy runtime waitUntil globals.
+If `buildRenderResponse` already owns the stream lifecycle wrapper, put `tee()` there instead of layering a second wrapper around the returned `Response`: keep one client stream, one mirror stream, and trigger `onStreamSuccess` only after the client stream completes. The R2 commit must happen only from that success callback, never before, so aborted/oversized streams do not persist partial objects. Keep `getCfBindings()` as the only source of bucket/env/waitUntil access.
 
 - [ ] **Step 4: Run tests — expect pass**
 
@@ -1552,7 +1602,13 @@ npm test -- --run tests/anitabi/imageServe.r2.test.ts
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
-git commit -m "feat(map): async R2 dual-write in imageServe (lazy mode)"
+git commit -m "Mirror successful upstream map-image responses without blocking the client" \
+  -m "Switch the plan to a single tee-based write-through path: split the response stream once, defer the R2 commit until onStreamSuccess, and skip persistence when the mirrored branch aborts or exceeds the byte limit." \
+  --trailer "Constraint: Reuse getCfBindings for MAP_IMAGE_CACHE and waitUntil; do not reintroduce dependency-injected env branches or legacy runtime globals" \
+  --trailer "Rejected: response cloning plus full-body buffering on the returned response | commits partial or failed streams and conflicts with streamed bodies" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/imageServe.r2.test.ts"
 ```
 
 ---
@@ -1648,7 +1704,7 @@ if (!fetched.ok && r2ReadEnabled && bucket) {
 return fetched.response
 ```
 
-Use the same `getCfBindings()`-derived env access pattern here as in Task 2.2/2.3. Do not reintroduce raw `deps.env?.MAP_IMAGE_CACHE` checks in the fallback branch.
+Use the same `getCfBindings()`-derived env access pattern here as in Task 2.2/2.3. Do not reintroduce raw dependency-injected env checks in the fallback branch.
 
 - [ ] **Step 4: Run — expect pass**
 
@@ -1701,6 +1757,12 @@ describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
   const expectedPattern = /^https:\/\/([a-z0-9.-]+\.)?(anitabi\.cn|bgm\.tv)\//
 
   it('upstream-served response carries X-Original-Source pointing at anitabi', async () => {
+    installOpenNextBindings({
+      env: {
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0',
+      },
+    })
     vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([2]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
     )
@@ -1708,7 +1770,7 @@ describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
       'https://www.seichigo.com/api/anitabi/image-render?url=' +
         encodeURIComponent('https://image.anitabi.cn/h.jpg'),
     )
-    const res = await serveImageRequest(req, buildFakeDeps({ flagWrite: '0' }), 'render')
+    const res = await serveImageRequest(req, buildFakeDeps(), 'render')
     expect(res.headers.get('X-Original-Source')).toMatch(expectedPattern)
   })
 
@@ -1716,11 +1778,18 @@ describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
     const bucket = buildFakeBucket()
     const bytes = new Uint8Array([5]).buffer
     await putMirroredImage(bucket as any, 'https://image.anitabi.cn/k.jpg', bytes, 'image/jpeg', 'lazy')
+    installOpenNextBindings({
+      env: {
+        MAP_IMAGE_CACHE: bucket,
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
+      },
+    })
     const req = new Request(
       'https://www.seichigo.com/api/anitabi/image-render?url=' +
         encodeURIComponent('https://image.anitabi.cn/k.jpg'),
     )
-    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    const res = await serveImageRequest(req, buildFakeDeps(), 'render')
     expect(res.headers.get('X-Original-Source')).toMatch(expectedPattern)
   })
 })
@@ -1770,7 +1839,12 @@ When `R2_WRITE_ENABLED=0`, the source header should say `upstream-no-r2`. Pass t
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
-git commit -m "feat(map): X-Original-Source on all imageServe responses (D5-γ)"
+git commit -m "Preserve attribution across every anitabi image response path" \
+  -m "Extend the imageServe contract so upstream, R2-primary, and R2-fallback responses always expose X-Original-Source while continuing to source rollout flags and MAP_IMAGE_CACHE from installOpenNextBindings/getCfBindings." \
+  --trailer "Constraint: Tests must install OpenNext bindings for flag and bucket coverage instead of pushing fake env fields through deps" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/imageServe.r2.test.ts"
 ```
 
 ---
@@ -1785,7 +1859,7 @@ git commit -m "feat(map): X-Original-Source on all imageServe responses (D5-γ)"
 
 Create `tests/anitabi/imageServe.diag.test.ts`:
 ```ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { serveImageRequest } from '@/lib/anitabi/handlers/imageServe'
 
 const dispatchSpy = vi.fn()
@@ -1797,17 +1871,39 @@ beforeEach(() => {
   dispatchSpy.mockReset()
 })
 
-function buildDeps(extra: any = {}) {
+afterEach(() => {
+  delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
+})
+
+function installOpenNextBindings(store: {
+  env?: {
+    MAP_IMAGE_CACHE?: unknown
+    NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
+    NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
+  }
+}) {
+  ;(globalThis as typeof globalThis & {
+    __openNextAls?: { getStore?: () => typeof store | undefined }
+  }).__openNextAls = {
+    getStore: () => store,
+  }
+}
+
+function buildDeps() {
   return {
     prisma: {} as any,
     getSiteBase: () => 'https://www.seichigo.com',
-    env: { NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0', NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0' },
-    ...extra,
   } as any
 }
 
 describe('imageServe — image_cache_state stage emission', () => {
   it('emits image_cache_state: cache_miss_all when CF + R2 miss but upstream OK', async () => {
+    installOpenNextBindings({
+      env: {
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0',
+      },
+    })
     vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([1]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
     )
@@ -1844,7 +1940,12 @@ npm test -- --run tests/anitabi/imageServe.diag.test.ts
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.diag.test.ts
-git commit -m "feat(diag): emit image_cache_state on all imageServe terminal paths"
+git commit -m "Make image-cache terminal state visible in one diagnostic stage" \
+  -m "Add focused diagnostic coverage for imageServe terminal paths and document the binding-based test setup so cache-state emission no longer depends on fake env injection through handler deps." \
+  --trailer "Constraint: Diagnostic tests must install request-scoped OpenNext bindings instead of passing env through deps" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/imageServe.diag.test.ts"
 ```
 
 ---
