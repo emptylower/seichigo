@@ -264,15 +264,15 @@ export default function ExplorerPanelContent(
                         ? 'border-brand-400 bg-brand-50/70 shadow-[0_8px_22px_rgba(236,72,153,0.18)]'
                         : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-brand-50/30'
                     }`}
+                    onMouseEnter={() => onHoverCardEnter(card.id)}
+                    onMouseLeave={onHoverCardLeave}
+                    onTouchStart={() => onHoverCardEnter(card.id)}
                   >
                     <div className="h-1 w-full" style={{ background: swatchColor, opacity: selectedBangumiId === card.id ? 0.95 : 0.58 }} />
                     <button
                       type="button"
                       onClick={() => onOpenBangumi(card.id)}
                       className="w-full text-left"
-                      onMouseEnter={() => onHoverCardEnter(card.id)}
-                      onMouseLeave={onHoverCardLeave}
-                      onTouchStart={() => onHoverCardEnter(card.id)}
                     >
                       <div className="flex items-start gap-3 p-3">
                         <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">

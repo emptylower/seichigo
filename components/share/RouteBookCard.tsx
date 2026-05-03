@@ -48,7 +48,7 @@ export default function RouteBookCard({
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const attributionText = `${getAnitabiAttributionLabel(locale)} · anitabi.cn`
+  const attributionText = getAnitabiAttributionLabel(locale)
 
   const generateCard = useCallback(async () => {
     setIsGenerating(true)
