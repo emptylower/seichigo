@@ -6,6 +6,11 @@ import { cronDelta, type CronDeltaPrisma } from '../delta'
 
 const CURSOR_KEY = { sourceType: '__cursor__', sourceId: 'delta', variant: '__' } as const
 
+type CursorRow = {
+  mirroredAt: Date | null
+  canonicalUrl: string | null
+}
+
 type ExistingMirrorState = {
   sourceType: string
   sourceId: string
@@ -28,8 +33,63 @@ function uniqueConstraintError(): Error & { code: string } {
   return Object.assign(new Error('unique constraint'), { code: 'P2002' as const })
 }
 
+type BangumiFindManyArgs = Parameters<CronDeltaPrisma['anitabiBangumi']['findMany']>[0]
+type PointFindManyArgs = Parameters<CronDeltaPrisma['anitabiPoint']['findMany']>[0]
+
+function applyBangumiQuery(
+  rows: Array<{ id: number; cover: string | null; updatedAt: Date }>,
+  args: BangumiFindManyArgs,
+) {
+  return [...rows]
+    .filter((row) => row.cover !== null)
+    .filter((row) => row.updatedAt.getTime() <= args.where.updatedAt.lte.getTime())
+    .filter((row) =>
+      args.where.OR.some((clause) => {
+        if ('id' in clause) {
+          return (
+            row.updatedAt.getTime() === clause.updatedAt.getTime() &&
+            row.id > clause.id.gt
+          )
+        }
+
+        return row.updatedAt.getTime() > clause.updatedAt.gt.getTime()
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.updatedAt.getTime() - right.updatedAt.getTime() || left.id - right.id,
+    )
+    .slice(0, args.take)
+}
+
+function applyPointQuery(
+  rows: Array<{ id: string; image: string | null; updatedAt: Date }>,
+  args: PointFindManyArgs,
+) {
+  return [...rows]
+    .filter((row) => row.image !== null)
+    .filter((row) => row.updatedAt.getTime() <= args.where.updatedAt.lte.getTime())
+    .filter((row) =>
+      args.where.OR.some((clause) => {
+        if ('id' in clause) {
+          return (
+            row.updatedAt.getTime() === clause.updatedAt.getTime() &&
+            row.id > clause.id.gt
+          )
+        }
+
+        return row.updatedAt.getTime() > clause.updatedAt.gt.getTime()
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.updatedAt.getTime() - right.updatedAt.getTime() || left.id.localeCompare(right.id),
+    )
+    .slice(0, args.take)
+}
+
 function buildPrismaMock(opts: {
-  cursorRow?: { mirroredAt: Date | null } | null
+  cursorRow?: CursorRow | null
   bangumi?: Array<{ id: number; cover: string | null; updatedAt: Date }>
   points?: Array<{ id: string; image: string | null; updatedAt: Date }>
   mirrorStates?: ExistingMirrorState[]
@@ -40,10 +100,11 @@ function buildPrismaMock(opts: {
       { ...state },
     ]),
   )
+  let cursorRow = opts.cursorRow ?? null
 
   const findUnique = vi
     .fn<CronDeltaPrisma['mapImageMirrorState']['findUnique']>()
-    .mockResolvedValue(opts.cursorRow ?? null)
+    .mockImplementation(async () => cursorRow)
   const create = vi.fn<CronDeltaPrisma['mapImageMirrorState']['create']>().mockImplementation(
     async ({ data }) => {
       const key = buildStateKey(data.sourceType, data.sourceId, data.variant)
@@ -100,13 +161,28 @@ function buildPrismaMock(opts: {
 
       return { count: 1 }
     })
-  const upsert = vi.fn<CronDeltaPrisma['mapImageMirrorState']['upsert']>().mockResolvedValue({})
+  const upsert = vi.fn<CronDeltaPrisma['mapImageMirrorState']['upsert']>().mockImplementation(
+    async ({ create, update }) => {
+      cursorRow = cursorRow
+        ? {
+            ...cursorRow,
+            mirroredAt: update.mirroredAt,
+            canonicalUrl: update.canonicalUrl,
+          }
+        : {
+            mirroredAt: create.mirroredAt,
+            canonicalUrl: create.canonicalUrl,
+          }
+
+      return {}
+    },
+  )
   const bangumiFindMany = vi
     .fn<CronDeltaPrisma['anitabiBangumi']['findMany']>()
-    .mockResolvedValue(opts.bangumi ?? [])
+    .mockImplementation(async (args) => applyBangumiQuery(opts.bangumi ?? [], args))
   const pointFindMany = vi
     .fn<CronDeltaPrisma['anitabiPoint']['findMany']>()
-    .mockResolvedValue(opts.points ?? [])
+    .mockImplementation(async (args) => applyPointQuery(opts.points ?? [], args))
 
   const prisma = {
     mapImageMirrorState: {
@@ -132,6 +208,7 @@ function buildPrismaMock(opts: {
     bangumiFindMany,
     pointFindMany,
     stateStore,
+    readCursorRow: () => cursorRow,
   }
 }
 
@@ -146,7 +223,7 @@ describe('cronDelta', () => {
 
       const { prisma, findUnique, create, updateMany, upsert, bangumiFindMany, pointFindMany } =
         buildPrismaMock({
-          cursorRow: { mirroredAt: cursorAt },
+          cursorRow: { mirroredAt: cursorAt, canonicalUrl: 'cursor' },
           bangumi: [
             {
               id: 999,
@@ -172,9 +249,10 @@ describe('cronDelta', () => {
       })
       expect(bangumiFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: cursorAt, lte: upperBound },
+          updatedAt: { lte: upperBound },
           mapEnabled: true,
           cover: { not: null },
+          OR: [{ updatedAt: { gt: cursorAt } }],
         },
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: 25,
@@ -182,8 +260,9 @@ describe('cronDelta', () => {
       })
       expect(pointFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: cursorAt, lte: upperBound },
+          updatedAt: { lte: upperBound },
           image: { not: null },
+          OR: [{ updatedAt: { gt: cursorAt } }],
         },
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: 25,
@@ -224,12 +303,13 @@ describe('cronDelta', () => {
         },
         create: {
           ...CURSOR_KEY,
-          canonicalUrl: 'cursor',
+          canonicalUrl: JSON.stringify({ pointLastId: 'pn1' }),
           r2Key: 'cursor',
           status: 'mirrored',
           mirroredAt: new Date('2026-05-03T11:30:00Z'),
         },
         update: {
+          canonicalUrl: JSON.stringify({ pointLastId: 'pn1' }),
           mirroredAt: new Date('2026-05-03T11:30:00Z'),
         },
       })
@@ -252,9 +332,10 @@ describe('cronDelta', () => {
 
       expect(bangumiFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: new Date(0), lte: new Date('2026-05-03T13:00:00Z') },
+          updatedAt: { lte: new Date('2026-05-03T13:00:00Z') },
           mapEnabled: true,
           cover: { not: null },
+          OR: [{ updatedAt: { gt: new Date(0) } }],
         },
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: 100,
@@ -262,8 +343,9 @@ describe('cronDelta', () => {
       })
       expect(pointFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: new Date(0), lte: new Date('2026-05-03T13:00:00Z') },
+          updatedAt: { lte: new Date('2026-05-03T13:00:00Z') },
           image: { not: null },
+          OR: [{ updatedAt: { gt: new Date(0) } }],
         },
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
         take: 100,
@@ -278,14 +360,14 @@ describe('cronDelta', () => {
     }
   })
 
-  it('keeps the cursor on the last fully covered timestamp when a source hits the batch limit', async () => {
+  it('advances a truncated source at the shared timestamp using its last processed id', async () => {
     vi.useFakeTimers()
 
     try {
       vi.setSystemTime(new Date('2026-05-03T14:00:00Z'))
 
       const { prisma, upsert } = buildPrismaMock({
-        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z') },
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z'), canonicalUrl: 'cursor' },
         bangumi: [
           {
             id: 100,
@@ -309,13 +391,14 @@ describe('cronDelta', () => {
         },
         create: {
           ...CURSOR_KEY,
-          canonicalUrl: 'cursor',
+          canonicalUrl: JSON.stringify({ bangumiLastId: 101 }),
           r2Key: 'cursor',
           status: 'mirrored',
-          mirroredAt: new Date('2026-05-03T11:00:00Z'),
+          mirroredAt: new Date('2026-05-03T12:00:00Z'),
         },
         update: {
-          mirroredAt: new Date('2026-05-03T11:00:00Z'),
+          canonicalUrl: JSON.stringify({ bangumiLastId: 101 }),
+          mirroredAt: new Date('2026-05-03T12:00:00Z'),
         },
       })
     } finally {
@@ -386,7 +469,7 @@ describe('cronDelta', () => {
       ]
 
       const { prisma, upsert, stateStore } = buildPrismaMock({
-        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z') },
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z'), canonicalUrl: 'cursor' },
         bangumi: [
           {
             id: 999,
@@ -489,14 +572,169 @@ describe('cronDelta', () => {
         },
         create: {
           ...CURSOR_KEY,
-          canonicalUrl: 'cursor',
+          canonicalUrl: JSON.stringify({ pointLastId: 'pn1' }),
           r2Key: 'cursor',
           status: 'mirrored',
           mirroredAt: new Date('2026-05-03T12:30:00Z'),
         },
         update: {
+          canonicalUrl: JSON.stringify({ pointLastId: 'pn1' }),
           mirroredAt: new Date('2026-05-03T12:30:00Z'),
         },
+      })
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('pages through equal timestamps across repeated runs for both numeric and string source ids', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const sharedUpdatedAt = new Date('2026-05-03T16:00:00Z')
+      vi.setSystemTime(new Date('2026-05-03T17:00:00Z'))
+
+      const { prisma, bangumiFindMany, pointFindMany, readCursorRow } = buildPrismaMock({
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z'), canonicalUrl: 'cursor' },
+        bangumi: [
+          {
+            id: 1,
+            cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 2,
+            cover: 'https://image.anitabi.cn/bangumi/2/cover.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 3,
+            cover: 'https://image.anitabi.cn/bangumi/3/cover.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 4,
+            cover: 'https://image.anitabi.cn/bangumi/4/cover.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 5,
+            cover: 'https://image.anitabi.cn/bangumi/5/cover.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+        ],
+        points: [
+          {
+            id: 'a',
+            image: 'https://image.anitabi.cn/points/a.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 'b',
+            image: 'https://image.anitabi.cn/points/b.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 'c',
+            image: 'https://image.anitabi.cn/points/c.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 'd',
+            image: 'https://image.anitabi.cn/points/d.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+          {
+            id: 'e',
+            image: 'https://image.anitabi.cn/points/e.jpg',
+            updatedAt: sharedUpdatedAt,
+          },
+        ],
+      })
+
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
+      expect(readCursorRow()).toEqual({
+        mirroredAt: sharedUpdatedAt,
+        canonicalUrl: JSON.stringify({ bangumiLastId: 2, pointLastId: 'b' }),
+      })
+
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
+      expect(readCursorRow()).toEqual({
+        mirroredAt: sharedUpdatedAt,
+        canonicalUrl: JSON.stringify({ bangumiLastId: 4, pointLastId: 'd' }),
+      })
+
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 5 })
+      expect(readCursorRow()).toEqual({
+        mirroredAt: sharedUpdatedAt,
+        canonicalUrl: JSON.stringify({ bangumiLastId: 5, pointLastId: 'e' }),
+      })
+
+      expect(bangumiFindMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          updatedAt: { lte: new Date('2026-05-03T17:00:00Z') },
+          mapEnabled: true,
+          cover: { not: null },
+          OR: [{ updatedAt: { gt: new Date('2026-05-03T10:00:00Z') } }],
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 2,
+        select: { id: true, cover: true, updatedAt: true },
+      })
+      expect(bangumiFindMany).toHaveBeenNthCalledWith(2, {
+        where: {
+          updatedAt: { lte: new Date('2026-05-03T17:00:00Z') },
+          mapEnabled: true,
+          cover: { not: null },
+          OR: [
+            { updatedAt: { gt: sharedUpdatedAt } },
+            { updatedAt: sharedUpdatedAt, id: { gt: 2 } },
+          ],
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 2,
+        select: { id: true, cover: true, updatedAt: true },
+      })
+      expect(bangumiFindMany).toHaveBeenNthCalledWith(3, {
+        where: {
+          updatedAt: { lte: new Date('2026-05-03T17:00:00Z') },
+          mapEnabled: true,
+          cover: { not: null },
+          OR: [
+            { updatedAt: { gt: sharedUpdatedAt } },
+            { updatedAt: sharedUpdatedAt, id: { gt: 4 } },
+          ],
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 2,
+        select: { id: true, cover: true, updatedAt: true },
+      })
+      expect(pointFindMany).toHaveBeenNthCalledWith(2, {
+        where: {
+          updatedAt: { lte: new Date('2026-05-03T17:00:00Z') },
+          image: { not: null },
+          OR: [
+            { updatedAt: { gt: sharedUpdatedAt } },
+            { updatedAt: sharedUpdatedAt, id: { gt: 'b' } },
+          ],
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 2,
+        select: { id: true, image: true, updatedAt: true },
+      })
+      expect(pointFindMany).toHaveBeenNthCalledWith(3, {
+        where: {
+          updatedAt: { lte: new Date('2026-05-03T17:00:00Z') },
+          image: { not: null },
+          OR: [
+            { updatedAt: { gt: sharedUpdatedAt } },
+            { updatedAt: sharedUpdatedAt, id: { gt: 'd' } },
+          ],
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 2,
+        select: { id: true, image: true, updatedAt: true },
       })
     } finally {
       vi.useRealTimers()

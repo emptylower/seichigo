@@ -10,6 +10,7 @@ const REQUEUEABLE_STATUSES = ['mirrored', 'failed', 'skipped_404'] as const
 
 type CursorRow = {
   mirroredAt: Date | null
+  canonicalUrl: string | null
 }
 
 type BangumiRow = {
@@ -32,6 +33,16 @@ type MirrorStateVariantKey = {
 
 type MirrorStateUniqueWhere = {
   sourceType_sourceId_variant: MirrorStateVariantKey
+}
+
+type CursorTieBreakers = {
+  bangumiLastId?: number
+  pointLastId?: string
+}
+
+type CursorState = {
+  mirroredAt: Date
+  tieBreakers: CursorTieBreakers
 }
 
 type MirrorStateCreateData = MirrorStateVariantKey & {
@@ -63,6 +74,33 @@ type MirrorStateUpdateManyResult = {
   count: number
 }
 
+type BangumiQueryWhere =
+  & {
+      updatedAt: { lte: Date }
+      mapEnabled: true
+      cover: { not: null }
+      OR: Array<
+        | { updatedAt: { gt: Date } }
+        | {
+            updatedAt: Date
+            id: { gt: number }
+          }
+      >
+    }
+
+type PointQueryWhere =
+  & {
+      updatedAt: { lte: Date }
+      image: { not: null }
+      OR: Array<
+        | { updatedAt: { gt: Date } }
+        | {
+            updatedAt: Date
+            id: { gt: string }
+          }
+      >
+    }
+
 export type CronDeltaPrisma = {
   mapImageMirrorState: {
     findUnique(args: {
@@ -84,17 +122,14 @@ export type CronDeltaPrisma = {
         mirroredAt: Date
       }
       update: {
+        canonicalUrl: string
         mirroredAt: Date
       }
     }): Promise<unknown>
   }
   anitabiBangumi: {
     findMany(args: {
-      where: {
-        updatedAt: { gt: Date; lte: Date }
-        mapEnabled: true
-        cover: { not: null }
-      }
+      where: BangumiQueryWhere
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
       take: number
       select: { id: true; cover: true; updatedAt: true }
@@ -102,10 +137,7 @@ export type CronDeltaPrisma = {
   }
   anitabiPoint: {
     findMany(args: {
-      where: {
-        updatedAt: { gt: Date; lte: Date }
-        image: { not: null }
-      }
+      where: PointQueryWhere
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
       take: number
       select: { id: true; image: true; updatedAt: true }
@@ -121,6 +153,10 @@ type ObservedRow = {
   updatedAt: Date
 }
 
+type SourceObservedRow<TId extends number | string> = ObservedRow & {
+  id: TId
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -130,67 +166,168 @@ function isUniqueConstraintError(error: unknown): boolean {
   )
 }
 
-function lastObservedAt(rows: ObservedRow[]): Date | null {
+function lastObservedRow<TId extends number | string>(
+  rows: SourceObservedRow<TId>[],
+): SourceObservedRow<TId> | null {
   if (rows.length === 0) {
     return null
   }
 
-  return rows[rows.length - 1].updatedAt
+  return rows[rows.length - 1]
 }
 
-function safeSourceWatermark(rows: ObservedRow[], cursorAt: Date, limit: number): Date | null {
-  const lastSeenAt = lastObservedAt(rows)
-  if (!lastSeenAt) {
-    return null
+function parseCursorTieBreakers(raw: string | null | undefined): CursorTieBreakers {
+  if (!raw) {
+    return {}
   }
 
-  if (rows.length < limit) {
-    return lastSeenAt
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) {
+      return {}
+    }
+
+    const tieBreakers: CursorTieBreakers = {}
+    if (
+      'bangumiLastId' in parsed &&
+      typeof parsed.bangumiLastId === 'number' &&
+      Number.isFinite(parsed.bangumiLastId)
+    ) {
+      tieBreakers.bangumiLastId = parsed.bangumiLastId
+    }
+    if ('pointLastId' in parsed && typeof parsed.pointLastId === 'string' && parsed.pointLastId) {
+      tieBreakers.pointLastId = parsed.pointLastId
+    }
+
+    return tieBreakers
+  } catch {
+    return {}
+  }
+}
+
+function serializeCursorTieBreakers(tieBreakers: CursorTieBreakers): string {
+  const serialized: CursorTieBreakers = {}
+
+  if (tieBreakers.bangumiLastId !== undefined) {
+    serialized.bangumiLastId = tieBreakers.bangumiLastId
+  }
+  if (tieBreakers.pointLastId !== undefined) {
+    serialized.pointLastId = tieBreakers.pointLastId
   }
 
-  for (let index = rows.length - 2; index >= 0; index -= 1) {
-    if (rows[index].updatedAt.getTime() !== lastSeenAt.getTime()) {
-      return rows[index].updatedAt
+  return JSON.stringify(serialized)
+}
+
+function readCursorState(cursorRow: CursorRow | null): CursorState {
+  return {
+    mirroredAt: cursorRow?.mirroredAt ?? new Date(0),
+    tieBreakers: parseCursorTieBreakers(cursorRow?.canonicalUrl),
+  }
+}
+
+function buildBangumiWhere(
+  cursorAt: Date,
+  upperBound: Date,
+  lastBangumiId: number | undefined,
+): BangumiQueryWhere {
+  const OR: BangumiQueryWhere['OR'] = [{ updatedAt: { gt: cursorAt } }]
+  if (lastBangumiId !== undefined) {
+    OR.push({
+      updatedAt: cursorAt,
+      id: { gt: lastBangumiId },
+    })
+  }
+
+  return {
+    updatedAt: { lte: upperBound },
+    mapEnabled: true,
+    cover: { not: null },
+    OR,
+  }
+}
+
+function buildPointWhere(
+  cursorAt: Date,
+  upperBound: Date,
+  lastPointId: string | undefined,
+): PointQueryWhere {
+  const OR: PointQueryWhere['OR'] = [{ updatedAt: { gt: cursorAt } }]
+  if (lastPointId !== undefined) {
+    OR.push({
+      updatedAt: cursorAt,
+      id: { gt: lastPointId },
+    })
+  }
+
+  return {
+    updatedAt: { lte: upperBound },
+    image: { not: null },
+    OR,
+  }
+}
+
+function lastObservedIdAtTimestamp<TId extends number | string>(
+  rows: SourceObservedRow<TId>[],
+  timestamp: Date,
+): TId | undefined {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index].updatedAt.getTime() === timestamp.getTime()) {
+      return rows[index].id
     }
   }
 
-  return cursorAt
+  return undefined
 }
 
-function nextCursorWatermark(
-  cursorAt: Date,
+function sameCursorState(left: CursorState, right: CursorState): boolean {
+  return (
+    left.mirroredAt.getTime() === right.mirroredAt.getTime() &&
+    left.tieBreakers.bangumiLastId === right.tieBreakers.bangumiLastId &&
+    left.tieBreakers.pointLastId === right.tieBreakers.pointLastId
+  )
+}
+
+function nextCursorState(
+  currentCursor: CursorState,
+  upperBound: Date,
   bangumi: BangumiRow[],
   points: PointRow[],
   sourceBatchSize: number,
-): Date | null {
-  const bangumiLastSeenAt = lastObservedAt(bangumi)
-  const pointLastSeenAt = lastObservedAt(points)
+): CursorState | null {
+  const bangumiLastSeen = lastObservedRow(bangumi)
+  const pointLastSeen = lastObservedRow(points)
 
-  if (!bangumiLastSeenAt && !pointLastSeenAt) {
+  if (!bangumiLastSeen && !pointLastSeen) {
     return null
   }
 
   const bangumiTruncated = bangumi.length === sourceBatchSize
   const pointsTruncated = points.length === sourceBatchSize
+  const observedLastRows = [bangumiLastSeen, pointLastSeen].filter(
+    (value): value is BangumiRow | PointRow => value !== null,
+  )
 
-  if (!bangumiTruncated && !pointsTruncated) {
-    const exactWatermark = [bangumiLastSeenAt, pointLastSeenAt]
-      .filter((value): value is Date => value !== null)
-      .reduce((latest, current) => (current.getTime() > latest.getTime() ? current : latest))
+  const nextCursorAt =
+    !bangumiTruncated && !pointsTruncated
+      ? observedLastRows.reduce((latest, current) =>
+          current.updatedAt.getTime() > latest.updatedAt.getTime() ? current : latest,
+        ).updatedAt
+      : [
+          bangumiLastSeen?.updatedAt ?? upperBound,
+          pointLastSeen?.updatedAt ?? upperBound,
+        ].reduce((earliest, current) =>
+          current.getTime() < earliest.getTime() ? current : earliest,
+        )
 
-    return exactWatermark.getTime() > cursorAt.getTime() ? exactWatermark : null
+  const nextState: CursorState = {
+    mirroredAt: nextCursorAt,
+    tieBreakers: {
+      bangumiLastId: lastObservedIdAtTimestamp(bangumi, nextCursorAt),
+      pointLastId: lastObservedIdAtTimestamp(points, nextCursorAt),
+    },
   }
 
-  const constrainedWatermark = [
-    bangumiLastSeenAt
-      ? safeSourceWatermark(bangumi, cursorAt, sourceBatchSize) ?? cursorAt
-      : null,
-    pointLastSeenAt ? safeSourceWatermark(points, cursorAt, sourceBatchSize) ?? cursorAt : null,
-  ]
-    .filter((value): value is Date => value !== null)
-    .reduce((earliest, current) => (current.getTime() < earliest.getTime() ? current : earliest))
-
-  return constrainedWatermark.getTime() > cursorAt.getTime() ? constrainedWatermark : null
+  return sameCursorState(currentCursor, nextState) ? null : nextState
 }
 
 async function enqueueVariants(
@@ -281,25 +418,18 @@ export async function cronDelta(
       sourceType_sourceId_variant: CURSOR_KEY,
     },
   })
-  const cursorAt = cursorRow?.mirroredAt ?? new Date(0)
+  const cursor = readCursorState(cursorRow)
   const upperBound = new Date()
 
   const bangumi = await prisma.anitabiBangumi.findMany({
-    where: {
-      updatedAt: { gt: cursorAt, lte: upperBound },
-      mapEnabled: true,
-      cover: { not: null },
-    },
+    where: buildBangumiWhere(cursor.mirroredAt, upperBound, cursor.tieBreakers.bangumiLastId),
     orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
     take: sourceBatchSize,
     select: { id: true, cover: true, updatedAt: true },
   })
 
   const points = await prisma.anitabiPoint.findMany({
-    where: {
-      updatedAt: { gt: cursorAt, lte: upperBound },
-      image: { not: null },
-    },
+    where: buildPointWhere(cursor.mirroredAt, upperBound, cursor.tieBreakers.pointLastId),
     orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
     take: sourceBatchSize,
     select: { id: true, image: true, updatedAt: true },
@@ -325,26 +455,25 @@ export async function cronDelta(
     )
   }
 
-  const nextCursorAt = nextCursorWatermark(cursorAt, bangumi, points, sourceBatchSize)
-  if (!nextCursorAt) {
+  const nextCursor = nextCursorState(cursor, upperBound, bangumi, points, sourceBatchSize)
+  if (!nextCursor) {
     return { enqueued }
   }
 
-  // The cursor only stores a timestamp, so a full batch must stop at the last
-  // fully covered timestamp to avoid skipping rows that share the truncated tail.
   await prisma.mapImageMirrorState.upsert({
     where: {
       sourceType_sourceId_variant: CURSOR_KEY,
     },
     create: {
       ...CURSOR_KEY,
-      canonicalUrl: 'cursor',
+      canonicalUrl: serializeCursorTieBreakers(nextCursor.tieBreakers),
       r2Key: 'cursor',
       status: 'mirrored',
-      mirroredAt: nextCursorAt,
+      mirroredAt: nextCursor.mirroredAt,
     },
     update: {
-      mirroredAt: nextCursorAt,
+      canonicalUrl: serializeCursorTieBreakers(nextCursor.tieBreakers),
+      mirroredAt: nextCursor.mirroredAt,
     },
   })
 
