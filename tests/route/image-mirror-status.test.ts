@@ -123,6 +123,7 @@ describe('GET /api/admin/anitabi/image-mirror/status', () => {
         },
       ],
       rates: {
+        remaining: 5,
         mirroredLast1h: 6,
         mirroredLast24h: 24,
         ratePerSec: 6 / 3600,
@@ -186,6 +187,7 @@ describe('GET /api/admin/anitabi/image-mirror/status', () => {
         skipped_404: 0,
       },
       rates: {
+        remaining: 0,
         mirroredLast1h: 0,
         mirroredLast24h: 4,
         ratePerSec: 0,

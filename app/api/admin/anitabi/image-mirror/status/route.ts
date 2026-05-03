@@ -92,16 +92,18 @@ export async function GET() {
       }),
     ])
 
+    const remaining = totals.pending + totals.in_progress
     const ratePerSec = mirroredLast1h / 3600
     const estimatedRemainingHours = ratePerSec === 0
       ? null
-      : (totals.pending + totals.in_progress) / ratePerSec / 3600
+      : remaining / ratePerSec / 3600
 
     return NextResponse.json({
       totals,
       bootstrap,
       recentFailures,
       rates: {
+        remaining,
         mirroredLast1h,
         mirroredLast24h,
         ratePerSec,
