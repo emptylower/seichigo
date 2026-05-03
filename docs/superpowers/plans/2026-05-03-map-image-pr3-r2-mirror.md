@@ -1971,7 +1971,7 @@ git commit -m "Package Prisma WASM before deploying the mirror worker" \
   -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node -e \"const pkg=require('./package.json'); if (pkg.dependencies?.['@prisma/pg-worker'] !== '6.9.0') process.exit(1)\"; node -e \"const lock=require('./package-lock.json'); const root=lock.packages?.['']?.dependencies?.['@prisma/pg-worker']; const installed=lock.packages?.['node_modules/@prisma/pg-worker']?.version; if (root !== '6.9.0' || installed !== '6.9.0') process.exit(1)\"; rg -n \"\\\"@prisma/pg-worker\\\"|\\\"@prisma/adapter-pg\\\"|\\\"@prisma/client\\\"|\\\"prisma\\\"\" package.json package-lock.json; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
+  -m "Tested: worker typegen; root package.json/package-lock exact @prisma/pg-worker@6.9.0 checks; build.mjs Prisma WASM resolution-chain check; resolved loader import grep; wrangler deploy dry-run" \
   -m "Not-tested: production cron execution"
 ```
 
