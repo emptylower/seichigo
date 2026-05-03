@@ -63,7 +63,7 @@ T+7d   expected mirrored ≈ 99%; PR3 declared "active"
 # Wrangler 4.82.2 has no rollback dry-run; use whole-worker rollback only when
 # reverting the entire Worker is acceptable, after identifying the target via
 # `wrangler deployments list`.
-wrangler rollback <pre-PR3 worker version>
+wrangler rollback <version-id>
 
 # Mirror worker kill
 cd workers/anitabi-mirror && wrangler rollback
