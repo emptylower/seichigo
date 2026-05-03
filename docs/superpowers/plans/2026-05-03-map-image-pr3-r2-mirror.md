@@ -514,7 +514,15 @@ npm test
 
 Expected: this is a repo-wide gate, and it is currently blocked by pre-existing unrelated line-budget failures unless those are fixed first. Do not treat a line-budget failure here as a Task 1.2 regression; the task-local proof is the direct Vitest runs above, plus the existing image-proxy tests.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Run direct imageProxy variant tests**
+
+```bash
+npx vitest run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-proxy-phase2.test.ts
+```
+
+Expected: PASS. This is the primary Task 1.2 proof that the extracted canonicalization helper did not change kind-aware imageProxy variant behavior.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add lib/anitabi/imageNormalize.ts lib/anitabi/imageProxy.ts tests/anitabi/imageNormalize.test.ts
