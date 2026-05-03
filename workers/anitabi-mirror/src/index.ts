@@ -1,19 +1,43 @@
+import { PrismaClient } from '@prisma/client'
+import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+
+import { cronDelta } from './delta'
+import { cronTick, type CronTickPrisma } from './cronTick'
+
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     void ctx
-    const cronEnabled = String(env.MAP_IMAGE_MIRROR_CRON_ENABLED) === '1'
 
-    if (!cronEnabled) {
+    if (String(env.MAP_IMAGE_MIRROR_CRON_ENABLED) !== '1') {
       console.log('[mirror] cron disabled by flag')
       return
     }
 
-    console.log(`[mirror] tick: cron=${controller.cron} scheduledTime=${controller.scheduledTime}`)
+    const prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: env.DATABASE_URL,
+        },
+      },
+    })
 
-    if (controller.cron === '0 * * * *') {
-      // delta cron path (placeholder; implemented in Task 3.5)
-    } else {
-      // 5-min seed cron path (placeholder; implemented in Tasks 3.2-3.4)
+    try {
+      if (controller.cron === '0 * * * *') {
+        const result = await cronDelta(prisma)
+        console.log(`[mirror] delta tick enqueued=${result.enqueued}`)
+      } else {
+        const bucket = env.MAP_IMAGE_CACHE as unknown as R2MirrorBucket
+        const result = await cronTick(prisma as unknown as CronTickPrisma, bucket, { source: 'auto' })
+        const retriedPart = 'retried' in result ? ` retried=${result.retried}` : ''
+
+        console.log(
+          `[mirror] tick reclaimed=${result.reclaimed} mirrored=${result.mirrored} failed=${result.failed} 404=${result.skipped404}${retriedPart} throttled=${result.throttled}`,
+        )
+      }
+    } catch (error) {
+      console.error('[mirror] tick failed', error)
+    } finally {
+      await prisma.$disconnect()
     }
   },
 } satisfies ExportedHandler<Env>
