@@ -17,7 +17,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'node',
-          include: ['tests/**/*.test.ts'],
+          include: ['tests/**/*.test.ts', 'workers/**/*.test.ts'],
           environment: 'node',
         },
       },
