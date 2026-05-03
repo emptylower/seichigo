@@ -32,7 +32,7 @@
 - Phase 6 — Documentation
 - Phase 7 — Deploy & rollout
 
-Total: 32 tasks. Phases 0–6 are code/research; Phase 7 is operational.
+Total: 42 tasks. Phases 0–6 are code/research; Phase 7 is operational.
 
 ---
 
