@@ -869,7 +869,11 @@ git commit -m "feat(map): r2Mirror client (put/get with metadata + freshness ski
 - Modify: `lib/mapImageDiag/shared.ts` (add JSDoc note only; no schema change)
 - Test: `tests/mapImageDiag/stages.test.ts`
 
-- [ ] **Step 1: Open `lib/mapImageDiag/shared.ts`** to confirm the schema is `stage: z.string().min(1)` and that no exhaustive union exists.
+- [ ] **Step 1: Open `lib/mapImageDiag/shared.ts`** to confirm the schema is `stage: z.string().min(1)` and that no exhaustive union exists. Also verify the current repo stage strings before updating the registry so drift is caught:
+
+```bash
+rg "stage: '" lib app tests
+```
 
 - [ ] **Step 2: Failing test**
 
@@ -886,6 +890,8 @@ describe('MAP_IMAGE_DIAG_STAGES', () => {
   it('isKnownDiagStage accepts new and existing stages', () => {
     expect(isKnownDiagStage('image_cache_state')).toBe(true)
     expect(isKnownDiagStage('proxy_cache_state')).toBe(true)
+    expect(isKnownDiagStage('dom_request_start')).toBe(true)
+    expect(isKnownDiagStage('proxy_stream_terminal')).toBe(true)
     expect(isKnownDiagStage('typo_stage')).toBe(false)
   })
 })
@@ -902,16 +908,33 @@ npm test -- --run tests/mapImageDiag/stages.test.ts
 Create `lib/mapImageDiag/stages.ts`:
 ```ts
 /**
- * Centralized list of known MapImageDiag stage strings. Stage is a free-form
- * `string` in the Zod schema (lib/mapImageDiag/shared.ts:16), so this list is
- * documentation + a runtime guard, not a TypeScript exhaustiveness check.
+ * Centralized registry of known MapImageDiag stage strings already used in the
+ * repo plus PR3 additions. Stage is a free-form `string` in the Zod schema
+ * (lib/mapImageDiag/shared.ts:16), so this list is documentation + a runtime
+ * guard, not a TypeScript exhaustiveness check.
  *
- * When PR3 introduces a new outcome event, add the string here.
+ * Re-verify current stage strings with `rg "stage: '" lib app tests` before
+ * adding or removing entries so the registry stays canonical.
  */
 export const MAP_IMAGE_DIAG_STAGES = [
+  // DOM request lifecycle
+  'dom_request_start',
+  'dom_request_terminal',
+
+  // Proxy request lifecycle
+  'proxy_target_parse',
+  'proxy_fetch_start',
+  'proxy_allow_check',
+  'proxy_content_validate',
+  'proxy_fetch_terminal',
+  'proxy_stream_terminal',
   'proxy_cache_state',
+
+  // Session / admin diagnostics
   'image_session_outcome',
   'window_excerpt',
+
+  // PR3
   'image_cache_state', // PR3
 ] as const
 
