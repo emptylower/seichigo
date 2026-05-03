@@ -3738,7 +3738,7 @@ cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
 wrangler secret put DATABASE_URL
 ```
 
-Use the production Postgres URL that already contains the PR3 migration. This secret must exist before the first deploy so the worker can boot cleanly even while cron is disabled.
+Use the production Postgres URL that already contains the PR3 migration. This secret must exist before the first deploy so the later activation path already has its DB credential and the rollout does not introduce a missing-secret gap when cron is enabled.
 
 - [ ] **Step 2: Verify the secret is present**
 
@@ -3756,7 +3756,7 @@ cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
 npm run deploy
 ```
 
-Expected: deployment succeeds. The `MAP_IMAGE_MIRROR_CRON_ENABLED=0` var means cron ticks return early, but the runtime can still construct Prisma successfully if invoked.
+Expected: deployment succeeds. This validates packaging, deploy wiring, and deployed config while `MAP_IMAGE_MIRROR_CRON_ENABLED=0`; because Task 3.7 returns before creating `Pool`/`Prisma` when cron is disabled, this deploy does not exercise DB boot until Task 7.6 enables cron or a future explicit probe is added.
 
 - [ ] **Step 4: Verify deployment**
 
