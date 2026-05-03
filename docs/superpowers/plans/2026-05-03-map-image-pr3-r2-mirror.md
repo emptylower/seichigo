@@ -2572,47 +2572,55 @@ git commit -m "feat(mirror): anitabi-wide circuit breaker via __throttle__ row"
 ### Task 3.7: Wire `cronTick()` orchestrator + scheduled handler entry
 
 **Files:**
-- Create: `workers/anitabi-mirror/src/cronTick.ts`
+- Create: `lib/anitabi/mirror/cronTick.ts`
 - Modify: `workers/anitabi-mirror/src/index.ts`
-- Create: `workers/anitabi-mirror/src/__tests__/cronTick.test.ts`
+- Create: `tests/anitabi/mirror/cronTick.test.ts`
 
 - [ ] **Step 1: Test for cronTick orchestration**
 
 ```ts
-// workers/anitabi-mirror/src/__tests__/cronTick.test.ts
+// tests/anitabi/mirror/cronTick.test.ts
 import { describe, it, expect, vi } from 'vitest'
-import { cronTick } from '../cronTick'
+import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
-vi.mock('../reclaim', () => ({ reclaimStale: vi.fn().mockResolvedValue({ count: 0 }) }))
-vi.mock('../bootstrap', () => ({ advanceBootstrap: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../seed', () => ({ processSeedBatch: vi.fn().mockResolvedValue({ mirrored: 0, failed: 0, skipped404: 0 }) }))
-vi.mock('../throttle', () => ({ isThrottled: vi.fn().mockResolvedValue(false), recordTimeout: vi.fn() }))
+// The shared lib entrypoint can keep importing existing worker helpers; mock those helpers
+// directly while asserting the neutral `@/lib/anitabi/mirror/cronTick` boundary.
+vi.mock('@/workers/anitabi-mirror/src/reclaim', () => ({ reclaimStale: vi.fn().mockResolvedValue({ count: 0 }) }))
+vi.mock('@/workers/anitabi-mirror/src/bootstrap', () => ({ advanceBootstrap: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/workers/anitabi-mirror/src/seed', () => ({
+  processSeedBatch: vi.fn().mockResolvedValue({ mirrored: 0, failed: 0, skipped404: 0 }),
+}))
+vi.mock('@/workers/anitabi-mirror/src/delta', () => ({ cronDelta: vi.fn().mockResolvedValue({ enqueued: 0 }) }))
+vi.mock('@/workers/anitabi-mirror/src/throttle', () => ({ isThrottled: vi.fn().mockResolvedValue(false), recordTimeout: vi.fn() }))
 
 describe('cronTick', () => {
   it('runs reclaim → bootstrap → seed when not throttled', async () => {
-    const { reclaimStale } = await import('../reclaim')
-    const { advanceBootstrap } = await import('../bootstrap')
-    const { processSeedBatch } = await import('../seed')
+    const { reclaimStale } = await import('@/workers/anitabi-mirror/src/reclaim')
+    const { advanceBootstrap } = await import('@/workers/anitabi-mirror/src/bootstrap')
+    const { processSeedBatch } = await import('@/workers/anitabi-mirror/src/seed')
     const prisma = {
       mapImageMirrorBootstrap: {
         findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: false, pointCompleted: false }),
       },
     } as any
     const bucket = {} as any
-    await cronTick(prisma, bucket, { source: 'auto' })
-    expect(reclaimStale).toHaveBeenCalled()
+    const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
+    await cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')
+    expect(reclaimStale).toHaveBeenCalledWith(prisma)
     expect(advanceBootstrap).toHaveBeenCalledWith(prisma, 2000)
     expect(processSeedBatch).toHaveBeenCalled()
   })
 
   it('skips seed and bootstrap when throttled', async () => {
-    const { isThrottled } = await import('../throttle')
+    const { isThrottled } = await import('@/workers/anitabi-mirror/src/throttle')
     ;(isThrottled as any).mockResolvedValueOnce(true)
-    const { advanceBootstrap } = await import('../bootstrap')
-    const { processSeedBatch } = await import('../seed')
+    const { advanceBootstrap } = await import('@/workers/anitabi-mirror/src/bootstrap')
+    const { processSeedBatch } = await import('@/workers/anitabi-mirror/src/seed')
     const prisma = {} as any
     const bucket = {} as any
-    await cronTick(prisma, bucket, { source: 'auto' })
+    const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
+    const result = await cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')
+    expect(result).toEqual({ reclaimed: 0, processed: 0, throttled: true })
     expect(advanceBootstrap).not.toHaveBeenCalled()
     expect(processSeedBatch).not.toHaveBeenCalled()
   })
@@ -2623,31 +2631,39 @@ describe('cronTick', () => {
 
 - [ ] **Step 3: Implement**
 
-Create `workers/anitabi-mirror/src/cronTick.ts`:
+Create `lib/anitabi/mirror/cronTick.ts`:
 ```ts
 import type { PrismaClient } from '@prisma/client'
-import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
-import { reclaimStale } from './reclaim'
-import { advanceBootstrap } from './bootstrap'
-import { processSeedBatch } from './seed'
-import { isThrottled } from './throttle'
+import { reclaimStale } from '@/workers/anitabi-mirror/src/reclaim'
+import { advanceBootstrap } from '@/workers/anitabi-mirror/src/bootstrap'
+import { processSeedBatch } from '@/workers/anitabi-mirror/src/seed'
+import { cronDelta } from '@/workers/anitabi-mirror/src/delta'
+import { isThrottled } from '@/workers/anitabi-mirror/src/throttle'
 
-export async function cronTick(
-  prisma: PrismaClient,
-  bucket: R2MirrorBucket,
-  opts: { source: 'auto' | 'manual' },
-): Promise<{ reclaimed: number; mirrored: number; failed: number; skipped404: number; throttled: boolean }> {
-  const reclaimResult = await reclaimStale(prisma)
-  if (await isThrottled(prisma)) {
-    return { reclaimed: reclaimResult.count, mirrored: 0, failed: 0, skipped404: 0, throttled: true }
+export type CronTickDeps = {
+  prisma: PrismaClient
+  bucket: R2Bucket
+  env: { MAP_IMAGE_MIRROR_CRON_ENABLED?: string }
+  source: 'cron' | 'manual'
+}
+export type CronTickResult = { reclaimed: number; processed: number; throttled: boolean }
+
+export async function cronTick(deps: CronTickDeps, mode: 'seed' | 'delta'): Promise<CronTickResult> {
+  const reclaimResult = await reclaimStale(deps.prisma)
+  if (await isThrottled(deps.prisma)) {
+    return { reclaimed: reclaimResult.count, processed: 0, throttled: true }
   }
-  const bs = await prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+  if (mode === 'delta') {
+    const deltaResult = await cronDelta(deps.prisma)
+    return { reclaimed: reclaimResult.count, processed: deltaResult.enqueued, throttled: false }
+  }
+  const bs = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
   if (!bs?.bangumiCompleted || !bs?.pointCompleted) {
-    const chunkSize = opts.source === 'manual' ? 5000 : 2000
-    await advanceBootstrap(prisma, chunkSize)
+    const chunkSize = deps.source === 'manual' ? 5000 : 2000
+    await advanceBootstrap(deps.prisma, chunkSize)
   }
-  const seedResult = await processSeedBatch(prisma, bucket, { batchSize: 100, perRequestDelayMs: 200 })
-  return { reclaimed: reclaimResult.count, ...seedResult, throttled: false }
+  const seedResult = await processSeedBatch(deps.prisma, deps.bucket, { batchSize: 100, perRequestDelayMs: 200 })
+  return { reclaimed: reclaimResult.count, processed: seedResult.mirrored, throttled: false }
 }
 ```
 
@@ -2655,8 +2671,7 @@ export async function cronTick(
 
 ```ts
 import { PrismaClient } from '@prisma/client'
-import { cronTick } from './cronTick'
-import { cronDelta } from './delta'
+import { cronTick, type CronTickDeps } from '@/lib/anitabi/mirror/cronTick'
 
 type Env = {
   MAP_IMAGE_CACHE: R2Bucket
@@ -2672,14 +2687,18 @@ export default {
     }
     const prisma = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } })
     try {
+      const deps: CronTickDeps = {
+        prisma,
+        bucket: env.MAP_IMAGE_CACHE,
+        env,
+        source: 'cron',
+      }
       if (event.cron === '0 * * * *') {
-        const result = await cronDelta(prisma)
-        console.log(`[mirror] delta tick enqueued=${result.enqueued}`)
+        const result = await cronTick(deps, 'delta')
+        console.log(`[mirror] delta tick reclaimed=${result.reclaimed} processed=${result.processed} throttled=${result.throttled}`)
       } else {
-        const result = await cronTick(prisma, env.MAP_IMAGE_CACHE as any, { source: 'auto' })
-        console.log(
-          `[mirror] tick reclaimed=${result.reclaimed} mirrored=${result.mirrored} failed=${result.failed} 404=${result.skipped404} throttled=${result.throttled}`,
-        )
+        const result = await cronTick(deps, 'seed')
+        console.log(`[mirror] seed tick reclaimed=${result.reclaimed} processed=${result.processed} throttled=${result.throttled}`)
       }
     } catch (err) {
       console.error('[mirror] tick failed', err)
@@ -2693,7 +2712,7 @@ export default {
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- --run workers/anitabi-mirror
+npm test -- --run tests/anitabi/mirror/cronTick.test.ts workers/anitabi-mirror
 ```
 
 Expected: all worker tests PASS.
@@ -2701,8 +2720,15 @@ Expected: all worker tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add workers/anitabi-mirror/src
-git commit -m "feat(mirror): cronTick orchestrator + scheduled entry wiring"
+git add lib/anitabi/mirror/cronTick.ts workers/anitabi-mirror/src/index.ts tests/anitabi/mirror/cronTick.test.ts
+git commit -m "Keep mirror cron orchestration on a shared boundary" \
+  -m "The worker entrypoint and admin bootstrap route both rely on cronTick, so the plan moves that orchestrator into lib/anitabi/mirror to avoid importing worker source into the Next.js bundle." \
+  -m "Constraint: Next admin routes must not import worker-only modules" \
+  -m "Rejected: Leave cronTick under workers/anitabi-mirror/src | it creates a cross-worker import boundary into the app bundle" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: worker mirror tests plus shared cronTick coverage" \
+  -m "Not-tested: production worker schedule"
 ```
 
 ---
@@ -2736,7 +2762,7 @@ vi.mock('@/lib/anitabi/api', () => ({
   }),
 }))
 vi.mock('@/lib/auth/session', () => ({ getServerAuthSession: vi.fn().mockResolvedValue({ user: { isAdmin: true } }) }))
-vi.mock('@/workers/anitabi-mirror/src/cronTick', () => ({ cronTick }))
+vi.mock('@/lib/anitabi/mirror/cronTick', () => ({ cronTick }))
 
 describe('POST /bootstrap', () => {
   it('rejects non-admin', async () => {
@@ -2772,7 +2798,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
 import { getServerAuthSession } from '@/lib/auth/session'
-import { cronTick } from '@/workers/anitabi-mirror/src/cronTick'
+import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 
@@ -2792,15 +2818,16 @@ export async function POST(req: Request) {
   const env = (globalThis as any)?.cloudflare?.env ?? (process.env as any)
   const bucket = env.MAP_IMAGE_CACHE
   const startedAt = Date.now()
+  const runDeps = { prisma: deps.prisma, bucket, env, source: 'manual' as const }
 
   if (body.mode === 'force-complete') {
     while (Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS) {
       const bs = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
       if (bs?.bangumiCompleted && bs?.pointCompleted) break
-      await cronTick(deps.prisma, bucket, { source: 'manual' })
+      await cronTick(runDeps, 'seed')
     }
   } else {
-    await cronTick(deps.prisma, bucket, { source: 'manual' })
+    await cronTick(runDeps, 'seed')
   }
 
   const final = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
@@ -3803,7 +3830,7 @@ Spec coverage check (each spec section → task):
 
 All sections covered.
 
-Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(prisma, bucket, opts)` signature matches in Task 3.7 / 4.1. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
+Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(deps, mode)` with `CronTickDeps` / `CronTickResult` matches in Task 3.7 / 4.1 and keeps the Next.js admin route on the shared `lib/anitabi/mirror` boundary. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
 
 No placeholder phrases (TBD / TODO / "implement later") in plan steps.
 
