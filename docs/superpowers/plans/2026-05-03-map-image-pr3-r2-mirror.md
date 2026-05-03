@@ -2732,7 +2732,7 @@ Expected: all shared mirror tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/anitabi/mirror workers/anitabi-mirror/src/index.ts tests/anitabi/mirror/cronTick.test.ts
+git add lib/anitabi/mirror workers/anitabi-mirror/src/index.ts tests/anitabi/mirror
 git commit -m "Keep mirror cron orchestration on a shared boundary" \
   -m "The worker entrypoint and admin bootstrap route both rely on cronTick, so the plan moves that orchestrator into lib/anitabi/mirror to avoid importing worker source into the Next.js bundle." \
   -m "Constraint: Next admin routes must not import worker-only modules" \
@@ -2823,6 +2823,7 @@ Create `lib/anitabi/handlers/adminImageMirrorBootstrap.ts`:
 ```ts
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
+import { advanceBootstrap } from '@/lib/anitabi/mirror/bootstrap'
 import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
@@ -2852,7 +2853,7 @@ export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiD
     while (Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS) {
       const bs = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
       if (bs?.bangumiCompleted && bs?.pointCompleted) break
-      await cronTick(runDeps, 'seed')
+      await advanceBootstrap(deps.prisma, 5000)
     }
   } else {
     await cronTick(runDeps, 'seed')
