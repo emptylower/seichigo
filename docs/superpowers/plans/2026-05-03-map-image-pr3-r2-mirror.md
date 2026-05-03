@@ -2313,7 +2313,21 @@ Build + deploy from repo root:
 `cd workers/anitabi-mirror && npm run deploy`
 ```
 
-- [ ] **Step 5: Verify exact `@prisma/pg-worker` version, generated types, resolved Prisma WASM chain, and Wrangler packaging**
+- [ ] **Step 5: Provision the mirror worker `DATABASE_URL` secret before runtime wiring depends on it**
+
+From the repo root, run:
+```bash
+cd workers/anitabi-mirror
+wrangler secret put DATABASE_URL
+# paste same Postgres connection string used by main worker
+wrangler secret list
+```
+
+Expected: `DATABASE_URL` is listed for `seichigo-anitabi-mirror`, but the value is not displayed.
+
+This secret must exist before Task 3.7 wires `env.DATABASE_URL` into `Pool({ max: 4 })` and before any later cron activation depends on deployed DB access. After C.5 deduplicates schedules, the mirror worker runs at most one cron at a time, so `Pool({ max: 4 })` is the intended bounded mirror-worker pool size; the main worker keeps its own pool independently and does not share this cap.
+
+- [ ] **Step 6: Verify exact `@prisma/pg-worker` version, generated types, resolved Prisma WASM chain, Wrangler packaging, and secret presence**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror && npm run typegen
@@ -2344,11 +2358,12 @@ EOF
 )
 rg -n "export default import\\('./query_compiler_bg\\.wasm'\\)" "$loader_path"
 cd workers/anitabi-mirror && npm run deploy -- --dry-run 2>&1 | tail -20
+cd workers/anitabi-mirror && wrangler secret list | rg DATABASE_URL
 ```
 
-Expected: `worker-configuration.d.ts` is generated; the root `package.json` dependency entry for `@prisma/pg-worker` is exactly `6.9.0`; `package-lock.json` records both the root dependency and `node_modules/@prisma/pg-worker` installed version as exactly `6.9.0`; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
+Expected: `worker-configuration.d.ts` is generated; the root `package.json` dependency entry for `@prisma/pg-worker` is exactly `6.9.0`; `package-lock.json` records both the root dependency and `node_modules/@prisma/pg-worker` installed version as exactly `6.9.0`; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; the deploy dry-run succeeds with no syntax errors; and `DATABASE_URL` is listed for `seichigo-anitabi-mirror`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cd /Users/mac/Desktop/seichigo
@@ -4131,25 +4146,16 @@ git push --tags
 
 ### Task 7.3: Deploy mirror worker (`MIRROR_CRON=0`)
 
-- [ ] **Step 1: Set the mirror worker `DATABASE_URL` secret**
-
-```bash
-cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
-wrangler secret put DATABASE_URL
-```
-
-Use the production Postgres URL that already contains the PR3 migration. This secret must exist before the first deploy so the later activation path already has its DB credential and the rollout does not introduce a missing-secret gap when cron is enabled.
-
-- [ ] **Step 2: Verify the secret is present**
+- [ ] **Step 1: Re-verify the mirror worker `DATABASE_URL` secret from Task 3.1**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
 wrangler secret list | rg DATABASE_URL
 ```
 
-Expected: `DATABASE_URL` is listed for `seichigo-anitabi-mirror`.
+Expected: `DATABASE_URL` is listed for `seichigo-anitabi-mirror`. If it is missing, return to Task 3.1 Step 5 and provision it there before deploying.
 
-- [ ] **Step 3: Deploy via the build-backed script**
+- [ ] **Step 2: Deploy via the build-backed script**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
@@ -4158,14 +4164,14 @@ npm run deploy
 
 Expected: deployment succeeds. This validates packaging, deploy wiring, and deployed config while `MAP_IMAGE_MIRROR_CRON_ENABLED=0`; because Task 3.7 returns before creating `Pool`/`Prisma` when cron is disabled, this deploy does not exercise DB boot until Task 7.6 enables cron or a future explicit probe is added.
 
-- [ ] **Step 4: Verify deployment**
+- [ ] **Step 3: Verify deployment**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
 wrangler deployments list 2>&1 | head
 ```
 
-- [ ] **Step 5: Tag**
+- [ ] **Step 4: Tag**
 
 ```bash
 cd /Users/mac/Desktop/seichigo
