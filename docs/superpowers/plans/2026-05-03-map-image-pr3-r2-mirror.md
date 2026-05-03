@@ -1731,9 +1731,9 @@ npm test -- --run tests/anitabi/imageServe.r2.test.ts
 - [ ] **Step 3: Implement write-through**
 
 In `lib/anitabi/handlers/imageServe.ts`, locate the upstream-success path where `buildRenderResponse` returns the response. Keep the ordering explicit:
-1. build the upstream-derived response with its final client/cache headers already attached
-2. if CF render caching is enabled, call `storeRenderCache(requestUrl, responseWithHeaders)` before teeing or cloning anything else
-3. tee that already-headered response for lazy R2 write-through when enabled
+1. build `renderResponse` with its final client/cache headers already attached, including `X-Original-Source` from Task 2.5
+2. if CF render caching is enabled, call `storeRenderCache(requestUrl, renderResponse)` before teeing or cloning anything else
+3. tee that already-headered cached/client response for lazy R2 write-through when enabled
 4. return the client response
 
 `storeRenderCache(...)` clones the response, so do not add `X-Original-Source` after the cache write if later CF hits must carry it.
@@ -1747,13 +1747,17 @@ const waitUntil = bindings?.ctx?.waitUntil ?? bindings?.waitUntil
 
 let responseForClient = renderResponse
 
-if (r2WriteEnabled && bucket && renderResponse.body) {
-  const [clientBody, mirrorBody] = renderResponse.body.tee()
+if (renderCacheEnabled) {
+  responseForClient = await storeRenderCache(requestUrl, renderResponse)
+}
+
+if (r2WriteEnabled && bucket && responseForClient.body) {
+  const [clientBody, mirrorBody] = responseForClient.body.tee()
   const mirrorBytesPromise = readBytesWithLimit(mirrorBody, MAX_IMAGE_BYTES)
 
   responseForClient = new Response(clientBody, {
-    status: renderResponse.status,
-    headers: renderResponse.headers,
+    status: responseForClient.status,
+    headers: responseForClient.headers,
   })
 
   const commitMirror = async () => {
