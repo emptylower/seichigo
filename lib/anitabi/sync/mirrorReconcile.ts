@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   enumerateBangumiCoverVariants,
   enumeratePointImageVariants,
@@ -45,48 +45,22 @@ async function reconcileSourceVariants(
     variants: Array<{ label: string; url: string }>
   },
 ): Promise<void> {
-  await prisma.mapImageMirrorState.updateMany({
-    where: {
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-    },
-    data: {
-      status: 'pending',
-      attempts: 0,
-      lastAttemptAt: null,
-      lastError: null,
-      mirroredAt: null,
-      contentBytes: null,
-    },
-  })
+  if (input.variants.length === 0) return
 
-  for (const variant of input.variants) {
-    const r2Key = await computeMirrorKey(variant.url, inferImageMimeType(variant.url))
+  const variants = await Promise.all(
+    input.variants.map(async (variant) => ({
+      ...variant,
+      r2Key: await computeMirrorKey(variant.url, inferImageMimeType(variant.url)),
+    })),
+  )
 
-    await prisma.mapImageMirrorState.upsert({
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.mapImageMirrorState.updateMany({
       where: {
-        sourceType_sourceId_variant: {
-          sourceType: input.sourceType,
-          sourceId: input.sourceId,
-          variant: variant.label,
-        },
-      },
-      create: {
         sourceType: input.sourceType,
         sourceId: input.sourceId,
-        variant: variant.label,
-        canonicalUrl: variant.url,
-        r2Key,
-        status: 'pending',
-        attempts: 0,
-        lastAttemptAt: null,
-        lastError: null,
-        mirroredAt: null,
-        contentBytes: null,
       },
-      update: {
-        canonicalUrl: variant.url,
-        r2Key,
+      data: {
         status: 'pending',
         attempts: 0,
         lastAttemptAt: null,
@@ -95,7 +69,42 @@ async function reconcileSourceVariants(
         contentBytes: null,
       },
     })
-  }
+
+    for (const variant of variants) {
+      await tx.mapImageMirrorState.upsert({
+        where: {
+          sourceType_sourceId_variant: {
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
+            variant: variant.label,
+          },
+        },
+        create: {
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+          variant: variant.label,
+          canonicalUrl: variant.url,
+          r2Key: variant.r2Key,
+          status: 'pending',
+          attempts: 0,
+          lastAttemptAt: null,
+          lastError: null,
+          mirroredAt: null,
+          contentBytes: null,
+        },
+        update: {
+          canonicalUrl: variant.url,
+          r2Key: variant.r2Key,
+          status: 'pending',
+          attempts: 0,
+          lastAttemptAt: null,
+          lastError: null,
+          mirroredAt: null,
+          contentBytes: null,
+        },
+      })
+    }
+  })
 }
 
 export async function reconcileMirrorAfterDiff(

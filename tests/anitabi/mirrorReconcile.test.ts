@@ -34,12 +34,30 @@ type MirrorChange = {
   newValue: string | null
 }
 
-function createPrismaMock() {
+function createPrismaMock(options: { failTxUpsertAt?: number } = {}) {
+  let txUpsertCount = 0
+  const tx = {
+    mapImageMirrorState: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      upsert: vi.fn().mockImplementation(async () => {
+        txUpsertCount += 1
+        if (options.failTxUpsertAt === txUpsertCount) {
+          throw new Error('tx upsert failed')
+        }
+        return {}
+      }),
+    },
+  }
+
   return {
     mapImageMirrorState: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       upsert: vi.fn().mockResolvedValue({}),
     },
+    $transaction: vi
+      .fn()
+      .mockImplementation(async (callback: (tx: typeof tx) => unknown) => callback(tx)),
+    __tx: tx,
   }
 }
 
@@ -101,7 +119,10 @@ describe('reconcileMirrorAfterDiff', () => {
       pointChanges: [],
     })
 
-    expect(prisma.mapImageMirrorState.updateMany).toHaveBeenCalledWith({
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).toHaveBeenCalledWith({
       where: { sourceType: 'bangumi-cover', sourceId: '123' },
       data: {
         status: 'pending',
@@ -116,9 +137,9 @@ describe('reconcileMirrorAfterDiff', () => {
     const variants = enumerateBangumiCoverVariants(change.newValue)
     const expectedKeys = await expectedJpegKeys(variants.map((variant) => variant.url))
 
-    expect(prisma.mapImageMirrorState.upsert).toHaveBeenCalledTimes(variants.length)
+    expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenCalledTimes(variants.length)
     for (const [index, variant] of variants.entries()) {
-      expect(prisma.mapImageMirrorState.upsert).toHaveBeenNthCalledWith(index + 1, {
+      expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenNthCalledWith(index + 1, {
         where: {
           sourceType_sourceId_variant: {
             sourceType: 'bangumi-cover',
@@ -153,6 +174,28 @@ describe('reconcileMirrorAfterDiff', () => {
     }
   })
 
+  it('skips reset and upsert when the next cover URL has no supported variants', async () => {
+    const prisma = createPrismaMock()
+
+    await reconcileMirrorAfterDiff(prisma as never, {
+      bangumiChanges: [
+        {
+          id: 123,
+          field: 'cover',
+          oldValue: 'https://image.anitabi.cn/bangumi/123/old.jpg',
+          newValue: 'https://example.com/unsupported.jpg',
+        },
+      ],
+      pointChanges: [],
+    })
+
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+  })
+
   it('skips non-cover and non-image fields', async () => {
     const prisma = createPrismaMock()
 
@@ -175,8 +218,11 @@ describe('reconcileMirrorAfterDiff', () => {
       ],
     })
 
+    expect(prisma.$transaction).not.toHaveBeenCalled()
     expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
     expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.upsert).not.toHaveBeenCalled()
   })
 
   it('handles point image variants', async () => {
@@ -193,7 +239,10 @@ describe('reconcileMirrorAfterDiff', () => {
       pointChanges: [change],
     })
 
-    expect(prisma.mapImageMirrorState.updateMany).toHaveBeenCalledWith({
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).toHaveBeenCalledWith({
       where: { sourceType: 'point-image', sourceId: '123:point-1' },
       data: {
         status: 'pending',
@@ -208,9 +257,9 @@ describe('reconcileMirrorAfterDiff', () => {
     const variants = enumeratePointImageVariants(change.newValue)
     const expectedKeys = await expectedJpegKeys(variants.map((variant) => variant.url))
 
-    expect(prisma.mapImageMirrorState.upsert).toHaveBeenCalledTimes(variants.length)
+    expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenCalledTimes(variants.length)
     for (const [index, variant] of variants.entries()) {
-      expect(prisma.mapImageMirrorState.upsert).toHaveBeenNthCalledWith(index + 1, {
+      expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenNthCalledWith(index + 1, {
         where: {
           sourceType_sourceId_variant: {
             sourceType: 'point-image',
@@ -267,8 +316,35 @@ describe('reconcileMirrorAfterDiff', () => {
       ],
     })
 
+    expect(prisma.$transaction).not.toHaveBeenCalled()
     expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
     expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects the source transaction when an upsert fails and avoids direct writes', async () => {
+    const prisma = createPrismaMock({ failTxUpsertAt: 2 })
+
+    await expect(
+      reconcileMirrorAfterDiff(prisma as never, {
+        bangumiChanges: [
+          {
+            id: 123,
+            field: 'cover',
+            oldValue: 'https://image.anitabi.cn/bangumi/123/old.jpg',
+            newValue: 'https://image.anitabi.cn/bangumi/123/new.jpg',
+          },
+        ],
+        pointChanges: [],
+      }),
+    ).rejects.toThrow('tx upsert failed')
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
+    expect(prisma.__tx.mapImageMirrorState.updateMany).toHaveBeenCalledTimes(1)
+    expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenCalledTimes(2)
   })
 })
 
