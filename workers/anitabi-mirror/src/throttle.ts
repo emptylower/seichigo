@@ -29,9 +29,9 @@ export type ThrottlePrisma = {
         mirroredAt: Date
       }
     }): Promise<unknown>
-    delete(args: {
+    deleteMany(args: {
       where: ThrottleWhere
-    }): Promise<unknown>
+    }): Promise<{ count: number }>
   }
 }
 
@@ -46,14 +46,15 @@ export async function isThrottled(prisma: ThrottlePrisma): Promise<boolean> {
     return false
   }
 
-  return Date.now() - row.mirroredAt.getTime() < THROTTLE_DURATION_MS
+  const ageMs = Date.now() - row.mirroredAt.getTime()
+  return ageMs >= 0 && ageMs < THROTTLE_DURATION_MS
 }
 
 export async function recordTimeout(
   prisma: ThrottlePrisma,
   recentTimeoutCount: number,
 ): Promise<void> {
-  if (recentTimeoutCount < TIMEOUT_THRESHOLD) {
+  if (!Number.isFinite(recentTimeoutCount) || recentTimeoutCount < TIMEOUT_THRESHOLD) {
     return
   }
 
@@ -76,9 +77,9 @@ export async function recordTimeout(
 }
 
 export async function clearThrottle(prisma: ThrottlePrisma): Promise<void> {
-  await prisma.mapImageMirrorState.delete({
+  await prisma.mapImageMirrorState.deleteMany({
     where: {
       sourceType_sourceId_variant: THROTTLE_KEY,
     },
-  }).catch(() => undefined)
+  })
 }

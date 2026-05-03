@@ -18,7 +18,7 @@ describe('throttle', () => {
       mapImageMirrorState: {
         findUnique,
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
@@ -35,7 +35,7 @@ describe('throttle', () => {
           .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
           .mockResolvedValue({ mirroredAt: null }),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
@@ -52,11 +52,28 @@ describe('throttle', () => {
           .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
           .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:30:00Z') }),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
     await expect(isThrottled(prisma)).resolves.toBe(true)
+  })
+
+  it('returns false when the throttle row timestamp is in the future', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
+
+    const prisma = {
+      mapImageMirrorState: {
+        findUnique: vi
+          .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
+          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T12:30:00Z') }),
+        upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
+      },
+    } satisfies ThrottlePrisma
+
+    await expect(isThrottled(prisma)).resolves.toBe(false)
   })
 
   it('returns false when the throttle row is stale', async () => {
@@ -69,7 +86,24 @@ describe('throttle', () => {
           .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
           .mockResolvedValue({ mirroredAt: new Date('2026-05-03T10:00:00Z') }),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
+      },
+    } satisfies ThrottlePrisma
+
+    await expect(isThrottled(prisma)).resolves.toBe(false)
+  })
+
+  it('returns false when the throttle row is exactly one hour old', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
+
+    const prisma = {
+      mapImageMirrorState: {
+        findUnique: vi
+          .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
+          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:00:00Z') }),
+        upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
@@ -85,7 +119,7 @@ describe('throttle', () => {
       mapImageMirrorState: {
         findUnique: vi.fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>(),
         upsert,
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
@@ -111,7 +145,7 @@ describe('throttle', () => {
       mapImageMirrorState: {
         findUnique: vi.fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>(),
         upsert,
-        delete: vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>(),
+        deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
     } satisfies ThrottlePrisma
 
@@ -119,13 +153,32 @@ describe('throttle', () => {
     expect(upsert).not.toHaveBeenCalled()
   })
 
-  it('deletes the throttle row when clearing the breaker', async () => {
-    const remove = vi.fn<ThrottlePrisma['mapImageMirrorState']['delete']>().mockResolvedValue({})
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'does not write the throttle row for invalid timeout count %p',
+    async (recentTimeoutCount) => {
+      const upsert = vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>().mockResolvedValue({})
+      const prisma = {
+        mapImageMirrorState: {
+          findUnique: vi.fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>(),
+          upsert,
+          deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
+        },
+      } satisfies ThrottlePrisma
+
+      await expect(recordTimeout(prisma, recentTimeoutCount)).resolves.toBeUndefined()
+      expect(upsert).not.toHaveBeenCalled()
+    },
+  )
+
+  it('treats missing throttle row as benign when clearing the breaker', async () => {
+    const remove = vi
+      .fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>()
+      .mockResolvedValue({ count: 0 })
     const prisma = {
       mapImageMirrorState: {
         findUnique: vi.fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>(),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: remove,
+        deleteMany: remove,
       },
     } satisfies ThrottlePrisma
 
@@ -135,19 +188,19 @@ describe('throttle', () => {
     })
   })
 
-  it('swallows delete errors when clearing the breaker', async () => {
+  it('propagates persistence failures when clearing the breaker', async () => {
     const remove = vi
-      .fn<ThrottlePrisma['mapImageMirrorState']['delete']>()
-      .mockRejectedValue(new Error('missing row'))
+      .fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>()
+      .mockRejectedValue(new Error('database offline'))
     const prisma = {
       mapImageMirrorState: {
         findUnique: vi.fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>(),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
-        delete: remove,
+        deleteMany: remove,
       },
     } satisfies ThrottlePrisma
 
-    await expect(clearThrottle(prisma)).resolves.toBeUndefined()
+    await expect(clearThrottle(prisma)).rejects.toThrow('database offline')
     expect(remove).toHaveBeenCalledWith({
       where: { sourceType_sourceId_variant: THROTTLE_KEY },
     })
