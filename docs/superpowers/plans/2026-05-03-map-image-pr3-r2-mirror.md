@@ -2878,6 +2878,7 @@ export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiD
 Create `app/api/admin/anitabi/image-mirror/bootstrap/route.ts` as a thin wrapper:
 ```ts
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
