@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 
 import { cronDelta } from './delta'
 import { cronTick, type CronTickPrisma } from './cronTick'
+import { createMirrorPrismaClient } from './prisma'
 
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -13,13 +13,7 @@ export default {
       return
     }
 
-    const prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: env.DATABASE_URL,
-        },
-      },
-    })
+    const prisma = createMirrorPrismaClient(env.DATABASE_URL)
 
     try {
       if (controller.cron === '0 * * * *') {
@@ -36,6 +30,7 @@ export default {
       }
     } catch (error) {
       console.error('[mirror] tick failed', error)
+      throw error
     } finally {
       await prisma.$disconnect()
     }

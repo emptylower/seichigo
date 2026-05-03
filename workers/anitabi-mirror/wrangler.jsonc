@@ -4,6 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-14",
   "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    "@prisma/client/wasm": "../../node_modules/@prisma/client/wasm.js"
+  },
   "triggers": {
     "crons": ["*/5 * * * *", "0 * * * *"]
   },

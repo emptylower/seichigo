@@ -103,7 +103,7 @@ async function loadIndexWithMocks(opts?: {
 
   const disconnectMock = vi.fn().mockResolvedValue(undefined)
   const prismaInstance = { $disconnect: disconnectMock }
-  const prismaClientMock = vi.fn(() => prismaInstance)
+  const createMirrorPrismaClientMock = vi.fn(() => prismaInstance)
   const cronTickMock = opts?.cronTickError
     ? vi.fn().mockRejectedValue(opts.cronTickError)
     : vi.fn().mockResolvedValue(
@@ -120,8 +120,8 @@ async function loadIndexWithMocks(opts?: {
     ? vi.fn().mockRejectedValue(opts.cronDeltaError)
     : vi.fn().mockResolvedValue(opts?.cronDeltaResult ?? { enqueued: 0 })
 
-  vi.doMock('@prisma/client', () => ({
-    PrismaClient: prismaClientMock,
+  vi.doMock('../prisma', () => ({
+    createMirrorPrismaClient: createMirrorPrismaClientMock,
   }))
   vi.doMock('../cronTick', () => ({
     cronTick: cronTickMock,
@@ -133,11 +133,36 @@ async function loadIndexWithMocks(opts?: {
   const mod = await import('../index')
   return {
     worker: mod.default,
-    prismaClientMock,
+    createMirrorPrismaClientMock,
     prismaInstance,
     disconnectMock,
     cronTickMock,
     cronDeltaMock,
+  }
+}
+
+async function loadPrismaFactoryWithMocks() {
+  vi.resetModules()
+
+  const adapterInstance = { kind: 'pg-adapter' }
+  const prismaInstance = { kind: 'prisma-client' }
+  const prismaPgMock = vi.fn(() => adapterInstance)
+  const prismaClientMock = vi.fn(() => prismaInstance)
+
+  vi.doMock('@prisma/adapter-pg', () => ({
+    PrismaPg: prismaPgMock,
+  }))
+  vi.doMock('@prisma/client/wasm', () => ({
+    PrismaClient: prismaClientMock,
+  }))
+
+  const mod = await import('../prisma')
+  return {
+    createMirrorPrismaClient: mod.createMirrorPrismaClient,
+    prismaPgMock,
+    prismaClientMock,
+    adapterInstance,
+    prismaInstance,
   }
 }
 
@@ -153,7 +178,9 @@ afterEach(() => {
   vi.clearAllMocks()
   vi.doUnmock('../cronTick')
   vi.doUnmock('../delta')
-  vi.doUnmock('@prisma/client')
+  vi.doUnmock('../prisma')
+  vi.doUnmock('@prisma/adapter-pg')
+  vi.doUnmock('@prisma/client/wasm')
 })
 
 describe('cronTick', () => {
@@ -285,9 +312,27 @@ describe('cronTick', () => {
 })
 
 describe('scheduled worker entry', () => {
+  it('builds a worker-safe Prisma client with the pg adapter', async () => {
+    const { createMirrorPrismaClient, prismaPgMock, prismaClientMock, adapterInstance, prismaInstance } =
+      await loadPrismaFactoryWithMocks()
+
+    expect(createMirrorPrismaClient('postgres://db')).toBe(prismaInstance)
+    expect(prismaPgMock).toHaveBeenCalledWith({
+      connectionString: 'postgres://db',
+      max: 1,
+      connectionTimeoutMillis: 8_000,
+      query_timeout: 12_000,
+      statement_timeout: 12_000,
+      idleTimeoutMillis: 30_000,
+    })
+    expect(prismaClientMock).toHaveBeenCalledWith({
+      adapter: adapterInstance,
+    })
+  })
+
   it('returns early when the cron flag is disabled', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    const { worker, prismaClientMock, cronDeltaMock, cronTickMock } = await loadIndexWithMocks()
+    const { worker, createMirrorPrismaClientMock, cronDeltaMock, cronTickMock } = await loadIndexWithMocks()
 
     await worker.scheduled?.(
       createController('*/5 * * * *'),
@@ -299,7 +344,7 @@ describe('scheduled worker entry', () => {
       createCtx(),
     )
 
-    expect(prismaClientMock).not.toHaveBeenCalled()
+    expect(createMirrorPrismaClientMock).not.toHaveBeenCalled()
     expect(cronDeltaMock).not.toHaveBeenCalled()
     expect(cronTickMock).not.toHaveBeenCalled()
     expect(logSpy).toHaveBeenCalledWith('[mirror] cron disabled by flag')
@@ -307,7 +352,7 @@ describe('scheduled worker entry', () => {
 
   it('routes hourly schedules to cronDelta and disconnects Prisma', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    const { worker, prismaClientMock, prismaInstance, disconnectMock, cronDeltaMock, cronTickMock } =
+    const { worker, createMirrorPrismaClientMock, prismaInstance, disconnectMock, cronDeltaMock, cronTickMock } =
       await loadIndexWithMocks({
         cronDeltaResult: { enqueued: 9 },
       })
@@ -322,9 +367,7 @@ describe('scheduled worker entry', () => {
       createCtx(),
     )
 
-    expect(prismaClientMock).toHaveBeenCalledWith({
-      datasources: { db: { url: 'postgres://db' } },
-    })
+    expect(createMirrorPrismaClientMock).toHaveBeenCalledWith('postgres://db')
     expect(cronDeltaMock).toHaveBeenCalledWith(prismaInstance)
     expect(cronTickMock).not.toHaveBeenCalled()
     expect(logSpy).toHaveBeenCalledWith('[mirror] delta tick enqueued=9')
@@ -364,22 +407,24 @@ describe('scheduled worker entry', () => {
     expect(disconnectMock).toHaveBeenCalledTimes(1)
   })
 
-  it('logs scheduled failures and still disconnects Prisma', async () => {
+  it('logs scheduled failures, rejects, and still disconnects Prisma', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const failure = new Error('tick exploded')
     const { worker, disconnectMock } = await loadIndexWithMocks({
       cronTickError: failure,
     })
 
-    await worker.scheduled?.(
-      createController('*/5 * * * *'),
-      {
-        MAP_IMAGE_MIRROR_CRON_ENABLED: '1',
-        DATABASE_URL: 'postgres://db',
-        MAP_IMAGE_CACHE: createBucket(),
-      } as unknown as Env,
-      createCtx(),
-    )
+    await expect(
+      worker.scheduled?.(
+        createController('*/5 * * * *'),
+        {
+          MAP_IMAGE_MIRROR_CRON_ENABLED: '1',
+          DATABASE_URL: 'postgres://db',
+          MAP_IMAGE_CACHE: createBucket(),
+        } as unknown as Env,
+        createCtx(),
+      ),
+    ).rejects.toThrow('tick exploded')
 
     expect(errorSpy).toHaveBeenCalledWith('[mirror] tick failed', failure)
     expect(disconnectMock).toHaveBeenCalledTimes(1)
