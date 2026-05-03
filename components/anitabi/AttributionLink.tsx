@@ -21,7 +21,7 @@ export function buildAnitabiBangumiHref(bangumiId?: number | null): string {
   if (typeof bangumiId !== 'number' || !Number.isFinite(bangumiId) || bangumiId <= 0) {
     return DEFAULT_ANITABI_URL
   }
-  return `${DEFAULT_ANITABI_URL}/bangumi/${bangumiId}`
+  return `${DEFAULT_ANITABI_URL}/map?bangumiId=${bangumiId}`
 }
 
 export function resolveAnitabiAttributionHref(...candidates: Array<string | null | undefined>): string {
