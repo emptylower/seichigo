@@ -1,4 +1,5 @@
 export const runtime = 'nodejs'
+export const maxDuration = 30
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps, type AnitabiApiDeps } from '@/lib/anitabi/api'
@@ -6,6 +7,7 @@ import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { cronTick } from '@/workers/anitabi-mirror/src/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
+const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 1_000
 
 type BootstrapMode = 'advance' | 'force-complete'
 
@@ -54,16 +56,18 @@ function getMirrorBucket(deps: AnitabiApiDeps): R2MirrorBucket {
     }
   ).cloudflare?.env?.MAP_IMAGE_CACHE
 
-  const processBucket = (process.env as typeof process.env & {
-    MAP_IMAGE_CACHE?: R2MirrorBucket
-  }).MAP_IMAGE_CACHE
-
-  const bucket = deps.env?.MAP_IMAGE_CACHE || globalBucket || processBucket
+  const bucket = deps.env?.MAP_IMAGE_CACHE || globalBucket
   if (!bucket) {
     throw new Error('MAP_IMAGE_CACHE is not configured')
   }
 
   return bucket
+}
+
+async function readBootstrap(deps: AnitabiApiDeps): Promise<BootstrapRow> {
+  return deps.prisma.mapImageMirrorBootstrap.findUnique({
+    where: { id: 1 },
+  })
 }
 
 async function readTotals(deps: AnitabiApiDeps): Promise<Record<string, number>> {
@@ -77,6 +81,10 @@ async function readTotals(deps: AnitabiApiDeps): Promise<Record<string, number>>
 
 function isBootstrapComplete(bootstrap: BootstrapRow): boolean {
   return Boolean(bootstrap?.bangumiCompleted && bootstrap?.pointCompleted)
+}
+
+function hasForceCompleteBudgetRemaining(startedAt: number): boolean {
+  return Date.now() - startedAt <= FORCE_COMPLETE_BUDGET_MS - FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS
 }
 
 export async function POST(req: Request) {
@@ -93,18 +101,23 @@ export async function POST(req: Request) {
     const mode = await readMode(req)
     const bucket = getMirrorBucket(deps)
 
-    let bootstrap: BootstrapRow = null
+    let bootstrap: BootstrapRow = mode === 'force-complete' ? await readBootstrap(deps) : null
 
-    do {
+    if (mode === 'advance') {
       await cronTick(deps.prisma, bucket, { source: 'manual' })
-      bootstrap = await deps.prisma.mapImageMirrorBootstrap.findUnique({
-        where: { id: 1 },
-      })
-    } while (
-      mode === 'force-complete'
-      && !isBootstrapComplete(bootstrap)
-      && Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS
-    )
+      bootstrap = await readBootstrap(deps)
+    } else {
+      while (
+        !isBootstrapComplete(bootstrap)
+        && hasForceCompleteBudgetRemaining(startedAt)
+      ) {
+        const result = await cronTick(deps.prisma, bucket, { source: 'manual' })
+        bootstrap = await readBootstrap(deps)
+        if (result.throttled) {
+          break
+        }
+      }
+    }
 
     const finalBootstrap = bootstrap
     const totals = await readTotals(deps)
