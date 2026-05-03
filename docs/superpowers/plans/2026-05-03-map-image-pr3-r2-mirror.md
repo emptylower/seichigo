@@ -2323,7 +2323,7 @@ wrangler secret list
 
 Expected: `DATABASE_URL` is listed for `seichigo-anitabi-mirror`, but the value is not displayed.
 
-This secret must exist before Task 3.7 wires `env.DATABASE_URL` into `Pool({ max: 4 })` and before any later cron activation depends on deployed DB access. After C.5 deduplicates schedules, the mirror worker runs at most one cron at a time, so `Pool({ max: 4 })` is the intended bounded mirror-worker pool size; the main worker keeps its own pool independently and does not share this cap.
+This secret must exist before Task 3.7 wires `env.DATABASE_URL` into `Pool({ max: 4 })` and before any later cron activation depends on deployed DB access. After C.5 collapses seed/delta onto one schedule, the separate hour-mark seed/delta trigger race is gone, but overlapping scheduled invocations or other workers can still exist; `Pool({ max: 4 })` is therefore the intended bounded per-invocation mirror-worker pool size. The main worker keeps its own pool independently and does not share this cap.
 
 - [ ] **Step 6: Verify exact `@prisma/pg-worker` version, generated types, resolved Prisma WASM chain, Wrangler packaging, and secret presence**
 
