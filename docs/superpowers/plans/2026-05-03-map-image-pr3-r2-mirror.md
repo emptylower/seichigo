@@ -1807,7 +1807,12 @@ Create `workers/anitabi-mirror/package.json`:
 }
 ```
 
-Keep the nested worker package dependency-light and resolve Prisma packages from the repo root. Before Task 3.7 wires the runtime entrypoint, add `@prisma/pg-worker` to the root `dependencies` next to `@prisma/adapter-pg` and `@prisma/client`, then run `npm install` from `/Users/mac/Desktop/seichigo`. Use `prisma` only as the version-family reference (currently `^6.16.0`) because it lives in `devDependencies`, so `workers/anitabi-mirror/src/index.ts` can import `@prisma/pg-worker` via upward Node resolution without creating a separate `workers/anitabi-mirror/node_modules` tree.
+Keep the nested worker package dependency-light and resolve Prisma packages from the repo root. Before Task 3.7 wires the runtime entrypoint, add `@prisma/pg-worker` to the root `dependencies` next to `@prisma/adapter-pg` and `@prisma/client` by running this exact command from `/Users/mac/Desktop/seichigo`:
+```bash
+npm install --save-exact @prisma/pg-worker@6.9.0
+```
+
+Pin `@prisma/pg-worker` to `6.9.0` exactly because that is the current latest published package version. Do **not** invent a fake Prisma-family match such as `@prisma/pg-worker@6.16.0`; that version is not published, so any plan that tells implementers to "match the repo Prisma version family" for this package is not executable. This task intentionally mixes `@prisma/pg-worker@6.9.0` with repo-root `@prisma/adapter-pg`, `@prisma/client`, and `prisma` at `6.16.x`, so the implementation must verify the exact root `package.json` entry and the exact installed `package-lock.json` version before proceeding to Task 3.7's Worker `Pool` wiring and deploy checks. If Prisma later publishes a matching `@prisma/pg-worker` version, update the pin deliberately in both `package.json` and `package-lock.json` with lockfile proof rather than silently floating to a guessed version.
 
 Create `workers/anitabi-mirror/scripts/build.mjs`:
 ```js
@@ -1917,12 +1922,14 @@ Build + deploy from repo root:
 `cd workers/anitabi-mirror && npm run deploy`
 ```
 
-- [ ] **Step 5: Verify generated types, resolved Prisma WASM chain, and Wrangler packaging**
+- [ ] **Step 5: Verify exact `@prisma/pg-worker` version, generated types, resolved Prisma WASM chain, and Wrangler packaging**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror && npm run typegen
 cd /Users/mac/Desktop/seichigo
-rg -n "\"@prisma/pg-worker\"|\"@prisma/adapter-pg\"|\"@prisma/client\"|\"prisma\"" package.json
+node -e "const pkg=require('./package.json'); if (pkg.dependencies?.['@prisma/pg-worker'] !== '6.9.0') { console.error(pkg.dependencies?.['@prisma/pg-worker']); process.exit(1) }"
+node -e "const lock=require('./package-lock.json'); const root=lock.packages?.['']?.dependencies?.['@prisma/pg-worker']; const installed=lock.packages?.['node_modules/@prisma/pg-worker']?.version; if (root !== '6.9.0' || installed !== '6.9.0') { console.error({ root, installed }); process.exit(1) }"
+rg -n "\"@prisma/pg-worker\"|\"@prisma/adapter-pg\"|\"@prisma/client\"|\"prisma\"" package.json package-lock.json
 node workers/anitabi-mirror/scripts/build.mjs
 node --input-type=module <<'EOF'
 import path from 'node:path'
@@ -1948,7 +1955,7 @@ rg -n "export default import\\('./query_compiler_bg\\.wasm'\\)" "$loader_path"
 cd workers/anitabi-mirror && npm run deploy -- --dry-run 2>&1 | tail -20
 ```
 
-Expected: `worker-configuration.d.ts` is generated; the root `package.json` includes `@prisma/pg-worker` plus the repo Prisma packages; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
+Expected: `worker-configuration.d.ts` is generated; the root `package.json` dependency entry for `@prisma/pg-worker` is exactly `6.9.0`; `package-lock.json` records both the root dependency and `node_modules/@prisma/pg-worker` installed version as exactly `6.9.0`; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
 
 - [ ] **Step 6: Commit**
 
@@ -1958,11 +1965,13 @@ git add package.json package-lock.json workers/anitabi-mirror
 git commit -m "Package Prisma WASM before deploying the mirror worker" \
   -m "The worker scaffold includes a build step that verifies the resolved Prisma WASM module chain before Wrangler deploy so the cron entrypoint matches the actual package resolution path used by @prisma/client/wasm." \
   -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine and the raw worker entrypoint must get @prisma/pg-worker from the repo-root Prisma install" \
+  -m "Constraint: The latest published @prisma/pg-worker is 6.9.0, while the repo's @prisma/adapter-pg, @prisma/client, and prisma stay on 6.16.x" \
   -m "Rejected: Add a worker-local Prisma install | unnecessary duplicate package surface for a single worker when the nested package resolves root-installed Prisma modules" \
+  -m "Rejected: Pin @prisma/pg-worker to 6.16.0 to match the rest of Prisma | @prisma/pg-worker@6.16.0 is not published and npm returns E404" \
   -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: cd workers/anitabi-mirror && npm run typegen; rg -n \"\\\"@prisma/pg-worker\\\"|\\\"@prisma/adapter-pg\\\"|\\\"@prisma/client\\\"|\\\"prisma\\\"\" package.json; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
+  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node -e \"const pkg=require('./package.json'); if (pkg.dependencies?.['@prisma/pg-worker'] !== '6.9.0') process.exit(1)\"; node -e \"const lock=require('./package-lock.json'); const root=lock.packages?.['']?.dependencies?.['@prisma/pg-worker']; const installed=lock.packages?.['node_modules/@prisma/pg-worker']?.version; if (root !== '6.9.0' || installed !== '6.9.0') process.exit(1)\"; rg -n \"\\\"@prisma/pg-worker\\\"|\\\"@prisma/adapter-pg\\\"|\\\"@prisma/client\\\"|\\\"prisma\\\"\" package.json package-lock.json; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
   -m "Not-tested: production cron execution"
 ```
 
