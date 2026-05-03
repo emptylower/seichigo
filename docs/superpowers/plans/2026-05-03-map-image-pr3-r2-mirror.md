@@ -19,7 +19,7 @@
 | Date | Revision | Author | Notes |
 |---|---|---|---|
 | 2026-05-03 | r1 (initial) | brainstorming | First-pass plan; identified 8 critical and 12 significant issues in acceptance review |
-| 2026-05-03 | r2 (this revision) | plan-revision | Fixes critical issues: missing `MapImageDiagStage` enum, missing diff-shape fields, missing `requireAdmin` export, cross-worker import boundary, mirror-worker Prisma WASM build, OpenNext binding access, dual-write streaming clone, kind-aware variant preservation. No spec change; goal/scope/rollout sequence unchanged. |
+| 2026-05-03 | r2 (this revision) | plan-revision | Fixes critical issues: missing `MapImageDiagStage` enum, missing diff-shape fields, nonexistent admin-helper reference, cross-worker import boundary, mirror-worker Prisma WASM build, OpenNext binding access, dual-write streaming clone, kind-aware variant preservation. No spec change; goal/scope/rollout sequence unchanged. |
 
 ## Task Index
 
@@ -2725,12 +2725,12 @@ import { POST } from '@/app/api/admin/anitabi/image-mirror/bootstrap/route'
 vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: vi.fn().mockResolvedValue({ prisma: { mapImageMirrorBootstrap: { findUnique: vi.fn().mockResolvedValue(null) } } }),
 }))
-vi.mock('@/lib/auth/admin', () => ({ requireAdmin: vi.fn().mockResolvedValue(true) }))
+vi.mock('@/lib/auth/session', () => ({ getServerAuthSession: vi.fn().mockResolvedValue({ user: { isAdmin: true } }) }))
 
 describe('POST /bootstrap', () => {
   it('rejects non-admin', async () => {
-    const { requireAdmin } = await import('@/lib/auth/admin')
-    ;(requireAdmin as any).mockResolvedValueOnce(false)
+    const { getServerAuthSession } = await import('@/lib/auth/session')
+    ;(getServerAuthSession as any).mockResolvedValueOnce(null)
     const req = new Request('https://x/api/admin/anitabi/image-mirror/bootstrap', {
       method: 'POST',
       body: JSON.stringify({ mode: 'advance' }),
@@ -2760,14 +2760,15 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
-import { requireAdmin } from '@/lib/auth/admin'
+import { getServerAuthSession } from '@/lib/auth/session'
 import { cronTick } from '@/workers/anitabi-mirror/src/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 
 export async function POST(req: Request) {
-  if (!(await requireAdmin(req))) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  const session = await getServerAuthSession()
+  if (!session?.user?.isAdmin) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 403 })
   }
   let body: { mode?: 'advance' | 'force-complete' } = {}
   try {
@@ -2808,7 +2809,7 @@ export async function POST(req: Request) {
 }
 ```
 
-If `lib/auth/admin` doesn't exist with that exact export, find the existing admin guard pattern (look at other `/admin/...` routes) and replicate it.
+Use the existing inline session-admin guard pattern from other `/admin/...` routes.
 
 - [ ] **Step 4: Run — expect pass**
 
@@ -2816,7 +2817,14 @@ If `lib/auth/admin` doesn't exist with that exact export, find the existing admi
 
 ```bash
 git add app/api/admin/anitabi/image-mirror/bootstrap/route.ts tests/route/image-mirror-bootstrap.test.ts
-git commit -m "feat(api): admin bootstrap endpoint for mirror cron (advance/force-complete)"
+git commit -m "Add a documented admin bootstrap route pattern that matches existing auth flows" \
+  -m "The PR3 plan now uses getServerAuthSession for the bootstrap endpoint and its test snippet so the implementation guidance matches current admin-route conventions." \
+  -m "Constraint: Admin routes in this codebase use inline session checks rather than a dedicated helper" \
+  -m "Rejected: Introduce a new admin-only guard helper in the plan | it would diverge from existing route patterns" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: route snippet and test snippet updated to the session-based guard pattern" \
+  -m "Not-tested: generated implementation outside the plan document"
 ```
 
 ---
@@ -2834,7 +2842,7 @@ git commit -m "feat(api): admin bootstrap endpoint for mirror cron (advance/forc
 import { describe, it, expect, vi } from 'vitest'
 import { GET } from '@/app/api/admin/anitabi/image-mirror/status/route'
 
-vi.mock('@/lib/auth/admin', () => ({ requireAdmin: vi.fn().mockResolvedValue(true) }))
+vi.mock('@/lib/auth/session', () => ({ getServerAuthSession: vi.fn().mockResolvedValue({ user: { isAdmin: true } }) }))
 vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: vi.fn().mockResolvedValue({
     prisma: {
@@ -2875,11 +2883,12 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
-import { requireAdmin } from '@/lib/auth/admin'
+import { getServerAuthSession } from '@/lib/auth/session'
 
 export async function GET(req: Request) {
-  if (!(await requireAdmin(req))) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  const session = await getServerAuthSession()
+  if (!session?.user?.isAdmin) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 403 })
   }
   const deps = await getAnitabiApiDeps()
   const counts = await deps.prisma.mapImageMirrorState.groupBy({
@@ -2926,7 +2935,14 @@ export async function GET(req: Request) {
 
 ```bash
 git add app/api/admin/anitabi/image-mirror/status/route.ts tests/route/image-mirror-status.test.ts
-git commit -m "feat(api): admin status endpoint for mirror progress aggregates"
+git commit -m "Add a documented admin status route pattern that matches existing auth flows" \
+  -m "The PR3 plan now uses getServerAuthSession for the status endpoint and its test snippet so the implementation guidance matches current admin-route conventions." \
+  -m "Constraint: Admin routes in this codebase use inline session checks rather than a dedicated helper" \
+  -m "Rejected: Introduce a new admin-only guard helper in the plan | it would diverge from existing route patterns" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: route snippet and test snippet updated to the session-based guard pattern" \
+  -m "Not-tested: generated implementation outside the plan document"
 ```
 
 ---
