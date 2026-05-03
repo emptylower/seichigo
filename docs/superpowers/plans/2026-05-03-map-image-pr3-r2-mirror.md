@@ -2761,6 +2761,7 @@ Create `workers/anitabi-mirror/src/seed.ts`:
 ```ts
 import type { PrismaClient } from '@prisma/client'
 import { putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import { isTimeoutErr, isTimeoutStatus, recordTimeout } from './throttle'
 
 const MAX_ATTEMPTS = 5
 const FETCH_TIMEOUT_MS = 15_000
@@ -2770,6 +2771,24 @@ const DEFAULT_USER_AGENT = 'SeichiGoMirror/1.0 (+https://seichigo.com)'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export type SeedBatchOptions = { batchSize: number; perRequestDelayMs: number; userAgent?: string }
+
+async function fetchAndStore(
+  bucket: R2MirrorBucket,
+  item: { canonicalUrl: string },
+  opts: SeedBatchOptions,
+): Promise<{ stored: boolean; timeoutLike: boolean; skipped404: boolean; bytesWritten?: number }> {
+  const res = await fetch(item.canonicalUrl, {
+    headers: { 'user-agent': opts.userAgent ?? DEFAULT_USER_AGENT },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (res.status === 404) return { stored: false, timeoutLike: false, skipped404: true }
+  if (!res.ok) return { stored: false, timeoutLike: isTimeoutStatus(res.status), skipped404: false }
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.startsWith('image/')) throw new Error('non_image_response')
+  const bytes = await res.arrayBuffer()
+  const result = await putMirroredImage(bucket, item.canonicalUrl, bytes, ct, 'cron-seed')
+  return { stored: true, timeoutLike: false, skipped404: false, bytesWritten: result.bytesWritten }
+}
 
 export async function processSeedBatch(
   prisma: PrismaClient,
@@ -2784,6 +2803,7 @@ export async function processSeedBatch(
   let mirrored = 0,
     failed = 0,
     skipped404 = 0
+  let batchTimeouts = 0
 
   for (const item of items) {
     await prisma.mapImageMirrorState.update({
@@ -2791,26 +2811,23 @@ export async function processSeedBatch(
       data: { status: 'in_progress', lastAttemptAt: new Date(), attempts: { increment: 1 } },
     })
     try {
-      const res = await fetch(item.canonicalUrl, {
-        headers: { 'user-agent': opts.userAgent ?? DEFAULT_USER_AGENT },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      })
-      if (res.status === 404) {
+      const result = await fetchAndStore(bucket, item, opts)
+      if (result.skipped404) {
         await prisma.mapImageMirrorState.update({ where: { id: item.id }, data: { status: 'skipped_404' } })
         skipped404++
         continue
       }
-      if (!res.ok) throw new Error(`upstream_${res.status}`)
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.startsWith('image/')) throw new Error('non_image_response')
-      const bytes = await res.arrayBuffer()
-      const result = await putMirroredImage(bucket, item.canonicalUrl, bytes, ct, 'cron-seed')
+      if (!result.stored) {
+        if (result.timeoutLike) batchTimeouts++
+        throw new Error('upstream_retryable')
+      }
       await prisma.mapImageMirrorState.update({
         where: { id: item.id },
         data: { status: 'mirrored', mirroredAt: new Date(), contentBytes: result.bytesWritten, lastError: null },
       })
       mirrored++
     } catch (err) {
+      if (isTimeoutErr(err)) batchTimeouts++
       const isMaxedOut = (item.attempts ?? 0) + 1 >= MAX_ATTEMPTS
       await prisma.mapImageMirrorState.update({
         where: { id: item.id },
@@ -2823,9 +2840,12 @@ export async function processSeedBatch(
     }
     if (opts.perRequestDelayMs > 0) await sleep(opts.perRequestDelayMs)
   }
+  if (batchTimeouts > 0) await recordTimeout(prisma, batchTimeouts)
   return { mirrored, failed, skipped404 }
 }
 ```
+
+Count timeout-like failures only. A `fetchAndStore(...)` result that is merely `stored: false` is **not** automatically a timeout: 404s, non-image responses, and other known non-timeout terminal outcomes should stay out of `batchTimeouts` unless the helper explicitly marks them `timeoutLike`. Likewise, only increment in `catch` when `isTimeoutErr(err)` says the thrown error was timeout-like.
 
 - [ ] **Step 4: Run — expect pass**
 
@@ -2989,46 +3009,61 @@ import { isThrottled, recordTimeout, clearThrottle } from '../throttle'
 
 const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' }
 
+function buildThrottlePrisma(initialRow: any = null) {
+  let row = initialRow
+  return {
+    getRow: () => row,
+    prisma: {
+      mapImageMirrorState: {
+        findUnique: vi.fn().mockImplementation(async () => row),
+        upsert: vi.fn().mockImplementation(async ({ create, update }) => {
+          row = row ? { ...row, ...update } : { id: 'throttle-row', ...create }
+          return row
+        }),
+      },
+    },
+  }
+}
+
 describe('throttle', () => {
   it('isThrottled returns false when no throttle row exists', async () => {
-    const prisma = {
-      mapImageMirrorState: { findUnique: vi.fn().mockResolvedValue(null) },
-    } as any
-    expect(await isThrottled(prisma)).toBe(false)
+    const { prisma } = buildThrottlePrisma()
+    expect(await isThrottled(prisma as any)).toBe(false)
   })
 
-  it('isThrottled returns true when throttle row exists and is fresh (<1h)', async () => {
-    const prisma = {
-      mapImageMirrorState: {
-        findUnique: vi.fn().mockResolvedValue({ mirroredAt: new Date(Date.now() - 30 * 60 * 1000) }),
-      },
-    } as any
-    expect(await isThrottled(prisma)).toBe(true)
+  it('engages throttle only after the 10th consecutive timeout inside the 15 minute window', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
+    const { prisma, getRow } = buildThrottlePrisma()
+
+    for (let i = 0; i < 9; i++) await recordTimeout(prisma as any, 1)
+    expect(await isThrottled(prisma as any)).toBe(false)
+    expect(getRow()?.attempts).toBe(9) // rolling retryCount on the meta-row
+    expect(getRow()?.status).toBe('pending')
+
+    await recordTimeout(prisma as any, 1)
+
+    expect(await isThrottled(prisma as any)).toBe(true)
+    expect(getRow()?.attempts).toBe(10)
+    expect(getRow()?.lastAttemptAt).toEqual(new Date('2026-05-03T12:00:00Z'))
+    expect(getRow()?.mirroredAt).toEqual(new Date('2026-05-03T12:00:00Z'))
+    expect(getRow()?.status).toBe('mirrored')
+
+    vi.useRealTimers()
   })
 
-  it('isThrottled returns false when throttle row exists but is stale (>1h)', async () => {
-    const prisma = {
-      mapImageMirrorState: {
-        findUnique: vi.fn().mockResolvedValue({ mirroredAt: new Date(Date.now() - 2 * 60 * 60 * 1000) }),
-      },
-    } as any
-    expect(await isThrottled(prisma)).toBe(false)
-  })
+  it('clears after the rolling window expires', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
+    const { prisma } = buildThrottlePrisma()
 
-  it('recordTimeout writes throttle row when 10 timeouts in window', async () => {
-    const upsert = vi.fn().mockResolvedValue({})
-    const prisma = {
-      mapImageMirrorState: { upsert },
-    } as any
-    await recordTimeout(prisma, /* recentTimeoutCount */ 10)
-    expect(upsert).toHaveBeenCalled()
-  })
+    await recordTimeout(prisma as any, 10)
+    expect(await isThrottled(prisma as any)).toBe(true)
 
-  it('recordTimeout does NOT write throttle row when below threshold', async () => {
-    const upsert = vi.fn().mockResolvedValue({})
-    const prisma = { mapImageMirrorState: { upsert } } as any
-    await recordTimeout(prisma, 5)
-    expect(upsert).not.toHaveBeenCalled()
+    vi.setSystemTime(new Date('2026-05-03T12:16:00Z'))
+    expect(await isThrottled(prisma as any)).toBe(false)
+
+    vi.useRealTimers()
   })
 })
 ```
@@ -3042,33 +3077,86 @@ Create `workers/anitabi-mirror/src/throttle.ts`:
 import type { PrismaClient } from '@prisma/client'
 
 const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' }
-const THROTTLE_DURATION_MS = 60 * 60 * 1000
 const TIMEOUT_THRESHOLD = 10
+const THROTTLE_WINDOW_MS = 15 * 60 * 1000
+
+export function isTimeoutStatus(status: number): boolean {
+  return status === 408 || status === 429 || status === 502 || status === 503 || status === 504
+}
+
+export function isTimeoutErr(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true
+  if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') return true
+  const message = err instanceof Error ? err.message : String(err)
+  return /timeout|timed out/i.test(message)
+}
 
 export async function isThrottled(prisma: PrismaClient): Promise<boolean> {
   const row = await prisma.mapImageMirrorState.findUnique({
     where: { sourceType_sourceId_variant: THROTTLE_KEY },
   })
-  if (!row?.mirroredAt) return false
-  const ageMs = Date.now() - row.mirroredAt.getTime()
-  return ageMs < THROTTLE_DURATION_MS
+  if (!row?.lastAttemptAt) return false
+  const retryCount = row.attempts ?? 0 // `attempts` carries the rolling retryCount on the meta-row
+  return retryCount >= TIMEOUT_THRESHOLD && row.lastAttemptAt.getTime() > Date.now() - THROTTLE_WINDOW_MS
 }
 
-export async function recordTimeout(prisma: PrismaClient, recentTimeoutCount: number): Promise<void> {
-  if (recentTimeoutCount < TIMEOUT_THRESHOLD) return
+export async function recordTimeout(prisma: PrismaClient, timeoutCount: number): Promise<void> {
+  if (timeoutCount <= 0) return
+  const now = new Date()
+  const row = await prisma.mapImageMirrorState.findUnique({
+    where: { sourceType_sourceId_variant: THROTTLE_KEY },
+  })
+  const retryCount =
+    row?.lastAttemptAt && row.lastAttemptAt.getTime() > now.getTime() - THROTTLE_WINDOW_MS ? row.attempts ?? 0 : 0
+  const nextRetryCount = retryCount + timeoutCount
+  const throttled = nextRetryCount >= TIMEOUT_THRESHOLD
   await prisma.mapImageMirrorState.upsert({
     where: { sourceType_sourceId_variant: THROTTLE_KEY },
-    create: { ...THROTTLE_KEY, canonicalUrl: 'throttle', r2Key: 'throttle', status: 'mirrored', mirroredAt: new Date() },
-    update: { mirroredAt: new Date() },
+    create: {
+      ...THROTTLE_KEY,
+      canonicalUrl: 'throttle',
+      r2Key: 'throttle',
+      status: throttled ? 'mirrored' : 'pending',
+      attempts: nextRetryCount,
+      lastAttemptAt: now,
+      mirroredAt: throttled ? now : null,
+    },
+    update: {
+      status: throttled ? 'mirrored' : 'pending',
+      attempts: nextRetryCount,
+      lastAttemptAt: now,
+      mirroredAt: throttled ? now : null,
+    },
   })
 }
 
 export async function clearThrottle(prisma: PrismaClient): Promise<void> {
-  await prisma.mapImageMirrorState
-    .delete({ where: { sourceType_sourceId_variant: THROTTLE_KEY } })
-    .catch(() => null)
+  await prisma.mapImageMirrorState.upsert({
+    where: { sourceType_sourceId_variant: THROTTLE_KEY },
+    create: {
+      ...THROTTLE_KEY,
+      canonicalUrl: 'throttle',
+      r2Key: 'throttle',
+      status: 'pending',
+      attempts: 0,
+      lastAttemptAt: null,
+      mirroredAt: null,
+    },
+    update: {
+      status: 'pending',
+      attempts: 0,
+      lastAttemptAt: null,
+      mirroredAt: null,
+    },
+  })
 }
 ```
+
+Concrete breaker state on the `__throttle__` meta-row:
+- `retryCount`: consecutive timeout count within the current 15 minute window; store it in the existing `attempts` column on this meta-row so Task 1.1 does not need a new schema field just for breaker state
+- `lastAttemptAt`: timestamp of the most recent timeout increment
+- `mirroredAt`: timestamp when the breaker most recently crossed the threshold and engaged
+- `status`: `'mirrored'` while throttled, `'pending'` when below threshold or cleared
 
 - [ ] **Step 4: Run — expect pass**
 
@@ -3137,6 +3225,8 @@ describe('cronTick', () => {
   })
 })
 ```
+
+Keep `recordTimeout` in the throttle mock export even though `cronTick` does not call it directly; once Task 3.4 moves `processSeedBatch` to the shared `lib/anitabi/mirror/seed` module during Task 3.7, that shared seed module imports the same throttle helper set and the cronTick test harness must stay compatible with that module graph.
 
 - [ ] **Step 2: Run — expect fail**
 
