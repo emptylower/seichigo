@@ -1,6 +1,6 @@
-import type { PrismaClient } from '@prisma/client'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { ReclaimPrisma } from '../reclaim'
 import { reclaimStale } from '../reclaim'
 
 describe('reclaimStale', () => {
@@ -10,12 +10,14 @@ describe('reclaimStale', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
-      const updateMany = vi.fn().mockResolvedValue({ count: 3 })
+      const updateMany = vi
+        .fn<ReclaimPrisma['mapImageMirrorState']['updateMany']>()
+        .mockResolvedValue({ count: 3 })
       const prisma = {
         mapImageMirrorState: {
           updateMany,
         },
-      } as unknown as PrismaClient
+      } satisfies ReclaimPrisma
 
       await expect(reclaimStale(prisma)).resolves.toEqual({ count: 3 })
       expect(updateMany).toHaveBeenCalledWith({

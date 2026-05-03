@@ -11,13 +11,21 @@ export default defineConfig({
     },
   },
   test: {
-    setupFiles: ['tests/setup.ts'],
     projects: [
       {
         extends: true,
         test: {
           name: 'node',
-          include: ['tests/**/*.test.ts', 'workers/**/*.test.ts'],
+          include: ['tests/**/*.test.ts'],
+          environment: 'node',
+          setupFiles: ['tests/setup.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'workers',
+          include: ['workers/**/*.test.ts'],
           environment: 'node',
         },
       },
@@ -27,6 +35,7 @@ export default defineConfig({
           name: 'jsdom',
           include: ['tests/**/*.test.tsx'],
           environment: 'jsdom',
+          setupFiles: ['tests/setup.ts'],
         },
       },
     ],
