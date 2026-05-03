@@ -4091,6 +4091,10 @@ git commit -m "Add a documented admin status route pattern that matches existing
 **Files:**
 - Modify: `app/(authed)/admin/ops/map-image-diagnostics/ui.tsx`
 - Create: `app/(authed)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx`
+- Create: `app/(authed)/admin/ops/map-image-diagnostics/CacheStatePanel.tsx`
+- Create: `app/api/admin/anitabi/image-mirror/cache-state/route.ts`
+- Test: `tests/route/image-mirror-cache-state.test.ts`
+- Test: `tests/app/admin/map-image-diagnostics/cache-state-panel.test.tsx`
 
 - [ ] **Step 1: Read the existing UI file**
 
@@ -4211,18 +4215,71 @@ export function MirrorProgressPanel() {
 }
 ```
 
-Task 4.3 should consume the already-filtered Task 4.2 status aggregates as-is. Do not add client-side adjustments for `__throttle__` / `__cursor__` and do not import `lib/anitabi/mirror/metaRows.ts` into the panel just to repeat server-side filtering. The endpoint query layer owns `MIRROR_RECORD_WHERE` usage and is responsible for excluding those meta rows from progress totals and rate calculations.
+Task 4.3 should consume the already-filtered Task 4.2 status aggregates as-is. Do not add client-side adjustments for `__throttle__` / `__cursor__` and do not import `lib/anitabi/mirror/metaRows.ts` into the panel just to repeat server-side filtering. The endpoint query layer owns `MIRROR_RECORD_WHERE` usage and is responsible for excluding those meta rows from progress totals and rate calculations. This guidance applies to `MirrorProgressPanel`; the new `CacheStatePanel` is a separate `MapImageDiagEvent` aggregate and must not be back-filled from `MapImageMirrorState` progress data.
 
-- [ ] **Step 3: Mount the panel**
+- [ ] **Step 3: Add `CacheStatePanel` for `image_cache_state` outcome distribution**
+
+Add a second diagnostics panel that reads `MapImageDiagEvent` rows, not `MapImageDiag` payload JSON. The aggregation must query the current diagnostics schema with:
+- `where: { stage: 'image_cache_state', createdAt: { gte: <window cutoff> } }`
+- `groupBy: ['outcome']`
+- one window for the last `1h`
+- one window for the last `24h`
+
+Use the current Task 2.6 outcome names exactly:
+- `cache_hit_cf`
+- `cache_hit_r2_primary`
+- `cache_hit_r2_fallback`
+- `cache_miss_all`
+- `cache_full_miss_failed`
+
+If any older review note or scratch text still mentions `cache_miss_upstream_ok` / `cache_miss_upstream_fail`, map them explicitly to `cache_miss_all` / `cache_full_miss_failed` in this plan update and do not query or render the stale names as separate live buckets.
+
+`app/api/admin/anitabi/image-mirror/cache-state/route.ts` should return both windows with zero-filled outcome keys plus a derived acceptance KPI. Keep this as a dedicated route so the Task 4.2 status endpoint remains the `MapImageMirrorState` progress boundary and the cache-state route remains a `MapImageDiagEvent` aggregate:
+
+```ts
+type CacheStateWindow = {
+  window: '1h' | '24h'
+  outcomes: {
+    cache_hit_cf: number
+    cache_hit_r2_primary: number
+    cache_hit_r2_fallback: number
+    cache_miss_all: number
+    cache_full_miss_failed: number
+  }
+  r2HitRatioAfterCfMiss: number | null
+}
+```
+
+Define the ratio as:
+
+```txt
+(cache_hit_r2_primary + cache_hit_r2_fallback) /
+(cache_hit_r2_primary + cache_hit_r2_fallback + cache_miss_all + cache_full_miss_failed)
+```
+
+Exclude `cache_hit_cf` from the denominator because the acceptance SLI is intended to measure the R2 recovery rate after a CF miss; CF hits never exercised the R2 lookup path and would blur that signal. The panel should still show `cache_hit_cf` counts in the distribution table for context.
+
+Render the panel with:
+- a 1h and 24h outcome table or stacked-bar summary using the five outcome keys above
+- a highlighted `R2 hit ratio after CF miss` value for both windows
+- a threshold callout that turns green once the 24h ratio is `>= 0.8` after Task 7.9's T+5d `R2_READ=1` activation gate
+
+Tests for this sub-task:
+- `tests/route/image-mirror-cache-state.test.ts` should assert the route groups `MapImageDiagEvent` rows by `outcome` for `stage = 'image_cache_state'`, uses `createdAt` window filters for 1h/24h, zero-fills missing buckets, and computes `r2HitRatioAfterCfMiss` with `cache_hit_cf` excluded from the denominator
+- `tests/app/admin/map-image-diagnostics/cache-state-panel.test.tsx` should assert the rendered panel shows the grouped outcome counts, the 1h/24h labels, and the ratio/threshold text
+
+- [ ] **Step 4: Mount the panels**
 
 Edit `app/(authed)/admin/ops/map-image-diagnostics/ui.tsx`. Import and place at the top of the existing layout:
 ```tsx
 import { MirrorProgressPanel } from './MirrorProgressPanel'
+import { CacheStatePanel } from './CacheStatePanel'
 // ...
 <MirrorProgressPanel />
+<CacheStatePanel />
 ```
 
-- [ ] **Step 4: Visual smoke test**
+- [ ] **Step 5: Visual smoke test**
 
 ```bash
 cd /Users/mac/Desktop/seichigo
@@ -4231,11 +4288,27 @@ npm run dev
 
 Open `http://localhost:3000/admin/ops/map-image-diagnostics`. Verify the panel renders (data will be empty pre-deploy; that's expected). Stop dev server.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add app/\(authed\)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx 'app/(authed)/admin/ops/map-image-diagnostics/ui.tsx'
-git commit -m "feat(admin): mirror progress panel with bootstrap controls"
+git add \
+  app/\(authed\)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx \
+  app/\(authed\)/admin/ops/map-image-diagnostics/CacheStatePanel.tsx \
+  'app/(authed)/admin/ops/map-image-diagnostics/ui.tsx' \
+  app/api/admin/anitabi/image-mirror/cache-state/route.ts \
+  tests/route/image-mirror-cache-state.test.ts \
+  tests/app/admin/map-image-diagnostics/cache-state-panel.test.tsx
+git commit -F - <<'EOF'
+Surface image-cache outcome distribution in the admin diagnostics dashboard
+
+Add a dedicated cache-state aggregation panel to the PR3 plan so operators can see the 1h/24h image_cache_state distribution and the post-CF-miss R2 hit ratio without mixing those diagnostics into MapImageMirrorState progress totals.
+
+Constraint: The current diag schema is MapImageDiagEvent(stage, outcome, createdAt); payload-based MapImageDiag state queries are stale
+Rejected: Fold cache-state outcomes into the mirror-progress aggregates | those aggregates are MapImageMirrorState-only and must keep the C.9 meta-row filter guidance unchanged
+Confidence: high
+Scope-risk: narrow
+Tested: plan updated with CacheStatePanel files, grouped outcome query shape, ratio formula, and route/component test expectations
+EOF
 ```
 
 ---
@@ -4941,7 +5014,10 @@ Open browser DevTools on https://www.seichigo.com/map. Inspect a cover image res
 
 - [ ] **Step 4: Verify diag dashboard**
 
-Pull a recent session via the existing diag tool. Confirm `image_cache_state: cache_hit_r2_primary` events dominate.
+Pull a recent session via the existing diag tool. Confirm the new 24h `CacheStatePanel` shows:
+- the five `image_cache_state` buckets (`cache_hit_cf`, `cache_hit_r2_primary`, `cache_hit_r2_fallback`, `cache_miss_all`, `cache_full_miss_failed`)
+- `R2 hit ratio after CF miss >= 0.8` once enough post-activation traffic has accumulated
+- `cache_hit_cf` rendered separately from the ratio denominator
 
 - [ ] **Step 5: Commit + tag**
 
@@ -4966,7 +5042,8 @@ Verify: `mirrored / all ≥ 0.95`.
 - [ ] **Step 2: Pull diag aggregates**
 
 In the admin diag dashboard, look at the past 24h:
-- `image_cache_state: cache_hit_r2_primary` ≥ 80% of total terminal events.
+- `R2 hit ratio after CF miss = (cache_hit_r2_primary + cache_hit_r2_fallback) / (cache_hit_r2_primary + cache_hit_r2_fallback + cache_miss_all + cache_full_miss_failed)` should reach `>= 0.8` after Task 7.9's T+5d activation and still hold at T+7d.
+- `cache_hit_cf` should be shown in the dashboard distribution for context but excluded from that acceptance denominator because it never reached the R2 lookup path.
 - `proxy_fetch_terminal: timeout` count vs. 7-day-prior baseline: must be down ≥ 70%.
 
 - [ ] **Step 3: Document acceptance**
@@ -4977,7 +5054,7 @@ Append to the runbook:
 | Metric | Target | Actual |
 |---|---|---|
 | Mirror progress | ≥ 95% | <X>% |
-| cache_hit_r2_*  | ≥ 80% | <Y>% |
+| cache_hit_r2_* after CF miss | ≥ 80% | <Y>% |
 | Timeout rate vs baseline | down ≥ 70% | <Z>% |
 | anitabi complaints | 0 | <count> |
 
