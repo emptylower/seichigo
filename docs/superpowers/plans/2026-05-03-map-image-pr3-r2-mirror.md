@@ -1734,8 +1734,10 @@ describe('imageServe — R2 fallback on upstream failure', () => {
     expect(res.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
   })
 
-  it('returns 502 when both upstream fails AND R2 misses', async () => {
+  it('returns R2 with r2-fallback header and upstream_error diag when upstream fetch throws', async () => {
     const bucket = buildFakeBucket()
+    const bytes = new Uint8Array([2, 2, 2]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/boom.jpg', bytes, 'image/jpeg', 'cron-seed')
     installOpenNextBindings({
       env: {
         MAP_IMAGE_CACHE: bucket,
@@ -1743,35 +1745,65 @@ describe('imageServe — R2 fallback on upstream failure', () => {
         NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
       },
     })
-    vi.spyOn(global, 'fetch').mockRejectedValue(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('socket hang up'))
 
     const req = new Request(
       'https://www.seichigo.com/api/anitabi/image-render?url=' +
-        encodeURIComponent('https://image.anitabi.cn/never-mirrored.jpg'),
+        encodeURIComponent('https://image.anitabi.cn/boom.jpg'),
     )
     const res = await serveImageRequest(req, buildFakeDeps(), 'render')
-    expect(res.status).toBe(502)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
+    expect(mocks.emitMapImageProxyEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'image_cache_state',
+        outcome: 'cache_hit_r2_fallback',
+        reason: 'upstream_error',
+      }),
+    )
   })
 })
 ```
+
+Use the existing `dispatchMapImageProxyEvent` mock pattern from `tests/anitabi/image-proxy-phase2.test.ts` so the thrown-fetch case asserts:
+```ts
+expect(mocks.emitMapImageProxyEvent).toHaveBeenCalledWith(
+  expect.anything(),
+  expect.any(URL),
+  expect.objectContaining({
+        stage: 'image_cache_state',
+        outcome: 'cache_hit_r2_fallback',
+        reason: 'upstream_error',
+  }),
+)
+```
+
+Keep the existing `502 when both upstream fails AND R2 misses` case after this new test.
 
 - [ ] **Step 2: Run — expect fail**
 
 - [ ] **Step 3: Implement fallback**
 
-In `imageServe.ts`, locate the fetch-failure branch (where `fetched.ok === false` and we currently emit `proxy_fetch_terminal: timeout` then return `fetched.response`). Before returning the failure response, attempt R2 fallback:
+In `imageServe.ts`, extract the R2 response construction into a shared helper (for example `tryServeR2Fallback(reason)`), then call it from both upstream-failure entry points:
+- the existing upstream terminal path for `!fetched.ok`, invalid `content-type`, and upstream `content-length` values above the configured max
+- the `catch` path where the upstream `fetch` throws or times out before a response object exists
+
+Before returning the failure response, attempt R2 fallback:
 ```ts
 const bindings = getCfBindings()
 const bucket = bindings?.env?.MAP_IMAGE_CACHE
 const r2ReadEnabled = bindings?.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED === '1'
 
-if (!fetched.ok && r2ReadEnabled && bucket) {
+async function tryServeR2Fallback(reason: 'upstream_non_ok' | 'invalid_content_type' | 'too_large' | 'upstream_error') {
+  if (!r2ReadEnabled || !bucket) return null
   const r2Fallback = await getMirroredImage(bucket, target.toString(), 'image/jpeg').catch(() => null)
   if (r2Fallback) {
     emitProxyEvent({
       stage: 'image_cache_state',
       outcome: 'cache_hit_r2_fallback',
       terminalState: 'succeeded',
+      reason,
       evidence: { r2Bytes: r2Fallback.bytes.byteLength },
     })
     const headers = new Headers({
@@ -1787,8 +1819,34 @@ if (!fetched.ok && r2ReadEnabled && bucket) {
     return new Response(r2Fallback.bytes, { status: 200, headers })
   }
   emitProxyEvent({ stage: 'image_cache_state', outcome: 'cache_full_miss_failed', terminalState: 'failed' })
+  return null
 }
-return fetched.response
+
+if (!fetched.ok) {
+  const fallback = await tryServeR2Fallback('upstream_non_ok')
+  if (fallback) return fallback
+  return fetched.response
+}
+
+if (invalidContentType) {
+  const fallback = await tryServeR2Fallback('invalid_content_type')
+  if (fallback) return fallback
+  return fetched.response
+}
+
+if (tooLarge) {
+  const fallback = await tryServeR2Fallback('too_large')
+  if (fallback) return fallback
+  return fetched.response
+}
+
+try {
+  // upstream fetch...
+} catch (error) {
+  const fallback = await tryServeR2Fallback('upstream_error')
+  if (fallback) return fallback
+  return buildCurrentUpstreamErrorResponse(error)
+}
 ```
 
 Use the same `getCfBindings()`-derived env access pattern here as in Task 2.2/2.3. Do not reintroduce raw dependency-injected env checks in the fallback branch.
