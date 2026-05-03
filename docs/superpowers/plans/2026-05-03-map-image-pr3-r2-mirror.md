@@ -4375,11 +4375,15 @@ Update `components/map/MobileVisualCenterOverlay.tsx`:
 
 - Surface lines: `120-139`.
 - Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
-- JSX placement: insert the micro-link in the bottom caption/gradient row for `MobileVisualCenterPointStrip`, or as a bottom-corner overlay if that keeps the caption more readable; do not add visible text to the dense bangumi avatar row at `55-87`.
+- Structure requirement: because each point card is currently rooted in a clickable button, restructure `MobileVisualCenterPointStrip` so each rendered point card becomes a non-button wrapper (`relative`/positioning container) that owns two interactive siblings:
+  1. the existing card button, which still owns `onPointClick`
+  2. an absolutely positioned `AnitabiAttributionLink` anchor outside the button subtree
+- JSX placement: place the sibling attribution anchor in the wrapper over the bottom caption/gradient row or bottom corner of the image frame, whichever keeps the caption more readable, but keep it outside the button subtree so the DOM does not nest `<a>` inside the root `<button>`. Do not add visible text to the dense bangumi avatar row at `55-87`.
+- Interaction rule: preserve the existing keyboard/button semantics on the card button, and ensure clicking the attribution link does not trigger card selection (`onPointClick`) through bubbling or overlay hit-area mistakes.
 - Href source: `item.originLink ?? https://www.anitabi.cn/bangumi/${item.bangumiId}` using the Step 2 data-shape update.
 
 Test assertion:
-- Create `tests/map/mobileVisualCenterOverlay.test.tsx`; render `MobileVisualCenterPointStrip` with one item and assert the link is present inside the point card with the resolved href, while the bangumi avatar row still renders without visible attribution text.
+- Create `tests/map/mobileVisualCenterOverlay.test.tsx`; render `MobileVisualCenterPointStrip` with one item and assert the wrapper renders a `via anitabi` link with the resolved href plus a separate clickable card button. Verify clicking the card button still calls `onPointClick`, clicking the attribution link is not the card activator, and the bangumi avatar row still renders without visible attribution text.
 
 - [ ] **Step 5: Add the point-card attribution link to `WindowExcerptOverlay`**
 
@@ -4387,11 +4391,15 @@ Update `components/map/WindowExcerptOverlay.tsx`:
 
 - Surface lines: `134-154`.
 - Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
-- JSX placement: render the micro-link inside the bottom caption gradient of `PointCard`, aligned to the right edge so the title, EP label, and time label stay readable in both `compact` and desktop layouts.
+- Structure requirement: because `PointCard` is rooted in a clickable button today, refactor each point card into a non-button wrapper that contains two interactive siblings:
+  1. the existing card button, which still handles point activation
+  2. an absolutely positioned `AnitabiAttributionLink` anchor outside the button subtree
+- JSX placement: place the sibling attribution anchor in the wrapper over the bottom caption gradient, aligned to the right edge so the title, EP label, and time label stay readable in both `compact` and desktop layouts, while keeping the anchor outside the button subtree.
+- Interaction rule: preserve the existing button semantics for both compact/mobile and desktop layouts, and ensure clicking the attribution link does not trigger the card button's activation path.
 - Href source: `item.originLink ?? https://www.anitabi.cn/bangumi/${item.bangumiId}` using the Step 2 data-shape update.
 
 Test assertion:
-- Extend `tests/map/windowExcerptOverlay.test.tsx` with at least one attribution case for the rendered point card and assert the link href resolves correctly in both the provided-`originLink` and bangumi-fallback cases.
+- Extend `tests/map/windowExcerptOverlay.test.tsx` with attribution coverage for the rendered point card in both compact/mobile and desktop layouts. Assert the link href resolves correctly in both the provided-`originLink` and bangumi-fallback cases, that the card button still activates independently, and that clicking the attribution link does not trigger card activation.
 
 - [ ] **Step 6: Add the intro-cover attribution link to `QuickPilgrimageMode`**
 
