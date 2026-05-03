@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import AttributionLink, { buildAnitabiBangumiHref, resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import { L } from './shared'
 
@@ -11,6 +12,7 @@ type DetailPointItem = {
 
 type DetailPanelProps = {
   label: (typeof L)['zh']
+  attributionLabel: string
   detail: AnitabiBangumiDTO | null
   detailCardMode: 'bangumi' | 'point'
   selectedPoint: AnitabiPointDTO | null
@@ -45,6 +47,7 @@ type DetailPanelProps = {
 export default function DetailPanel(props: DetailPanelProps) {
   const {
     label,
+    attributionLabel,
     detail,
     detailCardMode,
     selectedPoint,
@@ -77,6 +80,8 @@ export default function DetailPanel(props: DetailPanelProps) {
   } = props
 
   if (!detail) return null
+
+  const bangumiAttributionHref = buildAnitabiBangumiHref(detail.card.id)
 
   return (
     <>
@@ -115,6 +120,11 @@ export default function DetailPanel(props: DetailPanelProps) {
             {selectedPoint.origin ? <span>· {selectedPoint.origin}</span> : null}
             {selectedPointDistanceMeters != null ? <span>· ~{formatDistance(selectedPointDistanceMeters)}</span> : null}
           </div>
+          <AttributionLink
+            href={resolveAnitabiAttributionHref(selectedPoint.originLink, selectedPoint.originUrl, selectedPoint.image)}
+            label={attributionLabel}
+            className="text-[11px] text-slate-500"
+          />
           {selectedPoint.note ? (
             <div className="rounded-md bg-slate-50 px-2 py-1 text-xs leading-relaxed text-slate-700">
               {selectedPoint.note}
@@ -214,6 +224,11 @@ export default function DetailPanel(props: DetailPanelProps) {
                     detail.points.length
                   )} {label.points}
                 </div>
+                <AttributionLink
+                  href={bangumiAttributionHref}
+                  label={attributionLabel}
+                  className="text-[11px] text-slate-500"
+                />
                 {detailLoading ? (
                   <div className="space-y-1 py-1">
                     <div className="h-3 w-full animate-pulse rounded bg-slate-100" />

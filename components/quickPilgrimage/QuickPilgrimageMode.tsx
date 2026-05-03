@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Navigation, SkipForward, CheckCircle2, MapPin, Film, ChevronRight, Award, Map as MapIcon, RotateCcw } from 'lucide-react'
+import AttributionLink, {
+  buildAnitabiBangumiHref,
+  getAnitabiAttributionLabel,
+  resolveAnitabiAttributionHref,
+} from '@/components/anitabi/AttributionLink'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import { getHaversineDistance, resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import CheckInModal from '@/components/checkin/CheckInModal'
@@ -10,6 +16,7 @@ import SessionShareFab from '@/components/quickPilgrimage/SessionShareFab'
 
 type Props = {
   bangumi: AnitabiBangumiDTO
+  locale?: SupportedLocale
   userPointStates: Record<string, string>
   onClose: () => void
   onStatesUpdated?: () => void
@@ -76,7 +83,7 @@ function buildEmbeddedNavigationUrl(
   return `https://www.google.com/maps?${params.toString()}`
 }
 
-export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose, onStatesUpdated }: Props) {
+export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointStates, onClose, onStatesUpdated }: Props) {
   const [step, setStep] = useState<'intro' | 'cards' | 'summary'>('intro')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [navigationStepByPointId, setNavigationStepByPointId] = useState<Record<string, 'idle' | 'navigating' | 'done'>>({})
@@ -217,6 +224,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
     if (!currentPoint) return ''
     return buildEmbeddedNavigationUrl(currentPoint, userLocation)
   }, [currentPoint, userLocation])
+  const attributionLabel = getAnitabiAttributionLabel(locale)
 
   useEffect(() => {
     setNavigationNotice(null)
@@ -367,6 +375,11 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                 />
               </div>
             </div>
+            <AttributionLink
+              href={buildAnitabiBangumiHref(bangumi.card.id)}
+              label={attributionLabel}
+              className="mb-4 text-xs text-slate-400 hover:text-white"
+            />
             <h1 className="text-3xl font-black mb-3 tracking-tight">开始巡礼</h1>
             <p className="text-slate-400 text-sm mb-10 leading-relaxed px-4">
               使用站内导航逐点推进。你可以随时打开 Google Maps，但不必离开当前流程。
@@ -519,6 +532,13 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
                 </div>
               )}
             </div>
+            <div className="mt-3 w-full">
+              <AttributionLink
+                href={resolveAnitabiAttributionHref(currentPoint.originLink, currentPoint.originUrl, currentPoint.image)}
+                label={attributionLabel}
+                className="text-xs text-slate-400 hover:text-white"
+              />
+            </div>
 
             <div className="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
               <div className="flex items-center justify-between">
@@ -658,10 +678,12 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
           pointId={checkInTarget.id}
           pointName={checkInTarget.nameZh || checkInTarget.name}
           referenceImageUrl={resolveAnitabiAssetUrl(checkInTarget.originUrl || checkInTarget.image)}
+          attributionHref={resolveAnitabiAttributionHref(checkInTarget.originLink, checkInTarget.originUrl, checkInTarget.image)}
           pointGeo={checkInTarget.geo ? { lat: checkInTarget.geo[0], lng: checkInTarget.geo[1] } : null}
           animeTitle={bangumi.card.title}
           episode={checkInTarget.ep}
           submitLabel="打卡并下一步"
+          locale={locale}
           onComparisonGenerated={(blob) => {
             const objectUrl = URL.createObjectURL(blob)
             setComparisonImageByPointId((prev) => {
@@ -710,6 +732,7 @@ export default function QuickPilgrimageMode({ bangumi, userPointStates, onClose,
             completionDate={new Date().toLocaleDateString('zh-CN')}
             points={sessionSharePoints}
             featuredImages={featuredSessionImages}
+            locale={locale}
             shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
             onClose={() => setShowSessionShareCard(false)}
           />

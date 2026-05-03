@@ -163,6 +163,11 @@
       "invalidLinkFormat": "無効なリンク形式です（http/https/mailtoまたは相対パスのみ許可）。"
     }
   },
+  "image": {
+    "attribution": {
+      "viaAnitabi": "via Anitabi"
+    }
+  },
   "seichiRoute": {
     "defaultStart": "スタート",
     "defaultEnd": "ゴール",

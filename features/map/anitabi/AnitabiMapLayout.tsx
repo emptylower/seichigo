@@ -1,4 +1,5 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { t } from '@/lib/i18n'
 import type { AnitabiBangumiDTO, AnitabiMapTab } from '@/lib/anitabi/types'
 import { MobileVisualCenterBangumiRow, MobileVisualCenterPointStrip } from '@/components/map/MobileVisualCenterOverlay'
 import { PointPopupCard } from '@/components/map/PointPopupCard'
@@ -158,11 +159,13 @@ export default function AnitabiMapLayout(props: any) {
       ? 'Browse filters, title list, and point details'
       : locale === 'ja'
         ? '絞り込み、作品一覧、スポット詳細を表示'
-        : '浏览筛选、作品列表与地标详情'
+      : '浏览筛选、作品列表与地标详情'
+  const attributionLabel = t('image.attribution.viaAnitabi', locale)
 
   const detailPanelInner = detail ? (
     <DetailPanel
       label={label}
+      attributionLabel={attributionLabel}
       detail={detail}
       detailCardMode={detailCardMode}
       selectedPoint={selectedPoint}
@@ -228,6 +231,7 @@ export default function AnitabiMapLayout(props: any) {
   const explorerPanelContent = (
     <ExplorerPanelContent
       label={label}
+      attributionLabel={attributionLabel}
       styleMode={styleMode}
       onToggleStyleMode={() => setStyleMode(styleMode === 'street' ? 'satellite' : 'street')}
       onRandom={onRandom}
@@ -284,6 +288,7 @@ export default function AnitabiMapLayout(props: any) {
         workDetail: label.workDetail,
         openInGoogle: label.openInGoogle,
         enterPanorama: label.enterPanorama,
+        viaAnitabi: attributionLabel,
         close: label.close,
       }}
       onShowWorkDetail={() => {

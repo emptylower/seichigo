@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, ChevronRight, MapPin, Navigation, SkipForward, X } from 'lucide-react'
+import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import type { PointPreview, PointRecord } from '../types'
@@ -192,6 +193,14 @@ export function RouteBookImmersiveMode({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-300">First Stop</div>
                 <div className="mt-2 line-clamp-1 text-sm font-semibold text-white">{firstPreview?.title || '准备开始巡礼'}</div>
                 <div className="mt-1 line-clamp-1 text-xs text-slate-400">{firstPreview?.subtitle || '从第一站进入沉浸式导航'}</div>
+                {firstPreview?.image ? (
+                  <div className="mt-2">
+                    <AttributionLink
+                      href={resolveAnitabiAttributionHref(firstPreview.image)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
             <button
@@ -280,6 +289,14 @@ export function RouteBookImmersiveMode({
                     <div className="flex h-full items-center justify-center text-slate-500">暂无参考图</div>
                   )}
                 </div>
+                {currentPreview.image ? (
+                  <div className="mt-3 mx-auto w-full max-w-3xl">
+                    <AttributionLink
+                      href={resolveAnitabiAttributionHref(currentPreview.image)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    />
+                  </div>
+                ) : null}
 
                 <div className="mt-5 mx-auto w-full max-w-3xl grid grid-cols-2 gap-3">
                   <button
@@ -358,6 +375,7 @@ export function RouteBookImmersiveMode({
           pointId={checkInTargetPointId}
           pointName={getPointPreview(checkInTargetPointId)?.title || checkInTargetPointId}
           referenceImageUrl={resolveAnitabiAssetUrl(getPointPreview(checkInTargetPointId)?.image || null)}
+          attributionHref={resolveAnitabiAttributionHref(getPointPreview(checkInTargetPointId)?.image || null)}
           pointGeo={(() => {
             const geo = getPointPreview(checkInTargetPointId)?.geo
             if (!geo) return null

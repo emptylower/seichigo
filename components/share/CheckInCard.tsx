@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Download, Share2, X, Copy, Check, Loader2 } from 'lucide-react'
+import { getAnitabiAttributionLabel } from '@/components/anitabi/AttributionLink'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface CheckInCardProps {
@@ -9,6 +11,7 @@ export interface CheckInCardProps {
   pointName: string
   cityName: string
   imageUrl: string
+  locale?: SupportedLocale
   shareUrl: string
   onClose?: () => void
 }
@@ -24,6 +27,7 @@ export default function CheckInCard({
   pointName,
   cityName,
   imageUrl,
+  locale = 'zh',
   shareUrl,
   onClose
 }: CheckInCardProps) {
@@ -32,6 +36,7 @@ export default function CheckInCard({
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const attributionText = `${getAnitabiAttributionLabel(locale)} · anitabi.cn`
 
   const generateCard = useCallback(async () => {
     setIsGenerating(true)
@@ -117,6 +122,9 @@ export default function CheckInCard({
       ctx.fillStyle = '#9ca3af'
       ctx.font = '400 32px sans-serif'
       ctx.fillText(`${pointName} · ${cityName}`, PADDING, mainImageHeight + 200)
+      ctx.font = '400 24px sans-serif'
+      ctx.fillStyle = '#9ca3af'
+      ctx.fillText(attributionText, PADDING, CARD_HEIGHT - 64)
 
       if (logoImage) {
         const logoAspectRatio = logoImage.width / logoImage.height
@@ -144,7 +152,7 @@ export default function CheckInCard({
     } finally {
       setIsGenerating(false)
     }
-  }, [imageUrl, animeTitle, pointName, cityName])
+  }, [imageUrl, animeTitle, pointName, cityName, attributionText])
 
   useEffect(() => {
     generateCard()
