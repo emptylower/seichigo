@@ -9,6 +9,7 @@ const sentryShimEntry = path.resolve('./lib/observability/sentryCloudflareShim.t
 const isCloudflareDeploy = process.env.CLOUDFLARE_DEPLOY === '1'
   || process.env.WORKERS_CI === '1'
   || process.env.CF_PAGES === '1'
+  || typeof process.env.CF_PAGES_URL === 'string'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
