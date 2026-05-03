@@ -1746,6 +1746,7 @@ git commit -m "feat(diag): emit image_cache_state on all imageServe terminal pat
 **Files:**
 - Create: `workers/anitabi-mirror/wrangler.jsonc`
 - Create: `workers/anitabi-mirror/package.json`
+- Create: `workers/anitabi-mirror/scripts/build.mjs`
 - Create: `workers/anitabi-mirror/tsconfig.json`
 - Create: `workers/anitabi-mirror/src/index.ts` (skeleton scheduled handler)
 - Create: `workers/anitabi-mirror/README.md`
@@ -1755,7 +1756,7 @@ git commit -m "feat(diag): emit image_cache_state on all imageServe terminal pat
 Run:
 ```bash
 cd /Users/mac/Desktop/seichigo
-mkdir -p workers/anitabi-mirror/src
+mkdir -p workers/anitabi-mirror/scripts workers/anitabi-mirror/src
 ```
 
 Create `workers/anitabi-mirror/wrangler.jsonc`:
@@ -1795,12 +1796,72 @@ Create `workers/anitabi-mirror/package.json`:
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "deploy": "wrangler deploy",
+    "build": "node scripts/build.mjs",
+    "deploy": "npm run build && wrangler deploy",
     "dev": "wrangler dev",
     "typegen": "wrangler types"
   }
 }
 ```
+
+Create `workers/anitabi-mirror/scripts/build.mjs`:
+```js
+import fs from 'node:fs/promises'
+import path from 'node:path'
+
+const repoRoot = path.resolve(import.meta.dirname, '../../..')
+const sourceDir = path.join(repoRoot, 'node_modules', '.prisma', 'client')
+const workerClientDir = path.join(repoRoot, 'workers', 'anitabi-mirror', 'node_modules', '.prisma', 'client')
+const wasmFiles = ['query_compiler_bg.wasm']
+
+async function pathExists(target) {
+  try {
+    await fs.access(target)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function copyWasmFiles(targetDir) {
+  await fs.mkdir(targetDir, { recursive: true })
+
+  for (const file of wasmFiles) {
+    const source = path.join(sourceDir, file)
+    if (!(await pathExists(source))) continue
+    await fs.copyFile(source, path.join(targetDir, file))
+  }
+}
+
+async function annotateWasmFiles(targetDir) {
+  const indexPath = path.join(targetDir, 'index.js')
+  if (!(await pathExists(indexPath))) return
+
+  let indexSource = await fs.readFile(indexPath, 'utf8')
+  const annotationLines = wasmFiles.flatMap((file) => [
+    `path.join(__dirname, "${file}");`,
+    `path.join(process.cwd(), "node_modules/.prisma/client/${file}")`,
+  ])
+
+  const missingLines = annotationLines.filter((line) => !indexSource.includes(line))
+  if (missingLines.length === 0) return
+
+  indexSource = `${indexSource}\n${missingLines.join('\n')}\n`
+  await fs.writeFile(indexPath, indexSource)
+}
+
+async function main() {
+  await copyWasmFiles(workerClientDir)
+  await annotateWasmFiles(workerClientDir)
+}
+
+main().catch((error) => {
+  console.error('[mirror-build] failed', error)
+  process.exitCode = 1
+})
+```
+
+This mirrors the repo-root `scripts/copy-prisma-wasm.mjs` flow for the mirror worker bundle: copy `query_compiler_bg.wasm` into the worker-local `.prisma/client` directory and annotate `index.js` so Wrangler packages the WASM asset for Workers.
 
 Create `workers/anitabi-mirror/tsconfig.json`:
 ```json
@@ -1851,14 +1912,19 @@ Create `workers/anitabi-mirror/README.md`:
 Cron-driven worker that backfills R2 with anitabi cover/point images.
 Spec: docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md
 
-Deploy: `npm run deploy` from this directory.
+Build + deploy from repo root:
+
+`node workers/anitabi-mirror/scripts/build.mjs`
+
+`cd workers/anitabi-mirror && wrangler deploy`
 ```
 
 - [ ] **Step 5: Verify wrangler accepts the config**
 
 ```bash
-cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
-wrangler deploy --dry-run 2>&1 | tail -20
+cd /Users/mac/Desktop/seichigo
+node workers/anitabi-mirror/scripts/build.mjs
+cd workers/anitabi-mirror && wrangler deploy --dry-run 2>&1 | tail -20
 ```
 
 Expected: dry-run succeeds; no syntax errors.
@@ -1868,7 +1934,14 @@ Expected: dry-run succeeds; no syntax errors.
 ```bash
 cd /Users/mac/Desktop/seichigo
 git add workers/anitabi-mirror
-git commit -m "feat(workers): scaffold anitabi-mirror cron worker for PR3"
+git commit -m "Package Prisma WASM before deploying the mirror worker" \
+  -m "The worker scaffold includes a build step that copies and annotates Prisma WASM assets before Wrangler deploy so the cron entrypoint matches the Cloudflare runtime packaging used elsewhere in the repo." \
+  -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine" \
+  -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: node workers/anitabi-mirror/scripts/build.mjs; cd workers/anitabi-mirror && wrangler deploy --dry-run" \
+  -m "Not-tested: production cron execution"
 ```
 
 ---
@@ -2682,7 +2755,8 @@ If keeping worker-local compatibility files is useful, they must be thin re-expo
 - [ ] **Step 4: Update `src/index.ts` to wire it**
 
 ```ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '@prisma/client/wasm'
 import { cronTick, type CronTickDeps } from '@/lib/anitabi/mirror/cronTick'
 
 type Env = {
@@ -2697,7 +2771,15 @@ export default {
       console.log('[mirror] cron disabled by flag')
       return
     }
-    const prisma = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } })
+    const adapter = new PrismaPg({
+      connectionString: env.DATABASE_URL,
+      max: 4,
+      connectionTimeoutMillis: 8_000,
+      query_timeout: 12_000,
+      statement_timeout: 12_000,
+      idleTimeoutMillis: 30_000,
+    })
+    const prisma = new PrismaClient({ adapter })
     try {
       const deps: CronTickDeps = {
         prisma,
