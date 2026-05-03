@@ -434,19 +434,19 @@ describe('computeCanonicalImageUrl', () => {
 })
 
 describe('computeMirrorKey', () => {
-  it('produces deterministic mirror/v1/<host>/<24hex>/<ext> form', () => {
-    const key = computeMirrorKey('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320', 'image/jpeg')
+  it('produces deterministic mirror/v1/<host>/<24hex>/<ext> form', async () => {
+    const key = await computeMirrorKey('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320', 'image/jpeg')
     expect(key).toMatch(/^mirror\/v1\/image\.anitabi\.cn\/[0-9a-f]{24}\/\.jpg$/)
   })
 
-  it('different variants produce different keys', () => {
-    const a = computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h160', 'image/jpeg')
-    const b = computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h320', 'image/jpeg')
+  it('different variants produce different keys', async () => {
+    const a = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h160', 'image/jpeg')
+    const b = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h320', 'image/jpeg')
     expect(a).not.toBe(b)
   })
 
-  it('webp mime → .webp extension', () => {
-    const key = computeMirrorKey('https://image.anitabi.cn/x.webp', 'image/webp')
+  it('webp mime → .webp extension', async () => {
+    const key = await computeMirrorKey('https://image.anitabi.cn/x.webp', 'image/webp')
     expect(key).toMatch(/\/\.webp$/)
   })
 })
@@ -513,15 +513,6 @@ async function sha256Hex(input: string): Promise<string> {
     .join('')
 }
 
-export function computeMirrorKeySync(canonicalUrl: string, mimeType: string): string {
-  // Synchronous version using Node's crypto for places that can't await
-  // (kept for completeness; the async version below is preferred in worker code)
-  const url = new URL(canonicalUrl)
-  const ext = extensionFromMimeType(mimeType)
-  // Note: this requires the crypto polyfill or Node import; for CF Workers use computeMirrorKey
-  throw new Error('Use computeMirrorKey (async) — sync variant not implemented')
-}
-
 export async function computeMirrorKey(canonicalUrl: string, mimeType: string): Promise<string> {
   const url = new URL(canonicalUrl)
   const hash = (await sha256Hex(canonicalUrl)).slice(0, 24)
@@ -530,28 +521,7 @@ export async function computeMirrorKey(canonicalUrl: string, mimeType: string): 
 }
 ```
 
-- [ ] **Step 4: Update test to match async key API**
-
-The `computeMirrorKey` is async. Update the test to await it:
-```ts
-it('produces deterministic mirror/v1/<host>/<24hex>/<ext> form', async () => {
-  const key = await computeMirrorKey('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320', 'image/jpeg')
-  expect(key).toMatch(/^mirror\/v1\/image\.anitabi\.cn\/[0-9a-f]{24}\/\.jpg$/)
-})
-
-it('different variants produce different keys', async () => {
-  const a = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h160', 'image/jpeg')
-  const b = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h320', 'image/jpeg')
-  expect(a).not.toBe(b)
-})
-
-it('webp mime → .webp extension', async () => {
-  const key = await computeMirrorKey('https://image.anitabi.cn/x.webp', 'image/webp')
-  expect(key).toMatch(/\/\.webp$/)
-})
-```
-
-- [ ] **Step 5: Run tests to verify pass**
+- [ ] **Step 4: Run tests to verify pass**
 
 ```bash
 npx vitest run tests/anitabi/imageNormalize.test.ts
@@ -559,7 +529,7 @@ npx vitest run tests/anitabi/imageNormalize.test.ts
 
 Expected: all 8 tests PASS. These assertions cover canonicalization semantics only for `computeCanonicalImageUrl` and `computeMirrorKey`; they must not become display-variant tests for per-kind map image rewrites.
 
-- [ ] **Step 6: Add `computeCanonicalImageUrl` as a sibling helper, do NOT replace kind-aware variants**
+- [ ] **Step 5: Add `computeCanonicalImageUrl` as a sibling helper, do NOT replace kind-aware variants**
 
 Keep `lib/anitabi/imageProxy.ts` kind-aware display logic intact. `normalizeBangumiCoverVariant(url, kind)` and `normalizeAnitabiDisplayVariant(url, kind)` must continue to own display rewrite paths and continue receiving `kind: MapDisplayImageKind` from `getMapDisplayImageCandidates`.
 
@@ -569,7 +539,7 @@ Task 1.3's `imageMirrorVariants.ts` should call `computeCanonicalImageUrl` when 
 
 If `imageProxy.ts` reuses any extracted helper, limit that reuse to URL-cleaning/canonicalization that is independent of `MapDisplayImageKind`. Size/variant rewrites stay in the kind-aware display helpers and in mirror variant enumerators, not in the generic canonicalizer. Do not collapse or delete the per-kind display transforms in `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, or the `getMapDisplayImageCandidates` call flow. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
 
-- [ ] **Step 7: Run full test suite**
+- [ ] **Step 6: Run full test suite**
 
 ```bash
 npm test
@@ -577,7 +547,7 @@ npm test
 
 Expected: this is a repo-wide gate, and it is currently blocked by pre-existing unrelated line-budget failures unless those are fixed first. Do not treat a line-budget failure here as a Task 1.2 regression; the task-local proof is the direct Vitest runs above, plus the existing image-proxy tests.
 
-- [ ] **Step 8: Run direct imageProxy variant tests**
+- [ ] **Step 7: Run direct imageProxy variant tests**
 
 ```bash
 npx vitest run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-proxy-phase2.test.ts
@@ -585,7 +555,7 @@ npx vitest run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-pr
 
 Expected: PASS. This is the primary Task 1.2 proof that the extracted canonicalization helper did not change kind-aware imageProxy variant behavior.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add lib/anitabi/imageNormalize.ts lib/anitabi/imageProxy.ts tests/anitabi/imageNormalize.test.ts
