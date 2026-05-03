@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
       config.resolve.alias['@sentry/nextjs'] = sentryShimEntry
     }
 
-    if (isServer) {
+    if (isServer && isCloudflareDeploy) {
       config.resolve ??= {}
       config.resolve.alias ??= {}
       config.resolve.alias['@prisma/client$'] = prismaWasmEntry
