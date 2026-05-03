@@ -860,55 +860,95 @@ git commit -m "feat(map): r2Mirror client (put/get with metadata + freshness ski
 
 ---
 
-### Task 1.5: Add `image_cache_state` to MapImageDiagStage enum
+### Task 1.5: Document `image_cache_state` as a recognized diag stage
+
+**Why:** PR1.55 (`lib/mapImageDiag/shared.ts`) stores `stage: string` as a free-form Zod field — there is no enum to extend. The `image_cache_state` events emitted by Phase 2 will be accepted by the existing schema verbatim. This task therefore documents the new stage value and adds a runtime constant so callers don't pass typo'd strings.
 
 **Files:**
-- Modify: `lib/mapImageDiag/shared.ts`
-- Test: discoverable via existing diag tests, plus a new minimal one
+- Modify: `lib/mapImageDiag/stages.ts` (create if absent)
+- Modify: `lib/mapImageDiag/shared.ts` (add JSDoc note only; no schema change)
+- Test: `tests/mapImageDiag/stages.test.ts`
 
-- [ ] **Step 1: Locate the enum**
+- [ ] **Step 1: Open `lib/mapImageDiag/shared.ts`** to confirm the schema is `stage: z.string().min(1)` and that no exhaustive union exists.
 
-Run:
-```bash
-grep -n "MapImageDiagStage" /Users/mac/Desktop/seichigo/lib/mapImageDiag/shared.ts | head -10
+- [ ] **Step 2: Failing test**
+
+Create `tests/mapImageDiag/stages.test.ts`:
+```ts
+import { describe, it, expect } from 'vitest'
+import { MAP_IMAGE_DIAG_STAGES, isKnownDiagStage } from '@/lib/mapImageDiag/stages'
+
+describe('MAP_IMAGE_DIAG_STAGES', () => {
+  it('includes image_cache_state', () => {
+    expect(MAP_IMAGE_DIAG_STAGES).toContain('image_cache_state')
+  })
+
+  it('isKnownDiagStage accepts new and existing stages', () => {
+    expect(isKnownDiagStage('image_cache_state')).toBe(true)
+    expect(isKnownDiagStage('proxy_cache_state')).toBe(true)
+    expect(isKnownDiagStage('typo_stage')).toBe(false)
+  })
+})
 ```
 
-Open the file to understand the existing enum/union shape.
+- [ ] **Step 3: Run — expect FAIL** (file does not yet exist)
 
-- [ ] **Step 2: Add `image_cache_state` to the union**
-
-Edit `lib/mapImageDiag/shared.ts` — add `'image_cache_state'` to the `MapImageDiagStage` type union/list, preserving alphabetical-within-domain ordering or whatever existing convention is in place.
-
-- [ ] **Step 3: Update any switch/exhaustiveness checks**
-
-Search for usages:
 ```bash
-grep -rn "MapImageDiagStage" /Users/mac/Desktop/seichigo/lib /Users/mac/Desktop/seichigo/app | grep -v node_modules
+npm test -- --run tests/mapImageDiag/stages.test.ts
 ```
 
-For each switch statement on `stage`, add a case for `image_cache_state` with a no-op or pass-through behavior (it's a new event, existing handlers ignore it cleanly).
+- [ ] **Step 4: Implement**
 
-- [ ] **Step 4: Run typecheck**
+Create `lib/mapImageDiag/stages.ts`:
+```ts
+/**
+ * Centralized list of known MapImageDiag stage strings. Stage is a free-form
+ * `string` in the Zod schema (lib/mapImageDiag/shared.ts:16), so this list is
+ * documentation + a runtime guard, not a TypeScript exhaustiveness check.
+ *
+ * When PR3 introduces a new outcome event, add the string here.
+ */
+export const MAP_IMAGE_DIAG_STAGES = [
+  'proxy_cache_state',
+  'image_session_outcome',
+  'window_excerpt',
+  'image_cache_state', // PR3
+] as const
+
+export type MapImageDiagStageName = (typeof MAP_IMAGE_DIAG_STAGES)[number]
+
+export function isKnownDiagStage(value: string): value is MapImageDiagStageName {
+  return (MAP_IMAGE_DIAG_STAGES as readonly string[]).includes(value)
+}
+```
+
+- [ ] **Step 5: Run — expect PASS**
+
+```bash
+npm test -- --run tests/mapImageDiag/stages.test.ts
+```
+
+- [ ] **Step 6: Add a JSDoc note to `lib/mapImageDiag/shared.ts`** above the `stage: z.string().min(1)` field:
+
+```ts
+// stage values are free-form strings; the canonical list lives in
+// lib/mapImageDiag/stages.ts (MAP_IMAGE_DIAG_STAGES).
+```
+
+- [ ] **Step 7: Run typecheck and full diag suite**
 
 ```bash
 npm run typecheck
-```
-
-Expected: PASS. If exhaustiveness errors appear, add the missing cases.
-
-- [ ] **Step 5: Run existing tests**
-
-```bash
-npm test -- --run tests/mapImageDiag tests/anitabi/diff.test.ts
+npm test -- --run tests/mapImageDiag
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add lib/mapImageDiag/shared.ts
-git commit -m "feat(diag): add image_cache_state stage for PR3 R2 path"
+git add lib/mapImageDiag/stages.ts lib/mapImageDiag/shared.ts tests/mapImageDiag/stages.test.ts
+git commit -m "feat(diag): document image_cache_state stage with shared constant"
 ```
 
 ---
