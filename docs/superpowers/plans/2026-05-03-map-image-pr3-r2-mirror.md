@@ -497,11 +497,17 @@ it('webp mime → .webp extension', async () => {
 npm test -- --run tests/anitabi/imageNormalize.test.ts
 ```
 
-Expected: all 8 tests PASS.
+Expected: all 8 tests PASS. These assertions cover canonicalization semantics only for `computeCanonicalImageUrl` and `computeMirrorKey`; they must not become display-variant tests for per-kind map image rewrites.
 
-- [ ] **Step 6: Refactor `imageProxy.ts` to use the new module (no behavior change)**
+- [ ] **Step 6: Add `computeCanonicalImageUrl` as a sibling helper, do NOT replace kind-aware variants**
 
-Open `lib/anitabi/imageProxy.ts`. Replace `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, and the inline normalization in `getMapDisplayImageCandidates` with calls to `computeCanonicalImageUrl` where the same logic applies. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
+Keep `lib/anitabi/imageProxy.ts` kind-aware display logic intact. `normalizeBangumiCoverVariant(url, kind)` and `normalizeAnitabiDisplayVariant(url, kind)` must continue to own display rewrite paths and continue receiving `kind: MapDisplayImageKind` from `getMapDisplayImageCandidates`.
+
+Extract only the shared URL-cleaning and canonicalization pieces into `lib/anitabi/imageNormalize.ts` so `computeCanonicalImageUrl(url: string)` can normalize host/path/query state for stable mirror lookups without changing display semantics.
+
+Task 1.3's `imageMirrorVariants.ts` should call `computeCanonicalImageUrl` when building stable R2 variant keys. That helper is a sibling to the display-variant functions, not a replacement for them.
+
+If `imageProxy.ts` reuses any extracted helper, limit that reuse to URL-cleaning/canonicalization that is independent of `MapDisplayImageKind`. Do not collapse or delete the per-kind display transforms in `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, or the `getMapDisplayImageCandidates` call flow. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
 
 - [ ] **Step 7: Run full test suite**
 
@@ -515,7 +521,21 @@ Expected: all tests pass, including the existing image-proxy tests.
 
 ```bash
 git add lib/anitabi/imageNormalize.ts lib/anitabi/imageProxy.ts tests/anitabi/imageNormalize.test.ts
-git commit -m "feat(map): extract imageNormalize for shared canonical URL + mirror key"
+git commit -m "$(cat <<'EOF'
+Stabilize shared image canonicalization without changing display variants
+
+Task 1.2 extracts URL canonicalization for mirror-key generation while keeping
+kind-aware display rewrite behavior in imageProxy.ts.
+
+Constraint: computeCanonicalImageUrl is only for stable canonical lookup inputs
+Rejected: Replace normalizeBangumiCoverVariant and normalizeAnitabiDisplayVariant | would break MapDisplayImageKind-aware display transforms
+Confidence: high
+Scope-risk: narrow
+Directive: Keep canonicalization helpers separate from per-kind display variant rewrites
+Tested: npm test -- --run tests/anitabi/imageNormalize.test.ts
+Tested: npm test -- --run tests/anitabi/imageProxy.bgmLadder.test.ts tests/anitabi/image-proxy-phase2.test.ts
+EOF
+)"
 ```
 
 ---
