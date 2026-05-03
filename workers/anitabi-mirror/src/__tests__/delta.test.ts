@@ -2,37 +2,117 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
 
-import { cronDelta } from '../delta'
+import { cronDelta, type CronDeltaPrisma } from '../delta'
 
 const CURSOR_KEY = { sourceType: '__cursor__', sourceId: 'delta', variant: '__' } as const
 
-type CursorRow = {
-  mirroredAt: Date | null
+type ExistingMirrorState = {
+  sourceType: string
+  sourceId: string
+  variant: string
+  canonicalUrl: string
+  r2Key: string
+  status: 'pending' | 'in_progress' | 'mirrored' | 'failed' | 'skipped_404'
+  attempts: number
+  lastError: string | null
+  mirroredAt?: Date | null
+  lastAttemptAt?: Date | null
+  contentBytes?: number | null
 }
 
-type BangumiRow = {
-  id: number
-  cover: string | null
+function buildStateKey(sourceType: string, sourceId: string, variant: string): string {
+  return `${sourceType}:${sourceId}:${variant}`
 }
 
-type PointRow = {
-  id: string
-  image: string | null
+function uniqueConstraintError(): Error & { code: string } {
+  return Object.assign(new Error('unique constraint'), { code: 'P2002' as const })
 }
 
 function buildPrismaMock(opts: {
-  cursorRow?: CursorRow | null
-  bangumi?: BangumiRow[]
-  points?: PointRow[]
+  cursorRow?: { mirroredAt: Date | null } | null
+  bangumi?: Array<{ id: number; cover: string | null; updatedAt: Date }>
+  points?: Array<{ id: string; image: string | null; updatedAt: Date }>
+  mirrorStates?: ExistingMirrorState[]
 }) {
-  const findUnique = vi.fn().mockResolvedValue(opts.cursorRow ?? null)
-  const upsert = vi.fn().mockResolvedValue({})
-  const bangumiFindMany = vi.fn().mockResolvedValue(opts.bangumi ?? [])
-  const pointFindMany = vi.fn().mockResolvedValue(opts.points ?? [])
+  const stateStore = new Map(
+    (opts.mirrorStates ?? []).map((state) => [
+      buildStateKey(state.sourceType, state.sourceId, state.variant),
+      { ...state },
+    ]),
+  )
+
+  const findUnique = vi
+    .fn<CronDeltaPrisma['mapImageMirrorState']['findUnique']>()
+    .mockResolvedValue(opts.cursorRow ?? null)
+  const create = vi.fn<CronDeltaPrisma['mapImageMirrorState']['create']>().mockImplementation(
+    async ({ data }) => {
+      const key = buildStateKey(data.sourceType, data.sourceId, data.variant)
+      if (stateStore.has(key)) {
+        throw uniqueConstraintError()
+      }
+
+      stateStore.set(key, {
+        sourceType: data.sourceType,
+        sourceId: data.sourceId,
+        variant: data.variant,
+        canonicalUrl: data.canonicalUrl,
+        r2Key: data.r2Key,
+        status: data.status,
+        attempts: 0,
+        lastError: null,
+        mirroredAt: null,
+        lastAttemptAt: null,
+        contentBytes: null,
+      })
+
+      return {}
+    },
+  )
+  const updateMany = vi
+    .fn<CronDeltaPrisma['mapImageMirrorState']['updateMany']>()
+    .mockImplementation(async ({ where, data }) => {
+      const key = buildStateKey(where.sourceType, where.sourceId, where.variant)
+      const state = stateStore.get(key)
+      if (!state) {
+        return { count: 0 }
+      }
+
+      const matchesStatus =
+        typeof where.status === 'string'
+          ? state.status === where.status
+          : new Set<string>(where.status.in).has(state.status)
+
+      if (!matchesStatus) {
+        return { count: 0 }
+      }
+
+      stateStore.set(key, {
+        ...state,
+        canonicalUrl: data.canonicalUrl ?? state.canonicalUrl,
+        r2Key: data.r2Key ?? state.r2Key,
+        status: data.status ?? state.status,
+        attempts: data.attempts ?? state.attempts,
+        lastError: data.lastError === undefined ? state.lastError : data.lastError,
+        mirroredAt: data.mirroredAt === undefined ? state.mirroredAt : data.mirroredAt,
+        lastAttemptAt: data.lastAttemptAt === undefined ? state.lastAttemptAt : data.lastAttemptAt,
+        contentBytes: data.contentBytes === undefined ? state.contentBytes : data.contentBytes,
+      })
+
+      return { count: 1 }
+    })
+  const upsert = vi.fn<CronDeltaPrisma['mapImageMirrorState']['upsert']>().mockResolvedValue({})
+  const bangumiFindMany = vi
+    .fn<CronDeltaPrisma['anitabiBangumi']['findMany']>()
+    .mockResolvedValue(opts.bangumi ?? [])
+  const pointFindMany = vi
+    .fn<CronDeltaPrisma['anitabiPoint']['findMany']>()
+    .mockResolvedValue(opts.points ?? [])
 
   const prisma = {
     mapImageMirrorState: {
       findUnique,
+      create,
+      updateMany,
       upsert,
     },
     anitabiBangumi: {
@@ -41,32 +121,49 @@ function buildPrismaMock(opts: {
     anitabiPoint: {
       findMany: pointFindMany,
     },
-  }
+  } satisfies CronDeltaPrisma
 
   return {
     prisma,
     findUnique,
+    create,
+    updateMany,
     upsert,
     bangumiFindMany,
     pointFindMany,
+    stateStore,
   }
 }
 
 describe('cronDelta', () => {
-  it('reads the cursor watermark, enqueues updated bangumi and point variants, and advances the cursor', async () => {
+  it('reads a bounded watermark, limits each source query, creates variants, and advances the cursor to the processed watermark', async () => {
     vi.useFakeTimers()
 
     try {
       const cursorAt = new Date('2026-05-02T00:00:00Z')
-      vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
+      const upperBound = new Date('2026-05-03T12:00:00Z')
+      vi.setSystemTime(upperBound)
 
-      const { prisma, findUnique, upsert, bangumiFindMany, pointFindMany } = buildPrismaMock({
-        cursorRow: { mirroredAt: cursorAt },
-        bangumi: [{ id: 999, cover: 'https://image.anitabi.cn/bangumi/999/cover.jpg' }],
-        points: [{ id: 'pn1', image: 'https://image.anitabi.cn/points/pn1.jpg' }],
-      })
+      const { prisma, findUnique, create, updateMany, upsert, bangumiFindMany, pointFindMany } =
+        buildPrismaMock({
+          cursorRow: { mirroredAt: cursorAt },
+          bangumi: [
+            {
+              id: 999,
+              cover: 'https://image.anitabi.cn/bangumi/999/cover.jpg',
+              updatedAt: new Date('2026-05-03T11:15:00Z'),
+            },
+          ],
+          points: [
+            {
+              id: 'pn1',
+              image: 'https://image.anitabi.cn/points/pn1.jpg',
+              updatedAt: new Date('2026-05-03T11:30:00Z'),
+            },
+          ],
+        })
 
-      await expect(cronDelta(prisma as never)).resolves.toEqual({ enqueued: 5 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 25 })).resolves.toEqual({ enqueued: 5 })
 
       expect(findUnique).toHaveBeenCalledWith({
         where: {
@@ -75,29 +172,27 @@ describe('cronDelta', () => {
       })
       expect(bangumiFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: cursorAt },
+          updatedAt: { gt: cursorAt, lte: upperBound },
           mapEnabled: true,
           cover: { not: null },
         },
-        select: { id: true, cover: true },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 25,
+        select: { id: true, cover: true, updatedAt: true },
       })
       expect(pointFindMany).toHaveBeenCalledWith({
         where: {
-          updatedAt: { gt: cursorAt },
+          updatedAt: { gt: cursorAt, lte: upperBound },
           image: { not: null },
         },
-        select: { id: true, image: true },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 25,
+        select: { id: true, image: true, updatedAt: true },
       })
-      expect(upsert).toHaveBeenCalledTimes(6)
-      expect(upsert).toHaveBeenNthCalledWith(1, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'bangumi-cover',
-            sourceId: '999',
-            variant: 'cover-l',
-          },
-        },
-        create: {
+      expect(create).toHaveBeenCalledTimes(5)
+      expect(updateMany).not.toHaveBeenCalled()
+      expect(create).toHaveBeenNthCalledWith(1, {
+        data: {
           sourceType: 'bangumi-cover',
           sourceId: '999',
           variant: 'cover-l',
@@ -108,116 +203,9 @@ describe('cronDelta', () => {
           ),
           status: 'pending',
         },
-        update: {
-          canonicalUrl: 'https://image.anitabi.cn/bangumi/999/cover.jpg?plan=l',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/bangumi/999/cover.jpg?plan=l',
-            'image/jpeg',
-          ),
-          status: 'pending',
-          attempts: 0,
-          lastError: null,
-        },
       })
-      expect(upsert).toHaveBeenNthCalledWith(2, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'bangumi-cover',
-            sourceId: '999',
-            variant: 'cover-m',
-          },
-        },
-        create: {
-          sourceType: 'bangumi-cover',
-          sourceId: '999',
-          variant: 'cover-m',
-          canonicalUrl: 'https://image.anitabi.cn/bangumi/999/cover.jpg',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/bangumi/999/cover.jpg',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-        update: {
-          canonicalUrl: 'https://image.anitabi.cn/bangumi/999/cover.jpg',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/bangumi/999/cover.jpg',
-            'image/jpeg',
-          ),
-          status: 'pending',
-          attempts: 0,
-          lastError: null,
-        },
-      })
-      expect(upsert).toHaveBeenNthCalledWith(3, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'point-image',
-            sourceId: 'pn1',
-            variant: 'h160',
-          },
-        },
-        create: {
-          sourceType: 'point-image',
-          sourceId: 'pn1',
-          variant: 'h160',
-          canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-        update: {
-          canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
-            'image/jpeg',
-          ),
-          status: 'pending',
-          attempts: 0,
-          lastError: null,
-        },
-      })
-      expect(upsert).toHaveBeenNthCalledWith(4, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'point-image',
-            sourceId: 'pn1',
-            variant: 'h320',
-          },
-        },
-        create: {
-          sourceType: 'point-image',
-          sourceId: 'pn1',
-          variant: 'h320',
-          canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?plan=h320',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pn1.jpg?plan=h320',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-        update: {
-          canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?plan=h320',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pn1.jpg?plan=h320',
-            'image/jpeg',
-          ),
-          status: 'pending',
-          attempts: 0,
-          lastError: null,
-        },
-      })
-      expect(upsert).toHaveBeenNthCalledWith(5, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'point-image',
-            sourceId: 'pn1',
-            variant: 'w640q80',
-          },
-        },
-        create: {
+      expect(create).toHaveBeenNthCalledWith(5, {
+        data: {
           sourceType: 'point-image',
           sourceId: 'pn1',
           variant: 'w640q80',
@@ -228,62 +216,6 @@ describe('cronDelta', () => {
           ),
           status: 'pending',
         },
-        update: {
-          canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?q=80&w=640',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pn1.jpg?q=80&w=640',
-            'image/jpeg',
-          ),
-          status: 'pending',
-          attempts: 0,
-          lastError: null,
-        },
-      })
-      expect(upsert).toHaveBeenNthCalledWith(6, {
-        where: {
-          sourceType_sourceId_variant: CURSOR_KEY,
-        },
-        create: {
-          ...CURSOR_KEY,
-          canonicalUrl: 'cursor',
-          r2Key: 'cursor',
-          status: 'mirrored',
-          mirroredAt: new Date('2026-05-03T12:00:00Z'),
-        },
-        update: {
-          mirroredAt: new Date('2026-05-03T12:00:00Z'),
-        },
-      })
-    } finally {
-      vi.useRealTimers()
-      vi.restoreAllMocks()
-    }
-  })
-
-  it('falls back to the unix epoch when no cursor row exists and does not count the cursor row as work', async () => {
-    vi.useFakeTimers()
-
-    try {
-      vi.setSystemTime(new Date('2026-05-03T13:00:00Z'))
-
-      const { prisma, bangumiFindMany, pointFindMany, upsert } = buildPrismaMock({})
-
-      await expect(cronDelta(prisma as never)).resolves.toEqual({ enqueued: 0 })
-
-      expect(bangumiFindMany).toHaveBeenCalledWith({
-        where: {
-          updatedAt: { gt: new Date(0) },
-          mapEnabled: true,
-          cover: { not: null },
-        },
-        select: { id: true, cover: true },
-      })
-      expect(pointFindMany).toHaveBeenCalledWith({
-        where: {
-          updatedAt: { gt: new Date(0) },
-          image: { not: null },
-        },
-        select: { id: true, image: true },
       })
       expect(upsert).toHaveBeenCalledTimes(1)
       expect(upsert).toHaveBeenCalledWith({
@@ -295,10 +227,275 @@ describe('cronDelta', () => {
           canonicalUrl: 'cursor',
           r2Key: 'cursor',
           status: 'mirrored',
-          mirroredAt: new Date('2026-05-03T13:00:00Z'),
+          mirroredAt: new Date('2026-05-03T11:30:00Z'),
         },
         update: {
-          mirroredAt: new Date('2026-05-03T13:00:00Z'),
+          mirroredAt: new Date('2026-05-03T11:30:00Z'),
+        },
+      })
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('does not advance the cursor when no rows are observed', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-05-03T13:00:00Z'))
+
+      const { prisma, create, updateMany, upsert, bangumiFindMany, pointFindMany } =
+        buildPrismaMock({})
+
+      await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 0 })
+
+      expect(bangumiFindMany).toHaveBeenCalledWith({
+        where: {
+          updatedAt: { gt: new Date(0), lte: new Date('2026-05-03T13:00:00Z') },
+          mapEnabled: true,
+          cover: { not: null },
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 100,
+        select: { id: true, cover: true, updatedAt: true },
+      })
+      expect(pointFindMany).toHaveBeenCalledWith({
+        where: {
+          updatedAt: { gt: new Date(0), lte: new Date('2026-05-03T13:00:00Z') },
+          image: { not: null },
+        },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: 100,
+        select: { id: true, image: true, updatedAt: true },
+      })
+      expect(create).not.toHaveBeenCalled()
+      expect(updateMany).not.toHaveBeenCalled()
+      expect(upsert).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('keeps the cursor on the last fully covered timestamp when a source hits the batch limit', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-05-03T14:00:00Z'))
+
+      const { prisma, upsert } = buildPrismaMock({
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z') },
+        bangumi: [
+          {
+            id: 100,
+            cover: 'https://image.anitabi.cn/bangumi/100/cover.jpg',
+            updatedAt: new Date('2026-05-03T11:00:00Z'),
+          },
+          {
+            id: 101,
+            cover: 'https://image.anitabi.cn/bangumi/101/cover.jpg',
+            updatedAt: new Date('2026-05-03T12:00:00Z'),
+          },
+        ],
+        points: [],
+      })
+
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 4 })
+
+      expect(upsert).toHaveBeenCalledWith({
+        where: {
+          sourceType_sourceId_variant: CURSOR_KEY,
+        },
+        create: {
+          ...CURSOR_KEY,
+          canonicalUrl: 'cursor',
+          r2Key: 'cursor',
+          status: 'mirrored',
+          mirroredAt: new Date('2026-05-03T11:00:00Z'),
+        },
+        update: {
+          mirroredAt: new Date('2026-05-03T11:00:00Z'),
+        },
+      })
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('requeues finished rows, refreshes pending rows in place, and preserves in-progress ownership', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-05-03T15:00:00Z'))
+
+      const mirrorStates: ExistingMirrorState[] = [
+        {
+          sourceType: 'bangumi-cover',
+          sourceId: '999',
+          variant: 'cover-l',
+          canonicalUrl: 'https://old.example/bangumi-999-cover-l.jpg',
+          r2Key: 'old-cover-l',
+          status: 'mirrored',
+          attempts: 2,
+          lastError: null,
+          mirroredAt: new Date('2026-05-01T00:00:00Z'),
+          lastAttemptAt: new Date('2026-05-01T00:00:00Z'),
+          contentBytes: 123,
+        },
+        {
+          sourceType: 'bangumi-cover',
+          sourceId: '999',
+          variant: 'cover-m',
+          canonicalUrl: 'https://old.example/bangumi-999-cover-m.jpg',
+          r2Key: 'old-cover-m',
+          status: 'failed',
+          attempts: 4,
+          lastError: 'boom',
+          mirroredAt: null,
+          lastAttemptAt: new Date('2026-05-01T01:00:00Z'),
+          contentBytes: null,
+        },
+        {
+          sourceType: 'point-image',
+          sourceId: 'pn1',
+          variant: 'h160',
+          canonicalUrl: 'https://old.example/pn1-h160.jpg',
+          r2Key: 'old-h160',
+          status: 'pending',
+          attempts: 3,
+          lastError: 'stale',
+          mirroredAt: null,
+          lastAttemptAt: new Date('2026-05-01T02:00:00Z'),
+          contentBytes: null,
+        },
+        {
+          sourceType: 'point-image',
+          sourceId: 'pn1',
+          variant: 'h320',
+          canonicalUrl: 'https://old.example/pn1-h320.jpg',
+          r2Key: 'old-h320',
+          status: 'in_progress',
+          attempts: 5,
+          lastError: 'working',
+          mirroredAt: null,
+          lastAttemptAt: new Date('2026-05-03T14:59:00Z'),
+          contentBytes: null,
+        },
+      ]
+
+      const { prisma, upsert, stateStore } = buildPrismaMock({
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z') },
+        bangumi: [
+          {
+            id: 999,
+            cover: 'https://image.anitabi.cn/bangumi/999/cover.jpg',
+            updatedAt: new Date('2026-05-03T12:00:00Z'),
+          },
+        ],
+        points: [
+          {
+            id: 'pn1',
+            image: 'https://image.anitabi.cn/points/pn1.jpg',
+            updatedAt: new Date('2026-05-03T12:30:00Z'),
+          },
+        ],
+        mirrorStates,
+      })
+
+      await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 3 })
+
+      expect(stateStore.get(buildStateKey('bangumi-cover', '999', 'cover-l'))).toEqual({
+        sourceType: 'bangumi-cover',
+        sourceId: '999',
+        variant: 'cover-l',
+        canonicalUrl: 'https://image.anitabi.cn/bangumi/999/cover.jpg?plan=l',
+        r2Key: await computeMirrorKey(
+          'https://image.anitabi.cn/bangumi/999/cover.jpg?plan=l',
+          'image/jpeg',
+        ),
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        mirroredAt: null,
+        lastAttemptAt: null,
+        contentBytes: null,
+      })
+      expect(stateStore.get(buildStateKey('bangumi-cover', '999', 'cover-m'))).toEqual({
+        sourceType: 'bangumi-cover',
+        sourceId: '999',
+        variant: 'cover-m',
+        canonicalUrl: 'https://image.anitabi.cn/bangumi/999/cover.jpg',
+        r2Key: await computeMirrorKey(
+          'https://image.anitabi.cn/bangumi/999/cover.jpg',
+          'image/jpeg',
+        ),
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        mirroredAt: null,
+        lastAttemptAt: null,
+        contentBytes: null,
+      })
+      expect(stateStore.get(buildStateKey('point-image', 'pn1', 'h160'))).toEqual({
+        sourceType: 'point-image',
+        sourceId: 'pn1',
+        variant: 'h160',
+        canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
+        r2Key: await computeMirrorKey(
+          'https://image.anitabi.cn/points/pn1.jpg?plan=h160',
+          'image/jpeg',
+        ),
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        mirroredAt: null,
+        lastAttemptAt: null,
+        contentBytes: null,
+      })
+      expect(stateStore.get(buildStateKey('point-image', 'pn1', 'h320'))).toEqual({
+        sourceType: 'point-image',
+        sourceId: 'pn1',
+        variant: 'h320',
+        canonicalUrl: 'https://old.example/pn1-h320.jpg',
+        r2Key: 'old-h320',
+        status: 'in_progress',
+        attempts: 5,
+        lastError: 'working',
+        mirroredAt: null,
+        lastAttemptAt: new Date('2026-05-03T14:59:00Z'),
+        contentBytes: null,
+      })
+      expect(stateStore.get(buildStateKey('point-image', 'pn1', 'w640q80'))).toEqual({
+        sourceType: 'point-image',
+        sourceId: 'pn1',
+        variant: 'w640q80',
+        canonicalUrl: 'https://image.anitabi.cn/points/pn1.jpg?q=80&w=640',
+        r2Key: await computeMirrorKey(
+          'https://image.anitabi.cn/points/pn1.jpg?q=80&w=640',
+          'image/jpeg',
+        ),
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        mirroredAt: null,
+        lastAttemptAt: null,
+        contentBytes: null,
+      })
+      expect(upsert).toHaveBeenCalledWith({
+        where: {
+          sourceType_sourceId_variant: CURSOR_KEY,
+        },
+        create: {
+          ...CURSOR_KEY,
+          canonicalUrl: 'cursor',
+          r2Key: 'cursor',
+          status: 'mirrored',
+          mirroredAt: new Date('2026-05-03T12:30:00Z'),
+        },
+        update: {
+          mirroredAt: new Date('2026-05-03T12:30:00Z'),
         },
       })
     } finally {
