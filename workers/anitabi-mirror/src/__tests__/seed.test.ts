@@ -101,15 +101,30 @@ function buildPrismaMock(
     createdAt: Date
   }>,
   opts?: {
+    findFirstImpl?: ProcessSeedBatchPrisma['mapImageMirrorState']['findFirst']
     updateManyImpl?: ProcessSeedBatchPrisma['mapImageMirrorState']['updateMany']
   },
 ) {
   const findMany = vi
     .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['findMany']>()
     .mockResolvedValue(items)
+  const findFirst = vi
+    .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['findFirst']>()
+    .mockImplementation(async ({ where }) =>
+      items.find(
+        (item) =>
+          item.id === where.id &&
+          where.status === 'in_progress' &&
+          where.lastAttemptAt instanceof Date,
+      ) ?? null,
+    )
   const updateMany = vi
     .fn<ProcessSeedBatchPrisma['mapImageMirrorState']['updateMany']>()
     .mockResolvedValue({ count: 1 })
+
+  if (opts?.findFirstImpl) {
+    findFirst.mockImplementation(opts.findFirstImpl)
+  }
 
   if (opts?.updateManyImpl) {
     updateMany.mockImplementation(opts.updateManyImpl)
@@ -118,11 +133,12 @@ function buildPrismaMock(
   const prisma = {
     mapImageMirrorState: {
       findMany,
+      findFirst,
       updateMany,
     },
   } satisfies ProcessSeedBatchPrisma
 
-  return { prisma, findMany, updateMany }
+  return { prisma, findMany, findFirst, updateMany }
 }
 
 afterEach(() => {
@@ -450,6 +466,53 @@ describe('processSeedBatch', () => {
     expect(updateMany).toHaveBeenCalledTimes(2)
   })
 
+  it('skips the R2 write when ownership is lost after reading the upstream image', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:05:00Z'))
+
+    const bucket = new FakeBucket()
+    const { prisma, findFirst, updateMany } = buildPrismaMock(
+      [
+        {
+          id: 'seed-8b',
+          canonicalUrl: 'https://image.anitabi.cn/stolen-before-r2.jpg',
+          attempts: 1,
+          createdAt: new Date('2026-05-03T12:00:00Z'),
+        },
+      ],
+      {
+        findFirstImpl: vi.fn().mockResolvedValue(null),
+      },
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(encodeBytes('body-already-read'), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        }),
+      ),
+    )
+
+    await expect(processSeedBatch(prisma, bucket, { batchSize: 1 })).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+    })
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'seed-8b',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T13:05:00Z'),
+      },
+      select: { id: true },
+    })
+    expect(bucket.putCalls).toBe(0)
+    expect(updateMany).toHaveBeenCalledTimes(1)
+  })
+
   it('persists the existing object size when R2 skips overwriting a fresh mirror', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-03T13:10:00Z'))
@@ -561,6 +624,44 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 2,
       retried: 0,
+    })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cleans up the fetch timeout when fetch rejects before returning a response', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:30:00Z'))
+
+    const { prisma, updateMany } = buildPrismaMock([
+      {
+        id: 'seed-12',
+        canonicalUrl: 'https://image.anitabi.cn/reject.jpg',
+        attempts: 0,
+        createdAt: new Date('2026-05-03T12:00:00Z'),
+      },
+    ])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new Error('socket hang up')),
+    )
+
+    await expect(processSeedBatch(prisma, new FakeBucket(), { batchSize: 1 })).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 1,
+    })
+
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'seed-12',
+        status: 'in_progress',
+        lastAttemptAt: new Date('2026-05-03T13:30:00Z'),
+      },
+      data: {
+        status: 'pending',
+        lastError: 'Error: socket hang up',
+      },
     })
     expect(vi.getTimerCount()).toBe(0)
   })

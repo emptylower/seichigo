@@ -24,6 +24,10 @@ type SeedBatchUpdateManyResult = {
   count: number
 }
 
+type SeedBatchOwnershipRow = {
+  id: string
+}
+
 export type ProcessSeedBatchPrisma = {
   mapImageMirrorState: {
     findMany(args: {
@@ -31,6 +35,10 @@ export type ProcessSeedBatchPrisma = {
       orderBy: { createdAt: 'asc' }
       take: number
     }): Promise<SeedBatchRow[]>
+    findFirst(args: {
+      where: { id: string; status: 'in_progress'; lastAttemptAt: Date }
+      select: { id: true }
+    }): Promise<SeedBatchOwnershipRow | null>
     updateMany(args: {
       where:
         | { id: string; status: 'pending' }
@@ -124,6 +132,23 @@ async function finalizeSeedItem(
   return result.count === 1
 }
 
+async function ownsSeedItem(
+  prisma: ProcessSeedBatchPrisma,
+  itemId: string,
+  claimTime: Date,
+): Promise<boolean> {
+  const row = await prisma.mapImageMirrorState.findFirst({
+    where: {
+      id: itemId,
+      status: 'in_progress',
+      lastAttemptAt: claimTime,
+    },
+    select: { id: true },
+  })
+
+  return row !== null
+}
+
 export async function processSeedBatch(
   prisma: ProcessSeedBatchPrisma,
   bucket: R2MirrorBucket,
@@ -158,12 +183,13 @@ export async function processSeedBatch(
 
     try {
       const timeout = createFetchTimeout()
-      const response = await fetch(item.canonicalUrl, {
-        headers: { 'user-agent': userAgent },
-        signal: timeout.signal,
-      })
 
       try {
+        const response = await fetch(item.canonicalUrl, {
+          headers: { 'user-agent': userAgent },
+          signal: timeout.signal,
+        })
+
         if (response.status === 404) {
           const skipped = await finalizeSeedItem(prisma, item.id, claimTime, {
             status: 'skipped_404',
@@ -182,6 +208,11 @@ export async function processSeedBatch(
           }
 
           const bytes = await response.arrayBuffer()
+          const stillOwned = await ownsSeedItem(prisma, item.id, claimTime)
+          if (!stillOwned) {
+            continue
+          }
+
           const mirrored = await putMirroredImage(
             bucket,
             item.canonicalUrl,
