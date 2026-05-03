@@ -19,7 +19,7 @@
 | Date | Revision | Author | Notes |
 |---|---|---|---|
 | 2026-05-03 | r1 (initial) | brainstorming | First-pass plan; identified 8 critical and 12 significant issues in acceptance review |
-| 2026-05-03 | r2 (this revision) | plan-revision | Fixes critical issues: missing `MapImageDiagStage` enum, missing diff-shape fields, nonexistent admin-helper reference, cross-worker import boundary, mirror-worker Prisma WASM build, OpenNext binding access, dual-write streaming clone, kind-aware variant preservation. No spec change; goal/scope/rollout sequence unchanged. |
+| 2026-05-03 | r2 (this revision) | plan-revision | Fixes critical issues: nonexistent `MapImageDiagStage` enum claim, missing diff-shape fields, nonexistent admin-helper reference, cross-worker import boundary, mirror-worker Prisma WASM build, OpenNext binding access, dual-write streaming clone, kind-aware variant preservation. No spec change; goal/scope/rollout sequence unchanged. |
 
 ## Task Index
 
@@ -414,7 +414,7 @@ export function excludeMetaRowsWhere<T extends Record<string, unknown>>(where?: 
   return where ? { ...where, ...MIRROR_RECORD_WHERE } : { ...MIRROR_RECORD_WHERE }
 }
 ```
-Create this small shared module in Phase 1 and import it anywhere later tasks need aggregate/status filtering. Rows whose `sourceType` is in `META_SOURCE_TYPES` are meta-state markers for the breaker / delta watermark, not real mirror records. Keep direct `THROTTLE_KEY` / `CURSOR_KEY` lookups intact, and do not route those point lookups through `MIRROR_RECORD_WHERE` or `excludeMetaRowsWhere`. Every aggregate/status query added later in Task 4.2, Task 4.3, and Task 5.1 should import `META_SOURCE_TYPES` or `MIRROR_RECORD_WHERE` from this module instead of repeating raw `['__throttle__', '__cursor__']` literals.
+Create this small shared module in Phase 1 and import it anywhere later tasks need `MapImageMirrorState` aggregate/status filtering. Rows whose `sourceType` is in `META_SOURCE_TYPES` are meta-state markers for the breaker / delta watermark, not real mirror records. Keep direct `THROTTLE_KEY` / `CURSOR_KEY` lookups intact, and do not route those point lookups through `MIRROR_RECORD_WHERE` or `excludeMetaRowsWhere`. Every `MapImageMirrorState` aggregate/status query added later in Task 4.2, Task 4.3's `MirrorProgressPanel`, and future Task 5.1 aggregate paths should import `META_SOURCE_TYPES` or `MIRROR_RECORD_WHERE` from this module instead of repeating raw `['__throttle__', '__cursor__']` literals. This does not apply to Task 4.3's `CacheStatePanel`, which aggregates `MapImageDiagEvent` rows.
 
 - [ ] **Step 1: Add the two models**
 
