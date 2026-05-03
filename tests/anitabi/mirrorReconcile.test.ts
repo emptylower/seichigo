@@ -10,6 +10,7 @@ const workflowMocks = vi.hoisted(() => ({
   writeRawJson: vi.fn(),
   writeRawText: vi.fn(),
   enqueueMapTranslationTasksForBangumiIds: vi.fn(),
+  pruneMirrorRowsForDeletedPoints: vi.fn(),
   reconcileMirrorAfterDiff: vi.fn(),
 }))
 
@@ -34,11 +35,20 @@ type MirrorChange = {
   newValue: string | null
 }
 
+type TxPrismaMock = {
+  mapImageMirrorState: {
+    updateMany: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+}
+
 function createPrismaMock(options: { failTxUpsertAt?: number } = {}) {
   let txUpsertCount = 0
-  const tx = {
+  const tx: TxPrismaMock = {
     mapImageMirrorState: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       upsert: vi.fn().mockImplementation(async () => {
         txUpsertCount += 1
         if (options.failTxUpsertAt === txUpsertCount) {
@@ -51,17 +61,20 @@ function createPrismaMock(options: { failTxUpsertAt?: number } = {}) {
 
   return {
     mapImageMirrorState: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       upsert: vi.fn().mockResolvedValue({}),
     },
     $transaction: vi
       .fn()
-      .mockImplementation(async (callback: (tx: typeof tx) => unknown) => callback(tx)),
+      .mockImplementation(async (callback: (tx: TxPrismaMock) => unknown) => callback(tx)),
     __tx: tx,
   }
 }
 
-function createWorkflowDeps(): AnitabiApiDeps {
+function createWorkflowDeps(options: {
+  existingPointRows?: Array<{ id: string; image: string | null }>
+} = {}): AnitabiApiDeps {
   return {
     prisma: {
       anitabiSyncRun: {
@@ -86,11 +99,15 @@ function createWorkflowDeps(): AnitabiApiDeps {
       },
       anitabiPoint: {
         groupBy: vi.fn().mockResolvedValue([]),
-        findMany: vi.fn().mockResolvedValue([]),
+        findMany: vi.fn().mockResolvedValue(options.existingPointRows ?? []),
+        createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        update: vi.fn().mockResolvedValue({}),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
       anitabiSourceCursor: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      $transaction: vi.fn().mockResolvedValue([]),
     } as unknown as AnitabiApiDeps['prisma'],
     getSession: async () => null,
     now: () => new Date('2026-05-03T00:00:00.000Z'),
@@ -135,8 +152,18 @@ describe('reconcileMirrorAfterDiff', () => {
     })
 
     const variants = enumerateBangumiCoverVariants(change.newValue)
+    const variantLabels = variants.map((variant) => variant.label)
     const expectedKeys = await expectedJpegKeys(variants.map((variant) => variant.url))
 
+    expect(prisma.__tx.mapImageMirrorState.deleteMany).toHaveBeenCalledWith({
+      where: {
+        sourceType: 'bangumi-cover',
+        sourceId: '123',
+        variant: {
+          notIn: variantLabels,
+        },
+      },
+    })
     expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenCalledTimes(variants.length)
     for (const [index, variant] of variants.entries()) {
       expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenNthCalledWith(index + 1, {
@@ -342,8 +369,10 @@ describe('reconcileMirrorAfterDiff', () => {
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1)
     expect(prisma.mapImageMirrorState.updateMany).not.toHaveBeenCalled()
+    expect(prisma.mapImageMirrorState.deleteMany).not.toHaveBeenCalled()
     expect(prisma.mapImageMirrorState.upsert).not.toHaveBeenCalled()
     expect(prisma.__tx.mapImageMirrorState.updateMany).toHaveBeenCalledTimes(1)
+    expect(prisma.__tx.mapImageMirrorState.deleteMany).toHaveBeenCalledTimes(1)
     expect(prisma.__tx.mapImageMirrorState.upsert).toHaveBeenCalledTimes(2)
   })
 })
@@ -376,6 +405,7 @@ describe('runAnitabiSync mirror reconcile hook', () => {
     workflowMocks.writeRawJson.mockResolvedValue(undefined)
     workflowMocks.writeRawText.mockResolvedValue(undefined)
     workflowMocks.enqueueMapTranslationTasksForBangumiIds.mockResolvedValue(null)
+    workflowMocks.pruneMirrorRowsForDeletedPoints.mockResolvedValue(undefined)
     process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED = '1'
   })
 
@@ -393,6 +423,7 @@ describe('runAnitabiSync mirror reconcile hook', () => {
 
     workflowMocks.reconcileMirrorAfterDiff.mockRejectedValue(error)
     vi.doMock('@/lib/anitabi/sync/mirrorReconcile', () => ({
+      pruneMirrorRowsForDeletedPoints: workflowMocks.pruneMirrorRowsForDeletedPoints,
       reconcileMirrorAfterDiff: workflowMocks.reconcileMirrorAfterDiff,
     }))
 
@@ -423,6 +454,7 @@ describe('runAnitabiSync mirror reconcile hook', () => {
     process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED = '0'
     workflowMocks.reconcileMirrorAfterDiff.mockResolvedValue(undefined)
     vi.doMock('@/lib/anitabi/sync/mirrorReconcile', () => ({
+      pruneMirrorRowsForDeletedPoints: workflowMocks.pruneMirrorRowsForDeletedPoints,
       reconcileMirrorAfterDiff: workflowMocks.reconcileMirrorAfterDiff,
     }))
 
@@ -430,6 +462,74 @@ describe('runAnitabiSync mirror reconcile hook', () => {
     const report = await runAnitabiSync(deps, { mode: 'delta' })
 
     expect(report.status).toBe('ok')
+    expect(workflowMocks.pruneMirrorRowsForDeletedPoints).not.toHaveBeenCalled()
     expect(workflowMocks.reconcileMirrorAfterDiff).not.toHaveBeenCalled()
+  })
+
+  it('prunes mirror rows for stale point ids before deleting stale points', async () => {
+    const deps = createWorkflowDeps({
+      existingPointRows: [
+        {
+          id: '1:point-1',
+          image: 'https://image.anitabi.cn/points/old.jpg',
+        },
+      ],
+    })
+
+    workflowMocks.reconcileMirrorAfterDiff.mockResolvedValue(undefined)
+    vi.doMock('@/lib/anitabi/sync/mirrorReconcile', () => ({
+      pruneMirrorRowsForDeletedPoints: workflowMocks.pruneMirrorRowsForDeletedPoints,
+      reconcileMirrorAfterDiff: workflowMocks.reconcileMirrorAfterDiff,
+    }))
+
+    const { runAnitabiSync } = await import('@/lib/anitabi/sync/workflow')
+    const report = await runAnitabiSync(deps, { mode: 'delta' })
+
+    expect(report.status).toBe('ok')
+    expect(workflowMocks.pruneMirrorRowsForDeletedPoints).toHaveBeenCalledWith(deps.prisma, [
+      '1:point-1',
+    ])
+    expect(deps.prisma.anitabiPoint.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['1:point-1'] },
+      },
+    })
+  })
+
+  it('warns and keeps sync successful when stale-point mirror cleanup fails', async () => {
+    const deps = createWorkflowDeps({
+      existingPointRows: [
+        {
+          id: '1:point-1',
+          image: 'https://image.anitabi.cn/points/old.jpg',
+        },
+      ],
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = new Error('cleanup boom')
+
+    workflowMocks.pruneMirrorRowsForDeletedPoints.mockRejectedValue(error)
+    workflowMocks.reconcileMirrorAfterDiff.mockResolvedValue(undefined)
+    vi.doMock('@/lib/anitabi/sync/mirrorReconcile', () => ({
+      pruneMirrorRowsForDeletedPoints: workflowMocks.pruneMirrorRowsForDeletedPoints,
+      reconcileMirrorAfterDiff: workflowMocks.reconcileMirrorAfterDiff,
+    }))
+
+    const { runAnitabiSync } = await import('@/lib/anitabi/sync/workflow')
+    const report = await runAnitabiSync(deps, { mode: 'delta' })
+
+    expect(report.status).toBe('ok')
+    expect(workflowMocks.pruneMirrorRowsForDeletedPoints).toHaveBeenCalledWith(deps.prisma, [
+      '1:point-1',
+    ])
+    expect(deps.prisma.anitabiPoint.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['1:point-1'] },
+      },
+    })
+    expect(warn).toHaveBeenCalledWith(
+      '[anitabi/sync] mirror cleanup failed for deleted points in bangumi 1',
+      error,
+    )
   })
 })

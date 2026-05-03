@@ -15,7 +15,10 @@ import {
 } from '@/lib/anitabi/source/normalize'
 import { parseChangelogMarkdown } from '@/lib/anitabi/source/parseChangelog'
 import { writeRawJson, writeRawText } from '@/lib/anitabi/sync/rawStore'
-import { reconcileMirrorAfterDiff } from '@/lib/anitabi/sync/mirrorReconcile'
+import {
+  pruneMirrorRowsForDeletedPoints,
+  reconcileMirrorAfterDiff,
+} from '@/lib/anitabi/sync/mirrorReconcile'
 import { enqueueMapTranslationTasksForBangumiIds } from '@/lib/translation/mapTaskEnqueue'
 
 function nowVersion(d: Date): string {
@@ -244,6 +247,17 @@ async function syncBangumiOne(
         })
       )
     )
+  }
+
+  if (mirrorReconcileEnabled && stalePointIds.length > 0) {
+    try {
+      await pruneMirrorRowsForDeletedPoints(deps.prisma, stalePointIds)
+    } catch (error) {
+      console.warn(
+        `[anitabi/sync] mirror cleanup failed for deleted points in bangumi ${normalized.id}`,
+        error,
+      )
+    }
   }
 
   if (stalePointIds.length > 0) {

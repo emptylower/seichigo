@@ -53,6 +53,7 @@ async function reconcileSourceVariants(
       r2Key: await computeMirrorKey(variant.url, inferImageMimeType(variant.url)),
     })),
   )
+  const variantLabels = Array.from(new Set(variants.map((variant) => variant.label)))
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.mapImageMirrorState.updateMany({
@@ -67,6 +68,16 @@ async function reconcileSourceVariants(
         lastError: null,
         mirroredAt: null,
         contentBytes: null,
+      },
+    })
+
+    await tx.mapImageMirrorState.deleteMany({
+      where: {
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        variant: {
+          notIn: variantLabels,
+        },
       },
     })
 
@@ -104,6 +115,22 @@ async function reconcileSourceVariants(
         },
       })
     }
+  })
+}
+
+export async function pruneMirrorRowsForDeletedPoints(
+  prisma: PrismaClient,
+  pointIds: string[],
+): Promise<void> {
+  if (pointIds.length === 0) return
+
+  await prisma.mapImageMirrorState.deleteMany({
+    where: {
+      sourceType: 'point-image',
+      sourceId: {
+        in: pointIds,
+      },
+    },
   })
 }
 
