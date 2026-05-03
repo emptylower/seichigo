@@ -1099,10 +1099,10 @@ export type AnitabiSyncDiffSummary = {
 
 Do not make `reconcileMirrorAfterDiff` rediscover old/new URLs; `adminDiff` and `buildAnitabiSyncDiffSummary` own that diff responsibility.
 
-- [ ] **Step 5: Run — expect PASS**
+- [ ] **Step 5: Run the new test directly — expect PASS**
 
 ```bash
-npm test -- --run tests/anitabi/diff.urlChanges.test.ts
+npx vitest run tests/anitabi/diff.urlChanges.test.ts
 ```
 
 - [ ] **Step 6: Run full diff suite to confirm no regression**
@@ -1127,7 +1127,7 @@ git commit -m "Surface URL-change tuples before PR3 mirror reconcile logic" \
   -m "Rejected: Compute URL tuples inside reconcileMirrorAfterDiff | it would duplicate diff responsibility and leave Phase 5 under-specified" \
   -m "Confidence: high" \
   -m "Scope-risk: moderate" \
-  -m "Tested: npm test -- --run tests/anitabi/diff.urlChanges.test.ts; npm test -- --run tests/anitabi/diff.test.ts; npm run typecheck:app" \
+  -m "Tested: npx vitest run tests/anitabi/diff.urlChanges.test.ts; npm test -- --run tests/anitabi/diff.test.ts; npm run typecheck:app" \
   -m "Not-tested: full application test suite"
 ```
 
