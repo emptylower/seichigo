@@ -32,7 +32,7 @@
 - Phase 6 — Documentation
 - Phase 7 — Deploy & rollout
 
-Total: 33 tasks. Phases 0–6 are code/research; Phase 7 is operational.
+Total: 32 tasks. Phases 0–6 are code/research; Phase 7 is operational.
 
 ---
 
@@ -318,14 +318,14 @@ Run on Postgres:
 ```sql
 SELECT
   DATE_TRUNC('hour', "createdAt") AS hour,
-  COUNT(*) FILTER (WHERE payload->>'state' = 'cache_miss') AS misses
-FROM "MapImageDiag"
+  COUNT(*) FILTER (WHERE outcome = 'cache_miss') AS misses
+FROM "MapImageDiagEvent"
 WHERE stage = 'proxy_cache_state' AND "createdAt" > NOW() - INTERVAL '24 hours'
 GROUP BY 1
 ORDER BY 1 DESC;
 ```
 
-Record the highest hourly miss count as `peak_hourly_misses`. If diagnostics are absent, record `peak_hourly_misses = 0` and explain whether `proxy_cache_state` is not yet emitted or retention is too short to judge.
+If the query runs and returns rows, record the highest hourly miss count as `peak_hourly_misses`. If the query runs and returns zero rows, record `peak_hourly_misses = 0` and note that the last 24 hours observed zero `proxy_cache_state.outcome = cache_miss` events. If the query is unavailable or cannot run, do not treat that as zero traffic: record the query status as `query unavailable`, keep `R2_READ=0`, and explain whether diagnostics access is missing, `proxy_cache_state` is not yet emitted, or retention is too short to judge.
 
 - [ ] **Step 2: Project monthly R2 read volume**
 
@@ -352,16 +352,17 @@ Document both mitigations in the research note before rollout:
 Append to `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`:
 ```markdown
 ## R2 read-operation budget projection
-- Source diagnostics: `MapImageDiag.stage = proxy_cache_state` over the last 24h
+- Source diagnostics: `MapImageDiagEvent` over the last 24h, filtered to `stage = proxy_cache_state` and `outcome = cache_miss`
+- Diagnostics query status: `<rows found / zero rows / query unavailable>`
 - Peak hourly cache misses (`peak_hourly_misses`): <N>
 - Projected monthly R2 read ops: `<peak_hourly_misses × 24 × 30 = M>`
 - 10M/month threshold crossed: <YES / NO>
 - Estimated paid Class-B cost: `<$X / month or "within free tier">`
 - Mitigations: `Cache-Control` on R2-served responses at the CF edge; paid ops budget at `$0.36 / 1M`
-- Verdict: <PASS / NEEDS_BUDGET>
+- Verdict: <PASS / NEEDS_BUDGET / FAIL>
 ```
 
-Use `PASS` when the projection is comfortably inside the free tier or an already-approved budget. Use `NEEDS_BUDGET` when the projected read volume exceeds 10M/month and rollout still depends on either stronger CF caching or explicit R2 ops budget sign-off.
+Use `PASS` when the query succeeded and the projection is comfortably inside the free tier or an already-approved budget. Use `NEEDS_BUDGET` when the query succeeded, the projected read volume exceeds 10M/month, and rollout still depends on either stronger CF caching or explicit R2 ops budget sign-off. Use `FAIL` when the query is unavailable or cannot run; keep `R2_READ=0` and make diagnostics plus budgeting trustworthy before rollout.
 
 - [ ] **Step 5: Commit**
 
@@ -389,7 +390,7 @@ EOF
 |---|---|
 | PASS | Proceed to Phase 1. |
 | NEEDS_BUDGET | Before Phase 7, confirm CF cache-control on R2-served responses is configured to avoid repeated R2 reads and record explicit approval for paid R2 Class-B ops at `$0.36 / 1M`. |
-| FAIL | Stop and re-plan the read path, or keep `R2_READ=0` until diagnostics and budget are trustworthy. |
+| FAIL | If the query is unavailable or cannot run, stop and re-plan the read path, keep `R2_READ=0`, and make diagnostics plus budgeting trustworthy before rollout. |
 
 ---
 
