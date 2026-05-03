@@ -152,8 +152,29 @@ Append to `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`:
 
 ```bash
 git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
-git commit -m "research(map): verify wrangler rollback for PR3 emergency path"
+git commit -m "$(cat <<'EOF'
+Prove the PR3 rollback path before rollout depends on it
+
+Task 0.2 verifies whether Wrangler rollback is a safe emergency revert for the
+OpenNext deployment shape before Phase 7 depends on it.
+
+Constraint: Emergency rollback guidance must be validated before production rollout
+Rejected: Assume wrangler rollback works for OpenNext builds | leaves the rollback path unverified
+Confidence: medium
+Scope-risk: narrow
+Directive: If the verdict is PARTIAL, document feature-flag-only emergency revert in the PR3 runbook before Phase 7
+Tested: Task 0.2 Wrangler deployment and rollback verification steps captured in the research doc
+EOF
+)"
 ```
+
+**Verdict → Action:**
+
+| Verdict | Action |
+|---|---|
+| PASS | Proceed to Phase 1. |
+| PARTIAL | Use feature-flag-only rollback; do not rely on `wrangler rollback` for emergency revert; document this in the PR3 runbook. |
+| FAIL | Stop and re-plan affected phases / rollback strategy. |
 
 ---
 
@@ -200,8 +221,29 @@ Append:
 
 ```bash
 git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
-git commit -m "research(map): verify sync workflow stability for PR3 reconcile hook"
+git commit -m "$(cat <<'EOF'
+Prove sync stability before Phase 5 depends on reconcile resets
+
+Task 0.3 verifies that the existing sync workflow and diff output are stable
+enough to support the Task 5.1 reconcile hook.
+
+Constraint: Reconcile resets are only safe if sync and diff output are already stable
+Rejected: Enable the reconcile hook without verifying sync history | risks false resets from unstable sync output
+Confidence: medium
+Scope-risk: narrow
+Directive: If the verdict is PARTIAL, keep Task 5.1 disabled until a green sync run gates Phase 5
+Tested: Task 0.3 sync workflow and recent-run verification steps captured in the research doc
+EOF
+)"
 ```
+
+**Verdict → Action:**
+
+| Verdict | Action |
+|---|---|
+| PASS | Proceed to Phase 1. |
+| PARTIAL | Fix sync workflow stability before enabling Task 5.1 reconcile hook; gate Phase 5 on a green sync run. |
+| FAIL | Stop and re-plan affected phases / reconcile hook. |
 
 ---
 
@@ -239,8 +281,29 @@ Append:
 
 ```bash
 git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
-git commit -m "research(map): verify DB capacity for MapImageMirrorState"
+git commit -m "$(cat <<'EOF'
+Prove storage headroom before PR3 adds mirror-state rows
+
+Task 0.4 verifies the current Postgres tier can absorb the expected
+MapImageMirrorState growth before schema and rollout work proceed.
+
+Constraint: Phase 7 must not depend on a storage footprint the current tier cannot absorb
+Rejected: Add the mirror-state table before checking DB headroom | risks rollout delay or emergency storage work later
+Confidence: medium
+Scope-risk: narrow
+Directive: If the verdict is NEEDS_UPGRADE, complete the tier upgrade or shard/archive plan before Phase 7
+Tested: Task 0.4 database-size and provider-plan verification steps captured in the research doc
+EOF
+)"
 ```
+
+**Verdict → Action:**
+
+| Verdict | Action |
+|---|---|
+| PASS | Proceed to Phase 1. |
+| NEEDS_UPGRADE | Upgrade the Postgres tier or shard/archive `MapImageMirrorState` before Phase 7; estimate the timeline shift. |
+| FAIL | Stop and re-plan affected phases / storage approach. |
 
 ---
 
@@ -4294,6 +4357,14 @@ All sections covered.
 Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(deps, mode)` with `CronTickDeps` / `CronTickResult` matches in Task 3.7 / 4.1 and keeps the Next.js admin route on the shared `lib/anitabi/mirror` boundary. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
 
 No placeholder phrases (TBD / TODO / "implement later") in plan steps.
+
+Verification spot-check:
+
+```bash
+grep -n 'Verdict →'" Action" docs/superpowers/plans/2026-05-03-map-image-pr3-r2-mirror.md
+```
+
+Expected: 3 matches (Tasks 0.2, 0.3, and 0.4 only).
 
 ---
 
