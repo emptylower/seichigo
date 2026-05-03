@@ -4286,125 +4286,171 @@ git commit -m "feat(sync): reconcileMirrorAfterDiff resets mirror rows on URL ch
 ### Task 5.2: UI attribution audit
 
 **Files:**
-- Create: `docs/superpowers/research/2026-05-XX-anitabi-attribution-audit.md`
+- Read/update as needed: `docs/superpowers/research/2026-05-03-pr3-ui-attribution-audit.md`
 
-- [ ] **Step 1: Grep for anitabi image rendering surfaces**
+- [ ] **Step 1: Use the concrete audit doc as the Phase 5 source of truth**
 
-Run:
-```bash
-cd /Users/mac/Desktop/seichigo
-grep -rln 'image.anitabi.cn\|toMapDisplayImageUrl\|getMapDisplayImageCandidates\|cover\|originLink' \
-  app components features lib \
-  | grep -v '\.test\.' \
-  | sort -u
-```
+Open `docs/superpowers/research/2026-05-03-pr3-ui-attribution-audit.md` and treat it as the canonical list of PR3 attribution surfaces. As of this revision it already records the exact files, line ranges, link placements, dense-surface exceptions, and href sources for:
 
-For each file, open and check if:
-1. It renders an anitabi image AND
-2. It does NOT already display a "via anitabi" link or `originLink`
+- `components/map/PointPopupCard.tsx`
+- `components/map/MobileVisualCenterOverlay.tsx` point strip
+- `components/map/WindowExcerptOverlay.tsx` point cards
+- `components/quickPilgrimage/QuickPilgrimageMode.tsx` intro cover
+- `components/quickPilgrimage/QuickPilgrimageMode.tsx` current point image
 
-- [ ] **Step 2: Write the audit doc**
+- [ ] **Step 2: Refresh only if the code drifted**
 
-Create `docs/superpowers/research/2026-05-XX-anitabi-attribution-audit.md`:
-```markdown
-# Anitabi Attribution Audit (PR3 §6)
-
-## Surfaces displaying anitabi images
-| File | Surface | Already attributes? | Action |
-|---|---|---|---|
-| `<file:lines>` | Point detail drawer | YES (originLink) | none |
-| `<file:lines>` | PointCard | NO | add `via anitabi` micro-link in Task 5.3 |
-| `<file:lines>` | WindowExcerpt grid | NO | same |
-| `<file:lines>` | Bangumi cover hero | <YES/NO> | <action> |
-| ... | ... | ... | ... |
-```
-
-Fill in actual file paths and line numbers from the grep.
+Before implementing Task 5.3, re-open the audited files only if the current branch moved the render blocks. If line numbers shifted, update the same research doc in place; do not rediscover surfaces ad hoc and do not add dense avatar rows to the required list unless their layout changes enough to support readable text.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/superpowers/research/
-git commit -m "audit(map): UI attribution coverage for PR3 §6"
+git add docs/superpowers/research/2026-05-03-pr3-ui-attribution-audit.md
+git commit -m "$(cat <<'EOF'
+Ground PR3 attribution work in audited UI surfaces
+
+Task 5.2 records the exact end-user image surfaces that still need visible
+anitabi source credit before the PR3 mirror rollout.
+
+Constraint: PR3 §6 needs surface-level attribution, not a grep dump that every implementer re-derives differently
+Rejected: Leave Task 5.3 to rediscover surfaces during implementation | risks drift, missed overlays, and inconsistent dense-surface decisions
+Confidence: high
+Scope-risk: narrow
+Directive: Treat the audit doc as the source of truth; if line numbers drift, refresh that doc before editing UI code
+Tested: Audit doc captures concrete files, current line ranges, href sources, and non-required dense-avatar surfaces
+EOF
+)"
 ```
 
 ---
 
-### Task 5.3: Add `via anitabi` micro-link to identified surfaces
+### Task 5.3: Add `via anitabi` micro-link to audited surfaces
 
 **Files:**
-- Modify: each UI file flagged by Task 5.2 audit
+- Read first: `docs/superpowers/research/2026-05-03-pr3-ui-attribution-audit.md`
 - Create: `components/anitabi/AttributionLink.tsx`
-- Modify: `lib/anitabi/i18n/...` (add new keys)
+- Modify: `lib/anitabi/types.ts`
+- Modify: `lib/anitabi/readPreload.ts`
+- Modify: `features/map/anitabi/windowExcerpt.ts`
+- Modify: `components/map/PointPopupCard.tsx`
+- Modify: `components/map/MobileVisualCenterOverlay.tsx`
+- Modify: `components/map/WindowExcerptOverlay.tsx`
+- Modify: `components/quickPilgrimage/QuickPilgrimageMode.tsx`
+- Test: `tests/map/windowExcerpt.test.ts`
+- Test: `tests/map/pointPopupCard.attribution.test.tsx` (create)
+- Test: `tests/map/mobileVisualCenterOverlay.test.tsx` (create)
+- Test: `tests/map/windowExcerptOverlay.test.tsx`
+- Test: `tests/quickPilgrimage/QuickPilgrimageMode.attribution.test.tsx` (create)
 
-- [ ] **Step 1: Create reusable AttributionLink component**
+- [ ] **Step 1: Create the shared micro-link primitive**
 
-Create `components/anitabi/AttributionLink.tsx`:
-```tsx
-'use client'
+Create `components/anitabi/AttributionLink.tsx` and export a reusable `AnitabiAttributionLink` that owns the compact label, external-link semantics, and shared visual treatment used across every audited surface. Keep the props narrow (`href`, `className?`, `label?`, `title?`) so the surface tasks below only pass layout classes and the resolved URL.
 
-type Props = {
-  href: string
-  className?: string
-  label?: string
-}
+- [ ] **Step 2: Thread `originLink` into excerpt-card data before touching the excerpt UIs**
 
-export function AnitabiAttributionLink({ href, className, label }: Props) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`text-[0.75em] text-gray-500 opacity-70 hover:opacity-100 hover:underline ${className ?? ''}`}
-      title={href}
-    >
-      {label ?? 'via anitabi.cn'}
-    </a>
-  )
-}
-```
+Update the data path that feeds `WindowExcerptPointItem`:
 
-- [ ] **Step 2: Add i18n keys**
+- `lib/anitabi/types.ts:76-86` — add `originLink: string | null` to `AnitabiPreloadChunkPointDTO`.
+- `lib/anitabi/readPreload.ts:19-49` and `147-163` — include `originLink` in the Prisma row shape and copy it into `toPreloadPointDto(...)` so preload chunks stop dropping it.
+- `features/map/anitabi/windowExcerpt.ts:4-14` and `78-88` — add `originLink: string | null` to `WindowExcerptPointItem` and populate it when building `points`.
 
-Locate the project's i18n catalog files (search for `image.attribution` or `img.attribution` or any existing image-related i18n keys). Add:
-```
-image.attribution.viaAnitabi: "via anitabi.cn"           // en
-image.attribution.viaAnitabi: "图片来源：anitabi.cn"      // zh
-image.attribution.viaAnitabi: "出典: anitabi.cn"         // ja (if locale exists)
-```
+Test assertion:
+- Extend `tests/map/windowExcerpt.test.ts` so a preload point with `originLink` survives `computeWindowExcerpt(...)` and the resulting item still keeps its existing `bangumiId` fallback path.
 
-- [ ] **Step 3: Insert AttributionLink in each flagged surface**
+- [ ] **Step 3: Add the popup-frame attribution link to `PointPopupCard`**
 
-For each file in the audit doc with action "add `via anitabi`", import and render the component near the image. Example for a `PointCard.tsx`:
-```tsx
-import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'
+Update `components/map/PointPopupCard.tsx`:
 
-// inside the card layout, near the image:
-<div className="absolute bottom-1 right-1">
-  <AnitabiAttributionLink href={`https://anitabi.cn/bangumi/${bangumiId}`} />
-</div>
-```
+- Surface lines: `114-130` (image frame) and `137-158` (existing overlay chrome).
+- Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
+- JSX placement: render the micro-link inside the existing `.relative.aspect-[16/10]` image frame, positioned opposite the close button and EP/time chips so it stays visible without colliding with existing controls.
+- Href source: `point.originLink ?? https://www.anitabi.cn/bangumi/${point.bangumiId}`.
 
-- [ ] **Step 4: Visual smoke test**
+Test assertion:
+- Create `tests/map/pointPopupCard.attribution.test.tsx`; render the card and assert the `via anitabi` link exists with `target="_blank"` and prefers `point.originLink`, then falls back to the bangumi URL when `originLink` is `null`.
+
+- [ ] **Step 4: Add the mobile point-strip attribution link to `MobileVisualCenterOverlay`**
+
+Update `components/map/MobileVisualCenterOverlay.tsx`:
+
+- Surface lines: `120-139`.
+- Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
+- JSX placement: insert the micro-link in the bottom caption/gradient row for `MobileVisualCenterPointStrip`, or as a bottom-corner overlay if that keeps the caption more readable; do not add visible text to the dense bangumi avatar row at `55-87`.
+- Href source: `item.originLink ?? https://www.anitabi.cn/bangumi/${item.bangumiId}` using the Step 2 data-shape update.
+
+Test assertion:
+- Create `tests/map/mobileVisualCenterOverlay.test.tsx`; render `MobileVisualCenterPointStrip` with one item and assert the link is present inside the point card with the resolved href, while the bangumi avatar row still renders without visible attribution text.
+
+- [ ] **Step 5: Add the point-card attribution link to `WindowExcerptOverlay`**
+
+Update `components/map/WindowExcerptOverlay.tsx`:
+
+- Surface lines: `134-154`.
+- Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
+- JSX placement: render the micro-link inside the bottom caption gradient of `PointCard`, aligned to the right edge so the title, EP label, and time label stay readable in both `compact` and desktop layouts.
+- Href source: `item.originLink ?? https://www.anitabi.cn/bangumi/${item.bangumiId}` using the Step 2 data-shape update.
+
+Test assertion:
+- Extend `tests/map/windowExcerptOverlay.test.tsx` with at least one attribution case for the rendered point card and assert the link href resolves correctly in both the provided-`originLink` and bangumi-fallback cases.
+
+- [ ] **Step 6: Add the intro-cover attribution link to `QuickPilgrimageMode`**
+
+Update `components/quickPilgrimage/QuickPilgrimageMode.tsx`:
+
+- Surface lines: `358-369`.
+- Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'`.
+- JSX placement: render the micro-link adjacent to or inside the intro cover frame so it reads as source credit for the cover art without competing with the main CTA below.
+- Href source: `https://www.anitabi.cn/bangumi/${bangumi.card.id}`.
+
+Test assertion:
+- Cover this in `tests/quickPilgrimage/QuickPilgrimageMode.attribution.test.tsx` by rendering the intro state and asserting the cover-level attribution link points at the bangumi page.
+
+- [ ] **Step 7: Add the current-point attribution link to `QuickPilgrimageMode`**
+
+Update `components/quickPilgrimage/QuickPilgrimageMode.tsx`:
+
+- Surface lines: `507-514`.
+- Import to add near the current imports: `import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'` (shared with Step 6).
+- JSX placement: render the micro-link inside the current point image frame, anchored over the existing gradient affordance so the credit stays associated with the screenshot.
+- Href source: `currentPoint.originLink ?? https://www.anitabi.cn/bangumi/${bangumi.card.id}`.
+
+Test assertion:
+- In `tests/quickPilgrimage/QuickPilgrimageMode.attribution.test.tsx`, render the cards state and assert the current point image shows a `via anitabi` link that prefers `currentPoint.originLink` and falls back to the bangumi page when absent.
+
+- [ ] **Step 8: Visual smoke test**
 
 ```bash
 npm run dev
 ```
 
-Open the map; verify "via anitabi.cn" micro-link appears on each previously-unattributed surface. Hover shows full URL.
+Open the map and Quick Pilgrimage flows; verify each audited surface now shows a visible `via anitabi` micro-link and that the dense bangumi avatar rows remain text-free.
 
-- [ ] **Step 5: Run tests**
+- [ ] **Step 9: Run tests**
 
 ```bash
-npm run typecheck
-npm test
+npm test -- --run tests/map/windowExcerpt.test.ts tests/map/pointPopupCard.attribution.test.tsx tests/map/mobileVisualCenterOverlay.test.tsx tests/map/windowExcerptOverlay.test.tsx tests/quickPilgrimage/QuickPilgrimageMode.attribution.test.tsx
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add components/anitabi/AttributionLink.tsx <each modified UI file> <i18n files>
-git commit -m "feat(ui): add via-anitabi micro-link on map cover/point surfaces (D5-γ)"
+git add components/anitabi/AttributionLink.tsx lib/anitabi/types.ts lib/anitabi/readPreload.ts features/map/anitabi/windowExcerpt.ts components/map/PointPopupCard.tsx components/map/MobileVisualCenterOverlay.tsx components/map/WindowExcerptOverlay.tsx components/quickPilgrimage/QuickPilgrimageMode.tsx tests/map/windowExcerpt.test.ts tests/map/pointPopupCard.attribution.test.tsx tests/map/mobileVisualCenterOverlay.test.tsx tests/map/windowExcerptOverlay.test.tsx tests/quickPilgrimage/QuickPilgrimageMode.attribution.test.tsx
+git commit -m "$(cat <<'EOF'
+Add PR3 attribution links to every audited end-user image surface
+
+Task 5.3 implements the audited attribution work across popup, overlay,
+and quick-pilgrimage image surfaces so mirrored anitabi assets keep visible
+source credit in the UI.
+
+Constraint: The credit must stay readable on small overlays without breaking existing layout density
+Rejected: Only add page-level attribution text | misses the specific point and cover surfaces called out by the audit
+Rejected: Add visible text to dense bangumi avatar rows | unreadable at current avatar sizes and badge density
+Confidence: medium
+Scope-risk: moderate
+Directive: Keep the audit doc and the surface-specific attribution tests in sync whenever a new anitabi image surface is introduced
+Tested: windowExcerpt data-shape unit test; PointPopupCard attribution render test; MobileVisualCenterOverlay attribution render test; WindowExcerptOverlay attribution render test; QuickPilgrimageMode attribution render test
+EOF
+)"
 ```
 
 ---
