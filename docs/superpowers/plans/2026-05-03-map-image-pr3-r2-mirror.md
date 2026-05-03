@@ -24,7 +24,7 @@
 ## Task Index
 
 - Phase 0 — Research & verification (parallel, gating)
-- Phase 1 — Foundations (schema, shared libs, types)
+- Phase 1 — Foundations (schema, shared libs, types; includes Task 1.6 sync diff URL-change tuples)
 - Phase 2 — Main worker R2 integration
 - Phase 3 — Mirror worker
 - Phase 4 — Admin surfaces
@@ -985,6 +985,115 @@ git commit -m "Document PR3 diag stage naming before R2 telemetry rollout" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
   -m "Tested: npm run typecheck; npm test -- --run tests/mapImageDiag" \
+  -m "Not-tested: full application test suite"
+```
+
+---
+
+### Task 1.6: Extend `AnitabiSyncDiffSummary` with URL-change tuples (TDD)
+
+**Why:** Task 5.1's `reconcileMirrorAfterDiff` needs `{id, field, oldValue, newValue}` per changed image URL, but the current `buildAnitabiSyncDiffSummary` only emits counts and ID-only samples. Phase 5 cannot proceed without this.
+
+**Files:**
+- Modify: `lib/anitabi/sync/diff.ts`
+- Test: `tests/anitabi/diff.urlChanges.test.ts`
+
+- [ ] **Step 1: Read current types in `lib/anitabi/sync/diff.ts`** to confirm `AnitabiSyncDiffSummary` shape.
+
+- [ ] **Step 2: Failing test**
+
+Create `tests/anitabi/diff.urlChanges.test.ts`:
+```ts
+import { describe, it, expect } from 'vitest'
+import { buildAnitabiSyncDiffSummary } from '@/lib/anitabi/sync/diff'
+
+describe('buildAnitabiSyncDiffSummary — URL change tuples', () => {
+  it('emits bangumiCoverChanges when cover URL changed', () => {
+    const summary = buildAnitabiSyncDiffSummary({
+      sourceBangumi: [{ id: 1, title: 'A', sourceModifiedMs: 2, cover: 'https://image.anitabi.cn/new.jpg' }],
+      localBangumi: [{ id: 1, title: 'A', sourceModifiedMs: BigInt(1), expectedPoints: 0, importedPoints: 0, cover: 'https://image.anitabi.cn/old.jpg' }],
+      sourcePoints: [],
+      localPoints: [],
+    })
+    expect(summary.urlChanges.bangumiCovers).toEqual([
+      { id: 1, oldValue: 'https://image.anitabi.cn/old.jpg', newValue: 'https://image.anitabi.cn/new.jpg' },
+    ])
+  })
+
+  it('emits pointImageChanges when point image URL changed', () => {
+    const summary = buildAnitabiSyncDiffSummary({
+      sourceBangumi: [],
+      localBangumi: [],
+      sourcePoints: [{ id: 'p1', image: 'https://image.anitabi.cn/p/new.jpg' }],
+      localPoints: [{ id: 'p1', image: 'https://image.anitabi.cn/p/old.jpg' }],
+    })
+    expect(summary.urlChanges.pointImages).toEqual([
+      { id: 'p1', oldValue: 'https://image.anitabi.cn/p/old.jpg', newValue: 'https://image.anitabi.cn/p/new.jpg' },
+    ])
+  })
+
+  it('omits unchanged URLs', () => {
+    const summary = buildAnitabiSyncDiffSummary({
+      sourceBangumi: [{ id: 1, title: 'A', sourceModifiedMs: 2, cover: 'https://x/a.jpg' }],
+      localBangumi: [{ id: 1, title: 'A', sourceModifiedMs: BigInt(1), expectedPoints: 0, importedPoints: 0, cover: 'https://x/a.jpg' }],
+      sourcePoints: [],
+      localPoints: [],
+    })
+    expect(summary.urlChanges.bangumiCovers).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 3: Run — expect FAIL**
+
+- [ ] **Step 4: Implement**
+
+In `lib/anitabi/sync/diff.ts`:
+
+(a) Extend `SourceBangumiSnapshot` and `LocalBangumiSnapshot` to carry `cover: string | null`. Extend `SourcePointSnapshot`/`LocalPointSnapshot` to carry `image: string | null`. Update callers to pass these (search: `buildAnitabiSyncDiffSummary(`).
+
+(b) Extend `AnitabiSyncDiffSummary`:
+```ts
+export type AnitabiUrlChange<TId> = {
+  id: TId
+  oldValue: string | null
+  newValue: string
+}
+
+export type AnitabiSyncDiffSummary = {
+  // ... existing fields ...
+  urlChanges: {
+    bangumiCovers: AnitabiUrlChange<number>[]
+    pointImages: AnitabiUrlChange<string>[]
+  }
+}
+```
+
+(c) In the diff builder, when an entity is identified as `modified`, compare `cover` (or `image`) old vs. new and append to the appropriate `urlChanges` array if non-equal and `newValue` is non-empty.
+
+- [ ] **Step 5: Run — expect PASS**
+
+```bash
+npm test -- --run tests/anitabi/diff.urlChanges.test.ts
+```
+
+- [ ] **Step 6: Run full diff suite to confirm no regression**
+
+```bash
+npm test -- --run tests/anitabi/diff.test.ts
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/anitabi/sync/diff.ts tests/anitabi/diff.urlChanges.test.ts
+git commit -m "Surface URL-change tuples before PR3 mirror reconcile logic" \
+  -m "Task 5.1 relies on old/new cover and point image tuples, so the sync diff summary now emits structured URL changes instead of forcing reconcile logic to rediscover them." \
+  -m "Constraint: AnitabiSyncDiffSummary previously exposed counts and ID-only sample arrays" \
+  -m "Rejected: Compute URL tuples inside reconcileMirrorAfterDiff | it would duplicate diff responsibility and leave Phase 5 under-specified" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: npm test -- --run tests/anitabi/diff.urlChanges.test.ts; npm test -- --run tests/anitabi/diff.test.ts" \
   -m "Not-tested: full application test suite"
 ```
 
