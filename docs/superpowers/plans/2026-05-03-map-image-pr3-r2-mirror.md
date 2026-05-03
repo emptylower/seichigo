@@ -1089,10 +1089,12 @@ export type AnitabiSyncDiffSummary = {
 (d) In `lib/anitabi/handlers/adminDiff.ts`, pass real URL fields into the diff builder:
 
 - Include `cover: true` in the local `anitabiBangumi.findMany` select.
-- Add `cover: normalizeText(row?.cover) || null` to source bangumi snapshots.
+- Import and use `resolveAnitabiAssetUrl` from `@/lib/anitabi/utils`, plus `normalizeBangumi` / `normalizePoints` from `@/lib/anitabi/source/normalize`, so source URLs are normalized the same way the sync workflow persists them.
+- Add `cover: resolveAnitabiAssetUrl(normalizeBangumi(row).cover, deps.getSiteBase())` to source bangumi snapshots.
 - Add `cover: row.cover ?? null` to local bangumi snapshots.
 - Fetch local point snapshots with `deps.prisma.anitabiPoint.findMany({ select: { id: true, image: true } })`.
-- Fetch source point snapshots for the changed/missing bangumi candidates by calling `${deps.getApiBase()}/bangumi/${id}/points/detail` and normalizing each raw point to `{ id: \`${bangumiId}:${rawPointId}\`, image }`, matching `normalizePoints()`/`scopedPointId()` behavior in `lib/anitabi/source/normalize.ts`.
+- Fetch source point snapshots for changed/missing bangumi candidates by calling both `${deps.getApiBase()}/bangumi/${id}/points` and `${deps.getApiBase()}/bangumi/${id}/points/detail`.
+- Derive source point snapshots through `normalizePoints(id, pointsDetail, pointsSummary)` and then map each normalized point to `{ id: point.id, image: resolveAnitabiAssetUrl(point.image, deps.getSiteBase()) }`. This preserves summary-only points and matches the existing sync pipeline in `lib/anitabi/sync/workflow.ts`.
 - Pass `sourcePoints` and `localPoints` to `buildAnitabiSyncDiffSummary`.
 
 Do not make `reconcileMirrorAfterDiff` rediscover old/new URLs; `adminDiff` and `buildAnitabiSyncDiffSummary` own that diff responsibility.
