@@ -1598,7 +1598,19 @@ If `buildRenderResponse` already owns the stream lifecycle wrapper, put `tee()` 
 npm test -- --run tests/anitabi/imageServe.r2.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Read back Task 2.3 for B.7 verification**
+
+Read back this Task 2.3 section and confirm all three conditions still hold before committing:
+- it mentions `tee()`
+- it mentions success-only commit via `onStreamSuccess` or an equivalent client-stream success callback
+- it does not reintroduce `cloned.arrayBuffer()`, `clone().arrayBuffer()`, or any buffer-everything-before-response guidance
+
+If useful, run:
+```bash
+rg -n "Task 2\\.3|tee\\(\\)|onStreamSuccess|cloned\\.arrayBuffer|clone\\(\\)\\.arrayBuffer|buffer-everything" docs/superpowers/plans/2026-05-03-map-image-pr3-r2-mirror.md
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
