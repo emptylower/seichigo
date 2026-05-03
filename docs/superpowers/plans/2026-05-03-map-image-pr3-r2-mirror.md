@@ -978,7 +978,14 @@ Expected: PASS.
 
 ```bash
 git add lib/mapImageDiag/stages.ts lib/mapImageDiag/shared.ts tests/mapImageDiag/stages.test.ts
-git commit -m "feat(diag): document image_cache_state stage with shared constant"
+git commit -m "Document PR3 diag stage naming before R2 telemetry rollout" \
+  -m "The diag schema intentionally accepts free-form stage strings, so PR3 records image_cache_state in a shared registry without pretending there is an enum to extend." \
+  -m "Constraint: MapImageDiag shared schema stores stage as z.string().min(1)" \
+  -m "Rejected: Add a MapImageDiagStage enum | no such type exists and it would exceed this task" \
+  -m "Confidence: high" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: npm run typecheck; npm test -- --run tests/mapImageDiag" \
+  -m "Not-tested: full application test suite"
 ```
 
 ---
