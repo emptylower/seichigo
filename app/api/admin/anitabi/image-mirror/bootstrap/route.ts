@@ -84,7 +84,7 @@ function isBootstrapComplete(bootstrap: BootstrapRow): boolean {
 }
 
 function hasForceCompleteBudgetRemaining(startedAt: number): boolean {
-  return Date.now() - startedAt <= FORCE_COMPLETE_BUDGET_MS - FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS
+  return Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS - FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS
 }
 
 export async function POST(req: Request) {

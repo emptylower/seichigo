@@ -342,6 +342,83 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
     expect(mocks.cronTick).toHaveBeenCalledTimes(1)
   })
 
+  it('does not start a second force-complete tick exactly at the budget cutoff', async () => {
+    mocks.prisma.mapImageMirrorBootstrap.findUnique
+      .mockResolvedValueOnce({
+        id: 1,
+        bangumiCursor: 12,
+        pointCursor: 'pt-7',
+        bangumiCompleted: false,
+        pointCompleted: false,
+        totalEnumerated: 99,
+        startedAt: new Date('2026-05-03T00:00:00.000Z'),
+        completedAt: null,
+        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
+        manuallyTriggered: true,
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        bangumiCursor: 12,
+        pointCursor: 'pt-8',
+        bangumiCompleted: false,
+        pointCompleted: false,
+        totalEnumerated: 105,
+        startedAt: new Date('2026-05-03T00:00:00.000Z'),
+        completedAt: null,
+        lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
+        manuallyTriggered: true,
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        bangumiCursor: 12,
+        pointCursor: 'pt-9',
+        bangumiCompleted: false,
+        pointCompleted: false,
+        totalEnumerated: 111,
+        startedAt: new Date('2026-05-03T00:00:00.000Z'),
+        completedAt: null,
+        lastAdvanceAt: new Date('2026-05-03T00:02:00.000Z'),
+        manuallyTriggered: true,
+      })
+    mocks.cronTick
+      .mockResolvedValueOnce({
+        reclaimed: 0,
+        mirrored: 0,
+        failed: 0,
+        skipped404: 0,
+        throttled: false,
+      })
+      .mockResolvedValueOnce({
+        reclaimed: 0,
+        mirrored: 0,
+        failed: 0,
+        skipped404: 0,
+        throttled: true,
+      })
+
+    const nowSpy = vi.spyOn(Date, 'now')
+    nowSpy
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(24_000)
+      .mockReturnValueOnce(24_000)
+
+    const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
+    const res = await handlers.POST(jsonReq('http://localhost/api/admin/anitabi/image-mirror/bootstrap', { mode: 'force-complete' }))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({
+      bootstrap: {
+        bangumiCompleted: false,
+        pointCompleted: false,
+        pointCursor: 'pt-8',
+      },
+      stillNeedsManualPush: true,
+      elapsedMs: 24_000,
+    })
+    expect(mocks.cronTick).toHaveBeenCalledTimes(1)
+  })
+
   it('returns 503 when only process.env provides a non-bucket mirror cache value', async () => {
     process.env.MAP_IMAGE_CACHE = 'not-a-bucket'
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
