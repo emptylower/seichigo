@@ -351,6 +351,10 @@ model MapImageMirrorBootstrap {
   completedAt       DateTime?
   lastAdvanceAt     DateTime?
   manuallyTriggered Boolean   @default(false)
+  runLockToken      String?
+  runLockOwner      String?
+  runLockExpiresAt  DateTime?
+  runLockedAt       DateTime?
 }
 ```
 
@@ -369,6 +373,7 @@ Expected: new SQL file under `prisma/migrations/<timestamp>_add_map_image_mirror
 Read the migration SQL file and confirm:
 - Two `CREATE TABLE` statements.
 - Three indexes on `MapImageMirrorState` (the unique + two `@@index`).
+- `MapImageMirrorBootstrap` includes the persisted run-lease columns (`runLockToken`, `runLockOwner`, `runLockExpiresAt`, `runLockedAt`) as nullable schema-backed fields.
 - No accidental rename or drop on existing tables.
 
 - [ ] **Step 4: Run typecheck and tests**
@@ -3279,6 +3284,7 @@ git commit -m "Make the mirror timeout breaker a rolling state machine" \
 
 **Files:**
 - Create: `lib/anitabi/mirror/cronTick.ts`
+- Create: `lib/anitabi/mirror/lease.ts`
 - Move/create shared helper modules under `lib/anitabi/mirror/` as needed: `reclaim.ts`, `bootstrap.ts`, `seed.ts`, `delta.ts`, `throttle.ts`
 - Modify: `workers/anitabi-mirror/src/index.ts`
 - Create: `tests/anitabi/mirror/cronTick.test.ts`
@@ -3290,6 +3296,10 @@ git commit -m "Make the mirror timeout breaker a rolling state machine" \
 import { describe, it, expect, vi } from 'vitest'
 import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
+vi.mock('@/lib/anitabi/mirror/lease', () => ({
+  tryClaimRunLease: vi.fn(),
+  releaseRunLease: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/lib/anitabi/mirror/reclaim', () => ({ reclaimStale: vi.fn().mockResolvedValue({ count: 0 }) }))
 vi.mock('@/lib/anitabi/mirror/bootstrap', () => ({ advanceBootstrap: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/anitabi/mirror/seed', () => ({
@@ -3299,58 +3309,51 @@ vi.mock('@/lib/anitabi/mirror/delta', () => ({ cronDelta: vi.fn().mockResolvedVa
 vi.mock('@/lib/anitabi/mirror/throttle', () => ({ isThrottled: vi.fn().mockResolvedValue(false), recordTimeout: vi.fn() }))
 
 describe('cronTick', () => {
-  it('acquires the advisory lock and runs reclaim → bootstrap → seed inside the transaction client', async () => {
+  it('claims the run lease, commits, then runs reclaim → bootstrap → seed with the outer prisma client', async () => {
+    const { tryClaimRunLease, releaseRunLease } = await import('@/lib/anitabi/mirror/lease')
     const { reclaimStale } = await import('@/lib/anitabi/mirror/reclaim')
     const { advanceBootstrap } = await import('@/lib/anitabi/mirror/bootstrap')
     const { processSeedBatch } = await import('@/lib/anitabi/mirror/seed')
-    const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
+    ;(tryClaimRunLease as any).mockResolvedValueOnce({ token: 'lease-1' })
+    const prisma = {
       mapImageMirrorBootstrap: {
         findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: false, pointCompleted: false }),
       },
     }
-    const prisma = {
-      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    } as any
     const bucket = {} as any
     const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
     await cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')
-    expect(prisma.$transaction).toHaveBeenCalled()
-    expect(tx.$queryRaw).toHaveBeenCalled()
-    expect(reclaimStale).toHaveBeenCalledWith(tx)
-    expect(advanceBootstrap).toHaveBeenCalledWith(tx, 2000)
-    expect(processSeedBatch).toHaveBeenCalledWith(tx, bucket, { batchSize: 100, perRequestDelayMs: 200 })
+    expect(tryClaimRunLease).toHaveBeenCalledWith(prisma, 'cron', expect.any(Date))
+    expect(reclaimStale).toHaveBeenCalledWith(prisma)
+    expect(advanceBootstrap).toHaveBeenCalledWith(prisma, 2000)
+    expect(processSeedBatch).toHaveBeenCalledWith(prisma, bucket, { batchSize: 100, perRequestDelayMs: 200 })
+    expect(releaseRunLease).toHaveBeenCalledWith(prisma, 'lease-1')
   })
 
-  it('skips seed and bootstrap when throttled after the advisory lock is acquired', async () => {
+  it('skips seed and bootstrap when throttled after the lease is claimed', async () => {
+    const { tryClaimRunLease, releaseRunLease } = await import('@/lib/anitabi/mirror/lease')
     const { isThrottled } = await import('@/lib/anitabi/mirror/throttle')
+    ;(tryClaimRunLease as any).mockResolvedValueOnce({ token: 'lease-1' })
     ;(isThrottled as any).mockResolvedValueOnce(true)
     const { advanceBootstrap } = await import('@/lib/anitabi/mirror/bootstrap')
     const { processSeedBatch } = await import('@/lib/anitabi/mirror/seed')
-    const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
-    }
-    const prisma = {
-      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    } as any
+    const prisma = { mapImageMirrorBootstrap: { findUnique: vi.fn() } } as any
     const bucket = {} as any
     const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
     const result = await cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')
     expect(result).toEqual({ reclaimed: 0, processed: 0, throttled: true, skipped: false })
     expect(advanceBootstrap).not.toHaveBeenCalled()
     expect(processSeedBatch).not.toHaveBeenCalled()
+    expect(releaseRunLease).toHaveBeenCalledWith(prisma, 'lease-1')
   })
 
-  it('returns skipped=true for cron source when the advisory lock is already held', async () => {
+  it('returns skipped=true for cron source when the advisory lock or persisted lease is denied', async () => {
+    const { tryClaimRunLease } = await import('@/lib/anitabi/mirror/lease')
     const { reclaimStale } = await import('@/lib/anitabi/mirror/reclaim')
     const { advanceBootstrap } = await import('@/lib/anitabi/mirror/bootstrap')
     const { processSeedBatch } = await import('@/lib/anitabi/mirror/seed')
-    const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ locked: false }]),
-    }
-    const prisma = {
-      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    } as any
+    ;(tryClaimRunLease as any).mockResolvedValueOnce(null)
+    const prisma = {} as any
     const bucket = {} as any
     const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
     const result = await cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')
@@ -3360,18 +3363,31 @@ describe('cronTick', () => {
     expect(processSeedBatch).not.toHaveBeenCalled()
   })
 
-  it('throws a retryable error for manual source when the advisory lock is already held', async () => {
-    const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ locked: false }]),
-    }
-    const prisma = {
-      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    } as any
+  it('throws a retryable error for manual source when the advisory lock or persisted lease is denied', async () => {
+    const { tryClaimRunLease } = await import('@/lib/anitabi/mirror/lease')
+    ;(tryClaimRunLease as any).mockResolvedValueOnce(null)
+    const prisma = {} as any
     const bucket = {} as any
     const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
     await expect(cronTick({ prisma, bucket, env, source: 'manual' }, 'seed')).rejects.toThrow(
       'cronTick already in progress; try again in 30s',
     )
+  })
+
+  it('releases the claimed lease in finally when downstream work throws', async () => {
+    const { tryClaimRunLease, releaseRunLease } = await import('@/lib/anitabi/mirror/lease')
+    const { processSeedBatch } = await import('@/lib/anitabi/mirror/seed')
+    ;(tryClaimRunLease as any).mockResolvedValueOnce({ token: 'lease-2' })
+    ;(processSeedBatch as any).mockRejectedValueOnce(new Error('boom'))
+    const prisma = {
+      mapImageMirrorBootstrap: {
+        findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: true, pointCompleted: true }),
+      },
+    } as any
+    const bucket = {} as any
+    const env = { MAP_IMAGE_MIRROR_CRON_ENABLED: '1' }
+    await expect(cronTick({ prisma, bucket, env, source: 'cron' }, 'seed')).rejects.toThrow('boom')
+    expect(releaseRunLease).toHaveBeenCalledWith(prisma, 'lease-2')
   })
 })
 ```
@@ -3384,8 +3400,9 @@ Keep `recordTimeout` in the throttle mock export even though `cronTick` does not
 
 Create `lib/anitabi/mirror/cronTick.ts`:
 ```ts
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import { tryClaimRunLease, releaseRunLease } from '@/lib/anitabi/mirror/lease'
 import { reclaimStale } from '@/lib/anitabi/mirror/reclaim'
 import { advanceBootstrap } from '@/lib/anitabi/mirror/bootstrap'
 import { processSeedBatch } from '@/lib/anitabi/mirror/seed'
@@ -3398,39 +3415,93 @@ export type CronTickDeps = {
   env: { MAP_IMAGE_MIRROR_CRON_ENABLED?: string }
   source: 'cron' | 'manual'
 }
-export type MirrorDbClient = PrismaClient | Prisma.TransactionClient
 export type CronTickResult = { reclaimed: number; processed: number; throttled: boolean; skipped: boolean }
 
 export async function cronTick(deps: CronTickDeps, mode: 'seed' | 'delta'): Promise<CronTickResult> {
-  return deps.prisma.$transaction(async (tx) => {
-    const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(123456) AS locked`
-    if (!locked) {
-      if (deps.source === 'manual') throw new Error('cronTick already in progress; try again in 30s')
-      return { reclaimed: 0, processed: 0, throttled: false, skipped: true }
-    }
+  const lease = await tryClaimRunLease(deps.prisma, deps.source, new Date())
+  if (!lease) {
+    if (deps.source === 'manual') throw new Error('cronTick already in progress; try again in 30s')
+    return { reclaimed: 0, processed: 0, throttled: false, skipped: true }
+  }
 
-    const reclaimResult = await reclaimStale(tx)
-    if (await isThrottled(tx)) {
+  try {
+    const reclaimResult = await reclaimStale(deps.prisma)
+    if (await isThrottled(deps.prisma)) {
       return { reclaimed: reclaimResult.count, processed: 0, throttled: true, skipped: false }
     }
     if (mode === 'delta') {
-      const deltaResult = await cronDelta(tx)
+      const deltaResult = await cronDelta(deps.prisma)
       return { reclaimed: reclaimResult.count, processed: deltaResult.enqueued, throttled: false, skipped: false }
     }
-    const bs = await tx.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+
+    const bs = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
     if (!bs?.bangumiCompleted || !bs?.pointCompleted) {
       const chunkSize = deps.source === 'manual' ? 5000 : 2000
-      await advanceBootstrap(tx, chunkSize)
+      await advanceBootstrap(deps.prisma, chunkSize)
     }
-    const seedResult = await processSeedBatch(tx, deps.bucket, { batchSize: 100, perRequestDelayMs: 200 })
+
+    const seedResult = await processSeedBatch(deps.prisma, deps.bucket, { batchSize: 100, perRequestDelayMs: 200 })
     return { reclaimed: reclaimResult.count, processed: seedResult.mirrored, throttled: false, skipped: false }
-  }, { timeout: 60_000 })
+  } finally {
+    await releaseRunLease(deps.prisma, lease.token)
+  }
 }
 ```
 
+Create `lib/anitabi/mirror/lease.ts` and keep the transaction scope short and DB-only:
+
+```ts
+import crypto from 'node:crypto'
+import type { PrismaClient } from '@prisma/client'
+
+const RUN_LEASE_TTL_MS = 30_000
+
+export async function tryClaimRunLease(prisma: PrismaClient, source: 'cron' | 'manual', now: Date) {
+  return prisma.$transaction(async (tx) => {
+    const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(123456) AS locked`
+    if (!locked) return null
+
+    const row = await tx.mapImageMirrorBootstrap.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1 },
+    })
+    if (row.runLockToken && row.runLockExpiresAt && row.runLockExpiresAt > now) return null
+
+    const token = crypto.randomUUID()
+    await tx.mapImageMirrorBootstrap.update({
+      where: { id: 1 },
+      data: {
+        runLockToken: token,
+        runLockOwner: source,
+        runLockExpiresAt: new Date(now.getTime() + RUN_LEASE_TTL_MS),
+        runLockedAt: now,
+      },
+    })
+    return { token }
+  })
+}
+
+export async function releaseRunLease(prisma: PrismaClient, token: string) {
+  await prisma.mapImageMirrorBootstrap.updateMany({
+    where: { id: 1, runLockToken: token },
+    data: {
+      runLockToken: null,
+      runLockOwner: null,
+      runLockExpiresAt: null,
+      runLockedAt: null,
+    },
+  })
+}
+```
+
+`tryClaimRunLease()` must be the only interactive transaction in this flow. It uses `SELECT pg_try_advisory_xact_lock(123456) AS locked`, reads or writes only the persisted lease fields on `MapImageMirrorBootstrap`, and commits before any external work starts. `reclaimStale`, `isThrottled`, `cronDelta`, `advanceBootstrap`, and `processSeedBatch` then run with the normal outer `deps.prisma` client, which intentionally avoids holding a Prisma interactive transaction across fetch, R2 writes, or `sleep()` inside `processSeedBatch`.
+
+Lease recovery rule: if a prior worker dies after claiming the lease, the next tick may steal it once `runLockExpiresAt <= now`. The `releaseRunLease()` helper must stay token-guarded (`updateMany where runLockToken = token`) so a stale finally block cannot clear a newer lease that was claimed after expiry.
+
 Do not import `@/workers/anitabi-mirror/src/*` from `lib/anitabi/mirror/cronTick.ts`. If Tasks 3.2–3.6 have already created helper modules under `workers/anitabi-mirror/src/`, move that logic into the matching `lib/anitabi/mirror/*` modules and leave the worker subtree as entrypoint/config only. The shared `lib` code must typecheck under the app tsconfig, so use the repo-owned `R2MirrorBucket` abstraction instead of raw Cloudflare `R2Bucket`.
 
-If Tasks 3.2–3.6 initially typed `reclaimStale`, `advanceBootstrap`, `processSeedBatch`, `cronDelta`, or `isThrottled` as `PrismaClient`-only helpers, widen them to a shared transaction-compatible alias (for example `MirrorDbClient = PrismaClient | Prisma.TransactionClient`) and update their tests/mocks accordingly. Do not start a transaction in `cronTick` and then call the helper modules with the outer `deps.prisma`; every reclaim/bootstrap/delta/seed query must use the `tx` client that acquired the advisory lock.
+Do not widen `reclaimStale`, `advanceBootstrap`, `processSeedBatch`, `cronDelta`, or the C.6 throttle helpers just to support a long-lived transaction client in `cronTick`; that transaction shape is intentionally removed here. Keep the C.6 throttle/state-machine wiring on its normal `PrismaClient` path so `processSeedBatch` still aggregates timeout-like failures and calls `recordTimeout(prisma, count)` once per batch without reintroducing the incomplete `recordTimeout(tx)` problem. Only `tryClaimRunLease()` needs the short inner transaction client, and that detail stays encapsulated inside `lease.ts`.
 
 Before wiring `cronTick`, migrate any tests/imports produced by Tasks 3.2–3.6 from worker-relative paths to shared paths:
 
@@ -3511,8 +3582,11 @@ Expected: all shared mirror tests PASS, the worker entrypoint imports `@prisma/p
 git add lib/anitabi/mirror workers/anitabi-mirror/src/index.ts tests/anitabi/mirror
 git commit -m "Keep mirror cron orchestration on a shared boundary" \
   -m "The worker entrypoint and admin bootstrap route both rely on cronTick, so the plan moves that orchestrator into lib/anitabi/mirror to avoid importing worker source into the Next.js bundle." \
+  -m "The run-lease claim stays in a short DB-only transaction so reclaim/bootstrap/delta/seed work can happen outside any interactive Prisma transaction, which avoids holding locks across fetch, R2 writes, or sleep-driven pacing." \
   -m "Constraint: Next admin routes must not import worker-only modules, and the raw mirror Worker must create PrismaPg from a bounded @prisma/pg-worker Pool rather than adapter-pg's plain-object Node transport" \
+  -m "Constraint: processSeedBatch performs network/R2/sleep work and must not run inside a long-lived Prisma interactive transaction" \
   -m "Rejected: Leave cronTick under workers/anitabi-mirror/src | it creates a cross-worker import boundary into the app bundle" \
+  -m "Rejected: Keep reclaim/bootstrap/delta/seed inside one interactive transaction | it would hold DB resources across external work" \
   -m "Rejected: Construct PrismaPg from plain object options in the Worker | @prisma/adapter-pg resolves the local Node pg transport instead of the Workers-compatible pool" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
@@ -3670,7 +3744,7 @@ export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiD
 }
 ```
 
-`force-complete` must now respect the same advisory lock path as auto cron. Do not keep the old direct `advanceBootstrap(deps.prisma, 5000)` loop in the plan, because it bypasses the transaction lock and can still race `reclaimStale`. Manual/admin callers should surface the retryable `cronTick already in progress; try again in 30s` error as a clean `409`/`skipped: true` response instead of silently racing or returning a generic `500`.
+`force-complete` must now rely entirely on `cronTick()` lease behavior. Do not keep the old direct `advanceBootstrap(deps.prisma, 5000)` loop in the plan, because it bypasses the persisted run lease and can still race reclaim/delta/seed work. Manual/admin contention should continue to surface the retryable `cronTick already in progress; try again in 30s` path as a clean `409` with `{ skipped: true }`, so force-complete and advance mode both serialize through the same short-lease entrypoint.
 
 Create `app/api/admin/anitabi/image-mirror/bootstrap/route.ts` as a thin wrapper:
 ```ts
@@ -4697,7 +4771,7 @@ Spec coverage check (each spec section → task):
 
 All sections covered.
 
-Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(deps, mode)` with `CronTickDeps` / `CronTickResult` (including `skipped` for advisory-lock contention) matches in Task 3.7 / 4.1 and keeps the Next.js admin route on the shared `lib/anitabi/mirror` boundary. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
+Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(deps, mode)` with `CronTickDeps` / `CronTickResult` (including `skipped` for advisory-lock/lease contention) matches in Task 3.7 / 4.1 and keeps the Next.js admin route on the shared `lib/anitabi/mirror` boundary. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
 
 No placeholder phrases (TBD / TODO / "implement later") in plan steps.
 
