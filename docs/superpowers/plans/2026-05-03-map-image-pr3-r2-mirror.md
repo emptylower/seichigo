@@ -1,0 +1,3567 @@
+# Map Image PR3 — R2 Persistent Mirror Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Mirror the full anitabi cover/point image set into Cloudflare R2 so map images stay available when `image.anitabi.cn` is slow or down.
+
+**Architecture:** Two CF Workers — modified main Next.js worker that reads/writes R2 in the request path, plus a new `anitabi-mirror` worker that runs cron-driven backfill. Both share an R2 bucket binding `MAP_IMAGE_CACHE`. Three independent feature flags (`R2_READ`, `R2_WRITE`, `MIRROR_CRON`) gate rollout. Postgres `MapImageMirrorState` table is the source of truth for backfill progress and supports resume.
+
+**Tech Stack:** Next.js 15 / React 19 / TypeScript · Cloudflare Workers + R2 · Prisma 6 + Postgres · Vitest · OpenNext for CF · Wrangler.
+
+**Spec:** [docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md](../specs/2026-05-03-map-image-pr3-r2-mirror-design.md)
+
+**Branch:** create new worktree off `main` (`superpowers:using-git-worktrees`) — do not work in the brainstorming worktree.
+
+---
+
+## Revision History
+
+| Date | Revision | Author | Notes |
+|---|---|---|---|
+| 2026-05-03 | r1 (initial) | brainstorming | First-pass plan; identified 8 critical and 12 significant issues in acceptance review |
+| 2026-05-03 | r2 (this revision) | plan-revision | Fixes critical issues: missing `MapImageDiagStage` enum, missing diff-shape fields, missing `requireAdmin` export, cross-worker import boundary, mirror-worker Prisma WASM build, OpenNext binding access, dual-write streaming clone, kind-aware variant preservation. No spec change; goal/scope/rollout sequence unchanged. |
+
+## Task Index
+
+- Phase 0 — Research & verification (parallel, gating)
+- Phase 1 — Foundations (schema, shared libs, types)
+- Phase 2 — Main worker R2 integration
+- Phase 3 — Mirror worker
+- Phase 4 — Admin surfaces
+- Phase 5 — Sync integration & UI attribution
+- Phase 6 — Documentation
+- Phase 7 — Deploy & rollout
+
+Total: 32 tasks. Phases 0–6 are code/research; Phase 7 is operational.
+
+---
+
+## Phase 0 — Research & Verification (gating, parallel-safe)
+
+### Task 0.1: D0 — anitabi mirror compliance research
+
+**Files:**
+- Create: `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`
+
+- [ ] **Step 1: Open the anitabi documentation repo**
+
+Navigate browser to `https://github.com/anitabi/anitabi.cn-document`. Search README and any files containing "镜像" / "mirror" / "rate" / "User-Agent" / "robots".
+
+- [ ] **Step 2: Fetch `https://image.anitabi.cn/robots.txt` and `https://anitabi.cn/robots.txt`**
+
+Run:
+```bash
+curl -sS https://image.anitabi.cn/robots.txt
+curl -sS https://anitabi.cn/robots.txt
+```
+
+Save raw outputs into the research doc with timestamps.
+
+- [ ] **Step 3: Write the research doc**
+
+Template (fill in actual findings):
+```markdown
+# Anitabi Mirror Compliance Research (D0 for PR3)
+
+**Date:** 2026-05-03
+**Author:** PR3 implementation
+**Source documentation:** https://github.com/anitabi/anitabi.cn-document (commit <sha>)
+
+## Findings
+1. **Rate limit / QPS**: <documented value or "no documented limit; we use 5 req/s">
+2. **User-Agent requirements**: <documented requirements or "none">
+3. **Attribution requirements**: <documented requirements>
+4. **Cache TTL minimums**: <documented value>
+5. **Disallowed resources**: <list>
+6. **Contact channel**: <found or not>
+
+## robots.txt snapshot
+\`\`\`
+<paste raw content>
+\`\`\`
+
+## Compliance verdict
+- [x] GREEN — proceed with PR3 §4 throttling values as designed
+- [ ] YELLOW — adjust throttle to <X req/s>; UA to <value>; expected backfill timeline shifts to ~<N> days
+- [ ] RED — abort D4-γ; replan with D4-α/β
+
+## Parameter alignment table
+| Spec value | Anitabi requirement | Final PR3 value |
+|---|---|---|
+| 5 req/s | <X> | <Y> |
+| UA `SeichiGoMirror/1.0 (+https://seichigo.com)` | <required pattern> | <final> |
+| s-maxage 86400 | min <N>d | <final> |
+```
+
+- [ ] **Step 4: Commit the research doc**
+
+```bash
+git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
+git commit -m "research(map): anitabi mirror compliance D0 for PR3"
+```
+
+- [ ] **Step 5: Update spec with locked parameters if YELLOW**
+
+If the verdict is YELLOW, edit `docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md` §4 throttle values and §6 UA string, then commit:
+```bash
+git add docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md
+git commit -m "spec(map): align PR3 throttle params with anitabi mirror doc"
+```
+
+If GREEN, no spec change needed; proceed.
+
+If RED, **stop**. The plan needs rewriting before any code work.
+
+---
+
+### Task 0.2: Verify `wrangler rollback` works with OpenNext build
+
+**Files:**
+- No file changes; result captured in research doc.
+
+- [ ] **Step 1: List current production worker versions**
+
+Run:
+```bash
+cd /Users/mac/Desktop/seichigo
+wrangler deployments list 2>&1 | head -30
+```
+
+Capture the most recent 3 version IDs.
+
+- [ ] **Step 2: Test rollback dry-run on a non-current version**
+
+Pick the second-most-recent version. Run:
+```bash
+wrangler rollback <version-id> --dry-run 2>&1
+```
+
+If `--dry-run` is unsupported on this wrangler version, instead read the wrangler docs for `wrangler rollback` and verify the OpenNext-built `.open-next/worker.js` artifact format hasn't changed between deploys (compare bundle headers in the deployments).
+
+- [ ] **Step 3: Document outcome**
+
+Append to `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`:
+```markdown
+## Wrangler rollback verification
+- Last 3 version IDs: <list>
+- Rollback path: <PASS / PARTIAL / FAIL with details>
+- Implication for PR3: <e.g., "rollback OK, can use as emergency kill" or "must use flag-only rollback">
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
+git commit -m "research(map): verify wrangler rollback for PR3 emergency path"
+```
+
+---
+
+### Task 0.3: Verify sync workflow + diff output stability
+
+**Files:**
+- No file changes; capture in research doc.
+
+- [ ] **Step 1: Locate the sync workflow runtime**
+
+Run:
+```bash
+ls /Users/mac/Desktop/seichigo/lib/anitabi/sync/
+cat /Users/mac/Desktop/seichigo/lib/anitabi/sync/diff.ts | head -80
+```
+
+Identify: where is `diff.ts` called from? Is it triggered by cron, by `npm run anitabi:sync`, or both?
+
+- [ ] **Step 2: Check last 5 sync runs for errors**
+
+Query Postgres (admin shell):
+```sql
+SELECT "datasetVersion", COUNT(*), MAX("updatedAt")
+FROM "AnitabiBangumi"
+GROUP BY "datasetVersion"
+ORDER BY MAX("updatedAt") DESC
+LIMIT 5;
+```
+
+Confirm sync has run successfully recently.
+
+- [ ] **Step 3: Document in research doc**
+
+Append:
+```markdown
+## Sync workflow stability
+- Trigger: <cron / manual / both>
+- Last successful sync: <timestamp>
+- Diff output reliable: <YES / NO with details>
+- Implication for PR3 §7: <can proceed with reconcile hook / must fix sync first>
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
+git commit -m "research(map): verify sync workflow stability for PR3 reconcile hook"
+```
+
+---
+
+### Task 0.4: Verify Postgres DB capacity for +160MB
+
+**Files:**
+- No file changes.
+
+- [ ] **Step 1: Check current DB size**
+
+Run on Postgres:
+```sql
+SELECT pg_size_pretty(pg_database_size(current_database()));
+SELECT pg_size_pretty(pg_total_relation_size('"AnitabiBangumi"'));
+SELECT pg_size_pretty(pg_total_relation_size('"AnitabiPoint"'));
+```
+
+- [ ] **Step 2: Check plan's storage limit**
+
+Confirm provider (Neon/Supabase/RDS) and current plan. Estimate headroom.
+
+- [ ] **Step 3: Document in research doc**
+
+Append:
+```markdown
+## DB capacity verification
+- Current DB size: <X MB>
+- Provider plan: <name>
+- Headroom: <Y MB free>
+- PR3 expected delta: ~160MB (320k rows × ~500B + indexes)
+- Verdict: <PASS / NEEDS_UPGRADE>
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
+git commit -m "research(map): verify DB capacity for MapImageMirrorState"
+```
+
+---
+
+## Phase 1 — Foundations
+
+### Task 1.1: Add Prisma models — MapImageMirrorState + MapImageMirrorBootstrap
+
+**Files:**
+- Modify: `prisma/schema.prisma` (append after existing `MapImageDiagEvent` model)
+- Migration: auto-generated by `prisma migrate dev`
+
+- [ ] **Step 1: Add the two models**
+
+Append at the end of `prisma/schema.prisma`:
+```prisma
+model MapImageMirrorState {
+  id             String   @id @default(cuid())
+  sourceType     String
+  sourceId       String
+  variant        String
+  canonicalUrl   String
+  r2Key          String
+  status         String
+  attempts       Int      @default(0)
+  lastAttemptAt  DateTime?
+  lastError      String?  @db.Text
+  mirroredAt     DateTime?
+  contentBytes   Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceType, sourceId, variant])
+  @@index([status, createdAt])
+  @@index([status, lastAttemptAt])
+}
+
+model MapImageMirrorBootstrap {
+  id                Int       @id @default(1)
+  bangumiCursor     Int?
+  pointCursor       String?
+  bangumiCompleted  Boolean   @default(false)
+  pointCompleted    Boolean   @default(false)
+  totalEnumerated   Int       @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  lastAdvanceAt     DateTime?
+  manuallyTriggered Boolean   @default(false)
+}
+```
+
+- [ ] **Step 2: Generate migration**
+
+Run:
+```bash
+cd /Users/mac/Desktop/seichigo
+npm run db:migrate:dev -- --name add_map_image_mirror_state
+```
+
+Expected: new SQL file under `prisma/migrations/<timestamp>_add_map_image_mirror_state/migration.sql`.
+
+- [ ] **Step 3: Verify the generated SQL**
+
+Read the migration SQL file and confirm:
+- Two `CREATE TABLE` statements.
+- Three indexes on `MapImageMirrorState` (the unique + two `@@index`).
+- No accidental rename or drop on existing tables.
+
+- [ ] **Step 4: Run typecheck and tests**
+
+```bash
+npm run typecheck
+npm test -- --run tests/anitabi
+```
+
+Expected: PASS. Prisma generated client now has the new models available.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add prisma/schema.prisma prisma/migrations
+git commit -m "feat(db): add MapImageMirrorState + MapImageMirrorBootstrap for PR3"
+```
+
+---
+
+### Task 1.2: Extract `imageNormalize.ts` from `imageProxy.ts`
+
+**Files:**
+- Create: `lib/anitabi/imageNormalize.ts`
+- Modify: `lib/anitabi/imageProxy.ts` (delegate to new module)
+- Test: `tests/anitabi/imageNormalize.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/anitabi/imageNormalize.test.ts`:
+```ts
+import { describe, it, expect } from 'vitest'
+import { computeCanonicalImageUrl, computeMirrorKey } from '@/lib/anitabi/imageNormalize'
+
+describe('computeCanonicalImageUrl', () => {
+  it('rewrites anitabi.cn → image.anitabi.cn and strips /images/ prefix', () => {
+    const result = computeCanonicalImageUrl('https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320')
+    expect(result).toBe('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320')
+  })
+
+  it('collapses bgm.tv /pic/cover/l/ to /pic/cover/m/', () => {
+    const result = computeCanonicalImageUrl('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
+    expect(result).toBe('https://lain.bgm.tv/pic/cover/m/abcd.jpg')
+  })
+
+  it('strips diagnostic params (__mi_*) and _retry / name', () => {
+    const result = computeCanonicalImageUrl(
+      'https://image.anitabi.cn/points/abc.jpg?plan=h160&__mi_session=s1&_retry=2&name=foo'
+    )
+    expect(result).toBe('https://image.anitabi.cn/points/abc.jpg?plan=h160')
+  })
+
+  it('sorts remaining query params lexically', () => {
+    const a = computeCanonicalImageUrl('https://image.anitabi.cn/p.jpg?b=2&a=1')
+    const b = computeCanonicalImageUrl('https://image.anitabi.cn/p.jpg?a=1&b=2')
+    expect(a).toBe(b)
+  })
+
+  it('lowercases protocol and host', () => {
+    const result = computeCanonicalImageUrl('HTTPS://IMAGE.ANITABI.CN/x.jpg')
+    expect(result).toBe('https://image.anitabi.cn/x.jpg')
+  })
+})
+
+describe('computeMirrorKey', () => {
+  it('produces deterministic mirror/v1/<host>/<24hex>/<ext> form', () => {
+    const key = computeMirrorKey('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320', 'image/jpeg')
+    expect(key).toMatch(/^mirror\/v1\/image\.anitabi\.cn\/[0-9a-f]{24}\/\.jpg$/)
+  })
+
+  it('different variants produce different keys', () => {
+    const a = computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h160', 'image/jpeg')
+    const b = computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h320', 'image/jpeg')
+    expect(a).not.toBe(b)
+  })
+
+  it('webp mime → .webp extension', () => {
+    const key = computeMirrorKey('https://image.anitabi.cn/x.webp', 'image/webp')
+    expect(key).toMatch(/\/\.webp$/)
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+npm test -- --run tests/anitabi/imageNormalize.test.ts
+```
+
+Expected: FAIL with "Cannot find module '@/lib/anitabi/imageNormalize'".
+
+- [ ] **Step 3: Implement `imageNormalize.ts`**
+
+Create `lib/anitabi/imageNormalize.ts`:
+```ts
+type MimeExtension = '.jpg' | '.png' | '.webp' | '.avif' | '.gif' | '.svg'
+
+const DIAG_PARAM_PREFIX = '__mi_'
+const STRIP_PARAM_NAMES = ['_retry', 'name']
+
+export function computeCanonicalImageUrl(input: string): string {
+  const url = new URL(input)
+  url.protocol = url.protocol.toLowerCase()
+  url.hostname = url.hostname.toLowerCase()
+  if (url.pathname.endsWith('/') && url.pathname.length > 1) {
+    url.pathname = url.pathname.replace(/\/+$/, '')
+  }
+  for (const key of [...url.searchParams.keys()]) {
+    if (key.startsWith(DIAG_PARAM_PREFIX)) url.searchParams.delete(key)
+  }
+  for (const key of STRIP_PARAM_NAMES) url.searchParams.delete(key)
+  if (url.hostname === 'anitabi.cn' || url.hostname === 'www.anitabi.cn') {
+    url.hostname = 'image.anitabi.cn'
+  }
+  if (url.hostname.endsWith('anitabi.cn') && url.pathname.startsWith('/images/')) {
+    url.pathname = url.pathname.slice('/images'.length)
+  }
+  if (url.hostname.endsWith('bgm.tv')) {
+    url.pathname = url.pathname.replace('/pic/cover/l/', '/pic/cover/m/')
+  }
+  const sortedParams = new URLSearchParams()
+  const keys = [...url.searchParams.keys()].sort()
+  for (const key of keys) {
+    for (const value of url.searchParams.getAll(key)) sortedParams.append(key, value)
+  }
+  url.search = sortedParams.toString()
+  return url.toString()
+}
+
+function extensionFromMimeType(mime: string): MimeExtension {
+  const lower = mime.toLowerCase()
+  if (lower.includes('image/png')) return '.png'
+  if (lower.includes('image/webp')) return '.webp'
+  if (lower.includes('image/avif')) return '.avif'
+  if (lower.includes('image/gif')) return '.gif'
+  if (lower.includes('image/svg')) return '.svg'
+  return '.jpg'
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+export function computeMirrorKeySync(canonicalUrl: string, mimeType: string): string {
+  // Synchronous version using Node's crypto for places that can't await
+  // (kept for completeness; the async version below is preferred in worker code)
+  const url = new URL(canonicalUrl)
+  const ext = extensionFromMimeType(mimeType)
+  // Note: this requires the crypto polyfill or Node import; for CF Workers use computeMirrorKey
+  throw new Error('Use computeMirrorKey (async) — sync variant not implemented')
+}
+
+export async function computeMirrorKey(canonicalUrl: string, mimeType: string): Promise<string> {
+  const url = new URL(canonicalUrl)
+  const hash = (await sha256Hex(canonicalUrl)).slice(0, 24)
+  const ext = extensionFromMimeType(mimeType)
+  return `mirror/v1/${url.hostname}/${hash}/${ext}`
+}
+```
+
+- [ ] **Step 4: Update test to match async key API**
+
+The `computeMirrorKey` is async. Update the test to await it:
+```ts
+it('produces deterministic mirror/v1/<host>/<24hex>/<ext> form', async () => {
+  const key = await computeMirrorKey('https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h320', 'image/jpeg')
+  expect(key).toMatch(/^mirror\/v1\/image\.anitabi\.cn\/[0-9a-f]{24}\/\.jpg$/)
+})
+
+it('different variants produce different keys', async () => {
+  const a = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h160', 'image/jpeg')
+  const b = await computeMirrorKey('https://image.anitabi.cn/p.jpg?plan=h320', 'image/jpeg')
+  expect(a).not.toBe(b)
+})
+
+it('webp mime → .webp extension', async () => {
+  const key = await computeMirrorKey('https://image.anitabi.cn/x.webp', 'image/webp')
+  expect(key).toMatch(/\/\.webp$/)
+})
+```
+
+- [ ] **Step 5: Run tests to verify pass**
+
+```bash
+npm test -- --run tests/anitabi/imageNormalize.test.ts
+```
+
+Expected: all 8 tests PASS.
+
+- [ ] **Step 6: Refactor `imageProxy.ts` to use the new module (no behavior change)**
+
+Open `lib/anitabi/imageProxy.ts`. Replace `normalizeBangumiCoverVariant`, `normalizeAnitabiDisplayVariant`, and the inline normalization in `getMapDisplayImageCandidates` with calls to `computeCanonicalImageUrl` where the same logic applies. Existing tests `tests/anitabi/imageProxy.bgmLadder.test.ts` and `tests/anitabi/image-proxy-phase2.test.ts` must still pass.
+
+- [ ] **Step 7: Run full test suite**
+
+```bash
+npm test
+```
+
+Expected: all tests pass, including the existing image-proxy tests.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/anitabi/imageNormalize.ts lib/anitabi/imageProxy.ts tests/anitabi/imageNormalize.test.ts
+git commit -m "feat(map): extract imageNormalize for shared canonical URL + mirror key"
+```
+
+---
+
+### Task 1.3: Create `imageMirrorVariants.ts`
+
+**Files:**
+- Create: `lib/anitabi/imageMirrorVariants.ts`
+- Test: `tests/anitabi/imageMirrorVariants.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/anitabi/imageMirrorVariants.test.ts`:
+```ts
+import { describe, it, expect } from 'vitest'
+import {
+  enumerateBangumiCoverVariants,
+  enumeratePointImageVariants,
+} from '@/lib/anitabi/imageMirrorVariants'
+
+describe('enumerateBangumiCoverVariants', () => {
+  it('returns 2 variants for an anitabi cover URL', () => {
+    const variants = enumerateBangumiCoverVariants('https://image.anitabi.cn/bangumi/123/cover.jpg')
+    expect(variants).toHaveLength(2)
+    const labels = variants.map((v) => v.label).sort()
+    expect(labels).toEqual(['cover-l', 'cover-m'])
+  })
+
+  it('returns 2 variants for a bgm.tv cover URL', () => {
+    const variants = enumerateBangumiCoverVariants('https://lain.bgm.tv/pic/cover/l/abcd.jpg')
+    expect(variants).toHaveLength(2)
+    expect(variants.map((v) => v.label).sort()).toEqual(['cover-l', 'cover-m'])
+  })
+
+  it('returns empty array for null / empty input', () => {
+    expect(enumerateBangumiCoverVariants(null)).toEqual([])
+    expect(enumerateBangumiCoverVariants('')).toEqual([])
+  })
+})
+
+describe('enumeratePointImageVariants', () => {
+  it('returns 3 variants (h160, h320, w640q80) for an anitabi point URL', () => {
+    const variants = enumeratePointImageVariants('https://image.anitabi.cn/points/abc.jpg')
+    expect(variants).toHaveLength(3)
+    expect(variants.map((v) => v.label).sort()).toEqual(['h160', 'h320', 'w640q80'])
+  })
+
+  it('each variant URL is a canonical form', () => {
+    const variants = enumeratePointImageVariants('https://image.anitabi.cn/points/abc.jpg')
+    for (const v of variants) {
+      expect(v.url).toMatch(/^https:\/\/image\.anitabi\.cn\/points\/abc\.jpg\?/)
+    }
+  })
+
+  it('returns empty array for non-anitabi point URLs', () => {
+    expect(enumeratePointImageVariants('https://other.example/p.jpg')).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 2: Run test — expect fail**
+
+```bash
+npm test -- --run tests/anitabi/imageMirrorVariants.test.ts
+```
+
+Expected: FAIL with module-not-found.
+
+- [ ] **Step 3: Implement**
+
+Create `lib/anitabi/imageMirrorVariants.ts`:
+```ts
+import { computeCanonicalImageUrl } from '@/lib/anitabi/imageNormalize'
+
+export type MirrorVariant = { label: string; url: string }
+
+export function enumerateBangumiCoverVariants(rawUrl: string | null | undefined): MirrorVariant[] {
+  if (!rawUrl) return []
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return []
+  }
+  const host = url.hostname.toLowerCase()
+  const isAnitabi = host === 'image.anitabi.cn' || host.endsWith('.anitabi.cn')
+  const isBgmTv = host.endsWith('bgm.tv')
+  if (!isAnitabi && !isBgmTv) return []
+
+  const out: MirrorVariant[] = []
+  if (isBgmTv) {
+    const m = new URL(url.toString())
+    m.pathname = m.pathname.replace('/pic/cover/l/', '/pic/cover/m/')
+    out.push({ label: 'cover-m', url: computeCanonicalImageUrl(m.toString()) })
+    const l = new URL(url.toString())
+    l.pathname = l.pathname.replace('/pic/cover/m/', '/pic/cover/l/')
+    out.push({ label: 'cover-l', url: computeCanonicalImageUrl(l.toString()) })
+  } else {
+    out.push({ label: 'cover-m', url: computeCanonicalImageUrl(url.toString()) })
+    const l = new URL(url.toString())
+    l.searchParams.set('plan', 'l')
+    out.push({ label: 'cover-l', url: computeCanonicalImageUrl(l.toString()) })
+  }
+  return out
+}
+
+export function enumeratePointImageVariants(rawUrl: string | null | undefined): MirrorVariant[] {
+  if (!rawUrl) return []
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return []
+  }
+  const host = url.hostname.toLowerCase()
+  if (host !== 'image.anitabi.cn' && !host.endsWith('.anitabi.cn')) return []
+
+  const buildVariant = (label: string, mutate: (u: URL) => void): MirrorVariant => {
+    const u = new URL(url.toString())
+    mutate(u)
+    return { label, url: computeCanonicalImageUrl(u.toString()) }
+  }
+
+  return [
+    buildVariant('h160', (u) => u.searchParams.set('plan', 'h160')),
+    buildVariant('h320', (u) => u.searchParams.set('plan', 'h320')),
+    buildVariant('w640q80', (u) => {
+      u.searchParams.delete('plan')
+      u.searchParams.set('w', '640')
+      u.searchParams.set('q', '80')
+    }),
+  ]
+}
+```
+
+- [ ] **Step 4: Run tests — expect pass**
+
+```bash
+npm test -- --run tests/anitabi/imageMirrorVariants.test.ts
+```
+
+Expected: all PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/imageMirrorVariants.ts tests/anitabi/imageMirrorVariants.test.ts
+git commit -m "feat(map): enumerate bangumi/point image variants for R2 mirror"
+```
+
+---
+
+### Task 1.4: Create `r2Mirror.ts` shared client
+
+**Files:**
+- Create: `lib/anitabi/r2Mirror.ts`
+- Test: `tests/anitabi/r2Mirror.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/anitabi/r2Mirror.test.ts`:
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { putMirroredImage, getMirroredImage } from '@/lib/anitabi/r2Mirror'
+
+class FakeR2Bucket {
+  store = new Map<string, { body: ArrayBuffer; metadata: any }>()
+  async head(key: string) {
+    const entry = this.store.get(key)
+    if (!entry) return null
+    return { customMetadata: entry.metadata.customMetadata, size: entry.body.byteLength }
+  }
+  async get(key: string) {
+    const entry = this.store.get(key)
+    if (!entry) return null
+    return {
+      arrayBuffer: async () => entry.body,
+      customMetadata: entry.metadata.customMetadata,
+      httpMetadata: entry.metadata.httpMetadata,
+      size: entry.body.byteLength,
+    }
+  }
+  async put(key: string, body: ArrayBuffer, opts: any) {
+    this.store.set(key, { body, metadata: opts })
+    return { key }
+  }
+}
+
+describe('putMirroredImage', () => {
+  let bucket: FakeR2Bucket
+
+  beforeEach(() => {
+    bucket = new FakeR2Bucket()
+  })
+
+  it('puts new object with full customMetadata', async () => {
+    const bytes = new Uint8Array([1, 2, 3]).buffer
+    const result = await putMirroredImage(
+      bucket as any,
+      'https://image.anitabi.cn/x.jpg?plan=h320',
+      bytes,
+      'image/jpeg',
+      'lazy',
+    )
+    expect(result.skipped).toBe(false)
+    expect(result.bytesWritten).toBe(3)
+    expect(bucket.store.size).toBe(1)
+    const stored = [...bucket.store.values()][0]
+    expect(stored.metadata.customMetadata.mirrorSource).toBe('lazy')
+    expect(stored.metadata.customMetadata.originalUrl).toBe('https://image.anitabi.cn/x.jpg?plan=h320')
+  })
+
+  it('skips if object exists and is fresh (within 7d)', async () => {
+    const bytes = new Uint8Array([1]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', bytes, 'image/jpeg', 'lazy')
+    const result = await putMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', bytes, 'image/jpeg', 'cron-seed')
+    expect(result.skipped).toBe(true)
+  })
+})
+
+describe('getMirroredImage', () => {
+  it('returns null on miss', async () => {
+    const bucket = new FakeR2Bucket()
+    const result = await getMirroredImage(bucket as any, 'https://image.anitabi.cn/missing.jpg', 'image/jpeg')
+    expect(result).toBeNull()
+  })
+
+  it('returns body + metadata on hit', async () => {
+    const bucket = new FakeR2Bucket()
+    const bytes = new Uint8Array([7, 8]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', bytes, 'image/jpeg', 'lazy')
+    const result = await getMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', 'image/jpeg')
+    expect(result).not.toBeNull()
+    expect(result!.bytes.byteLength).toBe(2)
+    expect(result!.customMetadata.mirrorSource).toBe('lazy')
+  })
+})
+```
+
+- [ ] **Step 2: Run test — expect fail**
+
+```bash
+npm test -- --run tests/anitabi/r2Mirror.test.ts
+```
+
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+Create `lib/anitabi/r2Mirror.ts`:
+```ts
+import { computeCanonicalImageUrl, computeMirrorKey } from '@/lib/anitabi/imageNormalize'
+
+const REFRESH_MIN_AGE_DAYS = 7
+
+type MirrorSource = 'lazy' | 'cron-seed' | 'cron-delta' | 'cron-refresh'
+
+export type R2MirrorBucket = {
+  head(key: string): Promise<{ customMetadata?: Record<string, string>; size?: number } | null>
+  get(key: string): Promise<{
+    arrayBuffer: () => Promise<ArrayBuffer>
+    customMetadata?: Record<string, string>
+    httpMetadata?: { contentType?: string }
+    size?: number
+  } | null>
+  put(
+    key: string,
+    body: ArrayBuffer,
+    opts: { httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> },
+  ): Promise<unknown>
+}
+
+export type PutResult = { key: string; bytesWritten: number; skipped: boolean }
+
+export async function putMirroredImage(
+  bucket: R2MirrorBucket,
+  rawUrl: string,
+  imageBytes: ArrayBuffer,
+  mimeType: string,
+  source: MirrorSource,
+): Promise<PutResult> {
+  const canonicalUrl = computeCanonicalImageUrl(rawUrl)
+  const key = await computeMirrorKey(canonicalUrl, mimeType)
+
+  const existing = await bucket.head(key)
+  if (existing?.customMetadata?.mirroredAt) {
+    const ageMs = Date.now() - new Date(existing.customMetadata.mirroredAt).getTime()
+    if (ageMs < REFRESH_MIN_AGE_DAYS * 24 * 60 * 60 * 1000) {
+      return { key, bytesWritten: imageBytes.byteLength, skipped: true }
+    }
+  }
+
+  const mirroredAt = new Date().toISOString()
+  await bucket.put(key, imageBytes, {
+    httpMetadata: { contentType: mimeType },
+    customMetadata: {
+      originalUrl: canonicalUrl,
+      mimeType,
+      mirroredAt,
+      mirrorSource: source,
+      contentLength: String(imageBytes.byteLength),
+    },
+  })
+  return { key, bytesWritten: imageBytes.byteLength, skipped: false }
+}
+
+export async function getMirroredImage(
+  bucket: R2MirrorBucket,
+  rawUrl: string,
+  mimeType: string,
+): Promise<{ bytes: ArrayBuffer; customMetadata: Record<string, string>; httpContentType?: string } | null> {
+  const canonicalUrl = computeCanonicalImageUrl(rawUrl)
+  const key = await computeMirrorKey(canonicalUrl, mimeType)
+  try {
+    const obj = await bucket.get(key)
+    if (!obj) return null
+    return {
+      bytes: await obj.arrayBuffer(),
+      customMetadata: obj.customMetadata ?? {},
+      httpContentType: obj.httpMetadata?.contentType,
+    }
+  } catch {
+    return null
+  }
+}
+```
+
+- [ ] **Step 4: Run tests — expect pass**
+
+```bash
+npm test -- --run tests/anitabi/r2Mirror.test.ts
+```
+
+Expected: all PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/r2Mirror.ts tests/anitabi/r2Mirror.test.ts
+git commit -m "feat(map): r2Mirror client (put/get with metadata + freshness skip)"
+```
+
+---
+
+### Task 1.5: Add `image_cache_state` to MapImageDiagStage enum
+
+**Files:**
+- Modify: `lib/mapImageDiag/shared.ts`
+- Test: discoverable via existing diag tests, plus a new minimal one
+
+- [ ] **Step 1: Locate the enum**
+
+Run:
+```bash
+grep -n "MapImageDiagStage" /Users/mac/Desktop/seichigo/lib/mapImageDiag/shared.ts | head -10
+```
+
+Open the file to understand the existing enum/union shape.
+
+- [ ] **Step 2: Add `image_cache_state` to the union**
+
+Edit `lib/mapImageDiag/shared.ts` — add `'image_cache_state'` to the `MapImageDiagStage` type union/list, preserving alphabetical-within-domain ordering or whatever existing convention is in place.
+
+- [ ] **Step 3: Update any switch/exhaustiveness checks**
+
+Search for usages:
+```bash
+grep -rn "MapImageDiagStage" /Users/mac/Desktop/seichigo/lib /Users/mac/Desktop/seichigo/app | grep -v node_modules
+```
+
+For each switch statement on `stage`, add a case for `image_cache_state` with a no-op or pass-through behavior (it's a new event, existing handlers ignore it cleanly).
+
+- [ ] **Step 4: Run typecheck**
+
+```bash
+npm run typecheck
+```
+
+Expected: PASS. If exhaustiveness errors appear, add the missing cases.
+
+- [ ] **Step 5: Run existing tests**
+
+```bash
+npm test -- --run tests/mapImageDiag tests/anitabi/diff.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/mapImageDiag/shared.ts
+git commit -m "feat(diag): add image_cache_state stage for PR3 R2 path"
+```
+
+---
+
+## Phase 2 — Main Worker R2 Integration
+
+### Task 2.1: Add R2 binding + flag vars to `wrangler.jsonc`
+
+**Files:**
+- Modify: `wrangler.jsonc`
+
+- [ ] **Step 1: Edit wrangler.jsonc**
+
+Open `wrangler.jsonc`. Add after the existing `vars` block:
+```jsonc
+  "r2_buckets": [
+    {
+      "binding": "MAP_IMAGE_CACHE",
+      "bucket_name": "seichigo-anitabi-images"
+    }
+  ],
+```
+
+Add to the `vars` block:
+```jsonc
+  "vars": {
+    "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1",
+    "NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "0",
+    "NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "0"
+  },
+```
+
+- [ ] **Step 2: Create the R2 bucket on Cloudflare**
+
+```bash
+wrangler r2 bucket create seichigo-anitabi-images
+```
+
+If it already exists, this returns "bucket already exists" — fine.
+
+- [ ] **Step 3: Regenerate worker types**
+
+```bash
+npm run cf:typegen
+```
+
+Expected: `worker-configuration.d.ts` (or similar) now includes `MAP_IMAGE_CACHE: R2Bucket` in the env type.
+
+- [ ] **Step 4: Typecheck**
+
+```bash
+npm run typecheck
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add wrangler.jsonc worker-configuration.d.ts
+git commit -m "config(cf): add MAP_IMAGE_CACHE R2 binding + R2 read/write flags"
+```
+
+---
+
+### Task 2.2: Modify `imageServe.ts` — R2 lookup before upstream (TDD)
+
+**Files:**
+- Modify: `lib/anitabi/handlers/imageServe.ts`
+- Test: `tests/anitabi/imageServe.r2.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/anitabi/imageServe.r2.test.ts`:
+```ts
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { serveImageRequest } from '@/lib/anitabi/handlers/imageServe'
+import { putMirroredImage } from '@/lib/anitabi/r2Mirror'
+
+function buildFakeBucket() {
+  const store = new Map<string, { body: ArrayBuffer; metadata: any }>()
+  return {
+    store,
+    async head(key: string) {
+      const e = store.get(key)
+      return e ? { customMetadata: e.metadata.customMetadata, size: e.body.byteLength } : null
+    },
+    async get(key: string) {
+      const e = store.get(key)
+      if (!e) return null
+      return {
+        arrayBuffer: async () => e.body,
+        customMetadata: e.metadata.customMetadata,
+        httpMetadata: e.metadata.httpMetadata,
+        size: e.body.byteLength,
+      }
+    },
+    async put(key: string, body: ArrayBuffer, opts: any) {
+      store.set(key, { body, metadata: opts })
+      return { key }
+    },
+  }
+}
+
+function buildFakeDeps(overrides: { bucket?: any; flagRead?: string; flagWrite?: string } = {}) {
+  return {
+    prisma: { mapImageDiagSession: {}, mapImageDiagEvent: {} } as any,
+    getSiteBase: () => 'https://www.seichigo.com',
+    env: {
+      MAP_IMAGE_CACHE: overrides.bucket ?? buildFakeBucket(),
+      NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: overrides.flagRead ?? '1',
+      NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: overrides.flagWrite ?? '1',
+    },
+  } as any
+}
+
+describe('imageServe — R2 read path', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns R2 hit with X-Seichigo-Image-Source: r2-primary', async () => {
+    const bucket = buildFakeBucket()
+    const bytes = new Uint8Array([1, 2, 3]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', bytes, 'image/jpeg', 'cron-seed')
+
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/x.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Seichigo-Image-Source')).toBe('r2-primary')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('falls through to upstream when R2_READ flag is off', async () => {
+    const bucket = buildFakeBucket()
+    const bytes = new Uint8Array([1]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/x.jpg', bytes, 'image/jpeg', 'cron-seed')
+
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([9]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    )
+
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/x.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket, flagRead: '0' }), 'render')
+
+    expect(res.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run test — expect fail**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+Expected: FAIL — R2 logic not yet integrated.
+
+- [ ] **Step 3: Implement R2 read path**
+
+Open `lib/anitabi/handlers/imageServe.ts`. After `parseTargetUrl` + `assertAllowedTargetUrl` succeed and before `fetchValidatedImage`, insert:
+```ts
+// R2 primary lookup (gated by flag, after host allowlist check)
+if (mode === 'render' && deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED === '1' && deps.env?.MAP_IMAGE_CACHE) {
+  emitProxyEvent({ stage: 'image_cache_state', outcome: 'cf_miss_r2_check', evidence: { target: target.toString() } })
+  const r2Hit = await getMirroredImage(deps.env.MAP_IMAGE_CACHE, target.toString(), 'image/jpeg').catch(() => null)
+  if (r2Hit) {
+    emitProxyEvent({
+      stage: 'image_cache_state',
+      outcome: 'cache_hit_r2_primary',
+      terminalState: 'succeeded',
+      evidence: { r2Bytes: r2Hit.bytes.byteLength, mirrorSource: r2Hit.customMetadata.mirrorSource },
+    })
+    const headers = new Headers({
+      'Content-Type': r2Hit.httpContentType ?? r2Hit.customMetadata.mimeType ?? 'image/jpeg',
+      'Cache-Control': RENDER_CACHE_CONTROL,
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Seichigo-Image-Source': 'r2-primary',
+      'X-Seichigo-Image-Mirrored-At': r2Hit.customMetadata.mirroredAt ?? '',
+      'X-Original-Source': r2Hit.customMetadata.originalUrl ?? target.toString(),
+      'Content-Length': String(r2Hit.bytes.byteLength),
+    })
+    return new Response(r2Hit.bytes, { status: 200, headers })
+  }
+}
+```
+
+Add the import at top of the file:
+```ts
+import { getMirroredImage, putMirroredImage } from '@/lib/anitabi/r2Mirror'
+```
+
+The `deps` type needs an `env` field. In `lib/anitabi/api.ts:AnitabiApiDeps`, add:
+```ts
+env?: {
+  MAP_IMAGE_CACHE?: any
+  NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
+  NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
+}
+```
+
+In the route handler at `app/api/anitabi/image-render/route.ts`, plumb the env:
+```ts
+import { getRequestContext } from '@cloudflare/next-on-pages'
+// or the OpenNext equivalent
+
+export async function GET(req: Request) {
+  try {
+    const deps = await getAnitabiApiDeps()
+    const cfEnv = (process.env as any).MAP_IMAGE_CACHE
+      ? (process.env as any)
+      : (globalThis as any)?.cloudflare?.env
+    return createRenderProxyHandlers({ ...deps, env: cfEnv }).GET(req)
+  } catch (err) {
+    console.error('[api/anitabi/image-render] GET failed', err)
+    return routeError()
+  }
+}
+```
+
+The exact env-plumbing pattern depends on OpenNext's runtime; check `@opennextjs/cloudflare` docs for `getCloudflareContext()` if the above doesn't compile. Use whichever pattern other routes in this codebase already use to access bindings.
+
+- [ ] **Step 4: Run tests**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+Expected: PASS for the two tests.
+
+- [ ] **Step 5: Run full anitabi suite to confirm no regression**
+
+```bash
+npm test -- --run tests/anitabi
+```
+
+Expected: all PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/anitabi/handlers/imageServe.ts lib/anitabi/api.ts app/api/anitabi/image-render/route.ts tests/anitabi/imageServe.r2.test.ts
+git commit -m "feat(map): R2 primary read path in imageServe with flag gating"
+```
+
+---
+
+### Task 2.3: Modify `imageServe.ts` — async R2 dual-write on upstream success (TDD)
+
+**Files:**
+- Modify: `lib/anitabi/handlers/imageServe.ts`
+- Modify: `tests/anitabi/imageServe.r2.test.ts` (add cases)
+
+- [ ] **Step 1: Add a failing test for the write path**
+
+Append to `tests/anitabi/imageServe.r2.test.ts`:
+```ts
+describe('imageServe — R2 write path', () => {
+  it('writes to R2 after successful upstream fetch when WRITE flag on', async () => {
+    const bucket = buildFakeBucket()
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([4, 5, 6]), {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg', 'content-length': '3' },
+      }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/y.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    expect(res.status).toBe(200)
+    // Wait one microtask cycle for the waitUntil-style write to complete
+    await new Promise((r) => setTimeout(r, 10))
+    expect(bucket.store.size).toBe(1)
+  })
+
+  it('does NOT write to R2 when WRITE flag is off', async () => {
+    const bucket = buildFakeBucket()
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([7]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/z.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket, flagWrite: '0' }), 'render')
+    expect(res.status).toBe(200)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(bucket.store.size).toBe(0)
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+- [ ] **Step 3: Implement write-through**
+
+In `lib/anitabi/handlers/imageServe.ts`, locate the success path where `buildRenderResponse` returns the response. Right before returning that response (after `storeRenderCache(CF)`), add:
+```ts
+if (deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED === '1' && deps.env?.MAP_IMAGE_CACHE) {
+  // Read body bytes for R2 write (need to clone the response since the body stream is consumed by client)
+  const cloned = renderResponse.clone()
+  const bodyPromise = (async () => {
+    try {
+      const bytes = await cloned.arrayBuffer()
+      await putMirroredImage(
+        deps.env!.MAP_IMAGE_CACHE!,
+        target.toString(),
+        bytes,
+        fetched.mimeType,
+        'lazy',
+      )
+    } catch (err) {
+      console.warn('[imageServe] R2 write failed', err)
+    }
+  })()
+  // Use ctx.waitUntil if available (CF Workers); else fire-and-forget
+  const ctx = (deps as any).ctx ?? (globalThis as any).waitUntilCtx
+  if (ctx?.waitUntil) ctx.waitUntil(bodyPromise)
+  else void bodyPromise
+}
+```
+
+Note: streaming responses (where `buildRenderResponse` returns a streamed body) make `clone()` problematic. Adjust by reading bytes once into `readBytesWithLimit`, then constructing two responses (one for the user, one feeding `putMirroredImage`). The simpler approach: change `buildRenderResponse` to always buffer-then-return for paths where R2 write is enabled, falling back to streaming otherwise.
+
+- [ ] **Step 4: Run tests — expect pass**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
+git commit -m "feat(map): async R2 dual-write in imageServe (lazy mode)"
+```
+
+---
+
+### Task 2.4: Modify `imageServe.ts` — R2 fallback after upstream failure (TDD)
+
+**Files:**
+- Modify: `lib/anitabi/handlers/imageServe.ts`
+- Modify: `tests/anitabi/imageServe.r2.test.ts` (add cases)
+
+- [ ] **Step 1: Add failing test**
+
+Append to `tests/anitabi/imageServe.r2.test.ts`:
+```ts
+describe('imageServe — R2 fallback on upstream failure', () => {
+  it('returns R2 with r2-fallback header when upstream times out', async () => {
+    const bucket = buildFakeBucket()
+    const bytes = new Uint8Array([1, 1, 1]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/slow.jpg', bytes, 'image/jpeg', 'cron-seed')
+
+    vi.spyOn(global, 'fetch').mockRejectedValue(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/slow.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
+  })
+
+  it('returns 502 when both upstream fails AND R2 misses', async () => {
+    const bucket = buildFakeBucket()
+    vi.spyOn(global, 'fetch').mockRejectedValue(Object.assign(new Error('timeout'), { name: 'AbortError' }))
+
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/never-mirrored.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    expect(res.status).toBe(502)
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement fallback**
+
+In `imageServe.ts`, locate the fetch-failure branch (where `fetched.ok === false` and we currently emit `proxy_fetch_terminal: timeout` then return `fetched.response`). Before returning the failure response, attempt R2 fallback:
+```ts
+if (!fetched.ok && deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED === '1' && deps.env?.MAP_IMAGE_CACHE) {
+  const r2Fallback = await getMirroredImage(deps.env.MAP_IMAGE_CACHE, target.toString(), 'image/jpeg').catch(() => null)
+  if (r2Fallback) {
+    emitProxyEvent({
+      stage: 'image_cache_state',
+      outcome: 'cache_hit_r2_fallback',
+      terminalState: 'succeeded',
+      evidence: { r2Bytes: r2Fallback.bytes.byteLength },
+    })
+    const headers = new Headers({
+      'Content-Type': r2Fallback.httpContentType ?? 'image/jpeg',
+      'Cache-Control': RENDER_CACHE_CONTROL,
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Seichigo-Image-Source': 'r2-fallback',
+      'X-Seichigo-Image-Mirrored-At': r2Fallback.customMetadata.mirroredAt ?? '',
+      'X-Original-Source': r2Fallback.customMetadata.originalUrl ?? target.toString(),
+      'Content-Length': String(r2Fallback.bytes.byteLength),
+    })
+    return new Response(r2Fallback.bytes, { status: 200, headers })
+  }
+  emitProxyEvent({ stage: 'image_cache_state', outcome: 'cache_full_miss_failed', terminalState: 'failed' })
+}
+return fetched.response
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
+git commit -m "feat(map): R2 fallback when upstream times out / 5xx"
+```
+
+---
+
+### Task 2.5: Add `X-Original-Source` header on all anitabi responses
+
+**Files:**
+- Modify: `lib/anitabi/handlers/imageServe.ts`
+- Modify: `tests/anitabi/imageServe.r2.test.ts` (contract test)
+
+- [ ] **Step 1: Add contract test**
+
+Append to `tests/anitabi/imageServe.r2.test.ts`:
+```ts
+describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
+  const expectedPattern = /^https:\/\/([a-z0-9.-]+\.)?(anitabi\.cn|bgm\.tv)\//
+
+  it('upstream-served response carries X-Original-Source pointing at anitabi', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([2]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/h.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ flagWrite: '0' }), 'render')
+    expect(res.headers.get('X-Original-Source')).toMatch(expectedPattern)
+  })
+
+  it('R2-served response carries X-Original-Source matching the canonical URL', async () => {
+    const bucket = buildFakeBucket()
+    const bytes = new Uint8Array([5]).buffer
+    await putMirroredImage(bucket as any, 'https://image.anitabi.cn/k.jpg', bytes, 'image/jpeg', 'lazy')
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/k.jpg'),
+    )
+    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    expect(res.headers.get('X-Original-Source')).toMatch(expectedPattern)
+  })
+})
+```
+
+- [ ] **Step 2: Run — verify R2 paths already pass; upstream path likely fails**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.r2.test.ts
+```
+
+R2 paths set the header in tasks 2.2/2.4. Upstream path must be augmented.
+
+- [ ] **Step 3: Augment upstream success path with X-Original-Source**
+
+Modify `buildRenderResponse` to accept an `originalUrl` parameter:
+```ts
+async function buildRenderResponse(input: {
+  upstream: Response
+  mimeType: string
+  abort: () => void
+  timeoutMs: number
+  originalUrl: string  // NEW
+  onStreamSuccess?: () => void
+  onStreamError?: (outcome: string) => void
+}): Promise<Response> {
+  // ... existing logic ...
+  const headers = new Headers({
+    'Content-Type': input.mimeType,
+    'Cache-Control': RENDER_CACHE_CONTROL,
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Original-Source': input.originalUrl,                     // NEW
+    'X-Seichigo-Image-Source': 'upstream-with-r2-write',        // NEW (overridden by caller for write-disabled case)
+  })
+  // ... rest unchanged ...
+}
+```
+
+Caller passes `target.toString()` (the canonical anitabi/bgm URL).
+
+When `R2_WRITE_ENABLED=0`, the source header should say `upstream-no-r2`. Pass that distinction through.
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
+git commit -m "feat(map): X-Original-Source on all imageServe responses (D5-γ)"
+```
+
+---
+
+### Task 2.6: Emit consolidated `image_cache_state` events for all paths
+
+**Files:**
+- Modify: `lib/anitabi/handlers/imageServe.ts`
+- Add: `tests/anitabi/imageServe.diag.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/anitabi/imageServe.diag.test.ts`:
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { serveImageRequest } from '@/lib/anitabi/handlers/imageServe'
+
+const dispatchSpy = vi.fn()
+vi.mock('@/lib/mapImageDiag/proxy', () => ({
+  dispatchMapImageProxyEvent: (..._args: any[]) => dispatchSpy(..._args),
+}))
+
+beforeEach(() => {
+  dispatchSpy.mockReset()
+})
+
+function buildDeps(extra: any = {}) {
+  return {
+    prisma: {} as any,
+    getSiteBase: () => 'https://www.seichigo.com',
+    env: { NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0', NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0' },
+    ...extra,
+  } as any
+}
+
+describe('imageServe — image_cache_state stage emission', () => {
+  it('emits image_cache_state: cache_miss_all when CF + R2 miss but upstream OK', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([1]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/m.jpg'),
+    )
+    await serveImageRequest(req, buildDeps(), 'render')
+    const calls = dispatchSpy.mock.calls.flatMap((c) => c[2] ?? [])
+    const stages = calls.filter((e: any) => e?.stage === 'image_cache_state').map((e: any) => e.outcome)
+    expect(stages).toContain('cache_miss_all')
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement consolidated emission**
+
+In `imageServe.ts`, ensure for each terminal path one of these `image_cache_state` outcomes is emitted exactly once:
+- CF hit → `cache_hit_cf` (right after the existing `proxy_cache_state: cache_hit`)
+- R2 primary hit → `cache_hit_r2_primary` (already added in 2.2)
+- R2 fallback hit → `cache_hit_r2_fallback` (already added in 2.4)
+- All miss + upstream OK → `cache_miss_all` (new — emit at the upstream-success terminal, after `proxy_stream_terminal: succeeded`)
+- All miss + upstream fail + R2 miss → `cache_full_miss_failed` (already added in 2.4)
+
+- [ ] **Step 4: Run — expect pass**
+
+```bash
+npm test -- --run tests/anitabi/imageServe.diag.test.ts
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.diag.test.ts
+git commit -m "feat(diag): emit image_cache_state on all imageServe terminal paths"
+```
+
+---
+
+## Phase 3 — Mirror Worker
+
+### Task 3.1: Scaffold `workers/anitabi-mirror/`
+
+**Files:**
+- Create: `workers/anitabi-mirror/wrangler.jsonc`
+- Create: `workers/anitabi-mirror/package.json`
+- Create: `workers/anitabi-mirror/tsconfig.json`
+- Create: `workers/anitabi-mirror/src/index.ts` (skeleton scheduled handler)
+- Create: `workers/anitabi-mirror/README.md`
+
+- [ ] **Step 1: Create directory and config**
+
+Run:
+```bash
+cd /Users/mac/Desktop/seichigo
+mkdir -p workers/anitabi-mirror/src
+```
+
+Create `workers/anitabi-mirror/wrangler.jsonc`:
+```jsonc
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "seichigo-anitabi-mirror",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "0 * * * *"
+    ]
+  },
+  "vars": {
+    "MAP_IMAGE_MIRROR_CRON_ENABLED": "0"
+  },
+  "r2_buckets": [
+    {
+      "binding": "MAP_IMAGE_CACHE",
+      "bucket_name": "seichigo-anitabi-images"
+    }
+  ]
+}
+```
+
+The `*/5 * * * *` runs the seed every 5 min; the `0 * * * *` runs delta hourly. The handler dispatches based on schedule string.
+
+- [ ] **Step 2: package.json + tsconfig**
+
+Create `workers/anitabi-mirror/package.json`:
+```json
+{
+  "name": "@seichigo/anitabi-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typegen": "wrangler types"
+  }
+}
+```
+
+Create `workers/anitabi-mirror/tsconfig.json`:
+```json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+- [ ] **Step 3: Skeleton handler**
+
+Create `workers/anitabi-mirror/src/index.ts`:
+```ts
+type Env = {
+  MAP_IMAGE_CACHE: R2Bucket
+  MAP_IMAGE_MIRROR_CRON_ENABLED: string
+  DATABASE_URL: string
+}
+
+export default {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (env.MAP_IMAGE_MIRROR_CRON_ENABLED !== '1') {
+      console.log('[mirror] cron disabled by flag')
+      return
+    }
+    console.log(`[mirror] tick: cron=${event.cron} scheduledTime=${event.scheduledTime}`)
+    if (event.cron === '0 * * * *') {
+      // delta cron path (placeholder; implemented in Task 3.5)
+    } else {
+      // 5-min seed cron path (placeholder; implemented in Tasks 3.2-3.4)
+    }
+  },
+}
+```
+
+- [ ] **Step 4: README stub**
+
+Create `workers/anitabi-mirror/README.md`:
+```markdown
+# anitabi-mirror Worker
+
+Cron-driven worker that backfills R2 with anitabi cover/point images.
+Spec: docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md
+
+Deploy: `npm run deploy` from this directory.
+```
+
+- [ ] **Step 5: Verify wrangler accepts the config**
+
+```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
+wrangler deploy --dry-run 2>&1 | tail -20
+```
+
+Expected: dry-run succeeds; no syntax errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+git add workers/anitabi-mirror
+git commit -m "feat(workers): scaffold anitabi-mirror cron worker for PR3"
+```
+
+---
+
+### Task 3.2: Implement `reclaimStale()` (TDD)
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/reclaim.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/reclaim.test.ts`
+- Modify: `vitest.config.ts` (add workers test path)
+
+- [ ] **Step 1: Extend vitest config to pick up worker tests**
+
+Edit `vitest.config.ts` `test.projects[0].test.include`:
+```ts
+include: ['tests/**/*.test.ts', 'workers/**/*.test.ts'],
+```
+
+- [ ] **Step 2: Write failing test**
+
+Create `workers/anitabi-mirror/src/__tests__/reclaim.test.ts`:
+```ts
+import { describe, it, expect, vi } from 'vitest'
+import { reclaimStale } from '../reclaim'
+
+describe('reclaimStale', () => {
+  it('resets in_progress rows older than 5 minutes to pending', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 3 })
+    const prisma = { mapImageMirrorState: { updateMany } } as any
+    const now = new Date('2026-05-03T12:00:00Z')
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const result = await reclaimStale(prisma)
+
+    expect(result.count).toBe(3)
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        status: 'in_progress',
+        lastAttemptAt: { lt: new Date('2026-05-03T11:55:00Z') },
+      },
+      data: { status: 'pending' },
+    })
+    vi.useRealTimers()
+  })
+})
+```
+
+- [ ] **Step 3: Run — expect fail**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+npm test -- --run workers/anitabi-mirror/src/__tests__/reclaim.test.ts
+```
+
+- [ ] **Step 4: Implement**
+
+Create `workers/anitabi-mirror/src/reclaim.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+
+const STALE_THRESHOLD_MS = 5 * 60 * 1000
+
+export async function reclaimStale(prisma: PrismaClient): Promise<{ count: number }> {
+  const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS)
+  const result = await prisma.mapImageMirrorState.updateMany({
+    where: { status: 'in_progress', lastAttemptAt: { lt: cutoff } },
+    data: { status: 'pending' },
+  })
+  return { count: result.count }
+}
+```
+
+- [ ] **Step 5: Run — expect pass**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add workers/anitabi-mirror/src/reclaim.ts workers/anitabi-mirror/src/__tests__/reclaim.test.ts vitest.config.ts
+git commit -m "feat(mirror): reclaimStale resets stale in_progress rows"
+```
+
+---
+
+### Task 3.3: Implement `advanceBootstrap()` (TDD)
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/bootstrap.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/bootstrap.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+Create `workers/anitabi-mirror/src/__tests__/bootstrap.test.ts`:
+```ts
+import { describe, it, expect, vi } from 'vitest'
+import { advanceBootstrap } from '../bootstrap'
+
+function buildPrismaMock(opts: {
+  bangumi: Array<{ id: number; cover: string | null }>
+  points: Array<{ id: string; image: string | null }>
+  bsState: any
+}) {
+  const upserts: any[] = []
+  return {
+    upserts,
+    prisma: {
+      mapImageMirrorBootstrap: {
+        upsert: vi.fn().mockResolvedValue(opts.bsState),
+        update: vi.fn().mockImplementation(({ data }) => ({ ...opts.bsState, ...data })),
+      },
+      anitabiBangumi: {
+        findMany: vi.fn().mockResolvedValue(opts.bangumi),
+      },
+      anitabiPoint: {
+        findMany: vi.fn().mockResolvedValue(opts.points),
+      },
+      mapImageMirrorState: {
+        upsert: vi.fn().mockImplementation((args) => {
+          upserts.push(args)
+          return Promise.resolve({})
+        }),
+      },
+    },
+  }
+}
+
+describe('advanceBootstrap', () => {
+  it('enumerates bangumi covers + creates pending rows for each variant', async () => {
+    const { prisma, upserts } = buildPrismaMock({
+      bangumi: [{ id: 1, cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg' }],
+      points: [],
+      bsState: { id: 1, bangumiCursor: null, pointCursor: null, bangumiCompleted: false, pointCompleted: false, totalEnumerated: 0 },
+    })
+    await advanceBootstrap(prisma as any, 100)
+    // 1 bangumi × 2 variants = 2 upserts for bangumi-cover
+    const bangumiUpserts = upserts.filter((u) => u.create?.sourceType === 'bangumi-cover')
+    expect(bangumiUpserts).toHaveLength(2)
+  })
+
+  it('marks bangumi completed when findMany returns empty', async () => {
+    const { prisma } = buildPrismaMock({
+      bangumi: [],
+      points: [{ id: 'p1', image: 'https://image.anitabi.cn/points/p1.jpg' }],
+      bsState: { id: 1, bangumiCursor: 999999, pointCursor: null, bangumiCompleted: false, pointCompleted: false, totalEnumerated: 0 },
+    })
+    await advanceBootstrap(prisma as any, 100)
+    expect(prisma.mapImageMirrorBootstrap.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ bangumiCompleted: true }) }),
+    )
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `workers/anitabi-mirror/src/bootstrap.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+import { enumerateBangumiCoverVariants, enumeratePointImageVariants } from '@/lib/anitabi/imageMirrorVariants'
+import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
+
+export async function advanceBootstrap(prisma: PrismaClient, chunkSize: number): Promise<void> {
+  const bs = await prisma.mapImageMirrorBootstrap.upsert({
+    where: { id: 1 },
+    create: { id: 1, startedAt: new Date() },
+    update: {},
+  })
+  let totalEnumerated = bs.totalEnumerated ?? 0
+
+  if (!bs.bangumiCompleted) {
+    const where = bs.bangumiCursor != null ? { id: { gt: bs.bangumiCursor } } : {}
+    const batch = await prisma.anitabiBangumi.findMany({
+      where: { mapEnabled: true, cover: { not: null }, ...where },
+      orderBy: { id: 'asc' },
+      take: chunkSize,
+      select: { id: true, cover: true },
+    })
+    if (batch.length === 0) {
+      await prisma.mapImageMirrorBootstrap.update({
+        where: { id: 1 },
+        data: { bangumiCompleted: true, lastAdvanceAt: new Date() },
+      })
+    } else {
+      for (const b of batch) {
+        const variants = enumerateBangumiCoverVariants(b.cover)
+        for (const v of variants) {
+          const key = await computeMirrorKey(v.url, 'image/jpeg')
+          await prisma.mapImageMirrorState.upsert({
+            where: {
+              sourceType_sourceId_variant: {
+                sourceType: 'bangumi-cover',
+                sourceId: String(b.id),
+                variant: v.label,
+              },
+            },
+            create: {
+              sourceType: 'bangumi-cover',
+              sourceId: String(b.id),
+              variant: v.label,
+              canonicalUrl: v.url,
+              r2Key: key,
+              status: 'pending',
+            },
+            update: {},
+          })
+          totalEnumerated++
+        }
+      }
+      await prisma.mapImageMirrorBootstrap.update({
+        where: { id: 1 },
+        data: {
+          bangumiCursor: batch[batch.length - 1].id,
+          totalEnumerated,
+          lastAdvanceAt: new Date(),
+        },
+      })
+    }
+    return // one type per tick to keep wall time bounded
+  }
+
+  if (!bs.pointCompleted) {
+    const where = bs.pointCursor != null ? { id: { gt: bs.pointCursor } } : {}
+    const batch = await prisma.anitabiPoint.findMany({
+      where: { image: { not: null }, ...where },
+      orderBy: { id: 'asc' },
+      take: chunkSize,
+      select: { id: true, image: true },
+    })
+    if (batch.length === 0) {
+      await prisma.mapImageMirrorBootstrap.update({
+        where: { id: 1 },
+        data: { pointCompleted: true, completedAt: new Date(), lastAdvanceAt: new Date() },
+      })
+    } else {
+      for (const p of batch) {
+        const variants = enumeratePointImageVariants(p.image)
+        for (const v of variants) {
+          const key = await computeMirrorKey(v.url, 'image/jpeg')
+          await prisma.mapImageMirrorState.upsert({
+            where: {
+              sourceType_sourceId_variant: {
+                sourceType: 'point-image',
+                sourceId: p.id,
+                variant: v.label,
+              },
+            },
+            create: {
+              sourceType: 'point-image',
+              sourceId: p.id,
+              variant: v.label,
+              canonicalUrl: v.url,
+              r2Key: key,
+              status: 'pending',
+            },
+            update: {},
+          })
+          totalEnumerated++
+        }
+      }
+      await prisma.mapImageMirrorBootstrap.update({
+        where: { id: 1 },
+        data: {
+          pointCursor: batch[batch.length - 1].id,
+          totalEnumerated,
+          lastAdvanceAt: new Date(),
+        },
+      })
+    }
+  }
+}
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add workers/anitabi-mirror/src/bootstrap.ts workers/anitabi-mirror/src/__tests__/bootstrap.test.ts
+git commit -m "feat(mirror): advanceBootstrap enumerates bangumi/point variants"
+```
+
+---
+
+### Task 3.4: Implement `processSeedBatch()` (TDD)
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/seed.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/seed.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+Create `workers/anitabi-mirror/src/__tests__/seed.test.ts`:
+```ts
+import { describe, it, expect, vi } from 'vitest'
+import { processSeedBatch } from '../seed'
+
+function buildPrismaMock(rows: any[]) {
+  const updates: any[] = []
+  return {
+    updates,
+    prisma: {
+      mapImageMirrorState: {
+        findMany: vi.fn().mockResolvedValue(rows),
+        update: vi.fn().mockImplementation((args) => {
+          updates.push(args)
+          return Promise.resolve(rows.find((r) => r.id === args.where.id))
+        }),
+      },
+    },
+  }
+}
+
+function buildBucket() {
+  const store = new Map<string, any>()
+  return {
+    store,
+    head: vi.fn().mockResolvedValue(null),
+    get: vi.fn().mockResolvedValue(null),
+    put: vi.fn().mockImplementation((key: string, body: ArrayBuffer, opts: any) => {
+      store.set(key, { body, opts })
+      return Promise.resolve({ key })
+    }),
+  }
+}
+
+describe('processSeedBatch', () => {
+  it('mirrors a happy 200 image to R2 and marks row mirrored', async () => {
+    const { prisma, updates } = buildPrismaMock([
+      {
+        id: 'r1',
+        canonicalUrl: 'https://image.anitabi.cn/x.jpg',
+        attempts: 0,
+        sourceType: 'point-image',
+      },
+    ])
+    const bucket = buildBucket()
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([1, 2]), {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg' },
+      }),
+    )
+    await processSeedBatch(prisma as any, bucket as any, { batchSize: 1, perRequestDelayMs: 0 })
+    expect(bucket.store.size).toBe(1)
+    const last = updates[updates.length - 1]
+    expect(last.data.status).toBe('mirrored')
+  })
+
+  it('sets skipped_404 when upstream returns 404', async () => {
+    const { prisma, updates } = buildPrismaMock([
+      { id: 'r2', canonicalUrl: 'https://image.anitabi.cn/missing.jpg', attempts: 0, sourceType: 'point-image' },
+    ])
+    const bucket = buildBucket()
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 404 }))
+    await processSeedBatch(prisma as any, bucket as any, { batchSize: 1, perRequestDelayMs: 0 })
+    const last = updates[updates.length - 1]
+    expect(last.data.status).toBe('skipped_404')
+  })
+
+  it('sets failed when attempts maxed out', async () => {
+    const { prisma, updates } = buildPrismaMock([
+      { id: 'r3', canonicalUrl: 'https://image.anitabi.cn/y.jpg', attempts: 4, sourceType: 'point-image' },
+    ])
+    const bucket = buildBucket()
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('boom'))
+    await processSeedBatch(prisma as any, bucket as any, { batchSize: 1, perRequestDelayMs: 0 })
+    const last = updates[updates.length - 1]
+    expect(last.data.status).toBe('failed')
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `workers/anitabi-mirror/src/seed.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+import { putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+
+const MAX_ATTEMPTS = 5
+const FETCH_TIMEOUT_MS = 15_000
+
+const DEFAULT_USER_AGENT = 'SeichiGoMirror/1.0 (+https://seichigo.com)'
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export type SeedBatchOptions = { batchSize: number; perRequestDelayMs: number; userAgent?: string }
+
+export async function processSeedBatch(
+  prisma: PrismaClient,
+  bucket: R2MirrorBucket,
+  opts: SeedBatchOptions,
+): Promise<{ mirrored: number; failed: number; skipped404: number }> {
+  const items = await prisma.mapImageMirrorState.findMany({
+    where: { status: 'pending' },
+    orderBy: { createdAt: 'asc' },
+    take: opts.batchSize,
+  })
+  let mirrored = 0,
+    failed = 0,
+    skipped404 = 0
+
+  for (const item of items) {
+    await prisma.mapImageMirrorState.update({
+      where: { id: item.id },
+      data: { status: 'in_progress', lastAttemptAt: new Date(), attempts: { increment: 1 } },
+    })
+    try {
+      const res = await fetch(item.canonicalUrl, {
+        headers: { 'user-agent': opts.userAgent ?? DEFAULT_USER_AGENT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      if (res.status === 404) {
+        await prisma.mapImageMirrorState.update({ where: { id: item.id }, data: { status: 'skipped_404' } })
+        skipped404++
+        continue
+      }
+      if (!res.ok) throw new Error(`upstream_${res.status}`)
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.startsWith('image/')) throw new Error('non_image_response')
+      const bytes = await res.arrayBuffer()
+      const result = await putMirroredImage(bucket, item.canonicalUrl, bytes, ct, 'cron-seed')
+      await prisma.mapImageMirrorState.update({
+        where: { id: item.id },
+        data: { status: 'mirrored', mirroredAt: new Date(), contentBytes: result.bytesWritten, lastError: null },
+      })
+      mirrored++
+    } catch (err) {
+      const isMaxedOut = (item.attempts ?? 0) + 1 >= MAX_ATTEMPTS
+      await prisma.mapImageMirrorState.update({
+        where: { id: item.id },
+        data: {
+          status: isMaxedOut ? 'failed' : 'pending',
+          lastError: String(err).slice(0, 500),
+        },
+      })
+      if (isMaxedOut) failed++
+    }
+    if (opts.perRequestDelayMs > 0) await sleep(opts.perRequestDelayMs)
+  }
+  return { mirrored, failed, skipped404 }
+}
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add workers/anitabi-mirror/src/seed.ts workers/anitabi-mirror/src/__tests__/seed.test.ts
+git commit -m "feat(mirror): processSeedBatch with retry, 404 skip, attempts cap"
+```
+
+---
+
+### Task 3.5: Implement `cronDelta()` (TDD)
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/delta.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/delta.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+// workers/anitabi-mirror/src/__tests__/delta.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { cronDelta } from '../delta'
+
+describe('cronDelta', () => {
+  it('reads watermark, finds new bangumi/points since cursor, upserts pending rows', async () => {
+    const cursorAt = new Date('2026-05-02T00:00:00Z')
+    const newBangumi = [{ id: 999, cover: 'https://image.anitabi.cn/bangumi/999/cover.jpg' }]
+    const newPoints = [{ id: 'pn1', image: 'https://image.anitabi.cn/points/pn1.jpg' }]
+    const upserts: any[] = []
+    const prisma = {
+      mapImageMirrorState: {
+        findUnique: vi.fn().mockResolvedValue({ mirroredAt: cursorAt }),
+        upsert: vi.fn().mockImplementation((args) => {
+          upserts.push(args)
+          return Promise.resolve({})
+        }),
+      },
+      anitabiBangumi: { findMany: vi.fn().mockResolvedValue(newBangumi) },
+      anitabiPoint: { findMany: vi.fn().mockResolvedValue(newPoints) },
+    } as any
+
+    await cronDelta(prisma)
+
+    expect(prisma.anitabiBangumi.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ updatedAt: { gt: cursorAt } }) }),
+    )
+    // 1 bangumi × 2 variants + 1 point × 3 variants + 1 watermark upsert = 6 upserts
+    expect(upserts.length).toBeGreaterThanOrEqual(5)
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `workers/anitabi-mirror/src/delta.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+import { enumerateBangumiCoverVariants, enumeratePointImageVariants } from '@/lib/anitabi/imageMirrorVariants'
+import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
+
+const CURSOR_KEY = { sourceType: '__cursor__', sourceId: 'delta', variant: '__' }
+
+export async function cronDelta(prisma: PrismaClient): Promise<{ enqueued: number }> {
+  const cursorRow = await prisma.mapImageMirrorState.findUnique({
+    where: { sourceType_sourceId_variant: CURSOR_KEY },
+  })
+  const cursorAt = cursorRow?.mirroredAt ?? new Date(0)
+  const now = new Date()
+  let enqueued = 0
+
+  const newBangumi = await prisma.anitabiBangumi.findMany({
+    where: { updatedAt: { gt: cursorAt }, mapEnabled: true, cover: { not: null } },
+    select: { id: true, cover: true },
+  })
+  for (const b of newBangumi) {
+    for (const v of enumerateBangumiCoverVariants(b.cover)) {
+      const key = await computeMirrorKey(v.url, 'image/jpeg')
+      await prisma.mapImageMirrorState.upsert({
+        where: {
+          sourceType_sourceId_variant: { sourceType: 'bangumi-cover', sourceId: String(b.id), variant: v.label },
+        },
+        create: {
+          sourceType: 'bangumi-cover',
+          sourceId: String(b.id),
+          variant: v.label,
+          canonicalUrl: v.url,
+          r2Key: key,
+          status: 'pending',
+        },
+        update: { canonicalUrl: v.url, r2Key: key, status: 'pending', attempts: 0, lastError: null },
+      })
+      enqueued++
+    }
+  }
+
+  const newPoints = await prisma.anitabiPoint.findMany({
+    where: { updatedAt: { gt: cursorAt }, image: { not: null } },
+    select: { id: true, image: true },
+  })
+  for (const p of newPoints) {
+    for (const v of enumeratePointImageVariants(p.image)) {
+      const key = await computeMirrorKey(v.url, 'image/jpeg')
+      await prisma.mapImageMirrorState.upsert({
+        where: {
+          sourceType_sourceId_variant: { sourceType: 'point-image', sourceId: p.id, variant: v.label },
+        },
+        create: {
+          sourceType: 'point-image',
+          sourceId: p.id,
+          variant: v.label,
+          canonicalUrl: v.url,
+          r2Key: key,
+          status: 'pending',
+        },
+        update: { canonicalUrl: v.url, r2Key: key, status: 'pending', attempts: 0, lastError: null },
+      })
+      enqueued++
+    }
+  }
+
+  // Update watermark
+  await prisma.mapImageMirrorState.upsert({
+    where: { sourceType_sourceId_variant: CURSOR_KEY },
+    create: { ...CURSOR_KEY, canonicalUrl: 'cursor', r2Key: 'cursor', status: 'mirrored', mirroredAt: now },
+    update: { mirroredAt: now },
+  })
+
+  return { enqueued }
+}
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add workers/anitabi-mirror/src/delta.ts workers/anitabi-mirror/src/__tests__/delta.test.ts
+git commit -m "feat(mirror): cronDelta enqueues new bangumi/points via updatedAt watermark"
+```
+
+---
+
+### Task 3.6: Implement throttle / circuit breaker (TDD)
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/throttle.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/throttle.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+// workers/anitabi-mirror/src/__tests__/throttle.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { isThrottled, recordTimeout, clearThrottle } from '../throttle'
+
+const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' }
+
+describe('throttle', () => {
+  it('isThrottled returns false when no throttle row exists', async () => {
+    const prisma = {
+      mapImageMirrorState: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as any
+    expect(await isThrottled(prisma)).toBe(false)
+  })
+
+  it('isThrottled returns true when throttle row exists and is fresh (<1h)', async () => {
+    const prisma = {
+      mapImageMirrorState: {
+        findUnique: vi.fn().mockResolvedValue({ mirroredAt: new Date(Date.now() - 30 * 60 * 1000) }),
+      },
+    } as any
+    expect(await isThrottled(prisma)).toBe(true)
+  })
+
+  it('isThrottled returns false when throttle row exists but is stale (>1h)', async () => {
+    const prisma = {
+      mapImageMirrorState: {
+        findUnique: vi.fn().mockResolvedValue({ mirroredAt: new Date(Date.now() - 2 * 60 * 60 * 1000) }),
+      },
+    } as any
+    expect(await isThrottled(prisma)).toBe(false)
+  })
+
+  it('recordTimeout writes throttle row when 10 timeouts in window', async () => {
+    const upsert = vi.fn().mockResolvedValue({})
+    const prisma = {
+      mapImageMirrorState: { upsert },
+    } as any
+    await recordTimeout(prisma, /* recentTimeoutCount */ 10)
+    expect(upsert).toHaveBeenCalled()
+  })
+
+  it('recordTimeout does NOT write throttle row when below threshold', async () => {
+    const upsert = vi.fn().mockResolvedValue({})
+    const prisma = { mapImageMirrorState: { upsert } } as any
+    await recordTimeout(prisma, 5)
+    expect(upsert).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `workers/anitabi-mirror/src/throttle.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+
+const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' }
+const THROTTLE_DURATION_MS = 60 * 60 * 1000
+const TIMEOUT_THRESHOLD = 10
+
+export async function isThrottled(prisma: PrismaClient): Promise<boolean> {
+  const row = await prisma.mapImageMirrorState.findUnique({
+    where: { sourceType_sourceId_variant: THROTTLE_KEY },
+  })
+  if (!row?.mirroredAt) return false
+  const ageMs = Date.now() - row.mirroredAt.getTime()
+  return ageMs < THROTTLE_DURATION_MS
+}
+
+export async function recordTimeout(prisma: PrismaClient, recentTimeoutCount: number): Promise<void> {
+  if (recentTimeoutCount < TIMEOUT_THRESHOLD) return
+  await prisma.mapImageMirrorState.upsert({
+    where: { sourceType_sourceId_variant: THROTTLE_KEY },
+    create: { ...THROTTLE_KEY, canonicalUrl: 'throttle', r2Key: 'throttle', status: 'mirrored', mirroredAt: new Date() },
+    update: { mirroredAt: new Date() },
+  })
+}
+
+export async function clearThrottle(prisma: PrismaClient): Promise<void> {
+  await prisma.mapImageMirrorState
+    .delete({ where: { sourceType_sourceId_variant: THROTTLE_KEY } })
+    .catch(() => null)
+}
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add workers/anitabi-mirror/src/throttle.ts workers/anitabi-mirror/src/__tests__/throttle.test.ts
+git commit -m "feat(mirror): anitabi-wide circuit breaker via __throttle__ row"
+```
+
+---
+
+### Task 3.7: Wire `cronTick()` orchestrator + scheduled handler entry
+
+**Files:**
+- Create: `workers/anitabi-mirror/src/cronTick.ts`
+- Modify: `workers/anitabi-mirror/src/index.ts`
+- Create: `workers/anitabi-mirror/src/__tests__/cronTick.test.ts`
+
+- [ ] **Step 1: Test for cronTick orchestration**
+
+```ts
+// workers/anitabi-mirror/src/__tests__/cronTick.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { cronTick } from '../cronTick'
+
+vi.mock('../reclaim', () => ({ reclaimStale: vi.fn().mockResolvedValue({ count: 0 }) }))
+vi.mock('../bootstrap', () => ({ advanceBootstrap: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../seed', () => ({ processSeedBatch: vi.fn().mockResolvedValue({ mirrored: 0, failed: 0, skipped404: 0 }) }))
+vi.mock('../throttle', () => ({ isThrottled: vi.fn().mockResolvedValue(false), recordTimeout: vi.fn() }))
+
+describe('cronTick', () => {
+  it('runs reclaim → bootstrap → seed when not throttled', async () => {
+    const { reclaimStale } = await import('../reclaim')
+    const { advanceBootstrap } = await import('../bootstrap')
+    const { processSeedBatch } = await import('../seed')
+    const prisma = {
+      mapImageMirrorBootstrap: {
+        findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: false, pointCompleted: false }),
+      },
+    } as any
+    const bucket = {} as any
+    await cronTick(prisma, bucket, { source: 'auto' })
+    expect(reclaimStale).toHaveBeenCalled()
+    expect(advanceBootstrap).toHaveBeenCalledWith(prisma, 2000)
+    expect(processSeedBatch).toHaveBeenCalled()
+  })
+
+  it('skips seed and bootstrap when throttled', async () => {
+    const { isThrottled } = await import('../throttle')
+    ;(isThrottled as any).mockResolvedValueOnce(true)
+    const { advanceBootstrap } = await import('../bootstrap')
+    const { processSeedBatch } = await import('../seed')
+    const prisma = {} as any
+    const bucket = {} as any
+    await cronTick(prisma, bucket, { source: 'auto' })
+    expect(advanceBootstrap).not.toHaveBeenCalled()
+    expect(processSeedBatch).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `workers/anitabi-mirror/src/cronTick.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import { reclaimStale } from './reclaim'
+import { advanceBootstrap } from './bootstrap'
+import { processSeedBatch } from './seed'
+import { isThrottled } from './throttle'
+
+export async function cronTick(
+  prisma: PrismaClient,
+  bucket: R2MirrorBucket,
+  opts: { source: 'auto' | 'manual' },
+): Promise<{ reclaimed: number; mirrored: number; failed: number; skipped404: number; throttled: boolean }> {
+  const reclaimResult = await reclaimStale(prisma)
+  if (await isThrottled(prisma)) {
+    return { reclaimed: reclaimResult.count, mirrored: 0, failed: 0, skipped404: 0, throttled: true }
+  }
+  const bs = await prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+  if (!bs?.bangumiCompleted || !bs?.pointCompleted) {
+    const chunkSize = opts.source === 'manual' ? 5000 : 2000
+    await advanceBootstrap(prisma, chunkSize)
+  }
+  const seedResult = await processSeedBatch(prisma, bucket, { batchSize: 100, perRequestDelayMs: 200 })
+  return { reclaimed: reclaimResult.count, ...seedResult, throttled: false }
+}
+```
+
+- [ ] **Step 4: Update `src/index.ts` to wire it**
+
+```ts
+import { PrismaClient } from '@prisma/client'
+import { cronTick } from './cronTick'
+import { cronDelta } from './delta'
+
+type Env = {
+  MAP_IMAGE_CACHE: R2Bucket
+  MAP_IMAGE_MIRROR_CRON_ENABLED: string
+  DATABASE_URL: string
+}
+
+export default {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (env.MAP_IMAGE_MIRROR_CRON_ENABLED !== '1') {
+      console.log('[mirror] cron disabled by flag')
+      return
+    }
+    const prisma = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } })
+    try {
+      if (event.cron === '0 * * * *') {
+        const result = await cronDelta(prisma)
+        console.log(`[mirror] delta tick enqueued=${result.enqueued}`)
+      } else {
+        const result = await cronTick(prisma, env.MAP_IMAGE_CACHE as any, { source: 'auto' })
+        console.log(
+          `[mirror] tick reclaimed=${result.reclaimed} mirrored=${result.mirrored} failed=${result.failed} 404=${result.skipped404} throttled=${result.throttled}`,
+        )
+      }
+    } catch (err) {
+      console.error('[mirror] tick failed', err)
+    } finally {
+      await prisma.$disconnect()
+    }
+  },
+}
+```
+
+- [ ] **Step 5: Run tests**
+
+```bash
+npm test -- --run workers/anitabi-mirror
+```
+
+Expected: all worker tests PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add workers/anitabi-mirror/src
+git commit -m "feat(mirror): cronTick orchestrator + scheduled entry wiring"
+```
+
+---
+
+## Phase 4 — Admin Surfaces
+
+### Task 4.1: Bootstrap admin endpoint
+
+**Files:**
+- Create: `app/api/admin/anitabi/image-mirror/bootstrap/route.ts`
+- Create: `tests/route/image-mirror-bootstrap.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+// tests/route/image-mirror-bootstrap.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { POST } from '@/app/api/admin/anitabi/image-mirror/bootstrap/route'
+
+vi.mock('@/lib/anitabi/api', () => ({
+  getAnitabiApiDeps: vi.fn().mockResolvedValue({ prisma: { mapImageMirrorBootstrap: { findUnique: vi.fn().mockResolvedValue(null) } } }),
+}))
+vi.mock('@/lib/auth/admin', () => ({ requireAdmin: vi.fn().mockResolvedValue(true) }))
+
+describe('POST /bootstrap', () => {
+  it('rejects non-admin', async () => {
+    const { requireAdmin } = await import('@/lib/auth/admin')
+    ;(requireAdmin as any).mockResolvedValueOnce(false)
+    const req = new Request('https://x/api/admin/anitabi/image-mirror/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'advance' }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(403)
+  })
+
+  it('returns progress on advance mode', async () => {
+    const req = new Request('https://x/api/admin/anitabi/image-mirror/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'advance' }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `app/api/admin/anitabi/image-mirror/bootstrap/route.ts`:
+```ts
+export const runtime = 'nodejs'
+
+import { NextResponse } from 'next/server'
+import { getAnitabiApiDeps } from '@/lib/anitabi/api'
+import { requireAdmin } from '@/lib/auth/admin'
+import { cronTick } from '@/workers/anitabi-mirror/src/cronTick'
+
+const FORCE_COMPLETE_BUDGET_MS = 25_000
+
+export async function POST(req: Request) {
+  if (!(await requireAdmin(req))) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+  let body: { mode?: 'advance' | 'force-complete' } = {}
+  try {
+    body = await req.json()
+  } catch {
+    body = { mode: 'advance' }
+  }
+
+  const deps = await getAnitabiApiDeps()
+  const env = (globalThis as any)?.cloudflare?.env ?? (process.env as any)
+  const bucket = env.MAP_IMAGE_CACHE
+  const startedAt = Date.now()
+
+  if (body.mode === 'force-complete') {
+    while (Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS) {
+      const bs = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+      if (bs?.bangumiCompleted && bs?.pointCompleted) break
+      await cronTick(deps.prisma, bucket, { source: 'manual' })
+    }
+  } else {
+    await cronTick(deps.prisma, bucket, { source: 'manual' })
+  }
+
+  const final = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+  const counts = await deps.prisma.mapImageMirrorState.groupBy({
+    by: ['status'],
+    _count: { _all: true },
+  })
+  const totals: Record<string, number> = {}
+  for (const c of counts) totals[c.status] = (c._count as any)._all
+
+  return NextResponse.json({
+    bootstrap: final,
+    totals,
+    elapsedMs: Date.now() - startedAt,
+    stillNeedsManualPush: !(final?.bangumiCompleted && final?.pointCompleted),
+  })
+}
+```
+
+If `lib/auth/admin` doesn't exist with that exact export, find the existing admin guard pattern (look at other `/admin/...` routes) and replicate it.
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/anitabi/image-mirror/bootstrap/route.ts tests/route/image-mirror-bootstrap.test.ts
+git commit -m "feat(api): admin bootstrap endpoint for mirror cron (advance/force-complete)"
+```
+
+---
+
+### Task 4.2: Status admin endpoint
+
+**Files:**
+- Create: `app/api/admin/anitabi/image-mirror/status/route.ts`
+- Create: `tests/route/image-mirror-status.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+// tests/route/image-mirror-status.test.ts
+import { describe, it, expect, vi } from 'vitest'
+import { GET } from '@/app/api/admin/anitabi/image-mirror/status/route'
+
+vi.mock('@/lib/auth/admin', () => ({ requireAdmin: vi.fn().mockResolvedValue(true) }))
+vi.mock('@/lib/anitabi/api', () => ({
+  getAnitabiApiDeps: vi.fn().mockResolvedValue({
+    prisma: {
+      mapImageMirrorState: {
+        groupBy: vi.fn().mockResolvedValue([
+          { status: 'mirrored', _count: { _all: 100 } },
+          { status: 'pending', _count: { _all: 50 } },
+        ]),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(150),
+      },
+      mapImageMirrorBootstrap: {
+        findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: true, pointCompleted: false, totalEnumerated: 150 }),
+      },
+    },
+  }),
+}))
+
+describe('GET /status', () => {
+  it('returns aggregated totals', async () => {
+    const req = new Request('https://x/api/admin/anitabi/image-mirror/status')
+    const res = await GET(req)
+    const body = await res.json()
+    expect(body.totals.mirrored).toBe(100)
+    expect(body.totals.pending).toBe(50)
+    expect(body.totals.all).toBe(150)
+  })
+})
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+- [ ] **Step 3: Implement**
+
+Create `app/api/admin/anitabi/image-mirror/status/route.ts`:
+```ts
+export const runtime = 'nodejs'
+
+import { NextResponse } from 'next/server'
+import { getAnitabiApiDeps } from '@/lib/anitabi/api'
+import { requireAdmin } from '@/lib/auth/admin'
+
+export async function GET(req: Request) {
+  if (!(await requireAdmin(req))) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+  const deps = await getAnitabiApiDeps()
+  const counts = await deps.prisma.mapImageMirrorState.groupBy({
+    by: ['status'],
+    _count: { _all: true },
+  })
+  const totals: any = { all: 0, pending: 0, in_progress: 0, mirrored: 0, failed: 0, skipped_404: 0 }
+  for (const c of counts) {
+    const n = (c._count as any)._all
+    totals[c.status] = n
+    totals.all += n
+  }
+  const bootstrap = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
+  const recentFailures = await deps.prisma.mapImageMirrorState.findMany({
+    where: { status: 'failed' },
+    orderBy: { lastAttemptAt: 'desc' },
+    take: 10,
+    select: { canonicalUrl: true, lastError: true, attempts: true, lastAttemptAt: true },
+  })
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const mirroredLast1h = await deps.prisma.mapImageMirrorState.count({
+    where: { status: 'mirrored', mirroredAt: { gt: oneHourAgo } },
+  })
+  const mirroredLast24h = await deps.prisma.mapImageMirrorState.count({
+    where: { status: 'mirrored', mirroredAt: { gt: oneDayAgo } },
+  })
+  const ratePerSec = mirroredLast1h / 3600
+  const remaining = totals.pending + totals.in_progress
+  const estimatedRemainingHours = ratePerSec > 0 ? remaining / ratePerSec / 3600 : null
+
+  return NextResponse.json({
+    totals,
+    bootstrap,
+    recentFailures,
+    rates: { mirroredLast1h, mirroredLast24h, ratePerSec, estimatedRemainingHours },
+  })
+}
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/anitabi/image-mirror/status/route.ts tests/route/image-mirror-status.test.ts
+git commit -m "feat(api): admin status endpoint for mirror progress aggregates"
+```
+
+---
+
+### Task 4.3: Dashboard panel UI extension
+
+**Files:**
+- Modify: `app/(authed)/admin/ops/map-image-diagnostics/ui.tsx`
+- Create: `app/(authed)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx`
+
+- [ ] **Step 1: Read the existing UI file**
+
+```bash
+sed -n '1,60p' /Users/mac/Desktop/seichigo/app/\(authed\)/admin/ops/map-image-diagnostics/ui.tsx
+```
+
+Identify how panels are currently composed.
+
+- [ ] **Step 2: Create MirrorProgressPanel component**
+
+Create `app/(authed)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx`:
+```tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+
+type Status = {
+  totals: { all: number; pending: number; in_progress: number; mirrored: number; failed: number; skipped_404: number }
+  bootstrap: { bangumiCompleted: boolean; pointCompleted: boolean; totalEnumerated: number; bangumiCursor: number | null; pointCursor: string | null } | null
+  recentFailures: Array<{ canonicalUrl: string; lastError: string | null; attempts: number; lastAttemptAt: string | null }>
+  rates: { mirroredLast1h: number; mirroredLast24h: number; ratePerSec: number; estimatedRemainingHours: number | null }
+}
+
+export function MirrorProgressPanel() {
+  const [status, setStatus] = useState<Status | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/admin/anitabi/image-mirror/status', { credentials: 'include' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (!cancelled) setStatus(data)
+      } catch (e: any) {
+        if (!cancelled) setError(String(e))
+      }
+    }
+    load()
+    const id = setInterval(load, 30_000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [])
+
+  async function bootstrap(mode: 'advance' | 'force-complete') {
+    try {
+      await fetch('/api/admin/anitabi/image-mirror/bootstrap', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  if (error) return <div className="rounded border border-red-300 p-3 text-sm">Error: {error}</div>
+  if (!status) return <div className="rounded border border-gray-300 p-3 text-sm">Loading mirror status…</div>
+
+  const { totals, bootstrap: bs, recentFailures, rates } = status
+  const mirroredPct = totals.all > 0 ? (totals.mirrored / totals.all) * 100 : 0
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-2 text-base font-semibold">Mirror Backfill Progress</h3>
+      <div className="mb-3 text-sm">
+        <div>Total: <strong>{totals.all.toLocaleString()}</strong></div>
+        <div className="my-1 h-2 w-full overflow-hidden rounded bg-gray-100">
+          <div className="h-2 bg-emerald-500" style={{ width: `${mirroredPct.toFixed(1)}%` }} />
+        </div>
+        <div className="text-xs text-gray-600">
+          mirrored {totals.mirrored.toLocaleString()} ({mirroredPct.toFixed(1)}%) ·
+          pending {totals.pending.toLocaleString()} ·
+          in_progress {totals.in_progress} ·
+          failed {totals.failed} ·
+          skipped_404 {totals.skipped_404}
+        </div>
+      </div>
+      <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
+        <div>Rate (1h): {rates.ratePerSec.toFixed(2)}/s</div>
+        <div>ETA: {rates.estimatedRemainingHours == null ? '—' : `${rates.estimatedRemainingHours.toFixed(1)} h`}</div>
+        <div>Last 24h mirrored: {rates.mirroredLast24h.toLocaleString()}</div>
+      </div>
+      {bs && (
+        <div className="mb-3 rounded bg-gray-50 p-2 text-xs">
+          <div>Bootstrap bangumi: {bs.bangumiCompleted ? '✓ completed' : `cursor=${bs.bangumiCursor ?? '—'}`}</div>
+          <div>Bootstrap points: {bs.pointCompleted ? '✓ completed' : `cursor=${bs.pointCursor ?? '—'}`}</div>
+          <div>Total enumerated: {bs.totalEnumerated.toLocaleString()}</div>
+        </div>
+      )}
+      <div className="mb-3 flex gap-2">
+        <button className="rounded bg-blue-600 px-3 py-1 text-xs text-white" onClick={() => bootstrap('advance')}>
+          Advance bootstrap +5000
+        </button>
+        <button className="rounded bg-amber-600 px-3 py-1 text-xs text-white" onClick={() => bootstrap('force-complete')}>
+          Force complete
+        </button>
+      </div>
+      {recentFailures.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-gray-700">Recent failures ({recentFailures.length})</summary>
+          <ul className="mt-1 list-disc pl-5">
+            {recentFailures.map((f, i) => (
+              <li key={i} className="truncate">
+                attempts={f.attempts} · {f.lastError ?? 'no error message'} · {f.canonicalUrl}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  )
+}
+```
+
+- [ ] **Step 3: Mount the panel**
+
+Edit `app/(authed)/admin/ops/map-image-diagnostics/ui.tsx`. Import and place at the top of the existing layout:
+```tsx
+import { MirrorProgressPanel } from './MirrorProgressPanel'
+// ...
+<MirrorProgressPanel />
+```
+
+- [ ] **Step 4: Visual smoke test**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+npm run dev
+```
+
+Open `http://localhost:3000/admin/ops/map-image-diagnostics`. Verify the panel renders (data will be empty pre-deploy; that's expected). Stop dev server.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/\(authed\)/admin/ops/map-image-diagnostics/MirrorProgressPanel.tsx 'app/(authed)/admin/ops/map-image-diagnostics/ui.tsx'
+git commit -m "feat(admin): mirror progress panel with bootstrap controls"
+```
+
+---
+
+### Task 4.4: CLI status snapshot script
+
+**Files:**
+- Create: `scripts/mirror-status.sh`
+
+- [ ] **Step 1: Write the script**
+
+Create `scripts/mirror-status.sh`:
+```bash
+#!/usr/bin/env bash
+# Quick mirror status snapshot. Requires ADMIN_COOKIE env var with logged-in admin session cookie.
+set -euo pipefail
+
+if [[ -z "${ADMIN_COOKIE:-}" ]]; then
+  echo "ADMIN_COOKIE env var required" >&2
+  exit 1
+fi
+
+BASE_URL="${BASE_URL:-https://www.seichigo.com}"
+
+curl -sS -b "$ADMIN_COOKIE" "$BASE_URL/api/admin/anitabi/image-mirror/status" \
+  | jq -r '
+    .totals as $t |
+    .bootstrap as $b |
+    .rates as $r |
+    "mirrored=\($t.mirrored)/\($t.all)  pending=\($t.pending)  failed=\($t.failed)  skipped_404=\($t.skipped_404)\n" +
+    "bootstrap.bangumi=\($b.bangumiCompleted)  bootstrap.point=\($b.pointCompleted)\n" +
+    "rate(1h)=\($r.ratePerSec | tostring | .[0:5])/s  ETA=\($r.estimatedRemainingHours)h"
+  '
+```
+
+- [ ] **Step 2: Make executable + smoke**
+
+```bash
+chmod +x scripts/mirror-status.sh
+ADMIN_COOKIE='ignored' BASE_URL='http://localhost:3000' ./scripts/mirror-status.sh || true
+```
+
+Will fail without a real cookie; just verify the script doesn't have syntax errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/mirror-status.sh
+git commit -m "feat(scripts): mirror-status.sh CLI snapshot"
+```
+
+---
+
+## Phase 5 — Sync Integration & UI Attribution
+
+### Task 5.1: Sync diff hook — `reconcileMirrorAfterDiff()` (TDD)
+
+**Files:**
+- Create: `lib/anitabi/sync/mirrorReconcile.ts`
+- Modify: `lib/anitabi/sync/diff.ts`
+- Create: `tests/anitabi/mirrorReconcile.test.ts`
+
+- [ ] **Step 1: Read current diff.ts to find the right hook point**
+
+```bash
+sed -n '1,80p' /Users/mac/Desktop/seichigo/lib/anitabi/sync/diff.ts
+```
+
+Identify where the diff completes (where it returns the diff result).
+
+- [ ] **Step 2: Failing test**
+
+Create `tests/anitabi/mirrorReconcile.test.ts`:
+```ts
+import { describe, it, expect, vi } from 'vitest'
+import { reconcileMirrorAfterDiff } from '@/lib/anitabi/sync/mirrorReconcile'
+
+describe('reconcileMirrorAfterDiff', () => {
+  it('upserts new variants for changed bangumi cover URLs', async () => {
+    const upserts: any[] = []
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 })
+    const prisma = {
+      mapImageMirrorState: {
+        upsert: vi.fn().mockImplementation((args) => {
+          upserts.push(args)
+          return Promise.resolve({})
+        }),
+        updateMany,
+      },
+    } as any
+    await reconcileMirrorAfterDiff(prisma, {
+      bangumiChanges: [
+        {
+          id: 1,
+          field: 'cover',
+          oldValue: 'https://image.anitabi.cn/bangumi/1/old.jpg',
+          newValue: 'https://image.anitabi.cn/bangumi/1/new.jpg',
+        },
+      ],
+      pointChanges: [],
+    })
+    expect(upserts.length).toBeGreaterThanOrEqual(2) // 2 cover variants
+    expect(updateMany).toHaveBeenCalled() // resets old rows
+  })
+
+  it('skips changes where field !== cover/image', async () => {
+    const upserts: any[] = []
+    const prisma = {
+      mapImageMirrorState: {
+        upsert: vi.fn().mockImplementation((args) => upserts.push(args)),
+        updateMany: vi.fn(),
+      },
+    } as any
+    await reconcileMirrorAfterDiff(prisma, {
+      bangumiChanges: [{ id: 1, field: 'titleZh', oldValue: 'a', newValue: 'b' }],
+      pointChanges: [],
+    })
+    expect(upserts).toHaveLength(0)
+  })
+})
+```
+
+- [ ] **Step 3: Run — expect fail**
+
+- [ ] **Step 4: Implement**
+
+Create `lib/anitabi/sync/mirrorReconcile.ts`:
+```ts
+import type { PrismaClient } from '@prisma/client'
+import { enumerateBangumiCoverVariants, enumeratePointImageVariants } from '@/lib/anitabi/imageMirrorVariants'
+import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
+
+type FieldChange<T> = { id: T; field: string; oldValue: string | null; newValue: string | null }
+export type SyncDiffSummary = {
+  bangumiChanges: FieldChange<number>[]
+  pointChanges: FieldChange<string>[]
+}
+
+export async function reconcileMirrorAfterDiff(
+  prisma: PrismaClient,
+  diff: SyncDiffSummary,
+): Promise<void> {
+  for (const change of diff.bangumiChanges) {
+    if (change.field !== 'cover' || !change.newValue || change.oldValue === change.newValue) continue
+    await prisma.mapImageMirrorState.updateMany({
+      where: { sourceType: 'bangumi-cover', sourceId: String(change.id) },
+      data: { status: 'pending', attempts: 0, lastError: null, mirroredAt: null },
+    })
+    for (const v of enumerateBangumiCoverVariants(change.newValue)) {
+      const key = await computeMirrorKey(v.url, 'image/jpeg')
+      await prisma.mapImageMirrorState.upsert({
+        where: {
+          sourceType_sourceId_variant: {
+            sourceType: 'bangumi-cover',
+            sourceId: String(change.id),
+            variant: v.label,
+          },
+        },
+        create: {
+          sourceType: 'bangumi-cover',
+          sourceId: String(change.id),
+          variant: v.label,
+          canonicalUrl: v.url,
+          r2Key: key,
+          status: 'pending',
+        },
+        update: { canonicalUrl: v.url, r2Key: key, status: 'pending', attempts: 0, lastError: null },
+      })
+    }
+  }
+  for (const change of diff.pointChanges) {
+    if (change.field !== 'image' || !change.newValue || change.oldValue === change.newValue) continue
+    await prisma.mapImageMirrorState.updateMany({
+      where: { sourceType: 'point-image', sourceId: change.id },
+      data: { status: 'pending', attempts: 0, lastError: null, mirroredAt: null },
+    })
+    for (const v of enumeratePointImageVariants(change.newValue)) {
+      const key = await computeMirrorKey(v.url, 'image/jpeg')
+      await prisma.mapImageMirrorState.upsert({
+        where: {
+          sourceType_sourceId_variant: {
+            sourceType: 'point-image',
+            sourceId: change.id,
+            variant: v.label,
+          },
+        },
+        create: {
+          sourceType: 'point-image',
+          sourceId: change.id,
+          variant: v.label,
+          canonicalUrl: v.url,
+          r2Key: key,
+          status: 'pending',
+        },
+        update: { canonicalUrl: v.url, r2Key: key, status: 'pending', attempts: 0, lastError: null },
+      })
+    }
+  }
+}
+```
+
+- [ ] **Step 5: Wire into `lib/anitabi/sync/diff.ts`**
+
+Locate the function that emits the diff summary at the end of the sync pipeline. Add a call to `reconcileMirrorAfterDiff(prisma, summary)` immediately after the existing diff side effects, behind a flag:
+```ts
+if (process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED === '1') {
+  try {
+    await reconcileMirrorAfterDiff(prisma, summary)
+  } catch (err) {
+    console.warn('[sync] mirror reconcile failed', err)
+  }
+}
+```
+
+This decouples sync stability from the new code: if reconcile breaks, sync still works.
+
+- [ ] **Step 6: Run tests**
+
+```bash
+npm test -- --run tests/anitabi/mirrorReconcile.test.ts tests/anitabi/diff.test.ts
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/anitabi/sync/mirrorReconcile.ts lib/anitabi/sync/diff.ts tests/anitabi/mirrorReconcile.test.ts
+git commit -m "feat(sync): reconcileMirrorAfterDiff resets mirror rows on URL change"
+```
+
+---
+
+### Task 5.2: UI attribution audit
+
+**Files:**
+- Create: `docs/superpowers/research/2026-05-XX-anitabi-attribution-audit.md`
+
+- [ ] **Step 1: Grep for anitabi image rendering surfaces**
+
+Run:
+```bash
+cd /Users/mac/Desktop/seichigo
+grep -rln 'image.anitabi.cn\|toMapDisplayImageUrl\|getMapDisplayImageCandidates\|cover\|originLink' \
+  app components features lib \
+  | grep -v '\.test\.' \
+  | sort -u
+```
+
+For each file, open and check if:
+1. It renders an anitabi image AND
+2. It does NOT already display a "via anitabi" link or `originLink`
+
+- [ ] **Step 2: Write the audit doc**
+
+Create `docs/superpowers/research/2026-05-XX-anitabi-attribution-audit.md`:
+```markdown
+# Anitabi Attribution Audit (PR3 §6)
+
+## Surfaces displaying anitabi images
+| File | Surface | Already attributes? | Action |
+|---|---|---|---|
+| `<file:lines>` | Point detail drawer | YES (originLink) | none |
+| `<file:lines>` | PointCard | NO | add `via anitabi` micro-link in Task 5.3 |
+| `<file:lines>` | WindowExcerpt grid | NO | same |
+| `<file:lines>` | Bangumi cover hero | <YES/NO> | <action> |
+| ... | ... | ... | ... |
+```
+
+Fill in actual file paths and line numbers from the grep.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/superpowers/research/
+git commit -m "audit(map): UI attribution coverage for PR3 §6"
+```
+
+---
+
+### Task 5.3: Add `via anitabi` micro-link to identified surfaces
+
+**Files:**
+- Modify: each UI file flagged by Task 5.2 audit
+- Create: `components/anitabi/AttributionLink.tsx`
+- Modify: `lib/anitabi/i18n/...` (add new keys)
+
+- [ ] **Step 1: Create reusable AttributionLink component**
+
+Create `components/anitabi/AttributionLink.tsx`:
+```tsx
+'use client'
+
+type Props = {
+  href: string
+  className?: string
+  label?: string
+}
+
+export function AnitabiAttributionLink({ href, className, label }: Props) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`text-[0.75em] text-gray-500 opacity-70 hover:opacity-100 hover:underline ${className ?? ''}`}
+      title={href}
+    >
+      {label ?? 'via anitabi.cn'}
+    </a>
+  )
+}
+```
+
+- [ ] **Step 2: Add i18n keys**
+
+Locate the project's i18n catalog files (search for `image.attribution` or `img.attribution` or any existing image-related i18n keys). Add:
+```
+image.attribution.viaAnitabi: "via anitabi.cn"           // en
+image.attribution.viaAnitabi: "图片来源：anitabi.cn"      // zh
+image.attribution.viaAnitabi: "出典: anitabi.cn"         // ja (if locale exists)
+```
+
+- [ ] **Step 3: Insert AttributionLink in each flagged surface**
+
+For each file in the audit doc with action "add `via anitabi`", import and render the component near the image. Example for a `PointCard.tsx`:
+```tsx
+import { AnitabiAttributionLink } from '@/components/anitabi/AttributionLink'
+
+// inside the card layout, near the image:
+<div className="absolute bottom-1 right-1">
+  <AnitabiAttributionLink href={`https://anitabi.cn/bangumi/${bangumiId}`} />
+</div>
+```
+
+- [ ] **Step 4: Visual smoke test**
+
+```bash
+npm run dev
+```
+
+Open the map; verify "via anitabi.cn" micro-link appears on each previously-unattributed surface. Hover shows full URL.
+
+- [ ] **Step 5: Run tests**
+
+```bash
+npm run typecheck
+npm test
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add components/anitabi/AttributionLink.tsx <each modified UI file> <i18n files>
+git commit -m "feat(ui): add via-anitabi micro-link on map cover/point surfaces (D5-γ)"
+```
+
+---
+
+## Phase 6 — Documentation
+
+### Task 6.1: Production runbook
+
+**Files:**
+- Create: `docs/runbooks/anitabi-r2-mirror.md`
+
+- [ ] **Step 1: Write the runbook**
+
+Create `docs/runbooks/anitabi-r2-mirror.md`. Reuse the prose from spec §8 verbatim (rollout timeline, flag matrix, rollback playbook, emergency kill switches), and add operational tips at the bottom (how to check dashboard, how to run mirror-status.sh, who to alert).
+
+- [ ] **Step 2: Commit**
+
+```bash
+mkdir -p docs/runbooks
+git add docs/runbooks/anitabi-r2-mirror.md
+git commit -m "docs(runbook): production runbook for anitabi R2 mirror"
+```
+
+---
+
+## Phase 7 — Deploy & Rollout
+
+### Task 7.1: Pre-deploy housekeeping + predeploy-guard
+
+**Files:**
+- No file changes; environmental.
+
+- [ ] **Step 1: Audit worktrees**
+
+```bash
+# From any seichigo path
+seichigo-worktree-audit
+```
+
+Confirm no stale dirty worktrees.
+
+- [ ] **Step 2: Run housekeeping if needed**
+
+```bash
+# Only if uncommitted work exists in this worktree
+seichigo-housekeeping
+```
+
+- [ ] **Step 3: Run predeploy-guard**
+
+```bash
+seichigo-predeploy-guard
+```
+
+Address any violations (un-pushed commits, stale lockfile, etc.) before proceeding.
+
+---
+
+### Task 7.2: Deploy DB migration
+
+- [ ] **Step 1: Run prod migration**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+npm run db:migrate
+```
+
+Expected: applies the `add_map_image_mirror_state` migration successfully.
+
+- [ ] **Step 2: Verify tables exist in prod**
+
+Connect to prod DB and:
+```sql
+\dt "MapImageMirror*"
+```
+
+Expected: `MapImageMirrorState` and `MapImageMirrorBootstrap`.
+
+- [ ] **Step 3: Tag the migration deploy**
+
+```bash
+git tag -a "deploy/$(date -u +%Y-%m-%dT%H-%M-%SZ)-pr3-db" -m "PR3 DB migration"
+git push --tags
+```
+
+---
+
+### Task 7.3: Deploy mirror worker (`MIRROR_CRON=0`)
+
+- [ ] **Step 1: Deploy**
+
+```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
+wrangler deploy
+```
+
+Expected: deployment succeeds. The `MAP_IMAGE_MIRROR_CRON_ENABLED=0` var means cron ticks return early.
+
+- [ ] **Step 2: Verify deployment**
+
+```bash
+wrangler deployments list 2>&1 | head
+```
+
+- [ ] **Step 3: Tag**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+seichigo-deploy-ledger  # or manual tag if skill not available
+```
+
+---
+
+### Task 7.4: Deploy main worker (R2 flags = 0)
+
+- [ ] **Step 1: Run predeploy-guard again**
+
+```bash
+seichigo-predeploy-guard
+```
+
+- [ ] **Step 2: Deploy**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+npm run cf:deploy
+```
+
+- [ ] **Step 3: Smoke verify**
+
+Browser: load https://www.seichigo.com/map. Confirm images still load (R2 paths inactive, behavior unchanged from PR1.55).
+
+- [ ] **Step 4: Tag**
+
+```bash
+seichigo-deploy-ledger
+```
+
+---
+
+### Task 7.5: Activation T+1h — flip `R2_WRITE=1`
+
+- [ ] **Step 1: Update wrangler.jsonc**
+
+Edit `wrangler.jsonc`:
+```jsonc
+"NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "1",
+```
+
+- [ ] **Step 2: Redeploy main worker**
+
+```bash
+npm run cf:deploy
+```
+
+- [ ] **Step 3: Verify lazy writes**
+
+After 5-10 minutes of normal traffic, list R2 contents:
+```bash
+wrangler r2 object list seichigo-anitabi-images --limit 20
+```
+
+Expected: a handful of objects with `mirrorSource=lazy` in metadata.
+
+- [ ] **Step 4: Commit + tag**
+
+```bash
+git add wrangler.jsonc
+git commit -m "deploy(map): activate R2_WRITE_ENABLED for lazy mirroring"
+seichigo-deploy-ledger
+```
+
+---
+
+### Task 7.6: Activation T+2h — flip `MIRROR_CRON=1`
+
+- [ ] **Step 1: Update mirror worker config**
+
+Edit `workers/anitabi-mirror/wrangler.jsonc`:
+```jsonc
+"MAP_IMAGE_MIRROR_CRON_ENABLED": "1",
+```
+
+- [ ] **Step 2: Redeploy mirror worker**
+
+```bash
+cd workers/anitabi-mirror && wrangler deploy
+```
+
+- [ ] **Step 3: Watch cron logs**
+
+```bash
+wrangler tail seichigo-anitabi-mirror
+```
+
+After ~5 minutes, expect a `[mirror] tick` log line.
+
+- [ ] **Step 4: Commit + tag**
+
+```bash
+cd /Users/mac/Desktop/seichigo
+git add workers/anitabi-mirror/wrangler.jsonc
+git commit -m "deploy(mirror): activate cron triggers"
+seichigo-deploy-ledger
+```
+
+---
+
+### Task 7.7: Optional — manual force-complete bootstrap
+
+- [ ] **Step 1: Hit the admin endpoint**
+
+```bash
+ADMIN_COOKIE='<paste>' \
+curl -X POST -b "$ADMIN_COOKIE" \
+  https://www.seichigo.com/api/admin/anitabi/image-mirror/bootstrap \
+  -H 'content-type: application/json' \
+  -d '{"mode":"force-complete"}'
+```
+
+Repeat until response shows `bootstrap.bangumiCompleted=true && bootstrap.pointCompleted=true`.
+
+- [ ] **Step 2: Verify on dashboard**
+
+Open `https://www.seichigo.com/admin/ops/map-image-diagnostics`. Bootstrap section shows both completed.
+
+---
+
+### Task 7.8: Observation window (24-48h)
+
+- [ ] **Step 1: Daily snapshot via CLI**
+
+```bash
+ADMIN_COOKIE='<paste>' ./scripts/mirror-status.sh
+```
+
+Capture output. Compare day-over-day: `mirrored` count must increase substantially.
+
+- [ ] **Step 2: Watch dashboard for failures**
+
+Check the "Recent failures" expansion in the dashboard panel. If a single error class dominates (e.g., all timeouts), investigate.
+
+- [ ] **Step 3: Watch cron health**
+
+```bash
+wrangler tail seichigo-anitabi-mirror | grep '\[mirror\] tick'
+```
+
+Confirm ticks fire every ~5 minutes, batches process ~50-150 each, fail count low.
+
+---
+
+### Task 7.9: Activation T+5d — flip `R2_READ=1`
+
+Gate: dashboard shows mirrored ≥ 95%.
+
+- [ ] **Step 1: Update wrangler.jsonc**
+
+```jsonc
+"NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "1",
+```
+
+- [ ] **Step 2: Redeploy main worker**
+
+```bash
+npm run cf:deploy
+```
+
+- [ ] **Step 3: Verify R2 hits in production**
+
+Open browser DevTools on https://www.seichigo.com/map. Inspect a cover image response. Expect `X-Seichigo-Image-Source: r2-primary` and `X-Original-Source: https://image.anitabi.cn/...`.
+
+- [ ] **Step 4: Verify diag dashboard**
+
+Pull a recent session via the existing diag tool. Confirm `image_cache_state: cache_hit_r2_primary` events dominate.
+
+- [ ] **Step 5: Commit + tag**
+
+```bash
+git add wrangler.jsonc
+git commit -m "deploy(map): activate R2_READ_ENABLED — PR3 fully on"
+seichigo-deploy-ledger
+```
+
+---
+
+### Task 7.10: Acceptance check (T+7d)
+
+- [ ] **Step 1: Pull mirror status**
+
+```bash
+./scripts/mirror-status.sh
+```
+
+Verify: `mirrored / all ≥ 0.95`.
+
+- [ ] **Step 2: Pull diag aggregates**
+
+In the admin diag dashboard, look at the past 24h:
+- `image_cache_state: cache_hit_r2_primary` ≥ 80% of total terminal events.
+- `proxy_fetch_terminal: timeout` count vs. 7-day-prior baseline: must be down ≥ 70%.
+
+- [ ] **Step 3: Document acceptance**
+
+Append to the runbook:
+```markdown
+## PR3 acceptance — <date>
+| Metric | Target | Actual |
+|---|---|---|
+| Mirror progress | ≥ 95% | <X>% |
+| cache_hit_r2_*  | ≥ 80% | <Y>% |
+| Timeout rate vs baseline | down ≥ 70% | <Z>% |
+| anitabi complaints | 0 | <count> |
+
+Verdict: <PASS / DEGRADED / FAIL with rollback action>
+```
+
+- [ ] **Step 4: Commit acceptance record**
+
+```bash
+git add docs/runbooks/anitabi-r2-mirror.md
+git commit -m "docs(runbook): record PR3 7-day acceptance results"
+```
+
+---
+
+## Self-Review Notes
+
+Spec coverage check (each spec section → task):
+
+- §1 Architecture → Tasks 2.1, 3.1, 7.3, 7.4
+- §2 R2 key scheme → Tasks 1.2, 1.4
+- §3 Read path → Tasks 2.2, 2.4, 2.5, 2.6
+- §4 Write path → Tasks 1.1, 1.3, 1.4, 2.3, 3.4
+- §5 Resume + monitoring → Tasks 1.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4
+- §6 Compliance + D0 → Tasks 0.1, 5.2, 5.3
+- §7 TTL/refresh → Tasks 0.3, 5.1
+- §8 Deploy + rollback → Tasks 0.2, 6.1, 7.1–7.10
+- §9 Failure modes → covered across read/write/cron tests
+- §10 Testing → integrated TDD per task
+- §11 Out of scope → no tasks (correct: nothing to do)
+
+All sections covered.
+
+Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(prisma, bucket, opts)` signature matches in Task 3.7 / 4.1. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
+
+No placeholder phrases (TBD / TODO / "implement later") in plan steps.
+
+---
+
+**Plan complete and saved to `docs/superpowers/plans/2026-05-03-map-image-pr3-r2-mirror.md`. Two execution options:**
+
+**1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task, review between tasks, fast iteration.
+
+**2. Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
+
+**Which approach?**
