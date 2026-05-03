@@ -32,7 +32,7 @@
 - Phase 6 — Documentation
 - Phase 7 — Deploy & rollout
 
-Total: 32 tasks. Phases 0–6 are code/research; Phase 7 is operational.
+Total: 33 tasks. Phases 0–6 are code/research; Phase 7 is operational.
 
 ---
 
@@ -304,6 +304,92 @@ EOF
 | PASS | Proceed to Phase 1. |
 | NEEDS_UPGRADE | Upgrade the Postgres tier or shard/archive `MapImageMirrorState` before Phase 7; estimate the timeline shift. |
 | FAIL | Stop and re-plan affected phases / storage approach. |
+
+---
+
+### Task 0.5: Project R2 Class-B read ops cost at `R2_READ=1`
+
+**Files:**
+- No code file changes; append findings to `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`.
+
+- [ ] **Step 1: Query hourly `proxy_cache_state` cache misses over the last 24h**
+
+Run on Postgres:
+```sql
+SELECT
+  DATE_TRUNC('hour', "createdAt") AS hour,
+  COUNT(*) FILTER (WHERE payload->>'state' = 'cache_miss') AS misses
+FROM "MapImageDiag"
+WHERE stage = 'proxy_cache_state' AND "createdAt" > NOW() - INTERVAL '24 hours'
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+Record the highest hourly miss count as `peak_hourly_misses`. If diagnostics are absent, record `peak_hourly_misses = 0` and explain whether `proxy_cache_state` is not yet emitted or retention is too short to judge.
+
+- [ ] **Step 2: Project monthly R2 read volume**
+
+Compute:
+```text
+projected_monthly_reads = peak_hourly_misses × 24 × 30
+```
+
+Use the busiest observed hour for the projection, not the average hour, because rollout risk is driven by peak cache-miss traffic once `R2_READ=1`.
+
+- [ ] **Step 3: Price the Class-B read risk and note mitigations**
+
+If `projected_monthly_reads > 10_000_000`, calculate the paid R2 Class-B read ops cost:
+```text
+estimated_monthly_class_b_cost_usd = (projected_monthly_reads / 1_000_000) × 0.36
+```
+
+Document both mitigations in the research note before rollout:
+- CF cache-control on R2-served responses so subsequent CF hits do not re-read R2.
+- Budget for paid R2 ops at `$0.36` per 1M Class-B requests when the projection stays above the free tier.
+
+- [ ] **Step 4: Append the projection to the existing research doc**
+
+Append to `docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md`:
+```markdown
+## R2 read-operation budget projection
+- Source diagnostics: `MapImageDiag.stage = proxy_cache_state` over the last 24h
+- Peak hourly cache misses (`peak_hourly_misses`): <N>
+- Projected monthly R2 read ops: `<peak_hourly_misses × 24 × 30 = M>`
+- 10M/month threshold crossed: <YES / NO>
+- Estimated paid Class-B cost: `<$X / month or "within free tier">`
+- Mitigations: `Cache-Control` on R2-served responses at the CF edge; paid ops budget at `$0.36 / 1M`
+- Verdict: <PASS / NEEDS_BUDGET>
+```
+
+Use `PASS` when the projection is comfortably inside the free tier or an already-approved budget. Use `NEEDS_BUDGET` when the projected read volume exceeds 10M/month and rollout still depends on either stronger CF caching or explicit R2 ops budget sign-off.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/superpowers/research/2026-05-03-anitabi-mirror-compliance.md
+git commit -m "$(cat <<'EOF'
+Add R2 read-operation budgeting before rollout
+
+Task 0.5 projects peak-hour driven R2 Class-B read load before `R2_READ=1`
+can shift proxy cache misses into billable mirror traffic.
+
+Constraint: Phase 7 should not enable the R2 read path without an explicit cost check
+Rejected: Assume the free tier covers all read traffic | hides peak-hour miss costs until after rollout
+Confidence: medium
+Scope-risk: narrow
+Directive: If the verdict is NEEDS_BUDGET, close the cache-control and budget actions before Phase 7
+Tested: Task 0.5 query, projection, and cost-verdict steps captured in the research doc
+EOF
+)"
+```
+
+**Verdict → Action:**
+
+| Verdict | Action |
+|---|---|
+| PASS | Proceed to Phase 1. |
+| NEEDS_BUDGET | Before Phase 7, confirm CF cache-control on R2-served responses is configured to avoid repeated R2 reads and record explicit approval for paid R2 Class-B ops at `$0.36 / 1M`. |
+| FAIL | Stop and re-plan the read path, or keep `R2_READ=0` until diagnostics and budget are trustworthy. |
 
 ---
 
