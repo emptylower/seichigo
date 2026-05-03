@@ -5,6 +5,8 @@ import {
 } from '@/lib/anitabi/imageMirrorVariants'
 import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
 
+type MirrorRowPruneClient = Pick<Prisma.TransactionClient, 'mapImageMirrorState'>
+
 export type MirrorDiffChange = {
   id: number | string
   field: string
@@ -119,7 +121,7 @@ async function reconcileSourceVariants(
 }
 
 export async function pruneMirrorRowsForDeletedPoints(
-  prisma: PrismaClient,
+  prisma: MirrorRowPruneClient,
   pointIds: string[],
 ): Promise<void> {
   if (pointIds.length === 0) return

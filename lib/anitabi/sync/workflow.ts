@@ -249,23 +249,30 @@ async function syncBangumiOne(
     )
   }
 
-  if (mirrorReconcileEnabled && stalePointIds.length > 0) {
-    try {
-      await pruneMirrorRowsForDeletedPoints(deps.prisma, stalePointIds)
-    } catch (error) {
-      console.warn(
-        `[anitabi/sync] mirror cleanup failed for deleted points in bangumi ${normalized.id}`,
-        error,
-      )
-    }
-  }
-
   if (stalePointIds.length > 0) {
-    await deps.prisma.anitabiPoint.deleteMany({
-      where: {
-        id: { in: stalePointIds },
-      },
-    })
+    if (mirrorReconcileEnabled) {
+      try {
+        await deps.prisma.$transaction(async (tx) => {
+          await pruneMirrorRowsForDeletedPoints(tx, stalePointIds)
+          await tx.anitabiPoint.deleteMany({
+            where: {
+              id: { in: stalePointIds },
+            },
+          })
+        })
+      } catch (error) {
+        console.warn(
+          `[anitabi/sync] mirror cleanup failed for deleted points in bangumi ${normalized.id}`,
+          error,
+        )
+      }
+    } else {
+      await deps.prisma.anitabiPoint.deleteMany({
+        where: {
+          id: { in: stalePointIds },
+        },
+      })
+    }
   }
 
   if (mirrorReconcileEnabled) {
