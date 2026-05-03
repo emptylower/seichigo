@@ -1048,6 +1048,10 @@ describe('buildAnitabiSyncDiffSummary — URL change tuples', () => {
 
 - [ ] **Step 3: Run — expect FAIL**
 
+```bash
+npx vitest run tests/anitabi/diff.urlChanges.test.ts
+```
+
 - [ ] **Step 4: Implement**
 
 In `lib/anitabi/sync/diff.ts`:
