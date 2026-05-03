@@ -1730,7 +1730,15 @@ npm test -- --run tests/anitabi/imageServe.r2.test.ts
 
 - [ ] **Step 3: Implement write-through**
 
-In `lib/anitabi/handlers/imageServe.ts`, locate the success path where `buildRenderResponse` returns the response. Right before returning that response (after `storeRenderCache(CF)`), add:
+In `lib/anitabi/handlers/imageServe.ts`, locate the upstream-success path where `buildRenderResponse` returns the response. Keep the ordering explicit:
+1. build the upstream-derived response with its final client/cache headers already attached
+2. if CF render caching is enabled, call `storeRenderCache(requestUrl, responseWithHeaders)` before teeing or cloning anything else
+3. tee that already-headered response for lazy R2 write-through when enabled
+4. return the client response
+
+`storeRenderCache(...)` clones the response, so do not add `X-Original-Source` after the cache write if later CF hits must carry it.
+
+Then add:
 ```ts
 const bindings = getCfBindings()
 const bucket = bindings?.env?.MAP_IMAGE_CACHE
@@ -2060,6 +2068,30 @@ describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
     expect(res.headers.get('X-Original-Source')).toMatch(expectedPattern)
   })
 
+  it('CF cache-hit response preserves X-Original-Source from the cached clone', async () => {
+    installOpenNextBindings({
+      env: {
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '0',
+      },
+    })
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([4]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    )
+    const req = new Request(
+      'https://www.seichigo.com/api/anitabi/image-render?url=' +
+        encodeURIComponent('https://image.anitabi.cn/cached.jpg'),
+    )
+
+    const first = await serveImageRequest(req, buildFakeDeps(), 'render')
+    expect(first.headers.get('X-Original-Source')).toMatch(expectedPattern)
+
+    const second = await serveImageRequest(req, buildFakeDeps(), 'render')
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(second.headers.get('X-Original-Source')).toMatch(expectedPattern)
+    expect(second.headers.get('X-Seichigo-Render-Cache')).toBe('HIT')
+  })
+
   it('R2-served response carries X-Original-Source matching the canonical URL', async () => {
     const bucket = buildFakeBucket()
     const bytes = new Uint8Array([5]).buffer
@@ -2087,9 +2119,17 @@ describe('imageServe — X-Original-Source header (D5-γ contract)', () => {
 npm test -- --run tests/anitabi/imageServe.r2.test.ts
 ```
 
-R2 paths set the header in tasks 2.2/2.4. Upstream path must be augmented.
+R2 paths set the header in tasks 2.2/2.4. The upstream path, and specifically the second-call CF cache-hit path, must be augmented so the cached clone already contains the attribution header.
 
-- [ ] **Step 3: Augment upstream success path with X-Original-Source**
+- [ ] **Step 3: Augment upstream success path with X-Original-Source before CF cache writes**
+
+`storeRenderCache(requestUrl, response)` clones the response. Preserve attribution on later CF hits by keeping this order in the upstream-success path:
+1. build the upstream-derived response
+2. set `X-Original-Source: target.toString()` plus the chosen `X-Seichigo-Image-Source` value on that response
+3. call `storeRenderCache(requestUrl, responseWithHeaders)` so the cached version carries the same headers
+4. return the response to the user
+
+Use `X-Seichigo-Render-Cache: HIT` as the response-level proof of a CF cache hit in the contract test. Do not introduce a separate `X-Seichigo-Image-Source: cf-cache` value unless the implementation genuinely needs it.
 
 Modify `buildRenderResponse` to accept an `originalUrl` parameter:
 ```ts
@@ -2108,7 +2148,7 @@ async function buildRenderResponse(input: {
     'Cache-Control': RENDER_CACHE_CONTROL,
     'Content-Disposition': 'inline',
     'X-Content-Type-Options': 'nosniff',
-    'X-Original-Source': input.originalUrl,                     // NEW
+    'X-Original-Source': input.originalUrl,                     // NEW; must exist before storeRenderCache clones this response
     'X-Seichigo-Image-Source': 'upstream-with-r2-write',        // NEW (overridden by caller for write-disabled case)
   })
   // ... rest unchanged ...
@@ -2215,6 +2255,8 @@ In `imageServe.ts`, ensure for each terminal path one of these `image_cache_stat
 - R2 fallback hit → `cache_hit_r2_fallback` (already added in 2.4)
 - All miss + upstream OK → `cache_miss_all` (new — emit at the upstream-success terminal, after `proxy_stream_terminal: succeeded`)
 - All miss + upstream fail + R2 miss → `cache_full_miss_failed` (already added in 2.4)
+
+Task 2.5's response-level CF-hit proof remains the existing `X-Seichigo-Render-Cache: HIT` header on the cached response. `cache_hit_cf` is the matching diagnostic event; this plan does not require inventing `X-Seichigo-Image-Source: cf-cache`.
 
 - [ ] **Step 4: Run — expect pass**
 
