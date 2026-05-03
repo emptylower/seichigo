@@ -1758,6 +1758,26 @@ describe('imageServe — R2 fallback on upstream failure', () => {
         }),
       }),
     )
+
+    const emittedEvents = mocks.emitMapImageProxyEvent.mock.calls.map(([, , event]) => event)
+    expect(emittedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'image_cache_state',
+          outcome: 'cache_hit_r2_fallback',
+          evidence: expect.objectContaining({ reason: 'upstream_error' }),
+        }),
+      ]),
+    )
+    expect(
+      emittedEvents.some(
+        (event) =>
+          event?.terminalState === 'failed' &&
+          ['proxy_fetch_terminal', 'proxy_allow_check', 'proxy_content_validate'].includes(
+            event.stage,
+          ),
+      ),
+    ).toBe(false)
   })
 
   it('returns 502 when both upstream fails AND R2 misses', async () => {
@@ -1851,6 +1871,9 @@ if (!fetched.ok) {
 
   const fallback = await tryServeR2Fallback(failureReason)
   if (fallback) return fallback
+
+  // Existing terminal failure diagnostics stay below the fallback attempt.
+  // Only emit them when tryServeR2Fallback(...) returns null.
   return fetched.response
 }
 ```
@@ -1858,6 +1881,8 @@ if (!fetched.ok) {
 This keeps the current fetch flow intact:
 - upstream `Response.ok === false` still returns the existing `502` when R2 misses
 - thrown fetches and `AbortError` timeouts are observed here as `500` / `504` from `fetchValidatedImage()`, and should only become `r2-fallback` responses when mirrored bytes exist
+- place `tryServeR2Fallback(...)` at the top of the existing `if (!fetched.ok)` branch before any current terminal failure diagnostics (`proxy_fetch_terminal`, `proxy_allow_check`, `proxy_content_validate`) are emitted
+- run those existing failed terminal diagnostics only on the no-fallback path after `tryServeR2Fallback(...)` returns `null`, so the fallback-success response emits only the `image_cache_state/cache_hit_r2_fallback` success event and no stale failed terminal event
 
 Only refactor `fetchValidatedImage()` itself if you explicitly want to surface a richer failure kind than status-based mapping. Do not introduce an undefined helper or a second outer error path for this task.
 
