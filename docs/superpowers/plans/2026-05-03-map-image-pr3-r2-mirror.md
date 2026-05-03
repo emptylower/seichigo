@@ -9,6 +9,7 @@
 **Tech Stack:** Next.js 15 / React 19 / TypeScript · Cloudflare Workers + R2 · Prisma 6 + Postgres · Vitest · OpenNext for CF · Wrangler.
 
 **Spec:** [docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md](../specs/2026-05-03-map-image-pr3-r2-mirror-design.md)
+> **Supersession note:** This r2 plan still preserves the spec's goal/scope/rollout sequence, but it supersedes stale spec code examples where naming drifted. Task 1.5 replaces any `MapImageDiagStage` enum example with the `MAP_IMAGE_DIAG_STAGES` string registry, and Tasks 2.6/4.3 replace stale cache outcome examples with `cache_hit_cf`, `cache_hit_r2_primary`, `cache_hit_r2_fallback`, `cache_miss_all`, and `cache_full_miss_failed`.
 
 **Branch:** create new worktree off `main` (`superpowers:using-git-worktrees`) — do not work in the brainstorming worktree.
 
@@ -3759,9 +3760,11 @@ git commit -m "Keep mirror cron orchestration on a shared boundary" \
 // tests/route/image-mirror-bootstrap.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import { POST } from '@/app/api/admin/anitabi/image-mirror/bootstrap/route'
+import { MIRROR_RECORD_WHERE } from '@/lib/anitabi/mirror/metaRows'
 
 const cronTick = vi.fn().mockResolvedValue({ reclaimed: 0, processed: 1, throttled: false, skipped: false })
 const bucket = {} as any
+const groupBy = vi.fn().mockResolvedValue([{ status: 'pending', _count: { _all: 1 } }])
 vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: vi.fn().mockResolvedValue({
     prisma: {
@@ -3769,7 +3772,7 @@ vi.mock('@/lib/anitabi/api', () => ({
         findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: false, pointCompleted: false }),
       },
       mapImageMirrorState: {
-        groupBy: vi.fn().mockResolvedValue([{ status: 'pending', _count: { _all: 1 } }]),
+        groupBy,
       },
     },
     getImageMirrorBucket: vi.fn(() => bucket),
@@ -3796,7 +3799,14 @@ describe('POST /bootstrap', () => {
       body: JSON.stringify({ mode: 'advance' }),
     })
     const res = await POST(req)
+    const body = await res.json()
     expect(res.status).toBe(200)
+    expect(body.totals.pending).toBe(1)
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['status'],
+      where: MIRROR_RECORD_WHERE,
+      _count: { _all: true },
+    })
   })
 
   it('returns 409 when force-complete overlaps an in-flight cron tick', async () => {
@@ -3832,6 +3842,7 @@ Create `lib/anitabi/handlers/adminImageMirrorBootstrap.ts`:
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { cronTick } from '@/lib/anitabi/mirror/cronTick'
+import { MIRROR_RECORD_WHERE } from '@/lib/anitabi/mirror/metaRows'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 
@@ -3876,6 +3887,7 @@ export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiD
   const final = await deps.prisma.mapImageMirrorBootstrap.findUnique({ where: { id: 1 } })
   const counts = await deps.prisma.mapImageMirrorState.groupBy({
     by: ['status'],
+    where: MIRROR_RECORD_WHERE,
     _count: { _all: true },
   })
   const totals: Record<string, number> = {}
@@ -3890,6 +3902,8 @@ export async function handleImageMirrorBootstrap(req: Request, deps: AnitabiApiD
   })
 }
 ```
+
+Bootstrap totals should exclude the `__throttle__` / `__cursor__` meta rows for the same reason as the Task 4.2 status endpoint: those rows are breaker/watermark markers, not real mirror work items. Keep direct point lookups for those keys elsewhere; only the aggregate `groupBy` totals import `MIRROR_RECORD_WHERE`.
 
 `force-complete` must now rely entirely on `cronTick()` lease behavior. Do not keep the old direct `advanceBootstrap(deps.prisma, 5000)` loop in the plan, because it bypasses the persisted run lease and can still race reclaim/delta/seed work. Manual/admin contention should continue to surface the retryable `cronTick already in progress; try again in 30s` path as a clean `409` with `{ skipped: true }`, so force-complete and advance mode both serialize through the same short-lease entrypoint.
 
@@ -5081,6 +5095,7 @@ git commit -m "docs(runbook): record PR3 7-day acceptance results"
 - DB capacity sizing still caps `lastError` at 500 chars even though the schema column is `@db.Text`; the cap is documented as an application-side bound, not a storage limit.
 - `MapImageMirrorBootstrap.id = 1` remains a singleton contract; all upserts still need `where: { id: 1 }` to avoid duplicate bootstrap rows.
 - Per-host throttling is still deferred; the current 5 req/s ceiling is global even though `bgm.tv` may eventually need its own lane.
+- Rollout helper scripts/commands remain a known doc-only placeholder; verify them against the live repo or replace them with explicit commands during implementation/runbook work.
 
 **Spec coverage check:** a Goal Alignment Matrix still needs to be inserted before claiming full section-to-task traceability. This review only claims the r2 repair set above, not final section-completeness.
 
