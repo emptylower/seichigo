@@ -25,23 +25,13 @@ type PointRow = {
   image: string | null
 }
 
-type MirrorStateUpsertArgs = {
-  where: {
-    sourceType_sourceId_variant: {
-      sourceType: string
-      sourceId: string
-      variant: string
-    }
-  }
-  create: {
-    sourceType: string
-    sourceId: string
-    variant: string
-    canonicalUrl: string
-    r2Key: string
-    status: 'pending'
-  }
-  update: {}
+type MirrorStateCreateManyRow = {
+  sourceType: string
+  sourceId: string
+  variant: string
+  canonicalUrl: string
+  r2Key: string
+  status: 'pending'
 }
 
 export type AdvanceBootstrapPrisma = {
@@ -80,20 +70,50 @@ export type AdvanceBootstrapPrisma = {
       select: { id: true; image: true }
     }): Promise<PointRow[]>
   }
-  mapImageMirrorState: Pick<PrismaClient['mapImageMirrorState'], 'upsert'>
+  mapImageMirrorState: Pick<PrismaClient['mapImageMirrorState'], 'createMany'>
 }
 
-async function upsertMirrorState(
+async function buildMirrorStateRows(
+  sourceType: 'bangumi-cover' | 'point-image',
+  sourceId: string,
+  variants: Array<{ label: string; url: string }>,
+): Promise<MirrorStateCreateManyRow[]> {
+  return Promise.all(
+    variants.map(async (variant) => ({
+      sourceType,
+      sourceId,
+      variant: variant.label,
+      canonicalUrl: variant.url,
+      r2Key: await computeMirrorKey(variant.url, 'image/jpeg'),
+      status: 'pending',
+    })),
+  )
+}
+
+async function createMirrorStates(
   prisma: AdvanceBootstrapPrisma,
-  args: MirrorStateUpsertArgs,
-): Promise<void> {
-  await prisma.mapImageMirrorState.upsert(args)
+  rows: MirrorStateCreateManyRow[],
+): Promise<number> {
+  if (rows.length === 0) {
+    return 0
+  }
+
+  const result = await prisma.mapImageMirrorState.createMany({
+    data: rows,
+    skipDuplicates: true,
+  })
+
+  return result.count
 }
 
 export async function advanceBootstrap(
   prisma: AdvanceBootstrapPrisma,
   chunkSize: number,
 ): Promise<void> {
+  if (!Number.isFinite(chunkSize) || chunkSize <= 0) {
+    throw new RangeError('chunkSize must be a finite positive number')
+  }
+
   const now = new Date()
   const bootstrap = await prisma.mapImageMirrorBootstrap.upsert({
     where: { id: 1 },
@@ -126,29 +146,19 @@ export async function advanceBootstrap(
       return
     }
 
-    for (const bangumi of batch) {
-      for (const variant of enumerateBangumiCoverVariants(bangumi.cover)) {
-        await upsertMirrorState(prisma, {
-          where: {
-            sourceType_sourceId_variant: {
-              sourceType: 'bangumi-cover',
-              sourceId: String(bangumi.id),
-              variant: variant.label,
-            },
-          },
-          create: {
-            sourceType: 'bangumi-cover',
-            sourceId: String(bangumi.id),
-            variant: variant.label,
-            canonicalUrl: variant.url,
-            r2Key: await computeMirrorKey(variant.url, 'image/jpeg'),
-            status: 'pending',
-          },
-          update: {},
-        })
-        totalEnumerated += 1
-      }
-    }
+    const rows = (
+      await Promise.all(
+        batch.map((bangumi) =>
+          buildMirrorStateRows(
+            'bangumi-cover',
+            String(bangumi.id),
+            enumerateBangumiCoverVariants(bangumi.cover),
+          ),
+        ),
+      )
+    ).flat()
+
+    totalEnumerated += await createMirrorStates(prisma, rows)
 
     await prisma.mapImageMirrorBootstrap.update({
       where: { id: 1 },
@@ -187,29 +197,15 @@ export async function advanceBootstrap(
     return
   }
 
-  for (const point of batch) {
-    for (const variant of enumeratePointImageVariants(point.image)) {
-      await upsertMirrorState(prisma, {
-        where: {
-          sourceType_sourceId_variant: {
-            sourceType: 'point-image',
-            sourceId: point.id,
-            variant: variant.label,
-          },
-        },
-        create: {
-          sourceType: 'point-image',
-          sourceId: point.id,
-          variant: variant.label,
-          canonicalUrl: variant.url,
-          r2Key: await computeMirrorKey(variant.url, 'image/jpeg'),
-          status: 'pending',
-        },
-        update: {},
-      })
-      totalEnumerated += 1
-    }
-  }
+  const rows = (
+    await Promise.all(
+      batch.map((point) =>
+        buildMirrorStateRows('point-image', point.id, enumeratePointImageVariants(point.image)),
+      ),
+    )
+  ).flat()
+
+  totalEnumerated += await createMirrorStates(prisma, rows)
 
   await prisma.mapImageMirrorBootstrap.update({
     where: { id: 1 },

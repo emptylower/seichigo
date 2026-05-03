@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
-import { advanceBootstrap } from '../bootstrap'
+import { advanceBootstrap, type AdvanceBootstrapPrisma } from '../bootstrap'
 
 type BootstrapState = {
   id: number
@@ -20,35 +20,50 @@ function buildPrismaMock(opts: {
   bangumi?: Array<{ id: number; cover: string | null }>
   points?: Array<{ id: string; image: string | null }>
   bsState: BootstrapState
+  createManyCount?: number
 }) {
-  const stateUpserts: Array<Record<string, unknown>> = []
-  const bootstrapUpdate = vi.fn().mockImplementation(async ({ data }: { data: object }) => ({
-    ...opts.bsState,
-    ...data,
-  }))
+  const bootstrapUpsert = vi
+    .fn<AdvanceBootstrapPrisma['mapImageMirrorBootstrap']['upsert']>()
+    .mockResolvedValue(opts.bsState)
+  const bootstrapUpdate = vi
+    .fn<AdvanceBootstrapPrisma['mapImageMirrorBootstrap']['update']>()
+    .mockImplementation(async ({ data }) => ({
+      ...opts.bsState,
+      ...data,
+    }))
+  const bangumiFindMany = vi
+    .fn<AdvanceBootstrapPrisma['anitabiBangumi']['findMany']>()
+    .mockResolvedValue(opts.bangumi ?? [])
+  const pointFindMany = vi
+    .fn<AdvanceBootstrapPrisma['anitabiPoint']['findMany']>()
+    .mockResolvedValue(opts.points ?? [])
+  const createMany = vi
+    .fn<AdvanceBootstrapPrisma['mapImageMirrorState']['createMany']>()
+    .mockResolvedValue({ count: opts.createManyCount ?? 0 })
 
   const prisma = {
     mapImageMirrorBootstrap: {
-      upsert: vi.fn().mockResolvedValue(opts.bsState),
+      upsert: bootstrapUpsert,
       update: bootstrapUpdate,
     },
     anitabiBangumi: {
-      findMany: vi.fn().mockResolvedValue(opts.bangumi ?? []),
+      findMany: bangumiFindMany,
     },
     anitabiPoint: {
-      findMany: vi.fn().mockResolvedValue(opts.points ?? []),
+      findMany: pointFindMany,
     },
     mapImageMirrorState: {
-      upsert: vi.fn().mockImplementation(async (args: Record<string, unknown>) => {
-        stateUpserts.push(args)
-        return {}
-      }),
+      createMany,
     },
-  }
+  } satisfies AdvanceBootstrapPrisma
 
   return {
     prisma,
-    stateUpserts,
+    bootstrapUpsert,
+    bootstrapUpdate,
+    bangumiFindMany,
+    pointFindMany,
+    createMany,
   }
 }
 
@@ -59,43 +74,38 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
-      const { prisma, stateUpserts } = buildPrismaMock({
-        bangumi: [{ id: 1, cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg' }],
-        bsState: {
-          id: 1,
-          bangumiCursor: null,
-          pointCursor: null,
-          bangumiCompleted: false,
-          pointCompleted: false,
-          totalEnumerated: 0,
-        },
-      })
+      const { prisma, createMany, pointFindMany, bootstrapUpdate, bootstrapUpsert, bangumiFindMany } =
+        buildPrismaMock({
+          bangumi: [{ id: 1, cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg' }],
+          bsState: {
+            id: 1,
+            bangumiCursor: null,
+            pointCursor: null,
+            bangumiCompleted: false,
+            pointCompleted: false,
+            totalEnumerated: 0,
+          },
+          createManyCount: 2,
+        })
 
-      await advanceBootstrap(prisma as never, 100)
+      await advanceBootstrap(prisma, 100)
 
-      expect(prisma.mapImageMirrorBootstrap.upsert).toHaveBeenCalledWith({
+      expect(bootstrapUpsert).toHaveBeenCalledWith({
         where: { id: 1 },
         create: { id: 1, startedAt: new Date('2026-05-03T12:00:00Z') },
         update: {},
       })
-      expect(prisma.anitabiBangumi.findMany).toHaveBeenCalledWith({
+      expect(bangumiFindMany).toHaveBeenCalledWith({
         where: { mapEnabled: true, cover: { not: null } },
         orderBy: { id: 'asc' },
         take: 100,
         select: { id: true, cover: true },
       })
-      expect(prisma.anitabiPoint.findMany).not.toHaveBeenCalled()
-      expect(stateUpserts).toHaveLength(2)
-      expect(stateUpserts).toEqual([
-        {
-          where: {
-            sourceType_sourceId_variant: {
-              sourceType: 'bangumi-cover',
-              sourceId: '1',
-              variant: 'cover-l',
-            },
-          },
-          create: {
+      expect(pointFindMany).not.toHaveBeenCalled()
+      expect(createMany).toHaveBeenCalledTimes(1)
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          {
             sourceType: 'bangumi-cover',
             sourceId: '1',
             variant: 'cover-l',
@@ -106,17 +116,7 @@ describe('advanceBootstrap', () => {
             ),
             status: 'pending',
           },
-          update: {},
-        },
-        {
-          where: {
-            sourceType_sourceId_variant: {
-              sourceType: 'bangumi-cover',
-              sourceId: '1',
-              variant: 'cover-m',
-            },
-          },
-          create: {
+          {
             sourceType: 'bangumi-cover',
             sourceId: '1',
             variant: 'cover-m',
@@ -124,15 +124,74 @@ describe('advanceBootstrap', () => {
             r2Key: await computeMirrorKey('https://image.anitabi.cn/bangumi/1/cover.jpg', 'image/jpeg'),
             status: 'pending',
           },
-          update: {},
-        },
-      ])
-      expect(prisma.mapImageMirrorBootstrap.update).toHaveBeenCalledWith({
+        ],
+        skipDuplicates: true,
+      })
+      expect(bootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           bangumiCursor: 1,
           totalEnumerated: 2,
           lastAdvanceAt: new Date('2026-05-03T12:00:00Z'),
+        },
+      })
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('counts only newly created bangumi variants when duplicate rows are skipped', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-05-03T12:30:00Z'))
+
+      const { prisma, createMany, bootstrapUpdate } = buildPrismaMock({
+        bangumi: [{ id: 2, cover: 'https://image.anitabi.cn/bangumi/2/cover.jpg' }],
+        bsState: {
+          id: 1,
+          bangumiCursor: 1,
+          pointCursor: null,
+          bangumiCompleted: false,
+          pointCompleted: false,
+          totalEnumerated: 5,
+        },
+        createManyCount: 1,
+      })
+
+      await advanceBootstrap(prisma, 100)
+
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            sourceType: 'bangumi-cover',
+            sourceId: '2',
+            variant: 'cover-l',
+            canonicalUrl: 'https://image.anitabi.cn/bangumi/2/cover.jpg?plan=l',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/bangumi/2/cover.jpg?plan=l',
+              'image/jpeg',
+            ),
+            status: 'pending',
+          },
+          {
+            sourceType: 'bangumi-cover',
+            sourceId: '2',
+            variant: 'cover-m',
+            canonicalUrl: 'https://image.anitabi.cn/bangumi/2/cover.jpg',
+            r2Key: await computeMirrorKey('https://image.anitabi.cn/bangumi/2/cover.jpg', 'image/jpeg'),
+            status: 'pending',
+          },
+        ],
+        skipDuplicates: true,
+      })
+      expect(bootstrapUpdate).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: {
+          bangumiCursor: 2,
+          totalEnumerated: 6,
+          lastAdvanceAt: new Date('2026-05-03T12:30:00Z'),
         },
       })
     } finally {
@@ -147,7 +206,7 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T13:00:00Z'))
 
-      const { prisma, stateUpserts } = buildPrismaMock({
+      const { prisma, createMany, pointFindMany, bootstrapUpdate, bangumiFindMany } = buildPrismaMock({
         bangumi: [],
         points: [{ id: 'p1', image: 'https://image.anitabi.cn/points/p1.jpg' }],
         bsState: {
@@ -160,17 +219,17 @@ describe('advanceBootstrap', () => {
         },
       })
 
-      await advanceBootstrap(prisma as never, 100)
+      await advanceBootstrap(prisma, 100)
 
-      expect(prisma.anitabiBangumi.findMany).toHaveBeenCalledWith({
+      expect(bangumiFindMany).toHaveBeenCalledWith({
         where: { id: { gt: 99 }, mapEnabled: true, cover: { not: null } },
         orderBy: { id: 'asc' },
         take: 100,
         select: { id: true, cover: true },
       })
-      expect(prisma.anitabiPoint.findMany).not.toHaveBeenCalled()
-      expect(stateUpserts).toHaveLength(0)
-      expect(prisma.mapImageMirrorBootstrap.update).toHaveBeenCalledWith({
+      expect(pointFindMany).not.toHaveBeenCalled()
+      expect(createMany).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           bangumiCompleted: true,
@@ -189,7 +248,7 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T14:00:00Z'))
 
-      const { prisma, stateUpserts } = buildPrismaMock({
+      const { prisma, createMany, bootstrapUpdate, bangumiFindMany, pointFindMany } = buildPrismaMock({
         points: [{ id: 'pt-1', image: 'https://image.anitabi.cn/points/pt-1.jpg' }],
         bsState: {
           id: 1,
@@ -199,57 +258,58 @@ describe('advanceBootstrap', () => {
           pointCompleted: false,
           totalEnumerated: 7,
         },
+        createManyCount: 3,
       })
 
-      await advanceBootstrap(prisma as never, 50)
+      await advanceBootstrap(prisma, 50)
 
-      expect(prisma.anitabiBangumi.findMany).not.toHaveBeenCalled()
-      expect(prisma.anitabiPoint.findMany).toHaveBeenCalledWith({
+      expect(bangumiFindMany).not.toHaveBeenCalled()
+      expect(pointFindMany).toHaveBeenCalledWith({
         where: { image: { not: null } },
         orderBy: { id: 'asc' },
         take: 50,
         select: { id: true, image: true },
       })
-      expect(stateUpserts).toHaveLength(3)
-      expect(stateUpserts.map((entry) => entry.create)).toEqual([
-        {
-          sourceType: 'point-image',
-          sourceId: 'pt-1',
-          variant: 'h160',
-          canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-        {
-          sourceType: 'point-image',
-          sourceId: 'pt-1',
-          variant: 'h320',
-          canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-        {
-          sourceType: 'point-image',
-          sourceId: 'pt-1',
-          variant: 'w640q80',
-          canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?q=80&w=640',
-          r2Key: await computeMirrorKey(
-            'https://image.anitabi.cn/points/pt-1.jpg?q=80&w=640',
-            'image/jpeg',
-          ),
-          status: 'pending',
-        },
-      ])
-      expect(stateUpserts.every((entry) => entry.update && Object.keys(entry.update as object).length === 0)).toBe(
-        true,
-      )
-      expect(prisma.mapImageMirrorBootstrap.update).toHaveBeenCalledWith({
+      expect(createMany).toHaveBeenCalledTimes(1)
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            sourceType: 'point-image',
+            sourceId: 'pt-1',
+            variant: 'h160',
+            canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
+              'image/jpeg',
+            ),
+            status: 'pending',
+          },
+          {
+            sourceType: 'point-image',
+            sourceId: 'pt-1',
+            variant: 'h320',
+            canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
+              'image/jpeg',
+            ),
+            status: 'pending',
+          },
+          {
+            sourceType: 'point-image',
+            sourceId: 'pt-1',
+            variant: 'w640q80',
+            canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?q=80&w=640',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/points/pt-1.jpg?q=80&w=640',
+              'image/jpeg',
+            ),
+            status: 'pending',
+          },
+        ],
+        skipDuplicates: true,
+      })
+      expect(bootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           pointCursor: 'pt-1',
@@ -269,7 +329,7 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T15:00:00Z'))
 
-      const { prisma, stateUpserts } = buildPrismaMock({
+      const { prisma, createMany, bootstrapUpdate, pointFindMany } = buildPrismaMock({
         points: [],
         bsState: {
           id: 1,
@@ -281,16 +341,16 @@ describe('advanceBootstrap', () => {
         },
       })
 
-      await advanceBootstrap(prisma as never, 25)
+      await advanceBootstrap(prisma, 25)
 
-      expect(prisma.anitabiPoint.findMany).toHaveBeenCalledWith({
+      expect(pointFindMany).toHaveBeenCalledWith({
         where: { id: { gt: 'pt-99' }, image: { not: null } },
         orderBy: { id: 'asc' },
         take: 25,
         select: { id: true, image: true },
       })
-      expect(stateUpserts).toHaveLength(0)
-      expect(prisma.mapImageMirrorBootstrap.update).toHaveBeenCalledWith({
+      expect(createMany).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           pointCompleted: true,
@@ -301,6 +361,29 @@ describe('advanceBootstrap', () => {
     } finally {
       vi.useRealTimers()
       vi.restoreAllMocks()
+    }
+  })
+
+  it('rejects non-positive and non-finite chunk sizes before querying bootstrap state', async () => {
+    for (const chunkSize of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { prisma, bootstrapUpsert, bootstrapUpdate, bangumiFindMany, pointFindMany, createMany } =
+        buildPrismaMock({
+          bsState: {
+            id: 1,
+            bangumiCursor: null,
+            pointCursor: null,
+            bangumiCompleted: false,
+            pointCompleted: false,
+            totalEnumerated: 0,
+          },
+        })
+
+      await expect(advanceBootstrap(prisma, chunkSize)).rejects.toThrow(RangeError)
+      expect(bootstrapUpsert).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).not.toHaveBeenCalled()
+      expect(bangumiFindMany).not.toHaveBeenCalled()
+      expect(pointFindMany).not.toHaveBeenCalled()
+      expect(createMany).not.toHaveBeenCalled()
     }
   })
 })
