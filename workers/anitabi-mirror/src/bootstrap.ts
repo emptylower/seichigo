@@ -34,7 +34,28 @@ type MirrorStateCreateManyRow = {
   status: 'pending'
 }
 
+type BootstrapUpdateData = {
+  bangumiCursor?: number
+  pointCursor?: string
+  bangumiCompleted?: boolean
+  pointCompleted?: boolean
+  totalEnumerated?: number | { increment: number }
+  completedAt?: Date
+  lastAdvanceAt?: Date
+}
+
+export type AdvanceBootstrapTransactionPrisma = {
+  mapImageMirrorBootstrap: {
+    update(args: {
+      where: { id: number }
+      data: BootstrapUpdateData
+    }): Promise<unknown>
+  }
+  mapImageMirrorState: Pick<PrismaClient['mapImageMirrorState'], 'createMany'>
+}
+
 export type AdvanceBootstrapPrisma = {
+  $transaction<T>(callback: (tx: AdvanceBootstrapTransactionPrisma) => Promise<T>): Promise<T>
   mapImageMirrorBootstrap: {
     upsert(args: {
       where: { id: number }
@@ -43,15 +64,7 @@ export type AdvanceBootstrapPrisma = {
     }): Promise<BootstrapRecord>
     update(args: {
       where: { id: number }
-      data: {
-        bangumiCursor?: number
-        pointCursor?: string
-        bangumiCompleted?: boolean
-        pointCompleted?: boolean
-        totalEnumerated?: number
-        completedAt?: Date
-        lastAdvanceAt?: Date
-      }
+      data: BootstrapUpdateData
     }): Promise<unknown>
   }
   anitabiBangumi: {
@@ -91,7 +104,7 @@ async function buildMirrorStateRows(
 }
 
 async function createMirrorStates(
-  prisma: AdvanceBootstrapPrisma,
+  prisma: Pick<AdvanceBootstrapTransactionPrisma, 'mapImageMirrorState'>,
   rows: MirrorStateCreateManyRow[],
 ): Promise<number> {
   if (rows.length === 0) {
@@ -120,8 +133,6 @@ export async function advanceBootstrap(
     create: { id: 1, startedAt: now },
     update: {},
   })
-
-  let totalEnumerated = bootstrap.totalEnumerated ?? 0
 
   if (!bootstrap.bangumiCompleted) {
     const batch = await prisma.anitabiBangumi.findMany({
@@ -158,15 +169,17 @@ export async function advanceBootstrap(
       )
     ).flat()
 
-    totalEnumerated += await createMirrorStates(prisma, rows)
+    await prisma.$transaction(async (tx) => {
+      const created = await createMirrorStates(tx, rows)
 
-    await prisma.mapImageMirrorBootstrap.update({
-      where: { id: 1 },
-      data: {
-        bangumiCursor: batch[batch.length - 1].id,
-        totalEnumerated,
-        lastAdvanceAt: now,
-      },
+      await tx.mapImageMirrorBootstrap.update({
+        where: { id: 1 },
+        data: {
+          bangumiCursor: batch[batch.length - 1].id,
+          totalEnumerated: { increment: created },
+          lastAdvanceAt: now,
+        },
+      })
     })
     return
   }
@@ -205,14 +218,16 @@ export async function advanceBootstrap(
     )
   ).flat()
 
-  totalEnumerated += await createMirrorStates(prisma, rows)
+  await prisma.$transaction(async (tx) => {
+    const created = await createMirrorStates(tx, rows)
 
-  await prisma.mapImageMirrorBootstrap.update({
-    where: { id: 1 },
-    data: {
-      pointCursor: batch[batch.length - 1].id,
-      totalEnumerated,
-      lastAdvanceAt: now,
-    },
+    await tx.mapImageMirrorBootstrap.update({
+      where: { id: 1 },
+      data: {
+        pointCursor: batch[batch.length - 1].id,
+        totalEnumerated: { increment: created },
+        lastAdvanceAt: now,
+      },
+    })
   })
 }

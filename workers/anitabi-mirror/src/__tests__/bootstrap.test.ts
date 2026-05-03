@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
-import { advanceBootstrap, type AdvanceBootstrapPrisma } from '../bootstrap'
+import {
+  advanceBootstrap,
+  type AdvanceBootstrapPrisma,
+  type AdvanceBootstrapTransactionPrisma,
+} from '../bootstrap'
 
 type BootstrapState = {
   id: number
@@ -21,6 +25,8 @@ function buildPrismaMock(opts: {
   points?: Array<{ id: string; image: string | null }>
   bsState: BootstrapState
   createManyCount?: number
+  transactionCreateManyCount?: number
+  transactionUpdateError?: Error
 }) {
   const bootstrapUpsert = vi
     .fn<AdvanceBootstrapPrisma['mapImageMirrorBootstrap']['upsert']>()
@@ -40,8 +46,36 @@ function buildPrismaMock(opts: {
   const createMany = vi
     .fn<AdvanceBootstrapPrisma['mapImageMirrorState']['createMany']>()
     .mockResolvedValue({ count: opts.createManyCount ?? 0 })
+  const transactionBootstrapUpdate = vi
+    .fn<AdvanceBootstrapTransactionPrisma['mapImageMirrorBootstrap']['update']>()
+    .mockImplementation(async ({ data }) => {
+      if (opts.transactionUpdateError) {
+        throw opts.transactionUpdateError
+      }
 
-  const prisma = {
+      return {
+        ...opts.bsState,
+        ...data,
+      }
+    })
+  const transactionCreateMany = vi
+    .fn<AdvanceBootstrapTransactionPrisma['mapImageMirrorState']['createMany']>()
+    .mockResolvedValue({
+      count: opts.transactionCreateManyCount ?? opts.createManyCount ?? 0,
+    })
+  const transactionImpl: AdvanceBootstrapPrisma['$transaction'] = async (callback) =>
+    callback({
+      mapImageMirrorBootstrap: {
+        update: transactionBootstrapUpdate,
+      },
+      mapImageMirrorState: {
+        createMany: transactionCreateMany,
+      },
+    })
+  const transaction = vi.fn(transactionImpl)
+
+  const prisma: AdvanceBootstrapPrisma = {
+    $transaction: transaction as AdvanceBootstrapPrisma['$transaction'],
     mapImageMirrorBootstrap: {
       upsert: bootstrapUpsert,
       update: bootstrapUpdate,
@@ -55,15 +89,18 @@ function buildPrismaMock(opts: {
     mapImageMirrorState: {
       createMany,
     },
-  } satisfies AdvanceBootstrapPrisma
+  }
 
   return {
     prisma,
+    transaction,
     bootstrapUpsert,
     bootstrapUpdate,
     bangumiFindMany,
     pointFindMany,
     createMany,
+    transactionBootstrapUpdate,
+    transactionCreateMany,
   }
 }
 
@@ -74,19 +111,28 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
-      const { prisma, createMany, pointFindMany, bootstrapUpdate, bootstrapUpsert, bangumiFindMany } =
-        buildPrismaMock({
-          bangumi: [{ id: 1, cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg' }],
-          bsState: {
-            id: 1,
-            bangumiCursor: null,
-            pointCursor: null,
-            bangumiCompleted: false,
-            pointCompleted: false,
-            totalEnumerated: 0,
-          },
-          createManyCount: 2,
-        })
+      const {
+        prisma,
+        createMany,
+        pointFindMany,
+        bootstrapUpdate,
+        bootstrapUpsert,
+        bangumiFindMany,
+        transaction,
+        transactionBootstrapUpdate,
+        transactionCreateMany,
+      } = buildPrismaMock({
+        bangumi: [{ id: 1, cover: 'https://image.anitabi.cn/bangumi/1/cover.jpg' }],
+        bsState: {
+          id: 1,
+          bangumiCursor: null,
+          pointCursor: null,
+          bangumiCompleted: false,
+          pointCompleted: false,
+          totalEnumerated: 0,
+        },
+        transactionCreateManyCount: 2,
+      })
 
       await advanceBootstrap(prisma, 100)
 
@@ -102,8 +148,10 @@ describe('advanceBootstrap', () => {
         select: { id: true, cover: true },
       })
       expect(pointFindMany).not.toHaveBeenCalled()
-      expect(createMany).toHaveBeenCalledTimes(1)
-      expect(createMany).toHaveBeenCalledWith({
+      expect(transaction).toHaveBeenCalledTimes(1)
+      expect(createMany).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).not.toHaveBeenCalled()
+      expect(transactionCreateMany).toHaveBeenCalledWith({
         data: [
           {
             sourceType: 'bangumi-cover',
@@ -127,11 +175,11 @@ describe('advanceBootstrap', () => {
         ],
         skipDuplicates: true,
       })
-      expect(bootstrapUpdate).toHaveBeenCalledWith({
+      expect(transactionBootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           bangumiCursor: 1,
-          totalEnumerated: 2,
+          totalEnumerated: { increment: 2 },
           lastAdvanceAt: new Date('2026-05-03T12:00:00Z'),
         },
       })
@@ -147,7 +195,8 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T12:30:00Z'))
 
-      const { prisma, createMany, bootstrapUpdate } = buildPrismaMock({
+      const { prisma, createMany, bootstrapUpdate, transactionBootstrapUpdate, transactionCreateMany } =
+        buildPrismaMock({
         bangumi: [{ id: 2, cover: 'https://image.anitabi.cn/bangumi/2/cover.jpg' }],
         bsState: {
           id: 1,
@@ -157,12 +206,14 @@ describe('advanceBootstrap', () => {
           pointCompleted: false,
           totalEnumerated: 5,
         },
-        createManyCount: 1,
+        transactionCreateManyCount: 1,
       })
 
       await advanceBootstrap(prisma, 100)
 
-      expect(createMany).toHaveBeenCalledWith({
+      expect(createMany).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).not.toHaveBeenCalled()
+      expect(transactionCreateMany).toHaveBeenCalledWith({
         data: [
           {
             sourceType: 'bangumi-cover',
@@ -186,11 +237,11 @@ describe('advanceBootstrap', () => {
         ],
         skipDuplicates: true,
       })
-      expect(bootstrapUpdate).toHaveBeenCalledWith({
+      expect(transactionBootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           bangumiCursor: 2,
-          totalEnumerated: 6,
+          totalEnumerated: { increment: 1 },
           lastAdvanceAt: new Date('2026-05-03T12:30:00Z'),
         },
       })
@@ -248,7 +299,15 @@ describe('advanceBootstrap', () => {
     try {
       vi.setSystemTime(new Date('2026-05-03T14:00:00Z'))
 
-      const { prisma, createMany, bootstrapUpdate, bangumiFindMany, pointFindMany } = buildPrismaMock({
+      const {
+        prisma,
+        createMany,
+        bootstrapUpdate,
+        bangumiFindMany,
+        pointFindMany,
+        transactionBootstrapUpdate,
+        transactionCreateMany,
+      } = buildPrismaMock({
         points: [{ id: 'pt-1', image: 'https://image.anitabi.cn/points/pt-1.jpg' }],
         bsState: {
           id: 1,
@@ -258,7 +317,7 @@ describe('advanceBootstrap', () => {
           pointCompleted: false,
           totalEnumerated: 7,
         },
-        createManyCount: 3,
+        transactionCreateManyCount: 3,
       })
 
       await advanceBootstrap(prisma, 50)
@@ -270,8 +329,10 @@ describe('advanceBootstrap', () => {
         take: 50,
         select: { id: true, image: true },
       })
-      expect(createMany).toHaveBeenCalledTimes(1)
-      expect(createMany).toHaveBeenCalledWith({
+      expect(createMany).not.toHaveBeenCalled()
+      expect(bootstrapUpdate).not.toHaveBeenCalled()
+      expect(transactionCreateMany).toHaveBeenCalledTimes(1)
+      expect(transactionCreateMany).toHaveBeenCalledWith({
         data: [
           {
             sourceType: 'point-image',
@@ -309,11 +370,11 @@ describe('advanceBootstrap', () => {
         ],
         skipDuplicates: true,
       })
-      expect(bootstrapUpdate).toHaveBeenCalledWith({
+      expect(transactionBootstrapUpdate).toHaveBeenCalledWith({
         where: { id: 1 },
         data: {
           pointCursor: 'pt-1',
-          totalEnumerated: 10,
+          totalEnumerated: { increment: 3 },
           lastAdvanceAt: new Date('2026-05-03T14:00:00Z'),
         },
       })
@@ -385,5 +446,59 @@ describe('advanceBootstrap', () => {
       expect(pointFindMany).not.toHaveBeenCalled()
       expect(createMany).not.toHaveBeenCalled()
     }
+  })
+
+  it('uses transaction delegates for batch inserts and cursor updates', async () => {
+    const {
+      prisma,
+      createMany,
+      bootstrapUpdate,
+      transaction,
+      transactionCreateMany,
+      transactionBootstrapUpdate,
+    } = buildPrismaMock({
+      bangumi: [{ id: 3, cover: 'https://image.anitabi.cn/bangumi/3/cover.jpg' }],
+      bsState: {
+        id: 1,
+        bangumiCursor: 2,
+        pointCursor: null,
+        bangumiCompleted: false,
+        pointCompleted: false,
+        totalEnumerated: 8,
+      },
+      transactionCreateManyCount: 2,
+    })
+
+    await advanceBootstrap(prisma, 10)
+
+    expect(transaction).toHaveBeenCalledTimes(1)
+    expect(transactionCreateMany).toHaveBeenCalledTimes(1)
+    expect(transactionBootstrapUpdate).toHaveBeenCalledTimes(1)
+    expect(createMany).not.toHaveBeenCalled()
+    expect(bootstrapUpdate).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the transactional bootstrap update fails', async () => {
+    const updateError = new Error('update failed')
+    const { prisma, createMany, bootstrapUpdate, transaction, transactionCreateMany } = buildPrismaMock({
+      bangumi: [{ id: 4, cover: 'https://image.anitabi.cn/bangumi/4/cover.jpg' }],
+      bsState: {
+        id: 1,
+        bangumiCursor: 3,
+        pointCursor: null,
+        bangumiCompleted: false,
+        pointCompleted: false,
+        totalEnumerated: 9,
+      },
+      transactionCreateManyCount: 2,
+      transactionUpdateError: updateError,
+    })
+
+    await expect(advanceBootstrap(prisma, 10)).rejects.toThrow(updateError)
+
+    expect(transaction).toHaveBeenCalledTimes(1)
+    expect(transactionCreateMany).toHaveBeenCalledTimes(1)
+    expect(createMany).not.toHaveBeenCalled()
+    expect(bootstrapUpdate).not.toHaveBeenCalled()
   })
 })
