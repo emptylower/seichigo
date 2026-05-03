@@ -4,8 +4,14 @@ import { cronDelta } from './delta'
 import { cronTick, type CronTickPrisma } from './cronTick'
 import { createMirrorPrismaClient } from './prisma'
 
+export type MirrorWorkerEnv = {
+  DATABASE_URL: string
+  MAP_IMAGE_CACHE: R2Bucket
+  MAP_IMAGE_MIRROR_CRON_ENABLED: '0' | '1'
+}
+
 export default {
-  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: MirrorWorkerEnv, ctx: ExecutionContext): Promise<void> {
     void ctx
 
     if (String(env.MAP_IMAGE_MIRROR_CRON_ENABLED) !== '1') {
@@ -35,4 +41,4 @@ export default {
       await prisma.$disconnect()
     }
   },
-} satisfies ExportedHandler<Env>
+} satisfies ExportedHandler<MirrorWorkerEnv>

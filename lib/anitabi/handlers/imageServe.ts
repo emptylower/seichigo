@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
-import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { buildContentDisposition, buildDownloadFilename } from '@/lib/anitabi/handlers/imageServeDownload'
+import {
+  matchRenderCache,
+  normalizeUrlHostname,
+  resolveRenderCacheDiagnosticSource,
+  storeRenderCache,
+} from '@/lib/anitabi/handlers/imageServeRenderCache'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
@@ -14,12 +20,7 @@ const EXTRA_ALLOWED_IMAGE_HOSTS = ['anitabi.cn', 'bgm.tv']
 const RENDER_CACHE_CONTROL = 'public, s-maxage=86400, stale-while-revalidate=604800'
 const RENDER_UPSTREAM_CACHE_TTL_SECONDS = 86400
 type ImageRouteMode = 'download' | 'render'
-type RenderCacheState = 'HIT' | 'MISS' | 'BYPASS'
 type MirroredImage = NonNullable<Awaited<ReturnType<typeof getMirroredImage>>>
-type WorkerRenderCache = {
-  match(request: Request | string): Promise<Response | undefined>
-  put(request: Request | string, response: Response): Promise<unknown>
-}
 function normalizeHost(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '')
 }
@@ -40,94 +41,6 @@ function parseContentLength(rawValue: string | null): number | null {
   if (!trimmed) return null
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-}
-function getWorkerRenderCache(): WorkerRenderCache | null {
-  const cacheStorage = (globalThis as typeof globalThis & {
-    caches?: { default?: WorkerRenderCache }
-  }).caches
-  return cacheStorage?.default ?? null
-}
-function buildRenderCacheKey(requestUrl: URL): Request {
-  const canonicalUrl = stripMapImageDiagnosticParams(requestUrl)
-  for (const key of ['name', '_retry']) canonicalUrl.searchParams.delete(key)
-  return new Request(canonicalUrl.toString(), { method: 'GET' })
-}
-function resolveRenderOriginalSource(requestUrl: URL): string | null {
-  return parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)?.toString() ?? null
-}
-
-function parseAbsoluteHttpUrl(rawInput: string | null | undefined): string | null {
-  const raw = String(rawInput || '').trim()
-  if (!raw) return null
-  try {
-    const url = new URL(raw)
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) {
-      return null
-    }
-    return url.toString()
-  } catch {
-    return null
-  }
-}
-
-function resolveRenderCacheDiagnosticSource(input: {
-  cachedOriginalSource?: string | null
-  requestUrl: URL
-}): string | null {
-  return parseAbsoluteHttpUrl(input.cachedOriginalSource) ?? resolveRenderOriginalSource(input.requestUrl)
-}
-
-function normalizeUrlHostname(input: string | null | undefined): string | undefined {
-  const raw = String(input || '').trim()
-  if (!raw) return undefined
-  try {
-    return normalizeHost(new URL(raw).hostname) || undefined
-  } catch {
-    return undefined
-  }
-}
-function withRenderCacheState(
-  response: Response,
-  state: RenderCacheState,
-  input?: { originalSource?: string | null }
-): Response {
-  const headers = new Headers(response.headers)
-  headers.set('X-Seichigo-Render-Cache', state)
-  const originalSource = String(headers.get('X-Original-Source') || input?.originalSource || '').trim()
-  if (originalSource) {
-    headers.set('X-Original-Source', originalSource)
-  }
-  return new Response(response.body, { status: response.status, headers })
-}
-async function matchRenderCache(requestUrl: URL): Promise<{
-  response: Response
-  cachedOriginalSource: string | null
-} | null> {
-  const cache = getWorkerRenderCache()
-  if (!cache) return null
-  try {
-    const cached = await cache.match(buildRenderCacheKey(requestUrl))
-    if (!cached) return null
-    return {
-      response: withRenderCacheState(cached, 'HIT', {
-        originalSource: resolveRenderOriginalSource(requestUrl),
-      }),
-      cachedOriginalSource: cached.headers.get('X-Original-Source'),
-    }
-  } catch {
-    return null
-  }
-}
-async function storeRenderCache(requestUrl: URL, response: Response): Promise<Response> {
-  const cache = getWorkerRenderCache()
-  const responseWithState = withRenderCacheState(response, cache ? 'MISS' : 'BYPASS')
-  if (!cache) return responseWithState
-  try {
-    await cache.put(buildRenderCacheKey(requestUrl), responseWithState.clone())
-  } catch {
-    // Cache write failures should not block image delivery.
-  }
-  return responseWithState
 }
 function scheduleLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: string, response: Response): void {
   const bucket = deps.env?.MAP_IMAGE_CACHE
@@ -243,85 +156,6 @@ async function readBytesWithLimit(res: Response, maxBytes: number): Promise<Arra
     offset += chunk.byteLength
   }
   return buffer
-}
-
-function parseContentDispositionFilename(value: string | null): string | null {
-  if (!value) return null
-  const utf8Match = value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
-  if (utf8Match?.[1]) {
-    try {
-      const decoded = decodeURIComponent(utf8Match[1].trim().replace(/^"|"$/g, ''))
-      if (decoded) return decoded
-    } catch {
-      // noop
-    }
-  }
-
-  const plainMatch = value.match(/filename\s*=\s*"?([^";]+)"?/i)
-  if (plainMatch?.[1]) {
-    const name = plainMatch[1].trim()
-    if (name) return name
-  }
-  return null
-}
-
-function extensionFromPath(input: string | null | undefined): string | null {
-  const text = String(input || '').trim()
-  if (!text) return null
-  const match = text.match(/\.([a-zA-Z0-9]{2,6})$/)
-  if (!match?.[1]) return null
-  return `.${match[1].toLowerCase()}`
-}
-
-function extensionFromMimeType(mimeType: string | null | undefined): string {
-  const normalized = String(mimeType || '').toLowerCase()
-  if (normalized.includes('image/jpeg') || normalized.includes('image/jpg')) return '.jpg'
-  if (normalized.includes('image/png')) return '.png'
-  if (normalized.includes('image/webp')) return '.webp'
-  if (normalized.includes('image/avif')) return '.avif'
-  if (normalized.includes('image/gif')) return '.gif'
-  if (normalized.includes('image/svg+xml')) return '.svg'
-  return '.jpg'
-}
-
-function sanitizeFilenameBase(input: string | null | undefined): string {
-  const cleaned = String(input || '')
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (!cleaned) return 'anitabi-image'
-  return cleaned.slice(0, 80)
-}
-
-function trimFileExtension(input: string): string { return input.replace(/\.[a-zA-Z0-9]{2,6}$/, '') }
-
-function buildDownloadFilename(input: {
-  mimeType: string
-  pathname: string
-  hintName: string | null
-  upstreamDisposition: string | null
-}): string {
-  const fromDisposition = parseContentDispositionFilename(input.upstreamDisposition)
-  const fromPath = decodeURIComponent(input.pathname.split('/').filter(Boolean).pop() || '')
-
-  const preferred = fromDisposition || input.hintName || fromPath || 'anitabi-image'
-  const base = sanitizeFilenameBase(trimFileExtension(preferred))
-  const ext = extensionFromPath(fromDisposition) || extensionFromPath(fromPath) || extensionFromMimeType(input.mimeType)
-
-  return `${base}${ext}`
-}
-
-function buildContentDisposition(filename: string): string {
-  const safeUtf8 = filename.replace(/[\r\n]/g, '')
-  const fallbackAscii = safeUtf8
-    .normalize('NFKD')
-    .replace(/[^\x20-\x7E]/g, '_')
-    .replace(/["\\]/g, '_')
-    .trim() || 'anitabi-image.jpg'
-
-  return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encodeURIComponent(safeUtf8)}`
 }
 
 function resolveSiteHost(deps: AnitabiApiDeps): string { try { return normalizeHost(new URL(deps.getSiteBase()).hostname) } catch { return '' } }
@@ -722,8 +556,8 @@ export async function serveImageRequest(
     })
   }
   const target = parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)
-    if (!target) {
-      if (mode === 'render') {
+  if (!target) {
+    if (mode === 'render') {
       emitProxyEvent({
         stage: 'proxy_target_parse',
         outcome: 'rejected',

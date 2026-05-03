@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import type { MirrorWorkerEnv } from '../index'
 
 const {
   reclaimStaleMock,
@@ -39,12 +40,6 @@ type CronTickPrismaStub = {
   mapImageMirrorBootstrap: {
     findUnique: ReturnType<typeof vi.fn>
   }
-}
-
-type IndexEnv = {
-  MAP_IMAGE_CACHE: R2MirrorBucket
-  MAP_IMAGE_MIRROR_CRON_ENABLED: string
-  DATABASE_URL: string
 }
 
 function createBucket(): R2MirrorBucket {
@@ -340,7 +335,7 @@ describe('scheduled worker entry', () => {
         MAP_IMAGE_MIRROR_CRON_ENABLED: '0',
         DATABASE_URL: 'postgres://db',
         MAP_IMAGE_CACHE: createBucket(),
-      } as unknown as Env,
+      } as unknown as MirrorWorkerEnv,
       createCtx(),
     )
 
@@ -363,7 +358,7 @@ describe('scheduled worker entry', () => {
         MAP_IMAGE_MIRROR_CRON_ENABLED: '1',
         DATABASE_URL: 'postgres://db',
         MAP_IMAGE_CACHE: createBucket(),
-      } as unknown as Env,
+      } as unknown as MirrorWorkerEnv,
       createCtx(),
     )
 
@@ -395,7 +390,7 @@ describe('scheduled worker entry', () => {
         MAP_IMAGE_MIRROR_CRON_ENABLED: '1',
         DATABASE_URL: 'postgres://db',
         MAP_IMAGE_CACHE: bucket,
-      } as unknown as Env,
+      } as unknown as MirrorWorkerEnv,
       createCtx(),
     )
 
@@ -421,7 +416,7 @@ describe('scheduled worker entry', () => {
           MAP_IMAGE_MIRROR_CRON_ENABLED: '1',
           DATABASE_URL: 'postgres://db',
           MAP_IMAGE_CACHE: createBucket(),
-        } as unknown as Env,
+        } as unknown as MirrorWorkerEnv,
         createCtx(),
       ),
     ).rejects.toThrow('tick exploded')
