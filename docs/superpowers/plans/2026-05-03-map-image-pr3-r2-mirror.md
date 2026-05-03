@@ -1744,6 +1744,8 @@ git commit -m "feat(diag): emit image_cache_state on all imageServe terminal pat
 ### Task 3.1: Scaffold `workers/anitabi-mirror/`
 
 **Files:**
+- Modify: `package.json`
+- Modify: `package-lock.json`
 - Create: `workers/anitabi-mirror/wrangler.jsonc`
 - Create: `workers/anitabi-mirror/package.json`
 - Create: `workers/anitabi-mirror/scripts/build.mjs`
@@ -1805,7 +1807,7 @@ Create `workers/anitabi-mirror/package.json`:
 }
 ```
 
-Keep the nested worker package dependency-light and resolve Prisma packages from the repo root. Before Task 3.7 wires the runtime entrypoint, add `@prisma/pg-worker` to the root `package.json` dependencies alongside the existing Prisma packages (`@prisma/adapter-pg`, `@prisma/client`, `prisma`) and run `npm install` from `/Users/mac/Desktop/seichigo`. Match the repo's Prisma version family (currently `^6.16.0`) so `workers/anitabi-mirror/src/index.ts` can import `@prisma/pg-worker` via upward Node resolution without creating a separate `workers/anitabi-mirror/node_modules` tree.
+Keep the nested worker package dependency-light and resolve Prisma packages from the repo root. Before Task 3.7 wires the runtime entrypoint, add `@prisma/pg-worker` to the root `dependencies` next to `@prisma/adapter-pg` and `@prisma/client`, then run `npm install` from `/Users/mac/Desktop/seichigo`. Use `prisma` only as the version-family reference (currently `^6.16.0`) because it lives in `devDependencies`, so `workers/anitabi-mirror/src/index.ts` can import `@prisma/pg-worker` via upward Node resolution without creating a separate `workers/anitabi-mirror/node_modules` tree.
 
 Create `workers/anitabi-mirror/scripts/build.mjs`:
 ```js
@@ -1952,7 +1954,7 @@ Expected: `worker-configuration.d.ts` is generated; the root `package.json` incl
 
 ```bash
 cd /Users/mac/Desktop/seichigo
-git add workers/anitabi-mirror
+git add package.json package-lock.json workers/anitabi-mirror
 git commit -m "Package Prisma WASM before deploying the mirror worker" \
   -m "The worker scaffold includes a build step that verifies the resolved Prisma WASM module chain before Wrangler deploy so the cron entrypoint matches the actual package resolution path used by @prisma/client/wasm." \
   -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine and the raw worker entrypoint must get @prisma/pg-worker from the repo-root Prisma install" \
