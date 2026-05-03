@@ -1809,16 +1809,9 @@ Create `workers/anitabi-mirror/scripts/build.mjs`:
 ```js
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 
-const repoRoot = path.resolve(import.meta.dirname, '../../..')
-const prismaClientDir = path.join(repoRoot, 'node_modules', '.prisma', 'client')
-const wasmFile = 'query_compiler_bg.wasm'
-const indexPath = path.join(prismaClientDir, 'index.js')
-const wasmPath = path.join(prismaClientDir, wasmFile)
-const annotationLines = [
-  `path.join(__dirname, "${wasmFile}");`,
-  `path.join(process.cwd(), "node_modules/.prisma/client/${wasmFile}")`,
-]
+const require = createRequire(import.meta.url)
 
 async function assertExists(target, label) {
   try {
@@ -1829,19 +1822,30 @@ async function assertExists(target, label) {
 }
 
 async function main() {
-  await assertExists(prismaClientDir, 'Prisma generated client directory')
-  await assertExists(indexPath, 'Prisma generated client index')
-  await assertExists(wasmPath, 'Prisma query compiler WASM')
+  const prismaWasmEntrypoint = require.resolve('@prisma/client/wasm')
+  const prismaClientDir = path.resolve(path.dirname(prismaWasmEntrypoint), '../../.prisma/client')
+  const generatedWasmClientPath = path.join(prismaClientDir, 'wasm.js')
+  const wasmWorkerLoaderPath = path.join(prismaClientDir, 'wasm-worker-loader.mjs')
+  const queryCompilerWasmPath = path.join(prismaClientDir, 'query_compiler_bg.wasm')
 
-  const indexSource = await fs.readFile(indexPath, 'utf8')
-  const missingLines = annotationLines.filter((line) => !indexSource.includes(line))
-  if (missingLines.length === 0) {
-    console.log('[mirror-build] Prisma WASM asset hints already present')
-    return
+  await assertExists(prismaWasmEntrypoint, '@prisma/client/wasm entrypoint')
+  await assertExists(generatedWasmClientPath, 'Prisma generated wasm client')
+  await assertExists(wasmWorkerLoaderPath, 'Prisma wasm worker loader')
+  await assertExists(queryCompilerWasmPath, 'Prisma query compiler WASM')
+
+  const loaderSource = await fs.readFile(wasmWorkerLoaderPath, 'utf8')
+  if (!loaderSource.includes("import('./query_compiler_bg.wasm')")) {
+    throw new Error(
+      `Prisma wasm worker loader does not import ./query_compiler_bg.wasm: ${wasmWorkerLoaderPath}`,
+    )
   }
 
-  await fs.writeFile(indexPath, `${indexSource}\n${missingLines.join('\n')}\n`)
-  console.log('[mirror-build] Added Prisma WASM asset hints to repo-root generated client')
+  console.log('[mirror-build] verified Prisma wasm resolution chain', {
+    prismaWasmEntrypoint,
+    generatedWasmClientPath,
+    wasmWorkerLoaderPath,
+    queryCompilerWasmPath,
+  })
 }
 
 main().catch((error) => {
@@ -1850,7 +1854,7 @@ main().catch((error) => {
 })
 ```
 
-This worker does **not** add a worker-local Prisma install. It imports `@prisma/client/wasm` from the repo-root install, so the build script must patch the **actual resolved generated client** at `node_modules/.prisma/client`. Fail fast if `prisma generate` has not run; a silent no-op would ship a broken cron worker.
+This worker does **not** add a worker-local Prisma install. It imports `@prisma/client/wasm` from the repo install that Node actually resolves from `workers/anitabi-mirror/scripts/build.mjs`, so the build script must verify the real module chain that Wrangler bundles: `@prisma/client/wasm` -> `.prisma/client/wasm.js` -> `.prisma/client/wasm-worker-loader.mjs` -> `query_compiler_bg.wasm`. Fail fast if `prisma generate` has not run, if the resolution lands somewhere unexpected, or if Prisma changes the loader import away from `./query_compiler_bg.wasm`; a silent no-op would ship a broken cron worker. Do **not** patch a fake worker-local client or `node_modules/.prisma/client/index.js` unless a future upstream Prisma change leaves no narrower fallback.
 
 Create `workers/anitabi-mirror/tsconfig.json`:
 ```json
@@ -1907,18 +1911,37 @@ Build + deploy from repo root:
 `cd workers/anitabi-mirror && npm run deploy`
 ```
 
-- [ ] **Step 5: Verify generated types, Prisma WASM hints, and Wrangler packaging**
+- [ ] **Step 5: Verify generated types, resolved Prisma WASM chain, and Wrangler packaging**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror && npm run typegen
 cd /Users/mac/Desktop/seichigo
 node workers/anitabi-mirror/scripts/build.mjs
-test -f node_modules/.prisma/client/query_compiler_bg.wasm
-rg -n 'path\\.join\\(__dirname, "query_compiler_bg\\.wasm"\\)|node_modules/\\.prisma/client/query_compiler_bg.wasm' node_modules/.prisma/client/index.js
+node --input-type=module <<'EOF'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+
+const require = createRequire(process.cwd() + '/workers/anitabi-mirror/scripts/build.mjs')
+const prismaWasmEntrypoint = require.resolve('@prisma/client/wasm')
+const wasmWorkerLoaderPath = path.resolve(path.dirname(prismaWasmEntrypoint), '../../.prisma/client/wasm-worker-loader.mjs')
+const queryCompilerWasmPath = path.join(path.dirname(wasmWorkerLoaderPath), 'query_compiler_bg.wasm')
+
+console.log({ prismaWasmEntrypoint, wasmWorkerLoaderPath, queryCompilerWasmPath })
+EOF
+loader_path=$(node --input-type=module <<'EOF'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+
+const require = createRequire(process.cwd() + '/workers/anitabi-mirror/scripts/build.mjs')
+const prismaWasmEntrypoint = require.resolve('@prisma/client/wasm')
+process.stdout.write(path.resolve(path.dirname(prismaWasmEntrypoint), '../../.prisma/client/wasm-worker-loader.mjs'))
+EOF
+)
+rg -n "export default import\\('./query_compiler_bg\\.wasm'\\)" "$loader_path"
 cd workers/anitabi-mirror && npm run deploy -- --dry-run 2>&1 | tail -20
 ```
 
-Expected: `worker-configuration.d.ts` is generated; the repo-root Prisma client contains `query_compiler_bg.wasm`; `node_modules/.prisma/client/index.js` contains the asset-hint lines; and the deploy dry-run succeeds with no syntax errors.
+Expected: `worker-configuration.d.ts` is generated; the build script prints the resolved `@prisma/client/wasm` entry, `wasm-worker-loader.mjs`, and `query_compiler_bg.wasm` paths; the resolved loader imports `./query_compiler_bg.wasm`; and the deploy dry-run succeeds with no syntax errors.
 
 - [ ] **Step 6: Commit**
 
@@ -1926,13 +1949,13 @@ Expected: `worker-configuration.d.ts` is generated; the repo-root Prisma client 
 cd /Users/mac/Desktop/seichigo
 git add workers/anitabi-mirror
 git commit -m "Package Prisma WASM before deploying the mirror worker" \
-  -m "The worker scaffold includes a build step that patches the repo-root generated Prisma client before Wrangler deploy so the cron entrypoint matches the package resolution path used by @prisma/client/wasm." \
+  -m "The worker scaffold includes a build step that verifies the resolved Prisma WASM module chain before Wrangler deploy so the cron entrypoint matches the actual package resolution path used by @prisma/client/wasm." \
   -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine" \
   -m "Rejected: Add a worker-local Prisma install | unnecessary duplicate package surface for a single worker" \
   -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node workers/anitabi-mirror/scripts/build.mjs; test -f node_modules/.prisma/client/query_compiler_bg.wasm; rg -n 'query_compiler_bg.wasm' node_modules/.prisma/client/index.js; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
+  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node workers/anitabi-mirror/scripts/build.mjs; node --input-type=module <resolved-path-check>; rg -n \"export default import('./query_compiler_bg.wasm')\" <resolved-loader-path>; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
   -m "Not-tested: production cron execution"
 ```
 
