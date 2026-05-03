@@ -2163,8 +2163,7 @@ Create `workers/anitabi-mirror/wrangler.jsonc`:
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
     "crons": [
-      "*/5 * * * *",
-      "0 * * * *"
+      "*/5 * * * *"
     ]
   },
   "vars": {
@@ -2179,7 +2178,7 @@ Create `workers/anitabi-mirror/wrangler.jsonc`:
 }
 ```
 
-The `*/5 * * * *` runs the seed every 5 min; the `0 * * * *` runs delta hourly. The handler dispatches based on schedule string.
+The single `*/5 * * * *` schedule fires every five minutes. The handler derives mode from `event.scheduledTime`: run delta when the scheduled minute is `0`, otherwise run seed. This closes the prior hour-mark race from separate cron strings within a single scheduled invocation without claiming process-global serialization beyond that invocation.
 
 - [ ] **Step 2: package.json + tsconfig**
 
@@ -2287,12 +2286,11 @@ export default {
       console.log('[mirror] cron disabled by flag')
       return
     }
-    console.log(`[mirror] tick: cron=${event.cron} scheduledTime=${event.scheduledTime}`)
-    if (event.cron === '0 * * * *') {
-      // delta cron path (placeholder; implemented in Task 3.5)
-    } else {
-      // 5-min seed cron path (placeholder; implemented in Tasks 3.2-3.4)
-    }
+    const now = new Date(event.scheduledTime)
+    const isHourMark = now.getMinutes() === 0
+    const mode: 'seed' | 'delta' = isHourMark ? 'delta' : 'seed'
+    console.log(`[mirror] tick: scheduledTime=${event.scheduledTime} mode=${mode}`)
+    // Placeholder only; Task 3.7 wires cronTick(deps, mode).
   },
 }
 ```
@@ -2757,6 +2755,8 @@ describe('processSeedBatch', () => {
 
 - [ ] **Step 3: Implement**
 
+Seed runs on the shared five-minute schedule only when the scheduled minute is not `0`. Delta no longer arrives via a separate cron invocation in the same worker process at the hour mark, so this task should not assume an in-process seed/delta race from two cron strings.
+
 Create `workers/anitabi-mirror/src/seed.ts`:
 ```ts
 import type { PrismaClient } from '@prisma/client'
@@ -2883,6 +2883,8 @@ describe('cronDelta', () => {
 - [ ] **Step 2: Run — expect fail**
 
 - [ ] **Step 3: Implement**
+
+Delta now runs from the same `*/5` schedule only when `event.scheduledTime` lands on minute `0`. That closes the previous hour-mark race against a separate seed cron within one scheduled invocation, but does not imply broader serialization across independent invocations.
 
 Create `workers/anitabi-mirror/src/delta.ts`:
 ```ts
@@ -3191,6 +3193,8 @@ If keeping worker-local compatibility files is useful, they must be thin re-expo
 
 - [ ] **Step 4: Update `src/index.ts` to wire it**
 
+Use the single `*/5` trigger from Task 3.1 and derive `mode` from `event.scheduledTime`, then call `cronTick(deps, mode)` exactly once per scheduled invocation. That closes the hour-mark race from separate cron dispatches within one invocation, but do not overstate this as process-global serialization across all runtime instances.
+
 ```ts
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client/wasm'
@@ -3209,6 +3213,9 @@ export default {
       console.log('[mirror] cron disabled by flag')
       return
     }
+    const now = new Date(event.scheduledTime)
+    const isHourMark = now.getMinutes() === 0
+    const mode: 'seed' | 'delta' = isHourMark ? 'delta' : 'seed'
     const pool = new Pool({
       connectionString: env.DATABASE_URL,
       max: 4,
@@ -3222,13 +3229,10 @@ export default {
         env,
         source: 'cron',
       }
-      if (event.cron === '0 * * * *') {
-        const result = await cronTick(deps, 'delta')
-        console.log(`[mirror] delta tick reclaimed=${result.reclaimed} processed=${result.processed} throttled=${result.throttled}`)
-      } else {
-        const result = await cronTick(deps, 'seed')
-        console.log(`[mirror] seed tick reclaimed=${result.reclaimed} processed=${result.processed} throttled=${result.throttled}`)
-      }
+      const result = await cronTick(deps, mode)
+      console.log(
+        `[mirror] ${mode} tick scheduledTime=${event.scheduledTime} reclaimed=${result.reclaimed} processed=${result.processed} throttled=${result.throttled}`,
+      )
     } catch (err) {
       console.error('[mirror] tick failed', err)
     } finally {
@@ -3239,7 +3243,7 @@ export default {
 }
 ```
 
-Keep `@prisma/client/wasm` and do **not** add `datasources` here. The main Next.js app can continue to use its existing repo-style adapter configuration on Node, but this raw mirror Worker must use the Workers-compatible `@prisma/pg-worker` transport. `new PrismaPg({ ...plain options... })` is not acceptable for the Worker because it resolves `@prisma/adapter-pg`'s local Node `pg` transport instead of the Workers-safe pool. Keep the mirror pool bounded (`max: 4`) so hourly/5-minute cron overlap does not monopolize shared Postgres connections.
+Keep `@prisma/client/wasm` and do **not** add `datasources` here. The main Next.js app can continue to use its existing repo-style adapter configuration on Node, but this raw mirror Worker must use the Workers-compatible `@prisma/pg-worker` transport. `new PrismaPg({ ...plain options... })` is not acceptable for the Worker because it resolves `@prisma/adapter-pg`'s local Node `pg` transport instead of the Workers-safe pool. Keep the mirror pool bounded (`max: 4`) so mirror cron work stays within a small Postgres budget even if separate scheduled invocations or the main worker overlap at runtime.
 
 - [ ] **Step 5: Run tests**
 
