@@ -996,7 +996,9 @@ git commit -m "Document PR3 diag stage naming before R2 telemetry rollout" \
 
 **Files:**
 - Modify: `lib/anitabi/sync/diff.ts`
+- Modify: `lib/anitabi/handlers/adminDiff.ts`
 - Test: `tests/anitabi/diff.urlChanges.test.ts`
+- Test: `tests/anitabi/diff.test.ts` (update existing caller-shape coverage if needed)
 
 - [ ] **Step 1: Read current types in `lib/anitabi/sync/diff.ts`** to confirm `AnitabiSyncDiffSummary` shape.
 
@@ -1008,27 +1010,27 @@ import { describe, it, expect } from 'vitest'
 import { buildAnitabiSyncDiffSummary } from '@/lib/anitabi/sync/diff'
 
 describe('buildAnitabiSyncDiffSummary — URL change tuples', () => {
-  it('emits bangumiCoverChanges when cover URL changed', () => {
+  it('emits bangumiChanges when cover URL changed', () => {
     const summary = buildAnitabiSyncDiffSummary({
       sourceBangumi: [{ id: 1, title: 'A', sourceModifiedMs: 2, cover: 'https://image.anitabi.cn/new.jpg' }],
       localBangumi: [{ id: 1, title: 'A', sourceModifiedMs: BigInt(1), expectedPoints: 0, importedPoints: 0, cover: 'https://image.anitabi.cn/old.jpg' }],
       sourcePoints: [],
       localPoints: [],
     })
-    expect(summary.urlChanges.bangumiCovers).toEqual([
-      { id: 1, oldValue: 'https://image.anitabi.cn/old.jpg', newValue: 'https://image.anitabi.cn/new.jpg' },
+    expect(summary.urlChanges.bangumiChanges).toEqual([
+      { id: 1, field: 'cover', oldValue: 'https://image.anitabi.cn/old.jpg', newValue: 'https://image.anitabi.cn/new.jpg' },
     ])
   })
 
-  it('emits pointImageChanges when point image URL changed', () => {
+  it('emits pointChanges when point image URL changed', () => {
     const summary = buildAnitabiSyncDiffSummary({
       sourceBangumi: [],
       localBangumi: [],
       sourcePoints: [{ id: 'p1', image: 'https://image.anitabi.cn/p/new.jpg' }],
       localPoints: [{ id: 'p1', image: 'https://image.anitabi.cn/p/old.jpg' }],
     })
-    expect(summary.urlChanges.pointImages).toEqual([
-      { id: 'p1', oldValue: 'https://image.anitabi.cn/p/old.jpg', newValue: 'https://image.anitabi.cn/p/new.jpg' },
+    expect(summary.urlChanges.pointChanges).toEqual([
+      { id: 'p1', field: 'image', oldValue: 'https://image.anitabi.cn/p/old.jpg', newValue: 'https://image.anitabi.cn/p/new.jpg' },
     ])
   })
 
@@ -1039,7 +1041,7 @@ describe('buildAnitabiSyncDiffSummary — URL change tuples', () => {
       sourcePoints: [],
       localPoints: [],
     })
-    expect(summary.urlChanges.bangumiCovers).toEqual([])
+    expect(summary.urlChanges.bangumiChanges).toEqual([])
   })
 })
 ```
@@ -1050,12 +1052,25 @@ describe('buildAnitabiSyncDiffSummary — URL change tuples', () => {
 
 In `lib/anitabi/sync/diff.ts`:
 
-(a) Extend `SourceBangumiSnapshot` and `LocalBangumiSnapshot` to carry `cover: string | null`. Extend `SourcePointSnapshot`/`LocalPointSnapshot` to carry `image: string | null`. Update callers to pass these (search: `buildAnitabiSyncDiffSummary(`).
+(a) Extend `SourceBangumiSnapshot` and `LocalBangumiSnapshot` to carry `cover: string | null`. Add `SourcePointSnapshot`/`LocalPointSnapshot` with `id: string` and `image: string | null`. Update `buildAnitabiSyncDiffSummary` to accept a single object input:
+
+```ts
+buildAnitabiSyncDiffSummary({
+  sourceBangumi,
+  localBangumi,
+  sourcePoints,
+  localPoints,
+  sampleLimit,
+})
+```
+
+Update all callers and existing diff tests when changing this signature (search: `buildAnitabiSyncDiffSummary(`).
 
 (b) Extend `AnitabiSyncDiffSummary`:
 ```ts
-export type AnitabiUrlChange<TId> = {
+export type AnitabiUrlChange<TId, TField extends string> = {
   id: TId
+  field: TField
   oldValue: string | null
   newValue: string
 }
@@ -1063,13 +1078,24 @@ export type AnitabiUrlChange<TId> = {
 export type AnitabiSyncDiffSummary = {
   // ... existing fields ...
   urlChanges: {
-    bangumiCovers: AnitabiUrlChange<number>[]
-    pointImages: AnitabiUrlChange<string>[]
+    bangumiChanges: AnitabiUrlChange<number, 'cover'>[]
+    pointChanges: AnitabiUrlChange<string, 'image'>[]
   }
 }
 ```
 
-(c) In the diff builder, when an entity is identified as `modified`, compare `cover` (or `image`) old vs. new and append to the appropriate `urlChanges` array if non-equal and `newValue` is non-empty.
+(c) In the diff builder, when an entity is identified as `modified`, compare `cover` (or `image`) old vs. new and append to the appropriate `urlChanges` array if non-equal and `newValue` is non-empty. The emitted shape must match Task 5.1's `SyncDiffSummary` contract: `{ id, field, oldValue, newValue }`.
+
+(d) In `lib/anitabi/handlers/adminDiff.ts`, pass real URL fields into the diff builder:
+
+- Include `cover: true` in the local `anitabiBangumi.findMany` select.
+- Add `cover: normalizeText(row?.cover) || null` to source bangumi snapshots.
+- Add `cover: row.cover ?? null` to local bangumi snapshots.
+- Fetch local point snapshots with `deps.prisma.anitabiPoint.findMany({ select: { id: true, image: true } })`.
+- Fetch source point snapshots for the changed/missing bangumi candidates by calling `${deps.getApiBase()}/bangumi/${id}/points/detail` and normalizing each raw point to `{ id: \`${bangumiId}:${rawPointId}\`, image }`, matching `normalizePoints()`/`scopedPointId()` behavior in `lib/anitabi/source/normalize.ts`.
+- Pass `sourcePoints` and `localPoints` to `buildAnitabiSyncDiffSummary`.
+
+Do not make `reconcileMirrorAfterDiff` rediscover old/new URLs; `adminDiff` and `buildAnitabiSyncDiffSummary` own that diff responsibility.
 
 - [ ] **Step 5: Run — expect PASS**
 
@@ -1083,17 +1109,23 @@ npm test -- --run tests/anitabi/diff.urlChanges.test.ts
 npm test -- --run tests/anitabi/diff.test.ts
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Run typecheck for caller/signature coverage**
 
 ```bash
-git add lib/anitabi/sync/diff.ts tests/anitabi/diff.urlChanges.test.ts
+npm run typecheck:app
+```
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/anitabi/sync/diff.ts lib/anitabi/handlers/adminDiff.ts tests/anitabi/diff.test.ts tests/anitabi/diff.urlChanges.test.ts
 git commit -m "Surface URL-change tuples before PR3 mirror reconcile logic" \
   -m "Task 5.1 relies on old/new cover and point image tuples, so the sync diff summary now emits structured URL changes instead of forcing reconcile logic to rediscover them." \
   -m "Constraint: AnitabiSyncDiffSummary previously exposed counts and ID-only sample arrays" \
   -m "Rejected: Compute URL tuples inside reconcileMirrorAfterDiff | it would duplicate diff responsibility and leave Phase 5 under-specified" \
   -m "Confidence: high" \
-  -m "Scope-risk: narrow" \
-  -m "Tested: npm test -- --run tests/anitabi/diff.urlChanges.test.ts; npm test -- --run tests/anitabi/diff.test.ts" \
+  -m "Scope-risk: moderate" \
+  -m "Tested: npm test -- --run tests/anitabi/diff.urlChanges.test.ts; npm test -- --run tests/anitabi/diff.test.ts; npm run typecheck:app" \
   -m "Not-tested: full application test suite"
 ```
 
