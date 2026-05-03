@@ -19,6 +19,13 @@ function routeError(err: unknown) {
 
   const message = String((err as { message?: unknown } | null)?.message || '')
   if (
+    message.includes('MAP_IMAGE_CACHE is not configured')
+    || message.includes('mirror bucket is not configured')
+  ) {
+    return NextResponse.json({ error: 'R2 缓存桶未配置' }, { status: 503 })
+  }
+
+  if (
     message.includes('Environment variable not found')
     && message.includes('DATABASE_URL')
   ) {

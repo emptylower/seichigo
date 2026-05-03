@@ -50,11 +50,13 @@ function invalidJsonReq(url: string): Request {
 
 describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
   const bucket = createBucket()
+  const originalProcessBucket = process.env.MAP_IMAGE_CACHE
 
   beforeEach(() => {
     vi.resetAllMocks()
     vi.restoreAllMocks()
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    delete process.env.MAP_IMAGE_CACHE
 
     mocks.getAnitabiApiDeps.mockResolvedValue({
       prisma: mocks.prisma,
@@ -95,6 +97,11 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
 
   afterEach(() => {
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
+    if (originalProcessBucket === undefined) {
+      delete process.env.MAP_IMAGE_CACHE
+    } else {
+      process.env.MAP_IMAGE_CACHE = originalProcessBucket
+    }
   })
 
   it('rejects non-admin', async () => {
@@ -250,5 +257,22 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
 
     expect(res.status).toBe(503)
     await expect(res.json()).resolves.toEqual({ error: '数据库未配置' })
+  })
+
+  it('maps missing mirror bucket config to 503 without running cronTick', async () => {
+    delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
+    delete process.env.MAP_IMAGE_CACHE
+    mocks.getAnitabiApiDeps.mockResolvedValue({
+      prisma: mocks.prisma,
+      getSession: () => mocks.getSession(),
+      env: undefined,
+    })
+
+    const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
+    const res = await handlers.POST(jsonReq('http://localhost/api/admin/anitabi/image-mirror/bootstrap'))
+
+    expect(res.status).toBe(503)
+    await expect(res.json()).resolves.toEqual({ error: 'R2 缓存桶未配置' })
+    expect(mocks.cronTick).not.toHaveBeenCalled()
   })
 })
