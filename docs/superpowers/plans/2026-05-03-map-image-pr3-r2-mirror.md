@@ -2722,10 +2722,21 @@ git commit -m "feat(mirror): cronTick orchestrator + scheduled entry wiring"
 import { describe, it, expect, vi } from 'vitest'
 import { POST } from '@/app/api/admin/anitabi/image-mirror/bootstrap/route'
 
+const cronTick = vi.fn().mockResolvedValue({ reclaimed: 0, processed: 1, throttled: false })
 vi.mock('@/lib/anitabi/api', () => ({
-  getAnitabiApiDeps: vi.fn().mockResolvedValue({ prisma: { mapImageMirrorBootstrap: { findUnique: vi.fn().mockResolvedValue(null) } } }),
+  getAnitabiApiDeps: vi.fn().mockResolvedValue({
+    prisma: {
+      mapImageMirrorBootstrap: {
+        findUnique: vi.fn().mockResolvedValue({ bangumiCompleted: false, pointCompleted: false }),
+      },
+      mapImageMirrorState: {
+        groupBy: vi.fn().mockResolvedValue([{ status: 'pending', _count: { _all: 1 } }]),
+      },
+    },
+  }),
 }))
 vi.mock('@/lib/auth/session', () => ({ getServerAuthSession: vi.fn().mockResolvedValue({ user: { isAdmin: true } }) }))
+vi.mock('@/workers/anitabi-mirror/src/cronTick', () => ({ cronTick }))
 
 describe('POST /bootstrap', () => {
   it('rejects non-admin', async () => {
@@ -2768,7 +2779,7 @@ const FORCE_COMPLETE_BUDGET_MS = 25_000
 export async function POST(req: Request) {
   const session = await getServerAuthSession()
   if (!session?.user?.isAdmin) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   let body: { mode?: 'advance' | 'force-complete' } = {}
   try {
@@ -2888,7 +2899,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 export async function GET(req: Request) {
   const session = await getServerAuthSession()
   if (!session?.user?.isAdmin) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const deps = await getAnitabiApiDeps()
   const counts = await deps.prisma.mapImageMirrorState.groupBy({
