@@ -1586,7 +1586,7 @@ describe('imageServe — R2 fallback on upstream failure', () => {
       'https://www.seichigo.com/api/anitabi/image-render?url=' +
         encodeURIComponent('https://image.anitabi.cn/slow.jpg'),
     )
-    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    const res = await serveImageRequest(req, buildFakeDeps(), 'render')
     expect(res.status).toBe(200)
     expect(res.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
   })
@@ -1606,7 +1606,7 @@ describe('imageServe — R2 fallback on upstream failure', () => {
       'https://www.seichigo.com/api/anitabi/image-render?url=' +
         encodeURIComponent('https://image.anitabi.cn/never-mirrored.jpg'),
     )
-    const res = await serveImageRequest(req, buildFakeDeps({ bucket }), 'render')
+    const res = await serveImageRequest(req, buildFakeDeps(), 'render')
     expect(res.status).toBe(502)
   })
 })
@@ -1656,11 +1656,33 @@ Use the same `getCfBindings()`-derived env access pattern here as in Task 2.2/2.
 npm test -- --run tests/anitabi/imageServe.r2.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify the binding-access rewrite stayed clean**
+
+Run:
+```bash
+! rg -n "globalThis as any.*cloudflare|globalThis\\.cloudflare|@cloudflare/next-on-pages|waitUntilCtx|\\(process\\.env as any\\)\\.MAP_IMAGE_CACHE" \
+  lib/anitabi tests/anitabi
+# Expected: no output; `rg` exits 1 here because forbidden raw binding patterns are gone.
+
+rg --files lib/anitabi/cf | rg '^lib/anitabi/cf/bindings\\.ts$'
+rg -n "getCfBindings|__openNextAls" \
+  lib/anitabi/cf/bindings.ts \
+  lib/anitabi/handlers/imageServe.ts \
+  tests/anitabi/imageServe.r2.test.ts
+# Expected: helper file exists, and helper/test wiring matches `getCfBindings` + `__openNextAls`.
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts
-git commit -m "feat(map): R2 fallback when upstream times out / 5xx"
+git commit -m "Preserve map-image availability when upstream fetches fail" \
+  --trailer "Constraint: Binding access must stay on getCfBindings/__openNextAls without raw Cloudflare globals or process-env fallbacks" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/imageServe.r2.test.ts" \
+  --trailer "Tested: ! rg -n \"globalThis as any.*cloudflare|globalThis\\.cloudflare|@cloudflare/next-on-pages|waitUntilCtx|\\(process\\.env as any\\)\\.MAP_IMAGE_CACHE\" lib/anitabi tests/anitabi" \
+  --trailer "Tested: rg --files lib/anitabi/cf | rg '^lib/anitabi/cf/bindings\\.ts$' && rg -n \"getCfBindings|__openNextAls\" lib/anitabi/cf/bindings.ts lib/anitabi/handlers/imageServe.ts tests/anitabi/imageServe.r2.test.ts"
 ```
 
 ---
