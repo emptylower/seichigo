@@ -1748,6 +1748,7 @@ git commit -m "feat(diag): emit image_cache_state on all imageServe terminal pat
 - Create: `workers/anitabi-mirror/package.json`
 - Create: `workers/anitabi-mirror/scripts/build.mjs`
 - Create: `workers/anitabi-mirror/tsconfig.json`
+- Create: `workers/anitabi-mirror/worker-configuration.d.ts` (generated via `wrangler types`)
 - Create: `workers/anitabi-mirror/src/index.ts` (skeleton scheduled handler)
 - Create: `workers/anitabi-mirror/README.md`
 
@@ -1810,49 +1811,37 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..')
-const sourceDir = path.join(repoRoot, 'node_modules', '.prisma', 'client')
-const workerClientDir = path.join(repoRoot, 'workers', 'anitabi-mirror', 'node_modules', '.prisma', 'client')
-const wasmFiles = ['query_compiler_bg.wasm']
+const prismaClientDir = path.join(repoRoot, 'node_modules', '.prisma', 'client')
+const wasmFile = 'query_compiler_bg.wasm'
+const indexPath = path.join(prismaClientDir, 'index.js')
+const wasmPath = path.join(prismaClientDir, wasmFile)
+const annotationLines = [
+  `path.join(__dirname, "${wasmFile}");`,
+  `path.join(process.cwd(), "node_modules/.prisma/client/${wasmFile}")`,
+]
 
-async function pathExists(target) {
+async function assertExists(target, label) {
   try {
     await fs.access(target)
-    return true
   } catch {
-    return false
+    throw new Error(`${label} not found: ${target}. Run \`npm run db:generate\` from the repo root first.`)
   }
-}
-
-async function copyWasmFiles(targetDir) {
-  await fs.mkdir(targetDir, { recursive: true })
-
-  for (const file of wasmFiles) {
-    const source = path.join(sourceDir, file)
-    if (!(await pathExists(source))) continue
-    await fs.copyFile(source, path.join(targetDir, file))
-  }
-}
-
-async function annotateWasmFiles(targetDir) {
-  const indexPath = path.join(targetDir, 'index.js')
-  if (!(await pathExists(indexPath))) return
-
-  let indexSource = await fs.readFile(indexPath, 'utf8')
-  const annotationLines = wasmFiles.flatMap((file) => [
-    `path.join(__dirname, "${file}");`,
-    `path.join(process.cwd(), "node_modules/.prisma/client/${file}")`,
-  ])
-
-  const missingLines = annotationLines.filter((line) => !indexSource.includes(line))
-  if (missingLines.length === 0) return
-
-  indexSource = `${indexSource}\n${missingLines.join('\n')}\n`
-  await fs.writeFile(indexPath, indexSource)
 }
 
 async function main() {
-  await copyWasmFiles(workerClientDir)
-  await annotateWasmFiles(workerClientDir)
+  await assertExists(prismaClientDir, 'Prisma generated client directory')
+  await assertExists(indexPath, 'Prisma generated client index')
+  await assertExists(wasmPath, 'Prisma query compiler WASM')
+
+  const indexSource = await fs.readFile(indexPath, 'utf8')
+  const missingLines = annotationLines.filter((line) => !indexSource.includes(line))
+  if (missingLines.length === 0) {
+    console.log('[mirror-build] Prisma WASM asset hints already present')
+    return
+  }
+
+  await fs.writeFile(indexPath, `${indexSource}\n${missingLines.join('\n')}\n`)
+  console.log('[mirror-build] Added Prisma WASM asset hints to repo-root generated client')
 }
 
 main().catch((error) => {
@@ -1861,7 +1850,7 @@ main().catch((error) => {
 })
 ```
 
-This mirrors the repo-root `scripts/copy-prisma-wasm.mjs` flow for the mirror worker bundle: copy `query_compiler_bg.wasm` into the worker-local `.prisma/client` directory and annotate `index.js` so Wrangler packages the WASM asset for Workers.
+This worker does **not** add a worker-local Prisma install. It imports `@prisma/client/wasm` from the repo-root install, so the build script must patch the **actual resolved generated client** at `node_modules/.prisma/client`. Fail fast if `prisma generate` has not run; a silent no-op would ship a broken cron worker.
 
 Create `workers/anitabi-mirror/tsconfig.json`:
 ```json
@@ -1870,10 +1859,9 @@ Create `workers/anitabi-mirror/tsconfig.json`:
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist",
-    "noEmit": true,
-    "types": ["@cloudflare/workers-types"]
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["worker-configuration.d.ts", "src/**/*.ts"]
 }
 ```
 
@@ -1914,20 +1902,23 @@ Spec: docs/superpowers/specs/2026-05-03-map-image-pr3-r2-mirror-design.md
 
 Build + deploy from repo root:
 
-`node workers/anitabi-mirror/scripts/build.mjs`
+`cd workers/anitabi-mirror && npm run typegen`
 
-`cd workers/anitabi-mirror && wrangler deploy`
+`cd workers/anitabi-mirror && npm run deploy`
 ```
 
-- [ ] **Step 5: Verify wrangler accepts the config**
+- [ ] **Step 5: Verify generated types, Prisma WASM hints, and Wrangler packaging**
 
 ```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror && npm run typegen
 cd /Users/mac/Desktop/seichigo
 node workers/anitabi-mirror/scripts/build.mjs
-cd workers/anitabi-mirror && wrangler deploy --dry-run 2>&1 | tail -20
+test -f node_modules/.prisma/client/query_compiler_bg.wasm
+rg -n 'path\\.join\\(__dirname, "query_compiler_bg\\.wasm"\\)|node_modules/\\.prisma/client/query_compiler_bg.wasm' node_modules/.prisma/client/index.js
+cd workers/anitabi-mirror && npm run deploy -- --dry-run 2>&1 | tail -20
 ```
 
-Expected: dry-run succeeds; no syntax errors.
+Expected: `worker-configuration.d.ts` is generated; the repo-root Prisma client contains `query_compiler_bg.wasm`; `node_modules/.prisma/client/index.js` contains the asset-hint lines; and the deploy dry-run succeeds with no syntax errors.
 
 - [ ] **Step 6: Commit**
 
@@ -1935,12 +1926,13 @@ Expected: dry-run succeeds; no syntax errors.
 cd /Users/mac/Desktop/seichigo
 git add workers/anitabi-mirror
 git commit -m "Package Prisma WASM before deploying the mirror worker" \
-  -m "The worker scaffold includes a build step that copies and annotates Prisma WASM assets before Wrangler deploy so the cron entrypoint matches the Cloudflare runtime packaging used elsewhere in the repo." \
+  -m "The worker scaffold includes a build step that patches the repo-root generated Prisma client before Wrangler deploy so the cron entrypoint matches the package resolution path used by @prisma/client/wasm." \
   -m "Constraint: Cloudflare Workers cannot run Prisma's Rust query engine" \
+  -m "Rejected: Add a worker-local Prisma install | unnecessary duplicate package surface for a single worker" \
   -m "Rejected: Deploy directly with wrangler only | the worker bundle would miss Prisma's WASM query compiler" \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
-  -m "Tested: node workers/anitabi-mirror/scripts/build.mjs; cd workers/anitabi-mirror && wrangler deploy --dry-run" \
+  -m "Tested: cd workers/anitabi-mirror && npm run typegen; node workers/anitabi-mirror/scripts/build.mjs; test -f node_modules/.prisma/client/query_compiler_bg.wasm; rg -n 'query_compiler_bg.wasm' node_modules/.prisma/client/index.js; cd workers/anitabi-mirror && npm run deploy -- --dry-run" \
   -m "Not-tested: production cron execution"
 ```
 
@@ -3706,22 +3698,41 @@ git push --tags
 
 ### Task 7.3: Deploy mirror worker (`MIRROR_CRON=0`)
 
-- [ ] **Step 1: Deploy**
+- [ ] **Step 1: Set the mirror worker `DATABASE_URL` secret**
 
 ```bash
 cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
-wrangler deploy
+wrangler secret put DATABASE_URL
 ```
 
-Expected: deployment succeeds. The `MAP_IMAGE_MIRROR_CRON_ENABLED=0` var means cron ticks return early.
+Use the production Postgres URL that already contains the PR3 migration. This secret must exist before the first deploy so the worker can boot cleanly even while cron is disabled.
 
-- [ ] **Step 2: Verify deployment**
+- [ ] **Step 2: Verify the secret is present**
 
 ```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
+wrangler secret list | rg DATABASE_URL
+```
+
+Expected: `DATABASE_URL` is listed for `seichigo-anitabi-mirror`.
+
+- [ ] **Step 3: Deploy via the build-backed script**
+
+```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
+npm run deploy
+```
+
+Expected: deployment succeeds. The `MAP_IMAGE_MIRROR_CRON_ENABLED=0` var means cron ticks return early, but the runtime can still construct Prisma successfully if invoked.
+
+- [ ] **Step 4: Verify deployment**
+
+```bash
+cd /Users/mac/Desktop/seichigo/workers/anitabi-mirror
 wrangler deployments list 2>&1 | head
 ```
 
-- [ ] **Step 3: Tag**
+- [ ] **Step 5: Tag**
 
 ```bash
 cd /Users/mac/Desktop/seichigo
@@ -3785,7 +3796,13 @@ Expected: a handful of objects with `mirrorSource=lazy` in metadata.
 
 ```bash
 git add wrangler.jsonc
-git commit -m "deploy(map): activate R2_WRITE_ENABLED for lazy mirroring"
+git commit -m "Activate lazy R2 writes after the dormant PR3 deploy proves stable" \
+  -m "Constraint: R2 reads remain disabled during the first activation step" \
+  -m "Rejected: Enable read + write together | would blur whether lazy mirroring works before cron backfill starts" \
+  -m "Confidence: medium" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: npm run cf:deploy; wrangler r2 object list seichigo-anitabi-images --limit 20" \
+  -m "Not-tested: sustained production traffic beyond the first observation window"
 seichigo-deploy-ledger
 ```
 
@@ -3803,7 +3820,7 @@ Edit `workers/anitabi-mirror/wrangler.jsonc`:
 - [ ] **Step 2: Redeploy mirror worker**
 
 ```bash
-cd workers/anitabi-mirror && wrangler deploy
+cd workers/anitabi-mirror && npm run deploy
 ```
 
 - [ ] **Step 3: Watch cron logs**
@@ -3819,7 +3836,13 @@ After ~5 minutes, expect a `[mirror] tick` log line.
 ```bash
 cd /Users/mac/Desktop/seichigo
 git add workers/anitabi-mirror/wrangler.jsonc
-git commit -m "deploy(mirror): activate cron triggers"
+git commit -m "Start cron backfill only after the dormant mirror deploy is verified" \
+  -m "Constraint: DATABASE_URL secret must already exist for the mirror worker" \
+  -m "Rejected: Enable cron on the first mirror deploy | packaging and secret issues would be harder to separate from cron behavior" \
+  -m "Confidence: medium" \
+  -m "Scope-risk: narrow" \
+  -m "Tested: cd workers/anitabi-mirror && npm run deploy; wrangler tail seichigo-anitabi-mirror" \
+  -m "Not-tested: multi-hour steady-state cron throughput"
 seichigo-deploy-ledger
 ```
 
