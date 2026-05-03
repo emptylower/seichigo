@@ -81,6 +81,7 @@ type BangumiQueryWhere =
       cover: { not: null }
       OR: Array<
         | { updatedAt: { gt: Date } }
+        | { updatedAt: Date }
         | {
             updatedAt: Date
             id: { gt: number }
@@ -94,6 +95,7 @@ type PointQueryWhere =
       image: { not: null }
       OR: Array<
         | { updatedAt: { gt: Date } }
+        | { updatedAt: Date }
         | {
             updatedAt: Date
             id: { gt: string }
@@ -230,13 +232,16 @@ function buildBangumiWhere(
   upperBound: Date,
   lastBangumiId: number | undefined,
 ): BangumiQueryWhere {
-  const OR: BangumiQueryWhere['OR'] = [{ updatedAt: { gt: cursorAt } }]
-  if (lastBangumiId !== undefined) {
-    OR.push({
-      updatedAt: cursorAt,
-      id: { gt: lastBangumiId },
-    })
-  }
+  const OR: BangumiQueryWhere['OR'] =
+    lastBangumiId === undefined
+      ? [{ updatedAt: { gt: cursorAt } }, { updatedAt: cursorAt }]
+      : [
+          { updatedAt: { gt: cursorAt } },
+          {
+            updatedAt: cursorAt,
+            id: { gt: lastBangumiId },
+          },
+        ]
 
   return {
     updatedAt: { lte: upperBound },
@@ -251,13 +256,16 @@ function buildPointWhere(
   upperBound: Date,
   lastPointId: string | undefined,
 ): PointQueryWhere {
-  const OR: PointQueryWhere['OR'] = [{ updatedAt: { gt: cursorAt } }]
-  if (lastPointId !== undefined) {
-    OR.push({
-      updatedAt: cursorAt,
-      id: { gt: lastPointId },
-    })
-  }
+  const OR: PointQueryWhere['OR'] =
+    lastPointId === undefined
+      ? [{ updatedAt: { gt: cursorAt } }, { updatedAt: cursorAt }]
+      : [
+          { updatedAt: { gt: cursorAt } },
+          {
+            updatedAt: cursorAt,
+            id: { gt: lastPointId },
+          },
+        ]
 
   return {
     updatedAt: { lte: upperBound },
