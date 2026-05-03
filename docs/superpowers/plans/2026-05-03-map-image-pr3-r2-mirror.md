@@ -866,13 +866,13 @@ git commit -m "feat(map): r2Mirror client (put/get with metadata + freshness ski
 
 **Files:**
 - Modify: `lib/mapImageDiag/stages.ts` (create if absent)
-- Modify: `lib/mapImageDiag/shared.ts` (add JSDoc note only; no schema change)
+- Modify: `lib/mapImageDiag/shared.ts` (add comment note only; no schema change)
 - Test: `tests/mapImageDiag/stages.test.ts`
 
 - [ ] **Step 1: Open `lib/mapImageDiag/shared.ts`** to confirm the schema is `stage: z.string().min(1)` and that no exhaustive union exists. Also verify the current repo stage strings before updating the registry so drift is caught:
 
 ```bash
-rg "stage: '" lib app tests
+rg -n "(stage:\\s*['\"]|viewport_loader_request|first_view_anchor)" lib app features tests
 ```
 
 - [ ] **Step 2: Failing test**
@@ -891,6 +891,8 @@ describe('MAP_IMAGE_DIAG_STAGES', () => {
     expect(isKnownDiagStage('image_cache_state')).toBe(true)
     expect(isKnownDiagStage('proxy_cache_state')).toBe(true)
     expect(isKnownDiagStage('dom_request_start')).toBe(true)
+    expect(isKnownDiagStage('viewport_loader_request_start')).toBe(true)
+    expect(isKnownDiagStage('first_view_anchor')).toBe(true)
     expect(isKnownDiagStage('proxy_stream_terminal')).toBe(true)
     expect(isKnownDiagStage('typo_stage')).toBe(false)
   })
@@ -908,18 +910,27 @@ npm test -- --run tests/mapImageDiag/stages.test.ts
 Create `lib/mapImageDiag/stages.ts`:
 ```ts
 /**
- * Centralized registry of known MapImageDiag stage strings already used in the
- * repo plus PR3 additions. Stage is a free-form `string` in the Zod schema
- * (lib/mapImageDiag/shared.ts:16), so this list is documentation + a runtime
- * guard, not a TypeScript exhaustiveness check.
+ * Centralized registry of known MapImageDiag stage strings discovered in the
+ * current repo plus PR3 additions. Stage is a free-form `string` in the Zod
+ * schema (lib/mapImageDiag/shared.ts:16), so this list is documentation + a
+ * runtime guard, not a TypeScript exhaustiveness check.
  *
- * Re-verify current stage strings with `rg "stage: '" lib app tests` before
- * adding or removing entries so the registry stays canonical.
+ * Re-verify current stage strings with:
+ *   rg -n "(stage:\\s*['\"]|viewport_loader_request|first_view_anchor)" lib app features tests
+ * before adding or removing entries so the registry stays aligned with the
+ * source tree.
  */
 export const MAP_IMAGE_DIAG_STAGES = [
   // DOM request lifecycle
   'dom_request_start',
   'dom_request_terminal',
+
+  // Viewport loader lifecycle
+  'viewport_loader_request_start',
+  'viewport_loader_request_terminal',
+
+  // First-view anchor diagnostics
+  'first_view_anchor',
 
   // Proxy request lifecycle
   'proxy_target_parse',
@@ -929,10 +940,6 @@ export const MAP_IMAGE_DIAG_STAGES = [
   'proxy_fetch_terminal',
   'proxy_stream_terminal',
   'proxy_cache_state',
-
-  // Session / admin diagnostics
-  'image_session_outcome',
-  'window_excerpt',
 
   // PR3
   'image_cache_state', // PR3
@@ -951,10 +958,10 @@ export function isKnownDiagStage(value: string): value is MapImageDiagStageName 
 npm test -- --run tests/mapImageDiag/stages.test.ts
 ```
 
-- [ ] **Step 6: Add a JSDoc note to `lib/mapImageDiag/shared.ts`** above the `stage: z.string().min(1)` field:
+- [ ] **Step 6: Add a note to `lib/mapImageDiag/shared.ts`** above the `stage: z.string().min(1)` field:
 
 ```ts
-// stage values are free-form strings; the canonical list lives in
+// stage values are free-form strings; the known-stage registry lives in
 // lib/mapImageDiag/stages.ts (MAP_IMAGE_DIAG_STAGES).
 ```
 
