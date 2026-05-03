@@ -12,6 +12,10 @@ Scope: I reviewed only real rendering surfaces in `app/`, `components/`, and `fe
 | `features/map/anitabi/ExplorerPanelContent.tsx:260-303` | Bangumi explorer list cards | No. The card cover is rendered without any source/origin UI. | Add a compact attribution footer or micro-link below the cover/title block. |
 | `components/map/WindowExcerptOverlay.tsx:77-145` | Desktop bangumi avatar rail and point card rail | No. The rail cards render covers/thumbnails only. | Needs product decision. The rail is cramped, so use a single compact source label only if the design can absorb it. |
 | `components/map/MobileVisualCenterOverlay.tsx:63-143` | Mobile bangumi row and point strip | No. The compact mobile chips render covers/thumbnails only. | Needs product decision. Prefer a tiny source chip only if it does not break the rail. |
+| `components/quickPilgrimage/QuickPilgrimageMode.tsx:363-367` | Intro cover from `resolveAnitabiAssetUrl(bangumi.card.cover)` | No. The cover renders with no attribution UI. | Add a compact source label under the intro cover. |
+| `components/quickPilgrimage/QuickPilgrimageMode.tsx:507-514` | Current point image from `resolveAnitabiAssetUrl(currentPoint.image)` | No. The image renders with no attribution UI. | Add a compact `via Anitabi` label or source link near the image caption. |
+| `components/quickPilgrimage/QuickPilgrimageMode.tsx:656-660` | Check-in modal reference image passed via `referenceImageUrl` | No visible attribution here. The modal/share flow receives the Anitabi URL, but this surface does not show a source. | Follow up in the modal/share flow with attribution; do not count this prop handoff as visible source credit. |
+| `features/map/anitabi/useMapInteractionActions.tsx:256-309` | Preview image button for the selected point via `ResilientMapImage` | No. The control is labeled as a preview action, not source attribution. | Add a source label in the preview surface or carry attribution into the modal that the preview opens. |
 | `features/map/anitabi/MapDialogs.tsx:256-285` | Image preview modal for point images | No. The preview modal shows the image and save action, but no attribution. | Add source text in the modal footer next to save/original actions. |
 | `app/(authed)/me/routebooks/ui.tsx:245-280` | Routebook list cards with cover / first-point image | No, but provenance is mixed. `metadata.cover` is generic; `firstPointImage` is likely Anitabi-derived. | Needs product decision. Only annotate the `firstPointImage` path unless the data model splits cover vs. Anitabi image. |
 | `app/(authed)/me/routebooks/[id]/components/PlannerPointPoolPanel.tsx:36-92` | Point pool tiles | No. The tiles render `preview.image` with no source UI. | Add a compact `via Anitabi` label below the image. |
@@ -28,18 +32,20 @@ Start with the highest-value visible surfaces:
 
 1. `components/map/PointPopupCard.tsx`
 2. `features/map/anitabi/DetailPanel.tsx`
-3. `features/map/anitabi/MapDialogs.tsx`
-4. `components/share/CheckInCard.tsx`
-5. `components/share/RouteBookCard.tsx`
+3. `components/quickPilgrimage/QuickPilgrimageMode.tsx`
+4. `features/map/anitabi/MapDialogs.tsx`
+5. `components/share/CheckInCard.tsx`
+6. `components/share/RouteBookCard.tsx`
 
 If the map rail surfaces also need labels, extend the same treatment to:
 
 1. `features/map/anitabi/ExplorerPanelContent.tsx`
-2. `components/map/WindowExcerptOverlay.tsx`
-3. `components/map/MobileVisualCenterOverlay.tsx`
-4. `app/(authed)/me/routebooks/[id]/components/PlannerPointPoolPanel.tsx`
-5. `app/(authed)/me/routebooks/[id]/components/PlannerRoutePanel.tsx`
-6. `app/(authed)/me/routebooks/[id]/components/RouteBookImmersiveMode.tsx`
+2. `features/map/anitabi/useMapInteractionActions.tsx`
+3. `components/map/WindowExcerptOverlay.tsx`
+4. `components/map/MobileVisualCenterOverlay.tsx`
+5. `app/(authed)/me/routebooks/[id]/components/PlannerPointPoolPanel.tsx`
+6. `app/(authed)/me/routebooks/[id]/components/PlannerRoutePanel.tsx`
+7. `app/(authed)/me/routebooks/[id]/components/RouteBookImmersiveMode.tsx`
 
 Routebook list cards need a decision on whether `firstPointImage` should get attribution independently from generic routebook covers:
 
