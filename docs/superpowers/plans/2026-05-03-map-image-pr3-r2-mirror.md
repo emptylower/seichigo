@@ -2904,7 +2904,13 @@ Count timeout-like failures only. A `fetchAndStore(...)` result that is merely `
 
 ```bash
 git add workers/anitabi-mirror/src/seed.ts workers/anitabi-mirror/src/__tests__/seed.test.ts
-git commit -m "feat(mirror): processSeedBatch with retry, 404 skip, attempts cap"
+git commit -m "Make seed batches feed timeout pressure into the breaker" \
+  -m "Track timeout-like failures across each seed batch, preserve non-timeout outcomes outside the breaker counter, and record the aggregate once so the throttle logic can make rolling-window decisions." \
+  --trailer "Constraint: Breaker input must count timeout-like upstream failures only" \
+  --trailer "Rejected: Count every stored=false result as a timeout | 404 and validation outcomes should not trip the circuit breaker" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/mirror/seed.test.ts"
 ```
 
 ---
@@ -3258,7 +3264,13 @@ If `isThrottled()` encounters a stale breaker row (`lastAttemptAt <= now - 15 mi
 
 ```bash
 git add workers/anitabi-mirror/src/throttle.ts workers/anitabi-mirror/src/__tests__/throttle.test.ts
-git commit -m "feat(mirror): anitabi-wide circuit breaker via __throttle__ row"
+git commit -m "Make the mirror timeout breaker a rolling state machine" \
+  -m "Use the __throttle__ meta-row attempts field as the retry counter, preserve mirroredAt as the throttle-engaged timestamp, and reset stale breaker state before reporting the circuit open again." \
+  --trailer "Constraint: Reuse the existing MapImageMirrorState schema for meta-row state" \
+  --trailer "Rejected: Add a dedicated retryCount column | this plan keeps the schema stable and scopes attempts to the __throttle__ row" \
+  --trailer "Confidence: high" \
+  --trailer "Scope-risk: narrow" \
+  --trailer "Tested: npm test -- --run tests/anitabi/mirror/throttle.test.ts"
 ```
 
 ---
