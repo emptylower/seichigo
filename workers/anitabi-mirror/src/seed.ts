@@ -219,7 +219,13 @@ export async function processSeedBatch(
             bytes,
             mimeType,
             'cron-seed',
+            {
+              beforePut: () => ownsSeedItem(prisma, item.id, claimTime),
+            },
           )
+          if (mirrored.aborted) {
+            continue
+          }
 
           const completed = await finalizeSeedItem(prisma, item.id, claimTime, {
             status: 'mirrored',

@@ -47,6 +47,11 @@ export type PutResult = {
   bytesWritten: number
   skipped: boolean
   existingSize?: number
+  aborted?: boolean
+}
+
+export type PutMirroredImageOptions = {
+  beforePut?: (candidate: { canonicalUrl: string; key: string; mimeType: string }) => boolean | Promise<boolean>
 }
 
 function isFreshMirror(mirroredAt: string | undefined): boolean {
@@ -85,6 +90,7 @@ export async function putMirroredImage(
   bytes: ArrayBuffer,
   mimeType: string,
   mirrorSource: MirrorSource,
+  opts?: PutMirroredImageOptions,
 ): Promise<PutResult> {
   const { canonicalUrl, key } = await resolveMirrorKey(rawUrl, mimeType)
   const existing = await bucket.head(key)
@@ -95,6 +101,18 @@ export async function putMirroredImage(
       bytesWritten: 0,
       skipped: true,
       existingSize: existing?.size,
+    }
+  }
+
+  if (opts?.beforePut) {
+    const shouldPut = await opts.beforePut({ canonicalUrl, key, mimeType })
+    if (!shouldPut) {
+      return {
+        key,
+        bytesWritten: 0,
+        skipped: false,
+        aborted: true,
+      }
     }
   }
 

@@ -164,6 +164,31 @@ describe('r2 mirror client', () => {
     expect(new Uint8Array(bucket.objects.get(key)?.body || new ArrayBuffer(0))).toEqual(new Uint8Array(replacement))
   })
 
+  it('allows callers to abort after freshness checks and before writing', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const bytes = encodeBytes('fresh')
+    const canonicalUrl = computeCanonicalImageUrl(rawUrl)
+    const key = await computeMirrorKey(canonicalUrl, 'image/jpeg')
+
+    await expect(
+      putMirroredImage(bucket, rawUrl, bytes, 'image/jpeg', 'cron-seed', {
+        beforePut: async (candidate) => {
+          expect(candidate).toEqual({ canonicalUrl, key, mimeType: 'image/jpeg' })
+          return false
+        },
+      }),
+    ).resolves.toEqual({
+      key,
+      bytesWritten: 0,
+      skipped: false,
+      aborted: true,
+    })
+
+    expect(bucket.putCalls).toBe(0)
+    expect(bucket.objects.has(key)).toBe(false)
+  })
+
   it('overwrites invalid mirrored metadata timestamps', async () => {
     const bucket = new FakeBucket()
     const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
