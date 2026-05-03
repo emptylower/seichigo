@@ -16,7 +16,7 @@
 
 ### Rollout timeline
 
-```text
+```
 T+0    deploy mirror worker (MIRROR_CRON_ENABLED=0)
        deploy main worker (R2_READ=0, R2_WRITE=0)
        run DB migrations (MapImageMirrorState + MapImageMirrorBootstrap)
@@ -72,6 +72,8 @@ cd workers/anitabi-mirror && wrangler rollback
 - `wrangler.jsonc` — modify: add `r2_buckets`, vars `NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED`, `NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED`.
 - `workers/anitabi-mirror/wrangler.jsonc` — **new** (already in §4).
 - `docs/runbooks/anitabi-r2-mirror.md` — **new**: production runbook (mirrors this section).
+
+---
 
 ## Operational Tips
 
