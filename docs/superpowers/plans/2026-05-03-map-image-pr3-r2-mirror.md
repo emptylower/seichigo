@@ -5070,42 +5070,26 @@ git commit -m "docs(runbook): record PR3 7-day acceptance results"
 
 ---
 
-## Self-Review Notes
+## Self-Review Notes (r2)
 
-Spec coverage check (each spec section → task):
+**Critical issues fixed in r2:** Task 1.5 removes the enum/stage-registry split in favor of `MAP_IMAGE_DIAG_STAGES`; Task 1.6 adds URL-change diff tuples for sync reconciliation; Tasks 4.1/4.2 move both auth call sites onto the same auth pattern; `cronTick(deps: CronTickDeps, mode)` remains the shared cron boundary across worker/admin entrypoints; the mirror worker now assumes Prisma WASM / Workers-safe transport; OpenNext binding access is routed through `getCfBindings()`; Task 2.3 switches to `tee()` with success-only lazy R2 write-through; Task 1.2 preserves kind-aware canonical keys instead of collapsing variants.
 
-- §1 Architecture → Tasks 2.1, 3.1, 7.3, 7.4
-- §2 R2 key scheme → Tasks 1.2, 1.4
-- §3 Read path → Tasks 2.2, 2.4, 2.5, 2.6
-- §4 Write path → Tasks 1.1, 1.3, 1.4, 2.3, 3.4
-- §5 Resume + monitoring → Tasks 1.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4
-- §6 Compliance + D0 → Tasks 0.1, 5.2, 5.3
-- §7 TTL/refresh → Tasks 0.3, 5.1
-- §8 Deploy + rollback → Tasks 0.2, 6.1, 7.1–7.10
-- §9 Failure modes → covered across read/write/cron tests
-- §10 Testing → integrated TDD per task
-- §11 Out of scope → no tasks (correct: nothing to do)
+**Significant issues fixed in r2:** C.1 verdict-action tables; C.2 async-from-start `computeMirrorKey`; C.3 upstream-error R2 fallback; C.4 `DATABASE_URL` secret wiring; C.5 cron schedule dedup; C.6 breaker `recordTimeout`; C.7 persisted run lease plus advisory lock; C.8 UI attribution audit; C.9 aggregate meta-row filter; C.10 R2 Class-B cost estimate; C.11 CF-hit `X-Original-Source`; C.12 `CacheStatePanel`.
 
-All sections covered.
+**Known limitations / deferred:**
+- The 7-day backfill estimate still assumes about 30s wall time per cron tick; Cloudflare Workers can run much longer, so the estimate remains favorable rather than worst-case.
+- DB capacity sizing still caps `lastError` at 500 chars even though the schema column is `@db.Text`; the cap is documented as an application-side bound, not a storage limit.
+- `MapImageMirrorBootstrap.id = 1` remains a singleton contract; all upserts still need `where: { id: 1 }` to avoid duplicate bootstrap rows.
+- Per-host throttling is still deferred; the current 5 req/s ceiling is global even though `bgm.tv` may eventually need its own lane.
 
-Type consistency check: `MirrorVariant`, `R2MirrorBucket`, `PutResult`, `MirrorSource` use consistent naming throughout. `cronTick(deps, mode)` with `CronTickDeps` / `CronTickResult` (including `skipped` for advisory-lock/lease contention) matches in Task 3.7 / 4.1 and keeps the Next.js admin route on the shared `lib/anitabi/mirror` boundary. `reconcileMirrorAfterDiff(prisma, diff)` matches Task 5.1 callsite. ✓
+**Spec coverage check:** a Goal Alignment Matrix still needs to be inserted before claiming full section-to-task traceability. This review only claims the r2 repair set above, not final section-completeness.
 
-No placeholder phrases (TBD / TODO / "implement later") in plan steps.
+**Type consistency check (r2):**
+- `cronTick(deps: CronTickDeps, mode)` stays canonical, and `CronTickResult` still includes `skipped` for lease/advisory-lock contention.
+- `AnitabiSyncDiffSummary.urlChanges` is the diff shape introduced in Task 1.6 and consumed unchanged by Task 5.1.
+- `MAP_IMAGE_DIAG_STAGES` includes `image_cache_state`, which is the stage Task 2.6 emits for cache-state diagnostics.
+- `getCfBindings()` is the binding-access surface; no parallel OpenNext/global binding API is described elsewhere in the plan.
+- `MIRROR_RECORD_WHERE` and `META_SOURCE_TYPES` are the shared selectors for the aggregate meta-row filtering added in C.9.
+- `CacheStateWindow` and `r2HitRatioAfterCfMiss` remain Task 4.3 dashboard symbols tied to `MapImageDiagEvent`, not a separate metrics schema.
 
-Verification spot-check:
-
-```bash
-grep -n 'Verdict →'" Action" docs/superpowers/plans/2026-05-03-map-image-pr3-r2-mirror.md
-```
-
-Expected: 3 matches (Tasks 0.2, 0.3, and 0.4 only).
-
----
-
-**Plan complete and saved to `docs/superpowers/plans/2026-05-03-map-image-pr3-r2-mirror.md`. Two execution options:**
-
-**1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task, review between tasks, fast iteration.
-
-**2. Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
-
-**Which approach?**
+This pass does not claim E.1/E.2 are already executed; it updates the self-review so the document matches the actual r2 repair set without the earlier completion boilerplate.
