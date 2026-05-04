@@ -2,16 +2,20 @@
 
 import { useState, useCallback, useRef } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
+import AttributionLink from '@/components/anitabi/AttributionLink'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 
 type CheckInModalProps = {
   pointId: string
   pointName: string
   referenceImageUrl?: string | null
+  attributionHref?: string | null
   pointGeo?: { lat: number; lng: number } | null
   animeTitle?: string
   episode?: string | null
   submitLabel?: string
+  locale?: SupportedLocale
   onComparisonGenerated?: (blob: Blob) => void
   onSuccess: () => void
   onClose: () => void
@@ -34,10 +38,12 @@ export default function CheckInModal({
   pointId,
   pointName,
   referenceImageUrl,
+  attributionHref,
   pointGeo,
   animeTitle,
   episode,
   submitLabel,
+  locale = 'zh',
   onComparisonGenerated,
   onSuccess,
   onClose,
@@ -160,6 +166,15 @@ export default function CheckInModal({
                   </div>
                 )}
               </div>
+              {(referenceImageUrl || attributionHref) ? (
+                <div className="flex justify-end">
+                  <AttributionLink
+                    href={attributionHref || referenceImageUrl}
+                    locale={locale}
+                    className="text-[11px] text-slate-500"
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-1.5">

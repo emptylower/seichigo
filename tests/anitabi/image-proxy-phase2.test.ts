@@ -269,7 +269,7 @@ describe('anitabi image proxy phase 2', () => {
       await expect(res.arrayBuffer()).resolves.toEqual(PNG_BYTES.buffer)
     })
 
-    it('serves cached render responses without refetching upstream', async () => {
+    it('serves cached render responses without refetching upstream and backfills X-Original-Source', async () => {
       mocks.cacheMatch.mockResolvedValueOnce(createImageResponse())
       const { GET } = await importRenderRouteModule()
 
@@ -277,6 +277,8 @@ describe('anitabi image proxy phase 2', () => {
 
       expect(res.status).toBe(200)
       expect(res.headers.get('X-Seichigo-Render-Cache')).toBe('HIT')
+      expect(res.headers.get('X-Original-Source')).toBe('https://bgm.tv/subject/1/cover.png')
+      expect(res.headers.get('X-Seichigo-Image-Source')).toBeNull()
       expect(fetch).not.toHaveBeenCalled()
       expect(mocks.cachePut).not.toHaveBeenCalled()
     })

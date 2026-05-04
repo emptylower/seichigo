@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Check, Grid2X2, List, Plus, Search, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { PointPreview } from '../types'
 
 export type PlannerPoolItem = {
@@ -56,6 +57,14 @@ function PoolCardContent({
               {item.preview.subtitle}
             </span>
           </div>
+          {item.preview.image ? (
+            <div className="mt-2">
+              <AttributionLink
+                href={resolveAnitabiAttributionHref(item.preview.image)}
+                className="text-[11px] text-slate-500"
+              />
+            </div>
+          ) : null}
         </div>
         {manageMode ? (
           <button
@@ -121,6 +130,14 @@ function PoolCardContent({
           </span>
         </div>
       </div>
+      {item.preview.image ? (
+        <div className="border-t border-slate-100 px-3 py-2">
+          <AttributionLink
+            href={resolveAnitabiAttributionHref(item.preview.image)}
+            className="text-[10px] text-slate-500"
+          />
+        </div>
+      ) : null}
       {mobileManageAction ? (
         <div className="border-t border-rose-100 bg-white px-3 py-3 flex justify-end">
           <button

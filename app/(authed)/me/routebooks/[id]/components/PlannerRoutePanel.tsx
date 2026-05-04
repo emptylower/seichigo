@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { CheckCircle2, GripVertical, MapPin, RotateCcw, Route, Settings2, Trash2 } from 'lucide-react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
 import { SORTED_ZONE_ID, STATUS_LABEL, STATUS_STYLE } from '../types'
 import { formatDate } from '../utils'
@@ -95,6 +96,14 @@ function RouteStopCard({
             <MapPin className="h-3 w-3 text-brand-400" />
             <span className="truncate">点位 ID: {point.pointId}</span>
           </div>
+          {preview.image ? (
+            <div className="mt-2">
+              <AttributionLink
+                href={resolveAnitabiAttributionHref(preview.image)}
+                className="text-[11px] text-slate-500"
+              />
+            </div>
+          ) : null}
         </div>
         </div>
 
@@ -178,6 +187,14 @@ function CheckedInCard({
           </div>
           <h3 className="mt-2 line-clamp-1 text-sm font-semibold text-slate-900 sm:text-base">{preview.title}</h3>
           <p className="mt-1 line-clamp-1 text-xs text-slate-500">{preview.subtitle}</p>
+          {preview.image ? (
+            <div className="mt-2">
+              <AttributionLink
+                href={resolveAnitabiAttributionHref(preview.image)}
+                className="text-[11px] text-slate-500"
+              />
+            </div>
+          ) : null}
         </div>
 
         <button

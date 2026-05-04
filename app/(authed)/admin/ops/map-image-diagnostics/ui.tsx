@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Button from '@/components/shared/Button'
+import MirrorProgressPanel from './MirrorProgressPanel'
 import type {
   MapImageDiagConfigResponse,
   MapImageDiagDetailResponse,
@@ -320,6 +321,8 @@ export default function AdminMapImageDiagnosticsUi() {
           </Button>
         </div>
       </div>
+
+      <MirrorProgressPanel />
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

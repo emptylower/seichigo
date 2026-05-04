@@ -3,7 +3,26 @@ import { z } from 'zod'
 export const escalationReasonSchema = z.enum(['failed', 'fallback', 'slow']).nullable().optional()
 export const terminalStateSchema = z.enum(['succeeded', 'failed', 'aborted', 'superseded']).optional()
 export const displayOutcomeSchema = z.enum(['visible', 'fallback']).optional()
+export const mapImageDiagStageValues = [
+  'dom_request_start',
+  'dom_request_terminal',
+  'warmup_request_start',
+  'warmup_request_terminal',
+  'viewport_loader_request_start',
+  'viewport_loader_request_terminal',
+  'first_view_anchor',
+  'proxy_target_parse',
+  'proxy_fetch_start',
+  'proxy_fetch_terminal',
+  'proxy_content_validate',
+  'proxy_stream_terminal',
+  'proxy_allow_check',
+  'proxy_cache_state',
+  'image_cache_state',
+] as const
+export const mapImageDiagStageSchema = z.enum(mapImageDiagStageValues)
 
+export type MapImageDiagStage = z.infer<typeof mapImageDiagStageSchema>
 export const ingestEventSchema = z.object({
   session_id: z.string().min(1),
   chain_id: z.string().min(1),

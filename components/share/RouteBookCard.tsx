@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Download, Share2, X, Copy, Check, Loader2 } from 'lucide-react'
 import QRCode from 'qrcode'
+import { getAnitabiAttributionLabel } from '@/components/anitabi/AttributionLink'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildGoogleStaticMapUrl } from '@/lib/route/google'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
@@ -15,6 +17,7 @@ export interface RouteBookCardProps {
   completionDate: string
   points: { lat: number; lng: number }[]
   featuredImages: string[]
+  locale?: SupportedLocale
   shareUrl: string
   onClose?: () => void
 }
@@ -36,6 +39,7 @@ export default function RouteBookCard({
   completionDate,
   points,
   featuredImages,
+  locale = 'zh',
   shareUrl,
   onClose
 }: RouteBookCardProps) {
@@ -44,6 +48,7 @@ export default function RouteBookCard({
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const attributionText = getAnitabiAttributionLabel(locale)
 
   const generateCard = useCallback(async () => {
     setIsGenerating(true)
@@ -221,6 +226,9 @@ export default function RouteBookCard({
       ctx.font = '400 32px sans-serif'
       ctx.fillStyle = '#6b7280'
       ctx.fillText('我的二次元圣地巡礼指南', PADDING, footerY + 120)
+      ctx.font = '400 24px sans-serif'
+      ctx.fillStyle = '#9ca3af'
+      ctx.fillText(attributionText, PADDING, footerY + 170)
 
       canvas.toBlob((b) => {
         if (b) {
@@ -235,7 +243,7 @@ export default function RouteBookCard({
     } finally {
       setIsGenerating(false)
     }
-  }, [animeTitle, routeBookTitle, cityName, totalPoints, totalDistance, completionDate, points, featuredImages])
+  }, [animeTitle, routeBookTitle, cityName, totalPoints, totalDistance, completionDate, points, featuredImages, attributionText])
 
   useEffect(() => {
     generateCard()

@@ -163,6 +163,11 @@
       "invalidLinkFormat": "链接格式不合法（仅允许 http/https/mailto 或站内相对路径）。"
     }
   },
+  "image": {
+    "attribution": {
+      "viaAnitabi": "图片来源：anitabi.cn"
+    }
+  },
   "seichiRoute": {
     "defaultStart": "起点",
     "defaultEnd": "终点",

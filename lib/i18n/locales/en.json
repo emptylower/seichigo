@@ -163,6 +163,11 @@
       "invalidLinkFormat": "Invalid link format (only http/https/mailto or relative paths allowed)."
     }
   },
+  "image": {
+    "attribution": {
+      "viaAnitabi": "via anitabi.cn"
+    }
+  },
   "seichiRoute": {
     "defaultStart": "Start",
     "defaultEnd": "End",

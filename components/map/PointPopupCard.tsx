@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import { ExternalLink, Layers3, MapPinned, X } from 'lucide-react'
 import type { AnitabiPointDTO } from '@/lib/anitabi/types'
+import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 
 export type PointPopupAnchor = {
@@ -26,6 +27,7 @@ type PointPopupCardLabels = {
   workDetail: string
   openInGoogle: string
   enterPanorama: string
+  viaAnitabi: string
   close: string
 }
 
@@ -90,6 +92,7 @@ export function PointPopupCard({
   const displayName = point.nameZh || point.name
   const metaChips = buildMetaChips(point, distanceLabel)
   const imageSrc = String(imageUrl || '').trim()
+  const attributionHref = resolveAnitabiAttributionHref(point.originLink, point.originUrl, imageSrc)
   const floatingStyle: CSSProperties = {
     left: `${anchor.x}px`,
     top: `${anchor.y + (anchor.placement === 'top' ? -18 : 18)}px`,
@@ -188,6 +191,12 @@ export function PointPopupCard({
                   {point.note}
                 </p>
               ) : null}
+
+              <AttributionLink
+                href={attributionHref}
+                label={labels.viaAnitabi}
+                className="text-[11px] text-slate-500"
+              />
             </div>
 
             <div className="flex flex-wrap gap-2">

@@ -585,6 +585,40 @@ model MapImageDiagEvent {
   @@index([sessionRefId, stage, createdAt])
 }
 
+model MapImageMirrorState {
+  id            String   @id @default(cuid())
+  sourceType    String
+  sourceId      String
+  variant       String
+  canonicalUrl  String
+  r2Key         String
+  status        String
+  attempts      Int      @default(0)
+  lastAttemptAt DateTime?
+  lastError     String?  @db.Text
+  mirroredAt    DateTime?
+  contentBytes  Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([sourceType, sourceId, variant])
+  @@index([status, createdAt])
+  @@index([status, lastAttemptAt])
+}
+
+model MapImageMirrorBootstrap {
+  id                Int      @id @default(1)
+  bangumiCursor     Int?
+  pointCursor       String?
+  bangumiCompleted  Boolean  @default(false)
+  pointCompleted    Boolean  @default(false)
+  totalEnumerated   Int      @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  lastAdvanceAt     DateTime?
+  manuallyTriggered Boolean  @default(false)
+}
+
 model AnitabiBangumi {
   id               Int      @id
   titleZh          String?

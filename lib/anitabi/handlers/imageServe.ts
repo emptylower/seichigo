@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server'
 import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
-import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { buildContentDisposition, buildDownloadFilename } from '@/lib/anitabi/handlers/imageServeDownload'
+import {
+  matchRenderCache,
+  normalizeUrlHostname,
+  resolveRenderCacheDiagnosticSource,
+  storeRenderCache,
+} from '@/lib/anitabi/handlers/imageServeRenderCache'
+import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -13,29 +20,19 @@ const EXTRA_ALLOWED_IMAGE_HOSTS = ['anitabi.cn', 'bgm.tv']
 const RENDER_CACHE_CONTROL = 'public, s-maxage=86400, stale-while-revalidate=604800'
 const RENDER_UPSTREAM_CACHE_TTL_SECONDS = 86400
 type ImageRouteMode = 'download' | 'render'
-type RenderCacheState = 'HIT' | 'MISS' | 'BYPASS'
-type WorkerRenderCache = {
-  match(request: Request | string): Promise<Response | undefined>
-  put(request: Request | string, response: Response): Promise<unknown>
-}
+type MirroredImage = NonNullable<Awaited<ReturnType<typeof getMirroredImage>>>
 function normalizeHost(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '')
 }
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value)
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return Math.floor(parsed)
-  }
-  return fallback
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
 }
 function resolveRenderTimeoutMs(target: URL): number {
   const baseTimeoutMs = parsePositiveInt(process.env.ANITABI_IMAGE_RENDER_TIMEOUT_MS, RENDER_FETCH_TIMEOUT_MS)
   const path = target.pathname.trim().toLowerCase()
   return path.startsWith('/points/') || path.includes('/points/')
-    ? Math.max(
-        baseTimeoutMs,
-        parsePositiveInt(process.env.ANITABI_POINT_IMAGE_RENDER_TIMEOUT_MS, POINT_RENDER_FETCH_TIMEOUT_MS),
-      )
+    ? Math.max(baseTimeoutMs, parsePositiveInt(process.env.ANITABI_POINT_IMAGE_RENDER_TIMEOUT_MS, POINT_RENDER_FETCH_TIMEOUT_MS))
     : baseTimeoutMs
 }
 function parseContentLength(rawValue: string | null): number | null {
@@ -43,77 +40,35 @@ function parseContentLength(rawValue: string | null): number | null {
   const trimmed = rawValue.trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed) || parsed < 0) return null
-  return parsed
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
-function getWorkerRenderCache(): WorkerRenderCache | null {
-  const cacheStorage = (globalThis as typeof globalThis & {
-    caches?: { default?: WorkerRenderCache }
-  }).caches
-  return cacheStorage?.default ?? null
-}
-function buildRenderCacheKey(requestUrl: URL): Request {
-  const canonicalUrl = stripMapImageDiagnosticParams(requestUrl)
-  for (const key of ['name', '_retry']) canonicalUrl.searchParams.delete(key)
-  return new Request(canonicalUrl.toString(), { method: 'GET' })
-}
-function withRenderCacheState(response: Response, state: RenderCacheState): Response {
-  const headers = new Headers(response.headers)
-  headers.set('X-Seichigo-Render-Cache', state)
-  return new Response(response.body, {
-    status: response.status,
-    headers,
-  })
-}
-
-async function matchRenderCache(requestUrl: URL): Promise<Response | null> {
-  const cache = getWorkerRenderCache()
-  if (!cache) return null
-
-  try {
-    const cached = await cache.match(buildRenderCacheKey(requestUrl))
-    if (!cached) return null
-    return withRenderCacheState(cached, 'HIT')
-  } catch {
-    return null
-  }
-}
-async function storeRenderCache(requestUrl: URL, response: Response): Promise<Response> {
-  const cache = getWorkerRenderCache()
-  const responseWithState = withRenderCacheState(response, cache ? 'MISS' : 'BYPASS')
-  if (!cache) return responseWithState
-
-  try {
-    await cache.put(buildRenderCacheKey(requestUrl), responseWithState.clone())
-  } catch {
-    // Cache write failures should not block image delivery.
-  }
-
-  return responseWithState
+function scheduleLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: string, response: Response): void {
+  const bucket = deps.env?.MAP_IMAGE_CACHE
+  if (!bucket || deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED !== '1') return
+  const writePromise = readBytesWithLimit(response.clone(), MAX_IMAGE_BYTES)
+    .then((bytes) => putMirroredImage(bucket, target.toString(), bytes, mimeType, 'lazy'))
+    .catch((error: unknown) => {
+      if (String((error as Error)?.message || '') !== 'response_too_large') console.warn('[anitabi/imageServe] lazy mirror write failed', error)
+    })
+  if (deps.ctx?.waitUntil) deps.ctx.waitUntil(writePromise)
+  else void writePromise
 }
 function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
   const raw = String(rawInput || '').trim()
   if (!raw) return null
-
   try {
     const url = raw.includes('://')
       ? new URL(raw)
       : new URL(raw.startsWith('/') ? raw : `/${raw.replace(/^\/+/, '')}`, requestUrl.origin)
-
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
-    if (url.username || url.password) return null
-    return url
+    return url.protocol === 'http:' || url.protocol === 'https:' ? (url.username || url.password ? null : url) : null
   } catch {
     return null
   }
 }
-
 function hostMatches(host: string, allowed: string): boolean {
-  if (!host || !allowed) return false
-  if (host === allowed) return true
-  return host.endsWith(`.${allowed}`)
+  return Boolean(host && allowed) && (host === allowed || host.endsWith(`.${allowed}`))
 }
-
 function isPrivateIp(hostname: string): boolean {
   const ipType = net.isIP(hostname)
   if (!ipType) return false
@@ -143,10 +98,7 @@ function isPrivateIp(hostname: string): boolean {
 
 function isDisallowedHost(hostname: string): boolean {
   const host = normalizeHost(hostname)
-  if (!host) return true
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true
-  if (isPrivateIp(host)) return true
-  return false
+  return !host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || isPrivateIp(host)
 }
 
 async function resolvesToDisallowedIp(hostname: string): Promise<boolean> {
@@ -206,96 +158,7 @@ async function readBytesWithLimit(res: Response, maxBytes: number): Promise<Arra
   return buffer
 }
 
-function parseContentDispositionFilename(value: string | null): string | null {
-  if (!value) return null
-
-  const utf8Match = value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
-  if (utf8Match?.[1]) {
-    try {
-      const decoded = decodeURIComponent(utf8Match[1].trim().replace(/^"|"$/g, ''))
-      if (decoded) return decoded
-    } catch {
-      // noop
-    }
-  }
-
-  const plainMatch = value.match(/filename\s*=\s*"?([^";]+)"?/i)
-  if (plainMatch?.[1]) {
-    const name = plainMatch[1].trim()
-    if (name) return name
-  }
-
-  return null
-}
-
-function extensionFromPath(input: string | null | undefined): string | null {
-  const text = String(input || '').trim()
-  if (!text) return null
-  const match = text.match(/\.([a-zA-Z0-9]{2,6})$/)
-  if (!match?.[1]) return null
-  return `.${match[1].toLowerCase()}`
-}
-
-function extensionFromMimeType(mimeType: string | null | undefined): string {
-  const normalized = String(mimeType || '').toLowerCase()
-  if (normalized.includes('image/jpeg') || normalized.includes('image/jpg')) return '.jpg'
-  if (normalized.includes('image/png')) return '.png'
-  if (normalized.includes('image/webp')) return '.webp'
-  if (normalized.includes('image/avif')) return '.avif'
-  if (normalized.includes('image/gif')) return '.gif'
-  if (normalized.includes('image/svg+xml')) return '.svg'
-  return '.jpg'
-}
-
-function sanitizeFilenameBase(input: string | null | undefined): string {
-  const cleaned = String(input || '')
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (!cleaned) return 'anitabi-image'
-  return cleaned.slice(0, 80)
-}
-
-function trimFileExtension(input: string): string {
-  return input.replace(/\.[a-zA-Z0-9]{2,6}$/, '')
-}
-
-function buildDownloadFilename(input: {
-  mimeType: string
-  pathname: string
-  hintName: string | null
-  upstreamDisposition: string | null
-}): string {
-  const fromDisposition = parseContentDispositionFilename(input.upstreamDisposition)
-  const fromPath = decodeURIComponent(input.pathname.split('/').filter(Boolean).pop() || '')
-
-  const preferred = fromDisposition || input.hintName || fromPath || 'anitabi-image'
-  const base = sanitizeFilenameBase(trimFileExtension(preferred))
-  const ext = extensionFromPath(fromDisposition) || extensionFromPath(fromPath) || extensionFromMimeType(input.mimeType)
-
-  return `${base}${ext}`
-}
-
-function buildContentDisposition(filename: string): string {
-  const safeUtf8 = filename.replace(/[\r\n]/g, '')
-  const fallbackAscii = safeUtf8
-    .normalize('NFKD')
-    .replace(/[^\x20-\x7E]/g, '_')
-    .replace(/["\\]/g, '_')
-    .trim() || 'anitabi-image.jpg'
-
-  return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encodeURIComponent(safeUtf8)}`
-}
-
-async function resolveSiteHost(deps: AnitabiApiDeps): Promise<string> {
-  try {
-    return normalizeHost(new URL(deps.getSiteBase()).hostname)
-  } catch {
-    return ''
-  }
-}
+function resolveSiteHost(deps: AnitabiApiDeps): string { try { return normalizeHost(new URL(deps.getSiteBase()).hostname) } catch { return '' } }
 
 async function assertAllowedTargetUrl(
   target: URL,
@@ -303,7 +166,7 @@ async function assertAllowedTargetUrl(
   deps: AnitabiApiDeps
 ): Promise<NextResponse | null> {
   const reqHost = normalizeHost(requestUrl.hostname)
-  const siteHost = await resolveSiteHost(deps)
+  const siteHost = resolveSiteHost(deps)
   const targetHost = normalizeHost(target.hostname)
   const hostAllowed =
     hostMatches(targetHost, reqHost) ||
@@ -325,31 +188,9 @@ async function fetchValidatedImage(input: {
   userAgent: string
   useUpstreamEdgeCache?: boolean
 }): Promise<
-  | {
-      ok: true
-      response: Response
-      finalUrl: URL
-      mimeType: string
-      clearTimeout: () => void
-      abort: () => void
-    }
-  | {
-      ok: false
-      response: NextResponse
-      clearTimeout: () => void
-      abort: () => void
-    }
+  | { ok: true; response: Response; finalUrl: URL; mimeType: string; clearTimeout: () => void; abort: () => void }
+  | { ok: false; response: NextResponse; clearTimeout: () => void; abort: () => void }
 > {
-  const blocked = await assertAllowedTargetUrl(input.target, input.requestUrl, input.deps)
-  if (blocked) {
-    return {
-      ok: false,
-      response: blocked,
-      clearTimeout: () => {},
-      abort: () => {},
-    }
-  }
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs)
   let current = input.target
@@ -557,6 +398,8 @@ function buildStreamWithLimit(input: {
 async function buildRenderResponse(input: {
   upstream: Response
   mimeType: string
+  originalSource: string
+  imageSource: 'upstream-no-r2' | 'upstream-with-r2-write'
   abort: () => void
   timeoutMs: number
   onStreamSuccess?: () => void
@@ -568,6 +411,8 @@ async function buildRenderResponse(input: {
     'Cache-Control': RENDER_CACHE_CONTROL,
     'Content-Disposition': 'inline',
     'X-Content-Type-Options': 'nosniff',
+    'X-Original-Source': input.originalSource,
+    'X-Seichigo-Image-Source': input.imageSource,
   })
 
   if (contentLength != null && contentLength > MAX_IMAGE_BYTES) {
@@ -627,15 +472,58 @@ async function buildDownloadResponse(input: {
   })
 }
 
+async function loadMirroredRenderResponse(
+  bucket: R2MirrorBucket,
+  rawUrl: string,
+  source: 'r2-primary' | 'r2-fallback',
+): Promise<{ mirrored: MirroredImage; response: Response } | null> {
+  const mirrored = await getMirroredImage(bucket, rawUrl).catch(() => null)
+  if (!mirrored) return null
+
+  const mirroredSize = mirrored.size ?? mirrored.bytes.byteLength
+  if (mirroredSize > MAX_IMAGE_BYTES) return null
+
+  const headers = new Headers({
+    'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
+    'Cache-Control': RENDER_CACHE_CONTROL,
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Seichigo-Image-Source': source,
+    'X-Original-Source': mirrored.customMetadata.originalUrl || rawUrl,
+  })
+  if (mirroredSize >= 0) {
+    headers.set('Content-Length', String(mirroredSize))
+  }
+  if (mirrored.customMetadata.mirroredAt) {
+    headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
+  }
+
+  return {
+    mirrored,
+    response: new Response(mirrored.bytes, { status: 200, headers }),
+  }
+}
+
 export async function serveImageRequest(
   req: Request,
   deps: AnitabiApiDeps,
   mode: ImageRouteMode
 ): Promise<Response> {
   const requestUrl = new URL(req.url)
+  let imageCacheStateEmitted = false
   const emitProxyEvent = (input: Parameters<typeof dispatchMapImageProxyEvent>[2]) => {
     if (mode !== 'render') return
     dispatchMapImageProxyEvent(deps.prisma, requestUrl, input)
+  }
+  const emitImageCacheState = (
+    input: Omit<Parameters<typeof dispatchMapImageProxyEvent>[2], 'stage'>
+  ) => {
+    if (mode !== 'render' || imageCacheStateEmitted) return
+    imageCacheStateEmitted = true
+    emitProxyEvent({
+      stage: 'image_cache_state',
+      ...input,
+    })
   }
   if (mode === 'render' && requestUrl.searchParams.has('name')) {
     const canonicalUrl = new URL(requestUrl)
@@ -650,7 +538,17 @@ export async function serveImageRequest(
         outcome: 'cache_hit',
         terminalState: 'succeeded',
       })
-      return cached
+      const originalSource = resolveRenderCacheDiagnosticSource({
+        cachedOriginalSource: cached.cachedOriginalSource,
+        requestUrl,
+      })
+      emitImageCacheState({
+        outcome: 'cache_hit_cf',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeUrlHostname(originalSource),
+        evidence: originalSource ? { originalSource } : undefined,
+      })
+      return cached.response
     }
     emitProxyEvent({
       stage: 'proxy_cache_state',
@@ -658,8 +556,8 @@ export async function serveImageRequest(
     })
   }
   const target = parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)
-    if (!target) {
-      if (mode === 'render') {
+  if (!target) {
+    if (mode === 'render') {
       emitProxyEvent({
         stage: 'proxy_target_parse',
         outcome: 'rejected',
@@ -669,12 +567,43 @@ export async function serveImageRequest(
     return NextResponse.json({ error: '参数错误' }, { status: 400 })
   }
   const renderTimeoutMs = mode === 'render' ? resolveRenderTimeoutMs(target) : DOWNLOAD_FETCH_TIMEOUT_MS
+  const renderR2ReadEnabled = (
+    mode === 'render'
+    && Boolean(deps.env?.MAP_IMAGE_CACHE)
+    && (deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
+  )
   if (mode === 'render') {
     emitProxyEvent({
       stage: 'proxy_target_parse',
       targetHostBucket: normalizeHost(target.hostname),
       evidence: { target: target.toString() },
     })
+  }
+  const blocked = await assertAllowedTargetUrl(target, requestUrl, deps)
+  if (blocked) {
+    if (mode === 'render') {
+      emitProxyEvent({
+        stage: 'proxy_allow_check',
+        outcome: 'rejected',
+        terminalState: 'failed',
+        targetHostBucket: normalizeHost(target.hostname),
+      })
+    }
+    return blocked
+  }
+  if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
+    const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
+    if (mirrored) {
+      emitImageCacheState({
+        outcome: 'cache_hit_r2_primary',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeHost(target.hostname),
+        evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
+      })
+      return await storeRenderCache(requestUrl, mirrored.response)
+    }
+  }
+  if (mode === 'render') {
     emitProxyEvent({
       stage: 'proxy_fetch_start',
       targetHostBucket: normalizeHost(target.hostname),
@@ -695,13 +624,14 @@ export async function serveImageRequest(
     if (!fetched.ok) {
       if (mode === 'render') {
         const durationMs = Math.max(0, Date.now() - fetchStartedAt)
+        const targetHostBucket = normalizeHost(target.hostname)
         if (fetched.response.status === 400) {
           emitProxyEvent({
             stage: 'proxy_allow_check',
             outcome: 'rejected',
             terminalState: 'failed',
             durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
+            targetHostBucket,
           })
         } else if (fetched.response.status === 415) {
           emitProxyEvent({
@@ -709,15 +639,43 @@ export async function serveImageRequest(
             outcome: 'content_invalid',
             terminalState: 'failed',
             durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
+            targetHostBucket,
           })
         } else {
+          const upstreamFailureOutcome = fetched.response.status === 504 ? 'timeout' : 'network_error'
+          if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
+            const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+            if (mirrored) {
+              emitProxyEvent({
+                stage: 'proxy_fetch_terminal',
+                outcome: upstreamFailureOutcome,
+                durationMs,
+                targetHostBucket,
+                evidence: {
+                  recoveredBy: 'r2-fallback',
+                  fallbackStatus: mirrored.response.status,
+                },
+              })
+              emitImageCacheState({
+                outcome: 'cache_hit_r2_fallback',
+                terminalState: 'succeeded',
+                targetHostBucket,
+                evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
+              })
+              return await storeRenderCache(requestUrl, mirrored.response)
+            }
+          }
           emitProxyEvent({
             stage: 'proxy_fetch_terminal',
-            outcome: fetched.response.status === 504 ? 'timeout' : 'network_error',
+            outcome: upstreamFailureOutcome,
             terminalState: 'failed',
             durationMs,
-            targetHostBucket: normalizeHost(target.hostname),
+            targetHostBucket,
+          })
+          emitImageCacheState({
+            outcome: 'cache_full_miss_failed',
+            terminalState: 'failed',
+            targetHostBucket,
           })
         }
       }
@@ -755,6 +713,10 @@ export async function serveImageRequest(
       const renderResponse = await buildRenderResponse({
         upstream: fetched.response,
         mimeType: fetched.mimeType,
+        originalSource: fetched.finalUrl.toString(),
+        imageSource: deps.env?.MAP_IMAGE_CACHE && deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED === '1'
+          ? 'upstream-with-r2-write'
+          : 'upstream-no-r2',
         abort: fetched.abort,
         timeoutMs: renderTimeoutMs,
         onStreamSuccess: () => {
@@ -767,6 +729,16 @@ export async function serveImageRequest(
           })
         },
       })
+      emitImageCacheState({
+        outcome: 'cache_miss_all',
+        terminalState: 'succeeded',
+        targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
+        evidence: {
+          finalUrl: fetched.finalUrl.toString(),
+          mimeType: fetched.mimeType,
+        },
+      })
+      scheduleLazyMirrorWrite(deps, target, fetched.mimeType, renderResponse)
       return await storeRenderCache(requestUrl, renderResponse)
     }
 

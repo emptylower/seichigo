@@ -15,6 +15,10 @@ import {
 } from '@/lib/anitabi/source/normalize'
 import { parseChangelogMarkdown } from '@/lib/anitabi/source/parseChangelog'
 import { writeRawJson, writeRawText } from '@/lib/anitabi/sync/rawStore'
+import {
+  pruneMirrorRowsForDeletedPoints,
+  reconcileMirrorAfterDiff,
+} from '@/lib/anitabi/sync/mirrorReconcile'
 import { enqueueMapTranslationTasksForBangumiIds } from '@/lib/translation/mapTaskEnqueue'
 
 function nowVersion(d: Date): string {
@@ -45,6 +49,10 @@ function getSyncMaxRuntimeMs(): number {
   if (Number.isFinite(raw)) return clampInt(raw, 1000, 120000)
   if (process.env.VERCEL === '1') return 7000
   return 20000
+}
+
+function isMirrorReconcileEnabled(): boolean {
+  return String(process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED || '').trim() === '1'
 }
 
 async function upsertCursor(
@@ -97,6 +105,13 @@ async function syncBangumiOne(
   const points = mapEnabled ? normalizePoints(bangumi.id, pointsDetail, pointsSummary) : []
   const liteStats = getLiteStats(lite)
   const resolvedCover = resolveAnitabiAssetUrl(normalized.cover, siteBase)
+  const mirrorReconcileEnabled = !dryRun && isMirrorReconcileEnabled()
+  const existingBangumi = mirrorReconcileEnabled
+    ? await deps.prisma.anitabiBangumi.findUnique({
+        where: { id: normalized.id },
+        select: { cover: true },
+      })
+    : null
 
   if (dryRun) {
     return { changed: true, id: bangumi.id }
@@ -185,9 +200,10 @@ async function syncBangumiOne(
 
   const existingPointRows = await deps.prisma.anitabiPoint.findMany({
     where: { bangumiId: normalized.id },
-    select: { id: true },
+    select: { id: true, image: true },
   })
   const existingPointIdSet = new Set(existingPointRows.map((row) => row.id))
+  const existingPointImageMap = new Map(existingPointRows.map((row) => [row.id, row.image]))
   const incomingPointIdSet = new Set(normalizedPoints.map((point) => point.id))
   const stalePointIds = existingPointRows
     .map((row) => row.id)
@@ -234,11 +250,55 @@ async function syncBangumiOne(
   }
 
   if (stalePointIds.length > 0) {
-    await deps.prisma.anitabiPoint.deleteMany({
-      where: {
-        id: { in: stalePointIds },
+    if (mirrorReconcileEnabled) {
+      try {
+        await deps.prisma.$transaction(async (tx) => {
+          await pruneMirrorRowsForDeletedPoints(tx, stalePointIds)
+          await tx.anitabiPoint.deleteMany({
+            where: {
+              id: { in: stalePointIds },
+            },
+          })
+        })
+      } catch (error) {
+        console.warn(
+          `[anitabi/sync] mirror cleanup failed for deleted points in bangumi ${normalized.id}`,
+          error,
+        )
+      }
+    } else {
+      await deps.prisma.anitabiPoint.deleteMany({
+        where: {
+          id: { in: stalePointIds },
+        },
+      })
+    }
+  }
+
+  if (mirrorReconcileEnabled) {
+    const bangumiChanges = [
+      {
+        id: normalized.id,
+        field: 'cover',
+        oldValue: existingBangumi?.cover ?? null,
+        newValue: resolvedCover,
       },
-    })
+    ]
+    const pointChanges = normalizedPoints.map((point) => ({
+      id: point.id,
+      field: 'image',
+      oldValue: existingPointImageMap.get(point.id) ?? null,
+      newValue: point.image,
+    }))
+
+    try {
+      await reconcileMirrorAfterDiff(deps.prisma, {
+        bangumiChanges,
+        pointChanges,
+      })
+    } catch (error) {
+      console.warn(`[anitabi/sync] mirror reconciliation failed for bangumi ${normalized.id}`, error)
+    }
   }
 
   return { changed: true, id: normalized.id }

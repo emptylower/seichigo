@@ -3,6 +3,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
+import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import CheckInCard from '@/components/share/CheckInCard'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
@@ -130,6 +131,7 @@ export default function MapDialogs(props: MapDialogsProps) {
       {showQuickPilgrimage && detail ? (
         <QuickPilgrimageMode
           bangumi={detail}
+          locale={locale}
           userPointStates={quickPilgrimageStates}
           onClose={() => setShowQuickPilgrimage(false)}
           onStatesUpdated={onQuickPilgrimageStatesUpdated}
@@ -254,34 +256,48 @@ export default function MapDialogs(props: MapDialogsProps) {
               <div className="mb-2 text-xs text-rose-600">{imageSaveError}</div>
             ) : null}
             {imagePreview?.src ? (
-              <div className="max-h-[78dvh] overflow-auto rounded-lg bg-slate-100 p-1 sm:p-2">
-                <div className="relative mx-auto min-h-[220px] min-w-[280px]">
-                  {imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? (
-                    <img
-                      src={imagePreview.fallbackSrc}
-                      alt=""
-                      aria-hidden="true"
-                      className="absolute inset-0 z-0 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain opacity-90"
+              <div className="space-y-2">
+                <div className="max-h-[78dvh] overflow-auto rounded-lg bg-slate-100 p-1 sm:p-2">
+                  <div className="relative mx-auto min-h-[220px] min-w-[280px]">
+                    {imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? (
+                      <img
+                        src={imagePreview.fallbackSrc}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 z-0 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain opacity-90"
+                      />
+                    ) : null}
+                    <ResilientMapImage
+                      src={imagePreview.src}
+                      alt={imagePreview.name || label.previewImage}
+                      className="relative z-10 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain"
+                      kind="point-preview"
+                      loading="eager"
+                      decoding="async"
+                      diagnosticSurface={imagePreview.diagnosticSlotKey ? imagePreview.diagnosticSurface : undefined}
+                      diagnosticSlotKey={imagePreview.diagnosticSlotKey}
+                      onDiagnosticRequestStart={onPreviewDiagnosticRequestStart}
+                      onDiagnosticRequestTerminal={onPreviewDiagnosticRequestTerminal}
+                      fallback={
+                        imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? null : (
+                          <div className="grid min-h-[220px] min-w-[280px] place-items-center rounded-lg bg-slate-200 px-4 text-xs font-medium text-slate-500">
+                            {label.previewImage}
+                          </div>
+                        )
+                      }
                     />
-                  ) : null}
-                  <ResilientMapImage
-                    src={imagePreview.src}
-                    alt={imagePreview.name || label.previewImage}
-                    className="relative z-10 mx-auto block h-auto max-h-[72dvh] w-auto max-w-[88vw] object-contain"
-                    kind="point-preview"
-                    loading="eager"
-                    decoding="async"
-                    diagnosticSurface={imagePreview.diagnosticSlotKey ? imagePreview.diagnosticSurface : undefined}
-                    diagnosticSlotKey={imagePreview.diagnosticSlotKey}
-                    onDiagnosticRequestStart={onPreviewDiagnosticRequestStart}
-                    onDiagnosticRequestTerminal={onPreviewDiagnosticRequestTerminal}
-                    fallback={
-                      imagePreview.fallbackSrc && imagePreview.fallbackSrc !== imagePreview.src ? null : (
-                        <div className="grid min-h-[220px] min-w-[280px] place-items-center rounded-lg bg-slate-200 px-4 text-xs font-medium text-slate-500">
-                          {label.previewImage}
-                        </div>
-                      )
-                    }
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <AttributionLink
+                    href={resolveAnitabiAttributionHref(
+                      selectedPoint?.originLink,
+                      selectedPoint?.originUrl,
+                      imagePreview.saveUrl,
+                      imagePreview.src,
+                    )}
+                    locale={locale}
+                    className="text-xs text-slate-500"
                   />
                 </div>
               </div>
@@ -299,6 +315,7 @@ export default function MapDialogs(props: MapDialogsProps) {
               pointName={selectedPoint?.name || ''}
               cityName={detail?.card.city || ''}
               imageUrl={comparisonImageUrl || selectedPointImagePreviewUrl || ''}
+              locale={locale}
               shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
               onClose={() => setShowCheckInCard(false)}
             />
@@ -319,6 +336,7 @@ export default function MapDialogs(props: MapDialogsProps) {
               completionDate={new Date().toLocaleDateString('zh-CN')}
               points={routeBookPoints}
               featuredImages={checkedInThumbnails}
+              locale={locale}
               shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
               onClose={() => setShowRouteBookCard(false)}
             />
