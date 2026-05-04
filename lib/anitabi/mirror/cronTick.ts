@@ -3,7 +3,7 @@ import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { advanceBootstrap, type AdvanceBootstrapPrisma } from './bootstrap'
 import { reclaimStale, type ReclaimPrisma } from './reclaim'
 import { processSeedBatch, type ProcessSeedBatchPrisma } from './seed'
-import { isThrottled, type ThrottlePrisma } from './throttle'
+import { isThrottled, recordTimeout, type ThrottlePrisma } from './throttle'
 
 type BootstrapStatusRow = {
   bangumiCompleted: boolean
@@ -20,7 +20,7 @@ type CronTickMirrorStatePrisma =
   & AdvanceBootstrapPrisma['mapImageMirrorState']
   & ReclaimPrisma['mapImageMirrorState']
   & ProcessSeedBatchPrisma['mapImageMirrorState']
-  & Pick<ThrottlePrisma['mapImageMirrorState'], 'findUnique'>
+  & ThrottlePrisma['mapImageMirrorState']
 
 export type CronTickPrisma =
   & Omit<AdvanceBootstrapPrisma, 'mapImageMirrorBootstrap' | 'mapImageMirrorState'>
@@ -76,9 +76,16 @@ export async function cronTick(
     perRequestDelayMs: 200,
   })
 
+  if (seeded.timedOut > 0) {
+    await recordTimeout(prisma, seeded.timedOut)
+  }
+
+  const { timedOut, ...seedSummary } = seeded
+  void timedOut
+
   return {
     reclaimed: reclaimed.count,
-    ...seeded,
+    ...seedSummary,
     throttled: false,
   }
 }

@@ -8,11 +8,13 @@ const {
   advanceBootstrapMock,
   processSeedBatchMock,
   isThrottledMock,
+  recordTimeoutMock,
 } = vi.hoisted(() => ({
   reclaimStaleMock: vi.fn(),
   advanceBootstrapMock: vi.fn(),
   processSeedBatchMock: vi.fn(),
   isThrottledMock: vi.fn(),
+  recordTimeoutMock: vi.fn(),
 }))
 
 vi.mock('@/lib/anitabi/mirror/reclaim', () => ({
@@ -29,6 +31,7 @@ vi.mock('@/lib/anitabi/mirror/seed', () => ({
 
 vi.mock('@/lib/anitabi/mirror/throttle', () => ({
   isThrottled: isThrottledMock,
+  recordTimeout: recordTimeoutMock,
 }))
 
 type BootstrapStatusRow = {
@@ -166,6 +169,8 @@ beforeEach(() => {
   advanceBootstrapMock.mockReset()
   processSeedBatchMock.mockReset()
   isThrottledMock.mockReset()
+  recordTimeoutMock.mockReset()
+  recordTimeoutMock.mockResolvedValue(undefined)
   vi.restoreAllMocks()
 })
 
@@ -216,6 +221,7 @@ describe('cronTick', () => {
       failed: 1,
       skipped404: 3,
       retried: 5,
+      timedOut: 0,
     })
 
     const { cronTick } = await loadCronTick()
@@ -249,6 +255,7 @@ describe('cronTick', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     const { cronTick } = await loadCronTick()
@@ -270,6 +277,7 @@ describe('cronTick', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     const { cronTick } = await loadCronTick()
@@ -292,6 +300,7 @@ describe('cronTick', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     const { cronTick } = await loadCronTick()
@@ -303,6 +312,50 @@ describe('cronTick', () => {
     await cronTick(prisma as never, createBucket(), { source: 'manual' })
 
     expect(advanceBootstrapMock).toHaveBeenCalledWith(prisma, 5000)
+  })
+
+  it('feeds seed-batch timeouts into recordTimeout so the breaker can engage', async () => {
+    reclaimStaleMock.mockResolvedValue({ count: 0 })
+    isThrottledMock.mockResolvedValue(false)
+    processSeedBatchMock.mockResolvedValue({
+      mirrored: 1,
+      failed: 0,
+      skipped404: 0,
+      retried: 9,
+      timedOut: 9,
+    })
+
+    const { cronTick } = await loadCronTick()
+    const prisma = createCronTickPrisma({
+      bangumiCompleted: true,
+      pointCompleted: true,
+    })
+
+    await cronTick(prisma as never, createBucket(), { source: 'auto' })
+
+    expect(recordTimeoutMock).toHaveBeenCalledWith(prisma, 9)
+  })
+
+  it('does not call recordTimeout when no seed timeouts occurred', async () => {
+    reclaimStaleMock.mockResolvedValue({ count: 0 })
+    isThrottledMock.mockResolvedValue(false)
+    processSeedBatchMock.mockResolvedValue({
+      mirrored: 5,
+      failed: 0,
+      skipped404: 0,
+      retried: 1,
+      timedOut: 0,
+    })
+
+    const { cronTick } = await loadCronTick()
+    const prisma = createCronTickPrisma({
+      bangumiCompleted: true,
+      pointCompleted: true,
+    })
+
+    await cronTick(prisma as never, createBucket(), { source: 'auto' })
+
+    expect(recordTimeoutMock).not.toHaveBeenCalled()
   })
 })
 

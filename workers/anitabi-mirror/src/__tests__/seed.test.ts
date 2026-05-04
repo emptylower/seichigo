@@ -177,6 +177,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 1,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(findMany).toHaveBeenCalledWith({
@@ -238,6 +239,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     const canonicalUrl = computeCanonicalImageUrl(item.canonicalUrl)
@@ -294,6 +296,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 1,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenNthCalledWith(2, {
@@ -328,6 +331,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 1,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenNthCalledWith(2, {
@@ -377,6 +381,7 @@ describe('processSeedBatch', () => {
       failed: 2,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenNthCalledWith(2, {
@@ -425,6 +430,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenCalledTimes(1)
@@ -461,6 +467,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenCalledTimes(2)
@@ -499,6 +506,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(findFirst).toHaveBeenCalledWith({
@@ -548,6 +556,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(findFirst).toHaveBeenCalledTimes(2)
@@ -605,6 +614,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 0,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenNthCalledWith(2, {
@@ -674,8 +684,40 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 2,
       retried: 0,
+      timedOut: 0,
     })
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('counts timedOut for AbortError fetch failures so the breaker can throttle', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-03T13:25:00Z'))
+
+    const { prisma } = buildPrismaMock([
+      {
+        id: 'seed-timeout-1',
+        canonicalUrl: 'https://image.anitabi.cn/slow1.jpg',
+        attempts: 0,
+        createdAt: new Date('2026-05-03T12:00:00Z'),
+      },
+      {
+        id: 'seed-timeout-2',
+        canonicalUrl: 'https://image.anitabi.cn/slow2.jpg',
+        attempts: 0,
+        createdAt: new Date('2026-05-03T12:01:00Z'),
+      },
+    ])
+
+    const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' })
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(abortErr))
+
+    await expect(processSeedBatch(prisma, new FakeBucket(), { batchSize: 2 })).resolves.toEqual({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 2,
+      timedOut: 2,
+    })
   })
 
   it('cleans up the fetch timeout when fetch rejects before returning a response', async () => {
@@ -700,6 +742,7 @@ describe('processSeedBatch', () => {
       failed: 0,
       skipped404: 0,
       retried: 1,
+      timedOut: 0,
     })
 
     expect(updateMany).toHaveBeenNthCalledWith(2, {
