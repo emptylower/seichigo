@@ -69,10 +69,16 @@ export type CronTickResult =
 // on reclaimStale()'s 5min watermark as the single concurrency safety
 // net. When we add the worker, switch to pg_try_advisory_xact_lock inside
 // a $transaction so the lock release is tied to commit/rollback.
+export type CronTickOptions = {
+  source: 'auto' | 'manual'
+  seedBatchSize?: number
+  seedDelayMs?: number
+}
+
 export async function cronTick(
   prisma: CronTickPrisma,
   bucket: R2MirrorBucket,
-  opts: { source: 'auto' | 'manual' },
+  opts: CronTickOptions,
 ): Promise<CronTickResult> {
   const reclaimed = await reclaimStale(prisma)
 
@@ -100,8 +106,8 @@ export async function cronTick(
   }
 
   const seeded = await processSeedBatch(prisma, bucket, {
-    batchSize: 100,
-    perRequestDelayMs: 200,
+    batchSize: opts.seedBatchSize ?? 100,
+    perRequestDelayMs: opts.seedDelayMs ?? 200,
   })
 
   if (seeded.timedOut > 0) {

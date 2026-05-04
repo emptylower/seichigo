@@ -8,13 +8,6 @@ import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { cronTick, type CronTickPrisma } from '@/lib/anitabi/mirror/cronTick'
 import { clearThrottle, type ThrottlePrisma } from '@/lib/anitabi/mirror/throttle'
 
-// Cloudflare Workers cap a request at 30s wall clock and OpenNext's own
-// handler wrapping eats some of that. After accounting for the post-loop
-// readBootstrap + readTotals + JSON serialization, leave ~10s of headroom
-// or the route returns 502 even though every drained row was committed.
-const FORCE_COMPLETE_BUDGET_MS = 20_000
-const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 2_000
-
 type BootstrapMode = 'advance' | 'force-complete'
 
 type BootstrapRow = Awaited<ReturnType<AnitabiApiDeps['prisma']['mapImageMirrorBootstrap']['findUnique']>>
@@ -93,10 +86,6 @@ function isBootstrapComplete(bootstrap: BootstrapRow): boolean {
   return Boolean(bootstrap?.bangumiCompleted && bootstrap?.pointCompleted)
 }
 
-function hasForceCompleteBudgetRemaining(startedAt: number): boolean {
-  return Date.now() - startedAt < FORCE_COMPLETE_BUDGET_MS - FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS
-}
-
 export async function POST(req: Request) {
   const startedAt = Date.now()
 
@@ -117,25 +106,24 @@ export async function POST(req: Request) {
     // just "operator says try again now."
     await clearThrottle(deps.prisma as unknown as ThrottlePrisma)
 
-    let bootstrap: BootstrapRow = mode === 'force-complete' ? await readBootstrap(deps) : null
-
-    if (mode === 'advance') {
-      await cronTick(deps.prisma as unknown as CronTickPrisma, bucket, { source: 'manual' })
-      bootstrap = await readBootstrap(deps)
-    } else {
-      while (
-        !isBootstrapComplete(bootstrap)
-        && hasForceCompleteBudgetRemaining(startedAt)
-      ) {
-        const result = await cronTick(deps.prisma as unknown as CronTickPrisma, bucket, { source: 'manual' })
-        bootstrap = await readBootstrap(deps)
-        if (result.throttled) {
-          break
-        }
-      }
-    }
-
-    const finalBootstrap = bootstrap
+    // Single drain per click. The previous loop ran cronTick repeatedly
+    // until a 25s budget exhausted, but cronTick itself takes ~22s
+    // (batchSize 100 × perRequestDelayMs 200ms in processSeedBatch) so
+    // the second iteration plus post-loop work overran Cloudflare's 30s
+    // request lifetime and CF returned 502 — even though every drained
+    // row was already committed mid-loop. Auto cron handles the repeat
+    // cadence; manual is a kick + circuit-breaker clear.
+    void mode
+    // Smaller batch + tighter delay so the whole request fits comfortably
+    // inside the Workers 30s wall clock, even with anitabi being slow to
+    // respond. Auto cron keeps the larger 100/200ms cadence since it has
+    // 5 minutes between firings.
+    await cronTick(deps.prisma as unknown as CronTickPrisma, bucket, {
+      source: 'manual',
+      seedBatchSize: 50,
+      seedDelayMs: 100,
+    })
+    const finalBootstrap = await readBootstrap(deps)
     const totals = await readTotals(deps)
     const elapsedMs = Date.now() - startedAt
 
