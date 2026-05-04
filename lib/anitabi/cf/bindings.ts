@@ -16,17 +16,21 @@ export type CfBindings = {
 }
 
 /**
- * Read the OpenNext-on-Cloudflare request context from the AsyncLocalStorage
- * the runtime publishes on globalThis. The rest of the app accesses bindings
- * through this helper instead of importing `getCloudflareContext` from
- * `@opennextjs/cloudflare` directly. See lib/db/prisma.ts for the same pattern
- * used for the Prisma waitUntil hook.
+ * Read the OpenNext-on-Cloudflare request bindings (env + ctx) from the
+ * symbol-keyed slot on globalThis that the worker entrypoint populates.
+ * Mirrors what `getCloudflareContext` from `@opennextjs/cloudflare` does
+ * internally — see node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.js.
+ *
+ * Note: this is NOT the same store as `globalThis.__openNextAls`; that ALS
+ * exposes `requestContext` (requestId, waitUntil) for per-request work
+ * (lib/db/prisma.ts uses it). The cloudflare-context symbol is where
+ * `env.MAP_IMAGE_CACHE` actually lives.
  */
-export function getCfBindings(): CfBindings | null {
-  const als = (globalThis as typeof globalThis & {
-    __openNextAls?: { getStore?: () => CfBindings | undefined }
-  }).__openNextAls
+const CLOUDFLARE_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
 
-  if (!als || typeof als.getStore !== 'function') return null
-  return als.getStore?.() ?? null
+export function getCfBindings(): CfBindings | null {
+  const ctx = (globalThis as typeof globalThis & {
+    [CLOUDFLARE_CONTEXT_SYMBOL]?: CfBindings
+  })[CLOUDFLARE_CONTEXT_SYMBOL]
+  return ctx ?? null
 }
