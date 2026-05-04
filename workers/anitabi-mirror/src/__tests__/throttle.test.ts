@@ -184,7 +184,11 @@ describe('throttle', () => {
 
     await expect(clearThrottle(prisma)).resolves.toBeUndefined()
     expect(remove).toHaveBeenCalledWith({
-      where: { sourceType_sourceId_variant: THROTTLE_KEY },
+      where: {
+        sourceType: THROTTLE_KEY.sourceType,
+        sourceId: THROTTLE_KEY.sourceId,
+        variant: THROTTLE_KEY.variant,
+      },
     })
   })
 
@@ -202,7 +206,11 @@ describe('throttle', () => {
 
     await expect(clearThrottle(prisma)).rejects.toThrow('database offline')
     expect(remove).toHaveBeenCalledWith({
-      where: { sourceType_sourceId_variant: THROTTLE_KEY },
+      where: {
+        sourceType: THROTTLE_KEY.sourceType,
+        sourceId: THROTTLE_KEY.sourceId,
+        variant: THROTTLE_KEY.variant,
+      },
     })
   })
 })

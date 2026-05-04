@@ -6,6 +6,12 @@ type ThrottleWhere = {
   sourceType_sourceId_variant: typeof THROTTLE_KEY
 }
 
+type ThrottleDeleteWhere = {
+  sourceType: typeof THROTTLE_KEY.sourceType
+  sourceId: typeof THROTTLE_KEY.sourceId
+  variant: typeof THROTTLE_KEY.variant
+}
+
 type ThrottleRow = {
   mirroredAt: Date | null
 }
@@ -30,7 +36,7 @@ export type ThrottlePrisma = {
       }
     }): Promise<unknown>
     deleteMany(args: {
-      where: ThrottleWhere
+      where: ThrottleDeleteWhere
     }): Promise<{ count: number }>
   }
 }
@@ -79,7 +85,9 @@ export async function recordTimeout(
 export async function clearThrottle(prisma: ThrottlePrisma): Promise<void> {
   await prisma.mapImageMirrorState.deleteMany({
     where: {
-      sourceType_sourceId_variant: THROTTLE_KEY,
+      sourceType: THROTTLE_KEY.sourceType,
+      sourceId: THROTTLE_KEY.sourceId,
+      variant: THROTTLE_KEY.variant,
     },
   })
 }
