@@ -20,7 +20,7 @@ vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: () => mocks.getAnitabiApiDeps(),
 }))
 
-vi.mock('@/workers/anitabi-mirror/src/cronTick', () => ({
+vi.mock('@/lib/anitabi/mirror/cronTick', () => ({
   cronTick: mocks.cronTick,
 }))
 

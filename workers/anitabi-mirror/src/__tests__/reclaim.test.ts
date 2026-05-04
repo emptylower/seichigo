@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ReclaimPrisma } from '../reclaim'
-import { reclaimStale } from '../reclaim'
+import type { ReclaimPrisma } from '@/lib/anitabi/mirror/reclaim'
+import { reclaimStale } from '@/lib/anitabi/mirror/reclaim'
 
 describe('reclaimStale', () => {
   it('reclaims stale in-progress rows back to pending', async () => {

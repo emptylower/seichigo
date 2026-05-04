@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeCanonicalImageUrl, computeMirrorKey } from '@/lib/anitabi/imageNormalize'
 import type { R2MirrorCustomMetadata } from '@/lib/anitabi/r2Mirror'
 
-import { processSeedBatch, type ProcessSeedBatchPrisma } from '../seed'
+import { processSeedBatch, type ProcessSeedBatchPrisma } from '@/lib/anitabi/mirror/seed'
 
 type StoredObject = {
   body: ArrayBuffer

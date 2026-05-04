@@ -15,19 +15,19 @@ const {
   isThrottledMock: vi.fn(),
 }))
 
-vi.mock('../reclaim', () => ({
+vi.mock('@/lib/anitabi/mirror/reclaim', () => ({
   reclaimStale: reclaimStaleMock,
 }))
 
-vi.mock('../bootstrap', () => ({
+vi.mock('@/lib/anitabi/mirror/bootstrap', () => ({
   advanceBootstrap: advanceBootstrapMock,
 }))
 
-vi.mock('../seed', () => ({
+vi.mock('@/lib/anitabi/mirror/seed', () => ({
   processSeedBatch: processSeedBatchMock,
 }))
 
-vi.mock('../throttle', () => ({
+vi.mock('@/lib/anitabi/mirror/throttle', () => ({
   isThrottled: isThrottledMock,
 }))
 
@@ -77,8 +77,8 @@ function createCronTickPrisma(bootstrapStatus: BootstrapStatusRow | null): CronT
 
 async function loadCronTick() {
   vi.resetModules()
-  vi.doUnmock('../cronTick')
-  return import('../cronTick')
+  vi.doUnmock('@/lib/anitabi/mirror/cronTick')
+  return import('@/lib/anitabi/mirror/cronTick')
 }
 
 async function loadIndexWithMocks(opts?: {
@@ -118,10 +118,10 @@ async function loadIndexWithMocks(opts?: {
   vi.doMock('../prisma', () => ({
     createMirrorPrismaClient: createMirrorPrismaClientMock,
   }))
-  vi.doMock('../cronTick', () => ({
+  vi.doMock('@/lib/anitabi/mirror/cronTick', () => ({
     cronTick: cronTickMock,
   }))
-  vi.doMock('../delta', () => ({
+  vi.doMock('@/lib/anitabi/mirror/delta', () => ({
     cronDelta: cronDeltaMock,
   }))
 
@@ -171,8 +171,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
-  vi.doUnmock('../cronTick')
-  vi.doUnmock('../delta')
+  vi.doUnmock('@/lib/anitabi/mirror/cronTick')
+  vi.doUnmock('@/lib/anitabi/mirror/delta')
   vi.doUnmock('../prisma')
   vi.doUnmock('@prisma/adapter-pg')
   vi.doUnmock('@prisma/client/wasm')

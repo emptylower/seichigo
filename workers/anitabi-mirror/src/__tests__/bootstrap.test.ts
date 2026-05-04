@@ -5,7 +5,7 @@ import {
   advanceBootstrap,
   type AdvanceBootstrapPrisma,
   type AdvanceBootstrapTransactionPrisma,
-} from '../bootstrap'
+} from '@/lib/anitabi/mirror/bootstrap'
 
 type BootstrapState = {
   id: number

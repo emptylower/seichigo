@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { clearThrottle, isThrottled, recordTimeout, type ThrottlePrisma } from '../throttle'
+import { clearThrottle, isThrottled, recordTimeout, type ThrottlePrisma } from '@/lib/anitabi/mirror/throttle'
 
 const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' } as const
 

@@ -4,7 +4,7 @@ export const maxDuration = 30
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps, type AnitabiApiDeps } from '@/lib/anitabi/api'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
-import { cronTick } from '@/workers/anitabi-mirror/src/cronTick'
+import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 1_000

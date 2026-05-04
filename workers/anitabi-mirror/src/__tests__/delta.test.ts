@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
 
-import { cronDelta, type CronDeltaPrisma } from '../delta'
+import { cronDelta, type CronDeltaPrisma } from '@/lib/anitabi/mirror/delta'
 
 const CURSOR_KEY = { sourceType: '__cursor__', sourceId: 'delta', variant: '__' } as const
 
