@@ -88,14 +88,15 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
       { status: 'mirrored', _count: { _all: 8 } },
     ])
 
+    const cfContextSymbol = Symbol.for('__cloudflare-context__')
     ;(globalThis as typeof globalThis & {
-      __openNextAls?: { getStore?: () => { env?: { MAP_IMAGE_CACHE?: R2MirrorBucket } } }
-    }).__openNextAls = {
-      getStore: () => ({ env: { MAP_IMAGE_CACHE: bucket } }),
-    }
+      [k: symbol]: unknown
+    })[cfContextSymbol] = { env: { MAP_IMAGE_CACHE: bucket } }
   })
 
   afterEach(() => {
+    const cfContextSymbol = Symbol.for('__cloudflare-context__')
+    delete (globalThis as typeof globalThis & { [k: symbol]: unknown })[cfContextSymbol]
     delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
     if (originalProcessBucket === undefined) {
       delete process.env.MAP_IMAGE_CACHE
@@ -423,6 +424,7 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
     process.env.MAP_IMAGE_CACHE = 'not-a-bucket'
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
     delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
+    delete (globalThis as typeof globalThis & { [k: symbol]: unknown })[Symbol.for('__cloudflare-context__')]
     mocks.getAnitabiApiDeps.mockResolvedValue({
       prisma: mocks.prisma,
       getSession: () => mocks.getSession(),
@@ -440,6 +442,7 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
   it('maps missing mirror bucket config to 503 without running cronTick', async () => {
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
     delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
+    delete (globalThis as typeof globalThis & { [k: symbol]: unknown })[Symbol.for('__cloudflare-context__')]
     delete process.env.MAP_IMAGE_CACHE
     mocks.getAnitabiApiDeps.mockResolvedValue({
       prisma: mocks.prisma,
