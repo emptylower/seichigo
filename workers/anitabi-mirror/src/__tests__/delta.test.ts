@@ -112,7 +112,26 @@ function buildPrismaMock(opts: {
 
   const findUnique = vi
     .fn<CronDeltaPrisma['mapImageMirrorState']['findUnique']>()
-    .mockImplementation(async () => cursorRow)
+    .mockImplementation(async ({ where }) => {
+      const variantKey = where.sourceType_sourceId_variant
+      if (
+        variantKey.sourceType === CURSOR_KEY.sourceType &&
+        variantKey.sourceId === CURSOR_KEY.sourceId &&
+        variantKey.variant === CURSOR_KEY.variant
+      ) {
+        return cursorRow
+      }
+      const state = stateStore.get(
+        buildStateKey(variantKey.sourceType, variantKey.sourceId, variantKey.variant),
+      )
+      if (!state) {
+        return null
+      }
+      return {
+        mirroredAt: state.mirroredAt ?? null,
+        canonicalUrl: state.canonicalUrl,
+      }
+    })
   const create = vi.fn<CronDeltaPrisma['mapImageMirrorState']['create']>().mockImplementation(
     async ({ data }) => {
       const key = buildStateKey(data.sourceType, data.sourceId, data.variant)
@@ -590,6 +609,66 @@ describe('cronDelta', () => {
           mirroredAt: new Date('2026-05-03T12:30:00Z'),
         },
       })
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('leaves mirrored rows alone when the source URL is unchanged', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-05-03T15:30:00Z'))
+
+      const sourceUrl = 'https://image.anitabi.cn/bangumi/777/cover.jpg'
+      const variants: Array<{ label: string; url: string }> = [
+        { label: 'cover-l', url: 'https://image.anitabi.cn/bangumi/777/cover.jpg?plan=l' },
+        { label: 'cover-m', url: 'https://image.anitabi.cn/bangumi/777/cover.jpg' },
+      ]
+
+      const mirrorStates: ExistingMirrorState[] = await Promise.all(
+        variants.map(async ({ label, url }) => ({
+          sourceType: 'bangumi-cover',
+          sourceId: '777',
+          variant: label,
+          canonicalUrl: url,
+          r2Key: await computeMirrorKey(url, 'image/jpeg'),
+          status: 'mirrored' as const,
+          attempts: 1,
+          lastError: null,
+          mirroredAt: new Date('2026-05-02T00:00:00Z'),
+          lastAttemptAt: new Date('2026-05-02T00:00:00Z'),
+          contentBytes: 4242,
+        })),
+      )
+
+      const { prisma, create, updateMany, stateStore } = buildPrismaMock({
+        cursorRow: { mirroredAt: new Date('2026-05-03T10:00:00Z'), canonicalUrl: 'cursor' },
+        bangumi: [
+          {
+            id: 777,
+            cover: sourceUrl,
+            updatedAt: new Date('2026-05-03T12:00:00Z'),
+          },
+        ],
+        points: [],
+        mirrorStates,
+      })
+
+      // Bangumi cover enumeration produces cover-l and cover-m; the fixture
+      // pre-populates both with status='mirrored' and matching canonical URLs.
+      // The unchanged-URL branch must skip both updateMany paths.
+      await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 0 })
+
+      expect(create).toHaveBeenCalledTimes(2)
+      expect(updateMany).not.toHaveBeenCalled()
+
+      for (const state of mirrorStates) {
+        expect(stateStore.get(buildStateKey(state.sourceType, state.sourceId, state.variant))).toEqual(
+          state,
+        )
+      }
     } finally {
       vi.useRealTimers()
       vi.restoreAllMocks()

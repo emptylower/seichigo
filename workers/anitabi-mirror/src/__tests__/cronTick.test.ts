@@ -43,6 +43,9 @@ type CronTickPrismaStub = {
   mapImageMirrorBootstrap: {
     findUnique: ReturnType<typeof vi.fn>
   }
+  mapImageMirrorState: {
+    count: ReturnType<typeof vi.fn>
+  }
 }
 
 function createBucket(): R2MirrorBucket {
@@ -70,10 +73,16 @@ function createController(cron: string): ScheduledController {
   }
 }
 
-function createCronTickPrisma(bootstrapStatus: BootstrapStatusRow | null): CronTickPrismaStub {
+function createCronTickPrisma(
+  bootstrapStatus: BootstrapStatusRow | null,
+  opts: { pendingBacklog?: number } = {},
+): CronTickPrismaStub {
   return {
     mapImageMirrorBootstrap: {
       findUnique: vi.fn().mockResolvedValue(bootstrapStatus),
+    },
+    mapImageMirrorState: {
+      count: vi.fn().mockResolvedValue(opts.pendingBacklog ?? 0),
     },
   }
 }
@@ -312,6 +321,77 @@ describe('cronTick', () => {
     await cronTick(prisma as never, createBucket(), { source: 'manual' })
 
     expect(advanceBootstrapMock).toHaveBeenCalledWith(prisma, 5000)
+  })
+
+  it('skips advanceBootstrap when the pending backlog already meets the threshold', async () => {
+    reclaimStaleMock.mockResolvedValue({ count: 0 })
+    isThrottledMock.mockResolvedValue(false)
+    processSeedBatchMock.mockResolvedValue({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+      timedOut: 0,
+    })
+
+    const { cronTick } = await loadCronTick()
+    const prisma = createCronTickPrisma(
+      { bangumiCompleted: false, pointCompleted: false },
+      { pendingBacklog: 1500 },
+    )
+
+    await cronTick(prisma as never, createBucket(), { source: 'auto' })
+
+    expect(prisma.mapImageMirrorState.count).toHaveBeenCalledWith({
+      where: { status: 'pending' },
+    })
+    expect(advanceBootstrapMock).not.toHaveBeenCalled()
+    expect(processSeedBatchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still advances when the pending backlog is below the threshold', async () => {
+    reclaimStaleMock.mockResolvedValue({ count: 0 })
+    isThrottledMock.mockResolvedValue(false)
+    processSeedBatchMock.mockResolvedValue({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+      timedOut: 0,
+    })
+
+    const { cronTick } = await loadCronTick()
+    const prisma = createCronTickPrisma(
+      { bangumiCompleted: false, pointCompleted: false },
+      { pendingBacklog: 999 },
+    )
+
+    await cronTick(prisma as never, createBucket(), { source: 'auto' })
+
+    expect(advanceBootstrapMock).toHaveBeenCalledWith(prisma, 2000)
+  })
+
+  it('does not query the pending backlog when both bootstrap phases are complete', async () => {
+    reclaimStaleMock.mockResolvedValue({ count: 0 })
+    isThrottledMock.mockResolvedValue(false)
+    processSeedBatchMock.mockResolvedValue({
+      mirrored: 0,
+      failed: 0,
+      skipped404: 0,
+      retried: 0,
+      timedOut: 0,
+    })
+
+    const { cronTick } = await loadCronTick()
+    const prisma = createCronTickPrisma({
+      bangumiCompleted: true,
+      pointCompleted: true,
+    })
+
+    await cronTick(prisma as never, createBucket(), { source: 'auto' })
+
+    expect(prisma.mapImageMirrorState.count).not.toHaveBeenCalled()
+    expect(advanceBootstrapMock).not.toHaveBeenCalled()
   })
 
   it('feeds seed-batch timeouts into recordTimeout so the breaker can engage', async () => {

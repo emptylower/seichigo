@@ -371,6 +371,20 @@ async function enqueueVariants(
       }
     }
 
+    // Source rows can have their `updatedAt` bumped by a sync run that didn't
+    // actually change `cover` / `image`. If the canonical URL still matches
+    // what we already have, leave the row alone — yanking a `mirrored` row
+    // back to `pending` would make the operator-facing "已镜像" counter
+    // visibly regress for no reason.
+    const existing = await prisma.mapImageMirrorState.findUnique({
+      where: {
+        sourceType_sourceId_variant: variantKey,
+      },
+    })
+    if (existing && existing.canonicalUrl === variant.url) {
+      continue
+    }
+
     const requeued = await prisma.mapImageMirrorState.updateMany({
       where: {
         ...variantKey,

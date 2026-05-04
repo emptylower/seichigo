@@ -5,6 +5,13 @@ import { reclaimStale, type ReclaimPrisma } from './reclaim'
 import { processSeedBatch, type ProcessSeedBatchPrisma } from './seed'
 import { isThrottled, recordTimeout, type ThrottlePrisma } from './throttle'
 
+// Bootstrap enumerates source rows ~50× faster than the seed batch can drain
+// them, so without a gate every auto tick piles thousands of new pending rows
+// onto the queue. Skip the advance step whenever the queue already holds at
+// least this many pending rows; the next tick will check again once the
+// worker has chewed through some of them.
+const PENDING_BACKLOG_THRESHOLD = 1000
+
 type BootstrapStatusRow = {
   bangumiCompleted: boolean
   pointCompleted: boolean
@@ -16,11 +23,16 @@ type BootstrapStatusPrisma = {
   }
 }
 
+type BacklogCountPrisma = {
+  count(args: { where: { status: 'pending' } }): Promise<number>
+}
+
 type CronTickMirrorStatePrisma =
   & AdvanceBootstrapPrisma['mapImageMirrorState']
   & ReclaimPrisma['mapImageMirrorState']
   & ProcessSeedBatchPrisma['mapImageMirrorState']
   & ThrottlePrisma['mapImageMirrorState']
+  & BacklogCountPrisma
 
 export type CronTickPrisma =
   & Omit<AdvanceBootstrapPrisma, 'mapImageMirrorBootstrap' | 'mapImageMirrorState'>
@@ -79,7 +91,12 @@ export async function cronTick(
   })
 
   if (!bootstrap?.bangumiCompleted || !bootstrap?.pointCompleted) {
-    await advanceBootstrap(prisma, opts.source === 'manual' ? 5000 : 2000)
+    const pendingBacklog = await prisma.mapImageMirrorState.count({
+      where: { status: 'pending' },
+    })
+    if (pendingBacklog < PENDING_BACKLOG_THRESHOLD) {
+      await advanceBootstrap(prisma, opts.source === 'manual' ? 5000 : 2000)
+    }
   }
 
   const seeded = await processSeedBatch(prisma, bucket, {
