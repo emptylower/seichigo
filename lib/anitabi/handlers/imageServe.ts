@@ -781,11 +781,35 @@ export async function serveImageRequest(
   } catch (err: any) {
     if (String(err?.message || '') === 'response_too_large') {
       if (mode === 'render') {
+        const targetHostBucketForFailure = fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname)
+        if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
+          const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+          if (mirrored) {
+            emitProxyEvent({
+              stage: 'proxy_stream_terminal',
+              terminalState: 'failed',
+              outcome: 'response_too_large',
+              targetHostBucket: targetHostBucketForFailure,
+              evidence: {
+                ...(fetched.ok ? { mimeType: fetched.mimeType } : {}),
+                recoveredBy: 'r2-fallback',
+                fallbackStatus: mirrored.response.status,
+              },
+            })
+            emitImageCacheState({
+              outcome: 'cache_hit_r2_fallback',
+              terminalState: 'succeeded',
+              targetHostBucket: targetHostBucketForFailure,
+              evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key, recoveredFrom: 'response_too_large' },
+            })
+            return await storeRenderCache(requestUrl, mirrored.response)
+          }
+        }
         emitProxyEvent({
           stage: 'proxy_stream_terminal',
           terminalState: 'failed',
           outcome: 'response_too_large',
-          targetHostBucket: fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname),
+          targetHostBucket: targetHostBucketForFailure,
           evidence: fetched.ok ? { mimeType: fetched.mimeType } : undefined,
         })
       }
