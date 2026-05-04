@@ -5,8 +5,6 @@ import { reclaimStale, type ReclaimPrisma } from './reclaim'
 import { processSeedBatch, type ProcessSeedBatchPrisma } from './seed'
 import { isThrottled, recordTimeout, type ThrottlePrisma } from './throttle'
 
-const MIRROR_LOCK_KEY = 4242420 as const
-
 type BootstrapStatusRow = {
   bangumiCompleted: boolean
   pointCompleted: boolean
@@ -24,14 +22,9 @@ type CronTickMirrorStatePrisma =
   & ProcessSeedBatchPrisma['mapImageMirrorState']
   & ThrottlePrisma['mapImageMirrorState']
 
-type AdvisoryLockPrisma = {
-  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>
-}
-
 export type CronTickPrisma =
   & Omit<AdvanceBootstrapPrisma, 'mapImageMirrorBootstrap' | 'mapImageMirrorState'>
   & BootstrapStatusPrisma
-  & AdvisoryLockPrisma
   & {
     mapImageMirrorState: CronTickMirrorStatePrisma
   }
@@ -52,94 +45,58 @@ export type CronTickResult =
       retried: number
       throttled: false
     }
-  | {
-      reclaimed: 0
-      mirrored: 0
-      failed: 0
-      skipped404: 0
-      retried: 0
-      throttled: false
-      skipped: 'lock_busy'
-    }
 
-async function tryAcquireMirrorLock(prisma: CronTickPrisma): Promise<boolean> {
-  try {
-    const rows = await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${MIRROR_LOCK_KEY}) AS locked`
-    return Array.isArray(rows) && rows.length > 0 && rows[0]?.locked === true
-  } catch (err) {
-    console.warn('[mirror] advisory lock probe failed; running without lock', err)
-    return true
-  }
-}
-
-async function releaseMirrorLock(prisma: CronTickPrisma): Promise<void> {
-  try {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${MIRROR_LOCK_KEY})`
-  } catch (err) {
-    console.warn('[mirror] advisory unlock failed', err)
-  }
-}
-
+// Concurrency note: the previous implementation wrapped this body in a
+// pg_try_advisory_lock() probe to serialize the auto cron against manual
+// force-complete clicks. That used pg_try_advisory_lock (session-scoped)
+// which is incompatible with Neon's pgbouncer-style pooler — every prisma
+// $queryRaw can land on a different pool connection, so the lock acquired
+// on connection A could never be re-checked from connection B and the
+// route's loop ended up blocking against itself. Until the mirror worker
+// actually deploys and we have real concurrency to defend against, rely
+// on reclaimStale()'s 5min watermark as the single concurrency safety
+// net. When we add the worker, switch to pg_try_advisory_xact_lock inside
+// a $transaction so the lock release is tied to commit/rollback.
 export async function cronTick(
   prisma: CronTickPrisma,
   bucket: R2MirrorBucket,
   opts: { source: 'auto' | 'manual' },
 ): Promise<CronTickResult> {
-  const acquired = await tryAcquireMirrorLock(prisma)
-  if (!acquired) {
-    if (opts.source === 'manual') {
-      throw new Error('mirror cron is already running; retry in ~30s')
-    }
+  const reclaimed = await reclaimStale(prisma)
+
+  if (await isThrottled(prisma as unknown as ThrottlePrisma)) {
     return {
-      reclaimed: 0,
+      reclaimed: reclaimed.count,
       mirrored: 0,
       failed: 0,
       skipped404: 0,
-      retried: 0,
-      throttled: false,
-      skipped: 'lock_busy',
+      throttled: true,
     }
   }
 
-  try {
-    const reclaimed = await reclaimStale(prisma)
+  const bootstrap = await prisma.mapImageMirrorBootstrap.findUnique({
+    where: { id: 1 },
+  })
 
-    if (await isThrottled(prisma as unknown as ThrottlePrisma)) {
-      return {
-        reclaimed: reclaimed.count,
-        mirrored: 0,
-        failed: 0,
-        skipped404: 0,
-        throttled: true,
-      }
-    }
+  if (!bootstrap?.bangumiCompleted || !bootstrap?.pointCompleted) {
+    await advanceBootstrap(prisma, opts.source === 'manual' ? 5000 : 2000)
+  }
 
-    const bootstrap = await prisma.mapImageMirrorBootstrap.findUnique({
-      where: { id: 1 },
-    })
+  const seeded = await processSeedBatch(prisma, bucket, {
+    batchSize: 100,
+    perRequestDelayMs: 200,
+  })
 
-    if (!bootstrap?.bangumiCompleted || !bootstrap?.pointCompleted) {
-      await advanceBootstrap(prisma, opts.source === 'manual' ? 5000 : 2000)
-    }
+  if (seeded.timedOut > 0) {
+    await recordTimeout(prisma, seeded.timedOut)
+  }
 
-    const seeded = await processSeedBatch(prisma, bucket, {
-      batchSize: 100,
-      perRequestDelayMs: 200,
-    })
+  const { timedOut, ...seedSummary } = seeded
+  void timedOut
 
-    if (seeded.timedOut > 0) {
-      await recordTimeout(prisma, seeded.timedOut)
-    }
-
-    const { timedOut, ...seedSummary } = seeded
-    void timedOut
-
-    return {
-      reclaimed: reclaimed.count,
-      ...seedSummary,
-      throttled: false,
-    }
-  } finally {
-    await releaseMirrorLock(prisma)
+  return {
+    reclaimed: reclaimed.count,
+    ...seedSummary,
+    throttled: false,
   }
 }

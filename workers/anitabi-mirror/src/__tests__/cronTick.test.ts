@@ -43,7 +43,6 @@ type CronTickPrismaStub = {
   mapImageMirrorBootstrap: {
     findUnique: ReturnType<typeof vi.fn>
   }
-  $queryRaw: ReturnType<typeof vi.fn>
 }
 
 function createBucket(): R2MirrorBucket {
@@ -71,25 +70,11 @@ function createController(cron: string): ScheduledController {
   }
 }
 
-function createCronTickPrisma(
-  bootstrapStatus: BootstrapStatusRow | null,
-  opts?: { lockAcquired?: boolean },
-): CronTickPrismaStub {
-  const lockAcquired = opts?.lockAcquired ?? true
+function createCronTickPrisma(bootstrapStatus: BootstrapStatusRow | null): CronTickPrismaStub {
   return {
     mapImageMirrorBootstrap: {
       findUnique: vi.fn().mockResolvedValue(bootstrapStatus),
     },
-    $queryRaw: vi.fn().mockImplementation(async (template: TemplateStringsArray) => {
-      const sql = template.join('?')
-      if (sql.includes('pg_try_advisory_lock')) {
-        return [{ locked: lockAcquired }]
-      }
-      if (sql.includes('pg_advisory_unlock')) {
-        return [{ ok: true }]
-      }
-      return []
-    }),
   }
 }
 
@@ -327,35 +312,6 @@ describe('cronTick', () => {
     await cronTick(prisma as never, createBucket(), { source: 'manual' })
 
     expect(advanceBootstrapMock).toHaveBeenCalledWith(prisma, 5000)
-  })
-
-  it('returns lock_busy without doing work when the advisory lock is taken (auto)', async () => {
-    const { cronTick } = await loadCronTick()
-    const prisma = createCronTickPrisma(null, { lockAcquired: false })
-
-    await expect(cronTick(prisma as never, createBucket(), { source: 'auto' })).resolves.toMatchObject({
-      reclaimed: 0,
-      mirrored: 0,
-      failed: 0,
-      skipped404: 0,
-      retried: 0,
-      throttled: false,
-      skipped: 'lock_busy',
-    })
-
-    expect(reclaimStaleMock).not.toHaveBeenCalled()
-    expect(processSeedBatchMock).not.toHaveBeenCalled()
-    expect(prisma.mapImageMirrorBootstrap.findUnique).not.toHaveBeenCalled()
-  })
-
-  it('throws on lock contention for manual runs so the operator sees the conflict', async () => {
-    const { cronTick } = await loadCronTick()
-    const prisma = createCronTickPrisma(null, { lockAcquired: false })
-
-    await expect(cronTick(prisma as never, createBucket(), { source: 'manual' })).rejects.toThrow(
-      /already running/,
-    )
-    expect(reclaimStaleMock).not.toHaveBeenCalled()
   })
 
   it('feeds seed-batch timeouts into recordTimeout so the breaker can engage', async () => {
