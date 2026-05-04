@@ -8,8 +8,12 @@ import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { cronTick, type CronTickPrisma } from '@/lib/anitabi/mirror/cronTick'
 import { clearThrottle, type ThrottlePrisma } from '@/lib/anitabi/mirror/throttle'
 
-const FORCE_COMPLETE_BUDGET_MS = 25_000
-const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 1_000
+// Cloudflare Workers cap a request at 30s wall clock and OpenNext's own
+// handler wrapping eats some of that. After accounting for the post-loop
+// readBootstrap + readTotals + JSON serialization, leave ~10s of headroom
+// or the route returns 502 even though every drained row was committed.
+const FORCE_COMPLETE_BUDGET_MS = 20_000
+const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 2_000
 
 type BootstrapMode = 'advance' | 'force-complete'
 
@@ -36,7 +40,16 @@ function routeError(err: unknown) {
     return NextResponse.json({ error: '数据库未配置' }, { status: 503 })
   }
 
-  return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  // Admin-only route — surface the actual error so the operator can see
+  // what's happening instead of a generic "Internal server error" wall.
+  return NextResponse.json(
+    {
+      error: 'Internal server error',
+      detail: message || String(err),
+      code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+    },
+    { status: 500 },
+  )
 }
 
 async function readMode(req: Request): Promise<BootstrapMode> {
