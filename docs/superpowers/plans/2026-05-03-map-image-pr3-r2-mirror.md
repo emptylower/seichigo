@@ -5084,6 +5084,27 @@ git commit -m "docs(runbook): record PR3 7-day acceptance results"
 
 ---
 
+## Goal Alignment Matrix (spec -> plan)
+
+| Spec section | Spec requirement (summary) | Plan task(s) in r2 | Preserved unchanged? |
+|---|---|---|---|
+| Goal & Thesis | Decouple map-image from anitabi.cn; eliminate 8.5s timeout cliff | Phase 2 (R2 read/write/fallback), Phase 3 (backfill), Phase 7 (rollout) | YES |
+| §1 Architecture | Two-worker split + shared R2 + 3 flags | Tasks 1.1, 2.1, 3.1 | YES |
+| §2 R2 Layout | Canonical key + variants + Class-A/B budget | Tasks 1.2, 1.3, 1.4, C.10 (read ops cost) | EXTENDED: cost estimate added |
+| §3 Request-Path Logic | CF -> R2 -> upstream -> dual-write -> fallback | Tasks 2.2, 2.3, 2.4, 2.5, 2.6, C.3 (catch-path fallback) | EXTENDED: catch-path now covered |
+| §4 Backfill Logic | 5 req/s, seed + delta, throttle + breaker | Tasks 3.2-3.6, C.5 (cron dedup), C.6 (breaker wired) | EXTENDED: breaker actually engages |
+| §5 Mirror State | Postgres source of truth, advisory lock | Task 1.1, C.7 (persisted run lease + advisory lock) | EXTENDED: spec lock intent implemented |
+| §6 Headers / UA | `X-Original-Source` on all paths; UA per D0 | Tasks 2.5, C.11 (CF-hit coverage) | EXTENDED: CF-hit path now covered |
+| §7 Sync Reconcile | TTL/refresh on URL change | Tasks 1.6 (diff shape), 5.1 | EXTENDED: diff shape made executable |
+| §8 Admin Surfaces | Bootstrap + status + dashboard + CLI | Tasks 4.1-4.4, C.12 (`CacheStatePanel`) | EXTENDED: §10 SLI panel added |
+| §9 Documentation | Runbook | Task 6.1 | YES |
+| §10 Acceptance | `cache_hit_r2_*` >= 80% after T+5d | Tasks 7.9, 7.10, C.12 | YES |
+| §11 Non-goals | Perceived-speed / blurhash / viewport prefetch / lane splits stay out of PR3 | Not in plan | YES |
+
+**Verdict:** Every spec section traces to at least one task. No section was dropped. r2 adds cost estimation, breaker wiring, persisted run serialization, sync-diff tuple shape, CF-hit header coverage, and `CacheStatePanel`; those are implementations or clarifications of spec requirements the original plan had missed or under-specified, not new product scope.
+
+---
+
 ## Self-Review Notes (r2)
 
 **Critical issues fixed in r2:** Task 1.5 removes the enum/stage-registry split in favor of `MAP_IMAGE_DIAG_STAGES`; Task 1.6 adds URL-change diff tuples for sync reconciliation; Tasks 4.1/4.2 move both auth call sites onto the same auth pattern; `cronTick(deps: CronTickDeps, mode)` remains the shared cron boundary across worker/admin entrypoints; the mirror worker now assumes Prisma WASM / Workers-safe transport; OpenNext binding access is routed through `getCfBindings()`; Task 2.3 switches to `tee()` with success-only lazy R2 write-through; Task 1.2 preserves kind-aware canonical keys instead of collapsing variants.
@@ -5097,7 +5118,7 @@ git commit -m "docs(runbook): record PR3 7-day acceptance results"
 - Per-host throttling is still deferred; the current 5 req/s ceiling is global even though `bgm.tv` may eventually need its own lane.
 - Rollout helper scripts/commands remain a known doc-only placeholder; verify them against the live repo or replace them with explicit commands during implementation/runbook work.
 
-**Spec coverage check:** a Goal Alignment Matrix still needs to be inserted before claiming full section-to-task traceability. This review only claims the r2 repair set above, not final section-completeness.
+**Spec coverage check:** the Goal Alignment Matrix above traces every spec section to one or more r2 tasks; no spec section was dropped.
 
 **Type consistency check (r2):**
 - `cronTick(deps: CronTickDeps, mode)` stays canonical, and `CronTickResult` still includes `skipped` for lease/advisory-lock contention.
@@ -5107,4 +5128,4 @@ git commit -m "docs(runbook): record PR3 7-day acceptance results"
 - `MIRROR_RECORD_WHERE` and `META_SOURCE_TYPES` are the shared selectors for the aggregate meta-row filtering added in C.9.
 - `CacheStateWindow` and `r2HitRatioAfterCfMiss` remain Task 4.3 dashboard symbols tied to `MapImageDiagEvent`, not a separate metrics schema.
 
-This pass does not claim E.1/E.2 are already executed; it updates the self-review so the document matches the actual r2 repair set without the earlier completion boilerplate.
+This pass reflects the completed r2 plan-revision work and keeps the remaining implementation/runbook caveats explicit instead of hiding them behind completion boilerplate.
