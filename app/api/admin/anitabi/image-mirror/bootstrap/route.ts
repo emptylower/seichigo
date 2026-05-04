@@ -3,6 +3,7 @@ export const maxDuration = 30
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps, type AnitabiApiDeps } from '@/lib/anitabi/api'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { cronTick } from '@/lib/anitabi/mirror/cronTick'
 
@@ -50,13 +51,8 @@ async function readMode(req: Request): Promise<BootstrapMode> {
 }
 
 function getMirrorBucket(deps: AnitabiApiDeps): R2MirrorBucket {
-  const globalBucket = (
-    globalThis as typeof globalThis & {
-      cloudflare?: { env?: { MAP_IMAGE_CACHE?: R2MirrorBucket } }
-    }
-  ).cloudflare?.env?.MAP_IMAGE_CACHE
-
-  const bucket = deps.env?.MAP_IMAGE_CACHE || globalBucket
+  const bindings = getCfBindings()
+  const bucket = deps.env?.MAP_IMAGE_CACHE || bindings?.env?.MAP_IMAGE_CACHE
   if (!bucket) {
     throw new Error('MAP_IMAGE_CACHE is not configured')
   }
