@@ -1,5 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '@prisma/client'
+// Use the WASM-compiler entry directly so the Cloudflare Worker bundle never
+// drags in the Node readFileSync path. The webpack alias for '@prisma/client$'
+// does not cover '@prisma/client/default', so the default export pulled the
+// Node runtime into the bundle and crashed at request time with
+// readAll '/bundle/node_modules/.prisma/client/query_compiler_bg.wasm'.
+import { PrismaClient } from '@prisma/client/wasm'
 
 declare global {
   // eslint-disable-next-line no-var
