@@ -42,16 +42,19 @@ function parseContentLength(rawValue: string | null): number | null {
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
-function scheduleLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: string, response: Response): void {
+type LazyMirrorWriteHook = ((bytes: ArrayBuffer) => void) | undefined
+
+function prepareLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: string): LazyMirrorWriteHook {
   const bucket = deps.env?.MAP_IMAGE_CACHE
-  if (!bucket || deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED !== '1') return
-  const writePromise = readBytesWithLimit(response.clone(), MAX_IMAGE_BYTES)
-    .then((bytes) => putMirroredImage(bucket, target.toString(), bytes, mimeType, 'lazy'))
-    .catch((error: unknown) => {
-      if (String((error as Error)?.message || '') !== 'response_too_large') console.warn('[anitabi/imageServe] lazy mirror write failed', error)
-    })
-  if (deps.ctx?.waitUntil) deps.ctx.waitUntil(writePromise)
-  else void writePromise
+  if (!bucket || deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED !== '1') return undefined
+  return (bytes: ArrayBuffer) => {
+    const writePromise = putMirroredImage(bucket, target.toString(), bytes, mimeType, 'lazy')
+      .catch((error: unknown) => {
+        console.warn('[anitabi/imageServe] lazy mirror write failed', error)
+      })
+    if (deps.ctx?.waitUntil) deps.ctx.waitUntil(writePromise)
+    else void writePromise
+  }
 }
 function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
   const raw = String(rawInput || '').trim()
@@ -325,10 +328,15 @@ function buildStreamWithLimit(input: {
   timeoutMs: number
   onStreamSuccess?: () => void
   onStreamError?: (outcome: string) => void
+  onBytesAvailable?: (bytes: ArrayBuffer) => void
 }): ReadableStream<Uint8Array> {
   const reader = input.body.getReader()
   let total = 0
   let finished = false
+  const captureChunks: Uint8Array[] = input.onBytesAvailable ? [] : []
+  const shouldCapture = Boolean(input.onBytesAvailable)
+  let captureBytes = 0
+  let captureLost = false
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -352,6 +360,16 @@ function buildStreamWithLimit(input: {
         if (finished) return
         if (done) {
           finished = true
+          if (shouldCapture && !captureLost && input.onBytesAvailable) {
+            const buffer = new ArrayBuffer(captureBytes)
+            const out = new Uint8Array(buffer)
+            let offset = 0
+            for (const chunk of captureChunks) {
+              out.set(chunk, offset)
+              offset += chunk.byteLength
+            }
+            input.onBytesAvailable(buffer)
+          }
           input.onStreamSuccess?.()
           controller.close()
           return
@@ -361,16 +379,23 @@ function buildStreamWithLimit(input: {
         total += value.byteLength
         if (total > input.maxBytes) {
           finished = true
+          captureLost = true
           input.onLimitExceeded()
           input.onStreamError?.('response_too_large')
           controller.error(new Error('response_too_large'))
           return
         }
 
+        if (shouldCapture && !captureLost) {
+          captureBytes += value.byteLength
+          captureChunks.push(value)
+        }
+
         controller.enqueue(value)
       } catch (err) {
         if (finished) return
         finished = true
+        captureLost = true
         if (timeoutId != null) {
           clearTimeout(timeoutId)
         }
@@ -388,6 +413,7 @@ function buildStreamWithLimit(input: {
     async cancel(reason) {
       if (finished) return
       finished = true
+      captureLost = true
       input.onLimitExceeded()
       input.onStreamError?.('aborted')
       await reader.cancel(reason).catch(() => {})
@@ -404,6 +430,7 @@ async function buildRenderResponse(input: {
   timeoutMs: number
   onStreamSuccess?: () => void
   onStreamError?: (outcome: string) => void
+  onBytesAvailable?: (bytes: ArrayBuffer) => void
 }): Promise<Response> {
   const contentLength = parseContentLength(input.upstream.headers.get('content-length'))
   const headers = new Headers({
@@ -429,6 +456,7 @@ async function buildRenderResponse(input: {
         timeoutMs: input.timeoutMs,
         onStreamSuccess: input.onStreamSuccess,
         onStreamError: input.onStreamError,
+        onBytesAvailable: input.onBytesAvailable,
       }),
       {
         status: 200,
@@ -439,6 +467,7 @@ async function buildRenderResponse(input: {
 
   const bytes = await readBytesWithLimit(input.upstream, MAX_IMAGE_BYTES)
   headers.set('Content-Length', String(bytes.byteLength))
+  input.onBytesAvailable?.(bytes)
   input.onStreamSuccess?.()
   return new Response(bytes, {
     status: 200,
@@ -710,6 +739,7 @@ export async function serveImageRequest(
           evidence: { mimeType: fetched.mimeType },
         })
       }
+      const lazyMirrorWriteHook = prepareLazyMirrorWrite(deps, target, fetched.mimeType)
       const renderResponse = await buildRenderResponse({
         upstream: fetched.response,
         mimeType: fetched.mimeType,
@@ -728,6 +758,7 @@ export async function serveImageRequest(
             outcome,
           })
         },
+        onBytesAvailable: lazyMirrorWriteHook,
       })
       emitImageCacheState({
         outcome: 'cache_miss_all',
@@ -738,7 +769,6 @@ export async function serveImageRequest(
           mimeType: fetched.mimeType,
         },
       })
-      scheduleLazyMirrorWrite(deps, target, fetched.mimeType, renderResponse)
       return await storeRenderCache(requestUrl, renderResponse)
     }
 
@@ -751,11 +781,35 @@ export async function serveImageRequest(
   } catch (err: any) {
     if (String(err?.message || '') === 'response_too_large') {
       if (mode === 'render') {
+        const targetHostBucketForFailure = fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname)
+        if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
+          const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+          if (mirrored) {
+            emitProxyEvent({
+              stage: 'proxy_stream_terminal',
+              terminalState: 'failed',
+              outcome: 'response_too_large',
+              targetHostBucket: targetHostBucketForFailure,
+              evidence: {
+                ...(fetched.ok ? { mimeType: fetched.mimeType } : {}),
+                recoveredBy: 'r2-fallback',
+                fallbackStatus: mirrored.response.status,
+              },
+            })
+            emitImageCacheState({
+              outcome: 'cache_hit_r2_fallback',
+              terminalState: 'succeeded',
+              targetHostBucket: targetHostBucketForFailure,
+              evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key, recoveredFrom: 'response_too_large' },
+            })
+            return await storeRenderCache(requestUrl, mirrored.response)
+          }
+        }
         emitProxyEvent({
           stage: 'proxy_stream_terminal',
           terminalState: 'failed',
           outcome: 'response_too_large',
-          targetHostBucket: fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname),
+          targetHostBucket: targetHostBucketForFailure,
           evidence: fetched.ok ? { mimeType: fetched.mimeType } : undefined,
         })
       }

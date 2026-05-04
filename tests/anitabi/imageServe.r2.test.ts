@@ -311,6 +311,45 @@ describe('serveImageRequest R2 primary read', () => {
     expect(stored?.customMetadata.mirrorSource).toBe('lazy')
   })
 
+  it('does not write upstream render bytes to R2 when the user stream errors mid-flight', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/abort.png'
+    const waitUntil = vi.fn()
+
+    const erroringBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]))
+        controller.error(new Error('upstream connection lost'))
+      },
+    })
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(erroringBody, {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-length': '100',
+        },
+      }),
+    )
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
+        },
+        ctx: { waitUntil },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.arrayBuffer()).rejects.toThrow()
+    expect(waitUntil).not.toHaveBeenCalled()
+    expect(bucket.objects.size).toBe(0)
+  })
+
   it('does not write upstream render bytes to R2 when the write flag is disabled', async () => {
     const bucket = new FakeBucket()
     const rawUrl = 'https://bgm.tv/subject/1/cover.png'
@@ -361,6 +400,47 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.headers.get('X-Seichigo-Image-Source')).toBe('upstream-no-r2')
     expect(response.headers.get('X-Seichigo-Render-Cache')).toBe('MISS')
     expect(mocks.cachePut).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to R2 when upstream stream throws response_too_large mid-flight', async () => {
+    const bucket = new MissThenHitBucket(6)
+    const seeded = await seedMirroredObject(bucket, {
+      httpContentType: 'image/webp',
+      originalUrl: 'https://cdn.example.com/oversized-source.webp',
+    })
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response('upstream-too-large', {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-length': String(MAX_IMAGE_BYTES + 1),
+        },
+      }),
+    )
+
+    const response = await serveImageRequest(
+      createRenderRequest(seeded.rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(seeded.bytes)
+
+    const diagEvents = getDiagEvents()
+    const fallbackHit = diagEvents.find((event) => (
+      event?.stage === 'image_cache_state'
+      && event?.outcome === 'cache_hit_r2_fallback'
+      && event?.evidence?.recoveredFrom === 'response_too_large'
+    ))
+    expect(fallbackHit).toBeDefined()
   })
 
   it('serves a seeded R2 object after an upstream timeout failure when the read flag is enabled', async () => {

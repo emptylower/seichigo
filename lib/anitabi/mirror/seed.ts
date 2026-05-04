@@ -59,6 +59,14 @@ export type ProcessSeedBatchResult = {
   failed: number
   skipped404: number
   retried: number
+  timedOut: number
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error) return false
+  if (error instanceof DOMException && error.name === 'AbortError') return true
+  const name = (error as { name?: unknown } | null)?.name
+  return name === 'AbortError' || name === 'TimeoutError'
 }
 
 function createFetchTimeout(): { signal: AbortSignal; cleanup: () => void } {
@@ -170,6 +178,7 @@ export async function processSeedBatch(
     failed: 0,
     skipped404: 0,
     retried: 0,
+    timedOut: 0,
   }
 
   for (const [index, item] of items.entries()) {
@@ -250,6 +259,10 @@ export async function processSeedBatch(
 
       if (!completed) {
         continue
+      }
+
+      if (isTimeoutError(error)) {
+        result.timedOut += 1
       }
 
       if (maxedOut) {

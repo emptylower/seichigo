@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prepare-prisma": "node scripts/prepare-prisma.mjs",
+    "predeploy": "npm run prepare-prisma",
+    "predev": "npm run prepare-prisma",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",

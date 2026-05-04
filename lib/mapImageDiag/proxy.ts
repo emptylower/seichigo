@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { readMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
 import { ingestMapImageDiagBatch } from '@/lib/mapImageDiag/service'
+import type { MapImageDiagStage } from '@/lib/mapImageDiag/shared'
 
 type RuntimeRequestContextLike = {
   waitUntil?: (promise: Promise<unknown>) => void
@@ -19,7 +20,7 @@ export async function emitMapImageProxyEvent(
   prisma: PrismaClient,
   requestUrl: URL,
   input: {
-    stage: string
+    stage: MapImageDiagStage
     outcome?: string
     terminalState?: 'succeeded' | 'failed' | 'aborted'
     durationMs?: number

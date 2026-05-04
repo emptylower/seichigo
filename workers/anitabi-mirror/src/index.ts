@@ -1,7 +1,7 @@
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import { cronDelta } from '@/lib/anitabi/mirror/delta'
+import { cronTick, type CronTickPrisma } from '@/lib/anitabi/mirror/cronTick'
 
-import { cronDelta } from './delta'
-import { cronTick, type CronTickPrisma } from './cronTick'
 import { createMirrorPrismaClient } from './prisma'
 
 export type MirrorWorkerEnv = {

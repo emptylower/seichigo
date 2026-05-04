@@ -20,7 +20,7 @@ vi.mock('@/lib/anitabi/api', () => ({
   getAnitabiApiDeps: () => mocks.getAnitabiApiDeps(),
 }))
 
-vi.mock('@/workers/anitabi-mirror/src/cronTick', () => ({
+vi.mock('@/lib/anitabi/mirror/cronTick', () => ({
   cronTick: mocks.cronTick,
 }))
 
@@ -89,14 +89,14 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
     ])
 
     ;(globalThis as typeof globalThis & {
-      cloudflare?: { env?: { MAP_IMAGE_CACHE?: R2MirrorBucket } }
-    }).cloudflare = {
-      env: { MAP_IMAGE_CACHE: bucket },
+      __openNextAls?: { getStore?: () => { env?: { MAP_IMAGE_CACHE?: R2MirrorBucket } } }
+    }).__openNextAls = {
+      getStore: () => ({ env: { MAP_IMAGE_CACHE: bucket } }),
     }
   })
 
   afterEach(() => {
-    delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
+    delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
     if (originalProcessBucket === undefined) {
       delete process.env.MAP_IMAGE_CACHE
     } else {
@@ -422,6 +422,7 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
   it('returns 503 when only process.env provides a non-bucket mirror cache value', async () => {
     process.env.MAP_IMAGE_CACHE = 'not-a-bucket'
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
+    delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
     mocks.getAnitabiApiDeps.mockResolvedValue({
       prisma: mocks.prisma,
       getSession: () => mocks.getSession(),
@@ -438,6 +439,7 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
 
   it('maps missing mirror bucket config to 503 without running cronTick', async () => {
     delete (globalThis as typeof globalThis & { cloudflare?: unknown }).cloudflare
+    delete (globalThis as typeof globalThis & { __openNextAls?: unknown }).__openNextAls
     delete process.env.MAP_IMAGE_CACHE
     mocks.getAnitabiApiDeps.mockResolvedValue({
       prisma: mocks.prisma,
