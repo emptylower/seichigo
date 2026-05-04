@@ -18,5 +18,9 @@
   },
   "r2_buckets": [
     { "binding": "MAP_IMAGE_CACHE", "bucket_name": "seichigo-anitabi-images" }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
 }

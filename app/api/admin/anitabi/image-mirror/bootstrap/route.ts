@@ -6,6 +6,7 @@ import { getAnitabiApiDeps, type AnitabiApiDeps } from '@/lib/anitabi/api'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 import { cronTick, type CronTickPrisma } from '@/lib/anitabi/mirror/cronTick'
+import { clearThrottle, type ThrottlePrisma } from '@/lib/anitabi/mirror/throttle'
 
 const FORCE_COMPLETE_BUDGET_MS = 25_000
 const FORCE_COMPLETE_MIN_REMAINING_BUDGET_MS = 1_000
@@ -96,6 +97,12 @@ export async function POST(req: Request) {
 
     const mode = await readMode(req)
     const bucket = getMirrorBucket(deps)
+
+    // Operator override: any manual click clears the circuit breaker so the
+    // tick that follows actually runs. The breaker auto-rearms on the next
+    // batch of upstream timeouts, so this isn't a permanent bypass — it's
+    // just "operator says try again now."
+    await clearThrottle(deps.prisma as unknown as ThrottlePrisma)
 
     let bootstrap: BootstrapRow = mode === 'force-complete' ? await readBootstrap(deps) : null
 
