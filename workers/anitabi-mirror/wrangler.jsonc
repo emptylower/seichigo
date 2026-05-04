@@ -11,7 +11,7 @@
     "crons": ["*/5 * * * *", "0 * * * *"]
   },
   "vars": {
-    "MAP_IMAGE_MIRROR_CRON_ENABLED": "0"
+    "MAP_IMAGE_MIRROR_CRON_ENABLED": "1"
   },
   "secrets": {
     "required": ["DATABASE_URL"]
