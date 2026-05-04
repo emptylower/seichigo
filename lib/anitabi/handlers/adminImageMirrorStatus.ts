@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
+import { MIRROR_META_SOURCE_TYPES } from '@/lib/anitabi/mirror/metaSourceTypes'
 
 const MIRROR_TOTAL_KEYS = ['pending', 'in_progress', 'mirrored', 'failed', 'skipped_404'] as const
 
@@ -10,6 +11,7 @@ type MirrorTotals = Record<'all' | MirrorTotalKey, number>
 async function readTotals(deps: AnitabiApiDeps): Promise<MirrorTotals> {
   const grouped = await deps.prisma.mapImageMirrorState.groupBy({
     by: ['status'],
+    where: { sourceType: { notIn: MIRROR_META_SOURCE_TYPES } },
     _count: { _all: true },
   })
 
@@ -50,7 +52,10 @@ export function createHandlers(deps: AnitabiApiDeps) {
           where: { id: 1 },
         }),
         deps.prisma.mapImageMirrorState.findMany({
-          where: { status: 'failed' },
+          where: {
+            status: 'failed',
+            sourceType: { notIn: MIRROR_META_SOURCE_TYPES },
+          },
           orderBy: { lastAttemptAt: 'desc' },
           take: 10,
           select: {
@@ -64,12 +69,14 @@ export function createHandlers(deps: AnitabiApiDeps) {
           where: {
             status: 'mirrored',
             mirroredAt: { gt: oneHourAgo },
+            sourceType: { notIn: MIRROR_META_SOURCE_TYPES },
           },
         }),
         deps.prisma.mapImageMirrorState.count({
           where: {
             status: 'mirrored',
             mirroredAt: { gt: oneDayAgo },
+            sourceType: { notIn: MIRROR_META_SOURCE_TYPES },
           },
         }),
       ])

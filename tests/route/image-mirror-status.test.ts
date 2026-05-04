@@ -133,13 +133,17 @@ describe('GET /api/admin/anitabi/image-mirror/status', () => {
 
     expect(mocks.prisma.mapImageMirrorState.groupBy).toHaveBeenCalledWith({
       by: ['status'],
+      where: { sourceType: { notIn: ['__throttle__', '__cursor__'] } },
       _count: { _all: true },
     })
     expect(mocks.prisma.mapImageMirrorBootstrap.findUnique).toHaveBeenCalledWith({
       where: { id: 1 },
     })
     expect(mocks.prisma.mapImageMirrorState.findMany).toHaveBeenCalledWith({
-      where: { status: 'failed' },
+      where: {
+        status: 'failed',
+        sourceType: { notIn: ['__throttle__', '__cursor__'] },
+      },
       orderBy: { lastAttemptAt: 'desc' },
       take: 10,
       select: {
@@ -153,12 +157,14 @@ describe('GET /api/admin/anitabi/image-mirror/status', () => {
       where: {
         status: 'mirrored',
         mirroredAt: { gt: new Date('2026-05-03T11:00:00.000Z') },
+        sourceType: { notIn: ['__throttle__', '__cursor__'] },
       },
     })
     expect(mocks.prisma.mapImageMirrorState.count).toHaveBeenNthCalledWith(2, {
       where: {
         status: 'mirrored',
         mirroredAt: { gt: new Date('2026-05-02T12:00:00.000Z') },
+        sourceType: { notIn: ['__throttle__', '__cursor__'] },
       },
     })
   })
