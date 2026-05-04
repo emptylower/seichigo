@@ -311,6 +311,45 @@ describe('serveImageRequest R2 primary read', () => {
     expect(stored?.customMetadata.mirrorSource).toBe('lazy')
   })
 
+  it('does not write upstream render bytes to R2 when the user stream errors mid-flight', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/abort.png'
+    const waitUntil = vi.fn()
+
+    const erroringBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]))
+        controller.error(new Error('upstream connection lost'))
+      },
+    })
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(erroringBody, {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-length': '100',
+        },
+      }),
+    )
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED: '1',
+        },
+        ctx: { waitUntil },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.arrayBuffer()).rejects.toThrow()
+    expect(waitUntil).not.toHaveBeenCalled()
+    expect(bucket.objects.size).toBe(0)
+  })
+
   it('does not write upstream render bytes to R2 when the write flag is disabled', async () => {
     const bucket = new FakeBucket()
     const rawUrl = 'https://bgm.tv/subject/1/cover.png'
