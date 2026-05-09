@@ -2,6 +2,7 @@ export type MapImageRequestLane =
   | 'interaction-critical'
   | 'viewport-thumbnail'
   | 'viewport-visible'
+  | 'warmup-first-view'
   | 'warmup'
 
 export type MapImageRequestLease = {
@@ -30,6 +31,7 @@ const DEFAULT_CONFIG: MapImageRequestSchedulerConfig = {
     'interaction-critical': 8,
     'viewport-thumbnail': 7,
     'viewport-visible': 5,
+    'warmup-first-view': 6,
     warmup: 3,
   },
 }
@@ -53,6 +55,7 @@ export class MapImageRequestScheduler {
     'interaction-critical': 0,
     'viewport-thumbnail': 0,
     'viewport-visible': 0,
+    'warmup-first-view': 0,
     warmup: 0,
   }
 
@@ -72,6 +75,10 @@ export class MapImageRequestScheduler {
       'viewport-visible': clampStartThreshold(
         maxActive,
         laneStartThresholds['viewport-visible'] ?? DEFAULT_CONFIG.laneStartThresholds['viewport-visible'],
+      ),
+      'warmup-first-view': clampStartThreshold(
+        maxActive,
+        laneStartThresholds['warmup-first-view'] ?? DEFAULT_CONFIG.laneStartThresholds['warmup-first-view'],
       ),
       warmup: clampStartThreshold(
         maxActive,
@@ -130,6 +137,7 @@ export class MapImageRequestScheduler {
         'interaction-critical': this.queue.filter((entry) => entry.lane === 'interaction-critical').length,
         'viewport-thumbnail': this.queue.filter((entry) => entry.lane === 'viewport-thumbnail').length,
         'viewport-visible': this.queue.filter((entry) => entry.lane === 'viewport-visible').length,
+        'warmup-first-view': this.queue.filter((entry) => entry.lane === 'warmup-first-view').length,
         warmup: this.queue.filter((entry) => entry.lane === 'warmup').length,
       },
       laneStartThresholds: { ...this.laneStartThresholds },
@@ -159,6 +167,7 @@ export class MapImageRequestScheduler {
       'interaction-critical',
       'viewport-thumbnail',
       'viewport-visible',
+      'warmup-first-view',
       'warmup',
     ]
     for (const lane of laneOrder) {

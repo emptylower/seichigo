@@ -540,7 +540,7 @@ export function useAnitabiWarmup(ctx: any) {
           detail: `${label.preloadImages} (${clampedDone}/${total})`,
         })
       }
-      const runQueue = async (queue: Array<{ src: string; slotKey: string | null }>, total: number) => {
+      const runQueue = async (queue: Array<{ src: string; slotKey: string | null }>, total: number, lane: 'warmup-first-view' | 'warmup' = 'warmup') => {
         if (!queue.length || total <= 0) return
         warmupMetricRef.current.images_total = total
         warmupMetricRef.current.images_queue_remaining = queue.length
@@ -558,7 +558,7 @@ export function useAnitabiWarmup(ctx: any) {
             const startedAt = performance.now()
             let handle: { requestUrl: string; requestId: string } | null = null
             try {
-              const { lease, queueWaitMs } = await acquireTimedMapImageRequestSlot({ lane: 'warmup', signal })
+              const { lease, queueWaitMs } = await acquireTimedMapImageRequestSlot({ lane, signal })
               try {
                 handle = entry.slotKey
                   ? mapImageDiagManagerRef.current?.startRequest({
@@ -623,7 +623,7 @@ export function useAnitabiWarmup(ctx: any) {
       }
 
       updateTaskSafe('images', { percent: 0, detail: `${label.preloadImages} (0/${queueCovers.length})` })
-      await runQueue(queueCovers, queueCovers.length)
+      await runQueue(queueCovers, queueCovers.length, 'warmup-first-view')
       if (signal?.aborted || !isActiveRun()) return
       if (Date.now() > deadline) {
         warmupMetricRef.current.images_blocking_truncated = 1

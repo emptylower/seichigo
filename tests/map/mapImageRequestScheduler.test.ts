@@ -13,6 +13,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 2,
         'viewport-thumbnail': 2,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
@@ -28,6 +29,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 1,
         'viewport-thumbnail': 0,
         'viewport-visible': 1,
+        'warmup-first-view': 0,
         warmup: 0,
       },
     })
@@ -43,6 +45,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 1,
         'viewport-thumbnail': 1,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
@@ -77,6 +80,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 1,
         'viewport-thumbnail': 1,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
@@ -102,6 +106,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 3,
         'viewport-thumbnail': 2,
         'viewport-visible': 2,
+        'warmup-first-view': 2,
         warmup: 1,
       },
     })
@@ -128,6 +133,7 @@ describe('mapImageRequestScheduler', () => {
         'interaction-critical': 2,
         'viewport-thumbnail': 2,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
