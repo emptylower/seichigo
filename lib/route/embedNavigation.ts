@@ -6,7 +6,8 @@ import {
 } from './google'
 
 export const EMBED_API_KEY = String(
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_STATIC_API_KEY ||
     ''
 ).trim()
