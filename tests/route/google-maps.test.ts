@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildGoogleMapsEmbedDirectionsUrl,
+  buildGoogleMapsEmbedPlaceUrl,
   buildGoogleMapsPanoramaUrl,
   buildGoogleMapsDirectionsUrls,
   buildGoogleStaticMapUrl,
@@ -99,6 +101,101 @@ describe('route google helpers', () => {
       expect(u.searchParams.getAll('path')).toHaveLength(1)
       expect(u.searchParams.getAll('path')[0]).toContain('35.100000,139.200000')
       expect(u.searchParams.getAll('path')[0]).toContain('35.200000,139.300000')
+    })
+  })
+
+  describe('buildGoogleMapsEmbedDirectionsUrl', () => {
+    it('returns null without api key', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: '',
+        origin: { lat: 35.1, lng: 139.2 },
+        destination: { lat: 35.2, lng: 139.3 },
+      })
+      expect(url).toBeNull()
+    })
+
+    it('builds an official embed v1 directions url with mode and lat,lng coords', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: 'k',
+        origin: { lat: 35.1, lng: 139.2 },
+        destination: { lat: 35.2, lng: 139.3 },
+        mode: 'transit',
+      })
+      expect(url).toBeTruthy()
+      const u = new URL(url!)
+      expect(u.hostname).toBe('www.google.com')
+      expect(u.pathname).toBe('/maps/embed/v1/directions')
+      expect(u.searchParams.get('key')).toBe('k')
+      expect(u.searchParams.get('origin')).toBe('35.100000,139.200000')
+      expect(u.searchParams.get('destination')).toBe('35.200000,139.300000')
+      expect(u.searchParams.get('mode')).toBe('transit')
+    })
+
+    it('accepts plain string queries (e.g. place names)', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: 'k',
+        origin: 'Tokyo Station',
+        destination: 'Shinjuku Station',
+        mode: 'walking',
+      })
+      const u = new URL(url!)
+      expect(u.searchParams.get('origin')).toBe('Tokyo Station')
+      expect(u.searchParams.get('destination')).toBe('Shinjuku Station')
+      expect(u.searchParams.get('mode')).toBe('walking')
+    })
+
+    it('joins waypoints with pipes', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: 'k',
+        origin: { lat: 35.1, lng: 139.2 },
+        destination: { lat: 35.3, lng: 139.4 },
+        waypoints: [{ lat: 35.2, lng: 139.3 }, 'Akihabara'],
+        mode: 'driving',
+      })
+      const u = new URL(url!)
+      expect(u.searchParams.get('waypoints')).toBe('35.200000,139.300000|Akihabara')
+    })
+
+    it('omits mode when not provided', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: 'k',
+        origin: 'A',
+        destination: 'B',
+      })
+      const u = new URL(url!)
+      expect(u.searchParams.has('mode')).toBe(false)
+    })
+
+    it('returns null when origin or destination resolves empty', () => {
+      const url = buildGoogleMapsEmbedDirectionsUrl({
+        apiKey: 'k',
+        origin: '   ',
+        destination: 'B',
+      })
+      expect(url).toBeNull()
+    })
+  })
+
+  describe('buildGoogleMapsEmbedPlaceUrl', () => {
+    it('returns null without api key or query', () => {
+      expect(buildGoogleMapsEmbedPlaceUrl({ apiKey: '', q: 'A' })).toBeNull()
+      expect(buildGoogleMapsEmbedPlaceUrl({ apiKey: 'k', q: '   ' })).toBeNull()
+    })
+
+    it('builds embed v1 place url from coords', () => {
+      const url = buildGoogleMapsEmbedPlaceUrl({ apiKey: 'k', q: { lat: 35.1, lng: 139.2 }, zoom: 15 })
+      const u = new URL(url!)
+      expect(u.hostname).toBe('www.google.com')
+      expect(u.pathname).toBe('/maps/embed/v1/place')
+      expect(u.searchParams.get('q')).toBe('35.100000,139.200000')
+      expect(u.searchParams.get('zoom')).toBe('15')
+    })
+
+    it('clamps zoom into 0-21 range', () => {
+      const high = buildGoogleMapsEmbedPlaceUrl({ apiKey: 'k', q: 'A', zoom: 99 })
+      expect(new URL(high!).searchParams.get('zoom')).toBe('21')
+      const low = buildGoogleMapsEmbedPlaceUrl({ apiKey: 'k', q: 'A', zoom: -3 })
+      expect(new URL(low!).searchParams.get('zoom')).toBe('0')
     })
   })
 
