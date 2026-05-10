@@ -106,8 +106,8 @@ export async function cronTick(
   }
 
   const seeded = await processSeedBatch(prisma, bucket, {
-    batchSize: opts.seedBatchSize ?? 100,
-    perRequestDelayMs: opts.seedDelayMs ?? 200,
+    batchSize: opts.seedBatchSize ?? 30,
+    perRequestDelayMs: opts.seedDelayMs ?? 500,
   })
 
   if (seeded.timedOut > 0) {

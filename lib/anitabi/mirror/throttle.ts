@@ -1,6 +1,6 @@
 const THROTTLE_KEY = { sourceType: '__throttle__', sourceId: 'global', variant: '__' } as const
-const THROTTLE_DURATION_MS = 60 * 60 * 1000
-const TIMEOUT_THRESHOLD = 10
+const THROTTLE_DURATION_MS = 10 * 60 * 1000
+const TIMEOUT_THRESHOLD = 20
 
 type ThrottleWhere = {
   sourceType_sourceId_variant: typeof THROTTLE_KEY
