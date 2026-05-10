@@ -105,10 +105,52 @@ describe('enumeratePointImageVariants', () => {
     ])
   })
 
+  it('returns variants for user-uploaded point images', () => {
+    const variants = enumeratePointImageVariants(
+      'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg',
+    )
+    expect(variants).toEqual([
+      {
+        label: 'h160',
+        url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?plan=h160',
+      },
+      {
+        label: 'h320',
+        url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?plan=h320',
+      },
+      {
+        label: 'w640q80',
+        url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?q=80&w=640',
+      },
+    ])
+  })
+
+  it('returns variants for user-uploaded point images with non-zero uid', () => {
+    const variants = enumeratePointImageVariants(
+      'https://image.anitabi.cn/user/1181/bangumi/321/points/n7zunh4aj.jpg?plan=h160',
+    )
+    expect(variants).toHaveLength(3)
+    expect(variants[0].url).toBe(
+      'https://image.anitabi.cn/user/1181/bangumi/321/points/n7zunh4aj.jpg?plan=h160',
+    )
+  })
+
+  it('returns variants for /images/ prefixed user-uploaded point images', () => {
+    const variants = enumeratePointImageVariants(
+      'https://www.anitabi.cn/images/user/0/bangumi/1851/points/test.jpg',
+    )
+    expect(variants).toHaveLength(3)
+  })
+
   it('returns an empty list for non-anitabi point URLs and invalid inputs', () => {
     expect(enumeratePointImageVariants('https://lain.bgm.tv/pic/cover/l/abcd.jpg')).toEqual([])
     expect(enumeratePointImageVariants(null)).toEqual([])
     expect(enumeratePointImageVariants('')).toEqual([])
     expect(enumeratePointImageVariants('/points/abc.jpg')).toEqual([])
+  })
+
+  it('rejects user paths that do not match the expected pattern', () => {
+    expect(enumeratePointImageVariants('https://image.anitabi.cn/user/abc/bangumi/1/points/x.jpg')).toEqual([])
+    expect(enumeratePointImageVariants('https://image.anitabi.cn/user/0/other/1/points/x.jpg')).toEqual([])
   })
 })

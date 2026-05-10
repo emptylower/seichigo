@@ -113,7 +113,9 @@ export function enumeratePointImageVariants(rawUrl: string | null | undefined): 
   const normalizedPathname = parsed.pathname.startsWith('/images/')
     ? parsed.pathname.slice('/images'.length)
     : parsed.pathname
-  if (!normalizedPathname.startsWith('/points/')) {
+  const isPointPath = normalizedPathname.startsWith('/points/')
+    || /^\/user\/\d+\/bangumi\/\d+\/points\//.test(normalizedPathname)
+  if (!isPointPath) {
     return []
   }
 
