@@ -173,6 +173,67 @@ function markerLabel(order: number): string | null {
   return null
 }
 
+function formatEmbedQuery(value: string | LatLng): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed : null
+  }
+  const valid = toLatLng(value.lat, value.lng)
+  return valid ? formatLatLng(valid) : null
+}
+
+export function buildGoogleMapsEmbedDirectionsUrl(options: {
+  apiKey: string
+  origin: string | LatLng
+  destination: string | LatLng
+  mode?: GoogleMapsTravelMode
+  waypoints?: Array<string | LatLng>
+}): string | null {
+  const apiKey = String(options.apiKey || '').trim()
+  if (!apiKey) return null
+
+  const origin = formatEmbedQuery(options.origin)
+  const destination = formatEmbedQuery(options.destination)
+  if (!origin || !destination) return null
+
+  const params = new URLSearchParams()
+  params.set('key', apiKey)
+  params.set('origin', origin)
+  params.set('destination', destination)
+  if (options.mode) params.set('mode', options.mode)
+
+  if (options.waypoints?.length) {
+    const formatted = options.waypoints
+      .map(formatEmbedQuery)
+      .filter((v): v is string => Boolean(v))
+    if (formatted.length) params.set('waypoints', formatted.join('|'))
+  }
+
+  return `https://www.google.com/maps/embed/v1/directions?${params.toString()}`
+}
+
+export function buildGoogleMapsEmbedPlaceUrl(options: {
+  apiKey: string
+  q: string | LatLng
+  zoom?: number
+}): string | null {
+  const apiKey = String(options.apiKey || '').trim()
+  if (!apiKey) return null
+
+  const q = formatEmbedQuery(options.q)
+  if (!q) return null
+
+  const params = new URLSearchParams()
+  params.set('key', apiKey)
+  params.set('q', q)
+  if (isFiniteNumber(options.zoom)) {
+    const z = Math.max(0, Math.min(21, Math.trunc(options.zoom)))
+    params.set('zoom', String(z))
+  }
+
+  return `https://www.google.com/maps/embed/v1/place?${params.toString()}`
+}
+
 export function buildGoogleStaticMapUrl(
   points: LatLng[],
   options: {

@@ -13,6 +13,13 @@ import { getHaversineDistance, resolveAnitabiAssetUrl } from '@/lib/anitabi/util
 import CheckInModal from '@/components/checkin/CheckInModal'
 import RouteBookCard from '@/components/share/RouteBookCard'
 import SessionShareFab from '@/components/quickPilgrimage/SessionShareFab'
+import { NavModeToggle } from '@/components/navigation/NavModeToggle'
+import {
+  EMBED_API_KEY,
+  buildGoogleNativeAppUrl,
+  resolveEmbedNavUrl,
+} from '@/lib/route/embedNavigation'
+import type { GoogleMapsTravelMode } from '@/lib/route/google'
 
 type Props = {
   bangumi: AnitabiBangumiDTO
@@ -59,28 +66,8 @@ function isLikelyMobileDevice(): boolean {
   return /android|iphone|ipad|ipod/i.test(navigator.userAgent)
 }
 
-function buildGoogleMapsAppUrl(point: AnitabiPointDTO): string {
-  const destination = point.geo ? `${point.geo[0]},${point.geo[1]}` : point.name
-  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent.toLowerCase()
-  if (ua.includes('android')) {
-    return `google.navigation:q=${encodeURIComponent(destination)}&mode=w`
-  }
-  return `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=walking`
-}
-
-function buildEmbeddedNavigationUrl(
-  point: AnitabiPointDTO,
-  userLocation: { lat: number; lng: number } | null
-): string {
-  const destination = point.geo ? `${point.geo[0]},${point.geo[1]}` : point.name
-  const params = new URLSearchParams()
-  params.set('output', 'embed')
-  params.set('dirflg', 'w')
-  params.set('daddr', destination)
-  if (userLocation) {
-    params.set('saddr', `${userLocation.lat},${userLocation.lng}`)
-  }
-  return `https://www.google.com/maps?${params.toString()}`
+function pointDestination(point: AnitabiPointDTO): { lat: number; lng: number } | string {
+  return point.geo ? { lat: point.geo[0], lng: point.geo[1] } : point.name
 }
 
 export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointStates, onClose, onStatesUpdated }: Props) {
@@ -90,6 +77,7 @@ export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointS
   const [embeddedNavigationByPointId, setEmbeddedNavigationByPointId] = useState<Record<string, boolean>>({})
   const [navigationNotice, setNavigationNotice] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [travelMode, setTravelMode] = useState<GoogleMapsTravelMode>('walking')
   const [isExiting, setIsExiting] = useState(false)
   const [checkInTargetId, setCheckInTargetId] = useState<string | null>(null)
   const [showSessionShareCard, setShowSessionShareCard] = useState(false)
@@ -221,9 +209,9 @@ export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointS
   }, [currentPoint, userLocation])
 
   const currentEmbeddedNavigationUrl = useMemo(() => {
-    if (!currentPoint) return ''
-    return buildEmbeddedNavigationUrl(currentPoint, userLocation)
-  }, [currentPoint, userLocation])
+    if (!currentPoint) return null
+    return resolveEmbedNavUrl(pointDestination(currentPoint), userLocation, travelMode)
+  }, [currentPoint, travelMode, userLocation])
   const attributionLabel = getAnitabiAttributionLabel(locale)
 
   useEffect(() => {
@@ -299,7 +287,10 @@ export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointS
     navigationVisibilityListenerRef.current = onVisibilityChange
     document.addEventListener('visibilitychange', onVisibilityChange)
 
-    const appUrl = buildGoogleMapsAppUrl(currentPoint)
+    const destinationStr = currentPoint.geo
+      ? `${currentPoint.geo[0]},${currentPoint.geo[1]}`
+      : currentPoint.name
+    const appUrl = buildGoogleNativeAppUrl(destinationStr, travelMode)
     try {
       window.location.assign(appUrl)
     } catch {
@@ -426,15 +417,24 @@ export default function QuickPilgrimageMode({ bangumi, locale = 'zh', userPointS
               </div>
             ) : null}
 
+            <NavModeToggle value={travelMode} onChange={setTravelMode} className="mb-3 self-start" />
+
             <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
-              {currentEmbeddedNavigationVisible ? (
+              {currentEmbeddedNavigationVisible && currentEmbeddedNavigationUrl ? (
                 <iframe
                   title="站内导航画面"
                   src={currentEmbeddedNavigationUrl}
                   className="h-full w-full border-0 bg-slate-900"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
+                  allowFullScreen
                 />
+              ) : currentEmbeddedNavigationVisible ? (
+                <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-300">
+                  {EMBED_API_KEY
+                    ? '当前点位缺少坐标，无法生成导航预览。'
+                    : '未配置 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY，导航预览不可用。'}
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-300">
                   已尝试跳转 Google Maps App。返回后可点击“导航完成”，也可点击“切换站内导航”继续在本页面导航。

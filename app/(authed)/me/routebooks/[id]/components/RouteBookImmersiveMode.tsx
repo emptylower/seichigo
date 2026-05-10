@@ -5,6 +5,9 @@ import { CheckCircle2, ChevronRight, MapPin, Navigation, SkipForward, X } from '
 import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import CheckInModal from '@/components/checkin/CheckInModal'
 import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
+import { NavModeToggle } from '@/components/navigation/NavModeToggle'
+import { EMBED_API_KEY, resolveEmbedNavUrl, travelModeLabel } from '@/lib/route/embedNavigation'
+import type { GoogleMapsTravelMode } from '@/lib/route/google'
 import type { PointPreview, PointRecord } from '../types'
 
 type Props = {
@@ -38,20 +41,13 @@ function formatDistance(distance: number | null): string {
   return `${Math.round(distance)} m`
 }
 
-function buildEmbeddedNavigationUrl(to: [number, number] | null, userLocation: UserLocation): string {
-  const params = new URLSearchParams()
-  params.set('output', 'embed')
-  params.set('dirflg', 'w')
-
-  if (to) {
-    params.set('daddr', `${to[0]},${to[1]}`)
-  }
-
-  if (userLocation) {
-    params.set('saddr', `${userLocation.lat},${userLocation.lng}`)
-  }
-
-  return `https://www.google.com/maps?${params.toString()}`
+function buildNavigationEmbedUrl(
+  to: [number, number] | null,
+  userLocation: UserLocation,
+  mode: GoogleMapsTravelMode
+): string | null {
+  if (!to) return null
+  return resolveEmbedNavUrl({ lat: to[0], lng: to[1] }, userLocation, mode)
 }
 
 export function RouteBookImmersiveMode({
@@ -72,6 +68,7 @@ export function RouteBookImmersiveMode({
   const [undoState, setUndoState] = useState<UndoState>('idle')
   const [isExiting, setIsExiting] = useState(false)
   const [userLocation, setUserLocation] = useState<UserLocation>(null)
+  const [travelMode, setTravelMode] = useState<GoogleMapsTravelMode>('walking')
 
   const remainingPoints = useMemo(() => {
     return sorted.filter((point) => !checkedInPointIds.has(point.pointId))
@@ -84,7 +81,7 @@ export function RouteBookImmersiveMode({
   const firstPreview = sorted[0] ? getPointPreview(sorted[0].pointId) : null
   const currentGeo = currentPreview?.geo || null
   const currentDistance = getDistanceMeters(userLocation, currentGeo)
-  const currentNavigationUrl = buildEmbeddedNavigationUrl(currentGeo, userLocation)
+  const currentNavigationUrl = buildNavigationEmbedUrl(currentGeo, userLocation, travelMode)
   const currentOrdinal = currentPoint ? Math.max(1, sorted.findIndex((point) => point.pointId === currentPoint.pointId) + 1) : checkedCount
   const lastCheckedPreview = lastCheckedPointId ? getPointPreview(lastCheckedPointId) : null
 
@@ -233,14 +230,25 @@ export function RouteBookImmersiveMode({
 
             {navigatingByPointId[currentPoint.pointId] ? (
               <>
+                <NavModeToggle value={travelMode} onChange={setTravelMode} className="mb-3 self-start" />
+
                 <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
-                  <iframe
-                    title="站内导航画面"
-                    src={currentNavigationUrl}
-                    className="h-full w-full border-0 bg-slate-900"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
+                  {currentNavigationUrl ? (
+                    <iframe
+                      title="站内导航画面"
+                      src={currentNavigationUrl}
+                      className="h-full w-full border-0 bg-slate-900"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-400">
+                      {EMBED_API_KEY
+                        ? '当前点位缺少坐标，无法生成导航预览。'
+                        : '未配置 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY，导航预览不可用。'}
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
@@ -251,8 +259,8 @@ export function RouteBookImmersiveMode({
                       <div className="mt-1 font-semibold text-white">{formatDistance(currentDistance)}</div>
                     </div>
                     <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                      <div className="text-slate-400">导航模式</div>
-                      <div className="mt-1 text-white">站内地图导航</div>
+                      <div className="text-slate-400">出行方式</div>
+                      <div className="mt-1 text-white">{travelModeLabel(travelMode)}</div>
                     </div>
                   </div>
                 </div>
