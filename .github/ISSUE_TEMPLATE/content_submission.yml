@@ -1,0 +1,55 @@
+name: Content / route submission / 内容或线路投稿
+description: Submit a pilgrimage route, correction, or content idea.
+title: "[content] "
+labels: ["content", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For full article drafts use the in-app submission flow at
+        <https://seichigo.com/submit>. Use this issue type for
+        route ideas, location corrections, or content takedown requests.
+
+        完整文章请走站内 `/submit`。此模板用于线路点子、地点纠错或下架请求。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Submission type / 投稿类型
+      options:
+        - New route idea / 新线路想法
+        - Location correction / 地点纠错
+        - Takedown request (location owner) / 下架请求（地点权利方）
+        - Translation correction / 翻译纠错
+        - Other / 其他
+    validations:
+      required: true
+  - type: input
+    id: anime
+    attributes:
+      label: Anime / 作品名
+      placeholder: e.g. Bocchi the Rock! / ぼっち・ざ・ろっく！
+  - type: input
+    id: area
+    attributes:
+      label: Area or city / 区域或城市
+      placeholder: e.g. Shimokitazawa, Tokyo
+  - type: textarea
+    id: details
+    attributes:
+      label: Details / 详情
+      description: For new routes, list the spots and a rough order. For corrections, link to the page and describe the fix. For takedowns, please indicate your relation to the location.
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Related URL / 相关链接
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Rights & etiquette / 权利与礼仪
+      options:
+        - label: I confirm any photos or quotes I submit are mine or properly licensed.
+          required: true
+        - label: This submission does not encourage trespassing or harassment of residents.
+          required: true

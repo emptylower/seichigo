@@ -1,0 +1,89 @@
+name: Bug report / 缺陷反馈
+description: Something on seichigo.com or in the codebase is broken.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more concrete
+        the report, the faster we can fix it.
+        感谢上报。报告越具体，我们修得越快。
+  - type: checkboxes
+    id: pre-flight
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched existing issues and discussions and found no duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md).
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary / 概要
+      description: One or two sentences describing the problem.
+      placeholder: e.g. The map silently fails to load images when zoomed past level 14.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. Open https://seichigo.com/zh/anime/...
+        2. Pan the map to ...
+        3. Wait 10 seconds
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / 实际行为
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 受影响模块
+      multiple: true
+      options:
+        - Map / 地图
+        - Editor / 编辑器
+        - Auth / 登录
+        - Admin / 管理后台
+        - Article rendering / 文章渲染
+        - Anitabi sync / 数据同步
+        - Comments / 评论
+        - SEO / sitemap / OG
+        - Build / Deploy
+        - Other / 其他
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: URL where it happens / 出问题的页面
+      placeholder: https://seichigo.com/...
+  - type: input
+    id: environment
+    attributes:
+      label: Browser / OS / Device
+      placeholder: e.g. Chrome 131 on macOS 14, iPhone 15 Safari
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console logs, network errors, or screenshots
+      description: Drag images directly into this textarea, or paste log snippets.
+      render: shell
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else / 补充说明

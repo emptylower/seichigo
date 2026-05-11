@@ -1,319 +1,301 @@
-# SeichiGo (MVP)
+<div align="center">
+  <a href="https://seichigo.com">
+    <img src="public/brand/web-logo-256.png" alt="SeichiGo" width="128" height="128" />
+  </a>
 
-Code-first Next.js App Router app for anime pilgrimage content, with rich-text authoring, admin moderation, and Anitabi map/sync workflows.
+  <h1>SeichiGo · 圣地 GO</h1>
 
-> This README is aligned with root and scoped `AGENTS.md` files (`app/api`, `app/(authed)/admin`, `components/editor`, `components/map`, `lib/article`, `lib/anitabi`, `lib/translation`, `lib/seo`, `tests`).
+  <p>
+    <strong>An anime-pilgrimage content platform. Read deep guides, see exact spots on a map, take the route with you.</strong>
+  </p>
+  <p>
+    <strong>面向动漫圣地巡礼的内容平台 —— 读深度图文攻略，在地图上看准点位，把线路带走。</strong>
+  </p>
 
-## Tech Stack
+  <p>
+    <a href="https://seichigo.com"><img alt="Live" src="https://img.shields.io/badge/live-seichigo.com-ec4899?style=flat-square" /></a>
+    <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue?style=flat-square" /></a>
+    <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=nextdotjs" />
+    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.6-3178c6?style=flat-square&logo=typescript&logoColor=white" />
+    <img alt="Prisma" src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma&logoColor=white" />
+    <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" />
+    <img alt="MapLibre" src="https://img.shields.io/badge/MapLibre-GL-396cb2?style=flat-square&logo=maplibre&logoColor=white" />
+  </p>
 
-- Next.js 15 (App Router, strict TypeScript)
-- Tailwind CSS (`colors.brand` pink scale)
-- Prisma + Postgres (Supabase / Vercel Postgres / Neon)
-- Auth.js (NextAuth) with Email OTP + password bootstrap
-- MDX content layer (`content/zh/posts/*.mdx`)
-- TipTap rich-text editor with custom extensions
-- Vitest (split Node/JSDOM projects)
-- Giscus comments
-- SEO tooling (`sitemap`, `robots`, dynamic OG, audit scripts)
+  <p>
+    <a href="#features--特性"><strong>Features</strong></a> ·
+    <a href="#quick-start--快速开始"><strong>Quick start</strong></a> ·
+    <a href="docs/architecture.md"><strong>Architecture</strong></a> ·
+    <a href="docs/deployment.md"><strong>Deployment</strong></a> ·
+    <a href="docs/api.md"><strong>API</strong></a> ·
+    <a href="docs/roadmap.md"><strong>Roadmap</strong></a> ·
+    <a href="CONTRIBUTING.md"><strong>Contribute</strong></a>
+  </p>
+</div>
 
-## Architecture At A Glance
+---
 
-Core API layering:
+<p align="center">
+  <a href="#english">English</a> · <a href="#中文">中文</a>
+</p>
 
-```text
-app/api/**/route.ts
-  -> lib/*/api.ts (get*ApiDeps)
-    -> lib/*/handlers/*.ts (business logic)
+---
+
+## English
+
+### Why SeichiGo?
+
+Anime pilgrimage — visiting the real-world places that appear in your
+favorite shows — is hard to plan well. The information is scattered across
+fansites, Twitter threads, and dead blog posts. SeichiGo collects the best
+routes into a single, well-crafted reading experience: deep guides per work,
+exact point-of-interest data backed by [Anitabi](https://anitabi.cn), and a
+map you can hand off to Google Maps in one tap.
+
+> "Help anime fans imagine — and plan — their first pilgrimage with
+> long-form writing, gentle visual design, and a useful list of places."
+> — from the original product brief
+
+### Features / 特性
+
+| | |
+|---|---|
+| ✦ Long-form pilgrimage articles | MDX-driven posts (`content/zh/posts/*.mdx`) with `<SpotList />` components, OG images, and JSON-LD. |
+| ✦ Map by Anitabi | MapLibre GL with clustering, viewport warmup, per-host policy, and an R2-backed durable image mirror. |
+| ✦ In-app navigation | Travel-mode picker (walking / transit / driving) via the official Google Maps Embed API. |
+| ✦ Authoring center | `/submit` — TipTap rich-text editor with floating toolbar, autosave, draft/withdraw, and revision flow. |
+| ✦ Admin moderation | `/admin/review` for article queue, translation batches, route books, and an ops dashboard. |
+| ✦ Multilingual | Locale-aware routing for `zh` / `en` / `ja`, with a Gemini-powered translation queue and glossary builder. |
+| ✦ SEO-first | Sitemap, robots, dynamic OG, JSON-LD spoke factory, SEO audit script, SerpAPI-driven rank tracker. |
+| ✦ Comments by Giscus | GitHub-Discussions-backed, zero database load. |
+| ✦ Code-first / AI-friendly | Everything from migrations to cron lives in the repo; modules ship with scoped `AGENTS.md` knowledge bases. |
+| ✦ Observability | Sentry server/edge, Cloudflare Workers observability, internal map-image diagnostics dashboard. |
+
+### Live demo / 在线体验
+
+<https://seichigo.com>
+
+### Quick start / 快速开始
+
+```bash
+git clone https://github.com/emptylower/seichigo.git
+cd seichigo
+npm install
+cp .env.example .env.local        # fill in required vars
+cp .env.local .env                # Prisma CLI reads .env
+npm run db:generate
+npm run db:migrate:dev
+npm run dev
 ```
 
-Design intent:
+The site runs at <http://localhost:3000>. Sign in via `/auth/signin`
+using an email listed in `ADMIN_EMAILS` (default password `112233`,
+overridable with `ADMIN_DEFAULT_PASSWORD`); first login forces password
+change.
 
-- `route.ts` handles transport concerns only (request/response/error mapping/logging).
-- Domain workflows live in handlers and reusable services.
-- Dependencies are injected via cached `get*ApiDeps()` factories.
+For a local Postgres, see [`CONTRIBUTING.md`](CONTRIBUTING.md#dev-environment).
 
-## Repository Structure
+### Required env vars
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Postgres connection (pooled, e.g. Neon `-pooler.` host) |
+| `DATABASE_URL_UNPOOLED` | Direct URL for Prisma migrations |
+| `NEXTAUTH_URL`, `NEXTAUTH_SECRET` | NextAuth basics |
+| `ADMIN_EMAILS` | Comma-separated admin allowlist |
+| `RESEND_API_KEY` + `EMAIL_FROM` | OTP delivery (or SMTP fallback) |
+| `NEXT_PUBLIC_GISCUS_*` | Comment widget config |
+| `ANITABI_CRON_SECRET` | Auth for Anitabi cron endpoints |
+| `SENTRY_*` | Optional, error reporting |
+| Cloudflare bindings (`MAP_IMAGE_CACHE`, `IMAGES`, `ASSETS`) | Set via `wrangler.jsonc` for Workers deploy |
+
+Full list and tuning guidance: [`docs/deployment.md`](docs/deployment.md).
+
+### Tech stack
+
+- **App:** Next.js 15 App Router, React 19, strict TypeScript
+- **Styling:** Tailwind CSS (`colors.brand` pink scale), Radix primitives, shadcn-flavored UI
+- **Data:** Prisma 6 + Postgres (Neon / Supabase / Vercel Postgres)
+- **Auth:** NextAuth v4 (Email OTP + admin credentials)
+- **Editor:** TipTap 3 with custom extensions and a hard sanitizer gate
+- **Map:** MapLibre GL + Supercluster, R2 image mirror, Cloudflare Images binding
+- **Content:** MDX (`content/<lang>/posts/*.mdx`), `next-mdx-remote`
+- **Testing:** Vitest (node + jsdom projects), Playwright for e2e
+- **Deploy:** OpenNext on Cloudflare Workers (primary), Vercel-compatible build path
+- **Observability:** Sentry, Cloudflare observability, internal map-image diag
+
+### Architecture at a glance
+
+```text
+app/api/<domain>/route.ts        # thin transport — auth, status, error mapping
+  └── lib/<domain>/api.ts        # cached get*ApiDeps()
+        └── lib/<domain>/handlers/*.ts   # business logic
+              └── lib/<domain>/repo*.ts   # Prisma + in-memory doubles for tests
+```
+
+15 domain factories, 79 handler files, repository pattern with memory doubles.
+The map is a single mega-hook orchestrator (`features/map/`) passing scoped
+state to specialized rendering hooks; see
+[`docs/architecture.md`](docs/architecture.md) for the full diagram.
+
+### Repository layout
 
 ```text
 seichigo/
-|- app/                  # App Router pages + API wrappers
-|- components/           # Shared UI (editor/map heavy clients)
-|- lib/                  # Domain logic, repos, workflows, sanitization
-|- content/              # Locale content data (MDX)
-|- prisma/               # Schema and migrations source of truth
-|- scripts/              # SEO/i18n/Anitabi tooling
-|- tests/                # Vitest suites (node + jsdom)
-`- AGENTS.md             # Project knowledge base for contributors
+├── app/                  # App Router pages + API route wrappers
+├── features/             # Heavy client modules (map mega-hook lives here)
+├── components/           # Shared UI (editor, map presentation, etc.)
+├── lib/                  # 34 domain modules (handlers, repos, workflows)
+├── content/              # Locale MDX content (zh / en / ja)
+├── prisma/               # Schema + migrations
+├── scripts/              # SEO / i18n / Anitabi tooling
+├── tests/                # Vitest suites (node + jsdom split)
+├── workers/              # Cloudflare worker entry points (R2 mirror cron, ...)
+├── docs/                 # Architecture, deployment, API, roadmap, runbooks
+└── AGENTS.md             # Top-level project knowledge base
 ```
 
-## Module Playbook (From AGENTS)
+### Deployment
 
-### `app/api` (Route Wrappers)
-
-Use for thin transport wrappers only.
-
-- Resolve deps via `await get*ApiDeps()`.
-- Delegate behavior to `createHandlers(deps).METHOD(req)`.
-- Return explicit `NextResponse.json(..., { status })` with user-safe Chinese messages.
-- Keep contextual logs like `[api/<domain>] <METHOD> failed`.
-- For untrusted URL fetches, follow SSRF-safe pattern in `app/api/link-preview/route.ts` (manual redirect validation for each hop).
-
-Avoid:
-
-- Putting business workflow logic directly in `route.ts`.
-- Direct Prisma access in route wrappers.
-- Raw `fetch(userInput)` without SSRF protections.
-
-### `app/(authed)/admin` (Privileged UI)
-
-High-risk surfaces include moderation and translation batch flows.
-
-- Keep authorization server-enforced (never trust client state alone).
-- Preserve localized Chinese operator copy in existing screens.
-- For long-running operations, always expose progress and partial-failure states.
-- Make surgical edits in `app/(authed)/admin/translations/ui.tsx` (complex async state machine hotspot).
-
-Avoid:
-
-- Adding heavy business logic into layout-level components.
-- Introducing silent failure modes in moderation/batch actions.
-
-### `components/editor` (TipTap)
-
-- Keep generated HTML compatible with `sanitizeRichTextHtml` allowlists.
-- When extension HTML changes, update sanitizer and tests together.
-- Keep extension `data-*` attributes stable unless coordinated sanitizer updates are included.
-
-Avoid:
-
-- Adding new tags/attrs/styles without sanitizer alignment.
-- Removing ProseMirror/TipTap DOM shims from `tests/setup.ts`.
-
-### `components/map` (MapLibre UI)
-
-- Keep layer/source IDs and ordering stable across hooks and layer components.
-- Keep heavy feature transforms in map utils, not render paths.
-- Preserve map feature property contracts used by popups/cards.
-
-### `lib/translation` (Task Queue + Batch Execution)
-
-- Keep task lifecycle idempotent with explicit status/error transitions.
-- Route wrappers stay thin; Gemini and TipTap transforms stay in translation services.
-- Batch/backfill flows should remain bounded and progress-aware.
-
-### `lib/seo` (JSON-LD + Spoke Factory)
-
-- Keep JSON-LD generation deterministic and server-rendered.
-- Keep locale canonical/alternate behavior centralized in SEO helpers.
-- Preserve spoke-factory pipeline order: candidate extraction -> validation -> MDX generation.
-
-### `lib/article` (Article Lifecycle)
-
-- `lib/article/api.ts`: dependency wiring via `getArticleApiDeps`.
-- `lib/article/handlers/*.ts`: request orchestration, validation, response shape.
-- `lib/article/workflow.ts`: lifecycle state machine + `WorkflowResult` typed outcomes.
-- `lib/article/repo*.ts`: repository interfaces/implementations.
-
-Avoid:
-
-- Prisma instantiation inside handlers.
-- Collapsing author/admin flows into oversized handlers.
-- Throwing opaque errors where typed workflow outcomes are expected.
-
-### `lib/anitabi` (Sync + Enrichment Pipeline)
-
-- Keep sync/enrichment idempotent and restart-safe.
-- Respect Vercel Hobby runtime constraints.
-- Isolate source fetch/normalization/persistence concerns.
-- Keep output contracts stable for map/admin consumers.
-
-Avoid:
-
-- High default concurrency that exceeds hobby limits.
-- Coupling client helper output to internal raw-store schema details.
-- Bypassing cron secret checks and handler auth flow.
-
-### `tests` (Vitest Split)
-
-- `.test.ts` -> Node project.
-- `.test.tsx` -> JSDOM project.
-- Reuse `tests/setup.ts` for global mocks and DOM shims.
-- Prefer deterministic tests with in-memory repos (`repoMemory`) over live DB/network dependencies.
-
-## Global Conventions
-
-- API/domain boundary: wrappers in `app/api`, business logic in `lib/*/handlers`.
-- Prisma access: always use shared singleton `@/lib/db/prisma`.
-- Rich text safety: user HTML must pass `sanitizeRichTextHtml`.
-- Error style: explicit HTTP status + Chinese user-facing strings in many endpoints.
-- Alias usage: `@/lib/*`, `@/components/*`, `@/*`.
-- Build behavior:
-  - Local/default `npm run build` runs Prisma migrate + generate before Next build.
-  - Vercel build skips `prisma migrate deploy` and only runs `prisma generate + next build`.
-- Lint policy: lint is advisory (`eslint ... || true`), not a release gate.
-
-## Getting Started
-
-### 1) Environment Variables
-
-Copy `.env.example` to `.env.local` and fill:
-
-- `SITE_URL`
-- `DATABASE_URL` (Postgres connection string)
-- `DATABASE_URL_UNPOOLED` (optional but recommended for Prisma migrations)
-- `NEXTAUTH_URL`, `NEXTAUTH_SECRET`
-- Email provider:
-  - `RESEND_API_KEY` (recommended), or
-  - SMTP (`EMAIL_SERVER` / host+port+user+pass)
-- Giscus public envs
-- `ADMIN_EMAILS` (admin allowlist)
-
-Prisma CLI reads `.env` by default. For local dev:
+Primary target is **Cloudflare Workers** via OpenNext:
 
 ```bash
-cp .env.local .env
+npm run cf:build      # CLOUDFLARE_DEPLOY=1 opennextjs-cloudflare build + Prisma WASM
+npm run cf:preview    # local Workers preview
+npm run cf:deploy     # build + opennextjs-cloudflare deploy
 ```
 
-### 2) Install and Run
+Bindings live in `wrangler.jsonc`: R2 bucket `seichigo-anitabi-images`,
+Cloudflare Images binding, static assets, and observability flags.
+
+Vercel-compatible build path is also supported; daily Anitabi delta, daily
+translation pass, and ops daily cron are declared in `vercel.json`.
+
+See [`docs/deployment.md`](docs/deployment.md) for the full runbook,
+including the predeploy guard, deploy ledger, and the four-skill repo
+governance suite.
+
+### Scripts
 
 ```bash
+npm run dev                     # local dev
+npm run build                   # next build (with Prisma migrate locally)
+npm test                        # line-budget + vitest
+npm run typecheck               # app + tests
+npm run seo:audit -- --base-url https://seichigo.com
+npm run anitabi:sync            # manual Anitabi delta sync
+npm run i18n:coverage           # i18n key coverage report
+npm run glossary:build          # translation glossary build
+```
+
+### Contributing / 贡献
+
+Pull requests welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+nearest `AGENTS.md`. For new pilgrimage routes or content corrections,
+use the in-app `/submit` flow or the
+[content submission issue template](.github/ISSUE_TEMPLATE/content_submission.yml).
+
+By contributing you agree your changes are released under
+the [PolyForm Noncommercial 1.0.0](LICENSE) license.
+
+### Security
+
+Please **do not** open public issues for security vulnerabilities.
+See [`SECURITY.md`](SECURITY.md) for the responsible-disclosure flow.
+
+### License
+
+Source code is released under
+**[PolyForm Noncommercial 1.0.0](LICENSE)**. Personal use, research,
+charitable/educational use, and non-commercial hobby projects are
+permitted. **Commercial use requires a separate license** — please
+contact the maintainer.
+
+Content under `content/**` (articles, route descriptions, photos) may be
+covered by separate per-article licenses noted in each file's frontmatter.
+When in doubt, ask before redistributing.
+
+---
+
+## 中文
+
+### 我们在做什么
+
+动漫圣地巡礼 —— 去你爱的作品取景的现实地点 —— 一直没人好好做：信息散落
+在 fansite、推特串和早已无人维护的旧博客。SeichiGo 把这些线路收拢成一份
+精心打磨的阅读体验：单作品的深度图文 + 由
+[Anitabi](https://anitabi.cn) 提供的精确点位 + 一键交给 Google Maps。
+
+### 关键特性
+
+- **长文 + MDX 内容系统**：每篇对应单作品/单线路，结构化的 `<SpotList />` 组件
+- **Anitabi 地图**：MapLibre + 聚类 + 视口预热 + 按域名调度 + R2 持久镜像
+- **站内导航选择器**：通过 Google Maps Embed API 在站内切换步行/交通/驾车
+- **作者中心 `/submit`**：TipTap 富文本（飞书风格浮动工具条 + 段首块菜单），自动保存，提交/撤回
+- **管理后台 `/admin`**：审稿、翻译批处理、路线本、运营仪表盘
+- **多语言**：中/英/日 区域路由，Gemini 翻译队列与术语表
+- **SEO 完备**：sitemap、robots、动态 OG、JSON-LD 辐射工厂、审计脚本、SerpAPI 排名追踪
+- **Giscus 评论**：基于 GitHub Discussions，无 DB 负担
+- **代码即配置**：从迁移到 cron 都在仓库里，模块附带 `AGENTS.md` 知识库
+- **可观测**：Sentry、Cloudflare 观测、内部地图图像诊断面板
+
+### 在线体验
+
+<https://seichigo.com>
+
+### 快速开始
+
+```bash
+git clone https://github.com/emptylower/seichigo.git
+cd seichigo
 npm install
-npm run dev
-```
-
-### 3) Prisma (Local)
-
-```bash
+cp .env.example .env.local        # 填入必填变量
+cp .env.local .env                # Prisma CLI 默认读 .env
 npm run db:generate
 npm run db:migrate:dev
-```
-
-## Local Postgres (Docker)
-
-```bash
-docker run --name seichigo-pg \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=seichigo \
-  -p 5432:5432 \
-  -v seichigo_pg:/var/lib/postgresql/data \
-  -d postgres:16
-```
-
-Set:
-
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/seichigo?schema=public
-```
-
-## Command Matrix
-
-### Runtime
-
-```bash
 npm run dev
-npm run build
 ```
 
-### Tests
+打开 <http://localhost:3000>。在 `/auth/signin` 用 `ADMIN_EMAILS` 中的邮箱
+登录（默认密码 `112233`，可用 `ADMIN_DEFAULT_PASSWORD` 覆盖），首次登录会
+强制改密。
 
-```bash
-npm test
-npm test -- tests/smoke.test.ts
-npx vitest run --project node
-npx vitest run --project jsdom
-```
+完整环境变量、部署细节见 [`docs/deployment.md`](docs/deployment.md)。
 
-### Targeted Checks
+### 技术栈
 
-```bash
-npm test -- tests/article
-npm test -- tests/link-preview
-npm test -- tests/translation
-npm test -- tests/admin
-npm test -- -t "auth"
-```
+- **前端**：Next.js 15 App Router、React 19、严格 TypeScript
+- **样式**：Tailwind（`colors.brand` 粉色系）、Radix、shadcn 风组件
+- **数据**：Prisma 6 + Postgres（Neon / Supabase / Vercel Postgres）
+- **认证**：NextAuth v4（Email OTP + 管理员密码）
+- **编辑器**：TipTap 3 + 严格 sanitizer
+- **地图**：MapLibre GL + Supercluster + R2 镜像 + Cloudflare Images
+- **内容**：MDX (`content/<lang>/posts/*.mdx`) + `next-mdx-remote`
+- **测试**：Vitest（node + jsdom 两套）+ Playwright e2e
+- **部署**：OpenNext on Cloudflare Workers（主线），保留 Vercel 兼容路径
+- **观测**：Sentry + Cloudflare 观测 + 内部诊断
 
-### SEO Audit
+### 文档导航
 
-```bash
-npm run seo:audit -- --base-url https://seichigo.com
-npm run seo:audit -- --base-url http://localhost:3000 --include-private
-```
+- [架构总览 / Architecture](docs/architecture.md)
+- [部署手册 / Deployment](docs/deployment.md)
+- [API 索引 / API](docs/api.md)
+- [路线图 / Roadmap](docs/roadmap.md)
+- [运行手册 / Runbooks](docs/runbooks/)
+- [贡献指南 / Contributing](CONTRIBUTING.md)
+- [行为准则 / Code of Conduct](CODE_OF_CONDUCT.md)
+- [安全策略 / Security](SECURITY.md)
+- [更新日志 / Changelog](CHANGELOG.md)
 
-## Cloudflare Deployment (OpenNext)
+### 内容与版权
 
-`@cloudflare/next-on-pages` is deprecated and requires Edge runtime on every non-static route.
-This repo is configured for OpenNext + Workers:
+- 源代码：**[PolyForm Noncommercial 1.0.0](LICENSE)**。允许个人、研究、
+  教育、非营利与业余使用；**商业使用需另行授权**，请邮件联系维护者。
+- 内容（`content/**`）：可能逐篇适用不同 license，详见各文件 frontmatter。
 
-```bash
-npm run cf:build
-npm run cf:preview
-npm run cf:deploy
-```
+---
 
-Added config files:
-
-- `open-next.config.ts`
-- `wrangler.jsonc`
-- `public/_headers`
-
-Build note:
-
-- `scripts/build-app.mjs` auto-skips `prisma migrate deploy` for Cloudflare CI (`CF_PAGES=1` or `WORKERS_CI=1`) while keeping local behavior unchanged.
-
-## Content
-
-- Chinese articles live at `content/zh/posts/*.mdx`.
-- Template and components: `content/zh/posts/README.md`.
-- Author center: `/submit` (drafts, rich-text editor, submit/withdraw).
-- Admin review: `/admin/review` (approve/reject `in_review` articles).
-
-## Anitabi Sync on Vercel
-
-Required env vars:
-
-- `DATABASE_URL` / `DATABASE_URL_UNPOOLED`
-  - Use Neon pooled URL for `DATABASE_URL` (`-pooler.` host).
-  - Use direct URL for `DATABASE_URL_UNPOOLED` (migrations).
-- `ANITABI_CRON_SECRET` (long random secret)
-- `ANITABI_SYNC_CONCURRENCY` (recommend `1-2` on Neon/Vercel)
-- Optional `ANITABI_SYNC_MAX_ROWS_PER_RUN` (recommend `200-500` on Hobby)
-- Optional `ANITABI_SYNC_MAX_RUNTIME_MS` (recommend `6000-9000` on Hobby)
-- Optional `ANITABI_API_BASE_URL`, `ANITABI_SITE_BASE_URL`
-
-Scheduled in repo:
-
-- Daily delta: `/api/cron/anitabi/daily` at `10 3 * * *` (UTC)
-
-Vercel Hobby note:
-
-- Native hourly crons are not supported.
-- Use daily delta + external scheduler/manual trigger for hourly endpoint if needed.
-
-One-time bootstrap after deploy:
-
-```bash
-curl -H "Authorization: Bearer $ANITABI_CRON_SECRET" \
-  https://<your-domain>/api/cron/anitabi/daily
-```
-
-Quick check:
-
-- Open `https://<your-domain>/api/anitabi/bootstrap?locale=zh&tab=latest`.
-- If `cards` is non-empty, sync data exists.
-
-## Admin Login
-
-- Visit `/auth/signin` with an email in `ADMIN_EMAILS`.
-- Default password: `112233` (override via `ADMIN_DEFAULT_PASSWORD`).
-- First successful login forces password change at `/auth/change-password`.
-- Manual reset: set admin `passwordHash = NULL` and `mustChangePassword = true`, then sign in again with default password.
-
-## Operational Notes
-
-- Missing DB env/migrations often surface as API `503`.
-- In dev, if Resend/SMTP is missing, OTP email payload is logged to server console.
-- Accounts created by OTP without a password are redirected to `/auth/set-password` on first login.
-- `tests/setup.ts` contains TipTap/ProseMirror DOM shims; keep when refactoring editor tests.
-- `/assets/:id` supports `?w=<width>&q=<quality>` WebP variants and progressive loading.
-- Legacy `/api/submissions` has basic anti-abuse per-user/IP/day (env tunable).
+<div align="center">
+  Made with ☕ and a lot of 路面电車 timetables. <br/>
+  Maintained by <a href="https://github.com/emptylower">@emptylower</a>.
+</div>
