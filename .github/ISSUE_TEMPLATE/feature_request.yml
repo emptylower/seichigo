@@ -1,0 +1,54 @@
+name: Feature request / 功能建议
+description: Propose a new capability for SeichiGo.
+title: "[feat] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SeichiGo aims to stay focused on anime pilgrimage content and routing.
+        Please describe the user problem first, the proposed solution second.
+        请先描述用户问题，再描述提议的方案。
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / 要解决的问题
+      description: Who hits this, when, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / 提议方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的其他方案
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 模块
+      multiple: true
+      options:
+        - Map / 地图
+        - Editor / 编辑器
+        - Routebook / 路线本
+        - Article authoring / 文章创作
+        - Translation / 多语言
+        - Admin tooling / 管理后台
+        - Anitabi pipeline / 数据管道
+        - SEO
+        - Mobile app (future) / 未来 App
+        - Other / 其他
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: V1 fit / 与 V1 范围相符
+      description: SeichiGo V1 explicitly excludes complex web map UI, route auto-planning, and large social features. See `docs/roadmap.md`.
+      options:
+        - label: I have read the roadmap and believe this fits V1, or I am proposing it for a later release.
+          required: true

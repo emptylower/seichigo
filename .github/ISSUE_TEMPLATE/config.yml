@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/emptylower/seichigo/security/policy
+    about: Please do NOT file public issues for security problems — see SECURITY.md.
+  - name: Live site / 线上站点
+    url: https://seichigo.com
+    about: See the deployed SeichiGo experience.
+  - name: Discussions / 讨论区
+    url: https://github.com/emptylower/seichigo/discussions
+    about: Open questions, ideas, route requests, general feedback.
