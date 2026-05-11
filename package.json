@@ -21,6 +21,7 @@
     "anitabi:sync": "npx ts-node -T --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-sync.ts",
     "i18n:coverage": "npx tsx scripts/measure-i18n-coverage.ts",
     "glossary:build": "npx tsx scripts/build-glossary.ts",
+    "route:here-spike": "npx tsx --env-file=.env.local scripts/here-japan-coverage.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
