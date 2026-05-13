@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>我的手帐 · 圣地巡礼 · W1 线框</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3ecdc;
+      --paper-warm: #ede4cf;
+      --paper-card: #fdfaf3;
+      --ink: #1f1a13;
+      --ink-soft: #4a4236;
+      --ink-muted: #847b6c;
+      --seal: #a8392b;
+      --seal-deep: #862c20;
+      --thread: rgba(31, 26, 19, 0.18);
+      --indigo: #2d3e50;
+    }
+    * { -webkit-font-smoothing: antialiased; }
+    html, body {
+      font-family: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image:
+        radial-gradient(at 12% 8%, rgba(168, 57, 43, 0.05) 0px, transparent 45%),
+        radial-gradient(at 88% 12%, rgba(60, 80, 90, 0.04) 0px, transparent 50%),
+        radial-gradient(at 70% 92%, rgba(168, 57, 43, 0.03) 0px, transparent 50%),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.10 0 0 0 0 0.08 0 0 0 0.10 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      background-attachment: fixed;
+    }
+    .serif { font-family: 'Noto Serif SC', 'Songti SC', serif; }
+    .latin-serif { font-family: 'Cormorant Garamond', serif; font-style: italic; }
+    .hand { font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif; }
+
+    /* 朱印章 */
+    .seal {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--seal) 0%, var(--seal-deep) 100%);
+      color: #fdfaf3;
+      font-family: 'Noto Serif SC', serif;
+      font-weight: 700;
+      letter-spacing: 3px;
+      padding: 4px 10px;
+      box-shadow:
+        0 0 0 1px rgba(168, 57, 43, 0.3),
+        2px 3px 0 rgba(168, 57, 43, 0.15),
+        inset 0 0 6px rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+    .seal::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      mix-blend-mode: screen;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .seal-rotate-l { transform: rotate(-4deg); }
+    .seal-rotate-r { transform: rotate(3deg); }
+
+    /* 纸张卡片 */
+    .paper {
+      background: var(--paper-card);
+      box-shadow:
+        0 1px 0 rgba(31, 26, 19, 0.04),
+        0 8px 24px -10px rgba(31, 26, 19, 0.18),
+        inset 0 0 0 1px rgba(31, 26, 19, 0.03);
+      position: relative;
+    }
+    .paper::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence baseFrequency='0.7' numOctaves='1'/><feColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    .paper > * { position: relative; }
+    .stitched { border: 1px dashed var(--thread); }
+    .ink-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--ink-soft) 10%, var(--ink-soft) 90%, transparent 100%);
+      opacity: 0.4;
+    }
+    .washi {
+      position: absolute;
+      height: 22px; width: 100px;
+      background: repeating-linear-gradient(45deg, rgba(168, 57, 43, 0.18) 0 6px, rgba(168, 57, 43, 0.28) 6px 12px);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .binding { position: relative; }
+    .binding::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 5%;
+      bottom: 5%;
+      width: 1px;
+      background: repeating-linear-gradient(180deg, var(--thread) 0 6px, transparent 6px 12px);
+    }
+    .tilt-l { transform: rotate(-0.6deg); }
+    .tilt-r { transform: rotate(0.5deg); }
+    .big-num {
+      font-family: 'Noto Serif SC', serif;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .ink-blot {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(20px);
+      opacity: 0.12;
+      pointer-events: none;
+    }
+    .pin {
+      position: absolute;
+      width: 8px; height: 8px;
+      background: var(--seal);
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(253, 250, 243, 0.8), 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .pin.recent::before {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid var(--seal);
+      animation: ping 2s infinite;
+    }
+    @keyframes ping {
+      0% { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+    .bar {
+      height: 8px;
+      background: var(--seal);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+    }
+    .bar-bg {
+      height: 8px;
+      background: rgba(31, 26, 19, 0.06);
+      border: 1px solid var(--thread);
+    }
+
+    /* 折角 */
+    .page-fold { transition: transform 0.2s ease; position: relative; }
+    .page-fold:hover { transform: translateY(-2px); }
+    .page-fold::after {
+      content: '';
+      position: absolute; right: 0; bottom: 0;
+      width: 24px; height: 24px;
+      background: linear-gradient(225deg, rgba(31, 26, 19, 0.08) 0%, rgba(31, 26, 19, 0.04) 40%, transparent 50%);
+      clip-path: polygon(100% 0, 0 100%, 100% 100%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- 顶部导航 -->
+<nav class="border-b border-[var(--thread)] bg-[var(--paper)]/80 backdrop-blur-sm sticky top-0 z-50">
+  <div class="max-w-[1440px] mx-auto px-10 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-14">
+      <a class="flex items-center gap-3">
+        <div class="w-10 h-10 grid place-items-center serif font-bold text-2xl">⛩</div>
+        <div class="leading-tight">
+          <div class="serif font-semibold tracking-[6px] text-[15px]">圣地巡礼</div>
+          <div class="text-[9px] tracking-[5px] text-[var(--ink-muted)] mt-0.5">SEICHIJUNREI</div>
+        </div>
+      </a>
+      <ul class="flex gap-8 text-sm text-[var(--ink-soft)]">
+        <li class="font-medium text-[var(--ink)] border-b-2 border-[var(--seal)] pb-1">首页</li>
+        <li class="hover:text-[var(--ink)] cursor-pointer">目的地</li>
+        <li class="hover:text-[var(--ink)] cursor-pointer">路线</li>
+        <li class="hover:text-[var(--ink)] cursor-pointer">攻略</li>
+        <li class="hover:text-[var(--ink)] cursor-pointer">社区</li>
+        <li class="hover:text-[var(--ink)] cursor-pointer">关于我们</li>
+      </ul>
+    </div>
+    <div class="flex items-center gap-5">
+      <button class="text-xs tracking-[2px] text-[var(--ink-muted)] hover:text-[var(--ink)]">公开我的手帐</button>
+      <div class="w-10 h-10 rounded-full overflow-hidden ring-2 ring-[var(--ink)]/70 ring-offset-2 ring-offset-[var(--paper)]">
+        <div class="w-full h-full bg-gradient-to-br from-rose-200 via-amber-200 to-stone-200"></div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-[1440px] mx-auto px-10 py-12 binding">
+
+  <div class="ink-blot" style="background: var(--seal); width: 300px; height: 300px; top: 100px; right: -100px;"></div>
+  <div class="ink-blot" style="background: var(--indigo); width: 400px; height: 400px; bottom: 200px; left: -150px;"></div>
+
+  <!-- ═══════════ 封面区 ═══════════ -->
+  <section class="relative mb-14">
+    <div class="washi tilt-l" style="top: -10px; left: 80px;"></div>
+    <div class="washi tilt-r" style="top: -10px; right: 120px; background: repeating-linear-gradient(135deg, rgba(45, 62, 80, 0.18) 0 6px, rgba(45, 62, 80, 0.28) 6px 12px);"></div>
+
+    <div class="paper rounded-sm p-12">
+      <div class="flex items-baseline justify-between mb-8">
+        <div>
+          <div class="text-xs tracking-[6px] text-[var(--ink-muted)] mb-2">VOL. 01 · 我的巡礼手帐</div>
+          <h1 class="serif font-black text-[44px] leading-none tracking-wide">Lily 的手帐</h1>
+          <div class="latin-serif text-[var(--ink-muted)] mt-3 text-lg">Lily&rsquo;s Pilgrimage Journal</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs tracking-[3px] text-[var(--ink-muted)]">第 218 天</div>
+          <div class="serif text-2xl font-semibold mt-1">2025 · 春</div>
+          <div class="text-xs text-[var(--ink-muted)] mt-1">最后更新 03-20</div>
+        </div>
+      </div>
+
+      <div class="ink-divider mb-10"></div>
+
+      <div class="grid grid-cols-12 gap-10 items-center">
+        <div class="col-span-3 relative">
+          <div class="relative inline-block">
+            <div class="w-28 h-28 rounded-full overflow-hidden ring-4 ring-[var(--ink)]/85 ring-offset-4 ring-offset-[var(--paper-card)]">
+              <div class="w-full h-full bg-gradient-to-br from-rose-200 via-amber-200 to-stone-200"></div>
+            </div>
+            <div class="seal seal-rotate-r absolute -bottom-2 -right-4 text-[10px]">巡礼者</div>
+          </div>
+          <div class="mt-5">
+            <div class="serif text-xl font-bold">Lily · 莉莉</div>
+            <div class="text-xs text-[var(--ink-muted)] mt-1.5 leading-relaxed">「想把每一部喜欢的动画都走一遍」</div>
+            <div class="mt-3 inline-block text-[10px] tracking-[3px] text-[var(--ink-muted)] border border-[var(--thread)] px-2 py-1">#0042 号</div>
+          </div>
+        </div>
+
+        <div class="col-span-6 grid grid-cols-5 gap-2 relative">
+          <div class="text-center">
+            <div class="big-num text-[40px]">5</div>
+            <div class="text-[11px] text-[var(--ink-muted)] tracking-[3px] mt-1">部作品</div>
+          </div>
+          <div class="text-center">
+            <div class="big-num text-[40px]">47</div>
+            <div class="text-[11px] text-[var(--ink-muted)] tracking-[3px] mt-1">取景地</div>
+          </div>
+          <div class="text-center relative">
+            <div class="big-num text-[40px] text-[var(--seal)]">156</div>
+            <div class="text-[11px] text-[var(--ink-muted)] tracking-[3px] mt-1">次打卡</div>
+            <div class="absolute -top-2 right-0 seal seal-rotate-r text-[8px]">★</div>
+          </div>
+          <div class="text-center">
+            <div class="big-num text-[40px]">1,247</div>
+            <div class="text-[11px] text-[var(--ink-muted)] tracking-[3px] mt-1">公里</div>
+          </div>
+          <div class="text-center">
+            <div class="big-num text-[40px]">8</div>
+            <div class="text-[11px] text-[var(--ink-muted)] tracking-[3px] mt-1">次行程</div>
+          </div>
+        </div>
+
+        <div class="col-span-3 relative">
+          <div class="seal absolute -top-3 -right-2 z-10 text-[10px] seal-rotate-r">进行中</div>
+          <div class="stitched p-5 bg-[#faf5e6] page-fold">
+            <div class="text-[10px] tracking-[3px] text-[var(--ink-muted)] mb-2">正在准备的行程</div>
+            <div class="serif text-lg font-bold leading-tight">京都 · CLANNAD 之旅</div>
+            <div class="flex gap-3 mt-3 text-[11px] text-[var(--ink-soft)]">
+              <span>5 天</span><span>·</span><span>12 个取景地</span>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <div class="text-[10px] text-[var(--ink-muted)]">出发日 2025-04-12</div>
+              <button class="text-xs text-[var(--seal)] hover:underline underline-offset-4">继续规划 →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 内容板块（不显示 umbrella 标题，让每个板块自己说话）═══════════ -->
+  <section class="mb-16">
+
+    <!-- ROW 1: 我走过的地方 + 我的随笔 -->
+    <div class="grid grid-cols-12 gap-5 mb-5">
+
+      <!-- 我走过的地方 -->
+      <div class="col-span-7 paper p-7 rounded-sm relative">
+        <div class="flex items-baseline justify-between mb-5">
+          <div>
+            <div class="latin-serif text-[var(--ink-muted)] text-sm">My Pilgrimage Map</div>
+            <h3 class="serif text-xl font-bold">我走过的地方</h3>
+          </div>
+          <div class="text-[11px] text-[var(--ink-muted)] tracking-wider">47 取景地 · 跨 8 个县市</div>
+        </div>
+
+        <div class="relative h-[280px] flex items-center justify-center">
+          <!-- 抽象日本地图 -->
+          <svg viewBox="0 0 500 280" class="w-full h-full">
+            <defs>
+              <filter id="watercolor">
+                <feTurbulence baseFrequency="0.02" numOctaves="2" result="t"/>
+                <feDisplacementMap in="SourceGraphic" in2="t" scale="5"/>
+              </filter>
+            </defs>
+            <!-- 北海道 -->
+            <path d="M 360 30 Q 410 25 430 50 Q 440 75 415 85 Q 380 90 365 70 Q 355 50 360 30 Z"
+                  fill="#e6d7b8" stroke="#4a4236" stroke-width="1" filter="url(#watercolor)" opacity="0.7"/>
+            <!-- 本州主体 -->
+            <path d="M 130 120 Q 160 110 200 115 Q 240 115 280 130 Q 320 145 345 170 Q 360 195 340 210 Q 300 215 260 200 Q 220 195 180 180 Q 150 170 130 150 Z"
+                  fill="#e6d7b8" stroke="#4a4236" stroke-width="1" filter="url(#watercolor)" opacity="0.7"/>
+            <!-- 九州 -->
+            <path d="M 95 200 Q 115 195 130 210 Q 140 230 125 245 Q 105 250 90 235 Q 85 215 95 200 Z"
+                  fill="#e6d7b8" stroke="#4a4236" stroke-width="1" filter="url(#watercolor)" opacity="0.7"/>
+            <!-- 四国 -->
+            <path d="M 175 195 Q 200 192 215 205 Q 215 218 195 220 Q 175 218 175 195 Z"
+                  fill="#e6d7b8" stroke="#4a4236" stroke-width="1" filter="url(#watercolor)" opacity="0.7"/>
+            <!-- 海上虚线足迹 -->
+            <path d="M 250 165 Q 270 130 300 145 Q 320 160 290 175" fill="none" stroke="var(--seal)" stroke-width="0.5" stroke-dasharray="3 4" opacity="0.5"/>
+          </svg>
+
+          <!-- 取景点位 pins -->
+          <div class="pin recent" style="top: 56%; left: 65%;"></div>
+          <div class="pin" style="top: 50%; left: 62%;"></div>
+          <div class="pin" style="top: 48%; left: 56%;"></div>
+          <div class="pin" style="top: 52%; left: 50%;"></div>
+          <div class="pin" style="top: 60%; left: 42%;"></div>
+          <div class="pin" style="top: 38%; left: 58%;"></div>
+          <div class="pin" style="top: 28%; left: 78%;"></div>
+          <div class="pin" style="top: 62%; left: 48%;"></div>
+
+          <!-- 当前位置标注 -->
+          <div class="absolute top-[52%] left-[68%] text-[10px] tracking-wider text-[var(--seal)] serif">↑ 镰仓</div>
+        </div>
+
+        <div class="ink-divider my-4"></div>
+
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px]">
+          <span class="text-[var(--ink)] font-medium">神奈川 <span class="text-[var(--seal)]">12</span></span>
+          <span class="text-[var(--ink-soft)]">京都 <span class="text-[var(--ink-muted)]">8</span></span>
+          <span class="text-[var(--ink-soft)]">山梨 <span class="text-[var(--ink-muted)]">6</span></span>
+          <span class="text-[var(--ink-soft)]">岐阜 <span class="text-[var(--ink-muted)]">5</span></span>
+          <span class="text-[var(--ink-soft)]">东京 <span class="text-[var(--ink-muted)]">5</span></span>
+          <span class="text-[var(--ink-soft)]">兵库 <span class="text-[var(--ink-muted)]">4</span></span>
+          <span class="text-[var(--ink-muted)]">广岛 <span>3</span></span>
+          <span class="text-[var(--ink-muted)]">北海道 <span>4</span></span>
+        </div>
+
+        <button class="absolute top-7 right-7 text-[11px] text-[var(--seal)] tracking-wider hover:underline">翻开完整足迹 →</button>
+      </div>
+
+      <!-- 我的随笔 -->
+      <div class="col-span-5 paper p-7 rounded-sm relative">
+        <div class="flex items-baseline justify-between mb-5">
+          <div>
+            <div class="latin-serif text-[var(--ink-muted)] text-sm">Notes &amp; Diaries</div>
+            <h3 class="serif text-xl font-bold">我的随笔</h3>
+          </div>
+          <div class="text-[11px] text-[var(--ink-muted)] tracking-wider">已写 18 篇</div>
+        </div>
+
+        <!-- 最新一篇 -->
+        <article class="border-l-2 border-[var(--seal)]/60 pl-4 mb-5">
+          <div class="flex items-center gap-2 text-[10px] text-[var(--ink-muted)] tracking-wider mb-1.5">
+            <span>2025-03-20</span><span>·</span><span>山梨县·本栖湖</span>
+          </div>
+          <h4 class="serif text-lg font-bold mb-2">本栖湖的清晨</h4>
+          <p class="text-[12px] text-[var(--ink-soft)] leading-relaxed">天还没亮就到了营地。雾从湖面爬上来，挂在富士山的腰上。我突然明白志摩凛为什么愿意在这种鬼天气一个人骑车过来——这种安静是抢不来的，要自己冷着脸去坐五个小时电车……</p>
+          <button class="mt-2 text-[11px] text-[var(--seal)] tracking-wider hover:underline">读完整篇 →</button>
+        </article>
+
+        <!-- 上一篇 -->
+        <article class="border-l-2 border-[var(--thread)] pl-4 mb-5 opacity-80">
+          <div class="flex items-center gap-2 text-[10px] text-[var(--ink-muted)] tracking-wider mb-1">
+            <span>2025-03-18</span><span>·</span><span>神奈川·镰仓</span>
+          </div>
+          <h4 class="serif text-base font-bold mb-1">江之电的轨道声</h4>
+          <p class="text-[11px] text-[var(--ink-muted)] leading-relaxed line-clamp-2">那段平交道果然挤满了人，每个班次的电车经过都有相机咔嚓声起此彼伏……</p>
+        </article>
+
+        <div class="ink-divider mb-4"></div>
+
+        <button class="w-full stitched py-3 hover:bg-[var(--paper)]/30 transition group">
+          <span class="hand text-base text-[var(--ink-soft)] group-hover:text-[var(--seal)]">＋ 写一篇新随笔</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ROW 2: 时间轴 -->
+    <div class="paper p-7 rounded-sm mb-5 relative">
+      <div class="flex items-baseline justify-between mb-5">
+        <div>
+          <div class="latin-serif text-[var(--ink-muted)] text-sm">My Trips</div>
+          <h3 class="serif text-xl font-bold">我的旅程表</h3>
+        </div>
+        <div class="flex gap-5 text-[11px] text-[var(--ink-muted)] tracking-wider">
+          <span><span class="text-[var(--seal)] big-num text-base">156</span> 次打卡</span>
+          <span><span class="text-[var(--ink)] big-num text-base">8</span> 次行程</span>
+          <span><span class="text-[var(--ink)] big-num text-base">2024.04</span> 起始</span>
+        </div>
+      </div>
+
+      <!-- 时间轴可视化 -->
+      <div class="relative h-[120px]">
+        <!-- 月份刻度 -->
+        <div class="absolute inset-x-0 top-[60px] flex justify-between text-[9px] text-[var(--ink-muted)] tracking-wider">
+          <span>2024.04</span><span>06</span><span>08</span><span>10</span><span>12</span><span>2025.02</span><span class="text-[var(--seal)]">03 ←</span><span class="opacity-50">04</span>
+        </div>
+        <div class="absolute inset-x-0 top-[55px] h-px bg-[var(--thread)]"></div>
+
+        <!-- 行程 ribbons -->
+        <div class="absolute top-[10px] left-[5%] w-[10%] h-[8px] bg-[var(--ink)]/80 rounded-sm" title="第一次·宇治"></div>
+        <div class="absolute top-[10px] left-[20%] w-[7%] h-[8px] bg-[var(--ink)]/80 rounded-sm"></div>
+        <div class="absolute top-[25px] left-[32%] w-[15%] h-[8px] bg-[var(--indigo)]/70 rounded-sm"></div>
+        <div class="absolute top-[10px] left-[55%] w-[8%] h-[8px] bg-[var(--ink)]/80 rounded-sm"></div>
+        <div class="absolute top-[25px] left-[68%] w-[6%] h-[8px] bg-[var(--ink)]/80 rounded-sm"></div>
+        <div class="absolute top-[10px] left-[78%] w-[8%] h-[8px] bg-[var(--seal)]/80 rounded-sm shadow"></div>
+        <div class="absolute top-[10px] left-[88%] w-[10%] h-[8px] border border-dashed border-[var(--seal)] rounded-sm" title="京都·CLANNAD 计划中"></div>
+
+        <!-- ribbon 标签 -->
+        <div class="absolute top-[-4px] left-[5%] text-[9px] text-[var(--ink-muted)]">宇治</div>
+        <div class="absolute top-[44px] left-[32%] text-[9px] text-[var(--ink-muted)]">山梨·摇曳露营</div>
+        <div class="absolute top-[-4px] left-[78%] text-[9px] text-[var(--seal)] font-medium">镰仓·灌篮高手</div>
+        <div class="absolute top-[-4px] left-[88%] text-[9px] text-[var(--seal)]">京都·CLANNAD（计划）</div>
+
+        <!-- 散落的打卡点 -->
+        <div class="absolute top-[80px] inset-x-0 flex justify-between px-[3%]">
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-60"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-70"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-50"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-80"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-60"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)] opacity-90"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-[var(--seal)]"></div>
+        </div>
+        <div class="absolute top-[100px] left-[2%] text-[9px] text-[var(--ink-muted)] tracking-wider">每个 ● 是一次打卡</div>
+      </div>
+    </div>
+
+    <!-- ROW 3: 三栏图表 -->
+    <div class="grid grid-cols-12 gap-5 mb-5">
+
+      <!-- 作品进度 -->
+      <div class="col-span-5 paper p-7 rounded-sm">
+        <div class="flex items-baseline justify-between mb-5">
+          <div>
+            <div class="latin-serif text-[var(--ink-muted)] text-sm">Works</div>
+            <h3 class="serif text-xl font-bold">作品进度</h3>
+          </div>
+          <div class="text-[11px] text-[var(--ink-muted)] tracking-wider">5 部 · 34/61 个点位</div>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium">《你的名字。》</span>
+              <span class="text-[var(--ink-muted)]">14 / 14 · <span class="text-[var(--seal)]">100%</span></span>
+            </div>
+            <div class="bar-bg"><div class="bar" style="width: 100%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium">《灌篮高手》</span>
+              <span class="text-[var(--ink-muted)]">8 / 12 · 67%</span>
+            </div>
+            <div class="bar-bg"><div class="bar" style="width: 67%; background: var(--ink-soft);"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium">《摇曳露营△》</span>
+              <span class="text-[var(--ink-muted)]">5 / 9 · 56%</span>
+            </div>
+            <div class="bar-bg"><div class="bar" style="width: 56%; background: var(--ink-soft);"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium text-[var(--ink-soft)]">《凉宫春日的忧郁》</span>
+              <span class="text-[var(--ink-muted)]">4 / 15 · 27%</span>
+            </div>
+            <div class="bar-bg"><div class="bar" style="width: 27%; background: var(--ink-muted);"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium text-[var(--ink-soft)]">《冰菓》</span>
+              <span class="text-[var(--ink-muted)]">3 / 11 · 27%</span>
+            </div>
+            <div class="bar-bg"><div class="bar" style="width: 27%; background: var(--ink-muted);"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 印记墙 -->
+      <div class="col-span-4 paper p-7 rounded-sm relative">
+        <div class="flex items-baseline justify-between mb-5">
+          <div>
+            <div class="latin-serif text-[var(--ink-muted)] text-sm">Achievements</div>
+            <h3 class="serif text-xl font-bold">成就墙</h3>
+          </div>
+          <div class="text-[11px] text-[var(--ink-muted)] tracking-wider">8 / 24 枚</div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3 mb-4">
+          <div class="text-center" title="完成第一次打卡 · 2024-04-15">
+            <div class="aspect-square rounded-full bg-[var(--seal)] grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">首次</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">打卡</div>
+          </div>
+          <div class="text-center" title="累计 100 次打卡 · 2025-02-08">
+            <div class="aspect-square rounded-full bg-[var(--ink)] grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">百次</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">打卡</div>
+          </div>
+          <div class="text-center" title="累计走过 1000 公里 · 2025-03-01">
+            <div class="aspect-square rounded-full bg-amber-700 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">千里</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">步行</div>
+          </div>
+          <div class="text-center" title="完成一部作品全部取景地 · 《你的名字。》">
+            <div class="aspect-square rounded-full bg-emerald-800 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">通关</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">作品</div>
+          </div>
+          <div class="text-center" title="跨越 8 个县市">
+            <div class="aspect-square rounded-full bg-sky-800 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">八县</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">巡游</div>
+          </div>
+          <div class="text-center" title="春季完成一次巡礼">
+            <div class="aspect-square rounded-full bg-rose-700 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">樱花</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">季</div>
+          </div>
+          <div class="text-center" title="拍出 99% 还原度的对比图">
+            <div class="aspect-square rounded-full bg-slate-700 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">神还原</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">对比图</div>
+          </div>
+          <div class="text-center" title="发布 10 篇随笔">
+            <div class="aspect-square rounded-full bg-stone-700 grid place-items-center text-[#fdfaf3] text-[10px] serif font-bold mx-auto w-12 h-12">作家</div>
+            <div class="text-[9px] text-[var(--ink-muted)] mt-1.5 tracking-wider">随笔</div>
+          </div>
+        </div>
+
+        <div class="ink-divider mb-3"></div>
+        <div class="text-[11px] text-[var(--ink-soft)] leading-relaxed">下一个成就：<span class="text-[var(--seal)] font-medium">200 次打卡</span>，还差 44 次</div>
+      </div>
+
+      <!-- 行程方式 -->
+      <div class="col-span-3 paper p-7 rounded-sm">
+        <div class="mb-5">
+          <div class="latin-serif text-[var(--ink-muted)] text-sm">By</div>
+          <h3 class="serif text-xl font-bold">行程方式</h3>
+        </div>
+
+        <!-- Donut -->
+        <div class="relative h-[120px] flex items-center justify-center mb-4">
+          <svg viewBox="0 0 100 100" class="w-[120px] h-[120px] -rotate-90">
+            <circle cx="50" cy="50" r="38" fill="none" stroke="var(--seal)" stroke-width="14" stroke-dasharray="155 240" stroke-dashoffset="0"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="var(--ink-soft)" stroke-width="14" stroke-dasharray="60 240" stroke-dashoffset="-155"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="var(--ink-muted)" stroke-width="14" stroke-dasharray="25 240" stroke-dashoffset="-215"/>
+          </svg>
+          <div class="absolute text-center">
+            <div class="big-num text-2xl">65<span class="text-xs text-[var(--ink-muted)]">%</span></div>
+            <div class="text-[9px] text-[var(--ink-muted)] tracking-wider">步行</div>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 text-[11px]">
+          <div class="flex items-center gap-2"><span class="w-2 h-2 bg-[var(--seal)] rounded-sm"></span><span class="flex-1">步行</span><span class="text-[var(--ink-muted)]">65%</span></div>
+          <div class="flex items-center gap-2"><span class="w-2 h-2 bg-[var(--ink-soft)] rounded-sm"></span><span class="flex-1">电车</span><span class="text-[var(--ink-muted)]">25%</span></div>
+          <div class="flex items-center gap-2"><span class="w-2 h-2 bg-[var(--ink-muted)] rounded-sm"></span><span class="flex-1">自行车</span><span class="text-[var(--ink-muted)]">10%</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 4: 相册 -->
+    <div class="paper p-7 rounded-sm relative">
+      <div class="flex items-baseline justify-between mb-5">
+        <div>
+          <div class="latin-serif text-[var(--ink-muted)] text-sm">My Album</div>
+          <h3 class="serif text-xl font-bold">我的相册</h3>
+        </div>
+        <button class="text-[11px] text-[var(--seal)] tracking-wider hover:underline">翻开全部照片 →</button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-4">
+        <figure class="relative tilt-l">
+          <div class="aspect-[4/5] bg-gradient-to-br from-sky-300 via-amber-200 to-rose-200 shadow-md"></div>
+          <div class="absolute top-2 left-2 right-2 h-1.5 bg-rose-500/30"></div>
+          <figcaption class="mt-2 text-[10px]">
+            <div class="text-[var(--ink-muted)] tracking-wider">03-20 · 镰仓高校前</div>
+            <div class="text-[var(--ink)] font-medium">《灌篮高手》</div>
+          </figcaption>
+        </figure>
+        <figure class="relative">
+          <div class="aspect-[4/5] bg-gradient-to-br from-stone-400 via-rose-200 to-amber-100 shadow-md"></div>
+          <div class="absolute top-2 left-2 right-2 h-1.5 bg-amber-500/30"></div>
+          <figcaption class="mt-2 text-[10px]">
+            <div class="text-[var(--ink-muted)] tracking-wider">03-19 · 七里浜</div>
+            <div class="text-[var(--ink)] font-medium">《灌篮高手》</div>
+          </figcaption>
+        </figure>
+        <figure class="relative tilt-r">
+          <div class="aspect-[4/5] bg-gradient-to-br from-emerald-300 via-sky-200 to-amber-200 shadow-md"></div>
+          <div class="absolute top-2 left-2 right-2 h-1.5 bg-emerald-500/30"></div>
+          <figcaption class="mt-2 text-[10px]">
+            <div class="text-[var(--ink-muted)] tracking-wider">03-15 · 江之岛</div>
+            <div class="text-[var(--ink)] font-medium">《灌篮高手》</div>
+          </figcaption>
+        </figure>
+        <figure class="relative">
+          <div class="aspect-[4/5] bg-gradient-to-br from-violet-300 via-pink-200 to-orange-200 shadow-md"></div>
+          <div class="absolute top-2 left-2 right-2 h-1.5 bg-violet-500/30"></div>
+          <figcaption class="mt-2 text-[10px]">
+            <div class="text-[var(--ink-muted)] tracking-wider">02-22 · 本栖湖</div>
+            <div class="text-[var(--ink)] font-medium">《摇曳露营△》</div>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ═══════════ 探索区 ═══════════ -->
+  <section class="mb-16">
+    <div class="flex items-end gap-6 mb-8">
+      <div>
+        <div class="latin-serif text-[var(--ink-muted)] text-lg">Explore</div>
+        <h2 class="serif font-bold text-3xl tracking-wide">探索</h2>
+      </div>
+      <div class="ink-divider flex-1 mb-3"></div>
+      <div class="text-xs text-[var(--ink-muted)] mb-3 tracking-[2px]">从手帐出发，把新的内容带回来</div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-5">
+
+      <a class="stitched p-6 cursor-pointer hover:bg-[var(--paper-card)]/60 transition group">
+        <div class="text-2xl serif text-[var(--ink-soft)] mb-3">⊕</div>
+        <div class="serif text-lg font-bold mb-2">探索地图</div>
+        <div class="text-[11px] text-[var(--ink-muted)] mb-5 leading-relaxed">在 8,500+ 处巡礼点位中游走。按作品筛选、精简模式、街景一键切换</div>
+        <div class="text-[11px] text-[var(--seal)] tracking-wider group-hover:translate-x-1 transition">前往目的地 →</div>
+      </a>
+
+      <a class="stitched p-6 cursor-pointer hover:bg-[var(--paper-card)]/60 transition group">
+        <div class="text-2xl serif text-[var(--ink-soft)] mb-3">⇢</div>
+        <div class="serif text-lg font-bold mb-2">看看大家在逛什么</div>
+        <div class="text-[11px] text-[var(--ink-muted)] mb-5 leading-relaxed">编辑部和老巡礼者整理好的现成行程，一键加入我的行程</div>
+        <div class="text-[11px] text-[var(--seal)] tracking-wider group-hover:translate-x-1 transition">前往路线 →</div>
+      </a>
+
+      <a class="stitched p-6 cursor-pointer hover:bg-[var(--paper-card)]/60 transition group">
+        <div class="text-2xl serif text-[var(--ink-soft)] mb-3">≡</div>
+        <div class="serif text-lg font-bold mb-2">精选旅游攻略</div>
+        <div class="text-[11px] text-[var(--ink-muted)] mb-5 leading-relaxed">配机位 / 时间戳 / 对比图的深度向导，看完直接加入行程</div>
+        <div class="text-[11px] text-[var(--seal)] tracking-wider group-hover:translate-x-1 transition">前往攻略 →</div>
+      </a>
+
+      <a class="stitched p-6 cursor-pointer hover:bg-[var(--paper-card)]/60 transition group relative">
+        <div class="absolute top-3 right-3 text-[9px] tracking-[2px] text-[var(--seal)] border border-[var(--seal)] px-1.5 py-0.5">附近</div>
+        <div class="text-2xl serif text-[var(--ink-soft)] mb-3">◎</div>
+        <div class="serif text-lg font-bold mb-2">看看身边有什么</div>
+        <div class="text-[11px] text-[var(--ink-muted)] mb-5 leading-relaxed">基于当前定位，找步行范围内的取景地。已经在日本时最好用</div>
+        <div class="text-[11px] text-[var(--seal)] tracking-wider group-hover:translate-x-1 transition">唤起浮层 →</div>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- 脚注 -->
+  <section class="mt-20 mb-12">
+    <div class="ink-divider mb-8"></div>
+    <div class="flex items-center justify-between text-xs text-[var(--ink-muted)] tracking-[3px]">
+      <div>第 218 天 · 翻到这里</div>
+      <div class="latin-serif text-base">— continue your pilgrimage —</div>
+      <div>2025 · 春</div>
+    </div>
+  </section>
+
+</main>
+
+<!-- 右下角 LBS 浮层按钮 -->
+<div class="fixed bottom-6 right-6 z-40">
+  <button class="paper rounded-full w-14 h-14 grid place-items-center shadow-lg hover:scale-105 transition group">
+    <div class="serif text-xl">◎</div>
+    <div class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[var(--seal)] animate-pulse"></div>
+  </button>
+</div>
+
+</body>
+</html>
