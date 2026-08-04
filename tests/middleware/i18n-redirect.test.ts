@@ -79,20 +79,20 @@ describe('i18n IP-based redirect middleware', () => {
       expect(res.headers.get('location')).toMatch(/^https:\/\/seichigo\.com\/ja\/?$/)
     })
 
-    it('redirects JP users on /posts/article to /ja/posts/article', () => {
+    it('keeps deep zh article paths stable for JP users', () => {
       const req = createRequest('/posts/some-article', { country: 'JP' })
       const res = middleware(req)
       
-      expect(res.status).toBe(307)
-      expect(res.headers.get('location')).toBe('https://seichigo.com/ja/posts/some-article')
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
 
-    it('preserves query string when redirecting JP users', () => {
+    it('keeps query-string deep links stable for JP users', () => {
       const req = createRequest('/posts/article?ref=twitter&utm_source=x', { country: 'JP' })
       const res = middleware(req)
       
-      expect(res.status).toBe(307)
-      expect(res.headers.get('location')).toBe('https://seichigo.com/ja/posts/article?ref=twitter&utm_source=x')
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
 
     it('does not redirect JP users already on /ja/ path', () => {
@@ -116,20 +116,20 @@ describe('i18n IP-based redirect middleware', () => {
       })
     })
 
-    it('redirects US users on /posts/article to /en/posts/article', () => {
+    it('keeps deep zh article paths stable for US users', () => {
       const req = createRequest('/posts/some-article', { country: 'US' })
       const res = middleware(req)
       
-      expect(res.status).toBe(307)
-      expect(res.headers.get('location')).toBe('https://seichigo.com/en/posts/some-article')
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
 
-    it('preserves query string when redirecting to /en/', () => {
+    it('keeps query-string deep links stable for US users', () => {
       const req = createRequest('/posts/article?page=2&sort=date', { country: 'US' })
       const res = middleware(req)
       
-      expect(res.status).toBe(307)
-      expect(res.headers.get('location')).toBe('https://seichigo.com/en/posts/article?page=2&sort=date')
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
 
     it('does not redirect US users already on /en/ path', () => {
@@ -336,12 +336,12 @@ describe('i18n IP-based redirect middleware', () => {
       expect(res.status).toBe(307)
     })
 
-    it('handles path with multiple segments', () => {
+    it('keeps paths with multiple segments stable', () => {
       const req = createRequest('/city/tokyo/spots', { country: 'US' })
       const res = middleware(req)
       
-      expect(res.status).toBe(307)
-      expect(res.headers.get('location')).toBe('https://seichigo.com/en/city/tokyo/spots')
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
 
     it('handles lowercase country codes', () => {
@@ -349,6 +349,55 @@ describe('i18n IP-based redirect middleware', () => {
       const res = middleware(req)
       
       expect(res.status).toBe(307)
+    })
+  })
+
+  describe('URL stability for AdSense', () => {
+    it('never rewrites an explicit /en path based on IP country', () => {
+      const req = createRequest('/en/anime', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+
+    it('never rewrites an explicit /ja path based on IP country', () => {
+      const req = createRequest('/ja/anime', { country: 'US' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+
+    it('keeps deep zh paths stable regardless of country', () => {
+      const req = createRequest('/posts/some-guide', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
+    })
+
+    it('still redirects the bare homepage by country', () => {
+      const req = createRequest('/', { country: 'JP' })
+      const res = middleware(req)
+
+      expect(res.status).toBe(307)
+      expect(res.headers.get('location')).toBe('https://seichigo.com/ja')
+    })
+
+    it.each([
+      'Mediapartners-Google',
+      'Mozilla/5.0 (compatible; AdsBot-Google; +http://www.google.com/adsbot.html)',
+      'Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)',
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      'Mozilla/5.0 (compatible; Google-Extended;)',
+      'Mozilla/5.0 (compatible; Chrome-Lighthouse;)',
+    ])('never redirects Google crawler UA: %s', (userAgent) => {
+      const req = createRequest('/', { country: 'JP', userAgent })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('location')).toBeNull()
     })
   })
 })

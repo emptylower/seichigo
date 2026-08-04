@@ -8,7 +8,8 @@ const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanife
 const LOCALE_PREFIXED_AUTH_ALIAS_PATTERN = /^\/(en|ja)\/auth(?:\/.*)?$/
 const LOCALE_PREFIXED_ADMIN_ALIAS_PATTERN = /^\/(en|ja)\/admin(?:\/.*)?$/
 
-const BOT_PATTERN = /bot|crawler|spider|crawling|slurp|externalhit/i
+const BOT_PATTERN =
+  /bot|crawler|spider|crawling|slurp|externalhit|mediapartners|adsbot|google-inspectiontool|google-extended|chrome-lighthouse/i
 
 function detectLocale(pathname: string): 'zh' | 'en' | 'ja' {
   if (pathname === '/en' || pathname.startsWith('/en/')) return 'en'
@@ -102,6 +103,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.next({ request: { headers } })
   }
 
+  // Explicit locale prefixes are a deliberate choice by the user or crawler.
+  // Never rewrite them by IP; the same URL must resolve identically for everyone.
+  if (currentLocale !== 'zh') {
+    return NextResponse.next({ request: { headers } })
+  }
+
   const userAgent = req.headers.get('user-agent')
   if (isBot(userAgent)) {
     return NextResponse.next({ request: { headers } })
@@ -118,19 +125,14 @@ export function middleware(req: NextRequest) {
     return NextResponse.next({ request: { headers } })
   }
 
-  if (targetLocale === 'zh') {
+  // Only the bare homepage participates in geo language routing.
+  // Deep links must stay stable so shared URLs and crawlers see one canonical target.
+  if (pathname !== '/') {
     return NextResponse.next({ request: { headers } })
   }
 
   const url = req.nextUrl.clone()
-  
-  if (currentLocale === 'zh') {
-    url.pathname = `/${targetLocale}${pathname}`
-  } else {
-    const pathWithoutLocale = pathname.replace(/^\/(en|ja)/, '') || '/'
-    url.pathname = `/${targetLocale}${pathWithoutLocale}`
-  }
-
+  url.pathname = `/${targetLocale}`
   return NextResponse.redirect(url, 307)
 }
 
