@@ -251,8 +251,8 @@ describe('cronTick', () => {
     })
     expect(advanceBootstrapMock).toHaveBeenCalledWith(prisma, 2000)
     expect(processSeedBatchMock).toHaveBeenCalledWith(prisma, bucket, {
-      batchSize: 100,
-      perRequestDelayMs: 200,
+      batchSize: 30,
+      perRequestDelayMs: 500,
     })
   })
 

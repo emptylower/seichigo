@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
       findUnique: vi.fn(),
     },
     mapImageMirrorState: {
+      deleteMany: vi.fn(),
       groupBy: vi.fn(),
     },
   },
@@ -48,6 +49,12 @@ function invalidJsonReq(url: string): Request {
   })
 }
 
+const MANUAL_TICK_OPTIONS = {
+  source: 'manual',
+  seedBatchSize: 50,
+  seedDelayMs: 100,
+} as const
+
 describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
   const bucket = createBucket()
   const originalProcessBucket = process.env.MAP_IMAGE_CACHE
@@ -83,6 +90,7 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
       lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
       manuallyTriggered: true,
     })
+    mocks.prisma.mapImageMirrorState.deleteMany.mockResolvedValue({ count: 0 })
     mocks.prisma.mapImageMirrorState.groupBy.mockResolvedValue([
       { status: 'pending', _count: { _all: 3 } },
       { status: 'mirrored', _count: { _all: 8 } },
@@ -138,7 +146,14 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
       stillNeedsManualPush: true,
     })
     expect(mocks.cronTick).toHaveBeenCalledTimes(1)
-    expect(mocks.cronTick).toHaveBeenCalledWith(mocks.prisma, bucket, { source: 'manual' })
+    expect(mocks.cronTick).toHaveBeenCalledWith(mocks.prisma, bucket, MANUAL_TICK_OPTIONS)
+    expect(mocks.prisma.mapImageMirrorState.deleteMany).toHaveBeenCalledWith({
+      where: {
+        sourceType: '__throttle__',
+        sourceId: 'global',
+        variant: '__',
+      },
+    })
     expect(mocks.prisma.mapImageMirrorState.groupBy).toHaveBeenCalledWith({
       by: ['status'],
       _count: { _all: true },
@@ -151,53 +166,26 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
 
     expect(res.status).toBe(200)
     expect(mocks.cronTick).toHaveBeenCalledTimes(1)
-    expect(mocks.cronTick).toHaveBeenCalledWith(mocks.prisma, bucket, { source: 'manual' })
+    expect(mocks.cronTick).toHaveBeenCalledWith(mocks.prisma, bucket, MANUAL_TICK_OPTIONS)
   })
 
-  it('loops in force-complete mode until bootstrap completes', async () => {
-    mocks.prisma.mapImageMirrorBootstrap.findUnique
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-7',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 99,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-8',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 105,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-8',
-        bangumiCompleted: true,
-        pointCompleted: true,
-        totalEnumerated: 110,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: new Date('2026-05-03T00:02:00.000Z'),
-        lastAdvanceAt: new Date('2026-05-03T00:02:00.000Z'),
-        manuallyTriggered: true,
-      })
+  it('runs force-complete mode as one tick and returns post-tick progress', async () => {
+    mocks.prisma.mapImageMirrorBootstrap.findUnique.mockResolvedValueOnce({
+      id: 1,
+      bangumiCursor: 12,
+      pointCursor: 'pt-8',
+      bangumiCompleted: false,
+      pointCompleted: false,
+      totalEnumerated: 105,
+      startedAt: new Date('2026-05-03T00:00:00.000Z'),
+      completedAt: null,
+      lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
+      manuallyTriggered: true,
+    })
 
     const nowSpy = vi.spyOn(Date, 'now')
     nowSpy
       .mockReturnValueOnce(0)
-      .mockReturnValueOnce(1_000)
-      .mockReturnValueOnce(5_000)
       .mockReturnValueOnce(8_000)
 
     const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
@@ -206,17 +194,19 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toMatchObject({
       bootstrap: {
-        bangumiCompleted: true,
-        pointCompleted: true,
-        totalEnumerated: 110,
+        bangumiCompleted: false,
+        pointCompleted: false,
+        pointCursor: 'pt-8',
+        totalEnumerated: 105,
       },
-      stillNeedsManualPush: false,
+      stillNeedsManualPush: true,
       elapsedMs: 8_000,
     })
-    expect(mocks.cronTick).toHaveBeenCalledTimes(2)
+    expect(mocks.cronTick).toHaveBeenCalledTimes(1)
+    expect(mocks.cronTick).toHaveBeenCalledWith(mocks.prisma, bucket, MANUAL_TICK_OPTIONS)
   })
 
-  it('returns completed without ticking when force-complete starts from a finished bootstrap', async () => {
+  it('still runs one manual tick before reporting completed progress', async () => {
     mocks.prisma.mapImageMirrorBootstrap.findUnique.mockResolvedValue({
       id: 1,
       bangumiCursor: 12,
@@ -241,36 +231,11 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
       },
       stillNeedsManualPush: false,
     })
-    expect(mocks.cronTick).not.toHaveBeenCalled()
+    expect(mocks.cronTick).toHaveBeenCalledTimes(1)
     expect(mocks.prisma.mapImageMirrorBootstrap.findUnique).toHaveBeenCalledTimes(1)
   })
 
-  it('stops force-complete mode after a throttled tick and reports remaining manual work', async () => {
-    mocks.prisma.mapImageMirrorBootstrap.findUnique
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-7',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 99,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-7',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 99,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-        manuallyTriggered: true,
-      })
+  it('reports remaining manual work after a throttled one-shot tick', async () => {
     mocks.cronTick.mockResolvedValueOnce({
       reclaimed: 0,
       mirrored: 0,
@@ -293,38 +258,23 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
     expect(mocks.cronTick).toHaveBeenCalledTimes(1)
   })
 
-  it('does not start a second force-complete tick when the remaining budget is too small', async () => {
-    mocks.prisma.mapImageMirrorBootstrap.findUnique
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-7',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 99,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-8',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 105,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
-        manuallyTriggered: true,
-      })
+  it('does not start a second force-complete tick when the first tick runs long', async () => {
+    mocks.prisma.mapImageMirrorBootstrap.findUnique.mockResolvedValueOnce({
+      id: 1,
+      bangumiCursor: 12,
+      pointCursor: 'pt-8',
+      bangumiCompleted: false,
+      pointCompleted: false,
+      totalEnumerated: 105,
+      startedAt: new Date('2026-05-03T00:00:00.000Z'),
+      completedAt: null,
+      lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
+      manuallyTriggered: true,
+    })
 
     const nowSpy = vi.spyOn(Date, 'now')
     nowSpy
       .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(24_500)
       .mockReturnValueOnce(24_500)
 
     const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
@@ -339,83 +289,6 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
       },
       stillNeedsManualPush: true,
       elapsedMs: 24_500,
-    })
-    expect(mocks.cronTick).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not start a second force-complete tick exactly at the budget cutoff', async () => {
-    mocks.prisma.mapImageMirrorBootstrap.findUnique
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-7',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 99,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-8',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 105,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:01:30.000Z'),
-        manuallyTriggered: true,
-      })
-      .mockResolvedValueOnce({
-        id: 1,
-        bangumiCursor: 12,
-        pointCursor: 'pt-9',
-        bangumiCompleted: false,
-        pointCompleted: false,
-        totalEnumerated: 111,
-        startedAt: new Date('2026-05-03T00:00:00.000Z'),
-        completedAt: null,
-        lastAdvanceAt: new Date('2026-05-03T00:02:00.000Z'),
-        manuallyTriggered: true,
-      })
-    mocks.cronTick
-      .mockResolvedValueOnce({
-        reclaimed: 0,
-        mirrored: 0,
-        failed: 0,
-        skipped404: 0,
-        throttled: false,
-      })
-      .mockResolvedValueOnce({
-        reclaimed: 0,
-        mirrored: 0,
-        failed: 0,
-        skipped404: 0,
-        throttled: true,
-      })
-
-    const nowSpy = vi.spyOn(Date, 'now')
-    nowSpy
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(24_000)
-      .mockReturnValueOnce(24_000)
-
-    const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
-    const res = await handlers.POST(jsonReq('http://localhost/api/admin/anitabi/image-mirror/bootstrap', { mode: 'force-complete' }))
-
-    expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toMatchObject({
-      bootstrap: {
-        bangumiCompleted: false,
-        pointCompleted: false,
-        pointCursor: 'pt-8',
-      },
-      stillNeedsManualPush: true,
-      elapsedMs: 24_000,
     })
     expect(mocks.cronTick).toHaveBeenCalledTimes(1)
   })
@@ -455,41 +328,6 @@ describe('POST /api/admin/anitabi/image-mirror/bootstrap', () => {
 
     expect(res.status).toBe(503)
     await expect(res.json()).resolves.toEqual({ error: 'R2 缓存桶未配置' })
-    expect(mocks.cronTick).not.toHaveBeenCalled()
-  })
-
-  it('skips force-complete ticks when the time budget is already exhausted', async () => {
-    mocks.prisma.mapImageMirrorBootstrap.findUnique.mockResolvedValue({
-      id: 1,
-      bangumiCursor: 12,
-      pointCursor: 'pt-7',
-      bangumiCompleted: false,
-      pointCompleted: false,
-      totalEnumerated: 99,
-      startedAt: new Date('2026-05-03T00:00:00.000Z'),
-      completedAt: null,
-      lastAdvanceAt: new Date('2026-05-03T00:01:00.000Z'),
-      manuallyTriggered: true,
-    })
-
-    const nowSpy = vi.spyOn(Date, 'now')
-    nowSpy
-      .mockReturnValueOnce(1_000)
-      .mockReturnValueOnce(27_000)
-      .mockReturnValueOnce(27_000)
-
-    const handlers = await import('app/api/admin/anitabi/image-mirror/bootstrap/route')
-    const res = await handlers.POST(jsonReq('http://localhost/api/admin/anitabi/image-mirror/bootstrap', { mode: 'force-complete' }))
-
-    expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toMatchObject({
-      bootstrap: {
-        bangumiCompleted: false,
-        pointCompleted: false,
-      },
-      stillNeedsManualPush: true,
-      elapsedMs: 26_000,
-    })
     expect(mocks.cronTick).not.toHaveBeenCalled()
   })
 

@@ -42,7 +42,7 @@ describe('throttle', () => {
     await expect(isThrottled(prisma)).resolves.toBe(false)
   })
 
-  it('returns true when the throttle row is fresher than one hour', async () => {
+  it('returns true when the throttle row is fresher than ten minutes', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
@@ -50,7 +50,7 @@ describe('throttle', () => {
       mapImageMirrorState: {
         findUnique: vi
           .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
-          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:30:00Z') }),
+          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:55:00Z') }),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
         deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
@@ -93,7 +93,7 @@ describe('throttle', () => {
     await expect(isThrottled(prisma)).resolves.toBe(false)
   })
 
-  it('returns false when the throttle row is exactly one hour old', async () => {
+  it('returns false when the throttle row is exactly ten minutes old', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-03T12:00:00Z'))
 
@@ -101,7 +101,7 @@ describe('throttle', () => {
       mapImageMirrorState: {
         findUnique: vi
           .fn<ThrottlePrisma['mapImageMirrorState']['findUnique']>()
-          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:00:00Z') }),
+          .mockResolvedValue({ mirroredAt: new Date('2026-05-03T11:50:00Z') }),
         upsert: vi.fn<ThrottlePrisma['mapImageMirrorState']['upsert']>(),
         deleteMany: vi.fn<ThrottlePrisma['mapImageMirrorState']['deleteMany']>(),
       },
@@ -123,7 +123,7 @@ describe('throttle', () => {
       },
     } satisfies ThrottlePrisma
 
-    await expect(recordTimeout(prisma, 10)).resolves.toBeUndefined()
+    await expect(recordTimeout(prisma, 20)).resolves.toBeUndefined()
     expect(upsert).toHaveBeenCalledWith({
       where: { sourceType_sourceId_variant: THROTTLE_KEY },
       create: {
@@ -149,7 +149,7 @@ describe('throttle', () => {
       },
     } satisfies ThrottlePrisma
 
-    await expect(recordTimeout(prisma, 9)).resolves.toBeUndefined()
+    await expect(recordTimeout(prisma, 19)).resolves.toBeUndefined()
     expect(upsert).not.toHaveBeenCalled()
   })
 

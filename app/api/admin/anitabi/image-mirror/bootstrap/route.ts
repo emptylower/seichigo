@@ -107,17 +107,15 @@ export async function POST(req: Request) {
     await clearThrottle(deps.prisma as unknown as ThrottlePrisma)
 
     // Single drain per click. The previous loop ran cronTick repeatedly
-    // until a 25s budget exhausted, but cronTick itself takes ~22s
-    // (batchSize 100 × perRequestDelayMs 200ms in processSeedBatch) so
-    // the second iteration plus post-loop work overran Cloudflare's 30s
-    // request lifetime and CF returned 502 — even though every drained
+    // until a 25s budget exhausted, but cronTick itself could consume most
+    // of the request lifetime before the second iteration plus post-loop
+    // work. Cloudflare then returned 502 even though every drained
     // row was already committed mid-loop. Auto cron handles the repeat
     // cadence; manual is a kick + circuit-breaker clear.
     void mode
-    // Smaller batch + tighter delay so the whole request fits comfortably
-    // inside the Workers 30s wall clock, even with anitabi being slow to
-    // respond. Auto cron keeps the larger 100/200ms cadence since it has
-    // 5 minutes between firings.
+    // The short manual delay keeps this one-shot request inside the Workers
+    // 30s wall clock. Auto cron uses the gentler 30-item/500ms cadence since
+    // it does not run in an operator's request.
     await cronTick(deps.prisma as unknown as CronTickPrisma, bucket, {
       source: 'manual',
       seedBatchSize: 50,
