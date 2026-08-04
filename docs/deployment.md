@@ -57,9 +57,12 @@ builds use `@prisma/client/wasm` (pinned in `lib/db/prisma`).
 
 ### Domain routing
 
-Custom apex/www domains route through Workers (not Pages). A dedicated
-apex redirect worker canonicalizes `seichigo.com` → `www.seichigo.com`.
-DNS records live in Cloudflare DNS.
+Custom apex/www domains route through Workers (not Pages). The apex host
+`seichigo.com` is canonical. A Cloudflare Redirect Rule permanently redirects
+`www.seichigo.com` to the equivalent apex URL while preserving the path and
+query string. DNS records live in Cloudflare DNS. See
+[`adsense/canonical-host-decision.md`](adsense/canonical-host-decision.md) for
+the decision record and verification contract.
 
 ### R2 mirror
 
