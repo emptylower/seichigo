@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { getHelpDocument, getStatusDocument } from '@/lib/help/content'
 
@@ -14,5 +15,12 @@ describe('help & status documents', () => {
     const doc = getStatusDocument(locale)
     const joined = JSON.stringify(doc)
     expect(joined).toMatch(/人工维护|maintained manually|人手で更新/)
+  })
+
+  it('footer contains no placeholder href', () => {
+    const src = readFileSync('components/layout/Footer.tsx', 'utf8')
+    expect(src).not.toContain("href: '#'")
+    expect(src).toContain("href: '/help'")
+    expect(src).toContain("href: '/status'")
   })
 })

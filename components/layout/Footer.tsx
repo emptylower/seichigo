@@ -21,7 +21,7 @@ type FooterColumn = {
 
 export default function Footer({ locale = 'zh' }: Props) {
   const getHref = (path: string) => {
-    if (path.startsWith('http') || path.startsWith('mailto') || path === '#') return path
+    if (path.startsWith('http') || path.startsWith('mailto')) return path
     return prefixPath(path, locale)
   }
 
@@ -39,8 +39,8 @@ export default function Footer({ locale = 'zh' }: Props) {
       title: t('footer.support', locale),
       links: [
         { label: t('footer.etiquette', locale), href: '/resources/pilgrimage-etiquette' },
-        { label: t('footer.help', locale), href: '#', isExternal: true },
-        { label: t('footer.status', locale), href: '#', isExternal: true },
+        { label: t('footer.help', locale), href: '/help' },
+        { label: t('footer.status', locale), href: '/status' },
       ],
     },
     {
@@ -93,10 +93,10 @@ export default function Footer({ locale = 'zh' }: Props) {
                 <ul className="space-y-3">
                   {col.links.map((link) => (
                     <li key={link.label}>
-                      {link.isExternal || link.href === '#' ? (
+                      {link.isExternal ? (
                         <a
                           href={link.href}
-                          className={`text-gray-500 hover:text-brand-600 ${link.href === '#' ? 'cursor-default' : ''}`}
+                          className="text-gray-500 hover:text-brand-600"
                           target={link.href.startsWith('http') ? '_blank' : undefined}
                           rel={link.href.startsWith('http') ? 'noopener noreferrer' : undefined}
                         >

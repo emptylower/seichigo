@@ -52,6 +52,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/ja`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
 
     { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about`, ja: `${base}/ja/about` } } },
+    { url: `${base}/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.3, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
+    { url: `${base}/en/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.2, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
+    { url: `${base}/ja/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.2, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
+    { url: `${base}/status`, lastModified: now, changeFrequency: 'monthly', priority: 0.2, alternates: { languages: { zh: `${base}/status`, en: `${base}/en/status`, ja: `${base}/ja/status` } } },
+    { url: `${base}/en/status`, lastModified: now, changeFrequency: 'monthly', priority: 0.1, alternates: { languages: { zh: `${base}/status`, en: `${base}/en/status`, ja: `${base}/ja/status` } } },
+    { url: `${base}/ja/status`, lastModified: now, changeFrequency: 'monthly', priority: 0.1, alternates: { languages: { zh: `${base}/status`, en: `${base}/en/status`, ja: `${base}/ja/status` } } },
     { url: `${base}/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
     { url: `${base}/en/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
     { url: `${base}/ja/anime`, lastModified: now, changeFrequency: 'weekly', priority: 0.3, alternates: { languages: { zh: `${base}/anime`, en: `${base}/en/anime`, ja: `${base}/ja/anime` } } },
