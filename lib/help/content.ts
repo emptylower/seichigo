@@ -203,6 +203,164 @@ const jaHelp: LegalDocument = {
   closingNote: '本ページは機能の変更に応じて更新されます。更新日はページ上部をご確認ください。',
 }
 
+const zhStatus: LegalDocument = {
+  title: '系统状态',
+  summary:
+    '本页记录 SeichiGo 各项服务的当前状态、已知问题与历史事件。本页由人工维护，不是实时监控面板——最后核对时间见页首。遇到本页未记录的故障，请通过下方邮箱告诉我们。',
+  effectiveDateLabel: '本页启用',
+  updatedDateLabel: '最后核对',
+  contactLabel: '故障报告',
+  effectiveDate: '2026-08-04',
+  updatedDate: UPDATED,
+  contactEmail: CONTACT_EMAIL,
+  sections: [
+    {
+      heading: '1. 服务组件与当前状态',
+      bullets: [
+        '网站主站（文章、作品、城市、资源页）：正常运行。',
+        '地图与地点浏览：正常运行。',
+        '账号登录与邮箱验证码：正常运行。',
+        '投稿、审核与评论：正常运行。',
+        '图片上传与图床：正常运行。',
+        '每日数据同步任务：正常运行。',
+      ],
+    },
+    {
+      heading: '2. 已知问题',
+      paragraphs: [
+        '当前没有影响正常使用的已知问题。发现新问题时会在这里列出，并标注影响范围与预计恢复时间。',
+      ],
+    },
+    {
+      heading: '3. 历史事件',
+      paragraphs: [
+        '本页自 2026-08-04 起启用，此前的运维事件未在此记录。后续所有影响用户访问的事件都会按时间倒序追加在这一节。',
+      ],
+    },
+    {
+      heading: '4. 如何报告故障',
+      bullets: [
+        '请发送邮件至上方地址，标题注明「故障报告」。',
+        '为便于定位，请提供：出问题的页面链接、你使用的浏览器与设备、发生时间，以及可能的话一张截图。',
+        '我们会在确认问题后把它登记到「已知问题」一节，并在修复后移入「历史事件」。',
+      ],
+    },
+    {
+      heading: '5. 计划内维护',
+      paragraphs: [
+        '需要停机的维护会提前在这一节公告，包含时间窗口与受影响的功能。目前没有计划内维护。',
+      ],
+    },
+  ],
+  closingNote: '本页由人工维护，状态信息以「最后核对」时间为准，不代表实时可用性保证。',
+}
+
+const enStatus: LegalDocument = {
+  title: 'System Status',
+  summary:
+    'This page records the current status, known issues and incident history of SeichiGo services. This page is maintained manually and is not a real-time monitoring dashboard — see the "last verified" timestamp above. If you encounter an issue not listed here, please let us know at the email address below.',
+  effectiveDateLabel: 'Page live since',
+  updatedDateLabel: 'Last verified',
+  contactLabel: 'Report an issue',
+  effectiveDate: '2026-08-04',
+  updatedDate: UPDATED,
+  contactEmail: CONTACT_EMAIL,
+  sections: [
+    {
+      heading: '1. Service components and current status',
+      bullets: [
+        'Main website (articles, anime, cities and resource pages): Operational.',
+        'Map and location browsing: Operational.',
+        'Account sign-in and email verification codes: Operational.',
+        'Submissions, reviews and comments: Operational.',
+        'Image uploads and image hosting: Operational.',
+        'Daily data synchronization jobs: Operational.',
+      ],
+    },
+    {
+      heading: '2. Known issues',
+      paragraphs: [
+        'There are currently no known issues affecting normal use. New issues will be listed here with their scope of impact and estimated recovery time.',
+      ],
+    },
+    {
+      heading: '3. Incident history',
+      paragraphs: [
+        'This page has been active since 2026-08-04; operational incidents before that date are not recorded here. Future incidents affecting user access will be added to this section in reverse chronological order.',
+      ],
+    },
+    {
+      heading: '4. How to report an issue',
+      bullets: [
+        'Email the address above with "Issue report" in the subject line.',
+        'To help us investigate, include the affected page URL, your browser and device, when the issue occurred, and a screenshot if possible.',
+        'After confirming the issue, we will record it under Known issues and move it to Incident history once resolved.',
+      ],
+    },
+    {
+      heading: '5. Planned maintenance',
+      paragraphs: [
+        'Maintenance requiring downtime will be announced in this section in advance, including the time window and affected features. There is currently no planned maintenance.',
+      ],
+    },
+  ],
+  closingNote:
+    'This page is maintained manually. Status information is current as of the "last verified" timestamp and is not a guarantee of real-time availability.',
+}
+
+const jaStatus: LegalDocument = {
+  title: 'システムステータス',
+  summary:
+    'SeichiGo の各サービスの現在の稼働状況、既知の問題、過去の障害を記録しています。本ページは人手で更新しており、リアルタイム監視ダッシュボードではありません。最終確認日時はページ上部をご覧ください。本ページに記載のない障害が発生した場合は、下記のメールアドレスまでお知らせください。',
+  effectiveDateLabel: 'ページ公開日',
+  updatedDateLabel: '最終確認',
+  contactLabel: '障害のご報告',
+  effectiveDate: '2026-08-04',
+  updatedDate: UPDATED,
+  contactEmail: CONTACT_EMAIL,
+  sections: [
+    {
+      heading: '1. サービス構成と現在のステータス',
+      bullets: [
+        'ウェブサイト本体（記事、作品、都市、リソースページ）：正常稼働。',
+        '地図とスポット閲覧：正常稼働。',
+        'アカウントログインとメール認証コード：正常稼働。',
+        '投稿、審査、コメント：正常稼働。',
+        '画像アップロードと画像ホスティング：正常稼働。',
+        '日次データ同期ジョブ：正常稼働。',
+      ],
+    },
+    {
+      heading: '2. 既知の問題',
+      paragraphs: [
+        '現在、通常のご利用に影響する既知の問題はありません。新たな問題が見つかった場合は、影響範囲と復旧見込みを添えて本節に掲載します。',
+      ],
+    },
+    {
+      heading: '3. 障害履歴',
+      paragraphs: [
+        '本ページは 2026-08-04 に公開され、それ以前の運用上の障害は記録していません。今後、ユーザーのアクセスに影響する障害はすべて新しい順に本節へ追加します。',
+      ],
+    },
+    {
+      heading: '4. 障害の報告方法',
+      bullets: [
+        '上記のメールアドレス宛てに、件名を「障害報告」としてお送りください。',
+        '調査のため、問題が発生したページの URL、ご利用のブラウザと端末、発生日時、可能であればスクリーンショットをお知らせください。',
+        '問題を確認後、「既知の問題」に掲載し、解決後に「障害履歴」へ移します。',
+      ],
+    },
+    {
+      heading: '5. メンテナンス予定',
+      paragraphs: [
+        '停止を伴うメンテナンスは、実施時間と影響を受ける機能を添えて事前に本節でお知らせします。現在、予定されているメンテナンスはありません。',
+      ],
+    },
+  ],
+  closingNote:
+    '本ページは人手で更新しています。ステータス情報は「最終確認」時点のものであり、リアルタイムの可用性を保証するものではありません。',
+}
+
 const helpDocuments: Record<LegalLocale, LegalDocument> = {
   zh: zhHelp,
   en: enHelp,
@@ -211,4 +369,14 @@ const helpDocuments: Record<LegalLocale, LegalDocument> = {
 
 export function getHelpDocument(locale: LegalLocale): LegalDocument {
   return helpDocuments[locale]
+}
+
+const statusDocuments: Record<LegalLocale, LegalDocument> = {
+  zh: zhStatus,
+  en: enStatus,
+  ja: jaStatus,
+}
+
+export function getStatusDocument(locale: LegalLocale): LegalDocument {
+  return statusDocuments[locale]
 }
