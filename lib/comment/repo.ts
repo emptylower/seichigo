@@ -1,3 +1,5 @@
+export type CommentStatus = 'visible' | 'hidden'
+
 export type Comment = {
   id: string
   articleId: string | null
@@ -6,7 +8,29 @@ export type Comment = {
   parentId: string | null
   content: string
   contentHtml: string
+  status: CommentStatus
+  hiddenAt: Date | null
+  hiddenBy: string | null
   createdAt: Date
+}
+
+export type CommentReport = {
+  id: string
+  commentId: string
+  reporterId: string
+  reason: string
+  createdAt: Date
+}
+
+export type ModeratedComment = Comment & {
+  reports: CommentReport[]
+}
+
+export class DuplicateCommentReportError extends Error {
+  constructor() {
+    super('comment report already exists')
+    this.name = 'DuplicateCommentReportError'
+  }
 }
 
 export type CommentRepo = {
@@ -25,6 +49,20 @@ export type CommentRepo = {
     articleId?: string
     mdxSlug?: string
   }): Promise<Comment[]>
+
+  listForModeration(): Promise<ModeratedComment[]>
+
+  hide(id: string, hiddenBy: string): Promise<Comment | null>
+
+  restore(id: string): Promise<Comment | null>
+
+  createReport(data: {
+    commentId: string
+    reporterId: string
+    reason: string
+  }): Promise<CommentReport>
+
+  findReport(commentId: string, reporterId: string): Promise<CommentReport | null>
 
   delete(id: string): Promise<void>
 

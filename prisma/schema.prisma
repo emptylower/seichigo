@@ -36,8 +36,10 @@ model User {
   favorites            Favorite[]
   mdxFavorites         MdxFavorite[]
   waitlistEntry        WaitlistEntry?
-  comments             Comment[]
+  comments             Comment[]            @relation("CommentAuthor")
   commentLikes         CommentLike[]
+  commentReports       CommentReport[]      @relation("CommentReporter")
+  hiddenComments       Comment[]            @relation("CommentHiddenBy")
   translationHistories TranslationHistory[]
   anitabiFavorites     AnitabiFavorite[]
   anitabiViewHistory   AnitabiViewHistory[]
@@ -365,23 +367,30 @@ model SubmissionCity {
 }
 
 model Comment {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   articleId   String?
   mdxSlug     String?
   authorId    String
   parentId    String?
-  content     String   @db.Text
-  contentHtml String   @db.Text
-  createdAt   DateTime @default(now())
+  content     String    @db.Text
+  contentHtml String    @db.Text
+  status      String    @default("visible")
+  hiddenAt    DateTime?
+  hiddenBy    String?
+  createdAt   DateTime  @default(now())
 
-  author  User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent  Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies Comment[]     @relation("CommentReplies")
-  likes   CommentLike[]
+  author       User            @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  hiddenByUser User?           @relation("CommentHiddenBy", fields: [hiddenBy], references: [id], onDelete: SetNull)
+  parent       Comment?        @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Comment[]       @relation("CommentReplies")
+  likes        CommentLike[]
+  reports      CommentReport[]
 
   @@index([articleId])
   @@index([mdxSlug])
   @@index([authorId])
+  @@index([status, createdAt])
+  @@index([hiddenBy])
 }
 
 model CommentLike {
@@ -394,6 +403,21 @@ model CommentLike {
 
   @@id([userId, commentId])
   @@index([commentId])
+}
+
+model CommentReport {
+  id         String   @id @default(cuid())
+  commentId  String
+  reporterId String
+  reason     String
+  createdAt  DateTime @default(now())
+
+  comment  Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporter User    @relation("CommentReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, reporterId])
+  @@index([commentId, createdAt])
+  @@index([reporterId])
 }
 
 model TranslationTask {

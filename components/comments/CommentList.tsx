@@ -1,27 +1,18 @@
 'use client'
 
 import CommentItem from './CommentItem'
-
-type Comment = {
-  id: string
-  authorId: string
-  content: string
-  contentHtml: string
-  createdAt: string
-  likeCount: number
-  author: { id: string }
-  replies: Comment[]
-}
+import type { CommentItemData, CommentReportHandler } from './types'
 
 type Props = {
-  comments: Comment[]
+  comments: CommentItemData[]
   onReply: (content: string, parentId: string) => Promise<boolean>
   onDelete: () => void
   currentUserId?: string
   isAdmin?: boolean
+  onReport: CommentReportHandler
 }
 
-export default function CommentList({ comments, onReply, onDelete, currentUserId, isAdmin }: Props) {
+export default function CommentList({ comments, onReply, onDelete, currentUserId, isAdmin, onReport }: Props) {
   if (comments.length === 0) {
     return <p className="text-gray-500 mt-4">暂无评论</p>
   }
@@ -36,6 +27,7 @@ export default function CommentList({ comments, onReply, onDelete, currentUserId
           onDelete={onDelete}
           currentUserId={currentUserId}
           isAdmin={isAdmin}
+          onReport={onReport}
         />
       ))}
     </div>

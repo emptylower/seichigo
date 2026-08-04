@@ -7,6 +7,7 @@ const LABEL_MAP: Record<string, string> = {
   admin: "管理后台",
   dashboard: "仪表盘",
   review: "文章审核",
+  comments: "评论治理",
   panel: "内容管理",
   anime: "作品管理",
   city: "城市管理",

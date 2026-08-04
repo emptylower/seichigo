@@ -31,7 +31,9 @@ export function createHandlers(deps: CommentApiDeps) {
           return { ok: false as const, error: '缺少目标参数' }
         }
 
-        const comments = await repo.findByTarget({ articleId, mdxSlug })
+        const comments = (await repo.findByTarget({ articleId, mdxSlug })).filter(
+          (comment) => comment.status === 'visible'
+        )
         const likeCounts = await Promise.all(comments.map((c) => repo.getLikeCount(c.id)))
 
         const byId = new Map<string, CommentListItem>()
