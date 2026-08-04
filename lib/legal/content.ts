@@ -32,7 +32,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最近更新',
       contactLabel: '联系我们',
       effectiveDate: '2026-02-07',
-      updatedDate: '2026-02-07',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -73,7 +73,22 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '5. 信息共享与第三方处理',
+          heading: '5. 第三方广告与同意管理',
+          paragraphs: [
+            '本站通过第三方广告（包括 Google AdSense）获得运营收入。以下说明广告相关的数据处理方式。',
+          ],
+          bullets: [
+            'Google 作为第三方供应商，会使用 Cookie（包括 DoubleClick DART Cookie）在本站投放广告。',
+            'Google 及其合作的第三方供应商与广告网络，可能使用 Cookie、网络信标（web beacon）及类似技术，收集你的 IP 地址、浏览器类型、访问时间、浏览页面与点击行为等非直接身份识别信息，用于衡量广告效果并投放相关广告。',
+            'Google 可能基于你在本站及其他网站的历史访问，向你展示个性化广告。',
+            '你可以访问 Google 广告设置（https://myadcenter.google.com）关闭个性化广告；也可以通过 https://www.aboutads.info/choices 或 https://optout.networkadvertising.org 统一管理参与厂商的广告 Cookie。',
+            '你也可以在浏览器中禁用第三方 Cookie。这不会影响你阅读站内内容，但可能降低广告相关性。',
+            '若你位于欧洲经济区、英国或瑞士，我们会在展示广告前，通过符合 IAB TCF 标准的 Google 认证同意管理平台（CMP）征求你对 Cookie 与个性化广告的同意，你可以随时通过页面上的同意设置入口撤回或变更选择。',
+            '我们不会将你的邮箱地址、账号昵称或投稿内容提供给广告供应商用于广告定向。',
+          ],
+        },
+        {
+          heading: '6. 信息共享与第三方处理',
           paragraphs: [
             '我们不会出售你的个人信息。仅在实现服务所必需或法律要求时，向以下类别第三方提供数据：',
           ],
@@ -81,12 +96,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
             '基础设施与数据库服务商（用于网站托管、数据存储与访问）。',
             '邮件服务商（Resend 或你部署时配置的 SMTP 服务商）用于发送验证码邮件。',
             '分析服务商（Google Analytics）用于聚合统计分析。',
+            '广告服务商（Google AdSense 及其合作的广告技术供应商）用于广告投放与效果衡量。',
             '在管理员启用相关功能时，内容可能被发送到外部 AI/SEO 服务（如 Gemini、Google Search Console、SerpAPI）以完成翻译或 SEO 任务。',
             '司法机关、监管机构或法律要求的其他披露场景。',
           ],
         },
         {
-          heading: '6. 数据存储与安全',
+          heading: '7. 数据存储与安全',
           bullets: [
             '数据主要存储在你部署时配置的 PostgreSQL 数据库中。',
             '密码以哈希形式存储，不保存明文密码；验证码以哈希形式保存并设定过期时间。',
@@ -95,7 +111,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '7. 数据保留',
+          heading: '8. 数据保留',
           bullets: [
             '账号、投稿、评论、收藏等数据会在服务运营期间保留，除非你提出删除请求或法律另有要求。',
             '邮箱验证码记录带有有效期，过期或使用后即失效。',
@@ -103,7 +119,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. 你的权利',
+          heading: '9. 你的权利',
           bullets: [
             '你可以在“我的设置”中修改昵称、头像、个人简介和社交链接。',
             '你可以联系我们申请访问、更正或删除与你相关的数据。',
@@ -111,13 +127,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. 未成年人',
+          heading: '10. 未成年人',
           paragraphs: [
             '若你为未成年人，请在监护人指导下使用本服务。若监护人认为我们在未经同意情况下收集了未成年人信息，请联系我们处理。',
           ],
         },
         {
-          heading: '10. 政策更新',
+          heading: '11. 政策更新',
           paragraphs: [
             '我们可能根据产品迭代、法律法规变化更新本政策，并在本页更新“最近更新”日期。重大变更将以站内公告或其他合理方式提示。',
           ],
@@ -214,7 +230,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: 'Last Updated',
       contactLabel: 'Contact',
       effectiveDate: 'February 7, 2026',
-      updatedDate: 'February 7, 2026',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -255,7 +271,22 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '5. Sharing and Third-Party Processing',
+          heading: '5. Third-Party Advertising and Consent Management',
+          paragraphs: [
+            'This site is funded by third-party advertising, including Google AdSense. This section explains how advertising-related data is handled.',
+          ],
+          bullets: [
+            'Google, as a third-party vendor, uses cookies (including the DoubleClick DART cookie) to serve ads on this site.',
+            'Google and its third-party vendors and ad networks may use cookies, web beacons and similar technologies to collect non-personally-identifying information such as your IP address, browser type, time of visit, pages viewed and click behaviour, in order to measure and serve relevant ads.',
+            'Google may show you personalised ads based on your prior visits to this and other websites.',
+            'You can opt out of personalised advertising through Google Ad Settings at https://myadcenter.google.com, or manage vendor advertising cookies at https://www.aboutads.info/choices and https://optout.networkadvertising.org.',
+            'You may also disable third-party cookies in your browser. Doing so does not affect your ability to read content on this site, but may reduce ad relevance.',
+            'If you are located in the European Economic Area, the United Kingdom or Switzerland, we ask for your consent to cookies and personalised advertising through a Google-certified Consent Management Platform (CMP) compliant with the IAB TCF standard before ads are shown, and you can withdraw or change your choice at any time via the consent settings entry point on the page.',
+            'We never share your email address, display name or submitted content with advertising vendors for ad targeting.',
+          ],
+        },
+        {
+          heading: '6. Sharing and Third-Party Processing',
           paragraphs: [
             'We do not sell personal data. We share data only when required to provide the service or by law.',
           ],
@@ -263,12 +294,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
             'Infrastructure and database providers for hosting and storage.',
             'Email providers (Resend or configured SMTP provider) for OTP delivery.',
             'Analytics provider (Google Analytics) for aggregated reporting.',
+            'Advertising providers (Google AdSense and its partner ad technology vendors) for ad serving and measurement.',
             'If enabled by admins, content may be sent to external AI/SEO services (for example Gemini, Google Search Console, SerpAPI) for translation or SEO workflows.',
             'Regulators, courts, or law enforcement where legally required.',
           ],
         },
         {
-          heading: '6. Storage and Security',
+          heading: '7. Storage and Security',
           bullets: [
             'Data is stored in the PostgreSQL database configured by deployment.',
             'Passwords are stored as hashes; OTP values are hashed and time-limited.',
@@ -277,7 +309,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '7. Retention',
+          heading: '8. Retention',
           bullets: [
             'Account, submission, comment, and favorite data may be retained while the service is active unless deletion is requested or required by law.',
             'OTP records expire and become invalid after use or timeout.',
@@ -285,7 +317,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. Your Choices',
+          heading: '9. Your Choices',
           bullets: [
             'You can update profile fields in account settings.',
             'You can request access, correction, or deletion by contacting us.',
@@ -293,13 +325,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. Children',
+          heading: '10. Children',
           paragraphs: [
             'If you are under applicable age requirements, please use the service with guardian guidance. Guardians can contact us regarding child data concerns.',
           ],
         },
         {
-          heading: '10. Policy Changes',
+          heading: '11. Policy Changes',
           paragraphs: [
             'We may update this policy due to product or legal changes. We will revise the "Last Updated" date on this page and provide additional notice when required.',
           ],
@@ -396,7 +428,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最終更新日',
       contactLabel: 'お問い合わせ',
       effectiveDate: '2026年2月7日',
-      updatedDate: '2026年2月7日',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -437,7 +469,22 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '5. 第三者提供・外部処理',
+          heading: '5. 第三者配信の広告と同意管理',
+          paragraphs: [
+            '当サイトは Google AdSense を含む第三者配信の広告によって運営費をまかなっています。本節では広告に関するデータの取り扱いについて説明します。',
+          ],
+          bullets: [
+            'Google は第三者配信事業者として、Cookie（DoubleClick DART Cookie を含む）を使用して当サイトに広告を配信します。',
+            'Google および提携する第三者配信事業者・広告ネットワークは、Cookie、ウェブビーコンおよび類似の技術を使用して、IP アドレス、ブラウザの種類、アクセス日時、閲覧ページ、クリック行動などの個人を直接特定しない情報を収集し、広告効果の測定と関連性の高い広告の配信に利用することがあります。',
+            'Google は、当サイトおよび他のサイトへの過去のアクセス履歴に基づいて、パーソナライズド広告を表示する場合があります。',
+            'パーソナライズド広告は Google 広告設定（https://myadcenter.google.com）から無効にできます。また https://www.aboutads.info/choices または https://optout.networkadvertising.org から参加事業者の広告 Cookie をまとめて管理できます。',
+            'ブラウザ側で第三者 Cookie を無効にすることもできます。その場合でもサイト内のコンテンツの閲覧に影響はありませんが、広告の関連性は低下する可能性があります。',
+            '欧州経済領域、英国またはスイスにお住まいの方には、広告の表示前に、IAB TCF 準拠の Google 認定同意管理プラットフォーム（CMP）を通じて Cookie とパーソナライズド広告への同意を確認します。同意はページ上の同意設定からいつでも撤回・変更できます。',
+            'メールアドレス、アカウント名、投稿内容を広告配信事業者にターゲティング目的で提供することはありません。',
+          ],
+        },
+        {
+          heading: '6. 第三者提供・外部処理',
           paragraphs: [
             '当社は個人情報を販売しません。サービス提供または法令上必要な場合に限り、第三者へ情報を提供します。',
           ],
@@ -445,12 +492,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
             'ホスティング・データベース提供事業者（運用基盤のため）。',
             'メール配信事業者（Resend または設定済み SMTP）による OTP 送信。',
             '分析事業者（Google Analytics）による集計分析。',
+            '広告配信事業者（Google AdSense および提携する広告技術ベンダー）— 広告の配信と効果測定のため。',
             '管理機能で有効化された場合、翻訳・SEO 処理のため Gemini / Google Search Console / SerpAPI 等へコンテンツを送信する場合があります。',
             '法令・司法・行政機関からの適法な開示要請に基づく提供。',
           ],
         },
         {
-          heading: '6. 保存とセキュリティ',
+          heading: '7. 保存とセキュリティ',
           bullets: [
             'データはデプロイ時に設定された PostgreSQL に保存されます。',
             'パスワードはハッシュ化して保存し、OTP はハッシュ化かつ有効期限付きで管理します。',
@@ -459,7 +507,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '7. 保存期間',
+          heading: '8. 保存期間',
           bullets: [
             'アカウント、投稿、コメント、お気に入り等は、運用上必要な期間または法令上必要な期間保持されます。',
             'OTP 記録は期限切れまたは使用済みで無効化されます。',
@@ -467,7 +515,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. ユーザーの権利',
+          heading: '9. ユーザーの権利',
           bullets: [
             '設定画面でプロフィール情報を更新できます。',
             '開示・訂正・削除の依頼はメールで受け付けます。',
@@ -475,13 +523,13 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. 未成年者の利用',
+          heading: '10. 未成年者の利用',
           paragraphs: [
             '未成年の方は保護者の指導のもとで利用してください。未成年者情報に関する懸念がある場合はご連絡ください。',
           ],
         },
         {
-          heading: '10. 改定',
+          heading: '11. 改定',
           paragraphs: [
             '法令・サービス変更に応じて本ポリシーを更新することがあります。更新時は本ページの最終更新日を改定します。',
           ],
