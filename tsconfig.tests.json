@@ -5,7 +5,7 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.d.ts",
+    "types/**/*.d.ts",
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "vitest.config.ts"
