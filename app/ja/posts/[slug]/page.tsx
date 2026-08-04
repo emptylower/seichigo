@@ -14,6 +14,7 @@ import CommentSection from '@/components/comments/CommentSection'
 import ArticleShareButtons from '@/components/content/ArticleShareButtons'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
+import CopyrightNotice from '@/components/legal/CopyrightNotice'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import EmergencyNotice from '@/components/public/EmergencyNotice'
 import ArticleToc from '@/components/toc/ArticleToc'
@@ -376,6 +377,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
               <div dangerouslySetInnerHTML={{ __html: found.article.contentHtml || '' }} />
             )}
             <ProgressiveImagesRuntime />
+            <CopyrightNotice locale="ja" />
             <div className="mt-12" />
             {found.source === 'db' ? (
               <CommentSection articleId={found.article.id} />
