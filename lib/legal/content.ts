@@ -150,7 +150,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最近更新',
       contactLabel: '联系我们',
       effectiveDate: '2026-02-07',
-      updatedDate: '2026-02-07',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -194,13 +194,25 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '6. 第三方服务与外部链接',
+          heading: '6. 版权引用与下架申请',
+          paragraphs: [
+            '本站攻略采用动画画面与实景照片对照的表达形式。站内出现的动画截图版权归各自著作权人所有，本站仅在场景对照、说明与评论的必要范围内引用，不进行独立售卖或再分发；实景照片版权归拍摄者所有。',
+          ],
+          bullets: [
+            '若你是相关内容的著作权人或其授权代理人，认为站内引用超出合理范围，可通过本页联系邮箱提交下架或更正申请。',
+            '申请请注明：涉及的作品与具体画面、页面链接、权利证明或授权关系说明、以及希望的处理方式（补充署名 / 替换 / 下架）。',
+            '我们会在收到完整信息后 7 个工作日内回复；处理期间可先行隐藏争议内容。',
+            '用户投稿的图片须为本人拍摄或已获授权。上传即表示你确认拥有相应权利，并授权本站在站内展示。',
+          ],
+        },
+        {
+          heading: '7. 第三方服务与外部链接',
           paragraphs: [
             '本服务可能包含第三方链接或集成（如邮件服务、统计服务、地图链接等）。第三方服务由其自身条款和政策约束，SeichiGo 不对其独立行为承担责任。',
           ],
         },
         {
-          heading: '7. 服务可用性与责任限制',
+          heading: '8. 服务可用性与责任限制',
           bullets: [
             '服务按“现状”和“可用”提供，我们不承诺服务持续无中断、无错误或绝对满足你的特定目标。',
             '在法律允许范围内，对于因你使用或无法使用本服务导致的间接损失、附带损失或利润损失，我们不承担责任。',
@@ -208,7 +220,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. 协议变更、终止与适用规则',
+          heading: '9. 协议变更、终止与适用规则',
           bullets: [
             '我们可根据业务和法规变化更新本协议，更新后将发布在本页面。',
             '若你在协议更新后继续使用服务，视为接受更新后的协议。',
@@ -348,7 +360,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: 'Last Updated',
       contactLabel: 'Contact',
       effectiveDate: 'February 7, 2026',
-      updatedDate: 'February 7, 2026',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -392,13 +404,25 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '6. Third-Party Services',
+          heading: '6. Copyright Quotation and Takedown Requests',
+          paragraphs: [
+            'SeichiGo guides place anime frames alongside real-world photographs for scene comparison. Copyright in anime frames remains with the respective copyright holders; we quote them only to the extent necessary for scene comparison, explanation and commentary, and do not sell or redistribute them independently. Copyright in real-world photographs remains with the photographer.',
+          ],
+          bullets: [
+            'If you are the copyright holder or an authorised agent and believe that material on this site exceeds reasonable quotation, you may submit a takedown or correction request through the contact email on this page.',
+            'Please identify the work and specific frame, the page URL, evidence of your rights or authorisation, and your preferred remedy (added attribution / replacement / removal).',
+            'We will respond within 7 business days after receiving complete information and may hide the disputed material while the request is processed.',
+            'Images submitted by users must be their own photographs or used with permission. By uploading an image, you confirm that you hold the necessary rights and authorise SeichiGo to display it on the site.',
+          ],
+        },
+        {
+          heading: '7. Third-Party Services',
           paragraphs: [
             'The service may include external links or third-party integrations (for example email, analytics, and maps). Those services are governed by their own terms and policies.',
           ],
         },
         {
-          heading: '7. Disclaimer and Liability Limits',
+          heading: '8. Disclaimer and Liability Limits',
           bullets: [
             'The service is provided on an "as is" and "as available" basis without guarantees of uninterrupted operation or fitness for your specific purpose.',
             'To the extent permitted by law, SeichiGo is not liable for indirect, incidental, special, or consequential damages from use of the service.',
@@ -406,7 +430,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. Changes, Termination, and Governing Rules',
+          heading: '9. Changes, Termination, and Governing Rules',
           bullets: [
             'We may update these Terms and publish the latest version on this page.',
             'Continued use after updates means acceptance of revised Terms.',
@@ -546,7 +570,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最終更新日',
       contactLabel: 'お問い合わせ',
       effectiveDate: '2026年2月7日',
-      updatedDate: '2026年2月7日',
+      updatedDate: '2026-08-04',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -590,13 +614,25 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '6. 外部サービス',
+          heading: '6. 著作権の引用と削除依頼',
+          paragraphs: [
+            '当サイトのガイドは、アニメ画面と実景写真を対比する表現形式を採用しています。掲載されるアニメ画面の著作権はそれぞれの権利者に帰属し、場面の対比、説明、評論に必要な範囲でのみ引用しており、単独での販売や再配布は行いません。実景写真の著作権は撮影者に帰属します。',
+          ],
+          bullets: [
+            '該当コンテンツの著作権者または正当な代理人の方で、当サイトでの引用が適正な範囲を超えているとお考えの場合は、本ページの連絡先メールアドレスから削除または訂正を申請できます。',
+            '申請には、作品名と該当画面、対象ページの URL、権利または代理権を示す資料、ご希望の対応（クレジット追加 / 差し替え / 削除）をご記載ください。',
+            '必要な情報がそろい次第、7 営業日以内に回答します。対応期間中は該当コンテンツを一時的に非表示にする場合があります。',
+            'ユーザーが投稿する画像は、本人が撮影したもの、または利用許諾を得たものに限ります。アップロードにより、必要な権利を有し、当サイト内での表示を許諾することを確認したものとみなします。',
+          ],
+        },
+        {
+          heading: '7. 外部サービス',
           paragraphs: [
             '本サービスには外部リンクや第三者サービス連携（メール、分析、地図等）が含まれる場合があります。これらは各提供者の規約に従います。',
           ],
         },
         {
-          heading: '7. 免責と責任制限',
+          heading: '8. 免責と責任制限',
           bullets: [
             '本サービスは「現状有姿」かつ「提供可能な範囲」で提供され、無停止・無瑕疵を保証しません。',
             '法令で認められる範囲で、間接損害、特別損害、付随的損害について責任を負いません。',
@@ -604,7 +640,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. 改定・終了・準拠ルール',
+          heading: '9. 改定・終了・準拠ルール',
           bullets: [
             '当社は本規約を改定でき、最新版を本ページで公開します。',
             '改定後も利用を継続した場合、改定規約に同意したものとみなされます。',

@@ -24,3 +24,17 @@ describe('privacy policy advertising disclosure', () => {
     expect(numbers).toEqual(numbers.map((_, index) => index + 1))
   })
 })
+
+describe('terms copyright policy', () => {
+  it.each(LOCALES)('%s terms sections are sequentially numbered and include takedown policy', (locale) => {
+    const doc = getLegalDocument('terms', locale)
+    const numbers = doc.sections.map((section) => Number(section.heading.match(/^(\d+)\./)?.[1]))
+    expect(numbers).toEqual(numbers.map((_, index) => index + 1))
+    expect(JSON.stringify(doc)).toMatch(/下架|takedown|削除依頼/i)
+    const takedownSection = doc.sections.find((section) =>
+      /版权引用|Copyright Quotation|著作権の引用/.test(section.heading)
+    )
+    expect(takedownSection?.paragraphs).toHaveLength(1)
+    expect(takedownSection?.bullets).toHaveLength(4)
+  })
+})
