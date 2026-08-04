@@ -57,10 +57,20 @@ builds use `@prisma/client/wasm` (pinned in `lib/db/prisma`).
 
 ### Domain routing
 
-Custom apex/www domains route through Workers (not Pages). The apex host
-`seichigo.com` is canonical. A Cloudflare Redirect Rule permanently redirects
-`www.seichigo.com` to the equivalent apex URL while preserving the path and
-query string. DNS records live in Cloudflare DNS. See
+Custom apex/www domains route through Workers (not Pages), using two explicit
+Worker Routes. Cloudflare Redirect Rules, Bulk Redirects, and Page Rules have no
+active rule. DNS records live in Cloudflare DNS.
+
+| Worker | Route | Custom Domains | Responsibility |
+|--------|-------|----------------|----------------|
+| `seichigo` | `seichigo.com/*` | none | Primary application and canonical apex traffic |
+| `seichigo-apex-redirect` | `www.seichigo.com/*` | none | Redirect `www` traffic to the apex host |
+
+The redirect Worker is on active version `a9a9b31b` with 100% traffic. Its URL
+API and host allowlist permanently return `308` for `www.seichigo.com` to the
+equivalent `https://seichigo.com` URL, preserving path and query. Non-target
+hosts return `404`. An apex-to-`www` transition/rollback branch remains in the
+script, but the current route never sends apex traffic to this Worker. See
 [`adsense/canonical-host-decision.md`](adsense/canonical-host-decision.md) for
 the decision record and verification contract.
 
