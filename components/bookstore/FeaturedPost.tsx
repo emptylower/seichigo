@@ -14,6 +14,8 @@ function formatMeta(item: Pick<PublicPostListItem, 'animeIds' | 'localizedAnimeN
 }
 
 export default function FeaturedPost({ item, locale }: { item: PublicPostListItem; locale: SiteLocale }) {
+  const displayTags = item.localizedTags?.length ? item.localizedTags : item.tags
+
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 transition-all hover:shadow-md">
       <div className="grid gap-6 md:grid-cols-2 md:items-center">
@@ -48,9 +50,9 @@ export default function FeaturedPost({ item, locale }: { item: PublicPostListIte
             <div className="text-sm text-gray-500">{formatMeta(item, locale) || '—'}</div>
           </div>
 
-          {item.tags?.length ? (
+          {displayTags?.length ? (
             <div className="flex flex-wrap gap-2">
-              {item.tags.slice(0, 8).map((t) => (
+              {displayTags.slice(0, 8).map((t) => (
                 <Tag key={t}>{t}</Tag>
               ))}
             </div>

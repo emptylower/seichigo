@@ -45,6 +45,7 @@ type HomeDataDeps = {
 }
 
 const HOME_DATA_TIMEOUT_MS = 8_000
+const TAG_COMPOSITE_SEPARATOR_RE = /(·|・|,|，|、|\/|&|／|\||｜|\s|\(|\)|\[|\]|（|）)+/
 
 type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
 
@@ -128,6 +129,35 @@ function buildCityKeyMap(cityData: CityCountData['cities']): Map<string, CityCou
   return keyToCity
 }
 
+function localizePostTag(
+  rawTag: string,
+  animeByKey: Map<string, Anime>,
+  cityByKey: Map<string, CityCountData['cities'][number]>,
+  locale: SupportedLocale
+): string {
+  const tag = String(rawTag || '')
+  if (!tag.trim()) return tag
+
+  const anime = animeByKey.get(normalizeDisplayNameKey(tag))
+  if (anime) return getLocalizedDisplayName(anime, locale)
+
+  const city = cityByKey.get(normalizeCityAlias(tag))
+  if (city) return getLocalizedDisplayName(city, locale)
+
+  return tag
+    .split(TAG_COMPOSITE_SEPARATOR_RE)
+    .map((part) => {
+      if (!part || TAG_COMPOSITE_SEPARATOR_RE.test(part)) return part
+
+      const partAnime = animeByKey.get(normalizeDisplayNameKey(part))
+      if (partAnime) return getLocalizedDisplayName(partAnime, locale)
+
+      const partCity = cityByKey.get(normalizeCityAlias(part))
+      return partCity ? getLocalizedDisplayName(partCity, locale) : part
+    })
+    .join('')
+}
+
 function localizePostListItems(
   posts: PublicPostListItem[],
   animeList: Anime[],
@@ -143,11 +173,13 @@ function localizePostListItems(
       return anime ? getLocalizedDisplayName(anime, locale) : rawId
     })
     const city = cityByKey.get(normalizeCityAlias(post.city))
+    const localizedTags = (post.tags || []).map((tag) => localizePostTag(tag, animeByKey, cityByKey, locale))
 
     return {
       ...post,
       localizedAnimeNames,
       localizedCity: city ? getLocalizedDisplayName(city, locale) : post.city,
+      localizedTags,
     }
   })
 }

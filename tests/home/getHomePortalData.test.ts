@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { CityLite } from '@/lib/city/db'
 import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import type { PublicPostListItem } from '@/lib/posts/types'
 
@@ -10,6 +11,26 @@ function makePost(overrides: Partial<PublicPostListItem> = {}): PublicPostListIt
     animeIds: [],
     city: '',
     tags: [],
+    ...overrides,
+  }
+}
+
+function makeCity(overrides: Partial<CityLite> = {}): CityLite {
+  return {
+    id: 'city-1',
+    slug: 'city-1',
+    name_zh: '城市',
+    name_en: 'City',
+    name_ja: '都市',
+    description_zh: null,
+    description_en: null,
+    description_ja: null,
+    transportTips_zh: null,
+    transportTips_en: null,
+    transportTips_ja: null,
+    cover: null,
+    needsReview: false,
+    hidden: false,
     ...overrides,
   }
 }
@@ -62,6 +83,51 @@ describe('getHomePortalData', () => {
     expect(data.featured?.animeIds).toEqual(['中文作品'])
     expect(data.featured?.localizedAnimeNames).toEqual(['English Anime'])
     expect(data.featured?.localizedCity).toBe('Tokyo')
+  })
+
+  it('localizes known anime and city tags while preserving composite and unknown fallback text', async () => {
+    const posts = [makePost({
+      animeIds: ['你的名字'],
+      city: '岐阜·飞驒古川 长野·诹访（上诹访）',
+      tags: ['你的名字', '岐阜·飞驒古川 长野·诹访（上诹访）', '东京·未知地区', '未收录标签'],
+    })]
+    const anime = [{
+      id: 'your-name',
+      name: '你的名字',
+      name_en: 'Your Name.',
+      name_ja: '君の名は。',
+    }]
+    const cities = [
+      makeCity({ id: 'gifu', slug: 'gifu', name_zh: '岐阜', name_en: 'Gifu', name_ja: '岐阜' }),
+      makeCity({ id: 'hida', slug: 'hida-furukawa', name_zh: '飞驒古川', name_en: 'Hida-Furukawa', name_ja: '飛騨古川' }),
+      makeCity({ id: 'nagano', slug: 'nagano', name_zh: '长野', name_en: 'Nagano', name_ja: '長野' }),
+      makeCity({ id: 'suwa', slug: 'suwa', name_zh: '诹访', name_en: 'Suwa', name_ja: '諏訪' }),
+      makeCity({ id: 'kamisuwa', slug: 'kamisuwa', name_zh: '上诹访', name_en: 'Kamisuwa', name_ja: '上諏訪' }),
+      makeCity({ id: 'tokyo', slug: 'tokyo', name_zh: '东京', name_en: 'Tokyo', name_ja: '東京' }),
+    ]
+    const deps = {
+      getAllPublicPosts: async () => posts,
+      getAllAnime: async () => anime,
+      getCityCountsByLocale: async () => ({ cities, counts: {} }),
+    }
+
+    const english = await getHomePortalData('en', deps)
+    expect(english.featured?.localizedTags).toEqual([
+      'Your Name.',
+      'Gifu·Hida-Furukawa Nagano·Suwa（Kamisuwa）',
+      'Tokyo·未知地区',
+      '未收录标签',
+    ])
+    expect(english.featured?.tags).toEqual(posts[0]!.tags)
+    expect(english.featured?.animeIds).toEqual(['你的名字'])
+
+    const japanese = await getHomePortalData('ja', deps)
+    expect(japanese.featured?.localizedTags).toEqual([
+      '君の名は。',
+      '岐阜·飛騨古川 長野·諏訪（上諏訪）',
+      '東京·未知地区',
+      '未收录标签',
+    ])
   })
 
   it('ranks popular anime by post count then localized name and limits to 6 items', async () => {

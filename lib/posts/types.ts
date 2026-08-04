@@ -15,6 +15,7 @@ export type PublicPostListItem = {
   localizedCity?: string
   routeLength?: string
   tags: string[]
+  localizedTags?: string[]
   cover?: string | null
   publishDate?: string
   publishedAt?: string
