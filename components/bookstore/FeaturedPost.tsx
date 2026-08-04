@@ -6,9 +6,10 @@ import { prefixPath } from '@/components/layout/prefixPath'
 import Tag from '@/components/shared/Tag'
 import BookCover from './BookCover'
 
-function formatMeta(item: Pick<PublicPostListItem, 'animeIds' | 'city' | 'routeLength' | 'publishDate'>): string {
-  const animeLabel = item.animeIds?.length ? item.animeIds.join('、') : 'unknown'
-  const parts = [animeLabel, item.city, item.routeLength, item.publishDate].filter(Boolean)
+function formatMeta(item: Pick<PublicPostListItem, 'animeIds' | 'localizedAnimeNames' | 'city' | 'localizedCity' | 'routeLength' | 'publishDate'>, locale: SiteLocale): string {
+  const animeNames = item.localizedAnimeNames?.length ? item.localizedAnimeNames : item.animeIds
+  const animeLabel = animeNames?.length ? animeNames.join(locale === 'en' ? ', ' : '、') : 'unknown'
+  const parts = [animeLabel, item.localizedCity ?? item.city, item.routeLength, item.publishDate].filter(Boolean)
   return parts.join(' · ')
 }
 
@@ -23,7 +24,9 @@ export default function FeaturedPost({ item, locale }: { item: PublicPostListIte
               path={item.path}
               title={item.title}
               animeIds={item.animeIds}
+              localizedAnimeNames={item.localizedAnimeNames}
               city={item.city}
+              localizedCity={item.localizedCity}
               routeLength={item.routeLength}
               publishDate={item.publishDate}
               cover={item.cover}
@@ -42,7 +45,7 @@ export default function FeaturedPost({ item, locale }: { item: PublicPostListIte
             <h2 className="text-2xl font-bold leading-tight tracking-tight text-gray-900 md:text-3xl">
               {item.title}
             </h2>
-            <div className="text-sm text-gray-500">{formatMeta(item) || '—'}</div>
+            <div className="text-sm text-gray-500">{formatMeta(item, locale) || '—'}</div>
           </div>
 
           {item.tags?.length ? (

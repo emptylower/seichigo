@@ -1,5 +1,7 @@
 import { getAllAnime, type Anime } from '@/lib/anime/getAllAnime'
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
+import { normalizeCityAlias } from '@/lib/city/normalize'
+import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
@@ -46,34 +48,23 @@ const HOME_DATA_TIMEOUT_MS = 8_000
 
 type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
 
-function normalizeAnimeKey(input: string): string {
-  return String(input || '')
-    .normalize('NFKC')
-    .trim()
-    .toLowerCase()
-}
-
 function localizedAnimeName(anime: Anime, locale: SupportedLocale): string {
-  if (locale === 'en' && anime.name_en) return anime.name_en
-  if (locale === 'ja' && anime.name_ja) return anime.name_ja
-  return anime.name
+  return getLocalizedDisplayName(anime, locale)
 }
 
 function localizedCityName(
   city: CityCountData['cities'][number],
   locale: SupportedLocale
 ): string {
-  if (locale === 'en') return city.name_en || city.name_zh
-  if (locale === 'ja') return city.name_ja || city.name_en || city.name_zh
-  return city.name_zh
+  return getLocalizedDisplayName(city, locale)
 }
 
-function buildHeroDisplay(animeList: Anime[]): HomeHeroItem[] {
+function buildHeroDisplay(animeList: Anime[], locale: SupportedLocale): HomeHeroItem[] {
   const heroDisplay: HomeHeroItem[] = animeList
     .filter((a) => a.cover)
     .sort(() => Math.random() - 0.5)
     .slice(0, 3)
-    .map((a) => ({ src: a.cover!, name: a.name }))
+    .map((a) => ({ src: a.cover!, name: getLocalizedDisplayName(a, locale) }))
 
   while (heroDisplay.length < 3) {
     heroDisplay.push({ src: STATIC_FALLBACK_COVERS[heroDisplay.length % 3] })
@@ -84,7 +75,7 @@ function buildHeroDisplay(animeList: Anime[]): HomeHeroItem[] {
 function buildAnimeKeyToIdMap(animeList: Anime[]): Map<string, string> {
   const keyToAnimeId = new Map<string, string>()
   const add = (key: string, animeId: string) => {
-    const norm = normalizeAnimeKey(key)
+    const norm = normalizeDisplayNameKey(key)
     if (!norm || keyToAnimeId.has(norm)) return
     keyToAnimeId.set(norm, animeId)
   }
@@ -100,6 +91,67 @@ function buildAnimeKeyToIdMap(animeList: Anime[]): Map<string, string> {
   return keyToAnimeId
 }
 
+function buildAnimeKeyMap(animeList: Anime[]): Map<string, Anime> {
+  const keyToAnime = new Map<string, Anime>()
+  const add = (key: string, anime: Anime) => {
+    const normalized = normalizeDisplayNameKey(key)
+    if (!normalized || keyToAnime.has(normalized)) return
+    keyToAnime.set(normalized, anime)
+  }
+
+  for (const anime of animeList) {
+    add(anime.id, anime)
+    add(anime.name, anime)
+    add(anime.name_en || '', anime)
+    add(anime.name_ja || '', anime)
+    for (const alias of anime.alias || []) add(alias, anime)
+  }
+
+  return keyToAnime
+}
+
+function buildCityKeyMap(cityData: CityCountData['cities']): Map<string, CityCountData['cities'][number]> {
+  const keyToCity = new Map<string, CityCountData['cities'][number]>()
+  const add = (key: string, city: CityCountData['cities'][number]) => {
+    const normalized = normalizeCityAlias(key)
+    if (!normalized || keyToCity.has(normalized)) return
+    keyToCity.set(normalized, city)
+  }
+
+  for (const city of cityData) {
+    add(city.slug, city)
+    add(city.name_zh, city)
+    add(city.name_en || '', city)
+    add(city.name_ja || '', city)
+  }
+
+  return keyToCity
+}
+
+function localizePostListItems(
+  posts: PublicPostListItem[],
+  animeList: Anime[],
+  cities: CityCountData['cities'],
+  locale: SupportedLocale
+): PublicPostListItem[] {
+  const animeByKey = buildAnimeKeyMap(animeList)
+  const cityByKey = buildCityKeyMap(cities)
+
+  return posts.map((post) => {
+    const localizedAnimeNames = (post.animeIds || []).map((rawId) => {
+      const anime = animeByKey.get(normalizeDisplayNameKey(rawId))
+      return anime ? getLocalizedDisplayName(anime, locale) : rawId
+    })
+    const city = cityByKey.get(normalizeCityAlias(post.city))
+
+    return {
+      ...post,
+      localizedAnimeNames,
+      localizedCity: city ? getLocalizedDisplayName(city, locale) : post.city,
+    }
+  })
+}
+
 function buildPopularAnime(
   animeList: Anime[],
   posts: PublicPostListItem[],
@@ -111,7 +163,7 @@ function buildPopularAnime(
 
   for (const post of posts) {
     for (const rawAnimeId of post.animeIds || []) {
-      const mappedId = keyToAnimeId.get(normalizeAnimeKey(rawAnimeId))
+      const mappedId = keyToAnimeId.get(normalizeDisplayNameKey(rawAnimeId))
       if (!mappedId) continue
       counts[mappedId] = (counts[mappedId] || 0) + 1
       if (post.cover && !coverFallback.has(mappedId)) {
@@ -192,12 +244,13 @@ export async function getHomePortalData(
   ])
 
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
+  const localizedPosts = localizePostListItems(visiblePosts, animeList, cityData.cities, locale)
 
   return {
-    featured: visiblePosts[0] || null,
-    latestShelf: visiblePosts.slice(0, 12),
-    more: visiblePosts.slice(12, 24),
-    heroDisplay: buildHeroDisplay(animeList),
+    featured: localizedPosts[0] || null,
+    latestShelf: localizedPosts.slice(0, 12),
+    more: localizedPosts.slice(12, 24),
+    heroDisplay: buildHeroDisplay(animeList, locale),
     starterSteps: HOME_STARTER_STEPS,
     popularAnime: buildPopularAnime(animeList, visiblePosts, locale),
     popularCities: buildPopularCities(cityData, locale),

@@ -10,7 +10,9 @@ export type PublicPostListItem = {
   path: string
   title: string
   animeIds: string[]
+  localizedAnimeNames?: string[]
   city: string
+  localizedCity?: string
   routeLength?: string
   tags: string[]
   cover?: string | null

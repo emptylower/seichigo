@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { getLocalizedDisplayName } from '@/lib/i18n/displayName'
 
 type Props = {
   city: {
@@ -55,6 +56,7 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
   const coverRaw = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
   const coverSrc = coverRaw ? optimizeAssetCoverSrc(coverRaw, { width: 1200, quality: 78 }) : null
   const seedKey = city.slug || city.id
+  const displayName = getLocalizedDisplayName(city, locale)
 
   const description =
     locale === 'en'
@@ -73,7 +75,7 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
         {coverSrc ? (
           <img
             src={coverSrc}
-            alt={city.name_zh}
+            alt={displayName}
             width={1200}
             height={900}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -86,7 +88,7 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
 
       <div className="flex flex-1 flex-col p-3 sm:p-4">
         <h3 className="line-clamp-1 text-base font-bold text-gray-900 group-hover:text-brand-600 sm:text-lg">
-          {locale === 'en' && city.name_en ? city.name_en : locale === 'ja' && city.name_ja ? city.name_ja : city.name_zh}
+          {displayName}
         </h3>
         <p className="mt-1 line-clamp-2 min-h-[2.2em] text-xs text-gray-500 sm:min-h-[2.5em] sm:text-sm">{description}</p>
 

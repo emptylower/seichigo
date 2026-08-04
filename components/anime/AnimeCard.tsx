@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { Anime } from '@/lib/anime/getAllAnime'
+import { getLocalizedDisplayName } from '@/lib/i18n/displayName'
 
 type Props = {
   anime: Anime
@@ -45,6 +46,7 @@ function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: nu
 
 export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Props) {
   const coverSrc = cover ? optimizeAssetCoverSrc(cover, { width: 900, quality: 78 }) : null
+  const displayName = getLocalizedDisplayName(anime, locale)
 
   return (
     <Link
@@ -59,7 +61,7 @@ export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Pr
         {coverSrc ? (
           <img
             src={coverSrc}
-            alt={locale === 'en' && anime.name_en ? anime.name_en : locale === 'ja' && anime.name_ja ? anime.name_ja : anime.name}
+            alt={displayName}
             width={900}
             height={1200}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -72,7 +74,7 @@ export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Pr
 
       <div className="flex flex-1 flex-col p-3 sm:p-4">
         <h3 className="line-clamp-1 text-base font-bold text-gray-900 group-hover:text-brand-600 sm:text-lg">
-          {locale === 'en' && anime.name_en ? anime.name_en : locale === 'ja' && anime.name_ja ? anime.name_ja : anime.name}
+          {displayName}
         </h3>
         <p className="mt-1 line-clamp-2 min-h-[2.2em] text-xs text-gray-500 sm:min-h-[2.5em] sm:text-sm">
           {locale === 'en' && anime.summary_en ? anime.summary_en : locale === 'ja' && anime.summary_ja ? anime.summary_ja : anime.summary || '暂无简介'}

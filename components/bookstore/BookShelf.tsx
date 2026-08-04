@@ -18,9 +18,10 @@ const shelfUiCopy: Record<SiteLocale, { prev: string; next: string }> = {
   ja: { prev: '左にスクロール', next: '右にスクロール' },
 }
 
-function formatLine(item: Pick<PublicPostListItem, 'animeIds' | 'city'>): string {
-  const animeLabel = item.animeIds?.length ? item.animeIds.join('、') : 'unknown'
-  const parts = [animeLabel, item.city].filter(Boolean)
+function formatLine(item: Pick<PublicPostListItem, 'animeIds' | 'localizedAnimeNames' | 'city' | 'localizedCity'>, locale: SiteLocale): string {
+  const animeNames = item.localizedAnimeNames?.length ? item.localizedAnimeNames : item.animeIds
+  const animeLabel = animeNames?.length ? animeNames.join(locale === 'en' ? ', ' : '、') : 'unknown'
+  const parts = [animeLabel, item.localizedCity ?? item.city].filter(Boolean)
   return parts.join(' · ')
 }
 
@@ -48,14 +49,16 @@ function SkeletonTile({ seed }: { seed: number }) {
   )
 }
 
-function BookTile({ item }: { item: PublicPostListItem }) {
+function BookTile({ item, locale }: { item: PublicPostListItem; locale: SiteLocale }) {
   return (
     <Link href={item.path} className="group w-72 shrink-0 no-underline hover:no-underline">
       <BookCover
         path={item.path}
         title={item.title}
         animeIds={item.animeIds}
+        localizedAnimeNames={item.localizedAnimeNames}
         city={item.city}
+        localizedCity={item.localizedCity}
         routeLength={item.routeLength}
         publishDate={item.publishDate}
         cover={item.cover}
@@ -64,7 +67,7 @@ function BookTile({ item }: { item: PublicPostListItem }) {
         <div className="line-clamp-2 text-base font-bold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
           {item.title}
         </div>
-        <div className="text-xs text-gray-500">{formatLine(item) || '—'}</div>
+        <div className="text-xs text-gray-500">{formatLine(item, locale) || '—'}</div>
       </div>
     </Link>
   )
@@ -237,7 +240,7 @@ export default function BookShelf({ items, locale }: { items: PublicPostListItem
         className={`flex gap-4 overflow-x-auto pb-2 pr-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${cursorClass}`}
       >
         {items.map((item) => (
-          <BookTile key={item.path} item={item} />
+          <BookTile key={item.path} item={item} locale={locale} />
         ))}
       </div>
     </div>

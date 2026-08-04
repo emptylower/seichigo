@@ -2,7 +2,9 @@ type Props = {
   path: string
   title: string
   animeIds: string[]
+  localizedAnimeNames?: string[]
   city?: string | null
+  localizedCity?: string | null
   routeLength?: string | null
   publishDate?: string | null
   cover?: string | null
@@ -47,9 +49,11 @@ function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: nu
   }
 }
 
-export default function BookCover({ path, title, animeIds, city, routeLength, publishDate, cover, variant = 'shelf' }: Props) {
-  const label = animeIds?.length && animeIds[0] !== 'unknown' ? animeIds[0]! : 'SeichiGo'
-  const meta = formatMeta({ city, routeLength, publishDate })
+export default function BookCover({ path, title, animeIds, localizedAnimeNames, city, localizedCity, routeLength, publishDate, cover, variant = 'shelf' }: Props) {
+  const displayAnimeNames = localizedAnimeNames?.length ? localizedAnimeNames : animeIds
+  const displayCity = localizedCity ?? city
+  const label = displayAnimeNames?.length && displayAnimeNames[0] !== 'unknown' ? displayAnimeNames[0]! : 'SeichiGo'
+  const meta = formatMeta({ city: displayCity, routeLength, publishDate })
   const titleClass = variant === 'featured' ? 'text-xl' : 'text-sm'
   const coverSrc = typeof cover === 'string' && cover.trim() ? cover.trim() : null
 
@@ -82,7 +86,7 @@ export default function BookCover({ path, title, animeIds, city, routeLength, pu
       <div className="relative flex h-full flex-col justify-between p-4 text-white">
         <div className="flex items-start justify-between gap-2">
           <div className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">{label}</div>
-          {city ? <div className="text-[10px] font-medium opacity-90 shadow-sm">{city}</div> : null}
+          {displayCity ? <div className="text-[10px] font-medium opacity-90 shadow-sm">{displayCity}</div> : null}
         </div>
 
         <div className="space-y-1">

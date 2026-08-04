@@ -34,6 +34,36 @@ describe('getHomePortalData', () => {
     expect(data.latestShelf.every((p) => p.path.startsWith('/en/posts/'))).toBe(true)
   })
 
+  it('adds locale display names to homepage post cards without changing source ids', async () => {
+    const data = await getHomePortalData('en', {
+      getAllPublicPosts: async () => [makePost({ animeIds: ['中文作品'], city: '东京' })],
+      getAllAnime: async () => [{ id: 'anime-1', name: '中文作品', name_en: 'English Anime' }],
+      getCityCountsByLocale: async () => ({
+        cities: [{
+          id: 'city-1',
+          slug: 'tokyo',
+          name_zh: '东京',
+          name_en: 'Tokyo',
+          name_ja: '東京',
+          description_zh: null,
+          description_en: null,
+          description_ja: null,
+          transportTips_zh: null,
+          transportTips_en: null,
+          transportTips_ja: null,
+          cover: null,
+          needsReview: false,
+          hidden: false,
+        }],
+        counts: {},
+      }),
+    })
+
+    expect(data.featured?.animeIds).toEqual(['中文作品'])
+    expect(data.featured?.localizedAnimeNames).toEqual(['English Anime'])
+    expect(data.featured?.localizedCity).toBe('Tokyo')
+  })
+
   it('ranks popular anime by post count then localized name and limits to 6 items', async () => {
     const anime = [
       { id: 'zeta', name: 'Zeta', cover: '/assets/zeta' },

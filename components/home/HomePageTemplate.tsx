@@ -170,7 +170,9 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
                     path={p.path}
                     title={p.title}
                     animeIds={p.animeIds}
+                    localizedAnimeNames={p.localizedAnimeNames}
                     city={p.city}
+                    localizedCity={p.localizedCity}
                     routeLength={p.routeLength}
                     publishDate={p.publishDate}
                     cover={p.cover}
@@ -180,7 +182,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
                       {p.title}
                     </div>
                     <div className="text-sm text-gray-500">
-                      {[formatAnimeLine(p.animeIds || [], locale), p.city].filter(Boolean).join(' · ') || '—'}
+                      {[formatAnimeLine(p.localizedAnimeNames || p.animeIds || [], locale), p.localizedCity ?? p.city].filter(Boolean).join(' · ') || '—'}
                     </div>
                   </div>
                 </Link>
