@@ -153,7 +153,7 @@ export default function FavoritesClient() {
         <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
           精选内容 {mdxCount}
         </span>
-        <a href="/posts" className="ml-auto inline-flex rounded-full border border-pink-100 bg-white px-3 py-1 text-pink-700 no-underline hover:border-pink-200">
+        <a href="/" className="ml-auto inline-flex rounded-full border border-pink-100 bg-white px-3 py-1 text-pink-700 no-underline hover:border-pink-200">
           去逛文章
         </a>
       </div>
@@ -244,7 +244,7 @@ export default function FavoritesClient() {
           <p className="mt-1 text-sm text-gray-500">
             在文章页点击收藏后，这里会自动帮你归档。
           </p>
-          <a href="/posts" className="mt-4 inline-flex rounded-full border border-pink-100 bg-white px-4 py-1.5 text-sm text-pink-700 no-underline hover:border-pink-200">
+          <a href="/" className="mt-4 inline-flex rounded-full border border-pink-100 bg-white px-4 py-1.5 text-sm text-pink-700 no-underline hover:border-pink-200">
             去发现内容
           </a>
         </div>
