@@ -80,6 +80,7 @@ describe('loadMapImageWithCandidates', () => {
         'interaction-critical': 1,
         'viewport-thumbnail': 1,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
@@ -114,6 +115,7 @@ describe('loadMapImageWithCandidates', () => {
         'interaction-critical': 1,
         'viewport-thumbnail': 1,
         'viewport-visible': 1,
+        'warmup-first-view': 1,
         warmup: 1,
       },
     })
