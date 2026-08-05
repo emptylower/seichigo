@@ -207,13 +207,13 @@ describe('i18n IP-based redirect middleware', () => {
       expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/manifest.webmanifest')
     })
 
-    it('rewrites locale-prefixed favicon fallback to app logo', () => {
+    it('rewrites locale-prefixed favicon fallback to the cached icon', () => {
       const req = createRequest('/ja/favicon.png', { country: 'JP' })
       const res = middleware(req)
 
       expect(res.status).not.toBe(307)
       expect(res.headers.get('location')).toBeNull()
-      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/brand/app-logo.png')
+      expect(res.headers.get('x-middleware-rewrite')).toBe('https://seichigo.com/brand/icons/icon-192.png')
     })
   })
 

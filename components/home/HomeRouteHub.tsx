@@ -56,7 +56,8 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
                 src={MAP_HUB_BASE_IMAGE}
                 alt=""
                 aria-hidden="true"
-                loading="lazy"
+                loading="eager"
+                fetchPriority="high"
                 decoding="async"
                 className="h-full w-full object-fill object-center opacity-[0.95] saturate-[1.08]"
               />

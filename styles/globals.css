@@ -10,7 +10,15 @@
   --site-header-h: 64px;
   --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
   --font-inter: 'Inter', 'Helvetica Neue', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --font-noto-sans-sc: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-noto-sans-sc:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans',
+    'Microsoft YaHei',
+    'Yu Gothic UI',
+    sans-serif;
 }
 
 html, body {

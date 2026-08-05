@@ -65,7 +65,7 @@ export function buildBlogPostingJsonLd(input: {
 
   let publisherLogoUrl: string | undefined
   try {
-    publisherLogoUrl = safeUrl(new URL('/brand/app-logo.png', siteUrl).toString()) || undefined
+    publisherLogoUrl = safeUrl(new URL('/brand/icons/icon-512.png', siteUrl).toString()) || undefined
   } catch {
     publisherLogoUrl = undefined
   }
@@ -193,4 +193,3 @@ export function serializeJsonLd(data: unknown): string {
   // Escaping `<` is the standard mitigation.
   return JSON.stringify(data).replace(/</g, '\\u003c')
 }
-

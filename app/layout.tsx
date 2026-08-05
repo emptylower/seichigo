@@ -7,19 +7,12 @@ import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJso
 import Providers from '@/components/providers/Providers'
 import { serializeJsonLd } from '@/lib/seo/jsonld'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { Inter, Noto_Sans_SC } from 'next/font/google'
+import { Inter } from 'next/font/google'
 
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-inter',
-})
-
-const notoSansSC = Noto_Sans_SC({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-noto-sans-sc',
-  weight: ['400', '500', '700'],
 })
 
 export const metadata: Metadata = {
@@ -41,9 +34,12 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/brand/app-logo.png',
+    icon: [
+      { url: '/brand/icons/favicon.ico', sizes: '32x32' },
+      { url: '/brand/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    shortcut: '/brand/icons/favicon.ico',
+    apple: '/brand/icons/apple-touch-icon.png',
   },
   manifest: '/manifest.webmanifest',
   openGraph: {
@@ -60,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const jsonLdOrg = serializeJsonLd(buildOrganizationJsonLd())
 
   return (
-    <html lang="zh" className={`${inter.variable} ${notoSansSC.variable}`}>
+    <html lang="zh" className={inter.variable}>
       <body>
         <HtmlLangSync />
         <Script id="jsonld-website" type="application/ld+json" strategy="beforeInteractive">
