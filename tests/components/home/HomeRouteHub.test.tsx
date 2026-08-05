@@ -12,4 +12,12 @@ describe('HomeRouteHub', () => {
     expect(screen.getByRole('link', { name: /Open City Hubs →/ })).toHaveAttribute('href', '/en/city')
     expect(screen.getByRole('link', { name: /Open Resources →/ })).toHaveAttribute('href', '/en/resources')
   })
+
+  it('prioritizes the above-the-fold map background', () => {
+    const { container } = render(<HomeRouteHub locale="en" />)
+    const background = container.querySelector('img[src="/images/home/chopper-map-base.webp"]')
+
+    expect(background).toHaveAttribute('loading', 'eager')
+    expect(background).toHaveAttribute('fetchpriority', 'high')
+  })
 })
