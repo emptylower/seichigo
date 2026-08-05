@@ -8,12 +8,6 @@ import { isSeoSpokePost } from '@/lib/posts/visibility'
 import type { PublicPostListItem } from '@/lib/posts/types'
 import type { HomeHeroItem, HomePopularAnimeItem, HomePortalData, HomeStarterItem } from './types'
 
-const STATIC_FALLBACK_COVERS = [
-  'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop',
-]
-
 const HOME_STARTER_STEPS: HomeStarterItem[] = [
   {
     id: 'anime',
@@ -77,7 +71,7 @@ function buildHeroDisplay(animeList: Anime[], locale: SupportedLocale): HomeHero
     .map((a) => ({ src: a.cover!, name: getLocalizedDisplayName(a, locale) }))
 
   while (heroDisplay.length < 3) {
-    heroDisplay.push({ src: STATIC_FALLBACK_COVERS[heroDisplay.length % 3] })
+    heroDisplay.push({ src: null })
   }
   return heroDisplay
 }

@@ -3,7 +3,7 @@ import type { CityLite } from '@/lib/city/db'
 import type { PublicPostListItem } from '@/lib/posts/types'
 
 export type HomeHeroItem = {
-  src: string
+  src: string | null
   name?: string
 }
 

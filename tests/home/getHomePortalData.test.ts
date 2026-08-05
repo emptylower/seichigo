@@ -244,8 +244,6 @@ describe('getHomePortalData', () => {
     })
 
     expect(data.heroDisplay).toHaveLength(3)
-    expect(data.heroDisplay[0]?.src).toContain('unsplash.com')
-    expect(data.heroDisplay[1]?.src).toContain('unsplash.com')
-    expect(data.heroDisplay[2]?.src).toContain('unsplash.com')
+    expect(data.heroDisplay.map(({ src }) => src)).toEqual([null, null, null])
   })
 })

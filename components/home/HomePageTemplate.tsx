@@ -14,6 +14,12 @@ import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import type { HomePortalData } from '@/lib/home/types'
 import { t } from '@/lib/i18n'
 
+const HERO_FALLBACK_GRADIENTS = [
+  'linear-gradient(145deg, hsl(344 68% 48%), hsl(24 82% 62%))',
+  'linear-gradient(145deg, hsl(178 52% 35%), hsl(204 76% 58%))',
+  'linear-gradient(145deg, hsl(48 72% 48%), hsl(326 62% 58%))',
+]
+
 function optimizeAssetImgSrc(input: string, opts: { width: number; quality: number }): string {
   const raw = String(input || '').trim()
   if (!raw) return raw
@@ -92,7 +98,9 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
             <div className="relative hidden lg:block h-[400px]">
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md h-80">
                 {data.heroDisplay.map((item, i) => {
-                  const imgSrc = optimizeAssetImgSrc(item.src, { width: 640, quality: 72 })
+                  const imgSrc = item.src
+                    ? optimizeAssetImgSrc(item.src, { width: 640, quality: 72 })
+                    : null
                   return (
                     <div
                       key={i}
@@ -104,16 +112,27 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
                         zIndex: 3 - i,
                       }}
                     >
-                      <div className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
-                        <img
-                          src={imgSrc}
-                          alt={coverAlt(item.name, locale)}
-                          width={640}
-                          height={853}
-                          className="h-full w-full object-cover"
-                          loading="eager"
-                          decoding="async"
-                        />
+                      <div
+                        className="relative h-full w-full overflow-hidden rounded-xl bg-white ring-1 ring-black/5"
+                        data-home-hero-cover
+                      >
+                        {imgSrc ? (
+                          <img
+                            src={imgSrc}
+                            alt={coverAlt(item.name, locale)}
+                            width={640}
+                            height={853}
+                            className="h-full w-full object-cover"
+                            loading="eager"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            className="h-full w-full"
+                            style={{ background: HERO_FALLBACK_GRADIENTS[i % HERO_FALLBACK_GRADIENTS.length] }}
+                          />
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-30" />
                       </div>
                     </div>
