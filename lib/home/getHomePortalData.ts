@@ -1,18 +1,17 @@
-import { getAllAnime, type Anime } from '@/lib/anime/getAllAnime'
-import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
+import { getAllAnimeForHome, type Anime } from '@/lib/anime/getAllAnime'
+import { getCityCountsByLocaleForHome } from '@/lib/city/getCityCountsByLocale'
 import { normalizeCityAlias } from '@/lib/city/normalize'
+import {
+  HomeDataSourceError,
+  HomePortalDataUnavailableError,
+  toHomeDataSourceError,
+} from '@/lib/home/dataSourceError'
 import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import type { PublicPostListItem } from '@/lib/posts/types'
 import type { HomeHeroItem, HomePopularAnimeItem, HomePortalData, HomeStarterItem } from './types'
-
-const STATIC_FALLBACK_COVERS = [
-  'https://images.unsplash.com/photo-1542931287-023b922fa89b?q=80&w=600&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?q=80&w=600&auto=format&fit=crop',
-]
 
 const HOME_STARTER_STEPS: HomeStarterItem[] = [
   {
@@ -39,15 +38,18 @@ const HOME_STARTER_STEPS: HomeStarterItem[] = [
 ]
 
 type HomeDataDeps = {
-  getAllPublicPosts: typeof getAllPublicPosts
-  getAllAnime: typeof getAllAnime
-  getCityCountsByLocale: typeof getCityCountsByLocale
+  getAllPublicPosts: typeof getAllPublicPostsForHome
+  getAllAnime: typeof getAllAnimeForHome
+  getCityCountsByLocale: typeof getCityCountsByLocaleForHome
 }
 
-const HOME_DATA_TIMEOUT_MS = 8_000
+export const HOME_DATA_TIMEOUT_MS = 15_000
 const TAG_COMPOSITE_SEPARATOR_RE = /(·|・|,|，|、|\/|&|／|\||｜|\s|\(|\)|\[|\]|（|）)+/
 
-type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
+type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocaleForHome>>
+type HomeDataResult<T> =
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: HomeDataSourceError }
 
 function localizedAnimeName(anime: Anime, locale: SupportedLocale): string {
   return getLocalizedDisplayName(anime, locale)
@@ -68,7 +70,7 @@ function buildHeroDisplay(animeList: Anime[], locale: SupportedLocale): HomeHero
     .map((a) => ({ src: a.cover!, name: getLocalizedDisplayName(a, locale) }))
 
   while (heroDisplay.length < 3) {
-    heroDisplay.push({ src: STATIC_FALLBACK_COVERS[heroDisplay.length % 3] })
+    heroDisplay.push({ src: null })
   }
   return heroDisplay
 }
@@ -229,18 +231,24 @@ function buildPopularCities(cityData: CityCountData, locale: SupportedLocale): H
     .slice(0, 6)
 }
 
-async function withTimeout<T>(label: string, task: Promise<T>, fallback: T): Promise<T> {
+async function loadHomeDataSource<T>(
+  source: string,
+  load: () => Promise<T>
+): Promise<HomeDataResult<T>> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
 
-  const timeout = new Promise<T>((resolve) => {
+  const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      console.warn(`[home] ${label} timed out after ${HOME_DATA_TIMEOUT_MS}ms`)
-      resolve(fallback)
+      const reason = new Error(`${source} exceeded ${HOME_DATA_TIMEOUT_MS}ms`)
+      reject(new HomeDataSourceError(source, 'timeout', reason))
     }, HOME_DATA_TIMEOUT_MS)
   })
 
   try {
-    return await Promise.race([task, timeout])
+    const value = await Promise.race([Promise.resolve().then(load), timeout])
+    return { status: 'fulfilled', value }
+  } catch (reason) {
+    return { status: 'rejected', reason: toHomeDataSourceError(source, 'failure', reason) }
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
   }
@@ -251,29 +259,55 @@ export async function getHomePortalData(
   deps: Partial<HomeDataDeps> = {}
 ): Promise<HomePortalData> {
   const effectiveDeps: HomeDataDeps = {
-    getAllPublicPosts,
-    getAllAnime,
-    getCityCountsByLocale,
+    getAllPublicPosts: getAllPublicPostsForHome,
+    getAllAnime: getAllAnimeForHome,
+    getCityCountsByLocale: getCityCountsByLocaleForHome,
     ...deps,
   }
 
-  const [posts, animeList, cityData] = await Promise.all([
-    withTimeout(
-      'getAllPublicPosts',
-      effectiveDeps.getAllPublicPosts(locale).catch(() => []),
-      [] as PublicPostListItem[]
+  const [postsResult, animeResult, cityResult] = await Promise.all([
+    loadHomeDataSource(
+      'posts.aggregate',
+      () => effectiveDeps.getAllPublicPosts(locale)
     ),
-    withTimeout(
-      'getAllAnime',
-      effectiveDeps.getAllAnime().catch(() => []),
-      [] as Anime[]
+    loadHomeDataSource(
+      'anime.aggregate',
+      () => effectiveDeps.getAllAnime()
     ),
-    withTimeout(
-      'getCityCountsByLocale',
-      effectiveDeps.getCityCountsByLocale(locale).catch(() => ({ cities: [], counts: {} })),
-      { cities: [], counts: {} } as CityCountData
+    loadHomeDataSource(
+      'city.aggregate',
+      () => effectiveDeps.getCityCountsByLocale(locale)
     ),
   ])
+
+  if (
+    postsResult.status === 'rejected'
+    || animeResult.status === 'rejected'
+    || cityResult.status === 'rejected'
+  ) {
+    const failures: HomeDataSourceError[] = []
+    if (postsResult.status === 'rejected') {
+      failures.push(postsResult.reason)
+    }
+    if (animeResult.status === 'rejected') {
+      failures.push(animeResult.reason)
+    }
+    if (cityResult.status === 'rejected') {
+      failures.push(cityResult.reason)
+    }
+
+    for (const failure of failures) {
+      console.error(
+        `[home:data-source-error] locale=${locale} source=${failure.source} kind=${failure.kind}`,
+        failure.reason
+      )
+    }
+    throw new HomePortalDataUnavailableError(locale, failures)
+  }
+
+  const posts = postsResult.value
+  const animeList = animeResult.value
+  const cityData = cityResult.value
 
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
   const localizedPosts = localizePostListItems(visiblePosts, animeList, cityData.cities, locale)

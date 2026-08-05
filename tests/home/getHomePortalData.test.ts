@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CityLite } from '@/lib/city/db'
-import { getHomePortalData } from '@/lib/home/getHomePortalData'
+import { HomeDataSourceError } from '@/lib/home/dataSourceError'
+import { getHomePortalData, HOME_DATA_TIMEOUT_MS } from '@/lib/home/getHomePortalData'
 import type { PublicPostListItem } from '@/lib/posts/types'
 
 function makePost(overrides: Partial<PublicPostListItem> = {}): PublicPostListItem {
@@ -36,6 +37,95 @@ function makeCity(overrides: Partial<CityLite> = {}): CityLite {
 }
 
 describe('getHomePortalData', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['posts.aggregate', 'getAllPublicPosts', {
+      getAllPublicPosts: async () => { throw new Error('posts unavailable') },
+    }],
+    ['anime.aggregate', 'getAllAnime', {
+      getAllAnime: async () => { throw new Error('anime unavailable') },
+    }],
+    ['city.aggregate', 'getCityCountsByLocale', {
+      getCityCountsByLocale: async () => { throw new Error('cities unavailable') },
+    }],
+  ] as const)('rejects the render when %s fails', async (source, _depName, failingDep) => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      ...failingDep,
+    })
+
+    await expect(promise).rejects.toThrow(
+      `[home:portal-unavailable] locale=en failures=${source}:failure`
+    )
+    expect(consoleError).toHaveBeenCalledWith(
+      `[home:data-source-error] locale=en source=${source} kind=failure`,
+      expect.any(Error)
+    )
+  })
+
+  it('rejects the render when a required data source times out', async () => {
+    vi.useFakeTimers()
+    try {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const promise = getHomePortalData('en', {
+        getAllPublicPosts: () => new Promise<PublicPostListItem[]>(() => {}),
+        getAllAnime: async () => [],
+        getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      })
+      const rejection = expect(promise).rejects.toThrow(
+        '[home:portal-unavailable] locale=en failures=posts.aggregate:timeout'
+      )
+
+      await vi.advanceTimersByTimeAsync(HOME_DATA_TIMEOUT_MS)
+      await rejection
+      expect(consoleError).toHaveBeenCalledWith(
+        '[home:data-source-error] locale=en source=posts.aggregate kind=timeout',
+        expect.objectContaining({ message: 'posts.aggregate exceeded 15000ms' })
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('preserves strict loader diagnostics through the portal error and logs', async () => {
+    const reason = new Error('postgres connection refused')
+    const sourceFailure = new HomeDataSourceError('posts.database', 'failure', reason)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('ja', {
+      getAllPublicPosts: async () => { throw sourceFailure },
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    await expect(promise).rejects.toMatchObject({
+      locale: 'ja',
+      failures: [sourceFailure],
+    })
+    expect(consoleError).toHaveBeenCalledWith(
+      '[home:data-source-error] locale=ja source=posts.database kind=failure',
+      reason
+    )
+  })
+
+  it('accepts successful empty data sources as a genuinely empty database', async () => {
+    const data = await getHomePortalData('en', {
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.featured).toBeNull()
+    expect(data.latestShelf).toEqual([])
+    expect(data.popularAnime).toEqual([])
+    expect(data.popularCities).toEqual([])
+  })
+
   it('filters seo spoke posts and keeps locale-prefixed public post paths', async () => {
     const posts = [
       makePost({ path: '/en/posts/seo-noise', title: 'seo noise', tags: ['seo-spoke'], animeIds: ['alpha'] }),
@@ -183,8 +273,6 @@ describe('getHomePortalData', () => {
     })
 
     expect(data.heroDisplay).toHaveLength(3)
-    expect(data.heroDisplay[0]?.src).toContain('unsplash.com')
-    expect(data.heroDisplay[1]?.src).toContain('unsplash.com')
-    expect(data.heroDisplay[2]?.src).toContain('unsplash.com')
+    expect(data.heroDisplay.map(({ src }) => src)).toEqual([null, null, null])
   })
 })

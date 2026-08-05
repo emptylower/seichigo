@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryArticleRepo } from '@/lib/article/repoMemory'
 import type { Post, PostFrontmatter } from '@/lib/mdx/types'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPosts, getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 import { generateSlugFromTitle } from '@/lib/article/slug'
 
@@ -80,6 +80,49 @@ describe('public posts aggregation', () => {
 
     expect(list.map((x) => x.path)).toEqual(['/posts/db-worker-safe'])
     expect(list[0]?.source).toBe('db')
+  })
+
+  it('home strict mode rejects a partial result when the MDX source fails', async () => {
+    const reason = new Error('worker fs unavailable')
+    const mdx = { getAllPosts: async () => { throw reason } }
+    const repo = { listByStatus: async () => [] }
+
+    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
+      source: 'posts.mdx',
+      kind: 'failure',
+      reason,
+    })
+  })
+
+  it('home strict mode rejects a partial result when the database source fails', async () => {
+    const reason = new Error('database unavailable')
+    const mdx = makeMdxProvider({ all: [] })
+    const repo = { listByStatus: async () => { throw reason } }
+
+    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
+      source: 'posts.database',
+      kind: 'failure',
+      reason,
+    })
+  })
+
+  it('home strict mode accepts successful empty sources', async () => {
+    const mdx = makeMdxProvider({ all: [] })
+    const repo = { listByStatus: async () => [] }
+
+    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).resolves.toEqual([])
+  })
+
+  it('home strict mode skips an unconfigured database source', async () => {
+    const originalDatabaseUrl = process.env.DATABASE_URL
+    delete process.env.DATABASE_URL
+    try {
+      const mdx = makeMdxProvider({ all: [] })
+
+      await expect(getAllPublicPostsForHome('zh', { mdx })).resolves.toEqual([])
+    } finally {
+      process.env.DATABASE_URL = originalDatabaseUrl
+    }
   })
 
   it('getAllPublicPosts: keeps order by first published time (ignores lastApprovedAt bumps)', async () => {

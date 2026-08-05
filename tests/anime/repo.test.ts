@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { getAllAnime } from '@/lib/anime/getAllAnime'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getAllAnime, getAllAnimeForHome } from '@/lib/anime/getAllAnime'
 
 const mocks = vi.hoisted(() => ({
   prisma: {
@@ -19,9 +19,15 @@ vi.mock('@/lib/db/prisma', () => ({
 }))
 
 describe('getAllAnime', () => {
+  const originalDatabaseUrl = process.env.DATABASE_URL
+
   beforeEach(() => {
     vi.resetAllMocks()
     process.env.DATABASE_URL = 'mock'
+  })
+
+  afterEach(() => {
+    process.env.DATABASE_URL = originalDatabaseUrl
   })
 
   const baseList = [
@@ -88,5 +94,35 @@ describe('getAllAnime', () => {
         cover: '/assets/your-name',
       }),
     ])
+  })
+
+  it('keeps the existing bundled fallback behavior for non-home callers', async () => {
+    mocks.prisma.anime.findMany.mockRejectedValue(new Error('database unavailable'))
+
+    await expect(getAllAnime({ baseList })).resolves.toEqual(baseList)
+  })
+
+  it('home strict mode exposes database failures and their original reason', async () => {
+    const reason = new Error('database unavailable')
+    mocks.prisma.anime.findMany.mockRejectedValue(reason)
+
+    await expect(getAllAnimeForHome({ baseList })).rejects.toMatchObject({
+      source: 'anime.database',
+      kind: 'failure',
+      reason,
+    })
+  })
+
+  it('home strict mode skips an unconfigured database source', async () => {
+    delete process.env.DATABASE_URL
+
+    await expect(getAllAnimeForHome({ baseList })).resolves.toEqual(baseList)
+    expect(mocks.prisma.anime.findMany).not.toHaveBeenCalled()
+  })
+
+  it('home strict mode accepts a successful empty database and base list', async () => {
+    mocks.prisma.anime.findMany.mockResolvedValue([])
+
+    await expect(getAllAnimeForHome({ baseList: [] })).resolves.toEqual([])
   })
 })

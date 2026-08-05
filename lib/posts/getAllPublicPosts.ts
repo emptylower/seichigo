@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import type { ArticleRepo } from '@/lib/article/repo'
+import { HomeDataSourceError } from '@/lib/home/dataSourceError'
 import type { PostFrontmatter } from '@/lib/mdx/types'
 import { getSnapshotPostFrontmatters } from '@/lib/mdx/publicSnapshot'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
@@ -12,6 +13,24 @@ type MdxProvider = {
 export type GetAllPublicPostsOptions = {
   mdx?: MdxProvider
   articleRepo?: Pick<ArticleRepo, 'listByStatus'> | PublicArticleRepo
+}
+
+type FailureMode = 'fallback' | 'throw'
+
+async function loadPostsSource<T>(
+  source: string,
+  load: () => Promise<T>,
+  fallback: T,
+  failureMode: FailureMode
+): Promise<T> {
+  try {
+    return await load()
+  } catch (reason) {
+    if (failureMode === 'throw') {
+      throw new HomeDataSourceError(source, 'failure', reason)
+    }
+    return fallback
+  }
 }
 
 function toTimestamp(p: PublicPostListItem): number {
@@ -87,13 +106,26 @@ function normalizeDb(article: any): PublicPostListItem {
 
 async function loadAllPublicPosts(
   language: string = 'zh',
-  options?: GetAllPublicPostsOptions
+  options?: GetAllPublicPostsOptions,
+  failureMode: FailureMode = 'fallback'
 ): Promise<PublicPostListItem[]> {
   const mdx = options?.mdx ?? { getAllPosts: getSnapshotPostFrontmatters }
-  const mdxPosts = await mdx.getAllPosts(language).catch(() => [])
+  const mdxPosts = await loadPostsSource(
+    'posts.mdx',
+    () => mdx.getAllPosts(language),
+    [] as PostFrontmatter[],
+    failureMode
+  )
 
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
-  const dbPublished = repo ? await repo.listByStatus('published', language).catch(() => []) : []
+  const dbPublished = repo
+    ? await loadPostsSource(
+        'posts.database',
+        () => repo.listByStatus('published', language),
+        [],
+        failureMode
+      )
+    : []
 
   const byPath = new Map<string, PublicPostListItem>()
   for (const p of mdxPosts) {
@@ -131,4 +163,11 @@ export async function getAllPublicPosts(
   }
 
   return getCachedAllPublicPosts(language)
+}
+
+export async function getAllPublicPostsForHome(
+  language: string = 'zh',
+  options?: GetAllPublicPostsOptions
+): Promise<PublicPostListItem[]> {
+  return loadAllPublicPosts(language, options, 'throw')
 }
