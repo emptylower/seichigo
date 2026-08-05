@@ -1,7 +1,62 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { InMemoryAssetRepo } from '@/lib/asset/repoMemory'
 import { createGetAssetHandler, createPostAssetsHandler, createPostAssetsHandlerWithOwner } from '@/lib/asset/handlers'
+import type { CfBindings } from '@/lib/anitabi/cf/bindings'
 import sharp from 'sharp'
+
+const CF_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
+type ImagesBindingFromContext = NonNullable<NonNullable<CfBindings['env']>['IMAGES']>
+
+function installCfImagesBinding(images: ImagesBindingFromContext) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, CF_CONTEXT_SYMBOL)
+  Object.defineProperty(globalThis, CF_CONTEXT_SYMBOL, {
+    configurable: true,
+    value: { env: { IMAGES: images } } satisfies CfBindings,
+  })
+  return () => {
+    if (previous) Object.defineProperty(globalThis, CF_CONTEXT_SYMBOL, previous)
+    else delete (globalThis as Record<PropertyKey, unknown>)[CF_CONTEXT_SYMBOL]
+  }
+}
+
+function installRuntimeCache(cache: unknown) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'caches')
+  Object.defineProperty(globalThis, 'caches', {
+    configurable: true,
+    value: { default: cache },
+  })
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'caches', previous)
+    else delete (globalThis as Record<PropertyKey, unknown>).caches
+  }
+}
+
+function createImagesBinding(options?: { failure?: Error }) {
+  const transforms: Array<{ width?: number; fit?: string }> = []
+  const binding = {
+    input() {
+      let width = 0
+      const transformer = {
+        transform(transform: { width?: number; fit?: string }) {
+          transforms.push(transform)
+          width = transform.width ?? 0
+          return transformer
+        },
+        async output() {
+          if (options?.failure) throw options.failure
+          const body = new Uint8Array(width === 64 ? 16 : 64)
+          return {
+            response: () => new Response(body.buffer.slice(0)),
+            contentType: () => 'image/webp',
+            image: () => new Blob([body]).stream(),
+          }
+        },
+      }
+      return transformer
+    },
+  }
+  return { binding: binding as unknown as ImagesBindingFromContext, transforms }
+}
 
 function makeImageFile(bytes: Uint8Array, opts?: { name?: string; type?: string }) {
   return new File([bytes as unknown as BlobPart], opts?.name ?? 'image.png', { type: opts?.type ?? 'image/png' })
@@ -136,6 +191,101 @@ describe('asset api', () => {
     const meta = await sharp(out).metadata()
     expect(typeof meta.width).toBe('number')
     expect(meta.width as number).toBeLessThanOrEqual(50)
+  })
+
+  it('uses the Cloudflare Images binding for distinct responsive variants', async () => {
+    const repo = new InMemoryAssetRepo({ idFactory: () => 'responsive-image' })
+    await repo.create({
+      ownerId: 'user-1',
+      contentType: 'image/webp',
+      filename: 'responsive.webp',
+      bytes: new Uint8Array([1, 2, 3]),
+    })
+    const { binding, transforms } = createImagesBinding()
+    const restoreBinding = installCfImagesBinding(binding)
+
+    try {
+      const get = createGetAssetHandler({ assetRepo: repo })
+      const small = await get(new Request('http://localhost/assets/responsive-image?w=64&q=72'), {
+        params: Promise.resolve({ id: 'responsive-image' }),
+      })
+      const large = await get(new Request('http://localhost/assets/responsive-image?w=1200&q=72'), {
+        params: Promise.resolve({ id: 'responsive-image' }),
+      })
+
+      expect((await small.arrayBuffer()).byteLength).toBe(16)
+      expect((await large.arrayBuffer()).byteLength).toBe(64)
+      expect(transforms).toEqual([
+        { width: 64, fit: 'scale-down' },
+        { width: 1200, fit: 'scale-down' },
+      ])
+    } finally {
+      restoreBinding()
+    }
+  })
+
+  it('returns a transform failure as no-store and does not cache it', async () => {
+    const repo = new InMemoryAssetRepo({ idFactory: () => 'broken-image' })
+    const original = new Uint8Array([4, 5, 6])
+    await repo.create({
+      ownerId: 'user-1',
+      contentType: 'image/webp',
+      filename: 'broken.webp',
+      bytes: original,
+    })
+    const { binding } = createImagesBinding({ failure: new Error('transform unavailable') })
+    const restoreBinding = installCfImagesBinding(binding)
+    const cache = { match: vi.fn().mockResolvedValue(null), put: vi.fn() }
+    const restoreCache = installRuntimeCache(cache)
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const get = createGetAssetHandler({ assetRepo: repo })
+      const response = await get(new Request('http://localhost/assets/broken-image?w=64&q=72'), {
+        params: Promise.resolve({ id: 'broken-image' }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual(Array.from(original))
+      expect(cache.put).not.toHaveBeenCalled()
+      expect(log).toHaveBeenCalledWith(
+        '[asset.variant.transform_failed]',
+        expect.objectContaining({
+          event: 'asset_image_variant_transform_failed',
+          assetId: 'broken-image',
+          width: 64,
+          quality: 72,
+        })
+      )
+    } finally {
+      log.mockRestore()
+      restoreCache()
+      restoreBinding()
+    }
+  })
+
+  it('returns a runtime cache hit before reading the asset repository', async () => {
+    const repo = new InMemoryAssetRepo()
+    const findById = vi.spyOn(repo, 'findById')
+    const cached = new Response(new Uint8Array([9]).buffer, {
+      headers: { 'content-type': 'image/webp', 'cache-control': 'public, max-age=31536000, immutable' },
+    })
+    const cache = { match: vi.fn().mockResolvedValue(cached), put: vi.fn() }
+    const restoreCache = installRuntimeCache(cache)
+
+    try {
+      const get = createGetAssetHandler({ assetRepo: repo })
+      const response = await get(new Request('http://localhost/assets/cached-image?w=64&q=72'), {
+        params: Promise.resolve({ id: 'cached-image' }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(cache.match).toHaveBeenCalledWith('http://localhost/assets/cached-image?w=64&q=72')
+      expect(findById).not.toHaveBeenCalled()
+    } finally {
+      restoreCache()
+    }
   })
 
   it('rejects files larger than ASSET_MAX_BYTES (413)', async () => {

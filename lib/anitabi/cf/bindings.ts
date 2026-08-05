@@ -1,7 +1,24 @@
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 
+// Structural subset of worker-configuration.d.ts's generated ImagesBinding.
+type ImagesBinding = {
+  input(stream: ReadableStream<Uint8Array>, options?: { encoding?: 'base64' }): ImageTransformer
+}
+
+type ImageTransformer = {
+  transform(transform: {
+    width?: number
+    fit?: 'scale-down' | 'contain' | 'pad' | 'squeeze' | 'cover' | 'crop'
+  }): ImageTransformer
+  output(options: {
+    format: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'image/avif' | 'rgb' | 'rgba'
+    quality?: number
+  }): Promise<{ response(): Response }>
+}
+
 export type CfBindingsEnv = {
   MAP_IMAGE_CACHE?: R2MirrorBucket
+  IMAGES?: ImagesBinding
   NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
   NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
 }

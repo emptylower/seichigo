@@ -1,4 +1,5 @@
 import type { AssetRepo } from './repo'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 type SessionLike = { user?: { id?: string | null } | null } | null
 type GetSession = () => Promise<SessionLike>
@@ -127,21 +128,6 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
     const id = normalizeParam(params.id)
     if (!id) return new Response('Not found', { status: 404 })
 
-    const asset = await options.assetRepo.findById(id)
-    if (!asset) return new Response('Not found', { status: 404 })
-
-    const headers = new Headers()
-    headers.set('x-content-type-options', 'nosniff')
-
-    // Defense-in-depth: legacy SVG uploads can execute scripts when served inline on the same origin.
-    // We no longer allow uploading SVG, but we still harden serving.
-    if (isSvg(asset.contentType)) {
-      headers.set('content-type', 'application/octet-stream')
-      headers.set('content-disposition', `attachment; filename="${sanitizeFilename(asset.filename, `${id}.svg`)}"`)
-      headers.set('cache-control', 'public, max-age=31536000, immutable')
-      return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
-    }
-
     const requestUrl = (() => {
       try {
         return new URL(_req.url)
@@ -158,6 +144,21 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
 
     const variant = requestUrl ? parseImageVariantRequest(requestUrl) : null
     const hasVariant = Boolean(variant)
+    const asset = await options.assetRepo.findById(id)
+    if (!asset) return new Response('Not found', { status: 404 })
+
+    const headers = new Headers()
+    headers.set('x-content-type-options', 'nosniff')
+
+    // Defense-in-depth: legacy SVG uploads can execute scripts when served inline on the same origin.
+    // We no longer allow uploading SVG, but we still harden serving.
+    if (isSvg(asset.contentType)) {
+      headers.set('content-type', 'application/octet-stream')
+      headers.set('content-disposition', `attachment; filename="${sanitizeFilename(asset.filename, `${id}.svg`)}"`)
+      headers.set('cache-control', hasVariant ? 'no-store' : 'public, max-age=31536000, immutable')
+      return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
+    }
+
     const isImage = (asset.contentType || '').startsWith('image/')
     const canTransform = isImage && !isSvg(asset.contentType) && !isGif(asset.contentType)
 
@@ -171,12 +172,20 @@ export function createGetAssetHandler(options: { assetRepo: AssetRepo }) {
           await runtimeCache.put(requestUrl.toString(), response.clone()).catch(() => undefined)
         }
         return response
-      } catch {
-        // Fallback to original bytes (compat over failure).
+      } catch (error) {
+        logVariantTransformError({ id, contentType: asset.contentType, variant: variant!, error })
+        headers.set('content-type', asset.contentType || 'application/octet-stream')
+        headers.set('cache-control', 'no-store')
+        return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
       }
     }
 
     headers.set('content-type', asset.contentType || 'application/octet-stream')
+    if (hasVariant) {
+      headers.set('cache-control', 'no-store')
+      return new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
+    }
+
     headers.set('cache-control', 'public, max-age=31536000, immutable')
     const response = new Response(toArrayBuffer(asset.bytes), { status: 200, headers })
     if (runtimeCache && requestUrl) {
@@ -216,6 +225,15 @@ function parseImageVariantRequest(url: URL): { width: number; quality: number } 
 }
 
 async function renderWebpVariant(bytes: Uint8Array, variant: { width: number; quality: number }): Promise<Uint8Array> {
+  const images = getCfBindings()?.env?.IMAGES
+  if (images) {
+    const result = await images
+      .input(new Blob([toArrayBuffer(bytes)]).stream())
+      .transform({ width: variant.width, fit: 'scale-down' })
+      .output({ format: 'image/webp', quality: variant.quality })
+    return new Uint8Array(await result.response().arrayBuffer())
+  }
+
   const { default: sharp } = await import('sharp')
   const input = Buffer.from(bytes)
   const out = await sharp(input, { failOnError: false })
@@ -224,6 +242,25 @@ async function renderWebpVariant(bytes: Uint8Array, variant: { width: number; qu
     .webp({ quality: variant.quality })
     .toBuffer()
   return new Uint8Array(out)
+}
+
+function logVariantTransformError(input: {
+  id: string
+  contentType: string
+  variant: { width: number; quality: number }
+  error: unknown
+}) {
+  const error = input.error instanceof Error
+    ? { name: input.error.name, message: input.error.message, stack: input.error.stack }
+    : { message: String(input.error) }
+  console.error('[asset.variant.transform_failed]', {
+    event: 'asset_image_variant_transform_failed',
+    assetId: input.id,
+    contentType: input.contentType,
+    width: input.variant.width,
+    quality: input.variant.quality,
+    error,
+  })
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
