@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CityLite } from '@/lib/city/db'
-import { getHomePortalData } from '@/lib/home/getHomePortalData'
+import { getHomePortalData, HOME_DATA_TIMEOUT_MS } from '@/lib/home/getHomePortalData'
 import type { PublicPostListItem } from '@/lib/posts/types'
 
 function makePost(overrides: Partial<PublicPostListItem> = {}): PublicPostListItem {
@@ -36,6 +36,67 @@ function makeCity(overrides: Partial<CityLite> = {}): CityLite {
 }
 
 describe('getHomePortalData', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['getAllPublicPosts', {
+      getAllPublicPosts: async () => { throw new Error('posts unavailable') },
+    }],
+    ['getAllAnime', {
+      getAllAnime: async () => { throw new Error('anime unavailable') },
+    }],
+    ['getCityCountsByLocale', {
+      getCityCountsByLocale: async () => { throw new Error('cities unavailable') },
+    }],
+  ] as const)('rejects the render when %s fails', async (source, failingDep) => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      ...failingDep,
+    })
+
+    await expect(promise).rejects.toThrow(`Required home data source failed: ${source}`)
+    expect(consoleError).toHaveBeenCalledWith(
+      '[home] refusing to render degraded portal data',
+      expect.objectContaining({ locale: 'en' })
+    )
+  })
+
+  it('rejects the render when a required data source times out', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const promise = getHomePortalData('en', {
+        getAllPublicPosts: () => new Promise<PublicPostListItem[]>(() => {}),
+        getAllAnime: async () => [],
+        getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      })
+      const rejection = expect(promise).rejects.toThrow('Required home data source failed: getAllPublicPosts')
+
+      await vi.advanceTimersByTimeAsync(HOME_DATA_TIMEOUT_MS)
+      await rejection
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('accepts successful empty data sources as a genuinely empty database', async () => {
+    const data = await getHomePortalData('en', {
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.featured).toBeNull()
+    expect(data.latestShelf).toEqual([])
+    expect(data.popularAnime).toEqual([])
+    expect(data.popularCities).toEqual([])
+  })
+
   it('filters seo spoke posts and keeps locale-prefixed public post paths', async () => {
     const posts = [
       makePost({ path: '/en/posts/seo-noise', title: 'seo noise', tags: ['seo-spoke'], animeIds: ['alpha'] }),

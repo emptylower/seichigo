@@ -44,10 +44,19 @@ type HomeDataDeps = {
   getCityCountsByLocale: typeof getCityCountsByLocale
 }
 
-const HOME_DATA_TIMEOUT_MS = 8_000
+export const HOME_DATA_TIMEOUT_MS = 15_000
 const TAG_COMPOSITE_SEPARATOR_RE = /(·|・|,|，|、|\/|&|／|\||｜|\s|\(|\)|\[|\]|（|）)+/
 
 type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
+type HomeDataSource = keyof HomeDataDeps
+type HomeDataFailure = { source: HomeDataSource; reason: unknown }
+
+class HomePortalDataUnavailableError extends Error {
+  constructor(readonly failures: HomeDataFailure[]) {
+    super(`Required home data source failed: ${failures.map(({ source }) => source).join(', ')}`)
+    this.name = 'HomePortalDataUnavailableError'
+  }
+}
 
 function localizedAnimeName(anime: Anime, locale: SupportedLocale): string {
   return getLocalizedDisplayName(anime, locale)
@@ -229,18 +238,23 @@ function buildPopularCities(cityData: CityCountData, locale: SupportedLocale): H
     .slice(0, 6)
 }
 
-async function withTimeout<T>(label: string, task: Promise<T>, fallback: T): Promise<T> {
+async function loadHomeDataSource<T>(
+  source: HomeDataSource,
+  load: () => Promise<T>
+): Promise<PromiseSettledResult<T>> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
 
-  const timeout = new Promise<T>((resolve) => {
+  const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      console.warn(`[home] ${label} timed out after ${HOME_DATA_TIMEOUT_MS}ms`)
-      resolve(fallback)
+      reject(new Error(`${source} timed out after ${HOME_DATA_TIMEOUT_MS}ms`))
     }, HOME_DATA_TIMEOUT_MS)
   })
 
   try {
-    return await Promise.race([task, timeout])
+    const value = await Promise.race([Promise.resolve().then(load), timeout])
+    return { status: 'fulfilled', value }
+  } catch (reason) {
+    return { status: 'rejected', reason }
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
   }
@@ -257,23 +271,44 @@ export async function getHomePortalData(
     ...deps,
   }
 
-  const [posts, animeList, cityData] = await Promise.all([
-    withTimeout(
+  const [postsResult, animeResult, cityResult] = await Promise.all([
+    loadHomeDataSource(
       'getAllPublicPosts',
-      effectiveDeps.getAllPublicPosts(locale).catch(() => []),
-      [] as PublicPostListItem[]
+      () => effectiveDeps.getAllPublicPosts(locale)
     ),
-    withTimeout(
+    loadHomeDataSource(
       'getAllAnime',
-      effectiveDeps.getAllAnime().catch(() => []),
-      [] as Anime[]
+      () => effectiveDeps.getAllAnime()
     ),
-    withTimeout(
+    loadHomeDataSource(
       'getCityCountsByLocale',
-      effectiveDeps.getCityCountsByLocale(locale).catch(() => ({ cities: [], counts: {} })),
-      { cities: [], counts: {} } as CityCountData
+      () => effectiveDeps.getCityCountsByLocale(locale)
     ),
   ])
+
+  if (
+    postsResult.status === 'rejected'
+    || animeResult.status === 'rejected'
+    || cityResult.status === 'rejected'
+  ) {
+    const failures: HomeDataFailure[] = []
+    if (postsResult.status === 'rejected') {
+      failures.push({ source: 'getAllPublicPosts', reason: postsResult.reason })
+    }
+    if (animeResult.status === 'rejected') {
+      failures.push({ source: 'getAllAnime', reason: animeResult.reason })
+    }
+    if (cityResult.status === 'rejected') {
+      failures.push({ source: 'getCityCountsByLocale', reason: cityResult.reason })
+    }
+
+    console.error('[home] refusing to render degraded portal data', { locale, failures })
+    throw new HomePortalDataUnavailableError(failures)
+  }
+
+  const posts = postsResult.value
+  const animeList = animeResult.value
+  const cityData = cityResult.value
 
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
   const localizedPosts = localizePostListItems(visiblePosts, animeList, cityData.cities, locale)
