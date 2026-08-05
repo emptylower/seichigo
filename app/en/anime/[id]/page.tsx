@@ -13,7 +13,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-export const revalidate = 3600
+export const revalidate = 120
 
 function safeDecodeURIComponent(input: string): string {
   if (!/%[0-9a-fA-F]{2}/.test(input)) return input
