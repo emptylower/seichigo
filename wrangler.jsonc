@@ -16,6 +16,23 @@
     {
       "binding": "MAP_IMAGE_CACHE",
       "bucket_name": "seichigo-anitabi-images"
+    },
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "seichigo-next-inc-cache"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "NEXT_TAG_CACHE_D1",
+      "database_name": "seichigo-next-tag-cache",
+      "database_id": "46d07e16-76e4-4040-8e2e-3301310676bb"
+    }
+  ],
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "seichigo"
     }
   ],
   "images": {
