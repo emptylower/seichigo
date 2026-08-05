@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@seichigo/prisma-client-runtime'
 
 export type MapSummaryTargetLanguage = 'all' | 'zh' | 'en' | 'ja'
 

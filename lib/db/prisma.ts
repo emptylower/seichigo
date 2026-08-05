@@ -1,10 +1,9 @@
 import { PrismaPg } from '@prisma/adapter-pg'
-// Use the WASM-compiler entry directly so the Cloudflare Worker bundle never
-// drags in the Node readFileSync path. The webpack alias for '@prisma/client$'
-// does not cover '@prisma/client/default', so the default export pulled the
-// Node runtime into the bundle and crashed at request time with
-// readAll '/bundle/node_modules/.prisma/client/query_compiler_bg.wasm'.
-import { PrismaClient } from '@prisma/client/wasm'
+// The runtime package selects Prisma's Node loader during Next.js
+// prerendering and its explicit WASM loader when OpenNext bundles with the
+// `workerd` condition. Keep this conditional entry: the Node loader crashes in
+// Workers, while Node cannot consume the Worker loader's module shape.
+import { PrismaClient } from '@seichigo/prisma-client-runtime'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -20,9 +19,19 @@ type OpenNextRequestContextLike = {
 
 const DEFAULT_POOL_MAX = 5
 const CLOUDFLARE_POOL_MAX = 1
+const DEFAULT_CONNECTION_TIMEOUT_MS = 15_000
+const DEFAULT_QUERY_TIMEOUT_MS = 30_000
+const CLOUDFLARE_CONNECTION_TIMEOUT_MS = 8_000
+const CLOUDFLARE_QUERY_TIMEOUT_MS = 12_000
 const REQUEST_CLIENT_TTL_MS = 30_000
 
-function createPrismaClient(options?: { max?: number }) {
+type PrismaClientOptions = {
+  max?: number
+  connectionTimeoutMillis?: number
+  queryTimeoutMillis?: number
+}
+
+function createPrismaClient(options?: PrismaClientOptions) {
   const connectionString = process.env.DATABASE_URL
 
   if (!connectionString) {
@@ -34,9 +43,9 @@ function createPrismaClient(options?: { max?: number }) {
   const adapter = new PrismaPg({
     connectionString,
     max: options?.max ?? DEFAULT_POOL_MAX,
-    connectionTimeoutMillis: 8_000,
-    query_timeout: 12_000,
-    statement_timeout: 12_000,
+    connectionTimeoutMillis: options?.connectionTimeoutMillis ?? DEFAULT_CONNECTION_TIMEOUT_MS,
+    query_timeout: options?.queryTimeoutMillis ?? DEFAULT_QUERY_TIMEOUT_MS,
+    statement_timeout: options?.queryTimeoutMillis ?? DEFAULT_QUERY_TIMEOUT_MS,
     idleTimeoutMillis: 30_000,
   })
 
@@ -89,7 +98,11 @@ function getRequestScopedPrismaClient(): PrismaClient | null {
 
   // Cloudflare Workers cancel cross-request socket reuse. Keep Prisma scoped to
   // the active request and keep the pool size at 1 to avoid connection fan-out.
-  const created = createPrismaClient({ max: CLOUDFLARE_POOL_MAX })
+  const created = createPrismaClient({
+    max: CLOUDFLARE_POOL_MAX,
+    connectionTimeoutMillis: CLOUDFLARE_CONNECTION_TIMEOUT_MS,
+    queryTimeoutMillis: CLOUDFLARE_QUERY_TIMEOUT_MS,
+  })
   byRequestId.set(requestId, { client: created, createdAt: Date.now() })
 
   return created

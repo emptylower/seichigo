@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client/wasm'
+import { Prisma } from '@seichigo/prisma-client-runtime'
 import type { RouteBook as PrismaRouteBook, RouteBookPoint as PrismaRouteBookPoint } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { isPrismaKnownRequestError } from '@/lib/db/prismaError'
