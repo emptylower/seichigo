@@ -41,9 +41,12 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/brand/app-logo.png',
+    icon: [
+      { url: '/brand/icons/favicon.ico', sizes: '32x32' },
+      { url: '/brand/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    shortcut: '/brand/icons/favicon.ico',
+    apple: '/brand/icons/apple-touch-icon.png',
   },
   manifest: '/manifest.webmanifest',
   openGraph: {

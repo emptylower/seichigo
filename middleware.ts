@@ -45,7 +45,7 @@ function resolveLocaleStaticAlias(pathname: string): string | null {
   if (!LOCALE_PREFIXED_STATIC_ALIAS_PATTERN.test(pathname)) return null
   const withoutLocale = pathname.replace(/^\/(en|ja)(?=\/)/, '')
   if (withoutLocale === '/favicon.png') {
-    return '/brand/app-logo.png'
+    return '/brand/icons/icon-192.png'
   }
   return withoutLocale
 }
