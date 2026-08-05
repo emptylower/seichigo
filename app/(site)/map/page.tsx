@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
 import { buildZhAlternates } from '@/lib/seo/alternates'
 import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
+import { getMapPageBootstrap } from '@/lib/anitabi/mapPageBootstrap'
 import { buildMapShareImageUrl, parseMapShareQuery, toUrlSearchParams } from '@/lib/anitabi/share'
 import { notFound } from 'next/navigation'
-import { getBootstrap } from '@/lib/anitabi/read'
-import { prisma } from '@/lib/db/prisma'
 import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
 
 type SearchParamsInput = Record<string, string | string[] | undefined>
@@ -37,7 +36,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   }
 }
 
-export const revalidate = 3600
+// Search params intentionally keep this route dynamic so shared map URLs get distinct OG images.
 
 export default async function MapPage({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   if (!isMapReplicaEnabled()) {
@@ -51,7 +50,7 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
 
   let initialBootstrap
   try {
-    initialBootstrap = await getBootstrap({ prisma, locale: 'zh', tab })
+    initialBootstrap = await getMapPageBootstrap('zh', tab)
   } catch {
     initialBootstrap = undefined
   }
