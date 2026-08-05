@@ -2,8 +2,9 @@ import { unstable_cache } from 'next/cache'
 import { countPublishedArticlesByCityIds, listCitiesForIndex } from '@/lib/city/db'
 import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
+import { toHomeDataSourceError } from '@/lib/home/dataSourceError'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPosts, getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 
 type CityCountsByLocale = {
@@ -11,16 +12,49 @@ type CityCountsByLocale = {
   counts: Record<string, number>
 }
 
-async function loadCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
-  const cities = await listCitiesForIndex().catch(() => [])
+type FailureMode = 'fallback' | 'throw'
+
+async function loadCitySource<T>(
+  source: string,
+  load: () => Promise<T>,
+  fallback: T,
+  failureMode: FailureMode
+): Promise<T> {
+  try {
+    return await load()
+  } catch (reason) {
+    if (failureMode === 'throw') {
+      throw toHomeDataSourceError(source, 'failure', reason)
+    }
+    return fallback
+  }
+}
+
+async function loadCityCountsByLocale(
+  locale: SupportedLocale,
+  failureMode: FailureMode = 'fallback'
+): Promise<CityCountsByLocale> {
+  if (failureMode === 'throw' && !process.env.DATABASE_URL) {
+    return { cities: [], counts: {} }
+  }
+
+  const cities = await loadCitySource('city.list', listCitiesForIndex, [], failureMode)
   if (!cities.length) return { cities: [], counts: {} }
 
-  const dbCounts = await countPublishedArticlesByCityIds(cities.map((c) => c.id), locale).catch(
-    () => ({} as Record<string, number>)
+  const dbCounts = await loadCitySource(
+    'city.article-counts',
+    () => countPublishedArticlesByCityIds(cities.map((c) => c.id), locale),
+    {} as Record<string, number>,
+    failureMode
   )
 
   // Include MDX posts in counts when their city matches a known alias.
-  const aliasRows = await prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }).catch(() => [])
+  const aliasRows = await loadCitySource(
+    'city.aliases',
+    () => prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }),
+    [],
+    failureMode
+  )
   const aliasToCityId = new Map<string, string>()
   for (const r of aliasRows) {
     if (r?.aliasNorm && r?.cityId) aliasToCityId.set(r.aliasNorm, r.cityId)
@@ -33,7 +67,14 @@ async function loadCityCountsByLocale(locale: SupportedLocale): Promise<CityCoun
     if (c.name_ja) aliasToCityId.set(normalizeCityAlias(c.name_ja), c.id)
   }
 
-  const publicPosts = await getAllPublicPosts(locale).catch(() => [])
+  const publicPosts = await loadCitySource(
+    'city.public-posts',
+    () => failureMode === 'throw'
+      ? getAllPublicPostsForHome(locale)
+      : getAllPublicPosts(locale),
+    [],
+    failureMode
+  )
   const publicCounts: Record<string, number> = {}
   for (const p of publicPosts) {
     if (isSeoSpokePost(p)) continue
@@ -60,4 +101,10 @@ const getCachedCityCountsByLocale = unstable_cache(
 
 export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
   return getCachedCityCountsByLocale(locale)
+}
+
+export async function getCityCountsByLocaleForHome(
+  locale: SupportedLocale
+): Promise<CityCountsByLocale> {
+  return loadCityCountsByLocale(locale, 'throw')
 }

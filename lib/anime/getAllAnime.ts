@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache'
+import { HomeDataSourceError } from '@/lib/home/dataSourceError'
 import { getBundledAnimeById, getBundledAnimeList } from './publicSnapshot'
 
 export type Anime = {
@@ -20,7 +21,11 @@ export type GetAllAnimeOptions = {
   baseList?: Anime[]
 }
 
-async function loadMergedAnime(includeHidden: boolean, baseList?: Anime[]): Promise<Anime[]> {
+async function loadMergedAnime(
+  includeHidden: boolean,
+  baseList?: Anime[],
+  failureMode: 'fallback' | 'throw' = 'fallback'
+): Promise<Anime[]> {
   const list = baseList ?? getBundledAnimeList()
   const byId = new Map<string, Anime>()
 
@@ -56,7 +61,10 @@ async function loadMergedAnime(includeHidden: boolean, baseList?: Anime[]): Prom
           summary_en: row.summary_en ?? existing?.summary_en ?? undefined,
         })
       }
-    } catch {
+    } catch (reason) {
+      if (failureMode === 'throw') {
+        throw new HomeDataSourceError('anime.database', 'failure', reason)
+      }
       // ignore if DB not migrated/available
     }
   }
@@ -93,6 +101,10 @@ export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]
     return loadMergedAnime(Boolean(options?.includeHidden), options.baseList)
   }
   return getCachedMergedAnime(Boolean(options?.includeHidden))
+}
+
+export async function getAllAnimeForHome(options?: GetAllAnimeOptions): Promise<Anime[]> {
+  return loadMergedAnime(Boolean(options?.includeHidden), options?.baseList, 'throw')
 }
 
 export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Promise<Anime | null> {

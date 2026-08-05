@@ -1,9 +1,14 @@
-import { getAllAnime, type Anime } from '@/lib/anime/getAllAnime'
-import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
+import { getAllAnimeForHome, type Anime } from '@/lib/anime/getAllAnime'
+import { getCityCountsByLocaleForHome } from '@/lib/city/getCityCountsByLocale'
 import { normalizeCityAlias } from '@/lib/city/normalize'
+import {
+  HomeDataSourceError,
+  HomePortalDataUnavailableError,
+  toHomeDataSourceError,
+} from '@/lib/home/dataSourceError'
 import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import type { PublicPostListItem } from '@/lib/posts/types'
 import type { HomeHeroItem, HomePopularAnimeItem, HomePortalData, HomeStarterItem } from './types'
@@ -33,24 +38,18 @@ const HOME_STARTER_STEPS: HomeStarterItem[] = [
 ]
 
 type HomeDataDeps = {
-  getAllPublicPosts: typeof getAllPublicPosts
-  getAllAnime: typeof getAllAnime
-  getCityCountsByLocale: typeof getCityCountsByLocale
+  getAllPublicPosts: typeof getAllPublicPostsForHome
+  getAllAnime: typeof getAllAnimeForHome
+  getCityCountsByLocale: typeof getCityCountsByLocaleForHome
 }
 
 export const HOME_DATA_TIMEOUT_MS = 15_000
 const TAG_COMPOSITE_SEPARATOR_RE = /(·|・|,|，|、|\/|&|／|\||｜|\s|\(|\)|\[|\]|（|）)+/
 
-type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocale>>
-type HomeDataSource = keyof HomeDataDeps
-type HomeDataFailure = { source: HomeDataSource; reason: unknown }
-
-class HomePortalDataUnavailableError extends Error {
-  constructor(readonly failures: HomeDataFailure[]) {
-    super(`Required home data source failed: ${failures.map(({ source }) => source).join(', ')}`)
-    this.name = 'HomePortalDataUnavailableError'
-  }
-}
+type CityCountData = Awaited<ReturnType<typeof getCityCountsByLocaleForHome>>
+type HomeDataResult<T> =
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: HomeDataSourceError }
 
 function localizedAnimeName(anime: Anime, locale: SupportedLocale): string {
   return getLocalizedDisplayName(anime, locale)
@@ -233,14 +232,15 @@ function buildPopularCities(cityData: CityCountData, locale: SupportedLocale): H
 }
 
 async function loadHomeDataSource<T>(
-  source: HomeDataSource,
+  source: string,
   load: () => Promise<T>
-): Promise<PromiseSettledResult<T>> {
+): Promise<HomeDataResult<T>> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
 
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`${source} timed out after ${HOME_DATA_TIMEOUT_MS}ms`))
+      const reason = new Error(`${source} exceeded ${HOME_DATA_TIMEOUT_MS}ms`)
+      reject(new HomeDataSourceError(source, 'timeout', reason))
     }, HOME_DATA_TIMEOUT_MS)
   })
 
@@ -248,7 +248,7 @@ async function loadHomeDataSource<T>(
     const value = await Promise.race([Promise.resolve().then(load), timeout])
     return { status: 'fulfilled', value }
   } catch (reason) {
-    return { status: 'rejected', reason }
+    return { status: 'rejected', reason: toHomeDataSourceError(source, 'failure', reason) }
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
   }
@@ -259,23 +259,23 @@ export async function getHomePortalData(
   deps: Partial<HomeDataDeps> = {}
 ): Promise<HomePortalData> {
   const effectiveDeps: HomeDataDeps = {
-    getAllPublicPosts,
-    getAllAnime,
-    getCityCountsByLocale,
+    getAllPublicPosts: getAllPublicPostsForHome,
+    getAllAnime: getAllAnimeForHome,
+    getCityCountsByLocale: getCityCountsByLocaleForHome,
     ...deps,
   }
 
   const [postsResult, animeResult, cityResult] = await Promise.all([
     loadHomeDataSource(
-      'getAllPublicPosts',
+      'posts.aggregate',
       () => effectiveDeps.getAllPublicPosts(locale)
     ),
     loadHomeDataSource(
-      'getAllAnime',
+      'anime.aggregate',
       () => effectiveDeps.getAllAnime()
     ),
     loadHomeDataSource(
-      'getCityCountsByLocale',
+      'city.aggregate',
       () => effectiveDeps.getCityCountsByLocale(locale)
     ),
   ])
@@ -285,19 +285,24 @@ export async function getHomePortalData(
     || animeResult.status === 'rejected'
     || cityResult.status === 'rejected'
   ) {
-    const failures: HomeDataFailure[] = []
+    const failures: HomeDataSourceError[] = []
     if (postsResult.status === 'rejected') {
-      failures.push({ source: 'getAllPublicPosts', reason: postsResult.reason })
+      failures.push(postsResult.reason)
     }
     if (animeResult.status === 'rejected') {
-      failures.push({ source: 'getAllAnime', reason: animeResult.reason })
+      failures.push(animeResult.reason)
     }
     if (cityResult.status === 'rejected') {
-      failures.push({ source: 'getCityCountsByLocale', reason: cityResult.reason })
+      failures.push(cityResult.reason)
     }
 
-    console.error('[home] refusing to render degraded portal data', { locale, failures })
-    throw new HomePortalDataUnavailableError(failures)
+    for (const failure of failures) {
+      console.error(
+        `[home:data-source-error] locale=${locale} source=${failure.source} kind=${failure.kind}`,
+        failure.reason
+      )
+    }
+    throw new HomePortalDataUnavailableError(locale, failures)
   }
 
   const posts = postsResult.value
