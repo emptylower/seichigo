@@ -1,11 +1,10 @@
 import type { Metadata } from 'next'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import { isMapReplicaEnabled } from '@/lib/anitabi/feature'
+import { getMapPageBootstrap } from '@/lib/anitabi/mapPageBootstrap'
 import { buildMapShareImageUrl, parseMapShareQuery, toUrlSearchParams } from '@/lib/anitabi/share'
 import { notFound } from 'next/navigation'
 import AnitabiMapPageLazy from '@/components/map/AnitabiMapPageLazy'
-import { getBootstrap } from '@/lib/anitabi/read'
-import { prisma } from '@/lib/db/prisma'
 
 type SearchParamsInput = Record<string, string | string[] | undefined>
 
@@ -37,7 +36,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   }
 }
 
-export const revalidate = 3600
+// Search params intentionally keep this route dynamic so shared map URLs get distinct OG images.
 
 export default async function MapPageJa({ searchParams }: { searchParams: Promise<SearchParamsInput> }) {
   if (!isMapReplicaEnabled()) {
@@ -49,7 +48,7 @@ export default async function MapPageJa({ searchParams }: { searchParams: Promis
   const tab = tabParam === 'recent' || tabParam === 'hot' || tabParam === 'nearby' ? tabParam : 'latest'
   let initialBootstrap
   try {
-    initialBootstrap = await getBootstrap({ prisma, locale: 'ja', tab })
+    initialBootstrap = await getMapPageBootstrap('ja', tab)
   } catch {
     initialBootstrap = undefined
   }
