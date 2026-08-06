@@ -3,6 +3,7 @@ import { aggregateSpots } from '@/lib/linkAsset/aggregateSpots'
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getLinkAssetById } from '@/lib/linkAsset/getLinkAssetById'
 import { readLinkAssetContentHtml } from '@/lib/linkAsset/content'
+import { getBundledLinkAssetContentHtml } from '@/lib/linkAsset/static'
 
 const mocks = vi.hoisted(() => ({
   fs: {
@@ -55,6 +56,44 @@ describe('bundled link assets', () => {
     expect(contentHtml).toContain('圣地巡礼之所以神奇')
     expect(contentHtml).not.toContain('<script')
     expect(mocks.fs.readFile).not.toHaveBeenCalled()
+  })
+
+  it('preserves every horizontal rule in the real bundled MDX output', async () => {
+    const assets = await getAllLinkAssets()
+    let sourceRuleCount = 0
+
+    for (const asset of assets) {
+      if (!asset.contentFile) continue
+      const sourceHtml = getBundledLinkAssetContentHtml(asset.contentFile) || ''
+      const sanitizedHtml = await readLinkAssetContentHtml(asset.contentFile)
+      const before = sourceHtml.match(/<hr\b/g)?.length ?? 0
+      const after = sanitizedHtml?.match(/<hr\b/g)?.length ?? 0
+
+      sourceRuleCount += before
+      expect(after, asset.id).toBe(before)
+    }
+
+    expect(sourceRuleCount).toBeGreaterThan(0)
+  })
+
+  it('logs every time declared asset content is unavailable at runtime', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const contentFile = '/content/link-assets/missing.md'
+
+    await expect(readLinkAssetContentHtml(contentFile)).resolves.toBeNull()
+    await expect(readLinkAssetContentHtml(contentFile)).resolves.toBeNull()
+
+    expect(errorSpy).toHaveBeenCalledTimes(2)
+    expect(errorSpy).toHaveBeenNthCalledWith(
+      1,
+      '[degraded:resources.asset-content] declared asset content is unavailable',
+      { contentFile }
+    )
+    expect(errorSpy).toHaveBeenNthCalledWith(
+      2,
+      '[degraded:resources.asset-content] declared asset content is unavailable',
+      { contentFile }
+    )
   })
 
   it('returns no spots and logs when the published article source fails', async () => {

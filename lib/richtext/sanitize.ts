@@ -40,6 +40,8 @@ const ALLOWED_TAGS = [
   'seichi-callout',
 ]
 
+const MDX_COMPONENT_ALLOWED_TAGS = [...ALLOWED_TAGS, 'hr']
+
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   a: ['href', 'target', 'rel', 'class'],
   img: [
@@ -436,7 +438,7 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
   if (!inputHtml) return ''
 
   const sanitized = sanitizeHtml(inputHtml, {
-    allowedTags: ALLOWED_TAGS,
+    allowedTags: options?.contentMode === 'mdx-components' ? MDX_COMPONENT_ALLOWED_TAGS : ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
     allowedSchemes: ['http', 'https', 'mailto'],
     allowProtocolRelative: false,

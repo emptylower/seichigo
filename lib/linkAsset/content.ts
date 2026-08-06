@@ -10,12 +10,24 @@ function normalizeContentPath(input: string): string | null {
 }
 
 export async function readLinkAssetContentHtml(contentFile: string | undefined): Promise<string | null> {
+  const declaredContentFile = typeof contentFile === 'string' ? contentFile.trim() : ''
   const normalized = typeof contentFile === 'string' ? normalizeContentPath(contentFile) : null
-  if (!normalized) return null
-  const contentHtml = getBundledLinkAssetContentHtml(normalized)
-  if (!contentHtml) return null
-  return sanitizeRichTextHtml(contentHtml, {
-    contentMode: 'mdx-components',
-    imageMode: 'progressive',
-  })
+  const contentHtml = normalized ? getBundledLinkAssetContentHtml(normalized) : null
+  const sanitized = contentHtml
+    ? sanitizeRichTextHtml(contentHtml, {
+        contentMode: 'mdx-components',
+        imageMode: 'progressive',
+      })
+    : ''
+
+  if (!sanitized) {
+    if (declaredContentFile) {
+      console.error('[degraded:resources.asset-content] declared asset content is unavailable', {
+        contentFile: declaredContentFile,
+      })
+    }
+    return null
+  }
+
+  return sanitized
 }

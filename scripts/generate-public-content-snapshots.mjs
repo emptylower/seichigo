@@ -7,11 +7,13 @@ import matter from 'gray-matter'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { compileMDX } from 'next-mdx-remote/rsc'
+import sanitizeHtml from 'sanitize-html'
 
 const ROOT = process.cwd()
 const CONTENT_ROOT = path.join(ROOT, 'content')
 const GENERATED_ROOT = path.join(CONTENT_ROOT, 'generated')
 const POST_LOCALES = ['zh', 'en', 'ja']
+const MIN_LINK_ASSET_CONTENT_TEXT_LENGTH = 120
 const h = React.createElement
 
 function rewriteAssetImageSrc(src) {
@@ -161,8 +163,17 @@ async function buildAnimeSnapshot() {
   await writeJson('public-anime.json', rows)
 }
 
-async function buildLinkAssetSnapshot() {
-  const dir = path.join(CONTENT_ROOT, 'link-assets')
+function countRenderedText(html) {
+  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length
+}
+
+export async function buildLinkAssetSnapshot(options = {}) {
+  const root = options.root || ROOT
+  const generatedRoot = options.generatedRoot || path.join(root, 'content', 'generated')
+  const dir = path.join(root, 'content', 'link-assets')
   const files = await readDirSafe(dir)
   const jsonFiles = files.filter((file) => file.endsWith('.json')).sort()
   const rows = []
@@ -184,17 +195,40 @@ async function buildLinkAssetSnapshot() {
 
     const contentFile = normalizeString(asset?.contentFile)
     const markdownPath = contentFile
-      ? path.join(ROOT, contentFile.replace(/^\/+/, ''))
+      ? path.join(root, contentFile.replace(/^\/+/, ''))
       : null
-    const markdown = markdownPath
-      ? await fs.readFile(markdownPath, 'utf-8').catch(() => null)
-      : null
-    const contentHtml = markdown === null ? null : await compileLinkAssetMarkdownToHtml(markdown)
+    let contentHtml = null
+
+    if (markdownPath) {
+      let markdown
+      try {
+        markdown = await fs.readFile(markdownPath, 'utf-8')
+      } catch (error) {
+        throw new Error(
+          `[link-asset:${id}] cannot read declared contentFile: ${contentFile}`,
+          { cause: error }
+        )
+      }
+
+      contentHtml = await compileLinkAssetMarkdownToHtml(markdown)
+      const textLength = countRenderedText(contentHtml)
+      if (textLength < MIN_LINK_ASSET_CONTENT_TEXT_LENGTH) {
+        throw new Error(
+          `[link-asset:${id}] compiled content is too short: ${textLength} visible characters ` +
+          `(minimum ${MIN_LINK_ASSET_CONTENT_TEXT_LENGTH})`
+        )
+      }
+    }
 
     rows.push({ asset, contentHtml })
   }
 
-  await writeJson('public-link-assets.json', rows)
+  await fs.mkdir(generatedRoot, { recursive: true })
+  await fs.writeFile(
+    path.join(generatedRoot, 'public-link-assets.json'),
+    `${JSON.stringify(rows)}\n`,
+    'utf-8'
+  )
 }
 
 export async function compileLinkAssetMarkdownToHtml(source) {
