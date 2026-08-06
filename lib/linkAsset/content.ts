@@ -1,4 +1,5 @@
-import { getBundledLinkAssetMarkdown } from './static'
+import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
+import { getBundledLinkAssetContentHtml } from './static'
 
 function normalizeContentPath(input: string): string | null {
   const raw = String(input || '').trim()
@@ -8,8 +9,13 @@ function normalizeContentPath(input: string): string | null {
   return raw
 }
 
-export async function readLinkAssetMarkdown(contentFile: string | undefined): Promise<string | null> {
+export async function readLinkAssetContentHtml(contentFile: string | undefined): Promise<string | null> {
   const normalized = typeof contentFile === 'string' ? normalizeContentPath(contentFile) : null
   if (!normalized) return null
-  return getBundledLinkAssetMarkdown(normalized)
+  const contentHtml = getBundledLinkAssetContentHtml(normalized)
+  if (!contentHtml) return null
+  return sanitizeRichTextHtml(contentHtml, {
+    contentMode: 'mdx-components',
+    imageMode: 'progressive',
+  })
 }

@@ -260,4 +260,24 @@ describe('richtext sanitize', () => {
     expect(out).toContain('src="https://example.com/a.jpg"')
     expect(out).not.toContain('data-seichi-full=')
   })
+
+  it('preserves only known component classes for precompiled MDX', () => {
+    const html = '<div class="not-prose rounded-lg fixed" onclick="alert(1)">callout body</div>'
+    const out = sanitizeRichTextHtml(html, { contentMode: 'mdx-components' })
+
+    expect(out).toBe('<div class="not-prose rounded-lg">callout body</div>')
+  })
+
+  it('preserves a valid precompiled progressive image tuple', () => {
+    const html =
+      '<img src="/assets/abc123?w=32&amp;q=20" data-seichi-full="/assets/abc123" ' +
+      'data-seichi-sd="/assets/abc123?w=854&amp;q=70" data-seichi-hd="/assets/abc123?w=1280&amp;q=80" ' +
+      'data-seichi-blur="true" loading="lazy" decoding="async" alt="x">'
+    const out = sanitizeRichTextHtml(html, { imageMode: 'progressive', contentMode: 'mdx-components' })
+
+    expect(out).toContain('src="/assets/abc123?w=32&amp;q=20"')
+    expect(out).toContain('data-seichi-full="/assets/abc123"')
+    expect(out).toContain('data-seichi-sd="/assets/abc123?w=854&amp;q=70"')
+    expect(out).toContain('data-seichi-hd="/assets/abc123?w=1280&amp;q=80"')
+  })
 })

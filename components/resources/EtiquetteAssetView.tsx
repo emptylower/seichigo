@@ -1,84 +1,13 @@
-import { compileMDX } from 'next-mdx-remote/rsc'
-import { readLinkAssetMarkdown } from '@/lib/linkAsset/content'
+import { readLinkAssetContentHtml } from '@/lib/linkAsset/content'
 import type { LinkAsset } from '@/lib/linkAsset/types'
-import SpotList from '@/components/content/SpotList'
-import Callout from '@/components/content/Callout'
-import TldrBox from '@/components/content/TldrBox'
-import TransportCard from '@/components/content/TransportCard'
-import PhotoTipsList from '@/components/content/PhotoTipsList'
-
-function rewriteAssetImageSrc(src: unknown): null | { full: string; placeholder: string; sd: string; hd: string } {
-  if (typeof src !== 'string') return null
-  const trimmed = src.trim()
-  if (!/^\/assets\/[a-zA-Z0-9_-]+$/.test(trimmed)) return null
-  const full = trimmed
-  return {
-    full,
-    placeholder: `${full}?w=32&q=20`,
-    sd: `${full}?w=854&q=70`,
-    hd: `${full}?w=1280&q=80`,
-  }
-}
-
-function shouldOpenInNewTab(href: unknown): boolean {
-  if (typeof href !== 'string') return false
-  const trimmed = href.trim()
-  if (!trimmed || trimmed.startsWith('#')) return false
-  return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')
-}
-
-function MdxLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-  const { children, ...rest } = props
-  if (!shouldOpenInNewTab(rest.href)) {
-    return <a {...rest}>{children}</a>
-  }
-  return (
-    <a {...rest} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  )
-}
-
-function MdxImg(props: React.ImgHTMLAttributes<HTMLImageElement>) {
-  const { src, ...rest } = props
-  const alt = typeof rest.alt === 'string' ? rest.alt : ''
-  const rewritten = rewriteAssetImageSrc(src)
-  if (!rewritten) return <img src={typeof src === 'string' ? src : undefined} {...rest} alt={alt} />
-  return (
-    <img
-      {...rest}
-      alt={alt}
-      src={rewritten.placeholder}
-      data-seichi-full={rewritten.full}
-      data-seichi-sd={rewritten.sd}
-      data-seichi-hd={rewritten.hd}
-      data-seichi-blur="true"
-      loading="lazy"
-      decoding="async"
-    />
-  )
-}
 
 type Props = {
   asset: LinkAsset
 }
 
 export default async function EtiquetteAssetView({ asset }: Props) {
-  const source = await readLinkAssetMarkdown(asset.contentFile)
-  if (!source) return null
+  const contentHtml = await readLinkAssetContentHtml(asset.contentFile)
+  if (!contentHtml) return null
 
-  const compiled = await compileMDX({
-    source,
-    components: {
-      SpotList,
-      Callout,
-      TldrBox,
-      TransportCard,
-      PhotoTipsList,
-      a: MdxLink,
-      img: MdxImg,
-    },
-  })
-
-  return <div className="prose prose-pink max-w-none">{compiled.content}</div>
+  return <div className="prose prose-pink max-w-none" dangerouslySetInnerHTML={{ __html: contentHtml }} />
 }

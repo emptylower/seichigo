@@ -3,7 +3,7 @@ import type { LinkAsset } from './types'
 
 type BundledLinkAssetEntry = {
   asset: LinkAsset
-  markdown: string | null
+  contentHtml: string | null
 }
 
 function cloneLinkAsset(asset: LinkAsset): LinkAsset {
@@ -34,8 +34,8 @@ export function getBundledLinkAssetById(id: string): LinkAsset | null {
   return entry ? cloneLinkAsset(entry.asset) : null
 }
 
-export function getBundledLinkAssetMarkdown(contentFile: string | undefined): string | null {
+export function getBundledLinkAssetContentHtml(contentFile: string | undefined): string | null {
   const key = String(contentFile || '').trim()
   if (!key) return null
-  return BUNDLED_LINK_ASSET_BY_CONTENT_FILE.get(key)?.markdown ?? null
+  return BUNDLED_LINK_ASSET_BY_CONTENT_FILE.get(key)?.contentHtml ?? null
 }

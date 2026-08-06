@@ -2,6 +2,7 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import matter from 'gray-matter'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -11,6 +12,56 @@ const ROOT = process.cwd()
 const CONTENT_ROOT = path.join(ROOT, 'content')
 const GENERATED_ROOT = path.join(CONTENT_ROOT, 'generated')
 const POST_LOCALES = ['zh', 'en', 'ja']
+const h = React.createElement
+
+function rewriteAssetImageSrc(src) {
+  if (typeof src !== 'string') return null
+  const trimmed = src.trim()
+  if (!/^\/assets\/[a-zA-Z0-9_-]+$/.test(trimmed)) return null
+  return {
+    full: trimmed,
+    placeholder: `${trimmed}?w=32&q=20`,
+    sd: `${trimmed}?w=854&q=70`,
+    hd: `${trimmed}?w=1280&q=80`,
+  }
+}
+
+function MdxLink({ children, ...rest }) {
+  const href = typeof rest.href === 'string' ? rest.href.trim() : ''
+  const external = href && !href.startsWith('#') && (/^https?:\/\//i.test(href) || href.startsWith('/'))
+  return h('a', external ? { ...rest, target: '_blank', rel: 'noopener noreferrer' } : rest, children)
+}
+
+function MdxImg({ src, alt, ...rest }) {
+  const rewritten = rewriteAssetImageSrc(src)
+  if (!rewritten) return h('img', { ...rest, src: typeof src === 'string' ? src : undefined, alt: String(alt || '') })
+  return h('img', {
+    ...rest,
+    alt: String(alt || ''),
+    src: rewritten.placeholder,
+    'data-seichi-full': rewritten.full,
+    'data-seichi-sd': rewritten.sd,
+    'data-seichi-hd': rewritten.hd,
+    'data-seichi-blur': 'true',
+    loading: 'lazy',
+    decoding: 'async',
+  })
+}
+
+function Callout({ type = 'note', children }) {
+  const palette = {
+    note: 'bg-pink-50 border-pink-200 text-pink-900',
+    warn: 'bg-amber-50 border-amber-200 text-amber-900',
+    tip: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+  }[type] || 'bg-pink-50 border-pink-200 text-pink-900'
+  return h('div', { className: `not-prose rounded-lg border p-3 ${palette}` }, children)
+}
+
+const LINK_ASSET_MDX_COMPONENTS = {
+  Callout,
+  a: MdxLink,
+  img: MdxImg,
+}
 
 function normalizeString(value) {
   return typeof value === 'string' ? value : ''
@@ -44,18 +95,6 @@ function normalizePostFrontmatter(data, language) {
     title_en: normalizeString(data?.title_en) || undefined,
     seoTitle_en: normalizeString(data?.seoTitle_en) || undefined,
     description_en: normalizeString(data?.description_en) || undefined,
-  }
-}
-
-function rewriteAssetImageSrc(src) {
-  if (typeof src !== 'string') return null
-  const trimmed = src.trim()
-  if (!/^\/assets\/[a-zA-Z0-9_-]+$/.test(trimmed)) return null
-  return {
-    full: trimmed,
-    placeholder: `${trimmed}?w=32&q=20`,
-    sd: `${trimmed}?w=854&q=70`,
-    hd: `${trimmed}?w=1280&q=80`,
   }
 }
 
@@ -132,26 +171,39 @@ async function buildLinkAssetSnapshot() {
     const raw = await fs.readFile(path.join(dir, file), 'utf-8').catch(() => '')
     if (!raw) continue
 
+    let asset
     try {
-      const asset = JSON.parse(raw)
-      const id = normalizeString(asset?.id)
-      if (!id) continue
-
-      const contentFile = normalizeString(asset?.contentFile)
-      const markdownPath = contentFile
-        ? path.join(ROOT, contentFile.replace(/^\/+/, ''))
-        : null
-      const markdown = markdownPath
-        ? await fs.readFile(markdownPath, 'utf-8').catch(() => null)
-        : null
-
-      rows.push({ asset, markdown })
+      asset = JSON.parse(raw)
     } catch {
       // Ignore malformed source files; runtime uses the generated snapshot.
+      continue
     }
+
+    const id = normalizeString(asset?.id)
+    if (!id) continue
+
+    const contentFile = normalizeString(asset?.contentFile)
+    const markdownPath = contentFile
+      ? path.join(ROOT, contentFile.replace(/^\/+/, ''))
+      : null
+    const markdown = markdownPath
+      ? await fs.readFile(markdownPath, 'utf-8').catch(() => null)
+      : null
+    const contentHtml = markdown === null ? null : await compileLinkAssetMarkdownToHtml(markdown)
+
+    rows.push({ asset, contentHtml })
   }
 
   await writeJson('public-link-assets.json', rows)
+}
+
+export async function compileLinkAssetMarkdownToHtml(source) {
+  const compiled = await compileMDX({
+    source,
+    components: LINK_ASSET_MDX_COMPONENTS,
+    options: { parseFrontmatter: true, blockJS: false },
+  })
+  return addProgressiveAttrsToHtml(renderToStaticMarkup(compiled.content))
 }
 
 async function buildPostSnapshotForLocale(locale) {
@@ -188,7 +240,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('[generate-public-content-snapshots] failed', error)
-  process.exitCode = 1
-})
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error('[generate-public-content-snapshots] failed', error)
+    process.exitCode = 1
+  })
+}

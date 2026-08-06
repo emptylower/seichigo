@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aggregateSpots } from '@/lib/linkAsset/aggregateSpots'
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getLinkAssetById } from '@/lib/linkAsset/getLinkAssetById'
-import { readLinkAssetMarkdown } from '@/lib/linkAsset/content'
+import { readLinkAssetContentHtml } from '@/lib/linkAsset/content'
 
 const mocks = vi.hoisted(() => ({
   fs: {
@@ -47,11 +47,13 @@ describe('bundled link assets', () => {
     expect(mocks.fs.readFile).not.toHaveBeenCalled()
   })
 
-  it('returns bundled markdown without runtime fs access', async () => {
-    const markdown = await readLinkAssetMarkdown('/content/link-assets/pilgrimage-etiquette.md')
+  it('returns bundled sanitized HTML without runtime fs access', async () => {
+    const contentHtml = await readLinkAssetContentHtml('/content/link-assets/pilgrimage-etiquette.md')
 
-    expect(markdown).toContain('Anime Pilgrimage Etiquette Guide')
-    expect(markdown).toContain('圣地巡礼之所以神奇')
+    expect(contentHtml).toContain('<h1>')
+    expect(contentHtml).toContain('Anime Pilgrimage Etiquette Guide')
+    expect(contentHtml).toContain('圣地巡礼之所以神奇')
+    expect(contentHtml).not.toContain('<script')
     expect(mocks.fs.readFile).not.toHaveBeenCalled()
   })
 

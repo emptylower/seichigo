@@ -3,12 +3,14 @@ import { RICH_TEXT_ALLOWED_FONT_FAMILIES } from './fonts'
 
 export type SanitizeRichTextOptions = {
   imageMode?: 'default' | 'progressive'
+  contentMode?: 'richtext' | 'mdx-components'
 }
 
 const ALLOWED_TAGS = [
   'h1',
   'h2',
   'h3',
+  'h4',
   'p',
   'br',
   'blockquote',
@@ -39,7 +41,7 @@ const ALLOWED_TAGS = [
 ]
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
-  a: ['href', 'target', 'rel'],
+  a: ['href', 'target', 'rel', 'class'],
   img: [
     'src',
     'alt',
@@ -63,17 +65,18 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
     'style',
   ],
   figure: ['data-align', 'data-indent', 'data-figure-image', 'data-width-pct', 'style'],
-  div: ['data-figure-image-container', 'data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style'],
-  p: ['data-align', 'data-indent'],
-  h1: ['data-align', 'data-indent'],
-  h2: ['data-align', 'data-indent'],
-  h3: ['data-align', 'data-indent'],
+  div: ['data-figure-image-container', 'data-figure-image-frame', 'data-mode', 'data-width-pct', 'data-crop-h', 'style', 'class'],
+  p: ['data-align', 'data-indent', 'class'],
+  h1: ['data-align', 'data-indent', 'class'],
+  h2: ['data-align', 'data-indent', 'class'],
+  h3: ['data-align', 'data-indent', 'class'],
+  h4: ['data-align', 'data-indent', 'class'],
   blockquote: ['data-align', 'data-indent'],
   pre: ['data-align', 'data-indent'],
-  ul: ['data-align', 'data-indent'],
-  ol: ['data-align', 'data-indent'],
-  li: ['data-align', 'data-indent'],
-  span: ['style'],
+  ul: ['data-align', 'data-indent', 'class'],
+  ol: ['data-align', 'data-indent', 'class'],
+  li: ['data-align', 'data-indent', 'class', 'id'],
+  span: ['style', 'class'],
   th: ['colspan', 'rowspan'],
   td: ['colspan', 'rowspan'],
   'seichi-route': ['data-id'],
@@ -81,6 +84,24 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 }
 
 const allowedFonts = new Set(RICH_TEXT_ALLOWED_FONT_FAMILIES.map((f) => normalizeFontFamily(f)))
+
+const MDX_COMPONENT_CLASSES = new Set([
+  'not-prose', 'my-6', 'rounded-xl', 'rounded-lg', 'rounded-full', 'border', 'p-3', 'p-4',
+  'border-pink-100', 'border-pink-200', 'border-amber-100', 'border-amber-200', 'border-blue-100',
+  'border-emerald-200', 'bg-pink-50', 'bg-pink-50/60', 'bg-amber-50', 'bg-amber-50/70',
+  'bg-blue-50/70', 'bg-blue-100', 'bg-emerald-50', 'text-pink-900', 'text-amber-900',
+  'text-blue-900', 'text-emerald-900', 'shadow-sm', 'text-sm', 'text-xs', 'text-base',
+  'font-semibold', 'font-medium', 'text-gray-900', 'text-gray-700', 'text-gray-600',
+  'text-brand-600', 'hover:text-brand-700', 'mt-1', 'mt-2', 'mt-3', 'flex', 'flex-wrap',
+  'items-baseline', 'justify-between', 'gap-2', 'gap-x-4', 'gap-y-2', 'space-y-1',
+  'space-y-3', 'list-disc', 'pl-5', 'px-2', 'py-1', 'card',
+])
+
+function sanitizeMdxComponentClass(value: unknown, options?: SanitizeRichTextOptions): string | null {
+  if (options?.contentMode !== 'mdx-components' || typeof value !== 'string') return null
+  const classes = value.split(/\s+/).filter((name) => MDX_COMPONENT_CLASSES.has(name))
+  return classes.length ? classes.join(' ') : null
+}
 
 function clampByte(input: number): number {
   if (!Number.isFinite(input)) return 0
@@ -428,20 +449,26 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
       if (frame.tag === 'div') {
         const isFrame = isTruthyMarker(frame.attribs?.['data-figure-image-frame'])
         const isContainer = isTruthyMarker(frame.attribs?.['data-figure-image-container'])
-        return !isFrame && !isContainer
+        const isMdxComponent = Boolean(sanitizeMdxComponentClass(frame.attribs?.class, options))
+        return !isFrame && !isContainer && !isMdxComponent
       }
       return false
     },
     transformTags: {
-      h1: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      h2: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      h3: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      p: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      h1: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      h2: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      h3: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      h4: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      p: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
       blockquote: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
       pre: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      ul: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      ol: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
-      li: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs) }),
+      ul: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      ol: (tagName, attribs) => ({ tagName, attribs: sanitizeBlockAttrs(attribs, options) }),
+      li: (tagName, attribs) => {
+        const next = sanitizeBlockAttrs(attribs, options)
+        if (options?.contentMode === 'mdx-components' && /^spot-\d+$/.test(attribs.id || '')) next.id = attribs.id!
+        return { tagName, attribs: next }
+      },
       figure: (tagName, attribs) => {
         const next = sanitizeBlockAttrs(attribs)
 
@@ -465,6 +492,9 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
       figcaption: (tagName) => ({ tagName, attribs: {} }),
       div: (tagName, attribs) => {
         const next: Record<string, string> = {}
+
+        const componentClass = sanitizeMdxComponentClass(attribs.class, options)
+        if (componentClass) return { tagName, attribs: { class: componentClass } }
 
         if (isTruthyMarker(attribs['data-figure-image-container'])) {
           next['data-figure-image-container'] = 'true'
@@ -503,13 +533,15 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
             next.rel = 'noopener noreferrer'
           }
         }
+        const componentClass = sanitizeMdxComponentClass(attribs.class, options)
+        if (componentClass) next.class = componentClass
         return { tagName, attribs: next }
       },
       img: (tagName, attribs) => {
         const next: Record<string, string> = sanitizeBlockAttrs(attribs)
         const src = typeof attribs.src === 'string' ? attribs.src.trim() : ''
         if (src) {
-          const rewrite = rewriteAssetImageSrc(src, options)
+          const rewrite = rewriteAssetImageSrc(src, options) || preserveProgressiveAssetImage(attribs, options)
           if (rewrite) {
             next.src = rewrite.placeholder
             next['data-seichi-full'] = rewrite.full
@@ -564,10 +596,11 @@ export function sanitizeRichTextHtml(inputHtml: string, options?: SanitizeRichTe
         return { tagName, attribs: next }
       },
       span: (tagName, attribs) => {
-        const next = { ...attribs }
+        const next: Record<string, string> = {}
         const style = sanitizeSpanStyle(attribs.style)
         if (style) next.style = style
-        else delete next.style
+        const componentClass = sanitizeMdxComponentClass(attribs.class, options)
+        if (componentClass) next.class = componentClass
         return { tagName, attribs: next }
       },
     },
@@ -594,6 +627,24 @@ function rewriteAssetImageSrc(
   }
 }
 
+function preserveProgressiveAssetImage(
+  attribs: Record<string, string | undefined>,
+  options?: SanitizeRichTextOptions
+): null | { full: string; placeholder: string; sd: string; hd: string } {
+  if (options?.imageMode !== 'progressive') return null
+  const full = String(attribs['data-seichi-full'] || '').trim()
+  if (!/^\/assets\/[a-zA-Z0-9_-]+$/.test(full)) return null
+  const expected = {
+    full,
+    placeholder: `${full}?w=32&q=20`,
+    sd: `${full}?w=854&q=70`,
+    hd: `${full}?w=1280&q=80`,
+  }
+  if (attribs.src !== expected.placeholder) return null
+  if (attribs['data-seichi-sd'] !== expected.sd || attribs['data-seichi-hd'] !== expected.hd) return null
+  return expected
+}
+
 function sanitizeAlign(value: unknown): string | null {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : ''
   if (!raw || raw === 'left') return null
@@ -617,11 +668,16 @@ function sanitizePercentInt(value: unknown, min: number, max: number): string | 
   return String(Math.trunc(n))
 }
 
-function sanitizeBlockAttrs(attribs: Record<string, string | undefined>): Record<string, string> {
+function sanitizeBlockAttrs(
+  attribs: Record<string, string | undefined>,
+  options?: SanitizeRichTextOptions
+): Record<string, string> {
   const next: Record<string, string> = {}
   const align = sanitizeAlign(attribs['data-align'])
   if (align) next['data-align'] = align
   const indent = sanitizeIndent(attribs['data-indent'])
   if (indent) next['data-indent'] = indent
+  const componentClass = sanitizeMdxComponentClass(attribs.class, options)
+  if (componentClass) next.class = componentClass
   return next
 }
