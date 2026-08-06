@@ -11,6 +11,9 @@ const isCloudflareDeploy = process.env.CLOUDFLARE_DEPLOY === '1'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: true },
+  outputFileTracingIncludes: {
+    '/*': ['node_modules/@seichigo/prisma-client-runtime/workerd.cjs'],
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'www.anitabi.cn' },
