@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { aggregateSpots } from '@/lib/linkAsset/aggregateSpots'
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getLinkAssetById } from '@/lib/linkAsset/getLinkAssetById'
 import { readLinkAssetMarkdown } from '@/lib/linkAsset/content'
@@ -17,6 +18,10 @@ vi.mock('node:fs/promises', () => ({
 describe('bundled link assets', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('returns bundled resource descriptors without runtime fs access', async () => {
@@ -48,5 +53,18 @@ describe('bundled link assets', () => {
     expect(markdown).toContain('Anime Pilgrimage Etiquette Guide')
     expect(markdown).toContain('圣地巡礼之所以神奇')
     expect(mocks.fs.readFile).not.toHaveBeenCalled()
+  })
+
+  it('returns no spots and logs when the published article source fails', async () => {
+    const reason = new Error('database unavailable')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const articleRepo = { listByStatus: vi.fn().mockRejectedValue(reason) }
+
+    await expect(aggregateSpots({ articleRepo })).resolves.toEqual([])
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[degraded:resources\.spots\]/),
+      { status: 'published' },
+      reason
+    )
   })
 })

@@ -47,7 +47,10 @@ export async function aggregateSpots(options?: AggregateSpotsOptions): Promise<A
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
   if (!repo) return []
 
-  const published = await repo.listByStatus('published').catch(() => [])
+  const published = await repo.listByStatus('published').catch((error) => {
+    console.error('[degraded:resources.spots]', { status: 'published' }, error)
+    return []
+  })
 
   const out: AggregatedSpot[] = []
   const seen = new Set<string>()

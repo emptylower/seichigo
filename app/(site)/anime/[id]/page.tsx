@@ -69,7 +69,10 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
   const requestedId = safeDecodeURIComponent(String(id || '')).trim()
-  const anime = await getAnimeById(requestedId).catch(() => null)
+  const anime = await getAnimeById(requestedId).catch((error) => {
+    console.error('[degraded:anime-detail.by-id]', { locale: 'zh', id: requestedId }, error)
+    return null
+  })
   const canonicalId = anime?.id || requestedId || String(id || '')
   const posts = await getPostsByAnimeId(canonicalId, 'zh')
   
@@ -111,7 +114,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function AnimePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const requestedId = safeDecodeURIComponent(String(id || '')).trim()
-  const anime = await getAnimeById(requestedId).catch(() => null)
+  const anime = await getAnimeById(requestedId).catch((error) => {
+    console.error('[degraded:anime-detail.by-id]', { locale: 'zh', id: requestedId }, error)
+    return null
+  })
   const canonicalId = anime?.id || requestedId || String(id || '')
 
   if (requestedId && canonicalId && requestedId !== canonicalId) {

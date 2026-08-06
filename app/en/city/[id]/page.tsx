@@ -37,7 +37,10 @@ function buildCityAliasSet(city: { slug: string; name_zh: string; name_en?: stri
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
   const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
-  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
+  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch((error) => {
+    console.error('[degraded:city-detail.city]', { locale: 'en', slug: requestedSlug, phase: 'metadata' }, error)
+    return { city: null as any, redirectToSlug: null as any }
+  })
   if (redirectToSlug && redirectToSlug !== requestedSlug) {
     return {
       title: 'Moved',
@@ -51,7 +54,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 
   const aliasSet = buildCityAliasSet(city)
-  const cityPostsForMeta = (await getAllPublicPosts('en').catch(() => [])).filter((post) => {
+  const cityPostsForMeta = (await getAllPublicPosts('en').catch((error) => {
+    console.error('[degraded:city-detail.posts]', { locale: 'en', slug: city.slug, phase: 'metadata' }, error)
+    return []
+  })).filter((post) => {
     const norm = normalizeCityAlias(String((post as any).city || ''))
     return norm ? aliasSet.has(norm) : false
   })
@@ -60,7 +66,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       .flatMap((p: any) => Array.isArray(p.animeIds) ? p.animeIds : [])
       .filter((id: string) => id && id !== 'unknown')
   )].slice(0, 3)
-  const allAnime = uniqueAnimeIds.length > 0 ? await getAllAnime().catch(() => []) : []
+  const allAnime = uniqueAnimeIds.length > 0
+    ? await getAllAnime().catch((error) => {
+        console.error('[degraded:city-detail.anime]', { locale: 'en', slug: city.slug, phase: 'metadata' }, error)
+        return []
+      })
+    : []
   const animeNames = uniqueAnimeIds
     .map((id: string) => allAnime.find((a) => a.id === id)?.name_en ?? allAnime.find((a) => a.id === id)?.name)
     .filter((n): n is string => Boolean(n))
@@ -101,19 +112,28 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function CityEnPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const requestedSlug = safeDecodeURIComponent(String(id || '')).trim()
-  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch(() => ({ city: null as any, redirectToSlug: null as any }))
+  const { city, redirectToSlug } = await getCityBySlugOrRedirect(requestedSlug).catch((error) => {
+    console.error('[degraded:city-detail.city]', { locale: 'en', slug: requestedSlug, phase: 'page' }, error)
+    return { city: null as any, redirectToSlug: null as any }
+  })
   if (redirectToSlug && redirectToSlug !== requestedSlug) {
     permanentRedirect(`/en/city/${encodeURIComponent(redirectToSlug)}`)
   }
   if (!city) return notFound()
 
-  const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch(() => [])
+  const aliasRows = await prisma.cityAlias.findMany({ where: { cityId: city.id }, select: { aliasNorm: true } }).catch((error) => {
+    console.error('[degraded:city-detail.aliases]', { locale: 'en', slug: city.slug, id: city.id }, error)
+    return []
+  })
   const aliasSet = buildCityAliasSet(city)
   for (const r of aliasRows) {
     if (r?.aliasNorm) aliasSet.add(r.aliasNorm)
   }
 
-  const posts = (await getAllPublicPosts('en').catch(() => []))
+  const posts = (await getAllPublicPosts('en').catch((error) => {
+    console.error('[degraded:city-detail.posts]', { locale: 'en', slug: city.slug, phase: 'page' }, error)
+    return []
+  }))
     .filter((p) => {
       const norm = normalizeCityAlias(String((p as any).city || ''))
       return norm ? aliasSet.has(norm) : false

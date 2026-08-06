@@ -63,12 +63,19 @@ describe('getCityCountsByLocale home strict mode', () => {
 
   afterEach(() => {
     process.env.DATABASE_URL = originalDatabaseUrl
+    vi.restoreAllMocks()
   })
 
   it('keeps the existing empty fallback for non-home callers', async () => {
-    mocks.listCitiesForIndex.mockRejectedValue(new Error('database unavailable'))
+    const reason = new Error('database unavailable')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.listCitiesForIndex.mockRejectedValue(reason)
 
     await expect(getCityCountsByLocale('en')).resolves.toEqual({ cities: [], counts: {} })
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[degraded:city\.list\]/),
+      reason
+    )
   })
 
   it('skips database sources when the database is not configured', async () => {

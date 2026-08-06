@@ -209,7 +209,10 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   const anime = await Promise.all(
     animeIds.map(async (id) => {
-      const meta = await getAnimeById(id).catch(() => null)
+      const meta = await getAnimeById(id).catch((error) => {
+        console.error('[degraded:post-detail.anime-label]', { locale: 'zh', slug, id }, error)
+        return null
+      })
       return { id, label: meta?.name || id }
     })
   )

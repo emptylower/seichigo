@@ -45,8 +45,8 @@ const nextConfig: NextConfig = {
     ]
   },
   experimental: {
-    // Database-backed prerenders share one bounded Node pool during builds.
-    staticGenerationRetryCount: 2,
+    // Allow three total attempts for transient database failures during prerenders.
+    staticGenerationRetryCount: 3,
     staticGenerationMaxConcurrency: 2,
     staticGenerationMinPagesPerWorker: 1_000,
     // Keep server actions available for future use

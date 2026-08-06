@@ -65,6 +65,7 @@ async function loadMergedAnime(
       if (failureMode === 'throw') {
         throw new HomeDataSourceError('anime.database', 'failure', reason)
       }
+      console.error('[degraded:anime.database]', { includeHidden }, reason)
       // ignore if DB not migrated/available
     }
   }
@@ -147,7 +148,8 @@ export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Pr
           summary_en: found.summary_en ?? fromJson?.summary_en ?? undefined,
         }
       }
-    } catch {
+    } catch (error) {
+      console.error('[degraded:anime.by-id]', { id }, error)
       // ignore
     }
   }

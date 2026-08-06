@@ -49,7 +49,8 @@ export default async function MapPageJa({ searchParams }: { searchParams: Promis
   let initialBootstrap
   try {
     initialBootstrap = await getMapPageBootstrap('ja', tab)
-  } catch {
+  } catch (error) {
+    console.error('[degraded:map.bootstrap-ssr]', { locale: 'ja', tab }, error)
     initialBootstrap = undefined
   }
   return <AnitabiMapPageLazy locale="ja" initialBootstrap={initialBootstrap} />

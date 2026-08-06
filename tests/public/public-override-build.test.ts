@@ -14,12 +14,12 @@ vi.mock('@/lib/db/prisma', () => ({
 
 describe('public override lookup failures', () => {
   const originalNextPhase = process.env.NEXT_PHASE
-  let warnSpy: ReturnType<typeof vi.spyOn>
+  let errorSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     vi.resetModules()
     prismaMocks.findMany.mockReset()
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     if (originalNextPhase === undefined) {
       delete process.env.NEXT_PHASE
     } else {
@@ -28,7 +28,7 @@ describe('public override lookup failures', () => {
   })
 
   afterEach(() => {
-    warnSpy.mockRestore()
+    errorSpy.mockRestore()
     if (originalNextPhase === undefined) {
       delete process.env.NEXT_PHASE
     } else {
@@ -49,10 +49,18 @@ describe('public override lookup failures', () => {
 
     await expect(resolvePublicOverrideForPost(`test-post-${_label}`, 'zh')).rejects.toBe(reason)
     expect(prismaMocks.findMany).toHaveBeenCalledOnce()
-    expect(warnSpy).toHaveBeenCalledWith('[publicOverride] findMany failed', reason)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[degraded:override\.lookup\]/),
+      expect.objectContaining({
+        targetType: 'post',
+        targetKeys: expect.arrayContaining([expect.stringMatching(/^test-post-/)]),
+        locales: ['zh', null],
+      }),
+      reason
+    )
   })
 
-  it('logs only the first lookup failure in a module instance', async () => {
+  it('logs every lookup failure in a module instance', async () => {
     const reason = new Error('public override unavailable')
     prismaMocks.findMany.mockRejectedValue(reason)
     const { resolvePublicOverrideForPost } = await import('@/lib/publicOverride/service')
@@ -61,6 +69,11 @@ describe('public override lookup failures', () => {
     await expect(resolvePublicOverrideForPost('second-post', 'zh')).rejects.toBe(reason)
 
     expect(prismaMocks.findMany).toHaveBeenCalledTimes(2)
-    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy).toHaveBeenCalledTimes(2)
+    expect(errorSpy.mock.calls.map((call) => call[0])).toEqual([
+      '[degraded:override.lookup]',
+      '[degraded:override.lookup]',
+    ])
+    expect(errorSpy.mock.calls.map((call) => call[2])).toEqual([reason, reason])
   })
 })

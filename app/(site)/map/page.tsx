@@ -51,7 +51,8 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   let initialBootstrap
   try {
     initialBootstrap = await getMapPageBootstrap('zh', tab)
-  } catch {
+  } catch (error) {
+    console.error('[degraded:map.bootstrap-ssr]', { locale: 'zh', tab }, error)
     initialBootstrap = undefined
   }
 

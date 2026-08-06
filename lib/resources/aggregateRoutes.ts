@@ -179,7 +179,7 @@ export const getResourceRouteGroups = cache(async (language?: 'zh' | 'en' | 'ja'
     if (!repo) return [] as ResourceAnimeGroup[]
 
     const published = await repo.listByStatus('published', language).catch((err) => {
-      console.error('[resources] listByStatus(published) failed', err)
+      console.error('[degraded:resources.routes-posts]', err)
       return []
     })
 
@@ -193,7 +193,7 @@ export const getResourceRouteGroups = cache(async (language?: 'zh' | 'en' | 'ja'
 
     const routes = extractResourceRoutesFromArticles(articles)
     const animeList = await getAllAnime().catch((err) => {
-      console.error('[resources] getAllAnime failed', err)
+      console.error('[degraded:resources.routes-anime]', err)
       return []
     })
 

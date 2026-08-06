@@ -28,6 +28,7 @@ describe('getAllAnime', () => {
 
   afterEach(() => {
     process.env.DATABASE_URL = originalDatabaseUrl
+    vi.restoreAllMocks()
   })
 
   const baseList = [
@@ -97,9 +98,16 @@ describe('getAllAnime', () => {
   })
 
   it('keeps the existing bundled fallback behavior for non-home callers', async () => {
-    mocks.prisma.anime.findMany.mockRejectedValue(new Error('database unavailable'))
+    const reason = new Error('database unavailable')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.prisma.anime.findMany.mockRejectedValue(reason)
 
     await expect(getAllAnime({ baseList })).resolves.toEqual(baseList)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[degraded:anime\.database\]/),
+      { includeHidden: false },
+      reason
+    )
   })
 
   it('home strict mode exposes database failures and their original reason', async () => {

@@ -60,7 +60,6 @@ type RawPublicOverride = {
 
 const ALLOWED_TARGET_TYPES = new Set<PublicOverrideTargetType>(['post', 'resource'])
 const ALLOWED_ACTIONS = new Set<PublicOverrideAction>(['hide', 'redirect', 'replace-with-emergency-copy'])
-let hasLoggedOverrideFallback = false
 
 function normalizeText(value: unknown): string {
   return String(value || '').trim()
@@ -230,10 +229,7 @@ async function findOverrides(targetType: PublicOverrideTargetType, targetKeys: s
     },
     orderBy: { updatedAt: 'desc' },
   }).catch((error) => {
-    if (!hasLoggedOverrideFallback) {
-      hasLoggedOverrideFallback = true
-      console.warn('[publicOverride] findMany failed', error)
-    }
+    console.error('[degraded:override.lookup]', { targetType, targetKeys, locales }, error)
     throw error
   })
 

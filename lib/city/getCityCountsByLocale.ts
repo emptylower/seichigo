@@ -36,6 +36,7 @@ async function loadCitySource<T>(
     if (failureMode === 'throw') {
       throw toHomeDataSourceError(source, 'failure', reason)
     }
+    console.error(`[degraded:${source}]`, reason)
     return fallback
   }
 }

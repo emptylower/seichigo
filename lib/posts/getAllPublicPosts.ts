@@ -29,6 +29,7 @@ async function loadPostsSource<T>(
     if (failureMode === 'throw') {
       throw new HomeDataSourceError(source, 'failure', reason)
     }
+    console.error(`[degraded:${source}]`, reason)
     return fallback
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InMemoryArticleRepo } from '@/lib/article/repoMemory'
 import type { ArticleRepo } from '@/lib/article/repo'
 import type { Post, PostFrontmatter } from '@/lib/mdx/types'
@@ -26,6 +26,10 @@ function makeMdxProvider(options?: {
     },
   }
 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('public posts aggregation', () => {
   it('getAllPublicPosts: MDX empty, DB published -> returns DB', async () => {
@@ -64,13 +68,15 @@ describe('public posts aggregation', () => {
   })
 
   it('getAllPublicPosts: falls back to DB when the MDX provider throws a worker fs error', async () => {
+    const reason = new Error('[unenv] fs.readdir is not implemented yet!')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const repo = new InMemoryArticleRepo()
     const created = await repo.createDraft({ authorId: 'u1', slug: 'db-worker-safe', title: 'DB Worker Safe' })
     await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-03T00:00:00.000Z') })
 
     const mdx = {
       async getAllPosts() {
-        throw new Error('[unenv] fs.readdir is not implemented yet!')
+        throw reason
       },
       async getPostBySlug() {
         return null
@@ -81,6 +87,10 @@ describe('public posts aggregation', () => {
 
     expect(list.map((x) => x.path)).toEqual(['/posts/db-worker-safe'])
     expect(list[0]?.source).toBe('db')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[degraded:posts\.mdx\]/),
+      reason
+    )
   })
 
   it('home strict mode rejects a partial result when the MDX source fails', async () => {
