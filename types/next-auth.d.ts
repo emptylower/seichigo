@@ -8,6 +8,7 @@ declare module 'next-auth' {
       mustChangePassword?: boolean
       needsPasswordSetup?: boolean
       disabled?: boolean
+      verified?: boolean
     } & DefaultSession['user']
   }
 }

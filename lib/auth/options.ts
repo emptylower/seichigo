@@ -48,6 +48,7 @@ export const authOptions: NextAuthOptions = {
       let mustChangePassword = Boolean(token.mustChangePassword)
       let needsPasswordSetup = false
       let disabled = false
+      let verified = true
       if (id) {
         try {
           const u = await prisma.user.findUnique({
@@ -61,13 +62,18 @@ export const authOptions: NextAuthOptions = {
             needsPasswordSetup = !u.passwordHash
             disabled = Boolean(u.disabled)
           }
-        } catch {
-          // ignore (e.g. DB not ready in early boot)
+        } catch (error) {
+          verified = false
+          mustChangePassword = true
+          needsPasswordSetup = true
+          disabled = true
+          console.error('[degraded:auth.session-user] Failed to verify session user', error)
         }
       }
       session.user.mustChangePassword = mustChangePassword
       session.user.needsPasswordSetup = needsPasswordSetup
       session.user.disabled = disabled
+      session.user.verified = verified
 
       return session
     },
