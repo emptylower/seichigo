@@ -1,0 +1,21 @@
+{
+  "name": "@seichigo/prisma-client-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "files": [
+    "index.d.ts",
+    "node.cjs",
+    "workerd.cjs"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "workerd": "./workerd.cjs",
+      "node": "./node.cjs",
+      "default": "./node.cjs"
+    }
+  },
+  "peerDependencies": {
+    "@prisma/client": "^6.16.0"
+  }
+}

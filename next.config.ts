@@ -1,19 +1,33 @@
-import { createRequire } from 'node:module'
 import path from 'node:path'
 import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
 
-const require = createRequire(import.meta.url)
-const prismaWasmEntry = require.resolve('@prisma/client/wasm')
 const sentryShimEntry = path.resolve('./lib/observability/sentryCloudflareShim.ts')
 const isCloudflareDeploy = process.env.CLOUDFLARE_DEPLOY === '1'
   || process.env.WORKERS_CI === '1'
   || process.env.CF_PAGES === '1'
   || typeof process.env.CF_PAGES_URL === 'string'
 
+const prismaWorkerdTraceFiles = [
+  'node_modules/@seichigo/prisma-client-runtime/workerd.cjs',
+  'node_modules/@prisma/client/package.json',
+  'node_modules/@prisma/client/wasm.js',
+  'node_modules/@prisma/client/runtime/wasm-compiler-edge.js',
+  'node_modules/.prisma/client/package.json',
+  'node_modules/.prisma/client/wasm.js',
+  'node_modules/.prisma/client/wasm-worker-loader.mjs',
+  'node_modules/.prisma/client/query_compiler_bg.js',
+  'node_modules/.prisma/client/query_compiler_bg.wasm',
+]
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: true },
+  ...(isCloudflareDeploy && {
+    outputFileTracingIncludes: {
+      '/*': prismaWorkerdTraceFiles,
+    },
+  }),
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'www.anitabi.cn' },
@@ -31,22 +45,28 @@ const nextConfig: NextConfig = {
     ]
   },
   experimental: {
+    // Database-backed prerenders share one bounded Node pool during builds.
+    staticGenerationRetryCount: 2,
+    staticGenerationMaxConcurrency: 2,
+    staticGenerationMinPagesPerWorker: 1_000,
     // Keep server actions available for future use
     serverActions: {
       bodySizeLimit: '2mb',
     },
   },
   webpack(config, { isServer }) {
+    if (isServer) {
+      // Preserve the package request so OpenNext can re-resolve its `workerd` export.
+      config.externals ??= []
+      config.externals.push({
+        '@seichigo/prisma-client-runtime': 'commonjs @seichigo/prisma-client-runtime',
+      })
+    }
+
     if (isCloudflareDeploy) {
       config.resolve ??= {}
       config.resolve.alias ??= {}
       config.resolve.alias['@sentry/nextjs'] = sentryShimEntry
-    }
-
-    if (isServer && isCloudflareDeploy) {
-      config.resolve ??= {}
-      config.resolve.alias ??= {}
-      config.resolve.alias['@prisma/client$'] = prismaWasmEntry
     }
 
     return config

@@ -144,8 +144,8 @@ Coupled durable layer:
 - `DATABASE_URL` is pooled (use Neon `-pooler.` host).
   `DATABASE_URL_UNPOOLED` is the direct URL used for migrations.
 - On Cloudflare Workers we use `@prisma/client/wasm` and the
-  `@prisma/adapter-pg` adapter. Cloudflare builds run `copy-prisma-wasm.mjs`
-  after the OpenNext build to make the WASM client load correctly.
+  `@prisma/adapter-pg` adapter. Cloudflare builds trace the complete Prisma
+  workerd dependency chain before OpenNext bundles the server.
 - Migrations: `prisma/migrations` is the source of truth. Local
   `npm run build` runs `prisma migrate deploy + generate`; Cloudflare /
   Vercel builds only run `generate` (migrations are applied out-of-band).
