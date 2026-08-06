@@ -5,9 +5,16 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLinkAssetSnapshot,
   compileLinkAssetMarkdownToHtml,
+  normalizeContentPath as normalizeBuildTimeContentPath,
 } from '../../scripts/generate-public-content-snapshots.mjs'
+import { normalizeContentPath } from '@/lib/linkAsset/content'
 
-async function createLinkAssetFixture(markdown?: string) {
+const VALID_MARKDOWN = `# Valid fixture\n\n${'Build-time content. '.repeat(12)}`
+
+async function createLinkAssetFixture(
+  markdown?: string,
+  contentFile = '/content/link-assets/fixture.md'
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'seichigo-link-asset-'))
   const assetDir = path.join(root, 'content', 'link-assets')
   await fs.mkdir(assetDir, { recursive: true })
@@ -17,12 +24,14 @@ async function createLinkAssetFixture(markdown?: string) {
       id: 'fixture',
       type: 'guide',
       title_zh: 'Fixture',
-      contentFile: '/content/link-assets/fixture.md',
+      contentFile,
     }),
     'utf-8'
   )
   if (markdown !== undefined) {
-    await fs.writeFile(path.join(assetDir, 'fixture.md'), markdown, 'utf-8')
+    const markdownPath = path.join(root, contentFile.replace(/^\/+/, ''))
+    await fs.mkdir(path.dirname(markdownPath), { recursive: true })
+    await fs.writeFile(markdownPath, markdown, 'utf-8')
   }
   return root
 }
@@ -71,5 +80,32 @@ describe('link asset snapshot generator', () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true })
     }
+  })
+
+  it.each(['content/x.md', '/docs/x.md'])(
+    'fails the build when contentFile has a runtime-incompatible shape: %s',
+    async (contentFile) => {
+      const root = await createLinkAssetFixture(VALID_MARKDOWN, contentFile)
+
+      try {
+        await expect(buildLinkAssetSnapshot({ root })).rejects.toThrow(
+          'expected a path starting with "/content/" and containing no ".."'
+        )
+      } finally {
+        await fs.rm(root, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.each([
+    '/content/link-assets/x.md',
+    ' /content/link-assets/x.md ',
+    'content/x.md',
+    '/docs/x.md',
+    '/content/../docs/x.md',
+    '',
+  ])('uses the same contentFile normalization at build time and runtime: %j', (contentFile) => {
+    expect(normalizeBuildTimeContentPath).toBe(normalizeContentPath)
+    expect(normalizeBuildTimeContentPath(contentFile)).toBe(normalizeContentPath(contentFile))
   })
 })

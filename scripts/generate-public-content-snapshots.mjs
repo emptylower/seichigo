@@ -8,6 +8,9 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { compileMDX } from 'next-mdx-remote/rsc'
 import sanitizeHtml from 'sanitize-html'
+import { normalizeContentPath } from '../lib/linkAsset/contentPath.mjs'
+
+export { normalizeContentPath } from '../lib/linkAsset/contentPath.mjs'
 
 const ROOT = process.cwd()
 const CONTENT_ROOT = path.join(ROOT, 'content')
@@ -193,9 +196,16 @@ export async function buildLinkAssetSnapshot(options = {}) {
     const id = normalizeString(asset?.id)
     if (!id) continue
 
-    const contentFile = normalizeString(asset?.contentFile)
+    const declaredContentFile = normalizeString(asset?.contentFile)
+    const contentFile = declaredContentFile ? normalizeContentPath(declaredContentFile) : null
+    if (declaredContentFile && !contentFile) {
+      throw new Error(
+        `[link-asset:${id}] invalid contentFile: ${declaredContentFile}; ` +
+        'expected a path starting with "/content/" and containing no ".."'
+      )
+    }
     const markdownPath = contentFile
-      ? path.join(root, contentFile.replace(/^\/+/, ''))
+      ? path.join(root, contentFile.slice(1))
       : null
     let contentHtml = null
 

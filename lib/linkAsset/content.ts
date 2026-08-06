@@ -1,13 +1,8 @@
 import { sanitizeRichTextHtml } from '@/lib/richtext/sanitize'
 import { getBundledLinkAssetContentHtml } from './static'
+import { normalizeContentPath } from './contentPath.mjs'
 
-function normalizeContentPath(input: string): string | null {
-  const raw = String(input || '').trim()
-  if (!raw) return null
-  if (!raw.startsWith('/content/')) return null
-  if (raw.includes('..')) return null
-  return raw
-}
+export { normalizeContentPath } from './contentPath.mjs'
 
 export async function readLinkAssetContentHtml(contentFile: string | undefined): Promise<string | null> {
   const declaredContentFile = typeof contentFile === 'string' ? contentFile.trim() : ''
