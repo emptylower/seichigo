@@ -49,4 +49,3 @@ if (shouldSkipMigrate) {
 run('node scripts/generate-public-content-snapshots.mjs')
 run('prisma generate')
 run('next build')
-run('node scripts/patch-prisma-nft.mjs')

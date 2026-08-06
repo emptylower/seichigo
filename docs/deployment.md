@@ -45,15 +45,15 @@ The canonical production URL is <https://seichigo.com>.
 
 ```bash
 npm run cf:build      # CLOUDFLARE_DEPLOY=1 opennextjs-cloudflare build
-                      # → then node scripts/copy-prisma-wasm.mjs
 npm run cf:preview    # local preview
 npm run cf:deploy     # build + opennextjs-cloudflare deploy
 npm run cf:upload     # build + upload (no traffic switch)
 npm run cf:typegen    # wrangler types
 ```
 
-The `copy-prisma-wasm.mjs` post-step is required because Cloudflare
-builds use `@prisma/client/wasm` (pinned in `lib/db/prisma`).
+Cloudflare builds use `@prisma/client/wasm` (pinned in `lib/db/prisma`).
+`next.config.ts` traces its complete workerd dependency chain into the
+standalone output before OpenNext bundles the server.
 
 ### Domain routing
 

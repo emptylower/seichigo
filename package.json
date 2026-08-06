@@ -25,7 +25,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:init": "prisma migrate dev --name init",
-    "cf:build": "CLOUDFLARE_DEPLOY=1 opennextjs-cloudflare build && node scripts/copy-prisma-wasm.mjs",
+    "cf:build": "CLOUDFLARE_DEPLOY=1 opennextjs-cloudflare build",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "cf:upload": "npm run cf:build && opennextjs-cloudflare upload",

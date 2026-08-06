@@ -8,12 +8,26 @@ const isCloudflareDeploy = process.env.CLOUDFLARE_DEPLOY === '1'
   || process.env.CF_PAGES === '1'
   || typeof process.env.CF_PAGES_URL === 'string'
 
+const prismaWorkerdTraceFiles = [
+  'node_modules/@seichigo/prisma-client-runtime/workerd.cjs',
+  'node_modules/@prisma/client/package.json',
+  'node_modules/@prisma/client/wasm.js',
+  'node_modules/@prisma/client/runtime/wasm-compiler-edge.js',
+  'node_modules/.prisma/client/package.json',
+  'node_modules/.prisma/client/wasm.js',
+  'node_modules/.prisma/client/wasm-worker-loader.mjs',
+  'node_modules/.prisma/client/query_compiler_bg.js',
+  'node_modules/.prisma/client/query_compiler_bg.wasm',
+]
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: true },
-  outputFileTracingIncludes: {
-    '/*': ['node_modules/@seichigo/prisma-client-runtime/workerd.cjs'],
-  },
+  ...(isCloudflareDeploy && {
+    outputFileTracingIncludes: {
+      '/*': prismaWorkerdTraceFiles,
+    },
+  }),
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'www.anitabi.cn' },
