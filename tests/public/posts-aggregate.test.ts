@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { InMemoryArticleRepo } from '@/lib/article/repoMemory'
+import type { ArticleRepo } from '@/lib/article/repo'
 import type { Post, PostFrontmatter } from '@/lib/mdx/types'
-import { getAllPublicPosts, getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPosts, getAllPublicPostsStrict } from '@/lib/posts/getAllPublicPosts'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
 import { generateSlugFromTitle } from '@/lib/article/slug'
 
@@ -87,7 +88,7 @@ describe('public posts aggregation', () => {
     const mdx = { getAllPosts: async () => { throw reason } }
     const repo = { listByStatus: async () => [] }
 
-    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
+    await expect(getAllPublicPostsStrict('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
       source: 'posts.mdx',
       kind: 'failure',
       reason,
@@ -99,7 +100,7 @@ describe('public posts aggregation', () => {
     const mdx = makeMdxProvider({ all: [] })
     const repo = { listByStatus: async () => { throw reason } }
 
-    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
+    await expect(getAllPublicPostsStrict('zh', { mdx, articleRepo: repo })).rejects.toMatchObject({
       source: 'posts.database',
       kind: 'failure',
       reason,
@@ -110,7 +111,7 @@ describe('public posts aggregation', () => {
     const mdx = makeMdxProvider({ all: [] })
     const repo = { listByStatus: async () => [] }
 
-    await expect(getAllPublicPostsForHome('zh', { mdx, articleRepo: repo })).resolves.toEqual([])
+    await expect(getAllPublicPostsStrict('zh', { mdx, articleRepo: repo })).resolves.toEqual([])
   })
 
   it('home strict mode skips an unconfigured database source', async () => {
@@ -119,7 +120,7 @@ describe('public posts aggregation', () => {
     try {
       const mdx = makeMdxProvider({ all: [] })
 
-      await expect(getAllPublicPostsForHome('zh', { mdx })).resolves.toEqual([])
+      await expect(getAllPublicPostsStrict('zh', { mdx })).resolves.toEqual([])
     } finally {
       process.env.DATABASE_URL = originalDatabaseUrl
     }
@@ -197,6 +198,97 @@ describe('public posts aggregation', () => {
 
     expect(found?.source).toBe('db')
     expect(found && found.source === 'db' ? found.article.title : null).toBe('DB Only')
+  })
+
+  it('getPublicPostBySlug: marks a Chinese database fallback', async () => {
+    const repo = new InMemoryArticleRepo()
+    const created = await repo.createDraft({ authorId: 'u1', slug: 'zh-only', title: 'Chinese DB' })
+    await repo.updateState(created.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+
+    const found = await getPublicPostBySlug('zh-only', 'en', {
+      mdx: makeMdxProvider(),
+      articleRepo: repo,
+    })
+
+    expect(found?.source).toBe('db')
+    expect(found?.isFallback).toBe(true)
+  })
+
+  it('getPublicPostBySlug: prefers target-language content over Chinese fallback', async () => {
+    const repo = new InMemoryArticleRepo()
+    const zh = await repo.createDraft({ authorId: 'u1', slug: 'bilingual', title: 'Chinese DB' })
+    const en = await repo.createDraft({ authorId: 'u1', slug: 'bilingual', language: 'en', title: 'English DB' })
+    await repo.updateState(zh.id, { status: 'published', publishedAt: new Date('2025-01-01T00:00:00.000Z') })
+    await repo.updateState(en.id, { status: 'published', publishedAt: new Date('2025-01-02T00:00:00.000Z') })
+
+    const found = await getPublicPostBySlug('bilingual', 'en', {
+      mdx: makeMdxProvider(),
+      articleRepo: repo,
+    })
+
+    expect(found?.source).toBe('db')
+    expect(found && found.source === 'db' ? found.article.title : null).toBe('English DB')
+    expect(found?.isFallback).not.toBe(true)
+  })
+
+  it('getPublicPostBySlug: falls back to a Chinese MDX post and marks it', async () => {
+    const zhPost: Post = {
+      frontmatter: { title: 'Chinese MDX', slug: 'mdx-zh-only', animeId: 'btr', city: '东京', status: 'published' },
+      content: 'Chinese content',
+    }
+    const mdx = {
+      async getPostBySlug(slug: string, language: string) {
+        return slug === 'mdx-zh-only' && language === 'zh' ? zhPost : null
+      },
+    }
+
+    const found = await getPublicPostBySlug('mdx-zh-only', 'ja', {
+      mdx,
+      articleRepo: new InMemoryArticleRepo(),
+    })
+
+    expect(found?.source).toBe('mdx')
+    expect(found?.isFallback).toBe(true)
+  })
+
+  it.each([
+    ['findById', 'aaaaaaaa', (reason: Error) => ({
+      findById: vi.fn().mockRejectedValue(reason),
+      findBySlug: vi.fn().mockResolvedValue(null),
+      findBySlugAndLanguage: vi.fn().mockResolvedValue(null),
+    })],
+    ['findBySlugAndLanguage target locale', 'lookup-error', (reason: Error) => ({
+      findById: vi.fn().mockResolvedValue(null),
+      findBySlug: vi.fn().mockResolvedValue(null),
+      findBySlugAndLanguage: vi.fn().mockRejectedValue(reason),
+    })],
+    ['findBySlugAndLanguage Chinese fallback', 'fallback-error', (reason: Error) => ({
+      findById: vi.fn().mockResolvedValue(null),
+      findBySlug: vi.fn().mockResolvedValue(null),
+      findBySlugAndLanguage: vi.fn().mockImplementation(async (_slug: string, language: string) => {
+        if (language === 'zh') throw reason
+        return null
+      }),
+    })],
+    ['findBySlug', 'legacy-error', (reason: Error) => ({
+      findById: vi.fn().mockResolvedValue(null),
+      findBySlug: vi.fn().mockRejectedValue(reason),
+    })],
+    ['listByStatus', 'post-aaaaaaaaaa', (reason: Error) => ({
+      findById: vi.fn().mockResolvedValue(null),
+      findBySlug: vi.fn().mockResolvedValue(null),
+      findBySlugAndLanguage: vi.fn().mockResolvedValue(null),
+      listByStatus: vi.fn().mockRejectedValue(reason),
+    })],
+  ] as const)('getPublicPostBySlug: propagates %s errors', async (_branch, slug, makeRepo) => {
+    const reason = new Error(`${_branch} unavailable`)
+    const articleRepo = makeRepo(reason) as Pick<ArticleRepo, 'findById' | 'findBySlug'> &
+      Partial<Pick<ArticleRepo, 'findBySlugAndLanguage' | 'listByStatus'>>
+
+    await expect(getPublicPostBySlug(slug, 'en', {
+      mdx: makeMdxProvider(),
+      articleRepo,
+    })).rejects.toBe(reason)
   })
 
   it('getPublicPostBySlug: falls through to DB when the MDX provider throws a worker fs error', async () => {

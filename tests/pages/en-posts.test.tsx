@@ -91,10 +91,10 @@ describe('English Post Page', () => {
 
   it('falls back to Chinese content with warning when English is missing', async () => {
     getPublicPostBySlugMock.mockImplementation((slug, locale) => {
-      if (locale === 'en') return Promise.resolve(null)
-      if (locale === 'zh') {
+      if (locale === 'en') {
         return Promise.resolve({
           source: 'mdx',
+          isFallback: true,
           post: {
             frontmatter: {
               title: 'Chinese Title',
@@ -110,12 +110,16 @@ describe('English Post Page', () => {
       return Promise.resolve(null)
     })
 
-    const EnPostPage = (await import('@/app/en/posts/[slug]/page')).default
-    render(await EnPostPage({ params: Promise.resolve({ slug: 'test-slug' }) }))
+    const pageModule = await import('@/app/en/posts/[slug]/page')
+    const metadata = await pageModule.generateMetadata({ params: Promise.resolve({ slug: 'test-slug' }) })
+    render(await pageModule.default({ params: Promise.resolve({ slug: 'test-slug' }) }))
 
+    expect(metadata.title).toMatchObject({ absolute: expect.stringContaining('(Chinese)') })
     expect(screen.getByText('Chinese Title')).toBeInTheDocument()
     expect(screen.getByText('Chinese Content')).toBeInTheDocument()
     expect(screen.getByText('English translation is not available yet')).toBeInTheDocument()
     expect(screen.getByText(/showing the original Chinese content/)).toBeInTheDocument()
+    expect(getPublicPostBySlugMock).toHaveBeenCalledWith('test-slug', 'en')
+    expect(getPublicPostBySlugMock).not.toHaveBeenCalledWith('test-slug', 'zh')
   })
 })

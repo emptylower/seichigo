@@ -1,4 +1,5 @@
-import type { ArticleRepo } from '@/lib/article/repo'
+import { cache } from 'react'
+import type { Article, ArticleRepo } from '@/lib/article/repo'
 import type { Post } from '@/lib/mdx/types'
 import { getSnapshotPostBySlug } from '@/lib/mdx/publicSnapshot'
 import { getDefaultPublicArticleRepo, type PublicArticleRepo } from './defaults'
@@ -13,7 +14,10 @@ type MdxProvider = {
 
 export type GetPublicPostBySlugOptions = {
   mdx?: MdxProvider
-  articleRepo?: Pick<ArticleRepo, 'findById' | 'findBySlug' | 'findBySlugAndLanguage'> | PublicArticleRepo
+  articleRepo?: (
+    Pick<ArticleRepo, 'findById' | 'findBySlug'> &
+    Partial<Pick<ArticleRepo, 'findBySlugAndLanguage' | 'listByStatus'>>
+  ) | PublicArticleRepo
 }
 
 type RepoWithListByStatus = Pick<ArticleRepo, 'listByStatus'>
@@ -57,7 +61,64 @@ function uniqueNonEmpty(list: string[]): string[] {
   return out
 }
 
-export async function getPublicPostBySlug(
+type PublicPostRepo = NonNullable<GetPublicPostBySlugOptions['articleRepo']>
+
+function toPublicDbPost(article: Article): PublicPost {
+  const sanitized = sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' })
+  const contentHtml = renderRichTextEmbeds(sanitized, article.contentJson)
+  return { source: 'db', article: { ...article, contentHtml } }
+}
+
+async function loadPublicPostForLanguage(
+  raw: string,
+  decoded: string,
+  trimmed: string,
+  language: string,
+  mdx: MdxProvider,
+  repo: PublicPostRepo | null
+): Promise<PublicPost | null> {
+  for (const candidate of uniqueNonEmpty([trimmed, raw.trim()])) {
+    const mdxPost = await mdx.getPostBySlug(candidate, language).catch(() => null)
+    if (mdxPost) return { source: 'mdx', post: mdxPost }
+  }
+
+  if (!repo) return null
+
+  const id = extractArticleIdFromPostKey(trimmed)
+  if (id && 'findById' in repo) {
+    const found = await repo.findById(id)
+    if (found && String(found.language || 'zh') === language) {
+      if (found.status !== 'published') return null
+      return toPublicDbPost(found)
+    }
+  }
+
+  for (const candidate of uniqueNonEmpty([decoded, trimmed, normalizeArticleSlug(decoded)])) {
+    const article = 'findBySlugAndLanguage' in repo && typeof repo.findBySlugAndLanguage === 'function'
+      ? await repo.findBySlugAndLanguage(candidate, language)
+      : await repo.findBySlug(candidate)
+
+    if (!article || String(article.language || 'zh') !== language) continue
+    if (article.status !== 'published') return null
+    return toPublicDbPost(article)
+  }
+
+  if (isFallbackHashSlug(trimmed) && hasListByStatus(repo)) {
+    const published = await repo.listByStatus('published', language)
+    for (const article of published) {
+      if (String(article.language || 'zh') !== language) continue
+      const title = String(article.title || '')
+      if (!title) continue
+      const legacy = generateSlugFromTitle(title, new Date('2025-01-01T00:00:00.000Z'))
+      if (legacy !== trimmed) continue
+      return toPublicDbPost(article)
+    }
+  }
+
+  return null
+}
+
+async function loadPublicPostBySlug(
   slug: string,
   language: string = 'zh',
   options?: GetPublicPostBySlugOptions
@@ -68,60 +129,27 @@ export async function getPublicPostBySlug(
   if (!trimmed) return null
 
   const mdx = options?.mdx ?? { getPostBySlug: getSnapshotPostBySlug }
-  for (const candidate of uniqueNonEmpty([trimmed, raw.trim()])) {
-    const mdxPost = await mdx.getPostBySlug(candidate, language).catch(() => null)
-    if (mdxPost) return { source: 'mdx', post: mdxPost }
-  }
-
   const repo = options?.articleRepo ?? (await getDefaultPublicArticleRepo())
-  if (!repo) return null
+  const found = await loadPublicPostForLanguage(raw, decoded, trimmed, language, mdx, repo)
+  if (found || language === 'zh') return found
 
-  const id = extractArticleIdFromPostKey(trimmed)
-  if (id && 'findById' in repo) {
-    const found = await repo.findById(id).catch(() => null)
-    if (found && found.status === 'published') {
-      const sanitized = sanitizeRichTextHtml(found.contentHtml || '', { imageMode: 'progressive' })
-      const contentHtml = renderRichTextEmbeds(sanitized, (found as any).contentJson)
-      const isFallback = language !== 'zh' && found.language === 'zh'
-      return { source: 'db', article: { ...found, contentHtml }, isFallback }
-    }
-  }
-
-  for (const candidate of uniqueNonEmpty([decoded, trimmed, normalizeArticleSlug(decoded)])) {
-    let article = null
-    let isFallback = false
-
-    if ('findBySlugAndLanguage' in repo && typeof repo.findBySlugAndLanguage === 'function') {
-      article = await repo.findBySlugAndLanguage(candidate, language).catch(() => null)
-      if (!article && language !== 'zh') {
-        article = await repo.findBySlugAndLanguage(candidate, 'zh').catch(() => null)
-        if (article) isFallback = true
-      }
-    } else {
-      article = await repo.findBySlug(candidate).catch(() => null)
-    }
-
-    if (!article) continue
-    if (article.status !== 'published') return null
-    const sanitized = sanitizeRichTextHtml(article.contentHtml || '', { imageMode: 'progressive' })
-    const contentHtml = renderRichTextEmbeds(sanitized, (article as any).contentJson)
-    return { source: 'db', article: { ...article, contentHtml }, isFallback }
-  }
-
-  if (isFallbackHashSlug(trimmed) && hasListByStatus(repo)) {
-    const published = await repo.listByStatus('published').catch(() => [])
-    for (const a of published as any[]) {
-      const title = String(a?.title || '')
-      if (!title) continue
-      const legacy = generateSlugFromTitle(title, new Date('2025-01-01T00:00:00.000Z'))
-      if (legacy !== trimmed) continue
-      if (a?.status !== 'published') continue
-      const sanitized = sanitizeRichTextHtml(a.contentHtml || '', { imageMode: 'progressive' })
-      const contentHtml = renderRichTextEmbeds(sanitized, (a as any).contentJson)
-      const isFallback = language !== 'zh' && (a.language || 'zh') === 'zh'
-      return { source: 'db', article: { ...a, contentHtml }, isFallback }
-    }
+  const fallback = await loadPublicPostForLanguage(raw, decoded, trimmed, 'zh', mdx, repo)
+  if (fallback) {
+    return { ...fallback, isFallback: true }
   }
 
   return null
+}
+
+const getCachedPublicPostBySlug = cache(async (slug: string, language: string) => {
+  return loadPublicPostBySlug(slug, language)
+})
+
+export async function getPublicPostBySlug(
+  slug: string,
+  language: string = 'zh',
+  options?: GetPublicPostBySlugOptions
+): Promise<PublicPost | null> {
+  if (options) return loadPublicPostBySlug(slug, language, options)
+  return getCachedPublicPostBySlug(slug, language)
 }

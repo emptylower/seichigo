@@ -85,12 +85,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       robots: { index: false, follow: false },
     }
   }
-  // Try to find English translation first, fallback to Chinese
-  let found = await getPublicPostBySlug(slug, 'en')
-  const hasEnTranslation = !!found
-  if (!found) {
-    found = await getPublicPostBySlug(slug, 'zh')
-  }
+  const found = await getPublicPostBySlug(slug, 'en')
+  const hasEnTranslation = !!found && !found.isFallback
   
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)
@@ -171,12 +167,8 @@ export default async function PostEnPage({ params }: { params: Promise<{ slug: s
     )
   }
   
-  // Try to find English translation first, fallback to Chinese
-  let found = await getPublicPostBySlug(slug, 'en')
-  const hasEnTranslation = !!found
-  if (!found) {
-    found = await getPublicPostBySlug(slug, 'zh')
-  }
+  const found = await getPublicPostBySlug(slug, 'en')
+  const hasEnTranslation = !!found && !found.isFallback
   
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)

@@ -4,7 +4,7 @@ import { normalizeCityAlias } from '@/lib/city/normalize'
 import { prisma } from '@/lib/db/prisma'
 import { toHomeDataSourceError } from '@/lib/home/dataSourceError'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { getAllPublicPosts, getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
+import { getAllPublicPosts, getAllPublicPostsStrict } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 
 type CityCountsByLocale = {
@@ -13,6 +13,16 @@ type CityCountsByLocale = {
 }
 
 type FailureMode = 'fallback' | 'throw'
+
+const defaultDeps = {
+  listCitiesForIndex,
+  countPublishedArticlesByCityIds,
+  findCityAliases: () => prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }),
+  getAllPublicPosts,
+  getAllPublicPostsStrict,
+}
+
+export type GetCityCountsByLocaleDeps = Partial<typeof defaultDeps>
 
 async function loadCitySource<T>(
   source: string,
@@ -32,18 +42,20 @@ async function loadCitySource<T>(
 
 async function loadCityCountsByLocale(
   locale: SupportedLocale,
-  failureMode: FailureMode = 'fallback'
+  failureMode: FailureMode = 'fallback',
+  injectedDeps?: GetCityCountsByLocaleDeps
 ): Promise<CityCountsByLocale> {
+  const deps = { ...defaultDeps, ...injectedDeps }
   if (failureMode === 'throw' && !process.env.DATABASE_URL) {
     return { cities: [], counts: {} }
   }
 
-  const cities = await loadCitySource('city.list', listCitiesForIndex, [], failureMode)
+  const cities = await loadCitySource('city.list', deps.listCitiesForIndex, [], failureMode)
   if (!cities.length) return { cities: [], counts: {} }
 
   const dbCounts = await loadCitySource(
     'city.article-counts',
-    () => countPublishedArticlesByCityIds(cities.map((c) => c.id), locale),
+    () => deps.countPublishedArticlesByCityIds(cities.map((c) => c.id), locale),
     {} as Record<string, number>,
     failureMode
   )
@@ -51,7 +63,7 @@ async function loadCityCountsByLocale(
   // Include MDX posts in counts when their city matches a known alias.
   const aliasRows = await loadCitySource(
     'city.aliases',
-    () => prisma.cityAlias.findMany({ select: { cityId: true, aliasNorm: true } }),
+    deps.findCityAliases,
     [],
     failureMode
   )
@@ -70,8 +82,8 @@ async function loadCityCountsByLocale(
   const publicPosts = await loadCitySource(
     'city.public-posts',
     () => failureMode === 'throw'
-      ? getAllPublicPostsForHome(locale)
-      : getAllPublicPosts(locale),
+      ? deps.getAllPublicPostsStrict(locale)
+      : deps.getAllPublicPosts(locale),
     [],
     failureMode
   )
@@ -99,12 +111,31 @@ const getCachedCityCountsByLocale = unstable_cache(
   { revalidate: 300 }
 )
 
-export async function getCityCountsByLocale(locale: SupportedLocale): Promise<CityCountsByLocale> {
+const getCachedCityCountsByLocaleStrict = unstable_cache(
+  async (locale: SupportedLocale) => loadCityCountsByLocale(locale, 'throw'),
+  ['city:getCityCountsByLocaleStrict'],
+  { revalidate: 300 }
+)
+
+export async function getCityCountsByLocale(
+  locale: SupportedLocale,
+  deps?: GetCityCountsByLocaleDeps
+): Promise<CityCountsByLocale> {
+  if (deps) return loadCityCountsByLocale(locale, 'fallback', deps)
   return getCachedCityCountsByLocale(locale)
 }
 
 export async function getCityCountsByLocaleForHome(
-  locale: SupportedLocale
+  locale: SupportedLocale,
+  deps?: GetCityCountsByLocaleDeps
 ): Promise<CityCountsByLocale> {
-  return loadCityCountsByLocale(locale, 'throw')
+  return getCityCountsByLocaleStrict(locale, deps)
+}
+
+export async function getCityCountsByLocaleStrict(
+  locale: SupportedLocale,
+  deps?: GetCityCountsByLocaleDeps
+): Promise<CityCountsByLocale> {
+  if (deps) return loadCityCountsByLocale(locale, 'throw', deps)
+  return getCachedCityCountsByLocaleStrict(locale)
 }

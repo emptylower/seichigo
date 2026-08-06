@@ -96,6 +96,12 @@ const getCachedMergedAnime = unstable_cache(
   { revalidate: 120 }
 )
 
+const getCachedMergedAnimeStrict = unstable_cache(
+  async (includeHidden: boolean) => loadMergedAnime(includeHidden, undefined, 'throw'),
+  ['anime:getAllAnimeStrict'],
+  { revalidate: 120 }
+)
+
 export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]> {
   if (options?.baseList) {
     return loadMergedAnime(Boolean(options?.includeHidden), options.baseList)
@@ -104,7 +110,15 @@ export async function getAllAnime(options?: GetAllAnimeOptions): Promise<Anime[]
 }
 
 export async function getAllAnimeForHome(options?: GetAllAnimeOptions): Promise<Anime[]> {
-  return loadMergedAnime(Boolean(options?.includeHidden), options?.baseList, 'throw')
+  return getAllAnimeStrict(options)
+}
+
+export async function getAllAnimeStrict(options?: GetAllAnimeOptions): Promise<Anime[]> {
+  if (options?.baseList) {
+    return loadMergedAnime(Boolean(options.includeHidden), options.baseList, 'throw')
+  }
+
+  return getCachedMergedAnimeStrict(Boolean(options?.includeHidden))
 }
 
 export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Promise<Anime | null> {

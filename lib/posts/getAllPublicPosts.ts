@@ -154,6 +154,12 @@ const getCachedAllPublicPosts = unstable_cache(
   { revalidate: 120 }
 )
 
+const getCachedAllPublicPostsStrict = unstable_cache(
+  async (language: string) => loadAllPublicPosts(language, undefined, 'throw'),
+  ['posts:getAllPublicPostsStrict'],
+  { revalidate: 120 }
+)
+
 export async function getAllPublicPosts(
   language: string = 'zh',
   options?: GetAllPublicPostsOptions
@@ -169,5 +175,16 @@ export async function getAllPublicPostsForHome(
   language: string = 'zh',
   options?: GetAllPublicPostsOptions
 ): Promise<PublicPostListItem[]> {
-  return loadAllPublicPosts(language, options, 'throw')
+  return getAllPublicPostsStrict(language, options)
+}
+
+export async function getAllPublicPostsStrict(
+  language: string = 'zh',
+  options?: GetAllPublicPostsOptions
+): Promise<PublicPostListItem[]> {
+  if (options?.mdx || options?.articleRepo) {
+    return loadAllPublicPosts(language, options, 'throw')
+  }
+
+  return getCachedAllPublicPostsStrict(language)
 }

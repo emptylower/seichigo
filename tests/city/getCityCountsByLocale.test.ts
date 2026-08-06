@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeDataSourceError } from '@/lib/home/dataSourceError'
-import { getCityCountsByLocale, getCityCountsByLocaleForHome } from '@/lib/city/getCityCountsByLocale'
+import {
+  getCityCountsByLocale,
+  getCityCountsByLocaleForHome,
+  getCityCountsByLocaleStrict,
+} from '@/lib/city/getCityCountsByLocale'
 
 const mocks = vi.hoisted(() => ({
   listCitiesForIndex: vi.fn(),
   countPublishedArticlesByCityIds: vi.fn(),
   findAliases: vi.fn(),
   getAllPublicPosts: vi.fn(),
-  getAllPublicPostsForHome: vi.fn(),
+  getAllPublicPostsStrict: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({
@@ -25,7 +29,7 @@ vi.mock('@/lib/db/prisma', () => ({
 
 vi.mock('@/lib/posts/getAllPublicPosts', () => ({
   getAllPublicPosts: mocks.getAllPublicPosts,
-  getAllPublicPostsForHome: mocks.getAllPublicPostsForHome,
+  getAllPublicPostsStrict: mocks.getAllPublicPostsStrict,
 }))
 
 describe('getCityCountsByLocale home strict mode', () => {
@@ -54,7 +58,7 @@ describe('getCityCountsByLocale home strict mode', () => {
     mocks.countPublishedArticlesByCityIds.mockResolvedValue({})
     mocks.findAliases.mockResolvedValue([])
     mocks.getAllPublicPosts.mockResolvedValue([])
-    mocks.getAllPublicPostsForHome.mockResolvedValue([])
+    mocks.getAllPublicPostsStrict.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -77,18 +81,32 @@ describe('getCityCountsByLocale home strict mode', () => {
   it('accepts a successful empty city query', async () => {
     mocks.listCitiesForIndex.mockResolvedValue([])
 
-    await expect(getCityCountsByLocaleForHome('en')).resolves.toEqual({ cities: [], counts: {} })
+    await expect(getCityCountsByLocaleStrict('en', {
+      listCitiesForIndex: mocks.listCitiesForIndex,
+    })).resolves.toEqual({ cities: [], counts: {} })
+  })
+
+  it('propagates an injected strict source failure', async () => {
+    const reason = new Error('injected city source failed')
+
+    await expect(getCityCountsByLocaleStrict('en', {
+      listCitiesForIndex: async () => { throw reason },
+    })).rejects.toMatchObject({
+      source: 'city.list',
+      kind: 'failure',
+      reason,
+    })
   })
 
   it.each([
     ['city.list', () => mocks.listCitiesForIndex.mockRejectedValue(new Error('list failed'))],
     ['city.article-counts', () => mocks.countPublishedArticlesByCityIds.mockRejectedValue(new Error('counts failed'))],
     ['city.aliases', () => mocks.findAliases.mockRejectedValue(new Error('aliases failed'))],
-    ['city.public-posts', () => mocks.getAllPublicPostsForHome.mockRejectedValue(new Error('posts failed'))],
+    ['city.public-posts', () => mocks.getAllPublicPostsStrict.mockRejectedValue(new Error('posts failed'))],
   ])('rejects instead of returning partial data when %s fails', async (source, fail) => {
     fail()
 
-    await expect(getCityCountsByLocaleForHome('en')).rejects.toMatchObject({
+    await expect(getCityCountsByLocaleStrict('en')).rejects.toMatchObject({
       source,
       kind: 'failure',
       reason: expect.any(Error),
@@ -97,11 +115,11 @@ describe('getCityCountsByLocale home strict mode', () => {
 
   it('preserves a nested strict posts error and its original reason', async () => {
     const reason = new Error('posts database failed')
-    mocks.getAllPublicPostsForHome.mockRejectedValue(
+    mocks.getAllPublicPostsStrict.mockRejectedValue(
       new HomeDataSourceError('posts.database', 'failure', reason)
     )
 
-    await expect(getCityCountsByLocaleForHome('en')).rejects.toMatchObject({
+    await expect(getCityCountsByLocaleStrict('en')).rejects.toMatchObject({
       source: 'posts.database',
       kind: 'failure',
       reason,

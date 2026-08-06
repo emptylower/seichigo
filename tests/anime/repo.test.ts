@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAllAnime, getAllAnimeForHome } from '@/lib/anime/getAllAnime'
+import { getAllAnime, getAllAnimeStrict } from '@/lib/anime/getAllAnime'
 
 const mocks = vi.hoisted(() => ({
   prisma: {
@@ -106,7 +106,7 @@ describe('getAllAnime', () => {
     const reason = new Error('database unavailable')
     mocks.prisma.anime.findMany.mockRejectedValue(reason)
 
-    await expect(getAllAnimeForHome({ baseList })).rejects.toMatchObject({
+    await expect(getAllAnimeStrict({ baseList })).rejects.toMatchObject({
       source: 'anime.database',
       kind: 'failure',
       reason,
@@ -116,13 +116,13 @@ describe('getAllAnime', () => {
   it('home strict mode skips an unconfigured database source', async () => {
     delete process.env.DATABASE_URL
 
-    await expect(getAllAnimeForHome({ baseList })).resolves.toEqual(baseList)
+    await expect(getAllAnimeStrict({ baseList })).resolves.toEqual(baseList)
     expect(mocks.prisma.anime.findMany).not.toHaveBeenCalled()
   })
 
   it('home strict mode accepts a successful empty database and base list', async () => {
     mocks.prisma.anime.findMany.mockResolvedValue([])
 
-    await expect(getAllAnimeForHome({ baseList: [] })).resolves.toEqual([])
+    await expect(getAllAnimeStrict({ baseList: [] })).resolves.toEqual([])
   })
 })

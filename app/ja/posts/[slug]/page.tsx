@@ -85,12 +85,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       robots: { index: false, follow: false },
     }
   }
-  // Try to find Japanese translation first, fallback to Chinese
-  let found = await getPublicPostBySlug(slug, 'ja')
-  const hasJaTranslation = !!found
-  if (!found) {
-    found = await getPublicPostBySlug(slug, 'zh')
-  }
+  const found = await getPublicPostBySlug(slug, 'ja')
+  const hasJaTranslation = !!found && !found.isFallback
   
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)
@@ -171,12 +167,8 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
     )
   }
   
-  // Try to find Japanese translation first, fallback to Chinese
-  let found = await getPublicPostBySlug(slug, 'ja')
-  const hasJaTranslation = !!found
-  if (!found) {
-    found = await getPublicPostBySlug(slug, 'zh')
-  }
+  const found = await getPublicPostBySlug(slug, 'ja')
+  const hasJaTranslation = !!found && !found.isFallback
   
   if (!found) {
     const article = await getDbArticleForPublicNotice(slug)

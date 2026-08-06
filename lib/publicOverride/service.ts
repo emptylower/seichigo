@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { normalizeArticleSlug } from '@/lib/article/slug'
+import { cache } from 'react'
 
 export type PublicOverrideTargetType = 'post' | 'resource'
 export type PublicOverrideAction = 'hide' | 'redirect' | 'replace-with-emergency-copy'
@@ -60,10 +61,6 @@ type RawPublicOverride = {
 const ALLOWED_TARGET_TYPES = new Set<PublicOverrideTargetType>(['post', 'resource'])
 const ALLOWED_ACTIONS = new Set<PublicOverrideAction>(['hide', 'redirect', 'replace-with-emergency-copy'])
 let hasLoggedOverrideFallback = false
-
-function shouldBypassPublicOverrideLookupAtBuild(): boolean {
-  return process.env.NEXT_PHASE === 'phase-production-build'
-}
 
 function normalizeText(value: unknown): string {
   return String(value || '').trim()
@@ -223,7 +220,6 @@ export function pickBestOverride(
 
 async function findOverrides(targetType: PublicOverrideTargetType, targetKeys: string[], locales: (string | null)[]) {
   if (!targetKeys.length) return []
-  if (shouldBypassPublicOverrideLookupAtBuild()) return []
 
   const rows = await prisma.publicOverride.findMany({
     where: {
@@ -236,15 +232,18 @@ async function findOverrides(targetType: PublicOverrideTargetType, targetKeys: s
   }).catch((error) => {
     if (!hasLoggedOverrideFallback) {
       hasLoggedOverrideFallback = true
-      console.warn('[publicOverride] findMany fallback to empty', error)
+      console.warn('[publicOverride] findMany failed', error)
     }
-    return []
+    throw error
   })
 
   return rows.map((row) => mapRecord(row as RawPublicOverride))
 }
 
-export async function resolvePublicOverrideForPost(slug: string, locale: string): Promise<PublicOverrideRecord | null> {
+const resolvePublicOverrideForPostCached = cache(async (
+  slug: string,
+  locale: string
+): Promise<PublicOverrideRecord | null> => {
   const raw = normalizeText(slug)
   if (!raw) return null
 
@@ -253,6 +252,10 @@ export async function resolvePublicOverrideForPost(slug: string, locale: string)
   const locales = Array.from(new Set([normalizeLocale(locale), locale === 'zh' ? null : 'zh', null]))
   const matches = await findOverrides('post', keys, locales)
   return pickBestOverride(matches, locales.filter((value): value is string => typeof value === 'string'))
+})
+
+export async function resolvePublicOverrideForPost(slug: string, locale: string): Promise<PublicOverrideRecord | null> {
+  return resolvePublicOverrideForPostCached(slug, locale)
 }
 
 export async function resolvePublicOverrideForResource(id: string, locale: string): Promise<PublicOverrideRecord | null> {

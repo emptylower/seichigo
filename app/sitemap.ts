@@ -1,12 +1,12 @@
 import type { MetadataRoute } from 'next'
-import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
-import { getAllAnime } from '@/lib/anime/getAllAnime'
+import { getAllPublicPostsStrict } from '@/lib/posts/getAllPublicPosts'
+import { getAllAnimeStrict } from '@/lib/anime/getAllAnime'
 import { listCitiesForIndex } from '@/lib/city/db'
 import { getAllLinkAssets } from '@/lib/linkAsset/getAllLinkAssets'
 import { getSiteOrigin } from '@/lib/seo/site'
 
 export const runtime = 'nodejs'
-export const revalidate = 3600
+export const revalidate = 120
 
 function toLastModified(input?: string): Date | undefined {
   const raw = typeof input === 'string' ? input.trim() : ''
@@ -19,12 +19,12 @@ function toLastModified(input?: string): Date | undefined {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getSiteOrigin()
   const [postsZh, postsEn, postsJa, anime, cities, resources] = await Promise.all([
-    getAllPublicPosts('zh').catch(() => []),
-    getAllPublicPosts('en').catch(() => []),
-    getAllPublicPosts('ja').catch(() => []),
-    getAllAnime().catch(() => []),
-    listCitiesForIndex().catch(() => []),
-    getAllLinkAssets().catch(() => []),
+    getAllPublicPostsStrict('zh'),
+    getAllPublicPostsStrict('en'),
+    getAllPublicPostsStrict('ja'),
+    getAllAnimeStrict(),
+    process.env.DATABASE_URL ? listCitiesForIndex() : Promise.resolve([]),
+    getAllLinkAssets(),
   ])
   const postsByPath = new Map<string, (typeof postsZh)[number]>()
   for (const post of [...postsZh, ...postsEn, ...postsJa]) {
