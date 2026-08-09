@@ -1,18 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "fluid": true,
-  "crons": [
-    {
-      "path": "/api/cron/anitabi/daily",
-      "schedule": "10 3 * * *"
-    },
-    {
-      "path": "/api/cron/anitabi/translate",
-      "schedule": "25 3 * * *"
-    },
-    {
-      "path": "/api/cron/ops/daily",
-      "schedule": "0 0 * * *"
-    }
-  ]
+  "fluid": true
 }

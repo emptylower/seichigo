@@ -8,13 +8,14 @@
     "@prisma/client/wasm": "../../node_modules/@prisma/client/wasm.js"
   },
   "triggers": {
-    "crons": ["*/5 * * * *", "0 * * * *"]
+    "crons": ["*/5 * * * *", "0 * * * *", "15 3 * * *"]
   },
   "vars": {
-    "MAP_IMAGE_MIRROR_CRON_ENABLED": "1"
+    "MAP_IMAGE_MIRROR_CRON_ENABLED": "1",
+    "SEICHIGO_ORIGIN": "https://seichigo.com"
   },
   "secrets": {
-    "required": ["DATABASE_URL"]
+    "required": ["DATABASE_URL", "ANITABI_CRON_SECRET", "OPS_CRON_SECRET"]
   },
   "r2_buckets": [
     { "binding": "MAP_IMAGE_CACHE", "bucket_name": "seichigo-anitabi-images" }
