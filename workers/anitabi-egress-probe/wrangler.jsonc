@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "seichigo-anitabi-egress-probe",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PROBE_STORE",
+        "class_name": "EgressProbeStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["EgressProbeStore"]
+    }
+  ],
+  "secrets": {
+    "required": ["PROBE_SECRET"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
