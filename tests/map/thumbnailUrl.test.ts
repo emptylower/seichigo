@@ -90,14 +90,15 @@ describe('toMapDisplayImageUrl', () => {
     )
   })
 
-  it('prefers direct image.anitabi.cn bangumi covers with proxy fallback candidates', () => {
+  it('prefers direct anitabi bangumi covers on the delivery host with proxy fallback candidates', () => {
     expect(getMapDisplayImageCandidates('https://www.anitabi.cn/bangumi/290980.jpg', { kind: 'cover' })).toEqual([
-      'https://image.anitabi.cn/bangumi/290980.jpg',
-      'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
+      // direct 一档切到 EdgeOne 投递 host；proxy 一档保留 canonical host 由服务端再解析。
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
       'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fbangumi%2F290980.jpg',
     ])
     expect(toMapDisplayImageUrl('https://www.anitabi.cn/bangumi/290980.jpg', { kind: 'cover' })).toBe(
-      'https://image.anitabi.cn/bangumi/290980.jpg',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
     )
   })
 

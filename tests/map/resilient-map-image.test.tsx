@@ -315,11 +315,11 @@ describe('ResilientMapImage', () => {
     )
 
     const img = await screen.findByAltText('bangumi') as HTMLImageElement
-    expect(img.src).toBe('https://image.anitabi.cn/bangumi/290980.jpg')
+    expect(img.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
 
     fireEvent.error(img)
     const directRetryCandidate = await screen.findByAltText('bangumi') as HTMLImageElement
-    expect(directRetryCandidate.src).toBe('https://image.anitabi.cn/bangumi/290980.jpg?_retry=1')
+    expect(directRetryCandidate.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1')
 
     fireEvent.error(directRetryCandidate)
     const proxyFallbackCandidate = await screen.findByAltText('bangumi') as HTMLImageElement
@@ -435,7 +435,7 @@ describe('ResilientMapImage', () => {
     try {
       vi.setSystemTime(0)
       process.env[BREAKER_FLAG] = '1'
-      recordHostFailure('image.anitabi.cn', 'cover', 0)
+      recordHostFailure('img-tc.anitabi.cn', 'cover', 0)
 
       const requestStart = vi.fn((input) => ({
         requestUrl: input.requestedCandidateUrl,
@@ -461,7 +461,7 @@ describe('ResilientMapImage', () => {
 
       expect(requestStart).toHaveBeenCalledTimes(1)
       const initial = screen.getByAltText('degraded-cover') as HTMLImageElement
-      expect(initial.src).toBe('https://image.anitabi.cn/bangumi/290980.jpg')
+      expect(initial.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
 
       fireEvent.error(initial)
 
@@ -473,7 +473,7 @@ describe('ResilientMapImage', () => {
       expect(requestStart).toHaveBeenCalledTimes(2)
       expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
         candidateIndex: 1,
-        requestedCandidateUrl: 'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
+        requestedCandidateUrl: 'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
       })
 
       await act(async () => {

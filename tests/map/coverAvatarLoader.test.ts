@@ -198,7 +198,7 @@ describe('CoverAvatarLoader', () => {
       removeImage: vi.fn(),
       hasImage: vi.fn(() => false),
       loadImage: vi.fn(async (url: string) => {
-        if (url === 'https://image.anitabi.cn/bangumi/290980.jpg' || url === 'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1') {
+        if (url === 'https://img-tc.anitabi.cn/bangumi/290980.jpg' || url === 'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1') {
           throw new Error('direct failed')
         }
         return { data: { width: 16, height: 16, url } }
@@ -210,8 +210,8 @@ describe('CoverAvatarLoader', () => {
 
     expect(map.loadImage).toHaveBeenCalledTimes(3)
     const loadCalls = map.loadImage.mock.calls as any[][]
-    expect(loadCalls[0]?.[0]).toBe('https://image.anitabi.cn/bangumi/290980.jpg')
-    expect(loadCalls[1]?.[0]).toBe('https://image.anitabi.cn/bangumi/290980.jpg?_retry=1')
+    expect(loadCalls[0]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
+    expect(loadCalls[1]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1')
     expect(decodeURIComponent(String(loadCalls[2]?.[0] || ''))).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg')
   })
 
@@ -221,7 +221,7 @@ describe('CoverAvatarLoader', () => {
       removeImage: vi.fn(),
       hasImage: vi.fn(() => false),
       loadImage: vi.fn(async (url: string): Promise<{ data: { width: number; height: number; url: string } }> => {
-        if (url === 'https://image.anitabi.cn/bangumi/290980.jpg') {
+        if (url === 'https://img-tc.anitabi.cn/bangumi/290980.jpg') {
           return await new Promise(() => {})
         }
         return { data: { width: 16, height: 16, url } }
@@ -237,6 +237,6 @@ describe('CoverAvatarLoader', () => {
     await loader.updateViewport([{ bangumiId: 290980, coverUrl: 'https://www.anitabi.cn/bangumi/290980.jpg' }])
 
     expect(map.loadImage).toHaveBeenCalledTimes(2)
-    expect(map.loadImage.mock.calls[1]?.[0]).toBe('https://image.anitabi.cn/bangumi/290980.jpg?_retry=1')
+    expect(map.loadImage.mock.calls[1]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1')
   })
 })
