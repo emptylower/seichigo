@@ -507,6 +507,11 @@ export async function runAnitabiSync(
     const pointCountMap = new Map(pointCounts.map((row) => [row.bangumiId, row._count._all]))
 
     const known = await deps.prisma.anitabiBangumi.findMany({
+      // id <= 0 不是有效的 Bangumi subject ID。库里确实存在这种脏数据
+      // （id=0 / titleZh='#0'，来自 2026-02 旧同步 normalizeBangumi 的兜底值），
+      // 而它排在轮转队首，会让每轮开头就对上游发无效请求 ——
+      // 这正是要避免的行为：无效请求同样计入 IP 信誉。
+      where: { id: { gt: 0 } },
       select: {
         id: true,
         sourceModifiedMs: true,

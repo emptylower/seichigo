@@ -454,6 +454,19 @@ describe('sync endpoint convergence', () => {
     expect(mocks.fetchTextWithRetry).not.toHaveBeenCalled()
   })
 
+  it('excludes non-positive bangumi ids from the rotation', async () => {
+    // 库里存在 id=0 的脏数据（titleZh='#0'，旧同步的兜底值），且排在轮转队首。
+    // 对上游发无效请求同样计入 IP 信誉，必须在枚举层就排除。
+    const deps = createDeps({ existingPointRows: [], pointsLength: 1 })
+    mockUpstream(1, 1)
+
+    const { runAnitabiSync } = await import('@/lib/anitabi/sync/workflow')
+    await runAnitabiSync(deps, { mode: 'full' })
+
+    const findManyArgs = (deps.prisma.anitabiBangumi.findMany as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    expect(findManyArgs.where).toEqual({ id: { gt: 0 } })
+  })
+
   it('skips points/detail when the upstream modified timestamp is unchanged', async () => {
     // 省一次上游请求 —— 频率越低，IP 信誉越安全。
     const deps = createDeps({ existingPointRows: [], pointsLength: 0 })
