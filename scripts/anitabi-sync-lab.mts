@@ -41,8 +41,12 @@ console.log(`  apiBase  ${deps.getApiBase()}`)
 console.log(`  siteBase ${deps.getSiteBase()}\n`)
 
 const t0 = Date.now()
+const maxRows = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_ROWS_PER_RUN || ''), 10)
 try {
-  const report = await runAnitabiSync(deps, { mode, maxRowsPerRun: 3 })
+  const report = await runAnitabiSync(deps, {
+    mode,
+    maxRowsPerRun: Number.isFinite(maxRows) ? maxRows : 3,
+  })
   console.log(`\n=== report (${Date.now() - t0}ms) ===`)
   console.log(JSON.stringify(report, null, 2))
 } catch (e: any) {

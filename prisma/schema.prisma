@@ -732,10 +732,15 @@ model AnitabiBangumiMeta {
   logsJson          Json?
   removedPointsJson Json?
   completenessJson  Json?
+  /// 上次向上游核对该作品的时间。枚举层按它最旧优先轮转 ——
+  /// 官方 API 没有列出全部作品的入口，只能靠库内 ID 轮转覆盖全量。
+  lastCheckedAt     DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+
+  @@index([lastCheckedAt])
 }
 
 model AnitabiContributor {
