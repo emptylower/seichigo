@@ -14,10 +14,15 @@ const workflowMocks = vi.hoisted(() => ({
   reconcileMirrorAfterDiff: vi.fn(),
 }))
 
-vi.mock('@/lib/anitabi/source/client', () => ({
-  fetchJsonWithRetry: workflowMocks.fetchJsonWithRetry,
-  fetchTextWithRetry: workflowMocks.fetchTextWithRetry,
-}))
+vi.mock('@/lib/anitabi/source/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/anitabi/source/client')>()
+  return {
+    // HttpStatusError 是真实类，workflow 用 instanceof 判 403，必须保留原实现。
+    HttpStatusError: actual.HttpStatusError,
+    fetchJsonWithRetry: workflowMocks.fetchJsonWithRetry,
+    fetchTextWithRetry: workflowMocks.fetchTextWithRetry,
+  }
+})
 
 vi.mock('@/lib/anitabi/sync/rawStore', () => ({
   writeRawJson: workflowMocks.writeRawJson,
@@ -104,16 +109,20 @@ function createWorkflowDeps(options: {
           {
             id: 1,
             sourceModifiedMs: BigInt(1),
-            meta: { pointsLength: 0 },
+            meta: { pointsLength: 0, lastCheckedAt: null },
           },
         ]),
         findUnique: vi.fn().mockResolvedValue({
           cover: 'https://image.anitabi.cn/bangumi/1/old.jpg',
         }),
         upsert: vi.fn().mockResolvedValue({}),
+        // 检查点（sourceModifiedMs / lastCheckedAt）延后到所有点位写入与删除
+        // 都有结果之后，由单独的 update 提交。
+        update: vi.fn().mockResolvedValue({}),
       },
       anitabiBangumiMeta: {
         upsert: vi.fn().mockResolvedValue({}),
+        update: vi.fn().mockResolvedValue({}),
       },
       anitabiPoint: {
         groupBy: vi.fn().mockResolvedValue([]),
@@ -406,39 +415,50 @@ describe('reconcileMirrorAfterDiff', () => {
 
 describe('runAnitabiSync mirror reconcile hook', () => {
   const originalFlag = process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED
+  const originalInterval = process.env.ANITABI_SYNC_MIN_INTERVAL_MS
+  const originalRatio = process.env.ANITABI_SYNC_MAX_POINT_DELETION_RATIO
 
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    // 端点收敛后每个作品只发两个请求：/lite 然后 /points/detail。
+    // 库内 sourceModifiedMs=1 而 /lite 返回 modified=2 → 判定为已变更，会继续取点位。
+    //
+    // pointsLength: 0 是必需的：本组用例要走到 stale 点位清理，而删除闸门要求上游
+    // 明确声明点位数（字段缺失时一律拒删，见 syncGuards.test.ts）。这里声明 0
+    // 表示「上游确实说没有点位了」，是真实删除场景而非响应不完整。
     workflowMocks.fetchJsonWithRetry
-      .mockResolvedValueOnce([
-        {
-          id: 1,
-          cn: 'Work',
-          title: 'Work',
-          cover: 'https://image.anitabi.cn/bangumi/1/new.jpg',
-          modified: 2,
-        },
-      ])
       .mockResolvedValueOnce({
         id: 1,
         cn: 'Work',
         title: 'Work',
         cover: 'https://image.anitabi.cn/bangumi/1/new.jpg',
         modified: 2,
+        pointsLength: 0,
+        imagesLength: 0,
       })
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce([])
     workflowMocks.fetchTextWithRetry.mockResolvedValue(null)
     workflowMocks.writeRawJson.mockResolvedValue(undefined)
     workflowMocks.writeRawText.mockResolvedValue(undefined)
     workflowMocks.enqueueMapTranslationTasksForBangumiIds.mockResolvedValue(null)
     workflowMocks.pruneMirrorRowsForDeletedPoints.mockResolvedValue(undefined)
     process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED = '1'
+    // 生产默认每次上游请求间隔 1s，测试里不需要真等。
+    process.env.ANITABI_SYNC_MIN_INTERVAL_MS = '0'
+    // 本组用例验的是 stale 点位清理链路本身，fixture 刻意让上游返回空集。
+    // 生产默认有 20% 删除比例闸门（见 syncGuards.test.ts），这里显式关掉，
+    // 否则删除会被闸门正确拦下、测不到清理逻辑。
+    process.env.ANITABI_SYNC_MAX_POINT_DELETION_RATIO = '1'
   })
 
   afterEach(() => {
     if (originalFlag == null) delete process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED
     else process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED = originalFlag
+    if (originalInterval == null) delete process.env.ANITABI_SYNC_MIN_INTERVAL_MS
+    else process.env.ANITABI_SYNC_MIN_INTERVAL_MS = originalInterval
+    if (originalRatio == null) delete process.env.ANITABI_SYNC_MAX_POINT_DELETION_RATIO
+    else process.env.ANITABI_SYNC_MAX_POINT_DELETION_RATIO = originalRatio
     vi.doUnmock('@/lib/anitabi/sync/mirrorReconcile')
     vi.restoreAllMocks()
   })
@@ -470,7 +490,8 @@ describe('runAnitabiSync mirror reconcile hook', () => {
       pointChanges: [],
     })
     expect(warn).toHaveBeenCalledWith(
-      '[anitabi/sync] mirror reconciliation failed for bangumi 1',
+      '[anitabi/sync] mirror reconciliation failed for bangumi 1; '
+        + 'checkpoint held back so the next round retries',
       error,
     )
   })
@@ -556,7 +577,8 @@ describe('runAnitabiSync mirror reconcile hook', () => {
     expect(tx.anitabiPoint.deleteMany).not.toHaveBeenCalled()
     expect(deps.prisma.anitabiPoint.deleteMany).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith(
-      '[anitabi/sync] mirror cleanup failed for deleted points in bangumi 1',
+      '[anitabi/sync] mirror cleanup failed for deleted points in bangumi 1; '
+        + 'checkpoint held back so the next round retries',
       error,
     )
   })
