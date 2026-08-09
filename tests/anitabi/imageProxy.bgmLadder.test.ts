@@ -55,14 +55,15 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     ])
   })
 
-  it('keeps direct-safe anitabi covers on the direct-first ladder', () => {
+  it('keeps direct-safe anitabi covers on the direct-first ladder, direct pointing at the delivery host', () => {
     process.env[BGM_FALLBACK_FLAG] = '1'
 
     expect(
       getMapDisplayImageCandidates('https://www.anitabi.cn/bangumi/290980.jpg', { kind: 'cover' }),
     ).toEqual([
-      'https://image.anitabi.cn/bangumi/290980.jpg',
-      'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
+      // direct 一档已切到 EdgeOne 投递 host；proxy 一档保留 canonical host，由服务端再解析。
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
       'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fbangumi%2F290980.jpg',
     ])
   })

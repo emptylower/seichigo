@@ -32,7 +32,9 @@ export async function getAnitabiApiDeps(): Promise<AnitabiApiDeps> {
     now: () => new Date(),
     getCronSecret: () => String(process.env.ANITABI_CRON_SECRET || process.env.OPS_CRON_SECRET || process.env.CRON_SECRET || '').trim(),
     getApiBase: () => String(process.env.ANITABI_API_BASE_URL || 'https://api.anitabi.cn').replace(/\/+$/, ''),
-    getSiteBase: () => String(process.env.ANITABI_SITE_BASE_URL || 'https://www.anitabi.cn').replace(/\/+$/, ''),
+    // www.anitabi.cn 已 NXDOMAIN（F1），不再作为默认值。主域抓取将在 WS3 整体移除；
+    // 此处默认空字符串，让调用方显式失败而不是静默拼出死链。
+    getSiteBase: () => String(process.env.ANITABI_SITE_BASE_URL || '').replace(/\/+$/, ''),
   }
 
   return cached

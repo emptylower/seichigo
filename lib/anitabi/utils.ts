@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { AnitabiMapTab } from '@/lib/anitabi/types'
+import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 
 export const ANITABI_TAB_LABELS: Record<SupportedLocale, Record<AnitabiMapTab, string>> = {
   zh: {
@@ -95,7 +96,9 @@ export async function asyncPool<T, R>(
 }
 
 function normalizeBaseUrl(input: string | null | undefined): string {
-  const fallback = 'https://www.anitabi.cn'
+  // www.anitabi.cn 已 NXDOMAIN（F1）。相对资源路径默认落到当前可用的图片 CDN 上，
+  // 与 imageNormalize 的投递 host 保持一致。
+  const fallback = resolveAnitabiDeliveryUrl('https://image.anitabi.cn').origin
   const base = normalizeText(input) || fallback
   return base.replace(/\/+$/, '')
 }

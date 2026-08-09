@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { AnitabiBangumiCard } from '@/lib/anitabi/types'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { isValidTheme } from '@/components/map/types'
 import { createGlobalFeatureCollection } from '@/components/map/utils/globalFeatureCollection'
 import { cutSpriteSheet } from '@/components/map/utils/spriteRenderer'
@@ -735,7 +736,10 @@ export function useCompleteMode(ctx: any) {
           img.crossOrigin = 'anonymous'
           img.onload = () => resolve(img)
           img.onerror = () => reject(new Error(`Failed to load: ${url}`))
-          const absoluteUrl = url.startsWith('/') ? `https://www.anitabi.cn${url}` : url
+          // www.anitabi.cn 已 NXDOMAIN；相对路径先落到 canonical host，再解析为当前可用投递 host。
+          const absoluteUrl = url.startsWith('/')
+            ? resolveAnitabiDeliveryUrl(`https://image.anitabi.cn${url}`).toString()
+            : url
           img.src = toCanvasSafeImageUrl(absoluteUrl)
 
           controller.signal.addEventListener('abort', () => {

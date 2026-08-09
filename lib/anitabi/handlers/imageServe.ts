@@ -10,6 +10,7 @@ import {
   storeRenderCache,
 } from '@/lib/anitabi/handlers/imageServeRenderCache'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -234,7 +235,7 @@ async function fetchValidatedImage(input: {
         }
       }
 
-      const response = await fetch(current.toString(), requestInit)
+      const response = await fetch(resolveAnitabiDeliveryUrl(current).toString(), requestInit)
 
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get('location')

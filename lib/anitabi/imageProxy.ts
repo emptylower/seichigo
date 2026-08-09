@@ -1,6 +1,7 @@
 import {
   normalizeAnitabiDisplayVariant,
   normalizeBangumiCoverVariant,
+  resolveAnitabiDeliveryUrl,
 } from '@/lib/anitabi/imageNormalize'
 import type { MapDisplayImageKind } from '@/lib/anitabi/imageNormalize'
 export { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageNormalize'
@@ -178,7 +179,11 @@ export function getMapDisplayImageCandidates(
     normalizeBangumiCoverVariant(url, kind)
     normalizeAnitabiDisplayVariant(url, kind)
 
-    const directUrl = url.toString()
+    // 只换 anitabi 图片 host 到当前可用 CDN；路径与查询保持不变。
+    // canonical（R2 key）仍在 imageNormalize 内部归一到 image.anitabi.cn，不受影响。
+    // direct 一档用投递 host，proxy 一档保留原 host（由服务端在抓取时再解析投递 host）。
+    const deliveryUrl = resolveAnitabiDeliveryUrl(url)
+    const directUrl = deliveryUrl.toString()
     const proxyUrl = buildProxyImageUrl(url)
     if (url.origin === baseOrigin) {
       return [directUrl]
@@ -200,7 +205,7 @@ export function getMapDisplayImageCandidates(
 
     return dedupeCandidates(
       shouldPreferDirect
-        ? [directUrl, buildRetryDirectUrl(url), proxyUrl]
+        ? [directUrl, buildRetryDirectUrl(deliveryUrl), proxyUrl]
         : shouldEnableProxyRetryAndDirectFallback
           ? [proxyUrl, buildRetryProxyUrl(url), directUrl]
           : [proxyUrl]
