@@ -1,0 +1,560 @@
+<title>Anitabi 同步链路 · 故障诊断与恢复方案</title>
+<style>
+  :root {
+    --ground: #EEF1F3;
+    --surface: #FFFFFF;
+    --surface-2: #F6F8F9;
+    --ink: #101820;
+    --ink-2: #3D4A55;
+    --muted: #6B7A85;
+    --line: #D4DBE0;
+    --line-soft: #E4EAEE;
+    --accent: #0B7C8C;
+    --accent-soft: #E0F0F2;
+    --crit: #A81E14;
+    --crit-soft: #FBE7E5;
+    --warn: #7A5600;
+    --warn-soft: #FBF0D9;
+    --ok: #1B6340;
+    --ok-soft: #E1F0E8;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0C1215;
+      --surface: #141C20;
+      --surface-2: #1A2429;
+      --ink: #E4EAED;
+      --ink-2: #B4C1C8;
+      --muted: #8496A0;
+      --line: #2A373D;
+      --line-soft: #212D33;
+      --accent: #46BFD1;
+      --accent-soft: #10333A;
+      --crit: #F08279;
+      --crit-soft: #341714;
+      --warn: #DFB149;
+      --warn-soft: #2F2510;
+      --ok: #6BC79A;
+      --ok-soft: #122E21;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0C1215;
+    --surface: #141C20;
+    --surface-2: #1A2429;
+    --ink: #E4EAED;
+    --ink-2: #B4C1C8;
+    --muted: #8496A0;
+    --line: #2A373D;
+    --line-soft: #212D33;
+    --accent: #46BFD1;
+    --accent-soft: #10333A;
+    --crit: #F08279;
+    --crit-soft: #341714;
+    --warn: #DFB149;
+    --warn-soft: #2F2510;
+    --ok: #6BC79A;
+    --ok-soft: #122E21;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px 96px; }
+  .col { max-width: 68ch; }
+
+  /* ---- masthead ---- */
+  header.mast {
+    border-bottom: 1px solid var(--line);
+    padding: 56px 0 30px;
+    margin-bottom: 44px;
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(29px, 4.2vw, 43px);
+    line-height: 1.14;
+    letter-spacing: -.022em;
+    font-weight: 680;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .standfirst { font-size: 18px; color: var(--ink-2); margin: 0; max-width: 62ch; }
+  .verdict {
+    margin-top: 26px;
+    padding: 15px 18px;
+    background: var(--crit-soft);
+    border-left: 3px solid var(--crit);
+    border-radius: 0 5px 5px 0;
+    font-size: 15.5px;
+    color: var(--ink);
+    max-width: 68ch;
+  }
+  .verdict strong { color: var(--crit); }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 22px;
+    margin-top: 26px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .meta span { white-space: nowrap; }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---- sections ---- */
+  section { margin-bottom: 58px; }
+  h2 {
+    font-size: 13px; font-family: var(--mono); font-weight: 600;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--muted);
+    margin: 0 0 22px; padding-bottom: 9px; border-bottom: 1px solid var(--line-soft);
+  }
+  h3 { font-size: 19px; font-weight: 640; letter-spacing: -.012em; margin: 0 0 9px; text-wrap: balance; }
+  p { margin: 0 0 15px; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  /* ---- findings ---- */
+  .findings { display: flex; flex-direction: column; gap: 16px; }
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 20px 22px;
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 0 20px;
+    align-items: start;
+  }
+  .fid {
+    font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+    color: var(--accent); background: var(--accent-soft);
+    border-radius: 4px; padding: 4px 0; text-align: center;
+    letter-spacing: .04em;
+  }
+  .finding > div:last-child > p:last-child { margin-bottom: 0; }
+  .sev {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+    padding: 2.5px 8px; border-radius: 3px; vertical-align: 2.5px; margin-left: 10px;
+  }
+  .sev.blocker { background: var(--crit-soft); color: var(--crit); }
+  .sev.high { background: var(--warn-soft); color: var(--warn); }
+  .sev.med { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+
+  /* ---- evidence blocks ---- */
+  .ev {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.72;
+    background: var(--surface-2); border: 1px solid var(--line-soft);
+    border-radius: 5px; padding: 13px 15px; margin: 13px 0 4px;
+    overflow-x: auto; white-space: pre; color: var(--ink-2);
+  }
+  .ev .c { color: var(--crit); }
+  .ev .g { color: var(--ok); }
+  .ev .m { color: var(--muted); }
+
+  code:not(.ev code) {
+    font-family: var(--mono); font-size: .885em;
+    background: var(--surface-2); border: 1px solid var(--line-soft);
+    padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+  }
+
+  /* ---- tables ---- */
+  .tw { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+    background: var(--surface-2); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.mono { font-family: var(--mono); font-size: 12.5px; }
+  .tag { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
+  .tag.no { background: var(--crit-soft); color: var(--crit); }
+  .tag.yes { background: var(--ok-soft); color: var(--ok); }
+  .tag.part { background: var(--warn-soft); color: var(--warn); }
+
+  /* ---- options ---- */
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 15px; margin-top: 20px; }
+  .opt {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 7px; padding: 19px 20px; display: flex; flex-direction: column;
+  }
+  .opt.pick { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .opt-h { font-family: var(--mono); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
+  .opt.pick .opt-h { color: var(--accent); }
+  .opt h4 { margin: 0 0 9px; font-size: 16.5px; font-weight: 640; letter-spacing: -.01em; }
+  .opt p { font-size: 14px; color: var(--ink-2); margin: 0 0 12px; }
+  .opt dl { margin: auto 0 0; font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+  .opt dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+  .opt dd { margin: 0; color: var(--ink-2); }
+
+  /* ---- phases ---- */
+  .phase { display: grid; grid-template-columns: 84px 1fr; gap: 0 22px; padding: 19px 0; border-bottom: 1px solid var(--line-soft); }
+  .phase:last-child { border-bottom: none; }
+  .pnum { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); padding-top: 4px; }
+  .phase h3 { font-size: 17px; margin-bottom: 7px; }
+  .phase p { font-size: 14.5px; color: var(--ink-2); margin-bottom: 0; }
+  .phase ul { margin: 9px 0 0; padding-left: 19px; font-size: 14.5px; color: var(--ink-2); }
+  .phase li { margin-bottom: 5px; }
+
+  .note {
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 7px; padding: 17px 20px; font-size: 14.5px; color: var(--ink-2);
+  }
+  .note h3 { font-size: 15px; margin-bottom: 8px; color: var(--ink); }
+  .note ul { margin: 0; padding-left: 19px; }
+  .note li { margin-bottom: 6px; }
+  .note li:last-child { margin-bottom: 0; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 22px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="kicker">seichigo · 事故诊断</p>
+  <h1>Anitabi 同步链路失效<br>诊断报告与恢复方案</h1>
+  <p class="standfirst">管理员面板的作品／图片同步已停摆两个月。根因有四个，彼此独立，其中一个足以让整条链路在第一个请求就死掉。</p>
+  <div class="verdict">
+    <strong>结论：代码没有被改坏，是上游 anitabi.cn 收紧了。</strong>同步管线当初建立在 3 个未公开接口 + 3 个主域抓取之上，而官方文档明文写着「请勿在任何场景下请求主域」。上游关闭这些入口后，管线没有任何可用的降级路径。
+  </div>
+  <div class="meta">
+    <span><b>诊断日期</b> 2026-08-09</span>
+    <span><b>最后一次同步</b> 2026-06-08</span>
+    <span><b>最后一次成功</b> 从未</span>
+    <span><b>受影响图片</b> 14,893 条死链</span>
+  </div>
+</header>
+
+<section>
+  <h2>四个根因</h2>
+  <div class="findings">
+
+    <div class="finding">
+      <div class="fid">F1</div>
+      <div>
+        <h3>上游 <code>www.anitabi.cn</code> 已从 DNS 中移除<span class="sev blocker">阻断</span></h3>
+        <p>Google 与 Cloudflare 两家 DoH 解析器一致返回 NXDOMAIN（权威 SOA 否定应答），同域下 <code>w</code> / <code>api</code> / <code>image</code> / <code>cdn</code> / <code>navi</code> 均正常。上游把站点迁到了 <code>w.anitabi.cn</code>，但自己的 apex 还挂着一条 <code>301 → www</code> 的死链。</p>
+        <div class="ev"><span class="m"># 两家解析器交叉验证</span>
+dns.google        www.anitabi.cn  <span class="c">Status=3 NXDOMAIN</span>   w.anitabi.cn  <span class="g">Status=0</span>
+cloudflare-dns    www.anitabi.cn  <span class="c">Status=3 NXDOMAIN</span>   w.anitabi.cn  <span class="g">Status=0</span>
+
+<span class="m"># 本机 dig 不可信：Clash TUN fake-IP 全部劫持为 198.18.x.x</span></div>
+        <p style="margin-top:14px">而 <code>lib/anitabi/api.ts:35</code> 的默认 <code>siteBase</code> 自首个提交 <code>b20ad05</code> 起就是这个域名，从未改动。生产库给出了精确的死亡时间：</p>
+        <div class="tw"><table>
+          <thead><tr><th>AnitabiSourceCursor</th><th class="num">lastSuccessAt</th><th>来源</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">bangumi</td><td class="num">2026-06-08</td><td>apiBase</td></tr>
+            <tr><td class="mono">usersJson</td><td class="num">2026-02-15</td><td class="mono">siteBase/d/users.json</td></tr>
+            <tr><td class="mono">changelog</td><td class="num">2026-02-15</td><td class="mono">siteBase/CHANGELOG.md</td></tr>
+            <tr><td class="mono">iconsSvg</td><td class="num">2026-02-15</td><td class="mono">siteBase/api/bangumi/icons.svg</td></tr>
+          </tbody>
+        </table></div>
+        <p>更要命的是 <code>resolveAnitabiAssetUrl()</code>（<code>utils.ts:123</code>）会把相对路径拼到 <code>siteBase</code> 上再落库，于是死域名被写进了数据：</p>
+        <div class="tw"><table>
+          <thead><tr><th>AnitabiPoint.image 的 host</th><th class="num">条数</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">image.anitabi.cn</td><td class="num">26,934</td><td><span class="tag part">域名存活，但被 WAF 拦（见 F2）</span></td></tr>
+            <tr><td class="mono">www.anitabi.cn</td><td class="num">14,893</td><td><span class="tag part">host 已死，但路径完好（见 F5）</span></td></tr>
+          </tbody>
+        </table></div>
+        <p><strong>更正：</strong>这 14,893 条并非「永久死链」。<code>imageProxy.ts:179</code> 与 <code>r2Mirror.ts:68</code> 在读取／镜像时会调用 <code>normalizeAnitabiMirrorUrl()</code>，把 <code>www.anitabi.cn/images/X</code> 改写成 <code>image.anitabi.cn/X</code>。所以它们不是死于 DNS，而是和另外 26,934 条一样死于 F2 的 WAF —— 这意味着修法比原先判断的简单得多，见 F5。</p>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="fid">F2</div>
+      <div>
+        <h3>整个 <code>anitabi.cn</code> 域启用了 Cloudflare WAF 拦截<span class="sev blocker">阻断</span></h3>
+        <p>返回 4546 字节的 <em>Attention Required! | Cloudflare — Sorry, you have been blocked</em> 页面。换 UA、补齐 <code>Referer</code>／<code>Origin</code>／<code>Accept-Language</code> 全套浏览器头都无效，因此不是 UA 规则，而是按来源 IP／ASN 或 bot score 判定。</p>
+        <p>关键在于区分两类端点 —— 这决定了恢复方案的形状：</p>
+        <div class="tw"><table>
+          <thead><tr><th>端点</th><th>官方文档收录</th><th>首次接触结果</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">/bangumi <span style="color:var(--muted)">（全量列表）</span></td><td><span class="tag no">否</span></td><td><span class="tag no">403 · 自始至终</span></td></tr>
+            <tr><td class="mono">/bangumi/{id}</td><td><span class="tag no">否</span></td><td><span class="tag no">403 · 自始至终</span></td></tr>
+            <tr><td class="mono">/bangumi/{id}/points</td><td><span class="tag no">否</span></td><td><span class="tag no">403 · 自始至终</span></td></tr>
+            <tr><td class="mono">/bangumi/{id}/lite</td><td><span class="tag yes">是</span></td><td><span class="tag part">可用，随后被限流</span></td></tr>
+            <tr><td class="mono">/bangumi/{id}/points/detail</td><td><span class="tag yes">是</span></td><td><span class="tag part">200 OK，随后被限流</span></td></tr>
+          </tbody>
+        </table></div>
+        <p>三个观测点的对照说明了封锁的形状：</p>
+        <div class="ev"><span class="m">日本 KDDI 住宅 IP（Clash 出口）</span>   全部 403
+<span class="m">中国安徽移动 住宅 IP（DIRECT）</span>   /points/detail <span class="g">200</span> → 约 30 次请求后转 403
+<span class="m">Anthropic 机房 IP（仅 4 次请求）</span>  全程 403 <span class="c">← 未被限流，仍然被拦</span>
+<span class="m">对照 example.com</span>                <span class="g">200</span></div>
+        <p style="margin-top:14px"><strong>推论：境外／机房出口被整体拦截；中国境内住宅 IP 可用但有相当激进的速率限制。</strong>需要坦白一点：我今天的排查本身触发了限流，把中国 IP 也打进了惩罚区，所以后期的 403 有一部分是我造成的，需要冷却后复测。</p>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="fid">F3</div>
+      <div>
+        <h3>定时任务在 Cloudflare 迁移时遗失<span class="sev high">高</span></h3>
+        <p>Cron 定义还留在 <code>vercel.json</code>，而线上部署的是 <code>wrangler.jsonc</code>，其中<strong>完全没有 <code>triggers.crons</code></strong>。只有独立的图片镜像 worker 还带着 cron。所以即便上游可达，也没有任何东西会去触发同步 —— 这独立解释了「2026-06-08 之后一条同步记录都没有」。</p>
+        <div class="ev">vercel.json          <span class="g">crons: /api/cron/anitabi/daily "10 3 * * *"</span>  <span class="m">← 不再生效</span>
+wrangler.jsonc       <span class="c">（无 triggers 字段）</span>                      <span class="m">← 实际部署</span>
+workers/anitabi-mirror/wrangler.jsonc  <span class="g">crons: */5 * * * *</span>       <span class="m">← 仅图片镜像</span></div>
+      </div>
+    </div>
+
+    <div class="finding">
+      <div class="fid">F4</div>
+      <div>
+        <h3>同步从未记录过一次成功<span class="sev med">中</span></h3>
+        <p><code>AnitabiSyncRun</code> 中所有模式的 <code>last_success</code> 均为 <code>null</code>，只有 <code>partial</code> 和 <code>failed</code>。最后一次 delta 死于 Prisma 事务超时（限 5000ms，实耗 5580ms），与上游无关。前三项修好后，这个仍会挡路。</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>本地复现</h2>
+  <div class="col">
+    <p>已搭好一套完全隔离的本地环境，不碰生产库、不碰真实上游，可以反复迭代：</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>组件</th><th>位置</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>Dev server</td><td class="mono">localhost:3100</td><td>Next.js 15.5.15，已就绪</td></tr>
+      <tr><td>沙箱数据库</td><td class="mono">postgresql://localhost:5432/seichigo_synclab</td><td>由本地 <code>seichigo</code> 克隆，7,933 作品 / 30,845 点位</td></tr>
+      <tr><td>Mock 上游</td><td class="mono">scripts/anitabi-mock-upstream.mjs</td><td>只实现官方文档收录的两个端点，其余一律 403</td></tr>
+      <tr><td>同步 harness</td><td class="mono">scripts/anitabi-sync-lab.mts</td><td>跑真实 <code>runAnitabiSync()</code>；<code>DATABASE_URL</code> 非本地则拒绝启动</td></tr>
+    </tbody>
+  </table></div>
+  <div class="col">
+    <p>跑起来的结果精确复现了生产故障 —— 整条同步只发出了<strong>一个</strong>上游请求就结束了：</p>
+  </div>
+  <div class="ev"><span class="m">$ npx tsx scripts/anitabi-sync-lab.mts delta</span>
+
+{ "status": <span class="c">"failed"</span>,  "scanned": 0,  "changed": 0,
+  "message": <span class="c">"Request failed 403 http://127.0.0.1:4555/bangumi"</span> }
+
+<span class="m">mock 上游收到的全部请求：</span>
+  403 /bangumi   <span class="c">BLOCKED (not part of the official API)</span></div>
+  <div class="col">
+    <p style="margin-top:15px">此外 <code>source/client.ts:48</code> 对 4xx（429 除外）直接抛错不重试，所以 <code>/bangumi</code> 在 408ms 就让整个 run 失败；而三个 siteBase 请求属于网络错误，会走满 4 次重试（1+3+8 秒），每个耗掉约 14 秒 —— 已经超过 <code>ANITABI_SYNC_MAX_RUNTIME_MS</code> 默认 20 秒预算的大半。</p>
+  </div>
+</section>
+
+<section>
+  <h2>官方 API 能否撑起现有数据模型</h2>
+  <div class="col">
+    <p>官方文档（<code>anitabi/anitabi.cn-document/api.md</code>）只收录两个数据端点。把它们与现有 schema 逐字段比对后，结论是<strong>大部分可覆盖，但有明确缺口</strong>：</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>字段</th><th>原来源</th><th>官方 API 是否提供</th><th>补救</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">id, cn, title, city, cover, color, modified</td><td class="mono">/bangumi</td><td><span class="tag yes">/lite 提供</span></td><td>直接替换</td></tr>
+      <tr><td class="mono">geo, zoom</td><td class="mono">/bangumi</td><td><span class="tag yes">/lite 提供</span></td><td>代码里 <code>RawLite</code> 类型漏声明了，补上即可</td></tr>
+      <tr><td class="mono">cat, description, tags</td><td class="mono">/bangumi</td><td><span class="tag no">不提供</span></td><td>改用 Bangumi 官方 API <code>api.bgm.tv/v0/subjects/{id}</code></td></tr>
+      <tr><td class="mono">点位 name/cn/geo/ep/s/image/origin/originURL</td><td class="mono">/points/detail</td><td><span class="tag yes">提供</span></td><td>本来就是官方端点</td></tr>
+      <tr><td class="mono">density, mark, folder, uid, reviewUid</td><td class="mono">/points（摘要）</td><td><span class="tag no">不提供</span></td><td>库中填充率 33–96%，且代码有引用；<strong>upsert 时必须保留旧值，不能覆盖为 null</strong></td></tr>
+    </tbody>
+  </table></div>
+  <div class="col">
+    <p><strong>真正的硬缺口是「枚举」：官方 API 没有任何列出全部作品的入口。</strong>现有 delta 逻辑完全依赖 <code>GET /bangumi</code> 返回的全量数组＋<code>modified</code> 时间戳做变更检测，这个设计无法直接移植。</p>
+  </div>
+</section>
+
+<section>
+  <h2>F5 · 突破口：上游有第二套 CDN，且没有同样的封锁</h2>
+  <div class="col">
+    <p>从上游官方客户端仓库（<code>anitabi/anitabi-trace</code>）的源码里翻到一个文档里从未提及的 host：<code>img-tc.anitabi.cn</code>。它的 CNAME 指向 <code>eo.dnse3.com</code> —— <strong>腾讯云 EdgeOne</strong>，与 README 中「CDN 和安全防护由 Tencent EdgeOne 赞助」正好对上。整个域的 CDN 归属是这样分裂的：</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Host</th><th class="num">A 记录</th><th>CDN</th><th>我们能否访问</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">api.anitabi.cn</td><td class="num">104.21.71.189</td><td>Cloudflare</td><td><span class="tag no">403 拦截</span></td></tr>
+      <tr><td class="mono">image.anitabi.cn</td><td class="num">104.21.71.189</td><td>Cloudflare</td><td><span class="tag no">403 拦截</span></td></tr>
+      <tr><td class="mono">w.anitabi.cn</td><td class="num">104.21.71.189</td><td>Cloudflare</td><td><span class="tag no">403 拦截</span></td></tr>
+      <tr><td class="mono">img-tc.anitabi.cn</td><td class="num">43.174.247.32</td><td><strong>Tencent EdgeOne</strong></td><td><span class="tag yes">200 OK</span></td></tr>
+      <tr><td class="mono">www.anitabi.cn</td><td class="num">—</td><td>—</td><td><span class="tag no">NXDOMAIN</span></td></tr>
+      <tr><td class="mono">cdn.anitabi.cn</td><td class="num">—</td><td>—</td><td><span class="tag no">NXDOMAIN</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="col">
+    <p>同一出口 IP、同一路径的 A/B 对照，差别完全来自 CDN 而不是 IP：</p>
+  </div>
+  <div class="ev"><span class="m">GET /points/272510/39zlm4tj.jpg?plan=h160</span>
+  image.anitabi.cn    <span class="c">403</span>  text/html   4546 B   <span class="m">← Cloudflare 拦截页</span>
+  img-tc.anitabi.cn   <span class="g">200</span>  image/jpeg  11341 B  <span class="m">← eo-cache-status: HIT</span>
+
+<span class="m">再用库里真实的一条 www 记录验证（user 上传家族）：</span>
+  raw  www.anitabi.cn/images/user/1181/bangumi/1851/points/n7zx3k2ft-1723655509302.jpg
+  → image.anitabi.cn/user/1181/...   <span class="c">403</span>
+  → img-tc.anitabi.cn/user/1181/...  <span class="g">200</span>  image/jpeg  7430 B</div>
+  <div class="col">
+    <p style="margin-top:15px"><strong>结论：图片同步有现成的解，且不需要任何对外沟通。</strong><code>img-tc.anitabi.cn</code> 与 <code>image.anitabi.cn</code> 路径结构完全一致，两个 URL 家族（<code>/points/{bid}/{pid}.jpg</code> 规范族 与 <code>/user/{uid}/bangumi/{bid}/points/{pid}-{ts}.jpg</code> 用户上传族）都能取到，<code>?plan=</code> 参数同样生效。改一个 host 即可让全部 41,827 条点位图 + 封面恢复。</p>
+    <p><strong>点位同步则没这么好运：</strong>我按 <code>api-tc</code> / <code>api-eo</code> / <code>data-tc</code> 等十余个可能的命名做了 DNS 扫描，<strong>不存在 EdgeOne 版的 API host</strong>。<code>api.anitabi.cn</code> 只有 Cloudflare 一条路，仍然被拦。</p>
+  </div>
+</section>
+
+<section>
+  <h2>官方客户端印证的 API 现状</h2>
+  <div class="col">
+    <p>把 org 下五个客户端仓库（Swift app / anitabi-trace / seichi-grader / junrei-level / image-merge）全部 clone 后，提取其中所有 anitabi.cn 调用，得到的端点集合<strong>与文档完全一致，没有任何隐藏接口</strong>：</p>
+  </div>
+  <div class="ev"><span class="g">api.anitabi.cn/bangumi/{id}/points/detail</span>          <span class="m">← 点位数据，唯一的数据端点</span>
+<span class="g">image.anitabi.cn/bangumi/{id}.jpg?plan=h360</span>        <span class="m">← 封面（规范形式）</span>
+<span class="g">image.anitabi.cn/points/{bid}/{pid}.jpg?plan=h160</span>  <span class="m">← 点位图（规范形式）</span>
+<span class="g">img-tc.anitabi.cn/bangumi/{id}</span>                     <span class="m">← EdgeOne 镜像，仅出现在 anitabi-trace</span></div>
+  <div class="col">
+    <p style="margin-top:15px">另外几点值得记录：<code>api.md</code> 的实质内容自 <strong>2024-02-21</strong> 起未再改动（今天那批提交只是 README 加社交徽章），所以「官方只有两个端点」是稳定事实而非临时状态；<code>navi.anitabi.cn</code> 仓库里只有 Docusaurus 模板文章，没有额外 API 文档。</p>
+    <p>还有一个反向证据：Swift 客户端 <code>WebViewStore.swift:129</code> 至今仍然打开 <code>https://www.anitabi.cn/map</code>。既然这个域名已经 NXDOMAIN，<strong>官方 App 现在自己也是坏的</strong> —— 这更像是一次仍在进行中的上游事故或迁移疏漏，而不是有计划的下线。这提高了「反馈给维护者后会被修复」的可能性。</p>
+  </div>
+</section>
+
+<section>
+  <h2>恢复方案</h2>
+  <div class="col">
+    <p>先说前提：<strong>方案取决于一个还没验证的事实 —— Cloudflare Workers 的出口能否穿过 anitabi 的 WAF。</strong>我的两个观测点都是机房／代理 IP 且都被拦，Workers 出口同样是机房 IP，大概率也被拦；但 Cloudflare→Cloudflare 的子请求路径有其特殊性，不实测不能下定论。这是第一步要做的事。</p>
+  </div>
+  <div class="opts">
+    <div class="opt pick">
+      <div class="opt-h">方案 A · 建议</div>
+      <h4>取得上游的正式授权</h4>
+      <p>文档中邀请联系维护者申请权限，拦截页也明确写了 email the site owner。说明用途、申请白名单或 API key，顺带确认 <code>www</code> 下线与推荐的新基址。</p>
+      <dl>
+        <dt>成本</dt><dd>一封邮件 + 等待</dd>
+        <dt>可持续</dt><dd>最高，且合规</dd>
+        <dt>风险</dt><dd>对方可能不同意</dd>
+      </dl>
+    </div>
+    <div class="opt">
+      <div class="opt-h">方案 B</div>
+      <h4>中国境内出口中转</h4>
+      <p>同步任务不从 Workers 直连，改由一台境内小机器（或境内函数）拉取后写库。已验证境内住宅 IP 可以拿到 200。</p>
+      <dl>
+        <dt>成本</dt><dd>一台常驻机器 + 运维</dd>
+        <dt>可持续</dt><dd>中，仍受速率限制约束</dd>
+        <dt>风险</dt><dd>绕过对方的地域策略，不算正路</dd>
+      </dl>
+    </div>
+    <div class="opt">
+      <div class="opt-h">方案 C</div>
+      <h4>重建在官方端点之上</h4>
+      <p>枚举改为「库内已知 8,131 个 ID 轮转刷新」，新作品发现交给 bgm.tv 官方 API；<code>cat/description/tags</code> 同样取自 bgm.tv。</p>
+      <dl>
+        <dt>成本</dt><dd>改造 <code>workflow.ts</code> 枚举层</dd>
+        <dt>可持续</dt><dd>好，但必须配 A 或 B 才有网络可达性</dd>
+        <dt>风险</dt><dd>全量刷一轮约 8k 请求，需严格限速</dd>
+      </dl>
+    </div>
+    <div class="opt">
+      <div class="opt-h">方案 D · 已验证可行</div>
+      <h4>图片走 EdgeOne 镜像</h4>
+      <p>把图片重写目标从 <code>image.anitabi.cn</code> 换成 <code>img-tc.anitabi.cn</code>（腾讯 EdgeOne），两个 URL 家族实测均 200。全部 41,827 条点位图可一次性恢复。</p>
+      <dl>
+        <dt>成本</dt><dd>一处函数改动 + R2 key 决策</dd>
+        <dt>可持续</dt><dd>好，但属未公开 host</dd>
+        <dt>风险</dt><dd>上游可能随时调整</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>建议执行顺序</h2>
+
+  <div class="phase">
+    <div class="pnum">第 0 步</div>
+    <div>
+      <h3>停止一切对上游的自动请求，等待冷却</h3>
+      <p>当前 IP 仍在 WAF 惩罚区。在确认策略之前不要再跑任何批量抓取，否则会把仅存的可用出口也打掉。</p>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 1 步</div>
+    <div>
+      <h3>实测 Workers 出口是否被拦</h3>
+      <p>部署一个只做单次 <code>fetch('https://api.anitabi.cn/bangumi/115908/lite')</code> 的最小 worker，打印状态码。这一个数字决定后面走 A、B 还是 D。</p>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 2 步</div>
+    <div>
+      <h3>图片链路：切到 <code>img-tc.anitabi.cn</code>（可立即做，不依赖任何外部条件）</h3>
+      <ul>
+        <li>在 <code>imageNormalize.ts</code> 的 <code>normalizeAnitabiMirrorUrl()</code> 里，把重写目标由 <code>image.anitabi.cn</code> 改为 <code>img-tc.anitabi.cn</code>；因为 <code>computeCanonicalImageUrl()</code> 与 <code>imageProxy</code> 都走这个函数，一处改动即可覆盖显示、代理、R2 镜像三条路径。</li>
+        <li>建议做成可切换的 host 列表而非硬编码，让 EdgeOne 与 Cloudflare 互为兜底 —— 上游修好 Cloudflare 侧之后不必再改代码。</li>
+        <li>注意 <code>computeMirrorKey()</code> 把 hostname 编进了 R2 key（<code>mirror/v1/{hostname}/{hash}</code>），换 host 会导致全部已镜像对象 key 失效。要么在 key 里对这两个 host 做归一化，要么接受一次全量回填。<strong>这是改动前必须先决定的一点。</strong></li>
+        <li>库里那 14,893 条 <code>www</code> 记录不需要迁移 —— 重写函数已经处理，路径本身是完好的。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 3 步</div>
+    <div>
+      <h3>点位链路：联系上游取得正式访问（方案 A）</h3>
+      <p>这一条没有技术捷径：<code>api.anitabi.cn</code> 只有 Cloudflare 一条路且不存在 EdgeOne 版本。发邮件说明用途、承诺频率、申请白名单或 API key。顺带告诉他们 <code>www.anitabi.cn</code> 和 <code>cdn.anitabi.cn</code> 已 NXDOMAIN、官方 App 因此打不开地图 —— 这是对双方都有价值的信息，也是一个自然的沟通切入点。</p>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 4 步</div>
+    <div>
+      <h3>把 cron 迁进 <code>wrangler.jsonc</code></h3>
+      <p>否则一切修好之后仍然不会自动运行。同时删掉 <code>vercel.json</code> 里已失效的定义，避免下一个人再被误导。</p>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 5 步</div>
+    <div>
+      <h3>按方案 C 改造同步管线</h3>
+      <ul>
+        <li>枚举层换成库内 ID 轮转；<code>modified</code> 比对改由 <code>/lite</code> 提供。</li>
+        <li>只保留 <code>/lite</code> 与 <code>/points/detail</code>，彻底移除三个主域抓取。</li>
+        <li>upsert 时对 <code>density/mark/folder/uid/reviewUid</code> 采用「有新值才写」，避免把已有数据抹成 null。</li>
+        <li>加全局限速与退避；4xx 不重试的现有行为要保留，但 403 应记入 run 报告而不是静默失败。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="pnum">第 6 步</div>
+    <div>
+      <h3>修 F4 的事务超时，并补上监控</h3>
+      <p>拆掉 5 秒事务或调大上限。加一个上游健康探针，<strong>两个 CDN 分别探</strong> —— 这次故障从 2 月潜伏到 8 月才被发现，缺的就是这个。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>需要你判断的两件事</h2>
+  <div class="note">
+    <h3>1 · 数据许可</h3>
+    <p style="margin-bottom:14px">官方文档声明地标数据以 <strong>CC BY-NC-SA 4.0</strong>（署名／非商业性使用／相同方式共享）共享，并要求在展示截图旁标注 <code>origin</code> 文字并实现 <code>originURL</code> 跳转。如果 seichigo 有商业化计划，镜像这份数据需要先想清楚；这也直接影响申请白名单时怎么描述用途。</p>
+    <h3>2 · 我没能验证的部分</h3>
+    <ul>
+      <li>Workers 出口是否被拦 —— 只能实测，见第 1 步。</li>
+      <li>官方两个端点在冷却后的真实可用性与速率上限 —— 我的探测污染了样本，需要隔一段时间用<strong>单个</strong>请求复测。</li>
+      <li><code>www</code> 下线是否有官方公告 —— 仓库内 changelog 停更在 2024-07，线上 <code>navi.anitabi.cn</code> 同样被 WAF 拦住，没读到。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  证据来源：生产 Neon 库（只读查询）· 本地沙箱 seichigo_synclab · Google/Cloudflare DoH · anitabi.cn-document@main · 三个独立网络观测点
+</footer>
+
+</div>
