@@ -103,11 +103,11 @@ For a local Postgres, see [`CONTRIBUTING.md`](CONTRIBUTING.md#dev-environment).
 | `DATABASE_URL_UNPOOLED` | Direct URL for Prisma migrations |
 | `NEXTAUTH_URL`, `NEXTAUTH_SECRET` | NextAuth basics |
 | `ADMIN_EMAILS` | Comma-separated admin allowlist |
-| `RESEND_API_KEY` + `EMAIL_FROM` | OTP delivery (or SMTP fallback) |
+| Cloudflare `EMAIL` binding + `EMAIL_FROM` | OTP delivery (or SMTP fallback outside Workers) |
 | `NEXT_PUBLIC_GISCUS_*` | Comment widget config |
 | `ANITABI_CRON_SECRET` | Auth for Anitabi cron endpoints |
 | `SENTRY_*` | Optional, error reporting |
-| Cloudflare bindings (`MAP_IMAGE_CACHE`, `IMAGES`, `ASSETS`) | Set via `wrangler.jsonc` for Workers deploy |
+| Cloudflare bindings (`EMAIL`, `MAP_IMAGE_CACHE`, `IMAGES`, `ASSETS`) | Set via `wrangler.jsonc` for Workers deploy |
 
 Full list and tuning guidance: [`docs/deployment.md`](docs/deployment.md).
 

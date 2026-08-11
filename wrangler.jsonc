@@ -35,6 +35,14 @@
       "service": "seichigo"
     }
   ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": [
+        "no-reply@seichigo.com"
+      ]
+    }
+  ],
   "images": {
     "binding": "IMAGES"
   },

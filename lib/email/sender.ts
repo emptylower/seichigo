@@ -1,5 +1,5 @@
-import nodemailer from 'nodemailer'
-import { sendEmailWithResend } from '@/lib/email/resend'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
+import { DEFAULT_EMAIL_FROM } from '@/lib/email/addresses'
 
 type SendMailInput = {
   to: string
@@ -10,26 +10,17 @@ type SendMailInput = {
 }
 
 function getFromAddress(): string {
-  return process.env.EMAIL_FROM || 'no-reply@example.com'
+  return process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM
 }
 
-function buildSmtpConfig(): any | null {
-  const smtpHost = process.env.EMAIL_SERVER_HOST
-  const smtpPort = process.env.EMAIL_SERVER_PORT ? Number(process.env.EMAIL_SERVER_PORT) : undefined
-  const smtpUser = process.env.EMAIL_SERVER_USER
-  const smtpPass = process.env.EMAIL_SERVER_PASSWORD
+function parseFromAddress(from: string): string | { name: string; email: string } {
+  const match = from.match(/^\s*(.+?)\s*<([^<>]+)>\s*$/)
+  if (!match) return from
 
-  if (smtpHost && smtpPort && smtpUser && smtpPass) {
-    return {
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    }
+  return {
+    name: match[1].replace(/^['"]|['"]$/g, '').trim(),
+    email: match[2].trim(),
   }
-
-  const uri = process.env.EMAIL_SERVER
-  return uri ? uri : null
 }
 
 export async function sendMail(input: SendMailInput): Promise<void> {
@@ -43,21 +34,21 @@ export async function sendMail(input: SendMailInput): Promise<void> {
   if (!from) throw new Error('Missing email from')
   if (!subject) throw new Error('Missing email subject')
 
-  const resendApiKey = String(process.env.RESEND_API_KEY || '').trim()
-  if (resendApiKey) {
-    await sendEmailWithResend({ apiKey: resendApiKey, to, from, subject, text, html })
+  const cloudflareEmail = getCfBindings()?.env?.EMAIL
+  if (cloudflareEmail) {
+    await cloudflareEmail.send({
+      to,
+      from: parseFromAddress(from),
+      subject,
+      text,
+      html,
+    })
     return
   }
 
-  const smtp = buildSmtpConfig()
-  if (!smtp) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Email provider is not configured (set RESEND_API_KEY or SMTP EMAIL_SERVER*)')
-    }
-    console.log(`[DEV EMAIL] To: ${to}\nSubject: ${subject}\n\n${text}`)
-    return
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Email provider is not configured (set the Cloudflare EMAIL binding)')
   }
 
-  const transport = nodemailer.createTransport(smtp)
-  await transport.sendMail({ to, from, subject, text, html })
+  console.log(`[DEV EMAIL] To: ${to}\nSubject: ${subject}\n\n${text}`)
 }

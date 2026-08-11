@@ -3,6 +3,7 @@ import Image from 'next/image'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
+import { CONTACT_EMAIL } from '@/lib/email/addresses'
 
 type Props = {
   locale?: SiteLocale
@@ -54,7 +55,7 @@ export default function Footer({ locale = 'zh' }: Props) {
     {
       title: t('footer.connect', locale),
       links: [
-        { label: 'Email', href: 'mailto:ljj231428@gmail.com', isExternal: true },
+        { label: 'Email', href: `mailto:${CONTACT_EMAIL}`, isExternal: true },
         { label: 'X (Twitter)', href: 'https://x.com/xixingshu', isExternal: true },
         { label: 'GitHub', href: 'https://github.com/emptylower/seichigo', isExternal: true },
       ],

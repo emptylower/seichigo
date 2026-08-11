@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CfBindings } from '@/lib/anitabi/cf/bindings'
 import { sendMail } from '@/lib/email/sender'
+
+const CLOUDFLARE_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
+
+function setCloudflareContext(value: CfBindings | undefined) {
+  const target = globalThis as typeof globalThis & {
+    [CLOUDFLARE_CONTEXT_SYMBOL]?: CfBindings
+  }
+
+  if (value) target[CLOUDFLARE_CONTEXT_SYMBOL] = value
+  else delete target[CLOUDFLARE_CONTEXT_SYMBOL]
+}
 
 function snapshotEnv() {
   return { ...process.env }
@@ -21,57 +33,37 @@ function setNodeEnv(value: string) {
 
 describe.sequential('sendMail', () => {
   const originalEnv = snapshotEnv()
-  const originalFetch = globalThis.fetch
 
   afterEach(() => {
     restoreEnv(originalEnv)
-    globalThis.fetch = originalFetch
+    setCloudflareContext(undefined)
     vi.restoreAllMocks()
   })
 
-  it('uses Resend when RESEND_API_KEY is set', async () => {
-    process.env.RESEND_API_KEY = 're_test_123'
+  it('uses the Cloudflare Email Sending binding when available', async () => {
     setNodeEnv('production')
-    delete process.env.EMAIL_SERVER
-    delete process.env.EMAIL_SERVER_HOST
-    delete process.env.EMAIL_SERVER_PORT
-    delete process.env.EMAIL_SERVER_USER
-    delete process.env.EMAIL_SERVER_PASSWORD
 
-    const fetchMock = vi.fn(async (_url: string, _init: any) => ({ ok: true })) as any
-    globalThis.fetch = fetchMock
+    const send = vi.fn().mockResolvedValue({ messageId: 'cf-message-1' })
+    setCloudflareContext({ env: { EMAIL: { send } } })
 
     await sendMail({
       to: 'test@example.com',
-      from: 'SeichiGo <no-reply@example.com>',
+      from: 'SeichiGo <no-reply@seichigo.com>',
       subject: 'Test',
       text: 'Hello',
       html: '<p>Hello</p>',
     })
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]!
-    expect(url).toBe('https://api.resend.com/emails')
-    expect(init?.method).toBe('POST')
-    expect(init?.headers?.authorization).toBe(`Bearer ${process.env.RESEND_API_KEY}`)
-
-    const body = JSON.parse(init.body)
-    expect(body).toMatchObject({
-      from: 'SeichiGo <no-reply@example.com>',
-      to: ['test@example.com'],
+    expect(send).toHaveBeenCalledWith({
+      from: { name: 'SeichiGo', email: 'no-reply@seichigo.com' },
+      to: 'test@example.com',
       subject: 'Test',
       text: 'Hello',
       html: '<p>Hello</p>',
     })
   })
 
-  it('logs to console in development when no provider is configured', async () => {
-    delete process.env.RESEND_API_KEY
-    delete process.env.EMAIL_SERVER
-    delete process.env.EMAIL_SERVER_HOST
-    delete process.env.EMAIL_SERVER_PORT
-    delete process.env.EMAIL_SERVER_USER
-    delete process.env.EMAIL_SERVER_PASSWORD
+  it('logs to console in development when the binding is unavailable', async () => {
     setNodeEnv('development')
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -87,13 +79,7 @@ describe.sequential('sendMail', () => {
     expect(log).toHaveBeenCalled()
   })
 
-  it('throws in production when no provider is configured', async () => {
-    delete process.env.RESEND_API_KEY
-    delete process.env.EMAIL_SERVER
-    delete process.env.EMAIL_SERVER_HOST
-    delete process.env.EMAIL_SERVER_PORT
-    delete process.env.EMAIL_SERVER_USER
-    delete process.env.EMAIL_SERVER_PASSWORD
+  it('throws in production when the binding is unavailable', async () => {
     setNodeEnv('production')
 
     await expect(

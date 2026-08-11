@@ -13,7 +13,7 @@ better than you found them." Everything below exists to make that easier.
 ### Ground rules
 
 - Be kind. Read the [Code of Conduct](CODE_OF_CONDUCT.md).
-- Security issues go to <ljj231428@gmail.com>, **not** public issues.
+- Security issues go to <contact@seichigo.com>, **not** public issues.
   See [SECURITY.md](SECURITY.md).
 - License: contributions are accepted under the
   [PolyForm Noncommercial 1.0.0](LICENSE) license.
@@ -35,7 +35,7 @@ git clone https://github.com/emptylower/seichigo.git
 cd seichigo
 npm install
 cp .env.example .env.local
-# fill in DATABASE_URL, NEXTAUTH_SECRET, RESEND_API_KEY, ADMIN_EMAILS …
+# fill in DATABASE_URL, NEXTAUTH_SECRET, ADMIN_EMAILS …
 npm run db:generate
 npm run db:migrate:dev
 npm run dev
@@ -153,7 +153,7 @@ welcome **if** you:
 ### 基本规则
 
 - 友善协作。请阅读 [行为准则](CODE_OF_CONDUCT.md)。
-- 安全问题请邮件 <ljj231428@gmail.com>，**不要**开公开 issue。详见 [SECURITY.md](SECURITY.md)。
+- 安全问题请邮件 <contact@seichigo.com>，**不要**开公开 issue。详见 [SECURITY.md](SECURITY.md)。
 - License：贡献以 [PolyForm Noncommercial 1.0.0](LICENSE) 接受。
 
 ### 可以做什么
@@ -172,7 +172,7 @@ git clone https://github.com/emptylower/seichigo.git
 cd seichigo
 npm install
 cp .env.example .env.local
-# 填入 DATABASE_URL、NEXTAUTH_SECRET、RESEND_API_KEY、ADMIN_EMAILS …
+# 填入 DATABASE_URL、NEXTAUTH_SECRET、ADMIN_EMAILS …
 npm run db:generate
 npm run db:migrate:dev
 npm run dev

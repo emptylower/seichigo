@@ -24,7 +24,7 @@ lib/auth/
 - Always use `getServerAuthSession()` for server-side auth — never access NextAuth internals directly.
 - Admin check: `session.user.isAdmin` (set by authOptions callback based on `ADMIN_EMAILS` env).
 - First admin login uses default password, then forces change at `/auth/change-password`.
-- OTP email logged to console in dev when SMTP/Resend is not configured.
+- OTP email uses the Cloudflare `EMAIL` binding in production and is logged to the console in development when the binding is unavailable.
 
 ## ANTI-PATTERNS
 - Do not trust client-side session data for authorization — always verify server-side.

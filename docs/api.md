@@ -121,7 +121,7 @@ curl -H "Authorization: Bearer $ANITABI_CRON_SECRET" \
 NextAuth v4 handles `/api/auth/*` routes. SeichiGo's auth surface is
 configured at `lib/auth/`:
 
-- **Email OTP** (recommended): Resend or SMTP
+- **Email OTP** (recommended): Cloudflare Email Sending binding; SMTP fallback outside Workers
 - **Credentials** (admin only): email in `ADMIN_EMAILS` plus password;
   first login forces a change
 

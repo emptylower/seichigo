@@ -20,7 +20,7 @@ Instead, email the maintainer privately:
 
 私下邮件联系维护者：
 
-- **Contact:** `ljj231428@gmail.com`
+- **Contact:** `contact@seichigo.com`
 - **Subject prefix:** `[seichigo-security]`
 - **PGP:** on request
 

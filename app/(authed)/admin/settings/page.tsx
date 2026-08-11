@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import AdminSettingsClient from './ui'
 import type { Metadata } from 'next'
 
@@ -15,5 +16,19 @@ export default async function AdminSettingsPage() {
   if (!session.user.isAdmin) {
     return <div className="text-gray-600">无权限访问。</div>
   }
-  return <AdminSettingsClient />
+
+  const cloudflareEmailConfigured = Boolean(getCfBindings()?.env?.EMAIL)
+
+  return (
+    <AdminSettingsClient
+      info={{
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || '未配置',
+        authUrl: process.env.NEXTAUTH_URL || '未配置',
+        databaseConfigured: Boolean(process.env.DATABASE_URL),
+        emailConfigured: cloudflareEmailConfigured,
+        emailProvider: cloudflareEmailConfigured ? 'Cloudflare Email Sending' : '未配置',
+        version: '0.1.0',
+      }}
+    />
+  )
 }

@@ -46,7 +46,7 @@ This page is the bird's-eye view.
         │  MDX       │       │  Prisma →      │         │  External    │
         │  content   │       │  Postgres      │         │  services    │
         │ (content/) │       │ (Neon/Supabase)│         │  Anitabi /   │
-        └────────────┘       └────────────────┘         │  Resend /    │
+        └────────────┘       └────────────────┘         │  CF Email /  │
                                                         │  Gemini /    │
                                                         │  Google Maps │
                                                         │  Embed       │

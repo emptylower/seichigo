@@ -1,8 +1,8 @@
 import type { LegalDocument, LegalLocale } from '@/lib/legal/content'
+import { CONTACT_EMAIL } from '@/lib/email/addresses'
 
 export type InfoDocumentType = 'help' | 'status'
 
-const CONTACT_EMAIL = 'ljj231428@gmail.com'
 const UPDATED = '2026-08-04'
 
 const zhHelp: LegalDocument = {

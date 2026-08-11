@@ -16,7 +16,28 @@ type ImageTransformer = {
   }): Promise<{ response(): Response }>
 }
 
+type EmailAddress = {
+  name: string
+  email: string
+}
+
+type EmailSendResult = {
+  messageId: string
+}
+
+export type SendEmailBinding = {
+  send(message: {
+    from: string | EmailAddress
+    to: string | string[]
+    subject: string
+    replyTo?: string | EmailAddress
+    text?: string
+    html?: string
+  }): Promise<EmailSendResult>
+}
+
 export type CfBindingsEnv = {
+  EMAIL?: SendEmailBinding
   MAP_IMAGE_CACHE?: R2MirrorBucket
   IMAGES?: ImagesBinding
   NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string

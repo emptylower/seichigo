@@ -1,4 +1,5 @@
 import { getSiteOrigin } from '@/lib/seo/site'
+import { CONTACT_EMAIL } from '@/lib/email/addresses'
 
 type JsonLdObject = Record<string, any>
 
@@ -30,7 +31,7 @@ export function buildOrganizationJsonLd(): JsonLdObject {
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'customer support',
-      email: 'ljj231428@gmail.com',
+      email: CONTACT_EMAIL,
     },
   }
 }

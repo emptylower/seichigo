@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { sendMail } from '@/lib/email/sender'
+import { DEFAULT_EMAIL_FROM } from '@/lib/email/addresses'
 import { renderSigninOtpEmail, renderSignupOtpEmail } from '@/lib/email/templates/seichigoOtp'
 import { generateEmailOtpCode, generateEmailOtpSalt, hashEmailOtpCode, normalizeEmail, resolveOtpSecret, sha256Hex } from '@/lib/auth/emailOtp'
 
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
   })
 
   const tpl = existingUser ? renderSigninOtpEmail(code) : renderSignupOtpEmail(code)
-  const from = process.env.EMAIL_FROM || 'no-reply@example.com'
+  const from = process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM
 
   try {
     await sendMail({
@@ -111,4 +112,3 @@ export async function POST(req: Request) {
     expiresAt: expiresAt.toISOString(),
   })
 }
-

@@ -1,10 +1,11 @@
 "use client"
 
-type SystemInfo = {
+export type SystemInfo = {
   siteUrl: string
   authUrl: string
   databaseConfigured: boolean
   emailConfigured: boolean
+  emailProvider: string
   version: string
 }
 
@@ -40,15 +41,7 @@ function StatusBadge({ configured }: { configured: boolean }) {
   )
 }
 
-export default function AdminSettingsClient() {
-  const info: SystemInfo = {
-    siteUrl: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || '未配置',
-    authUrl: process.env.NEXTAUTH_URL || '未配置',
-    databaseConfigured: !!process.env.DATABASE_URL,
-    emailConfigured: !!(process.env.RESEND_API_KEY || process.env.EMAIL_SERVER),
-    version: '0.1.0',
-  }
-
+export default function AdminSettingsClient({ info }: { info: SystemInfo }) {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -73,12 +66,13 @@ export default function AdminSettingsClient() {
         </InfoCard>
 
         <InfoCard title="邮件服务">
+          <InfoRow label="提供商" value={info.emailProvider} />
           <div className="flex items-center justify-between">
             <span className="font-medium text-gray-600">配置状态</span>
             <StatusBadge configured={info.emailConfigured} />
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            邮件服务（Resend 或 SMTP）已{info.emailConfigured ? '' : '未'}配置（出于安全考虑不显示 API 密钥）
+            邮件服务已{info.emailConfigured ? '' : '未'}配置（出于安全考虑不显示凭据）
           </p>
         </InfoCard>
 
@@ -95,7 +89,7 @@ export default function AdminSettingsClient() {
           <div className="text-sm">
             <p className="font-medium text-amber-900">只读模式</p>
             <p className="mt-1 text-amber-700">
-              此页面仅用于查看系统配置状态。如需修改配置，请编辑 <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">.env.local</code> 文件并重启服务。
+              此页面仅用于查看系统配置状态。如需修改配置，请更新部署配置并重新发布服务。
             </p>
           </div>
         </div>

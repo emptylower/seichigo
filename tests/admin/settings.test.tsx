@@ -1,9 +1,19 @@
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { SystemInfo } from '@/app/(authed)/admin/settings/ui'
 
 const getSessionMock = vi.fn()
 const redirectMock = vi.fn()
+
+const testInfo: SystemInfo = {
+  siteUrl: 'https://seichigo.com',
+  authUrl: 'https://seichigo.com',
+  databaseConfigured: true,
+  emailConfigured: true,
+  emailProvider: 'Cloudflare Email Sending',
+  version: '0.1.0',
+}
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
@@ -56,7 +66,7 @@ describe('admin settings page', () => {
 describe('admin settings UI', () => {
   it('displays site information', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    render(<AdminSettingsClient />)
+    render(<AdminSettingsClient info={testInfo} />)
 
     expect(screen.getByText('站点信息')).toBeInTheDocument()
     expect(screen.getByText('站点 URL')).toBeInTheDocument()
@@ -65,7 +75,7 @@ describe('admin settings UI', () => {
 
   it('displays database status without connection string', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    const { container } = render(<AdminSettingsClient />)
+    const { container } = render(<AdminSettingsClient info={testInfo} />)
 
     expect(screen.getByText('数据库')).toBeInTheDocument()
     expect(screen.getByText('连接状态')).toBeInTheDocument()
@@ -81,20 +91,19 @@ describe('admin settings UI', () => {
 
   it('displays email configuration status without API keys', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    const { container } = render(<AdminSettingsClient />)
+    const { container } = render(<AdminSettingsClient info={testInfo} />)
 
     expect(screen.getByText('邮件服务')).toBeInTheDocument()
     expect(screen.getByText('配置状态')).toBeInTheDocument()
     
     // Should NOT contain sensitive keys
-    expect(container.textContent).not.toContain('RESEND_API_KEY')
-    expect(container.textContent).not.toContain('re_')
+    expect(screen.getByText('Cloudflare Email Sending')).toBeInTheDocument()
     expect(container.textContent).not.toContain('API_KEY')
   })
 
   it('displays system version from package.json', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    render(<AdminSettingsClient />)
+    render(<AdminSettingsClient info={testInfo} />)
 
     expect(screen.getByText('系统版本')).toBeInTheDocument()
     expect(screen.getByText('当前版本')).toBeInTheDocument()
@@ -103,7 +112,7 @@ describe('admin settings UI', () => {
 
   it('shows read-only warning', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    render(<AdminSettingsClient />)
+    render(<AdminSettingsClient info={testInfo} />)
 
     expect(screen.getByText('只读模式')).toBeInTheDocument()
     expect(screen.getByText(/此页面仅用于查看系统配置状态/)).toBeInTheDocument()
@@ -111,17 +120,15 @@ describe('admin settings UI', () => {
 
   it('does not expose sensitive environment variables', async () => {
     const { default: AdminSettingsClient } = await import('@/app/(authed)/admin/settings/ui')
-    const { container } = render(<AdminSettingsClient />)
+    const { container } = render(<AdminSettingsClient info={testInfo} />)
 
     const sensitivePatterns = [
       'DATABASE_URL',
       'NEXTAUTH_SECRET',
-      'RESEND_API_KEY',
       'EMAIL_SERVER',
       'RATE_LIMIT_SALT',
       'postgresql://',
       'smtp://',
-      're_',
       'secret',
       'password',
       'api_key'

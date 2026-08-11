@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from '@/lib/email/addresses'
+
 export type LegalLocale = 'zh' | 'en' | 'ja'
 export type LegalDocumentType = 'privacy' | 'terms'
 
@@ -20,8 +22,6 @@ export type LegalDocument = {
   closingNote?: string
 }
 
-const CONTACT_EMAIL = 'ljj231428@gmail.com'
-
 const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> = {
   zh: {
     privacy: {
@@ -32,7 +32,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最近更新',
       contactLabel: '联系我们',
       effectiveDate: '2026-02-07',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-08-11',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -94,7 +94,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
           bullets: [
             '基础设施与数据库服务商（用于网站托管、数据存储与访问）。',
-            '邮件服务商（Resend 或你部署时配置的 SMTP 服务商）用于发送验证码邮件。',
+            'Cloudflare Email Service 用于发送验证码邮件及转发发送到本站公开联系地址的邮件。',
             '分析服务商（Google Analytics）用于聚合统计分析。',
             '广告服务商（Google AdSense 及其合作的广告技术供应商）用于广告投放与效果衡量。',
             '在管理员启用相关功能时，内容可能被发送到外部 AI/SEO 服务（如 Gemini、Google Search Console、SerpAPI）以完成翻译或 SEO 任务。',
@@ -242,7 +242,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: 'Last Updated',
       contactLabel: 'Contact',
       effectiveDate: 'February 7, 2026',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-08-11',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -304,7 +304,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
           bullets: [
             'Infrastructure and database providers for hosting and storage.',
-            'Email providers (Resend or configured SMTP provider) for OTP delivery.',
+            'Cloudflare Email Service for OTP delivery and forwarding messages sent to our public contact address.',
             'Analytics provider (Google Analytics) for aggregated reporting.',
             'Advertising providers (Google AdSense and its partner ad technology vendors) for ad serving and measurement.',
             'If enabled by admins, content may be sent to external AI/SEO services (for example Gemini, Google Search Console, SerpAPI) for translation or SEO workflows.',
@@ -452,7 +452,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最終更新日',
       contactLabel: 'お問い合わせ',
       effectiveDate: '2026年2月7日',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-08-11',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -514,7 +514,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
           bullets: [
             'ホスティング・データベース提供事業者（運用基盤のため）。',
-            'メール配信事業者（Resend または設定済み SMTP）による OTP 送信。',
+            'Cloudflare Email Service による OTP 配信、および公開連絡先宛てメールの転送。',
             '分析事業者（Google Analytics）による集計分析。',
             '広告配信事業者（Google AdSense および提携する広告技術ベンダー）— 広告の配信と効果測定のため。',
             '管理機能で有効化された場合、翻訳・SEO 処理のため Gemini / Google Search Console / SerpAPI 等へコンテンツを送信する場合があります。',

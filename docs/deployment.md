@@ -35,6 +35,9 @@ The canonical production URL is <https://seichigo.com>.
   "r2_buckets": [
     { "binding": "MAP_IMAGE_CACHE", "bucket_name": "seichigo-anitabi-images" }
   ],
+  "send_email": [
+    { "name": "EMAIL", "allowed_sender_addresses": ["no-reply@seichigo.com"] }
+  ],
   "images": { "binding": "IMAGES" },
   "assets": { "binding": "ASSETS", "directory": ".open-next/assets" },
   "observability": { "enabled": true, "head_sampling_rate": 1 }
@@ -145,17 +148,23 @@ the relevant per-domain secret).
 
 ### Email / OTP
 
-Recommended: Resend.
+Production uses Cloudflare Email Sending through the Worker `EMAIL` binding.
 
 | Variable | Purpose |
 |----------|---------|
-| `RESEND_API_KEY` | API key |
-| `EMAIL_FROM` | Must use a verified domain |
+| `EMAIL_FROM` | `SeichiGo <no-reply@seichigo.com>` in production |
 | `EMAIL_OTP_SECRET` | Optional; defaults to `NEXTAUTH_SECRET` |
 | `EMAIL_OTP_TTL_MINUTES` | Default 10 |
 | `EMAIL_OTP_COOLDOWN_SECONDS` | Default 60 |
 
-SMTP fallback: `EMAIL_SERVER` or `EMAIL_SERVER_HOST/PORT/USER/PASSWORD`.
+Production email sending requires the Cloudflare `EMAIL` binding. There is no
+SMTP or third-party provider fallback.
+
+Incoming mail uses Cloudflare Email Routing:
+
+- Public address: `contact@seichigo.com`
+- Verified destination: `ljj231428@gmail.com`
+- Keep the catch-all disabled; route only the public address.
 
 ### Comments (Giscus)
 
@@ -185,6 +194,7 @@ SMTP fallback: `EMAIL_SERVER` or `EMAIL_SERVER_HOST/PORT/USER/PASSWORD`.
 Defined in `wrangler.jsonc`:
 
 - `MAP_IMAGE_CACHE` → R2 bucket `seichigo-anitabi-images`
+- `EMAIL` → Cloudflare Email Sending, restricted to `no-reply@seichigo.com`
 - `IMAGES` → Cloudflare Images binding
 - `ASSETS` → `.open-next/assets`
 - Flags: `MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED`,
@@ -237,9 +247,8 @@ npm run db:migrate:dev
 npm run dev
 ```
 
-For email/OTP locally, either set `RESEND_API_KEY` or rely on the
-console-log fallback (the OTP payload is logged when Resend/SMTP isn't
-configured).
+For email/OTP locally, rely on the console-log fallback or configure SMTP.
+The Cloudflare `EMAIL` binding is used in production and remote previews.
 
 ## Troubleshooting
 
@@ -248,7 +257,8 @@ configured).
 | API returns `503` | Missing `DATABASE_URL` or unapplied migrations | Verify env, run `prisma migrate deploy` |
 | Workers deploy fails at Prisma load | Missing WASM file | Re-run `npm run cf:build` (the post-step copies WASM) |
 | Map images intermittently fail | Upstream Anitabi outage tripped breaker | Inspect the diag dashboard, then admin → mirror force-complete |
-| OTP email never arrives | Resend domain not verified | Verify domain in Resend, set `EMAIL_FROM` accordingly |
+| OTP email never arrives | Email Sending domain/binding is not ready | Verify `seichigo.com` under Email Sending and the `EMAIL` binding on the Worker |
+| `contact@seichigo.com` does not forward | Destination or routing rule is not verified | Verify the Gmail destination and inspect Email Routing rules |
 | Sign-in succeeds but redirect loops to `/auth/set-password` | OTP-created account has no password | Expected — set a password to complete onboarding |
 | Cron `403` | Bad / missing `ANITABI_CRON_SECRET` | Re-issue secret, redeploy |
 

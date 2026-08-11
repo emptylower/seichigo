@@ -47,8 +47,8 @@
   - `ADMIN_EMAILS`：管理员邮箱白名单，逗号分隔（仅这些邮箱可用帐密登录）
   - `ADMIN_DEFAULT_PASSWORD`：可选，默认 `112233`
 - **邮件登录（邮箱验证码）**
-  - 推荐 Resend：`RESEND_API_KEY` + `EMAIL_FROM`（需使用已验证域名的发件地址）
-  - 或使用 SMTP：`EMAIL_SERVER`（或 `EMAIL_SERVER_HOST/PORT/USER/PASSWORD`）
+  - 生产使用 Cloudflare Email Sending：Worker `EMAIL` binding + `EMAIL_FROM`
+  - 非 Cloudflare 部署可使用 SMTP：`EMAIL_SERVER`（或 `EMAIL_SERVER_HOST/PORT/USER/PASSWORD`）
   - 可选配置：
     - `EMAIL_OTP_SECRET`（可不填，默认复用 `NEXTAUTH_SECRET`）
     - `EMAIL_OTP_TTL_MINUTES`（默认 10）
@@ -64,6 +64,6 @@
   - `RATE_LIMIT_SALT`（可选）
 
 ## 已知问题 / 待办
-- **邮件登录服务**：建议直接使用 Resend（`RESEND_API_KEY`），避免 SMTP 侧 `535 authentication failed` 等问题。
+- **邮件服务**：发送由 Cloudflare Email Sending 负责；`contact@seichigo.com` 通过 Email Routing 转发到已验证目的邮箱。
 - **Docker 本地 DB**：当前仓库未内置 `docker-compose.yml`（可按 README 用 `docker run` 启动，或后续补 compose）。
 - **作者/审核体验**：富文本编辑器与审核流程已打通，可继续优化交互细节（例如保存状态、错误提示、字段校验等）。
