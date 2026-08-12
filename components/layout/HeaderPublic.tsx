@@ -6,6 +6,7 @@ import HeaderAuthControls from './HeaderAuthControls.client'
 import { t } from '@/lib/i18n'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 import HeaderMobileDrawer from './HeaderMobileDrawer.client'
+import CommunityMenu from './CommunityMenu.client'
 
 type Props = {
   locale?: SiteLocale
@@ -37,7 +38,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
           <span className="font-display text-lg">SeichiGo</span>
         </Link>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 md:flex">
+        <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 lg:flex">
           <nav className="flex min-w-0 items-center justify-end gap-4 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
             <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
@@ -45,6 +46,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
             <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
             <Link href={prefixPath('/resources', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.resources', locale)}</Link>
             <Link href={prefixPath('/submit', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.submit', locale)}</Link>
+            <CommunityMenu locale={locale} />
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">
             <LanguageSwitcher locale={locale} />
@@ -52,7 +54,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
           </div>
         </div>
 
-        <div className="md:hidden">
+        <div className="lg:hidden">
           <HeaderMobileDrawer locale={locale} labels={labels} />
         </div>
       </div>

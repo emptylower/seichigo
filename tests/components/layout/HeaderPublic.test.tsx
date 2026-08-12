@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import HeaderPublic from '@/components/layout/HeaderPublic'
 
 vi.mock('next/navigation', () => ({
@@ -34,6 +34,30 @@ describe('HeaderPublic', () => {
     expect(nav?.textContent).toContain('Anime')
     expect(nav?.textContent).toContain('Map')
     expect(nav?.textContent).toContain('Resources')
+    expect(nav?.textContent).toContain('Community')
+  })
+
+  it('opens the QQ community dropdown from the desktop navigation', async () => {
+    render(<HeaderPublic locale="zh" />)
+
+    fireEvent.keyDown(screen.getByTestId('header-community-trigger'), { key: 'Enter' })
+
+    expect(await screen.findByText('SeichiGo QQ 群')).toBeInTheDocument()
+    expect(screen.getByText(/901491088/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'SeichiGo QQ 群二维码' })).toBeInTheDocument()
+  })
+
+  it('expands the QQ community details inside the mobile drawer navigation', async () => {
+    render(<HeaderPublic locale="zh" />)
+
+    fireEvent.click(screen.getByTestId('header-mobile-menu-trigger'))
+    const trigger = await screen.findByTestId('header-community-drawer-trigger')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(trigger)
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('使用 QQ 扫码加入群聊')).toBeInTheDocument()
   })
 
   it('renders language switcher and auth controls in desktop controls', () => {

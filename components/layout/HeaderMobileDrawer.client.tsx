@@ -10,6 +10,7 @@ import { t } from '@/lib/i18n'
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import HeaderAuthControls from './HeaderAuthControls.client'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
+import CommunityMenu from './CommunityMenu.client'
 
 type Props = {
   locale: SiteLocale
@@ -128,7 +129,7 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
               <section>
                 <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{navLabelByLocale[locale]}</h3>
                 <nav className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white">
-                  {navItems.map((item, index) => {
+                  {navItems.map((item) => {
                     const Icon = item.icon
                     const active = normalizePath(item.href) === activePath
 
@@ -138,9 +139,7 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
                         href={item.href}
                         prefetch={false}
                         onClick={() => setOpen(false)}
-                        className={`group relative flex h-12 items-center justify-between px-3 transition ${
-                          index !== navItems.length - 1 ? 'border-b border-slate-100' : ''
-                        } ${
+                        className={`group relative flex h-12 items-center justify-between border-b border-slate-100 px-3 transition ${
                           active
                             ? 'bg-brand-50/70 text-brand-700'
                             : 'text-slate-700 hover:bg-slate-50 hover:text-brand-700'
@@ -160,6 +159,7 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
                       </Link>
                     )
                   })}
+                  <CommunityMenu locale={locale} variant="drawer" />
                 </nav>
               </section>
 
