@@ -32,3 +32,4 @@ bundle.js
 # TypeScript incremental build info
 *.tsbuildinfo
 .omx/
+.omc/
