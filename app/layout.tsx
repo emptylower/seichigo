@@ -65,6 +65,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="jsonld-org" type="application/ld+json" strategy="beforeInteractive">
           {jsonLdOrg}
         </Script>
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5922869290769433"
+          crossOrigin="anonymous"
+          strategy="beforeInteractive"
+        />
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];
