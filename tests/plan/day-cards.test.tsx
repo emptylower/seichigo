@@ -1,7 +1,36 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { TripPlanItemView, TripPlanView } from '@/lib/tripPlan/view'
+
+const mockPush = vi.fn()
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+}))
+
+// RoutePreviewMap 内部会实例化 maplibre-gl（需要 WebGL），jsdom 下替换为空组件
+vi.mock('@/components/route/RoutePreviewMap', () => ({
+  RoutePreviewMap: (props: { interactive?: boolean }) => (
+    <div data-testid="route-preview-map" data-interactive={String(props.interactive ?? true)} />
+  ),
+}))
+
 import { DayCards } from '@/app/(authed)/plan/[id]/components/DayCards'
-import type { TripPlanView } from '@/lib/tripPlan/view'
+
+function makeItem(partial: Partial<TripPlanItemView>): TripPlanItemView {
+  return {
+    id: partial.id ?? `item-${Math.random().toString(36).slice(2)}`,
+    sortOrder: partial.sortOrder ?? 0,
+    type: partial.type ?? 'point',
+    pointId: partial.pointId ?? null,
+    timeHint: partial.timeHint ?? null,
+    title: partial.title ?? '点位',
+    note: partial.note ?? null,
+    reason: partial.reason ?? null,
+    payload: partial.payload ?? null,
+    point: partial.point ?? null,
+  }
+}
 
 const plan: TripPlanView = {
   id: 'plan-1',
@@ -49,18 +78,96 @@ const plan: TripPlanView = {
   ],
 }
 
+function renderDayCards(overrides?: Partial<TripPlanView>) {
+  return render(
+    <DayCards plan={{ ...plan, ...overrides }} planId="plan-1" selectedDay={1} onSelectDay={() => {}} />,
+  )
+}
+
 describe('DayCards', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(globalThis as any).fetch = vi.fn()
+  })
+
   it('renders day tabs and items with reason', () => {
-    render(<DayCards plan={plan} selectedDay={1} onSelectDay={() => {}} />)
+    renderDayCards()
     expect(screen.getByText('Day 1')).toBeTruthy()
     expect(screen.getByText('Day 2')).toBeTruthy()
     expect(screen.getByText('宇治桥')).toBeTruthy()
     expect(screen.getByText('第 1 集开场取景地')).toBeTruthy()
+    // transit 无 payload 时兜底渲染 title/note
     expect(screen.getByText(/JR 奈良线/)).toBeTruthy()
   })
 
   it('shows empty state when plan has no days', () => {
-    render(<DayCards plan={{ ...plan, days: [] }} selectedDay={1} onSelectDay={() => {}} />)
+    renderDayCards({ days: [] })
     expect(screen.getByText(/还没有行程/)).toBeTruthy()
+  })
+
+  it('点位卡片渲染图片、序号徽标、时间 chip 与简介', () => {
+    const items: TripPlanItemView[] = [
+      makeItem({
+        id: 'i1',
+        type: 'point',
+        title: '清水寺',
+        timeHint: '上午',
+        reason: '经典取景地',
+        point: { id: 'p-a', name: 'Point A', nameZh: null, lat: 35.0, lng: 135.7, image: 'https://example.com/a.jpg' },
+      }),
+      makeItem({ id: 'i2', type: 'point', title: '宇治桥', note: '桥头场景' }),
+    ]
+    const { container } = renderDayCards({ days: [{ ...plan.days[0]!, items }] })
+
+    expect(screen.getByText('1')).toBeTruthy()
+    expect(screen.getByText('2')).toBeTruthy()
+    const img = container.querySelector('img[src="https://example.com/a.jpg"]')
+    expect(img).toBeTruthy()
+    expect(img?.getAttribute('alt')).toBe('清水寺')
+    expect(screen.getByText('上午')).toBeTruthy()
+    expect(screen.getByText('经典取景地')).toBeTruthy()
+    // 无 reason 时回退 note
+    expect(screen.getByText('桥头场景')).toBeTruthy()
+  })
+
+  it('无图点位渲染渐变占位（无 img 元素）', () => {
+    const items = [makeItem({ id: 'i1', type: 'point', title: '无图点位' })]
+    const { container } = renderDayCards({ days: [{ ...plan.days[0]!, items }] })
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('.bg-gradient-to-br')).toBeTruthy()
+  })
+
+  it('transit 条目用结构化 payload 渲染连接段，且不占用序号', () => {
+    const items: TripPlanItemView[] = [
+      makeItem({ id: 'i1', type: 'point', title: 'A 点' }),
+      makeItem({
+        id: 't1',
+        type: 'transit',
+        title: '不应展示的标题',
+        payload: { mode: 'walk', durationMin: 8, distanceKm: 0.65 },
+      }),
+      makeItem({ id: 'i2', type: 'point', title: 'B 点' }),
+    ]
+    renderDayCards({ days: [{ ...plan.days[0]!, items }] })
+
+    expect(screen.getByText('步行 8 分钟 · 650m')).toBeTruthy()
+    expect(screen.getByText('1')).toBeTruthy()
+    expect(screen.getByText('2')).toBeTruthy()
+    expect(screen.queryByText('3')).toBeNull()
+  })
+
+  it('>1km 的距离以 km 保留 1 位小数展示', () => {
+    const items: TripPlanItemView[] = [
+      makeItem({ id: 'i1', type: 'point', title: 'A 点' }),
+      makeItem({
+        id: 't1',
+        type: 'transit',
+        title: 'x',
+        payload: { mode: 'transit', durationMin: 25, distanceKm: 3.26 },
+      }),
+      makeItem({ id: 'i2', type: 'point', title: 'B 点' }),
+    ]
+    renderDayCards({ days: [{ ...plan.days[0]!, items }] })
+    expect(screen.getByText('乘车 25 分钟 · 3.3km')).toBeTruthy()
   })
 })

@@ -11,6 +11,12 @@ export interface RoutePreviewMapProps {
   routeGeometry: { type: 'LineString'; coordinates: [number, number][] } | null
   className?: string
   compact?: boolean
+  /**
+   * 手势交互开关（mount 时生效）。默认 true 保持既有全交互行为；
+   * false 用于 inline 嵌入可滚动页面的场景：禁用单指拖拽/滚轮缩放/双击缩放，
+   * 保留移动端双指缩放旋转（touchZoomRotate），避免劫持页面滚动。
+   */
+  interactive?: boolean
 }
 
 type MarkerLayout = {
@@ -350,7 +356,7 @@ function createNumberedMarker(layout: MarkerLayout, color: string): HTMLDivEleme
   return el
 }
 
-export function RoutePreviewMap({ points, routeGeometry, className = '', compact = false }: RoutePreviewMapProps) {
+export function RoutePreviewMap({ points, routeGeometry, className = '', compact = false, interactive = true }: RoutePreviewMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
@@ -375,8 +381,20 @@ export function RoutePreviewMap({ points, routeGeometry, className = '', compact
       pitchWithRotate: false,
     })
 
+    // inline 嵌入态：禁用会劫持页面滚动的手势（单指拖拽/滚轮/双击/键盘），
+    // 保留移动端双指缩放旋转（touchZoomRotate）。interactive 为 mount 时常量。
+    if (!interactive) {
+      map.dragPan.disable()
+      map.scrollZoom.disable()
+      map.boxZoom.disable()
+      map.doubleClickZoom.disable()
+      map.keyboard.disable()
+    }
+
     mapRef.current = map
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), 'top-right')
+    if (interactive) {
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), 'top-right')
+    }
 
     const markInteracted = () => {
       userInteractedRef.current = true

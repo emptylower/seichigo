@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MoreHorizontal, SendHorizontal } from 'lucide-react'
-import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
@@ -38,18 +37,6 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const nearBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const mapPoints = useMemo(() => {
-    const day = plan.days.find((d) => d.dayIndex === selectedDay) ?? plan.days[0]
-    if (!day) return []
-    return day.items
-      .filter((item) => item.point && item.point.lat != null && item.point.lng != null)
-      .map((item, idx) => ({
-        lat: item.point!.lat as number,
-        lng: item.point!.lng as number,
-        label: `${idx + 1}. ${item.title}`,
-      }))
-  }, [plan, selectedDay])
 
   async function refreshPlan() {
     const res = await fetch(`/api/me/plans/${props.planId}`)
@@ -284,9 +271,8 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
           ) : null}
 
           {plan.days.length > 0 ? (
-            <div className="space-y-4 pt-4">
-              <DayCards plan={plan} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
-              <RoutePreviewMap points={mapPoints} routeGeometry={null} className="h-64 w-full rounded-2xl" />
+            <div className="pt-4">
+              <DayCards plan={plan} planId={props.planId} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
             </div>
           ) : null}
           <div ref={chatEndRef} />
