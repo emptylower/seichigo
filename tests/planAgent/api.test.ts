@@ -129,4 +129,19 @@ describe('createChatCompletion (streaming)', () => {
     expect(message.content).toBe('plain')
     expect('tool_calls' in message).toBe(false)
   })
+
+  it('throws when the upstream stream yields zero chunks (empty stream is not success)', async () => {
+    fakeCreate.mockResolvedValue(fakeStream([]))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('模型未返回消息')
+  })
+
+  it('returns the empty assistant message when chunks arrived but carried no content — upstream did respond', async () => {
+    fakeCreate.mockResolvedValue(
+      fakeStream([chunk({ role: 'assistant', content: null }), chunk({}, 'stop')]),
+    )
+    const message = await createChatCompletion({ messages: [], tools: [] })
+    expect(message.role).toBe('assistant')
+    expect(message.content).toBeNull()
+    expect(message.tool_calls).toBeUndefined()
+  })
 })

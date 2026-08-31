@@ -51,8 +51,13 @@ export const createChatCompletion: CreateMessageFn = async ({ messages, tools },
   let content = ''
   let reasoning = ''
   const toolCalls = new Map<number, AccumulatedToolCall>()
+  // 等价恢复非流式时代的 if (!message) throw 保护：连一个 chunk 都没产出
+  // （连接建立后立刻关闭、空响应体等）意味着上游从未真正给出响应，必须报错，
+  // 否则会伪装成一条合法的空 assistant 消息被当作正常回合落库。
+  let sawAnyChunk = false
 
   for await (const chunk of stream) {
+    sawAnyChunk = true
     const choice = chunk.choices[0]
     if (!choice) continue
     const delta = choice.delta
@@ -86,6 +91,8 @@ export const createChatCompletion: CreateMessageFn = async ({ messages, tools },
       }
     }
   }
+
+  if (!sawAnyChunk) throw new Error('模型未返回消息')
 
   const rebuiltToolCalls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call)
   // 镜像 DeepSeek 非流式响应里 message 自带 reasoning_content 的形状；loop
