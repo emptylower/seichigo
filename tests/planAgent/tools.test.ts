@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { executePlanTool, PLAN_AGENT_TOOLS } from '@/lib/planAgent/tools'
+import { PLAN_AGENT_SYSTEM_PROMPT } from '@/lib/planAgent/prompt'
 import type { PlanAgentToolDeps } from '@/lib/planAgent/tools'
 import type { PointFinder } from '@/lib/planAgent/points'
 
@@ -97,6 +98,24 @@ describe('PLAN_AGENT_TOOLS', () => {
 
     const item = byName.get('save_plan_days')!.properties.days.items.properties.items.items
     expect(item.properties.pointId.description).toContain('<bangumiId>:<rawId>')
+  })
+
+  it('save_plan_days 的工具描述写明"一次性完整替换"契约，禁止分批调用', () => {
+    const byName = new Map(
+      PLAN_AGENT_TOOLS.filter((t) => t.type === 'function').map((t) => [
+        t.function.name,
+        t.function.description,
+      ]),
+    )
+    const description = byName.get('save_plan_days')!
+    expect(description).toContain('完整替换')
+    expect(description).toContain('一次性')
+    expect(description).toContain('分批')
+  })
+
+  it('系统提示词写明 save_plan_days 是整份替换、绝不能分批调用', () => {
+    expect(PLAN_AGENT_SYSTEM_PROMPT).toContain('完整替换')
+    expect(PLAN_AGENT_SYSTEM_PROMPT).toContain('分批')
   })
 
   it('save_plan_days 的 item schema 声明可选 payload，字段名与 estimate_transit 返回一致', () => {
@@ -336,5 +355,58 @@ describe('executePlanTool 点位 id 三层防御', () => {
     expect(out.error).toBeUndefined()
     expect(out.mode).toBe('transit')
     expect(out.durationMin).toBeGreaterThan(10)
+  })
+})
+
+describe('save_plan_days 跨天总条目上限（触库前结构化拒绝）', () => {
+  function bulkDays(dayCount: number, itemsPerDay: number) {
+    return Array.from({ length: dayCount }, (_, d) => ({
+      dayIndex: d + 1,
+      items: Array.from({ length: itemsPerDay }, (_, i) => ({
+        type: 'free' as const,
+        title: `day${d + 1}-item${i + 1}`,
+      })),
+    }))
+  }
+
+  it('全部天数条目总和超限时，在调用 repo 之前返回结构化错误', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const spy = vi.spyOn(repo, 'replaceDays')
+    const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: fakeFinder }
+
+    // 7 天 × 25 条 = 175 > 150
+    const out = JSON.parse(await executePlanTool(deps, 'save_plan_days', { days: bulkDays(7, 25) }))
+
+    expect(out.ok).toBeUndefined()
+    expect(out.error).toContain('条目过多')
+    expect(out.error).toContain('150')
+    expect(out.totalItems).toBe(175)
+    expect(out.limit).toBe(150)
+    expect(spy).not.toHaveBeenCalled()
+    expect((await repo.getPlan(plan.id))?.days).toHaveLength(0)
+  })
+
+  it('恰好等于上限时正常一次性保存', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: fakeFinder }
+
+    // 6 天 × 25 条 = 150，正好在边界内
+    const out = JSON.parse(await executePlanTool(deps, 'save_plan_days', { days: bulkDays(6, 25) }))
+
+    expect(out.ok).toBe(true)
+    expect(out.savedDays).toBe(6)
+    expect((await repo.getPlan(plan.id))?.days).toHaveLength(6)
+  })
+
+  it('超限错误给出可操作的分流建议（分作品/分阶段），而不是裸报错', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: fakeFinder }
+
+    const out = JSON.parse(await executePlanTool(deps, 'save_plan_days', { days: bulkDays(30, 30) }))
+    expect(out.error).toContain('精简')
+    expect(out.totalItems).toBe(900)
   })
 })

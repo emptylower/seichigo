@@ -32,6 +32,42 @@ const PLAN_INCLUDE = {
 
 type PrismaPlanWithDays = Prisma.TripPlanGetPayload<{ include: typeof PLAN_INCLUDE }>
 
+type TripPlanDayRow = Prisma.TripPlanDayCreateManyInput
+type TripPlanItemRow = Prisma.TripPlanItemCreateManyInput
+
+/**
+ * 把领域层的天/条目输入铺平成 createMany 行：天 id 在应用层生成（createMany
+ * 不回传创建的行），条目行的 dayId 直接引用这些已知 id，从而把写入压缩成
+ * "1 次 deleteMany + 1 次天批量 + 1 次条目批量"的 O(1) 次数据库往返——
+ * 旧实现的逐天串行 create（含嵌套条目）在 7 天规模就会撞穿交互式事务的
+ * 超时窗口（Cloudflare Workers → Neon 每次往返都有真实网络延迟）。
+ */
+function buildDayRows(planId: string, days: TripPlanDayInput[]): { dayRows: TripPlanDayRow[]; itemRows: TripPlanItemRow[] } {
+  const dayIds = days.map(() => crypto.randomUUID())
+  const dayRows: TripPlanDayRow[] = days.map((day, i) => ({
+    id: dayIds[i],
+    planId,
+    dayIndex: day.dayIndex,
+    date: day.date ?? null,
+    citySlug: day.citySlug ?? null,
+    summary: day.summary ?? null,
+  }))
+  const itemRows: TripPlanItemRow[] = days.flatMap((day, i) =>
+    day.items.map((item, sortOrder) => ({
+      dayId: dayIds[i],
+      sortOrder,
+      type: item.type,
+      pointId: item.pointId ?? null,
+      timeHint: item.timeHint ?? null,
+      title: item.title,
+      note: item.note ?? null,
+      reason: item.reason ?? null,
+      ...(item.payload !== null && item.payload !== undefined ? { payload: item.payload } : {}),
+    })),
+  )
+  return { dayRows, itemRows }
+}
+
 function toPlan(row: Prisma.TripPlanGetPayload<Record<string, never>>): TripPlan {
   return {
     id: row.id,
@@ -115,31 +151,11 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
   }
 
   async replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays> {
+    const { dayRows, itemRows } = buildDayRows(id, days)
     await prisma.$transaction([
       prisma.tripPlanDay.deleteMany({ where: { planId: id } }),
-      ...days.map((day) =>
-        prisma.tripPlanDay.create({
-          data: {
-            planId: id,
-            dayIndex: day.dayIndex,
-            date: day.date ?? null,
-            citySlug: day.citySlug ?? null,
-            summary: day.summary ?? null,
-            items: {
-              create: day.items.map((item, sortOrder) => ({
-                sortOrder,
-                type: item.type,
-                pointId: item.pointId ?? null,
-                timeHint: item.timeHint ?? null,
-                title: item.title,
-                note: item.note ?? null,
-                reason: item.reason ?? null,
-                payload: item.payload ?? undefined,
-              })),
-            },
-          },
-        }),
-      ),
+      ...(dayRows.length ? [prisma.tripPlanDay.createMany({ data: dayRows })] : []),
+      ...(itemRows.length ? [prisma.tripPlanItem.createMany({ data: itemRows })] : []),
       prisma.tripPlan.update({ where: { id }, data: { updatedAt: new Date() } }),
     ])
     const plan = await this.getPlan(id)
@@ -240,13 +256,19 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     token: string,
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T | null> {
-    return prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ agentRunToken: string | null }>>`
-        SELECT "agentRunToken" FROM "TripPlan" WHERE id = ${planId} FOR UPDATE
-      `
-      if (rows[0]?.agentRunToken !== token) return null
-      return fn(tx)
-    })
+    return prisma.$transaction(
+      async (tx) => {
+        const rows = await tx.$queryRaw<Array<{ agentRunToken: string | null }>>`
+          SELECT "agentRunToken" FROM "TripPlan" WHERE id = ${planId} FOR UPDATE
+        `
+        if (rows[0]?.agentRunToken !== token) return null
+        return fn(tx)
+      },
+      // 批量化后正常路径毫秒级完成，但必须给网络抖动（尤其 Workers→Neon）
+      // 留余量；默认 5000ms 曾让 7 天规模的 save_plan_days 撞上
+      // "commit cannot be executed on an expired transaction"
+      { maxWait: 10_000, timeout: 15_000 },
+    )
   }
 
   async appendMessageIfActive(
@@ -270,36 +292,18 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
   }
 
   async replaceDaysIfActive(planId: string, token: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null> {
-    return this.withRunTokenLock(planId, token, async (tx) => {
+    const committed = await this.withRunTokenLock(planId, token, async (tx) => {
       await tx.tripPlanDay.deleteMany({ where: { planId } })
-      for (const day of days) {
-        await tx.tripPlanDay.create({
-          data: {
-            planId,
-            dayIndex: day.dayIndex,
-            date: day.date ?? null,
-            citySlug: day.citySlug ?? null,
-            summary: day.summary ?? null,
-            items: {
-              create: day.items.map((item, sortOrder) => ({
-                sortOrder,
-                type: item.type,
-                pointId: item.pointId ?? null,
-                timeHint: item.timeHint ?? null,
-                title: item.title,
-                note: item.note ?? null,
-                reason: item.reason ?? null,
-                payload: item.payload ?? undefined,
-              })),
-            },
-          },
-        })
-      }
+      const { dayRows, itemRows } = buildDayRows(planId, days)
+      if (dayRows.length) await tx.tripPlanDay.createMany({ data: dayRows })
+      if (itemRows.length) await tx.tripPlanItem.createMany({ data: itemRows })
       await tx.tripPlan.update({ where: { id: planId }, data: { updatedAt: new Date() } })
-      const row = await tx.tripPlan.findUnique({ where: { id: planId }, include: PLAN_INCLUDE })
-      if (!row) throw new Error(`plan not found after replaceDaysIfActive: ${planId}`)
-      return toPlanWithDays(row)
     })
+    if (committed === null) return null
+    // 全量回读放到提交之后：读本身不改动数据，没必要占用 FOR UPDATE 锁窗口
+    const plan = await this.getPlan(planId)
+    if (!plan) throw new Error(`plan not found after replaceDaysIfActive: ${planId}`)
+    return plan
   }
 
   async updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null> {

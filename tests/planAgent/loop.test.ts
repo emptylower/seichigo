@@ -269,4 +269,45 @@ describe('runPlanAgent', () => {
     expect(events[events.length - 1].type).toBe('done')
     expect(events.some((e) => e.type === 'plan_updated')).toBe(false)
   })
+
+  it('工具调用参数是畸形 JSON 时返回显式解析错误，而不是把空对象喂给工具产生误导报错', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    // 模拟超长 tool call 被模型输出长度截断：arguments 是断在半截的 JSON
+    const responses: ChatMessage[] = [
+      assistantMessage({
+        tool_calls: [
+          {
+            id: 'call_truncated',
+            type: 'function',
+            function: {
+              name: 'save_plan_days',
+              arguments: '{"days":[{"dayIndex":1,"items":[{"type":"fr',
+            },
+          },
+        ] as ChatMessage['tool_calls'],
+      }),
+      assistantMessage({ content: '参数坏了，我重新生成。' }),
+    ]
+    const createMessage = vi.fn(async () => responses.shift() as ChatMessage)
+
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder }, maxIterations: 5 },
+      'hi',
+      () => {},
+    )
+
+    const persisted = await repo.listMessages(plan.id)
+    const toolReply = persisted.find((m) => m.kind === 'tool')
+    expect(toolReply).toBeTruthy()
+    // 落库的 content 是完整 toolParam { role, tool_call_id, content }，结果串在内层
+    const inner = (toolReply!.content as { content?: unknown }).content
+    const parsed = JSON.parse(String(inner)) as { error?: string }
+    // 旧实现这里静默降级成 {}，save_plan_days 会报出误导性的"days 必须是数组"，
+    // 诱导模型原样重发巨量参数；必须显式说明参数本身不是合法 JSON
+    expect(parsed.error).toContain('不是合法 JSON')
+    // 计划未被写入
+    expect((await repo.getPlan(plan.id))?.days).toHaveLength(0)
+  })
 })

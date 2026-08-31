@@ -18,6 +18,14 @@ export type PlanAgentToolDeps = {
 const POINT_ID_SCHEMA_HINT =
   '点位 id 是形如 "<bangumiId>:<rawId>" 的不透明字符串，必须原样使用 list_points 返回结果里的完整 id 字符串，不要截取、拆分或改写'
 
+/**
+ * save_plan_days 全部天数条目总和的硬上限。这个数字同时约束两头：
+ * 批量化后单事务毫秒级完成（写入侧余量充足），以及单次 tool call 的
+ * JSON 体积在模型输出预算内可控。超限必须在触碰任何 repo 方法/事务之前
+ * 结构化拒绝，而不是让巨量数据捅到数据库层炸出原始事务超时。
+ */
+export const SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS = 150
+
 const itemSchema = {
   type: 'object' as const,
   properties: {
@@ -93,7 +101,7 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       bangumiIds: { type: 'array', items: { type: 'number' } },
     },
   }),
-  tool('save_plan_days', '整体保存每日行程（覆盖旧内容）。每天是一个按访问顺序排列的条目时间线：point 条目挂 pointId，点位之间插入 transit 条目说明交通方式。每个安排都写 reason。这是计划的唯一落库方式，规划结果必须通过它保存。', {
+  tool('save_plan_days', '整份行程的完整替换保存：每次调用都会覆盖旧的全部天数，必须一次性传入完整的多天内容，绝不能分批多次调用（分批会互相覆盖导致已保存的行程丢失）。每天是一个按访问顺序排列的条目时间线：point 条目挂 pointId，点位之间插入 transit 条目说明交通方式。每个安排都写 reason。这是计划的唯一落库方式，规划结果必须通过它保存。全部天数条目总和上限 150 条，超出会被直接拒绝。', {
     type: 'object',
     properties: {
       days: {
@@ -271,6 +279,14 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           }
         })
         if (days.length > 30) return JSON.stringify({ error: '天数过多（上限 30）' })
+        const totalItems = days.reduce((sum, day) => sum + day.items.length, 0)
+        if (totalItems > SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS) {
+          return JSON.stringify({
+            error: `本次行程条目过多（合计 ${totalItems} 条，上限 ${SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS}），请精简安排或分作品/分阶段规划`,
+            totalItems,
+            limit: SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS,
+          })
+        }
         for (const day of days) {
           if (day.items.length > 30) return JSON.stringify({ error: `Day ${day.dayIndex} 条目过多（上限 30）` })
           for (const item of day.items) {

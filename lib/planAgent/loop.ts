@@ -189,10 +189,11 @@ export async function runPlanAgent(
       for (const call of toolCalls) {
         if (call.type !== 'function') continue
         let input: unknown = {}
+        let malformedArgs = false
         try {
           input = JSON.parse(call.function.arguments || '{}')
         } catch {
-          input = {}
+          malformedArgs = true
         }
         const argsSummary = summarizeToolArgs(call.function.name, input)
         // status/tool_call 事件只发 SSE，是瞬时遥测，绝不写进 TripPlanMessage
@@ -201,7 +202,18 @@ export async function runPlanAgent(
         const startedAt = Date.now()
         let result: string
         try {
-          result = await executePlanTool(toolDeps, call.function.name, input)
+          if (malformedArgs) {
+            // 参数本身不是合法 JSON（典型成因：超长 tool call 被模型输出长度
+            // 截断）。旧实现把解析失败静默降级成 {} 喂给工具，save_plan_days
+            // 会报出误导性的"days 必须是数组"，诱导模型原样重发巨量参数。
+            // 必须显式告知参数已损坏，让模型重新生成（必要时精简内容）。
+            result = JSON.stringify({
+              error:
+                '工具调用参数不是合法 JSON（可能被模型输出长度截断）。请重新生成完整、合法的参数；若因内容过长被截断，请精简条目文字后重试，不要原样重发。',
+            })
+          } else {
+            result = await executePlanTool(toolDeps, call.function.name, input)
+          }
         } catch (err) {
           if (!(err instanceof AskUserSignal)) throw err
           // ask_user 是"第三种路径"：既不是正常 break，也不是 RunFencedError 静默，

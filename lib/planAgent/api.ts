@@ -4,6 +4,14 @@ import type { CreateMessageFn } from './loop'
 const MODEL = process.env.PLAN_AGENT_MODEL || 'deepseek-v4-flash'
 const BASE_URL = process.env.PLAN_AGENT_BASE_URL || 'https://api.deepseek.com'
 
+/**
+ * 单次模型调用的输出预算（reasoning + content + tool call JSON 共享）。
+ * save_plan_days 要求一次性输出整份行程，7 天规模的 tool call JSON 本身就
+ * 有数千 token；预算太小会把参数在半截截断成非法 JSON，是"参数格式传错"
+ * 的结构性来源。可通过 PLAN_AGENT_MAX_TOKENS 覆盖（个别模型上限更低时）。
+ */
+const MAX_OUTPUT_TOKENS = Number(process.env.PLAN_AGENT_MAX_TOKENS) || 16_384
+
 let cachedClient: OpenAI | null = null
 
 function getClient(): OpenAI {
@@ -42,7 +50,7 @@ type AccumulatedToolCall = {
 export const createChatCompletion: CreateMessageFn = async ({ messages, tools }, onDelta) => {
   const stream = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: MAX_OUTPUT_TOKENS,
     messages,
     tools,
     stream: true,
