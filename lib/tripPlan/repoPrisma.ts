@@ -173,4 +173,35 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       where: { kind: 'human', createdAt: { gte: since }, plan: { userId } },
     })
   }
+
+  async appendHumanMessageIfWithinQuota(input: {
+    planId: string
+    userId: string
+    content: Prisma.JsonValue
+    since: Date
+    limit: number
+  }): Promise<TripPlanMessage | null> {
+    return prisma.$transaction(async (tx) => {
+      // 同一用户的配额检查串行化：READ COMMITTED 下 insert+count 彼此不可见，
+      // 并发请求会同时通过检查，必须用事务级 advisory lock 排队。
+      // ::text 强转是必须的：advisory lock 函数返回 void，Prisma 无法反序列化 void 列
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.userId}))::text`
+      const used = await tx.tripPlanMessage.count({
+        where: { kind: 'human', createdAt: { gte: input.since }, plan: { userId: input.userId } },
+      })
+      if (used >= input.limit) return null
+      const row = await tx.tripPlanMessage.create({
+        data: { planId: input.planId, kind: 'human', content: input.content as Prisma.InputJsonValue },
+      })
+      return {
+        id: row.id,
+        planId: row.planId,
+        kind: row.kind as TripPlanMessageKind,
+        content: row.content,
+        createdAt: row.createdAt,
+      }
+      // maxWait 放宽到 10s：并发请求在 advisory lock 上排队属预期，
+      // 排到队尾的应拿到 null→429，而不是事务启动超时的 500
+    }, { maxWait: 10_000, timeout: 15_000 })
+  }
 }

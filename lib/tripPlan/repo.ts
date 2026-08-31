@@ -101,4 +101,15 @@ export interface TripPlanRepo {
   appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage>
   listMessages(planId: string): Promise<TripPlanMessage[]>
   countHumanMessagesSince(userId: string, since: Date): Promise<number>
+  /**
+   * 配额检查与人类消息落库必须是同一个原子操作，否则并发请求都会先通过
+   * count 再各自落库，配额形同虚设。达到 limit 时返回 null 且不落库。
+   */
+  appendHumanMessageIfWithinQuota(input: {
+    planId: string
+    userId: string
+    content: Prisma.JsonValue
+    since: Date
+    limit: number
+  }): Promise<TripPlanMessage | null>
 }

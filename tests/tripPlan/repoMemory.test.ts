@@ -68,4 +68,41 @@ describe('MemoryTripPlanRepo', () => {
     expect(await repo.countHumanMessagesSince('u2', since)).toBe(0)
     expect(await repo.listMessages(plan.id)).toHaveLength(3)
   })
+
+  it('appendHumanMessageIfWithinQuota persists atomically and rejects once limit reached', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const since = new Date(Date.now() - 60_000)
+
+    const first = await repo.appendHumanMessageIfWithinQuota({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since,
+      limit: 2,
+    })
+    expect(first).not.toBeNull()
+    expect(first?.kind).toBe('human')
+
+    const second = await repo.appendHumanMessageIfWithinQuota({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'again' },
+      since,
+      limit: 2,
+    })
+    expect(second).not.toBeNull()
+
+    const third = await repo.appendHumanMessageIfWithinQuota({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'over' },
+      since,
+      limit: 2,
+    })
+    expect(third).toBeNull()
+    // 被拒的消息不落库
+    expect(await repo.countHumanMessagesSince('u1', since)).toBe(2)
+    expect(await repo.listMessages(plan.id)).toHaveLength(2)
+  })
 })

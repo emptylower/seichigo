@@ -110,4 +110,33 @@ describe('runPlanAgent', () => {
     )
     expect(events.some((e) => e.type === 'error')).toBe(true)
   })
+
+  it('does not duplicate the human message when userMessagePersisted is set', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    // 路由已原子落库人类消息（配额检查与落库同一事务）
+    await repo.appendMessage(plan.id, 'human', { role: 'user', content: 'hi' })
+
+    const createMessage = vi.fn(async (params: { messages: unknown[] }) => {
+      // system + 历史里的 human，恰好各一条
+      expect((params.messages as Array<{ role: string }>).filter((m) => m.role === 'user')).toHaveLength(1)
+      return assistantMessage({ content: '收到' })
+    })
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage,
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        userMessagePersisted: true,
+      },
+      'hi',
+      (e) => events.push(e),
+    )
+
+    const persisted = await repo.listMessages(plan.id)
+    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant'])
+  })
 })

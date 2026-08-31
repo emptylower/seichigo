@@ -3035,3 +3035,7 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 - agent 首次调用 `cluster_points` 传了短 id 导致空结果，自行用完整点位 id 重试成功——`cluster_points` 的参数描述可强调「必须用 list_points 返回的完整 id」。
 - agent 口播的「60 个点位」是 `list_points` 默认 limit=60（按 density 取前 60），非全量数；如需展示总量可在工具回执附 totalCount。
 - 浏览器端人工走查（UI 建计划、429 文案展示、/me 聚合页视觉、路书地图渲染）未做——逻辑均有单测覆盖（配额、DayCards、RoutePreviewMap 迁移后 102 项路书测试全绿），建议上线前人工点一遍。
+
+**验收后修复（2026-08-31，Codex stop-time review）**
+- 消息配额竞态修复：原实现 count→429→跑 agent，人类消息到循环里才落库，N 个并发请求可同时通过检查并发烧模型额度。改为 `TripPlanRepo.appendHumanMessageIfWithinQuota`——配额检查与人类消息落库在同一事务，Prisma 版用 `pg_advisory_xact_lock(hashtext(userId))` 按用户串行化（READ COMMITTED 下 insert+count 互不可见，必须加锁；lock 函数返回 void 需 `::text` 强转；事务 maxWait 放宽到 10s 让排队请求拿到干净 429）。`runPlanAgent` 增加 `userMessagePersisted` 跳过重复落库。已在真实 Neon 上验证：5 并发 vs limit=2，恰好 2 成功 3 拒绝，零报错。
+- 计划创建配额（每日 3 个）的同类竞态仍按 M1 决策保留——创建空计划不消耗模型额度，原子化随 M2 用量表一并处理。

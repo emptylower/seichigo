@@ -24,6 +24,8 @@ export type PlanAgentDeps = {
   toolDeps: PlanAgentToolDeps
   maxIterations?: number
   signal?: AbortSignal
+  /** 路由已在配额事务里落库人类消息时置 true，历史里已含该消息，循环不再重复 push/落库 */
+  userMessagePersisted?: boolean
 }
 
 const DEFAULT_MAX_ITERATIONS = 12
@@ -48,9 +50,11 @@ export async function runPlanAgent(
       .map((m) => m as unknown as ChatMessageParam),
   ]
 
-  const userParam: ChatMessageParam = { role: 'user', content: userMessage }
-  messages.push(userParam)
-  await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
+  if (!deps.userMessagePersisted) {
+    const userParam: ChatMessageParam = { role: 'user', content: userMessage }
+    messages.push(userParam)
+    await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
+  }
 
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,

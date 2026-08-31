@@ -124,4 +124,16 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     const planIds = new Set([...this.plans.values()].filter((p) => p.userId === userId).map((p) => p.id))
     return this.messages.filter((m) => planIds.has(m.planId) && m.kind === 'human' && m.createdAt >= since).length
   }
+
+  async appendHumanMessageIfWithinQuota(input: {
+    planId: string
+    userId: string
+    content: Prisma.JsonValue
+    since: Date
+    limit: number
+  }): Promise<TripPlanMessage | null> {
+    const used = await this.countHumanMessagesSince(input.userId, input.since)
+    if (used >= input.limit) return null
+    return this.appendMessage(input.planId, 'human', input.content)
+  }
 }
