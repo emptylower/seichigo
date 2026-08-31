@@ -465,6 +465,25 @@ a {
   font-size: inherit;
 }
 
+:where(.ProseMirror, .prose) table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.9em;
+}
+
+:where(.ProseMirror, .prose) th,
+:where(.ProseMirror, .prose) td {
+  border: 1px solid #e5e7eb; /* gray-200 */
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+}
+
+:where(.ProseMirror, .prose) thead th {
+  background: #f9fafb; /* gray-50 */
+  font-weight: 600;
+}
+
 /* Rich text block layout (align + indent) */
 :where(.ProseMirror, .prose) [data-align="center"] {
   text-align: center;
