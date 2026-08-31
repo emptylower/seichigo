@@ -62,6 +62,21 @@ const UPSTREAM_TARGETS = [
     role: 'image-proxy',
     allow404: false,
   },
+  {
+    url: 'https://w.junreimap.com/d/g.json',
+    // 对应 lib/anitabi/source/bulkClient.ts 的 bulk 同步抓取
+    userAgent: 'seichigo-anitabi-sync/1.0',
+    accept: 'application/json',
+    role: 'sync-bulk',
+    allow404: false,
+  },
+  {
+    url: 'https://www.anitabi.cn/d/g.json',
+    userAgent: 'seichigo-anitabi-sync/1.0',
+    accept: 'application/json',
+    role: 'sync-bulk',
+    allow404: false,
+  },
 ] as const
 
 // —— 以下常量必须与生产保持一致，否则门槛结论不可用 ——
@@ -130,7 +145,7 @@ type ColoReport = {
  * v4  每次尝试独立超时（退避不占预算）；超时按角色区分
  *     —— image-proxy → upstream_timeout（真失败），sync-api → probe_timeout（不确定）
  */
-const CRITERIA_VERSION = 'v4'
+const CRITERIA_VERSION = 'v5'
 
 type ProbeEnv = {
   PROBE_STORE: DurableObjectNamespace
