@@ -48,6 +48,7 @@ model User {
   routeBooks           RouteBook[]
   badges               UserBadge[]
   publicOverrides      PublicOverride[]
+  tripPlans            TripPlan[]
 }
 
 model Account {
@@ -716,6 +717,7 @@ model AnitabiPoint {
   userPointStates UserPointState[]
   userPointPools  UserPointPool[]
   routeBookPoints RouteBookPoint[]
+  tripPlanItems   TripPlanItem[]
 
   @@index([bangumiId, updatedAt])
   @@index([bangumiId, ep])
@@ -970,4 +972,65 @@ model SearchQueryCache {
 
   @@unique([queryText])
   @@index([createdAt])
+}
+
+model TripPlan {
+  id          String            @id @default(cuid())
+  userId      String
+  title       String
+  status      String            @default("draft")
+  startDate   DateTime?
+  dayCount    Int               @default(1)
+  bangumiIds  Int[]             @default([])
+  preferences Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days        TripPlanDay[]
+  messages    TripPlanMessage[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TripPlanDay {
+  id       String         @id @default(cuid())
+  planId   String
+  dayIndex Int
+  date     DateTime?
+  citySlug String?
+  summary  String?
+  plan     TripPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  items    TripPlanItem[]
+
+  @@unique([planId, dayIndex])
+}
+
+model TripPlanItem {
+  id        String        @id @default(cuid())
+  dayId     String
+  sortOrder Int
+  type      String
+  pointId   String?
+  timeHint  String?
+  title     String
+  note      String?
+  reason    String?
+  payload   Json?
+  day       TripPlanDay   @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  point     AnitabiPoint? @relation(fields: [pointId], references: [id], onDelete: SetNull)
+
+  @@index([dayId])
+  @@index([pointId])
+}
+
+model TripPlanMessage {
+  id        String   @id @default(cuid())
+  planId    String
+  kind      String
+  content   Json
+  createdAt DateTime @default(now())
+  plan      TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
 }
