@@ -43,6 +43,43 @@ html, body {
   padding: 0;
 }
 
+/* 全局「隐藏式」滚动条：默认细而低对比，hover 可滚动容器时略微淡入。
+   仅收敛视觉呈现，不影响任何滚动功能（滚轮/触控板/触屏/键盘均不受影响）。
+   需要更明显滚动条的场景仍可叠加 .seichi-soft-scrollbar。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.32) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: rgba(148, 163, 184, 0.28);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 160ms ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.45);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.55);
+}
+
 .seichi-soft-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
