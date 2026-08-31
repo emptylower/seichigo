@@ -4,13 +4,15 @@
 
 **Goal:** 一句"帮我安排下月中旬京都京吹巡礼"能产出可保存、地图可视的多日计划（spec M1 验收线），同时完成导航语义改造（计划 | 地图 | 热门攻略 | 热门城市 | 我的）。
 
-**Architecture:** 严格沿用本仓库领域模式——`lib/tripPlan/`（repo 接口 + Prisma/内存双实现 + deps 注入的 handlers）+ `app/api/me/plans` 薄路由；agent 是手写 Anthropic tool-use 循环（`createMessage` 注入以便单测），产出全部通过 `save_plan_days` 工具落到结构化 TripPlan 对象；前端 `/plan` 左对话右计划，地图复用 `RoutePreviewMap`。地理聚类是本地确定性算法，LLM 只做选择与解释。
+**Architecture:** 严格沿用本仓库领域模式——`lib/tripPlan/`（repo 接口 + Prisma/内存双实现 + deps 注入的 handlers）+ `app/api/me/plans` 薄路由；agent 是手写 OpenAI 兼容 tool-calls 循环（`createMessage` 注入以便单测），产出全部通过 `save_plan_days` 工具落到结构化 TripPlan 对象；作品简称解析走"站内库 → bgm.tv 官方 API → 问用户"三级管线，模型猜测只用于生成查询、永不直接落库。前端 `/plan` 左对话右计划，地图复用 `RoutePreviewMap`。地理聚类是本地确定性算法，LLM 只做选择与解释。
 
-**Tech Stack:** Next.js 15 App Router、Prisma 6 (PostgreSQL)、`@anthropic-ai/sdk`（模型 `claude-opus-5`，可用 `PLAN_AGENT_MODEL` 覆盖）、MapLibre（现有 `RoutePreviewMap`）、vitest（node 项目跑 `.test.ts`，jsdom 跑 `.test.tsx`）。
+**Tech Stack:** Next.js 15 App Router、Prisma 6 (PostgreSQL)、`openai` SDK 指向 DeepSeek（`PLAN_AGENT_BASE_URL=https://api.deepseek.com`，模型 `PLAN_AGENT_MODEL=deepseek-v4-flash`，鉴权 `PLAN_AGENT_API_KEY`；三者均为环境变量，可整体切换任何 OpenAI 兼容供应商）、bgm.tv 公开搜索 API（免费、无需 key）、MapLibre（现有 `RoutePreviewMap`）、vitest（node 项目跑 `.test.ts`，jsdom 跑 `.test.tsx`）。
+
+**DeepSeek 注意事项：** `deepseek-v4-flash` 是推理型模型，响应里带 `reasoning_content` 字段——回传历史与落库前必须剥掉（循环里只保留 `role/content/tool_calls`）；已用真实 key 验证过该模型的 function calling 可用（旧 `deepseek-chat` 别名已下线，不要使用）。
 
 **Spec:** `docs/superpowers/specs/2026-08-31-plan-agent-ia-redesign-design.md`。本计划只覆盖 M1；M2（结构化对话组件/实体超链接/导出）、M3（天气/精选景点/美食/状态机提示）另立计划。
 
-**对 spec 的一处简化（需用户知悉）:** spec 写的是 PlanConversation + PlanMessage 两张会话表；M1 每个计划只有一条会话，故只建 `TripPlanMessage`（挂 planId，存 Anthropic MessageParam 原文，可恢复续聊）。多会话需求出现时再加 conversation 维度。
+**对 spec 的一处简化（需用户知悉）:** spec 写的是 PlanConversation + PlanMessage 两张会话表；M1 每个计划只有一条会话，故只建 `TripPlanMessage`（挂 planId，存 OpenAI 兼容 ChatCompletionMessageParam 原文，可恢复续聊）。多会话需求出现时再加 conversation 维度。
 
 **通用约定（每个任务都适用）:**
 - 测试命令：`npx vitest run <file>`；类型检查：`npm run typecheck:app`（改了 tests 再跑 `npm run typecheck:tests`）。
@@ -22,7 +24,7 @@
 
 ---
 
-### Task 1: 安装 Anthropic SDK
+### Task 1: 安装 OpenAI 兼容 SDK
 
 **Files:**
 - Modify: `package.json`（由 npm 修改）
@@ -30,21 +32,21 @@
 - [ ] **Step 1: 安装依赖**
 
 ```bash
-cd /Users/mac/Desktop/seichigo && npm install @anthropic-ai/sdk
+npm install openai
 ```
 
 - [ ] **Step 2: 验证安装**
 
 ```bash
-node -e "import('@anthropic-ai/sdk').then(() => console.log('sdk ok'))"
+node -e "import('openai').then(() => console.log('sdk ok'))"
 ```
-Expected: 输出 `sdk ok`（用 import 验证而不是 require 包内 package.json——exports 字段可能不暴露它）。
+Expected: 输出 `sdk ok`。
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add package.json package-lock.json
-git commit -m "chore(plan-agent): add @anthropic-ai/sdk dependency"
+git commit -m "chore(plan-agent): add openai sdk for DeepSeek-compatible client"
 ```
 
 ---
@@ -801,12 +803,8 @@ export function toChatView(messages: TripPlanMessage[]): ChatEntryView[] {
     const content = message.content as { role?: string; content?: unknown } | null
     if (message.kind === 'human' && typeof content?.content === 'string') {
       entries.push({ role: 'user', text: content.content })
-    } else if (message.kind === 'assistant' && Array.isArray(content?.content)) {
-      const text = (content.content as Array<{ type?: string; text?: string }>)
-        .filter((block) => block.type === 'text' && typeof block.text === 'string')
-        .map((block) => block.text as string)
-        .join('\n')
-      if (text) entries.push({ role: 'assistant', text })
+    } else if (message.kind === 'assistant' && typeof content?.content === 'string' && content.content) {
+      entries.push({ role: 'assistant', text: content.content })
     }
   }
   return entries
@@ -1321,22 +1319,48 @@ git commit -m "feat(plan-agent): deterministic geo clustering for day planning"
 
 ---
 
-### Task 8: 点位查询器（PointFinder）
+### Task 8: 点位查询器（PointFinder）+ bgm.tv 解析
 
 **Files:**
 - Create: `lib/planAgent/points.ts`
 - Create: `lib/planAgent/pointsPrisma.ts`
+- Create: `lib/planAgent/bgm.ts`
 
 - [ ] **Step 1: 写接口 `lib/planAgent/points.ts`**
 
 ```typescript
 export type BangumiHit = { id: number; titleZh: string | null; titleJaRaw: string | null; city: string | null }
 export type AgentPoint = { id: string; name: string; nameZh: string | null; lat: number; lng: number; ep: string | null }
+export type BgmSubject = { id: number; name: string; nameCn: string }
 
 export interface PointFinder {
   searchBangumi(query: string, limit: number): Promise<BangumiHit[]>
+  getBangumiByIds(ids: number[]): Promise<BangumiHit[]>
   listPoints(bangumiId: number, limit: number): Promise<AgentPoint[]>
   getPointsByIds(ids: string[]): Promise<Array<{ id: string; lat: number; lng: number }>>
+}
+```
+
+- [ ] **Step 1.5: 写 `lib/planAgent/bgm.ts`（bgm.tv 公开搜索，作品简称解析的第二级）**
+
+AnitabiPoint 的 `bangumiId` 就是 bgm.tv 的 subject id，所以 bgm.tv 的搜索结果可以直接对上站内点位库。
+
+```typescript
+import type { BgmSubject } from './points'
+
+const BGM_UA = 'seichigo/1.0 (https://seichigo.com)'
+
+export async function searchBgmSubjects(keyword: string, limit = 5): Promise<BgmSubject[]> {
+  const url = `https://api.bgm.tv/search/subject/${encodeURIComponent(keyword)}?type=2&responseGroup=small&max_results=${limit}`
+  const res = await fetch(url, { headers: { 'User-Agent': BGM_UA } })
+  if (!res.ok) return []
+  const body = (await res.json().catch(() => null)) as {
+    list?: Array<{ id?: number; name?: string; name_cn?: string }>
+  } | null
+  if (!body?.list) return []
+  return body.list
+    .filter((s) => typeof s.id === 'number')
+    .map((s) => ({ id: s.id as number, name: s.name ?? '', nameCn: s.name_cn ?? '' }))
 }
 ```
 
@@ -1360,6 +1384,13 @@ export class PrismaPointFinder implements PointFinder {
       take: limit,
     })
     return rows
+  }
+
+  async getBangumiByIds(ids: number[]): Promise<BangumiHit[]> {
+    return prisma.anitabiBangumi.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, titleZh: true, titleJaRaw: true, city: true },
+    })
   }
 
   async listPoints(bangumiId: number, limit: number): Promise<AgentPoint[]> {
@@ -1393,8 +1424,8 @@ export class PrismaPointFinder implements PointFinder {
 
 ```bash
 npm run typecheck:app
-git add lib/planAgent/points.ts lib/planAgent/pointsPrisma.ts
-git commit -m "feat(plan-agent): point finder over anitabi tables"
+git add lib/planAgent/points.ts lib/planAgent/pointsPrisma.ts lib/planAgent/bgm.ts
+git commit -m "feat(plan-agent): point finder and bgm.tv nickname resolution"
 ```
 
 ---
@@ -1420,6 +1451,11 @@ const fakeFinder: PointFinder = {
       ? [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: '響け！ユーフォニアム', city: '宇治' }]
       : []
   },
+  async getBangumiByIds(ids) {
+    return ids.includes(115908)
+      ? [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: '響け！ユーフォニアム', city: '宇治' }]
+      : []
+  },
   async listPoints(bangumiId) {
     if (bangumiId !== 115908) return []
     return [
@@ -1442,6 +1478,8 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
     planId: plan.id,
     repo,
     points: fakeFinder,
+    bgmSearch: async (keyword) =>
+      keyword.includes('京吹') ? [{ id: 115908, name: '響け！ユーフォニアム', nameCn: '吹响！悠风号' }] : [],
     onPlanUpdated: () => {
       updated += 1
     },
@@ -1450,14 +1488,15 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
 }
 
 describe('PLAN_AGENT_TOOLS', () => {
-  it('declares the seven M1 tools', () => {
-    expect(PLAN_AGENT_TOOLS.map((t) => t.name).sort()).toEqual([
+  it('declares the eight M1 tools', () => {
+    expect(PLAN_AGENT_TOOLS.map((t) => t.function.name).sort()).toEqual([
       'cluster_points',
       'estimate_transit',
       'list_points',
       'read_plan',
       'save_plan_days',
       'search_anime',
+      'search_bangumi_tv',
       'update_plan_meta',
     ])
   })
@@ -1468,6 +1507,17 @@ describe('executePlanTool', () => {
     const { deps } = await makeDeps()
     const out = JSON.parse(await executePlanTool(deps, 'search_anime', { query: '上低音号' }))
     expect(out.results[0].id).toBe(115908)
+  })
+
+  it('search_bangumi_tv resolves nicknames and flags in-site works', async () => {
+    const { deps } = await makeDeps()
+    const out = JSON.parse(await executePlanTool(deps, 'search_bangumi_tv', { keyword: '京吹' }))
+    expect(out.candidates[0].id).toBe(115908)
+    expect(out.candidates[0].hasPoints).toBe(true)
+
+    const miss = JSON.parse(await executePlanTool(deps, 'search_bangumi_tv', { keyword: '完全未知作品' }))
+    expect(miss.candidates).toEqual([])
+    expect(miss.hint).toBeTruthy()
   })
 
   it('list_points returns geo points for a bangumi', async () => {
@@ -1586,9 +1636,9 @@ Expected: FAIL。
 - [ ] **Step 3: 实现 `lib/planAgent/tools.ts`**
 
 ```typescript
-import type Anthropic from '@anthropic-ai/sdk'
+import type OpenAI from 'openai'
 import { clusterIntoDays, haversineKm } from './cluster'
-import type { PointFinder } from './points'
+import type { BgmSubject, PointFinder } from './points'
 import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
 
@@ -1596,6 +1646,7 @@ export type PlanAgentToolDeps = {
   planId: string
   repo: TripPlanRepo
   points: PointFinder
+  bgmSearch?: (keyword: string) => Promise<BgmSubject[]>
   onPlanUpdated?: () => void
 }
 
@@ -1612,95 +1663,78 @@ const itemSchema = {
   required: ['type', 'title'],
 }
 
-export const PLAN_AGENT_TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'search_anime',
-    description: '按作品名（中文或日文，支持部分匹配）搜索圣地巡礼作品，返回 bangumiId。规划前必须先用它确定作品。',
-    input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: '作品名关键词，如“上低音号”' } },
-      required: ['query'],
+function tool(
+  name: string,
+  description: string,
+  parameters: Record<string, unknown>,
+): OpenAI.Chat.Completions.ChatCompletionTool {
+  return { type: 'function', function: { name, description, parameters } }
+}
+
+export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  tool('search_anime', '按作品名（中文或日文，支持部分匹配）在站内点位库搜索圣地巡礼作品，返回 bangumiId。规划前必须先用它确定作品。', {
+    type: 'object',
+    properties: { query: { type: 'string', description: '作品名关键词，如“上低音号”' } },
+    required: ['query'],
+  }),
+  tool('search_bangumi_tv', '站内搜不到时，用 Bangumi(bgm.tv) 官方数据库解析作品简称/别名，返回候选作品及其是否在站内有点位（hasPoints）。仍不确定时把候选列给用户确认，绝不自行断定。', {
+    type: 'object',
+    properties: { keyword: { type: 'string', description: '用户的原话说法，或你猜测的正式名称' } },
+    required: ['keyword'],
+  }),
+  tool('list_points', '列出某作品的全部有坐标巡礼点位（含中文名、经纬度、出现集数）。', {
+    type: 'object',
+    properties: {
+      bangumiId: { type: 'number', description: 'search_anime 返回的作品 id' },
+      limit: { type: 'number', description: '最多返回条数，默认 60' },
     },
-  },
-  {
-    name: 'list_points',
-    description: '列出某作品的全部有坐标巡礼点位（含中文名、经纬度、出现集数）。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        bangumiId: { type: 'number', description: 'search_anime 返回的作品 id' },
-        limit: { type: 'number', description: '最多返回条数，默认 60' },
-      },
-      required: ['bangumiId'],
+    required: ['bangumiId'],
+  }),
+  tool('cluster_points', '把一组点位按地理位置聚成 N 天，并给出每天内的顺路访问顺序。这是确定性算法，排天分组必须用它，不要自己凭感觉分。', {
+    type: 'object',
+    properties: {
+      pointIds: { type: 'array', items: { type: 'string' }, description: '要安排的点位 id 列表' },
+      dayCount: { type: 'number', description: '巡礼天数' },
     },
-  },
-  {
-    name: 'cluster_points',
-    description: '把一组点位按地理位置聚成 N 天，并给出每天内的顺路访问顺序。这是确定性算法，排天分组必须用它，不要自己凭感觉分。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        pointIds: { type: 'array', items: { type: 'string' }, description: '要安排的点位 id 列表' },
-        dayCount: { type: 'number', description: '巡礼天数' },
-      },
-      required: ['pointIds', 'dayCount'],
+    required: ['pointIds', 'dayCount'],
+  }),
+  tool('estimate_transit', '估算两个点位之间的交通方式与耗时（本地启发式：≤1.5km 步行，其余公共交通）。写 transit 条目前必须用它，不要自己猜数字。', {
+    type: 'object',
+    properties: {
+      fromPointId: { type: 'string' },
+      toPointId: { type: 'string' },
     },
-  },
-  {
-    name: 'estimate_transit',
-    description:
-      '估算两个点位之间的交通方式与耗时（本地启发式：≤1.5km 步行，其余公共交通）。写 transit 条目前必须用它，不要自己猜数字。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        fromPointId: { type: 'string' },
-        toPointId: { type: 'string' },
-      },
-      required: ['fromPointId', 'toPointId'],
+    required: ['fromPointId', 'toPointId'],
+  }),
+  tool('read_plan', '读取当前计划的完整结构（标题、天数、每日条目）。', { type: 'object', properties: {} }),
+  tool('update_plan_meta', '更新计划元信息：标题、总天数、出发日期（ISO 日期字符串）、关联作品 id。', {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      dayCount: { type: 'number' },
+      startDate: { type: 'string', description: 'ISO 日期，如 2026-09-15；传空字符串清除' },
+      bangumiIds: { type: 'array', items: { type: 'number' } },
     },
-  },
-  {
-    name: 'read_plan',
-    description: '读取当前计划的完整结构（标题、天数、每日条目）。',
-    input_schema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'update_plan_meta',
-    description: '更新计划元信息：标题、总天数、出发日期（ISO 日期字符串）、关联作品 id。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        dayCount: { type: 'number' },
-        startDate: { type: 'string', description: 'ISO 日期，如 2026-09-15；传空字符串清除' },
-        bangumiIds: { type: 'array', items: { type: 'number' } },
-      },
-    },
-  },
-  {
-    name: 'save_plan_days',
-    description:
-      '整体保存每日行程（覆盖旧内容）。每天是一个按访问顺序排列的条目时间线：point 条目挂 pointId，点位之间插入 transit 条目说明交通方式。每个安排都写 reason。这是计划的唯一落库方式，规划结果必须通过它保存。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        days: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              dayIndex: { type: 'number', description: '第几天，从 1 开始' },
-              citySlug: { type: 'string', description: '当天主要城市，如 kyoto' },
-              summary: { type: 'string', description: '当天一句话概述' },
-              items: { type: 'array', items: itemSchema },
-            },
-            required: ['dayIndex', 'items'],
+  }),
+  tool('save_plan_days', '整体保存每日行程（覆盖旧内容）。每天是一个按访问顺序排列的条目时间线：point 条目挂 pointId，点位之间插入 transit 条目说明交通方式。每个安排都写 reason。这是计划的唯一落库方式，规划结果必须通过它保存。', {
+    type: 'object',
+    properties: {
+      days: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            dayIndex: { type: 'number', description: '第几天，从 1 开始' },
+            citySlug: { type: 'string', description: '当天主要城市，如 kyoto' },
+            summary: { type: 'string', description: '当天一句话概述' },
+            items: { type: 'array', items: itemSchema },
           },
+          required: ['dayIndex', 'items'],
         },
       },
-      required: ['days'],
     },
-  },
+    required: ['days'],
+  }),
 ]
 
 function asRecord(input: unknown): Record<string, unknown> {
@@ -1716,6 +1750,20 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         if (!query) return JSON.stringify({ error: 'query 不能为空' })
         const results = await deps.points.searchBangumi(query, 8)
         return JSON.stringify({ results })
+      }
+      case 'search_bangumi_tv': {
+        const keyword = String(args.keyword ?? '').trim()
+        if (!keyword) return JSON.stringify({ error: 'keyword 不能为空' })
+        if (!deps.bgmSearch) return JSON.stringify({ error: 'bgm.tv 搜索当前不可用，请向用户询问作品官方名称' })
+        const subjects = await deps.bgmSearch(keyword)
+        if (!subjects.length) {
+          return JSON.stringify({ candidates: [], hint: '未找到候选，请向用户询问作品官方名称，不要猜测' })
+        }
+        const inSite = await deps.points.getBangumiByIds(subjects.map((s) => s.id))
+        const siteIds = new Set(inSite.map((b) => b.id))
+        return JSON.stringify({
+          candidates: subjects.map((s) => ({ ...s, hasPoints: siteIds.has(s.id) })),
+        })
       }
       case 'list_points': {
         const bangumiId = Number(args.bangumiId)
@@ -1844,8 +1892,8 @@ git commit -m "feat(plan-agent): agent tool definitions and executor"
 export const PLAN_AGENT_SYSTEM_PROMPT = `你是 SeichiGo（圣地GO）的巡礼行程规划师，帮动漫爱好者把圣地巡礼安排成可执行的多日计划。
 
 ## 工作流程（严格遵守）
-1. 用 search_anime 确定用户要巡礼的作品，拿到 bangumiId。搜不到就告诉用户并请其换个说法，不要编造点位。
-2. 用 list_points 拉取该作品的真实点位。你只能使用这些点位，绝不虚构任何巡礼点位。
+1. 确定作品：先用 search_anime 在站内搜；搜不到再用 search_bangumi_tv 解析简称/别名。你对简称的理解只能用来生成查询关键词，不能作为结论。两个工具都不确定时，把候选列给用户选，或请用户提供官方名称——绝不自行断定，绝不编造。
+2. 用 list_points 拉取该作品的真实点位。你只能使用这些点位，绝不虚构任何巡礼点位。若 search_bangumi_tv 的候选 hasPoints 为 false，如实告诉用户站内暂无该作品点位。
 3. 若用户没说清天数或日期，先用一句话问清（一次只问一个问题）。
 4. 用 cluster_points 做按天分组和顺路排序，以它的结果为准安排每天的点位顺序。
 5. 用 update_plan_meta 写入标题、天数、出发日期和作品 id；用 save_plan_days 保存每日行程。规划结果必须落到这两个工具里，只写在聊天文字里等于没做。
@@ -1882,7 +1930,7 @@ git commit -m "feat(plan-agent): system prompt"
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest'
-import type Anthropic from '@anthropic-ai/sdk'
+import type OpenAI from 'openai'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
@@ -1892,6 +1940,9 @@ const finder: PointFinder = {
   async searchBangumi() {
     return [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: null, city: '宇治' }]
   },
+  async getBangumiByIds() {
+    return []
+  },
   async listPoints() {
     return [{ id: 'p1', name: '宇治橋', nameZh: '宇治桥', lat: 34.8892, lng: 135.8075, ep: '1' }]
   },
@@ -1900,17 +1951,10 @@ const finder: PointFinder = {
   },
 }
 
-function message(content: Anthropic.ContentBlock[], stopReason: Anthropic.Message['stop_reason']): Anthropic.Message {
-  return {
-    id: 'msg_test',
-    type: 'message',
-    role: 'assistant',
-    model: 'claude-opus-5',
-    content,
-    stop_reason: stopReason,
-    stop_sequence: null,
-    usage: { input_tokens: 1, output_tokens: 1 } as Anthropic.Message['usage'],
-  } as Anthropic.Message
+type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessage
+
+function assistantMessage(partial: Partial<ChatMessage>): ChatMessage {
+  return { role: 'assistant', content: null, refusal: null, ...partial } as ChatMessage
 }
 
 describe('runPlanAgent', () => {
@@ -1918,21 +1962,24 @@ describe('runPlanAgent', () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
 
-    const responses: Anthropic.Message[] = [
-      message(
-        [
+    const responses: ChatMessage[] = [
+      assistantMessage({
+        tool_calls: [
           {
-            type: 'tool_use',
-            id: 'tu_1',
-            name: 'save_plan_days',
-            input: { days: [{ dayIndex: 1, items: [{ type: 'point', pointId: 'p1', title: '宇治桥' }] }] },
-          } as Anthropic.ToolUseBlock,
-        ],
-        'tool_use',
-      ),
-      message([{ type: 'text', text: '安排好了！Day1 去宇治桥。', citations: null } as Anthropic.TextBlock], 'end_turn'),
+            id: 'call_1',
+            type: 'function',
+            function: {
+              name: 'save_plan_days',
+              arguments: JSON.stringify({
+                days: [{ dayIndex: 1, items: [{ type: 'point', pointId: 'p1', title: '宇治桥' }] }],
+              }),
+            },
+          },
+        ] as ChatMessage['tool_calls'],
+      }),
+      assistantMessage({ content: '安排好了！Day1 去宇治桥。' }),
     ]
-    const createMessage = vi.fn(async () => responses.shift() as Anthropic.Message)
+    const createMessage = vi.fn(async () => responses.shift() as ChatMessage)
 
     const events: PlanAgentEvent[] = []
     await runPlanAgent(
@@ -1963,10 +2010,11 @@ describe('runPlanAgent', () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     const createMessage = vi.fn(async () =>
-      message(
-        [{ type: 'tool_use', id: 'tu_x', name: 'read_plan', input: {} } as Anthropic.ToolUseBlock],
-        'tool_use',
-      ),
+      assistantMessage({
+        tool_calls: [
+          { id: 'call_x', type: 'function', function: { name: 'read_plan', arguments: '{}' } },
+        ] as ChatMessage['tool_calls'],
+      }),
     )
 
     const events: PlanAgentEvent[] = []
@@ -2006,7 +2054,7 @@ Expected: FAIL。
 - [ ] **Step 3: 实现 `lib/planAgent/loop.ts`**
 
 ```typescript
-import type Anthropic from '@anthropic-ai/sdk'
+import type OpenAI from 'openai'
 import type { Prisma } from '@prisma/client'
 import { executePlanTool, PLAN_AGENT_TOOLS, type PlanAgentToolDeps } from './tools'
 import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
@@ -2018,11 +2066,12 @@ export type PlanAgentEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
+
 export type CreateMessageFn = (params: {
-  system: string
-  messages: Anthropic.MessageParam[]
-  tools: Anthropic.Tool[]
-}) => Promise<Anthropic.Message>
+  messages: ChatMessageParam[]
+  tools: OpenAI.Chat.Completions.ChatCompletionTool[]
+}) => Promise<OpenAI.Chat.Completions.ChatCompletionMessage>
 
 export type PlanAgentDeps = {
   createMessage: CreateMessageFn
@@ -2035,7 +2084,7 @@ export type PlanAgentDeps = {
 
 const DEFAULT_MAX_ITERATIONS = 12
 
-function isMessageParam(value: Prisma.JsonValue): value is Prisma.JsonObject {
+function isChatMessage(value: Prisma.JsonValue): value is Prisma.JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && 'role' in value
 }
 
@@ -2047,12 +2096,15 @@ export async function runPlanAgent(
   const maxIterations = deps.maxIterations ?? DEFAULT_MAX_ITERATIONS
 
   const history = await deps.repo.listMessages(deps.planId)
-  const messages: Anthropic.MessageParam[] = history
-    .map((m) => m.content)
-    .filter(isMessageParam)
-    .map((m) => m as unknown as Anthropic.MessageParam)
+  const messages: ChatMessageParam[] = [
+    { role: 'system', content: PLAN_AGENT_SYSTEM_PROMPT },
+    ...history
+      .map((m) => m.content)
+      .filter(isChatMessage)
+      .map((m) => m as unknown as ChatMessageParam),
+  ]
 
-  const userParam: Anthropic.MessageParam = { role: 'user', content: userMessage }
+  const userParam: ChatMessageParam = { role: 'user', content: userMessage }
   messages.push(userParam)
   await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
 
@@ -2067,34 +2119,37 @@ export async function runPlanAgent(
   try {
     for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
-      const response = await deps.createMessage({
-        system: PLAN_AGENT_SYSTEM_PROMPT,
-        messages,
-        tools: PLAN_AGENT_TOOLS,
-      })
+      const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS })
 
-      for (const block of response.content) {
-        if (block.type === 'text' && block.text) onEvent({ type: 'text', text: block.text })
+      if (typeof response.content === 'string' && response.content) {
+        onEvent({ type: 'text', text: response.content })
       }
 
-      const assistantParam: Anthropic.MessageParam = { role: 'assistant', content: response.content }
-      messages.push(assistantParam)
+      // DeepSeek 推理模型响应带 reasoning_content，回传历史与落库前只保留协议字段
+      const assistantParam = {
+        role: 'assistant' as const,
+        content: response.content ?? null,
+        ...(response.tool_calls?.length ? { tool_calls: response.tool_calls } : {}),
+      }
+      messages.push(assistantParam as ChatMessageParam)
       await deps.repo.appendMessage(deps.planId, 'assistant', assistantParam as unknown as Prisma.JsonValue)
 
-      if (response.stop_reason === 'pause_turn') continue
+      const toolCalls = response.tool_calls ?? []
+      if (!toolCalls.length) break
 
-      const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-      if (!toolUses.length) break
-
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
-      for (const toolUse of toolUses) {
-        const result = await executePlanTool(toolDeps, toolUse.name, toolUse.input)
-        toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: result })
+      for (const call of toolCalls) {
+        if (call.type !== 'function') continue
+        let input: unknown = {}
+        try {
+          input = JSON.parse(call.function.arguments || '{}')
+        } catch {
+          input = {}
+        }
+        const result = await executePlanTool(toolDeps, call.function.name, input)
+        const toolParam: ChatMessageParam = { role: 'tool', tool_call_id: call.id, content: result }
+        messages.push(toolParam)
+        await deps.repo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
       }
-
-      const resultParam: Anthropic.MessageParam = { role: 'user', content: toolResults }
-      messages.push(resultParam)
-      await deps.repo.appendMessage(deps.planId, 'tool', resultParam as unknown as Prisma.JsonValue)
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -2104,6 +2159,8 @@ export async function runPlanAgent(
   onEvent({ type: 'done' })
 }
 ```
+
+注意：openai SDK 新版本的 `tool_calls` 联合类型含 `custom` 变体，`call.type !== 'function'` 的守卫必须保留；若类型收窄报错，以安装版本的实际类型名为准调整（例如 `ChatCompletionMessageToolCall`）。
 
 - [ ] **Step 4: 跑测试确认通过 + Commit**
 
@@ -2124,31 +2181,34 @@ git commit -m "feat(plan-agent): tool-use agent loop with injectable model clien
 - [ ] **Step 1: 写 `lib/planAgent/api.ts`**
 
 ```typescript
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import type { CreateMessageFn } from './loop'
 
-const MODEL = process.env.PLAN_AGENT_MODEL || 'claude-opus-5'
+const MODEL = process.env.PLAN_AGENT_MODEL || 'deepseek-v4-flash'
+const BASE_URL = process.env.PLAN_AGENT_BASE_URL || 'https://api.deepseek.com'
 
-let cachedClient: Anthropic | null = null
+let cachedClient: OpenAI | null = null
 
-function getClient(): Anthropic {
+function getClient(): OpenAI {
   if (!cachedClient) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY 未配置')
+    if (!process.env.PLAN_AGENT_API_KEY) {
+      throw new Error('PLAN_AGENT_API_KEY 未配置')
     }
-    cachedClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    cachedClient = new OpenAI({ apiKey: process.env.PLAN_AGENT_API_KEY, baseURL: BASE_URL })
   }
   return cachedClient
 }
 
-export const createAnthropicMessage: CreateMessageFn = async ({ system, messages, tools }) => {
-  return getClient().messages.create({
+export const createChatCompletion: CreateMessageFn = async ({ messages, tools }) => {
+  const completion = await getClient().chat.completions.create({
     model: MODEL,
     max_tokens: 8000,
-    system,
     messages,
     tools,
   })
+  const message = completion.choices[0]?.message
+  if (!message) throw new Error('模型未返回消息')
+  return message
 }
 ```
 
@@ -2158,7 +2218,8 @@ export const createAnthropicMessage: CreateMessageFn = async ({ system, messages
 import { NextResponse } from 'next/server'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { startOfToday } from '@/lib/tripPlan/handlers/plans'
-import { createAnthropicMessage } from '@/lib/planAgent/api'
+import { createChatCompletion } from '@/lib/planAgent/api'
+import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
 
@@ -2209,10 +2270,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       try {
         await runPlanAgent(
           {
-            createMessage: createAnthropicMessage,
+            createMessage: createChatCompletion,
             repo: deps.repo,
             planId: id,
-            toolDeps: { planId: id, repo: deps.repo, points: new PrismaPointFinder() },
+            toolDeps: {
+              planId: id,
+              repo: deps.repo,
+              points: new PrismaPointFinder(),
+              bgmSearch: searchBgmSubjects,
+            },
             signal: abort.signal,
           },
           message,
@@ -2251,9 +2317,9 @@ git add lib/planAgent/api.ts app/api/me/plans
 git commit -m "feat(plan-agent): SSE agent route with daily message quota"
 ```
 
-- [ ] **Step 4: 在 `.env.local` 确认/补充环境变量（不提交）**
+- [ ] **Step 4: 在 `.env.local` 确认环境变量（不提交）**
 
-`.env.local` 需要 `ANTHROPIC_API_KEY=sk-ant-...`。若没有该文件或 key，提醒用户提供，不要自己造。
+`.env.local` 需要三个变量（本 worktree 已配好，只需确认存在）：`PLAN_AGENT_API_KEY`（DeepSeek key）、`PLAN_AGENT_BASE_URL=https://api.deepseek.com`、`PLAN_AGENT_MODEL=deepseek-v4-flash`。缺失时提醒用户提供，不要自己造。
 
 ---
 
@@ -2869,7 +2935,7 @@ Expected: 全部通过（lint 脚本自带 `|| true`，必须逐行看输出，�
 ```bash
 npm run cf:build
 ```
-Expected: OpenNext 构建成功。本仓库有 Worker 专用 Prisma loader 与 OpenNext 配置，普通 `next build` 验证不了 Worker 打包（`@anthropic-ai/sdk`、SSE 流、`@seichigo/prisma-client-runtime` 条件导出都要过这一关）。有条件的话再跑 `npm run cf:preview` 做一次 SSE 冒烟（登录 → 发一条消息 → 确认 `data:` 帧逐段到达）。
+Expected: OpenNext 构建成功。本仓库有 Worker 专用 Prisma loader 与 OpenNext 配置，普通 `next build` 验证不了 Worker 打包（`openai` SDK、SSE 流、`@seichigo/prisma-client-runtime` 条件导出都要过这一关）。有条件的话再跑 `npm run cf:preview` 做一次 SSE 冒烟（登录 → 发一条消息 → 确认 `data:` 帧逐段到达）。
 
 - [ ] **Step 2: 启动 dev 并手工走查**
 
@@ -2929,3 +2995,12 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 - 原 #6"配额原子化/竞态"：M1 接受 count→create 竞态（个人站流量级别，攻击面小；循环上限 12 轮 + max_tokens 8000 已兜成本）。原子化用量表列入 M2 待办。时区按 UTC 记账，文案不承诺自然日语义。
 - 原 #9"replaceDays 乐观并发"：M1 单用户单计划串行使用为主，接受最后写入胜出；乐观并发（expectedUpdatedAt）列入 M2 待办。
 - 原 #17"Postgres 契约测试/路由集成测试"：M1 以内存仓库契约 + cf:build + 手工走查覆盖，Postgres 契约套件列入 M2 待办（需要测试数据库基建，不在本期）。
+
+## DeepSeek 供应商切换修订（2026-08-31，用户决策）
+
+用户决定不用 Claude/GPT（成本 10-30 倍），改用 DeepSeek。本次修订：
+
+- **SDK 换为 `openai`**（Task 1），客户端指向 `PLAN_AGENT_BASE_URL`（默认 `https://api.deepseek.com`），模型 `PLAN_AGENT_MODEL`（默认 `deepseek-v4-flash`），鉴权 `PLAN_AGENT_API_KEY`——三个环境变量整体可换任何 OpenAI 兼容供应商（Kimi/Qwen/GLM）。已用真实 key 验证 `deepseek-v4-flash` 的 function calling 可用；旧 `deepseek-chat` 别名已下线。
+- **循环与消息持久化改为 OpenAI Chat Completions 协议**（Task 11/12）：assistant 带 `tool_calls`，工具回执是独立的 `role:'tool'` 消息（每条 kind='tool' 单独落库）；`reasoning_content` 在回传与落库前剥掉；system prompt 由循环注入为首条消息。
+- **作品简称解析三级管线**（Task 8/9/10）：站内 `search_anime` → 新增 `search_bangumi_tv` 工具（bgm.tv 公开搜索 API，免费无 key，subject id 与 AnitabiPoint.bangumiId 同源，返回候选并标注 hasPoints）→ 仍不确定则要求用户确认官方名称。提示词明确"模型的简称理解只用于生成查询关键词，不得作为结论"——幻觉在结构上无害化，这是选用低价模型的前提。
+- `toChatView` 适配字符串 content（Task 5）。

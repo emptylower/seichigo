@@ -164,3 +164,6 @@ PlanConversation / PlanMessage    agent 会话，挂 planId
   - 会话表简化：M1 每计划单会话，只建 `TripPlanMessage`（含 kind: human/assistant/tool），`PlanConversation` 留待多会话需求出现时再加。
   - "热门攻略"导航 v1 指向 `/`（首页即攻略列表，已含热门内容与作品二级入口）；独立 `/posts` 索引页与页内"按作品切换视图"移入 M2。
   - 一档的"交通方式建议"在 M1 用本地启发式（距离→步行/公共交通+耗时估算）实现，Google Directions 真实路线接入移入 M2。
+- 2026-08-31（模型选型，用户决策）：
+  - agent 模型不用 Claude/GPT（成本 10-30 倍），改用 DeepSeek `deepseek-v4-flash`（OpenAI 兼容端点，`PLAN_AGENT_API_KEY/BASE_URL/MODEL` 三环境变量可整体切换供应商）。
+  - 作品简称解析定为三级管线：站内库 → bgm.tv 公开搜索 API（subject id 与点位库同源）→ 向用户确认官方名称。模型对简称的理解只用于生成查询，不作为事实落库，幻觉结构性无害化。
