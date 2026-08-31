@@ -2,6 +2,14 @@
 
 > 状态：待评审 · 诊断日期 2026-08-09 · 对应诊断报告 `doc/anitabi-recovery-plan.html`
 
+> **2026-08-31 修订：** 发现上游官方全量静态数据包通道（`/d/g.json` + `/d/g{n}.json`，
+> 经海外镜像域 `w.junreimap.com` 分发，不受 api.anitabi.cn 地理围栏限制），
+> WS3 被新方案取代，见 `docs/superpowers/plans/2026-08-31-anitabi-bulk-sync.md`。
+> 事实修正：F1 已消解（www.anitabi.cn 回到 DNS，CNAME 至腾讯 EdgeOne）；
+> F2 收敛为"仅放行中国大陆 IP"的地理围栏（诊断时连大陆住宅 IP 也被拦的状态已解除）；
+> "5 个不可再生字段"中 density/mark/folder/uid 与 themeJson 经 bulk 通道恢复供给，
+> 仅 reviewUid、originUrl 及 customEpNames/logs/removedPoints/completeness 维持冻结。
+
 ---
 
 ## 一、背景
