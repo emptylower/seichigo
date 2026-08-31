@@ -1335,7 +1335,7 @@ export type BgmSubject = { id: number; name: string; nameCn: string }
 
 export interface PointFinder {
   searchBangumi(query: string, limit: number): Promise<BangumiHit[]>
-  getBangumiByIds(ids: number[]): Promise<BangumiHit[]>
+  countPointsByBangumi(ids: number[]): Promise<Array<{ bangumiId: number; pointCount: number }>>
   listPoints(bangumiId: number, limit: number): Promise<AgentPoint[]>
   getPointsByIds(ids: string[]): Promise<Array<{ id: string; lat: number; lng: number }>>
 }
@@ -1386,11 +1386,13 @@ export class PrismaPointFinder implements PointFinder {
     return rows
   }
 
-  async getBangumiByIds(ids: number[]): Promise<BangumiHit[]> {
-    return prisma.anitabiBangumi.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, titleZh: true, titleJaRaw: true, city: true },
+  async countPointsByBangumi(ids: number[]): Promise<Array<{ bangumiId: number; pointCount: number }>> {
+    const rows = await prisma.anitabiPoint.groupBy({
+      by: ['bangumiId'],
+      where: { bangumiId: { in: ids }, geoLat: { not: null }, geoLng: { not: null } },
+      _count: { _all: true },
     })
+    return rows.map((r) => ({ bangumiId: r.bangumiId, pointCount: r._count._all }))
   }
 
   async listPoints(bangumiId: number, limit: number): Promise<AgentPoint[]> {
@@ -1451,10 +1453,8 @@ const fakeFinder: PointFinder = {
       ? [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: '響け！ユーフォニアム', city: '宇治' }]
       : []
   },
-  async getBangumiByIds(ids) {
-    return ids.includes(115908)
-      ? [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: '響け！ユーフォニアム', city: '宇治' }]
-      : []
+  async countPointsByBangumi(ids) {
+    return ids.includes(115908) ? [{ bangumiId: 115908, pointCount: 3 }] : []
   },
   async listPoints(bangumiId) {
     if (bangumiId !== 115908) return []
@@ -1514,6 +1514,7 @@ describe('executePlanTool', () => {
     const out = JSON.parse(await executePlanTool(deps, 'search_bangumi_tv', { keyword: '京吹' }))
     expect(out.candidates[0].id).toBe(115908)
     expect(out.candidates[0].hasPoints).toBe(true)
+    expect(out.candidates[0].pointCount).toBe(3)
 
     const miss = JSON.parse(await executePlanTool(deps, 'search_bangumi_tv', { keyword: '完全未知作品' }))
     expect(miss.candidates).toEqual([])
@@ -1759,10 +1760,13 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         if (!subjects.length) {
           return JSON.stringify({ candidates: [], hint: '未找到候选，请向用户询问作品官方名称，不要猜测' })
         }
-        const inSite = await deps.points.getBangumiByIds(subjects.map((s) => s.id))
-        const siteIds = new Set(inSite.map((b) => b.id))
+        const counts = await deps.points.countPointsByBangumi(subjects.map((s) => s.id))
+        const countById = new Map(counts.map((c) => [c.bangumiId, c.pointCount]))
         return JSON.stringify({
-          candidates: subjects.map((s) => ({ ...s, hasPoints: siteIds.has(s.id) })),
+          candidates: subjects.map((s) => {
+            const pointCount = countById.get(s.id) ?? 0
+            return { ...s, pointCount, hasPoints: pointCount > 0 }
+          }),
         })
       }
       case 'list_points': {
@@ -1940,7 +1944,7 @@ const finder: PointFinder = {
   async searchBangumi() {
     return [{ id: 115908, titleZh: '吹响吧！上低音号', titleJaRaw: null, city: '宇治' }]
   },
-  async getBangumiByIds() {
+  async countPointsByBangumi() {
     return []
   },
   async listPoints() {
