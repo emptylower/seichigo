@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { runAnitabiSync } from '@/lib/anitabi/sync/workflow'
+import { runAnitabiBulkSync } from '@/lib/anitabi/sync/bulkWorkflow'
+
+/** bulk（默认，静态数据包）| api（旧逐作品管线，仅回滚用，上游 403 中不可用）。 */
+function getSyncSource(): 'bulk' | 'api' {
+  return String(process.env.ANITABI_SYNC_SOURCE || 'bulk').trim().toLowerCase() === 'api'
+    ? 'api'
+    : 'bulk'
+}
 
 function parseBearerToken(raw: string | null): string | null {
   const text = String(raw || '').trim()
@@ -36,7 +44,9 @@ export function createHandlers(deps: AnitabiApiDeps, mode: 'delta' | 'full') {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
-      const report = await runAnitabiSync(deps, { mode })
+      const report = getSyncSource() === 'api'
+        ? await runAnitabiSync(deps, { mode })
+        : await runAnitabiBulkSync(deps, { mode })
       if (report.status === 'failed') {
         return NextResponse.json(report, { status: 502 })
       }
