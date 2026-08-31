@@ -3046,3 +3046,8 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
   - 并发请求打到忙碌计划时返回 `409`（"这个计划正在规划中，等当前回复完成后再发送"），区别于配额耗尽的 `429`。
   - `sanitizeChatHistory`（`lib/planAgent/loop.ts`）在每次回放历史前清理悬空 `tool_calls`（配对回执缺失）与孤儿 `tool` 回执——即便未来出现其它导致历史交错/截断的路径（如手工改库、旧版本遗留脏数据），计划也不会永久卡死在 400。
   - 真实 Neon 验证：5 并发请求打同一计划，恰好 1 个 `ok`、4 个 `busy`；释放后可继续；配额检查照常在互斥之外独立生效。
+
+**验收后修复三（2026-08-31，Codex stop-time review）**
+- 修复了互斥锁的 ABA 漏洞：`endAgentRun` 原先无条件清空 `agentBusyUntil`。场景——请求 A 因某种原因卡到 TTL 过期，请求 B 借此接管锁；A 这时才终于跑到 `finally` 调 `endAgentRun`，会把 B 刚拿到的锁也清掉，导致第三个请求 C 能在 B 还在运行时插进来，问题复现。
+  - `TripPlan` 加 `agentRunToken` 列（迁移 `20260831020000_add_trip_plan_agent_run_token`），`beginAgentRun` 抢锁时连带写入一个随机 token 并在 `ok` 结果里带出；`endAgentRun(planId, token)` 改为条件更新（`WHERE agentRunToken = token`），token 不匹配（锁已易主）时影响 0 行、静默跳过，不动新持有者的锁。内存版同理用 token 比对。
+  - 真实 Neon 验证：手工构造该场景（stale token 请求先拿锁并故意用负 TTL 使其立即过期 → fresh 请求接管 → stale 请求用旧 token 调 endAgentRun）——第三个请求确认拿到 `busy`（锁未被误放），用 fresh 的正确 token 释放后才恢复 `ok`。

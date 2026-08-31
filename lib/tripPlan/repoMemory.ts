@@ -18,7 +18,7 @@ type MemoryOptions = {
 export class MemoryTripPlanRepo implements TripPlanRepo {
   private plans = new Map<string, TripPlanWithDays>()
   private messages: TripPlanMessage[] = []
-  private agentBusyUntil = new Map<string, Date>()
+  private agentBusy = new Map<string, { until: Date; token: string }>()
   private points: Map<string, TripPlanPointLite>
   private seq = 0
 
@@ -137,14 +137,17 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   }): Promise<BeginAgentRunResult> {
     const used = await this.countHumanMessagesSince(input.userId, input.since)
     if (used >= input.limit) return { status: 'quota_exceeded' }
-    const busyUntil = this.agentBusyUntil.get(input.planId)
-    if (busyUntil && busyUntil.getTime() > Date.now()) return { status: 'busy' }
-    this.agentBusyUntil.set(input.planId, new Date(Date.now() + input.busyTtlMs))
+    const existing = this.agentBusy.get(input.planId)
+    if (existing && existing.until.getTime() > Date.now()) return { status: 'busy' }
+    const token = this.nextId('run')
+    this.agentBusy.set(input.planId, { until: new Date(Date.now() + input.busyTtlMs), token })
     const message = await this.appendMessage(input.planId, 'human', input.content)
-    return { status: 'ok', message }
+    return { status: 'ok', message, token }
   }
 
-  async endAgentRun(planId: string): Promise<void> {
-    this.agentBusyUntil.delete(planId)
+  async endAgentRun(planId: string, token: string): Promise<void> {
+    if (this.agentBusy.get(planId)?.token === token) {
+      this.agentBusy.delete(planId)
+    }
   }
 }

@@ -49,6 +49,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (begin.status === 'busy') {
     return NextResponse.json({ error: '这个计划正在规划中，等当前回复完成后再发送' }, { status: 409 })
   }
+  const runToken = begin.token
 
   const encoder = new TextEncoder()
   const abort = new AbortController()
@@ -88,7 +89,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       } finally {
         // 无论正常结束、报错还是客户端断开，都要释放 busy 位，
         // 否则该计划要等 TTL 过期才能继续对话
-        await deps.repo.endAgentRun(id).catch(() => undefined)
+        await deps.repo.endAgentRun(id, runToken).catch(() => undefined)
       }
       try {
         controller.close()

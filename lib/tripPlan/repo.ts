@@ -115,11 +115,17 @@ export interface TripPlanRepo {
     limit: number
     busyTtlMs: number
   }): Promise<BeginAgentRunResult>
-  /** 运行结束（含失败）时清除 busy 位；必须放在 finally 里。 */
-  endAgentRun(planId: string): Promise<void>
+  /**
+   * 运行结束（含失败）时清除 busy 位；必须放在 finally 里，并传入
+   * beginAgentRun 返回的 token。释放前校验 token 匹配当前持有者——否则
+   * TTL 到期后新请求已接管，旧请求这时才跑到 finally，无条件释放会把
+   * 新持有者的锁也清掉（ABA：旧请求以为自己在释放自己的锁，实际释放的
+   * 是别人的）。token 不匹配时静默跳过，不影响当前持有者。
+   */
+  endAgentRun(planId: string, token: string): Promise<void>
 }
 
 export type BeginAgentRunResult =
-  | { status: 'ok'; message: TripPlanMessage }
+  | { status: 'ok'; message: TripPlanMessage; token: string }
   | { status: 'quota_exceeded' }
   | { status: 'busy' }

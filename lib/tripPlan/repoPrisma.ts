@@ -193,13 +193,14 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       })
       if (used >= input.limit) return { status: 'quota_exceeded' }
       const now = new Date()
+      const token = crypto.randomUUID()
       // 条件更新原子抢占 busy 位：抢不到（未过期）说明该计划已有 agent 在跑
       const claimed = await tx.tripPlan.updateMany({
         where: {
           id: input.planId,
           OR: [{ agentBusyUntil: null }, { agentBusyUntil: { lt: now } }],
         },
-        data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs) },
+        data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs), agentRunToken: token },
       })
       if (claimed.count === 0) return { status: 'busy' }
       const row = await tx.tripPlanMessage.create({
@@ -207,6 +208,7 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       })
       return {
         status: 'ok',
+        token,
         message: {
           id: row.id,
           planId: row.planId,
@@ -220,7 +222,11 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     }, { maxWait: 10_000, timeout: 15_000 })
   }
 
-  async endAgentRun(planId: string): Promise<void> {
-    await prisma.tripPlan.updateMany({ where: { id: planId }, data: { agentBusyUntil: null } })
+  async endAgentRun(planId: string, token: string): Promise<void> {
+    // token 不匹配（已被新请求接管）时这里影响 0 行，静默跳过，不会误清新持有者的锁
+    await prisma.tripPlan.updateMany({
+      where: { id: planId, agentRunToken: token },
+      data: { agentBusyUntil: null, agentRunToken: null },
+    })
   }
 }
