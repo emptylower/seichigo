@@ -24,9 +24,17 @@ describe('canonicalizeBulkAssetUrl', () => {
     expect(canonicalizeBulkAssetUrl('/images/points/495291/1zqx9nu_1751348772406.jpg'))
       .toBe('https://image.anitabi.cn/points/495291/1zqx9nu_1751348772406.jpg')
   })
-  it('upgrades http to https and passes absolute urls through', () => {
+  it('upgrades http to https and rewrites bgm-api relay urls to lain.bgm.tv', () => {
     expect(canonicalizeBulkAssetUrl('http://bgm-api.anitabi.cn/pic/a.jpg'))
-      .toBe('https://bgm-api.anitabi.cn/pic/a.jpg')
+      .toBe('https://lain.bgm.tv/pic/a.jpg')
+  })
+  it('strips the /img relay mount prefix from absolute bgm-api urls', () => {
+    expect(canonicalizeBulkAssetUrl('https://bgm-api.anitabi.cn/img/pic/cover/l/a1/d3/325767_u3pvR.jpg'))
+      .toBe('https://lain.bgm.tv/pic/cover/l/a1/d3/325767_u3pvR.jpg')
+  })
+  it('passes other absolute urls through on https unchanged', () => {
+    expect(canonicalizeBulkAssetUrl('http://img.example.com/a.jpg'))
+      .toBe('https://img.example.com/a.jpg')
   })
   it('treats 0 / empty as absent', () => {
     expect(canonicalizeBulkAssetUrl(0)).toBeNull()
@@ -45,7 +53,8 @@ describe('decodeBulkIndex', () => {
     expect(e.cn).toBe('再见，拉拉')
     expect(e.cat).toBe('TV')
     expect(e.tags).toEqual(['催泪', '日常'])
-    expect(e.cover).toBe('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg')
+    // bgm-api 中转域在入库前归一回 lain.bgm.tv（http 同时升级 https）
+    expect(e.cover).toBe('https://lain.bgm.tv/pic/cover/l/18/af/495291_Qd97X.jpg')
     expect(e.points).toEqual([
       { id: '1zqx9nu', geoLat: 35.005218, geoLng: 135.863706 },
       { id: 'gt9wos1', geoLat: 34.991532, geoLng: 135.895657 },

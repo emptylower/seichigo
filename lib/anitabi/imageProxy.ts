@@ -1,6 +1,7 @@
 import {
   normalizeAnitabiDisplayVariant,
   normalizeBangumiCoverVariant,
+  normalizeBgmApiRelayUrl,
   resolveAnitabiDeliveryUrl,
 } from '@/lib/anitabi/imageNormalize'
 import type { MapDisplayImageKind } from '@/lib/anitabi/imageNormalize'
@@ -154,10 +155,12 @@ export function toCanvasSafeImageUrl(src: string, _hintName?: string): string {
 
   try {
     const url = new URL(raw, window.location.origin)
-    if (canBypassProxy(url)) {
-      return url.toString()
+    // bgm-api 中转域 403：先归一回 lain.bgm.tv，让后续 bgm 逻辑（/l/→/m/、代理优先）接管。
+    const safeUrl = normalizeBgmApiRelayUrl(url)
+    if (canBypassProxy(safeUrl)) {
+      return safeUrl.toString()
     }
-    return buildProxyImageUrl(url)
+    return buildProxyImageUrl(safeUrl)
   } catch {
     return raw
   }
@@ -174,7 +177,9 @@ export function getMapDisplayImageCandidates(
 
   try {
     const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
-    const url = new URL(raw, baseOrigin)
+    // bgm-api 中转域 403：先归一回 lain.bgm.tv，再走既有的 bgm 封面变体逻辑
+    // （cover 场景 /pic/cover/l/ 降 /m/、非 anitabi host 走代理优先）。
+    const url = normalizeBgmApiRelayUrl(new URL(raw, baseOrigin))
     const kind = options?.kind ?? 'default'
     normalizeBangumiCoverVariant(url, kind)
     normalizeAnitabiDisplayVariant(url, kind)

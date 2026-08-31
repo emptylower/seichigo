@@ -1,4 +1,5 @@
 import { normalizeText, toNumberOrNull } from '@/lib/anitabi/utils'
+import { normalizeBgmApiRelayUrl } from '@/lib/anitabi/imageNormalize'
 
 /**
  * 上游 bulk 数据集解码器。
@@ -31,7 +32,16 @@ export function canonicalizeBulkAssetUrl(value: unknown): string | null {
   if (value === 0 || value == null) return null
   const text = normalizeText(value)
   if (!text) return null
-  if (/^https?:\/\//i.test(text)) return text.replace(/^http:\/\//i, 'https://')
+  if (/^https?:\/\//i.test(text)) {
+    const absolute = text.replace(/^http:\/\//i, 'https://')
+    // bgm-api.anitabi.cn 中转域对全部请求 403 —— 入库前归一回 lain.bgm.tv 官方源，
+    // 防止坏 URL 再次写库（2026-08-31 bulk 同步事故的复防）。解析失败则维持原值。
+    try {
+      return normalizeBgmApiRelayUrl(absolute).toString()
+    } catch {
+      return absolute
+    }
+  }
   if (text.startsWith('//')) return `https:${text}`
   if (text.startsWith('/images/')) return `https://image.anitabi.cn${text.slice('/images'.length)}`
   if (text.startsWith('/')) return `https://image.anitabi.cn${text}`

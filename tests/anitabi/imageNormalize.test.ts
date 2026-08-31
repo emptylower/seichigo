@@ -2,8 +2,52 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   computeCanonicalImageUrl,
   computeMirrorKey,
+  normalizeBgmApiRelayUrl,
   resolveAnitabiDeliveryUrl,
 } from '@/lib/anitabi/imageNormalize'
+
+describe('bgm-api relay rewrite (2026-08-31 cover incident)', () => {
+  it('rewrites the relay host to lain.bgm.tv keeping path and query intact', () => {
+    expect(
+      normalizeBgmApiRelayUrl('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg?t=2').toString(),
+    ).toBe('https://lain.bgm.tv/pic/cover/l/18/af/495291_Qd97X.jpg?t=2')
+  })
+
+  it('strips the /img mount prefix from /img/pic relay paths', () => {
+    expect(
+      normalizeBgmApiRelayUrl('https://bgm-api.anitabi.cn/img/pic/cover/l/a1/d3/325767_u3pvR.jpg').toString(),
+    ).toBe('https://lain.bgm.tv/pic/cover/l/a1/d3/325767_u3pvR.jpg')
+  })
+
+  it('matches the relay host case-insensitively', () => {
+    expect(normalizeBgmApiRelayUrl('https://BGM-API.ANITABI.CN/pic/a.jpg').toString()).toBe(
+      'https://lain.bgm.tv/pic/a.jpg',
+    )
+  })
+
+  it('passes non-bgm-api hosts through unchanged without mutating the input', () => {
+    const input = new URL('https://img-tc.anitabi.cn/points/1/photo.jpg?plan=h320')
+    const output = normalizeBgmApiRelayUrl(input)
+    expect(output.toString()).toBe('https://img-tc.anitabi.cn/points/1/photo.jpg?plan=h320')
+    expect(output).not.toBe(input)
+    expect(input.hostname).toBe('img-tc.anitabi.cn')
+  })
+
+  it('maps bgm-api covers to the same canonical as the lain.bgm.tv source (zero mirror key drift)', async () => {
+    const viaRelay = computeCanonicalImageUrl('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg')
+    const viaImgRelay = computeCanonicalImageUrl('https://bgm-api.anitabi.cn/img/pic/cover/l/18/af/495291_Qd97X.jpg')
+    const viaOrigin = computeCanonicalImageUrl('https://lain.bgm.tv/pic/cover/l/18/af/495291_Qd97X.jpg')
+
+    // 三入口 canonical 必须一致 —— 这是 R2 旧镜像 key 零漂移、兜底可命中的前提。
+    expect(viaOrigin).toBe('https://lain.bgm.tv/pic/cover/m/18/af/495291_Qd97X.jpg')
+    expect(viaRelay).toBe(viaOrigin)
+    expect(viaImgRelay).toBe(viaOrigin)
+
+    const keyViaRelay = await computeMirrorKey(viaRelay, 'image/jpeg')
+    const keyViaOrigin = await computeMirrorKey(viaOrigin, 'image/jpeg')
+    expect(keyViaRelay).toBe(keyViaOrigin)
+  })
+})
 
 describe('anitabi image normalization', () => {
   it('rewrites anitabi image hosts and strips the /images prefix', () => {
