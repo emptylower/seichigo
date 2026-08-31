@@ -6,6 +6,9 @@ export type TripPlanItemType = 'point' | 'transit' | 'meal' | 'lodging' | 'attra
 export const TRIP_PLAN_STATUSES: TripPlanStatus[] = ['draft', 'upcoming', 'ongoing', 'done']
 export const TRIP_PLAN_ITEM_TYPES: TripPlanItemType[] = ['point', 'transit', 'meal', 'lodging', 'attraction', 'free']
 
+/** 计划创建时的默认标题；标题侧信道用它判断"是否还没有标题" */
+export const DEFAULT_PLAN_TITLE = '未命名巡礼计划'
+
 export type TripPlanPointLite = {
   id: string
   name: string

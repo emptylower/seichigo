@@ -13,11 +13,14 @@ export type PlanAgentToolDeps = {
   onPlanUpdated?: () => void
 }
 
+const POINT_ID_SCHEMA_HINT =
+  '点位 id 是形如 "<bangumiId>:<rawId>" 的不透明字符串，必须原样使用 list_points 返回结果里的完整 id 字符串，不要截取、拆分或改写'
+
 const itemSchema = {
   type: 'object' as const,
   properties: {
     type: { type: 'string', enum: TRIP_PLAN_ITEM_TYPES, description: '条目类型' },
-    pointId: { type: 'string', description: 'type=point 时必填，来自 list_points 的点位 id' },
+    pointId: { type: 'string', description: `type=point 时必填。${POINT_ID_SCHEMA_HINT}` },
     title: { type: 'string', description: '条目标题（点位中文名/交通段/活动名）' },
     timeHint: { type: 'string', description: '时间提示，如“上午”“14:00”' },
     note: { type: 'string', description: '补充说明' },
@@ -56,7 +59,7 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   tool('cluster_points', '把一组点位按地理位置聚成 N 天，并给出每天内的顺路访问顺序。这是确定性算法，排天分组必须用它，不要自己凭感觉分。', {
     type: 'object',
     properties: {
-      pointIds: { type: 'array', items: { type: 'string' }, description: '要安排的点位 id 列表' },
+      pointIds: { type: 'array', items: { type: 'string' }, description: `要安排的点位 id 列表。${POINT_ID_SCHEMA_HINT}` },
       dayCount: { type: 'number', description: '巡礼天数' },
     },
     required: ['pointIds', 'dayCount'],
@@ -64,8 +67,8 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   tool('estimate_transit', '估算两个点位之间的交通方式与耗时（本地启发式：≤1.5km 步行，其余公共交通）。写 transit 条目前必须用它，不要自己猜数字。', {
     type: 'object',
     properties: {
-      fromPointId: { type: 'string' },
-      toPointId: { type: 'string' },
+      fromPointId: { type: 'string', description: POINT_ID_SCHEMA_HINT },
+      toPointId: { type: 'string', description: POINT_ID_SCHEMA_HINT },
     },
     required: ['fromPointId', 'toPointId'],
   }),
@@ -139,21 +142,40 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         return JSON.stringify({ points })
       }
       case 'cluster_points': {
-        const pointIds = Array.isArray(args.pointIds) ? args.pointIds.map(String) : []
+        const pointIds = [...new Set((Array.isArray(args.pointIds) ? args.pointIds : []).map(String))]
         const dayCount = Number(args.dayCount)
         if (!pointIds.length || !Number.isFinite(dayCount)) {
           return JSON.stringify({ error: 'pointIds 与 dayCount 必填' })
         }
-        const coords = await deps.points.getPointsByIds(pointIds)
+        // 把 plan 关联的 bangumiIds 传下去，供服务端容错层给裸 id 拼前缀兜底
+        const plan = await deps.repo.getPlan(deps.planId)
+        const coords = await deps.points.getPointsByIds(pointIds, plan?.bangumiIds ?? [])
+        // 命中判定容忍容错层返回的完整 scoped id（请求裸 id "p1"、命中 "115908:p1"）
+        const resolved = new Set<string>()
+        for (const p of coords) {
+          resolved.add(p.id)
+          const sep = p.id.indexOf(':')
+          if (sep >= 0) resolved.add(p.id.slice(sep + 1))
+        }
+        const missing = pointIds.filter((id) => !resolved.has(id))
+        if (missing.length) {
+          // 显式报错而不是把缺员结果喂给聚类（空/残缺输入只会得到诡异的空规划）
+          return JSON.stringify({
+            error: '以下点位 id 未找到，需要是 list_points 返回的完整 "<bangumiId>:<rawId>" 形式',
+            missing,
+          })
+        }
         const clusters = clusterIntoDays(coords, Math.max(1, Math.floor(dayCount)))
         return JSON.stringify({ clusters })
       }
       case 'estimate_transit': {
         const fromId = String(args.fromPointId ?? '')
         const toId = String(args.toPointId ?? '')
-        const coords = await deps.points.getPointsByIds([fromId, toId])
-        const from = coords.find((p) => p.id === fromId)
-        const to = coords.find((p) => p.id === toId)
+        const plan = await deps.repo.getPlan(deps.planId)
+        const coords = await deps.points.getPointsByIds([fromId, toId], plan?.bangumiIds ?? [])
+        // 容忍容错层返回的完整 scoped id（请求裸 id、命中带前缀形式）
+        const from = coords.find((p) => p.id === fromId || p.id.endsWith(`:${fromId}`))
+        const to = coords.find((p) => p.id === toId || p.id.endsWith(`:${toId}`))
         if (!from || !to) return JSON.stringify({ error: '点位不存在或缺少坐标' })
         const km = haversineKm(from, to)
         const mode = km <= 1.5 ? 'walk' : 'transit'

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { Session } from 'next-auth'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
+import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
 import { toPlanListItemView } from '@/lib/tripPlan/view'
 
 export const DAILY_PLAN_CREATE_LIMIT = 3
@@ -36,7 +37,7 @@ export function createPlansHandlers(deps: TripPlanHandlerDeps) {
         return NextResponse.json({ error: '今日创建计划次数已达上限，明天再来吧' }, { status: 429 })
       }
 
-      let title = '未命名巡礼计划'
+      let title = DEFAULT_PLAN_TITLE
       try {
         const body = (await req.json()) as { title?: unknown }
         if (typeof body.title === 'string' && body.title.trim()) title = body.title.trim().slice(0, 80)

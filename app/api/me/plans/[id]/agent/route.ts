@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { startOfToday } from '@/lib/tripPlan/handlers/plans'
-import { createChatCompletion } from '@/lib/planAgent/api'
+import { createChatCompletion, generatePlanTitle } from '@/lib/planAgent/api'
 import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
+import { maybeSetGeneratedTitle } from '@/lib/planAgent/title'
 
 export const runtime = 'nodejs'
 
@@ -66,24 +67,37 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       }
       send({ type: 'ready' })
       try {
-        await runPlanAgent(
-          {
-            createMessage: createChatCompletion,
-            repo: deps.repo,
-            planId: id,
-            toolDeps: {
-              planId: id,
+        await Promise.all([
+          runPlanAgent(
+            {
+              createMessage: createChatCompletion,
               repo: deps.repo,
-              points: new PrismaPointFinder(),
-              bgmSearch: searchBgmSubjects,
+              planId: id,
+              toolDeps: {
+                planId: id,
+                repo: deps.repo,
+                points: new PrismaPointFinder(),
+                bgmSearch: searchBgmSubjects,
+              },
+              signal: abort.signal,
+              userMessagePersisted: true,
+              runToken,
             },
-            signal: abort.signal,
-            userMessagePersisted: true,
-            runToken,
-          },
-          message,
-          send,
-        )
+            message,
+            send,
+          ),
+          // 标题侧信道：与主循环并行的一次轻量标题生成，让标题在第一轮
+          // 消息后就出现（不走 run-token 栅栏，见 lib/planAgent/title.ts）
+          maybeSetGeneratedTitle(
+            {
+              repo: deps.repo,
+              planId: id,
+              createTitle: (userMessage) => generatePlanTitle(userMessage, abort.signal),
+              onTitleUpdated: () => send({ type: 'plan_updated' }),
+            },
+            message,
+          ),
+        ])
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : '服务器错误' })
         send({ type: 'done' })

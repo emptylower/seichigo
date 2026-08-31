@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { executePlanTool, PLAN_AGENT_TOOLS } from '@/lib/planAgent/tools'
 import type { PlanAgentToolDeps } from '@/lib/planAgent/tools'
@@ -24,6 +24,27 @@ const fakeFinder: PointFinder = {
   async getPointsByIds(ids) {
     const all = await this.listPoints(115908, 100)
     return all.filter((p) => ids.includes(p.id)).map((p) => ({ id: p.id, lat: p.lat, lng: p.lng }))
+  },
+}
+
+// 模拟真实世界的 scoped id（"<bangumiId>:<rawId>"）点位库 + 服务端容错层：
+// 完整 id 精确命中；裸 id 由容错层拼前缀后命中，返回完整 id
+const scopedWorld: PointFinder = {
+  ...fakeFinder,
+  async listPoints(bangumiId) {
+    if (bangumiId !== 115908) return []
+    return [
+      { id: '115908:uji', name: '宇治橋', nameZh: '宇治桥', lat: 34.8892, lng: 135.8075, ep: '1' },
+      { id: '115908:daikichi', name: '大吉山', nameZh: '大吉山', lat: 34.8963, lng: 135.8123, ep: '8' },
+      { id: '115908:kyoto', name: '京都駅', nameZh: '京都站', lat: 34.9858, lng: 135.7585, ep: '2' },
+    ]
+  },
+  async getPointsByIds(ids) {
+    const all = await this.listPoints(115908, 100)
+    return ids
+      .map((id) => all.find((p) => p.id === id || p.id === `115908:${id}`))
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .map((p) => ({ id: p.id, lat: p.lat, lng: p.lng }))
   },
 }
 
@@ -55,6 +76,26 @@ describe('PLAN_AGENT_TOOLS', () => {
       'search_bangumi_tv',
       'update_plan_meta',
     ])
+  })
+
+  it('点位 id 参数的 schema 说明必须写明 "<bangumiId>:<rawId>" 不透明格式', () => {
+    const byName = new Map(
+      PLAN_AGENT_TOOLS.filter((t) => t.type === 'function').map((t) => [
+        t.function.name,
+        t.function.parameters as Record<string, any>,
+      ]),
+    )
+
+    const cluster = byName.get('cluster_points')!
+    expect(cluster.properties.pointIds.description).toContain('<bangumiId>:<rawId>')
+    expect(cluster.properties.pointIds.description).toContain('原样')
+
+    const transit = byName.get('estimate_transit')!
+    expect(transit.properties.fromPointId.description).toContain('<bangumiId>:<rawId>')
+    expect(transit.properties.toPointId.description).toContain('<bangumiId>:<rawId>')
+
+    const item = byName.get('save_plan_days')!.properties.days.items.properties.items.items
+    expect(item.properties.pointId.description).toContain('<bangumiId>:<rawId>')
   })
 })
 
@@ -179,5 +220,75 @@ describe('executePlanTool', () => {
     expect(out.plan.title).toBe('t')
     const err = JSON.parse(await executePlanTool(deps, 'no_such_tool', {}))
     expect(err.error).toBeTruthy()
+  })
+})
+
+describe('executePlanTool 点位 id 三层防御', () => {
+  it('cluster_points 结果数少于入参时返回显式 missing 报错，而不是喂空数组给聚类', async () => {
+    const { deps } = await makeDeps()
+    const out = JSON.parse(
+      await executePlanTool(deps, 'cluster_points', {
+        pointIds: ['p-uji-bridge', 'ghost-id', 'p-daikichi'],
+        dayCount: 2,
+      }),
+    )
+    expect(out.error).toBeTruthy()
+    expect(out.error).toContain('<bangumiId>:<rawId>')
+    expect(out.missing).toEqual(['ghost-id'])
+    expect(out.clusters).toBeUndefined()
+  })
+
+  it('cluster_points 对重复传入的 id 去重后再比对，不误报 missing', async () => {
+    const { deps } = await makeDeps()
+    const out = JSON.parse(
+      await executePlanTool(deps, 'cluster_points', {
+        pointIds: ['p-uji-bridge', 'p-uji-bridge', 'p-daikichi'],
+        dayCount: 1,
+      }),
+    )
+    expect(out.error).toBeUndefined()
+    expect(out.clusters).toHaveLength(1)
+  })
+
+  it('容错层把裸 id 解析成完整 scoped id 时，cluster_points 视为命中并正常聚类', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: scopedWorld }
+
+    const out = JSON.parse(
+      await executePlanTool(deps, 'cluster_points', {
+        pointIds: ['uji', 'daikichi', 'kyoto'],
+        dayCount: 2,
+      }),
+    )
+    expect(out.error).toBeUndefined()
+    expect(out.clusters).toHaveLength(2)
+    // 聚类结果里的 pointIds 用完整 scoped id
+    const flat = out.clusters.flatMap((c: { pointIds: string[] }) => c.pointIds)
+    expect(flat).toEqual(expect.arrayContaining(['115908:uji', '115908:daikichi', '115908:kyoto']))
+  })
+
+  it('cluster_points 把 plan 的 bangumiIds 作为兜底候选传给 getPointsByIds', async () => {
+    const { deps, repo, planId } = await makeDeps()
+    await repo.updateMeta(planId, { bangumiIds: [115908, 42] })
+    const spy = vi.spyOn(deps.points, 'getPointsByIds')
+
+    await executePlanTool(deps, 'cluster_points', { pointIds: ['p-uji-bridge'], dayCount: 1 })
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(['p-uji-bridge'], [115908, 42])
+  })
+
+  it('estimate_transit 对裸 id 也能通过容错层解析并给出估算', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: scopedWorld }
+
+    const out = JSON.parse(
+      await executePlanTool(deps, 'estimate_transit', { fromPointId: 'uji', toPointId: 'kyoto' }),
+    )
+    expect(out.error).toBeUndefined()
+    expect(out.mode).toBe('transit')
+    expect(out.durationMin).toBeGreaterThan(10)
   })
 })

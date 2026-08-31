@@ -43,11 +43,32 @@ export class PrismaPointFinder implements PointFinder {
     }))
   }
 
-  async getPointsByIds(ids: string[]): Promise<Array<{ id: string; lat: number; lng: number }>> {
-    const rows = await prisma.anitabiPoint.findMany({
-      where: { id: { in: ids }, geoLat: { not: null }, geoLng: { not: null } },
-      select: { id: true, geoLat: true, geoLng: true },
+  async getPointsByIds(
+    ids: string[],
+    bangumiIds: number[] = [],
+  ): Promise<Array<{ id: string; lat: number; lng: number }>> {
+    const toGeo = (r: { id: string; geoLat: number | null; geoLng: number | null }) => ({
+      id: r.id,
+      lat: r.geoLat as number,
+      lng: r.geoLng as number,
     })
-    return rows.map((r) => ({ id: r.id, lat: r.geoLat as number, lng: r.geoLng as number }))
+    const queryByIds = (candidates: string[]) =>
+      prisma.anitabiPoint.findMany({
+        where: { id: { in: candidates }, geoLat: { not: null }, geoLng: { not: null } },
+        select: { id: true, geoLat: true, geoLng: true },
+      })
+
+    const rows = await queryByIds(ids)
+    const found = new Set(rows.map((r) => r.id))
+    // 服务端容错：LLM 传了不带 "<bangumiId>:" 前缀的裸 id 时，第一轮精确
+    // 匹配会静默落空。仅对未命中且不含 ":" 的 id，用候选 bangumiIds 拼出
+    // scoped id 再查一轮；命中则补进结果，id 字段用查询命中的完整形式。
+    const bare = ids.filter((id) => !found.has(id) && !id.includes(':'))
+    if (!bare.length || !bangumiIds.length) return rows.map(toGeo)
+
+    const candidates = [...new Set(bangumiIds.flatMap((bangumiId) => bare.map((id) => `${bangumiId}:${id}`)))]
+    const extra = await queryByIds(candidates)
+    const seen = new Set(rows.map((r) => r.id))
+    return [...rows, ...extra.filter((r) => !seen.has(r.id))].map(toGeo)
   }
 }
