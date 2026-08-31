@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { startOfToday } from '@/lib/tripPlan/handlers/plans'
 import { createChatCompletion, generatePlanTitle } from '@/lib/planAgent/api'
+import { planMetaFromAnswer } from '@/lib/planAgent/askUser'
 import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
@@ -26,9 +28,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (plan.userId !== userId) return NextResponse.json({ error: '无权访问' }, { status: 403 })
 
   let message = ''
+  let answerTo = ''
+  let answerValue: Prisma.JsonValue | undefined
   try {
-    const body = (await req.json()) as { message?: unknown }
+    const body = (await req.json()) as { message?: unknown; answerTo?: unknown; answerValue?: unknown }
     if (typeof body.message === 'string') message = body.message.trim()
+    // 结构化回答：answerTo 是 ask_user 落库的 askId，answerValue 形状按 kind 区分
+    //（date_range: {startDate, dayCount} | {monthHint, dayCount}；single_choice:
+    // {optionId}；multi_choice: {optionIds}）。只做形状归一，不强制校验——
+    // 畸形值会在 planMetaFromAnswer 里被忽略，模型仍能读到人类可读文本。
+    if (typeof body.answerTo === 'string' && body.answerTo.trim()) {
+      answerTo = body.answerTo.trim()
+      // undefined 不是合法 JsonValue，归一为 null；unknown 断言点收敛在这一处
+      answerValue = (body.answerValue ?? null) as Prisma.JsonValue
+    }
   } catch {
     // fallthrough
   }
@@ -36,10 +49,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   // 配额检查、同计划互斥、人类消息落库在同一事务（按用户 advisory lock 串行化）：
   // 并发请求既不能各自烧模型额度，也不能在同一计划上交错写对话历史。
+  // 人类消息 content 同时携带原始结构化回答（answerTo/answerValue），供回放
+  // 排查与模型直接读到结构化真值；OpenAI 协议对 user 消息的未知字段是宽容的。
   const begin = await deps.repo.beginAgentRun({
     planId: id,
     userId,
-    content: { role: 'user', content: message },
+    content: {
+      role: 'user',
+      content: message,
+      ...(answerTo ? { answerTo, answerValue } : {}),
+    },
     since: startOfToday(),
     limit: DAILY_MESSAGE_LIMIT,
     busyTtlMs: AGENT_BUSY_TTL_MS,
@@ -56,6 +75,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const abort = new AbortController()
   req.signal.addEventListener('abort', () => abort.abort())
 
+  // 结构化回答 → 元信息直写补丁（纯函数，提前算好）。date_range 的
+  // startDate/dayCount 在 agent 启动前就写入，后续 LLM 一进来就能看到
+  // "日期已确定"，不必再从自由文本里猜、也不必重复调 update_plan_meta。
+  const answerMetaPatch = planMetaFromAnswer(answerTo, answerValue)
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: PlanAgentEvent | { type: 'ready' }) => {
@@ -67,6 +91,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       }
       send({ type: 'ready' })
       try {
+        // 直写走 run-token 栅栏（updateMetaIfActive）：与其它 agent 运行期写入
+        // 一样参与并发正确性保护；刚拿到 token 就写入，实际不可能被拦（null
+        // 仅出现在被接管的窗口里，此时静默跳过即可）
+        if (answerMetaPatch) {
+          const applied = await deps.repo.updateMetaIfActive(id, runToken, answerMetaPatch)
+          if (applied) send({ type: 'plan_updated' })
+        }
         await Promise.all([
           runPlanAgent(
             {

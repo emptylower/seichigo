@@ -29,6 +29,8 @@ export function toolStatusPhrase(name: string, args: unknown): string {
       return '正在更新计划信息'
     case 'save_plan_days':
       return '正在保存行程'
+    case 'ask_user':
+      return '正在向用户发起提问'
     default:
       return '正在处理…'
   }
@@ -58,6 +60,8 @@ export function summarizeToolArgs(name: string, args: unknown): string {
     }
     case 'save_plan_days':
       return `${Array.isArray(a.days) ? a.days.length : 0} 天行程`
+    case 'ask_user':
+      return `提问「${String(a.prompt ?? '').slice(0, 40)}」`
     default: {
       const raw = JSON.stringify(a) ?? '{}'
       return raw.length > MAX_SUMMARY_LENGTH ? `${raw.slice(0, MAX_SUMMARY_LENGTH)}…` : raw

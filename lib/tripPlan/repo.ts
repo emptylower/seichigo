@@ -84,7 +84,12 @@ export type TripPlanMetaUpdate = {
   preferences?: Prisma.JsonValue | null
 }
 
-export type TripPlanMessageKind = 'human' | 'assistant' | 'tool'
+/**
+ * 'ask' 是 ask_user 工具落库的结构化提问行：content 为 AskUserPayload（无
+ * role 字段，不会进入模型回放消息，仅供前端重建交互组件）。
+ * Prisma 侧 kind 是无约束的 String，新增值不需要迁移。
+ */
+export type TripPlanMessageKind = 'human' | 'assistant' | 'tool' | 'ask'
 
 export type TripPlanMessage = {
   id: string

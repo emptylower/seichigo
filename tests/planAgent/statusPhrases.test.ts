@@ -11,6 +11,7 @@ describe('toolStatusPhrase', () => {
     expect(toolStatusPhrase('read_plan', {})).toBe('正在读取当前计划')
     expect(toolStatusPhrase('update_plan_meta', { title: 'x' })).toBe('正在更新计划信息')
     expect(toolStatusPhrase('save_plan_days', { days: [] })).toBe('正在保存行程')
+    expect(toolStatusPhrase('ask_user', { kind: 'date_range', prompt: '什么时候去？' })).toBe('正在向用户发起提问')
   })
 
   it('falls back to a generic phrase for unknown tools', () => {
@@ -30,6 +31,9 @@ describe('summarizeToolArgs', () => {
       '更新 title、dayCount、startDate',
     )
     expect(summarizeToolArgs('save_plan_days', { days: [{ dayIndex: 1 }, { dayIndex: 2 }] })).toBe('2 天行程')
+    expect(summarizeToolArgs('ask_user', { kind: 'date_range', prompt: '你打算什么时候出发去巡礼？' })).toBe(
+      '提问「你打算什么时候出发去巡礼？」',
+    )
   })
 
   it('truncates raw JSON for unknown tools', () => {

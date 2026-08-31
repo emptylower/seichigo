@@ -4,6 +4,7 @@ import type { BgmSubject, PointFinder } from './points'
 import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
 import { RunFencedError } from './runFence'
+import { AskUserSignal, ASK_USER_KINDS, type AskUserKind, type AskUserOption } from './askUser'
 
 export type PlanAgentToolDeps = {
   planId: string
@@ -100,6 +101,29 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
     required: ['days'],
+  }),
+  tool('ask_user', '当需要用户做选择或提供关键信息（比如出行日期、在多个候选作品/方案里选一个）时调用，前端会渲染成结构化的交互组件而不是纯文字提问。调用后本轮对话结束，等待用户通过组件提交答案。', {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['date_range', 'single_choice', 'multi_choice'], description: '组件类型' },
+      prompt: { type: 'string', description: '给用户看的提问文案' },
+      options: {
+        type: 'array',
+        description: 'kind=single_choice/multi_choice 时必填，候选项列表',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            label: { type: 'string' },
+            sublabel: { type: 'string', description: '可选副标题，如"47 个点位"' },
+            image: { type: 'string', description: '可选封面图 URL' },
+          },
+          required: ['id', 'label'],
+        },
+      },
+      allowSkip: { type: 'boolean', description: '是否允许用户跳过这个问题，默认 false' },
+    },
+    required: ['kind', 'prompt'],
   }),
 ]
 
@@ -249,11 +273,47 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         deps.onPlanUpdated?.()
         return JSON.stringify({ ok: true, savedDays: days.length })
       }
+      case 'ask_user': {
+        const kind = args.kind
+        if (typeof kind !== 'string' || !ASK_USER_KINDS.includes(kind as AskUserKind)) {
+          return JSON.stringify({ error: 'kind 必须是 date_range / single_choice / multi_choice 之一' })
+        }
+        const prompt = String(args.prompt ?? '').trim().slice(0, 500)
+        if (!prompt) return JSON.stringify({ error: 'prompt 不能为空' })
+        let options: AskUserOption[] | undefined
+        if (kind !== 'date_range') {
+          const rawOptions = Array.isArray(args.options) ? args.options : []
+          if (!rawOptions.length) return JSON.stringify({ error: 'single_choice/multi_choice 必须提供非空 options 列表' })
+          if (rawOptions.length > 20) return JSON.stringify({ error: 'options 过多（上限 20）' })
+          options = []
+          for (const rawOption of rawOptions) {
+            const option = asRecord(rawOption)
+            const id = String(option.id ?? '').trim()
+            const label = String(option.label ?? '').trim()
+            if (!id || !label) return JSON.stringify({ error: '每个 option 必须带非空 id 与 label' })
+            options.push({
+              id,
+              label,
+              ...(typeof option.sublabel === 'string' && option.sublabel.trim() ? { sublabel: option.sublabel.trim().slice(0, 120) } : {}),
+              ...(typeof option.image === 'string' && option.image.trim() ? { image: option.image.trim() } : {}),
+            })
+          }
+        }
+        throw new AskUserSignal({
+          askId: crypto.randomUUID(),
+          kind: kind as AskUserKind,
+          prompt,
+          ...(options ? { options } : {}),
+          ...(args.allowSkip === true ? { allowSkip: true } : {}),
+        })
+      }
       default:
         return JSON.stringify({ error: `未知工具: ${name}` })
     }
   } catch (err) {
-    if (err instanceof RunFencedError) throw err // 不当普通工具错误吞掉，交给循环处理
+    // 这两类异常是控制流信号，不是工具错误：栅栏中断交给循环静默收尾，
+    // ask_user 信号交给循环走专门的 ask 收尾分支（发事件 + 落库 + 结束本轮）
+    if (err instanceof RunFencedError || err instanceof AskUserSignal) throw err
     const message = err instanceof Error ? err.message : String(err)
     return JSON.stringify({ error: message })
   }

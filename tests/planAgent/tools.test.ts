@@ -63,10 +63,11 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
 }
 
 describe('PLAN_AGENT_TOOLS', () => {
-  it('declares the eight M1 tools', () => {
+  it('declares the nine M1 tools', () => {
     expect(
       PLAN_AGENT_TOOLS.map((t) => (t.type === 'function' ? t.function.name : '')).sort(),
     ).toEqual([
+      'ask_user',
       'cluster_points',
       'estimate_transit',
       'list_points',

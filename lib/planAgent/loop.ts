@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { executePlanTool, PLAN_AGENT_TOOLS, type PlanAgentToolDeps } from './tools'
 import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
 import { RunFencedError } from './runFence'
+import { AskUserSignal, type AskUserPayload } from './askUser'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -17,6 +18,8 @@ export type PlanAgentEvent =
   | { type: 'tool_call'; id: string; name: string; argsSummary: string; status: 'running' | 'done'; durationMs?: number; resultSummary?: string }
   /** 瞬时遥测：DeepSeek reasoning_content 的流式增量（仅 SSE，不落库） */
   | { type: 'reasoning'; delta: string }
+  /** ask_user 发起的结构化提问：前端渲染交互组件，本轮对话就此结束 */
+  | ({ type: 'ask' } & AskUserPayload)
 
 type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -159,7 +162,7 @@ export async function runPlanAgent(
   }
 
   try {
-    for (let iteration = 0; iteration < maxIterations; iteration++) {
+    outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
       // reasoning 增量逐帧透传给 SSE（content 增量不转发：最终答案等本轮结束后
       // 仍走下面那个完整 text 事件，这是"思考过程流式、答案整段"的产品取舍）
@@ -196,7 +199,41 @@ export async function runPlanAgent(
         onEvent({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
         onEvent({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
         const startedAt = Date.now()
-        const result = await executePlanTool(toolDeps, call.function.name, input)
+        let result: string
+        try {
+          result = await executePlanTool(toolDeps, call.function.name, input)
+        } catch (err) {
+          if (!(err instanceof AskUserSignal)) throw err
+          // ask_user 是"第三种路径"：既不是正常 break，也不是 RunFencedError 静默，
+          // 更不是真错误。落库 ask payload（走栅栏保护的 runRepo；若此刻已被新
+          // 请求接管，appendMessage 抛 RunFencedError 冒泡到外层 catch 静默收尾，
+          // 语义与其它工具写入被栅栏拦下完全一致），再补一条 tool 回执——让带
+          // tool_calls 的 assistant 消息在下一轮回放时成组保留（ask 行没有
+          // role 字段，isChatMessage 过滤后与紧邻的回执仍然相邻），然后发 ask
+          // 事件、提前进入与正常结束一致的收尾流程（done 事件 + 外层
+          // endAgentRun），不再发起下一次模型调用。
+          onEvent({
+            type: 'tool_call',
+            id: call.id,
+            name: call.function.name,
+            argsSummary,
+            status: 'done',
+            durationMs: Date.now() - startedAt,
+            resultSummary: '等待用户回答',
+          })
+          await runRepo.appendMessage(deps.planId, 'ask', err.payload as unknown as Prisma.JsonValue)
+          await runRepo.appendMessage(deps.planId, 'tool', {
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              status: 'asked',
+              askId: err.payload.askId,
+              note: '已向用户发起结构化提问，本轮对话结束，等待用户通过下一条消息回答',
+            }),
+          } as unknown as Prisma.JsonValue)
+          onEvent({ type: 'ask', ...err.payload })
+          break outer
+        }
         onEvent({
           type: 'tool_call',
           id: call.id,
