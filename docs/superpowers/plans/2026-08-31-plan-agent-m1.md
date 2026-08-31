@@ -3051,3 +3051,8 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 - 修复了互斥锁的 ABA 漏洞：`endAgentRun` 原先无条件清空 `agentBusyUntil`。场景——请求 A 因某种原因卡到 TTL 过期，请求 B 借此接管锁；A 这时才终于跑到 `finally` 调 `endAgentRun`，会把 B 刚拿到的锁也清掉，导致第三个请求 C 能在 B 还在运行时插进来，问题复现。
   - `TripPlan` 加 `agentRunToken` 列（迁移 `20260831020000_add_trip_plan_agent_run_token`），`beginAgentRun` 抢锁时连带写入一个随机 token 并在 `ok` 结果里带出；`endAgentRun(planId, token)` 改为条件更新（`WHERE agentRunToken = token`），token 不匹配（锁已易主）时影响 0 行、静默跳过，不动新持有者的锁。内存版同理用 token 比对。
   - 真实 Neon 验证：手工构造该场景（stale token 请求先拿锁并故意用负 TTL 使其立即过期 → fresh 请求接管 → stale 请求用旧 token 调 endAgentRun）——第三个请求确认拿到 `busy`（锁未被误放），用 fresh 的正确 token 释放后才恢复 `ok`。
+
+**验收后修复四（2026-08-31，Codex stop-time review）**
+- token 之前只保护了「释放」这一步，没有真正维持运行期间的互斥：busy 位的 TTL 是「疑似失联」的启发式判断，一旦模型响应真的很慢（而不是进程崩溃），原请求在 TTL 到期后仍然存活、仍在写库；新请求趁 TTL 过期接管锁后，两个循环会同时向同一份对话历史写入——这正是最初要修的并发串线问题，只是换了个触发路径（真实慢响应而非进程崩溃）。
+  - 引入栅栏令牌（fencing token）模式：`TripPlanRepo.isRunActive(planId, token)` 让循环能确认自己是否仍是当前合法持有者。`runPlanAgent` 每轮拿到模型响应后、落库前先做这次检查（`PlanAgentDeps.runToken`）——检查点选在模型调用之后，因为模型调用（对外网络请求）是唯一可能长到超过 TTL 的环节；本地的落库/工具执行是毫秒级，检查后到实际写入之间的残余窗口可忽略。一旦发现令牌已被顶替，立刻停止、不写入任何内容，让新请求独占这份历史。路由把 `beginAgentRun` 拿到的 `token` 原样传给 `runPlanAgent` 的 `runToken`。
+  - 真实 Neon 验证：构造「模型响应期间被真实接管」的场景（`createMessage` 内部先在 Neon 上执行一次真实的接管请求，再返回模拟的迟到响应）——确认迟到的循环最终 0 条 assistant 消息落库，干净以 `done` 收尾，未与接管方交叉写历史。

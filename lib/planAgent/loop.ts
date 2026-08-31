@@ -26,6 +26,14 @@ export type PlanAgentDeps = {
   signal?: AbortSignal
   /** 路由已在配额事务里落库人类消息时置 true，历史里已含该消息，循环不再重复 push/落库 */
   userMessagePersisted?: boolean
+  /**
+   * beginAgentRun 返回的持有者 token。传入后循环在每轮模型调用返回时都会
+   * 用它做栅栏检查（fencing）——busy 位的 TTL 只是启发式，本请求可能仍然
+   * 存活，只是模型响应慢；一旦发现自己已被新请求接管就立刻停止写入，避免
+   * 与新请求交叉写同一份历史。不传时不做检查（供内部测试等不涉及并发场
+   * 景的调用方使用）。
+   */
+  runToken?: string
 }
 
 const DEFAULT_MAX_ITERATIONS = 12
@@ -99,6 +107,13 @@ export async function runPlanAgent(
     for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
       const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS })
+
+      if (deps.runToken && !(await deps.repo.isRunActive(deps.planId, deps.runToken))) {
+        // 本轮模型调用耗时太久，busy 位已被新请求接管——不再写入任何内容，
+        // 让新请求独占这份对话历史；直接结束本轮循环
+        onEvent({ type: 'done' })
+        return
+      }
 
       if (typeof response.content === 'string' && response.content) {
         onEvent({ type: 'text', text: response.content })

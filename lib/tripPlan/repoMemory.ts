@@ -150,4 +150,8 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
       this.agentBusy.delete(planId)
     }
   }
+
+  async isRunActive(planId: string, token: string): Promise<boolean> {
+    return this.agentBusy.get(planId)?.token === token
+  }
 }

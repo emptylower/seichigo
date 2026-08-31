@@ -123,6 +123,15 @@ export interface TripPlanRepo {
    * 是别人的）。token 不匹配时静默跳过，不影响当前持有者。
    */
   endAgentRun(planId: string, token: string): Promise<void>
+  /**
+   * 供 agent 循环在每次准备落库前做栅栏检查（fencing）。busyTtlMs 只是
+   * "疑似失联"的启发式判断——原请求可能其实还活着，只是模型响应慢，TTL
+   * 到期只代表新请求*可以*接管，不代表旧请求已经停止。如果旧请求在被
+   * 接管后仍继续写历史，就会和新请求交叉写同一份对话，复现最初要修的
+   * 那个 bug。循环必须在每次落库前用自己持有的 token 确认仍是当前合法
+   * 持有者，一旦不是就立刻停止，不再写入。
+   */
+  isRunActive(planId: string, token: string): Promise<boolean>
 }
 
 export type BeginAgentRunResult =

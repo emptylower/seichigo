@@ -79,6 +79,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             },
             signal: abort.signal,
             userMessagePersisted: true,
+            runToken,
           },
           message,
           send,

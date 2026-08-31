@@ -229,4 +229,9 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       data: { agentBusyUntil: null, agentRunToken: null },
     })
   }
+
+  async isRunActive(planId: string, token: string): Promise<boolean> {
+    const plan = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { agentRunToken: true } })
+    return plan?.agentRunToken === token
+  }
 }

@@ -158,4 +158,44 @@ describe('runPlanAgent', () => {
     const cleaned = sanitizeChatHistory(history)
     expect(cleaned.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'user', 'assistant'])
   })
+
+  it('stops without persisting once its run token has been superseded by a takeover', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    // 旧请求：TTL 极短立即过期（模拟模型响应慢，还没跑完循环，锁已经"看起来"死了）
+    const stale = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: -1000,
+      content: { role: 'user', content: 'hi' },
+    })
+    if (stale.status !== 'ok') throw new Error('unreachable')
+
+    // 新请求趁虚接管
+    const takeover = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: 60_000,
+      content: { role: 'user', content: 'newer' },
+    })
+    if (takeover.status !== 'ok') throw new Error('unreachable')
+
+    // 旧请求这时模型才终于返回——它必须发现自己已被顶替，不能再写历史
+    const createMessage = vi.fn(async () => assistantMessage({ content: '来晚了' }))
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage,
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        userMessagePersisted: true,
+        runToken: stale.token,
+      },
+      'hi',
+      (e) => events.push(e),
+    )
+
+    expect(createMessage).toHaveBeenCalledTimes(1)
+    const persisted = await repo.listMessages(plan.id)
+    expect(persisted.filter((m) => m.kind === 'assistant')).toHaveLength(0)
+    expect(events[events.length - 1].type).toBe('done')
+  })
 })
