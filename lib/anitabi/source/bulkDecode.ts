@@ -155,6 +155,15 @@ function textOrUndef(v: unknown): string | undefined {
   return t || undefined
 }
 
+/**
+ * Postgres `integer` 列的合法范围。density 写入 AnitabiPoint.density（Int 列），
+ * 2026-08-31 Task 9 用真实上游数据演练时撞到 density=110999999889000 —— 上游偶发
+ * 畸形值超出该范围，若原样透传会在 createMany/update 时让整轮同步崩溃。
+ * 与旧管线 source/normalize.ts 的 parseSafeInt32 同一量级的防御，语义对齐：
+ * 超出范围视为「上游未提供」而不是纠正/裁剪，避免编造一个不属实的 density。
+ */
+const POSTGRES_INT32_MAX = 2147483647
+
 // pointRow = [id, name, cn, isFolder, mid, uid, image, fid,
 //             ep, s, mark, origin, originLink, folder, density]
 // mid/fid 无对应库列，跳过（originUrl 保持冻结，不由 mid 合成）。
@@ -164,7 +173,11 @@ function decodeBulkPoint(raw: unknown, ctx: string): BulkPagePoint {
   const id = normalizeText(r[0])
   req(id, `${ctx}: empty point id`)
   const epRaw = r[8]
-  const density = toNumberOrNull(r[14])
+  const densityRaw = toNumberOrNull(r[14])
+  const density =
+    densityRaw != null && Number.isInteger(densityRaw) && densityRaw > 0 && densityRaw <= POSTGRES_INT32_MAX
+      ? densityRaw
+      : null
   return {
     id,
     name: textOrUndef(r[1]),
@@ -180,7 +193,7 @@ function decodeBulkPoint(raw: unknown, ctx: string): BulkPagePoint {
     origin: textOrUndef(r[11]),
     originLink: textOrUndef(r[12]),
     folder: textOrUndef(r[13]),
-    density: density != null && Number.isInteger(density) && density > 0 ? density : undefined,
+    density: density ?? undefined,
   }
 }
 

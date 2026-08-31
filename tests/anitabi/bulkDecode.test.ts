@@ -106,6 +106,18 @@ describe('decodeBulkPage', () => {
     expect(page[0]!.theme).toBeNull()
     expect(page[0]!.points[0]!.ep).toBe('0')
   })
+  it('density 超出 Postgres int32 范围时视为缺失，而不是原样透传', () => {
+    // 2026-08-31 Task 9 沙箱真实数据触发：density=110999999889000 撞穿
+    // AnitabiPoint.density 的 Int 列上限（2147483647），导致 createMany 崩溃。
+    const page = decodeBulkPage([[1, 0, [makePagePoint('a1', { 14: 110999999889000 })], 5]])
+    expect(page[0]!.points[0]!.density).toBeUndefined()
+  })
+  it('density 恰为 int32 上限时保留；负数视为缺失', () => {
+    const atMax = decodeBulkPage([[1, 0, [makePagePoint('a1', { 14: 2147483647 })], 5]])
+    expect(atMax[0]!.points[0]!.density).toBe(2147483647)
+    const negative = decodeBulkPage([[1, 0, [makePagePoint('a1', { 14: -5 })], 5]])
+    expect(negative[0]!.points[0]!.density).toBeUndefined()
+  })
   it('throws on malformed entries', () => {
     expect(() => decodeBulkPage('nope')).toThrow(BulkDecodeError)
     expect(() => decodeBulkPage([[1, 0, 'not-points', 5]])).toThrow(BulkDecodeError)
