@@ -5,24 +5,32 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2, MoreHorizontal, SendHorizontal } from 'lucide-react'
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 import type { TripPlanView } from '@/lib/tripPlan/view'
+import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { DayCards } from './components/DayCards'
 import { MarkdownBubble } from './components/MarkdownBubble'
+import {
+  ThinkingChain,
+  applyThinkingEvent,
+  hasThinkingContent,
+  newThinkingTurn,
+  type ThinkingTurn,
+} from './components/ThinkingChain'
 
-type ChatEntry = { role: 'user' | 'assistant'; text: string }
-type AgentEvent =
-  | { type: 'text'; text: string }
-  | { type: 'plan_updated' }
-  | { type: 'done' }
-  | { type: 'error'; message: string }
+type ChatEntry = { role: 'user' | 'assistant'; text: string; thinking?: ThinkingTurn }
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80
 const TEXTAREA_MAX_HEIGHT_PX = 128 // ≈ 4 行
+// busy 为 true 但首帧遥测尚未到达时的兜底（startedAt 不影响进行中态展示）
+const EMPTY_THINKING_TURN: ThinkingTurn = { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: 0 }
 
 export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; initialChat: ChatEntry[] }) {
   const [plan, setPlan] = useState(props.initialPlan)
   const [chat, setChat] = useState<ChatEntry[]>(props.initialChat)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [activeThinking, setActiveThinking] = useState<ThinkingTurn | null>(null)
+  // 展开哪条思维链：'active'（进行中）或 `m${idx}`（历史消息定格）——纯 UI 状态，不参与跟随滚动
+  const [expandedThinking, setExpandedThinking] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState(1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -76,6 +84,18 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     // 用户主动发送时强制跟随到底部（常规 chat 行为）
     nearBottomRef.current = true
     setChat((prev) => [...prev, { role: 'user', text: message }])
+    // 本轮思维链累积器：本地变量跨帧累积（state 更新是异步的），state 只负责实时渲染
+    let turn = newThinkingTurn()
+    setActiveThinking(turn)
+    setExpandedThinking(null)
+
+    // 定格当前累积的思维链并开启下一段（多轮"模型→工具"循环时每段 text 各挂一份）
+    const freezeTurn = (): ThinkingTurn | undefined => {
+      const frozen = { ...turn, endedAt: Date.now() }
+      turn = newThinkingTurn()
+      setActiveThinking(turn)
+      return hasThinkingContent(frozen) ? frozen : undefined
+    }
 
     try {
       const res = await fetch(`/api/me/plans/${props.planId}/agent`, {
@@ -101,23 +121,57 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
         for (const frame of frames) {
           const line = frame.trim()
           if (!line.startsWith('data:')) continue
-          let event: AgentEvent
+          let event: PlanAgentEvent
           try {
-            event = JSON.parse(line.slice(5)) as AgentEvent
+            event = JSON.parse(line.slice(5)) as PlanAgentEvent
           } catch {
             continue
           }
-          if (event.type === 'text') {
-            setChat((prev) => [...prev, { role: 'assistant', text: event.text }])
-          } else if (event.type === 'plan_updated') {
-            await refreshPlan()
-          } else if (event.type === 'error') {
-            setChat((prev) => [...prev, { role: 'assistant', text: `出错了：${event.message}` }])
+          switch (event.type) {
+            case 'text': {
+              const thinking = freezeTurn()
+              setChat((prev) => [...prev, { role: 'assistant', text: event.text, thinking }])
+              break
+            }
+            case 'plan_updated':
+              await refreshPlan()
+              break
+            case 'error': {
+              const thinking = freezeTurn()
+              setChat((prev) => [...prev, { role: 'assistant', text: `出错了：${event.message}`, thinking }])
+              break
+            }
+            case 'done': {
+              // 回合末尾仍残留未挂接的遥测（最后一段只有工具调用没有正文）时，
+              // 挂到最近一条还没有思维链的 assistant 消息上
+              const frozen = { ...turn, endedAt: Date.now() }
+              turn = newThinkingTurn()
+              if (hasThinkingContent(frozen)) {
+                setChat((prev) => {
+                  const next = [...prev]
+                  for (let i = next.length - 1; i >= 0; i--) {
+                    if (next[i].role === 'assistant' && !next[i].thinking) {
+                      next[i] = { ...next[i], thinking: frozen }
+                      return next
+                    }
+                  }
+                  return next
+                })
+              }
+              break
+            }
+            case 'status':
+            case 'reasoning':
+            case 'tool_call':
+              turn = applyThinkingEvent(turn, event)
+              setActiveThinking(turn)
+              break
           }
         }
       }
     } finally {
       setBusy(false)
+      setActiveThinking(null)
     }
   }
 
@@ -162,12 +216,29 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
                 {entry.text}
               </div>
             ) : (
-              <div key={idx} className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
-                <MarkdownBubble text={entry.text} />
+              <div key={idx} className="space-y-2">
+                {entry.thinking ? (
+                  <ThinkingChain
+                    thinking={entry.thinking}
+                    active={false}
+                    expanded={expandedThinking === `m${idx}`}
+                    onToggle={() => setExpandedThinking((cur) => (cur === `m${idx}` ? null : `m${idx}`))}
+                  />
+                ) : null}
+                <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
+                  <MarkdownBubble text={entry.text} />
+                </div>
               </div>
             ),
           )}
-          {busy ? <p className="text-xs text-gray-400">规划师思考中…</p> : null}
+          {busy ? (
+            <ThinkingChain
+              thinking={activeThinking ?? EMPTY_THINKING_TURN}
+              active
+              expanded={expandedThinking === 'active'}
+              onToggle={() => setExpandedThinking((cur) => (cur === 'active' ? null : 'active'))}
+            />
+          ) : null}
 
           {plan.days.length > 0 ? (
             <div className="space-y-4 pt-4">

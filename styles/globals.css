@@ -48,6 +48,37 @@ html, body {
   scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
 }
 
+/* /plan 思维链：状态条短语切换（key-change 触发）与 shimmer 高光扫过 */
+@keyframes plan-phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.plan-phrase-in {
+  animation: plan-phrase-in 200ms ease-out;
+}
+
+@keyframes plan-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.plan-shimmer {
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: plan-shimmer 1.6s linear infinite;
+}
+
 .seichi-soft-scrollbar::-webkit-scrollbar {
   width: 10px;
   height: 10px;
