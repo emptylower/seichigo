@@ -1,4 +1,5 @@
 import type OpenAI from 'openai'
+import type { Prisma } from '@prisma/client'
 import { clusterIntoDays, haversineKm } from './cluster'
 import type { BgmSubject, PointFinder } from './points'
 import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo } from '@/lib/tripPlan/repo'
@@ -26,6 +27,15 @@ const itemSchema = {
     timeHint: { type: 'string', description: '时间提示，如“上午”“14:00”' },
     note: { type: 'string', description: '补充说明' },
     reason: { type: 'string', description: '为什么这么安排（面向用户展示）' },
+    payload: {
+      type: 'object',
+      description: 'type=transit 时可选：照抄 estimate_transit 返回的结构化交通数据，前端会渲染成图标+时长+距离',
+      properties: {
+        mode: { type: 'string', description: '交通方式：walk / transit（照抄 estimate_transit 的 mode）' },
+        durationMin: { type: 'number', description: '耗时（分钟，照抄 estimate_transit 的 durationMin）' },
+        distanceKm: { type: 'number', description: '距离（公里，照抄 estimate_transit 的 distanceKm）' },
+      },
+    },
   },
   required: ['type', 'title'],
 }
@@ -252,6 +262,10 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
                 timeHint: typeof item.timeHint === 'string' ? item.timeHint : null,
                 note: typeof item.note === 'string' ? item.note : null,
                 reason: typeof item.reason === 'string' ? item.reason : null,
+                payload:
+                  typeof item.payload === 'object' && item.payload !== null && !Array.isArray(item.payload)
+                    ? (item.payload as Prisma.JsonValue)
+                    : null,
               }
             }),
           }

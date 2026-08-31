@@ -98,6 +98,22 @@ describe('PLAN_AGENT_TOOLS', () => {
     const item = byName.get('save_plan_days')!.properties.days.items.properties.items.items
     expect(item.properties.pointId.description).toContain('<bangumiId>:<rawId>')
   })
+
+  it('save_plan_days 的 item schema 声明可选 payload，字段名与 estimate_transit 返回一致', () => {
+    const byName = new Map(
+      PLAN_AGENT_TOOLS.filter((t) => t.type === 'function').map((t) => [
+        t.function.name,
+        t.function.parameters as Record<string, any>,
+      ]),
+    )
+    const item = byName.get('save_plan_days')!.properties.days.items.properties.items.items
+    const payload = item.properties.payload
+    expect(payload.type).toBe('object')
+    expect(Object.keys(payload.properties)).toEqual(
+      expect.arrayContaining(['mode', 'durationMin', 'distanceKm']),
+    )
+    expect(item.required).not.toContain('payload')
+  })
 })
 
 describe('executePlanTool', () => {
@@ -157,6 +173,35 @@ describe('executePlanTool', () => {
     const plan = await repo.getPlan(planId)
     expect(plan?.days).toHaveLength(1)
     expect(plan?.days[0].items).toHaveLength(2)
+  })
+
+  it('save_plan_days 保留 transit 条目的结构化 payload，不带 payload 的条目仍为 null', async () => {
+    const { deps, repo, planId } = await makeDeps()
+    const out = JSON.parse(
+      await executePlanTool(deps, 'save_plan_days', {
+        days: [
+          {
+            dayIndex: 1,
+            items: [
+              { type: 'point', pointId: 'p-uji-bridge', title: '宇治桥' },
+              {
+                type: 'transit',
+                title: '步行前往大吉山',
+                payload: { mode: 'walk', durationMin: 8, distanceKm: 0.65 },
+              },
+              { type: 'point', pointId: 'p-daikichi', title: '大吉山' },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(out.ok).toBe(true)
+    const plan = await repo.getPlan(planId)
+    const items = plan?.days[0].items ?? []
+    const transit = items.find((i) => i.type === 'transit')
+    expect(transit?.payload).toEqual({ mode: 'walk', durationMin: 8, distanceKm: 0.65 })
+    const point = items.find((i) => i.type === 'point')
+    expect(point?.payload).toBeNull()
   })
 
   it('estimate_transit suggests mode and minutes between two points', async () => {
