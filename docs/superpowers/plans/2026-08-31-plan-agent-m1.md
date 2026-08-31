@@ -36,9 +36,9 @@ cd /Users/mac/Desktop/seichigo && npm install @anthropic-ai/sdk
 - [ ] **Step 2: 验证安装**
 
 ```bash
-node -e "console.log(require('@anthropic-ai/sdk/package.json').version)"
+node -e "import('@anthropic-ai/sdk').then(() => console.log('sdk ok'))"
 ```
-Expected: 输出版本号（0.x 或 1.x 均可）。
+Expected: 输出 `sdk ok`（用 import 验证而不是 require 包内 package.json——exports 字段可能不暴露它）。
 
 - [ ] **Step 3: Commit**
 
@@ -110,7 +110,7 @@ model TripPlanItem {
 model TripPlanMessage {
   id        String   @id @default(cuid())
   planId    String
-  role      String
+  kind      String
   content   Json
   createdAt DateTime @default(now())
   plan      TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
@@ -249,12 +249,12 @@ export type TripPlanMetaUpdate = {
   preferences?: Prisma.JsonValue | null
 }
 
-export type TripPlanMessageRole = 'user' | 'assistant'
+export type TripPlanMessageKind = 'human' | 'assistant' | 'tool'
 
 export type TripPlanMessage = {
   id: string
   planId: string
-  role: TripPlanMessageRole
+  kind: TripPlanMessageKind
   content: Prisma.JsonValue
   createdAt: Date
 }
@@ -266,9 +266,9 @@ export interface TripPlanRepo {
   updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan>
   replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays>
   countPlansCreatedSince(userId: string, since: Date): Promise<number>
-  appendMessage(planId: string, role: TripPlanMessageRole, content: Prisma.JsonValue): Promise<TripPlanMessage>
+  appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage>
   listMessages(planId: string): Promise<TripPlanMessage[]>
-  countUserMessagesSince(userId: string, since: Date): Promise<number>
+  countHumanMessagesSince(userId: string, since: Date): Promise<number>
 }
 ```
 
@@ -335,14 +335,15 @@ describe('MemoryTripPlanRepo', () => {
   it('counts plans and messages since a date for quota checks', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
-    await repo.appendMessage(plan.id, 'user', { role: 'user', content: 'hi' })
+    await repo.appendMessage(plan.id, 'human', { role: 'user', content: 'hi' })
+    await repo.appendMessage(plan.id, 'tool', { role: 'user', content: [] })
     await repo.appendMessage(plan.id, 'assistant', { role: 'assistant', content: [] })
 
     const since = new Date(Date.now() - 60_000)
     expect(await repo.countPlansCreatedSince('u1', since)).toBe(1)
-    expect(await repo.countUserMessagesSince('u1', since)).toBe(1)
-    expect(await repo.countUserMessagesSince('u2', since)).toBe(0)
-    expect(await repo.listMessages(plan.id)).toHaveLength(2)
+    expect(await repo.countHumanMessagesSince('u1', since)).toBe(1)
+    expect(await repo.countHumanMessagesSince('u2', since)).toBe(0)
+    expect(await repo.listMessages(plan.id)).toHaveLength(3)
   })
 })
 ```
@@ -362,7 +363,7 @@ import type {
   TripPlan,
   TripPlanDayInput,
   TripPlanMessage,
-  TripPlanMessageRole,
+  TripPlanMessageKind,
   TripPlanMetaUpdate,
   TripPlanPointLite,
   TripPlanRepo,
@@ -463,11 +464,11 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return [...this.plans.values()].filter((p) => p.userId === userId && p.createdAt >= since).length
   }
 
-  async appendMessage(planId: string, role: TripPlanMessageRole, content: Prisma.JsonValue): Promise<TripPlanMessage> {
+  async appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage> {
     const message: TripPlanMessage = {
       id: this.nextId('msg'),
       planId,
-      role,
+      kind,
       content,
       createdAt: new Date(),
     }
@@ -479,9 +480,9 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return this.messages.filter((m) => m.planId === planId)
   }
 
-  async countUserMessagesSince(userId: string, since: Date): Promise<number> {
+  async countHumanMessagesSince(userId: string, since: Date): Promise<number> {
     const planIds = new Set([...this.plans.values()].filter((p) => p.userId === userId).map((p) => p.id))
-    return this.messages.filter((m) => planIds.has(m.planId) && m.role === 'user' && m.createdAt >= since).length
+    return this.messages.filter((m) => planIds.has(m.planId) && m.kind === 'human' && m.createdAt >= since).length
   }
 }
 ```
@@ -512,6 +513,7 @@ git commit -m "feat(plan-agent): TripPlan repo interface and memory implementati
 （照 `lib/routeBook/repoPrisma.ts` 的风格；正确性由 Task 3 接口测试 + Task 16 手工验证覆盖，不为 Prisma 层写 mock 测试——仓库现行惯例如此。）
 
 ```typescript
+import { Prisma as PrismaRuntime } from '@seichigo/prisma-client-runtime'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import type {
@@ -519,7 +521,7 @@ import type {
   TripPlanDayInput,
   TripPlanItemType,
   TripPlanMessage,
-  TripPlanMessageRole,
+  TripPlanMessageKind,
   TripPlanMetaUpdate,
   TripPlanRepo,
   TripPlanStatus,
@@ -620,7 +622,7 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
         ...(patch.startDate !== undefined ? { startDate: patch.startDate } : {}),
         ...(patch.dayCount !== undefined ? { dayCount: patch.dayCount } : {}),
         ...(patch.bangumiIds !== undefined ? { bangumiIds: patch.bangumiIds } : {}),
-        ...(patch.preferences !== undefined ? { preferences: patch.preferences ?? Prisma.JsonNull } : {}),
+        ...(patch.preferences !== undefined ? { preferences: patch.preferences ?? PrismaRuntime.JsonNull } : {}),
       },
     })
     return toPlan(row)
@@ -663,11 +665,11 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     return prisma.tripPlan.count({ where: { userId, createdAt: { gte: since } } })
   }
 
-  async appendMessage(planId: string, role: TripPlanMessageRole, content: Prisma.JsonValue): Promise<TripPlanMessage> {
+  async appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage> {
     const row = await prisma.tripPlanMessage.create({
-      data: { planId, role, content: content as Prisma.InputJsonValue },
+      data: { planId, kind, content: content as Prisma.InputJsonValue },
     })
-    return { id: row.id, planId: row.planId, role: row.role as TripPlanMessageRole, content: row.content, createdAt: row.createdAt }
+    return { id: row.id, planId: row.planId, kind: row.kind as TripPlanMessageKind, content: row.content, createdAt: row.createdAt }
   }
 
   async listMessages(planId: string): Promise<TripPlanMessage[]> {
@@ -675,15 +677,15 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     return rows.map((row) => ({
       id: row.id,
       planId: row.planId,
-      role: row.role as TripPlanMessageRole,
+      kind: row.kind as TripPlanMessageKind,
       content: row.content,
       createdAt: row.createdAt,
     }))
   }
 
-  async countUserMessagesSince(userId: string, since: Date): Promise<number> {
+  async countHumanMessagesSince(userId: string, since: Date): Promise<number> {
     return prisma.tripPlanMessage.count({
-      where: { role: 'user', createdAt: { gte: since }, plan: { userId } },
+      where: { kind: 'human', createdAt: { gte: since }, plan: { userId } },
     })
   }
 }
@@ -716,17 +718,19 @@ git commit -m "feat(plan-agent): Prisma TripPlan repository"
 - [ ] **Step 1: 写 `lib/tripPlan/view.ts`（API/前端共用的 JSON 视图，Date → ISO 字符串）**
 
 ```typescript
-import type { TripPlan, TripPlanWithDays } from './repo'
+import type { Prisma } from '@prisma/client'
+import type { TripPlan, TripPlanItemType, TripPlanMessage, TripPlanStatus, TripPlanWithDays } from './repo'
 
 export type TripPlanItemView = {
   id: string
   sortOrder: number
-  type: string
+  type: TripPlanItemType
   pointId: string | null
   timeHint: string | null
   title: string
   note: string | null
   reason: string | null
+  payload: Prisma.JsonValue | null
   point: { id: string; name: string; nameZh: string | null; lat: number | null; lng: number | null; image: string | null } | null
 }
 
@@ -742,7 +746,7 @@ export type TripPlanDayView = {
 export type TripPlanView = {
   id: string
   title: string
-  status: string
+  status: TripPlanStatus
   startDate: string | null
   dayCount: number
   bangumiIds: number[]
@@ -782,10 +786,30 @@ export function toPlanView(plan: TripPlanWithDays): TripPlanView {
         title: item.title,
         note: item.note,
         reason: item.reason,
+        payload: item.payload,
         point: item.point,
       })),
     })),
   }
+}
+
+export type ChatEntryView = { role: 'user' | 'assistant'; text: string }
+
+export function toChatView(messages: TripPlanMessage[]): ChatEntryView[] {
+  const entries: ChatEntryView[] = []
+  for (const message of messages) {
+    const content = message.content as { role?: string; content?: unknown } | null
+    if (message.kind === 'human' && typeof content?.content === 'string') {
+      entries.push({ role: 'user', text: content.content })
+    } else if (message.kind === 'assistant' && Array.isArray(content?.content)) {
+      const text = (content.content as Array<{ type?: string; text?: string }>)
+        .filter((block) => block.type === 'text' && typeof block.text === 'string')
+        .map((block) => block.text as string)
+        .join('\n')
+      if (text) entries.push({ role: 'assistant', text })
+    }
+  }
+  return entries
 }
 ```
 
@@ -868,6 +892,7 @@ describe('planById handlers', () => {
     const body = await got.json()
     expect(body.plan.days).toHaveLength(1)
     expect(typeof body.plan.updatedAt).toBe('string')
+    expect(body.chat).toEqual([])
 
     const patched = await handlers.PATCH(
       plan.id,
@@ -952,7 +977,7 @@ export function createPlansHandlers(deps: TripPlanHandlerDeps) {
 ```typescript
 import { NextResponse } from 'next/server'
 import { TRIP_PLAN_STATUSES, type TripPlanStatus } from '@/lib/tripPlan/repo'
-import { toPlanView } from '@/lib/tripPlan/view'
+import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import type { TripPlanHandlerDeps } from './plans'
 
 export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
@@ -970,7 +995,8 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
     async GET(planId: string) {
       const auth = await authorize(planId)
       if ('error' in auth) return auth.error
-      return NextResponse.json({ plan: toPlanView(auth.plan) })
+      const chat = toChatView(await deps.repo.listMessages(planId))
+      return NextResponse.json({ plan: toPlanView(auth.plan), chat })
     },
 
     async PATCH(planId: string, req: Request) {
@@ -1155,6 +1181,15 @@ describe('clusterIntoDays', () => {
     expect(a).toEqual(b)
   })
 
+  it('is input-order independent and assigns every point exactly once', () => {
+    const shuffled = [KYOTO[1], UJI[2], KYOTO[0], UJI[0], UJI[1]]
+    const a = clusterIntoDays([...UJI, ...KYOTO], 2)
+    const b = clusterIntoDays(shuffled, 2)
+    expect(a.map((c) => [...c.pointIds].sort())).toEqual(b.map((c) => [...c.pointIds].sort()))
+    const all = a.flatMap((c) => c.pointIds).sort()
+    expect(all).toEqual(['daikichiyama', 'kyoto-station', 'rokujizo', 'uji-bridge', 'uji-shrine'])
+  })
+
   it('handles empty input', () => {
     expect(clusterIntoDays([], 3)).toEqual([])
   })
@@ -1331,6 +1366,7 @@ export class PrismaPointFinder implements PointFinder {
     const rows = await prisma.anitabiPoint.findMany({
       where: { bangumiId, geoLat: { not: null }, geoLng: { not: null } },
       select: { id: true, name: true, nameZh: true, geoLat: true, geoLng: true, ep: true },
+      orderBy: [{ density: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
       take: limit,
     })
     return rows.map((r) => ({
@@ -1414,9 +1450,10 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
 }
 
 describe('PLAN_AGENT_TOOLS', () => {
-  it('declares the six M1 tools', () => {
+  it('declares the seven M1 tools', () => {
     expect(PLAN_AGENT_TOOLS.map((t) => t.name).sort()).toEqual([
       'cluster_points',
+      'estimate_transit',
       'list_points',
       'read_plan',
       'save_plan_days',
@@ -1473,6 +1510,46 @@ describe('executePlanTool', () => {
     expect(plan?.days[0].items).toHaveLength(2)
   })
 
+  it('estimate_transit suggests mode and minutes between two points', async () => {
+    const { deps } = await makeDeps()
+    const out = JSON.parse(
+      await executePlanTool(deps, 'estimate_transit', { fromPointId: 'p-uji-bridge', toPointId: 'p-kyoto-sta' }),
+    )
+    expect(out.mode).toBe('transit')
+    expect(out.durationMin).toBeGreaterThan(10)
+
+    const walk = JSON.parse(
+      await executePlanTool(deps, 'estimate_transit', { fromPointId: 'p-uji-bridge', toPointId: 'p-daikichi' }),
+    )
+    expect(walk.mode).toBe('walk')
+  })
+
+  it('save_plan_days rejects point items without pointId and normalizes day indexes', async () => {
+    const { deps, repo, planId } = await makeDeps()
+    const bad = JSON.parse(
+      await executePlanTool(deps, 'save_plan_days', {
+        days: [{ dayIndex: 1, items: [{ type: 'point', title: '没有点位 id' }] }],
+      }),
+    )
+    expect(bad.error).toBeTruthy()
+
+    await executePlanTool(deps, 'save_plan_days', {
+      days: [
+        { dayIndex: 5, items: [{ type: 'free', title: 'b' }] },
+        { dayIndex: 2, items: [{ type: 'free', title: 'a' }] },
+      ],
+    })
+    const plan = await repo.getPlan(planId)
+    expect(plan?.days.map((d) => d.dayIndex)).toEqual([1, 2])
+    expect(plan?.days[0].items[0].title).toBe('a')
+  })
+
+  it('update_plan_meta rejects invalid dates', async () => {
+    const { deps } = await makeDeps()
+    const out = JSON.parse(await executePlanTool(deps, 'update_plan_meta', { startDate: 'not-a-date' }))
+    expect(out.error).toBeTruthy()
+  })
+
   it('update_plan_meta patches title/dayCount/startDate', async () => {
     const { deps, repo, planId } = await makeDeps()
     const out = JSON.parse(
@@ -1510,7 +1587,7 @@ Expected: FAIL。
 
 ```typescript
 import type Anthropic from '@anthropic-ai/sdk'
-import { clusterIntoDays } from './cluster'
+import { clusterIntoDays, haversineKm } from './cluster'
 import type { PointFinder } from './points'
 import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
@@ -1567,6 +1644,19 @@ export const PLAN_AGENT_TOOLS: Anthropic.Tool[] = [
         dayCount: { type: 'number', description: '巡礼天数' },
       },
       required: ['pointIds', 'dayCount'],
+    },
+  },
+  {
+    name: 'estimate_transit',
+    description:
+      '估算两个点位之间的交通方式与耗时（本地启发式：≤1.5km 步行，其余公共交通）。写 transit 条目前必须用它，不要自己猜数字。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fromPointId: { type: 'string' },
+        toPointId: { type: 'string' },
+      },
+      required: ['fromPointId', 'toPointId'],
     },
   },
   {
@@ -1644,6 +1734,19 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         const clusters = clusterIntoDays(coords, Math.max(1, Math.floor(dayCount)))
         return JSON.stringify({ clusters })
       }
+      case 'estimate_transit': {
+        const fromId = String(args.fromPointId ?? '')
+        const toId = String(args.toPointId ?? '')
+        const coords = await deps.points.getPointsByIds([fromId, toId])
+        const from = coords.find((p) => p.id === fromId)
+        const to = coords.find((p) => p.id === toId)
+        if (!from || !to) return JSON.stringify({ error: '点位不存在或缺少坐标' })
+        const km = haversineKm(from, to)
+        const mode = km <= 1.5 ? 'walk' : 'transit'
+        const durationMin =
+          mode === 'walk' ? Math.max(3, Math.round((km / 4.5) * 60)) : Math.max(10, Math.round((km / 25) * 60) + 12)
+        return JSON.stringify({ distanceKm: Math.round(km * 10) / 10, mode, durationMin })
+      }
       case 'read_plan': {
         const plan = await deps.repo.getPlan(deps.planId)
         if (!plan) return JSON.stringify({ error: '计划不存在' })
@@ -1652,9 +1755,15 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
       case 'update_plan_meta': {
         const patch: Parameters<TripPlanRepo['updateMeta']>[1] = {}
         if (typeof args.title === 'string' && args.title.trim()) patch.title = args.title.trim().slice(0, 80)
-        if (Number.isFinite(Number(args.dayCount))) patch.dayCount = Math.max(1, Math.floor(Number(args.dayCount)))
+        if (Number.isFinite(Number(args.dayCount))) patch.dayCount = Math.min(30, Math.max(1, Math.floor(Number(args.dayCount))))
         if (typeof args.startDate === 'string') {
-          patch.startDate = args.startDate.trim() ? new Date(args.startDate) : null
+          if (!args.startDate.trim()) {
+            patch.startDate = null
+          } else {
+            const parsed = new Date(args.startDate)
+            if (Number.isNaN(parsed.getTime())) return JSON.stringify({ error: 'startDate 不是合法日期' })
+            patch.startDate = parsed
+          }
         }
         if (Array.isArray(args.bangumiIds)) patch.bangumiIds = args.bangumiIds.map(Number).filter(Number.isFinite)
         await deps.repo.updateMeta(deps.planId, patch)
@@ -1686,6 +1795,19 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
               }
             }),
           }
+        })
+        if (days.length > 30) return JSON.stringify({ error: '天数过多（上限 30）' })
+        for (const day of days) {
+          if (day.items.length > 30) return JSON.stringify({ error: `Day ${day.dayIndex} 条目过多（上限 30）` })
+          for (const item of day.items) {
+            if (item.type === 'point' && !item.pointId) {
+              return JSON.stringify({ error: 'point 条目必须带 pointId（来自 list_points）' })
+            }
+          }
+        }
+        days.sort((a, b) => a.dayIndex - b.dayIndex)
+        days.forEach((day, i) => {
+          day.dayIndex = i + 1
         })
         await deps.repo.replaceDays(deps.planId, days)
         deps.onPlanUpdated?.()
@@ -1730,7 +1852,7 @@ export const PLAN_AGENT_SYSTEM_PROMPT = `你是 SeichiGo（圣地GO）的巡礼�
 6. 保存后用简短的文字向用户总结：每天去哪、为什么这么排、有什么注意事项。
 
 ## 行程编排规则
-- 每天条目按访问顺序排列；相邻点位间隔较远时插入 transit 条目，写明建议交通方式（步行/JR/地铁/巴士）与粗略耗时。
+- 每天条目按访问顺序排列；相邻点位间隔较远时插入 transit 条目。交通方式与耗时必须用 estimate_transit 估算，不要自己猜数字。
 - 每个安排尽量填 reason（为什么这么排），用户会在界面上看到。
 - 一天安排 4-8 个点位为宜，节奏留有余地；点位很多时优先取该作品的代表性场景。
 - 你可以给出住宿区域、美食方向的口头建议，但不要编造具体店名、价格、航班信息；涉及实时信息时提醒用户自行核实。
@@ -1834,8 +1956,7 @@ describe('runPlanAgent', () => {
     expect(events[events.length - 1].type).toBe('done')
 
     const persisted = await repo.listMessages(plan.id)
-    expect(persisted.length).toBeGreaterThanOrEqual(4)
-    expect(persisted[0].role).toBe('user')
+    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant', 'tool', 'assistant'])
   })
 
   it('stops at maxIterations and still emits done', async () => {
@@ -1909,6 +2030,7 @@ export type PlanAgentDeps = {
   planId: string
   toolDeps: PlanAgentToolDeps
   maxIterations?: number
+  signal?: AbortSignal
 }
 
 const DEFAULT_MAX_ITERATIONS = 12
@@ -1932,7 +2054,7 @@ export async function runPlanAgent(
 
   const userParam: Anthropic.MessageParam = { role: 'user', content: userMessage }
   messages.push(userParam)
-  await deps.repo.appendMessage(deps.planId, 'user', userParam as unknown as Prisma.JsonValue)
+  await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
 
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
@@ -1944,6 +2066,7 @@ export async function runPlanAgent(
 
   try {
     for (let iteration = 0; iteration < maxIterations; iteration++) {
+      if (deps.signal?.aborted) break
       const response = await deps.createMessage({
         system: PLAN_AGENT_SYSTEM_PROMPT,
         messages,
@@ -1971,7 +2094,7 @@ export async function runPlanAgent(
 
       const resultParam: Anthropic.MessageParam = { role: 'user', content: toolResults }
       messages.push(resultParam)
-      await deps.repo.appendMessage(deps.planId, 'user', resultParam as unknown as Prisma.JsonValue)
+      await deps.repo.appendMessage(deps.planId, 'tool', resultParam as unknown as Prisma.JsonValue)
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -2041,7 +2164,7 @@ import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
 
 export const runtime = 'nodejs'
 
-const DAILY_MESSAGE_LIMIT = 40
+const DAILY_MESSAGE_LIMIT = 20
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
@@ -2055,7 +2178,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!plan) return NextResponse.json({ error: '计划不存在' }, { status: 404 })
   if (plan.userId !== userId) return NextResponse.json({ error: '无权访问' }, { status: 403 })
 
-  const used = await deps.repo.countUserMessagesSince(userId, startOfToday())
+  const used = await deps.repo.countHumanMessagesSince(userId, startOfToday())
   if (used >= DAILY_MESSAGE_LIMIT) {
     return NextResponse.json({ error: '今日 AI 规划额度已用完，明天再来吧' }, { status: 429 })
   }
@@ -2070,11 +2193,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!message) return NextResponse.json({ error: '消息不能为空' }, { status: 400 })
 
   const encoder = new TextEncoder()
+  const abort = new AbortController()
+  req.signal.addEventListener('abort', () => abort.abort())
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: PlanAgentEvent) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+      const send = (event: PlanAgentEvent | { type: 'ready' }) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+        } catch {
+          // 客户端已断开，enqueue 会抛错；agent 循环会在下一轮 signal 检查时停下
+        }
       }
+      send({ type: 'ready' })
       try {
         await runPlanAgent(
           {
@@ -2082,6 +2213,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             repo: deps.repo,
             planId: id,
             toolDeps: { planId: id, repo: deps.repo, points: new PrismaPointFinder() },
+            signal: abort.signal,
           },
           message,
           send,
@@ -2090,7 +2222,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         send({ type: 'error', message: err instanceof Error ? err.message : '服务器错误' })
         send({ type: 'done' })
       }
-      controller.close()
+      try {
+        controller.close()
+      } catch {
+        // 已被 cancel
+      }
+    },
+    cancel() {
+      abort.abort()
     },
   })
 
@@ -2145,7 +2284,7 @@ grep -rn "RoutePreviewMap" app components features --include="*.tsx" --include="
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 ```
 
-（若原文件是 default export，则对应改成 `import RoutePreviewMap from '@/components/route/RoutePreviewMap'`——以移动后文件的实际导出为准。）
+（已核实：`RoutePreviewMap` 是命名导出——`export function RoutePreviewMap(...)`，统一用上面的命名导入。）
 
 - [ ] **Step 3: 验证 + Commit**
 
@@ -2202,6 +2341,7 @@ const plan: TripPlanView = {
           title: '宇治桥',
           note: null,
           reason: '第 1 集开场取景地',
+          payload: null,
           point: { id: 'p1', name: '宇治橋', nameZh: '宇治桥', lat: 34.8892, lng: 135.8075, image: null },
         },
         {
@@ -2213,6 +2353,7 @@ const plan: TripPlanView = {
           title: 'JR 奈良线',
           note: '约 20 分钟',
           reason: null,
+          payload: null,
           point: null,
         },
       ],
@@ -2428,7 +2569,7 @@ export function CreatePlanButton() {
 ```tsx
 import { notFound, redirect } from 'next/navigation'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
-import { toPlanView } from '@/lib/tripPlan/view'
+import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import { PlanPlanner } from './ui'
 
 export const dynamic = 'force-dynamic'
@@ -2443,7 +2584,8 @@ export default async function PlanDetailPage(props: { params: Promise<{ id: stri
   if (!plan) notFound()
   if (plan.userId !== session.user.id) notFound()
 
-  return <PlanPlanner planId={id} initialPlan={toPlanView(plan)} />
+  const chat = toChatView(await deps.repo.listMessages(id))
+  return <PlanPlanner planId={id} initialPlan={toPlanView(plan)} initialChat={chat} />
 }
 ```
 
@@ -2453,7 +2595,7 @@ export default async function PlanDetailPage(props: { params: Promise<{ id: stri
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import RoutePreviewMap from '@/components/route/RoutePreviewMap'
+import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 import type { TripPlanView } from '@/lib/tripPlan/view'
 import { DayCards } from './components/DayCards'
 
@@ -2464,9 +2606,9 @@ type AgentEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
-export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView }) {
+export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; initialChat: ChatEntry[] }) {
   const [plan, setPlan] = useState(props.initialPlan)
-  const [chat, setChat] = useState<ChatEntry[]>([])
+  const [chat, setChat] = useState<ChatEntry[]>(props.initialChat)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [selectedDay, setSelectedDay] = useState(1)
@@ -2600,7 +2742,7 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView }
 }
 ```
 
-注意：`RoutePreviewMap` 的导入方式（default / named）以 Task 13 移动后的实际导出为准，两处保持一致。
+（`RoutePreviewMap` 已确认是命名导出，见 Task 13。）
 
 - [ ] **Step 8: 验证 + Commit**
 
@@ -2616,8 +2758,11 @@ git commit -m "feat(plan-agent): /plan pages with chat, day cards and map previe
 
 **Files:**
 - Modify: `lib/i18n/locales/zh.json`、`lib/i18n/locales/en.json`、`lib/i18n/locales/ja.json`
-- Modify: `components/layout/Header.tsx`、`components/layout/HeaderPublic.tsx`、`components/layout/HeaderMobileDrawer.client.tsx`
-- Create: `app/(authed)/me/page.tsx`
+- Modify: `components/layout/prefixPath.ts`（`/plan` 加入非本地化前缀）
+- Modify: `components/layout/Header.tsx`、`components/layout/HeaderPublic.tsx`、`components/layout/HeaderMobileDrawer.client.tsx`、`components/layout/HeaderAuthControls.client.tsx`
+- Create: `app/(authed)/me/page.tsx`（复用 `components/me/MeSectionShell.tsx` 的导航惯例）
+
+范围注记（已在 spec 变更记录确认）：「热门攻略」v1 指向 `/`——首页即攻略列表，已含热门内容与作品二级入口；独立 `/posts` 索引页与"按作品切换视图"属于 M2，本任务不做。
 
 - [ ] **Step 1: i18n 文案**
 
@@ -2627,24 +2772,31 @@ git commit -m "feat(plan-agent): /plan pages with chat, day cards and map previe
 
 `ja.json` 对应：`posts` → `"人気ガイド"`，`city` → `"人気都市"`，新增 `"plan": "計画"`、`"me": "マイページ"`。
 
-- [ ] **Step 2: 桌面导航 `components/layout/Header.tsx`**
+- [ ] **Step 2: 非本地化路由 + 桌面导航**
 
-把第 42-47 行的导航链接列表替换为（保留 admin 条件行不动）：
+先打开 `components/layout/prefixPath.ts`，在 `NON_LOCALIZED_PREFIXES` 数组中加入 `'/plan'`（与 `/me` 同类：登录后功能页不做 locale 前缀）。否则 en/ja 下 `prefixPath('/plan', locale)` 会生成不存在的 `/en/plan`。
+
+然后把 `components/layout/Header.tsx` 第 42-47 行的导航链接列表替换为（保留 admin 条件行不动）：
 
 ```tsx
           <Link href={prefixPath('/plan', locale)} className="hover:text-brand-600">{t('header.plan', locale)}</Link>
           <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
           <Link href={prefixPath('/', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
+          <Link href={prefixPath('/me', locale)} className="hover:text-brand-600">{t('header.me', locale)}</Link>
 ```
 
-在用户下拉菜单里（现有 `/me/favorites` 链接旁）加一条到 `/me` 的入口，文案 `t('header.me', locale)`。
+目标 IA 是五个一级入口（计划/地图/热门攻略/热门城市/我的），「我的」是一级导航项而不是藏在下拉里；未登录用户点击 `/me` 由页面重定向到登录。用户下拉菜单里现有 `/me/favorites` 链接保留。
 
-- [ ] **Step 3: 同步 `HeaderPublic.tsx` 与 `HeaderMobileDrawer.client.tsx`**
+- [ ] **Step 3: 同步 `HeaderPublic.tsx`、`HeaderMobileDrawer.client.tsx` 与 `HeaderAuthControls.client.tsx`**
 
-打开这两个文件，找到与 Header.tsx 相同的导航链接列表，替换为 Step 2 的同一组四条链接（plan/map/posts/city，样式类名沿用各自文件原有的）。移动抽屉里额外保留 `resources` 与 `submit` 两条原有链接（移动端是这两个功能仅剩的入口），并新增 `plan` 在最上方。
+打开这三个文件：
+- `HeaderPublic.tsx` 与 `HeaderMobileDrawer.client.tsx`：找到与 Header.tsx 相同的导航链接列表，替换为 Step 2 的同一组五条链接（plan/map/posts/city/me，样式类名沿用各自文件原有的）。移动抽屉里额外保留 `resources` 与 `submit` 两条原有链接（移动端是这两个功能仅剩的入口），并新增 `plan` 在最上方。
+- `HeaderAuthControls.client.tsx`：HeaderPublic 的账号入口实际由它渲染。检查其链接与 label 类型定义，把「我的收藏」入口补充/调整为指向 `/me` 的「我的」入口（保留收藏直达也可，但必须有 `/me`），涉及的 label 类型同步更新。
 
 - [ ] **Step 4: 新建 `/me` 聚合页 `app/(authed)/me/page.tsx`**
+
+先读 `components/me/MeSectionShell.tsx`——favorites/routebooks/settings 页共用这个 shell 导航。若 shell 内有 section 注册表，把「我的计划（/plan）」登记进去，保持子页导航一致；聚合页本身用下面的卡片实现（不套 shell，作为 /me 的落地页）：
 
 ```tsx
 import Link from 'next/link'
@@ -2689,7 +2841,7 @@ export default async function MePage() {
 ```bash
 npx vitest run tests/layout tests/home tests/i18n
 ```
-若有断言旧导航文案（"首页"/"作品"/"城市"）的测试失败，把断言更新为新文案/新链接结构；不要为通过测试回退产品改动。
+若有断言旧导航文案（"首页"/"作品"/"城市"）的测试失败，把断言更新为新文案/新链接结构；不要为通过测试回退产品改动。另外为三种 locale 各加一条导航解析断言：`prefixPath('/plan', 'en')` 与 `prefixPath('/plan', 'ja')` 必须解析为 `/plan`（非本地化），防止回归。
 
 - [ ] **Step 6: 全量验证 + Commit**
 
@@ -2710,7 +2862,14 @@ git commit -m "feat(ia): plan-first navigation and /me hub"
 ```bash
 npm test && npm run typecheck && npm run lint
 ```
-Expected: 全部通过（lint 脚本自带 `|| true`，看输出别只看退出码）。
+Expected: 全部通过（lint 脚本自带 `|| true`，必须逐行看输出，不能只看退出码）。
+
+- [ ] **Step 1.5: Cloudflare Worker 构建门禁**
+
+```bash
+npm run cf:build
+```
+Expected: OpenNext 构建成功。本仓库有 Worker 专用 Prisma loader 与 OpenNext 配置，普通 `next build` 验证不了 Worker 打包（`@anthropic-ai/sdk`、SSE 流、`@seichigo/prisma-client-runtime` 条件导出都要过这一关）。有条件的话再跑 `npm run cf:preview` 做一次 SSE 冒烟（登录 → 发一条消息 → 确认 `data:` 帧逐段到达）。
 
 - [ ] **Step 2: 启动 dev 并手工走查**
 
@@ -2744,3 +2903,29 @@ git commit -m "docs(plan-agent): M1 acceptance notes"
 - Spec 覆盖：M1 三项（数据模型 ✓ Task 2-6；/plan 骨架 + agent 一档 ✓ Task 7-14；IA 改造 ✓ Task 15）。M2/M3 内容（结构化组件、实体链接、导出、天气/美食）明确不在本计划。
 - 类型一致性：`TripPlanRepo` 接口在 Task 3 定义，Task 4/5/9/11 全部按该签名引用；`toPlanView` 在 Task 5 定义、Task 9/14 复用；`PlanAgentEvent` 在 Task 11 定义、Task 12/14 复用（前端 `AgentEvent` 为同构本地类型，避免客户端 import 服务端模块）。
 - 已知风险：`RoutePreviewMapProps` 的实际 props 名以移动后文件为准（Task 13 Step 2 强制先 grep）；Next 15 route params 的 Promise 形态以邻近路由为准（Task 6 Step 3 注明）。
+
+## Codex 评审修订记录（2026-08-31）
+
+Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处置：
+
+**已采纳并修入本计划：**
+- 消息表 `role` 改为 `kind`（human/assistant/tool），配额只数 `kind='human'`——修复"工具回执被计入用户配额"（原 #5）；单日人类消息上限相应调为 20。
+- `repoPrisma` 的 `Prisma.JsonNull` 改从 `@seichigo/prisma-client-runtime` 取值导入（编译级 BLOCKER，原 #2）。
+- `/plan` 加入 `prefixPath.ts` 的 `NON_LOCALIZED_PREFIXES`，en/ja 导航不再指向不存在的 `/en/plan`（BLOCKER，原 #3），并加 locale 解析断言。
+- 新增 `estimate_transit` 本地启发式工具，交通耗时不再由 LLM 猜数字（原 #7 的 M1 版本；真实 Directions 接入移 M2，spec 已加变更记录）。
+- `save_plan_days`/`update_plan_meta` 输入硬化：非法日期拒绝、dayIndex 排序重编号、天数/条目上限 30、point 条目必须带 pointId（原 #8 核心项）。
+- SSE 路由：`ready` 首帧、`req.signal`→AbortController→循环逐轮检查、`cancel()` 处理（原 #10 核心项）。
+- 五个一级导航含「我的」；`HeaderAuthControls.client.tsx` 与 `MeSectionShell` 纳入 Task 15（原 #11）。
+- 会话水合：GET 计划返回 `chat` 视图，规划器用 `initialChat` 初始化，刷新不丢对话（原 #12）。
+- `listPoints` 按 `density desc nulls last, id asc` 确定性排序（原 #13 核心项）。
+- `RoutePreviewMap` 统一命名导入（原 #14）。
+- Task 16 增加 `npm run cf:build` 门禁与 cf:preview SSE 冒烟（原 #15）。
+- 视图保留 `payload`、`status/type` 用共享联合类型（原 #16）；聚类测试加输入顺序无关与全点位覆盖断言、循环测试断言精确消息 kind 序列（原 #18 部分）；SDK 安装验证改用 `import()`（原 #19）。
+- spec 状态改为已批准并补变更记录（原 #20）。
+
+**明确不采纳（附理由）：**
+- 原 #1"`claude-opus-5` 不是有效模型"：误报。Claude 5 家族（Opus 5 等）晚于评审模型的知识截点，`claude-opus-5` 是当前有效模型 ID；`PLAN_AGENT_MODEL` 环境变量保留作逃生门。
+- 原 #4"/posts 独立索引页缺失"：改为 spec 范围修订——「热门攻略」v1 指向 `/`（首页即攻略列表），独立 /posts 与按作品切换视图移入 M2（spec 变更记录已载明，用户批准 spec 时的口径以变更记录为准）。
+- 原 #6"配额原子化/竞态"：M1 接受 count→create 竞态（个人站流量级别，攻击面小；循环上限 12 轮 + max_tokens 8000 已兜成本）。原子化用量表列入 M2 待办。时区按 UTC 记账，文案不承诺自然日语义。
+- 原 #9"replaceDays 乐观并发"：M1 单用户单计划串行使用为主，接受最后写入胜出；乐观并发（expectedUpdatedAt）列入 M2 待办。
+- 原 #17"Postgres 契约测试/路由集成测试"：M1 以内存仓库契约 + cf:build + 手工走查覆盖，Postgres 契约套件列入 M2 待办（需要测试数据库基建，不在本期）。
