@@ -16,15 +16,87 @@ function getClient(): OpenAI {
   return cachedClient
 }
 
-export const createChatCompletion: CreateMessageFn = async ({ messages, tools }) => {
-  const completion = await getClient().chat.completions.create({
+/**
+ * DeepSeek 推理模型的非标准扩展字段：流式时挂在 chunk 的 delta 上、非流式时挂在
+ * message 上，OpenAI SDK 类型均未声明。收敛到这一个断言点，其余代码只读它。
+ */
+type WithReasoningContent = { reasoning_content?: string | null }
+
+function extractReasoningDelta(delta: OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta): string {
+  const value = (delta as WithReasoningContent).reasoning_content
+  return typeof value === 'string' ? value : ''
+}
+
+type AccumulatedToolCall = {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+/**
+ * 流式版模型调用：按 OpenAI 流式协议增量累积 content 与 tool_calls（tool_calls
+ * 按 index 归并，function.arguments 是需要拼接的 JSON 字符串片段），并透传
+ * DeepSeek 的 reasoning_content 增量给 onDelta。返回累积重建后的完整 message，
+ * 形状与非流式响应一致（reasoning_content 同样附在返回值上，由调用方决定去留）。
+ */
+export const createChatCompletion: CreateMessageFn = async ({ messages, tools }, onDelta) => {
+  const stream = await getClient().chat.completions.create({
     model: MODEL,
     max_tokens: 8000,
     messages,
     tools,
+    stream: true,
   })
-  const message = completion.choices[0]?.message
-  if (!message) throw new Error('模型未返回消息')
+
+  let content = ''
+  let reasoning = ''
+  const toolCalls = new Map<number, AccumulatedToolCall>()
+
+  for await (const chunk of stream) {
+    const choice = chunk.choices[0]
+    if (!choice) continue
+    const delta = choice.delta
+
+    const reasoningDelta = extractReasoningDelta(delta)
+    if (reasoningDelta) {
+      reasoning += reasoningDelta
+      onDelta?.({ reasoning: reasoningDelta })
+    }
+
+    if (typeof delta.content === 'string' && delta.content) {
+      content += delta.content
+      onDelta?.({ content: delta.content })
+    }
+
+    for (const part of delta.tool_calls ?? []) {
+      const existing = toolCalls.get(part.index)
+      if (!existing) {
+        toolCalls.set(part.index, {
+          id: part.id ?? '',
+          type: 'function',
+          function: {
+            name: part.function?.name ?? '',
+            arguments: part.function?.arguments ?? '',
+          },
+        })
+      } else {
+        if (part.id) existing.id = part.id
+        if (part.function?.name) existing.function.name = part.function.name
+        if (part.function?.arguments) existing.function.arguments += part.function.arguments
+      }
+    }
+  }
+
+  const rebuiltToolCalls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call)
+  // 镜像 DeepSeek 非流式响应里 message 自带 reasoning_content 的形状；loop
+  // 落库/回传历史时本来就只保留协议字段，不会把它写进 TripPlanMessage
+  const message: OpenAI.Chat.Completions.ChatCompletionMessage & { reasoning_content?: string } = {
+    role: 'assistant',
+    content: content || null,
+    refusal: null,
+    ...(rebuiltToolCalls.length ? { tool_calls: rebuiltToolCalls } : {}),
+    ...(reasoning ? { reasoning_content: reasoning } : {}),
+  }
   return message
 }
 

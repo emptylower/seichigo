@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { executePlanTool, PLAN_AGENT_TOOLS, type PlanAgentToolDeps } from './tools'
 import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
 import { RunFencedError } from './runFence'
+import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -10,13 +11,26 @@ export type PlanAgentEvent =
   | { type: 'plan_updated' }
   | { type: 'done' }
   | { type: 'error'; message: string }
+  /** 瞬时遥测：当前工具在做什么的中文短语（仅 SSE，不落库） */
+  | { type: 'status'; phase: string }
+  /** 瞬时遥测：单个工具调用的开始/结束帧（仅 SSE，不落库） */
+  | { type: 'tool_call'; id: string; name: string; argsSummary: string; status: 'running' | 'done'; durationMs?: number; resultSummary?: string }
+  /** 瞬时遥测：DeepSeek reasoning_content 的流式增量（仅 SSE，不落库） */
+  | { type: 'reasoning'; delta: string }
 
 type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
-export type CreateMessageFn = (params: {
-  messages: ChatMessageParam[]
-  tools: OpenAI.Chat.Completions.ChatCompletionTool[]
-}) => Promise<OpenAI.Chat.Completions.ChatCompletionMessage>
+/**
+ * 模型调用增量回调：reasoning/content 是本帧收到的增量片段本身（非累积值）。
+ * 只接受一个参数的实现仍然可以赋给本类型（多余形参可不声明），存量 mock 不受影响。
+ */
+export type CreateMessageFn = (
+  params: {
+    messages: ChatMessageParam[]
+    tools: OpenAI.Chat.Completions.ChatCompletionTool[]
+  },
+  onDelta?: (delta: { reasoning?: string; content?: string }) => void,
+) => Promise<OpenAI.Chat.Completions.ChatCompletionMessage>
 
 export type PlanAgentDeps = {
   createMessage: CreateMessageFn
@@ -147,7 +161,11 @@ export async function runPlanAgent(
   try {
     for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
-      const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS })
+      // reasoning 增量逐帧透传给 SSE（content 增量不转发：最终答案等本轮结束后
+      // 仍走下面那个完整 text 事件，这是"思考过程流式、答案整段"的产品取舍）
+      const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS }, (delta) => {
+        if (delta.reasoning) onEvent({ type: 'reasoning', delta: delta.reasoning })
+      })
 
       if (typeof response.content === 'string' && response.content) {
         onEvent({ type: 'text', text: response.content })
@@ -173,7 +191,21 @@ export async function runPlanAgent(
         } catch {
           input = {}
         }
+        const argsSummary = summarizeToolArgs(call.function.name, input)
+        // status/tool_call 事件只发 SSE，是瞬时遥测，绝不写进 TripPlanMessage
+        onEvent({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
+        onEvent({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
+        const startedAt = Date.now()
         const result = await executePlanTool(toolDeps, call.function.name, input)
+        onEvent({
+          type: 'tool_call',
+          id: call.id,
+          name: call.function.name,
+          argsSummary,
+          status: 'done',
+          durationMs: Date.now() - startedAt,
+          resultSummary: summarizeToolResult(call.function.name, result),
+        })
         const toolParam: ChatMessageParam = { role: 'tool', tool_call_id: call.id, content: result }
         messages.push(toolParam)
         await runRepo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
