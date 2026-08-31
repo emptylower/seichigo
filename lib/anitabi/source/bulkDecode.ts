@@ -221,3 +221,86 @@ export function decodeBulkPage(raw: unknown): BulkPageEntry[] {
     return { id, modified, theme, points }
   })
 }
+
+/**
+ * 合并后的归一化点位。
+ * 与 source/normalize.ts 的 NormalizedPoint 同构，但冻结字段（originUrl/reviewUid）
+ * 的键**永远不产出** —— bulk 数据没有它们的来源，写库方按"键不存在则跳过"处理。
+ */
+export type BulkNormalizedPoint = {
+  id: string
+  bangumiId: number
+  name: string
+  nameZh: string | null
+  geoLat: number | null
+  geoLng: number | null
+  ep: string | null
+  s: string | null
+  image: string | null
+  origin: string | null
+  originLink: string | null
+  density?: number
+  mark?: string
+  folder?: string
+  uid?: string
+}
+
+export type BulkNormalizedBangumi = {
+  id: number
+  titleZh: string
+  titleJaRaw: string
+  cat: string | null
+  cover: string | null
+  color: string | null
+  city: string | null
+  tags: string[]
+  geoLat: number | null
+  geoLng: number | null
+  zoom: number | null
+  sourceModifiedMs: bigint
+}
+
+export function normalizeBulkBangumi(entry: BulkIndexEntry, pageModified: number): BulkNormalizedBangumi {
+  return {
+    id: entry.id,
+    titleZh: entry.cn || entry.title || `#${entry.id}`,
+    titleJaRaw: entry.title || entry.cn || `#${entry.id}`,
+    cat: entry.cat,
+    cover: entry.cover,
+    color: entry.color,
+    city: entry.city,
+    tags: entry.tags,
+    geoLat: entry.geoLat,
+    geoLng: entry.geoLng,
+    zoom: entry.zoom,
+    sourceModifiedMs: BigInt(pageModified),
+  }
+}
+
+/** 点位 id 与旧管线一致的作用域形式：`${bangumiId}:${rawId}`。 */
+export function normalizePointsFromBulk(
+  entry: BulkIndexEntry,
+  page: BulkPageEntry,
+): BulkNormalizedPoint[] {
+  const geoById = new Map(entry.points.map((p) => [p.id, p]))
+  return page.points.map((p) => {
+    const ref = geoById.get(p.id)
+    return {
+      id: `${entry.id}:${p.id}`,
+      bangumiId: entry.id,
+      name: p.name || p.id,
+      nameZh: p.cn ?? null,
+      geoLat: ref?.geoLat ?? null,
+      geoLng: ref?.geoLng ?? null,
+      ep: p.ep ?? null,
+      s: p.s ?? null,
+      image: p.image ?? null,
+      origin: p.origin ?? null,
+      originLink: p.originLink ?? null,
+      ...(p.density !== undefined ? { density: p.density } : {}),
+      ...(p.mark !== undefined ? { mark: p.mark } : {}),
+      ...(p.folder !== undefined ? { folder: p.folder } : {}),
+      ...(p.uid !== undefined ? { uid: p.uid } : {}),
+    }
+  })
+}

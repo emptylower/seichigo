@@ -4,6 +4,8 @@ import {
   canonicalizeBulkAssetUrl,
   decodeBulkIndex,
   decodeBulkPage,
+  normalizeBulkBangumi,
+  normalizePointsFromBulk,
 } from '@/lib/anitabi/source/bulkDecode'
 
 /** 按 B 节字段表构造的最小真实形状索引行。 */
@@ -108,5 +110,54 @@ describe('decodeBulkPage', () => {
     expect(() => decodeBulkPage('nope')).toThrow(BulkDecodeError)
     expect(() => decodeBulkPage([[1, 0, 'not-points', 5]])).toThrow(BulkDecodeError)
     expect(() => decodeBulkPage([[1, 0, [['', 'x']], 5]])).toThrow(BulkDecodeError)
+  })
+})
+
+describe('normalizePointsFromBulk', () => {
+  it('merges geo from index refs and scopes point ids', () => {
+    const idx = decodeBulkIndex([[makeIndexRow(495291)], 250, 1787937388398]).entries[0]!
+    const page = decodeBulkPage([[495291, 0, [makePagePoint('1zqx9nu')], 5]])[0]!
+    const pts = normalizePointsFromBulk(idx, page)
+    expect(pts).toHaveLength(1)
+    expect(pts[0]).toMatchObject({
+      id: '495291:1zqx9nu',
+      bangumiId: 495291,
+      name: '大津自行车道线',
+      nameZh: null,
+      geoLat: 35.005218,
+      geoLng: 135.863706,
+      ep: 'PV1',
+      s: null,
+      image: 'https://image.anitabi.cn/points/495291/1zqx9nu_1751348772406.jpg',
+      origin: null,
+      originLink: null,
+      density: 682,
+      mark: '画面前景几栋高楼位于此处',
+      folder: '航拍',
+      uid: '1127',
+    })
+    // 冻结字段绝不产出键（写库方据此跳过）
+    expect('originUrl' in pts[0]!).toBe(false)
+    expect('reviewUid' in pts[0]!).toBe(false)
+  })
+})
+
+describe('normalizeBulkBangumi', () => {
+  it('builds bangumi fields from index entry + page modified', () => {
+    const idx = decodeBulkIndex([[makeIndexRow(495291)], 250, 1787937388398]).entries[0]!
+    const b = normalizeBulkBangumi(idx, 1787934434449)
+    expect(b).toMatchObject({
+      id: 495291,
+      titleZh: '再见，拉拉',
+      titleJaRaw: 'さよならララ',
+      cat: 'TV',
+      tags: ['催泪', '日常'],
+      city: '大津市',
+      color: '#c72d38',
+      geoLat: 34.978141,
+      geoLng: 135.905931,
+      zoom: 19.2,
+      sourceModifiedMs: BigInt(1787934434449),
+    })
   })
 })
