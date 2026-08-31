@@ -1572,7 +1572,7 @@ Expected: 最终一轮 `status: "ok"`、`hasMore: false`；期间 `AnitabiSyncRu
 **Files:**
 - Modify: `workers/anitabi-egress-probe/src/index.ts`
 
-- [ ] **Step 1: `UPSTREAM_TARGETS` 追加两个目标（紧随现有条目之后）**
+- [x] **Step 1: `UPSTREAM_TARGETS` 追加两个目标（紧随现有条目之后）**
 
 ```ts
   {
@@ -1592,9 +1592,9 @@ Expected: 最终一轮 `status: "ok"`、`hasMore: false`；期间 `AnitabiSyncRu
   },
 ```
 
-- [ ] **Step 2: `CRITERIA_VERSION` 由 `'v4'` 提到 `'v5'`**（判据集合变了，旧结果不可比）。
+- [x] **Step 2: `CRITERIA_VERSION` 由 `'v4'` 提到 `'v5'`**（判据集合变了，旧结果不可比）。
 
-- [ ] **Step 3: 部署并**只跑一次**探测（执行纪律：不循环）**
+- [x] **Step 3: 部署并**只跑一次**探测（执行纪律：不循环）**
 
 ```bash
 cd workers/anitabi-egress-probe && npx wrangler deploy
@@ -1607,7 +1607,7 @@ Expected: 两个 `sync-bulk` 目标至少一个 `200 application/json`。
 - 若仅 `www.anitabi.cn` 200 → 生产把 `ANITABI_BULK_BASE_URL` 设为它；
 - 若两个都非 200 → **停**：Worker 出口被 bulk 域拦截，回到"本地/境内跑 `scripts/anitabi-sync.ts` 直写 Neon"的执行形态（管线代码不变，只是不由 cron 触发），并在计划末尾记录。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add workers/anitabi-egress-probe/src/index.ts
@@ -1699,3 +1699,22 @@ done
 - 结论：这是停摆约 8 个月后首次全量同步、跟随上游做的真实存量清理，不是响应残缺导致的误清空。原验收断言设计时未考虑"长期停摆后首次同步会有正常增删"的场景。**用户已确认按此定性判定 Task 9 通过**，不视为需要修复的缺陷。
 
 **结论一句话**：bulk 同步管线在真实上游数据下功能正确、删除安全闸门按设计工作；发现并修复了一个真实的 density 越界崩溃 bug；`reviewUid`/`originUrl` 的计数下降经代码级核实为合法的陈旧点位清理而非误清空，Task 9 判定通过，可以推进 Task 10。
+
+---
+
+## 六、Task 10 出口探测结论（2026-08-31）
+
+部署 `seichigo-anitabi-egress-probe` 到生产 Cloudflare 账号，从 NRT colo 触发一次探测（判据 v5）：
+
+| 目标 | 结果 |
+|---|---|
+| `api.anitabi.cn/bangumi/115908/lite` | 403（预期内，地理围栏） |
+| `api.anitabi.cn/bangumi/272510/points/detail` | 403（预期内） |
+| `image.anitabi.cn/points/...` | 403（预期内） |
+| `img-tc.anitabi.cn/points/...` | 200 image/jpeg，USABLE |
+| **`w.junreimap.com/d/g.json`** | **200 application/json，USABLE** |
+| **`www.anitabi.cn/d/g.json`** | **200 application/json，USABLE** |
+
+**结论**：生产 Worker 出口（至少 NRT colo）可达 bulk 数据集分发域，默认配置（`ANITABI_BULK_BASE_URL` 不设、走 `w.junreimap.com`）无需改动即可上线。`api.anitabi.cn`/`image.anitabi.cn` 依旧被地理围栏拦截，不影响 bulk 通道。单 colo 结果，未做多点覆盖（默认配置已明确可用，无需为已有把握的结论加测）。
+
+探测 worker 属一次性诊断工具，验证完成后按其自身文档建议删除（`npx wrangler delete --name seichigo-anitabi-egress-probe`）。
