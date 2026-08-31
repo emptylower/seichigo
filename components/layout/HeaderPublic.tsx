@@ -17,6 +17,11 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
     admin: t('header.admin', locale),
     favorites: t('header.favorites', locale),
     me: t('header.me', locale),
+    myHome: t('header.myHome', locale),
+    myMaps: t('header.myMaps', locale),
+    myPlans: t('header.myPlans', locale),
+    settings: t('header.settings', locale),
+    submit: t('header.submit', locale),
     signout: t('header.signout', locale),
     signin: t('header.signin', locale),
     signup: t('header.signup', locale),
@@ -45,7 +50,6 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
             <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
             <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
             <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
-            <Link href={prefixPath('/me', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.me', locale)}</Link>
             <CommunityMenu locale={locale} />
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">

@@ -34,7 +34,7 @@ describe('HeaderPublic', () => {
     expect(nav?.textContent).toContain('Map')
     expect(nav?.textContent).toContain('Top Guides')
     expect(nav?.textContent).toContain('Top Cities')
-    expect(nav?.textContent).toContain('Me')
+    expect(nav?.textContent).not.toContain('Me')
     expect(nav?.textContent).toContain('Community')
   })
 

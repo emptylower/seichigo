@@ -23,6 +23,11 @@ describe('HeaderAuthControls', () => {
     admin: '管理员面板',
     favorites: '我的收藏',
     me: '我的',
+    myHome: '我的主页',
+    myMaps: '我的地图',
+    myPlans: '我的巡礼计划',
+    settings: '设置',
+    submit: '投稿',
     signout: '退出',
     signin: '登录',
     signup: '注册',
@@ -82,7 +87,11 @@ describe('HeaderAuthControls', () => {
 
     render(<HeaderAuthControls locale="zh" labels={labels} layout="stack" />)
 
-    expect(screen.getByText('用户中心')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.myHome })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.settings })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.myMaps })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.myPlans })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: labels.submit })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: labels.admin })).toBeNull()
     expect(screen.getByRole('link', { name: labels.favorites })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: labels.signout })).toBeInTheDocument()
