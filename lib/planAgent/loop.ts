@@ -2,6 +2,7 @@ import type OpenAI from 'openai'
 import type { Prisma } from '@prisma/client'
 import { executePlanTool, PLAN_AGENT_TOOLS, type PlanAgentToolDeps } from './tools'
 import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
+import { RunFencedError } from './runFence'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -34,6 +35,40 @@ export type PlanAgentDeps = {
    * 景的调用方使用）。
    */
   runToken?: string
+}
+
+/**
+ * 把 repo 的写方法（appendMessage/replaceDays/updateMeta）替换成 token 校验
+ * 过的原子版本；校验失败时抛 RunFencedError 而不是静默返回，因为调用点
+ * 分散在循环主体和 tools.ts 的工具执行器里，抛异常是唯一能统一从任意调用
+ * 深度冒泡回循环顶层的方式。其余方法原样透传（绑定回 target 以保证内部
+ * this 正确，与 lib/db/prisma.ts 的 Proxy 用法一致）。
+ */
+function withFencing(repo: TripPlanRepo, token: string): TripPlanRepo {
+  const fenced: Pick<TripPlanRepo, 'appendMessage' | 'replaceDays' | 'updateMeta'> = {
+    async appendMessage(planId, kind, content) {
+      const result = await repo.appendMessageIfActive(planId, token, kind, content)
+      if (!result) throw new RunFencedError()
+      return result
+    },
+    async replaceDays(planId, days) {
+      const result = await repo.replaceDaysIfActive(planId, token, days)
+      if (!result) throw new RunFencedError()
+      return result
+    },
+    async updateMeta(planId, patch) {
+      const result = await repo.updateMetaIfActive(planId, token, patch)
+      if (!result) throw new RunFencedError()
+      return result
+    },
+  }
+  return new Proxy(repo, {
+    get(target, prop, receiver) {
+      if (prop in fenced) return fenced[prop as keyof typeof fenced]
+      const value = Reflect.get(target, prop, receiver)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
 }
 
 const DEFAULT_MAX_ITERATIONS = 12
@@ -95,8 +130,14 @@ export async function runPlanAgent(
     await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
   }
 
+  // runToken 存在时，所有写（含 save_plan_days/update_plan_meta 等工具触发
+  // 的写）都走原子校验版本；未提供 token 的调用方（不涉及并发场景的测试）
+  // 直接用裸 repo
+  const runRepo = deps.runToken ? withFencing(deps.repo, deps.runToken) : deps.repo
+
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
+    repo: runRepo,
     onPlanUpdated: () => {
       deps.toolDeps.onPlanUpdated?.()
       onEvent({ type: 'plan_updated' })
@@ -107,13 +148,6 @@ export async function runPlanAgent(
     for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
       const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS })
-
-      if (deps.runToken && !(await deps.repo.isRunActive(deps.planId, deps.runToken))) {
-        // 本轮模型调用耗时太久，busy 位已被新请求接管——不再写入任何内容，
-        // 让新请求独占这份对话历史；直接结束本轮循环
-        onEvent({ type: 'done' })
-        return
-      }
 
       if (typeof response.content === 'string' && response.content) {
         onEvent({ type: 'text', text: response.content })
@@ -126,7 +160,7 @@ export async function runPlanAgent(
         ...(response.tool_calls?.length ? { tool_calls: response.tool_calls } : {}),
       }
       messages.push(assistantParam as ChatMessageParam)
-      await deps.repo.appendMessage(deps.planId, 'assistant', assistantParam as unknown as Prisma.JsonValue)
+      await runRepo.appendMessage(deps.planId, 'assistant', assistantParam as unknown as Prisma.JsonValue)
 
       const toolCalls = response.tool_calls ?? []
       if (!toolCalls.length) break
@@ -142,12 +176,15 @@ export async function runPlanAgent(
         const result = await executePlanTool(toolDeps, call.function.name, input)
         const toolParam: ChatMessageParam = { role: 'tool', tool_call_id: call.id, content: result }
         messages.push(toolParam)
-        await deps.repo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
+        await runRepo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
       }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    onEvent({ type: 'error', message })
+    if (!(err instanceof RunFencedError)) {
+      // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话
+      const message = err instanceof Error ? err.message : String(err)
+      onEvent({ type: 'error', message })
+    }
   }
 
   onEvent({ type: 'done' })

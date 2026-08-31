@@ -169,4 +169,48 @@ describe('MemoryTripPlanRepo', () => {
     })
     expect(afterCorrectRelease.status).toBe('ok')
   })
+
+  it('appendMessageIfActive / replaceDaysIfActive / updateMetaIfActive atomically no-op once fenced out', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const since = new Date(0)
+
+    const stale = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since, limit: 100, busyTtlMs: -1000,
+      content: { role: 'user', content: 'a' },
+    })
+    if (stale.status !== 'ok') throw new Error('unreachable')
+    const fresh = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since, limit: 100, busyTtlMs: 60_000,
+      content: { role: 'user', content: 'b' },
+    })
+    if (fresh.status !== 'ok') throw new Error('unreachable')
+
+    // 用已经过期/被接管的旧 token 尝试三种写，全部必须原子拒绝、不落库
+    expect(
+      await repo.appendMessageIfActive(plan.id, stale.token, 'assistant', { role: 'assistant', content: 'x' }),
+    ).toBeNull()
+    expect(
+      await repo.replaceDaysIfActive(plan.id, stale.token, [{ dayIndex: 1, items: [{ type: 'free', title: 'x' }] }]),
+    ).toBeNull()
+    expect(await repo.updateMetaIfActive(plan.id, stale.token, { title: '不该生效' })).toBeNull()
+
+    const plan1 = await repo.getPlan(plan.id)
+    expect(plan1?.title).toBe('t')
+    expect(plan1?.days).toHaveLength(0)
+    expect((await repo.listMessages(plan.id)).filter((m) => m.kind === 'assistant')).toHaveLength(0)
+
+    // 用当前合法 token 则正常生效
+    expect(
+      await repo.appendMessageIfActive(plan.id, fresh.token, 'assistant', { role: 'assistant', content: 'ok' }),
+    ).not.toBeNull()
+    expect(
+      await repo.replaceDaysIfActive(plan.id, fresh.token, [{ dayIndex: 1, items: [{ type: 'free', title: 'ok' }] }]),
+    ).not.toBeNull()
+    expect(await repo.updateMetaIfActive(plan.id, fresh.token, { title: '生效了' })).not.toBeNull()
+
+    const plan2 = await repo.getPlan(plan.id)
+    expect(plan2?.title).toBe('生效了')
+    expect(plan2?.days).toHaveLength(1)
+  })
 })

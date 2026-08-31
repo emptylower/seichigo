@@ -3056,3 +3056,9 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 - token 之前只保护了「释放」这一步，没有真正维持运行期间的互斥：busy 位的 TTL 是「疑似失联」的启发式判断，一旦模型响应真的很慢（而不是进程崩溃），原请求在 TTL 到期后仍然存活、仍在写库；新请求趁 TTL 过期接管锁后，两个循环会同时向同一份对话历史写入——这正是最初要修的并发串线问题，只是换了个触发路径（真实慢响应而非进程崩溃）。
   - 引入栅栏令牌（fencing token）模式：`TripPlanRepo.isRunActive(planId, token)` 让循环能确认自己是否仍是当前合法持有者。`runPlanAgent` 每轮拿到模型响应后、落库前先做这次检查（`PlanAgentDeps.runToken`）——检查点选在模型调用之后，因为模型调用（对外网络请求）是唯一可能长到超过 TTL 的环节；本地的落库/工具执行是毫秒级，检查后到实际写入之间的残余窗口可忽略。一旦发现令牌已被顶替，立刻停止、不写入任何内容，让新请求独占这份历史。路由把 `beginAgentRun` 拿到的 `token` 原样传给 `runPlanAgent` 的 `runToken`。
   - 真实 Neon 验证：构造「模型响应期间被真实接管」的场景（`createMessage` 内部先在 Neon 上执行一次真实的接管请求，再返回模拟的迟到响应）——确认迟到的循环最终 0 条 assistant 消息落库，干净以 `done` 收尾，未与接管方交叉写历史。
+
+**验收后修复五（2026-08-31，Codex stop-time review）**
+- 上一版的栅栏检查（`isRunActive`）本身不是原子的，也没有覆盖工具触发的写：检查和真正落库是两次独立的数据库往返，之间有窗口；更严重的是，检查只做在「模型响应之后、写 assistant 消息之前」这一个点，同一轮里 `save_plan_days`/`update_plan_meta` 这类工具调用产生的实际数据变更完全没有被这个检查保护——如果接管发生在检查通过之后、工具执行期间（比如 `search_bangumi_tv` 的网络请求耗时较长），行程数据本身仍然可能被已经过期的旧请求写入。
+  - 去掉了单点的 `isRunActive` 检查，改为三个原子的 "check-and-write" 方法：`appendMessageIfActive`/`replaceDaysIfActive`/`updateMetaIfActive`。Prisma 实现用 `SELECT ... FOR UPDATE` 锁住计划行、在同一事务内校验 token 再写，锁只覆盖本地数据库操作，不跨越任何网络调用（`search_bangumi_tv` 等外部请求仍在锁外执行，避免长时间占用 Neon 连接池，尤其是 Cloudflare Workers 场景下连接池只有 1）。
+  - `runPlanAgent` 用一个 `withFencing` 包装（沿用仓库里 `lib/db/prisma.ts` 已有的 Proxy 模式）把 `deps.toolDeps.repo` 换成栅栏版本；`save_plan_days`/`update_plan_meta` 走的是同一个 `toolDeps.repo`，因此工具触发的写自动获得保护，不需要改 `tools.ts` 的业务逻辑，只在其 catch-all 里补了一行特判：`RunFencedError` 直接重新抛出，不当普通工具错误吞掉。
+  - 真实 Neon 验证：（1）单元测试模拟"assistant 消息写入成功后，工具执行期间才被接管"——`save_plan_days` 的写被原子拦下，最终 0 天行程落库；（2）针对 Prisma 实现单独跑了三个方法的 stale/fresh token 对照组，stale token 三种写全部返回 null 且零污染，fresh token 全部生效。

@@ -230,8 +230,92 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     })
   }
 
-  async isRunActive(planId: string, token: string): Promise<boolean> {
-    const plan = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { agentRunToken: true } })
-    return plan?.agentRunToken === token
+  /**
+   * `FOR UPDATE` 锁住该计划行直到事务结束：期间任何试图接管（`beginAgentRun`
+   * 的 updateMany）或释放（`endAgentRun`）该行的并发操作都会阻塞在这里排队，
+   * 保证锁校验与写入之间不存在能被其它请求插进来的窗口。
+   */
+  private async withRunTokenLock<T>(
+    planId: string,
+    token: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T | null> {
+    return prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ agentRunToken: string | null }>>`
+        SELECT "agentRunToken" FROM "TripPlan" WHERE id = ${planId} FOR UPDATE
+      `
+      if (rows[0]?.agentRunToken !== token) return null
+      return fn(tx)
+    })
+  }
+
+  async appendMessageIfActive(
+    planId: string,
+    token: string,
+    kind: TripPlanMessageKind,
+    content: Prisma.JsonValue,
+  ): Promise<TripPlanMessage | null> {
+    return this.withRunTokenLock(planId, token, async (tx) => {
+      const row = await tx.tripPlanMessage.create({
+        data: { planId, kind, content: content as Prisma.InputJsonValue },
+      })
+      return {
+        id: row.id,
+        planId: row.planId,
+        kind: row.kind as TripPlanMessageKind,
+        content: row.content,
+        createdAt: row.createdAt,
+      }
+    })
+  }
+
+  async replaceDaysIfActive(planId: string, token: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null> {
+    return this.withRunTokenLock(planId, token, async (tx) => {
+      await tx.tripPlanDay.deleteMany({ where: { planId } })
+      for (const day of days) {
+        await tx.tripPlanDay.create({
+          data: {
+            planId,
+            dayIndex: day.dayIndex,
+            date: day.date ?? null,
+            citySlug: day.citySlug ?? null,
+            summary: day.summary ?? null,
+            items: {
+              create: day.items.map((item, sortOrder) => ({
+                sortOrder,
+                type: item.type,
+                pointId: item.pointId ?? null,
+                timeHint: item.timeHint ?? null,
+                title: item.title,
+                note: item.note ?? null,
+                reason: item.reason ?? null,
+                payload: item.payload ?? undefined,
+              })),
+            },
+          },
+        })
+      }
+      await tx.tripPlan.update({ where: { id: planId }, data: { updatedAt: new Date() } })
+      const row = await tx.tripPlan.findUnique({ where: { id: planId }, include: PLAN_INCLUDE })
+      if (!row) throw new Error(`plan not found after replaceDaysIfActive: ${planId}`)
+      return toPlanWithDays(row)
+    })
+  }
+
+  async updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null> {
+    return this.withRunTokenLock(planId, token, async (tx) => {
+      const row = await tx.tripPlan.update({
+        where: { id: planId },
+        data: {
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.startDate !== undefined ? { startDate: patch.startDate } : {}),
+          ...(patch.dayCount !== undefined ? { dayCount: patch.dayCount } : {}),
+          ...(patch.bangumiIds !== undefined ? { bangumiIds: patch.bangumiIds } : {}),
+          ...(patch.preferences !== undefined ? { preferences: patch.preferences ?? PrismaRuntime.JsonNull } : {}),
+        },
+      })
+      return toPlan(row)
+    })
   }
 }

@@ -3,6 +3,7 @@ import { clusterIntoDays, haversineKm } from './cluster'
 import type { BgmSubject, PointFinder } from './points'
 import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
+import { RunFencedError } from './runFence'
 
 export type PlanAgentToolDeps = {
   planId: string
@@ -230,6 +231,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         return JSON.stringify({ error: `未知工具: ${name}` })
     }
   } catch (err) {
+    if (err instanceof RunFencedError) throw err // 不当普通工具错误吞掉，交给循环处理
     const message = err instanceof Error ? err.message : String(err)
     return JSON.stringify({ error: message })
   }

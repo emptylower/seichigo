@@ -151,7 +151,27 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     }
   }
 
-  async isRunActive(planId: string, token: string): Promise<boolean> {
+  private isCurrentHolder(planId: string, token: string): boolean {
     return this.agentBusy.get(planId)?.token === token
+  }
+
+  async appendMessageIfActive(
+    planId: string,
+    token: string,
+    kind: TripPlanMessageKind,
+    content: Prisma.JsonValue,
+  ): Promise<TripPlanMessage | null> {
+    if (!this.isCurrentHolder(planId, token)) return null
+    return this.appendMessage(planId, kind, content)
+  }
+
+  async replaceDaysIfActive(planId: string, token: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null> {
+    if (!this.isCurrentHolder(planId, token)) return null
+    return this.replaceDays(planId, days)
+  }
+
+  async updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null> {
+    if (!this.isCurrentHolder(planId, token)) return null
+    return this.updateMeta(planId, patch)
   }
 }

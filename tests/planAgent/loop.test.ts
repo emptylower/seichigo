@@ -198,4 +198,75 @@ describe('runPlanAgent', () => {
     expect(persisted.filter((m) => m.kind === 'assistant')).toHaveLength(0)
     expect(events[events.length - 1].type).toBe('done')
   })
+
+  it('fences a tool mutation (save_plan_days) mid-iteration if superseded before the write lands', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    const stale = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: -500,
+      content: { role: 'user', content: 'hi' },
+    })
+    if (stale.status !== 'ok') throw new Error('unreachable')
+
+    // 模型这一轮返回不慢（assistant 消息能正常落库——因为此时还没人接管，
+    // 只是 busy 位的 TTL 太短已经"看起来"过期了；直到 list_points 执行
+    // 时才真的有新请求趁虚接管），
+    // 但同一轮里排在 save_plan_days 前面的那个工具调用（这里用
+    // list_points 模拟，现实中通常是耗时的网络调用如 search_bangumi_tv）
+    // 执行期间被真实接管——排在它后面的 save_plan_days 必须被栅栏拦下
+    const tookOverDuringTool: PointFinder = {
+      ...finder,
+      async listPoints(bangumiId, limit) {
+        const takeover = await repo.beginAgentRun({
+          planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: 60_000,
+          content: { role: 'user', content: 'newer' },
+        })
+        if (takeover.status !== 'ok') throw new Error('unreachable')
+        return finder.listPoints(bangumiId, limit)
+      },
+    }
+
+    const createMessage = vi.fn(async () =>
+      assistantMessage({
+        tool_calls: [
+          {
+            id: 'call_list',
+            type: 'function',
+            function: { name: 'list_points', arguments: JSON.stringify({ bangumiId: 115908 }) },
+          },
+          {
+            id: 'call_save',
+            type: 'function',
+            function: {
+              name: 'save_plan_days',
+              arguments: JSON.stringify({
+                days: [{ dayIndex: 1, items: [{ type: 'point', pointId: 'p1', title: '宇治桥' }] }],
+              }),
+            },
+          },
+        ] as ChatMessage['tool_calls'],
+      }),
+    )
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage,
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: tookOverDuringTool },
+        userMessagePersisted: true,
+        runToken: stale.token,
+        maxIterations: 5,
+      },
+      'hi',
+      (e) => events.push(e),
+    )
+
+    const saved = await repo.getPlan(plan.id)
+    expect(saved?.days).toHaveLength(0) // save_plan_days 的写必须被栅栏拦下
+    expect(events[events.length - 1].type).toBe('done')
+    expect(events.some((e) => e.type === 'plan_updated')).toBe(false)
+  })
 })

@@ -124,14 +124,27 @@ export interface TripPlanRepo {
    */
   endAgentRun(planId: string, token: string): Promise<void>
   /**
-   * 供 agent 循环在每次准备落库前做栅栏检查（fencing）。busyTtlMs 只是
-   * "疑似失联"的启发式判断——原请求可能其实还活着，只是模型响应慢，TTL
-   * 到期只代表新请求*可以*接管，不代表旧请求已经停止。如果旧请求在被
-   * 接管后仍继续写历史，就会和新请求交叉写同一份对话，复现最初要修的
-   * 那个 bug。循环必须在每次落库前用自己持有的 token 确认仍是当前合法
-   * 持有者，一旦不是就立刻停止，不再写入。
+   * 与 appendMessage 语义相同，但 token 校验与写入在同一个原子操作内完成
+   * （Prisma 实现用 `SELECT ... FOR UPDATE` 锁住该计划行再校验再写），不留
+   * "先查后写"之间的窗口。token 已不是当前持有者时返回 null 且不写入。
+   *
+   * busyTtlMs 只是"疑似失联"的启发式判断——原请求可能其实还活着，只是这
+   * 一轮工具执行慢（比如 search_bangumi_tv 的网络请求），TTL 到期只代表
+   * 新请求*可以*接管，不代表旧请求已经停止。agent 循环的每一次落库—— 包
+   * 括 save_plan_days/update_plan_meta 这类工具触发的写——都必须用这一组
+   * 原子方法而不是裸的 appendMessage/replaceDays/updateMeta，否则旧请求
+   * 仍可能在被接管后继续写，复现最初要修的交叉写 bug。
    */
-  isRunActive(planId: string, token: string): Promise<boolean>
+  appendMessageIfActive(
+    planId: string,
+    token: string,
+    kind: TripPlanMessageKind,
+    content: Prisma.JsonValue,
+  ): Promise<TripPlanMessage | null>
+  /** 同上语义，供 save_plan_days 工具替代裸的 replaceDays。 */
+  replaceDaysIfActive(planId: string, token: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null>
+  /** 同上语义，供 update_plan_meta 工具替代裸的 updateMeta。 */
+  updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null>
 }
 
 export type BeginAgentRunResult =
