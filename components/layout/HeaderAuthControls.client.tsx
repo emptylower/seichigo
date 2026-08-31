@@ -24,6 +24,7 @@ type Props = {
   labels: {
     admin: string
     favorites: string
+    me: string
     signout: string
     signin: string
     signup: string
@@ -112,6 +113,9 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 <div className="line-clamp-1 text-[15px] font-semibold text-slate-800">{userLabel}</div>
               </div>
             </div>
+            <Link href={prefixPath('/me', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{labels.me}</span>
+            </Link>
             <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={drawerItemClass}>
               <span>{userCenterLabel}</span>
             </Link>
@@ -153,6 +157,9 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
               </div>
             </div>
+            <Link href={prefixPath('/me', locale)} prefetch={false} className={stackButtonClass}>
+              {labels.me}
+            </Link>
             <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={stackButtonClass}>
               {userCenterLabel}
             </Link>
@@ -194,6 +201,9 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 {labels.admin}
               </Link>
             ) : null}
+            <Link href={prefixPath('/me', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {labels.me}
+            </Link>
             <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {userCenterLabel}
             </Link>

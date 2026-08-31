@@ -1,9 +1,11 @@
 {
   "header": {
-    "posts": "Home",
+    "posts": "Top Guides",
     "anime": "Anime",
     "map": "Map",
-    "city": "Cities",
+    "city": "Top Cities",
+    "plan": "Plan",
+    "me": "Me",
     "resources": "Resources",
     "submit": "Submit",
     "community": "Community",

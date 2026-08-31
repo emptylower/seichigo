@@ -16,6 +16,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
   const labels = {
     admin: t('header.admin', locale),
     favorites: t('header.favorites', locale),
+    me: t('header.me', locale),
     signout: t('header.signout', locale),
     signin: t('header.signin', locale),
     signup: t('header.signup', locale),
@@ -40,12 +41,11 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
 
         <div className="hidden min-w-0 flex-1 items-center justify-end gap-4 lg:flex">
           <nav className="flex min-w-0 items-center justify-end gap-4 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
+            <Link href={prefixPath('/plan', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.plan', locale)}</Link>
             <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
-            <Link href={prefixPath('/anime', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.anime', locale)}</Link>
+            <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
             <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
-            <Link href={prefixPath('/resources', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.resources', locale)}</Link>
-            <Link href={prefixPath('/submit', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.submit', locale)}</Link>
+            <Link href={prefixPath('/me', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.me', locale)}</Link>
             <CommunityMenu locale={locale} />
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">

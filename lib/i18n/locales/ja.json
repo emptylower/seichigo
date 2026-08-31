@@ -1,9 +1,11 @@
 {
   "header": {
-    "posts": "ホーム",
+    "posts": "人気ガイド",
     "anime": "作品",
     "map": "マップ",
-    "city": "都市",
+    "city": "人気都市",
+    "plan": "計画",
+    "me": "マイページ",
     "resources": "リソース",
     "submit": "投稿",
     "community": "コミュニティ",

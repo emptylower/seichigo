@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, ChevronRight, Clapperboard, Globe2, Home, MapPinned, PenSquare, UserRound, X } from 'lucide-react'
+import { BookOpen, CalendarRange, ChevronRight, Globe2, Home, MapPinned, PenSquare, UserRound, X } from 'lucide-react'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
@@ -17,6 +17,7 @@ type Props = {
   labels: {
     admin: string
     favorites: string
+    me: string
     signout: string
     signin: string
     signup: string
@@ -71,10 +72,11 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
 
   const navItems = useMemo(
     () => [
-      { href: prefixPath('/', locale), label: t('header.posts', locale), icon: Home },
+      { href: prefixPath('/plan', locale), label: t('header.plan', locale), icon: CalendarRange },
       { href: prefixPath('/map', locale), label: t('header.map', locale), icon: MapPinned },
-      { href: prefixPath('/anime', locale), label: t('header.anime', locale), icon: Clapperboard },
+      { href: prefixPath('/', locale), label: t('header.posts', locale), icon: Home },
       { href: prefixPath('/city', locale), label: t('header.city', locale), icon: BookOpen },
+      { href: prefixPath('/me', locale), label: t('header.me', locale), icon: UserRound },
       { href: prefixPath('/resources', locale), label: t('header.resources', locale), icon: Globe2 },
       { href: prefixPath('/submit', locale), label: t('header.submit', locale), icon: PenSquare },
     ],

@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Heart, Map, User } from 'lucide-react'
+import { CalendarRange, Heart, Map, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-type MeTabKey = 'settings' | 'favorites' | 'routebooks'
+type MeTabKey = 'plan' | 'settings' | 'favorites' | 'routebooks'
 
 type Props = {
   activeTab: MeTabKey
@@ -13,6 +13,7 @@ type Props = {
 }
 
 const tabs: Array<{ key: MeTabKey; label: string; hint: string; href: string; icon: LucideIcon }> = [
+  { key: 'plan', label: '我的计划', hint: 'AI 规划的多日巡礼行程', href: '/plan', icon: CalendarRange },
   { key: 'settings', label: '个人信息', hint: '头像、昵称与社交账号', href: '/me/settings', icon: User },
   { key: 'favorites', label: '我的收藏', hint: '查看保存的文章', href: '/me/favorites', icon: Heart },
   { key: 'routebooks', label: '我的地图', hint: '管理巡礼路线', href: '/me/routebooks', icon: Map },

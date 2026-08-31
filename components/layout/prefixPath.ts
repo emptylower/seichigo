@@ -1,6 +1,6 @@
 import type { SiteLocale } from './SiteShell'
 
-const NON_LOCALIZED_PREFIXES = ['/auth', '/submit', '/admin', '/me', '/api', '/assets']
+const NON_LOCALIZED_PREFIXES = ['/auth', '/submit', '/admin', '/me', '/plan', '/api', '/assets']
 
 function isNonLocalizedPath(path: string): boolean {
   return NON_LOCALIZED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))

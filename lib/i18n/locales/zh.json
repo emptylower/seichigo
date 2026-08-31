@@ -1,9 +1,11 @@
 {
   "header": {
-    "posts": "首页",
+    "posts": "热门攻略",
     "anime": "作品",
     "map": "地图",
-    "city": "城市",
+    "city": "热门城市",
+    "plan": "计划",
+    "me": "我的",
     "resources": "资源",
     "submit": "投稿",
     "community": "社群",

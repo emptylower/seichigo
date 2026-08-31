@@ -22,6 +22,7 @@ describe('HeaderAuthControls', () => {
   const labels = {
     admin: '管理员面板',
     favorites: '我的收藏',
+    me: '我的',
     signout: '退出',
     signin: '登录',
     signup: '注册',
