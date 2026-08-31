@@ -3008,3 +3008,30 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 - **循环与消息持久化改为 OpenAI Chat Completions 协议**（Task 11/12）：assistant 带 `tool_calls`，工具回执是独立的 `role:'tool'` 消息（每条 kind='tool' 单独落库）；`reasoning_content` 在回传与落库前剥掉；system prompt 由循环注入为首条消息。
 - **作品简称解析三级管线**（Task 8/9/10）：站内 `search_anime` → 新增 `search_bangumi_tv` 工具（bgm.tv 公开搜索 API，免费无 key，subject id 与 AnitabiPoint.bangumiId 同源，返回候选并标注 hasPoints）→ 仍不确定则要求用户确认官方名称。提示词明确"模型的简称理解只用于生成查询关键词，不得作为结论"——幻觉在结构上无害化，这是选用低价模型的前提。
 - `toChatView` 适配字符串 content（Task 5）。
+
+## 验收记录（2026-08-31，Task 16）
+
+**自动化验证（Step 1 / 1.5）**
+- `npm test`：254 文件全过，1702 passed / 2 skipped。`tests/map/firstViewCanary.test.ts` 初次失败系 worktree 缺未入库的 `.omx/specs/canary-map-first-view-slots.md`（从主 checkout 补齐后通过，该文件本就不进 git）。
+- `npm run typecheck`：app + tests 均干净。
+- `npm run lint`：**空转**——`eslint` 不在依赖里（主 checkout 同样如此，脚本靠 `|| true` 掩盖，属全仓预存状况）。建议后续单独补 eslint 依赖与配置。
+- `npm run cf:build`：OpenNext Worker 打包成功（`openai` SDK、SSE 路由、prisma-client-runtime 条件导出均过关）。
+
+**数据库修正（验收中发现并处理）**
+- glm 的迁移只应用到了 `.env` 指向的本地 Postgres；而运行时（Next 优先读 `.env.local`）用的是 Neon 云库，缺 `TripPlan` 等 4 表。Neon 迁移账本本身干净齐平（无本地库那些 drift），已用标准 `prisma migrate deploy` 补应用 `20260831000000_add_trip_plan`，核验 `AnitabiPoint` 47,015 行无损、`TripPlan` 可用。
+- 本地库的迁移史欠账（ghost 迁移、RouteBook 等表不在迁移史）仍属预存问题，待单独 baseline 修复。
+
+**真实链路验收（Step 2，脚本化，真 Neon + 真 DeepSeek v4-flash + 真 bgm.tv）**
+- 三轮对话驱动 `runPlanAgent`（临时脚本跑完即删）：
+  1. 「帮我安排 3 天京都京吹圣地巡礼」→ agent 正确解析「京吹」为吹响吧！上低音号系列（站内 6 部作品），如实报点位规模，**主动向用户确认以哪一季为核心与出发日期**，不自行猜测——符合低幻觉设计。
+  2. 「选 A（TV 第一季）、9/15 出发」→ 聚类分 3 天、逐段 `estimate_transit`、`save_plan_days` 落库：3 天 35 个真实点位，每条 point 带 reason（含集数出处），外地点位（名古屋/东京）正确剔除，Day1 市区轻量 → Day2 木幡/莵道 → Day3 宇治精华的编排合理。
+  3. 「第一天太赶了，减少两个点」→ Day1 从 4 点减为 2 点并重新落库（断言 day1After < day1Before 通过），保留/砍点的取舍有解释。
+- 事件流含 `ready`（HTTP 层）、`text`/`plan_updated`/`done` 序列正常；消息按 human/assistant/tool 分 kind 落库，刷新可水合。
+- 未登录访问 `/plan` → 307 跳 `/auth/signin?callbackUrl=/plan` ✓；首页导航渲染出 计划/热门攻略/热门城市 与 `/plan`、`/me` 链接 ✓。
+
+**主观质量评价**：输出编排、点位取舍与巡礼常识（莵道高不入校、大吉山备水、末班公交提醒）超出 M1 预期；`deepseek-v4-flash` 的 function calling 与中文表达质量满足上线要求。
+
+**小瑕疵（不阻塞，记入 M2 待办）**
+- agent 首次调用 `cluster_points` 传了短 id 导致空结果，自行用完整点位 id 重试成功——`cluster_points` 的参数描述可强调「必须用 list_points 返回的完整 id」。
+- agent 口播的「60 个点位」是 `list_points` 默认 limit=60（按 density 取前 60），非全量数；如需展示总量可在工具回执附 totalCount。
+- 浏览器端人工走查（UI 建计划、429 文案展示、/me 聚合页视觉、路书地图渲染）未做——逻辑均有单测覆盖（配额、DayCards、RoutePreviewMap 迁移后 102 项路书测试全绿），建议上线前人工点一遍。
