@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MoreHorizontal, SendHorizontal } from 'lucide-react'
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
-import type { TripPlanView } from '@/lib/tripPlan/view'
+import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
+import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
+import { AskAnswerChip, AskCard } from './components/AskCard'
 import { DayCards } from './components/DayCards'
 import { MarkdownBubble } from './components/MarkdownBubble'
 import {
@@ -16,14 +18,14 @@ import {
   type ThinkingTurn,
 } from './components/ThinkingChain'
 
-type ChatEntry = { role: 'user' | 'assistant'; text: string; thinking?: ThinkingTurn }
+type ChatEntry = ChatEntryView & { thinking?: ThinkingTurn }
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80
 const TEXTAREA_MAX_HEIGHT_PX = 128 // ≈ 4 行
 // busy 为 true 但首帧遥测尚未到达时的兜底（startedAt 不影响进行中态展示）
 const EMPTY_THINKING_TURN: ThinkingTurn = { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: 0 }
 
-export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; initialChat: ChatEntry[] }) {
+export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; initialChat: ChatEntryView[] }) {
   const [plan, setPlan] = useState(props.initialPlan)
   const [chat, setChat] = useState<ChatEntry[]>(props.initialChat)
   const [input, setInput] = useState('')
@@ -76,14 +78,12 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT_PX)}px`
   }, [input])
 
-  async function send() {
-    const message = input.trim()
-    if (!message || busy) return
-    setInput('')
+  async function postAndStream(body: { message: string; answerTo?: string; answerValue?: unknown }) {
+    if (busy) return
     setBusy(true)
     // 用户主动发送时强制跟随到底部（常规 chat 行为）
     nearBottomRef.current = true
-    setChat((prev) => [...prev, { role: 'user', text: message }])
+    setChat((prev) => [...prev, { role: 'user', text: body.message }])
     // 本轮思维链累积器：本地变量跨帧累积（state 更新是异步的），state 只负责实时渲染
     let turn = newThinkingTurn()
     setActiveThinking(turn)
@@ -101,7 +101,7 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
       const res = await fetch(`/api/me/plans/${props.planId}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
       })
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null
@@ -131,6 +131,20 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
             case 'text': {
               const thinking = freezeTurn()
               setChat((prev) => [...prev, { role: 'assistant', text: event.text, thinking }])
+              break
+            }
+            case 'ask': {
+              // ask_user 结构化提问：本体挂 ask 字段，prompt 同时作 text 降级展示；
+              // 本轮对话就此结束（后端随后会发 done）
+              const thinking = freezeTurn()
+              const ask: AskUserPayload = {
+                askId: event.askId,
+                kind: event.kind,
+                prompt: event.prompt,
+                options: event.options,
+                allowSkip: event.allowSkip,
+              }
+              setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
               break
             }
             case 'plan_updated':
@@ -175,6 +189,13 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     }
   }
 
+  async function send() {
+    const message = input.trim()
+    if (!message || busy) return
+    setInput('')
+    await postAndStream({ message })
+  }
+
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh flex-col">
       {/* 自绘极简顶栏（站点 header/footer 已由 data-layout-immersive 隐藏） */}
@@ -207,15 +228,21 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
               试试：“帮我安排下个月中旬去京都，做京吹圣地巡礼的 3 天计划”
             </p>
           ) : null}
-          {chat.map((entry, idx) =>
-            entry.role === 'user' ? (
-              <div
-                key={idx}
-                className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl bg-brand-50 px-4 py-2 text-sm text-gray-900"
-              >
-                {entry.text}
-              </div>
-            ) : (
+          {chat.map((entry, idx) => {
+            if (entry.role === 'user') {
+              return (
+                <div
+                  key={idx}
+                  className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl bg-brand-50 px-4 py-2 text-sm text-gray-900"
+                >
+                  {entry.text}
+                </div>
+              )
+            }
+            const ask = entry.ask
+            // ask 是最后一条 → 可交互组件；否则说明已有后续对话，折叠成摘要 chip
+            const isLast = idx === chat.length - 1
+            return (
               <div key={idx} className="space-y-2">
                 {entry.thinking ? (
                   <ThinkingChain
@@ -225,12 +252,28 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
                     onToggle={() => setExpandedThinking((cur) => (cur === `m${idx}` ? null : `m${idx}`))}
                   />
                 ) : null}
-                <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
-                  <MarkdownBubble text={entry.text} />
-                </div>
+                {ask ? (
+                  isLast ? (
+                    <AskCard
+                      payload={ask}
+                      // ask 事件到达时本轮 SSE 可能尚未完全关闭（busy 仍为 true），
+                      // 此时禁用交互防止提交被 postAndStream 的 busy 守卫静默丢弃
+                      disabled={busy}
+                      onSubmit={(answer) =>
+                        void postAndStream({ message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue })
+                      }
+                    />
+                  ) : (
+                    <AskAnswerChip payload={ask} answerText={chat[idx + 1]?.text ?? entry.text} />
+                  )
+                ) : (
+                  <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
+                    <MarkdownBubble text={entry.text} />
+                  </div>
+                )}
               </div>
-            ),
-          )}
+            )
+          })}
           {busy ? (
             <ThinkingChain
               thinking={activeThinking ?? EMPTY_THINKING_TURN}
