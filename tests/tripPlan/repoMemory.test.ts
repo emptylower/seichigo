@@ -69,40 +69,61 @@ describe('MemoryTripPlanRepo', () => {
     expect(await repo.listMessages(plan.id)).toHaveLength(3)
   })
 
-  it('appendHumanMessageIfWithinQuota persists atomically and rejects once limit reached', async () => {
+  it('beginAgentRun enforces the daily quota atomically', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const since = new Date(Date.now() - 60_000)
+    const base = { planId: plan.id, userId: 'u1', since, limit: 2, busyTtlMs: 60_000 }
+
+    const first = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'hi' } })
+    expect(first.status).toBe('ok')
+    await repo.endAgentRun(plan.id)
+
+    const second = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'again' } })
+    expect(second.status).toBe('ok')
+    await repo.endAgentRun(plan.id)
+
+    const third = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'over' } })
+    expect(third.status).toBe('quota_exceeded')
+    // 被拒的消息不落库
+    expect(await repo.countHumanMessagesSince('u1', since)).toBe(2)
+    expect(await repo.listMessages(plan.id)).toHaveLength(2)
+  })
+
+  it('beginAgentRun rejects a second run on the same plan until endAgentRun', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const since = new Date(Date.now() - 60_000)
+    const base = { planId: plan.id, userId: 'u1', since, limit: 10, busyTtlMs: 60_000 }
+
+    const first = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'a' } })
+    expect(first.status).toBe('ok')
+
+    const concurrent = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'b' } })
+    expect(concurrent.status).toBe('busy')
+    // busy 不落库、不占配额
+    expect(await repo.listMessages(plan.id)).toHaveLength(1)
+
+    await repo.endAgentRun(plan.id)
+    const after = await repo.beginAgentRun({ ...base, content: { role: 'user', content: 'c' } })
+    expect(after.status).toBe('ok')
+  })
+
+  it('beginAgentRun treats an expired busy claim as free (stale-lock recovery)', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     const since = new Date(Date.now() - 60_000)
 
-    const first = await repo.appendHumanMessageIfWithinQuota({
-      planId: plan.id,
-      userId: 'u1',
-      content: { role: 'user', content: 'hi' },
-      since,
-      limit: 2,
+    const first = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since, limit: 10, busyTtlMs: -1000,
+      content: { role: 'user', content: 'a' },
     })
-    expect(first).not.toBeNull()
-    expect(first?.kind).toBe('human')
-
-    const second = await repo.appendHumanMessageIfWithinQuota({
-      planId: plan.id,
-      userId: 'u1',
-      content: { role: 'user', content: 'again' },
-      since,
-      limit: 2,
+    expect(first.status).toBe('ok')
+    // TTL 已过期（负数模拟崩溃后未清锁），新请求可接管
+    const second = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since, limit: 10, busyTtlMs: 60_000,
+      content: { role: 'user', content: 'b' },
     })
-    expect(second).not.toBeNull()
-
-    const third = await repo.appendHumanMessageIfWithinQuota({
-      planId: plan.id,
-      userId: 'u1',
-      content: { role: 'user', content: 'over' },
-      since,
-      limit: 2,
-    })
-    expect(third).toBeNull()
-    // 被拒的消息不落库
-    expect(await repo.countHumanMessagesSince('u1', since)).toBe(2)
-    expect(await repo.listMessages(plan.id)).toHaveLength(2)
+    expect(second.status).toBe('ok')
   })
 })

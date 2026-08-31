@@ -3039,3 +3039,10 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
 **验收后修复（2026-08-31，Codex stop-time review）**
 - 消息配额竞态修复：原实现 count→429→跑 agent，人类消息到循环里才落库，N 个并发请求可同时通过检查并发烧模型额度。改为 `TripPlanRepo.appendHumanMessageIfWithinQuota`——配额检查与人类消息落库在同一事务，Prisma 版用 `pg_advisory_xact_lock(hashtext(userId))` 按用户串行化（READ COMMITTED 下 insert+count 互不可见，必须加锁；lock 函数返回 void 需 `::text` 强转；事务 maxWait 放宽到 10s 让排队请求拿到干净 429）。`runPlanAgent` 增加 `userMessagePersisted` 跳过重复落库。已在真实 Neon 上验证：5 并发 vs limit=2，恰好 2 成功 3 拒绝，零报错。
 - 计划创建配额（每日 3 个）的同类竞态仍按 M1 决策保留——创建空计划不消耗模型额度，原子化随 M2 用量表一并处理。
+
+**验收后修复二（2026-08-31，Codex stop-time review）**
+- 同计划并发消息串线修复：修好配额竞态后，同一计划仍可被并发请求同时驱动两个 `runPlanAgent` 循环，交错写同一份对话历史——既可能把 A 的回复插进 B 的对话，交错的 assistant/tool_calls 也会破坏 OpenAI 协议顺序，导致该计划后续每次调用都 400。修复：
+  - `TripPlan` 加 `agentBusyUntil` 列（迁移 `20260831010000_add_trip_plan_agent_busy`），`appendHumanMessageIfWithinQuota` 升级为 `beginAgentRun`/`endAgentRun`：配额检查、按计划的互斥抢占（条件 `updateMany`）、人类消息落库三者在同一事务原子完成；`endAgentRun` 放在路由的 `finally` 里保证进程正常退出必释放。busy 位带 10 分钟 TTL，进程崩溃未清锁时到期自动可接管（真实 Neon 验证：故意设负 TTL 模拟崩溃后可立即被下一请求接管）。
+  - 并发请求打到忙碌计划时返回 `409`（"这个计划正在规划中，等当前回复完成后再发送"），区别于配额耗尽的 `429`。
+  - `sanitizeChatHistory`（`lib/planAgent/loop.ts`）在每次回放历史前清理悬空 `tool_calls`（配对回执缺失）与孤儿 `tool` 回执——即便未来出现其它导致历史交错/截断的路径（如手工改库、旧版本遗留脏数据），计划也不会永久卡死在 400。
+  - 真实 Neon 验证：5 并发请求打同一计划，恰好 1 个 `ok`、4 个 `busy`；释放后可继续；配额检查照常在互斥之外独立生效。

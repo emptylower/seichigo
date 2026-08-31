@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import type {
+  BeginAgentRunResult,
   TripPlan,
   TripPlanDayInput,
   TripPlanMessage,
@@ -17,6 +18,7 @@ type MemoryOptions = {
 export class MemoryTripPlanRepo implements TripPlanRepo {
   private plans = new Map<string, TripPlanWithDays>()
   private messages: TripPlanMessage[] = []
+  private agentBusyUntil = new Map<string, Date>()
   private points: Map<string, TripPlanPointLite>
   private seq = 0
 
@@ -125,15 +127,24 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return this.messages.filter((m) => planIds.has(m.planId) && m.kind === 'human' && m.createdAt >= since).length
   }
 
-  async appendHumanMessageIfWithinQuota(input: {
+  async beginAgentRun(input: {
     planId: string
     userId: string
     content: Prisma.JsonValue
     since: Date
     limit: number
-  }): Promise<TripPlanMessage | null> {
+    busyTtlMs: number
+  }): Promise<BeginAgentRunResult> {
     const used = await this.countHumanMessagesSince(input.userId, input.since)
-    if (used >= input.limit) return null
-    return this.appendMessage(input.planId, 'human', input.content)
+    if (used >= input.limit) return { status: 'quota_exceeded' }
+    const busyUntil = this.agentBusyUntil.get(input.planId)
+    if (busyUntil && busyUntil.getTime() > Date.now()) return { status: 'busy' }
+    this.agentBusyUntil.set(input.planId, new Date(Date.now() + input.busyTtlMs))
+    const message = await this.appendMessage(input.planId, 'human', input.content)
+    return { status: 'ok', message }
+  }
+
+  async endAgentRun(planId: string): Promise<void> {
+    this.agentBusyUntil.delete(planId)
   }
 }

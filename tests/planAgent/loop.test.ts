@@ -139,4 +139,23 @@ describe('runPlanAgent', () => {
     const persisted = await repo.listMessages(plan.id)
     expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant'])
   })
+
+  it('sanitizes broken history: dangling tool_calls and orphan tool messages are dropped', async () => {
+    const { sanitizeChatHistory } = await import('@/lib/planAgent/loop')
+    const history = [
+      { role: 'user', content: 'q1' },
+      // 完整的一组：保留
+      { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_plan', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'c1', content: '{}' },
+      // 悬空 tool_calls（崩溃/并发交错导致回执缺失）：丢弃
+      { role: 'assistant', content: null, tool_calls: [{ id: 'c2', type: 'function', function: { name: 'read_plan', arguments: '{}' } }] },
+      { role: 'user', content: 'q2' },
+      // 孤儿 tool 回执：丢弃
+      { role: 'tool', tool_call_id: 'c9', content: '{}' },
+      { role: 'assistant', content: '答复' },
+    ] as Parameters<typeof sanitizeChatHistory>[0]
+
+    const cleaned = sanitizeChatHistory(history)
+    expect(cleaned.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'user', 'assistant'])
+  })
 })

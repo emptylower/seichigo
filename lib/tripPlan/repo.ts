@@ -102,14 +102,24 @@ export interface TripPlanRepo {
   listMessages(planId: string): Promise<TripPlanMessage[]>
   countHumanMessagesSince(userId: string, since: Date): Promise<number>
   /**
-   * 配额检查与人类消息落库必须是同一个原子操作，否则并发请求都会先通过
-   * count 再各自落库，配额形同虚设。达到 limit 时返回 null 且不落库。
+   * agent 运行的原子起步：配额检查、同计划互斥（busy 位）、人类消息落库
+   * 必须是同一个原子操作。拆开任意两步都会被并发请求穿过——配额分离会
+   * 无限烧模型额度，互斥分离会让两个循环交错写同一份对话历史。
+   * busy 位带 TTL（busyTtlMs），进程崩溃未清锁时到期自动可接管。
    */
-  appendHumanMessageIfWithinQuota(input: {
+  beginAgentRun(input: {
     planId: string
     userId: string
     content: Prisma.JsonValue
     since: Date
     limit: number
-  }): Promise<TripPlanMessage | null>
+    busyTtlMs: number
+  }): Promise<BeginAgentRunResult>
+  /** 运行结束（含失败）时清除 busy 位；必须放在 finally 里。 */
+  endAgentRun(planId: string): Promise<void>
 }
+
+export type BeginAgentRunResult =
+  | { status: 'ok'; message: TripPlanMessage }
+  | { status: 'quota_exceeded' }
+  | { status: 'busy' }

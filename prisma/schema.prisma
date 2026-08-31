@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
@@ -611,20 +611,20 @@ model MapImageDiagEvent {
 }
 
 model MapImageMirrorState {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   sourceType    String
   sourceId      String
   variant       String
   canonicalUrl  String
   r2Key         String
   status        String
-  attempts      Int      @default(0)
+  attempts      Int       @default(0)
   lastAttemptAt DateTime?
-  lastError     String?  @db.Text
+  lastError     String?   @db.Text
   mirroredAt    DateTime?
   contentBytes  Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([sourceType, sourceId, variant])
   @@index([status, createdAt])
@@ -632,43 +632,43 @@ model MapImageMirrorState {
 }
 
 model MapImageMirrorBootstrap {
-  id                Int      @id @default(1)
+  id                Int       @id @default(1)
   bangumiCursor     Int?
   pointCursor       String?
-  bangumiCompleted  Boolean  @default(false)
-  pointCompleted    Boolean  @default(false)
-  totalEnumerated   Int      @default(0)
+  bangumiCompleted  Boolean   @default(false)
+  pointCompleted    Boolean   @default(false)
+  totalEnumerated   Int       @default(0)
   startedAt         DateTime?
   completedAt       DateTime?
   lastAdvanceAt     DateTime?
-  manuallyTriggered Boolean  @default(false)
+  manuallyTriggered Boolean   @default(false)
 }
 
 model AnitabiBangumi {
-  id               Int      @id
-  titleZh          String?
-  titleJaRaw       String?
-  cat              String?
-  cover            String?
-  description      String?  @db.Text
-  color            String?
-  city             String?
-  tags             String[] @default([])
-  geoLat           Float?
-  geoLng           Float?
-  zoom             Float?
-  sourceModifiedMs BigInt?
-  mapEnabled       Boolean  @default(true)
-  datasetVersion   String
+  id                     Int      @id
+  titleZh                String?
+  titleJaRaw             String?
+  cat                    String?
+  cover                  String?
+  description            String?  @db.Text
+  color                  String?
+  city                   String?
+  tags                   String[] @default([])
+  geoLat                 Float?
+  geoLng                 Float?
+  zoom                   Float?
+  sourceModifiedMs       BigInt?
+  mapEnabled             Boolean  @default(true)
+  datasetVersion         String
   // Cross-language search fields
-  titleOriginal            String?
-  titleRomaji              String?
-  titleEnglish             String?
-  aliases                  String[] @default([])
-  anilistId                Int?
-  anilistMatchConfidence   Float?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  titleOriginal          String?
+  titleRomaji            String?
+  titleEnglish           String?
+  aliases                String[] @default([])
+  anilistId              Int?
+  anilistMatchConfidence Float?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   points      AnitabiPoint[]
   meta        AnitabiBangumiMeta?
@@ -710,10 +710,10 @@ model AnitabiPoint {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  bangumi     AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
-  i18n        AnitabiPointI18n[]
-  favorites   AnitabiFavorite[]
-  viewHistory AnitabiViewHistory[]
+  bangumi         AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  i18n            AnitabiPointI18n[]
+  favorites       AnitabiFavorite[]
+  viewHistory     AnitabiViewHistory[]
   userPointStates UserPointState[]
   userPointPools  UserPointPool[]
   routeBookPoints RouteBookPoint[]
@@ -726,9 +726,9 @@ model AnitabiPoint {
 }
 
 model AnitabiBangumiMeta {
-  bangumiId         Int      @id
-  pointsLength      Int      @default(0)
-  imagesLength      Int      @default(0)
+  bangumiId         Int       @id
+  pointsLength      Int       @default(0)
+  imagesLength      Int       @default(0)
   themeJson         Json?
   customEpNamesJson Json?
   logsJson          Json?
@@ -737,8 +737,8 @@ model AnitabiBangumiMeta {
   /// 上次向上游核对该作品的时间。枚举层按它最旧优先轮转 ——
   /// 官方 API 没有列出全部作品的入口，只能靠库内 ID 轮转覆盖全量。
   lastCheckedAt     DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
 
@@ -807,17 +807,17 @@ model AnitabiViewHistory {
 }
 
 model UserPointState {
-  id          String        @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String
   pointId     String
   state       String
   checkedInAt DateTime?
-  gpsVerified Boolean       @default(false)
+  gpsVerified Boolean      @default(false)
   photoUrl    String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  point       AnitabiPoint  @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  point       AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pointId])
   @@index([userId])
@@ -826,12 +826,12 @@ model UserPointState {
 }
 
 model UserPointPool {
-  id        String      @id @default(cuid())
+  id        String       @id @default(cuid())
   userId    String
   pointId   String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   point     AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pointId])
@@ -888,14 +888,14 @@ model AnitabiBangumiI18n {
 }
 
 model AnitabiPointI18n {
-  id        String   @id @default(cuid())
-  pointId   String
-  language  String
+  id         String   @id @default(cuid())
+  pointId    String
+  language   String
   sourceHash String?
-  name      String?
-  note      String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name       String?
+  note       String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   point AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
@@ -948,12 +948,12 @@ model AnitabiSourceCursor {
 }
 
 model UserBadge {
-  id         String   @id @default(cuid())
-  userId     String
-  badgeType  String
-  badgeKey   String
-  earnedAt   DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  badgeType String
+  badgeKey  String
+  earnedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -962,32 +962,33 @@ model UserBadge {
 }
 
 model SearchQueryCache {
-  id             String   @id @default(cuid())
-  queryText      String
-  queryLanguage  String?
-  translatedZh   String?
-  translatedEn   String?
-  translatedJa   String?
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  queryText     String
+  queryLanguage String?
+  translatedZh  String?
+  translatedEn  String?
+  translatedJa  String?
+  createdAt     DateTime @default(now())
 
   @@unique([queryText])
   @@index([createdAt])
 }
 
 model TripPlan {
-  id          String            @id @default(cuid())
-  userId      String
-  title       String
-  status      String            @default("draft")
-  startDate   DateTime?
-  dayCount    Int               @default(1)
-  bangumiIds  Int[]             @default([])
-  preferences Json?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  days        TripPlanDay[]
-  messages    TripPlanMessage[]
+  id             String            @id @default(cuid())
+  userId         String
+  title          String
+  status         String            @default("draft")
+  startDate      DateTime?
+  dayCount       Int               @default(1)
+  bangumiIds     Int[]             @default([])
+  preferences    Json?
+  agentBusyUntil DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days           TripPlanDay[]
+  messages       TripPlanMessage[]
 
   @@index([userId])
   @@index([status])

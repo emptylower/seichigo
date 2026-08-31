@@ -2,6 +2,7 @@ import { Prisma as PrismaRuntime } from '@seichigo/prisma-client-runtime'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import type {
+  BeginAgentRunResult,
   TripPlan,
   TripPlanDayInput,
   TripPlanItemType,
@@ -174,14 +175,15 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     })
   }
 
-  async appendHumanMessageIfWithinQuota(input: {
+  async beginAgentRun(input: {
     planId: string
     userId: string
     content: Prisma.JsonValue
     since: Date
     limit: number
-  }): Promise<TripPlanMessage | null> {
-    return prisma.$transaction(async (tx) => {
+    busyTtlMs: number
+  }): Promise<BeginAgentRunResult> {
+    return prisma.$transaction(async (tx): Promise<BeginAgentRunResult> => {
       // 同一用户的配额检查串行化：READ COMMITTED 下 insert+count 彼此不可见，
       // 并发请求会同时通过检查，必须用事务级 advisory lock 排队。
       // ::text 强转是必须的：advisory lock 函数返回 void，Prisma 无法反序列化 void 列
@@ -189,19 +191,36 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       const used = await tx.tripPlanMessage.count({
         where: { kind: 'human', createdAt: { gte: input.since }, plan: { userId: input.userId } },
       })
-      if (used >= input.limit) return null
+      if (used >= input.limit) return { status: 'quota_exceeded' }
+      const now = new Date()
+      // 条件更新原子抢占 busy 位：抢不到（未过期）说明该计划已有 agent 在跑
+      const claimed = await tx.tripPlan.updateMany({
+        where: {
+          id: input.planId,
+          OR: [{ agentBusyUntil: null }, { agentBusyUntil: { lt: now } }],
+        },
+        data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs) },
+      })
+      if (claimed.count === 0) return { status: 'busy' }
       const row = await tx.tripPlanMessage.create({
         data: { planId: input.planId, kind: 'human', content: input.content as Prisma.InputJsonValue },
       })
       return {
-        id: row.id,
-        planId: row.planId,
-        kind: row.kind as TripPlanMessageKind,
-        content: row.content,
-        createdAt: row.createdAt,
+        status: 'ok',
+        message: {
+          id: row.id,
+          planId: row.planId,
+          kind: row.kind as TripPlanMessageKind,
+          content: row.content,
+          createdAt: row.createdAt,
+        },
       }
       // maxWait 放宽到 10s：并发请求在 advisory lock 上排队属预期，
-      // 排到队尾的应拿到 null→429，而不是事务启动超时的 500
+      // 排到队尾的应拿到干净的 429/409，而不是事务启动超时的 500
     }, { maxWait: 10_000, timeout: 15_000 })
+  }
+
+  async endAgentRun(planId: string): Promise<void> {
+    await prisma.tripPlan.updateMany({ where: { id: planId }, data: { agentBusyUntil: null } })
   }
 }

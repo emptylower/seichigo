@@ -34,6 +34,35 @@ function isChatMessage(value: Prisma.JsonValue): value is Prisma.JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && 'role' in value
 }
 
+/**
+ * 修复损坏的历史再回放：带 tool_calls 的 assistant 消息必须紧跟全部对应的
+ * tool 回执，否则 OpenAI 协议回放会被拒。崩溃或历史并发交错会留下悬空
+ * tool_calls / 孤儿 tool 回执——不清理的话该计划的后续对话会永久报错。
+ */
+export function sanitizeChatHistory(history: ChatMessageParam[]): ChatMessageParam[] {
+  const out: ChatMessageParam[] = []
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i]
+    if (msg.role === 'tool') continue // 走到这的 tool 都是孤儿（配对的在下面整组消费）
+    const toolCalls = msg.role === 'assistant' && 'tool_calls' in msg ? msg.tool_calls ?? [] : []
+    if (msg.role === 'assistant' && toolCalls.length) {
+      const pending = new Set(toolCalls.map((c) => c.id))
+      const replies: ChatMessageParam[] = []
+      let j = i + 1
+      while (j < history.length && history[j].role === 'tool') {
+        const reply = history[j] as Extract<ChatMessageParam, { role: 'tool' }>
+        if (pending.delete(reply.tool_call_id)) replies.push(reply)
+        j++
+      }
+      if (pending.size === 0) out.push(msg, ...replies)
+      i = j - 1
+      continue
+    }
+    out.push(msg)
+  }
+  return out
+}
+
 export async function runPlanAgent(
   deps: PlanAgentDeps,
   userMessage: string,
@@ -44,10 +73,12 @@ export async function runPlanAgent(
   const history = await deps.repo.listMessages(deps.planId)
   const messages: ChatMessageParam[] = [
     { role: 'system', content: PLAN_AGENT_SYSTEM_PROMPT },
-    ...history
-      .map((m) => m.content)
-      .filter(isChatMessage)
-      .map((m) => m as unknown as ChatMessageParam),
+    ...sanitizeChatHistory(
+      history
+        .map((m) => m.content)
+        .filter(isChatMessage)
+        .map((m) => m as unknown as ChatMessageParam),
+    ),
   ]
 
   if (!deps.userMessagePersisted) {

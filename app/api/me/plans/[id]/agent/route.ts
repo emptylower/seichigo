@@ -9,6 +9,8 @@ import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
 export const runtime = 'nodejs'
 
 const DAILY_MESSAGE_LIMIT = 20
+// busy 位 TTL：覆盖最坏情况（12 轮 × 慢推理响应），进程崩溃未清锁时到期自动恢复
+const AGENT_BUSY_TTL_MS = 10 * 60 * 1000
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
@@ -31,17 +33,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   if (!message) return NextResponse.json({ error: '消息不能为空' }, { status: 400 })
 
-  // 配额检查与人类消息落库在同一事务（按用户 advisory lock 串行化），
-  // 并发请求无法同时通过检查后各自烧模型额度。
-  const humanMessage = await deps.repo.appendHumanMessageIfWithinQuota({
+  // 配额检查、同计划互斥、人类消息落库在同一事务（按用户 advisory lock 串行化）：
+  // 并发请求既不能各自烧模型额度，也不能在同一计划上交错写对话历史。
+  const begin = await deps.repo.beginAgentRun({
     planId: id,
     userId,
     content: { role: 'user', content: message },
     since: startOfToday(),
     limit: DAILY_MESSAGE_LIMIT,
+    busyTtlMs: AGENT_BUSY_TTL_MS,
   })
-  if (!humanMessage) {
+  if (begin.status === 'quota_exceeded') {
     return NextResponse.json({ error: '今日 AI 规划额度已用完，明天再来吧' }, { status: 429 })
+  }
+  if (begin.status === 'busy') {
+    return NextResponse.json({ error: '这个计划正在规划中，等当前回复完成后再发送' }, { status: 409 })
   }
 
   const encoder = new TextEncoder()
@@ -79,6 +85,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : '服务器错误' })
         send({ type: 'done' })
+      } finally {
+        // 无论正常结束、报错还是客户端断开，都要释放 busy 位，
+        // 否则该计划要等 TTL 过期才能继续对话
+        await deps.repo.endAgentRun(id).catch(() => undefined)
       }
       try {
         controller.close()
