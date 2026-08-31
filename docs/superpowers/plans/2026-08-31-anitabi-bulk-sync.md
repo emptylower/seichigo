@@ -1521,7 +1521,7 @@ git commit -m "test(anitabi): mock upstream 提供 bulk 数据包路由"
 
 **目的：** 用**真实上游数据**灌一遍本地沙箱库，diff 字段填充率，确认没有任何"不可再生字段被抹掉 / 填充率衰减"。这是 spec 定下的上线前置条件。
 
-- [ ] **Step 1: 记录演练前填充率基线**
+- [x] **Step 1: 记录演练前填充率基线**
 
 ```bash
 psql postgresql://localhost:5432/seichigo_synclab -c "
@@ -1539,7 +1539,7 @@ SELECT count(*) AS metas, count(\"themeJson\") AS theme,
 FROM \"AnitabiBangumiMeta\";" | tee /tmp/anitabi-fillrate-before.txt
 ```
 
-- [ ] **Step 2: 对真上游跑全量（本地库 + 真实 bulk 域；循环直到 hasMore=false）**
+- [x] **Step 2: 对真上游跑全量（本地库 + 真实 bulk 域；循环直到 hasMore=false）**
 
 ```bash
 while :; do
@@ -1554,7 +1554,7 @@ done
 
 Expected: 最终一轮 `status: "ok"`、`hasMore: false`；期间 `AnitabiSyncRun` 无 `failed`。
 
-- [ ] **Step 3: 复查填充率（同 Step 1 的 SQL，输出到 `-after.txt`），并 diff**
+- [x] **Step 3: 复查填充率（同 Step 1 的 SQL，输出到 `-after.txt`），并 diff**
 
 验收断言：
 - `review_uid`、`origin_url`、`cep`、`logs` 计数**一个都不许少**（冻结字段）；
@@ -1563,7 +1563,7 @@ Expected: 最终一轮 `status: "ok"`、`hasMore: false`；期间 `AnitabiSyncRu
 
 任何一条不满足 → 停下修复，不进 Task 10。
 
-- [ ] **Step 4: 把演练结论（两份填充率快照 + 结论一句话）追记到本计划文件末尾，commit**
+- [x] **Step 4: 把演练结论（两份填充率快照 + 结论一句话）追记到本计划文件末尾，commit**
 
 ---
 
@@ -1668,3 +1668,34 @@ done
 - **冻结字段一致性**：`reviewUid`/`originUrl` 在 bulkDecode（不产出键）、bulkWorkflow（不展开键）、测试（`'x' in row === false` 断言）、Task 9（SQL 计数不减）四处口径一致。
 - **类型一致性**：`BulkNormalizedPoint`/`BulkIndexEntry`/`BulkPageEntry` 在 Task 1-3 定义、Task 6 消费，签名已核对；`upsertCursor` 沿用 workflow.ts 现有签名 `(prisma, sourceName, { value })`。
 - **已知取舍**：`en`→`titleEnglish` 不写（D10）；索引缺席作品不动（D8）；分页每轮全拉不做页级缓存（数据集短路已覆盖 95% 场景）。
+
+---
+
+## 五、Task 9 沙箱真数据演练结论（2026-08-31）
+
+**演练前后填充率快照**（`postgresql://localhost:5432/seichigo_synclab`）：
+
+| 指标 | 演练前 | 演练后 | 变化 |
+|---|---:|---:|---|
+| 作品数 | 7,933 | 8,042 | +109（新作品发现回归） |
+| 点位数 | 30,625 | 80,591 | +49,966 |
+| density | 29,158 | 75,367 | +46,209 |
+| mark | 14,942 | 35,550 | +20,608 |
+| folder | 13,423 | 39,185 | +25,762 |
+| uid | 13,822 | 45,755 | +31,933 |
+| themeJson | 7,933 | 7,989 | +56 |
+| reviewUid（冻结） | 9,953 | 9,850 | **-103** |
+| originUrl（冻结） | 24,453 | 24,131 | **-322** |
+| customEpNamesJson（冻结） | 7,933 | 7,933 | 0 |
+| logsJson（冻结） | 7,933 | 7,933 | 0 |
+
+**过程中发现并修复的真实 bug**：真实上游数据里出现了 `density` 超出 Postgres `integer` 列上限（撞到 `110999999889000`）的畸形值，导致 `anitabiPoint.createMany` 崩溃、整轮同步失败。已修复（`decodeBulkPoint` 补 int32 上限校验，超出范围视为缺失而非透传），并补了两条回归测试覆盖上限值与超限值，见 commit `fix(anitabi): bulk density 解码补 int32 上限校验`。
+
+**沙箱环境自身的历史债（非本次代码引入）**：沙箱种子数据里 99%（1,371 个作品 / 30,400 条点位）的点位使用 2026-02-11 13:41 写入的旧版无 `bangumiId:` 前缀 ID，比"给点位 ID 加前缀"的改动（`ca13f01`，2026-02-12）还早一天，从未迁移。新旧两条同步管线现在都用带前缀的方案，这批老数据在任一管线眼中都"匹配不上"，因此本轮全量演练里 1518 个作品有 1362 个被删除双闸门正确拦下（不删、不收敛、数据集游标不推进，下轮自动重试），只有 109 个新作品 + 47 个恰好已是新版 ID 的老作品完整收敛。**这批老数据的迁移/补齐是独立于本计划的后续工作**，本次不做处理，按用户决定原样保留。
+
+**`reviewUid`/`originUrl` 计数下降的定性**：字面对照验收断言（"冻结字段一个都不许少"）未通过，但已确认不是误清空：
+- 代码层面核对 `bulkWorkflow.ts` 的 `normalizedPoints` 构造与 `anitabiPoint.update()` 调用，`reviewUid`/`originUrl` 两个 key 从未出现在写入的 `data` 对象里——Prisma 对未出现的 key 不做任何改动，不会写 null。
+- 因此这两个字段只可能通过**真删除**减少，而删除只发生在 156 个"收敛"的作品上（109 个全新 + 47 个已是新版 ID 且匹配良好的老作品），删的是这些作品里上游确实已不存在的陈旧点位，其中一部分恰好带有 reviewUid/originUrl。
+- 结论：这是停摆约 8 个月后首次全量同步、跟随上游做的真实存量清理，不是响应残缺导致的误清空。原验收断言设计时未考虑"长期停摆后首次同步会有正常增删"的场景。**用户已确认按此定性判定 Task 9 通过**，不视为需要修复的缺陷。
+
+**结论一句话**：bulk 同步管线在真实上游数据下功能正确、删除安全闸门按设计工作；发现并修复了一个真实的 density 越界崩溃 bug；`reviewUid`/`originUrl` 的计数下降经代码级核实为合法的陈旧点位清理而非误清空，Task 9 判定通过，可以推进 Task 10。
