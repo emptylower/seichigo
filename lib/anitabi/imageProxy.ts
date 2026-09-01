@@ -158,6 +158,10 @@ export function toCanvasSafeImageUrl(src: string, _hintName?: string): string {
     // bgm-api 中转域 403：先归一回 lain.bgm.tv，让后续 bgm 逻辑（/l/→/m/、代理优先）接管。
     const safeUrl = normalizeBgmApiRelayUrl(url)
     if (canBypassProxy(safeUrl)) {
+      // image.anitabi.cn 直连当前 403（WAF）：anitabi 资产保持直连但切到当前投递 host。
+      if (isDirectSafeAnitabiHost(safeUrl)) {
+        return resolveAnitabiDeliveryUrl(safeUrl).toString()
+      }
       return safeUrl.toString()
     }
     return buildProxyImageUrl(safeUrl)

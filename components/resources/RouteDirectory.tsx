@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ResourceAnimeGroup, ResourceRoutePreview, ResourceRouteSpot } from '@/lib/resources/types'
+import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 import { buildGoogleMapsDirectionsUrls, buildGoogleStaticMapUrl } from '@/lib/route/google'
 import { renderRouteMapSvg } from '@/lib/route/render'
 import type { SeichiRouteSpotV1 } from '@/lib/route/schema'
@@ -351,7 +352,7 @@ export default function RouteDirectory({
             <div className="relative flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-100">
-                  {g.cover ? <img src={g.cover} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
+                  {g.cover ? <img src={toMapDisplayImageUrl(g.cover, { kind: 'cover' })} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-lg font-bold text-slate-900">{g.animeName}</div>
@@ -393,7 +394,7 @@ export default function RouteDirectory({
               <article key={a.id} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_-24px_rgba(15,23,42,0.8)]">
                 <div className="relative aspect-[16/9] overflow-hidden">
                   {a.cover ? (
-                    <img src={a.cover} alt="" className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-105" loading="lazy" decoding="async" />
+                    <img src={toMapDisplayImageUrl(a.cover, { kind: 'cover' })} alt="" className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-105" loading="lazy" decoding="async" />
                   ) : (
                     <div className="h-full w-full bg-[linear-gradient(130deg,#f8fafc,#e2e8f0,#fce7f3)]" />
                   )}

@@ -3,6 +3,7 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import AttributionLink, { buildAnitabiBangumiHref } from '@/components/anitabi/AttributionLink'
 import type { AnitabiBangumiCard, AnitabiMapTab } from '@/lib/anitabi/types'
+import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 import { L, type SearchResult } from './shared'
 
 type ExplorerPanelContentProps = {
@@ -278,7 +279,7 @@ export default function ExplorerPanelContent(
                         <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                           {card.cover ? (
                             <img
-                              src={card.cover}
+                              src={toMapDisplayImageUrl(card.cover, { kind: 'cover' })}
                               alt={card.title}
                               width={96}
                               height={128}

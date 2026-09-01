@@ -108,4 +108,11 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
       'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fl%2F18%2Faf%2F495291_Qd97X.jpg',
     )
   })
+
+  it('rewrites direct-safe anitabi hosts onto the delivery host in canvas-safe urls', () => {
+    // image.anitabi.cn 直连 403：canvas 安全 URL 不再直连 canonical host，切到投递 host。
+    expect(
+      toCanvasSafeImageUrl('https://image.anitabi.cn/ptheme/anitabi/full/sprite.webp'),
+    ).toBe('https://img-tc.anitabi.cn/ptheme/anitabi/full/sprite.webp')
+  })
 })
