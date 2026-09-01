@@ -1,4 +1,4 @@
-export type BangumiHit = { id: number; titleZh: string | null; titleJaRaw: string | null; city: string | null }
+export type BangumiHit = { id: number; titleZh: string | null; titleJaRaw: string | null; city: string | null; cover?: string | null }
 export type AgentPoint = { id: string; name: string; nameZh: string | null; lat: number; lng: number; ep: string | null }
 export type BgmSubject = { id: number; name: string; nameCn: string }
 

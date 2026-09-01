@@ -4,18 +4,34 @@ import { AskCard, type AskAnswer } from '@/app/(authed)/plan/[id]/components/Ask
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 
 function datePayload(overrides?: Partial<AskUserPayload>): AskUserPayload {
-  return { askId: 'ask-1', kind: 'date_range', prompt: '打算什么时候出发？', allowSkip: true, ...overrides }
+  return { askId: 'ask-1', kind: 'date_range', taskType: 'date_range', prompt: '打算什么时候出发？', allowSkip: true, ...overrides }
 }
 
 function choicePayload(kind: 'single_choice' | 'multi_choice'): AskUserPayload {
   return {
     askId: 'ask-2',
     kind,
+    taskType: 'work_selection',
     prompt: '想巡礼哪几部？',
     options: [
       { id: 'a', label: '吹响吧！上低音号' },
       { id: 'b', label: '轻音少女', sublabel: '丰乡小学校' },
       { id: 'c', label: '玉子市场' },
+    ],
+  }
+}
+
+function opinionPayload(kind: 'single_choice' | 'multi_choice'): AskUserPayload {
+  return {
+    askId: 'ask-3',
+    kind,
+    taskType: 'opinion',
+    prompt: '这次山区行程以什么交通方式为主？',
+    options: [
+      { id: 'car', label: '自驾/租车', sublabel: '山区公交班次少，自驾最灵活', preferenceOnly: true },
+      { id: 'transit', label: '公共交通', sublabel: '经济但换乘耗时', preferenceOnly: true },
+      { id: 'mix', label: '混合方式', sublabel: '城市段公交+山区段租车', preferenceOnly: true },
+      { id: '__custom__', label: '其他（自行输入）' },
     ],
   }
 }
@@ -130,5 +146,112 @@ describe('ChoiceAsk（multi_choice）', () => {
     fireEvent.click(card)
     expect(screen.getByText('已选 0 项')).toBeTruthy()
     expect(screen.getByRole('button', { name: '确认' })).toHaveProperty('disabled', true)
+  })
+})
+
+describe('ChoiceAsk（最终澄清：作品卡没有自定义卡）', () => {
+  it('不渲染"其他（自行输入）"选项卡或卡内输入框——自由文本由全局输入框兜底', () => {
+    const { container } = render(<AskCard payload={choicePayload('single_choice')} onSubmit={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /其他（自行输入）/ })).toBeNull()
+    expect(screen.queryByText('其他（自行输入）')).toBeNull()
+    expect(screen.queryByPlaceholderText('输入你的回答…')).toBeNull()
+    // 也没有意见卡样式的虚线自定义行
+    expect(container.querySelectorAll('.border-dashed').length).toBe(0)
+    // 三张作品封面卡照常在场
+    expect(screen.getByRole('button', { name: /吹响吧！上低音号/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /轻音少女/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /玉子市场/ })).toBeTruthy()
+  })
+
+  it('历史残留的 __custom__ 选项被隐藏/忽略——旧作品卡 UI 不变', () => {
+    const stale = choicePayload('multi_choice')
+    stale.options = [
+      ...(stale.options ?? []),
+      { id: '__custom__', label: '其他（自行输入）' },
+    ]
+    const { container } = render(<AskCard payload={stale} onSubmit={vi.fn()} />)
+    expect(screen.queryByText('其他（自行输入）')).toBeNull()
+    expect(container.querySelectorAll('.border-dashed').length).toBe(0)
+    // 保留项不参与选择与提交：仍只有三张模型卡
+    const cards = screen.getAllByRole('button').filter((b) => b.textContent && /吹响吧|轻音少女|玉子市场/.test(b.textContent))
+    expect(cards).toHaveLength(3)
+  })
+})
+
+describe('OpinionChoiceAsk（taskType=opinion）', () => {
+  it('文本优先渲染：无 img、无 3:4 封面、无首字渐变占位，选项带 A/B/C 顺序标识与 sublabel', () => {
+    const { container } = render(<AskCard payload={opinionPayload('single_choice')} onSubmit={vi.fn()} />)
+    expect(screen.getByText('这次山区行程以什么交通方式为主？')).toBeTruthy()
+    // 绝不出现作品封面语义：无图片元素、无 3:4 比例类、无渐变占位
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.innerHTML).not.toContain('aspect-[3/4]')
+    expect(container.querySelectorAll('.bg-gradient-to-br').length).toBe(0)
+    // 文本选项与顺序标识、sublabel 都在场
+    expect(screen.getByText('自驾/租车')).toBeTruthy()
+    expect(screen.getByText('山区公交班次少，自驾最灵活')).toBeTruthy()
+    expect(screen.getByText('公共交通')).toBeTruthy()
+    expect(screen.getByText('混合方式')).toBeTruthy()
+    const markers = Array.from(container.querySelectorAll('[aria-hidden]'))
+      .map((el) => el.textContent?.trim())
+      .filter((t) => /^[A-Z]$/.test(t ?? ''))
+    expect(markers).toEqual(['A', 'B', 'C'])
+    // 末位自定义入口在场且仍是最后一个选项
+    const buttons = Array.from(container.querySelectorAll('button')).filter((b) => b.textContent && !b.textContent.includes('跳过'))
+    expect(buttons[buttons.length - 1]?.textContent).toContain('其他（自行输入）')
+  })
+
+  it('单选：点选后延迟提交 optionId', () => {
+    vi.useFakeTimers()
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    render(<AskCard payload={opinionPayload('single_choice')} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /公共交通/ }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    act(() => {
+      vi.advanceTimersByTime(200)
+    })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0][0]).toEqual({ readableText: '公共交通', answerValue: { optionId: 'transit' } })
+  })
+
+  it('多选：勾选后经确认提交 optionIds', () => {
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    render(<AskCard payload={opinionPayload('multi_choice')} onSubmit={onSubmit} />)
+    const confirm = screen.getByRole('button', { name: '确认' })
+    expect(confirm).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByRole('button', { name: /自驾\/租车/ }))
+    fireEvent.click(screen.getByRole('button', { name: /混合方式/ }))
+    expect(screen.getByText('已选 2 项')).toBeTruthy()
+    fireEvent.click(confirm)
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      readableText: '自驾/租车、混合方式',
+      answerValue: { optionIds: ['car', 'mix'] },
+    })
+  })
+
+  it('末位自定义入口打开卡内输入框，回传 { custom }', () => {
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    render(<AskCard payload={opinionPayload('single_choice')} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /其他（自行输入）/ }))
+    const input = screen.getByPlaceholderText('输入你的回答…') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '包车带司机' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交' }))
+    expect(onSubmit).toHaveBeenCalledWith({ readableText: '包车带司机', answerValue: { custom: '包车带司机' } })
+  })
+
+  it('多选 + 自定义输入可以并存提交', () => {
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    render(<AskCard payload={opinionPayload('multi_choice')} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /自驾\/租车/ }))
+    fireEvent.click(screen.getByRole('button', { name: /其他（自行输入）/ }))
+    const input = screen.getByPlaceholderText('补充自定义内容（可与所选选项并存）') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '夜行巴士' } })
+    // 卡内输入行与底部确认条都会出现"确认"（两者都走 submitMulti），取最后一个
+    const confirmButtons = screen.getAllByRole('button', { name: '确认' })
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]!)
+    expect(onSubmit).toHaveBeenCalledWith({
+      readableText: '自驾/租车、自定义：夜行巴士',
+      answerValue: { optionIds: ['car'], custom: '夜行巴士' },
+    })
   })
 })

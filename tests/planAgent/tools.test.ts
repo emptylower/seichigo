@@ -64,15 +64,17 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
 }
 
 describe('PLAN_AGENT_TOOLS', () => {
-  it('declares the nine M1 tools', () => {
+  it('declares the eleven M3 tools', () => {
     expect(
       PLAN_AGENT_TOOLS.map((t) => (t.type === 'function' ? t.function.name : '')).sort(),
     ).toEqual([
       'ask_user',
       'cluster_points',
       'estimate_transit',
+      'estimate_travel',
       'list_points',
       'read_plan',
+      'resolve_place',
       'save_plan_days',
       'search_anime',
       'search_bangumi_tv',
@@ -129,7 +131,7 @@ describe('PLAN_AGENT_TOOLS', () => {
     const payload = item.properties.payload
     expect(payload.type).toBe('object')
     expect(Object.keys(payload.properties)).toEqual(
-      expect.arrayContaining(['mode', 'durationMin', 'distanceKm']),
+      expect.arrayContaining(['mode', 'durationMin', 'distanceKm', 'place', 'schedule', 'transport', 'media']),
     )
     expect(item.required).not.toContain('payload')
   })
@@ -194,7 +196,7 @@ describe('executePlanTool', () => {
     expect(plan?.days[0].items).toHaveLength(2)
   })
 
-  it('save_plan_days 保留 transit 条目的结构化 payload，不带 payload 的条目仍为 null', async () => {
+  it('save_plan_days 归一化后 transit 条目 payload 带结构化交通数据 + schedule，无 payload 条目获得 schedule', async () => {
     const { deps, repo, planId } = await makeDeps()
     const out = JSON.parse(
       await executePlanTool(deps, 'save_plan_days', {
@@ -217,10 +219,19 @@ describe('executePlanTool', () => {
     expect(out.ok).toBe(true)
     const plan = await repo.getPlan(planId)
     const items = plan?.days[0].items ?? []
+    // 归一化排序：09:00 宇治桥 → 09:00+60 步行段 → 之后大吉山
+    const titles = items.map((i) => i.title)
+    expect(titles).toEqual(['宇治桥', '步行前往大吉山', '大吉山'])
     const transit = items.find((i) => i.type === 'transit')
-    expect(transit?.payload).toEqual({ mode: 'walk', durationMin: 8, distanceKm: 0.65 })
+    const transitPayload = transit?.payload as Record<string, unknown>
+    expect(transitPayload.mode).toBe('walk')
+    expect(transitPayload.durationMin).toBe(8)
+    expect(transitPayload.distanceKm).toBe(0.65)
+    expect(transitPayload.schedule).toMatchObject({ start: '10:00', end: '10:08', confidence: 'estimated' })
     const point = items.find((i) => i.type === 'point')
-    expect(point?.payload).toBeNull()
+    const pointPayload = point?.payload as Record<string, unknown> | null
+    // M3：每个条目都会得到具体时间区间（不再是 null）
+    expect(pointPayload?.schedule).toMatchObject({ start: '09:00', end: '10:00', confidence: 'estimated' })
   })
 
   it('estimate_transit suggests mode and minutes between two points', async () => {
@@ -372,7 +383,7 @@ describe('save_plan_days 跨天总条目上限（触库前结构化拒绝）', (
   it('全部天数条目总和超限时，在调用 repo 之前返回结构化错误', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
-    const spy = vi.spyOn(repo, 'replaceDays')
+    const spy = vi.spyOn(repo, 'replaceDaysWithDaymap')
     const deps: PlanAgentToolDeps = { planId: plan.id, repo, points: fakeFinder }
 
     // 7 天 × 25 条 = 175 > 150

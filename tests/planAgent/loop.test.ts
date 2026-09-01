@@ -72,7 +72,8 @@ describe('runPlanAgent', () => {
     expect(events[events.length - 1].type).toBe('done')
 
     const persisted = await repo.listMessages(plan.id)
-    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant', 'tool', 'assistant'])
+    // daymap 交付物随工具执行原子落库（在 assistant tool_calls 与 tool 回执之间）
+    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant', 'daymap', 'tool', 'assistant'])
   })
 
   it('stops at maxIterations and still emits done', async () => {
@@ -283,9 +284,11 @@ describe('runPlanAgent', () => {
     )
 
     const saved = await repo.getPlan(plan.id)
-    expect(saved?.days).toHaveLength(0) // save_plan_days 的写必须被栅栏拦下
+    expect(saved?.days).toHaveLength(0) // save_plan_days 的写必须被栅栏拦下（天数与 daymap 消息都不落）
     expect(events[events.length - 1].type).toBe('done')
     expect(events.some((e) => e.type === 'plan_updated')).toBe(false)
+    expect(events.some((e) => e.type === 'daymap')).toBe(false)
+    expect((await repo.listMessages(plan.id)).filter((m) => m.kind === 'daymap')).toHaveLength(0)
   })
 
   it('工具调用参数是畸形 JSON 时返回显式解析错误，而不是把空对象喂给工具产生误导报错', async () => {

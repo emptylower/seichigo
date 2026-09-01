@@ -5,6 +5,12 @@ import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
 import { RunFencedError } from './runFence'
 import { AskUserSignal, type AskUserPayload } from './askUser'
 import { agentErrorMessage } from './netErrors'
+import type { DaymapMessagePayload } from '@/lib/tripPlan/view'
+import {
+  looksLikeUnansweredUserQuestion,
+  PROTOCOL_ERROR_MESSAGE,
+  PROTOCOL_RETRY_INSTRUCTION,
+} from './protocolGuard'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -21,6 +27,11 @@ export type PlanAgentEvent =
   | { type: 'reasoning'; delta: string }
   /** ask_user 发起的结构化提问：前端渲染交互组件，本轮对话就此结束 */
   | ({ type: 'ask' } & AskUserPayload)
+  /**
+   * save_plan_days 成功后实时下发的行程交付快照：与落库 kind=daymap 消息
+   * 同构（同一载荷解析器），前端按 revisionId 去重后插入聊天时间线。
+   */
+  | DaymapMessagePayload
 
 type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -63,7 +74,7 @@ export type PlanAgentDeps = {
  * this 正确，与 lib/db/prisma.ts 的 Proxy 用法一致）。
  */
 function withFencing(repo: TripPlanRepo, token: string): TripPlanRepo {
-  const fenced: Pick<TripPlanRepo, 'appendMessage' | 'replaceDays' | 'updateMeta'> = {
+  const fenced: Pick<TripPlanRepo, 'appendMessage' | 'replaceDays' | 'updateMeta' | 'replaceDaysWithDaymap'> = {
     async appendMessage(planId, kind, content) {
       const result = await repo.appendMessageIfActive(planId, token, kind, content)
       if (!result) throw new RunFencedError()
@@ -76,6 +87,13 @@ function withFencing(repo: TripPlanRepo, token: string): TripPlanRepo {
     },
     async updateMeta(planId, patch) {
       const result = await repo.updateMetaIfActive(planId, token, patch)
+      if (!result) throw new RunFencedError()
+      return result
+    },
+    async replaceDaysWithDaymap(planId, days, buildDaymapContent) {
+      // "替换天数 + 追加 daymap"在 repo 侧已是同一原子窗口；栅栏在窗口外
+      // 拦截时两写都不发生，不会出现"天数换了、交付物消息丢了"的半截态
+      const result = await repo.replaceDaysWithDaymapIfActive(planId, token, days, buildDaymapContent)
       if (!result) throw new RunFencedError()
       return result
     },
@@ -160,9 +178,19 @@ export async function runPlanAgent(
       deps.toolDeps.onPlanUpdated?.()
       onEvent({ type: 'plan_updated' })
     },
+    onDaymapSaved: (daymap) => {
+      deps.toolDeps.onDaymapSaved?.(daymap)
+      onEvent(daymap)
+    },
   }
 
   try {
+    // 强制 ask_user 协议守卫（M3 修订）：只要本轮响应里没有 ask_user 调用，
+    // 正文又像"向用户提问"（含"解释文字 + 其它工具调用"的组合），整条响应
+    // ——正文与工具调用——都被扣下：不发 SSE、不落库、不执行工具，只进
+    // 内存消息并注入纠正指令重试一次。重试干净则正常继续；再犯只发可恢复
+    // 的协议错误（正文依旧扣下），绝不留下无法回答的悬空提问。
+    let questionGuardRetried = false
     outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) break
       // reasoning 增量逐帧透传给 SSE（content 增量不转发：最终答案等本轮结束后
@@ -171,20 +199,38 @@ export async function runPlanAgent(
         if (delta.reasoning) onEvent({ type: 'reasoning', delta: delta.reasoning })
       })
 
-      if (typeof response.content === 'string' && response.content) {
-        onEvent({ type: 'text', text: response.content })
-      }
-
       // DeepSeek 推理模型响应带 reasoning_content，回传历史与落库前只保留协议字段
       const assistantParam = {
         role: 'assistant' as const,
         content: response.content ?? null,
         ...(response.tool_calls?.length ? { tool_calls: response.tool_calls } : {}),
       }
+
+      const toolCalls = response.tool_calls ?? []
+      const hasAskUser = toolCalls.some((call) => call.type === 'function' && call.function.name === 'ask_user')
+      if (
+        !hasAskUser &&
+        typeof response.content === 'string' &&
+        looksLikeUnansweredUserQuestion(response.content)
+      ) {
+        // 扣下违规正文：仅进内存消息（供重试上下文），不发 text 事件、不落库、
+        // 不执行同响应里的任何工具调用
+        messages.push(assistantParam as ChatMessageParam)
+        if (!questionGuardRetried) {
+          questionGuardRetried = true
+          messages.push({ role: 'user', content: PROTOCOL_RETRY_INSTRUCTION })
+          continue
+        }
+        onEvent({ type: 'error', message: PROTOCOL_ERROR_MESSAGE })
+        break
+      }
+
+      if (typeof response.content === 'string' && response.content) {
+        onEvent({ type: 'text', text: response.content })
+      }
       messages.push(assistantParam as ChatMessageParam)
       await runRepo.appendMessage(deps.planId, 'assistant', assistantParam as unknown as Prisma.JsonValue)
 
-      const toolCalls = response.tool_calls ?? []
       if (!toolCalls.length) break
 
       for (const call of toolCalls) {

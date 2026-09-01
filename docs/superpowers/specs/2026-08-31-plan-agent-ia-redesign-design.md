@@ -167,3 +167,13 @@ PlanConversation / PlanMessage    agent 会话，挂 planId
 - 2026-08-31（模型选型，用户决策）：
   - agent 模型不用 Claude/GPT（成本 10-30 倍），改用 DeepSeek `deepseek-v4-flash`（OpenAI 兼容端点，`PLAN_AGENT_API_KEY/BASE_URL/MODEL` 三环境变量可整体切换供应商）。
   - 作品简称解析定为三级管线：站内库 → bgm.tv 公开搜索 API（subject id 与点位库同源）→ 向用户确认官方名称。模型对简称的理解只用于生成查询，不作为事实落库，幻觉结构性无害化。
+- 2026-09-01（M3 交互升级，设计扩展——执行简报 `2026-09-01-plan-agent-m3-interaction-upgrade.md`）：
+  - **强制 ask_user 协议**：任何需要用户回答的问题必须走 `ask_user` 工具渲染成结构化卡片；解释文字与提问卡片允许同轮并存。服务端有窄域守卫（中文疑问句式/问号/祈使措辞）对"纯文字提问"重试一次纠正，再犯发可恢复协议错误，绝不留下无法回答的悬空提问。
+  - **自定义回答兜底**：single/multi choice 卡片末位由服务端固定追加"其他（自行输入）"选项（模型选项上限 19，总上限 20）；点选后展开卡片内输入框；ask 待回答期间全局输入框直发即作为该 ask 的 `custom` 答案（携带 askId），不另起聊天轮。历史 ask 载荷（无新字段）仍可渲染。
+  - **媒体/来源阶梯**：作品封面复用 `/map` 的候选梯+代理（Anitabi 作品封面 → 站内 Anime 映射封面 → bgm.tv 条目封面），UI 不另立第二套图片 URL 策略；选项携带 sourceKind/sourceUrl/fetchedAt/imageAttribution 溯源字段，无可靠来源不配图。
+  - **Google 地点持久化**：非巡礼地点（如东京迪士尼）经 `resolve_place`（Places Text Search，自动取首个结果）落为 `TripPlanItem.payload.place`（provider/placeId/name/address/lat/lng/mapsUri/photo/fetchedAt），`pointId` 允许为空；与站内点位同样参与时间轴、编号、地图与路线。placeId 计划内去重 + 有界缓存 + 限速；查无结果返回 typed 错误，绝不编造坐标。
+  - **图片安全与 R2 镜像**：Google 照片经 `/api/google/place-photo?ref=...`（keyless，登录态）代理：MIME 校验、大小上限、重定向白名单（仅 maps.googleapis.com）；canonical URL 与 R2 metadata 一律不含 API key；R2 read-through + 后台镜像（失败非致命，回退安全代理直显）。
+  - **时间归一化**：save_plan_days 前由确定性归一化器解析每条目为本地时间区间（显式 HH:mm 优先，"午后/傍晚"换算参考时刻并保留原词为备注，缺失时间按日起点 09:00+游览时长+交通时长顺延），全部条目按时间排序重建 sortOrder；显式时间冲突/非法区间/缺坐标/外部点缺 payload.place → 显式报错绝不静默丢点；前端按结构化时间防御性二次排序，每个点位卡显示具体时钟时间 + 参考/预估标注。
+  - **真实交通**：`estimate_travel` 复用共享 Google Directions 客户端（walking/transit/driving + 精确日期 departure_time），完整保留 leg/step（线路、上下车站、站数、步行段、时刻），`transportPayload` 原样落 transit 条目 payload.transport；地图优先 provider 折线（overview_polyline 解码），取不到才回退通用路网并标注"参考路线（示意）"。
+  - **公交不便必问**：transit `ZERO_RESULTS` 不再静默转步行（typed 错误 + ask_user 引导）；软触发（换乘 ≥3、步行段 ≥25 分钟、耗时明显不合理）同样先问后行，选项含自驾/租车、公交、混合、自定义；用户选定后同区域路段沿用。
+  - **配额与错误**：Places/Directions 沿用现有 per-key/per-plan 限速与配额错误映射（REQUEST_DENIED→配置错误、OVER_QUERY_LIMIT→限流），全部中文化转述，绝不吞错编数。

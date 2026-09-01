@@ -3,6 +3,13 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import {
+  getMapStyleFailoverTimeoutMs,
+  getRouteMapStyleCandidates,
+  RouteMapStyleFailover,
+  shouldResyncRoutePreviewOnStyleEvent,
+  type RouteStyleResyncEvent,
+} from './mapStyleFailover'
 
 type PreviewLineKind = 'route' | 'schematic' | 'jump'
 
@@ -316,31 +323,6 @@ function syncPreviewSources(map: maplibregl.Map, previewData: PreviewData) {
   }
 }
 
-function getMapStyleUrl(): string | maplibregl.StyleSpecification {
-  const maptilerKey = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
-  const providerOrder = String(process.env.NEXT_PUBLIC_MAP_STYLE_PROVIDER_ORDER || 'maptiler,mapbox,stadia,raster').trim()
-  
-  const providers = providerOrder.split(',').map(p => p.trim().toLowerCase())
-  
-  if (providers.includes('maptiler') && maptilerKey) {
-    return `https://api.maptiler.com/maps/dataviz/style.json?key=${encodeURIComponent(maptilerKey)}`
-  }
-  
-  // Fallback to OSM raster
-  return {
-    version: 8,
-    sources: {
-      osm: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors'
-      }
-    },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
-  }
-}
-
 function createNumberedMarker(layout: MarkerLayout, color: string): HTMLDivElement {
   const el = document.createElement('div')
   el.className = 'flex items-center justify-center rounded-full bg-white font-bold shadow-sm'
@@ -369,9 +351,17 @@ export function RoutePreviewMap({ points, routeGeometry, className = '', compact
   useEffect(() => {
     if (!containerRef.current) return
 
+    // style provider 候选 + failover 状态：MapTiler 优先，OSM raster 兜底。
+    const styleFailover = new RouteMapStyleFailover(getRouteMapStyleCandidates())
+    const failoverTimeoutMs = getMapStyleFailoverTimeoutMs()
+    let disposed = false
+    let syncing = false
+    let failoverTimer: number | null = null
+    let failoverAttempt = 0
+
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: getMapStyleUrl(),
+      style: styleFailover.current.style,
       center: DEFAULT_CENTER,
       zoom: 5,
       interactive: true,
@@ -403,11 +393,10 @@ export function RoutePreviewMap({ points, routeGeometry, className = '', compact
     map.on('dragstart', markInteracted)
     map.on('zoomstart', markInteracted)
 
-    map.on('load', () => {
-      const { points: latestPoints, routeGeometry: latestGeometry, compact: latestCompact } = latestStateRef.current
-      syncPreviewSources(map, buildPreviewData(latestPoints, latestGeometry))
-
-      const layouts = buildMarkerLayouts(latestPoints)
+    const rebuildMarkers = (targetPoints: RoutePreviewMapProps['points']) => {
+      markersRef.current.forEach((m) => m.remove())
+      markersRef.current = []
+      const layouts = buildMarkerLayouts(targetPoints)
       layouts.forEach((layout) => {
         const el = createNumberedMarker(layout, '#e11d48')
         const marker = new maplibregl.Marker({ element: el })
@@ -415,11 +404,107 @@ export function RoutePreviewMap({ points, routeGeometry, className = '', compact
           .addTo(map)
         markersRef.current.push(marker)
       })
-      signatureRef.current = buildRenderSignature(latestPoints, latestGeometry)
-      fitMap(map, latestPoints, latestGeometry, latestCompact)
-    })
+    }
+
+    // 以 latestStateRef 中的最新 props 全量同步自定义资源（source/layer/marker/视野）。
+    // 初次 load 与 provider failover setStyle 后的 styledata 都会走这里。
+    const syncAllWithLatest = (options?: { forceFit?: boolean }) => {
+      if (disposed || syncing) return
+      syncing = true
+      try {
+        const { points: latestPoints, routeGeometry: latestGeometry, compact: latestCompact } = latestStateRef.current
+        syncPreviewSources(map, buildPreviewData(latestPoints, latestGeometry))
+        rebuildMarkers(latestPoints)
+        signatureRef.current = buildRenderSignature(latestPoints, latestGeometry)
+        if (options?.forceFit || !userInteractedRef.current) {
+          fitMap(map, latestPoints, latestGeometry, latestCompact)
+        }
+      } finally {
+        syncing = false
+      }
+    }
+
+    const clearFailoverTimer = () => {
+      if (failoverTimer != null) {
+        window.clearTimeout(failoverTimer)
+        failoverTimer = null
+      }
+    }
+
+    const armFailoverGuard = () => {
+      clearFailoverTimer()
+      failoverAttempt += 1
+      const armedAttempt = failoverAttempt
+      failoverTimer = window.setTimeout(() => {
+        // 过期 timer 防护：attempt 已前进或组件已卸载时不动作
+        if (disposed || failoverAttempt !== armedAttempt) return
+        // style 长时间未成功加载（如 key 失效 style.json 403）→ 切下一个 provider
+        switchToNextStyleProvider()
+      }, failoverTimeoutMs)
+    }
+
+    const switchToNextStyleProvider = () => {
+      const next = styleFailover.advance(Date.now())
+      if (!next || disposed) return
+      armFailoverGuard()
+      // provider 切换属于故障恢复：重置交互标记，让重同步重新 fit 到路线视野
+      userInteractedRef.current = false
+      map.setStyle(next.style)
+    }
+
+    const onStyleProviderError = (event: maplibregl.ErrorEvent) => {
+      const msg = String((event as { error?: { message?: unknown } })?.error?.message || '')
+      if (!styleFailover.shouldAdvanceOnError(msg, Date.now())) return
+      switchToNextStyleProvider()
+    }
+
+    const onMapIdle = () => {
+      if (disposed) return
+      // style 成功加载并渲染后解除超时守卫（error 监听保持，覆盖 key 中途被撤销的场景）
+      if (map.isStyleLoaded()) clearFailoverTimer()
+    }
+
+    // setStyle 会移除全部自定义 source/layer。
+    // `style.load` 在每次 style JSON 就绪后触发（setStyle 后同样触发；此时 isStyleLoaded() 可能
+    // 仍为 false，不能作为前置条件），是 fallback 后重挂载的可靠事件；styledata 作为兜底。
+    // 初次挂载：inline style 的 style.load/styledata 在 Map 构造器内同步触发、早于监听器注册，
+    // 因此初次同步仍由 load 事件（强制 fit）负责。
+    const maybeResyncAfterStyleEvent = (event: RouteStyleResyncEvent, options?: { forceFit?: boolean }) => {
+      if (
+        !shouldResyncRoutePreviewOnStyleEvent({
+          event,
+          styleLoaded: map.isStyleLoaded() === true,
+          layersPresent: Boolean(map.getLayer(ROUTE_LAYER_ID)),
+          syncing,
+          disposed,
+        })
+      ) {
+        return
+      }
+      clearFailoverTimer()
+      syncAllWithLatest(options)
+    }
+
+    const onStyleLoad = () => maybeResyncAfterStyleEvent('style.load')
+    const onStyleData = () => maybeResyncAfterStyleEvent('styledata')
+    const onMapLoad = () => maybeResyncAfterStyleEvent('load', { forceFit: true })
+
+    map.on('error', onStyleProviderError)
+    map.on('idle', onMapIdle)
+    map.on('style.load', onStyleLoad)
+    map.on('styledata', onStyleData)
+    map.on('load', onMapLoad)
+
+    armFailoverGuard()
 
     return () => {
+      disposed = true
+      clearFailoverTimer()
+      map.off('error', onStyleProviderError)
+      map.off('idle', onMapIdle)
+      map.off('style.load', onStyleLoad)
+      map.off('styledata', onStyleData)
+      map.off('load', onMapLoad)
       markersRef.current.forEach(m => m.remove())
       markersRef.current = []
       map.remove()

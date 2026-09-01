@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import type {
   BeginAgentRunResult,
+  ReplaceDaysWithDaymapResult,
   TripPlan,
   TripPlanDayInput,
   TripPlanItemType,
@@ -321,5 +322,61 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       })
       return toPlan(row)
     })
+  }
+
+  /**
+   * 事务体内完成"替换天数 → 回读完整计划 → 追加 kind=daymap 消息"：
+   * daymap 快照与天数替换同事务提交，杜绝半截成功；回读放在事务内保证
+   * 快照与落库行严格一致（提交后再读理论上可能撞上并发接管后的新数据）。
+   */
+  private async replaceDaysWithDaymapTx(
+    tx: Prisma.TransactionClient,
+    planId: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult> {
+    await tx.tripPlanDay.deleteMany({ where: { planId } })
+    const { dayRows, itemRows } = buildDayRows(planId, days)
+    if (dayRows.length) await tx.tripPlanDay.createMany({ data: dayRows })
+    if (itemRows.length) await tx.tripPlanItem.createMany({ data: itemRows })
+    await tx.tripPlan.update({ where: { id: planId }, data: { updatedAt: new Date() } })
+    const row = await tx.tripPlan.findUnique({ where: { id: planId }, include: PLAN_INCLUDE })
+    if (!row) throw new Error(`plan not found after replaceDaysWithDaymap: ${planId}`)
+    const plan = toPlanWithDays(row)
+    const messageRow = await tx.tripPlanMessage.create({
+      data: { planId, kind: 'daymap', content: buildDaymapContent(plan) as Prisma.InputJsonValue },
+    })
+    return {
+      plan,
+      message: {
+        id: messageRow.id,
+        planId: messageRow.planId,
+        kind: messageRow.kind as TripPlanMessageKind,
+        content: messageRow.content,
+        createdAt: messageRow.createdAt,
+      },
+    }
+  }
+
+  async replaceDaysWithDaymap(
+    planId: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult> {
+    return prisma.$transaction((tx) => this.replaceDaysWithDaymapTx(tx, planId, days, buildDaymapContent), {
+      maxWait: 10_000,
+      timeout: 15_000,
+    })
+  }
+
+  async replaceDaysWithDaymapIfActive(
+    planId: string,
+    token: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult | null> {
+    return this.withRunTokenLock(planId, token, (tx) =>
+      this.replaceDaysWithDaymapTx(tx, planId, days, buildDaymapContent),
+    )
   }
 }

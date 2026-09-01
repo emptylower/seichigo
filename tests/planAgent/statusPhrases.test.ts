@@ -14,6 +14,12 @@ describe('toolStatusPhrase', () => {
     expect(toolStatusPhrase('ask_user', { kind: 'date_range', prompt: '什么时候去？' })).toBe('正在向用户发起提问')
   })
 
+  it('ask_user 状态短语按任务类型（taskType）区分术语', () => {
+    expect(toolStatusPhrase('ask_user', { taskType: 'date_range', kind: 'date_range', prompt: 'x' })).toBe('正在询问出行日期')
+    expect(toolStatusPhrase('ask_user', { taskType: 'work_selection', kind: 'single_choice', prompt: 'x' })).toBe('正在请你选择作品')
+    expect(toolStatusPhrase('ask_user', { taskType: 'opinion', kind: 'single_choice', prompt: 'x' })).toBe('正在征求你的意见')
+  })
+
   it('falls back to a generic phrase for unknown tools', () => {
     expect(toolStatusPhrase('mystery_tool', {})).toBe('正在处理…')
   })

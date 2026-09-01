@@ -8,6 +8,7 @@ import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { agentErrorMessage } from '@/lib/planAgent/netErrors'
 import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
+import { getPlanAgentServerDeps } from '@/lib/planAgent/serverDeps'
 import { maybeSetGeneratedTitle } from '@/lib/planAgent/title'
 
 export const runtime = 'nodejs'
@@ -34,10 +35,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const body = (await req.json()) as { message?: unknown; answerTo?: unknown; answerValue?: unknown }
     if (typeof body.message === 'string') message = body.message.trim()
-    // 结构化回答：answerTo 是 ask_user 落库的 askId，answerValue 形状按 kind 区分
-    //（date_range: {startDate, dayCount} | {monthHint, dayCount}；single_choice:
-    // {optionId}；multi_choice: {optionIds}）。只做形状归一，不强制校验——
-    // 畸形值会在 planMetaFromAnswer 里被忽略，模型仍能读到人类可读文本。
+    // 结构化回答：answerTo 是 ask_user 落库的 askId，answerValue 形状按
+    // 交互基数 kind 区分（date_range: {startDate, dayCount} | {monthHint,
+    // dayCount}；single_choice: {optionId}；multi_choice: {optionIds}；
+    // 自定义输入统一为 {custom}）。提问的任务语义（taskType：日期/选作品/
+    // 意见）只影响前端渲染哪个组件，不影响回答形状。只做形状归一，不强制
+    // 校验——畸形值会在 planMetaFromAnswer 里被忽略，模型仍能读到人类可读文本。
     if (typeof body.answerTo === 'string' && body.answerTo.trim()) {
       answerTo = body.answerTo.trim()
       // undefined 不是合法 JsonValue，归一为 null；unknown 断言点收敛在这一处
@@ -110,6 +113,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
                 repo: deps.repo,
                 points: new PrismaPointFinder(),
                 bgmSearch: searchBgmSubjects,
+                ...getPlanAgentServerDeps(id),
               },
               signal: abort.signal,
               userMessagePersisted: true,

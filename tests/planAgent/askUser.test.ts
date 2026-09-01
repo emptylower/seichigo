@@ -39,7 +39,12 @@ function askUserToolCall(overrides: Record<string, unknown> = {}, id = 'call_ask
     type: 'function' as const,
     function: {
       name: 'ask_user',
-      arguments: JSON.stringify({ kind: 'date_range', prompt: '你打算什么时候出发？', ...overrides }),
+      arguments: JSON.stringify({
+        taskType: 'date_range',
+        kind: 'date_range',
+        prompt: '你打算什么时候出发？',
+        ...overrides,
+      }),
     },
   }
 }
@@ -56,9 +61,17 @@ describe('executePlanTool ask_user', () => {
     const signal = await executePlanTool(
       deps,
       'ask_user',
-      { kind: 'single_choice', prompt: '哪一部《吹响吧》？', allowSkip: true, options: [
-        { id: 'a', label: '本传', sublabel: '47 个点位', image: 'https://example.com/a.jpg' },
-        { id: 'b', label: '剧场版' },
+      { taskType: 'work_selection', kind: 'single_choice', prompt: '哪一部《吹响吧》？', allowSkip: true, options: [
+        {
+          id: 'a',
+          label: '本传',
+          sublabel: '47 个点位',
+          image: 'https://lain.bgm.tv/pic/cover/l/12/34/115908.jpg',
+          sourceKind: 'anitabi',
+          sourceUrl: 'anitabi:bangumi:115908',
+          fetchedAt: '2026-09-01T00:00:00Z',
+        },
+        { id: 'b', label: '剧场版', preferenceOnly: true },
       ] },
     ).then(
       () => null,
@@ -68,10 +81,12 @@ describe('executePlanTool ask_user', () => {
     const payload = (signal as AskUserSignal).payload
     expect(payload.askId).toMatch(/^[0-9a-f-]{36}$/)
     expect(payload.kind).toBe('single_choice')
+    expect(payload.taskType).toBe('work_selection')
     expect(payload.prompt).toBe('哪一部《吹响吧》？')
     expect(payload.options).toEqual([
-      { id: 'a', label: '本传', sublabel: '47 个点位', image: 'https://example.com/a.jpg' },
-      { id: 'b', label: '剧场版' },
+      { id: 'a', label: '本传', sublabel: '47 个点位', image: 'https://lain.bgm.tv/pic/cover/l/12/34/115908.jpg', sourceKind: 'anitabi', sourceUrl: 'anitabi:bangumi:115908', fetchedAt: '2026-09-01T00:00:00Z' },
+      { id: 'b', label: '剧场版', preferenceOnly: true },
+      // 最终澄清：work_selection 不追加保留的自定义选项（自由文本走全局输入框）
     ])
     expect(payload.allowSkip).toBe(true)
   })
@@ -79,6 +94,7 @@ describe('executePlanTool ask_user', () => {
   it('omits options for date_range and defaults allowSkip to absent (false)', async () => {
     const { deps } = await makeDeps()
     const signal: AskUserSignal = await executePlanTool(deps, 'ask_user', {
+      taskType: 'date_range',
       kind: 'date_range',
       prompt: '什么时候去？',
     }).then(
@@ -88,25 +104,30 @@ describe('executePlanTool ask_user', () => {
       (err: unknown) => err as AskUserSignal,
     )
     expect(signal.payload.kind).toBe('date_range')
+    expect(signal.payload.taskType).toBe('date_range')
     expect(signal.payload.options).toBeUndefined()
     expect('allowSkip' in signal.payload).toBe(false)
   })
 
   it('returns JSON errors instead of throwing for invalid inputs', async () => {
     const { deps } = await makeDeps()
-    const badKind = JSON.parse(await executePlanTool(deps, 'ask_user', { kind: 'free_text', prompt: 'x' }))
+    const badKind = JSON.parse(await executePlanTool(deps, 'ask_user', { taskType: 'date_range', kind: 'free_text', prompt: 'x' }))
     expect(badKind.error).toBeTruthy()
 
-    const noPrompt = JSON.parse(await executePlanTool(deps, 'ask_user', { kind: 'date_range', prompt: '  ' }))
+    const noTaskType = JSON.parse(await executePlanTool(deps, 'ask_user', { kind: 'date_range', prompt: 'x' }))
+    expect(noTaskType.error).toContain('taskType')
+
+    const noPrompt = JSON.parse(await executePlanTool(deps, 'ask_user', { taskType: 'date_range', kind: 'date_range', prompt: '  ' }))
     expect(noPrompt.error).toBeTruthy()
 
     const choiceNoOptions = JSON.parse(
-      await executePlanTool(deps, 'ask_user', { kind: 'single_choice', prompt: '选一个' }),
+      await executePlanTool(deps, 'ask_user', { taskType: 'work_selection', kind: 'single_choice', prompt: '选一个' }),
     )
     expect(choiceNoOptions.error).toBeTruthy()
 
     const optionMissingLabel = JSON.parse(
       await executePlanTool(deps, 'ask_user', {
+        taskType: 'work_selection',
         kind: 'multi_choice',
         prompt: '选几个',
         options: [{ id: 'a' }],
@@ -163,12 +184,12 @@ describe('runPlanAgent ask_user interruption', () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     const options = [
-      { id: 'a', label: '本传', sublabel: '47 个点位' },
-      { id: 'b', label: '剧场版' },
+      { id: 'a', label: '本传', sublabel: '47 个点位', preferenceOnly: true },
+      { id: 'b', label: '剧场版', preferenceOnly: true },
     ]
     const createMessage = vi.fn(async () =>
       assistantMessage({
-        tool_calls: [askUserToolCall({ kind: 'multi_choice', prompt: '想去哪几部？', options, allowSkip: true })] as ChatMessage['tool_calls'],
+        tool_calls: [askUserToolCall({ taskType: 'work_selection', kind: 'multi_choice', prompt: '想去哪几部？', options, allowSkip: true })] as ChatMessage['tool_calls'],
       }),
     )
 
@@ -180,6 +201,7 @@ describe('runPlanAgent ask_user interruption', () => {
     )
 
     const ask = events.find((e) => e.type === 'ask') as Extract<PlanAgentEvent, { type: 'ask' }>
+    // 最终澄清：work_selection 不追加自定义选项，模型选项原样下发/落库
     expect(ask.options).toEqual(options)
     expect(ask.allowSkip).toBe(true)
 
@@ -312,7 +334,7 @@ describe('toChatView ask messages', () => {
       },
       {
         id: 'm3', planId: 'p1', kind: 'ask',
-        content: { askId: 'ask-1', kind: 'date_range', prompt: '什么时候出发？' } as unknown as Prisma.JsonValue,
+        content: { askId: 'ask-1', kind: 'date_range', taskType: 'date_range', prompt: '什么时候出发？' } as unknown as Prisma.JsonValue,
         createdAt: new Date(),
       },
     ])
@@ -320,7 +342,7 @@ describe('toChatView ask messages', () => {
     expect(entries[1]).toEqual({
       role: 'assistant',
       text: '什么时候出发？',
-      ask: { askId: 'ask-1', kind: 'date_range', prompt: '什么时候出发？' },
+      ask: { askId: 'ask-1', kind: 'date_range', taskType: 'date_range', prompt: '什么时候出发？' },
     })
   })
 })

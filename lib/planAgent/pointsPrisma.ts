@@ -11,10 +11,10 @@ export class PrismaPointFinder implements PointFinder {
           { titleJaRaw: { contains: query, mode: 'insensitive' } },
         ],
       },
-      select: { id: true, titleZh: true, titleJaRaw: true, city: true },
+      select: { id: true, titleZh: true, titleJaRaw: true, city: true, cover: true },
       take: limit,
     })
-    return rows
+    return rows.map((r) => ({ ...r, cover: r.cover ?? null }))
   }
 
   async countPointsByBangumi(ids: number[]): Promise<Array<{ bangumiId: number; pointCount: number }>> {

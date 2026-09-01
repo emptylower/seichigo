@@ -167,9 +167,19 @@ describe('runPlanAgent telemetry events', () => {
     expect(events.some((e) => e.type === 'status')).toBe(true)
     expect(events.some((e) => e.type === 'tool_call')).toBe(true)
     expect(events.some((e) => e.type === 'plan_updated')).toBe(true)
+    // daymap 交付快照作为 SSE 事件实时下发（与落库载荷同构）
+    const daymapEvent = events.find((e) => e.type === 'daymap') as Extract<PlanAgentEvent, { type: 'daymap' }> | undefined
+    expect(daymapEvent).toBeDefined()
+    expect(daymapEvent?.revisionId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(daymapEvent?.days).toHaveLength(1)
 
     const persisted = await repo.listMessages(plan.id)
-    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant', 'tool', 'assistant'])
+    // daymap 交付物随工具执行原子落库（assistant tool_calls 与 tool 回执之间；
+    // 无 role 字段，回放时被过滤，OpenAI 成组规则不受影响）
+    expect(persisted.map((m) => m.kind)).toEqual(['human', 'assistant', 'daymap', 'tool', 'assistant'])
+    // 落库的 daymap 消息与 SSE 事件是同一份快照（同一载荷解析器口径）
+    const daymapRow = persisted.find((m) => m.kind === 'daymap')
+    expect(daymapRow?.content).toMatchObject({ type: 'daymap', revisionId: daymapEvent?.revisionId })
     const persistedJson = JSON.stringify(persisted.map((m) => m.content))
     // 遥测专属字段/内容绝不能混进落库消息（tool_call_id 是 OpenAI 协议必备键，不算遥测）
     expect(persistedJson).not.toContain('argsSummary')

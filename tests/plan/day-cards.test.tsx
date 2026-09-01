@@ -78,9 +78,9 @@ const plan: TripPlanView = {
   ],
 }
 
-function renderDayCards(overrides?: Partial<TripPlanView>) {
+function renderDayCards(overrides?: { days?: TripPlanView['days'] }) {
   return render(
-    <DayCards plan={{ ...plan, ...overrides }} planId="plan-1" selectedDay={1} onSelectDay={() => {}} />,
+    <DayCards planId="plan-1" days={overrides?.days ?? plan.days} scope="current" />,
   )
 }
 
@@ -126,7 +126,10 @@ describe('DayCards', () => {
     const img = await screen.findByAltText('清水寺')
     expect(img.getAttribute('src')).toContain('/api/anitabi/image-render')
     expect(img.getAttribute('src')).toContain(encodeURIComponent('https://example.com/a.jpg'))
-    expect(screen.getByText('上午')).toBeTruthy()
+    // M3 修订：历史数据（无 schedule）也不再只显示宽泛词"上午"，
+    // 而是推导出具体时钟区间（上午 → 09:00 参考时刻）+ 参考标注
+    expect(screen.getByText('09:00–10:00')).toBeTruthy()
+    expect(screen.queryByText('上午')).toBeNull()
     expect(screen.getByText('经典取景地')).toBeTruthy()
     // 无 reason 时回退 note
     expect(screen.getByText('桥头场景')).toBeTruthy()

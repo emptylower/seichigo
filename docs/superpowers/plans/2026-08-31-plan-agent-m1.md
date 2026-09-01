@@ -3062,3 +3062,59 @@ Codex（gpt-5.6-sol）评审结论 CHANGES REQUIRED，20 条发现。逐条处�
   - 去掉了单点的 `isRunActive` 检查，改为三个原子的 "check-and-write" 方法：`appendMessageIfActive`/`replaceDaysIfActive`/`updateMetaIfActive`。Prisma 实现用 `SELECT ... FOR UPDATE` 锁住计划行、在同一事务内校验 token 再写，锁只覆盖本地数据库操作，不跨越任何网络调用（`search_bangumi_tv` 等外部请求仍在锁外执行，避免长时间占用 Neon 连接池，尤其是 Cloudflare Workers 场景下连接池只有 1）。
   - `runPlanAgent` 用一个 `withFencing` 包装（沿用仓库里 `lib/db/prisma.ts` 已有的 Proxy 模式）把 `deps.toolDeps.repo` 换成栅栏版本；`save_plan_days`/`update_plan_meta` 走的是同一个 `toolDeps.repo`，因此工具触发的写自动获得保护，不需要改 `tools.ts` 的业务逻辑，只在其 catch-all 里补了一行特判：`RunFencedError` 直接重新抛出，不当普通工具错误吞掉。
   - 真实 Neon 验证：（1）单元测试模拟"assistant 消息写入成功后，工具执行期间才被接管"——`save_plan_days` 的写被原子拦下，最终 0 天行程落库；（2）针对 Prisma 实现单独跑了三个方法的 stale/fresh token 对照组，stale token 三种写全部返回 null 且零污染，fresh token 全部生效。
+
+---
+
+## M3 交互升级扩展（2026-09-01，追加范围——见执行简报 `2026-09-01-plan-agent-m3-interaction-upgrade.md`）
+
+M1 的历史决策与验收记录全部保留；本节是对 M3 范围扩展的追加说明，不推翻上文。
+
+### 追加范围
+
+1. **强制 ask_user 协议**（系统提示词 + 循环守卫）：
+   - 任何需要用户回答的问题必须 `ask_user`；一轮里"解释文字 + ask_user 工具调用"是合法组合。
+   - 服务端窄守卫（`lib/planAgent/protocolGuard.ts`）：无工具调用的纯文字回合若命中中文疑问句式（问号/吗呢尾/请告诉类祈使/A还是B 且指向用户），注入纠正指令重试一次（只进模型消息不落库）；再犯发可恢复协议错误（用户可直接在输入框回答或点重试）。纯解释性文字不误伤。
+2. **自定义回答兜底**（`lib/planAgent/askUser.ts` + AskCard + ui.tsx）：
+   - 模型选项上限 19，服务端末位追加 `__custom__`"其他（自行输入）"（总上限 20）；date_range 与既有单选/多选选择行为不变。
+   - 卡片内点选自定义项展开输入框；multi 时 `answerValue={optionIds, custom}` 并存；ask 待回答期间全局输入框直发即 `answerTo=askId, answerValue={custom}`。
+   - 选项新增溯源字段（sourceKind/sourceUrl/fetchedAt/imageSource/imageAttribution）与 bangumiId（服务端按封面阶梯补图）；历史 ask 载荷（无新字段）仍可渲染。
+3. **作品封面阶梯**（`lib/planAgent/coverImage.ts`）：Anitabi 作品封面 → 站内 Anime 映射封面 → bgm.tv 条目封面；展示走 `/map` 同一候选梯/代理（ResilientMapImage kind='cover'）。
+4. **Google 地点**（`lib/googlePlaces/`）：
+   - `resolve_place` 工具：Text Search 首结果自动选定，保留 placeId/name/address/lat/lng/mapsUri/photo/fetchedAt；placeId 计划内去重（alreadyInPlan）、查询+placeId 双键有界缓存、8 次/分钟/计划限速。
+   - `TripPlanItem.payload.place` 为外部点位载体（pointId 可空）；`attraction` 等类型挂带坐标 place 同样参与路由。`save_plan_days` 校验 place 形状/坐标范围与站内 pointId 可解析性，违规显式报错。
+   - 照片代理 `/api/google/place-photo`（keyless ref + 登录态）：服务端拼 key，MIME/大小/重定向校验，R2 read-through + 后台镜像，canonical/metadata 永不含 key。
+5. **时间归一化**（`lib/planAgent/schedule.ts`）：显式 HH:mm/区间优先；宽泛词映射参考时刻（原词保留为备注、标注"参考"）；缺失时间按 09:00 起点顺延（游览默认 60 分钟、交通取 payload.transport.durationMin）；全部条目按本地开始时间排序重建 sortOrder；显式冲突/非法区间报错；时区按目的地（默认 Asia/Tokyo +540）换算 departure_time。前端（DayCards）按 payload.schedule 防御性二次排序，每个点位卡显示具体时钟时间。
+6. **真实交通**（`lib/directions/googleClient.ts` 共享客户端 + `estimate_travel` 工具）：
+   - walking/transit/driving；精确日期（startDate+dayIndex+HH:mm）→ 真实 departure_time；完整 leg/step（线路/车次、上下车站、站数、步行段、发到达时刻）摘要进 `transportPayload`，模型原样落 payload.transport；overview_polyline 解码落 payload.transport.polyline。
+   - transit ZERO_RESULTS 返回可区分 typed 错误（绝不静默转步行），附 ask_user 引导；公共 `/api/me/routebooks/[id]/directions` 保持既有步行回退行为（fallbackApplied 标记），新增 `allowWalkFallback=0`/`departure_time`/`mode=walking` 参数。
+   - 地图：外部+站内点位同图编号；优先 provider 折线（标注权威），无则回退通用路网并标注"参考路线（示意）"；day 出行模式（任一自驾段→driving，否则 walking）传给 route-geometry。
+7. **公交不便必问**：硬触发 ZERO_RESULTS、软触发（transfers≥3 / walkMin≥25 / 耗时明显不合理）→ ask_user（推荐自驾/租车、公交、混合、自定义），选定后沿用并在 Daymap 说明。
+8. **配额/错误**：Places/Directions 的 config_error/rate_limited/provider_error 全部中文化显式转述；外部服务不可用时 `estimate_transit` 兜底并注明估算值。
+
+### 修订验收矩阵（M3 增量）
+
+| # | 验收项 | 判定 |
+|---|--------|------|
+| 1 | 需要用户回答的问题 100% 走 ask_user 卡片（守卫重试+协议错误兜底）；日期/作品卡片行为不回退 | tests/planAgent/protocolGuard.test.ts、askUserContract.test.ts |
+| 2 | 选择卡末位恒有自定义入口；全局输入框直发即自定义答案；历史 ask 载荷可渲染 | askUserContract.test.ts |
+| 3 | 作品选项封面按 Anitabi→Anime→bgm 阶梯补齐，带溯源且无密钥泄漏 | coverImage.test.ts、askUserContract.test.ts |
+| 4 | "东京迪士尼"类地点成为真实点（payload.place），参与时间轴/编号/地图/路线；placeId 去重；查不到显式报错 | googlePlaces/places.test.ts、toolsM3.test.ts |
+| 5 | 每个点位卡显示具体时钟时间 + 参考/预估标注；保存与渲染均按时间排序；冲突/缺坐标显式报错 | schedule.test.ts、plan/dayCards.test.tsx |
+| 6 | 交通文本与地图几何同源（payload.transport + provider 折线）；步行/公交/自驾/混合分段完整；ZERO_RESULTS 不静默转步行 | directions/googleClient.test.ts、toolsM3.test.ts、dayCards.test.tsx |
+| 7 | 偏远地区（如摇曳露营）不被隐藏启发式强推公交——硬/软触发均先问用户 | googleClient.test.ts（zero_results 分支）+ prompt 契约 |
+| 8 | 外部图片/事实全部带安全出处与失败行为；R2 镜像 metadata 无密钥 | placePhoto.test.ts |
+
+### 未做 / 后续
+
+- Places/Directions 真实外部凭据的联调门（integration gate）未在本地执行——相关能力以注入依赖的确定性单测覆盖（`estimate_travel`/`resolve_place`/place-photo 均为注入 fetch），上线前需在预发环境用真实 key 过一遍。
+- 时区固定 Asia/Tokyo（+540）：海外巡礼目的地需要时区映射表时再扩展。
+- Google Places 新版 API（v1 places:searchText）迁移待 key 权限确认后评估，当前用 legacy textsearch 与 Directions 同风格。
+
+### M3 验收复审修订（2026-09-01 第二轮）
+
+- **选项证据三件套**：非自定义 ask 选项必须带齐 `sourceKind + sourceUrl + fetchedAt`；bangumiId 选项由服务端自动补规范出处（`anitabi:bangumi:{id}`）；纯偏好类选项显式 `preferenceOnly: true` 豁免；`resolve_place` 返回可照抄的 `optionProvenance`。历史 ask 载荷渲染不受影响（门只拦新发起的 ask）。校验逻辑收敛在 `lib/planAgent/askOptions.ts`。
+- **attraction 外部地点是完整行程点**：计序号（`isNumberedVisitItem`）、展示 payload.media 媒体图、参与地图编号与路线；无效 place 仍显式报错。
+- **place 出处逐字段比对**：save_plan_days 不仅证明 placeId 存在，还要求 provider/name/lat/lng 与出处（resolver 缓存或计划内持久化数据）一致（坐标容差 1e-6），防偷换坐标/名称。
+- **waitUntil 请求级**：`getGooglePlacesApiDeps` 只缓存稳定部分（getSession/apiKey/bucket），`ctx.waitUntil` 每次从当前请求绑定读取，不缓存旧请求上下文。
+- **守卫扩围**：`请问/麻烦告诉/能否提供` 等客套疑问句式（无问号）纳入协议守卫；解释性理由不误伤。
+- **placeId 端点工作流修正**：`estimate_travel` 的 placeId 端点接受"当前计划 resolver 缓存（resolve_place 刚解析）或已持久化 place"任一出处——标准流程 `resolve_place → estimate_travel（全部路段）→ 一次性 save_plan_days` 不需要中间落库；未知 placeId 仍显式报错，save 的出处/防篡改门不变。

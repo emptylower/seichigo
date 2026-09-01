@@ -23,14 +23,27 @@ export function toolStatusPhrase(name: string, args: unknown): string {
       return '正在规划每日路线'
     case 'estimate_transit':
       return '正在估算交通方式'
+    case 'estimate_travel': {
+      const mode = String(a.mode ?? '')
+      return mode === 'driving' ? '正在查询自驾路线' : mode === 'walk' ? '正在查询步行路线' : '正在查询公共交通路线'
+    }
+    case 'resolve_place':
+      return `正在解析地点「${String(a.query ?? '')}」`
     case 'read_plan':
       return '正在读取当前计划'
     case 'update_plan_meta':
       return '正在更新计划信息'
     case 'save_plan_days':
       return '正在保存行程'
-    case 'ask_user':
+    case 'ask_user': {
+      // 任务类型术语（M3+）：日期/选作品/征求意见各有专属短语；
+      // 无 taskType 的旧载荷保持通用短语
+      const taskType = String(a.taskType ?? '')
+      if (taskType === 'date_range') return '正在询问出行日期'
+      if (taskType === 'work_selection') return '正在请你选择作品'
+      if (taskType === 'opinion') return '正在征求你的意见'
       return '正在向用户发起提问'
+    }
     default:
       return '正在处理…'
   }
@@ -52,6 +65,15 @@ export function summarizeToolArgs(name: string, args: unknown): string {
     }
     case 'estimate_transit':
       return `${String(a.fromPointId ?? '?')} → ${String(a.toPointId ?? '?')}`
+    case 'estimate_travel': {
+      const from = asRecord(a.from)
+      const to = asRecord(a.to)
+      const fromLabel = String(from.pointId ?? from.placeId ?? '起点')
+      const toLabel = String(to.pointId ?? to.placeId ?? '终点')
+      return `${fromLabel} → ${toLabel} · ${String(a.mode ?? '?')}`
+    }
+    case 'resolve_place':
+      return `地点「${String(a.query ?? '')}」`
     case 'read_plan':
       return '读取当前计划'
     case 'update_plan_meta': {
@@ -93,6 +115,14 @@ export function summarizeToolResult(name: string, resultJson: string): string {
     case 'estimate_transit':
       if (r.mode === 'walk' && Number.isFinite(Number(r.durationMin))) return `步行 ${Number(r.durationMin)} 分钟`
       if (r.mode === 'transit' && Number.isFinite(Number(r.durationMin))) return `公共交通 ${Number(r.durationMin)} 分钟`
+      return '已完成'
+    case 'estimate_travel':
+      if (Number.isFinite(Number(r.durationMin))) return `${r.mode === 'driving' ? '自驾' : r.mode === 'walk' ? '步行' : '公共交通'} ${Number(r.durationMin)} 分钟`
+      return '已完成'
+    case 'resolve_place':
+      if (r.place && typeof (r.place as Record<string, unknown>).name === 'string') {
+        return `定位到「${(r.place as Record<string, unknown>).name}」`
+      }
       return '已完成'
     default:
       return '已完成'

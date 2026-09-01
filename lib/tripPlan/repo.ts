@@ -87,9 +87,12 @@ export type TripPlanMetaUpdate = {
 /**
  * 'ask' 是 ask_user 工具落库的结构化提问行：content 为 AskUserPayload（无
  * role 字段，不会进入模型回放消息，仅供前端重建交互组件）。
+ * 'daymap' 是 save_plan_days 成功后追加的行程交付快照行：content 为
+ * DaymapMessagePayload（同样无 role 字段、不进模型回放，前端按对话时间线
+ * 渲染历史地图）。不可变载荷——后续保存追加新行，绝不改写旧行。
  * Prisma 侧 kind 是无约束的 String，新增值不需要迁移。
  */
-export type TripPlanMessageKind = 'human' | 'assistant' | 'tool' | 'ask'
+export type TripPlanMessageKind = 'human' | 'assistant' | 'tool' | 'ask' | 'daymap'
 
 export type TripPlanMessage = {
   id: string
@@ -153,7 +156,27 @@ export interface TripPlanRepo {
   replaceDaysIfActive(planId: string, token: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null>
   /** 同上语义，供 update_plan_meta 工具替代裸的 updateMeta。 */
   updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null>
+  /**
+   * 原子地"整份替换天数 + 追加 kind=daymap 交付物消息"：daymap 内容由
+   * 调用方基于替换后的完整计划快照构建。两写必须在同一个锁/事务窗口内
+   * 完成——绝不出现"天数已替换、交付物消息丢失"的半截成功状态（那会让
+   * 用户以为保存成功却在刷新后丢失当时的地图）。
+   */
+  replaceDaysWithDaymap(
+    planId: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult>
+  /** 同上语义的 run-token 栅栏版本（save_plan_days 在 agent 运行期使用）。 */
+  replaceDaysWithDaymapIfActive(
+    planId: string,
+    token: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult | null>
 }
+
+export type ReplaceDaysWithDaymapResult = { plan: TripPlanWithDays; message: TripPlanMessage }
 
 export type BeginAgentRunResult =
   | { status: 'ok'; message: TripPlanMessage; token: string }

@@ -1,7 +1,9 @@
 import type { Prisma } from '@prisma/client'
 import type {
   BeginAgentRunResult,
+  ReplaceDaysWithDaymapResult,
   TripPlan,
+  TripPlanDay,
   TripPlanDayInput,
   TripPlanMessage,
   TripPlanMessageKind,
@@ -74,11 +76,17 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   async replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays> {
     const plan = this.plans.get(id)
     if (!plan) throw new Error(`plan not found: ${id}`)
-    plan.days = days.map((day) => {
+    plan.days = this.buildDays(id, days)
+    plan.updatedAt = new Date()
+    return structuredClone(plan)
+  }
+
+  private buildDays(planId: string, days: TripPlanDayInput[]): TripPlanDay[] {
+    return days.map((day) => {
       const dayId = this.nextId('day')
       return {
         id: dayId,
-        planId: id,
+        planId,
         dayIndex: day.dayIndex,
         date: day.date ?? null,
         citySlug: day.citySlug ?? null,
@@ -98,8 +106,6 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
         })),
       }
     })
-    plan.updatedAt = new Date()
-    return structuredClone(plan)
   }
 
   async countPlansCreatedSince(userId: string, since: Date): Promise<number> {
@@ -107,6 +113,10 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   }
 
   async appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage> {
+    return this.appendMessageEntry(planId, kind, content)
+  }
+
+  private appendMessageEntry(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): TripPlanMessage {
     const message: TripPlanMessage = {
       id: this.nextId('msg'),
       planId,
@@ -173,5 +183,47 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   async updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null> {
     if (!this.isCurrentHolder(planId, token)) return null
     return this.updateMeta(planId, patch)
+  }
+
+  /**
+   * 内存版"事务"：token 校验、替换天数、构建 daymap、追加消息必须在同一
+   * 个同步窗口内完成——全链路没有 await，并发调用既无法在两写之间交错，
+   * 也无法在 token 校验后夺取所有权再看到旧持有者的写入。构建器运行在
+   * 提交前的克隆快照上，抛错则两写都不发生（对齐 Prisma $transaction
+   * 的回滚语义），绝不留下"天数已替换、交付物消息丢失"的半截成功状态。
+   */
+  private replaceDaysWithDaymapTx(
+    planId: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): ReplaceDaysWithDaymapResult {
+    const plan = this.plans.get(planId)
+    if (!plan) throw new Error(`plan not found: ${planId}`)
+    const nextDays = this.buildDays(planId, days)
+    const updatedAt = new Date()
+    const snapshot: TripPlanWithDays = structuredClone({ ...plan, days: nextDays, updatedAt })
+    const content = buildDaymapContent(snapshot)
+    plan.days = nextDays
+    plan.updatedAt = updatedAt
+    const message = this.appendMessageEntry(planId, 'daymap', content)
+    return { plan: snapshot, message }
+  }
+
+  async replaceDaysWithDaymap(
+    planId: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult> {
+    return this.replaceDaysWithDaymapTx(planId, days, buildDaymapContent)
+  }
+
+  async replaceDaysWithDaymapIfActive(
+    planId: string,
+    token: string,
+    days: TripPlanDayInput[],
+    buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
+  ): Promise<ReplaceDaysWithDaymapResult | null> {
+    if (!this.isCurrentHolder(planId, token)) return null
+    return this.replaceDaysWithDaymapTx(planId, days, buildDaymapContent)
   }
 }

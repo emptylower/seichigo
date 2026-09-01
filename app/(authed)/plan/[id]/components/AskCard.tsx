@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarCheck, Check, ChevronLeft, ChevronRight, ListChecks, Minus, Plus } from 'lucide-react'
-import type { AskUserOption, AskUserPayload } from '@/lib/planAgent/askUser'
+import { CalendarCheck, Check, ChevronLeft, ChevronRight, Lightbulb, ListChecks, Minus, PenLine, Plus } from 'lucide-react'
+import { isAskCustomOption, reservedCustomOption, type AskUserOption, type AskUserPayload } from '@/lib/planAgent/askUser'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { MapPin } from 'lucide-react'
 
 /** 结构化组件提交给 ui.tsx 的回答：可读文本进消息流，answerValue 随 answerTo 回传后端 */
 export type AskAnswer = { readableText: string; answerValue: unknown }
@@ -14,15 +16,23 @@ type AskCardProps = {
   onSubmit: (answer: AskAnswer) => void
 }
 
-/** ask_user 结构化提问卡片：按 kind 分发到日期区间 / 选择卡片 */
+/**
+ * ask_user 结构化提问卡片：按任务类型（taskType，视图层已归一化，恒存在）
+ * 分发——日期走日历；作品选择走封面卡（视觉/语义不变，无卡内自定义入口，
+ * 自由文本由全局输入框兜底）；意见题走独立的文本优先选项卡（末位带自定义
+ * 输入）。渲染层不做"有没有图/bangumiId"之类的猜测分流。
+ */
 export function AskCard(props: AskCardProps) {
-  if (props.payload.kind === 'date_range') return <DateRangeAsk {...props} />
-  return <ChoiceAsk {...props} multiple={props.payload.kind === 'multi_choice'} />
+  const { payload } = props
+  if (payload.kind === 'date_range' || payload.taskType === 'date_range') return <DateRangeAsk {...props} />
+  if (payload.taskType === 'opinion') return <OpinionChoiceAsk {...props} multiple={payload.kind === 'multi_choice'} />
+  return <ChoiceAsk {...props} multiple={payload.kind === 'multi_choice'} />
 }
 
-/** 历史里已翻篇的 ask 渲染成折叠摘要 chip，文案取紧跟其后的那条消息 */
+/** 历史里已翻篇的 ask 渲染成折叠摘要 chip，文案取紧跟其后的那条消息；图标按任务类型区分 */
 export function AskAnswerChip(props: { payload: AskUserPayload; answerText: string }) {
-  const Icon = props.payload.kind === 'date_range' ? CalendarCheck : ListChecks
+  const taskType = props.payload.taskType ?? (props.payload.kind === 'date_range' ? 'date_range' : 'work_selection')
+  const Icon = taskType === 'date_range' ? CalendarCheck : taskType === 'opinion' ? Lightbulb : ListChecks
   return (
     <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs text-brand-700">
       <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -296,8 +306,37 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
 
 // ---------- 选择卡片 ----------
 
+function OptionCover(props: { option: AskUserOption }) {
+  const { option } = props
+  if (!option.image) {
+    return (
+      <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
+        <span className="text-3xl font-bold text-brand-400">{option.label.slice(0, 1)}</span>
+      </div>
+    )
+  }
+  // 与 /map 同源图片策略：候选梯 + 代理重试（不在这里另立第二套 URL 规则）
+  return (
+    <ResilientMapImage
+      src={option.image}
+      alt={option.label}
+      kind="cover"
+      loading="lazy"
+      className="aspect-[3/4] w-full object-cover"
+      fallback={
+        <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
+          <MapPin className="h-6 w-6 text-brand-300" />
+        </div>
+      }
+    />
+  )
+}
+
 function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { multiple: boolean }) {
-  const options = payload.options ?? []
+  // 作品选择卡（最终澄清 2026-09-01）：保持既有封面卡交互，不渲染卡内自定义
+  // 入口——自由文本回答由全局输入框兜底。历史过渡期落库的 work 载荷可能残留
+  // 保留的 __custom__ 选项，这里统一过滤，保证旧作品卡 UI 不变。
+  const modelOptions = (payload.options ?? []).filter((o) => !isAskCustomOption(o))
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
   // 滚动条已全站隐藏，桌面纯鼠标用户靠按住拖动访问被裁切的卡片
@@ -318,7 +357,7 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
   }
 
   function submitMulti() {
-    const chosen = options.filter((o) => selected.has(o.id))
+    const chosen = modelOptions.filter((o) => selected.has(o.id))
     if (chosen.length === 0) return
     onSubmit({
       readableText: chosen.map((o) => o.label).join('、'),
@@ -333,7 +372,7 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
         {...dragScroll.handlers}
         className={`-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 ${dragScroll.cursorClass}`}
       >
-        {options.map((option) => {
+        {modelOptions.map((option) => {
           const isSelected = selected.has(option.id)
           return (
             <button
@@ -350,28 +389,186 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
                   <Check className="h-3 w-3 text-white" />
                 </span>
               ) : null}
-              {option.image ? (
-                // eslint-disable-next-line @next/next/no-img-element -- 外部图源（Anitabi 等），不走 next/image 优化
-                <img src={option.image} alt="" className="aspect-[3/4] w-full object-cover" />
-              ) : (
-                <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
-                  <span className="text-3xl font-bold text-brand-400">{option.label.slice(0, 1)}</span>
-                </div>
-              )}
+              <OptionCover option={option} />
               <div className="p-2.5">
                 <p className="line-clamp-1 text-sm font-semibold text-gray-900">{option.label}</p>
                 {option.sublabel ? <p className="line-clamp-1 pt-0.5 text-xs text-gray-500">{option.sublabel}</p> : null}
+                {option.imageAttribution ? (
+                  <p className="line-clamp-1 pt-0.5 text-[10px] text-gray-400">{option.imageAttribution}</p>
+                ) : null}
               </div>
             </button>
           )
         })}
       </div>
+
       {multiple ? (
         <div className="flex items-center justify-between pt-3">
           <span className="text-xs text-gray-500">已选 {selectedIds.length} 项</span>
           <button
             type="button"
             disabled={disabled || selectedIds.length === 0}
+            onClick={submitMulti}
+            className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
+          >
+            确认
+          </button>
+        </div>
+      ) : null}
+    </CardShell>
+  )
+}
+
+// ---------- 通用意见卡片（taskType=opinion） ----------
+
+/** 稳定顺序标识 A/B/C…（超过字母表后回退为数字） */
+function optionMarker(index: number): string {
+  return index < 26 ? String.fromCharCode(65 + index) : String(index + 1)
+}
+
+/**
+ * 意见/方案取舍题的文本优先选项卡：不渲染 3:4 封面、不加载
+ * ResilientMapImage、不展示首字渐变占位或图片署名——那是作品选择卡的
+ * 语义。单选保持点选后提交；多选勾选后确认；末位"自行输入"打开卡内
+ * 输入框回传 { custom }。
+ */
+function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { multiple: boolean }) {
+  const options = payload.options ?? []
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customText, setCustomText] = useState('')
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds])
+
+  const hasCustomOption = options.some(isAskCustomOption)
+  const modelOptions = hasCustomOption ? options.filter((o) => !isAskCustomOption(o)) : options
+  const customLabel = (options.find(isAskCustomOption) ?? reservedCustomOption()).label
+
+  function pickSingle(option: AskUserOption) {
+    if (disabled) return
+    setSelectedIds([option.id])
+    // 短暂延迟让选中态动画播完再提交（与作品卡一致）
+    window.setTimeout(() => {
+      onSubmit({ readableText: option.label, answerValue: { optionId: option.id } })
+    }, 180)
+  }
+
+  function toggleMulti(option: AskUserOption) {
+    if (disabled) return
+    setSelectedIds((prev) => (prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]))
+  }
+
+  function submitCustomSingle() {
+    const text = customText.trim()
+    if (!text) return
+    onSubmit({ readableText: text, answerValue: { custom: text } })
+  }
+
+  function submitMulti() {
+    const chosen = modelOptions.filter((o) => selected.has(o.id))
+    const text = customText.trim()
+    if (chosen.length === 0 && !text) return
+    const readable = [...chosen.map((o) => o.label), ...(text ? [`自定义：${text}`] : [])].join('、')
+    onSubmit({
+      readableText: readable,
+      answerValue: {
+        ...(chosen.length ? { optionIds: chosen.map((o) => o.id) } : {}),
+        ...(text ? { custom: text } : {}),
+      },
+    })
+  }
+
+  return (
+    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit}>
+      <div className="space-y-2">
+        {modelOptions.map((option, idx) => {
+          const isSelected = selected.has(option.id)
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={disabled}
+              aria-pressed={isSelected}
+              onClick={() => (multiple ? toggleMulti(option) : pickSingle(option))}
+              className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                isSelected
+                  ? 'border-transparent bg-brand-50 ring-1 ring-brand-400'
+                  : 'border-gray-200 bg-white hover:border-brand-300'
+              } disabled:opacity-60`}
+            >
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                  isSelected ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {optionMarker(idx)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-sm font-medium text-gray-900">{option.label}</span>
+                {option.sublabel ? <span className="block break-words pt-0.5 text-xs text-gray-500">{option.sublabel}</span> : null}
+              </span>
+              {multiple && isSelected ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> : null}
+            </button>
+          )
+        })}
+
+        {/* 末位保留的"自行输入"选项（必须是最后一个选项）：打开卡内文本输入 */}
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={customOpen}
+          onClick={() => (multiple ? setCustomOpen((v) => !v) : setCustomOpen(true))}
+          className={`flex w-full items-center gap-3 rounded-xl border border-dashed px-3 py-2.5 text-left transition disabled:opacity-60 ${
+            customOpen ? 'border-transparent bg-brand-50 ring-1 ring-brand-400' : 'border-gray-300 bg-white hover:border-brand-400'
+          }`}
+        >
+          <span
+            aria-hidden
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600"
+          >
+            <PenLine className="h-3 w-3" />
+          </span>
+          <span className="break-words text-sm text-gray-600">{customLabel}</span>
+        </button>
+      </div>
+
+      {customOpen ? (
+        <div className="flex items-center gap-2 pt-3">
+          <input
+            type="text"
+            value={customText}
+            disabled={disabled}
+            autoFocus
+            onChange={(e) => setCustomText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                if (multiple) submitMulti()
+                else submitCustomSingle()
+              }
+            }}
+            placeholder={multiple ? '补充自定义内容（可与所选选项并存）' : '输入你的回答…'}
+            className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
+          />
+          <button
+            type="button"
+            disabled={disabled || !customText.trim()}
+            onClick={() => (multiple ? submitMulti() : submitCustomSingle())}
+            className="shrink-0 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
+          >
+            {multiple ? '确认' : '提交'}
+          </button>
+        </div>
+      ) : null}
+
+      {multiple ? (
+        <div className="flex items-center justify-between pt-3">
+          <span className="text-xs text-gray-500">
+            已选 {selectedIds.length} 项{customText.trim() ? ' + 自定义' : ''}
+          </span>
+          <button
+            type="button"
+            disabled={disabled || (selectedIds.length === 0 && !customText.trim())}
             onClick={submitMulti}
             className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
           >

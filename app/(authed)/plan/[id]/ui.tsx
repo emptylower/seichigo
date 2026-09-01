@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MoreHorizontal, RotateCcw, SendHorizontal } from 'lucide-react'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
+import { parseDaymapPayload } from '@/lib/tripPlan/view'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { AskAnswerChip, AskCard } from './components/AskCard'
-import { DayCards } from './components/DayCards'
+import { DayCards, DaymapCard } from './components/DayCards'
 import { MarkdownBubble } from './components/MarkdownBubble'
 import {
   ThinkingChain,
@@ -34,7 +35,6 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   const [expandedThinking, setExpandedThinking] = useState<string | null>(null)
   // 进行中思维链默认自动展开；用户在本轮内手动点收起后置 true，下一轮自动复位
   const [activeCollapsed, setActiveCollapsed] = useState(false)
-  const [selectedDay, setSelectedDay] = useState(1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const nearBottomRef = useRef(true)
@@ -143,11 +143,24 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
               const ask: AskUserPayload = {
                 askId: event.askId,
                 kind: event.kind,
+                taskType: event.taskType,
                 prompt: event.prompt,
                 options: event.options,
                 allowSkip: event.allowSkip,
               }
               setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
+              break
+            }
+            case 'daymap': {
+              // save_plan_days 的交付快照：与刷新后 toChatView 用同一个载荷
+              // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
+              const parsed = parseDaymapPayload(event)
+              if (!parsed) break
+              setChat((prev) =>
+                prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
+                  ? prev
+                  : [...prev, { role: 'assistant', text: '', daymap: parsed }],
+              )
               break
             }
             case 'plan_updated':
@@ -201,15 +214,29 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     }
   }
 
+  // 进行中思维链的自动展开态：有实质遥测内容且用户本轮未手动收起
+  const activeAutoExpanded = busy && activeThinking != null && hasThinkingContent(activeThinking) && !activeCollapsed
+
+  // 待回答的结构化提问：最后一条消息是 ask 且本轮没有进行中的请求。
+  // 此时全局输入框的直发内容作为该 ask 的自定义回答回传（带 askId），
+  // 而不是开启一条无关的普通聊天轮——这是选择卡之外的最终兜底入口。
+  const pendingAsk = (() => {
+    if (busy) return null
+    const last = chat[chat.length - 1]
+    if (!last || last.role !== 'assistant' || !last.ask) return null
+    return last.ask
+  })()
+
   async function send() {
     const message = input.trim()
     if (!message || busy) return
     setInput('')
+    if (pendingAsk) {
+      await postAndStream({ message, answerTo: pendingAsk.askId, answerValue: { custom: message } })
+      return
+    }
     await postAndStream({ message })
   }
-
-  // 进行中思维链的自动展开态：有实质遥测内容且用户本轮未手动收起
-  const activeAutoExpanded = busy && activeThinking != null && hasThinkingContent(activeThinking) && !activeCollapsed
 
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh flex-col">
@@ -244,6 +271,10 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
             </p>
           ) : null}
           {chat.map((entry, idx) => {
+            // daymap 交付物：聊天时间线里的独立条目（不可变快照，只读渲染）
+            if (entry.daymap) {
+              return <DaymapCard key={`daymap-${entry.daymap.revisionId}`} planId={props.planId} daymap={entry.daymap} />
+            }
             if (entry.role === 'user') {
               return (
                 <div
@@ -312,13 +343,15 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
             />
           ) : null}
 
-          {/* 跟随滚动锚点必须在 DayCards 之前：行程卡片很高，锚点若在其后，
-              新消息/ask 卡片会被埋进行程上方、滚出视口（移动端上表现为"组件没弹出来"） */}
+          {/* 跟随滚动锚点：daymap 交付物在聊天流内按时间线渲染（见 chat.map），
+              锚点保持在流末尾；仅有存量计划、尚无任何 daymap 消息时才在锚点后
+              渲染一次"legacy 当前计划"副本——一旦出现真实 daymap 就不再渲染，
+              避免同一行程出现两份且旧图被新保存覆盖 */}
           <div ref={chatEndRef} />
 
-          {plan.days.length > 0 ? (
+          {!chat.some((entry) => entry.daymap) && plan.days.length > 0 ? (
             <div className="pt-4">
-              <DayCards plan={plan} planId={props.planId} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
+              <DayCards planId={props.planId} days={plan.days} scope="current" />
             </div>
           ) : null}
         </div>
@@ -338,7 +371,11 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
                 void send()
               }
             }}
-            placeholder="告诉规划师你的巡礼想法…（Enter 发送，Shift+Enter 换行）"
+            placeholder={
+              pendingAsk
+                ? '直接输入你的回答，会作为这条提问的自定义答案提交…（Enter 发送）'
+                : '告诉规划师你的巡礼想法…（Enter 发送，Shift+Enter 换行）'
+            }
             className="max-h-32 flex-1 resize-none overflow-y-auto rounded-2xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-brand-400"
           />
           <button
