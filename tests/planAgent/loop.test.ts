@@ -111,6 +111,24 @@ describe('runPlanAgent', () => {
     expect(events.some((e) => e.type === 'error')).toBe(true)
   })
 
+  it('maps transient network errors (workerd "Network connection lost.") to the friendly Chinese message', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const createMessage = vi.fn(async () => {
+      throw new TypeError('Network connection lost.')
+    })
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder } },
+      'hi',
+      (e) => events.push(e),
+    )
+    const errorEvent = events.find((e) => e.type === 'error')
+    expect(errorEvent).toMatchObject({ type: 'error', message: expect.stringContaining('网络连接不稳定') })
+    // 不再把原始英文技术文案直接甩给用户
+    expect((errorEvent as { message: string }).message).not.toContain('Network connection lost')
+  })
+
   it('does not duplicate the human message when userMessagePersisted is set', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })

@@ -4,6 +4,7 @@ import { executePlanTool, PLAN_AGENT_TOOLS, type PlanAgentToolDeps } from './too
 import { PLAN_AGENT_SYSTEM_PROMPT } from './prompt'
 import { RunFencedError } from './runFence'
 import { AskUserSignal, type AskUserPayload } from './askUser'
+import { agentErrorMessage } from './netErrors'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -262,9 +263,10 @@ export async function runPlanAgent(
     }
   } catch (err) {
     if (!(err instanceof RunFencedError)) {
-      // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话
-      const message = err instanceof Error ? err.message : String(err)
-      onEvent({ type: 'error', message })
+      // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话。
+      // 瞬时网络错误（workerd "Network connection lost." 等）映射成友好中文，
+      // 其余上游错误保留原文案（鉴权/配额等有诊断价值）
+      onEvent({ type: 'error', message: agentErrorMessage(err) })
     }
   }
 

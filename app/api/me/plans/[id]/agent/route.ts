@@ -5,6 +5,7 @@ import { startOfToday } from '@/lib/tripPlan/handlers/plans'
 import { createChatCompletion, generatePlanTitle } from '@/lib/planAgent/api'
 import { planMetaFromAnswer } from '@/lib/planAgent/askUser'
 import { searchBgmSubjects } from '@/lib/planAgent/bgm'
+import { agentErrorMessage } from '@/lib/planAgent/netErrors'
 import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
 import { maybeSetGeneratedTitle } from '@/lib/planAgent/title'
@@ -130,7 +131,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           ),
         ])
       } catch (err) {
-        send({ type: 'error', message: err instanceof Error ? err.message : '服务器错误' })
+        // 循环 try 块之外的异常（历史读取/直写补丁等）与瞬时网络错误统一经
+        // agentErrorMessage 映射：网络类 → 友好中文，其余保留原始 message
+        send({ type: 'error', message: agentErrorMessage(err) })
         send({ type: 'done' })
       } finally {
         // 无论正常结束、报错还是客户端断开，都要释放 busy 位，

@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type { CreateMessageFn } from './loop'
+import { isTransientNetworkError } from './netErrors'
 
 const MODEL = process.env.PLAN_AGENT_MODEL || 'deepseek-v4-flash'
 const BASE_URL = process.env.PLAN_AGENT_BASE_URL || 'https://api.deepseek.com'
@@ -25,6 +26,28 @@ function getClient(): OpenAI {
 }
 
 /**
+ * 流式调用对瞬时网络错误的重试预算。workerd 出站 fetch 被底层中断时抛
+ * 平台原生 "Network connection lost."（见 netErrors.ts），官方 agents SDK
+ * 也把它归类为"可就地重试的瞬时错误"。重试安全性：模型调用本身零副作用，
+ * assistant 消息落库发生在循环层拿到完整返回之后，工具写入也都在之前
+ * 的迭代里各自落库——重试只是重新发起"这一次模型调用"。代价：重试会
+ * 从头重新流式输出，已透传的 reasoning 增量会在实时思维链里重复出现
+ * （仅瞬时遥测，不落库，可接受）。
+ */
+const STREAM_MAX_ATTEMPTS = 3
+
+/** 连接建立后立刻关闭、一个 chunk 都没产出：同样按可重试的传输失败处理。 */
+class EmptyStreamError extends Error {
+  constructor() {
+    super('模型未返回消息')
+  }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
  * DeepSeek 推理模型的非标准扩展字段：流式时挂在 chunk 的 delta 上、非流式时挂在
  * message 上，OpenAI SDK 类型均未声明。收敛到这一个断言点，其余代码只读它。
  */
@@ -41,13 +64,12 @@ type AccumulatedToolCall = {
   function: { name: string; arguments: string }
 }
 
-/**
- * 流式版模型调用：按 OpenAI 流式协议增量累积 content 与 tool_calls（tool_calls
- * 按 index 归并，function.arguments 是需要拼接的 JSON 字符串片段），并透传
- * DeepSeek 的 reasoning_content 增量给 onDelta。返回累积重建后的完整 message，
- * 形状与非流式响应一致（reasoning_content 同样附在返回值上，由调用方决定去留）。
- */
-export const createChatCompletion: CreateMessageFn = async ({ messages, tools }, onDelta) => {
+/** 单次流式尝试：建立连接、消费整个流、累积重建完整 message。 */
+async function attemptStreamOnce(
+  messages: Parameters<CreateMessageFn>[0]['messages'],
+  tools: Parameters<CreateMessageFn>[0]['tools'],
+  onDelta?: (delta: { reasoning?: string; content?: string }) => void,
+): Promise<OpenAI.Chat.Completions.ChatCompletionMessage> {
   const stream = await getClient().chat.completions.create({
     model: MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
@@ -100,7 +122,7 @@ export const createChatCompletion: CreateMessageFn = async ({ messages, tools },
     }
   }
 
-  if (!sawAnyChunk) throw new Error('模型未返回消息')
+  if (!sawAnyChunk) throw new EmptyStreamError()
 
   const rebuiltToolCalls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call)
   // 镜像 DeepSeek 非流式响应里 message 自带 reasoning_content 的形状；loop
@@ -113,6 +135,33 @@ export const createChatCompletion: CreateMessageFn = async ({ messages, tools },
     ...(reasoning ? { reasoning_content: reasoning } : {}),
   }
   return message
+}
+
+/**
+ * 流式版模型调用：按 OpenAI 流式协议增量累积 content 与 tool_calls（tool_calls
+ * 按 index 归并，function.arguments 是需要拼接的 JSON 字符串片段），并透传
+ * DeepSeek 的 reasoning_content 增量给 onDelta。返回累积重建后的完整 message，
+ * 形状与非流式响应一致（reasoning_content 同样附在返回值上，由调用方决定去留）。
+ *
+ * 瞬时网络错误（workerd "Network connection lost." 等，见 netErrors.ts）时
+ * 整体重试本次调用；非网络类错误（参数/鉴权/配额、以及空流语义错误耗尽后）
+ * 原样抛出，不做无差别重试。
+ */
+export const createChatCompletion: CreateMessageFn = async ({ messages, tools }, onDelta) => {
+  // 测试可通过 env 把退避压到 1ms（调用时读取，避免模块加载顺序问题）
+  const backoffMs = Number(process.env.PLAN_AGENT_STREAM_RETRY_BACKOFF_MS) || 500
+  let lastError: unknown
+  for (let attempt = 0; attempt < STREAM_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await delay(backoffMs * attempt)
+    try {
+      return await attemptStreamOnce(messages, tools, onDelta)
+    } catch (err) {
+      lastError = err
+      // 空流（连接建立后立即关闭）同样视为传输层瞬时失败；其余非网络错误立即抛出
+      if (!(err instanceof EmptyStreamError) && !isTransientNetworkError(err)) throw err
+    }
+  }
+  throw lastError
 }
 
 /**

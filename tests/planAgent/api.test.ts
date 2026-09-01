@@ -36,6 +36,7 @@ function fakeStream(chunks: unknown[]): unknown {
 beforeEach(() => {
   fakeCreate.mockReset()
   process.env.PLAN_AGENT_API_KEY = 'test-key'
+  process.env.PLAN_AGENT_STREAM_RETRY_BACKOFF_MS = '1'
   delete process.env.PLAN_AGENT_MODEL
   delete process.env.PLAN_AGENT_BASE_URL
 })
@@ -133,6 +134,54 @@ describe('createChatCompletion (streaming)', () => {
   it('throws when the upstream stream yields zero chunks (empty stream is not success)', async () => {
     fakeCreate.mockResolvedValue(fakeStream([]))
     await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('模型未返回消息')
+  })
+
+  it('retries a mid-stream "Network connection lost." failure and returns the retried attempt result', async () => {
+    // 第一次尝试：流出部分 chunk 后连接中断（生产案例的错误形态——裸 TypeError
+    // 穿透 async iterator）；第二次尝试完整成功
+    async function* brokenStream() {
+      yield chunk({ content: ' partial' })
+      throw new TypeError('Network connection lost.')
+    }
+    fakeCreate
+      .mockResolvedValueOnce(brokenStream())
+      .mockResolvedValueOnce(fakeStream([chunk({ content: '你好' }), chunk({}, 'stop')]))
+
+    const onDelta = vi.fn()
+    const message = await createChatCompletion({ messages: [], tools: [] }, onDelta)
+
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+    expect(message.content).toBe('你好')
+    // 重试会从头重新流出：两次尝试的增量都透传（仅实时遥测，可接受的重复）
+    expect(onDelta.mock.calls.map((c) => (c[0] as { content?: string }).content)).toEqual([' partial', '你好'])
+  })
+
+  it('retries connection-establishment failures (openai SDK wraps the cause) up to the attempt budget', async () => {
+    const wrapped = new Error('Connection error.')
+    ;(wrapped as Error & { cause?: unknown }).cause = new TypeError('Network connection lost.')
+    fakeCreate.mockRejectedValueOnce(wrapped).mockResolvedValueOnce(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+    expect(message.content).toBe('ok')
+  })
+
+  it('retries empty streams (connection opened then closed) and fails with the domain message after exhausting attempts', async () => {
+    fakeCreate.mockResolvedValue(fakeStream([]))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('模型未返回消息')
+    expect(fakeCreate).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry non-network errors (auth/quota/domain) — surfaces immediately', async () => {
+    fakeCreate.mockRejectedValueOnce(new Error('Incorrect API key provided'))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('Incorrect API key provided')
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives up after the attempt budget on persistent network failures', async () => {
+    fakeCreate.mockRejectedValue(new TypeError('Network connection lost.'))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('Network connection lost.')
+    expect(fakeCreate).toHaveBeenCalledTimes(3)
   })
 
   it('returns the empty assistant message when chunks arrived but carried no content — upstream did respond', async () => {
