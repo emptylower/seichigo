@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import {
   BookOpen,
   CalendarCheck,
@@ -117,11 +118,26 @@ function ToolCallRow({ call }: { call: ToolCallEntry }) {
 }
 
 /** 展开态时间线：reasoning 流 + 工具调用列表（进行中/历史回看复用） */
-function ThinkingTimeline({ thinking }: { thinking: ThinkingTurn }) {
+function ThinkingTimeline({ thinking, followScroll }: { thinking: ThinkingTurn; followScroll?: boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const reasoningRef = useRef<HTMLDivElement>(null)
+
+  // 流式生成中内容自动滚动跟随到最新（仅思维链内部小容器，与页面整体滚动策略无关）
+  useEffect(() => {
+    if (!followScroll) return
+    const container = containerRef.current
+    if (container) container.scrollTop = container.scrollHeight
+    const reasoning = reasoningRef.current
+    if (reasoning) reasoning.scrollTop = reasoning.scrollHeight
+  }, [followScroll, thinking.reasoning, thinking.toolCalls])
+
   return (
-    <div className="max-h-[50dvh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3">
+    <div ref={containerRef} className="max-h-[50dvh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3">
       {thinking.reasoning.trim() ? (
-        <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs italic leading-relaxed text-gray-500">
+        <div
+          ref={reasoningRef}
+          className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs italic leading-relaxed text-gray-500"
+        >
           {thinking.reasoning}
         </div>
       ) : null}
@@ -144,9 +160,11 @@ export function ThinkingChain(props: {
   active: boolean
   expanded: boolean
   onToggle: () => void
+  /** 进行中流式内容自动滚动跟随到最新（仅 active 场景传入） */
+  followScroll?: boolean
 }) {
   const { thinking, active, expanded, onToggle } = props
-  const timeline = expanded ? <ThinkingTimeline thinking={thinking} /> : null
+  const timeline = expanded ? <ThinkingTimeline thinking={thinking} followScroll={props.followScroll} /> : null
 
   if (active) {
     const phrase = thinking.statusPhrase ?? '规划师思考中…'

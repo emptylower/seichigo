@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { CalendarCheck, Check, ChevronLeft, ChevronRight, ListChecks, Minus, Plus } from 'lucide-react'
 import type { AskUserOption, AskUserPayload } from '@/lib/planAgent/askUser'
+import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
 
 /** 结构化组件提交给 ui.tsx 的回答：可读文本进消息流，answerValue 随 answerTo 回传后端 */
 export type AskAnswer = { readableText: string; answerValue: unknown }
@@ -299,6 +300,8 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
   const options = payload.options ?? []
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
+  // 滚动条已全站隐藏，桌面纯鼠标用户靠按住拖动访问被裁切的卡片
+  const dragScroll = useDragToScroll()
 
   function pickSingle(option: AskUserOption) {
     if (disabled) return
@@ -325,7 +328,11 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
 
   return (
     <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit}>
-      <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1">
+      <div
+        ref={dragScroll.ref}
+        {...dragScroll.handlers}
+        className={`-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 ${dragScroll.cursorClass}`}
+      >
         {options.map((option) => {
           const isSelected = selected.has(option.id)
           return (

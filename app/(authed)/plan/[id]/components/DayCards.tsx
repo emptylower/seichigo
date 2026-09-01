@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bus, Footprints, List, Loader2, Map as MapIcon, MapPin } from 'lucide-react'
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
+import ResilientMapImage from '@/components/map/ResilientMapImage'
+import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { MarkdownBubble } from './MarkdownBubble'
 import type { TripPlanDayView, TripPlanItemView, TripPlanView } from '@/lib/tripPlan/view'
 
 type RouteLineString = { type: 'LineString'; coordinates: [number, number][] }
@@ -22,7 +25,65 @@ const TYPE_LABELS: Record<string, string> = {
   free: '自由',
 }
 
-const ROUTE_FETCH_DEBOUNCE_MS = 600
+type RouteGeometryResult = { ok: true; geometry: RouteLineString } | { ok: false; error: string }
+
+// 路线几何模块级缓存：跨 列表/地图 tab 切换、组件重挂载复用；
+// DayCards 挂载时后台预取各天路线，切到地图 tab 直接命中
+const routeGeometryCache = new Map<string, RouteLineString>()
+const routeGeometryInflight = new Map<string, Promise<RouteGeometryResult>>()
+
+function routeCacheKey(planId: string, signature: string): string {
+  return `${planId}:${signature}`
+}
+
+/** 拉取某天真实道路路线（同源 API，失败结果不缓存以便重试；同 signature 在途请求去重） */
+function fetchRouteGeometry(planId: string, signature: string): Promise<RouteGeometryResult> {
+  const key = routeCacheKey(planId, signature)
+  const cached = routeGeometryCache.get(key)
+  if (cached) return Promise.resolve({ ok: true, geometry: cached })
+  const inflight = routeGeometryInflight.get(key)
+  if (inflight) return inflight
+  const promise = (async (): Promise<RouteGeometryResult> => {
+    try {
+      const res = await fetch(
+        `/api/me/plans/${planId}/route-geometry?points=${encodeURIComponent(signature)}&mode=walking`,
+      )
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; geometry?: RouteLineString; error?: string }
+        | null
+      if (res.ok && data?.ok && data.geometry) {
+        routeGeometryCache.set(key, data.geometry)
+        return { ok: true, geometry: data.geometry }
+      }
+      return { ok: false, error: data?.error ?? '路线加载失败' }
+    } catch {
+      return { ok: false, error: '网络错误' }
+    } finally {
+      routeGeometryInflight.delete(key)
+    }
+  })()
+  routeGeometryInflight.set(key, promise)
+  return promise
+}
+
+/** 当天 type=point 且有坐标的条目（序号与列表徽标一致：只数 point） */
+function dayRoutePoints(day: TripPlanDayView): Array<{ lat: number; lng: number; label: string }> {
+  const result: Array<{ lat: number; lng: number; label: string }> = []
+  let seq = 0
+  for (const item of day.items) {
+    if (item.type !== 'point') continue
+    seq += 1
+    const lat = item.point?.lat
+    const lng = item.point?.lng
+    if (lat == null || lng == null) continue
+    result.push({ lat, lng, label: String(seq) })
+  }
+  return result
+}
+
+function routeSignature(points: Array<{ lat: number; lng: number }>): string {
+  return points.map((p) => `${p.lng},${p.lat}`).join('|')
+}
 
 function getTransitPayload(item: TripPlanItemView): TransitPayload | null {
   const payload = item.payload
@@ -93,11 +154,22 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
         {showLine ? <span className="w-px flex-1 bg-gray-200" /> : null}
       </div>
 
-      {/* 图片：无图/非点位 → 渐变占位 + pin 图标 */}
+      {/* 图片：无图/非点位 → 渐变占位 + pin 图标；
+          点位图复用地图的 ResilientMapImage（直连失败自动走 /api/anitabi/image-render 代理重试） */}
       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
         {isPoint && image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+          <ResilientMapImage
+            src={image}
+            alt={item.title}
+            kind="point"
+            className="h-full w-full object-cover"
+            loading="lazy"
+            fallback={
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
+                <MapPin className="h-6 w-6 text-brand-300" />
+              </div>
+            }
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
             <MapPin className="h-6 w-6 text-brand-300" />
@@ -116,7 +188,12 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
             <span className="shrink-0 rounded bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-400">{TYPE_LABELS[item.type]}</span>
           ) : null}
         </div>
-        {description ? <p className="mt-1 text-xs text-gray-500 line-clamp-2">{description}</p> : null}
+        {description ? (
+          // AI 生成的推荐理由/备注，过 markdown 管线避免字面 ** 泄漏
+          <div className="mt-1 line-clamp-2 text-xs text-gray-500">
+            <MarkdownBubble text={description} />
+          </div>
+        ) : null}
       </div>
     </li>
   )
@@ -128,24 +205,11 @@ function DayMap(props: { planId: string; day: TripPlanDayView }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
-  const cacheRef = useRef<Map<string, RouteLineString>>(new Map())
 
   // 当天 type=point 且有坐标的条目（序号与列表徽标一致：只数 point）
-  const dayPoints = useMemo(() => {
-    const result: Array<{ lat: number; lng: number; label: string }> = []
-    let seq = 0
-    for (const item of day.items) {
-      if (item.type !== 'point') continue
-      seq += 1
-      const lat = item.point?.lat
-      const lng = item.point?.lng
-      if (lat == null || lng == null) continue
-      result.push({ lat, lng, label: String(seq) })
-    }
-    return result
-  }, [day])
+  const dayPoints = useMemo(() => dayRoutePoints(day), [day])
 
-  const signature = dayPoints.map((p) => `${p.lng},${p.lat}`).join('|')
+  const signature = routeSignature(dayPoints)
 
   useEffect(() => {
     // <2 个点位不发请求，交由 RoutePreviewMap 退化为站点直连示意/单点
@@ -155,7 +219,8 @@ function DayMap(props: { planId: string; day: TripPlanDayView }) {
       setLoading(false)
       return
     }
-    const cached = cacheRef.current.get(signature)
+    // 预取/上次渲染可能已填充模块级缓存，命中即同步展示
+    const cached = routeGeometryCache.get(routeCacheKey(planId, signature))
     if (cached) {
       setGeometry(cached)
       setError(null)
@@ -164,35 +229,19 @@ function DayMap(props: { planId: string; day: TripPlanDayView }) {
     }
     let cancelled = false
     setLoading(true)
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/me/plans/${planId}/route-geometry?points=${encodeURIComponent(signature)}&mode=walking`,
-        )
-        const data = (await res.json().catch(() => null)) as
-          | { ok?: boolean; geometry?: RouteLineString; error?: string }
-          | null
-        if (cancelled) return
-        if (res.ok && data?.ok && data.geometry) {
-          cacheRef.current.set(signature, data.geometry)
-          setGeometry(data.geometry)
-          setError(null)
-        } else {
-          setGeometry(null)
-          setError(data?.error ?? '路线加载失败')
-        }
-      } catch {
-        if (!cancelled) {
-          setGeometry(null)
-          setError('网络错误')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+    void fetchRouteGeometry(planId, signature).then((result) => {
+      if (cancelled) return
+      if (result.ok) {
+        setGeometry(result.geometry)
+        setError(null)
+      } else {
+        setGeometry(null)
+        setError(result.error)
       }
-    }, ROUTE_FETCH_DEBOUNCE_MS)
+      setLoading(false)
+    })
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
     // retryToken 手动重试；signature 变化（切天/plan 更新）自动重取
   }, [planId, signature, dayPoints.length, retryToken])
@@ -247,6 +296,18 @@ export function DayCards(props: {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [savedRouteBookId, setSavedRouteBookId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // 天数很多时 tab 横向溢出；滚动条全站隐藏后桌面鼠标靠拖拽访问
+  const dayTabsDrag = useDragToScroll()
+
+  // 后台预取各天真实道路路线（不阻塞渲染）：切到地图 tab 时命中模块级缓存直接展示，
+  // 避免"切 tab 才开始请求"造成的明显等待；同 signature 请求在 fetchRouteGeometry 内去重
+  useEffect(() => {
+    for (const day of plan.days) {
+      const points = dayRoutePoints(day)
+      if (points.length < 2) continue
+      void fetchRouteGeometry(planId, routeSignature(points))
+    }
+  }, [planId, plan.days])
 
   async function handleSave() {
     if (saveState === 'saving') return
@@ -329,7 +390,7 @@ export function DayCards(props: {
       </div>
 
       {/* 天数 tab */}
-      <div className="flex gap-2 overflow-x-auto px-4 pt-3">
+      <div ref={dayTabsDrag.ref} {...dayTabsDrag.handlers} className={`flex gap-2 overflow-x-auto px-4 pt-3 ${dayTabsDrag.cursorClass}`}>
         {plan.days.map((day) => {
           const date = formatDayDate(day.date)
           return (
@@ -350,7 +411,12 @@ export function DayCards(props: {
         })}
       </div>
 
-      {active.summary ? <p className="px-4 pt-2 text-sm font-medium text-gray-700">{active.summary}</p> : null}
+      {active.summary ? (
+        // AI 生成的 summary 走 markdown 管线（与聊天气泡同一套），避免字面 ** 泄漏
+        <div className="px-4 pt-2 text-sm font-medium text-gray-700">
+          <MarkdownBubble text={active.summary} />
+        </div>
+      ) : null}
 
       {view === 'list' ? (
         <ol className="max-h-96 overflow-y-auto py-1">

@@ -105,7 +105,7 @@ describe('DayCards', () => {
     expect(screen.getByText(/还没有行程/)).toBeTruthy()
   })
 
-  it('点位卡片渲染图片、序号徽标、时间 chip 与简介', () => {
+  it('点位卡片渲染图片、序号徽标、时间 chip 与简介', async () => {
     const items: TripPlanItemView[] = [
       makeItem({
         id: 'i1',
@@ -121,9 +121,11 @@ describe('DayCards', () => {
 
     expect(screen.getByText('1')).toBeTruthy()
     expect(screen.getByText('2')).toBeTruthy()
-    const img = container.querySelector('img[src="https://example.com/a.jpg"]')
-    expect(img).toBeTruthy()
-    expect(img?.getAttribute('alt')).toBe('清水寺')
+    // 点位图走 ResilientMapImage（kind=point → 强制站内 image-render 代理候选）；
+    // img 在调度器异步分配请求槽后才出现，用 findBy 等待
+    const img = await screen.findByAltText('清水寺')
+    expect(img.getAttribute('src')).toContain('/api/anitabi/image-render')
+    expect(img.getAttribute('src')).toContain(encodeURIComponent('https://example.com/a.jpg'))
     expect(screen.getByText('上午')).toBeTruthy()
     expect(screen.getByText('经典取景地')).toBeTruthy()
     // 无 reason 时回退 note

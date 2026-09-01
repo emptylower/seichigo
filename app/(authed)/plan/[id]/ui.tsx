@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, MoreHorizontal, SendHorizontal } from 'lucide-react'
+import { ArrowLeft, Loader2, MoreHorizontal, RotateCcw, SendHorizontal } from 'lucide-react'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
@@ -17,7 +17,7 @@ import {
   type ThinkingTurn,
 } from './components/ThinkingChain'
 
-type ChatEntry = ChatEntryView & { thinking?: ThinkingTurn }
+type ChatEntry = ChatEntryView & { thinking?: ThinkingTurn; retryMessage?: string }
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80
 const TEXTAREA_MAX_HEIGHT_PX = 128 // ≈ 4 行
@@ -30,8 +30,10 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [activeThinking, setActiveThinking] = useState<ThinkingTurn | null>(null)
-  // 展开哪条思维链：'active'（进行中）或 `m${idx}`（历史消息定格）——纯 UI 状态，不参与跟随滚动
+  // 展开哪条历史思维链：`m${idx}`（消息定格）——纯 UI 状态，不参与跟随滚动
   const [expandedThinking, setExpandedThinking] = useState<string | null>(null)
+  // 进行中思维链默认自动展开；用户在本轮内手动点收起后置 true，下一轮自动复位
+  const [activeCollapsed, setActiveCollapsed] = useState(false)
   const [selectedDay, setSelectedDay] = useState(1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -75,6 +77,7 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     let turn = newThinkingTurn()
     setActiveThinking(turn)
     setExpandedThinking(null)
+    setActiveCollapsed(false)
 
     // 定格当前累积的思维链并开启下一段（多轮"模型→工具"循环时每段 text 各挂一份）
     const freezeTurn = (): ThinkingTurn | undefined => {
@@ -91,8 +94,16 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
         body: JSON.stringify(body),
       })
       if (!res.ok || !res.body) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        setChat((prev) => [...prev, { role: 'assistant', text: body?.error ?? '请求失败，请稍后再试' }])
+        const errBody = (await res.json().catch(() => null)) as { error?: string } | null
+        // 普通消息失败给重试入口；ask 结构化回答重发语义复杂，不给
+        setChat((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: errBody?.error ?? '请求失败，请稍后再试',
+            retryMessage: body.answerTo ? undefined : body.message,
+          },
+        ])
         return
       }
 
@@ -139,7 +150,16 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
               break
             case 'error': {
               const thinking = freezeTurn()
-              setChat((prev) => [...prev, { role: 'assistant', text: `出错了：${event.message}`, thinking }])
+              // 偶发网络/运行时错误：附重试入口，用户不必手打重发（仅普通消息）
+              setChat((prev) => [
+                ...prev,
+                {
+                  role: 'assistant',
+                  text: `出错了：${event.message}`,
+                  thinking,
+                  retryMessage: body.answerTo ? undefined : body.message,
+                },
+              ])
               break
             }
             case 'done': {
@@ -182,6 +202,9 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     setInput('')
     await postAndStream({ message })
   }
+
+  // 进行中思维链的自动展开态：有实质遥测内容且用户本轮未手动收起
+  const activeAutoExpanded = busy && activeThinking != null && hasThinkingContent(activeThinking) && !activeCollapsed
 
   return (
     <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh flex-col">
@@ -256,6 +279,17 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
                 ) : (
                   <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
                     <MarkdownBubble text={entry.text} />
+                    {entry.retryMessage ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void postAndStream({ message: entry.retryMessage! })}
+                        className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        重试
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -265,8 +299,11 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
             <ThinkingChain
               thinking={activeThinking ?? EMPTY_THINKING_TURN}
               active
-              expanded={expandedThinking === 'active'}
-              onToggle={() => setExpandedThinking((cur) => (cur === 'active' ? null : 'active'))}
+              // 生成中自动展开（有实质内容时），本轮结束后随消息定格自动收起；
+              // 用户在本轮内可手动收起/展开，下一轮自动复位
+              expanded={activeAutoExpanded}
+              onToggle={() => setActiveCollapsed(activeAutoExpanded)}
+              followScroll
             />
           ) : null}
 
