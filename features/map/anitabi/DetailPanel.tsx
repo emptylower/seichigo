@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import AttributionLink, { buildAnitabiBangumiHref, resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
+import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 import { L } from './shared'
 
 type DetailPointItem = {
@@ -200,7 +201,7 @@ export default function DetailPanel(props: DetailPanelProps) {
               <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                 {detail.card.cover ? (
                   <img
-                    src={detail.card.cover}
+                    src={toMapDisplayImageUrl(detail.card.cover, { kind: 'cover' })}
                     alt={detail.card.title}
                     width={96}
                     height={144}

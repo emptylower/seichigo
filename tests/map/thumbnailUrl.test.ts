@@ -47,9 +47,15 @@ describe('toCanvasSafeImageUrl', () => {
     )
   })
 
-  it('keeps image.anitabi.cn assets direct because they are CORS-friendly', () => {
+  it('keeps anitabi image assets direct but resolves them onto the delivery host', () => {
     expect(toCanvasSafeImageUrl('https://image.anitabi.cn/bangumi/290980.jpg')).toBe(
-      'https://image.anitabi.cn/bangumi/290980.jpg',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
+    )
+  })
+
+  it('resolves any anitabi subdomain canvas-safe url onto the delivery host', () => {
+    expect(toCanvasSafeImageUrl('https://image.anitabi.cn/ptheme/anitabi/full/1.webp')).toBe(
+      'https://img-tc.anitabi.cn/ptheme/anitabi/full/1.webp',
     )
   })
 
