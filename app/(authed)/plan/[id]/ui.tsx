@@ -49,8 +49,13 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
 
   function handleScroll() {
     const el = scrollRef.current
-    if (!el) return
-    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD_PX
+    const end = chatEndRef.current
+    if (!el || !end) return
+    // "在底部"的语义 = 对话流的末尾（chatEndRef）在视口底沿附近。
+    // 不能用量滚动容器绝对底部：DayCards 行程卡片在锚点之后且很高，
+    // 滚到对话末尾时离容器底部还差整个行程的高度，会被误判为"不在底部"而停止跟随。
+    const distanceToChatEnd = end.getBoundingClientRect().top - el.getBoundingClientRect().bottom
+    nearBottomRef.current = distanceToChatEnd < NEAR_BOTTOM_THRESHOLD_PX
   }
 
   // 仅当用户视口本就在底部附近时才跟随滚动，避免翻看历史时被拽回底部
@@ -307,12 +312,15 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
             />
           ) : null}
 
+          {/* 跟随滚动锚点必须在 DayCards 之前：行程卡片很高，锚点若在其后，
+              新消息/ask 卡片会被埋进行程上方、滚出视口（移动端上表现为"组件没弹出来"） */}
+          <div ref={chatEndRef} />
+
           {plan.days.length > 0 ? (
             <div className="pt-4">
               <DayCards plan={plan} planId={props.planId} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
             </div>
           ) : null}
-          <div ref={chatEndRef} />
         </div>
       </div>
 
