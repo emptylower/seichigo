@@ -707,6 +707,10 @@ model AnitabiPoint {
   uid            String?
   reviewUid      String?
   datasetVersion String
+  googlePlaceId         String?
+  /** resolved | not_found；null 表示从未尝试 */
+  googlePlaceStatus     String?
+  googlePlaceResolvedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -983,6 +987,7 @@ model TripPlan {
   dayCount       Int               @default(1)
   bangumiIds     Int[]             @default([])
   preferences    Json?
+  stage          String?
   agentBusyUntil DateTime?
   agentRunToken  String?
   createdAt      DateTime          @default(now())
@@ -990,6 +995,7 @@ model TripPlan {
   user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   days           TripPlanDay[]
   messages       TripPlanMessage[]
+  runLogs        TripPlanRunLog[]
 
   @@index([userId])
   @@index([status])
@@ -1035,4 +1041,84 @@ model TripPlanMessage {
   plan      TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@index([planId, createdAt])
+}
+
+/// plan agent 每回合的运行日志（M4 §7）：阶段、门控、补齐与工具调用摘要，
+/// 供回归分析与后续思维链持久化复用。前端暂不读取。
+model TripPlanRunLog {
+  id           String   @id @default(cuid())
+  planId       String
+  runToken     String?
+  turnIndex    Int
+  stage        String
+  enrichReport Json?
+  gateReport   Json?
+  toolCalls    Json?
+  modelUsage   Json?
+  durationMs   Int
+  createdAt    DateTime @default(now())
+  plan         TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+}
+
+model ExternalPlace {
+  id                String   @id @default(cuid())
+  provider          String   @default("google")
+  placeId           String
+  name              String
+  address           String?
+  lat               Float
+  lng               Float
+  mapsUri           String
+  photoReference    String?
+  photoAttribution  String?
+  photoMirrorKey    String?
+  photoMirrorStatus String   @default("none") // none | pending | mirrored | failed
+  photoMirroredAt   DateTime?
+  /** 最多 10 张照片：[{ photoReference, attribution }]；photoReference 列始终等于 photos[0] */
+  photos            Json?
+  fetchedAt         DateTime
+  lastUsedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  queries           ExternalPlaceQuery[]
+
+  @@unique([provider, placeId])
+}
+
+model ExternalPlaceQuery {
+  id              String        @id @default(cuid())
+  provider        String        @default("google")
+  normalizedQuery String
+  placeId         String
+  createdAt       DateTime      @default(now())
+  place           ExternalPlace @relation(fields: [provider, placeId], references: [provider, placeId], onDelete: Cascade)
+
+  @@unique([provider, normalizedQuery])
+  @@index([provider, placeId])
+}
+
+/// 管理员面板自定义 LLM 供应商（含从环境变量内化的内置供应商）。
+/// apiKeyCiphertext 为 AES-256-GCM 密文（v1.<iv>.<tag>.<data>，base64），永不外发。
+model LlmProvider {
+  id                  String   @id @default(cuid())
+  name                String
+  protocol            String // openai | anthropic
+  endpointUrl         String
+  apiKeyCiphertext    String?
+  apiKeyHint          String?
+  models              Json // LlmModelConfig[]
+  takeoverAgent       Boolean  @default(false)
+  takeoverTranslation Boolean  @default(false)
+  agentModel          String?
+  translationModel    String?
+  source              String   @default("custom") // env | custom
+  envKey              String? // 内化来源：plan_agent | gemini（防重复内化）
+  enabled             Boolean  @default(true)
+  lastTest            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([envKey])
 }

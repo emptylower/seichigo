@@ -1,81 +1,47 @@
 import { NextResponse } from 'next/server'
 import type { Session } from 'next-auth'
-import { isValidPhotoReference } from '@/lib/googlePlaces/places'
+import { isValidPhotoReference, isValidPlaceId } from '@/lib/googlePlaces/places'
+import {
+  buildPhotoRefCanonicalUrl,
+  buildPlacePhotoCanonicalUrl,
+  fetchGooglePlacePhoto,
+  MAX_PLACE_PHOTO_BYTES,
+  type GooglePlacePhotoFetchResult,
+} from '@/lib/googlePlaces/photoFetch'
+import { fetchPlacePhotos } from '@/lib/googlePlaces/photoMirror'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
 
 /**
- * Google Places 照片代理（M3）：浏览器只拿到 keyless 的 `/api/google/place-photo?ref=...`，
- * API key 只在本 handler 内部拼接。R2 镜像沿用 anitabi 的 mirror 体系：
- * - read-through：命中镜像直接返回，不打 Google；
+ * Google Places 照片代理（M3 + 地点库）：浏览器只拿到 keyless 的
+ * `/api/google/place-photo?placeId=...`（新）或 `?ref=...`（存量兼容），
+ * API key 只在 photoFetch 服务层内部拼接。R2 镜像沿用 anitabi 的 mirror 体系：
+ * - read-through：命中镜像直接返回，不打 Google（placeId 路径的 canonical 按 placeId 合成）；
+ * - placeId 路径引用过期时服务端用 Place Details 拉整组照片刷新一次并重试，浏览器无感；
  * - 后台镜像：上游成功后异步 put（canonical URL 不含 key，密钥永不落 R2 metadata）。
+ * 回归第四轮 A3：`i` 参数按序号取该地点的第 n 张照片（0..9）；A5 的点位兜底
+ * 图接口复用导出的 servePlacePhotoByPlaceId。
  */
 
-const FETCH_TIMEOUT_MS = 8_000
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-const PHOTO_HOST = 'https://maps.googleapis.com'
-const ALLOWED_MIME_PREFIX = 'image/'
 const RESPONSE_CACHE_CONTROL = 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800'
+const MAX_PHOTO_INDEX = 9
 
-/**
- * Google Place Photo 常见 302 到 Google 图片 CDN（lh3-lh6.googleusercontent.com
- * 及其区域变体）。这里精确枚举文档化的 host 集合：maps.googleapis.com 本身 +
- * lhN(.区域)?\.googleusercontent.com；每一跳重定向都重新校验协议与 host。
- */
-const GOOGLE_USERCONTENT_PHOTO_HOST = /^lh\d(-[a-z0-9]+)*\.googleusercontent\.com$/i
-
-function isAllowedPhotoHost(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase().replace(/\.$/, '')
-  return host === 'maps.googleapis.com' || GOOGLE_USERCONTENT_PHOTO_HOST.test(host)
-}
-
-/** 校验重定向目标：http(s)、无凭据、host 在文档化 Google 图片 host 集合内 */
-function isSafePhotoRedirectUrl(raw: string, base: URL): boolean {
-  let url: URL
-  try {
-    url = new URL(raw, base)
-  } catch {
-    return false
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
-  if (url.username || url.password) return false
-  return isAllowedPhotoHost(url.hostname)
-}
-
-export type PlacePhotoHandlerDeps = {
-  getSession: () => Promise<Session | null>
-  apiKey: string
-  bucket?: R2MirrorBucket
-  /** Cloudflare waitUntil（后台镜像不阻塞响应）；缺省时直接浮动 promise */
-  waitUntil?: (promise: Promise<unknown>) => void
-  fetchImpl?: typeof fetch
-}
-
-/**
- * 构建对 Google 的真实请求 URL（含 key）。仅服务端内存中存在；
- * canonical/镜像/日志一律使用 keyless 版本。
- */
-function buildUpstreamUrl(photoReference: string, maxWidth: number, apiKey: string): URL {
-  const url = new URL('/maps/api/place/photo', PHOTO_HOST)
-  url.searchParams.set('photoreference', photoReference)
-  url.searchParams.set('maxwidth', String(maxWidth))
-  url.searchParams.set('key', apiKey)
-  return url
-}
-
-/** keyless canonical URL：R2 mirror key 与 metadata 只依赖这个（不含任何密钥） */
-export function buildPhotoCanonicalUrl(photoReference: string, maxWidth: number): string {
-  const url = new URL('/maps/api/place/photo', PHOTO_HOST)
-  url.searchParams.set('photoreference', photoReference)
-  url.searchParams.set('maxwidth', String(maxWidth))
-  return url.toString()
-}
-
-function sanitizeMaxWidth(raw: string | null): number {
+export function sanitizeMaxWidth(raw: string | null): number {
   const value = String(raw ?? '').trim()
   if (!value) return 1600
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) return 1600
   return Math.min(2048, Math.max(200, Math.floor(parsed)))
+}
+
+/** 解析照片序号参数 i：缺省 0；非整数/负数/>9 返回 null（调用方回 400） */
+export function parsePhotoIndex(raw: string | null): number | null {
+  const value = String(raw ?? '').trim()
+  if (!value) return 0
+  if (!/^\d+$/.test(value)) return null
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_PHOTO_INDEX) return null
+  return parsed
 }
 
 function mirrorResponse(bytes: ArrayBuffer, mimeType: string, mirroredAt?: string): Response {
@@ -92,8 +58,90 @@ function mirrorResponse(bytes: ArrayBuffer, mimeType: string, mirroredAt?: strin
   })
 }
 
+/** photoFetch 的 typed 错误 → HTTP 状态（ref 与 placeId 路径共用） */
+function photoFetchErrorResponse(result: Extract<GooglePlacePhotoFetchResult, { ok: false }>): Response {
+  switch (result.status) {
+    case 'too_large':
+      return NextResponse.json({ error: '图片文件过大' }, { status: 413 })
+    case 'bad_type':
+      return NextResponse.json({ error: '文件类型不支持' }, { status: 415 })
+    case 'timeout':
+      return NextResponse.json({ error: '图片读取失败' }, { status: 504 })
+    case 'redirect':
+      return NextResponse.json({ error: '不支持的重定向' }, { status: 502 })
+    case 'too_many_redirects':
+      return NextResponse.json({ error: '重定向过多' }, { status: 508 })
+    default:
+      return NextResponse.json({ error: '图片读取失败' }, { status: 502 })
+  }
+}
+
+function upstreamResponse(bytes: ArrayBuffer, mimeType: string, canonicalUrl: string): Response {
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': mimeType,
+      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': RESPONSE_CACHE_CONTROL,
+      'X-Seichigo-Image-Source': 'google-place-photo-upstream',
+      'X-Original-Source': canonicalUrl,
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+}
+
+/** R2 read-through：命中且未超限时直接返回镜像响应，否则 null */
+async function readMirrored(bucket: R2MirrorBucket, canonicalUrl: string): Promise<Response | null> {
+  const mirrored = await getMirroredImage(bucket, canonicalUrl).catch(() => null)
+  if (mirrored && mirrored.bytes.byteLength <= MAX_PLACE_PHOTO_BYTES) {
+    return mirrorResponse(
+      mirrored.bytes,
+      mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
+      mirrored.customMetadata.mirroredAt || undefined,
+    )
+  }
+  return null
+}
+
+/**
+ * 上游成功后的共用收尾：响应 + 后台镜像（canonical 不含 key）。
+ * 镜像状态只在 put 真正成功后写 mirrored（含 key/mirroredAt）；put 失败写
+ * failed；无 bucket 时什么都不写（没有镜像就没有状态，保持 none）。
+ */
+function finishWithUpstream(
+  deps: { bucket?: R2MirrorBucket; waitUntil?: (promise: Promise<unknown>) => void },
+  bytes: ArrayBuffer,
+  mimeType: string,
+  canonicalUrl: string,
+  onMirror?: (mirror: { key: string } | null) => Promise<unknown>,
+): Response {
+  if (deps.bucket) {
+    const write = putMirroredImage(deps.bucket, canonicalUrl, bytes, mimeType, 'lazy')
+      .then(
+        (written) => onMirror?.({ key: written.key }),
+        () => onMirror?.(null),
+      )
+      .catch(() => undefined)
+    if (deps.waitUntil) deps.waitUntil(write)
+    else void write
+  }
+  return upstreamResponse(bytes, mimeType, canonicalUrl)
+}
+
+export type PlacePhotoHandlerDeps = {
+  getSession: () => Promise<Session | null>
+  apiKey: string
+  bucket?: R2MirrorBucket
+  /** 地点库（placeId 寻址路径依赖；缺省时该路径返回 503） */
+  store?: ExternalPlaceStore
+  /** Cloudflare waitUntil（后台镜像不阻塞响应）；缺省时直接浮动 promise */
+  waitUntil?: (promise: Promise<unknown>) => void
+  fetchImpl?: typeof fetch
+}
+
 export function createPlacePhotoHandlers(deps: PlacePhotoHandlerDeps) {
   const fetchImpl = deps.fetchImpl ?? fetch
+
   return {
     async GET(req: Request) {
       const session = await deps.getSession()
@@ -103,7 +151,24 @@ export function createPlacePhotoHandlers(deps: PlacePhotoHandlerDeps) {
 
       const url = new URL(req.url)
       const ref = String(url.searchParams.get('ref') || '').trim()
+      const placeId = String(url.searchParams.get('placeId') || '').trim()
       const maxWidth = sanitizeMaxWidth(url.searchParams.get('maxwidth'))
+      const index = parsePhotoIndex(url.searchParams.get('i'))
+      if (index === null) {
+        return NextResponse.json({ error: '图片参数错误' }, { status: 400 })
+      }
+      // 带 placeId 一律走 placeId 寻址路径（忽略 ref，杜绝未校验的 ref 混入）；
+      // 此时 placeId 本身必须合法。只有不带 placeId 时才按 ref 校验走存量路径。
+      if (placeId) {
+        if (!isValidPlaceId(placeId)) {
+          return NextResponse.json({ error: '图片参数错误' }, { status: 400 })
+        }
+        return servePlacePhotoByPlaceId(deps, placeId, maxWidth, index)
+      }
+      // R10：ref= 是存量兼容路径，只支持第 0 张——序号寻址必须走地点库（placeId 路径）
+      if (index > 0) {
+        return NextResponse.json({ error: '图片参数错误' }, { status: 400 })
+      }
       if (!isValidPhotoReference(ref)) {
         return NextResponse.json({ error: '图片参数错误' }, { status: 400 })
       }
@@ -111,96 +176,112 @@ export function createPlacePhotoHandlers(deps: PlacePhotoHandlerDeps) {
         return NextResponse.json({ error: '图片服务未配置' }, { status: 503 })
       }
 
-      const canonicalUrl = buildPhotoCanonicalUrl(ref, maxWidth)
+      const canonicalUrl = buildPhotoRefCanonicalUrl(ref, maxWidth)
 
       // read-through：R2 命中就不打 Google
       if (deps.bucket) {
-        const mirrored = await getMirroredImage(deps.bucket, canonicalUrl).catch(() => null)
-        if (mirrored && mirrored.bytes.byteLength <= MAX_IMAGE_BYTES) {
-          return mirrorResponse(
-            mirrored.bytes,
-            mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
-            mirrored.customMetadata.mirroredAt || undefined,
-          )
-        }
+        const mirrored = await readMirrored(deps.bucket, canonicalUrl)
+        if (mirrored) return mirrored
       }
 
-      const upstreamUrl = buildUpstreamUrl(ref, maxWidth, deps.apiKey)
-      let upstream: Response
-      try {
-        upstream = await fetchImpl(upstreamUrl.toString(), {
-          redirect: 'manual',
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-          headers: { accept: 'image/*,*/*;q=0.8' },
-        })
-      } catch {
-        return NextResponse.json({ error: '图片读取失败' }, { status: 504 })
-      }
+      const fetched = await fetchGooglePlacePhoto({ photoReference: ref, maxWidth, apiKey: deps.apiKey, fetchImpl })
+      if (!fetched.ok) return photoFetchErrorResponse(fetched)
 
-      // Google Place Photo 对无权限/无效 ref 返回 403/400；成功时通常 302 到
-      // Google 图片 CDN（lh3-lh6.googleusercontent.com 区域变体）——逐跳校验
-      // host 集合后再跟随，非白名单目标一律拒绝
-      let response = upstream
-      let hops = 0
-      while (response.status >= 300 && response.status < 400 && hops < 3) {
-        hops += 1
-        const location = response.headers.get('location')
-        if (!location) return NextResponse.json({ error: '图片读取失败' }, { status: 502 })
-        if (!isSafePhotoRedirectUrl(location, upstreamUrl)) {
-          return NextResponse.json({ error: '不支持的重定向' }, { status: 502 })
-        }
-        try {
-          response = await fetchImpl(new URL(location, upstreamUrl).toString(), {
-            redirect: 'manual',
-            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-            headers: { accept: 'image/*,*/*;q=0.8' },
-          })
-        } catch {
-          return NextResponse.json({ error: '图片读取失败' }, { status: 504 })
-        }
-      }
-      if (response.status >= 300 && response.status < 400) {
-        return NextResponse.json({ error: '重定向过多' }, { status: 508 })
-      }
-
-      if (!response.ok) {
-        return NextResponse.json({ error: '图片读取失败' }, { status: 502 })
-      }
-
-      const mimeType = String(response.headers.get('content-type') || '').split(';')[0]?.trim().toLowerCase()
-      if (!mimeType || !mimeType.startsWith(ALLOWED_MIME_PREFIX)) {
-        return NextResponse.json({ error: '文件类型不支持' }, { status: 415 })
-      }
-
-      const declaredLength = Number(response.headers.get('content-length'))
-      if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
-        return NextResponse.json({ error: '图片文件过大' }, { status: 413 })
-      }
-
-      const bytes = await response.arrayBuffer().catch(() => null)
-      if (!bytes) return NextResponse.json({ error: '图片读取失败' }, { status: 502 })
-      if (bytes.byteLength > MAX_IMAGE_BYTES) {
-        return NextResponse.json({ error: '图片文件过大' }, { status: 413 })
-      }
-
-      // 后台镜像（失败不影响展示）：canonical URL 不含 key，密钥不会进入 R2 metadata
-      if (deps.bucket) {
-        const write = putMirroredImage(deps.bucket, canonicalUrl, bytes, mimeType, 'lazy').catch(() => undefined)
-        if (deps.waitUntil) deps.waitUntil(write)
-        else void write
-      }
-
-      return new Response(bytes, {
-        status: 200,
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Length': String(bytes.byteLength),
-          'Cache-Control': RESPONSE_CACHE_CONTROL,
-          'X-Seichigo-Image-Source': 'google-place-photo-upstream',
-          'X-Original-Source': canonicalUrl,
-          'X-Content-Type-Options': 'nosniff',
-        },
-      })
+      return finishWithUpstream(deps, fetched.bytes, fetched.mimeType, canonicalUrl)
     },
   }
+}
+
+/**
+ * placeId 寻址路径（A3 起导出，A5 点位兜底图接口复用）：
+ * 库取第 index 张照片引用 → R2 read-through → 上游（过期则 Place Details
+ * 拉整组照片、updatePhotos 回写后按 index 重试）。
+ */
+export async function servePlacePhotoByPlaceId(
+  deps: PlacePhotoHandlerDeps,
+  placeId: string,
+  maxWidth: number,
+  index = 0,
+): Promise<Response> {
+  const fetchImpl = deps.fetchImpl ?? fetch
+  if (!deps.store) {
+    return NextResponse.json({ error: '地点库未配置' }, { status: 503 })
+  }
+  if (!deps.apiKey) {
+    return NextResponse.json({ error: '图片服务未配置' }, { status: 503 })
+  }
+
+  const record = await deps.store.findByPlaceId('google', placeId).catch(() => null)
+  if (!record) {
+    return NextResponse.json({ error: '地点或其照片不存在' }, { status: 404 })
+  }
+  const photos = record.photos ?? (record.photo ? [{ photoReference: record.photo.photoReference, attribution: record.photo.attribution }] : [])
+  const current = photos[index]
+  if (!current) {
+    return NextResponse.json({ error: '地点或其照片不存在' }, { status: 404 })
+  }
+
+  const canonicalUrl = buildPlacePhotoCanonicalUrl(placeId, maxWidth, index)
+
+  // read-through：R2 命中就不打 Google（placeId canonical 与引用解耦，过期不影响）
+  if (deps.bucket) {
+    const mirrored = await readMirrored(deps.bucket, canonicalUrl)
+    if (mirrored) return mirrored
+  }
+
+  let fetched = await fetchGooglePlacePhoto({
+    photoReference: current.photoReference,
+    maxWidth,
+    apiKey: deps.apiKey,
+    fetchImpl,
+  })
+
+  // 引用过期（denied/not_found）→ Place Details 拉整组照片、updatePhotos 回写，
+  // 再按 index 重试；浏览器无感
+  if (!fetched.ok && (fetched.status === 'denied' || fetched.status === 'not_found')) {
+    const refreshed = await fetchPlacePhotos({ placeId, apiKey: deps.apiKey, fetchImpl })
+    if (refreshed && refreshed.length > 0) {
+      await deps.store
+        .updatePhotos('google', placeId, refreshed)
+        .catch(() => undefined)
+      const retryRef = refreshed[index]?.photoReference
+      if (retryRef) {
+        fetched = await fetchGooglePlacePhoto({
+          photoReference: retryRef,
+          maxWidth,
+          apiKey: deps.apiKey,
+          fetchImpl,
+        })
+      }
+    }
+  }
+
+  if (!fetched.ok) {
+    // R6：镜像状态列没有序号维度——只有 index 0 的失败才落 failed
+    if (index === 0) {
+      void deps.store.setPhotoMirror('google', placeId, { status: 'failed' }).catch(() => undefined)
+    }
+    return photoFetchErrorResponse(fetched)
+  }
+
+  // R6：index > 0 的上游成功仍然 put R2（canonical 带 i），但不改 photoMirror* 列
+  return finishWithUpstream(
+    deps,
+    fetched.bytes,
+    fetched.mimeType,
+    canonicalUrl,
+    index === 0
+      ? (mirror) =>
+          deps
+            .store!
+            .setPhotoMirror(
+              'google',
+              placeId,
+              mirror
+                ? { status: 'mirrored', key: mirror.key, mirroredAt: new Date() }
+                : { status: 'failed' },
+            )
+            .catch(() => undefined)
+      : undefined,
+  )
 }
