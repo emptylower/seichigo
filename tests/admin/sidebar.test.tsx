@@ -34,6 +34,13 @@ describe('Sidebar', () => {
     expect(screen.getByText('SEO 管理')).toBeInTheDocument()
   })
 
+  it('renders 模型接入 link under 运营与维护', () => {
+    mocks.usePathname.mockReturnValue('/admin/dashboard')
+    render(<Sidebar />)
+    const link = screen.getByText('模型接入').closest('a')
+    expect(link).toHaveAttribute('href', '/admin/llm')
+  })
+
   it('highlights active link', () => {
     mocks.usePathname.mockReturnValue('/admin/review')
     render(<Sidebar />)

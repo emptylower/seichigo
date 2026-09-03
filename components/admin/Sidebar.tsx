@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Wrench,
   MessageSquareWarning,
+  Cpu,
 } from "lucide-react"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -97,6 +98,11 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           title: "维护工具",
           href: "/admin/maintenance",
           icon: Wrench,
+        },
+        {
+          title: "模型接入",
+          href: "/admin/llm",
+          icon: Cpu,
         },
       ],
     },
