@@ -11,7 +11,7 @@ import {
 } from '@/lib/anitabi/handlers/imageServeRenderCache'
 import { resolveProxyTargetUrl } from '@/lib/anitabi/handlers/imageServeTarget'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
-import { computeCanonicalImageUrl, computeMirrorKey, resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
+import { computeCanonicalImageUrl, computeMirrorKey, normalizeBgmApiRelayUrl, resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -569,8 +569,8 @@ export async function serveImageRequest(
       outcome: 'cache_miss',
     })
   }
-  const target = resolveProxyTargetUrl(req)
-  if (!target) {
+  const parsedTarget = resolveProxyTargetUrl(req)
+  if (!parsedTarget) {
     if (mode === 'render') {
       emitProxyEvent({
         stage: 'proxy_target_parse',
@@ -580,6 +580,9 @@ export async function serveImageRequest(
     }
     return NextResponse.json({ error: '参数错误' }, { status: 400 })
   }
+  // bgm-api 中转域 403：旧缓存页面里残留的 bgm-api 代理请求也在这里归一回
+  // lain.bgm.tv（属于已允许的 bgm.tv 域），再走 allow 校验与抓取。
+  const target = normalizeBgmApiRelayUrl(parsedTarget)
   const renderTimeoutMs = mode === 'render' ? resolveRenderTimeoutMs(target) : DOWNLOAD_FETCH_TIMEOUT_MS
   const readEnabledValue = deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED
   const renderR2ReadEnabled = mode === 'render' && Boolean(deps.env?.MAP_IMAGE_CACHE) && readEnabledValue === '1'

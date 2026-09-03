@@ -33,3 +33,7 @@ bundle.js
 *.tsbuildinfo
 .omx/
 .omc/
+
+# Claude Code 本地技能/会话状态（同 .omc 先例，不入库）
+.claude/skills/
+skills-lock.json

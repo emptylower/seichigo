@@ -31,6 +31,27 @@ describe('enumerateBangumiCoverVariants', () => {
     ])
   })
 
+  it('rewrites bgm-api relay covers to the lain.bgm.tv variant set', () => {
+    // bgm-api.anitabi.cn 命中 isAnitabiHost 但并非 anitabi 图片 CDN —— 必须先归一回
+    // lain.bgm.tv 再枚举，否则会因 /bangumi/ 路径检查返回空列表、丢掉全部镜像变体。
+    expect(
+      enumerateBangumiCoverVariants('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg'),
+    ).toEqual([
+      {
+        label: 'cover-m',
+        url: 'https://lain.bgm.tv/pic/cover/m/18/af/495291_Qd97X.jpg',
+      },
+    ])
+    expect(
+      enumerateBangumiCoverVariants('https://bgm-api.anitabi.cn/img/pic/cover/l/a1/d3/325767_u3pvR.jpg'),
+    ).toEqual([
+      {
+        label: 'cover-m',
+        url: 'https://lain.bgm.tv/pic/cover/m/a1/d3/325767_u3pvR.jpg',
+      },
+    ])
+  })
+
   it('removes conflicting resize params from apex and /images anitabi cover inputs', () => {
     expect(
       enumerateBangumiCoverVariants(

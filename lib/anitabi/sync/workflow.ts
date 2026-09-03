@@ -16,7 +16,7 @@ import {
 } from '@/lib/anitabi/sync/mirrorReconcile'
 import { enqueueMapTranslationTasksForBangumiIds } from '@/lib/translation/mapTaskEnqueue'
 
-function nowVersion(d: Date): string {
+export function nowVersion(d: Date): string {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
 }
 
@@ -36,7 +36,7 @@ function getSyncConcurrency(): number {
  * 相邻两次上游请求的最小间隔（毫秒）。
  * 官方对「人类访问频率」的要求没有给具体数字，起步取 1s/次，可用环境变量放宽或收紧。
  */
-function getSyncMinIntervalMs(): number {
+export function getSyncMinIntervalMs(): number {
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MIN_INTERVAL_MS || ''), 10)
   if (!Number.isFinite(raw)) return 1000
   return clampInt(raw, 0, 60000)
@@ -51,7 +51,7 @@ function sleep(ms: number): Promise<void> {
  * 点位含不可再生字段，超过此比例视为上游响应异常而非真实删除，本轮跳过删除。
  * 0 表示完全禁止删除；1 表示不设限（回到旧行为，不建议）。
  */
-function getMaxPointDeletionRatio(): number {
+export function getMaxPointDeletionRatio(): number {
   const raw = Number.parseFloat(String(process.env.ANITABI_SYNC_MAX_POINT_DELETION_RATIO || ''))
   if (!Number.isFinite(raw)) return 0.2
   return Math.max(0, Math.min(1, raw))
@@ -62,7 +62,7 @@ function getMaxPointDeletionRatio(): number {
  * 作用是让该作品排在正常作品之后、但仍靠前，下一轮能较快重试而不饿死其他作品。
  * 默认 6 小时：全量轮转一遍约需数小时，这个量级能保证「下一轮就重试」。
  */
-function getIncompleteRetryBackoffMs(): number {
+export function getIncompleteRetryBackoffMs(): number {
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_INCOMPLETE_RETRY_BACKOFF_MS || ''), 10)
   if (!Number.isFinite(raw)) return 6 * 60 * 60 * 1000
   return clampInt(raw, 0, 30 * 24 * 60 * 60 * 1000)
@@ -77,18 +77,18 @@ function getSyncMaxRowsPerRun(overrideValue?: number | null): number | null {
   return clampInt(raw, 1, 10000)
 }
 
-function getSyncMaxRuntimeMs(): number {
+export function getSyncMaxRuntimeMs(): number {
   const raw = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_RUNTIME_MS || ''), 10)
   if (Number.isFinite(raw)) return clampInt(raw, 1000, 120000)
   if (process.env.VERCEL === '1') return 7000
   return 20000
 }
 
-function isMirrorReconcileEnabled(): boolean {
+export function isMirrorReconcileEnabled(): boolean {
   return String(process.env.MAP_IMAGE_MIRROR_RECONCILE_ENABLED || '').trim() === '1'
 }
 
-async function upsertCursor(
+export async function upsertCursor(
   prisma: PrismaClient,
   sourceName: string,
   data: { value?: string | null; etag?: string | null; lastModified?: string | null }

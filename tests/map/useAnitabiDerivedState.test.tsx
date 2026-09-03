@@ -36,9 +36,10 @@ describe('useAnitabiDerivedState selectedPointImage', () => {
     )
 
     expect(result.current.selectedPointImage).toMatchObject({
-      // E2 双重编码：inline 代理候选的 url 参数比单次编码再多一层
+      // E2 双重编码：inline 代理候选的 url 参数比单次编码再多一层；
+      // 预览图直连走投递 host（img-tc.anitabi.cn，main 的 df23b4f）。
       inlineUrl: `http://localhost:3000/api/anitabi/image-render?url=${encodeURIComponent(encodeURIComponent('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?plan=h160'))}`,
-      previewUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
+      previewUrl: 'https://img-tc.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
       downloadUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg',
     })
   })

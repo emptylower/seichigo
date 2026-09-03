@@ -31,6 +31,7 @@ import type {
   PointFeatureProperties,
   UrlState,
 } from './shared'
+import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 
 function parseUrlState(): UrlState {
@@ -124,6 +125,8 @@ function normalizePointImageUrl(input: string | null | undefined): string | null
         url.searchParams.set('w', '640')
         url.searchParams.set('q', '80')
       }
+      // image.anitabi.cn 直连 403：anitabi 图片换当前投递 host 再加载。
+      return resolveAnitabiDeliveryUrl(url).toString()
     }
     return url.toString()
   } catch {
@@ -165,7 +168,8 @@ function normalizePointImageSaveUrl(input: string | null | undefined): string | 
 function normalizeCoverImageUrl(input: string | null | undefined): string | null {
   const raw = String(input || '').trim()
   if (!raw) return null
-  return raw
+  // 封面预热必须与真实展示走同一条 URL 链路（投递 host / 代理），否则预热命中不了浏览器缓存。
+  return toMapDisplayImageUrl(raw, { kind: 'cover' })
 }
 
 function createRequestSignalWithTimeout(

@@ -13,6 +13,7 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@seichigo/prisma-client-runtime'
 import { runAnitabiSync } from '../lib/anitabi/sync/workflow'
+import { runAnitabiBulkSync } from '../lib/anitabi/sync/bulkWorkflow'
 import type { AnitabiApiDeps } from '../lib/anitabi/api'
 import type { AnitabiSyncMode } from '../lib/anitabi/types'
 
@@ -35,18 +36,22 @@ const deps = {
   getSiteBase: () => String(process.env.ANITABI_SITE_BASE_URL).replace(/\/+$/, ''),
 } as unknown as AnitabiApiDeps
 
-console.log(`\n=== running runAnitabiSync(mode=${mode}) ===`)
-console.log(`  db       ${dbUrl}`)
-console.log(`  apiBase  ${deps.getApiBase()}`)
-console.log(`  siteBase ${deps.getSiteBase()}\n`)
+console.log(`\n=== running sync (mode=${mode}) ===`)
+console.log(`  db        ${dbUrl}`)
+console.log(`  apiBase   ${deps.getApiBase()}`)
+console.log(`  siteBase  ${deps.getSiteBase()}`)
+console.log(`  bulkBase  ${process.env.ANITABI_BULK_BASE_URL || 'https://w.junreimap.com (default)'}\n`)
 
 const t0 = Date.now()
 const maxRows = Number.parseInt(String(process.env.ANITABI_SYNC_MAX_ROWS_PER_RUN || ''), 10)
+const useApi = String(process.env.ANITABI_SYNC_SOURCE || 'bulk').trim().toLowerCase() === 'api'
 try {
-  const report = await runAnitabiSync(deps, {
-    mode,
-    maxRowsPerRun: Number.isFinite(maxRows) ? maxRows : 3,
-  })
+  const report = useApi
+    ? await runAnitabiSync(deps, {
+        mode,
+        maxRowsPerRun: Number.isFinite(maxRows) ? maxRows : 3,
+      })
+    : await runAnitabiBulkSync(deps, { mode })
   console.log(`\n=== report (${Date.now() - t0}ms) ===`)
   console.log(JSON.stringify(report, null, 2))
 } catch (e: any) {

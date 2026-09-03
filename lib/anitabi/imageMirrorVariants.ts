@@ -1,4 +1,4 @@
-import { computeCanonicalImageUrl, isAnitabiPointImagePath } from '@/lib/anitabi/imageNormalize'
+import { computeCanonicalImageUrl, isAnitabiPointImagePath, normalizeBgmApiRelayUrl } from '@/lib/anitabi/imageNormalize'
 
 export type MirrorVariant = { label: string; url: string }
 
@@ -61,8 +61,12 @@ function replaceBgmCoverSegment(pathname: string, size: 'l' | 'm'): string | nul
 }
 
 export function enumerateBangumiCoverVariants(rawUrl: string | null | undefined): MirrorVariant[] {
-  const parsed = tryParseAbsoluteHttpUrl(rawUrl)
-  if (!parsed) return []
+  const parsedInput = tryParseAbsoluteHttpUrl(rawUrl)
+  if (!parsedInput) return []
+  // bgm-api.anitabi.cn 命中 isAnitabiHost 的 endsWith 判断但并非 anitabi 图片 CDN，
+  // 而是 Bangumi 封面中转 —— 先归一回 lain.bgm.tv 再走 bgm 分支枚举，
+  // 保证 canonical / R2 key 与旧镜像零漂移。
+  const parsed = normalizeBgmApiRelayUrl(parsedInput)
 
   try {
     if (isAnitabiHost(parsed.hostname)) {

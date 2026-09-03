@@ -46,6 +46,27 @@ export function resolveAnitabiDeliveryUrl(input: string | URL): URL {
   return url
 }
 
+const BGM_API_RELAY_HOST = 'bgm-api.anitabi.cn'
+const BANGUMI_COVER_ORIGIN_HOST = 'lain.bgm.tv'
+
+/**
+ * bgm-api.anitabi.cn 是 anitabi 对 Bangumi 封面源 lain.bgm.tv 的中转域，
+ * 2026-08-31 起对该域所有请求返回 403（Cloudflare 拦截），站内代理抓它也 502。
+ * 路径可直接映射回官方源：host 换成 lain.bgm.tv；若 pathname 以 /img/pic/
+ * 开头，去掉开头的 /img 挂载前缀；其余 path 与 query 原样保留。
+ * 非 bgm-api host 原样返回（返回的是新 URL 实例，不改动入参）。
+ */
+export function normalizeBgmApiRelayUrl(input: string | URL): URL {
+  const url = input instanceof URL ? new URL(input.toString()) : new URL(input)
+  if (url.hostname.toLowerCase() === BGM_API_RELAY_HOST) {
+    url.hostname = BANGUMI_COVER_ORIGIN_HOST
+    if (url.pathname.startsWith('/img/pic/')) {
+      url.pathname = url.pathname.slice('/img'.length)
+    }
+  }
+  return url
+}
+
 function getBaseOrigin(): string {
   return typeof window !== 'undefined' ? window.location.origin : DEFAULT_BASE_ORIGIN
 }
@@ -194,7 +215,9 @@ export function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKi
 }
 
 export function computeCanonicalImageUrl(input: string): string {
-  const url = parseAbsoluteHttpUrl(input)
+  // bgm-api 中转 URL 先归一回 lain.bgm.tv 官方源 —— canonical / R2 mirror key
+  // 必须与旧镜像（基于 lain.bgm.tv canonical）零漂移，兜底镜像才能命中。
+  const url = normalizeBgmApiRelayUrl(parseAbsoluteHttpUrl(input))
   normalizeBangumiCoverVariant(url, 'cover')
   normalizeAnitabiMirrorUrl(url)
   stripCanonicalQueryParams(url)

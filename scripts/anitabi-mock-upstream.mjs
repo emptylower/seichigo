@@ -73,6 +73,37 @@ const CF_BLOCK_BODY =
   '<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head>' +
   '<body>Sorry, you have been blocked. You are unable to access anitabi.cn</body></html>'
 
+// —— bulk 数据包路由（与 lib/anitabi/source/bulkDecode.ts 的字段表一一对应）——
+const BULK_IDS = [115908, 272510]
+const BULK_MODIFIED = Date.now()
+
+function bulkIndexRow(id) {
+  return [
+    id, `作品 ${id}`, `Work ${id}`, `Subject ${id}`, '宇治市', '#02a7bd',
+    `/images/bangumi/${id}.jpg`, 0, 'TV',
+    34.906, 135.812, 12.38,
+    // pointsFlat：pid, lat, lng, priority
+    [`${id}p1`, 35.0503, 135.7664, 1, `${id}p2`, 35.0511, 135.7601, 2],
+    0, ['tag1'], 999, 0, 0,
+  ]
+}
+
+function bulkPageEntry(id) {
+  const point = (pid, img) => [
+    pid, `ポイント ${pid}`, `点位 ${pid}`, 0, 0, 42,
+    img, 0, 1, 120, 'mock mark', 'mock-origin', 0, 'mock folder', 7,
+  ]
+  return [
+    id,
+    [`/images/ptheme/${id}.webp`, [`${id}p1`, `${id}p2`], BULK_MODIFIED, 100, 76],
+    [
+      point(`${id}p1`, `/images/points/${id}/${id}p1_123.jpg`),
+      point(`${id}p2`, `/images/points/${id}/${id}p2_456.jpg`),
+    ],
+    BULK_MODIFIED,
+  ]
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
   const path = url.pathname
@@ -93,6 +124,16 @@ const server = http.createServer((req, res) => {
     type = 'application/json; charset=utf-8'
     body = JSON.stringify(pointsDetailFor(Number(m[1])))
     verdict = 'OK (documented)'
+  } else if (path === '/d/g.json') {
+    status = 200
+    type = 'application/json; charset=utf-8'
+    body = JSON.stringify([BULK_IDS.map(bulkIndexRow), 250, BULK_MODIFIED])
+    verdict = 'OK bulk-index'
+  } else if (path === '/d/g0.json') {
+    status = 200
+    type = 'application/json; charset=utf-8'
+    body = JSON.stringify(BULK_IDS.map(bulkPageEntry))
+    verdict = 'OK bulk-page-0'
   }
 
   requestLog.push({ path: path + (url.search || ''), status, verdict })

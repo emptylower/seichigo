@@ -1,5 +1,6 @@
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
 import { runAnitabiSync } from '@/lib/anitabi/sync/workflow'
+import { runAnitabiBulkSync } from '@/lib/anitabi/sync/bulkWorkflow'
 
 function parseMode(argv: string[]): 'full' | 'delta' | 'dryRun' {
   const raw = String(argv[2] || 'delta').trim().toLowerCase()
@@ -11,7 +12,10 @@ function parseMode(argv: string[]): 'full' | 'delta' | 'dryRun' {
 async function main() {
   const mode = parseMode(process.argv)
   const deps = await getAnitabiApiDeps()
-  const report = await runAnitabiSync(deps, { mode })
+  const useApi = String(process.env.ANITABI_SYNC_SOURCE || 'bulk').trim().toLowerCase() === 'api'
+  const report = useApi
+    ? await runAnitabiSync(deps, { mode })
+    : await runAnitabiBulkSync(deps, { mode })
   console.log(JSON.stringify(report, null, 2))
   if (report.status !== 'ok') {
     process.exit(1)

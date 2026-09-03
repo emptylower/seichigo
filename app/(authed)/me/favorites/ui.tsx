@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
 
 type FavoriteDbItem = {
   source: 'db'
@@ -173,7 +174,7 @@ export default function FavoritesClient() {
                 <div className="relative isolate aspect-[16/10] overflow-hidden">
                   {item.cover ? (
                     <img
-                      src={item.cover}
+                      src={toMapDisplayImageUrl(item.cover, { kind: 'cover' })}
                       alt={item.title}
                       loading="lazy"
                       decoding="async"

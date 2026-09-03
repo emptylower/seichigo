@@ -19,6 +19,7 @@
     "seo:rank": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-rank.ts",
     "seo:spoke-factory": "npx ts-node --project tsconfig.node.json -r tsconfig-paths/register scripts/seo-spoke-factory.ts",
     "anitabi:sync": "npx ts-node -T --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-sync.ts",
+    "anitabi:repair-covers": "npx ts-node -T --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-repair-cover-hosts.ts",
     "i18n:coverage": "npx tsx scripts/measure-i18n-coverage.ts",
     "glossary:build": "npx tsx scripts/build-glossary.ts",
     "db:generate": "prisma generate",
