@@ -85,7 +85,7 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       getMapDisplayImageCandidates('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg', { kind: 'cover' }),
     ).toEqual([
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2F18%2Faf%2F495291_Qd97X.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252F18%252Faf%252F495291_Qd97X.jpg',
     ])
   })
 
@@ -95,8 +95,8 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       getMapDisplayImageCandidates('https://bgm-api.anitabi.cn/img/pic/cover/l/a1/d3/325767_u3pvR.jpg', { kind: 'cover' }),
     ).toEqual([
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fa1%2Fd3%2F325767_u3pvR.jpg',
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fa1%2Fd3%2F325767_u3pvR.jpg&_retry=1',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fa1%252Fd3%252F325767_u3pvR.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fa1%252Fd3%252F325767_u3pvR.jpg&_retry=1',
       'https://lain.bgm.tv/pic/cover/m/a1/d3/325767_u3pvR.jpg',
     ])
   })
@@ -105,7 +105,7 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       toCanvasSafeImageUrl('https://bgm-api.anitabi.cn/pic/cover/l/18/af/495291_Qd97X.jpg'),
     ).toBe(
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fl%2F18%2Faf%2F495291_Qd97X.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fl%252F18%252Faf%252F495291_Qd97X.jpg',
     )
   })
 

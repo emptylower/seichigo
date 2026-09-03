@@ -42,7 +42,7 @@ describe('media normalizePointImageUrl / normalizeCoverImageUrl delivery host', 
     expect(normalizeCoverImageUrl(null)).toBe(null)
     expect(normalizeCoverImageUrl('  ')).toBe(null)
     expect(normalizeCoverImageUrl('https://lain.bgm.tv/pic/cover/l/b8/0d/513345_jv4wM.jpg')).toBe(
-      'http://localhost:3000/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fb8%2F0d%2F513345_jv4wM.jpg',
+      'http://localhost:3000/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fb8%252F0d%252F513345_jv4wM.jpg',
     )
   })
 })
