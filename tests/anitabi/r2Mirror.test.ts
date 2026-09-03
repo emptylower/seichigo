@@ -93,7 +93,7 @@ async function resolveKey(rawUrl: string, mimeType: string): Promise<string> {
 describe('r2 mirror client', () => {
   it('stores mirrored objects with canonical metadata and content type', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320&__mi_request=req-1'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l&__mi_request=req-1'
     const bytes = encodeBytes('hello')
     const canonicalUrl = computeCanonicalImageUrl(rawUrl)
     const key = await computeMirrorKey(canonicalUrl, 'image/jpeg')
@@ -118,7 +118,7 @@ describe('r2 mirror client', () => {
 
   it('skips overwriting fresh objects within seven days', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const firstBytes = encodeBytes('first')
     const secondBytes = encodeBytes('second')
     const key = await resolveKey(rawUrl, 'image/jpeg')
@@ -142,7 +142,7 @@ describe('r2 mirror client', () => {
 
   it('overwrites stale mirrored metadata', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const key = await resolveKey(rawUrl, 'image/jpeg')
 
     await putMirroredImage(bucket, rawUrl, encodeBytes('stale'), 'image/jpeg', 'lazy')
@@ -166,7 +166,7 @@ describe('r2 mirror client', () => {
 
   it('allows callers to abort after freshness checks and before writing', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const bytes = encodeBytes('fresh')
     const canonicalUrl = computeCanonicalImageUrl(rawUrl)
     const key = await computeMirrorKey(canonicalUrl, 'image/jpeg')
@@ -191,7 +191,7 @@ describe('r2 mirror client', () => {
 
   it('overwrites invalid mirrored metadata timestamps', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const key = await resolveKey(rawUrl, 'image/jpeg')
 
     await putMirroredImage(bucket, rawUrl, encodeBytes('invalid'), 'image/jpeg', 'lazy')
@@ -208,7 +208,7 @@ describe('r2 mirror client', () => {
 
   it('overwrites future mirrored metadata timestamps', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const key = await resolveKey(rawUrl, 'image/jpeg')
 
     await putMirroredImage(bucket, rawUrl, encodeBytes('future'), 'image/jpeg', 'lazy')
@@ -226,7 +226,7 @@ describe('r2 mirror client', () => {
   it('returns null when a mirrored image is missing', async () => {
     const bucket = new FakeBucket()
 
-    await expect(getMirroredImage(bucket, 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320')).resolves.toBeNull()
+    await expect(getMirroredImage(bucket, 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l')).resolves.toBeNull()
   })
 
   it('returns mirrored bytes, metadata, and content type on hit', async () => {
@@ -295,7 +295,7 @@ describe('r2 mirror client', () => {
 
   it('returns null when bucket.get throws', async () => {
     const bucket = new FakeBucket()
-    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320'
+    const rawUrl = 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l'
     const canonicalUrl = computeCanonicalImageUrl(rawUrl)
     const key = await computeMirrorKey(canonicalUrl, 'image/jpeg')
 

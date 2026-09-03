@@ -1,3 +1,4 @@
+import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
 
 const DEFAULT_USER_AGENT = 'SeichiGoMirror/1.0 (+https://seichigo.com)'
@@ -194,7 +195,9 @@ export async function processSeedBatch(
       const timeout = createFetchTimeout()
 
       try {
-        const response = await fetch(item.canonicalUrl, {
+        // 抓取走当前投递域（img-tc.anitabi.cn）；R2 key 与状态表仍用 canonical，
+        // key 零漂移。canonical host（image.anitabi.cn）对大陆外 IP 一律 403。
+        const response = await fetch(resolveAnitabiDeliveryUrl(new URL(item.canonicalUrl)).toString(), {
           headers: { 'user-agent': userAgent },
           signal: timeout.signal,
         })

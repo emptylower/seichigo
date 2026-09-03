@@ -7,6 +7,7 @@ import { computeMirrorKey } from '@/lib/anitabi/imageNormalize'
 const CURSOR_KEY = { sourceType: '__cursor__', sourceId: 'delta', variant: '__' } as const
 const DEFAULT_SOURCE_BATCH_SIZE = 100
 const REQUEUEABLE_STATUSES = ['mirrored', 'failed', 'skipped_404'] as const
+const MISSING_POINT_STATE_BACKFILL_BATCH = 500
 
 type CursorRow = {
   mirroredAt: Date | null
@@ -149,6 +150,68 @@ export type CronDeltaPrisma = {
 
 export type CronDeltaOptions = {
   sourceBatchSize?: number
+}
+
+/**
+ * 「无状态补漏」所需的 Prisma 查询子集。真实 PrismaClient 天然满足；
+ * 旧测试替身（workers 侧 mock）不实现 mapImageMirrorState.findMany 时，
+ * cronDelta 会跳过补漏而不是抛错（见 isPointBackfillCapable）。
+ */
+export type CronDeltaPointBackfillPrisma = {
+  mapImageMirrorState: {
+    findMany(args: {
+      where: { sourceType: 'point-image' }
+      distinct: ['sourceId']
+      select: { sourceId: true }
+    }): Promise<Array<{ sourceId: string }>>
+  }
+  anitabiPoint: {
+    findMany(args: {
+      where: { image: { not: null }; id: { notIn: string[] } }
+      orderBy: { id: 'asc' }
+      take: number
+      select: { id: true; image: true }
+    }): Promise<Array<{ id: string; image: string }>>
+  }
+}
+
+function isPointBackfillCapable(
+  prisma: CronDeltaPrisma,
+): prisma is CronDeltaPrisma & CronDeltaPointBackfillPrisma {
+  // anitabiPoint.findMany 是 CronDeltaPrisma 的必备成员；只有 mirror-state 的
+  // findMany 是补漏新增能力，旧测试替身可能不实现 —— 缺失时跳过补漏而不是抛错。
+  const mirrorState = (prisma as { mapImageMirrorState?: { findMany?: unknown } }).mapImageMirrorState
+  return typeof mirrorState?.findMany === 'function'
+}
+
+async function backfillMissingPointImageStates(
+  prisma: CronDeltaPrisma & CronDeltaPointBackfillPrisma,
+  limit: number,
+): Promise<number> {
+  const existingStates = await prisma.mapImageMirrorState.findMany({
+    where: { sourceType: 'point-image' },
+    distinct: ['sourceId'],
+    select: { sourceId: true },
+  })
+  const knownPointIds = existingStates.map((row) => row.sourceId)
+
+  const missing = await prisma.anitabiPoint.findMany({
+    where: { image: { not: null }, id: { notIn: knownPointIds } },
+    orderBy: { id: 'asc' },
+    take: limit,
+    select: { id: true, image: true },
+  })
+
+  let enqueued = 0
+  for (const row of missing) {
+    enqueued += await enqueueVariants(
+      prisma,
+      'point-image',
+      row.id,
+      enumeratePointImageVariants(row.image),
+    )
+  }
+  return enqueued
 }
 
 type ObservedRow = {
@@ -475,6 +538,12 @@ export async function cronDelta(
       row.id,
       enumeratePointImageVariants(row.image),
     )
+  }
+
+  // 游标只追 updatedAt 变化；历史上有图点位可能从未入队（8 月新增 4,224 个无状态），
+  // 每 tick 最多补 500 个，直到追平。
+  if (isPointBackfillCapable(prisma)) {
+    enqueued += await backfillMissingPointImageStates(prisma, MISSING_POINT_STATE_BACKFILL_BATCH)
   }
 
   const nextCursor = nextCursorState(cursor, upperBound, bangumi, points, sourceBatchSize)

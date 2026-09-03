@@ -201,7 +201,7 @@ describe('processSeedBatch', () => {
       },
       data: { status: 'skipped_404' },
     })
-    expect(fetchMock).toHaveBeenCalledWith('https://image.anitabi.cn/point/1.jpg', {
+    expect(fetchMock).toHaveBeenCalledWith('https://img-tc.anitabi.cn/point/1.jpg', {
       headers: { 'user-agent': 'SeichiGoMirror/1.0 (+https://seichigo.com)' },
       signal: expect.any(AbortSignal),
     })
@@ -216,7 +216,7 @@ describe('processSeedBatch', () => {
     const bytes = encodeBytes('seed-image')
     const item = {
       id: 'seed-2',
-      canonicalUrl: 'https://anitabi.cn/images/bangumi/123/cover.jpg?plan=h320&cache=1',
+      canonicalUrl: 'https://image.anitabi.cn/images/bangumi/123/cover.jpg?plan=l&cache=1',
       attempts: 0,
       createdAt: new Date('2026-05-03T12:00:00Z'),
     }
@@ -268,7 +268,9 @@ describe('processSeedBatch', () => {
         lastError: null,
       },
     })
-    expect(fetchMock).toHaveBeenCalledWith(item.canonicalUrl, {
+    // A2/E4 新口径：fetch 收到的 URL host 是投递域 img-tc.anitabi.cn，
+    // 而 putMirroredImage 的 canonical 仍是 image.anitabi.cn（key 零漂移）
+    expect(fetchMock).toHaveBeenCalledWith('https://img-tc.anitabi.cn/images/bangumi/123/cover.jpg?plan=l&cache=1', {
       headers: { 'user-agent': 'MirrorBot/2.0' },
       signal: expect.any(AbortSignal),
     })
@@ -579,7 +581,7 @@ describe('processSeedBatch', () => {
     const bucket = new FakeBucket()
     const item = {
       id: 'seed-9',
-      canonicalUrl: 'https://anitabi.cn/images/bangumi/999/cover.jpg?plan=h320',
+      canonicalUrl: 'https://image.anitabi.cn/images/bangumi/999/cover.jpg?plan=l',
       attempts: 0,
       createdAt: new Date('2026-05-03T12:00:00Z'),
     }

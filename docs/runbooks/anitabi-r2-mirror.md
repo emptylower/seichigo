@@ -1,5 +1,21 @@
 # Anitabi R2 Mirror Runbook
 
+## §0 共享 mirror 代码改动后的部署要求
+
+真正的镜像定时器是独立 worker `workers/anitabi-mirror`（`seichigo-anitabi-mirror`，
+crons：`*/5 * * * *`（cronTick 镜像队列）、`0 * * * *`（cronDelta + 转发主站
+daily）、`15 3 * * *`（转发 translate/ops）），它直接 import 共享的
+`@/lib/anitabi/mirror/*` 与 `@/lib/anitabi/imageMirrorVariants.ts`。**改了这些
+共享代码后必须重新部署该 worker，否则线上定时器仍跑旧逻辑**：
+
+```bash
+cd workers/anitabi-mirror && npx wrangler deploy
+```
+
+部署后确认开关仍为开启：`MAP_IMAGE_MIRROR_CRON_ENABLED=1`（关闭时定时器只
+转发主站 cron、不跑镜像）。此前该 worker 最后一次部署是 2026-05-10，导致 6
+月至 8 月的变体口径修复（h320 移除、投递域抓取）从未生效——引以为戒。
+
 ## §8 Deploy & Rollback Playbook
 
 ### Flag matrix

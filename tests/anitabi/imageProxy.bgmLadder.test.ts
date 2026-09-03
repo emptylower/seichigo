@@ -39,7 +39,7 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       getMapDisplayImageCandidates('https://lain.bgm.tv/pic/cover/l/b8/0d/513345_jv4wM.jpg', { kind: 'cover' }),
     ).toEqual([
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fb8%2F0d%2F513345_jv4wM.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fb8%252F0d%252F513345_jv4wM.jpg',
     ])
   })
 
@@ -49,8 +49,8 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       getMapDisplayImageCandidates('https://lain.bgm.tv/pic/cover/l/b8/0d/513345_jv4wM.jpg', { kind: 'cover' }),
     ).toEqual([
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fb8%2F0d%2F513345_jv4wM.jpg',
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Flain.bgm.tv%2Fpic%2Fcover%2Fm%2Fb8%2F0d%2F513345_jv4wM.jpg&_retry=1',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fb8%252F0d%252F513345_jv4wM.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Flain.bgm.tv%252Fpic%252Fcover%252Fm%252Fb8%252F0d%252F513345_jv4wM.jpg&_retry=1',
       'https://lain.bgm.tv/pic/cover/m/b8/0d/513345_jv4wM.jpg',
     ])
   })
@@ -64,7 +64,7 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
       // direct 一档已切到 EdgeOne 投递 host；proxy 一档保留 canonical host，由服务端再解析。
       'https://img-tc.anitabi.cn/bangumi/290980.jpg',
       'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fbangumi%2F290980.jpg',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Fimage.anitabi.cn%252Fbangumi%252F290980.jpg',
     ])
   })
 
@@ -74,8 +74,8 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     expect(
       getMapDisplayImageCandidates('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80', { kind: 'point' }),
     ).toEqual([
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fw%3D640%26q%3D80',
-      'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fw%3D640%26q%3D80&_retry=1',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Fimage.anitabi.cn%252Fpoints%252F217249%252Fdb2c913d_1754363336601.jpg%253Fw%253D640%2526q%253D80',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Fimage.anitabi.cn%252Fpoints%252F217249%252Fdb2c913d_1754363336601.jpg%253Fw%253D640%2526q%253D80&_retry=1',
     ])
   })
 })

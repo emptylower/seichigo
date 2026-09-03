@@ -9,8 +9,9 @@ import {
   resolveRenderCacheDiagnosticSource,
   storeRenderCache,
 } from '@/lib/anitabi/handlers/imageServeRenderCache'
+import { resolveProxyTargetUrl } from '@/lib/anitabi/handlers/imageServeTarget'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
-import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
+import { computeCanonicalImageUrl, computeMirrorKey, resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { dispatchMapImageProxyEvent } from '@/lib/mapImageDiag/proxy'
 const DOWNLOAD_FETCH_TIMEOUT_MS = 12_000
 const RENDER_FETCH_TIMEOUT_MS = 6_000
@@ -50,24 +51,9 @@ function prepareLazyMirrorWrite(deps: AnitabiApiDeps, target: URL, mimeType: str
   if (!bucket || deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED !== '1') return undefined
   return (bytes: ArrayBuffer) => {
     const writePromise = putMirroredImage(bucket, target.toString(), bytes, mimeType, 'lazy')
-      .catch((error: unknown) => {
-        console.warn('[anitabi/imageServe] lazy mirror write failed', error)
-      })
+      .catch((error: unknown) => console.warn('[anitabi/imageServe] lazy mirror write failed', error))
     if (deps.ctx?.waitUntil) deps.ctx.waitUntil(writePromise)
     else void writePromise
-  }
-}
-function parseTargetUrl(rawInput: string | null | undefined, requestUrl: URL): URL | null {
-  const raw = String(rawInput || '').trim()
-  if (!raw) return null
-  try {
-    const url = raw.includes('://')
-      ? new URL(raw)
-      : new URL(raw.startsWith('/') ? raw : `/${raw.replace(/^\/+/, '')}`, requestUrl.origin)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
-    return url.protocol === 'http:' || url.protocol === 'https:' ? (url.username || url.password ? null : url) : null
-  } catch {
-    return null
   }
 }
 function hostMatches(host: string, allowed: string): boolean {
@@ -81,13 +67,9 @@ function isPrivateIp(hostname: string): boolean {
     const parts = hostname.split('.').map((x) => Number(x))
     if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return true
     const [a, b] = parts
-    if (a === 0 || a === 10 || a === 127) return true
-    if (a === 169 && b === 254) return true
-    if (a === 100 && b >= 64 && b <= 127) return true
-    if (a === 192 && b === 168) return true
-    if (a === 172 && b >= 16 && b <= 31) return true
-    if (a >= 224) return true
-    return false
+    return a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127)
+      || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)
   }
 
   const lowered = hostname.toLowerCase()
@@ -192,8 +174,8 @@ async function fetchValidatedImage(input: {
   userAgent: string
   useUpstreamEdgeCache?: boolean
 }): Promise<
-  | { ok: true; response: Response; finalUrl: URL; mimeType: string; clearTimeout: () => void; abort: () => void }
-  | { ok: false; response: NextResponse; clearTimeout: () => void; abort: () => void }
+  | { ok: true; response: Response; finalUrl: URL; mimeType: string; upstreamStatus?: number; deliveryHost?: string; clearTimeout: () => void; abort: () => void }
+  | { ok: false; response: NextResponse; upstreamStatus?: number; deliveryHost?: string; clearTimeout: () => void; abort: () => void }
 > {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs)
@@ -277,6 +259,7 @@ async function fetchValidatedImage(input: {
         return {
           ok: false,
           response: NextResponse.json({ error: '图片读取失败' }, { status: 502 }),
+          upstreamStatus: response.status, deliveryHost: resolveAnitabiDeliveryUrl(current).hostname,
           clearTimeout: () => clearTimeout(timeout),
           abort: () => controller.abort(),
         }
@@ -297,6 +280,7 @@ async function fetchValidatedImage(input: {
         response,
         finalUrl: current,
         mimeType,
+        upstreamStatus: response.status, deliveryHost: resolveAnitabiDeliveryUrl(current).hostname,
         clearTimeout: () => clearTimeout(timeout),
         abort: () => controller.abort(),
       }
@@ -585,7 +569,7 @@ export async function serveImageRequest(
       outcome: 'cache_miss',
     })
   }
-  const target = parseTargetUrl(requestUrl.searchParams.get('url'), requestUrl)
+  const target = resolveProxyTargetUrl(req)
   if (!target) {
     if (mode === 'render') {
       emitProxyEvent({
@@ -597,11 +581,15 @@ export async function serveImageRequest(
     return NextResponse.json({ error: '参数错误' }, { status: 400 })
   }
   const renderTimeoutMs = mode === 'render' ? resolveRenderTimeoutMs(target) : DOWNLOAD_FETCH_TIMEOUT_MS
-  const renderR2ReadEnabled = (
-    mode === 'render'
-    && Boolean(deps.env?.MAP_IMAGE_CACHE)
-    && (deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED) === '1'
-  )
+  const readEnabledValue = deps.env?.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED ?? process.env.NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED
+  const renderR2ReadEnabled = mode === 'render' && Boolean(deps.env?.MAP_IMAGE_CACHE) && readEnabledValue === '1'
+  const r2DebugKey = mode === 'render' ? await computeMirrorKey(computeCanonicalImageUrl(target.toString()), 'image/jpeg') : null
+  const withR2Debug = (res: Response, hit = false): Response => {
+    if (r2DebugKey == null) return res
+    const headers = new Headers(res.headers)
+    headers.set('X-Seichigo-R2-Debug', `gate=${renderR2ReadEnabled ? 1 : 0};bucket=${deps.env?.MAP_IMAGE_CACHE ? 1 : 0};readEnabled=${readEnabledValue === '1' ? 1 : 0};key=${r2DebugKey};hit=${hit ? 1 : 0}`)
+    return new Response(res.body, { status: res.status, headers })
+  }
   if (mode === 'render') {
     emitProxyEvent({
       stage: 'proxy_target_parse',
@@ -619,7 +607,7 @@ export async function serveImageRequest(
         targetHostBucket: normalizeHost(target.hostname),
       })
     }
-    return blocked
+    return withR2Debug(blocked)
   }
   if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
     const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
@@ -630,7 +618,7 @@ export async function serveImageRequest(
         targetHostBucket: normalizeHost(target.hostname),
         evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
       })
-      return await storeRenderCache(requestUrl, mirrored.response)
+      return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
     }
   }
   if (mode === 'render') {
@@ -681,10 +669,7 @@ export async function serveImageRequest(
                 outcome: upstreamFailureOutcome,
                 durationMs,
                 targetHostBucket,
-                evidence: {
-                  recoveredBy: 'r2-fallback',
-                  fallbackStatus: mirrored.response.status,
-                },
+                evidence: { recoveredBy: 'r2-fallback', fallbackStatus: mirrored.response.status, upstreamStatus: fetched.upstreamStatus, deliveryHost: fetched.deliveryHost },
               })
               emitImageCacheState({
                 outcome: 'cache_hit_r2_fallback',
@@ -692,7 +677,7 @@ export async function serveImageRequest(
                 targetHostBucket,
                 evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
               })
-              return await storeRenderCache(requestUrl, mirrored.response)
+              return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
             }
           }
           emitProxyEvent({
@@ -701,6 +686,7 @@ export async function serveImageRequest(
             terminalState: 'failed',
             durationMs,
             targetHostBucket,
+            evidence: { upstreamStatus: fetched.upstreamStatus, deliveryHost: fetched.deliveryHost },
           })
           emitImageCacheState({
             outcome: 'cache_full_miss_failed',
@@ -709,7 +695,7 @@ export async function serveImageRequest(
           })
         }
       }
-      return fetched.response
+      return withR2Debug(fetched.response)
     }
 
     if (mode === 'render') {
@@ -718,7 +704,7 @@ export async function serveImageRequest(
         stage: 'proxy_fetch_terminal',
         durationMs: fetchDurationMs,
         targetHostBucket: normalizeHost(fetched.finalUrl.hostname),
-        evidence: { finalUrl: fetched.finalUrl.toString() },
+        evidence: { finalUrl: fetched.finalUrl.toString(), upstreamStatus: fetched.upstreamStatus, deliveryHost: fetched.deliveryHost },
       })
       emitProxyEvent({
         stage: 'proxy_content_validate',
@@ -770,7 +756,7 @@ export async function serveImageRequest(
           mimeType: fetched.mimeType,
         },
       })
-      return await storeRenderCache(requestUrl, renderResponse)
+      return await storeRenderCache(requestUrl, withR2Debug(renderResponse))
     }
 
     return await buildDownloadResponse({
@@ -803,7 +789,7 @@ export async function serveImageRequest(
               targetHostBucket: targetHostBucketForFailure,
               evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key, recoveredFrom: 'response_too_large' },
             })
-            return await storeRenderCache(requestUrl, mirrored.response)
+            return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
           }
         }
         emitProxyEvent({
@@ -814,10 +800,10 @@ export async function serveImageRequest(
           evidence: fetched.ok ? { mimeType: fetched.mimeType } : undefined,
         })
       }
-      return NextResponse.json({ error: '图片文件过大' }, { status: 413 })
+      return withR2Debug(NextResponse.json({ error: '图片文件过大' }, { status: 413 }))
     }
     const message = mode === 'render' ? '图片代理失败' : '图片下载失败'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return withR2Debug(NextResponse.json({ error: message }, { status: 500 }))
   } finally {
     fetched.clearTimeout()
   }
