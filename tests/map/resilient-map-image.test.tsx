@@ -6,7 +6,9 @@ import { createCompleteModeTrackedMetricCallbacks } from '@/features/map/anitabi
 import {
   recordHostFailure,
   resetDegradedMapImageHostsForTest,
+  resolveHostState,
 } from '@/components/map/utils/mapImageHostPolicy'
+import { resetLoadedMapImageCacheForTest } from '@/components/map/utils/mapImageLoadedCache'
 import {
   acquireMapImageRequestSlot,
   resetMapImageRequestSchedulerForTest,
@@ -14,17 +16,34 @@ import {
 
 const BREAKER_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED'
 
+async function flushMicrotasks() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+async function advanceTimers(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms)
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 describe('ResilientMapImage', () => {
   const originalBreakerFlag = process.env[BREAKER_FLAG]
 
   beforeEach(() => {
     resetDegradedMapImageHostsForTest()
+    resetLoadedMapImageCacheForTest()
     resetMapImageRequestSchedulerForTest()
     delete process.env[BREAKER_FLAG]
   })
 
   afterEach(() => {
     resetDegradedMapImageHostsForTest()
+    resetLoadedMapImageCacheForTest()
     if (originalBreakerFlag === undefined) {
       delete process.env[BREAKER_FLAG]
       return
@@ -43,7 +62,7 @@ describe('ResilientMapImage', () => {
     )
 
     const img = await screen.findByAltText('cover') as HTMLImageElement
-    expect(decodeURIComponent(img.src)).toContain('/pic/cover/m/')
+    expect(decodeURIComponent(decodeURIComponent(img.src))).toContain('/pic/cover/m/')
     expect(img.src).not.toContain('_retry=1')
 
     fireEvent.error(img)
@@ -116,19 +135,12 @@ describe('ResilientMapImage', () => {
         />,
       )
 
-      await act(async () => {
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await flushMicrotasks()
 
       const img = screen.getByAltText('loaded-preview') as HTMLImageElement
       fireEvent.load(img)
 
-      await act(async () => {
-        vi.advanceTimersByTime(6001)
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await advanceTimers(6001)
 
       expect(requestStart).toHaveBeenCalledTimes(1)
       expect(terminal).toHaveBeenCalledTimes(1)
@@ -323,7 +335,7 @@ describe('ResilientMapImage', () => {
 
     fireEvent.error(directRetryCandidate)
     const proxyFallbackCandidate = await screen.findByAltText('bangumi') as HTMLImageElement
-    expect(decodeURIComponent(proxyFallbackCandidate.src)).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg')
+    expect(decodeURIComponent(decodeURIComponent(proxyFallbackCandidate.src))).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg')
   })
 
   it('starts point-photo previews on the proxy lane and retries the proxy once', async () => {
@@ -337,13 +349,13 @@ describe('ResilientMapImage', () => {
     )
 
     const img = await screen.findByAltText('point-preview') as HTMLImageElement
-    expect(decodeURIComponent(img.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(img.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
     )
 
     fireEvent.error(img)
     const proxyRetryCandidate = await screen.findByAltText('point-preview') as HTMLImageElement
-    expect(decodeURIComponent(proxyRetryCandidate.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(proxyRetryCandidate.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
     )
   })
@@ -400,26 +412,16 @@ describe('ResilientMapImage', () => {
       />,
     )
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushMicrotasks()
     const initial = screen.getByAltText('timed-preview') as HTMLImageElement
-    expect(decodeURIComponent(initial.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(initial.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
     )
     expect(requestStart).toHaveBeenCalledTimes(1)
 
-    await act(async () => {
-      vi.advanceTimersByTime(8501)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await advanceTimers(20001)
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushMicrotasks()
 
     expect(requestStart).toHaveBeenCalledTimes(2)
     expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
@@ -435,7 +437,9 @@ describe('ResilientMapImage', () => {
     try {
       vi.setSystemTime(0)
       process.env[BREAKER_FLAG] = '1'
+      // degraded 阈值 3：先记 2 次，组件 onError 记第 3 次后 host 进入 degraded
       recordHostFailure('img-tc.anitabi.cn', 'cover', 0)
+      recordHostFailure('img-tc.anitabi.cn', 'cover', 1)
 
       const requestStart = vi.fn((input) => ({
         requestUrl: input.requestedCandidateUrl,
@@ -454,10 +458,7 @@ describe('ResilientMapImage', () => {
         />,
       )
 
-      await act(async () => {
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await flushMicrotasks()
 
       expect(requestStart).toHaveBeenCalledTimes(1)
       const initial = screen.getByAltText('degraded-cover') as HTMLImageElement
@@ -465,10 +466,7 @@ describe('ResilientMapImage', () => {
 
       fireEvent.error(initial)
 
-      await act(async () => {
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await flushMicrotasks()
 
       expect(requestStart).toHaveBeenCalledTimes(2)
       expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
@@ -476,23 +474,15 @@ describe('ResilientMapImage', () => {
         requestedCandidateUrl: 'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
       })
 
-      await act(async () => {
-        vi.advanceTimersByTime(1999)
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await advanceTimers(1999)
 
       expect(requestStart).toHaveBeenCalledTimes(2)
 
-      await act(async () => {
-        vi.advanceTimersByTime(1)
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+      await advanceTimers(1)
 
       expect(requestStart).toHaveBeenCalledTimes(3)
       expect(requestStart.mock.calls[2]?.[0]).toMatchObject({ candidateIndex: 2 })
-      expect(decodeURIComponent(String(requestStart.mock.calls[2]?.[0]?.requestedCandidateUrl || ''))).toContain(
+      expect(decodeURIComponent(decodeURIComponent(String(requestStart.mock.calls[2]?.[0]?.requestedCandidateUrl || '')))).toContain(
         '/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg',
       )
     } finally {
@@ -519,26 +509,15 @@ describe('ResilientMapImage', () => {
       />,
     )
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushMicrotasks()
 
     expect(requestStart).toHaveBeenCalledTimes(1)
 
-    await act(async () => {
-      vi.advanceTimersByTime(6001)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await advanceTimers(6001)
 
     expect(requestStart).toHaveBeenCalledTimes(1)
 
-    await act(async () => {
-      vi.advanceTimersByTime(2500)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await advanceTimers(14000)
 
     expect(requestStart).toHaveBeenCalledTimes(2)
     expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
@@ -561,10 +540,7 @@ describe('ResilientMapImage', () => {
       />,
     )
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushMicrotasks()
     expect(screen.getByAltText('timed-preview')).toBeInTheDocument()
 
     await act(async () => {
@@ -585,7 +561,7 @@ describe('ResilientMapImage', () => {
       await Promise.resolve()
     })
     const proxiedCandidate = screen.getByAltText('timed-preview') as HTMLImageElement
-    expect(decodeURIComponent(proxiedCandidate.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(proxiedCandidate.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/999999/next.jpg?w=640&q=80',
     )
 
@@ -623,5 +599,107 @@ describe('ResilientMapImage', () => {
     })
 
     expect(screen.getByAltText('scheduled-preview')).toBeInTheDocument()
+  })
+
+  it('treats google place-photo proxy urls as proxy lane: retries once with _retry=1 before fallback', async () => {
+    render(
+      <ResilientMapImage
+        src="/api/google/place-photo?placeId=ChIJ3RpcnUUgdV8R9oH25Xxguho&maxwidth=1600"
+        alt="place-photo"
+        kind="point"
+        fallback={<div>fallback</div>}
+      />,
+    )
+
+    const img = await screen.findByAltText('place-photo') as HTMLImageElement
+    expect(img.src).toContain('/api/google/place-photo')
+    expect(img.src).not.toContain('_retry=1')
+
+    fireEvent.error(img)
+    const retried = await screen.findByAltText('place-photo') as HTMLImageElement
+    expect(retried.src).toContain('/api/google/place-photo')
+    expect(retried.src).toContain('_retry=1')
+
+    fireEvent.error(retried)
+    expect(screen.getByText('fallback')).toBeInTheDocument()
+  })
+
+  it('uses the 20s point proxy timeout window for google place-photo urls', async () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <ResilientMapImage
+          src="/api/google/place-photo?placeId=ChIJ3RpcnUUgdV8R9oH25Xxguho&maxwidth=1600"
+          alt="google-proxy-timeout"
+          kind="point"
+          fallback={<div>fallback</div>}
+        />,
+      )
+
+      await flushMicrotasks()
+      const initial = screen.getByAltText('google-proxy-timeout') as HTMLImageElement
+      expect(initial.src).toContain('/api/google/place-photo')
+      expect(initial.src).not.toContain('_retry=1')
+
+      // 15 秒时仍未超时（点位代理预算 20s）
+      await advanceTimers(15000)
+      const stillPending = screen.getByAltText('google-proxy-timeout') as HTMLImageElement
+      expect(stillPending.src).not.toContain('_retry=1')
+      expect(screen.queryByText('fallback')).not.toBeInTheDocument()
+
+      await advanceTimers(5001)
+
+      await flushMicrotasks()
+
+      const retried = screen.getByAltText('google-proxy-timeout') as HTMLImageElement
+      expect(retried.src).toContain('/api/google/place-photo')
+      expect(retried.src).toContain('_retry=1')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('google 代理的失败计数记到 google-place-photo 标识，不影响 anitabi 代理的 20s 预算', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(0)
+      process.env[BREAKER_FLAG] = '1'
+      // google-place-photo 上游标识连挂三次（degraded 阈值 3）→ 该标识 degraded（超时降为 2s）
+      recordHostFailure('google-place-photo', 'point', 0)
+      recordHostFailure('google-place-photo', 'point', 1)
+      recordHostFailure('google-place-photo', 'point', 2)
+
+      render(
+        <>
+          <ResilientMapImage
+            src="https://image.anitabi.cn/points/217249/a.jpg?w=640&q=80"
+            alt="anitabi-point"
+            kind="point"
+            fallback={<div>fallback-anitabi</div>}
+          />
+          <ResilientMapImage
+            src="/api/google/place-photo?placeId=ChIJx&maxwidth=1600"
+            alt="google-point"
+            kind="point"
+            fallback={<div>fallback-google</div>}
+          />
+        </>,
+      )
+
+      await flushMicrotasks()
+      const anitabiImg = screen.getByAltText('anitabi-point') as HTMLImageElement
+      expect(decodeURIComponent(anitabiImg.src)).toContain('/api/anitabi/image-render')
+
+      // google-place-photo 已 degraded：2s 即超时重试
+      await advanceTimers(2001)
+      expect((screen.getByAltText('google-point') as HTMLImageElement).src).toContain('_retry=1')
+
+      // anitabi 上游标识健康：15s 时仍未超时、未进 fallback（20s 预算不受影响）
+      await advanceTimers(13000)
+      expect((screen.getByAltText('anitabi-point') as HTMLImageElement).src).not.toContain('_retry=1')
+      expect(screen.queryByText('fallback-anitabi')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -16,5 +16,10 @@ export default async function PlanDetailPage(props: { params: Promise<{ id: stri
   if (plan.userId !== session.user.id) notFound()
 
   const chat = toChatView(await deps.repo.listMessages(id))
-  return <PlanPlanner planId={id} initialPlan={toPlanView(plan)} initialChat={chat} />
+  const plans = (await deps.repo.listPlans(session.user.id)).map((p) => ({
+    id: p.id,
+    title: p.title,
+    updatedAt: p.updatedAt.toISOString(),
+  }))
+  return <PlanPlanner planId={id} initialPlan={toPlanView(plan)} initialChat={chat} plans={plans} />
 }

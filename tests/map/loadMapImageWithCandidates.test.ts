@@ -8,6 +8,7 @@ import {
   acquireMapImageRequestSlot,
   resetMapImageRequestSchedulerForTest,
 } from '@/features/map/anitabi/mapImageRequestScheduler'
+import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 
 const BREAKER_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_BREAKER_V2_ENABLED'
 
@@ -29,6 +30,41 @@ describe('loadMapImageWithCandidates', () => {
     process.env[BREAKER_FLAG] = originalBreakerFlag
   })
 
+  it('loads user-uploaded point paths through the w=640&q=80 proxy candidates', async () => {
+    const map = {
+      loadImage: vi.fn(async (url: string): Promise<{ data: { url: string } }> => ({ data: { url } })),
+    }
+
+    const urls = getMapDisplayImageCandidates(
+      'https://image.anitabi.cn/user/0/bangumi/899/points/x.jpg',
+      { kind: 'point' },
+    )
+
+    expect(urls.length).toBeGreaterThan(0)
+    for (const candidate of urls) {
+      // E2 双重编码：searchParams.get 解一层后再解一层等于目标
+      const proxied = decodeURIComponent(new URL(candidate).searchParams.get('url') || '')
+      expect(proxied).toBe('https://image.anitabi.cn/user/0/bangumi/899/points/x.jpg?w=640&q=80')
+      expect(proxied).not.toContain('plan=')
+    }
+
+    const result = await loadMapImageWithCandidates({
+      map,
+      slotKey: 'point-899-x',
+      urls,
+      tracked: false,
+      directRequestTimeoutMs: 5,
+      proxyRequestTimeoutMs: 5,
+    })
+
+    expect(result.finalUrl).toContain('/api/anitabi/image-render?url=')
+    expect(map.loadImage).toHaveBeenCalledTimes(1)
+    const requestedUrl = new URL(map.loadImage.mock.calls[0]?.[0] || '')
+    expect(decodeURIComponent(requestedUrl.searchParams.get('url') || '')).toBe(
+      'https://image.anitabi.cn/user/0/bangumi/899/points/x.jpg?w=640&q=80',
+    )
+  })
+
   it('promotes the proxy candidate earlier after the direct host degrades in-session', async () => {
     const map = {
       loadImage: vi.fn(async (url: string): Promise<{ data: { url: string } }> => {
@@ -42,18 +78,22 @@ describe('loadMapImageWithCandidates', () => {
       }),
     }
 
-    await loadMapImageWithCandidates({
-      map,
-      slotKey: 'cover-290980',
-      urls: [
-        'https://image.anitabi.cn/bangumi/290980.jpg',
-        'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
-        'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fbangumi%2F290980.jpg',
-      ],
-      tracked: false,
-      directRequestTimeoutMs: 5,
-      proxyRequestTimeoutMs: 5,
-    })
+    // DEGRADED_HOST_FAILURE_THRESHOLD = 3：前两轮各累计 2 次直连失败（共 4 次），
+    // 第三轮开始 host 已降级 → 代理候选提前。
+    for (let round = 0; round < 2; round += 1) {
+      await loadMapImageWithCandidates({
+        map,
+        slotKey: 'cover-290980',
+        urls: [
+          'https://image.anitabi.cn/bangumi/290980.jpg',
+          'https://image.anitabi.cn/bangumi/290980.jpg?_retry=1',
+          'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fbangumi%2F290980.jpg',
+        ],
+        tracked: false,
+        directRequestTimeoutMs: 5,
+        proxyRequestTimeoutMs: 5,
+      })
+    }
 
     map.loadImage.mockClear()
 
@@ -233,10 +273,15 @@ describe('loadMapImageWithCandidates', () => {
   it('clamps degraded direct host timeouts to 2000ms when breaker v2 is enabled', async () => {
     vi.useFakeTimers()
     try {
-      vi.setSystemTime(1_000)
       process.env[BREAKER_FLAG] = '1'
       recordHostFailure('image.anitabi.cn', 'point-thumbnail', 0)
       recordHostFailure('image.anitabi.cn', 'point-thumbnail', 1_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 2_000)
+      // 代理 URL 恒按上游标识记账（恒开）：此用例里代理上游与直连同为
+      // image.anitabi.cn，共享降级状态。把先验失败滑出 10s blocked 窗口
+      // （degraded TTL 60s 内仍降级），避免直连超时的第 4 次失败在窗口内
+      // 累计到 blocked 阈值（6）连累代理候选被 fail-fast。
+      vi.setSystemTime(20_000)
 
       const map = {
         loadImage: vi.fn(async (url: string): Promise<{ data: { url: string } }> => {
@@ -281,7 +326,10 @@ describe('loadMapImageWithCandidates', () => {
       vi.setSystemTime(9_999)
       process.env[BREAKER_FLAG] = '1'
       recordHostFailure('image.anitabi.cn', 'point-thumbnail', 0)
-      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 3_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 2_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 4_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 6_000)
+      recordHostFailure('image.anitabi.cn', 'point-thumbnail', 8_000)
       recordHostFailure('image.anitabi.cn', 'point-thumbnail', 9_999)
 
       const requestStart = vi.fn((input) => ({
@@ -322,27 +370,11 @@ describe('loadMapImageWithCandidates', () => {
     }
   })
 
-  describe('with proxy-aware host policy', () => {
-    const PROXY_AWARE_FLAG = 'NEXT_PUBLIC_MAP_IMAGE_HOST_POLICY_PROXY_AWARE'
-    const originalProxyAwareFlag = process.env[PROXY_AWARE_FLAG]
-
-    beforeEach(() => {
-      delete process.env[PROXY_AWARE_FLAG]
-    })
-
-    afterEach(() => {
-      if (originalProxyAwareFlag === undefined) {
-        delete process.env[PROXY_AWARE_FLAG]
-        return
-      }
-      process.env[PROXY_AWARE_FLAG] = originalProxyAwareFlag
-    })
-
-    it('attributes proxy-URL failures to the upstream host (flag ON)', async () => {
+  describe('with proxy-aware host policy（恒开，无开关）', () => {
+    it('attributes proxy-URL failures to the upstream host', async () => {
       vi.useFakeTimers()
       try {
         vi.setSystemTime(1_000)
-        process.env[PROXY_AWARE_FLAG] = '1'
         process.env[BREAKER_FLAG] = '1'
 
         const proxyUrl = 'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F1%2Fa.jpg%3Fplan%3Dh160'
@@ -352,8 +384,8 @@ describe('loadMapImageWithCandidates', () => {
           }),
         }
 
-        // Two proxy failures: first should record image.anitabi.cn fail,
-        // second should push it into degraded state (threshold=2).
+        // Three proxy failures (DEGRADED_HOST_FAILURE_THRESHOLD = 3): each records an
+        // image.anitabi.cn failure via upstream attribution.
         const first = loadMapImageWithCandidates({
           map,
           slotKey: 'thumb-upstream-1',
@@ -379,84 +411,36 @@ describe('loadMapImageWithCandidates', () => {
         await vi.advanceTimersByTimeAsync(1_001)
         await secondAssertion
 
-        // Third request: image.anitabi.cn should now be degraded → 2000ms clamp,
-        // even though the request URL is a proxy URL.
-        vi.setSystemTime(3_500)
+        vi.setSystemTime(3_000)
         const third = loadMapImageWithCandidates({
           map,
           slotKey: 'thumb-upstream-3',
           urls: [proxyUrl],
           tracked: false,
           hostPolicyScope: 'point-thumbnail',
-          proxyRequestTimeoutMs: 5_000,
+          proxyRequestTimeoutMs: 1_000,
         })
         const thirdAssertion = expect(third).rejects.toThrow()
+        await vi.advanceTimersByTimeAsync(1_001)
+        await thirdAssertion
+
+        // Fourth request: image.anitabi.cn should now be degraded → 2000ms clamp,
+        // even though the request URL is a proxy URL.
+        vi.setSystemTime(4_500)
+        const fourth = loadMapImageWithCandidates({
+          map,
+          slotKey: 'thumb-upstream-4',
+          urls: [proxyUrl],
+          tracked: false,
+          hostPolicyScope: 'point-thumbnail',
+          proxyRequestTimeoutMs: 5_000,
+        })
+        const fourthAssertion = expect(fourth).rejects.toThrow()
         // 1999ms in: timeout should NOT have fired yet
         await vi.advanceTimersByTimeAsync(1_999)
         // 2001ms in: clamped 2000ms timeout fires (proves clamp engaged via upstream attribution)
         await vi.advanceTimersByTimeAsync(2)
-        await thirdAssertion
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it('does NOT clamp proxy-URL timeouts when flag is OFF (legacy)', async () => {
-      vi.useFakeTimers()
-      try {
-        vi.setSystemTime(1_000)
-        // PROXY_AWARE_FLAG intentionally NOT set
-        process.env[BREAKER_FLAG] = '1'
-
-        const proxyUrl = 'https://seichigo.com/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F4%2Fd.jpg%3Fplan%3Dh160'
-        const map = {
-          loadImage: vi.fn(async (): Promise<{ data: { url: string } }> => {
-            return await new Promise(() => {})
-          }),
-        }
-
-        // Two proxy failures (would push upstream into degraded if flag were ON).
-        const first = loadMapImageWithCandidates({
-          map,
-          slotKey: 'thumb-legacy-1',
-          urls: [proxyUrl],
-          tracked: false,
-          hostPolicyScope: 'point-thumbnail',
-          proxyRequestTimeoutMs: 1_000,
-        })
-        const firstAssertion = expect(first).rejects.toThrow()
-        await vi.advanceTimersByTimeAsync(1_001)
-        await firstAssertion
-
-        vi.setSystemTime(2_000)
-        const second = loadMapImageWithCandidates({
-          map,
-          slotKey: 'thumb-legacy-2',
-          urls: [proxyUrl],
-          tracked: false,
-          hostPolicyScope: 'point-thumbnail',
-          proxyRequestTimeoutMs: 1_000,
-        })
-        const secondAssertion = expect(second).rejects.toThrow()
-        await vi.advanceTimersByTimeAsync(1_001)
-        await secondAssertion
-
-        // Third request: full 5000ms timeout should still apply (no clamp).
-        vi.setSystemTime(3_500)
-        const third = loadMapImageWithCandidates({
-          map,
-          slotKey: 'thumb-legacy-3',
-          urls: [proxyUrl],
-          tracked: false,
-          hostPolicyScope: 'point-thumbnail',
-          proxyRequestTimeoutMs: 5_000,
-        })
-        const thirdAssertion = expect(third).rejects.toThrow()
-        // Past 2000ms: clamp did NOT engage; no timeout yet
-        await vi.advanceTimersByTimeAsync(2_001)
-        // 5001ms in total: now the full proxy timeout fires
-        await vi.advanceTimersByTimeAsync(3_000)
-        await thirdAssertion
+        await fourthAssertion
       } finally {
         vi.useRealTimers()
       }

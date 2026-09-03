@@ -16,7 +16,9 @@ vi.mock('@/components/route/RoutePreviewMap', () => ({
   RoutePreviewMap: () => <div data-testid="route-map" />,
 }))
 vi.mock('@/components/map/ResilientMapImage', () => ({
-  default: (props: { src: string | null; alt: string }) => <div data-testid="resilient-image">{props.alt}</div>,
+  default: (props: { src: string | null; alt: string }) => (
+    <div data-testid="resilient-image" data-src={props.src ?? ''} aria-label={props.alt} />
+  ),
 }))
 
 import { PlanPlanner } from '@/app/(authed)/plan/[id]/ui'
@@ -104,7 +106,7 @@ describe('PlanPlanner 聊天时间线（daymap 交付物）', () => {
       { role: 'assistant', text: '', daymap: makeDaymap('rev-b', '大吉山') },
     ]
     const { container } = render(
-      <PlanPlanner planId="plan-1" initialPlan={makePlan(['大吉山'])} initialChat={initialChat} />,
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan(['大吉山'])} initialChat={initialChat} />,
     )
 
     const explain = screen.getByText('第一版行程已经保存，请看下面的地图。')
@@ -133,6 +135,7 @@ describe('PlanPlanner 聊天时间线（daymap 交付物）', () => {
   it('无历史 daymap 的存量计划：仅当 chat 无 daymap 且当前 plan 有 days 时渲染一次 legacy 当前交付物', () => {
     const { container } = render(
       <PlanPlanner
+        plans={[]}
         planId="plan-1"
         initialPlan={makePlan(['宇治桥'])}
         initialChat={[
@@ -149,6 +152,7 @@ describe('PlanPlanner 聊天时间线（daymap 交付物）', () => {
   it('chat 中出现任何 daymap 后，legacy 副本立即消失（哪怕当前 plan 仍有 days）', () => {
     render(
       <PlanPlanner
+        plans={[]}
         planId="plan-1"
         initialPlan={makePlan(['大吉山'])}
         initialChat={[
@@ -197,7 +201,7 @@ describe('PlanPlanner 实时 SSE 路径', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { container } = render(
-      <PlanPlanner planId="plan-1" initialPlan={plan} initialChat={[]} />,
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={plan} initialChat={[]} />,
     )
 
     fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '安排一天宇治巡礼' } })
@@ -242,7 +246,7 @@ describe('PlanPlanner 实时 SSE 路径', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { container } = render(
-      <PlanPlanner planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
     )
 
     fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '帮我规划' } })
@@ -258,5 +262,268 @@ describe('PlanPlanner 实时 SSE 路径', () => {
     expect(screen.getByRole('button', { name: /其他（自行输入）/ })).toBeTruthy()
     // 待回答 ask：全局输入框切到自定义回答占位文案
     expect(screen.getByPlaceholderText(/直接输入你的回答/)).toBeTruthy()
+  })
+})
+
+describe('PlanPlanner 断线恢复与运行状态', () => {
+  const encoder = new TextEncoder()
+
+  function sseFrame(event: unknown): Uint8Array {
+    return encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+  }
+
+  it('读流中断进入恢复轮询：横幅出现、已渲染聊天与思维链保留、轮询补齐服务端条目后恢复输入', async () => {
+    // 流在两帧（reasoning + text）后抛网络错误，模拟断线（pull 驱动逐帧投递，
+    // 避免 error() 丢弃队列中未读的 chunk）
+    const frames = [
+      sseFrame({ type: 'reasoning', delta: '先想一想' }),
+      sseFrame({ type: 'text', text: '前半段' }),
+    ]
+    let frameIndex = 0
+    const brokenStream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (frameIndex < frames.length) {
+          controller.enqueue(frames[frameIndex++]!)
+          return
+        }
+        controller.error(new TypeError('network'))
+      },
+    })
+
+    let agentCalled = false
+    let pollCount = 0
+    let resolveFirstPoll: ((res: Response) => void) | null = null
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/agent')) {
+        agentCalled = true
+        return new Response(brokenStream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      }
+      if (!agentCalled) {
+        // 首挂载核对：空闲
+        return new Response(JSON.stringify({ plan: makePlan([]), chat: [], agentBusy: false }), { status: 200 })
+      }
+      pollCount += 1
+      if (pollCount === 1) {
+        // 第一次恢复轮询挂起：先让横幅可观测，再由测试放行
+        return await new Promise<Response>((resolve) => {
+          resolveFirstPoll = resolve
+        })
+      }
+      return new Response(JSON.stringify({ plan: makePlan([]), chat: [], agentBusy: false }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '继续' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    // 断线横幅出现；已渲染的聊天与思维链保留；busy 仍为 true（输入不可用）
+    await waitFor(() => expect(screen.getByText('连接中断，正在同步进度…')).toBeTruthy())
+    expect(screen.getByText('前半段')).toBeTruthy()
+    expect(screen.getByText('查看思考过程')).toBeTruthy()
+    fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '还在跑吗' } })
+    expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', true)
+
+    // 放行第一次轮询：服务端已落库 user + 前半段 + 断线期间补完的条目，agentBusy=false
+    resolveFirstPoll!(
+      new Response(
+        JSON.stringify({
+          plan: makePlan([]),
+          chat: [
+            { role: 'user', text: '继续' },
+            { role: 'assistant', text: '前半段' },
+            { role: 'assistant', text: '后半段（断线期间完成）' },
+          ],
+          agentBusy: false,
+        }),
+        { status: 200 },
+      ),
+    )
+
+    // 只补齐超出本地已知计数的条目（user/前半段不重复），横幅消失、输入恢复
+    await waitFor(() => expect(screen.getByText('后半段（断线期间完成）')).toBeTruthy())
+    await waitFor(() => expect(screen.queryByText('连接中断，正在同步进度…')).toBeNull())
+    expect(screen.getAllByText('前半段')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', false)
+    // 已渲染的思维链条目仍在
+    expect(screen.getByText('查看思考过程')).toBeTruthy()
+  })
+
+  it('首挂载发现 agentBusy=true：进入恢复轮询并显示“规划仍在进行中…”，结束后横幅消失', async () => {
+    let callCount = 0
+    let resolveSecondPoll: ((res: Response) => void) | null = null
+    const fetchMock = vi.fn(async () => {
+      callCount += 1
+      if (callCount === 1) {
+        // 首挂载核对：另一标签页/刷新中断的 run 仍在跑
+        return new Response(
+          JSON.stringify({
+            plan: makePlan([]),
+            chat: [{ role: 'user', text: '之前发的消息' }],
+            agentBusy: true,
+          }), { status: 200 })
+      }
+      return await new Promise<Response>((resolve) => {
+        resolveSecondPoll = resolve
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />)
+
+    // 进入恢复轮询：横幅 + 服务端已有条目补齐
+    await waitFor(() => expect(screen.getByText('规划仍在进行中…')).toBeTruthy())
+    expect(screen.getByText('之前发的消息')).toBeTruthy()
+    expect(callCount).toBeGreaterThanOrEqual(2)
+
+    // 下一轮轮询：run 结束 → 横幅消失、busy 解除
+    resolveSecondPoll!(
+      new Response(
+        JSON.stringify({
+          plan: makePlan([]),
+          chat: [{ role: 'user', text: '之前发的消息' }],
+          agentBusy: false,
+        }),
+      ),
+    )
+    await waitFor(() => expect(screen.queryByText('规划仍在进行中…')).toBeNull())
+    fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '继续规划' } })
+    expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', false)
+  })
+})
+
+describe('PlanPlanner 重试与空消息守卫', () => {
+  function sseErrorResponse(message: string) {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const event of [{ type: 'error', message }, { type: 'done' }]) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+        }
+        controller.close()
+      },
+    })
+    return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+
+  it('答复轮（带 answerTo）出错后出现“重试”按钮，重试原样回发同样的 answerTo/answerValue', async () => {
+    const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/agent')) return sseErrorResponse('boom')
+      return new Response(JSON.stringify({ plan: makePlan([]) }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <PlanPlanner
+        plans={[]}
+        planId="plan-1"
+        initialPlan={makePlan([])}
+        initialChat={[
+          {
+            role: 'assistant',
+            text: '想巡礼哪几部？',
+            ask: {
+              askId: 'ask-work',
+              kind: 'multi_choice',
+              taskType: 'work_selection',
+              prompt: '想巡礼哪几部？',
+              options: [
+                { id: 'a', label: '吹响吧！上低音号' },
+                { id: 'b', label: '轻音少女' },
+              ],
+            },
+          },
+        ]}
+      />,
+    )
+
+    // 通过作品卡提交一条答复轮（带 answerTo/answerValue）
+    fireEvent.click(screen.getByRole('button', { name: /轻音少女/ }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+
+    // 答复轮出错后同样给出重试入口
+    await waitFor(() => expect(screen.getByText(/出错了：boom/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /重试/ }))
+
+    await waitFor(() => {
+      const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+      expect(agentCalls).toHaveLength(2)
+    })
+    const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+    const firstBody = JSON.parse(String(agentCalls[0]![1]?.body)) as Record<string, unknown>
+    const retryBody = JSON.parse(String(agentCalls[1]![1]?.body)) as Record<string, unknown>
+    // 重试原样重发完整请求体
+    expect(retryBody).toEqual(firstBody)
+    expect(retryBody.answerTo).toBe('ask-work')
+    expect(retryBody.answerValue).toEqual({ optionIds: ['b'] })
+  })
+
+  it('空 message 不发 fetch，只在聊天流追加本地提示', async () => {
+    const fetchMock = vi.fn(async (_input: unknown) => new Response(JSON.stringify({ plan: makePlan([]) }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <PlanPlanner
+        plans={[]}
+        planId="plan-1"
+        initialPlan={makePlan([])}
+        initialChat={[
+          {
+            role: 'assistant',
+            text: '想巡礼哪一部？',
+            ask: {
+              askId: 'ask-empty',
+              kind: 'single_choice',
+              taskType: 'work_selection',
+              prompt: '想巡礼哪一部？',
+              // 异常数据：选项 label 为空，readableText 拼出来是空串
+              options: [{ id: 'x', label: '' }],
+            },
+          },
+        ]}
+      />,
+    )
+
+    // label 为空的作品卡（可访问名为空）+ 底部确认条
+    fireEvent.click(screen.getByRole('button', { name: '' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+
+    // 追加的 assistant 提示会使上一张 ask 折叠成摘要 chip，同文本出现两处
+    await waitFor(() => expect(screen.getAllByText('消息为空，未发送').length).toBeGreaterThan(0))
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))).toHaveLength(0)
+  })
+})
+
+describe('PlanPlanner 布局：悬浮输入胶囊（传统 AI Chat 布局）', () => {
+  it('输入区是 max-w-3xl 对话列内的悬浮胶囊，不再存在全宽 border-t 白板输入条', () => {
+    const { container } = render(
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
+    )
+    const textarea = screen.getByPlaceholderText(/告诉规划师/)
+    // 胶囊本体：圆角 + 描边 + 阴影（rounded-3xl）
+    const capsule = textarea.closest('.rounded-3xl')!
+    expect(capsule).toBeTruthy()
+    // 胶囊在 max-w-3xl 对话列内
+    expect(capsule.closest('.max-w-3xl')).toBeTruthy()
+    // 不存在全宽 border-t 白板输入条（旧布局的 shrink-0 border-t bg-white/90）
+    expect(container.querySelector('[class*="border-t"][class*="bg-white/90"]')).toBeNull()
+    // 标题行不再有白色底板的 h-14 顶栏
+    expect(container.querySelector('header.h-14')).toBeNull()
+  })
+
+  it('textarea 增高不改变胶囊外层包裹容器的类名（只有胶囊自己变高）', () => {
+    const { container } = render(
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
+    )
+    const textarea = screen.getByPlaceholderText(/告诉规划师/)
+    const wrapper = textarea.closest('.rounded-3xl')!.parentElement as HTMLElement
+    const wrapperClass = wrapper.className
+    // 输入多行内容使 textarea 增高
+    fireEvent.change(textarea, { target: { value: '第一行\n第二行\n第三行\n第四行\n第五行\n第六行\n第七行' } })
+    expect(wrapper.className).toBe(wrapperClass)
   })
 })

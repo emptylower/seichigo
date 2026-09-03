@@ -26,7 +26,7 @@ export function AskCard(props: AskCardProps) {
   const { payload } = props
   if (payload.kind === 'date_range' || payload.taskType === 'date_range') return <DateRangeAsk {...props} />
   if (payload.taskType === 'opinion') return <OpinionChoiceAsk {...props} multiple={payload.kind === 'multi_choice'} />
-  return <ChoiceAsk {...props} multiple={payload.kind === 'multi_choice'} />
+  return <ChoiceAsk {...props} />
 }
 
 /** 历史里已翻篇的 ask 渲染成折叠摘要 chip，文案取紧跟其后的那条消息；图标按任务类型区分 */
@@ -332,36 +332,35 @@ function OptionCover(props: { option: AskUserOption }) {
   )
 }
 
-function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { multiple: boolean }) {
-  // 作品选择卡（最终澄清 2026-09-01）：保持既有封面卡交互，不渲染卡内自定义
-  // 入口——自由文本回答由全局输入框兜底。历史过渡期落库的 work 载荷可能残留
-  // 保留的 __custom__ 选项，这里统一过滤，保证旧作品卡 UI 不变。
+/**
+ * 作品选择卡：无论 single_choice / multi_choice 一律按多选交互——点卡片只切换
+ * 选中态（不自动提交），底部常驻"已选 N 项 + 确认"提交条。提交时保持后端答复
+ * 契约：single_choice 且恰好选 1 项回 { optionId }，其余回 { optionIds }。
+ * （最终澄清 2026-09-01）：不渲染卡内自定义入口——自由文本由全局输入框兜底。
+ * 历史过渡期落库的 work 载荷可能残留保留的 __custom__ 选项，这里统一过滤，
+ * 保证旧作品卡 UI 不变。
+ */
+function ChoiceAsk({ payload, disabled, onSubmit }: AskCardProps) {
   const modelOptions = (payload.options ?? []).filter((o) => !isAskCustomOption(o))
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
   // 滚动条已全站隐藏，桌面纯鼠标用户靠按住拖动访问被裁切的卡片
   const dragScroll = useDragToScroll()
 
-  function pickSingle(option: AskUserOption) {
-    if (disabled) return
-    setSelectedIds([option.id])
-    // 短暂延迟让选中态动画播完再提交
-    window.setTimeout(() => {
-      onSubmit({ readableText: option.label, answerValue: { optionId: option.id } })
-    }, 180)
-  }
-
-  function toggleMulti(option: AskUserOption) {
+  function toggle(option: AskUserOption) {
     if (disabled) return
     setSelectedIds((prev) => (prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]))
   }
 
-  function submitMulti() {
+  function submit() {
     const chosen = modelOptions.filter((o) => selected.has(o.id))
     if (chosen.length === 0) return
     onSubmit({
       readableText: chosen.map((o) => o.label).join('、'),
-      answerValue: { optionIds: chosen.map((o) => o.id) },
+      answerValue:
+        payload.kind === 'single_choice' && chosen.length === 1
+          ? { optionId: chosen[0]!.id }
+          : { optionIds: chosen.map((o) => o.id) },
     })
   }
 
@@ -379,7 +378,7 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
               key={option.id}
               type="button"
               disabled={disabled}
-              onClick={() => (multiple ? toggleMulti(option) : pickSingle(option))}
+              onClick={() => toggle(option)}
               className={`relative w-40 shrink-0 snap-start overflow-hidden rounded-2xl border bg-white text-left transition ${
                 isSelected ? 'border-transparent ring-2 ring-brand-500' : 'border-gray-200 hover:border-brand-300'
               } disabled:opacity-60`}
@@ -402,19 +401,17 @@ function ChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { m
         })}
       </div>
 
-      {multiple ? (
-        <div className="flex items-center justify-between pt-3">
-          <span className="text-xs text-gray-500">已选 {selectedIds.length} 项</span>
-          <button
-            type="button"
-            disabled={disabled || selectedIds.length === 0}
-            onClick={submitMulti}
-            className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
-          >
-            确认
-          </button>
-        </div>
-      ) : null}
+      <div className="flex items-center justify-between pt-3">
+        <span className="text-xs text-gray-500">已选 {selectedIds.length} 项</span>
+        <button
+          type="button"
+          disabled={disabled || selectedIds.length === 0}
+          onClick={submit}
+          className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
+        >
+          确认
+        </button>
+      </div>
     </CardShell>
   )
 }

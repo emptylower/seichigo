@@ -130,6 +130,16 @@ function TransitConnectorRow(props: { item: TripPlanItemView }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate">{text}</span>
         {secondary ? <span className="block truncate text-[11px] text-gray-300">{secondary}</span> : null}
+        {transport?.mapsUrl ? (
+          <a
+            href={transport.mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 inline-block text-[11px] text-brand-500 underline decoration-brand-200 underline-offset-2"
+          >
+            在 Google 地图查看
+          </a>
+        ) : null}
       </span>
     </li>
   )
@@ -167,9 +177,14 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
   // 地图/路线仅纳入有坐标的点（dayRoutePoints 另行过滤）
   const isVisit = isNumberedVisitItem(item)
   // 图片阶梯与 /map 一致：外部地点（含 attraction）优先 payload.media
-  // （keyless 代理 URL），站内点位用关联 point.image，都走 ResilientMapImage 候选梯
+  // （keyless 代理 URL），站内点位用关联 point.image，都走 ResilientMapImage 候选梯；
+  // 站内点位无图时用 /api/google/point-photo 兜底 URL 作为 src（不再直接渲染占位），
+  // 并始终作为 fallbackSrc 追加为候选梯最后一档（同源去重，不会重复请求）
   const media = getMedia(item)
-  const image = media?.displayUrl ?? item.point?.image ?? null
+  const pointPhotoSrc = item.pointId
+    ? `/api/google/point-photo?pointId=${encodeURIComponent(item.pointId)}&maxwidth=400`
+    : null
+  const image = media?.displayUrl ?? item.point?.image ?? pointPhotoSrc
   const description = item.reason ?? item.note ?? null
   const isExternal = isVisit && !item.pointId && getPlace(item) !== null
   return (
@@ -186,16 +201,19 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
         {showLine ? <span className="w-px flex-1 bg-gray-200" /> : null}
       </div>
 
-      {/* 图片：无图/非点位 → 渐变占位 + pin 图标；
-          点位图复用地图的 ResilientMapImage（直连失败自动走 /api/anitabi/image-render 代理重试） */}
-      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
-        {isVisit && image ? (
+      {/* 图片：无图 → 渐变占位 + pin 图标；只要有媒体图（payload.media 或 point.image）就渲染——非计序条目（free/
+          参考类 lodging、meal 等）有图也显示，仅计序规则不变；neighbor 来源图右下角加极小"参考"角标。
+          点位图复用地图的 ResilientMapImage（直连失败自动走 /api/anitabi/image-render 代理重试）；
+          80–96px 小卡用 point-thumbnail（h160 缩略图变体，R2 已镜像命中率高），不走 point 的 w=640 档 */}
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
+        {image ? (
           <ResilientMapImage
             src={image}
             alt={item.title}
-            kind="point"
+            kind="point-thumbnail"
             className="h-full w-full object-cover"
             loading="lazy"
+            fallbackSrc={pointPhotoSrc}
             fallback={
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
                 <MapPin className="h-6 w-6 text-brand-300" />
@@ -207,6 +225,15 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
             <MapPin className="h-6 w-6 text-brand-300" />
           </div>
         )}
+        {media?.source === 'neighbor' ? (
+          // 邻近条目借用图：右下角极小"参考"角标提示图片来源，其他来源不加
+          <span
+            title="借用邻近条目的图片"
+            className="absolute bottom-1 right-1 rounded bg-black/55 px-1 py-0.5 text-[10px] leading-none text-white/95"
+          >
+            参考
+          </span>
+        ) : null}
       </div>
 
       {/* 内容区 */}
@@ -468,13 +495,13 @@ export function DayCards(props: {
         </div>
       </div>
 
-      {/* 天数 tab */}
+      {/* 天数 tab（key 用 dayIndex：每次保存 id 全换，内容稳定才不重挂载） */}
       <div ref={dayTabsDrag.ref} {...dayTabsDrag.handlers} className={`flex gap-2 overflow-x-auto px-4 pt-3 ${dayTabsDrag.cursorClass}`}>
         {days.map((day) => {
           const date = formatDayDate(day.date)
           return (
             <button
-              key={day.id}
+              key={day.dayIndex}
               type="button"
               onClick={() => setSelectedDay(day.dayIndex)}
               className={
@@ -501,15 +528,23 @@ export function DayCards(props: {
         <ol className="max-h-96 overflow-y-auto py-1">
           {(() => {
             let seq = 0
+            // 列表 key 不再用 item.id（每次保存 deleteMany+createMany 后 id 全换，
+            // 轮询拿到新计划会全量重挂载、图片重新请求）：改用内容签名，
+            // 同一天内重复签名追加 #序号
+            const keyCounts = new Map<string, number>()
             return sortedItems.map((item, idx) => {
+              const signature = `${item.type}|${item.pointId ?? ''}|${item.title}`
+              const occurrence = keyCounts.get(signature) ?? 0
+              keyCounts.set(signature, occurrence + 1)
+              const itemKey = occurrence > 0 ? `${signature}#${occurrence}` : signature
               if (item.type === 'transit') {
-                return <TransitConnectorRow key={item.id} item={item} />
+                return <TransitConnectorRow key={itemKey} item={item} />
               }
               const isVisit = isNumberedVisitItem(item)
               if (isVisit) seq += 1
               return (
                 <TimelineCardRow
-                  key={item.id}
+                  key={itemKey}
                   item={item}
                   seq={isVisit ? seq : null}
                   showLine={idx < sortedItems.length - 1}

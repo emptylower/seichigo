@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Loader2, MoreHorizontal, RotateCcw, SendHorizontal } from 'lucide-react'
+import { Loader2, Menu, MoreHorizontal, RotateCcw, SendHorizontal } from 'lucide-react'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import { parseDaymapPayload } from '@/lib/tripPlan/view'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
@@ -10,6 +9,7 @@ import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { AskAnswerChip, AskCard } from './components/AskCard'
 import { DayCards, DaymapCard } from './components/DayCards'
 import { MarkdownBubble } from './components/MarkdownBubble'
+import { PLANS_CHANGED_EVENT, PlanSidebar, type PlanSidebarPlan } from './components/PlanSidebar'
 import {
   ThinkingChain,
   applyThinkingEvent,
@@ -18,18 +18,32 @@ import {
   type ThinkingTurn,
 } from './components/ThinkingChain'
 
-type ChatEntry = ChatEntryView & { thinking?: ThinkingTurn; retryMessage?: string }
+type ChatEntry = ChatEntryView & {
+  thinking?: ThinkingTurn
+  /** 出错轮记录完整请求体（普通轮与答复轮一致），重试按钮原样重发 */
+  retry?: { message: string; answerTo?: string; answerValue?: unknown }
+}
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80
-const TEXTAREA_MAX_HEIGHT_PX = 128 // ≈ 4 行
+const TEXTAREA_MAX_HEIGHT_PX = 144 // ≈ 6 行（text-sm 20px 行高 + 上下 padding）
 // busy 为 true 但首帧遥测尚未到达时的兜底（startedAt 不影响进行中态展示）
 const EMPTY_THINKING_TURN: ThinkingTurn = { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: 0 }
 
-export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; initialChat: ChatEntryView[] }) {
+export function PlanPlanner(props: {
+  planId: string
+  initialPlan: TripPlanView
+  initialChat: ChatEntryView[]
+  /** 侧栏会话列表（服务端 listPlans 注入）；PLANS_CHANGED_EVENT 触发客户端重新拉取 */
+  plans: PlanSidebarPlan[]
+}) {
   const [plan, setPlan] = useState(props.initialPlan)
   const [chat, setChat] = useState<ChatEntry[]>(props.initialChat)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  // 移动端会话列表抽屉（桌面常驻侧栏不涉及）
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  // 断线恢复/跨标签页恢复：reconnecting=本页读流中断；in-progress=挂载时发现服务端仍在跑
+  const [syncBanner, setSyncBanner] = useState<'reconnecting' | 'in-progress' | null>(null)
   const [activeThinking, setActiveThinking] = useState<ThinkingTurn | null>(null)
   // 展开哪条历史思维链：`m${idx}`（消息定格）——纯 UI 状态，不参与跟随滚动
   const [expandedThinking, setExpandedThinking] = useState<string | null>(null)
@@ -39,6 +53,11 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const nearBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // 断线对齐用的"本地已知服务端条数"：初始为 SSR 进来的 chat 长度；之后每收到
+  // 一条会落库的 SSE 消息（text/ask/daymap）或本地发送成功一条 user 消息即 +1，
+  // 轮询时只追加超出该计数的服务端条目（daymap 再按 revisionId 去重兜底）
+  const serverEntryCountRef = useRef(props.initialChat.length)
+  const pollingActiveRef = useRef(false)
 
   async function refreshPlan() {
     const res = await fetch(`/api/me/plans/${props.planId}`)
@@ -46,6 +65,82 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
     const body = (await res.json()) as { plan?: TripPlanView }
     if (body.plan) setPlan(body.plan)
   }
+
+  /**
+   * 轮询对齐一次服务端状态：更新 plan、补齐本地缺失的落库聊天条目。
+   * 返回 agentBusy 语义：busy=仍在跑（继续轮询）；idle=已结束；error=网络/
+   * 服务不可用（保持轮询，绝不在网络抖动时误判为结束）。
+   */
+  async function pollAgentRunOnce(): Promise<'busy' | 'idle' | 'error'> {
+    let body: { plan?: TripPlanView; chat?: ChatEntryView[]; agentBusy?: boolean }
+    try {
+      const res = await fetch(`/api/me/plans/${props.planId}`)
+      if (!res.ok) return 'error'
+      body = (await res.json()) as { plan?: TripPlanView; chat?: ChatEntryView[]; agentBusy?: boolean }
+    } catch {
+      return 'error'
+    }
+    if (body.plan) setPlan(body.plan)
+    if (Array.isArray(body.chat)) {
+      const known = serverEntryCountRef.current
+      if (body.chat.length > known) {
+        const extra = body.chat.slice(known)
+        serverEntryCountRef.current = body.chat.length
+        setChat((prev) => {
+          const next = [...prev]
+          for (const entry of extra) {
+            if (entry.daymap && next.some((e) => e.daymap?.revisionId === entry.daymap!.revisionId)) continue
+            next.push(entry)
+          }
+          return next
+        })
+      }
+    }
+    return body.agentBusy ? 'busy' : 'idle'
+  }
+
+  /** 断线恢复轮询：服务端 run 在客户端断线后仍在跑，每 3s 对齐直到 agentBusy=false */
+  function startAgentRunPolling() {
+    if (pollingActiveRef.current) return
+    pollingActiveRef.current = true
+    void (async () => {
+      while (pollingActiveRef.current) {
+        const state = await pollAgentRunOnce()
+        if (state === 'idle') break
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
+      }
+      pollingActiveRef.current = false
+      setSyncBanner(null)
+      setBusy(false)
+      setActiveThinking(null)
+    })()
+  }
+
+  function enterRunRecovery(mode: 'reconnecting' | 'in-progress') {
+    setSyncBanner(mode)
+    setBusy(true)
+    startAgentRunPolling()
+  }
+
+  // 首挂载核对运行状态：刷新/另一标签页里 run 仍在跑时进入同样的恢复轮询
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const state = await pollAgentRunOnce()
+      if (cancelled || state !== 'busy') return
+      enterRunRecovery('in-progress')
+    })()
+    return () => {
+      cancelled = true
+    }
+    // 仅首挂载执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 卸载时停掉恢复轮询
+  useEffect(() => () => {
+    pollingActiveRef.current = false
+  }, [])
 
   function handleScroll() {
     const el = scrollRef.current
@@ -73,6 +168,12 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   }, [input])
 
   async function postAndStream(body: { message: string; answerTo?: string; answerValue?: unknown }) {
+    // 任何路径都不得向 /agent 发送空 message（服务端 400"消息不能为空"）：
+    // 本地追加提示并直接返回，不发请求
+    if (!body.message.trim()) {
+      setChat((prev) => [...prev, { role: 'assistant', text: '消息为空，未发送' }])
+      return
+    }
     if (busy) return
     setBusy(true)
     // 用户主动发送时强制跟随到底部（常规 chat 行为）
@@ -100,117 +201,134 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
       })
       if (!res.ok || !res.body) {
         const errBody = (await res.json().catch(() => null)) as { error?: string } | null
-        // 普通消息失败给重试入口；ask 结构化回答重发语义复杂，不给
+        // 普通轮与答复轮（ask 结构化回答）都记录完整请求体，出错后均可原样重试
         setChat((prev) => [
           ...prev,
           {
             role: 'assistant',
             text: errBody?.error ?? '请求失败，请稍后再试',
-            retryMessage: body.answerTo ? undefined : body.message,
+            retry: { ...body },
           },
         ])
         return
       }
 
       const reader = res.body.getReader()
+      // 服务端在 beginAgentRun 已落库本轮 user 消息，计入本地已知服务端条数
+      serverEntryCountRef.current += 1
       const decoder = new TextDecoder()
       let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() ?? ''
-        for (const frame of frames) {
-          const line = frame.trim()
-          if (!line.startsWith('data:')) continue
-          let event: PlanAgentEvent
-          try {
-            event = JSON.parse(line.slice(5)) as PlanAgentEvent
-          } catch {
-            continue
-          }
-          switch (event.type) {
-            case 'text': {
-              const thinking = freezeTurn()
-              setChat((prev) => [...prev, { role: 'assistant', text: event.text, thinking }])
-              break
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const frames = buffer.split('\n\n')
+          buffer = frames.pop() ?? ''
+          for (const frame of frames) {
+            const line = frame.trim()
+            if (!line.startsWith('data:')) continue
+            let event: PlanAgentEvent
+            try {
+              event = JSON.parse(line.slice(5)) as PlanAgentEvent
+            } catch {
+              continue
             }
-            case 'ask': {
-              // ask_user 结构化提问：本体挂 ask 字段，prompt 同时作 text 降级展示；
-              // 本轮对话就此结束（后端随后会发 done）
-              const thinking = freezeTurn()
-              const ask: AskUserPayload = {
-                askId: event.askId,
-                kind: event.kind,
-                taskType: event.taskType,
-                prompt: event.prompt,
-                options: event.options,
-                allowSkip: event.allowSkip,
+            switch (event.type) {
+              case 'text': {
+                const thinking = freezeTurn()
+                serverEntryCountRef.current += 1 // text 事件对应一条落库 assistant 消息
+                setChat((prev) => [...prev, { role: 'assistant', text: event.text, thinking }])
+                break
               }
-              setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
-              break
-            }
-            case 'daymap': {
-              // save_plan_days 的交付快照：与刷新后 toChatView 用同一个载荷
-              // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
-              const parsed = parseDaymapPayload(event)
-              if (!parsed) break
-              setChat((prev) =>
-                prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
-                  ? prev
-                  : [...prev, { role: 'assistant', text: '', daymap: parsed }],
-              )
-              break
-            }
-            case 'plan_updated':
-              await refreshPlan()
-              break
-            case 'error': {
-              const thinking = freezeTurn()
-              // 偶发网络/运行时错误：附重试入口，用户不必手打重发（仅普通消息）
-              setChat((prev) => [
-                ...prev,
-                {
-                  role: 'assistant',
-                  text: `出错了：${event.message}`,
-                  thinking,
-                  retryMessage: body.answerTo ? undefined : body.message,
-                },
-              ])
-              break
-            }
-            case 'done': {
-              // 回合末尾仍残留未挂接的遥测（最后一段只有工具调用没有正文）时，
-              // 挂到最近一条还没有思维链的 assistant 消息上
-              const frozen = { ...turn, endedAt: Date.now() }
-              turn = newThinkingTurn()
-              if (hasThinkingContent(frozen)) {
-                setChat((prev) => {
-                  const next = [...prev]
-                  for (let i = next.length - 1; i >= 0; i--) {
-                    if (next[i].role === 'assistant' && !next[i].thinking) {
-                      next[i] = { ...next[i], thinking: frozen }
-                      return next
+              case 'ask': {
+                // ask_user 结构化提问：本体挂 ask 字段，prompt 同时作 text 降级展示；
+                // 本轮对话就此结束（后端随后会发 done）
+                const thinking = freezeTurn()
+                serverEntryCountRef.current += 1 // ask 事件对应一条落库 ask 消息
+                const ask: AskUserPayload = {
+                  askId: event.askId,
+                  kind: event.kind,
+                  taskType: event.taskType,
+                  prompt: event.prompt,
+                  options: event.options,
+                  allowSkip: event.allowSkip,
+                }
+                setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
+                break
+              }
+              case 'daymap': {
+                // save_plan_days 的交付快照：与刷新后 toChatView 用同一个载荷
+                // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
+                const parsed = parseDaymapPayload(event)
+                if (!parsed) break
+                serverEntryCountRef.current += 1 // daymap 事件对应一条落库 daymap 消息
+                setChat((prev) =>
+                  prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
+                    ? prev
+                    : [...prev, { role: 'assistant', text: '', daymap: parsed }],
+                )
+                break
+              }
+              case 'plan_updated':
+                await refreshPlan()
+                // 标题生成等元数据变化 → 侧栏会话列表重新拉取
+                window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
+                break
+              case 'error': {
+                const thinking = freezeTurn()
+                // 偶发网络/运行时错误：附重试入口，用户不必手打重发（答复轮同样可重试）
+                setChat((prev) => [
+                  ...prev,
+                  {
+                    role: 'assistant',
+                    text: `出错了：${event.message}`,
+                    thinking,
+                    retry: { ...body },
+                  },
+                ])
+                break
+              }
+              case 'done': {
+                // 回合末尾仍残留未挂接的遥测（最后一段只有工具调用没有正文）时，
+                // 挂到最近一条还没有思维链的 assistant 消息上
+                const frozen = { ...turn, endedAt: Date.now() }
+                turn = newThinkingTurn()
+                if (hasThinkingContent(frozen)) {
+                  setChat((prev) => {
+                    const next = [...prev]
+                    for (let i = next.length - 1; i >= 0; i--) {
+                      if (next[i].role === 'assistant' && !next[i].thinking) {
+                        next[i] = { ...next[i], thinking: frozen }
+                        return next
+                      }
                     }
-                  }
-                  return next
-                })
+                    return next
+                  })
+                }
+                break
               }
-              break
+              case 'status':
+              case 'reasoning':
+              case 'tool_call':
+                turn = applyThinkingEvent(turn, event)
+                setActiveThinking(turn)
+                break
             }
-            case 'status':
-            case 'reasoning':
-            case 'tool_call':
-              turn = applyThinkingEvent(turn, event)
-              setActiveThinking(turn)
-              break
           }
         }
+      } catch {
+        // 读流中断（网络抖动/标签页休眠，非 HTTP 错误）：服务端 run 仍在跑，
+        // 保留已渲染的聊天与思维链，进入断线恢复轮询；busy 保持 true
+        enterRunRecovery('reconnecting')
+        return
       }
     } finally {
-      setBusy(false)
-      setActiveThinking(null)
+      // 进入恢复轮询时由轮询循环负责收尾（busy/banner/thinking）
+      if (!pollingActiveRef.current) {
+        setBusy(false)
+        setActiveThinking(null)
+      }
     }
   }
 
@@ -239,37 +357,58 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
   }
 
   return (
-    <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh flex-col">
-      {/* 自绘极简顶栏（站点 header/footer 已由 data-layout-immersive 隐藏） */}
-      <header className="h-14 shrink-0 border-b border-pink-100/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-full w-full max-w-3xl items-center gap-3 px-4">
-          <Link
-            href="/plan"
-            aria-label="返回计划列表"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-600 no-underline transition hover:bg-pink-50 hover:text-brand-600"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">{plan.title}</h1>
-          <button
-            type="button"
-            aria-label="更多操作"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-pink-50 hover:text-brand-600"
-            onClick={() => window.alert('更多操作即将上线')}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
+    <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh">
+      {/* 左侧会话列表：桌面常驻侧栏，移动端标题行菜单按钮开抽屉 */}
+      <PlanSidebar
+        plans={props.plans}
+        currentPlanId={props.planId}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
+      />
 
-      {/* 单列对话流：消息 + 行程预览 + 地图在同一个滚动容器里 */}
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-6">
-          {chat.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              试试：“帮我安排下个月中旬去京都，做京吹圣地巡礼的 3 天计划”
-            </p>
-          ) : null}
+      {/* 对话列：标题行（sticky top）+ 消息流 + 悬浮输入胶囊（sticky bottom）
+          共用一个滚动容器；保留 data-layout-wide/-immersive 隐藏站点 header/footer */}
+      <div ref={scrollRef} onScroll={handleScroll} className="relative min-w-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full flex-col">
+          {/* 标题行：透明 + 毛玻璃，无白色底板、无边框 */}
+          <div className="sticky top-0 z-10 bg-transparent backdrop-blur-sm">
+            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-3">
+              <button
+                type="button"
+                aria-label="打开会话列表"
+                onClick={() => setMobileNavOpen(true)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-600 transition hover:bg-pink-50 hover:text-brand-600 lg:hidden"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+              <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">{plan.title}</h1>
+              <button
+                type="button"
+                aria-label="更多操作"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-pink-50 hover:text-brand-600"
+                onClick={() => window.alert('更多操作即将上线')}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* 单列对话流：消息 + 行程预览 + 地图；底部为输入胶囊预留空间 */}
+          <div className="mx-auto w-full max-w-3xl flex-1 space-y-3 px-4 pb-40 pt-2">
+            {/* 断线/跨页恢复横幅：标题行下方的圆角提示条，宽度随对话列 */}
+            {syncBanner ? (
+              <div
+                role="status"
+                className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-center text-xs text-amber-700"
+              >
+                {syncBanner === 'reconnecting' ? '连接中断，正在同步进度…' : '规划仍在进行中…'}
+              </div>
+            ) : null}
+            {chat.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                试试：“帮我安排下个月中旬去京都，做京吹圣地巡礼的 3 天计划”
+              </p>
+            ) : null}
           {chat.map((entry, idx) => {
             // daymap 交付物：聊天时间线里的独立条目（不可变快照，只读渲染）
             if (entry.daymap) {
@@ -315,11 +454,11 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
                 ) : (
                   <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-2 text-sm text-gray-800">
                     <MarkdownBubble text={entry.text} />
-                    {entry.retryMessage ? (
+                    {entry.retry ? (
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void postAndStream({ message: entry.retryMessage! })}
+                        onClick={() => void postAndStream(entry.retry!)}
                         className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
                       >
                         <RotateCcw className="h-3 w-3" />
@@ -354,39 +493,43 @@ export function PlanPlanner(props: { planId: string; initialPlan: TripPlanView; 
               <DayCards planId={props.planId} days={plan.days} scope="current" />
             </div>
           ) : null}
-        </div>
-      </div>
+          </div>
 
-      {/* 输入区 */}
-      <div className="shrink-0 border-t border-pink-100/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            rows={1}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-            placeholder={
-              pendingAsk
-                ? '直接输入你的回答，会作为这条提问的自定义答案提交…（Enter 发送）'
-                : '告诉规划师你的巡礼想法…（Enter 发送，Shift+Enter 换行）'
-            }
-            className="max-h-32 flex-1 resize-none overflow-y-auto rounded-2xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-brand-400"
-          />
-          <button
-            type="button"
-            aria-label="发送"
-            disabled={busy || !input.trim()}
-            onClick={() => void send()}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-500 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-          </button>
+          {/* 悬浮输入胶囊：包裹层只铺页面底色渐变（无边框、无整幅白块），
+              胶囊本体圆角 + 描边 + 阴影；textarea 变高时只有胶囊变高 */}
+          <div className="sticky bottom-0 bg-gradient-to-t from-[#fff7fb] via-[#fff7fb]/80 to-transparent">
+            <div className="mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+              <div className="flex items-end gap-2 rounded-3xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  rows={1}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      void send()
+                    }
+                  }}
+                  placeholder={
+                    pendingAsk
+                      ? '直接输入你的回答，会作为这条提问的自定义答案提交…（Enter 发送）'
+                      : '告诉规划师你的巡礼想法…（Enter 发送，Shift+Enter 换行）'
+                  }
+                  className="max-h-36 flex-1 resize-none overflow-y-auto bg-transparent text-sm outline-none placeholder:text-gray-400"
+                />
+                <button
+                  type="button"
+                  aria-label="发送"
+                  disabled={busy || !input.trim()}
+                  onClick={() => void send()}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-500 disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

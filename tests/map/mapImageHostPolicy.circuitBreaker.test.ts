@@ -31,81 +31,99 @@ describe('mapImageHostPolicy circuit breaker', () => {
     expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 0)).toBe(DEFAULT_TIMEOUT_MS)
   })
 
-  it('transitions to degraded after 2 failures within window, timeout 2000 when v2 enabled', () => {
+  it('transitions to degraded after 3 failures within window, timeout 2000 when v2 enabled', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
-    expect(resolveHostState('image.anitabi.cn', 'cover', 0)).toBe('healthy')
+    recordHostFailure('image.anitabi.cn', 'cover', 3_000)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 3_000)).toBe('healthy')
 
     recordHostFailure('image.anitabi.cn', 'cover', 5_000)
     expect(resolveHostState('image.anitabi.cn', 'cover', 5_000)).toBe('degraded')
     expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 5_000)).toBe(2_000)
   })
 
-  it('transitions to blocked after 3 failures within 10s, timeout 0 when v2 enabled', () => {
+  it('transitions to blocked after 6 failures within 10s, timeout 0 when v2 enabled', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
+    recordHostFailure('image.anitabi.cn', 'cover', 1_000)
     recordHostFailure('image.anitabi.cn', 'cover', 3_000)
-    recordHostFailure('image.anitabi.cn', 'cover', 9_999)
+    recordHostFailure('image.anitabi.cn', 'cover', 5_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 7_000)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 9_998)).toBe('degraded')
 
+    recordHostFailure('image.anitabi.cn', 'cover', 9_999)
     expect(resolveHostState('image.anitabi.cn', 'cover', 9_999)).toBe('blocked')
     expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 9_999)).toBe(0)
   })
 
-  it('does not block when the 3rd failure is outside the 10s window, but remains degraded', () => {
+  it('does not block when the 6th failure is outside the 10s window, but remains degraded', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
-    recordHostFailure('image.anitabi.cn', 'cover', 5_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 2_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 4_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 6_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 8_000)
     recordHostFailure('image.anitabi.cn', 'cover', 10_001)
 
     expect(resolveHostState('image.anitabi.cn', 'cover', 10_001)).toBe('degraded')
     expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 10_001)).toBe(2_000)
   })
 
-  it('still degrades after two failures outside the 10s blocker window', () => {
+  it('still degrades after 3 failures outside the 10s blocker window', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
     expect(resolveHostState('image.anitabi.cn', 'cover', 10_999)).toBe('healthy')
 
     recordHostFailure('image.anitabi.cn', 'cover', 11_000)
-    expect(resolveHostState('image.anitabi.cn', 'cover', 11_000)).toBe('degraded')
-    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 11_000)).toBe(2_000)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 11_000)).toBe('healthy')
+
+    recordHostFailure('image.anitabi.cn', 'cover', 12_000)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 12_000)).toBe('degraded')
+    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 12_000)).toBe(2_000)
   })
 
   it('exits blocked and expired state after 60s TTL', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
+    recordHostFailure('image.anitabi.cn', 'cover', 500)
     recordHostFailure('image.anitabi.cn', 'cover', 1_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 1_500)
     recordHostFailure('image.anitabi.cn', 'cover', 2_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 2_500)
 
-    expect(resolveHostState('image.anitabi.cn', 'cover', 2_000)).toBe('blocked')
-    expect(resolveHostState('image.anitabi.cn', 'cover', 62_001)).toBe('healthy')
-    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 62_001)).toBe(DEFAULT_TIMEOUT_MS)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 2_500)).toBe('blocked')
+    expect(resolveHostState('image.anitabi.cn', 'cover', 62_501)).toBe('healthy')
+    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 62_501)).toBe(DEFAULT_TIMEOUT_MS)
   })
 
   it('scopes failures independently by scope and host', () => {
     process.env[BREAKER_FLAG] = '1'
 
     recordHostFailure('image.anitabi.cn', 'cover', 0)
+    recordHostFailure('image.anitabi.cn', 'cover', 500)
     recordHostFailure('image.anitabi.cn', 'cover', 1_000)
-    recordHostFailure('lain.bgm.tv', 'cover', 2_000)
-    recordHostFailure('image.anitabi.cn', 'point-thumbnail', 2_000)
+    recordHostFailure('lain.bgm.tv', 'cover', 1_500)
+    recordHostFailure('image.anitabi.cn', 'point-thumbnail', 1_500)
 
     expect(resolveHostState('image.anitabi.cn', 'cover', 2_000)).toBe('degraded')
     expect(resolveHostState('lain.bgm.tv', 'cover', 2_000)).toBe('healthy')
     expect(resolveHostState('image.anitabi.cn', 'point-thumbnail', 2_000)).toBe('healthy')
   })
 
-  it('feature flag off: 3 failures does not block, and timeout remains default', () => {
+  it('feature flag off: 6 failures does not block, and timeout remains default', () => {
     recordHostFailure('image.anitabi.cn', 'cover', 0)
+    recordHostFailure('image.anitabi.cn', 'cover', 500)
     recordHostFailure('image.anitabi.cn', 'cover', 1_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 1_500)
     recordHostFailure('image.anitabi.cn', 'cover', 2_000)
+    recordHostFailure('image.anitabi.cn', 'cover', 2_500)
 
-    expect(resolveHostState('image.anitabi.cn', 'cover', 2_000)).toBe('degraded')
-    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 2_000)).toBe(DEFAULT_TIMEOUT_MS)
+    expect(resolveHostState('image.anitabi.cn', 'cover', 2_500)).toBe('degraded')
+    expect(resolveHostTimeoutMs('image.anitabi.cn', 'cover', DEFAULT_TIMEOUT_MS, 2_500)).toBe(DEFAULT_TIMEOUT_MS)
   })
 })

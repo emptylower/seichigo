@@ -81,19 +81,19 @@ describe('MapDialogs image preview', () => {
     )
 
     const img = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
-    expect(decodeURIComponent(img.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(img.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
     )
 
     fireEvent.error(img)
     const retried = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
-    expect(decodeURIComponent(retried.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(retried.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
     )
 
     fireEvent.error(retried)
     const proxied = await screen.findByAltText('JR水道橋駅 西口') as HTMLImageElement
-    expect(decodeURIComponent(proxied.src)).toContain(
+    expect(decodeURIComponent(decodeURIComponent(proxied.src))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80&_retry=1',
     )
   })

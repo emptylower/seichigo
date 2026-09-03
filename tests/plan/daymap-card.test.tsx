@@ -8,7 +8,9 @@ vi.mock('@/components/route/RoutePreviewMap', () => ({
   RoutePreviewMap: () => <div data-testid="route-map" />,
 }))
 vi.mock('@/components/map/ResilientMapImage', () => ({
-  default: (props: { src: string | null; alt: string }) => <div data-testid="resilient-image">{props.alt}</div>,
+  default: (props: { src: string | null; alt: string }) => (
+    <div data-testid="resilient-image" data-src={props.src ?? ''} aria-label={props.alt} />
+  ),
 }))
 
 import { DayCards, DaymapCard } from '@/app/(authed)/plan/[id]/components/DayCards'

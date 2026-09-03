@@ -1,8 +1,9 @@
 const DEGRADED_HOST_TTL_MS = 60_000
-const DEGRADED_HOST_FAILURE_THRESHOLD = 2
-const BLOCKED_HOST_FAILURE_THRESHOLD = 3
+const DEGRADED_HOST_FAILURE_THRESHOLD = 3
+const BLOCKED_HOST_FAILURE_THRESHOLD = 6
 const BLOCKED_HOST_FAILURE_WINDOW_MS = 10_000
-const DEGRADED_HOST_TIMEOUT_MS = 2_000
+/** host 降级后的超时预算；host 被封禁（blocked）时最后一档候选也按它正常尝试一次，不再 0ms 秒失败 */
+export const DEGRADED_HOST_TIMEOUT_MS = 2_000
 export type MapImageHostPolicyScope = 'cover' | 'point' | 'point-thumbnail' | 'default'
 export type MapImageHostState = 'healthy' | 'degraded' | 'blocked'
 
@@ -58,7 +59,11 @@ function readActiveHostRecord(key: string, now: number): DegradedHostRecord | nu
 }
 
 export function isMapImageProxyUrl(url: string): boolean {
-  return url.includes('/api/anitabi/image-render')
+  return (
+    url.includes('/api/anitabi/image-render')
+    || url.includes('/api/google/place-photo')
+    || url.includes('/api/google/point-photo')
+  )
 }
 
 export function readMapImageHost(url: string): string | null {
@@ -70,10 +75,6 @@ export function readMapImageHost(url: string): string | null {
   }
 }
 
-function isMapImageHostPolicyProxyAwareEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_MAP_IMAGE_HOST_POLICY_PROXY_AWARE === '1'
-}
-
 export function readMapImageUpstreamHost(url: string): string | null {
   try {
     const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
@@ -81,14 +82,28 @@ export function readMapImageUpstreamHost(url: string): string | null {
     if (parsed.pathname !== '/api/anitabi/image-render') return null
     const upstream = parsed.searchParams.get('url')
     if (!upstream) return null
-    return new URL(upstream).hostname.trim().toLowerCase() || null
+    // 第六轮 E2/E3c：候选 URL 的 url 参数现在是双重编码，searchParams 解一层后
+    // 仍是编码形态（含 %3A%2F%2F）——再解一层才是上游 URL
+    const decoded = /%3A%2F%2F/i.test(upstream) ? decodeURIComponent(upstream) : upstream
+    return new URL(decoded).hostname.trim().toLowerCase() || null
   } catch {
     return null
   }
 }
 
+/**
+ * 断路器记账用的"生效 host"：站内代理 URL 一律按上游标识记账（恒开，
+ * 不再有开关）——否则某个上游抖动会把站点自身 host 拉黑，几十张并发
+ * 图片（含 Google 地点图）级联失败。
+ * - /api/anitabi/image-render → url 参数的上游 host
+ * - /api/google/place-photo → 固定标识 'google-place-photo'（无上游 host 概念）
+ * - /api/google/point-photo → 固定标识 'google-point-photo'（点位兜底图，与 place-photo 分开记账）
+ * - 上游解析失败时回退站点 host（与旧行为一致）
+ */
 export function readMapImageEffectiveHost(url: string): string | null {
-  if (isMapImageHostPolicyProxyAwareEnabled() && isMapImageProxyUrl(url)) {
+  if (isMapImageProxyUrl(url)) {
+    if (url.includes('/api/google/place-photo')) return 'google-place-photo'
+    if (url.includes('/api/google/point-photo')) return 'google-point-photo'
     const upstreamHost = readMapImageUpstreamHost(url)
     if (upstreamHost) return upstreamHost
   }

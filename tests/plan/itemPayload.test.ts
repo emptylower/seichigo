@@ -95,6 +95,31 @@ describe('交通文案', () => {
     expect(formatTransportText({ mode: 'driving', durationMin: 40, distanceKm: 32.5 })).toBe('自驾 40 分钟 · 32.5km')
   })
 
+  it('estimated 兜底交通（日本公交覆盖缺口）：解析 estimated/mapsUrl 并追加"（参考估算）"', () => {
+    const view = item({
+      type: 'transit',
+      payload: {
+        transport: {
+          mode: 'transit',
+          durationMin: 45,
+          distanceKm: 20,
+          estimated: true,
+          provider: 'estimate',
+          mapsUrl: 'https://www.google.com/maps/dir/?api=1&origin=35.6,139.7&destination=35.7,139.8&travelmode=transit',
+        },
+      },
+    })
+    const transport = getTransport(view)!
+    expect(transport).toMatchObject({
+      mode: 'transit',
+      estimated: true,
+      mapsUrl: 'https://www.google.com/maps/dir/?api=1&origin=35.6,139.7&destination=35.7,139.8&travelmode=transit',
+    })
+    expect(formatTransportText(transport)).toBe('乘车 45 分钟 · 20.0km（参考估算）')
+    // 无 estimated 时不追加标注
+    expect(formatTransportText({ mode: 'transit', durationMin: 45, distanceKm: 20 })).toBe('乘车 45 分钟 · 20.0km')
+  })
+
   it('分段摘要：步行 → 线路(站数/上下车站) → 步行', () => {
     const text = formatLegsText({
       legs: [

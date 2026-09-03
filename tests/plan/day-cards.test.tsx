@@ -125,7 +125,8 @@ describe('DayCards', () => {
     // img 在调度器异步分配请求槽后才出现，用 findBy 等待
     const img = await screen.findByAltText('清水寺')
     expect(img.getAttribute('src')).toContain('/api/anitabi/image-render')
-    expect(img.getAttribute('src')).toContain(encodeURIComponent('https://example.com/a.jpg'))
+    // E2 双重编码：url 参数需再包一层 encodeURIComponent
+    expect(img.getAttribute('src')).toContain(encodeURIComponent(encodeURIComponent('https://example.com/a.jpg')))
     // M3 修订：历史数据（无 schedule）也不再只显示宽泛词"上午"，
     // 而是推导出具体时钟区间（上午 → 09:00 参考时刻）+ 参考标注
     expect(screen.getByText('09:00–10:00')).toBeTruthy()

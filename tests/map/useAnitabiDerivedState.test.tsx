@@ -36,7 +36,8 @@ describe('useAnitabiDerivedState selectedPointImage', () => {
     )
 
     expect(result.current.selectedPointImage).toMatchObject({
-      inlineUrl: 'http://localhost:3000/api/anitabi/image-render?url=https%3A%2F%2Fimage.anitabi.cn%2Fpoints%2F217249%2Fdb2c913d_1754363336601.jpg%3Fplan%3Dh160',
+      // E2 双重编码：inline 代理候选的 url 参数比单次编码再多一层
+      inlineUrl: `http://localhost:3000/api/anitabi/image-render?url=${encodeURIComponent(encodeURIComponent('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?plan=h160'))}`,
       previewUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80',
       downloadUrl: 'https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg',
     })

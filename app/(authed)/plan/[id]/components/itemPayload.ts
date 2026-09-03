@@ -42,6 +42,10 @@ export type TransportPayload = {
   transfers?: number
   walkMin?: number
   provider?: string
+  /** 日本公交覆盖缺口兜底：时长/距离是按道路距离推算的参考值，非真实时刻 */
+  estimated?: boolean
+  /** 兜底 transit 段附带的 Google 地图外链（前端渲染"在 Google 地图查看"） */
+  mapsUrl?: string
   legs?: TransportLeg[]
   polyline?: Array<[number, number]>
 }
@@ -115,6 +119,8 @@ export function getTransport(item: TripPlanItemView): TransportPayload | null {
   if (Number.isFinite(Number(source.transfers))) result.transfers = Number(source.transfers)
   if (Number.isFinite(Number(source.walkMin))) result.walkMin = Number(source.walkMin)
   if (typeof source.provider === 'string') result.provider = source.provider
+  if (source.estimated === true) result.estimated = true
+  if (typeof source.mapsUrl === 'string' && source.mapsUrl) result.mapsUrl = source.mapsUrl
   if (Array.isArray(source.legs)) {
     result.legs = source.legs
       .filter((leg): leg is Record<string, unknown> => Boolean(leg) && typeof leg === 'object' && !Array.isArray(leg))
@@ -188,7 +194,7 @@ export function formatDistanceKm(distanceKm: number): string {
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`
 }
 
-/** 交通段主文案："步行 8 分钟 · 650m"；带 legs 时优先用分段摘要 */
+/** 交通段主文案："步行 8 分钟 · 650m"；estimated 兜底值追加"（参考估算）"标注 */
 export function formatTransportText(transport: TransportPayload): string {
   const parts: string[] = []
   const modeLabel =
@@ -199,7 +205,9 @@ export function formatTransportText(transport: TransportPayload): string {
   if (typeof transport.distanceKm === 'number' && transport.distanceKm > 0) {
     parts.push(formatDistanceKm(transport.distanceKm))
   }
-  return parts.join(' · ')
+  const text = parts.join(' · ')
+  if (transport.estimated && text) return `${text}（参考估算）`
+  return text
 }
 
 /** 分段摘要："步行至京都站 → 京阪本线 5 站 → 步行 300m"；无 legs 返回 null */

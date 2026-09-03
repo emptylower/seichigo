@@ -101,20 +101,37 @@ describe('DateRangeAsk（模糊模式）', () => {
   })
 })
 
-describe('ChoiceAsk（single_choice）', () => {
-  it('点击卡片后短暂延迟自动提交 optionId', () => {
-    vi.useFakeTimers()
+describe('ChoiceAsk（single_choice，始终多选交互）', () => {
+  it('点一张不自动提交；确认后按契约回传 { optionId }', () => {
     const onSubmit = vi.fn<(answer: AskAnswer) => void>()
     render(<AskCard payload={choicePayload('single_choice')} onSubmit={onSubmit} />)
-    expect(screen.queryByRole('button', { name: '确认' })).toBeNull()
+    const confirm = screen.getByRole('button', { name: '确认' })
+    expect(confirm).toHaveProperty('disabled', true)
 
     fireEvent.click(screen.getByRole('button', { name: /轻音少女/ }))
+    // 多选交互：点选只切换选中态，不触发提交
     expect(onSubmit).not.toHaveBeenCalled()
-    act(() => {
-      vi.advanceTimersByTime(200)
-    })
+    expect(screen.getByText('已选 1 项')).toBeTruthy()
+
+    fireEvent.click(confirm)
     expect(onSubmit).toHaveBeenCalledTimes(1)
+    // single_choice 恰好选 1 项 → 保持 { optionId } 契约
     expect(onSubmit.mock.calls[0][0]).toEqual({ readableText: '轻音少女', answerValue: { optionId: 'b' } })
+  })
+
+  it('single_choice 选两张再确认回传 { optionIds }，readableText 顿号拼接两个 label', () => {
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    render(<AskCard payload={choicePayload('single_choice')} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: /轻音少女/ }))
+    fireEvent.click(screen.getByRole('button', { name: /玉子市场/ }))
+    expect(screen.getByText('已选 2 项')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      readableText: '轻音少女、玉子市场',
+      answerValue: { optionIds: ['b', 'c'] },
+    })
   })
 })
 
@@ -149,8 +166,7 @@ describe('ChoiceAsk（multi_choice）', () => {
   })
 })
 
-describe('ChoiceAsk（最终澄清：作品卡没有自定义卡）', () => {
-  it('不渲染"其他（自行输入）"选项卡或卡内输入框——自由文本由全局输入框兜底', () => {
+describe('ChoiceAsk（最终澄清：作品卡没有自定义卡）', () => {  it('不渲染"其他（自行输入）"选项卡或卡内输入框——自由文本由全局输入框兜底', () => {
     const { container } = render(<AskCard payload={choicePayload('single_choice')} onSubmit={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /其他（自行输入）/ })).toBeNull()
     expect(screen.queryByText('其他（自行输入）')).toBeNull()
@@ -253,5 +269,25 @@ describe('OpinionChoiceAsk（taskType=opinion）', () => {
       readableText: '自驾/租车、自定义：夜行巴士',
       answerValue: { optionIds: ['car'], custom: '夜行巴士' },
     })
+  })
+})
+
+describe('ChoiceAsk 封面稳定性（R4）', () => {
+  it('封面加载成功后父组件 rerender 不重挂载 img', async () => {
+    const payload = choicePayload('single_choice')
+    payload.options = [
+      { id: 'a', label: '吹响吧！上低音号', image: 'https://image.anitabi.cn/bangumi/115908.jpg' },
+      { id: 'b', label: '轻音少女', sublabel: '丰乡小学校' },
+    ]
+    const onSubmit = vi.fn<(answer: AskAnswer) => void>()
+    const { rerender } = render(<AskCard payload={payload} onSubmit={onSubmit} />)
+
+    // ResilientMapImage 的请求槽分配是异步的，用 findBy 等待封面 img 出现
+    const img = await screen.findByAltText('吹响吧！上低音号')
+    fireEvent.load(img)
+
+    // 父组件 rerender（轮询/消息流更新）：option.id 作为 key，封面卡不重挂载
+    rerender(<AskCard payload={{ ...payload }} onSubmit={onSubmit} />)
+    expect(screen.getByAltText('吹响吧！上低音号')).toBe(img)
   })
 })
