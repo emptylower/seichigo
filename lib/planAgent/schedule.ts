@@ -7,8 +7,8 @@
  *   游览时长与点间交通推导；"午后/傍晚"等宽泛标签换算成参考时刻，原标签保留。
  * - transit 行与相邻点位进入同一时间序列；全部条目按本地开始时间排序并重建
  *   sortOrder；前端也按结构化时间防御性排序，不信任插入顺序。
- * - 非法时间、显式时间冲突、缺坐标的可路由条目、缺 payload.place 的外部点位
- *   → 显式错误，绝不静默丢点。
+ * - 非法时间、双显式非 transit 区间重叠、缺坐标的可路由条目、缺 payload.place
+ *   的外部点位 → 显式错误，绝不静默丢点；其余重叠自愈顺延（A2，见下方扫描线）。
  */
 
 export type ScheduleConfidence = 'explicit' | 'reference' | 'estimated'
@@ -120,6 +120,14 @@ function vagueLabelToMinutes(item: ScheduleItemInput): number | null {
   return null
 }
 
+/**
+ * 解析条目的开始时刻（分钟）：显式 HH:mm（payload.schedule → timeHint）优先，
+ * 其次宽泛时段标签。完全无法判断返回 null。A6 mealEnricher 用它推断用餐时段。
+ */
+export function parseStartMinutes(item: ScheduleItemInput): number | null {
+  return parseExplicitWindow(item)?.start ?? vagueLabelToMinutes(item)
+}
+
 function visitDurationMin(item: ScheduleItemInput): number {
   const payload = item.payload ?? {}
   const schedule = typeof payload.schedule === 'object' && payload.schedule !== null && !Array.isArray(payload.schedule)
@@ -171,10 +179,20 @@ export function normalizeDaySchedule(items: ScheduleItemInput[]): NormalizeDaySc
     if (isTransit(item)) {
       const duration = transitDurationMin(item)
       const explicit = parseExplicitWindow(item)
-      const start = explicit ? explicit.start : cursor
+      // A2 自愈：显式开始早于当前游标（与前一条目重叠）时忽略显式值，从游标
+      // 开始——模型给点位和交通段都写显式时间是常态错误，不该让整份重存
+      const explicitStart = explicit && explicit.start >= cursor ? explicit.start : null
+      const start = explicitStart ?? cursor
       const end = start + duration
       if (end <= start) errors.push(`「${label}」交通时长不合法`)
-      resolved.push({ input: item, index, startMin: start, endMin: end, confidence: explicit ? 'explicit' : 'estimated', explicit: Boolean(explicit) })
+      resolved.push({
+        input: item,
+        index,
+        startMin: start,
+        endMin: end,
+        confidence: explicitStart !== null ? 'explicit' : 'estimated',
+        explicit: Boolean(explicit),
+      })
       cursor = end
       return
     }
@@ -211,26 +229,53 @@ export function normalizeDaySchedule(items: ScheduleItemInput[]): NormalizeDaySc
     cursor += duration
   })
 
-  // 不可能重叠检测（M3 brief：检查**所有**最终解析出的区间，不只是 explicit-vs-explicit）：
-  // 推导/宽泛换算出的区间与显式区间重叠同样必须报错，不能静默落库。
-  // 扫描线：按解析后开始时间排序，与"最大结束区间"做**严格**区间重叠比对
-  // （cur.start < widest.end 即重叠，一分钟也算）；相邻衔接（start == end）通过。
-  const byStart = [...resolved].sort((a, b) => a.startMin - b.startMin || a.index - b.index)
-  let widest = byStart[0]
-  for (let i = 1; i < byStart.length; i++) {
-    const cur = byStart[i]
-    if (widest && cur.startMin < widest.endMin) {
-      errors.push(
-        `「${widest.input.title}」（${minutesToClock(widest.startMin)}–${minutesToClock(widest.endMin)}）与` +
-          `「${cur.input.title}」（${minutesToClock(cur.startMin)}–${minutesToClock(cur.endMin)}）的最终时间区间重叠，请调整时间或顺序`,
-      )
+  // A2 重叠自愈（取代 M3 的"任何重叠一律报错"）：仅当两个重叠区间都是
+  // 非 transit 且都是显式时间（且前者未被顺延降级）时才报错；其他任何重叠
+  // 一律把后者顺延到当前最长前驱结束（级联传导给后续条目），confidence 降
+  // 为 estimated，不报错。真实事故：模型给点位 09:30–10:30 与紧随的步行段
+  // 都写了显式时间，旧行为只能整份报错让模型重存。
+  // N1：transit 行与其输入序前置条目成块参与扫描线——排序键借用最近一个
+  // 非 transit 前置条目的 startMin（自身输入序作次级键）。否则 [A(无时间),
+  // transit A→B, B@09:00] 这类显式时间把后续点位"提前"的输入，B 会先于
+  // transit 进入扫描线并把 runningEnd 顶过去，transit 被顺延重排到 B 之后
+  // （交通行悬到一天末尾，与前置条目拆散）。位移与双显式冲突判定不变。
+  const sweepStartMin: number[] = []
+  let blockStartMin: number | null = null
+  for (const r of resolved) {
+    if (isTransit(r.input) && blockStartMin !== null) {
+      sweepStartMin.push(blockStartMin)
+    } else {
+      blockStartMin = r.startMin
+      sweepStartMin.push(r.startMin)
     }
-    if (!widest || cur.endMin > widest.endMin) widest = cur
+  }
+  const byStart = [...resolved].sort(
+    (a, b) => sweepStartMin[a.index] - sweepStartMin[b.index] || a.index - b.index,
+  )
+  const settled: Array<ResolvedItem & { shifted: boolean }> = []
+  let runningEnd = Number.NEGATIVE_INFINITY
+  for (const cur of byStart) {
+    let entry: ResolvedItem & { shifted: boolean } = { ...cur, shifted: false }
+    if (entry.startMin < runningEnd) {
+      // 与之真实重叠的前驱（前驱结束晚于本条目开始）
+      const conflict = settled.find((p) => p.endMin > entry.startMin && !isTransit(p.input) && p.explicit && !p.shifted)
+      if (!isTransit(entry.input) && entry.explicit && conflict) {
+        errors.push(
+          `「${conflict.input.title}」（${minutesToClock(conflict.startMin)}–${minutesToClock(conflict.endMin)}）与` +
+            `「${entry.input.title}」（${minutesToClock(entry.startMin)}–${minutesToClock(entry.endMin)}）的显式时间区间重叠，请调整时间或顺序`,
+        )
+      } else {
+        const shift = runningEnd - entry.startMin
+        entry = { ...entry, startMin: runningEnd, endMin: entry.endMin + shift, confidence: 'estimated', shifted: true }
+      }
+    }
+    settled.push(entry)
+    runningEnd = Math.max(runningEnd, entry.endMin)
   }
 
   if (errors.length) return { ok: false, errors }
 
-  const sorted = [...resolved].sort((a, b) => a.startMin - b.startMin || a.index - b.index)
+  const sorted = [...settled].sort((a, b) => a.startMin - b.startMin || a.index - b.index)
   const out: ScheduleItemOutput[] = sorted.map((r, sortOrder) => {
     const payload: Record<string, unknown> = { ...(r.input.payload ?? {}) }
     payload.schedule = {

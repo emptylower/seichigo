@@ -51,6 +51,12 @@ export type TripPlan = {
   dayCount: number
   bangumiIds: number[]
   preferences: Prisma.JsonValue | null
+  /** M4 阶段缓存（works/dates/points/enrich/deliver/revise）：仅展示用，真值由证据推断 */
+  stage: string | null
+  /** 当前 agent 运行持有者 token（beginAgentRun 写入、endAgentRun 清空；无运行时为 null） */
+  agentRunToken: string | null
+  /** busy 位到期时间（TTL 启发式，到期可被新请求接管；无运行时为 null） */
+  agentBusyUntil: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -99,6 +105,24 @@ export type TripPlanMessage = {
   planId: string
   kind: TripPlanMessageKind
   content: Prisma.JsonValue
+  createdAt: Date
+}
+
+/** 运行日志写入入参（M4 §7）：loop 在每回合结束（finally）追加一条 */
+export type TripPlanRunLogEntry = {
+  planId: string
+  runToken?: string | null
+  turnIndex: number
+  stage: string
+  enrichReport?: Prisma.JsonValue | null
+  gateReport?: Prisma.JsonValue | null
+  toolCalls?: Prisma.JsonValue | null
+  modelUsage?: Prisma.JsonValue | null
+  durationMs: number
+}
+
+export type TripPlanRunLogRecord = TripPlanRunLogEntry & {
+  id: string
   createdAt: Date
 }
 
@@ -157,6 +181,14 @@ export interface TripPlanRepo {
   /** 同上语义，供 update_plan_meta 工具替代裸的 updateMeta。 */
   updateMetaIfActive(planId: string, token: string, patch: TripPlanMetaUpdate): Promise<TripPlan | null>
   /**
+   * 乐观版本守卫的整份替换天数（S2，补齐续跑写回用）：updatedAt 仍等于
+   * expectedUpdatedAt 时在同一事务里"推进版本戳 + 删旧天数 + 写新天数"；
+   * 期间被任何并发保存改动（或计划已不存在）则什么都不写并返回 null。
+   * 与 run-token 栅栏互补：栅栏拦"被新 run 接管"，版本守卫拦"任何来源的
+   * 并发写"（含不走栅栏的手动保存路径）。
+   */
+  replaceDaysIfUnchanged(id: string, expectedUpdatedAt: Date, days: TripPlanDayInput[]): Promise<TripPlanWithDays | null>
+  /**
    * 原子地"整份替换天数 + 追加 kind=daymap 交付物消息"：daymap 内容由
    * 调用方基于替换后的完整计划快照构建。两写必须在同一个锁/事务窗口内
    * 完成——绝不出现"天数已替换、交付物消息丢失"的半截成功状态（那会让
@@ -174,6 +206,20 @@ export interface TripPlanRepo {
     days: TripPlanDayInput[],
     buildDaymapContent: (plan: TripPlanWithDays) => Prisma.JsonValue,
   ): Promise<ReplaceDaysWithDaymapResult | null>
+  /**
+   * 该计划当前是否有 agent 运行（agentBusyUntil 存在且晚于 now）。plan GET
+   * 用它向前端暴露运行状态：断线的浏览器据此进入轮询恢复而不是误判已完成。
+   */
+  isAgentBusy(planId: string): Promise<boolean>
+  /**
+   * M4 阶段缓存回写：只做展示，失败由调用方忽略；真值永远以
+   * derivePlanStage 的证据推断为准（不一致时下一次 run 会改回来）。
+   */
+  updateStage(planId: string, stage: string): Promise<void>
+  /** M4 运行日志：追加一条 run 记录（loop 在 finally 里调用，失败不冒泡由调用方兜底） */
+  appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord>
+  /** M4 运行日志读取：按时间升序（回归分析/后续思维链持久化复用） */
+  listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]>
 }
 
 export type ReplaceDaysWithDaymapResult = { plan: TripPlanWithDays; message: TripPlanMessage }

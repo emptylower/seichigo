@@ -6,6 +6,50 @@
  * 判定刻意保守：必须是"向用户要一个答案"的句子（疑问词 + 问号/祈使句式），
  * 纯解释性文字（如"为什么这样排"的陈述式理由）不算。
  */
+import type OpenAI from 'openai'
+
+type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
+
+/** 缺失回执的占位内容：明确告知模型该调用没有被执行，别把幻觉结果当真 */
+const ORPHAN_TOOL_CALL_STUB =
+  '{"error":"该工具调用未被执行（响应被协议守卫扣下或本轮中断）"}'
+
+/**
+ * 通用防线：每次发起模型调用前遍历内存 messages，凡 assistant 带 tool_calls
+ * 而其后紧随的 tool 消息未覆盖全部 id 的，为缺失的 id 就地（splice）补一条
+ * 占位 tool 回执。无论哪条路径（协议守卫扣下、信号中止、栅栏错误……）留下
+ * 悬空 tool_calls，都不会把非法序列发给模型——DeepSeek 会直接以
+ * "assistant message with 'tool_calls' must be followed by tool messages" 400 拒掉。
+ * 返回同一数组引用，仅供测试断言方便。
+ */
+export function assertNoOrphanToolCalls(messages: ChatMessageParam[]): ChatMessageParam[] {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.role !== 'assistant') continue
+    const toolCalls = 'tool_calls' in msg && msg.tool_calls?.length ? msg.tool_calls : null
+    if (!toolCalls) continue
+    const answered = new Set<string>()
+    let j = i + 1
+    while (j < messages.length && messages[j].role === 'tool') {
+      answered.add((messages[j] as Extract<ChatMessageParam, { role: 'tool' }>).tool_call_id)
+      j++
+    }
+    const missing = toolCalls.filter((call) => !answered.has(call.id))
+    if (!missing.length) continue
+    messages.splice(
+      j,
+      0,
+      ...missing.map(
+        (call): ChatMessageParam => ({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: ORPHAN_TOOL_CALL_STUB,
+        }),
+      ),
+    )
+  }
+  return messages
+}
 
 /** 疑问/选择标记：半角或全角问号 */
 const HAS_QUESTION_MARK = /[?？]/

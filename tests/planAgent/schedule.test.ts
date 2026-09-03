@@ -87,32 +87,81 @@ describe('normalizeDaySchedule', () => {
     expect(result.errors.join('')).toContain('B')
   })
 
-  it('M3 修订：推导区间与显式区间重叠同样拒绝（先推导 09:00–10:00，再显式 09:30–12:00）', () => {
+  it('M3 修订：推导区间与显式区间重叠 → 自愈顺延（A2：仅双显式非 transit 才报错）', () => {
     const result = normalizeDaySchedule([
       { type: 'point', title: '无时间条目' },
       { type: 'point', title: '显式条目', timeHint: '09:30-12:00' },
     ])
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    const message = result.errors.join('')
-    expect(message).toContain('重叠')
-    // 错误信息指出两个条目与各自时间
-    expect(message).toContain('无时间条目')
-    expect(message).toContain('09:00–10:00')
-    expect(message).toContain('显式条目')
-    expect(message).toContain('09:30–12:00')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 推导 09:00–10:00 在前；显式 09:30–12:00 与之重叠 → 顺延到 10:00–12:30，降级 estimated
+    expect(result.items.map((i) => i.title)).toEqual(['无时间条目', '显式条目'])
+    expect(result.items[1].payload.schedule).toMatchObject({ start: '10:00', end: '12:30', confidence: 'estimated' })
   })
 
-  it('M3 修订：宽泛换算区间被显式区间回跳覆盖同样拒绝', () => {
+  it('M3 修订：宽泛换算区间被显式区间回跳覆盖 → 自愈顺延（A2）', () => {
     const result = normalizeDaySchedule([
       { type: 'point', title: '午后条目', timeHint: '午后' },
       { type: 'point', title: '显式条目', timeHint: '13:30-15:00' },
     ])
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.errors.join('')).toContain('重叠')
-    expect(result.errors.join('')).toContain('13:00–14:00')
-    expect(result.errors.join('')).toContain('13:30–15:00')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 午后参考 13:00–14:00 在前；显式 13:30–15:00 重叠 → 顺延到 14:00–15:30
+    expect(result.items[1].payload.schedule).toMatchObject({ start: '14:00', end: '15:30', confidence: 'estimated' })
+  })
+
+  it('A2 回归（真实用例）：点位 09:30–10:30 显式 + 步行 transit 显式 09:40（11min）→ transit 顺延 10:30–10:41 estimated，不报错', () => {
+    const result = normalizeDaySchedule([
+      { type: 'point', title: '河口湖站', timeHint: '09:30-10:30' },
+      { type: 'transit', title: '步行去下一站', timeHint: '09:40', payload: { transport: { mode: 'walk', durationMin: 11, distanceKm: 0.8 } } },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const [point, transit] = result.items
+    expect(point.payload.schedule).toMatchObject({ start: '09:30', end: '10:30', confidence: 'explicit' })
+    expect(transit.payload.schedule).toMatchObject({ start: '10:30', end: '10:41', confidence: 'estimated' })
+  })
+
+  it('A2：transit 显式时间早于游标时忽略显式值（顺序颠倒输入同样自愈）', () => {
+    const result = normalizeDaySchedule([
+      { type: 'transit', title: '步行段', timeHint: '09:40', payload: { transport: { mode: 'walk', durationMin: 11 } } },
+      { type: 'point', title: '河口湖站', timeHint: '09:30-10:30' },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 排序后点位（09:30–10:30）在前，transit（09:40）重叠 → 顺延到 10:30–10:41
+    const [point, transit] = result.items
+    expect(point.title).toBe('河口湖站')
+    expect(transit.payload.schedule).toMatchObject({ start: '10:30', end: '10:41', confidence: 'estimated' })
+  })
+
+  it('A2：重叠顺延级联传导给后续条目（transit → 显式点位 → 推导点位）', () => {
+    const result = normalizeDaySchedule([
+      { type: 'transit', title: '长交通', payload: { transport: { mode: 'transit', durationMin: 90 } } },
+      { type: 'point', title: '显式点', timeHint: '09:40-10:11' },
+      { type: 'point', title: '推导点' },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 长交通 09:00–10:30；显式点 09:40–10:11 重叠 transit（非 transit+transit）→ 顺延 10:30–11:01；
+    // 推导点原本从游标 11:01 起（第一遍按输入序游标已推进），实际落在 11:01–12:01
+    const [transit, explicit, derived] = result.items
+    expect(transit.payload.schedule).toMatchObject({ start: '09:00', end: '10:30' })
+    expect(explicit.payload.schedule).toMatchObject({ start: '10:30', end: '11:01', confidence: 'estimated' })
+    expect(derived.payload.schedule).toMatchObject({ start: '11:01', end: '12:01', confidence: 'estimated' })
+  })
+
+  it('A2：两个显式 transit/点位对（非双显式非 transit）在扫描线里只顺延不报错', () => {
+    const result = normalizeDaySchedule([
+      { type: 'transit', title: 'T', timeHint: '09:40', payload: { transport: { mode: 'walk', durationMin: 11 } } },
+      { type: 'point', title: 'A', timeHint: '09:30-10:30' },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 与上一条「顺序颠倒」同场景：扫描线遇到 transit 与显式点位重叠 → 顺延
+    const [a, t] = result.items
+    expect(a.title).toBe('A')
+    expect(t.payload.schedule).toMatchObject({ start: '10:30', end: '10:41', confidence: 'estimated' })
   })
 
   it('边界回归：恰好重叠 1 分钟的区间也必须拒绝（A 10:00-11:00、B 10:59-12:00）', () => {

@@ -3,7 +3,7 @@ import type OpenAI from 'openai'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
-import { looksLikeUnansweredUserQuestion } from '@/lib/planAgent/protocolGuard'
+import { looksLikeUnansweredUserQuestion, assertNoOrphanToolCalls } from '@/lib/planAgent/protocolGuard'
 import type { PointFinder } from '@/lib/planAgent/points'
 
 const finder: PointFinder = {
@@ -52,6 +52,38 @@ function readPlanToolCall(id = 'call_read'): ChatMessage['tool_calls'] {
       function: { name: 'read_plan', arguments: '{}' },
     },
   ] as ChatMessage['tool_calls']
+}
+
+function searchAnimeToolCall(id: string): ChatMessage['tool_calls'] {
+  return [
+    {
+      id,
+      type: 'function',
+      function: { name: 'search_anime', arguments: JSON.stringify({ query: '上低音号' }) },
+    },
+  ] as ChatMessage['tool_calls']
+}
+
+/** 扫一遍消息序列，返回所有"assistant 带 tool_calls 但紧随 tool 消息未覆盖"的悬空 id */
+function findOrphanToolCallIds(
+  messages: Array<{ role: string; tool_calls?: Array<{ id: string }>; tool_call_id?: string }>,
+): string[] {
+  const orphans: string[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.role !== 'assistant' || !msg.tool_calls?.length) continue
+    const answered = new Set<string>()
+    let j = i + 1
+    while (j < messages.length && messages[j].role === 'tool') {
+      const replyId = messages[j].tool_call_id
+      if (replyId) answered.add(replyId)
+      j++
+    }
+    for (const call of msg.tool_calls) {
+      if (!answered.has(call.id)) orphans.push(call.id)
+    }
+  }
+  return orphans
 }
 
 describe('looksLikeUnansweredUserQuestion（窄判定）', () => {
@@ -108,7 +140,8 @@ describe('runPlanAgent 强制 ask_user 协议守卫', () => {
     )
 
     expect(createMessage).toHaveBeenCalledTimes(2)
-    // 重试调用前，消息序列末尾是纠正指令（只进模型消息，不落库）
+    // 重试调用前，消息序列末尾是纠正指令（只进模型消息，不落库）；
+    // 本轮 human 的 [系统状态] 前缀拼在其内容前部（N5），无单独阶段 user 消息
     expect(seenRolesByCall[1]).toEqual(['system', 'user', 'assistant', 'user'])
     expect(lastMessageByCall[1]?.role).toBe('user')
     expect(lastMessageByCall[1]?.content).toContain('ask_user')
@@ -186,6 +219,59 @@ describe('runPlanAgent 强制 ask_user 协议守卫', () => {
     expect(persisted.some((m) => JSON.stringify(m.content).includes('call_read_1'))).toBe(false)
   })
 
+  it('扣下"正文提问 + 工具调用"组合：重试请求的 messages 无悬空 tool_calls，第一次的 tool_calls 不在其中', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    const responses: ChatMessage[] = [
+      // 2026-09-02 预览实测形态：正文在问用户 + search_anime 工具调用。
+      // 旧实现把带 tool_calls 的 assistantParam 原样压进内存消息后 continue，
+      // 工具未执行、也没有回执 → 下一次模型请求被 DeepSeek 400 拒掉
+      assistantMessage({
+        content: '你想巡礼哪些作品？',
+        tool_calls: searchAnimeToolCall('call_search_1'),
+      }),
+      // 重试：干净的解释 + 正常工具调用
+      assistantMessage({
+        content: '先在站内搜一下相关作品。',
+        tool_calls: searchAnimeToolCall('call_search_2'),
+      }),
+      assistantMessage({ content: '站内有《吹响吧！上低音号》的点位。' }),
+    ]
+
+    const messagesByCall: Array<Array<{ role: string; tool_calls?: Array<{ id: string }>; tool_call_id?: string }>> = []
+    const createMessage = vi.fn(
+      async (
+        params: { messages: Array<{ role: string; tool_calls?: Array<{ id: string }>; tool_call_id?: string }> },
+      ) => {
+        messagesByCall.push(params.messages.map((m) => ({ role: m.role, tool_calls: m.tool_calls, tool_call_id: m.tool_call_id })))
+        return responses.shift() as ChatMessage
+      },
+    )
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder }, maxIterations: 5 },
+      '帮我规划京吹巡礼',
+      (e) => events.push(e),
+    )
+
+    expect(createMessage).toHaveBeenCalledTimes(3)
+    // 被扣下响应的 tool_calls（call_search_1）不出现在任何后续请求里：
+    // 压进内存的副本只有 content，没有工具未执行的调用记录
+    expect(JSON.stringify(messagesByCall[1])).not.toContain('call_search_1')
+    expect(JSON.stringify(messagesByCall[2])).not.toContain('call_search_1')
+    // 每次请求的消息序列都合法：不存在 assistant 带 tool_calls 且紧随回执未覆盖全部 id
+    for (const msgs of messagesByCall) {
+      expect(findOrphanToolCallIds(msgs)).toEqual([])
+    }
+    // 重试后的 search_anime 正常执行、正文正常下发；第一轮违规正文不进 SSE
+    const textEvents = events.filter((e) => e.type === 'text') as Array<{ type: 'text'; text: string }>
+    expect(textEvents.map((e) => e.text)).toEqual(['先在站内搜一下相关作品。', '站内有《吹响吧！上低音号》的点位。'])
+    expect(events.some((e) => e.type === 'tool_call' && e.name === 'search_anime')).toBe(true)
+    expect(events.some((e) => e.type === 'error')).toBe(false)
+  })
+
   it('同一轮"解释文字 + ask_user 工具调用"不触发守卫（协议允许的组合）', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
@@ -225,5 +311,50 @@ describe('runPlanAgent 强制 ask_user 协议守卫', () => {
     expect(createMessage).toHaveBeenCalledTimes(1)
     expect(events.some((e) => e.type === 'error')).toBe(false)
     expect(events.some((e) => e.type === 'text')).toBe(true)
+  })
+})
+
+describe('assertNoOrphanToolCalls（内存消息完整性防线）', () => {
+  type Msg = Parameters<typeof assertNoOrphanToolCalls>[0][number]
+
+  function fnCall(id: string) {
+    return { id, type: 'function' as const, function: { name: 'search_anime', arguments: '{}' } }
+  }
+
+  it('正例：assistant 带 tool_calls 而回执只覆盖一部分 → 在紧随的 tool 组末尾补缺失占位回执', () => {
+    const messages: Msg[] = [
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: null, tool_calls: [fnCall('c1'), fnCall('c2')] },
+      { role: 'tool', tool_call_id: 'c1', content: '{"ok":true}' },
+      { role: 'user', content: 'next' },
+    ]
+    const result = assertNoOrphanToolCalls(messages)
+    expect(result).toBe(messages) // 就地修复，返回同一引用
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool', 'user'])
+    const repaired = messages[3] as { role: 'tool'; tool_call_id: string; content: string }
+    expect(repaired.tool_call_id).toBe('c2')
+    expect(JSON.parse(repaired.content)).toEqual({ error: expect.stringContaining('未被执行') })
+  })
+
+  it('正例：assistant 带 tool_calls 后完全没有 tool 消息 → 紧随其后插入，不打乱后续消息', () => {
+    const messages: Msg[] = [
+      { role: 'assistant', content: null, tool_calls: [fnCall('c1')] },
+      { role: 'user', content: 'u' },
+    ]
+    assertNoOrphanToolCalls(messages)
+    expect((messages[1] as { role: 'tool'; tool_call_id: string }).tool_call_id).toBe('c1')
+    expect(messages[2]).toEqual({ role: 'user', content: 'u' })
+  })
+
+  it('反例：回执齐全的合法序列原样不变', () => {
+    const messages: Msg[] = [
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: null, tool_calls: [fnCall('c1')] },
+      { role: 'tool', tool_call_id: 'c1', content: '{}' },
+      { role: 'assistant', content: 'done' },
+    ]
+    const snapshot = JSON.stringify(messages)
+    assertNoOrphanToolCalls(messages)
+    expect(JSON.stringify(messages)).toBe(snapshot)
   })
 })

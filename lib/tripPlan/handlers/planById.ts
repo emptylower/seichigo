@@ -21,7 +21,9 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
       const auth = await authorize(planId)
       if ('error' in auth) return auth.error
       const chat = toChatView(await deps.repo.listMessages(planId))
-      return NextResponse.json({ plan: toPlanView(auth.plan), chat })
+      // A4：暴露 agent 运行状态——前端断线/刷新后据此进入轮询恢复而不是误判已完成
+      const agentBusy = await deps.repo.isAgentBusy(planId)
+      return NextResponse.json({ plan: toPlanView(auth.plan), chat, agentBusy })
     },
 
     async PATCH(planId: string, req: Request) {

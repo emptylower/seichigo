@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import { inferLegacyAskTaskType, isAskUserTaskType, type AskUserPayload } from '@/lib/planAgent/askUser'
+import type { PlanQualityReport } from '@/lib/planAgent/gates'
 import type { TripPlan, TripPlanItemType, TripPlanMessage, TripPlanStatus, TripPlanWithDays } from './repo'
 
 export type TripPlanItemView = {
@@ -31,6 +32,8 @@ export type TripPlanView = {
   startDate: string | null
   dayCount: number
   bangumiIds: number[]
+  /** M4 阶段缓存（works/dates/points/enrich/deliver/revise）；可选以兼容历史载荷/fixture */
+  stage?: string | null
   updatedAt: string
   days: TripPlanDayView[]
 }
@@ -45,6 +48,7 @@ export function toPlanListItemView(plan: TripPlan): TripPlanListItemView {
     startDate: plan.startDate ? plan.startDate.toISOString() : null,
     dayCount: plan.dayCount,
     bangumiIds: plan.bangumiIds,
+    stage: plan.stage,
     updatedAt: plan.updatedAt.toISOString(),
   }
 }
@@ -86,6 +90,8 @@ export type DaymapMessagePayload = {
   revisionId: string
   savedAt: string
   days: TripPlanDayView[]
+  /** M4 质量门控报告快照（旧载荷可能没有；质量卡据此渲染） */
+  quality?: PlanQualityReport
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -115,7 +121,13 @@ export function parseDaymapPayload(raw: unknown): DaymapMessagePayload | null {
       items: day.items.filter((item): item is TripPlanItemView => isPlainObject(item)),
     })
   }
-  return { type: 'daymap', revisionId, savedAt, days }
+  return {
+    type: 'daymap',
+    revisionId,
+    savedAt,
+    days,
+    ...(isPlainObject(raw.quality) ? { quality: raw.quality as unknown as PlanQualityReport } : {}),
+  }
 }
 
 /**

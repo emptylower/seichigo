@@ -1,5 +1,15 @@
 import type { Prisma } from '@prisma/client'
 import type { PlanAgentToolDeps } from './tools'
+import { computeDepartureEpochSec, DAY_START_MIN } from './schedule'
+import { queryTravelBetween } from './travelQuery'
+import {
+  createEnrichBudget,
+  modelDirectionsCap,
+  modelPlacesCap,
+  rollEnrichBudgetWindow,
+  type EnrichBudget,
+} from './enrich/types'
+import { computeHeuristicTransitCore } from './enrich/heuristicTransit'
 import { isSafePlacePhotoDisplayUrl } from '@/lib/googlePlaces/places'
 import { isSafeAskOptionImageUrl } from './askUser'
 
@@ -110,7 +120,7 @@ export async function resolveTravelEndpoint(
     // 标准工作流（resolve_place → estimate_travel → save_plan_days）不需要中间
     // 落库：当前计划的 resolver 缓存（resolve_place 刚解析的）或已持久化的
     // payload.place 都足以证明并取到坐标
-    const resolved = deps.places?.lookup(input.placeId) ?? null
+    const resolved = (await deps.places?.lookup(input.placeId)) ?? null
     if (resolved) return { lat: resolved.lat, lng: resolved.lng }
     const persisted = collectPlanPlaces(plan).get(input.placeId)
     if (persisted) return { lat: persisted.lat, lng: persisted.lng }
@@ -121,41 +131,6 @@ export async function resolveTravelEndpoint(
     return { lat: input.lat, lng: input.lng }
   }
   return { error: `${label}端点缺少 pointId/placeId/坐标` }
-}
-
-/** Google step → 模型可读的紧凑分段摘要（线路/上下车站/站数/时刻） */
-export function summarizeLegForModel(step: {
-  travelMode: string
-  instruction: string
-  durationSeconds: number
-  distanceMeters: number
-  transitDetails:
-    | {
-        lineName: string
-        departureStop: string
-        arrivalStop: string
-        numStops: number
-        departureTime?: string
-        arrivalTime?: string
-      }
-    | null
-}) {
-  return {
-    mode: step.travelMode === 'WALKING' ? 'walk' : step.travelMode === 'DRIVING' ? 'drive' : 'transit',
-    durationMin: Math.max(1, Math.round(step.durationSeconds / 60)),
-    distanceKm: Math.round((step.distanceMeters / 1000) * 10) / 10,
-    instruction: step.instruction.slice(0, 160),
-    ...(step.transitDetails
-      ? {
-          line: step.transitDetails.lineName,
-          fromStop: step.transitDetails.departureStop,
-          toStop: step.transitDetails.arrivalStop,
-          numStops: step.transitDetails.numStops,
-          ...(step.transitDetails.departureTime ? { departureTime: step.transitDetails.departureTime } : {}),
-          ...(step.transitDetails.arrivalTime ? { arrivalTime: step.transitDetails.arrivalTime } : {}),
-        }
-      : {}),
-  }
 }
 
 const TRANSPORT_PAYLOAD_MAX_JSON_LENGTH = 24_000
@@ -180,14 +155,15 @@ export function sanitizeTransportPayload(payload: Record<string, unknown>): void
   }
 }
 
-/** 站内点位批量可解析性检查（save_plan_days 的"缺坐标可路由条目"防线） */
+/** 站内点位批量可解析性检查（save_plan_days 的"缺坐标可路由条目"防线）；precomputed 传入已批量查询的坐标时复用，避免重复查库 */
 export async function assertPointsResolvable(
   pointIds: string[],
   deps: PlanAgentToolDeps,
   bangumiIds: number[],
+  precomputed?: Array<{ id: string; lat: number; lng: number; image?: string | null }>,
 ): Promise<string[] | null> {
   if (!pointIds.length) return null
-  const coords = await deps.points.getPointsByIds(pointIds, bangumiIds)
+  const coords = precomputed ?? (await deps.points.getPointsByIds(pointIds, bangumiIds))
   const resolved = new Set<string>()
   for (const p of coords) {
     resolved.add(p.id)
@@ -233,4 +209,119 @@ export function derivePlaceMedia(payload: Record<string, unknown>, itemType: str
     ...(typeof photoRecord.attribution === 'string' && photoRecord.attribution ? { attribution: photoRecord.attribution } : {}),
     ...(typeof photoRecord.photoReference === 'string' && photoRecord.photoReference ? { photoReference: photoRecord.photoReference } : {}),
   }
+}
+
+// ---------------------------------------------------------------------------
+// estimate_travel 工具实现（从 tools.ts 拆出：行数预算）。查询 + transportPayload
+// 组装（含日本公交兜底）在 travelQuery.ts，与 transportEnricher 共用。
+// ---------------------------------------------------------------------------
+
+/** 工具返回的预算耗尽提示（N4 + A5）：引导立即保存，服务端会用参考估算补齐交通 */
+export const BUDGET_EXHAUSTED_MESSAGE =
+  '本回合外部查询预算已用完，请立即保存当前进度；服务端会用参考估算补齐交通并在下一回合继续完善'
+export const BUDGET_EXHAUSTED_RESULT = { error: BUDGET_EXHAUSTED_MESSAGE, code: 'budget_exhausted' }
+
+/**
+ * resolve_place / find_restaurants 共享的预算检查（A5）：先滚动 60s 时间窗，
+ * 再按"模型上限 = places.max - 2（预留补齐脚本）"判定是否返回 budget_exhausted。
+ */
+export function placesToolBudgetExhausted(budget: EnrichBudget): boolean {
+  rollEnrichBudgetWindow(budget)
+  return budget.places.used >= modelPlacesCap(budget)
+}
+
+/** estimate_travel 工具主体；tools.ts 只做分发 */
+export async function runEstimateTravelTool(deps: PlanAgentToolDeps, args: Record<string, unknown>): Promise<string> {
+  const rawMode = String(args.mode ?? '')
+  if (rawMode !== 'walk' && rawMode !== 'transit' && rawMode !== 'driving') {
+    return JSON.stringify({ error: 'mode 必须是 walk / transit / driving 之一' })
+  }
+  const mode = rawMode as 'walk' | 'transit' | 'driving'
+  if (!deps.travel) {
+    return JSON.stringify({ error: '真实交通查询服务未配置（GOOGLE_DIRECTIONS_API_KEY 缺失），请改用 estimate_transit 兜底并向用户说明是估算值' })
+  }
+  // N4：模型工具调用与 enricher 共享同一 run 的 directions 预算（deps.enrichBudget
+  // 由 loop 每个 run 创建一次）。A5：预留 4 次给补齐脚本（模型上限 max-4）；
+  // 检查前先滚动时间窗（距窗口开始 ≥60s 时 used 归零）
+  const budget: EnrichBudget = deps.enrichBudget ?? createEnrichBudget()
+  rollEnrichBudgetWindow(budget)
+  if (budget.directions.used >= modelDirectionsCap(budget)) {
+    return JSON.stringify(BUDGET_EXHAUSTED_RESULT)
+  }
+  const plan = await deps.repo.getPlan(deps.planId)
+  if (!plan) return JSON.stringify({ error: '计划不存在' })
+  const from = await resolveTravelEndpoint(args.from, plan, deps, '起点')
+  if ('error' in from) return JSON.stringify({ error: from.error })
+  const to = await resolveTravelEndpoint(args.to, plan, deps, '终点')
+  if ('error' in to) return JSON.stringify({ error: to.error })
+
+  // 精确日期 → 真实出发时刻；模糊日期不传 departure_time（Google 按当前典型班次）
+  let departureTimeSec: number | undefined
+  let dateNote = '计划尚未确定精确日期，按典型时段估算；确定日期后可重查'
+  const dayIndex = Number(args.dayIndex)
+  if (plan.startDate && Number.isFinite(dayIndex) && dayIndex >= 1) {
+    const departureMatch = /^(\d{1,2}):(\d{2})$/.exec(String(args.departureTime ?? '').trim())
+    const hours = departureMatch ? Math.min(23, Number(departureMatch[1])) : Math.floor(DAY_START_MIN / 60)
+    const minutesOfHour = departureMatch ? Math.min(59, Number(departureMatch[2])) : DAY_START_MIN % 60
+    const minutes = hours * 60 + minutesOfHour
+    const epoch = computeDepartureEpochSec(plan.startDate, dayIndex, minutes)
+    if (epoch !== null) {
+      departureTimeSec = epoch
+      dateNote = `已按第 ${Math.floor(dayIndex)} 天 ${String(hours).padStart(2, '0')}:${String(minutesOfHour).padStart(2, '0')}（当地）的真实日期查询`
+    }
+  }
+
+  const outcome = await queryTravelBetween(
+    {
+      travel: deps.travel,
+      // 真实外呼计数：与 transport enricher 同一份预算（N4）
+      onGoogleCall: () => {
+        budget.directions.used += 1
+      },
+    },
+    { from, to, mode, departureTimeSec },
+  )
+  if (!outcome.ok) {
+    return JSON.stringify({
+      error: outcome.message,
+      code: outcome.code,
+      ...(outcome.code === 'zero_results'
+        ? { hint: '用 ask_user（taskType=opinion，kind=single_choice）问用户：改自驾/租车、坚持公共交通、混合方式或自行输入——这是意见题，不要当作品选择（taskType=work_selection）发起' }
+        : {}),
+    })
+  }
+  return JSON.stringify({ ...outcome.response, dateNote })
+}
+
+/**
+ * estimate_transit 工具主体（旧版本地启发式，≤1.5km 步行其余公交）。兜底结果
+ * 也要能过出处门并让前端标注"参考估算"：返回 provider/estimated 与完整
+ * transportPayload（形状同 queryTravelBetween 的估算分支），模型把它原样
+ * 写进 transit 条目 payload.transport 即可。
+ */
+export async function runEstimateTransitTool(deps: PlanAgentToolDeps, args: Record<string, unknown>): Promise<string> {
+  const fromId = String(args.fromPointId ?? '')
+  const toId = String(args.toPointId ?? '')
+  const plan = await deps.repo.getPlan(deps.planId)
+  const coords = await deps.points.getPointsByIds([fromId, toId], plan?.bangumiIds ?? [])
+  // 容忍容错层返回的完整 scoped id（请求裸 id、命中带前缀形式）
+  const from = coords.find((p) => p.id === fromId || p.id.endsWith(`:${fromId}`))
+  const to = coords.find((p) => p.id === toId || p.id.endsWith(`:${toId}`))
+  if (!from || !to) return JSON.stringify({ error: '点位不存在或缺少坐标' })
+  // A5：数值推算与 transport enricher 的零外呼估算同源（heuristicTransit.ts）
+  const { mode, durationMin, distanceKm, mapsUrl } = computeHeuristicTransitCore(from, to)
+  const note = '外部交通查询服务不可用，此为按直线距离推算的参考估算值；仅供参考'
+  const transportPayload = {
+    mode,
+    durationMin,
+    distanceKm,
+    transfers: null,
+    provider: 'estimate',
+    estimated: true,
+    note,
+    mapsUrl,
+    fetchedAt: new Date().toISOString(),
+    legs: [],
+  }
+  return JSON.stringify({ distanceKm, mode, durationMin, estimated: true, provider: 'estimate', note, mapsUrl, transportPayload })
 }

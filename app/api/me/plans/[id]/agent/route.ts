@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { startOfToday } from '@/lib/tripPlan/handlers/plans'
-import { createChatCompletion, generatePlanTitle } from '@/lib/planAgent/api'
+import { createChatCompletion, generatePlanTitle, withModelUsageInRunLog } from '@/lib/planAgent/api'
 import { planMetaFromAnswer } from '@/lib/planAgent/askUser'
 import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { agentErrorMessage } from '@/lib/planAgent/netErrors'
@@ -106,7 +106,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           runPlanAgent(
             {
               createMessage: createChatCompletion,
-              repo: deps.repo,
+              repo: withModelUsageInRunLog(deps.repo),
               planId: id,
               toolDeps: {
                 planId: id,

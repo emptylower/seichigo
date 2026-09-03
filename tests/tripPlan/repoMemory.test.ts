@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 
 describe('MemoryTripPlanRepo', () => {
@@ -212,5 +212,73 @@ describe('MemoryTripPlanRepo', () => {
     const plan2 = await repo.getPlan(plan.id)
     expect(plan2?.title).toBe('生效了')
     expect(plan2?.days).toHaveLength(1)
+  })
+
+  it('S2：replaceDaysIfUnchanged 版本守卫——updatedAt 不匹配返回 null 不写；匹配则整份替换并推进版本', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-09-03T00:00:00.000Z'))
+      const repo = new MemoryTripPlanRepo()
+      const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+      await repo.replaceDays(plan.id, [{ dayIndex: 1, items: [{ type: 'free', title: 'v1' }] }])
+
+      vi.setSystemTime(new Date('2026-09-03T00:00:01.000Z'))
+      const read = await repo.getPlan(plan.id)
+      const staleExpectation = new Date(read!.updatedAt.getTime() - 1000)
+      // 期间被并发保存改过（期望值是旧的）→ 整体不写
+      expect(
+        await repo.replaceDaysIfUnchanged(plan.id, staleExpectation, [
+          { dayIndex: 1, items: [{ type: 'free', title: '不该生效' }] },
+        ]),
+      ).toBeNull()
+      expect((await repo.getPlan(plan.id))?.days[0]?.items[0]?.title).toBe('v1')
+
+      // 版本仍匹配 → 写入成功且 updatedAt 前进
+      vi.setSystemTime(new Date('2026-09-03T00:00:02.000Z'))
+      const out = await repo.replaceDaysIfUnchanged(plan.id, read!.updatedAt, [
+        { dayIndex: 1, items: [{ type: 'free', title: 'v2' }] },
+      ])
+      expect(out?.days[0]?.items[0]?.title).toBe('v2')
+      const after = await repo.getPlan(plan.id)
+      expect(after?.days[0]?.items[0]?.title).toBe('v2')
+      expect(after!.updatedAt.getTime()).toBeGreaterThan(read!.updatedAt.getTime())
+      // 版本已前进：旧期望值再写一次必须被拒绝
+      expect(
+        await repo.replaceDaysIfUnchanged(plan.id, read!.updatedAt, [
+          { dayIndex: 1, items: [{ type: 'free', title: '也不该生效' }] },
+        ]),
+      ).toBeNull()
+
+      // 计划不存在 → null
+      expect(await repo.replaceDaysIfUnchanged('plan-不存在', new Date(), [])).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('S2：getPlan 暴露 agentRunToken/agentBusyUntil——运行中可见、endAgentRun 后清空', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    expect((await repo.getPlan(plan.id))?.agentRunToken).toBeNull()
+    expect((await repo.getPlan(plan.id))?.agentBusyUntil).toBeNull()
+
+    const run = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+      content: { role: 'user', content: 'hi' },
+    })
+    if (run.status !== 'ok') throw new Error('unreachable')
+
+    const during = await repo.getPlan(plan.id)
+    expect(during?.agentRunToken).toBe(run.token)
+    expect(during?.agentBusyUntil).toBeInstanceOf(Date)
+
+    await repo.endAgentRun(plan.id, run.token)
+    const after = await repo.getPlan(plan.id)
+    expect(after?.agentRunToken).toBeNull()
+    expect(after?.agentBusyUntil).toBeNull()
   })
 })

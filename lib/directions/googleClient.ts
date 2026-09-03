@@ -141,6 +141,16 @@ export function decodePolyline(encoded: string): Array<[number, number]> {
 
 export type GoogleTravelMode = 'walking' | 'transit' | 'driving'
 
+/**
+ * 粗粒度日本列岛 bbox（lat 24–46，lng 122–146，含北海道至冲绳）。
+ * 实测同一 key 对日本境内 mode=transit 一律 ZERO_RESULTS（新宿→浅草、
+ * 新宿→河口湖，加 region=jp 也一样），伦敦对照正常——这是 Google
+ * Directions 的日本公共交通覆盖缺口，不是查询参数问题。
+ */
+export function isWithinJapan(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 24 && lat <= 46 && lng >= 122 && lng <= 146
+}
+
 export type FetchGoogleDirectionsInput = {
   origin: string
   destination: string
@@ -312,7 +322,7 @@ export type TravelClientInput = {
 
 export type TravelClientDeps = {
   apiKey: string
-  /** 限速窗口上限（默认 15 次/分钟/计划） */
+  /** 限速窗口上限（R3：默认 60 次/分钟/计划，与 Places 窗口对齐） */
   rateMax?: number
   /** 缓存条目上限（默认 100，最旧先逐出） */
   cacheMax?: number
@@ -332,7 +342,7 @@ const TRAVEL_CACHE_TTL_MS = 10 * 60 * 1000
 export function createTravelClient(deps: TravelClientDeps) {
   const fetchImpl = deps.fetchImpl ?? fetch
   const now = deps.now ?? (() => Date.now())
-  const rateMax = deps.rateMax ?? 15
+  const rateMax = deps.rateMax ?? 60
   const cacheMax = deps.cacheMax ?? 100
   const cacheTtlMs = deps.cacheTtlMs ?? TRAVEL_CACHE_TTL_MS
   const cache = new Map<string, { result: Extract<TravelResult, { ok: true }>; expiresAt: number }>()

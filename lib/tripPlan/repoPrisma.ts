@@ -11,6 +11,8 @@ import type {
   TripPlanMessageKind,
   TripPlanMetaUpdate,
   TripPlanRepo,
+  TripPlanRunLogEntry,
+  TripPlanRunLogRecord,
   TripPlanStatus,
   TripPlanWithDays,
 } from './repo'
@@ -79,6 +81,9 @@ function toPlan(row: Prisma.TripPlanGetPayload<Record<string, never>>): TripPlan
     dayCount: row.dayCount,
     bangumiIds: row.bangumiIds,
     preferences: row.preferences,
+    stage: row.stage,
+    agentRunToken: row.agentRunToken,
+    agentBusyUntil: row.agentBusyUntil,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -168,6 +173,38 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     return prisma.tripPlan.count({ where: { userId, createdAt: { gte: since } } })
   }
 
+  /**
+   * S2 乐观版本守卫：条件 updateMany 既是检查也是版本戳推进——where 里带上
+   * expectedUpdatedAt，count === 0 说明读取之后计划被并发保存改过（或已不
+   * 存在），整个事务直接空转返回 null，绝不覆盖别人的写入。匹配时同一事务
+   * 内完成与 replaceDays 相同的 deleteMany/createMany 批量写入。
+   */
+  async replaceDaysIfUnchanged(
+    id: string,
+    expectedUpdatedAt: Date,
+    days: TripPlanDayInput[],
+  ): Promise<TripPlanWithDays | null> {
+    const committed = await prisma.$transaction(
+      async (tx) => {
+        const guard = await tx.tripPlan.updateMany({
+          where: { id, updatedAt: expectedUpdatedAt },
+          data: { updatedAt: new Date() },
+        })
+        if (guard.count === 0) return false
+        await tx.tripPlanDay.deleteMany({ where: { planId: id } })
+        const { dayRows, itemRows } = buildDayRows(id, days)
+        if (dayRows.length) await tx.tripPlanDay.createMany({ data: dayRows })
+        if (itemRows.length) await tx.tripPlanItem.createMany({ data: itemRows })
+        return true
+      },
+      { maxWait: 10_000, timeout: 15_000 },
+    )
+    if (!committed) return null
+    const plan = await this.getPlan(id)
+    if (!plan) throw new Error(`plan not found after replaceDaysIfUnchanged: ${id}`)
+    return plan
+  }
+
   async appendMessage(planId: string, kind: TripPlanMessageKind, content: Prisma.JsonValue): Promise<TripPlanMessage> {
     const row = await prisma.tripPlanMessage.create({
       data: { planId, kind, content: content as Prisma.InputJsonValue },
@@ -245,6 +282,52 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       where: { id: planId, agentRunToken: token },
       data: { agentBusyUntil: null, agentRunToken: null },
     })
+  }
+
+  async isAgentBusy(planId: string): Promise<boolean> {
+    const row = await prisma.tripPlan.findFirst({
+      where: { id: planId, agentBusyUntil: { gt: new Date() } },
+      select: { id: true },
+    })
+    return row !== null
+  }
+
+  async updateStage(planId: string, stage: string): Promise<void> {
+    await prisma.tripPlan.updateMany({ where: { id: planId }, data: { stage } })
+  }
+
+  async appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord> {
+    const row = await prisma.tripPlanRunLog.create({
+      data: {
+        planId: entry.planId,
+        runToken: entry.runToken ?? null,
+        turnIndex: entry.turnIndex,
+        stage: entry.stage,
+        ...(entry.enrichReport !== null && entry.enrichReport !== undefined ? { enrichReport: entry.enrichReport as Prisma.InputJsonValue } : {}),
+        ...(entry.gateReport !== null && entry.gateReport !== undefined ? { gateReport: entry.gateReport as Prisma.InputJsonValue } : {}),
+        ...(entry.toolCalls !== null && entry.toolCalls !== undefined ? { toolCalls: entry.toolCalls as Prisma.InputJsonValue } : {}),
+        ...(entry.modelUsage !== null && entry.modelUsage !== undefined ? { modelUsage: entry.modelUsage as Prisma.InputJsonValue } : {}),
+        durationMs: entry.durationMs,
+      },
+    })
+    return { ...entry, id: row.id, createdAt: row.createdAt }
+  }
+
+  async listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]> {
+    const rows = await prisma.tripPlanRunLog.findMany({ where: { planId }, orderBy: { createdAt: 'asc' } })
+    return rows.map((row) => ({
+      planId: row.planId,
+      runToken: row.runToken,
+      turnIndex: row.turnIndex,
+      stage: row.stage,
+      enrichReport: row.enrichReport,
+      gateReport: row.gateReport,
+      toolCalls: row.toolCalls,
+      modelUsage: row.modelUsage,
+      durationMs: row.durationMs,
+      id: row.id,
+      createdAt: row.createdAt,
+    }))
   }
 
   /**

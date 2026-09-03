@@ -349,8 +349,8 @@ describe('runPlanAgent 的 daymap SSE 与历史重建', () => {
       '再帮我调整一下',
       () => {},
     )
-    // system + 历史 human/assistant/tool（成组）+ 收尾 assistant + 本轮 human；
-    // daymap 无 role 字段被过滤，绝不进入模型上下文
+    // system + 历史 human/assistant/tool（成组）+ 收尾 assistant + 本轮 human（[系统状态]
+    // 拼进其前部，N5 无单独阶段 user 消息）；daymap 无 role 字段被过滤，绝不进入模型上下文
     expect(seenRoles).toEqual(['system', 'user', 'assistant', 'tool', 'assistant', 'user'])
   })
 

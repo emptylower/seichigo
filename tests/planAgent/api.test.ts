@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type OpenAI from 'openai'
 
-const { fakeCreate } = vi.hoisted(() => ({ fakeCreate: vi.fn() }))
+const { fakeCreate, resolveLlmForScope } = vi.hoisted(() => ({
+  fakeCreate: vi.fn(),
+  resolveLlmForScope: vi.fn(),
+}))
 
 vi.mock('openai', () => {
   class FakeOpenAI {
@@ -11,7 +14,14 @@ vi.mock('openai', () => {
   return { default: FakeOpenAI }
 })
 
-import { createChatCompletion } from '@/lib/planAgent/api'
+vi.mock('@/lib/llm/registry', () => ({
+  resolveLlmForScope: (...args: unknown[]) => resolveLlmForScope(...(args as [])),
+}))
+
+import { createChatCompletion, withModelUsageInRunLog, type PlanAgentModelUsage } from '@/lib/planAgent/api'
+import { createLlmClient } from '@/lib/llm/client'
+import { LlmHttpError } from '@/lib/llm/http'
+import type { TripPlanRepo, TripPlanRunLogEntry } from '@/lib/tripPlan/repo'
 
 type Delta = Record<string, unknown>
 
@@ -35,6 +45,8 @@ function fakeStream(chunks: unknown[]): unknown {
 
 beforeEach(() => {
   fakeCreate.mockReset()
+  resolveLlmForScope.mockReset()
+  resolveLlmForScope.mockResolvedValue(null)
   process.env.PLAN_AGENT_API_KEY = 'test-key'
   process.env.PLAN_AGENT_STREAM_RETRY_BACKOFF_MS = '1'
   delete process.env.PLAN_AGENT_MODEL
@@ -192,5 +204,260 @@ describe('createChatCompletion (streaming)', () => {
     expect(message.role).toBe('assistant')
     expect(message.content).toBeNull()
     expect(message.tool_calls).toBeUndefined()
+  })
+
+  it('carries the trailing finish_reason (length) on the rebuilt message so the loop can tell truncation from a clean stop', async () => {
+    fakeCreate.mockResolvedValue(
+      fakeStream([chunk({ reasoning_content: '思考' }), chunk({ content: '' }, 'length')]),
+    )
+    const message = await createChatCompletion({ messages: [], tools: [] })
+    expect(message.content).toBeNull()
+    expect(message.finish_reason).toBe('length')
+  })
+
+  it('keeps the last non-null finish_reason and omits it when the stream never sent one', async () => {
+    fakeCreate.mockResolvedValue(
+      fakeStream([chunk({ content: 'ok' }, 'stop'), chunk({}, null)]),
+    )
+    const withStop = await createChatCompletion({ messages: [], tools: [] })
+    expect(withStop.finish_reason).toBe('stop')
+
+    fakeCreate.mockResolvedValue(fakeStream([chunk({ content: 'ok' })]))
+    const withoutFinish = await createChatCompletion({ messages: [], tools: [] })
+    expect(withoutFinish.finish_reason).toBeUndefined()
+  })
+})
+
+describe('createChatCompletion (custom provider takeover)', () => {
+  function sseResponse(events: string[]): Response {
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const event of events) controller.enqueue(encoder.encode(event))
+        controller.close()
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+
+  function anthropicEvent(type: string, payload: Record<string, unknown> = {}): string {
+    return `event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`
+  }
+
+  it('routes through the anthropic provider client when a takeover provider is resolved', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseResponse([
+        anthropicEvent('content_block_delta', { index: 0, delta: { type: 'text_delta', text: '好的' } }),
+        anthropicEvent('message_delta', { delta: { stop_reason: 'end_turn' } }),
+      ]),
+    )
+    resolveLlmForScope.mockResolvedValue({
+      client: createLlmClient({
+        protocol: 'anthropic',
+        endpointUrl: 'https://api.anthropic.com/v1/messages',
+        apiKey: 'sk-ant-admin-key',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'claude-sonnet-4',
+      maxOutputTokens: 8192,
+      providerId: 'llm-1',
+      providerName: 'Anthropic 中转',
+      protocol: 'anthropic',
+    })
+
+    const message = await createChatCompletion(
+      { messages: [{ role: 'user', content: '规划东京三日行程' }], tools: [] },
+      undefined,
+    )
+
+    // 走 anthropic 统一客户端，而不是 OpenAI SDK
+    expect(fakeCreate).not.toHaveBeenCalled()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.anthropic.com/v1/messages')
+    const headers = init.headers as Record<string, string>
+    expect(headers['x-api-key']).toBe('sk-ant-admin-key')
+    expect(headers['anthropic-version']).toBe('2023-06-01')
+
+    const body = JSON.parse(String(init.body))
+    expect(body.model).toBe('claude-sonnet-4')
+    expect(body.max_tokens).toBe(8192)
+
+    expect(message.role).toBe('assistant')
+    expect(message.content).toBe('好的')
+    expect(message.finish_reason).toBe('stop')
+  })
+
+  it('still uses the OpenAI SDK path (PLAN_AGENT_* env) when no provider takes over', async () => {
+    resolveLlmForScope.mockResolvedValue(null)
+    fakeCreate.mockResolvedValue(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+    expect(fakeCreate).toHaveBeenCalledWith(expect.objectContaining({ stream: true }))
+    expect(message.content).toBe('ok')
+  })
+})
+
+function openaiSseResponse(events: string[]): Response {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const event of events) controller.enqueue(encoder.encode(event))
+      controller.close()
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+function openaiSseChunk(delta: Record<string, unknown>, finishReason: string | null = null): string {
+  return (
+    'data: ' +
+    JSON.stringify({
+      id: 'chatcmpl-test',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    }) +
+    '\n\n'
+  )
+}
+
+type MessageWithProvider = { provider?: PlanAgentModelUsage }
+
+describe('model usage reporting (per-call provider attachment)', () => {
+  it('attaches each call provider usage onto its own returned message; concurrent calls do not cross', async () => {
+    const gates: Array<(response: Response) => void> = []
+    const fetchImpl = vi.fn().mockImplementation(
+      () => new Promise<Response>((resolve) => gates.push(resolve)),
+    )
+    const mkProvider = (id: string) => ({
+      client: createLlmClient({
+        protocol: 'openai' as const,
+        endpointUrl: `https://${id}.example.com/v1/chat/completions`,
+        apiKey: `sk-${id}`,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'm',
+      maxOutputTokens: 8,
+      providerId: id,
+      providerName: id,
+      protocol: 'openai' as const,
+    })
+    let resolved = 0
+    resolveLlmForScope.mockImplementation(async () =>
+      resolved++ === 0 ? mkProvider('llm-a') : mkProvider('llm-b'),
+    )
+
+    const callA = createChatCompletion({ messages: [], tools: [] })
+    const callB = createChatCompletion({ messages: [], tools: [] })
+    // 两个并发请求都已拿到各自的供应商后按逆序放行：后完成的 B 不能覆盖 A 的返回
+    await vi.waitFor(() => expect(gates).toHaveLength(2))
+    gates[1](openaiSseResponse([openaiSseChunk({ content: 'B' }, 'stop')]))
+    gates[0](openaiSseResponse([openaiSseChunk({ content: 'A' }, 'stop')]))
+    const [a, b] = await Promise.all([callA, callB])
+
+    expect(a.content).toBe('A')
+    expect(b.content).toBe('B')
+    expect((a as MessageWithProvider).provider?.providerId).toBe('llm-a')
+    expect((b as MessageWithProvider).provider?.providerId).toBe('llm-b')
+    // provider 是不可枚举属性：不会跟着消息一起被序列化进历史
+    expect(Object.keys(a)).not.toContain('provider')
+    expect(JSON.stringify(a)).not.toContain('llm-a')
+  })
+
+  it('withModelUsageInRunLog reads usage from the most recent return value (null on env path)', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(openaiSseResponse([openaiSseChunk({ content: 'ok' }, 'stop')]))
+    resolveLlmForScope.mockResolvedValue({
+      client: createLlmClient({
+        protocol: 'openai',
+        endpointUrl: 'https://relay.example.com/v1/chat/completions',
+        apiKey: 'sk-relay',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'gpt-mini',
+      maxOutputTokens: 8,
+      providerId: 'llm-1',
+      providerName: '中转',
+      protocol: 'openai',
+    })
+    await createChatCompletion({ messages: [], tools: [] })
+
+    const appendRunLog = vi.fn().mockResolvedValue(undefined)
+    const wrapped = withModelUsageInRunLog({ appendRunLog } as unknown as TripPlanRepo)
+    const entry: TripPlanRunLogEntry = {
+      planId: 'p1',
+      runToken: null,
+      turnIndex: 1,
+      stage: 'works',
+      modelUsage: null,
+      durationMs: 5,
+    }
+    await wrapped.appendRunLog(entry)
+    expect(appendRunLog).toHaveBeenCalledTimes(1)
+    expect(appendRunLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelUsage: expect.objectContaining({ providerId: 'llm-1', model: 'gpt-mini' }),
+      }),
+    )
+
+    // 环境变量路径：返回消息不带 provider → entry 原样透传
+    resolveLlmForScope.mockResolvedValue(null)
+    fakeCreate.mockResolvedValue(fakeStream([chunk({ content: 'env' }, 'stop')]))
+    await createChatCompletion({ messages: [], tools: [] })
+    await wrapped.appendRunLog(entry)
+    expect(appendRunLog).toHaveBeenLastCalledWith(entry)
+  })
+})
+
+describe('provider-path retry alignment (LlmHttpError 429/408/5xx)', () => {
+  it('retries a 503 once and succeeds on the second attempt (exactly 2 fetches)', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('upstream overloaded', { status: 503 }))
+      .mockResolvedValueOnce(openaiSseResponse([openaiSseChunk({ content: 'ok' }, 'stop')]))
+    resolveLlmForScope.mockResolvedValue({
+      client: createLlmClient({
+        protocol: 'openai',
+        endpointUrl: 'https://relay.example.com/v1/chat/completions',
+        apiKey: 'sk-relay',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'gpt-mini',
+      maxOutputTokens: 8,
+      providerId: 'llm-1',
+      providerName: '中转',
+      protocol: 'openai',
+    })
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+    expect(message.content).toBe('ok')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws immediately on 400 without retrying (single fetch)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('bad request', { status: 400 }))
+    resolveLlmForScope.mockResolvedValue({
+      client: createLlmClient({
+        protocol: 'openai',
+        endpointUrl: 'https://relay.example.com/v1/chat/completions',
+        apiKey: 'sk-relay',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'gpt-mini',
+      maxOutputTokens: 8,
+      providerId: 'llm-1',
+      providerName: '中转',
+      protocol: 'openai',
+    })
+
+    const err: unknown = await createChatCompletion({ messages: [], tools: [] }).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(LlmHttpError)
+    expect((err as LlmHttpError).status).toBe(400)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })

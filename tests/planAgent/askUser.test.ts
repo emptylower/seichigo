@@ -235,7 +235,8 @@ describe('runPlanAgent ask_user interruption', () => {
       () => {},
     )
 
-    // system + 上一轮 human + assistant(tool_calls) + tool 回执 + 本轮 human；ask 行（无 role）不进模型消息
+    // system + 上一轮 human + assistant(tool_calls) + tool 回执 + 本轮 human（[系统状态]
+    // 拼进其前部，N5 不再单独插 user 消息）；ask 行（无 role）不进模型消息
     expect(seenMessages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'tool', 'user'])
     expect(seenMessages[3].tool_call_id).toBe('call_ask')
   })

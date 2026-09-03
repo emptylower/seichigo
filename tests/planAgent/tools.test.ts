@@ -64,7 +64,7 @@ async function makeDeps(): Promise<{ deps: PlanAgentToolDeps; planId: string; re
 }
 
 describe('PLAN_AGENT_TOOLS', () => {
-  it('declares the eleven M3 tools', () => {
+  it('declares the twelve agent tools (M3 十一个 + A3 find_restaurants)', () => {
     expect(
       PLAN_AGENT_TOOLS.map((t) => (t.type === 'function' ? t.function.name : '')).sort(),
     ).toEqual([
@@ -72,6 +72,7 @@ describe('PLAN_AGENT_TOOLS', () => {
       'cluster_points',
       'estimate_transit',
       'estimate_travel',
+      'find_restaurants',
       'list_points',
       'read_plan',
       'resolve_place',
@@ -208,7 +209,8 @@ describe('executePlanTool', () => {
               {
                 type: 'transit',
                 title: '步行前往大吉山',
-                payload: { mode: 'walk', durationMin: 8, distanceKm: 0.65 },
+                // M4 交通门要求 payload.transport.provider 非空（estimate_travel 原样照抄）
+                payload: { transport: { mode: 'walk', durationMin: 8, distanceKm: 0.65, provider: 'google' } },
               },
               { type: 'point', pointId: 'p-daikichi', title: '大吉山' },
             ],
@@ -224,9 +226,7 @@ describe('executePlanTool', () => {
     expect(titles).toEqual(['宇治桥', '步行前往大吉山', '大吉山'])
     const transit = items.find((i) => i.type === 'transit')
     const transitPayload = transit?.payload as Record<string, unknown>
-    expect(transitPayload.mode).toBe('walk')
-    expect(transitPayload.durationMin).toBe(8)
-    expect(transitPayload.distanceKm).toBe(0.65)
+    expect(transitPayload.transport).toMatchObject({ mode: 'walk', durationMin: 8, distanceKm: 0.65, provider: 'google' })
     expect(transitPayload.schedule).toMatchObject({ start: '10:00', end: '10:08', confidence: 'estimated' })
     const point = items.find((i) => i.type === 'point')
     const pointPayload = point?.payload as Record<string, unknown> | null
@@ -376,6 +376,8 @@ describe('save_plan_days 跨天总条目上限（触库前结构化拒绝）', (
       items: Array.from({ length: itemsPerDay }, (_, i) => ({
         type: 'free' as const,
         title: `day${d + 1}-item${i + 1}`,
+        // 每条 30 分钟：25 条/天 = 12.5h，不触发 M4 时间门的 13h 跨度上限
+        payload: { schedule: { durationMin: 30 } },
       })),
     }))
   }

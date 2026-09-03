@@ -3,6 +3,7 @@ import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { executePlanTool } from '@/lib/planAgent/tools'
 import type { PlanAgentToolDeps } from '@/lib/planAgent/tools'
 import { createPlaceResolver } from '@/lib/googlePlaces/places'
+import { createMemoryExternalPlaceStore } from '@/lib/googlePlaces/storeMemory'
 import type { TravelResult } from '@/lib/directions/googleClient'
 import type { PointFinder } from '@/lib/planAgent/points'
 import type { Prisma } from '@prisma/client'
@@ -60,7 +61,11 @@ function makePlaceResolver() {
     }
     return body as unknown as Response
   })
-  return { fetchImpl, resolver: createPlaceResolver({ apiKey: 'k', rateKey: 'test-places', fetchImpl }) }
+  // 贴合生产装配（serverDeps 注入 store）：落库成功 → placeId 寻址的 displayUrl
+  return {
+    fetchImpl,
+    resolver: createPlaceResolver({ apiKey: 'k', rateKey: 'test-places', fetchImpl, store: createMemoryExternalPlaceStore() }),
+  }
 }
 
 describe('resolve_place 工具', () => {
@@ -88,16 +93,16 @@ describe('resolve_place 工具', () => {
       lat: 35.6329,
       lng: 139.8804,
     })
-    expect(out.media.displayUrl).toContain('/api/google/place-photo?ref=Aref_1234567890')
+    expect(out.media.displayUrl).toContain('/api/google/place-photo?placeId=ChIJ_disney')
     expect(JSON.stringify(out)).not.toContain('key')
   })
 
-  it('lookup(placeId) 命中已解析地点（save_plan_days 的出处验证依赖）', async () => {
+  it('lookup(placeId) 命中已解析地点（save_plan_days 的出处验证依赖；异步）', async () => {
     const { resolver } = makePlaceResolver()
-    expect(resolver.lookup('ChIJ_disney')).toBeNull()
+    expect(await resolver.lookup('ChIJ_disney')).toBeNull()
     await resolver.resolveByText('东京迪士尼')
-    expect(resolver.lookup('ChIJ_disney')?.placeId).toBe('ChIJ_disney')
-    expect(resolver.lookup('unknown')).toBeNull()
+    expect((await resolver.lookup('ChIJ_disney'))?.placeId).toBe('ChIJ_disney')
+    expect(await resolver.lookup('unknown')).toBeNull()
   })
 
   it('M3 修订：resolve_place 返回可照抄的 optionProvenance 三件套（ask 选项证据契约）', async () => {
@@ -374,7 +379,7 @@ describe('save_plan_days 外部地点与归一化（M3）', () => {
             dayIndex: 1,
             items: [
               { type: 'point', pointId: 'p1', title: '宇治桥' },
-              { type: 'transit', title: '地铁去迪士尼', payload: { transport: { mode: 'transit', durationMin: 45, distanceKm: 20 } } },
+              { type: 'transit', title: '地铁去迪士尼', payload: { transport: { mode: 'transit', durationMin: 45, distanceKm: 20, provider: 'google' } } },
               {
                 type: 'point',
                 title: '東京ディズニーランド',
@@ -432,6 +437,7 @@ describe('save_plan_days 外部地点与归一化（M3）', () => {
     })
 
     // 新一轮保存：resolver 不可用（服务重启/无 key），但 place 已在计划里
+    // （M4：两个有坐标条目之间补上带 provider 的 transit 行过交通门）
     const resaved = JSON.parse(
       await executePlanTool({ planId, repo, points: finder }, 'save_plan_days', {
         days: [
@@ -439,6 +445,7 @@ describe('save_plan_days 外部地点与归一化（M3）', () => {
             dayIndex: 1,
             items: [
               { type: 'point', title: 'D', payload: { place: disneyPlace } },
+              { type: 'transit', title: '移动', payload: { transport: { mode: 'transit', durationMin: 45, distanceKm: 20, provider: 'google' } } },
               { type: 'point', pointId: 'p1', title: '宇治桥' },
             ],
           },
@@ -676,7 +683,7 @@ describe('save_plan_days 外部地点与归一化（M3）', () => {
     expect(out.missing).toEqual(['ghost-id'])
   })
 
-  it('时间冲突 → 归一化错误透出（含天序号与冲突明细），计划不被写入', async () => {
+  it('时间冲突 → 时间门拒绝落库（fix 携带冲突明细），计划不被写入', async () => {
     const { repo, planId } = await makeDeps()
     const out = JSON.parse(
       await executePlanTool({ planId, repo, points: finder }, 'save_plan_days', {
@@ -691,8 +698,11 @@ describe('save_plan_days 外部地点与归一化（M3）', () => {
         ],
       }),
     )
-    expect(out.error).toContain('归一化失败')
-    expect(out.errors.join('')).toContain('重叠')
+    // M4：归一化失败进入时间门整改单（不再直接返回"归一化失败"错误）
+    expect(out.error).toBe('质量门控未通过，未落库')
+    const scheduleFailure = (out.gates as Array<{ gate: string; fix: string }>).find((g) => g.gate === 'schedule')
+    expect(scheduleFailure?.fix).toContain('重叠')
+    expect(scheduleFailure?.fix).toContain('A')
     expect((await repo.getPlan(planId))?.days).toHaveLength(0)
   })
 

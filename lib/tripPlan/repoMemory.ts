@@ -10,6 +10,8 @@ import type {
   TripPlanMetaUpdate,
   TripPlanPointLite,
   TripPlanRepo,
+  TripPlanRunLogEntry,
+  TripPlanRunLogRecord,
   TripPlanWithDays,
 } from './repo'
 
@@ -18,8 +20,16 @@ type MemoryOptions = {
 }
 
 export class MemoryTripPlanRepo implements TripPlanRepo {
+  /** 单调递增的更新时间：同毫秒内连续写入也能被 replaceDaysIfUnchanged 的版本守卫区分（真实库有毫秒级时钟 + 事务序） */
+  private lastTouchMs = 0
+  private touch(): Date {
+    const now = Math.max(Date.now(), this.lastTouchMs + 1)
+    this.lastTouchMs = now
+    return new Date(now)
+  }
   private plans = new Map<string, TripPlanWithDays>()
   private messages: TripPlanMessage[] = []
+  private runLogs: TripPlanRunLogRecord[] = []
   private agentBusy = new Map<string, { until: Date; token: string }>()
   private points: Map<string, TripPlanPointLite>
   private seq = 0
@@ -44,6 +54,9 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
       dayCount: 1,
       bangumiIds: [],
       preferences: null,
+      stage: null,
+      agentRunToken: null,
+      agentBusyUntil: null,
       createdAt: now,
       updatedAt: now,
       days: [],
@@ -53,32 +66,60 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return { ...meta }
   }
 
+  /**
+   * S2：agentRunToken/agentBusyUntil 与 Prisma 行字段同语义——busy 位的真值
+   * 存在 agentBusy 表里（beginAgentRun 写入、endAgentRun 清空、到期不删），
+   * 读取时派生到返回值上，绝不落进 plans 存储避免双写漂移。
+   */
+  private agentFields(planId: string): Pick<TripPlan, 'agentRunToken' | 'agentBusyUntil'> {
+    const busy = this.agentBusy.get(planId)
+    return busy
+      ? { agentRunToken: busy.token, agentBusyUntil: busy.until }
+      : { agentRunToken: null, agentBusyUntil: null }
+  }
+
   async listPlans(userId: string): Promise<TripPlan[]> {
     return [...this.plans.values()]
       .filter((p) => p.userId === userId)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-      .map(({ days: _days, ...meta }) => ({ ...meta }))
+      .map(({ days: _days, ...meta }) => ({ ...meta, ...this.agentFields(meta.id) }))
   }
 
   async getPlan(id: string): Promise<TripPlanWithDays | null> {
     const plan = this.plans.get(id)
-    return plan ? structuredClone(plan) : null
+    return plan ? { ...structuredClone(plan), ...this.agentFields(id) } : null
   }
 
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
     const plan = this.plans.get(id)
     if (!plan) throw new Error(`plan not found: ${id}`)
-    Object.assign(plan, patch, { updatedAt: new Date() })
+    Object.assign(plan, patch, { updatedAt: this.touch() })
     const { days: _days, ...meta } = plan
-    return { ...meta }
+    return { ...meta, ...this.agentFields(id) }
   }
 
   async replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays> {
     const plan = this.plans.get(id)
     if (!plan) throw new Error(`plan not found: ${id}`)
     plan.days = this.buildDays(id, days)
-    plan.updatedAt = new Date()
-    return structuredClone(plan)
+    plan.updatedAt = this.touch()
+    return { ...structuredClone(plan), ...this.agentFields(id) }
+  }
+
+  /**
+   * S2：与 Prisma 的条件 updateMany 同语义——updatedAt 不再等于期望值
+   * （读取之后被并发保存改过）就整体不写并返回 null。检查与写入之间没有
+   * await，单线程事件循环上不存在被插队的窗口。
+   */
+  async replaceDaysIfUnchanged(
+    id: string,
+    expectedUpdatedAt: Date,
+    days: TripPlanDayInput[],
+  ): Promise<TripPlanWithDays | null> {
+    const plan = this.plans.get(id)
+    if (!plan) return null
+    if (plan.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return null
+    return this.replaceDays(id, days)
   }
 
   private buildDays(planId: string, days: TripPlanDayInput[]): TripPlanDay[] {
@@ -161,6 +202,32 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     }
   }
 
+  async isAgentBusy(planId: string): Promise<boolean> {
+    const entry = this.agentBusy.get(planId)
+    return Boolean(entry && entry.until.getTime() > Date.now())
+  }
+
+  async updateStage(planId: string, stage: string): Promise<void> {
+    const plan = this.plans.get(planId)
+    if (!plan) return
+    plan.stage = stage
+  }
+
+  async appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord> {
+    const record: TripPlanRunLogRecord = {
+      ...entry,
+      runToken: entry.runToken ?? null,
+      id: this.nextId('runlog'),
+      createdAt: new Date(),
+    }
+    this.runLogs.push(record)
+    return record
+  }
+
+  async listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]> {
+    return this.runLogs.filter((log) => log.planId === planId)
+  }
+
   private isCurrentHolder(planId: string, token: string): boolean {
     return this.agentBusy.get(planId)?.token === token
   }
@@ -200,8 +267,11 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     const plan = this.plans.get(planId)
     if (!plan) throw new Error(`plan not found: ${planId}`)
     const nextDays = this.buildDays(planId, days)
-    const updatedAt = new Date()
-    const snapshot: TripPlanWithDays = structuredClone({ ...plan, days: nextDays, updatedAt })
+    const updatedAt = this.touch()
+    const snapshot: TripPlanWithDays = {
+      ...structuredClone({ ...plan, days: nextDays, updatedAt }),
+      ...this.agentFields(planId),
+    }
     const content = buildDaymapContent(snapshot)
     plan.days = nextDays
     plan.updatedAt = updatedAt

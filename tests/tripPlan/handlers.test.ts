@@ -75,6 +75,8 @@ describe('planById handlers', () => {
     expect(body.plan.days).toHaveLength(1)
     expect(typeof body.plan.updatedAt).toBe('string')
     expect(body.chat).toEqual([])
+    // A4：无运行时 agentBusy 为 false（默认快照）
+    expect(body.agentBusy).toBe(false)
 
     const patched = await handlers.PATCH(
       plan.id,
@@ -87,5 +89,30 @@ describe('planById handlers', () => {
       new Request('http://localhost/x', { method: 'PATCH', body: JSON.stringify({ status: 'bogus' }) }),
     )
     expect(bad.status).toBe(400)
+  })
+
+  it('A4：GET 暴露 agentBusy——agent 运行中 true，结束（endAgentRun）后回落 false', async () => {
+    const deps = makeDeps()
+    const plan = await deps.repo.createPlan({ userId: 'u1', title: 't' })
+    const handlers = createPlanByIdHandlers(deps)
+
+    const begin = await deps.repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: '帮我排一天' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 10 * 60 * 1000,
+    })
+    expect(begin.status).toBe('ok')
+
+    const during = await handlers.GET(plan.id)
+    expect((await during.json()).agentBusy).toBe(true)
+
+    if (begin.status === 'ok') {
+      await deps.repo.endAgentRun(plan.id, begin.token)
+    }
+    const after = await handlers.GET(plan.id)
+    expect((await after.json()).agentBusy).toBe(false)
   })
 })

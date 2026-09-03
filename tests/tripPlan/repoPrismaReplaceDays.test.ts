@@ -5,7 +5,7 @@ type TxSpies = {
   $queryRaw: Mock
   tripPlanDay: { deleteMany: Mock; createMany: Mock; create: Mock }
   tripPlanItem: { createMany: Mock; create: Mock }
-  tripPlan: { update: Mock; findUnique: Mock }
+  tripPlan: { update: Mock; updateMany: Mock; findUnique: Mock }
 }
 
 vi.mock('@/lib/db/prisma', () => {
@@ -22,6 +22,7 @@ vi.mock('@/lib/db/prisma', () => {
     },
     tripPlan: {
       update: vi.fn(async () => ({})),
+      updateMany: vi.fn(async () => ({ count: 1 })),
       findUnique: vi.fn(async () => null),
     },
   }
@@ -55,7 +56,7 @@ const mocked = prisma as unknown as {
   __txForTest: TxSpies
   tripPlanDay: { deleteMany: Mock; createMany: Mock; create: Mock }
   tripPlanItem: { createMany: Mock }
-  tripPlan: { update: Mock; findUnique: Mock }
+  tripPlan: { update: Mock; updateMany: Mock; findUnique: Mock }
 }
 
 const PLAN_ROW = {
@@ -67,6 +68,9 @@ const PLAN_ROW = {
   dayCount: 1,
   bangumiIds: [],
   preferences: null,
+  stage: null,
+  agentRunToken: null,
+  agentBusyUntil: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   days: [
@@ -278,5 +282,42 @@ describe('PrismaTripPlanRepo.replaceDays（无栅栏版）批量写入', () => {
     const itemRows = mocked.tripPlanItem.createMany.mock.calls[0][0].data as ItemRow[]
     expect(itemRows).toHaveLength(12)
     expect(itemRows.slice(0, 4).map((r) => r.dayId)).toEqual(Array.from({ length: 4 }, () => dayRows[0].id))
+  })
+})
+
+describe('PrismaTripPlanRepo.replaceDaysIfUnchanged（S2 乐观版本守卫）', () => {
+  it('版本匹配：同一事务内先条件 updateMany 推进 updatedAt，count>0 才执行与 replaceDays 相同的批量写入', async () => {
+    const repo = new PrismaTripPlanRepo()
+    const expected = new Date('2026-09-03T00:00:00.000Z')
+    const out = await repo.replaceDaysIfUnchanged('plan-1', expected, makeDays(2, 3))
+
+    const tx = mocked.__txForTest
+    expect(tx.tripPlan.updateMany).toHaveBeenCalledTimes(1)
+    expect(tx.tripPlan.updateMany).toHaveBeenCalledWith({
+      where: { id: 'plan-1', updatedAt: expected },
+      data: { updatedAt: expect.any(Date) },
+    })
+    // 守卫先于删除执行：版本不匹配时绝不能删任何天
+    expect(tx.tripPlan.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.tripPlanDay.deleteMany.mock.invocationCallOrder[0],
+    )
+    expect(tx.tripPlanDay.deleteMany).toHaveBeenCalledTimes(1)
+    expect(tx.tripPlanDay.createMany).toHaveBeenCalledTimes(1)
+    expect(tx.tripPlanItem.createMany).toHaveBeenCalledTimes(1)
+    expect(mocked.tripPlan.findUnique).toHaveBeenCalledTimes(1) // 提交后才回读
+    // 回读来自 PLAN_ROW mock（天数形状与写入规模无关），只断言非空
+    expect(out).not.toBeNull()
+  })
+
+  it('版本不匹配（count === 0）：整体 no-op 返回 null，不删不写不回读', async () => {
+    mocked.__txForTest.tripPlan.updateMany.mockResolvedValueOnce({ count: 0 })
+    const repo = new PrismaTripPlanRepo()
+    const out = await repo.replaceDaysIfUnchanged('plan-1', new Date(0), makeDays(1, 1))
+
+    expect(out).toBeNull()
+    expect(mocked.__txForTest.tripPlanDay.deleteMany).not.toHaveBeenCalled()
+    expect(mocked.__txForTest.tripPlanDay.createMany).not.toHaveBeenCalled()
+    expect(mocked.__txForTest.tripPlanItem.createMany).not.toHaveBeenCalled()
+    expect(mocked.tripPlan.findUnique).not.toHaveBeenCalled()
   })
 })

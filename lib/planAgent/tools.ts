@@ -1,8 +1,8 @@
 import type OpenAI from 'openai'
 import type { Prisma } from '@prisma/client'
-import { clusterIntoDays, haversineKm } from './cluster'
+import { clusterIntoDays } from './cluster'
 import type { BgmSubject, PointFinder } from './points'
-import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanItemType, type TripPlanRepo, type TripPlanWithDays } from '@/lib/tripPlan/repo'
+import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanRepo, type TripPlanWithDays } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
 import { RunFencedError } from './runFence'
 import {
@@ -13,18 +13,25 @@ import {
   type AskUserOption,
 } from './askUser'
 import { buildValidatedAskOptions, isAskOptionGateError, type AskChoiceTaskType } from './askOptions'
-import { computeDepartureEpochSec, normalizeDaySchedule, DAY_START_MIN, type ScheduleItemInput } from './schedule'
+import { dayHasBackfillCandidate } from './placeBackstop'
+import { parseSavePlanDaysInput, type ParsedSaveDays } from './savePlanInput'
 import { validateExternalPlacePayload, type PlaceResolver } from '@/lib/googlePlaces/places'
+import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
+import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
 import { type GoogleTravelMode, type TravelResult } from '@/lib/directions/googleClient'
 import {
   assertPointsResolvable,
   collectPlanPlaces,
-  derivePlaceMedia,
-  resolveTravelEndpoint,
-  sanitizeTransportPayload,
-  summarizeLegForModel,
+  placesToolBudgetExhausted,
   verifyPlaceAgainstCanonical,
+  runEstimateTravelTool,
+  runEstimateTransitTool,
+  BUDGET_EXHAUSTED_RESULT,
 } from './travelHelpers'
+import { createEnrichBudget, readTravelMode, type EnrichBudget, type EnrichContext, type EnrichReport } from './enrich'
+import { scheduleFailureSummary } from './enrich/scheduleEnricher'
+import { enrichAndNormalizeDays } from './enrichPipeline'
+import { evaluatePlanGates, type PlanQualityReport } from './gates'
 import type { WorkCover } from './coverImage'
 import type { DaymapMessagePayload } from '@/lib/tripPlan/view'
 
@@ -38,6 +45,18 @@ export type PlanAgentToolDeps = {
   onDaymapSaved?: (daymap: DaymapMessagePayload) => void
   /** Google Places 地点解析（M3；外部非巡礼地点） */
   places?: PlaceResolver
+  /** 地点库（A2：media enricher 按 placeId 回查被裁剪的 place.photo；serverDeps 注入） */
+  externalPlaces?: ExternalPlaceStore
+  /** Place Details 整组照片补拉（A4 图片去重；serverDeps 注入） */
+  fetchPlacePhotos?: EnrichContext['deps']['fetchPlacePhotos']
+  /** Google Places 附近餐厅搜索（A3；meal 条目推荐，注入便于测试） */
+  findRestaurants?: (input: {
+    lat: number
+    lng: number
+    radiusM?: number
+    keyword?: string
+    onGoogleCall?: () => void
+  }) => Promise<NearbySearchResult>
   /** Google Directions 真实交通查询（M3；注入便于测试） */
   travel?: (input: {
     origin: { lat: number; lng: number }
@@ -47,6 +66,14 @@ export type PlanAgentToolDeps = {
   }) => Promise<TravelResult>
   /** ask 选项封面补齐（M3；按 bangumiId 走本地封面阶梯） */
   resolveOptionCover?: (input: { bangumiId?: number; label: string }) => Promise<WorkCover | null>
+  /** save_plan_days 每次评估完门控后回传给 loop（M4：写运行日志用），通过与拒绝都回调 */
+  onSaveEvaluated?: (r: { enrich: EnrichReport; quality: PlanQualityReport }) => void
+  /**
+   * Google 补齐预算（M4）：directions/places 分桶限量。由 loop 每个 run 创建
+   * 一次，同一 run 内多次 save 共享（避免每次 save 重置预算重烧配额）；
+   * 单独调用 executePlanTool 时缺省新建。
+   */
+  enrichBudget?: EnrichBudget
 }
 
 const POINT_ID_SCHEMA_HINT =
@@ -109,6 +136,7 @@ const itemSchema = {
             attribution: { type: 'string' },
           },
         },
+        placeQuery: { type: 'string', description: '更适合检索的地点正式名（不确定正式名称时写这里，服务端保存时会自动解析补齐 place）' },
         // 兼容 M1 的扁平交通 payload（estimate_transit 时代）
         mode: { type: 'string', description: '兼容旧格式：walk / transit' },
         durationMin: { type: 'number' },
@@ -167,7 +195,7 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   }),
   tool(
     'estimate_travel',
-    '查询两点之间的真实交通（Google Directions）：步行/公共交通/自驾，含线路、上下车站、站数、步行段与耗时距离。计划有精确日期时传 dayIndex+departureTime 按真实日期查询。公交查不到会返回 zero_results——此时必须用 ask_user 问用户是否改自驾/租车，不要悄悄改成纯步行。写 transit 条目时把返回的 transportPayload 原样放进条目 payload.transport。',
+    '查询两点之间的真实交通（Google Directions）：步行/公共交通/自驾，含线路、上下车站、站数、步行段与耗时距离。计划有精确日期时传 dayIndex+departureTime 按真实日期查询。日本境内的公交查询若查不到，会返回 estimated:true、provider:"estimate" 的参考估算值（按道路距离推算，附 mapsUrl）——直接采用并在 reason 注明是参考估算即可，不要再为此发起提问。日本以外公交查不到会返回 zero_results——此时必须用 ask_user 问用户是否改自驾/租车，不要悄悄改成纯步行。写 transit 条目时把返回的 transportPayload 原样放进条目 payload.transport。',
     {
       type: 'object',
       properties: {
@@ -190,15 +218,32 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   }),
   tool(
     'resolve_place',
-    '把用户提到的非巡礼地点（如“东京迪士尼”“涩谷天空”）解析成真实坐标地点（Google Places，自动取第一个结果）。返回 place 对象与图片 media：保存行程时把 place 原样放进条目的 payload.place、media 放进 payload.media；该条目不要再填 pointId。查不到会显式报错——绝不要编造地点。',
+    '把用户提到的非巡礼地点（如“东京迪士尼”“涩谷天空”）解析成真实坐标地点（Google Places，自动取第一个结果；有地点库缓存，重复调用不烧配额）。返回 place 对象与图片 media：保存行程时把 place 原样放进条目的 payload.place、media 放进 payload.media；该条目不要再填 pointId。查不到会显式报错——绝不要编造地点。',
     {
       type: 'object',
-      properties: { query: { type: 'string', description: '地点名称/关键词，尽量用官方名称' } },
+      properties: {
+        query: { type: 'string', description: '地点名称/关键词，尽量用官方名称' },
+        nearLat: { type: 'number', description: '附近点位坐标，用于消歧' },
+        nearLng: { type: 'number', description: '附近点位坐标，用于消歧' },
+      },
       required: ['query'],
     },
   ),
-  tool('read_plan', '读取当前计划的完整结构（标题、天数、每日条目）。', { type: 'object', properties: {} }),
-  tool('update_plan_meta', '更新计划元信息：标题、总天数、出发日期（ISO 日期字符串）、关联作品 id。', {
+  tool(
+    'find_restaurants',
+    '按坐标搜索附近餐厅（Google Places Nearby Search：type=restaurant，默认半径 800m，可选 keyword 如"拉面"）。返回按 评分×log(评价数) 排序的前 5 家，每家附 rating/userRatingsTotal/priceLevel/place（照抄进 meal 条目 payload.place，含 provider/placeId）/photo 与可照抄的 optionProvenance。安排用餐条目前必须先用它：以用餐前最后一个点位的坐标为中心搜索，选评分最高且顺路的一家；note 里列出另外 1–2 家备选（名称+评分）。不要凭记忆编造餐厅。午餐、晚餐固定推荐餐厅，禁止写自理。',
+    {
+      type: 'object',
+      properties: {
+        lat: { type: 'number', description: '搜索中心纬度（用餐前最后一个点位坐标）' },
+        lng: { type: 'number', description: '搜索中心经度' },
+        radiusM: { type: 'number', description: '搜索半径（米，默认 800，上限 50000）' },
+        keyword: { type: 'string', description: '可选关键词，如"拉面""寿司"' },
+      },
+      required: ['lat', 'lng'],
+    },
+  ),
+  tool('read_plan', '读取当前计划的完整结构（标题、天数、每日条目）。', { type: 'object', properties: {} }),  tool('update_plan_meta', '更新计划元信息：标题、总天数、出发日期（ISO 日期字符串）、关联作品 id。', {
     type: 'object',
     properties: {
       title: { type: 'string' },
@@ -334,100 +379,34 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         const clusters = clusterIntoDays(coords, Math.max(1, Math.floor(dayCount)))
         return JSON.stringify({ clusters })
       }
-      case 'estimate_travel': {
-        const rawMode = String(args.mode ?? '')
-        if (rawMode !== 'walk' && rawMode !== 'transit' && rawMode !== 'driving') {
-          return JSON.stringify({ error: 'mode 必须是 walk / transit / driving 之一' })
-        }
-        const mode = rawMode as 'walk' | 'transit' | 'driving'
-        if (!deps.travel) {
-          return JSON.stringify({ error: '真实交通查询服务未配置（GOOGLE_DIRECTIONS_API_KEY 缺失），请改用 estimate_transit 兜底并向用户说明是估算值' })
-        }
-        const plan = await deps.repo.getPlan(deps.planId)
-        if (!plan) return JSON.stringify({ error: '计划不存在' })
-        const from = await resolveTravelEndpoint(args.from, plan, deps, '起点')
-        if ('error' in from) return JSON.stringify({ error: from.error })
-        const to = await resolveTravelEndpoint(args.to, plan, deps, '终点')
-        if ('error' in to) return JSON.stringify({ error: to.error })
-
-        // 精确日期 → 真实出发时刻；模糊日期不传 departure_time（Google 按当前典型班次）
-        let departureTimeSec: number | undefined
-        let dateNote = '计划尚未确定精确日期，按典型时段估算；确定日期后可重查'
-        const dayIndex = Number(args.dayIndex)
-        if (plan.startDate && Number.isFinite(dayIndex) && dayIndex >= 1) {
-          const departureMatch = /^(\d{1,2}):(\d{2})$/.exec(String(args.departureTime ?? '').trim())
-          const hours = departureMatch ? Math.min(23, Number(departureMatch[1])) : Math.floor(DAY_START_MIN / 60)
-          const minutesOfHour = departureMatch ? Math.min(59, Number(departureMatch[2])) : DAY_START_MIN % 60
-          const minutes = hours * 60 + minutesOfHour
-          const epoch = computeDepartureEpochSec(plan.startDate, dayIndex, minutes)
-          if (epoch !== null) {
-            departureTimeSec = epoch
-            dateNote = `已按第 ${Math.floor(dayIndex)} 天 ${String(hours).padStart(2, '0')}:${String(minutesOfHour).padStart(2, '0')}（当地）的真实日期查询`
-          }
-        }
-
-        const googleMode: GoogleTravelMode = mode === 'walk' ? 'walking' : mode
-        const result = await deps.travel({ origin: from, destination: to, mode: googleMode, departureTimeSec })
-        if (!result.ok) {
-          return JSON.stringify({
-            error: result.message,
-            code: result.code,
-            ...(result.code === 'zero_results'
-              ? { hint: '用 ask_user（taskType=opinion，kind=single_choice）问用户：改自驾/租车、坚持公共交通、混合方式或自行输入——这是意见题，不要当作品选择（taskType=work_selection）发起' }
-              : {}),
-          })
-        }
-
-        const legs = (result.legs ?? []).flatMap((leg) => leg.steps.map(summarizeLegForModel))
-        const durationMin = Math.max(1, Math.round(result.durationSeconds / 60))
-        const distanceKm = Math.round((result.distanceMeters / 1000) * 10) / 10
-        const transportPayload = {
-          mode,
-          durationMin,
-          distanceKm,
-          transfers: result.transfers,
-          walkMin: Math.round(result.walkSeconds / 60),
-          provider: 'google',
-          fetchedAt: new Date().toISOString(),
-          ...(departureTimeSec ? { departureEpoch: departureTimeSec } : {}),
-          ...((result.polyline ?? []).length ? { polyline: result.polyline } : {}),
-          legs,
-        }
-        return JSON.stringify({
-          ok: true,
-          mode,
-          durationMin,
-          distanceKm,
-          transfers: result.transfers,
-          walkMin: Math.round(result.walkSeconds / 60),
-          googleMode,
-          dateNote,
-          legs,
-          transportPayload,
-        })
-      }
-      case 'estimate_transit': {
-        const fromId = String(args.fromPointId ?? '')
-        const toId = String(args.toPointId ?? '')
-        const plan = await deps.repo.getPlan(deps.planId)
-        const coords = await deps.points.getPointsByIds([fromId, toId], plan?.bangumiIds ?? [])
-        // 容忍容错层返回的完整 scoped id（请求裸 id、命中带前缀形式）
-        const from = coords.find((p) => p.id === fromId || p.id.endsWith(`:${fromId}`))
-        const to = coords.find((p) => p.id === toId || p.id.endsWith(`:${toId}`))
-        if (!from || !to) return JSON.stringify({ error: '点位不存在或缺少坐标' })
-        const km = haversineKm(from, to)
-        const mode = km <= 1.5 ? 'walk' : 'transit'
-        const durationMin =
-          mode === 'walk' ? Math.max(3, Math.round((km / 4.5) * 60)) : Math.max(10, Math.round((km / 25) * 60) + 12)
-        return JSON.stringify({ distanceKm: Math.round(km * 10) / 10, mode, durationMin, estimated: true })
-      }
+      case 'estimate_travel':
+        return runEstimateTravelTool(deps, args)
+      case 'estimate_transit':
+        return runEstimateTransitTool(deps, args)
       case 'resolve_place': {
         const query = String(args.query ?? '').trim()
         if (!query) return JSON.stringify({ error: 'query 不能为空' })
         if (!deps.places) {
           return JSON.stringify({ error: '地点解析服务未配置（缺少 Google Places API key），请如实告知用户暂时无法解析外部地点，不要编造' })
         }
-        const resolution = await deps.places.resolveByText(query)
+        // N4+A5：模型工具与 enricher 共享 places 预算；模型上限 max-2（预留
+        // 补齐脚本），60s 滚动窗口在检查内滚动
+        const budget = deps.enrichBudget ?? createEnrichBudget()
+        if (placesToolBudgetExhausted(budget)) {
+          return JSON.stringify(BUDGET_EXHAUSTED_RESULT)
+        }
+        const nearLat = Number(args.nearLat)
+        const nearLng = Number(args.nearLng)
+        const near =
+          Number.isFinite(nearLat) && Number.isFinite(nearLng) && Math.abs(nearLat) <= 90 && Math.abs(nearLng) <= 180
+            ? { lat: nearLat, lng: nearLng }
+            : undefined
+        const resolution = await deps.places.resolveByText(query, {
+          ...(near ? { near } : {}),
+          onGoogleCall: () => {
+            budget.places.used += 1
+          },
+        })
         if (!resolution.ok) {
           return JSON.stringify({ error: resolution.message, code: resolution.code, ...(resolution.code === 'not_found' ? { hint: '可尝试更官方/更具体的名称重试一次；仍查不到就如实告知用户' } : {}) })
         }
@@ -436,6 +415,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         const alreadyInPlan = existing.has(resolution.place.placeId)
         return JSON.stringify({
           ok: true,
+          fromCache: resolution.fromCache,
           place: resolution.place,
           media: resolution.place.photo
             ? {
@@ -452,6 +432,46 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
             fetchedAt: resolution.place.fetchedAt,
           },
           ...(alreadyInPlan ? { alreadyInPlan: true, note: '该地点已在当前计划中，直接复用即可，不必重复解析' } : {}),
+        })
+      }
+      case 'find_restaurants': {
+        if (!deps.findRestaurants) {
+          return JSON.stringify({ error: '餐厅搜索服务未配置（缺少 Google Places API key），请如实告知用户暂时无法推荐具体餐厅，不要编造店名' })
+        }
+        const lat = Number(args.lat)
+        const lng = Number(args.lng)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+          return JSON.stringify({ error: 'lat/lng 必填且为合法坐标' })
+        }
+        // N4+A5：模型工具与 enricher 共享 places 预算；模型上限 max-2（预留
+        // 补齐脚本），60s 滚动窗口在检查内滚动
+        const budget = deps.enrichBudget ?? createEnrichBudget()
+        if (placesToolBudgetExhausted(budget)) {
+          return JSON.stringify(BUDGET_EXHAUSTED_RESULT)
+        }
+        const result = await deps.findRestaurants({
+          lat,
+          lng,
+          ...(Number.isFinite(Number(args.radiusM)) ? { radiusM: Number(args.radiusM) } : {}),
+          ...(typeof args.keyword === 'string' && args.keyword.trim() ? { keyword: args.keyword.trim() } : {}),
+          onGoogleCall: () => {
+            budget.places.used += 1
+          },
+        })
+        if (!result.ok) return JSON.stringify({ error: result.message, code: result.code })
+        if (!result.restaurants.length) {
+          return JSON.stringify({
+            error: '附近没有找到符合条件（评分 4.0+、评价数 30+）的餐厅；可换关键词或扩大半径重试一次，仍没有就如实告知用户',
+            code: 'not_found',
+          })
+        }
+        return JSON.stringify({
+          ok: true,
+          restaurants: result.restaurants.map((restaurant) => ({
+            ...restaurant,
+            optionProvenance: { sourceKind: 'google_places', sourceUrl: restaurant.mapsUri, fetchedAt: restaurant.fetchedAt },
+          })),
+          hint: '选评分最高且顺路的一家：返回对象原样写进 meal 条目 payload.place（含 provider/placeId）；media 可不填，服务端会按 place.photo 自动补齐；note 里列出另外 1–2 家备选（名称+评分）',
         })
       }
       case 'read_plan': {
@@ -480,33 +500,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
       case 'save_plan_days': {
         const rawDays = Array.isArray(args.days) ? args.days : null
         if (!rawDays) return JSON.stringify({ error: 'days 必须是数组' })
-        const days: Array<{ dayIndex: number; citySlug: string | null; summary: string | null; items: ScheduleItemInput[] }> = rawDays.map((raw) => {
-          const day = asRecord(raw)
-          const items = Array.isArray(day.items) ? day.items : []
-          return {
-            dayIndex: Math.max(1, Math.floor(Number(day.dayIndex) || 1)),
-            citySlug: typeof day.citySlug === 'string' ? day.citySlug : null,
-            summary: typeof day.summary === 'string' ? day.summary : null,
-            items: items.map((rawItem) => {
-              const item = asRecord(rawItem)
-              const type = TRIP_PLAN_ITEM_TYPES.includes(item.type as TripPlanItemType)
-                ? (item.type as TripPlanItemType)
-                : 'free'
-              return {
-                type,
-                pointId: typeof item.pointId === 'string' ? item.pointId : null,
-                title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : '未命名条目',
-                timeHint: typeof item.timeHint === 'string' ? item.timeHint : null,
-                note: typeof item.note === 'string' ? item.note : null,
-                reason: typeof item.reason === 'string' ? item.reason : null,
-                payload:
-                  typeof item.payload === 'object' && item.payload !== null && !Array.isArray(item.payload)
-                    ? (item.payload as Record<string, unknown>)
-                    : null,
-              }
-            }),
-          }
-        })
+        const days: ParsedSaveDays = parseSavePlanDaysInput(rawDays)
         if (days.length > 30) return JSON.stringify({ error: '天数过多（上限 30）' })
         const totalItems = days.reduce((sum, day) => sum + day.items.length, 0)
         if (totalItems > SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS) {
@@ -518,6 +512,44 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         }
 
         const plan = await deps.repo.getPlan(deps.planId)
+        // M4：一次性批量取全部 pointId 坐标（含 image），enrichers、门控与
+        // 可路由校验共用这一份（原先按天查质心 + 校验各查一次）
+        const allPointIds = [...new Set(days.flatMap((day) => day.items.filter((i) => i.pointId).map((i) => i.pointId as string)))]
+        const pointCoords = allPointIds.length ? await deps.points.getPointsByIds(allPointIds, plan?.bangumiIds ?? []) : []
+        const coordsByPointId = new Map(pointCoords.map((p) => [p.id, { lat: p.lat, lng: p.lng, ...(p.image !== undefined ? { image: p.image } : {}) }]))
+        // 质心只服务兜底解析偏置：没有候选的天不为它聚合坐标
+        const coordsByDay = new Map<number, Array<{ lat: number; lng: number }>>()
+        for (const day of days) {
+          if (!dayHasBackfillCandidate(day.items)) continue
+          const coords: Array<{ lat: number; lng: number }> = []
+          for (const item of day.items) {
+            if (item.pointId) {
+              const hit = coordsByPointId.get(item.pointId)
+              if (hit) coords.push({ lat: hit.lat, lng: hit.lng })
+              continue
+            }
+            const place = item.payload?.place
+            if (place && typeof place === 'object' && !Array.isArray(place)) {
+              const lat = Number((place as Record<string, unknown>).lat)
+              const lng = Number((place as Record<string, unknown>).lng)
+              if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ lat, lng })
+            }
+          }
+          coordsByDay.set(day.dayIndex, coords)
+        }
+        // M4 补齐层（R4 抽出 enrichPipeline 与补齐续跑共用）：排序 → enrichers
+        // （共享预算、幂等、失败静默）→ 确定性时间归一化。预算挂在 deps 上由
+        // loop 每个 run 创建一次，同一 run 内多次 save 共享
+        const travelMode = readTravelMode(plan?.preferences)
+        const enrichBudget = deps.enrichBudget ?? createEnrichBudget()
+        const enrichContext: EnrichContext = {
+          deps: { places: deps.places, externalPlaces: deps.externalPlaces, fetchPlacePhotos: deps.fetchPlacePhotos, findRestaurants: deps.findRestaurants, travel: deps.travel },
+          coordsByPointId,
+          dayCoordinates: (dayIndex) => coordsByDay.get(dayIndex) ?? [],
+          ...(travelMode ? { travelMode } : {}),
+          budget: enrichBudget,
+        }
+        const { enrich, schedule } = await enrichAndNormalizeDays(days, enrichContext)
         // 外部地点出处账本：已持久化在计划里的 placeId（此前经 resolve_place 验证过）
         const persistedPlaces = collectPlanPlaces(plan)
         /**
@@ -525,10 +557,10 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
          * 且 provider/name/lat/lng 与出处逐字段一致——只证明 id 存在不够，
          * 防止偷换坐标/名称的篡改。
          */
-        const placeProvenanceError = (itemTitle: string, place: unknown): string | null => {
+        const placeProvenanceError = async (itemTitle: string, place: unknown): Promise<string | null> => {
           const record = (place && typeof place === 'object' ? place : {}) as Record<string, unknown>
           const placeId = String(record.placeId ?? '')
-          const canonical = deps.places?.lookup(placeId) ?? persistedPlaces.get(placeId) ?? null
+          const canonical = (await deps.places?.lookup(placeId)) ?? persistedPlaces.get(placeId) ?? null
           if (!canonical) {
             return deps.places
               ? `条目「${itemTitle}」的 payload.place 不是本计划解析出的地点（placeId 未命中 resolve_place 结果）。先用 resolve_place 解析并把返回的 place 原样照抄，不要手写或编造 place 数据`
@@ -559,7 +591,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
                     error: `条目「${item.title}」：${placeError}。外部地点必须先用 resolve_place 解析，把返回的 place 原样放进 payload.place（站内点位则必须带 pointId）`,
                   })
                 }
-                const provenanceError = placeProvenanceError(item.title, place)
+                const provenanceError = await placeProvenanceError(item.title, place)
                 if (provenanceError) return JSON.stringify({ error: provenanceError })
               } else {
                 pointIdSet.add(item.pointId)
@@ -573,14 +605,14 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
             if (item.type !== 'point' && item.type !== 'transit' && place !== undefined && place !== null) {
               const placeError = validateExternalPlacePayload(place)
               if (placeError) return JSON.stringify({ error: `条目「${item.title}」：payload.place 不合法——${placeError}` })
-              const provenanceError = placeProvenanceError(item.title, place)
+              const provenanceError = await placeProvenanceError(item.title, place)
               if (provenanceError) return JSON.stringify({ error: provenanceError })
             }
           }
         }
 
-        // 可路由的站内点位必须真实存在且有坐标（getPointsByIds 只返回有坐标的行）
-        const missingPoints = await assertPointsResolvable([...pointIdSet], deps, plan?.bangumiIds ?? [])
+        // 可路由的站内点位必须真实存在且有坐标（复用前面批量查询的结果）
+        const missingPoints = await assertPointsResolvable([...pointIdSet], deps, plan?.bangumiIds ?? [], pointCoords)
         if (missingPoints) {
           return JSON.stringify({
             error: '以下点位 id 未找到（需要是 list_points 返回的完整 "<bangumiId>:<rawId>" 形式，且必须有坐标）',
@@ -588,39 +620,34 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           })
         }
 
-        // 确定性时间归一化：每个条目得到具体时间区间并按时间排序
-        const normalizedDays: TripPlanDayInput[] = []
-        for (const day of days) {
-          const normalized = normalizeDaySchedule(day.items)
-          if (!normalized.ok) {
-            return JSON.stringify({
-              error: `Day ${day.dayIndex} 时间归一化失败：${normalized.errors.join('；')}。请修正时间后重试（宽泛词如“午后”可以保留，服务端会换算参考时刻）`,
+        // M4：门控。schedule 已在 enrichPipeline 内完成（自愈在 normalizer 内）；
+        // 归一化失败不直接报错返回，而是作为时间门 hard 失败进入整改单
+        const gateDays = schedule.ok
+          ? schedule.normalizedDays.map((day) => ({
               dayIndex: day.dayIndex,
-              errors: normalized.errors,
-            })
-          }
-          normalizedDays.push({
-            dayIndex: day.dayIndex,
-            citySlug: day.citySlug,
-            summary: day.summary,
-            items: normalized.items.map((item) => {
-              const payload = { ...item.payload }
-              // media 派生防线：place 已过出处校验，media 缺失/无效时从
-              // place.photo（站内 keyless 代理 URL）补齐，模型给的合法 media 优先
-              derivePlaceMedia(payload, item.type)
-              sanitizeTransportPayload(payload)
-              return {
-                type: item.type as TripPlanItemType,
-                pointId: item.pointId ?? null,
+              items: day.items.map((item) => ({
+                type: item.type,
                 title: item.title,
-                timeHint: item.timeHint,
-                note: item.note,
-                reason: item.reason,
-                payload: payload as Prisma.JsonValue,
-              }
-            }),
+                pointId: item.pointId,
+                payload: (item.payload ?? null) as Record<string, unknown> | null,
+              })),
+            }))
+          : days
+        const quality = evaluatePlanGates(gateDays, coordsByPointId, schedule.ok)
+        if (!schedule.ok) {
+          const scheduleFailure = quality.hard.find((f) => f.gate === 'schedule' && f.dayIndex === 0)
+          if (scheduleFailure) scheduleFailure.fix = `${scheduleFailure.fix}：${scheduleFailureSummary(schedule)}`
+        }
+        deps.onSaveEvaluated?.({ enrich, quality })
+        if (!quality.passed) {
+          return JSON.stringify({
+            error: '质量门控未通过，未落库',
+            gates: quality.hard,
+            softWarnings: quality.soft,
+            enrich,
           })
         }
+        const normalizedDays: TripPlanDayInput[] = schedule.ok ? schedule.normalizedDays : []
 
         normalizedDays.sort((a, b) => a.dayIndex - b.dayIndex)
         normalizedDays.forEach((day, i) => {
@@ -631,7 +658,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         // 生，绝不留下半截成功）；快照基于替换后的结构化结果构建（含点位、
         // 外部地点 payload、schedule、transport、media 与 provider 折线），
         // 后续保存追加新 revision，绝不改写本条。revisionId 生成于事务之外、
-        // 消费于事务之内，天然保证同一工具调用幂等。
+        // 消费于事务之内，天然保证同一工具调用幂等。M4：快照携带质量报告。
         const revisionId = crypto.randomUUID()
         const savedAt = new Date().toISOString()
         const buildDaymap = (plan: TripPlanWithDays): DaymapMessagePayload => ({
@@ -639,13 +666,24 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           revisionId,
           savedAt,
           days: toPlanView(plan).days,
+          quality,
         })
         const saved = await deps.repo.replaceDaysWithDaymap(deps.planId, normalizedDays, (plan) =>
           buildDaymap(plan) as unknown as Prisma.JsonValue,
         )
         deps.onPlanUpdated?.()
         deps.onDaymapSaved?.(buildDaymap(saved.plan))
-        return JSON.stringify({ ok: true, savedDays: normalizedDays.length, revisionId })
+        return JSON.stringify({
+          ok: true,
+          savedDays: normalizedDays.length,
+          revisionId,
+          autoResolvedPlaces: enrich.applied.place,
+          skippedPlaces: enrich.skipped
+            .filter((s) => s.enricher === 'place')
+            .map(({ itemTitle, reason }) => ({ title: itemTitle, reason })),
+          enrich,
+          quality,
+        })
       }
       case 'ask_user': {
         // taskType 是必填的任务语义（问日期/选作品/征求意见），不允许静默

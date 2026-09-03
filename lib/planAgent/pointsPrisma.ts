@@ -46,16 +46,17 @@ export class PrismaPointFinder implements PointFinder {
   async getPointsByIds(
     ids: string[],
     bangumiIds: number[] = [],
-  ): Promise<Array<{ id: string; lat: number; lng: number }>> {
-    const toGeo = (r: { id: string; geoLat: number | null; geoLng: number | null }) => ({
+  ): Promise<Array<{ id: string; lat: number; lng: number; image?: string | null }>> {
+    const toGeo = (r: { id: string; geoLat: number | null; geoLng: number | null; image: string | null }) => ({
       id: r.id,
       lat: r.geoLat as number,
       lng: r.geoLng as number,
+      image: r.image,
     })
     const queryByIds = (candidates: string[]) =>
       prisma.anitabiPoint.findMany({
         where: { id: { in: candidates }, geoLat: { not: null }, geoLng: { not: null } },
-        select: { id: true, geoLat: true, geoLng: true },
+        select: { id: true, geoLat: true, geoLng: true, image: true },
       })
 
     const rows = await queryByIds(ids)
