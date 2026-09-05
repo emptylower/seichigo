@@ -205,6 +205,47 @@
   },
   "pages": {
     "home": {
+      "v2": {
+        "heroTitle": "アニメ聖地巡礼の旅程を、AIプランナーが組み立てる",
+        "heroSubtitle": "世界{points}か所以上の聖地マップ · 作品と休みを伝えれば、毎日のルート・交通・食事までプランナーが用意 · 人が書いた巡礼ガイドも",
+        "heroBrandLine": "SeichiGo 聖地GO · アニメ聖地巡礼",
+        "heroDemoLabel": "プランナーの動き",
+        "heroDemoStep1": "作品を検索",
+        "heroDemoStep2": "聖地を調べる",
+        "heroDemoStep3": "Day 1 を組む",
+        "heroDemoStep4": "交通を確認",
+        "heroDemoDayBadge": "Day 1",
+        "heroDemoTransit": "徒歩 12 分",
+        "heroWorksLabel": "収録済みの作品",
+        "composerPlaceholder": "例：クリスマス週に東京へ 8 日間、『天気の子』と『君の名は。』を巡礼したい",
+        "composerSubmit": "プランを作る",
+        "composerExample1": "クリスマス週に東京へ 8 日間、『天気の子』と『君の名は。』を巡礼",
+        "composerExample2": "京都と奈良へ 5 日間、『響け！ユーフォニアム』を巡礼",
+        "composerExample3": "週末 2 日間、鎌倉で『SLAM DUNK』を巡礼",
+        "entryPlanTitle": "AI 行程プランナー",
+        "entryPlanDesc": "作品と休みを伝えるだけで、日ごとのルートまで組み立て",
+        "entryMapTitle": "マップで探す",
+        "entryMapDesc": "世界地図から作品の聖地を見つける",
+        "entryGuidesTitle": "巡礼ガイド",
+        "entryGuidesDesc": "先に歩いた人のルートを読んでから出発",
+        "statPoints": "件の巡礼スポット",
+        "statWorks": "作品",
+        "statCities": "都市",
+        "statPosts": "本のガイド",
+        "showcaseTitle": "プランナーが作った行程を見る",
+        "showcaseSubtitle": "実際に生成された行程です。日ごとに切り替えられます。",
+        "showcaseCta": "自分の行程をプランナーで作る",
+        "mapTeaserTitle": "世界 {count} か所の聖地",
+        "mapTeaserSubtitle": "マップを開いてすべての聖地を見る",
+        "mapTeaserCta": "マップを開く",
+        "guidesTitle": "巡礼ガイド",
+        "guidesViewAll": "すべてのガイド",
+        "browseTitle": "作品と都市から探す",
+        "browseAnimeTitle": "人気の作品",
+        "browseAnimeMore": "すべての作品",
+        "browseCityTitle": "人気の都市",
+        "browseCityMore": "すべての都市"
+      },
       "heroTitle": "出発しよう、",
       "heroTitleLine2": "あの景色に会いに。",
       "heroSubtitle": "読みやすい長文記事、洗練されたレイアウト、実用的なロケーションリストで、",
@@ -265,6 +306,15 @@
       "faqQ5": "座標ミスや古い情報を見つけた場合は？",
       "faqA5": "フッターの連絡先から報告してください。作品名・都市名・誤っている地点を添えると、確認と修正が早くなります。"
     },
+    "planStart": {
+      "title": "プランを作る",
+      "backHome": "サイトに戻る",
+      "greeting": "観た作品、行きたい街、休みの日数を教えてください。そのままナビできる巡礼プランを組み立てます。",
+      "placeholder": "例：クリスマス週に東京へ 8 日間、『天気の子』と『君の名は。』を巡礼したい",
+      "send": "送信",
+      "errorCreate": "プランを作成できませんでした。時間をおいて再試行してください。",
+      "errorNetwork": "通信エラーです。時間をおいて再試行してください。"
+    },
     "about": {
       "heroTitle": "つなぐ、",
       "heroTitleDimension": "次元",
@@ -290,6 +340,11 @@
       "contactTitle": "お問い合わせ",
       "contactDescription": "データの誤りを発見した場合、巡礼ストーリーを投稿したい場合、またはビジネス協力のご相談がある場合、ぜひご連絡ください。"
     },
+    "posts": {
+      "title": "巡礼ガイド",
+      "subtitle": "公開済みの聖地巡礼ルートとガイドの全一覧です（新しい順）。",
+      "empty": "公開済みのガイドはまだありません。まずはマップやプランナーをのぞいてみてください。"
+    },
     "components": {
       "featuredPost": {
         "featuredBadge": "今週の注目",
@@ -299,6 +354,18 @@
       "bookShelf": {
         "emptyState": "まだ記事がありません。投稿で本棚を埋めましょう。"
       }
+    }
+  },
+  "auth": {
+    "modal": {
+      "title": "ログインしてプランを作る",
+      "subtitle": "メールの確認コードでログインします。入力した内容は消えません。",
+      "close": "閉じる",
+      "email": "メールアドレス",
+      "code": "確認コード",
+      "codePlaceholder": "6 桁のコード",
+      "submit": "ログイン",
+      "submitting": "確認中…"
     }
   }
 }

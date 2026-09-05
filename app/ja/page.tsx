@@ -3,21 +3,25 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
+const TITLE = 'アニメ聖地巡礼の旅程プランニング · AIプランナー + 世界の聖地マップ | SeichiGo'
+const DESCRIPTION =
+  '作品と休みを伝えるだけで、AIプランナーがアニメ聖地巡礼の旅程を作成。毎日のルート・交通・食事に加え、世界の聖地マップと人が書いた巡礼ガイドも。'
+
 export const metadata: Metadata = {
-  title: { absolute: 'SeichiGo — アニメ聖地巡礼ガイド' },
-  description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   alternates: buildJaAlternates({ zhPath: '/' }),
   openGraph: {
     type: 'website',
     url: '/ja',
-    title: 'SeichiGo — アニメ聖地巡礼ガイド',
-    description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SeichiGo — アニメ聖地巡礼ガイド',
-    description: '日本アニメ聖地巡礼をサポート：アニメツーリズム、聖地マップ、巡礼ガイド、君の名は聖地、ぼっち・ざ・ろっく下北沢ルート。動漫聖地の一覧と実用的な旅程プランを提供。',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/twitter-image'],
   },
 }
