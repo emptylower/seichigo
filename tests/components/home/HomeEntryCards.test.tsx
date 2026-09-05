@@ -23,6 +23,19 @@ describe('HomeEntryCards', () => {
     expect(screen.getByText('87 guides')).toBeInTheDocument()
   })
 
+  it('第十四轮：卡片是压在插画上的半透明毛玻璃（hover 更实）', () => {
+    render(<HomeEntryCards locale="zh" stats={statsFixture} />)
+
+    const links = [...document.querySelectorAll('a')]
+    expect(links).toHaveLength(3)
+    for (const link of links) {
+      expect(link.className).toContain('bg-white/75')
+      expect(link.className).toContain('backdrop-blur-sm')
+      expect(link.className).toContain('border-white/60')
+      expect(link.className).toContain('hover:bg-white/90')
+    }
+  })
+
   it('缺 stats（A 部分尚未落盘）时只隐藏数字，不影响入口', () => {
     render(<HomeEntryCards locale="zh" />)
 

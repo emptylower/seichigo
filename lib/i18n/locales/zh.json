@@ -206,17 +206,22 @@
   "pages": {
     "home": {
       "v2": {
-        "heroTitle": "动漫圣地巡礼行程，AI 规划师帮你排好",
+        "heroTitle": "动漫圣地巡礼行程，{accent}帮你排好",
+        "heroTitleAccent": "AI 规划师",
         "heroSubtitle": "全球 {points}+ 巡礼点位地图 · 说出作品和假期，规划师排好每天的路线、交通与餐厅 · 人写的巡礼攻略",
         "heroBrandLine": "SeichiGo 圣地GO · 动漫圣地巡礼",
+        "heroSlogan": "动漫迷做给动漫迷的圣地巡礼平台",
         "heroDemoLabel": "规划师工作演示",
         "heroDemoStep1": "搜索作品",
         "heroDemoStep2": "查点位",
         "heroDemoStep3": "排 Day 1",
         "heroDemoStep4": "查交通",
         "heroDemoDayBadge": "Day 1",
+        "heroDemoSummary": "Day {day} · {count} 处",
+        "heroDemoWalkTotal": "步行约 {minutes} 分钟",
         "heroDemoTransit": "步行 12 分钟",
         "heroWorksLabel": "已收录的作品",
+        "heroScrollHint": "向下看看",
         "composerPlaceholder": "例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》",
         "composerSubmit": "开始规划",
         "composerExample1": "圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》",

@@ -15,6 +15,10 @@ function formatStat(count: number, label: string, locale: SiteLocale): string {
 /**
  * 三个入口：AI 规划（主）、地图探索、巡礼攻略。数字来自库里的真实计数
  * （A 部分 getHomeStats）；stats 缺失时只隐藏数字，入口本身照常可用。
+ *
+ * 第十三轮起它不再自成一段，而是由 `HomeHero` 渲染在首屏底部当收尾行，
+ * 所以外层是 `div`（不是 `section`）、也不再自带左右内边距，宽度跟首屏网格一样是 `max-w-5xl`。
+ * 第十四轮首屏换成插画背景后，卡片改成半透明毛玻璃压在插画上（主次差别只留在图标色）。
  */
 export default function HomeEntryCards({ locale, stats }: { locale: SiteLocale; stats?: HomeStats }) {
   const cards = [
@@ -53,16 +57,17 @@ export default function HomeEntryCards({ locale, stats }: { locale: SiteLocale; 
   ]
 
   return (
-    <section className="mx-auto max-w-5xl px-4 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {cards.map(({ key, href, Icon, title, desc, stats: statLines, primary }) => (
           <Link
             key={key}
             href={href}
+            // 第十四轮：卡片压在插画背景上，统一半透明毛玻璃，hover 时变实
             className={
               primary
-                ? 'flex flex-col gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-4 no-underline transition-colors hover:border-brand-300'
-                : 'flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4 no-underline transition-colors hover:border-brand-300'
+                ? 'flex flex-col gap-2 rounded-2xl border border-white/60 bg-white/75 p-4 no-underline shadow-sm backdrop-blur-sm transition-colors hover:border-brand-300 hover:bg-white/90'
+                : 'flex flex-col gap-2 rounded-2xl border border-white/60 bg-white/75 p-4 no-underline shadow-sm backdrop-blur-sm transition-colors hover:border-brand-300 hover:bg-white/90'
             }
           >
             <span className={primary ? 'inline-flex items-center gap-2 text-brand-600' : 'inline-flex items-center gap-2 text-gray-500'}>
@@ -80,6 +85,6 @@ export default function HomeEntryCards({ locale, stats }: { locale: SiteLocale; 
           </Link>
         ))}
       </div>
-    </section>
+    </div>
   )
 }
