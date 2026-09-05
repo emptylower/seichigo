@@ -102,7 +102,7 @@ fetching. **Do not** copy `fetch(userInput)` patterns from elsewhere.
 | Method · Path | Schedule | Purpose |
 |---------------|----------|---------|
 | `GET /api/cron/anitabi/daily` | `10 3 * * *` UTC | Anitabi delta sync |
-| `GET /api/cron/anitabi/hourly` | external trigger | Hourly sync (Hobby has no native hourly cron) |
+| `GET /api/cron/anitabi/hourly` | 镜像增量由 worker `seichigo-anitabi-mirror` 的 `0 * * * *` tick 直接执行（import 共享 `@/lib/anitabi/mirror/*`）；HTTP 端点保留为手动/外部触发 | Hourly mirror delta（无需外部调度器；改共享 mirror 代码后必须重新部署该 worker，见 `docs/runbooks/anitabi-r2-mirror.md`） |
 | `GET /api/cron/anitabi/translate` | `25 3 * * *` UTC | Translation queue batch |
 | `GET /api/cron/anitabi/enrich` | external trigger | Enrichment pass |
 | `GET /api/cron/ops/daily` | `0 0 * * *` UTC | Ops daily report |

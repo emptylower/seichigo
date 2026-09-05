@@ -1,60 +1,27 @@
 import { NextResponse } from 'next/server'
 import type { Session } from 'next-auth'
+import {
+  fetchGoogleDirections,
+  parseRouteLegs,
+  type DirectionLeg,
+  type GoogleDirectionsBody,
+} from '@/lib/directions/googleClient'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TransitDetail = {
-  lineName: string
-  departureStop: string
-  arrivalStop: string
-  numStops: number
-}
-
-export type DirectionStep = {
-  travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING'
-  instruction: string
-  duration: string
-  durationSeconds: number
-  distance: string
-  distanceMeters: number
-  transitDetails: TransitDetail | null
-}
-
-export type DirectionLeg = {
-  startAddress: string
-  endAddress: string
-  duration: string
-  durationSeconds: number
-  distance: string
-  distanceMeters: number
-  steps: DirectionStep[]
-}
+export type { DirectionLeg, DirectionStep, TransitDetail } from '@/lib/directions/googleClient'
 
 export type DirectionsResult = {
   ok: true
   legs: DirectionLeg[]
   mode: 'transit' | 'driving' | 'walking'
-  requestedMode: 'transit' | 'driving'
+  requestedMode: 'transit' | 'driving' | 'walking'
   fallbackApplied: boolean
 }
 
-type GoogleApiStatus =
-  | 'OK'
-  | 'ZERO_RESULTS'
-  | 'REQUEST_DENIED'
-  | 'OVER_QUERY_LIMIT'
-  | 'NOT_FOUND'
-  | 'MAX_WAYPOINTS_EXCEEDED'
-  | 'INVALID_REQUEST'
-  | string
-
-type GoogleDirectionsBody = {
-  status?: GoogleApiStatus
-  error_message?: string
-  routes?: unknown[]
-}
+type GoogleApiStatus = string
 
 // ---------------------------------------------------------------------------
 // In-memory cache (key -> { data, expiresAt })
@@ -64,8 +31,8 @@ type CacheEntry = { data: DirectionsResult; expiresAt: number }
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
-function cacheKey(origin: string, destination: string, waypoints: string, mode: string) {
-  return `${origin}|${destination}|${waypoints}|${mode}`
+function cacheKey(origin: string, destination: string, waypoints: string, mode: string, departureTime: string) {
+  return `${origin}|${destination}|${waypoints}|${mode}|${departureTime}`
 }
 
 function getCached(key: string): DirectionsResult | null {
@@ -103,48 +70,24 @@ function checkRateLimit(userId: string): boolean {
   return true
 }
 
-// ---------------------------------------------------------------------------
-// Google Directions API response parsing
-// ---------------------------------------------------------------------------
+const TRAVEL_MODES = ['transit', 'driving', 'walking'] as const
+type TravelModeParam = (typeof TRAVEL_MODES)[number]
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function parseStep(raw: any): DirectionStep {
-  const transitDetails: TransitDetail | null =
-    raw.transit_details
-      ? {
-          lineName:
-            raw.transit_details.line?.short_name ||
-            raw.transit_details.line?.name ||
-            '',
-          departureStop: raw.transit_details.departure_stop?.name || '',
-          arrivalStop: raw.transit_details.arrival_stop?.name || '',
-          numStops: raw.transit_details.num_stops ?? 0,
-        }
-      : null
-
-  return {
-    travelMode: raw.travel_mode ?? 'WALKING',
-    instruction: (raw.html_instructions ?? '').replace(/<[^>]*>/g, ''),
-    duration: raw.duration?.text ?? '',
-    durationSeconds: raw.duration?.value ?? 0,
-    distance: raw.distance?.text ?? '',
-    distanceMeters: raw.distance?.value ?? 0,
-    transitDetails,
-  }
+function parseTravelMode(raw: string | null): TravelModeParam | null {
+  const value = String(raw || '').trim().toLowerCase()
+  return (TRAVEL_MODES as readonly string[]).includes(value) ? (value as TravelModeParam) : null
 }
 
-function parseLeg(raw: any): DirectionLeg {
-  return {
-    startAddress: raw.start_address ?? '',
-    endAddress: raw.end_address ?? '',
-    duration: raw.duration?.text ?? '',
-    durationSeconds: raw.duration?.value ?? 0,
-    distance: raw.distance?.text ?? '',
-    distanceMeters: raw.distance?.value ?? 0,
-    steps: Array.isArray(raw.steps) ? raw.steps.map(parseStep) : [],
-  }
+/** departure_time 参数：epoch 秒或 ISO 字符串（agent/精确日期场景） */
+function parseDepartureTime(raw: string | null): number | null {
+  const value = String(raw || '').trim()
+  if (!value) return null
+  const asNumber = Number(value)
+  if (Number.isFinite(asNumber) && asNumber > 0) return Math.floor(asNumber)
+  const parsed = new Date(value)
+  if (!Number.isNaN(parsed.getTime())) return Math.floor(parsed.getTime() / 1000)
+  return null
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ---------------------------------------------------------------------------
 // Deps type
@@ -153,36 +96,6 @@ function parseLeg(raw: any): DirectionLeg {
 export type DirectionsHandlerDeps = {
   getSession: () => Promise<Session | null>
   apiKey: string
-}
-
-async function fetchGoogleDirections(
-  origin: string,
-  destination: string,
-  waypoints: string,
-  mode: 'transit' | 'driving' | 'walking',
-  apiKey: string
-): Promise<{ ok: boolean; httpStatus: number; body: GoogleDirectionsBody | null }> {
-  const params = new URLSearchParams({
-    origin,
-    destination,
-    mode,
-    key: apiKey,
-    language: 'zh-CN',
-  })
-
-  if (waypoints) {
-    params.set('waypoints', waypoints)
-  }
-
-  const apiUrl = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`
-
-  const res = await fetch(apiUrl, { signal: AbortSignal.timeout(10_000) })
-  if (!res.ok) {
-    return { ok: false, httpStatus: res.status, body: null }
-  }
-
-  const body = (await res.json().catch(() => null)) as GoogleDirectionsBody | null
-  return { ok: true, httpStatus: res.status, body }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,19 +116,24 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       const origin = url.searchParams.get('origin')
       const destination = url.searchParams.get('destination')
       const waypoints = url.searchParams.get('waypoints') || ''
-      const requestedMode = (url.searchParams.get('mode') || 'transit') as 'transit' | 'driving'
+      const rawMode = url.searchParams.get('mode')
+      // 缺省 transit（历史行为）；显式传了不合法的值要 400，而不是静默换模式
+      const requestedMode = rawMode == null ? 'transit' : parseTravelMode(rawMode)
+      if (!requestedMode) {
+        return NextResponse.json(
+          { error: 'mode 必须为 transit、driving 或 walking' },
+          { status: 400 },
+        )
+      }
+      const departureTimeSec = parseDepartureTime(url.searchParams.get('departure_time'))
+      // 公交 ZERO_RESULTS 时的步行回退默认开启（路书"公交+步行"页签的行为）；
+      // 需要区分 ZERO_RESULTS 的调用方（plan agent）传 allowWalkFallback=0 关闭。
+      const allowWalkFallback = url.searchParams.get('allowWalkFallback') !== '0'
       const primaryWaypoints = requestedMode === 'transit' ? '' : waypoints
 
       if (!origin || !destination) {
         return NextResponse.json(
           { error: '缺少 origin 或 destination 参数' },
-          { status: 400 },
-        )
-      }
-
-      if (requestedMode !== 'transit' && requestedMode !== 'driving') {
-        return NextResponse.json(
-          { error: 'mode 必须为 transit 或 driving' },
           { status: 400 },
         )
       }
@@ -229,13 +147,20 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
       }
 
       // Cache check
-      const key = cacheKey(origin, destination, waypoints, requestedMode)
+      const key = cacheKey(origin, destination, waypoints, requestedMode, departureTimeSec ? String(departureTimeSec) : '')
       const cached = getCached(key)
       if (cached) {
         return NextResponse.json(cached)
       }
 
-      const primary = await fetchGoogleDirections(origin, destination, primaryWaypoints, requestedMode, deps.apiKey)
+      const primary = await fetchGoogleDirections({
+        origin,
+        destination,
+        mode: requestedMode,
+        waypoints: primaryWaypoints,
+        departureTimeSec: departureTimeSec ?? undefined,
+        apiKey: deps.apiKey,
+      })
 
       if (!primary.ok) {
         console.error('[directions] Google API HTTP error', primary.httpStatus)
@@ -245,14 +170,21 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
         )
       }
 
-      let googleBody = primary.body
+      let googleBody: GoogleDirectionsBody | null = primary.body
       let effectiveMode: 'transit' | 'driving' | 'walking' = requestedMode
       let fallbackApplied = false
 
       // In remote/sparse areas transit can return ZERO_RESULTS even when walking is valid.
-      // For the “公交 + 步行” tab, transparently retry with pure walking.
-      if (requestedMode === 'transit' && googleBody?.status === 'ZERO_RESULTS') {
-        const walkingFallback = await fetchGoogleDirections(origin, destination, waypoints, 'walking', deps.apiKey)
+      // For the “公交 + 步行” tab (allowWalkFallback 默认开), transparently retry with
+      // pure walking.需要把 ZERO_RESULTS 与步行回退区分开的调用方传 allowWalkFallback=0。
+      if (requestedMode === 'transit' && allowWalkFallback && googleBody?.status === 'ZERO_RESULTS') {
+        const walkingFallback = await fetchGoogleDirections({
+          origin,
+          destination,
+          mode: 'walking',
+          waypoints,
+          apiKey: deps.apiKey,
+        })
         if (walkingFallback.ok && walkingFallback.body?.status === 'OK') {
           googleBody = walkingFallback.body
           effectiveMode = 'walking'
@@ -269,9 +201,11 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
         if (status === 'ZERO_RESULTS') {
           const errorMessage =
             requestedMode === 'transit'
-              ? '未找到可用公共交通，且步行回退也无可用路线'
+              ? allowWalkFallback
+                ? '未找到可用公共交通，且步行回退也无可用路线'
+                : '该出行方式下未找到路线（ZERO_RESULTS）'
               : '未找到路线'
-          return NextResponse.json({ error: errorMessage }, { status: 400 })
+          return NextResponse.json({ error: errorMessage, code: 'ZERO_RESULTS' }, { status: 400 })
         }
         if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
           const hint =
@@ -302,14 +236,13 @@ export function createHandlers(deps: DirectionsHandlerDeps) {
         )
       }
 
-      const route = googleBody.routes?.[0]
-      if (!route || typeof route !== 'object') {
+      // routes 为空/缺首个 route 对象 → 400（历史行为）；route 存在但 legs 为空仍算成功
+      const firstRoute = googleBody?.routes?.[0]
+      if (!firstRoute || typeof firstRoute !== 'object') {
         return NextResponse.json({ error: '未找到路线' }, { status: 400 })
       }
 
-      const routeRecord = route as Record<string, unknown>
-      const rawLegs = Array.isArray(routeRecord.legs) ? routeRecord.legs : []
-      const legs: DirectionLeg[] = rawLegs.map(parseLeg)
+      const legs: DirectionLeg[] = parseRouteLegs(googleBody)
 
       const result: DirectionsResult = {
         ok: true,

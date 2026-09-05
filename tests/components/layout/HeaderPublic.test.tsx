@@ -30,10 +30,11 @@ describe('HeaderPublic', () => {
 
     const nav = container.querySelector('nav')
     expect(nav).toBeTruthy()
-    expect(nav?.textContent).toContain('Home')
-    expect(nav?.textContent).toContain('Anime')
+    expect(nav?.textContent).toContain('Plan')
     expect(nav?.textContent).toContain('Map')
-    expect(nav?.textContent).toContain('Resources')
+    expect(nav?.textContent).toContain('Top Guides')
+    expect(nav?.textContent).toContain('Top Cities')
+    expect(nav?.textContent).not.toContain('Me')
     expect(nav?.textContent).toContain('Community')
   })
 

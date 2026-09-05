@@ -2,7 +2,7 @@
 
 import { ArrowRight, LocateFixed, Navigation } from 'lucide-react'
 import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
-import { RoutePreviewMap } from './RoutePreviewMap'
+import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 
 interface PlannerMapStageProps {
   status: RouteBookStatus

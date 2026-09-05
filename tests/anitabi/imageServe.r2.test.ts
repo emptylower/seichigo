@@ -225,7 +225,7 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('image/webp')
-    expect(response.headers.get('Cache-Control')).toBe('public, s-maxage=86400, stale-while-revalidate=604800')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800')
     expect(response.headers.get('Content-Disposition')).toBe('inline')
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
     expect(response.headers.get('X-Seichigo-Image-Source')).toBe('r2-primary')
@@ -464,7 +464,7 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('image/webp')
-    expect(response.headers.get('Cache-Control')).toBe('public, s-maxage=86400, stale-while-revalidate=604800')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800')
     expect(response.headers.get('Content-Disposition')).toBe('inline')
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
     expect(response.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')
@@ -671,5 +671,72 @@ describe('serveImageRequest R2 primary read', () => {
     expect(response.status).toBe(400)
     expect(bucket.getCalls).toEqual([])
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('attaches X-Seichigo-R2-Debug with hit=1 on an R2 primary hit', async () => {
+    const bucket = new FakeBucket()
+    const seeded = await seedMirroredObject(bucket)
+    const expectedKey = await computeMirrorKey(computeCanonicalImageUrl(seeded.rawUrl), 'image/jpeg')
+
+    const response = await serveImageRequest(
+      createRenderRequest(seeded.rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Seichigo-R2-Debug')).toBe(`gate=1;bucket=1;readEnabled=1;key=${expectedKey};hit=1`)
+  })
+
+  it('attaches X-Seichigo-R2-Debug with hit=0 on upstream and error render paths', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/debug-miss.png'
+    const expectedKey = await computeMirrorKey(computeCanonicalImageUrl(rawUrl), 'image/jpeg')
+    const readEnabledDeps = createDeps({
+      env: {
+        MAP_IMAGE_CACHE: bucket,
+        NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '1',
+      },
+    })
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const okResponse = await serveImageRequest(createRenderRequest(rawUrl), readEnabledDeps, 'render')
+
+    expect(okResponse.status).toBe(200)
+    expect(okResponse.headers.get('X-Seichigo-R2-Debug')).toBe(`gate=1;bucket=1;readEnabled=1;key=${expectedKey};hit=0`)
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('upstream unavailable', { status: 503 }))
+
+    const errorResponse = await serveImageRequest(createRenderRequest(rawUrl), readEnabledDeps, 'render')
+
+    expect(errorResponse.status).toBe(502)
+    expect(errorResponse.headers.get('X-Seichigo-R2-Debug')).toBe(`gate=1;bucket=1;readEnabled=1;key=${expectedKey};hit=0`)
+  })
+
+  it('reports gate=0 and readEnabled=0 in X-Seichigo-R2-Debug when the read flag is disabled', async () => {
+    const bucket = new FakeBucket()
+    const rawUrl = 'https://bgm.tv/subject/1/debug-gate.png'
+    const expectedKey = await computeMirrorKey(computeCanonicalImageUrl(rawUrl), 'image/jpeg')
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest(rawUrl),
+      createDeps({
+        env: {
+          MAP_IMAGE_CACHE: bucket,
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    expect(bucket.getCalls).toEqual([])
+    expect(response.headers.get('X-Seichigo-R2-Debug')).toBe(`gate=0;bucket=1;readEnabled=0;key=${expectedKey};hit=0`)
   })
 })

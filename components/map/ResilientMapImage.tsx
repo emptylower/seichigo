@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import {
   clearMapImageHostDegraded,
+  DEGRADED_HOST_TIMEOUT_MS,
   isMapImageProxyUrl,
   markMapImageHostDegraded,
   type MapImageHostPolicyScope,
@@ -12,6 +13,12 @@ import {
   readMapImageHost,
   resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
+import {
+  forgetLoadedMapImage,
+  hasLoadedMapImage,
+  hasPersistedMapImage,
+  rememberLoadedMapImage,
+} from '@/components/map/utils/mapImageLoadedCache'
 import {
   acquireTimedMapImageRequestSlot,
   type MapImageRequestLease,
@@ -25,8 +32,10 @@ type ResilientMapImageProps = {
   decoding?: 'async' | 'auto' | 'sync'
   width?: number
   height?: number
-  kind?: 'cover' | 'point' | 'point-preview' | 'default'
+  kind?: 'cover' | 'point' | 'point-preview' | 'point-thumbnail' | 'default'
   fallback?: React.ReactNode
+  /** 候选梯最后一档（同源相对路径，原样追加、去重）：用于点位无图时的 Google 兜底图 */
+  fallbackSrc?: string | null
   diagnosticSurface?: 'map' | 'nearby'
   diagnosticSlotKey?: string | null
   onDiagnosticRequestStart?: (input: {
@@ -52,7 +61,7 @@ type ResilientMapImageProps = {
 }
 
 function withRetryNonce(url: string, retryNonce: number): string {
-  if (!url || retryNonce <= 0 || !url.includes('/api/anitabi/image-render')) {
+  if (!url || retryNonce <= 0 || !isMapImageProxyUrl(url)) {
     return url
   }
 
@@ -69,11 +78,13 @@ function resolveRequestTimeoutMs(
   url: string,
   kind: ResilientMapImageProps['kind'],
 ): number {
-  const isProxyRequest = url.includes('/api/anitabi/image-render')
+  const isProxyRequest = isMapImageProxyUrl(url)
+  // 点位代理图（anitabi 渲染 / Google 地点图）单张 5–10s 是常态；
+  // DayCards 几十张并发时 8.5s 预算必然级联超时，给足 20s。
   const baseTimeoutMs = !isProxyRequest
     ? 4_000
-    : kind === 'point' || kind === 'point-preview'
-    ? 8_500
+    : kind === 'point' || kind === 'point-preview' || kind === 'point-thumbnail'
+    ? 20_000
     : 6_000
   const scope = resolveHostPolicyScope(kind)
   const host = readMapImageEffectiveHost(url)
@@ -87,7 +98,32 @@ function resolveRequestLane(): 'interaction-critical' {
 function resolveHostPolicyScope(kind: ResilientMapImageProps['kind']): MapImageHostPolicyScope {
   if (kind === 'cover') return 'cover'
   if (kind === 'point' || kind === 'point-preview') return 'point'
+  if (kind === 'point-thumbnail') return 'point-thumbnail'
   return 'default'
+}
+
+/** 候选梯：getMapDisplayImageCandidates 输出 + 断路器排序，末尾原样追加 fallbackSrc（去重） */
+function buildCandidateQueue(
+  raw: string,
+  kind: ResilientMapImageProps['kind'],
+  scope: MapImageHostPolicyScope,
+  fallbackSrc?: string | null,
+): string[] {
+  const base = raw
+    ? prioritizeMapImageCandidates(getMapDisplayImageCandidates(raw, { kind }), scope)
+    : []
+  const fallback = String(fallbackSrc || '').trim()
+  if (!fallback) return base
+  // 去重：候选梯里的站内 URL 已被绝对化，fallbackSrc 多为相对路径，按解析后形式比较
+  let resolvedFallback = fallback
+  try {
+    const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
+    resolvedFallback = new URL(fallback, baseOrigin).toString()
+  } catch {
+    // 保留原样
+  }
+  if (base.includes(fallback) || base.includes(resolvedFallback)) return base
+  return [...base, fallback]
 }
 
 export default function ResilientMapImage({
@@ -100,6 +136,7 @@ export default function ResilientMapImage({
   height,
   kind = 'default',
   fallback = null,
+  fallbackSrc = null,
   diagnosticSurface,
   diagnosticSlotKey,
   onDiagnosticRequestStart,
@@ -111,19 +148,24 @@ export default function ResilientMapImage({
   const [candidateIndex, setCandidateIndex] = useState(0)
   const [failed, setFailed] = useState(!raw)
   const [requestSrc, setRequestSrc] = useState('')
+  // 视口门控：初始值在服务端与客户端必须一致（lazy 一律 false、eager 一律 true），
+  // 否则水合首帧不匹配；jsdom/老浏览器（无 IntersectionObserver）由挂载后的 effect 兜底为已相交
+  const [inView, setInView] = useState(() => loading === 'eager')
   const activeRequestRef = useRef<{ requestUrl: string; requestId: string } | null>(null)
   const activeLeaseRef = useRef<MapImageRequestLease | null>(null)
   const timeoutIdRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
+  const sentinelRef = useRef<HTMLSpanElement | null>(null)
   const diagnosticRequestStartRef = useRef<typeof onDiagnosticRequestStart>(onDiagnosticRequestStart)
   const diagnosticRequestTerminalRef = useRef<typeof onDiagnosticRequestTerminal>(onDiagnosticRequestTerminal)
   const lastRawRef = useRef(raw)
   const candidateQueueRef = useRef<string[]>(
-    raw ? prioritizeMapImageCandidates(getMapDisplayImageCandidates(raw, { kind }), hostPolicyScope) : [],
+    buildCandidateQueue(raw, kind, hostPolicyScope, fallbackSrc),
   )
   const rawChanged = lastRawRef.current !== raw
   diagnosticRequestStartRef.current = onDiagnosticRequestStart
   diagnosticRequestTerminalRef.current = onDiagnosticRequestTerminal
 
+  // raw 变化时 inView 不重置：同一位置换图不必再等一次相交
   useEffect(() => {
     finishActiveRequest({
       terminalState: 'superseded',
@@ -134,22 +176,53 @@ export default function ResilientMapImage({
     setRetryNonce(0)
     setFailed(!raw)
     setRequestSrc('')
-    candidateQueueRef.current = raw
-      ? prioritizeMapImageCandidates(getMapDisplayImageCandidates(raw, { kind }), hostPolicyScope)
-      : []
+    candidateQueueRef.current = buildCandidateQueue(raw, kind, hostPolicyScope, fallbackSrc)
     lastRawRef.current = raw
-  }, [hostPolicyScope, kind, raw])
+  }, [hostPolicyScope, kind, raw, fallbackSrc])
 
   const candidates = candidateQueueRef.current
   const currentCandidate = candidates[candidateIndex] || raw
   const resolvedSrc = currentCandidate ? withRetryNonce(currentCandidate, retryNonce) : ''
+  // 已加载缓存命中（本会话 onload 验证过）：候选梯中第一个已验证的 URL（同一图片的 _retry 档视为同图）
+  const cachedCandidateIndex = raw && !failed ? candidates.findIndex((c) => hasLoadedMapImage(c)) : -1
+  const cachedCandidate = cachedCandidateIndex >= 0 ? candidates[cachedCandidateIndex]! : null
+  // M6：persisted 命中（上个会话水合、本会话未验证）——首选该候选、跳过视口门控，
+  // 但仍走 lease + 计时器链路验证一次，onload 后 rememberLoadedMapImage 升级为已验证
+  const persistedCandidateIndex =
+    cachedCandidate || !raw || failed ? -1 : candidates.findIndex((c) => hasPersistedMapImage(c))
+  const persistedCandidate = persistedCandidateIndex >= 0 ? candidates[persistedCandidateIndex]! : null
   const trackedCandidateCount =
-    candidates.length + (candidates.some((candidate) => candidate.includes('/api/anitabi/image-render')) ? 1 : 0)
+    candidates.length + (candidates.some((candidate) => isMapImageProxyUrl(candidate)) ? 1 : 0)
+  // 请求门控：已相交，或 cached/persisted 命中（跳过视口门控）。
+  // 用合成值做请求 effect 依赖：persisted 命中时门控恒开，挂载后 inView 的 false→true
+  // 翻转不会触发 effect 重跑（否则在-flight 请求链被 abort 后无谓重启一遍）
+  const gateOpen = inView || Boolean(cachedCandidate || persistedCandidate)
   const diagnosticsEnabled = Boolean(
     diagnosticSlotKey
     && diagnosticSurface
     && (diagnosticSurface === 'map' || diagnosticSurface === 'nearby'),
   )
+
+  // 视口门控观察器：哨兵首次相交后置 inView；加载一旦开始就持续有效
+  useEffect(() => {
+    if (inView) return
+    if (loading !== 'lazy' || typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return
+    }
+    const node = sentinelRef.current
+    if (!node) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true)
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [inView, loading, failed, raw])
 
   const clearRequestTimeout = () => {
     if (timeoutIdRef.current == null) return
@@ -180,9 +253,13 @@ export default function ResilientMapImage({
 
   const advanceAfterFailure = (outcome: 'network_error' | 'timeout') => {
     if (candidateIndex + 1 < candidates.length) {
-      const failureHost = readMapImageEffectiveHost(currentCandidate)
-      if (failureHost) {
-        markMapImageHostDegraded(failureHost, hostPolicyScope)
+      // 断路器口径（§0.5）：只有真实网络错误（onError）计入断路器；
+      // 超时不计入——超时只换候选/重试/回退
+      if (outcome === 'network_error') {
+        const failureHost = readMapImageEffectiveHost(currentCandidate)
+        if (failureHost) {
+          markMapImageHostDegraded(failureHost, hostPolicyScope)
+        }
       }
       finishActiveRequest({
         terminalState: 'failed',
@@ -193,7 +270,7 @@ export default function ResilientMapImage({
       setRetryNonce(0)
       return
     }
-    if (resolvedSrc.includes('/api/anitabi/image-render') && retryNonce < 1) {
+    if (isMapImageProxyUrl(resolvedSrc) && retryNonce < 1) {
       finishActiveRequest({
         terminalState: 'failed',
         chainTerminal: false,
@@ -222,6 +299,39 @@ export default function ResilientMapImage({
         outcome: 'request_cleared',
       })
       setRequestSrc('')
+      return
+    }
+    // 已加载缓存命中：跳过视口门控、lease 与计时器，直接以该 URL 渲染；
+    // onError 仍走正常失败链（候选梯后续档位不受影响）
+    if (cachedCandidate) {
+      clearRequestTimeout()
+      activeLeaseRef.current?.release()
+      activeLeaseRef.current = null
+      if (cachedCandidateIndex !== candidateIndex) {
+        setCandidateIndex(cachedCandidateIndex)
+      }
+      setRequestSrc(cachedCandidate)
+      return
+    }
+    // M6：persisted 命中首选该候选——把候选梯指针移过去，重跑本 effect 走正常请求链
+    if (persistedCandidate && persistedCandidateIndex !== candidateIndex) {
+      setCandidateIndex(persistedCandidateIndex)
+      setRetryNonce(0)
+      return
+    }
+    // 视口门控：lazy 且尚未相交时不发起请求——视口外的图浏览器根本不发请求，
+    // 若计时器从赋 src 起算会被一律误判成"超时失败"。
+    // M6：persisted 命中视为已相交（浏览器缓存大概率命中，直接验证一次）
+    if (!gateOpen) {
+      return
+    }
+    // host 被断路器封禁（超时预算 0）时不再秒失败，直接跳到下一候选；
+    // 若无下一候选则照常发出请求，由计时器按降级预算正常尝试一次
+    if (
+      resolveRequestTimeoutMs(resolvedSrc, kind) === 0
+      && candidateIndex + 1 < candidates.length
+    ) {
+      advanceAfterFailure('timeout')
       return
     }
     const abortController = new AbortController()
@@ -264,10 +374,15 @@ export default function ResilientMapImage({
     }
   }, [
     candidateIndex,
+    cachedCandidate,
+    cachedCandidateIndex,
     diagnosticSlotKey,
     diagnosticSurface,
     diagnosticsEnabled,
     failed,
+    gateOpen,
+    persistedCandidate,
+    persistedCandidateIndex,
     rawChanged,
     resolvedSrc,
     retryNonce,
@@ -277,12 +392,16 @@ export default function ResilientMapImage({
   useEffect(() => {
     clearRequestTimeout()
     if (!requestSrc || failed) return
+    // 已加载缓存命中的渲染不挂计时器
+    if (cachedCandidate && requestSrc === cachedCandidate) return
+    const timeoutMs = resolveRequestTimeoutMs(requestSrc, kind)
     timeoutIdRef.current = globalThis.setTimeout(() => {
       timeoutIdRef.current = null
       advanceAfterFailure('timeout')
-    }, resolveRequestTimeoutMs(requestSrc, kind))
+      // host 被封禁（预算 0）且走到最后一档时，按降级预算正常尝试一次，不再 0ms 秒失败
+    }, timeoutMs > 0 ? timeoutMs : DEGRADED_HOST_TIMEOUT_MS)
     return clearRequestTimeout
-  }, [failed, requestSrc, candidateIndex, retryNonce, kind])
+  }, [cachedCandidate, failed, requestSrc, candidateIndex, retryNonce, kind])
 
   useEffect(() => () => {
     finishActiveRequest({
@@ -296,6 +415,22 @@ export default function ResilientMapImage({
   }
 
   if (!requestSrc) {
+    // 视口门控中：渲染 fallback + 零尺寸哨兵供 IntersectionObserver 观察
+    if (loading === 'lazy' && !inView) {
+      return (
+        <>
+          {/* 哨兵放在 fallback 之前：贴容器左上角，落在 overflow-hidden 的裁剪区内，
+              放在末尾会贴到容器底边，零尺寸元素在裁剪边界上是否相交取决于实现 */}
+          <span
+            aria-hidden
+            data-map-image-sentinel
+            style={{ display: 'block', width: 0, height: 0 }}
+            ref={sentinelRef}
+          />
+          {fallback}
+        </>
+      )
+    }
     return <>{fallback}</>
   }
 
@@ -306,9 +441,11 @@ export default function ResilientMapImage({
       width={width}
       height={height}
       className={className}
-      loading={loading}
+      // 门控已由组件负责，请求发出后一律 eager，避免浏览器 lazy 延迟导致计时器失真
+      loading="eager"
       decoding={decoding}
       onLoad={() => {
+        rememberLoadedMapImage(currentCandidate)
         if (!isMapImageProxyUrl(currentCandidate)) {
           clearMapImageHostDegraded(readMapImageHost(currentCandidate), hostPolicyScope)
         }
@@ -319,6 +456,10 @@ export default function ResilientMapImage({
         })
       }}
       onError={() => {
+        // 缓存命中直渲仍失败（浏览器缓存被逐出且上游失败）：先忘掉再走正常失败链
+        if (cachedCandidate && requestSrc === cachedCandidate) forgetLoadedMapImage(cachedCandidate)
+        // M6：persisted 候选验证失败同样忘掉，避免后续渲染反复优先它
+        else if (persistedCandidate && currentCandidate === persistedCandidate) forgetLoadedMapImage(persistedCandidate)
         advanceAfterFailure('network_error')
       }}
     />

@@ -1,4 +1,5 @@
 import { stripMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { buildNotModifiedResponse, matchesIfNoneMatch } from '@/lib/anitabi/handlers/imageServeCache'
 
 type RenderCacheState = 'HIT' | 'MISS' | 'BYPASS'
 
@@ -69,7 +70,7 @@ export function normalizeUrlHostname(input: string | null | undefined): string |
   }
 }
 
-function withRenderCacheState(
+export function withRenderCacheState(
   response: Response,
   state: RenderCacheState,
   input?: { originalSource?: string | null }
@@ -83,7 +84,10 @@ function withRenderCacheState(
   return new Response(response.body, { status: response.status, headers })
 }
 
-export async function matchRenderCache(requestUrl: URL): Promise<{
+export async function matchRenderCache(
+  requestUrl: URL,
+  ifNoneMatch?: string | null,
+): Promise<{
   response: Response
   cachedOriginalSource: string | null
 } | null> {
@@ -92,11 +96,18 @@ export async function matchRenderCache(requestUrl: URL): Promise<{
   try {
     const cached = await cache.match(buildRenderCacheKey(requestUrl))
     if (!cached) return null
+    const originalSource = resolveRenderOriginalSource(requestUrl)
+    const cachedOriginalSource = cached.headers.get('X-Original-Source')
+    const cachedEtag = cached.headers.get('ETag')
+    if (cachedEtag && matchesIfNoneMatch(ifNoneMatch, cachedEtag)) {
+      return {
+        response: withRenderCacheState(buildNotModifiedResponse(cachedEtag), 'HIT', { originalSource }),
+        cachedOriginalSource,
+      }
+    }
     return {
-      response: withRenderCacheState(cached, 'HIT', {
-        originalSource: resolveRenderOriginalSource(requestUrl),
-      }),
-      cachedOriginalSource: cached.headers.get('X-Original-Source'),
+      response: withRenderCacheState(cached, 'HIT', { originalSource }),
+      cachedOriginalSource,
     }
   } catch {
     return null
@@ -113,4 +124,17 @@ export async function storeRenderCache(requestUrl: URL, response: Response): Pro
     // Cache write failures should not block image delivery.
   }
   return responseWithState
+}
+
+/**
+ * R2 revalidation hit: 304 responses are not written back to the edge
+ * cache, but keep the same X-Seichigo-Render-Cache contract as 200s.
+ */
+export async function storeRenderCacheUnlessNotModified(input: {
+  requestUrl: URL
+  response: Response
+  notModified: boolean
+}): Promise<Response> {
+  if (input.notModified) return withRenderCacheState(input.response, 'BYPASS')
+  return storeRenderCache(input.requestUrl, input.response)
 }

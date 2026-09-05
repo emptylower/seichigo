@@ -1,5 +1,7 @@
 import fs from 'fs'
 import path from 'path'
+import { resolveLlmForScope } from '@/lib/llm/registry'
+import { LlmHttpError } from '@/lib/llm/http'
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 const MAX_RETRIES = 5
@@ -96,6 +98,26 @@ function isTimeoutError(error: unknown): boolean {
   )
 }
 
+/**
+ * 429 判定：统一客户端的 LlmHttpError 看 status，原生路径的错误文案是
+ * `Gemini API error (429): …`。429 不做本地指数退避重试（否则配额被打穿
+ * 时每个任务都要白等 5 轮），直接上抛给外层的任务级重试策略。
+ */
+function isRateLimitError(error: unknown): boolean {
+  if (error instanceof LlmHttpError) return error.status === 429
+  return error instanceof Error && /Gemini API error \(429\)/.test(error.message)
+}
+
+/**
+ * 永久性 4xx（参数/鉴权/请求格式）：重试同样的请求不会变成对的。openai
+ * 兼容端点的 response_format 降级已在客户端内部完成过一次，外层看到的
+ * 就是最终结果——这里立即上抛，不再与本地重试相乘。
+ */
+function isPermanentClientError(error: unknown): boolean {
+  if (!(error instanceof LlmHttpError)) return false
+  return error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429
+}
+
 type CallGeminiOptions = {
   responseMimeType?: string
   initialBackoffMs?: number
@@ -104,12 +126,88 @@ type CallGeminiOptions = {
   requestTimeoutMs?: number
 }
 
-export async function callGemini(prompt: string, retryCount = 0, options: CallGeminiOptions = {}): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not set')
+/**
+ * 原生 Gemini 路径：直连 generativelanguage.googleapis.com（v1beta
+ * generateContent）。被 callGemini 分发——管理面板有接管翻译的自定义
+ * 供应商时根本不会走到这里。非 2xx 一律抛错，重试由 callGemini 统一包装。
+ */
+async function callGeminiNative(
+  apiKey: string,
+  prompt: string,
+  timeoutMs: number | null,
+  options: CallGeminiOptions,
+): Promise<string> {
+  const response = await fetch(GEMINI_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+        ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API error (${response.status}): ${errorText}`)
   }
 
+  const data = await response.json()
+
+  // Check for safety blocks
+  if (data.promptFeedback?.blockReason) {
+    console.error('[callGemini] Prompt blocked:', data.promptFeedback)
+    throw new Error(`Prompt blocked: ${data.promptFeedback.blockReason}`)
+  }
+
+  // Check candidates exist
+  if (!data.candidates || data.candidates.length === 0) {
+    console.error('[callGemini] No candidates in response:', JSON.stringify(data))
+    throw new Error('No candidates in Gemini API response')
+  }
+
+  const candidate = data.candidates[0]
+
+  // Check for safety finish reason
+  if (candidate.finishReason === 'SAFETY') {
+    console.error('[callGemini] Response blocked by safety:', candidate.safetyRatings)
+    throw new Error('Response blocked by safety filters')
+  }
+
+  // Extract text parts, filtering out thinking parts (Gemini 2.5 feature)
+  const parts = candidate.content?.parts || []
+  const textParts = parts.filter((part: any) => part.text && !part.thought)
+
+  let text = ''
+  if (textParts.length > 0) {
+    // Concatenate all non-thinking text parts
+    text = textParts.map((part: any) => part.text).join('')
+  } else {
+    // Fallback: try to get any text if no non-thinking parts found
+    const anyTextPart = parts.find((part: any) => part.text)
+    text = anyTextPart?.text || ''
+  }
+
+  if (!text) {
+    console.error('[callGemini] Empty text in response:', JSON.stringify(data))
+    throw new Error('Empty response from Gemini API')
+  }
+
+  return text
+}
+
+export async function callGemini(prompt: string, retryCount = 0, options: CallGeminiOptions = {}): Promise<string> {
   const maxRetries = Number.isFinite(options.maxRetries)
     ? Math.max(0, Math.floor(Number(options.maxRetries)))
     : MAX_RETRIES
@@ -128,89 +226,32 @@ export async function callGemini(prompt: string, retryCount = 0, options: CallGe
     : null
 
   try {
-    const response = await fetch(GEMINI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 8192,
-          ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
-        },
-      }),
-    })
-
-    if (response.status === 429) {
-      if (retryCount >= maxRetries) {
-        throw new Error(`Rate limit exceeded after ${maxRetries} retries`)
-      }
-      await sleep(backoffMs)
-      return callGemini(prompt, retryCount + 1, options)
+    // 管理面板接管翻译的自定义供应商优先（30s 进程缓存，热路径开销可忽略）
+    const takeover = await resolveLlmForScope('translation')
+    if (takeover) {
+      return await takeover.client.completeText({
+        model: takeover.model,
+        prompt,
+        maxTokens: 8192,
+        json: options.responseMimeType === 'application/json',
+        temperature: 0.1,
+        ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      })
     }
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Gemini API error (${response.status}): ${errorText}`)
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set')
     }
-
-    const data = await response.json()
-
-    // Check for safety blocks
-    if (data.promptFeedback?.blockReason) {
-      console.error('[callGemini] Prompt blocked:', data.promptFeedback)
-      throw new Error(`Prompt blocked: ${data.promptFeedback.blockReason}`)
-    }
-
-    // Check candidates exist
-    if (!data.candidates || data.candidates.length === 0) {
-      console.error('[callGemini] No candidates in response:', JSON.stringify(data))
-      throw new Error('No candidates in Gemini API response')
-    }
-
-    const candidate = data.candidates[0]
-
-    // Check for safety finish reason
-    if (candidate.finishReason === 'SAFETY') {
-      console.error('[callGemini] Response blocked by safety:', candidate.safetyRatings)
-      throw new Error('Response blocked by safety filters')
-    }
-
-    // Extract text parts, filtering out thinking parts (Gemini 2.5 feature)
-    const parts = candidate.content?.parts || []
-    const textParts = parts.filter((part: any) => part.text && !part.thought)
-
-    let text = ''
-    if (textParts.length > 0) {
-      // Concatenate all non-thinking text parts
-      text = textParts.map((part: any) => part.text).join('')
-    } else {
-      // Fallback: try to get any text if no non-thinking parts found
-      const anyTextPart = parts.find((part: any) => part.text)
-      text = anyTextPart?.text || ''
-    }
-
-    if (!text) {
-      console.error('[callGemini] Empty text in response:', JSON.stringify(data))
-      throw new Error('Empty response from Gemini API')
-    }
-
-    return text
+    return await callGeminiNative(apiKey, prompt, timeoutMs, options)
   } catch (rawError) {
     const error =
       timeoutMs && isTimeoutError(rawError)
         ? new Error(`Gemini request timed out after ${timeoutMs}ms`)
         : rawError
 
-    if (error instanceof Error && error.message.includes('Rate limit')) {
+    // 429 与永久性 4xx：本地不重试，直接上抛（外层任务级策略自行决定）
+    if (isRateLimitError(error) || isPermanentClientError(error)) {
       throw error
     }
 

@@ -1,4 +1,4 @@
-import { computeCanonicalImageUrl, normalizeBgmApiRelayUrl } from '@/lib/anitabi/imageNormalize'
+import { computeCanonicalImageUrl, isAnitabiPointImagePath, normalizeBgmApiRelayUrl } from '@/lib/anitabi/imageNormalize'
 
 export type MirrorVariant = { label: string; url: string }
 
@@ -114,12 +114,8 @@ export function enumeratePointImageVariants(rawUrl: string | null | undefined): 
     return []
   }
 
-  const normalizedPathname = parsed.pathname.startsWith('/images/')
-    ? parsed.pathname.slice('/images'.length)
-    : parsed.pathname
-  const isPointPath = normalizedPathname.startsWith('/points/')
-    || /^\/user\/\d+\/bangumi\/\d+\/points\//.test(normalizedPathname)
-  if (!isPointPath) {
+  // h320 变体上游不存在（EdgeOne 404，2026-09 实证），彻底移除；只镜像 h160 与 w640q80。
+  if (!isAnitabiPointImagePath(parsed.pathname)) {
     return []
   }
 
@@ -129,12 +125,6 @@ export function enumeratePointImageVariants(rawUrl: string | null | undefined): 
     candidate.searchParams.delete('q')
     candidate.searchParams.set('plan', 'h160')
   })
-  const h320 = buildCanonicalVariant(parsed, 'h320', (candidate) => {
-    candidate.searchParams.delete('w')
-    candidate.searchParams.delete('h')
-    candidate.searchParams.delete('q')
-    candidate.searchParams.set('plan', 'h320')
-  })
   const w640q80 = buildCanonicalVariant(parsed, 'w640q80', (candidate) => {
     candidate.searchParams.delete('plan')
     candidate.searchParams.delete('h')
@@ -142,5 +132,5 @@ export function enumeratePointImageVariants(rawUrl: string | null | undefined): 
     candidate.searchParams.set('q', '80')
   })
 
-  return h160 && h320 && w640q80 ? [h160, h320, w640q80] : []
+  return h160 && w640q80 ? [h160, w640q80] : []
 }

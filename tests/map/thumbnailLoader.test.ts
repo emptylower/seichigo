@@ -29,6 +29,11 @@ type MockMap = ReturnType<typeof createMockMap>
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+/** E2 双重编码：断言解码后的 url 参数内容需解两层 */
+function decodeTwice(value: string): string {
+  return decodeURIComponent(decodeURIComponent(value))
+}
+
 function makeFeature(
   pointId: string,
   imageUrl: string | null = `https://anitabi.cn/img/${pointId}.jpg`
@@ -199,8 +204,8 @@ describe('ThumbnailLoader', () => {
 
   it('does not perform an extra loader-level retry after a timeout-shaped failure', async () => {
     map.loadImage.mockImplementation(async (url: string) => {
-      if (decodeURIComponent(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
-        && !decodeURIComponent(url).includes('_retry=1')) {
+      if (decodeTwice(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
+        && !decodeTwice(url).includes('_retry=1')) {
         return await new Promise(() => {})
       }
       if (decodeURIComponent(url).includes('_retry=1')) {
@@ -281,8 +286,8 @@ describe('ThumbnailLoader', () => {
 
   it('bounds local waiting and advances to the next candidate when a direct request stalls', async () => {
     map.loadImage.mockImplementation(async (url: string) => {
-      if (decodeURIComponent(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
-        && !decodeURIComponent(url).includes('_retry=1')) {
+      if (decodeTwice(url).includes('/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160')
+        && !decodeTwice(url).includes('_retry=1')) {
         return await new Promise(() => {})
       }
       return { data: { width: 64, height: 64, url } }
@@ -301,7 +306,7 @@ describe('ThumbnailLoader', () => {
 
     expect(loaded.has('thumb-p1')).toBe(true)
     expect(map.loadImage).toHaveBeenCalledTimes(2)
-    expect(decodeURIComponent(String(map.loadImage.mock.calls[1]?.[0] || ''))).toContain(
+    expect(decodeTwice(String(map.loadImage.mock.calls[1]?.[0] || ''))).toContain(
       '/api/anitabi/image-render?url=https://image.anitabi.cn/points/1/p1.jpg?plan=h160&_retry=1',
     )
   })
@@ -330,7 +335,7 @@ describe('ThumbnailLoader', () => {
     expect(loaded.has('thumb-p1')).toBe(false)
     expect(
       map.loadImage.mock.calls.some((call) =>
-        decodeURIComponent(String(call[0] || '')).includes(
+        decodeTwice(String(call[0] || '')).includes(
           '/api/anitabi/image-render?url=https://image.anitabi.cn/points/2/p2.jpg?plan=h160',
         )),
     ).toBe(true)
@@ -341,7 +346,7 @@ describe('ThumbnailLoader', () => {
     const features = [makeFeature('p1', 'https://anitabi.cn/img/test.jpg?plan=123')]
     await loader.updateViewport(features)
 
-    const callUrl = decodeURIComponent(String(map.loadImage.mock.calls[0][0] || ''))
+    const callUrl = decodeTwice(String(map.loadImage.mock.calls[0][0] || ''))
     expect(callUrl).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/img/test.jpg?plan=123')
     expect(callUrl).not.toContain('w=')
     expect(callUrl).not.toContain('q=')

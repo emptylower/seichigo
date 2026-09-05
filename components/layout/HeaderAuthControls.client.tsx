@@ -24,6 +24,12 @@ type Props = {
   labels: {
     admin: string
     favorites: string
+    me: string
+    myHome: string
+    myMaps: string
+    myPlans: string
+    settings: string
+    submit: string
     signout: string
     signin: string
     signup: string
@@ -35,8 +41,6 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   const { data: sessionData, status } = useSession()
   const session = sessionData as Session
   const loaded = status !== 'loading'
-  const userCenterLabel = locale === 'en' ? 'Account Center' : locale === 'ja' ? 'ユーザーセンター' : '用户中心'
-  const myMapsLabel = locale === 'en' ? 'My Maps' : locale === 'ja' ? 'マイマップ' : '我的地图'
 
   const userLabel = useMemo(() => {
     const v = String(session?.user?.name || session?.user?.email || labels.user).trim()
@@ -94,16 +98,6 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   if (layout === 'drawer') {
     return (
       <div className="grid gap-1 text-sm">
-        {session?.user?.isAdmin ? (
-          <Link
-            href={prefixPath('/admin/panel', locale)}
-            prefetch={false}
-            className={`${drawerItemClass} text-brand-700`}
-          >
-            <span>{labels.admin}</span>
-          </Link>
-        ) : null}
-
         {showAuthed ? (
           <>
             <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-2">
@@ -112,15 +106,33 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 <div className="line-clamp-1 text-[15px] font-semibold text-slate-800">{userLabel}</div>
               </div>
             </div>
-            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={drawerItemClass}>
-              <span>{userCenterLabel}</span>
+            <Link href={prefixPath('/me', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{labels.myHome}</span>
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className={drawerItemClass}>
               <span>{labels.favorites}</span>
             </a>
             <a href={prefixPath('/me/routebooks', locale)} className={drawerItemClass}>
-              <span>{myMapsLabel}</span>
+              <span>{labels.myMaps}</span>
             </a>
+            <Link href={prefixPath('/plan', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{labels.myPlans}</span>
+            </Link>
+            <Link href={prefixPath('/submit', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{labels.submit}</span>
+            </Link>
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={drawerItemClass}>
+              <span>{labels.settings}</span>
+            </Link>
+            {session?.user?.isAdmin ? (
+              <Link
+                href={prefixPath('/admin/panel', locale)}
+                prefetch={false}
+                className={`${drawerItemClass} text-brand-700`}
+              >
+                <span>{labels.admin}</span>
+              </Link>
+            ) : null}
             <a href="/api/auth/signout" className={drawerItemClass}>
               <span>{labels.signout}</span>
             </a>
@@ -135,16 +147,6 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   if (layout === 'stack') {
     return (
       <div className="grid gap-2.5 text-sm">
-        {session?.user?.isAdmin ? (
-          <Link
-            href={prefixPath('/admin/panel', locale)}
-            prefetch={false}
-            className={stackButtonClass}
-          >
-            {labels.admin}
-          </Link>
-        ) : null}
-
         {showAuthed ? (
           <>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
@@ -153,15 +155,33 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
                 <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
               </div>
             </div>
-            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={stackButtonClass}>
-              {userCenterLabel}
+            <Link href={prefixPath('/me', locale)} prefetch={false} className={stackButtonClass}>
+              {labels.myHome}
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className={stackButtonClass}>
               {labels.favorites}
             </a>
             <a href={prefixPath('/me/routebooks', locale)} className={stackButtonClass}>
-              {myMapsLabel}
+              {labels.myMaps}
             </a>
+            <Link href={prefixPath('/plan', locale)} prefetch={false} className={stackButtonClass}>
+              {labels.myPlans}
+            </Link>
+            <Link href={prefixPath('/submit', locale)} prefetch={false} className={stackButtonClass}>
+              {labels.submit}
+            </Link>
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className={stackButtonClass}>
+              {labels.settings}
+            </Link>
+            {session?.user?.isAdmin ? (
+              <Link
+                href={prefixPath('/admin/panel', locale)}
+                prefetch={false}
+                className={stackButtonClass}
+              >
+                {labels.admin}
+              </Link>
+            ) : null}
             <a href="/api/auth/signout" className={stackButtonClass}>
               {labels.signout}
             </a>
@@ -189,20 +209,29 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
             <span className="sr-only">{userLabel}</span>
           </summary>
           <div className="absolute right-0 mt-2 w-44 rounded-2xl border border-pink-100 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-sm">
-            {session?.user?.isAdmin ? (
-              <Link href={prefixPath('/admin/panel', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
-                {labels.admin}
-              </Link>
-            ) : null}
-            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
-              {userCenterLabel}
+            <Link href={prefixPath('/me', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {labels.myHome}
             </Link>
             <a href={prefixPath('/me/favorites', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.favorites}
             </a>
             <a href={prefixPath('/me/routebooks', locale)} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
-              {myMapsLabel}
+              {labels.myMaps}
             </a>
+            <Link href={prefixPath('/plan', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {labels.myPlans}
+            </Link>
+            <Link href={prefixPath('/submit', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {labels.submit}
+            </Link>
+            <Link href={prefixPath('/me/settings', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+              {labels.settings}
+            </Link>
+            {session?.user?.isAdmin ? (
+              <Link href={prefixPath('/admin/panel', locale)} prefetch={false} className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
+                {labels.admin}
+              </Link>
+            ) : null}
             <a href="/api/auth/signout" className="block rounded-xl px-3 py-2 text-sm text-gray-700 transition hover:bg-pink-50 hover:text-pink-700">
               {labels.signout}
             </a>

@@ -125,7 +125,7 @@ describe('CoverAvatarLoader', () => {
 
     expect(map.loadImage).toHaveBeenCalledTimes(1)
     const firstLoadCall = map.loadImage.mock.calls.at(0) as any[] | undefined
-    expect(decodeURIComponent(String(firstLoadCall?.[0] || ''))).toContain('/pic/cover/m/')
+    expect(decodeURIComponent(decodeURIComponent(String(firstLoadCall?.[0] || '')))).toContain('/pic/cover/m/')
   })
 
   it('retries failed covers again after cooldown expires', async () => {
@@ -212,7 +212,7 @@ describe('CoverAvatarLoader', () => {
     const loadCalls = map.loadImage.mock.calls as any[][]
     expect(loadCalls[0]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
     expect(loadCalls[1]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1')
-    expect(decodeURIComponent(String(loadCalls[2]?.[0] || ''))).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg')
+    expect(decodeURIComponent(decodeURIComponent(String(loadCalls[2]?.[0] || '')))).toContain('/api/anitabi/image-render?url=https://image.anitabi.cn/bangumi/290980.jpg')
   })
 
   it('bounds local waiting and advances to the next candidate when a cover request stalls', async () => {

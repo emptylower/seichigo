@@ -12,9 +12,16 @@ export function renderCommentMarkdown(content: string): string {
   }) as string
 
   const cleanHtml = sanitizeHtml(rawHtml, {
-    allowedTags: ['b', 'i', 'em', 'strong', 'code', 'a', 'pre', 'blockquote', 'ul', 'ol', 'li', 'p', 'br'],
+    allowedTags: [
+      'b', 'i', 'em', 'strong', 'code', 'a', 'pre', 'blockquote', 'ul', 'ol', 'li', 'p', 'br',
+      // 聊天/评论常见 markdown 元素：标题、分割线、删除线、表格
+      'h1', 'h2', 'h3', 'h4', 'hr', 'del',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    ],
     allowedAttributes: {
-      'a': ['href'],
+      'a': ['href', 'target', 'rel'],
+      'th': ['align'],
+      'td': ['align'],
     },
     allowedSchemes: ['http', 'https'],
     allowedSchemesByTag: {},

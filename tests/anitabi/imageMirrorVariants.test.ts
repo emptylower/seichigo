@@ -86,10 +86,6 @@ describe('enumeratePointImageVariants', () => {
         url: 'https://image.anitabi.cn/points/abc.jpg?plan=h160',
       },
       {
-        label: 'h320',
-        url: 'https://image.anitabi.cn/points/abc.jpg?plan=h320',
-      },
-      {
         label: 'w640q80',
         url: 'https://image.anitabi.cn/points/abc.jpg?q=80&w=640',
       },
@@ -99,7 +95,7 @@ describe('enumeratePointImageVariants', () => {
   it('returns canonical point URLs with an anitabi points base', () => {
     const variants = enumeratePointImageVariants('https://image.anitabi.cn/points/abc.jpg')
 
-    expect(variants).toHaveLength(3)
+    expect(variants).toHaveLength(2)
     for (const variant of variants) {
       expect(variant.url.startsWith('https://image.anitabi.cn/points/abc.jpg?')).toBe(true)
     }
@@ -114,10 +110,6 @@ describe('enumeratePointImageVariants', () => {
       {
         label: 'h160',
         url: 'https://image.anitabi.cn/points/abc.jpg?plan=h160',
-      },
-      {
-        label: 'h320',
-        url: 'https://image.anitabi.cn/points/abc.jpg?plan=h320',
       },
       {
         label: 'w640q80',
@@ -136,10 +128,6 @@ describe('enumeratePointImageVariants', () => {
         url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?plan=h160',
       },
       {
-        label: 'h320',
-        url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?plan=h320',
-      },
-      {
         label: 'w640q80',
         url: 'https://image.anitabi.cn/user/0/bangumi/1851/points/kkfsf6q9e-1716167149440.jpg?q=80&w=640',
       },
@@ -150,7 +138,7 @@ describe('enumeratePointImageVariants', () => {
     const variants = enumeratePointImageVariants(
       'https://image.anitabi.cn/user/1181/bangumi/321/points/n7zunh4aj.jpg?plan=h160',
     )
-    expect(variants).toHaveLength(3)
+    expect(variants).toHaveLength(2)
     expect(variants[0].url).toBe(
       'https://image.anitabi.cn/user/1181/bangumi/321/points/n7zunh4aj.jpg?plan=h160',
     )
@@ -160,7 +148,7 @@ describe('enumeratePointImageVariants', () => {
     const variants = enumeratePointImageVariants(
       'https://www.anitabi.cn/images/user/0/bangumi/1851/points/test.jpg',
     )
-    expect(variants).toHaveLength(3)
+    expect(variants).toHaveLength(2)
   })
 
   it('returns an empty list for non-anitabi point URLs and invalid inputs', () => {

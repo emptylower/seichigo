@@ -43,9 +43,56 @@ html, body {
   padding: 0;
 }
 
+/* 全局「完全隐藏」滚动条：滚动条（轨道 track、滑块 thumb 及其占位空间）彻底不渲染、
+   不可见、不占任何视觉空间，页面观感与无滚动条的普通容器一致。
+   仅隐藏视觉呈现，不改任何 overflow 行为，滚轮/触控板/触屏/键盘滚动功能完全保留。
+   需要可见滚动条的场景仍可叠加 .seichi-soft-scrollbar 显式恢复。 */
+* {
+  /* Firefox：彻底隐藏滚动条 */
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  /* Webkit/Blink：完全不渲染、不占空间 */
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .seichi-soft-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+}
+
+/* /plan 思维链：状态条短语切换（key-change 触发）与 shimmer 高光扫过 */
+@keyframes plan-phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.plan-phrase-in {
+  animation: plan-phrase-in 200ms ease-out;
+}
+
+@keyframes plan-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.plan-shimmer {
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: plan-shimmer 1.6s linear infinite;
 }
 
 .seichi-soft-scrollbar::-webkit-scrollbar {
@@ -463,6 +510,25 @@ a {
   border-radius: 0;
   padding: 0;
   font-size: inherit;
+}
+
+:where(.ProseMirror, .prose) table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.9em;
+}
+
+:where(.ProseMirror, .prose) th,
+:where(.ProseMirror, .prose) td {
+  border: 1px solid #e5e7eb; /* gray-200 */
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+}
+
+:where(.ProseMirror, .prose) thead th {
+  background: #f9fafb; /* gray-50 */
+  font-weight: 600;
 }
 
 /* Rich text block layout (align + indent) */

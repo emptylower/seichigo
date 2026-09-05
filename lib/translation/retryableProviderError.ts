@@ -7,6 +7,9 @@ const RETRYABLE_PROVIDER_ERROR_PATTERNS = [
   /temporarily unavailable/i,
   /resource exhausted/i,
   /gemini request timed out/i,
+  // lib/llm 统一客户端的 LlmHttpError 文案（自定义供应商接管翻译时）
+  /llm api error \((429|500|502|503|504)\)/i,
+  /llm request timed out/i,
 ]
 
 export function isRetryableProviderErrorMessage(message: string): boolean {

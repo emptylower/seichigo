@@ -7,6 +7,12 @@
     "nodejs_compat",
     "no_handle_cross_request_promise_resolution"
   ],
+  "limits": {
+    // 第九轮 A1：付费计划合法上限（5 分钟 CPU）。默认 30 秒 CPU 会让 7-12 分钟的
+    // 长 run（每 token 一条 SSE + 实况快照写库 + 大 JSON 序列化）被平台直接杀掉
+    // （无 finally、无运行日志）；wall-clock 本就不限
+    "cpu_ms": 300000
+  },
   "vars": {
     "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1",
     "NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "1",

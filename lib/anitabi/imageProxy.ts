@@ -70,7 +70,11 @@ function canBypassProxy(url: URL): boolean {
 function buildProxyImageUrl(url: URL): string {
   const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
   const proxied = new URL('/api/anitabi/image-render', baseOrigin)
-  proxied.searchParams.set('url', url.toString())
+  // 第六轮 E2：双重编码。Cloudflare/OpenNext 会对 req.url 的 query 再解码一次，
+  // 单次编码的多参数上游 URL 会在服务端被 & 截断（R2 key 错位）；URLSearchParams
+  // set 时会对值再编码一次，线上解码一层后仍是合法单次编码值，服务端
+  // resolveProxyTargetUrl 再解一层。本地 Node 无平台解码，同样兼容。
+  proxied.searchParams.set('url', encodeURIComponent(url.toString()))
   return proxied.toString()
 }
 

@@ -81,8 +81,18 @@ function isBangumiHost(hostname: string): boolean {
   return host === 'bgm.tv' || host.endsWith('.bgm.tv')
 }
 
-function isAnitabiPointPhotoPath(url: URL): boolean {
-  return url.pathname.startsWith('/points/')
+const ANITABI_USER_POINT_PATH_PATTERN = /^\/user\/\d+\/bangumi\/\d+\/points\//
+
+/**
+ * 判定一个 pathname 是否是 anitabi 点位图路径。
+ * 覆盖 `/points/…` 与用户上传的 `/user/<uid>/bangumi/<id>/points/…`（含 `/images/` 前缀的同构路径）。
+ * 镜像变体枚举（imageMirrorVariants）与展示变体归一（本文件）共用此口径，两处必须一致。
+ */
+export function isAnitabiPointImagePath(pathname: string): boolean {
+  const normalized = pathname.startsWith('/images/')
+    ? pathname.slice('/images'.length)
+    : pathname
+  return normalized.startsWith('/points/') || ANITABI_USER_POINT_PATH_PATTERN.test(normalized)
 }
 
 function normalizeAnitabiMirrorUrl(url: URL): void {
@@ -161,52 +171,46 @@ export function normalizeBangumiCoverVariant(url: URL, kind: MapDisplayImageKind
   url.pathname = url.pathname.replace('/pic/cover/l/', '/pic/cover/m/')
 }
 
+function applyPointThumbnailVariant(url: URL): void {
+  const plan = url.searchParams.get('plan')
+  if (!plan || !plan.trim()) {
+    url.searchParams.set('plan', 'h160')
+  }
+  url.searchParams.delete('w')
+  url.searchParams.delete('h')
+  url.searchParams.delete('q')
+}
+
 export function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKind): void {
   if (!isAnitabiHost(url.hostname)) return
 
   normalizeAnitabiMirrorUrl(url)
 
-  if (isAnitabiPointPhotoPath(url)) {
+  // 所有 anitabi 点位图路径（/points/… 与 /user/<uid>/bangumi/<id>/points/…）
+  // 统一口径见 isAnitabiPointImagePath。h320 变体上游不存在（EdgeOne 404），
+  // 任何 kind 都不得再生成它。
+  if (isAnitabiPointImagePath(url.pathname)) {
     if (kind === 'point' || kind === 'point-preview') {
-      const hasWidthBasedResize =
-        url.searchParams.has('w')
-        || url.searchParams.has('h')
-        || url.searchParams.has('q')
-      const hasNamedPlan = Boolean(String(url.searchParams.get('plan') || '').trim())
-
-      if (hasWidthBasedResize || !hasNamedPlan) {
-        url.searchParams.delete('plan')
-        if (!url.searchParams.has('w') && !url.searchParams.has('h')) {
-          url.searchParams.set('w', '640')
-        }
-        if (!url.searchParams.has('q')) {
-          url.searchParams.set('q', '80')
-        }
+      url.searchParams.delete('plan')
+      if (!url.searchParams.has('w') && !url.searchParams.has('h')) {
+        url.searchParams.set('w', '640')
+      }
+      if (!url.searchParams.has('q')) {
+        url.searchParams.set('q', '80')
       }
       return
     }
 
     if (kind === 'point-thumbnail') {
-      const plan = url.searchParams.get('plan')
-      if (!plan || !plan.trim()) {
-        url.searchParams.set('plan', 'h160')
-      }
-      url.searchParams.delete('w')
-      url.searchParams.delete('h')
-      url.searchParams.delete('q')
+      applyPointThumbnailVariant(url)
       return
     }
+    return
   }
 
-  if (kind === 'point' || kind === 'point-preview' || kind === 'point-thumbnail') {
-    const desiredPlan = kind === 'point-thumbnail' ? 'h160' : 'h320'
-    const plan = url.searchParams.get('plan')
-    if (!plan || !plan.trim()) {
-      url.searchParams.set('plan', desiredPlan)
-    }
-    url.searchParams.delete('w')
-    url.searchParams.delete('h')
-    url.searchParams.delete('q')
+  // 非点位路径（bangumi 封面等）保持原有处理：只有 point-thumbnail 补 h160。
+  if (kind === 'point-thumbnail') {
+    applyPointThumbnailVariant(url)
   }
 }
 

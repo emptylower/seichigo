@@ -317,7 +317,7 @@ describe('advanceBootstrap', () => {
           pointCompleted: false,
           totalEnumerated: 7,
         },
-        transactionCreateManyCount: 3,
+        transactionCreateManyCount: 2,
       })
 
       await advanceBootstrap(prisma, 50)
@@ -332,6 +332,7 @@ describe('advanceBootstrap', () => {
       expect(createMany).not.toHaveBeenCalled()
       expect(bootstrapUpdate).not.toHaveBeenCalled()
       expect(transactionCreateMany).toHaveBeenCalledTimes(1)
+      // A2/E4 新口径：点位图 2 个变体（h160、w640q80），h320 上游不存在已移除
       expect(transactionCreateMany).toHaveBeenCalledWith({
         data: [
           {
@@ -341,17 +342,6 @@ describe('advanceBootstrap', () => {
             canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
             r2Key: await computeMirrorKey(
               'https://image.anitabi.cn/points/pt-1.jpg?plan=h160',
-              'image/jpeg',
-            ),
-            status: 'pending',
-          },
-          {
-            sourceType: 'point-image',
-            sourceId: 'pt-1',
-            variant: 'h320',
-            canonicalUrl: 'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
-            r2Key: await computeMirrorKey(
-              'https://image.anitabi.cn/points/pt-1.jpg?plan=h320',
               'image/jpeg',
             ),
             status: 'pending',
@@ -374,7 +364,7 @@ describe('advanceBootstrap', () => {
         where: { id: 1 },
         data: {
           pointCursor: 'pt-1',
-          totalEnumerated: { increment: 3 },
+          totalEnumerated: { increment: 2 },
           lastAdvanceAt: new Date('2026-05-03T14:00:00Z'),
         },
       })

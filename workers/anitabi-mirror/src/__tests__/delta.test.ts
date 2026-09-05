@@ -267,7 +267,8 @@ describe('cronDelta', () => {
           ],
         })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 25 })).resolves.toEqual({ enqueued: 5 })
+      // A2/E4 新口径：点位图 2 个变体（h160、w640q80），bangumi 封面 2 个 → 共 4
+      await expect(cronDelta(prisma, { sourceBatchSize: 25 })).resolves.toEqual({ enqueued: 4 })
 
       expect(findUnique).toHaveBeenCalledWith({
         where: {
@@ -295,7 +296,7 @@ describe('cronDelta', () => {
         take: 25,
         select: { id: true, image: true, updatedAt: true },
       })
-      expect(create).toHaveBeenCalledTimes(5)
+      expect(create).toHaveBeenCalledTimes(4)
       expect(updateMany).not.toHaveBeenCalled()
       expect(create).toHaveBeenNthCalledWith(1, {
         data: {
@@ -310,7 +311,7 @@ describe('cronDelta', () => {
           status: 'pending',
         },
       })
-      expect(create).toHaveBeenNthCalledWith(5, {
+      expect(create).toHaveBeenNthCalledWith(4, {
         data: {
           sourceType: 'point-image',
           sourceId: 'pn1',
@@ -740,19 +741,19 @@ describe('cronDelta', () => {
         ],
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 8 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 2, pointLastId: 'b' }),
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 8 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 4, pointLastId: 'd' }),
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 5 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 4 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 5, pointLastId: 'e' }),
@@ -871,7 +872,7 @@ describe('cronDelta', () => {
         updatedAt: sharedUpdatedAt,
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 5 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 4 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 2, pointLastId: 'pt-1' }),

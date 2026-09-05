@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
@@ -48,6 +48,7 @@ model User {
   routeBooks           RouteBook[]
   badges               UserBadge[]
   publicOverrides      PublicOverride[]
+  tripPlans            TripPlan[]
 }
 
 model Account {
@@ -610,20 +611,20 @@ model MapImageDiagEvent {
 }
 
 model MapImageMirrorState {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   sourceType    String
   sourceId      String
   variant       String
   canonicalUrl  String
   r2Key         String
   status        String
-  attempts      Int      @default(0)
+  attempts      Int       @default(0)
   lastAttemptAt DateTime?
-  lastError     String?  @db.Text
+  lastError     String?   @db.Text
   mirroredAt    DateTime?
   contentBytes  Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([sourceType, sourceId, variant])
   @@index([status, createdAt])
@@ -631,43 +632,43 @@ model MapImageMirrorState {
 }
 
 model MapImageMirrorBootstrap {
-  id                Int      @id @default(1)
+  id                Int       @id @default(1)
   bangumiCursor     Int?
   pointCursor       String?
-  bangumiCompleted  Boolean  @default(false)
-  pointCompleted    Boolean  @default(false)
-  totalEnumerated   Int      @default(0)
+  bangumiCompleted  Boolean   @default(false)
+  pointCompleted    Boolean   @default(false)
+  totalEnumerated   Int       @default(0)
   startedAt         DateTime?
   completedAt       DateTime?
   lastAdvanceAt     DateTime?
-  manuallyTriggered Boolean  @default(false)
+  manuallyTriggered Boolean   @default(false)
 }
 
 model AnitabiBangumi {
-  id               Int      @id
-  titleZh          String?
-  titleJaRaw       String?
-  cat              String?
-  cover            String?
-  description      String?  @db.Text
-  color            String?
-  city             String?
-  tags             String[] @default([])
-  geoLat           Float?
-  geoLng           Float?
-  zoom             Float?
-  sourceModifiedMs BigInt?
-  mapEnabled       Boolean  @default(true)
-  datasetVersion   String
+  id                     Int      @id
+  titleZh                String?
+  titleJaRaw             String?
+  cat                    String?
+  cover                  String?
+  description            String?  @db.Text
+  color                  String?
+  city                   String?
+  tags                   String[] @default([])
+  geoLat                 Float?
+  geoLng                 Float?
+  zoom                   Float?
+  sourceModifiedMs       BigInt?
+  mapEnabled             Boolean  @default(true)
+  datasetVersion         String
   // Cross-language search fields
-  titleOriginal            String?
-  titleRomaji              String?
-  titleEnglish             String?
-  aliases                  String[] @default([])
-  anilistId                Int?
-  anilistMatchConfidence   Float?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  titleOriginal          String?
+  titleRomaji            String?
+  titleEnglish           String?
+  aliases                String[] @default([])
+  anilistId              Int?
+  anilistMatchConfidence Float?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   points      AnitabiPoint[]
   meta        AnitabiBangumiMeta?
@@ -706,16 +707,21 @@ model AnitabiPoint {
   uid            String?
   reviewUid      String?
   datasetVersion String
+  googlePlaceId         String?
+  /** resolved | not_found；null 表示从未尝试 */
+  googlePlaceStatus     String?
+  googlePlaceResolvedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  bangumi     AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
-  i18n        AnitabiPointI18n[]
-  favorites   AnitabiFavorite[]
-  viewHistory AnitabiViewHistory[]
+  bangumi         AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
+  i18n            AnitabiPointI18n[]
+  favorites       AnitabiFavorite[]
+  viewHistory     AnitabiViewHistory[]
   userPointStates UserPointState[]
   userPointPools  UserPointPool[]
   routeBookPoints RouteBookPoint[]
+  tripPlanItems   TripPlanItem[]
 
   @@index([bangumiId, updatedAt])
   @@index([bangumiId, ep])
@@ -724,9 +730,9 @@ model AnitabiPoint {
 }
 
 model AnitabiBangumiMeta {
-  bangumiId         Int      @id
-  pointsLength      Int      @default(0)
-  imagesLength      Int      @default(0)
+  bangumiId         Int       @id
+  pointsLength      Int       @default(0)
+  imagesLength      Int       @default(0)
   themeJson         Json?
   customEpNamesJson Json?
   logsJson          Json?
@@ -735,8 +741,8 @@ model AnitabiBangumiMeta {
   /// 上次向上游核对该作品的时间。枚举层按它最旧优先轮转 ——
   /// 官方 API 没有列出全部作品的入口，只能靠库内 ID 轮转覆盖全量。
   lastCheckedAt     DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   bangumi AnitabiBangumi @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
 
@@ -805,17 +811,17 @@ model AnitabiViewHistory {
 }
 
 model UserPointState {
-  id          String        @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String
   pointId     String
   state       String
   checkedInAt DateTime?
-  gpsVerified Boolean       @default(false)
+  gpsVerified Boolean      @default(false)
   photoUrl    String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  point       AnitabiPoint  @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  point       AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pointId])
   @@index([userId])
@@ -824,12 +830,12 @@ model UserPointState {
 }
 
 model UserPointPool {
-  id        String      @id @default(cuid())
+  id        String       @id @default(cuid())
   userId    String
   pointId   String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   point     AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pointId])
@@ -886,14 +892,14 @@ model AnitabiBangumiI18n {
 }
 
 model AnitabiPointI18n {
-  id        String   @id @default(cuid())
-  pointId   String
-  language  String
+  id         String   @id @default(cuid())
+  pointId    String
+  language   String
   sourceHash String?
-  name      String?
-  note      String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name       String?
+  note       String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   point AnitabiPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
 
@@ -946,12 +952,12 @@ model AnitabiSourceCursor {
 }
 
 model UserBadge {
-  id         String   @id @default(cuid())
-  userId     String
-  badgeType  String
-  badgeKey   String
-  earnedAt   DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  badgeType String
+  badgeKey  String
+  earnedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -960,14 +966,175 @@ model UserBadge {
 }
 
 model SearchQueryCache {
-  id             String   @id @default(cuid())
-  queryText      String
-  queryLanguage  String?
-  translatedZh   String?
-  translatedEn   String?
-  translatedJa   String?
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  queryText     String
+  queryLanguage String?
+  translatedZh  String?
+  translatedEn  String?
+  translatedJa  String?
+  createdAt     DateTime @default(now())
 
   @@unique([queryText])
   @@index([createdAt])
+}
+
+model TripPlan {
+  id             String            @id @default(cuid())
+  userId         String
+  title          String
+  status         String            @default("draft")
+  startDate      DateTime?
+  dayCount       Int               @default(1)
+  bangumiIds     Int[]             @default([])
+  preferences    Json?
+  stage          String?
+  agentBusyUntil DateTime?
+  agentRunToken  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days           TripPlanDay[]
+  messages       TripPlanMessage[]
+  runLogs        TripPlanRunLog[]
+  runLive        TripPlanRunLive?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TripPlanDay {
+  id       String         @id @default(cuid())
+  planId   String
+  dayIndex Int
+  date     DateTime?
+  citySlug String?
+  summary  String?
+  plan     TripPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  items    TripPlanItem[]
+
+  @@unique([planId, dayIndex])
+}
+
+model TripPlanItem {
+  id        String        @id @default(cuid())
+  dayId     String
+  sortOrder Int
+  type      String
+  pointId   String?
+  timeHint  String?
+  title     String
+  note      String?
+  reason    String?
+  payload   Json?
+  day       TripPlanDay   @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  point     AnitabiPoint? @relation(fields: [pointId], references: [id], onDelete: SetNull)
+
+  @@index([dayId])
+  @@index([pointId])
+}
+
+model TripPlanMessage {
+  id        String   @id @default(cuid())
+  planId    String
+  kind      String
+  content   Json
+  createdAt DateTime @default(now())
+  plan      TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+}
+
+/// plan agent 每回合的运行日志（M4 §7）：阶段、门控、补齐与工具调用摘要，
+/// 供回归分析与后续思维链持久化复用。前端暂不读取。
+model TripPlanRunLog {
+  id           String   @id @default(cuid())
+  planId       String
+  runToken     String?
+  turnIndex    Int
+  stage        String
+  enrichReport Json?
+  gateReport   Json?
+  toolCalls    Json?
+  modelUsage   Json?
+  durationMs   Int
+  createdAt    DateTime @default(now())
+  plan         TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+}
+
+/// plan agent 运行期实况（第七轮 A1）：刷新恢复用。每计划至多一行，由当前
+/// 持有 run 的 writer 覆盖写；run 结束（writer.finish）即删除。reasoning 超
+/// 20,000 字符在 repo 层截头保尾。
+model TripPlanRunLive {
+  planId     String   @id
+  runToken   String
+  reasoning  String   @db.Text
+  statusText String?
+  toolCalls  Json?
+  updatedAt  DateTime @updatedAt
+  plan       TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+model ExternalPlace {
+  id                String   @id @default(cuid())
+  provider          String   @default("google")
+  placeId           String
+  name              String
+  address           String?
+  lat               Float
+  lng               Float
+  mapsUri           String
+  photoReference    String?
+  photoAttribution  String?
+  photoMirrorKey    String?
+  photoMirrorStatus String   @default("none") // none | pending | mirrored | failed
+  photoMirroredAt   DateTime?
+  /** 最多 10 张照片：[{ photoReference, attribution }]；photoReference 列始终等于 photos[0] */
+  photos            Json?
+  fetchedAt         DateTime
+  lastUsedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  queries           ExternalPlaceQuery[]
+
+  @@unique([provider, placeId])
+}
+
+model ExternalPlaceQuery {
+  id              String        @id @default(cuid())
+  provider        String        @default("google")
+  normalizedQuery String
+  placeId         String
+  createdAt       DateTime      @default(now())
+  place           ExternalPlace @relation(fields: [provider, placeId], references: [provider, placeId], onDelete: Cascade)
+
+  @@unique([provider, normalizedQuery])
+  @@index([provider, placeId])
+}
+
+/// 管理员面板自定义 LLM 供应商（含从环境变量内化的内置供应商）。
+/// apiKeyCiphertext 为 AES-256-GCM 密文（v1.<iv>.<tag>.<data>，base64），永不外发。
+model LlmProvider {
+  id                  String   @id @default(cuid())
+  name                String
+  protocol            String // openai | anthropic
+  /** 用户输入的接口地址（可为基地址）；服务端归一后写入 endpointUrl */
+  baseUrl             String?
+  endpointUrl         String
+  apiKeyCiphertext    String?
+  apiKeyHint          String?
+  models              Json // LlmModelConfig[]
+  takeoverAgent       Boolean  @default(false)
+  takeoverTranslation Boolean  @default(false)
+  agentModel          String?
+  translationModel    String?
+  source              String   @default("custom") // env | custom
+  envKey              String? // 内化来源：plan_agent | gemini（防重复内化）
+  enabled             Boolean  @default(true)
+  lastTest            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([envKey])
 }

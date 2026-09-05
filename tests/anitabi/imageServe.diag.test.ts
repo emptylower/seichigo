@@ -318,4 +318,43 @@ describe('serveImageRequest image cache diagnostics', () => {
       }),
     ])
   })
+
+  it('attaches upstreamStatus and deliveryHost to proxy_fetch_terminal evidence on upstream failures', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('forbidden', { status: 403 }))
+
+    const response = await serveImageRequest(
+      createRenderRequest('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80'),
+      createDeps({
+        env: {
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(502)
+    const terminal = getDiagEvents().find((event) => event?.stage === 'proxy_fetch_terminal')
+    expect(terminal?.terminalState).toBe('failed')
+    expect(terminal?.evidence?.upstreamStatus).toBe(403)
+    expect(terminal?.evidence?.deliveryHost).toBe('img-tc.anitabi.cn')
+  })
+
+  it('attaches upstreamStatus 200 and deliveryHost to successful proxy_fetch_terminal evidence', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(createImageResponse())
+
+    const response = await serveImageRequest(
+      createRenderRequest('https://image.anitabi.cn/points/217249/db2c913d_1754363336601.jpg?w=640&q=80'),
+      createDeps({
+        env: {
+          NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED: '0',
+        },
+      }),
+      'render',
+    )
+
+    expect(response.status).toBe(200)
+    const terminal = getDiagEvents().find((event) => event?.stage === 'proxy_fetch_terminal')
+    expect(terminal?.evidence?.upstreamStatus).toBe(200)
+    expect(terminal?.evidence?.deliveryHost).toBe('img-tc.anitabi.cn')
+  })
 })
