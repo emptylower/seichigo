@@ -112,6 +112,28 @@ describe('MemoryTripPlanRepo', () => {
     expect(after.status).toBe('ok')
   })
 
+  it('beginAgentRun with content=null（resume 回合）抢占 busy 位但不追加 human 消息；配额按现有消息数计', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    await repo.appendMessage(plan.id, 'human', { role: 'user', content: '被打断的那条' })
+    const since = new Date(0)
+
+    const resume = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', content: null, since, limit: 2, busyTtlMs: 60_000,
+    })
+    expect(resume.status).toBe('ok')
+    if (resume.status !== 'ok') throw new Error('unreachable')
+    // 不追加 human：消息数不变；token 照常可用于栅栏写
+    expect(await repo.listMessages(plan.id)).toHaveLength(1)
+
+    // 配额检查仍按已落库 human 数计算：被打断的回合已用完当日额度时 resume 也拒绝
+    await repo.endAgentRun(plan.id, resume.token)
+    const exhausted = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', content: null, since, limit: 1, busyTtlMs: 60_000,
+    })
+    expect(exhausted.status).toBe('quota_exceeded')
+  })
+
   it('beginAgentRun treats an expired busy claim as free (stale-lock recovery)', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
@@ -280,5 +302,54 @@ describe('MemoryTripPlanRepo', () => {
     const after = await repo.getPlan(plan.id)
     expect(after?.agentRunToken).toBeNull()
     expect(after?.agentBusyUntil).toBeNull()
+  })
+
+  it('F3：renewAgentRun 续租 busy 位——token 匹配才续、过期后仍可自救、token 不匹配是空操作', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-09-03T00:00:00.000Z'))
+      const repo = new MemoryTripPlanRepo()
+      const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+      const run = await repo.beginAgentRun({
+        planId: plan.id,
+        userId: 'u1',
+        since: new Date(0),
+        limit: 10,
+        busyTtlMs: 3 * 60 * 1000,
+        content: { role: 'user', content: 'a' },
+      })
+      if (run.status !== 'ok') throw new Error('unreachable')
+
+      // TTL 内续租：busyUntil 推进到 now + ttl
+      vi.setSystemTime(new Date('2026-09-03T00:01:00.000Z'))
+      expect(await repo.renewAgentRun(plan.id, run.token, 3 * 60 * 1000)).toBe(true)
+      const renewed = await repo.getPlan(plan.id)
+      expect(renewed?.agentBusyUntil?.getTime()).toBe(new Date('2026-09-03T00:04:00.000Z').getTime())
+
+      // 原 TTL（00:03:00）已过：靠续租活着的 run 依然持有 busy 位
+      vi.setSystemTime(new Date('2026-09-03T00:03:30.000Z'))
+      expect(await repo.isAgentBusy(plan.id)).toBe(true)
+      const intruder = await repo.beginAgentRun({
+        planId: plan.id,
+        userId: 'u1',
+        since: new Date(0),
+        limit: 10,
+        busyTtlMs: 60_000,
+        content: { role: 'user', content: 'b' },
+      })
+      expect(intruder.status).toBe('busy')
+
+      // token 不匹配（已被接管/已释放的旧持有者）：空操作且返回 false
+      expect(await repo.renewAgentRun(plan.id, 'not-the-holder', 60_000)).toBe(false)
+      const untouched = await repo.getPlan(plan.id)
+      expect(untouched?.agentBusyUntil?.getTime()).toBe(new Date('2026-09-03T00:04:00.000Z').getTime())
+
+      // run 结束释放后：续租同样失效
+      await repo.endAgentRun(plan.id, run.token)
+      expect(await repo.renewAgentRun(plan.id, run.token, 60_000)).toBe(false)
+      expect(await repo.isAgentBusy(plan.id)).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

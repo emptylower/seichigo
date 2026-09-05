@@ -18,7 +18,8 @@ vi.mock('@/lib/llm/registry', () => ({
   resolveLlmForScope: (...args: unknown[]) => resolveLlmForScope(...(args as [])),
 }))
 
-import { createChatCompletion, withModelUsageInRunLog, type PlanAgentModelUsage } from '@/lib/planAgent/api'
+import { createChatCompletion, describePlanAgentModel, withModelUsageInRunLog, type PlanAgentModelUsage } from '@/lib/planAgent/api'
+import { isUserStoppedAbort } from '@/lib/planAgent/stop'
 import { createLlmClient } from '@/lib/llm/client'
 import { LlmHttpError } from '@/lib/llm/http'
 import type { TripPlanRepo, TripPlanRunLogEntry } from '@/lib/tripPlan/repo'
@@ -68,6 +69,8 @@ describe('createChatCompletion (streaming)', () => {
 
     expect(fakeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ stream: true }),
+      // A3：无 signal 时第二参显式 undefined（SDK options 位）
+      undefined,
     )
     expect(message.role).toBe('assistant')
     expect(message.content).toBe('你好')
@@ -196,6 +199,40 @@ describe('createChatCompletion (streaming)', () => {
     expect(fakeCreate).toHaveBeenCalledTimes(3)
   })
 
+  it('L3：env 回退路径的 describePlanAgentModel 用「默认模型」，不把内部路径名 env 露给用户', () => {
+    const info = describePlanAgentModel(null)
+    expect(info.providerName).toBe('默认模型')
+    expect(typeof info.model).toBe('string')
+  })
+
+  it('M1：env 路径流结束但 signal 已 abort → 抛 user_stopped，不把半截流伪装成正常消息', async () => {
+    const controller = new AbortController()
+    // SDK/中转在 abort 后可能仍把流收尾成正常结束（或 mock 不理会 signal）——
+    // for await 正常走完后必须检查 signal，否则停止会被当成一次成功调用
+    fakeCreate.mockImplementation(async () => {
+      controller.abort(new DOMException('user_stopped', 'AbortError'))
+      return fakeStream([chunk({ content: '部分输出' }, 'stop')])
+    })
+    const err: unknown = await createChatCompletion(
+      { messages: [], tools: [], signal: controller.signal },
+    ).catch((e: unknown) => e)
+    expect(isUserStoppedAbort(err)).toBe(true)
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('M1：可重试错误发生后 signal 已 abort → 立即抛 user_stopped，不再重试', async () => {
+    const controller = new AbortController()
+    fakeCreate.mockImplementation(async () => {
+      controller.abort(new DOMException('user_stopped', 'AbortError'))
+      throw new TypeError('Network connection lost.')
+    })
+    const err: unknown = await createChatCompletion(
+      { messages: [], tools: [], signal: controller.signal },
+    ).catch((e: unknown) => e)
+    expect(isUserStoppedAbort(err)).toBe(true)
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+  })
+
   it('returns the empty assistant message when chunks arrived but carried no content — upstream did respond', async () => {
     fakeCreate.mockResolvedValue(
       fakeStream([chunk({ role: 'assistant', content: null }), chunk({}, 'stop')]),
@@ -295,7 +332,7 @@ describe('createChatCompletion (custom provider takeover)', () => {
     const message = await createChatCompletion({ messages: [], tools: [] })
 
     expect(fakeCreate).toHaveBeenCalledTimes(1)
-    expect(fakeCreate).toHaveBeenCalledWith(expect.objectContaining({ stream: true }))
+    expect(fakeCreate).toHaveBeenCalledWith(expect.objectContaining({ stream: true }), undefined)
     expect(message.content).toBe('ok')
   })
 })

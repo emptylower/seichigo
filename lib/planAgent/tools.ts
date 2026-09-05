@@ -2,7 +2,7 @@ import type OpenAI from 'openai'
 import type { Prisma } from '@prisma/client'
 import { clusterIntoDays } from './cluster'
 import type { BgmSubject, PointFinder } from './points'
-import { TRIP_PLAN_ITEM_TYPES, type TripPlanDayInput, type TripPlanRepo, type TripPlanWithDays } from '@/lib/tripPlan/repo'
+import { type TripPlanDayInput, type TripPlanRepo, type TripPlanWithDays } from '@/lib/tripPlan/repo'
 import { toPlanView } from '@/lib/tripPlan/view'
 import { RunFencedError } from './runFence'
 import {
@@ -15,6 +15,7 @@ import {
 import { buildValidatedAskOptions, isAskOptionGateError, type AskChoiceTaskType } from './askOptions'
 import { dayHasBackfillCandidate } from './placeBackstop'
 import { parseSavePlanDaysInput, type ParsedSaveDays } from './savePlanInput'
+import { POINT_ID_SCHEMA_HINT, SAVE_PLAN_DAYS_PARAMETERS } from './toolSchemas'
 import { validateExternalPlacePayload, type PlaceResolver } from '@/lib/googlePlaces/places'
 import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
@@ -74,10 +75,9 @@ export type PlanAgentToolDeps = {
    * 单独调用 executePlanTool 时缺省新建。
    */
   enrichBudget?: EnrichBudget
+  /** 第九轮 L1：长工具内部续租（save_plan_days 在补齐前后各续一次）；被接管时抛 RunFencedError（现有栅栏语义） */
+  renewLease?: () => Promise<void>
 }
-
-const POINT_ID_SCHEMA_HINT =
-  '点位 id 是形如 "<bangumiId>:<rawId>" 的不透明字符串，必须原样使用 list_points 返回结果里的完整 id 字符串，不要截取、拆分或改写'
 
 /**
  * save_plan_days 全部天数条目总和的硬上限。这个数字同时约束两头：
@@ -86,66 +86,6 @@ const POINT_ID_SCHEMA_HINT =
  * 结构化拒绝，而不是让巨量数据捅到数据库层炸出原始事务超时。
  */
 export const SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS = 150
-
-const itemSchema = {
-  type: 'object' as const,
-  properties: {
-    type: { type: 'string', enum: TRIP_PLAN_ITEM_TYPES, description: '条目类型' },
-    pointId: {
-      type: 'string',
-      description: `站内巡礼点位必填（type=point 且非外部地点时）。${POINT_ID_SCHEMA_HINT}。外部地点（resolve_place 解析的）不要填 pointId，改用 payload.place`,
-    },
-    title: { type: 'string', description: '条目标题（点位中文名/交通段/活动名）' },
-    timeHint: { type: 'string', description: '时间提示，如“14:00”“午后”（服务端会归一成具体时间区间，宽泛词保留为备注）' },
-    note: { type: 'string', description: '补充说明' },
-    reason: { type: 'string', description: '为什么这么安排（面向用户展示）' },
-    payload: {
-      type: 'object',
-      description:
-        '结构化数据：外部地点放 place（照抄 resolve_place 的 place 对象）；真实交通照抄 estimate_travel 的 transportPayload（transport 字段）；图片放 media；显式时间可放 schedule={start,end,durationMin}',
-      properties: {
-        place: { type: 'object', description: '外部地点（resolve_place 返回的 place 字段原样照抄，含 placeId/name/lat/lng）' },
-        schedule: {
-          type: 'object',
-          description: '显式时间（可选）：{start:"HH:mm", end:"HH:mm", durationMin:分钟}',
-          properties: {
-            start: { type: 'string' },
-            end: { type: 'string' },
-            durationMin: { type: 'number' },
-          },
-        },
-        transport: {
-          type: 'object',
-          description: '真实交通数据（照抄 estimate_travel 返回的 transportPayload：mode/durationMin/distanceKm/legs/polyline/provider/fetchedAt）',
-          properties: {
-            mode: { type: 'string', description: 'walk / transit / driving' },
-            durationMin: { type: 'number' },
-            distanceKm: { type: 'number' },
-            legs: { type: 'array' },
-            polyline: { type: 'array' },
-            provider: { type: 'string' },
-            fetchedAt: { type: 'string' },
-          },
-        },
-        media: {
-          type: 'object',
-          description: '图片（照抄 resolve_place 的 media：source/displayUrl/attribution）',
-          properties: {
-            source: { type: 'string' },
-            displayUrl: { type: 'string' },
-            attribution: { type: 'string' },
-          },
-        },
-        placeQuery: { type: 'string', description: '更适合检索的地点正式名（不确定正式名称时写这里，服务端保存时会自动解析补齐 place）' },
-        // 兼容 M1 的扁平交通 payload（estimate_transit 时代）
-        mode: { type: 'string', description: '兼容旧格式：walk / transit' },
-        durationMin: { type: 'number' },
-        distanceKm: { type: 'number' },
-      },
-    },
-  },
-  required: ['type', 'title'],
-}
 
 function tool(
   name: string,
@@ -255,25 +195,7 @@ export const PLAN_AGENT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   tool(
     'save_plan_days',
     '整份行程的完整替换保存：每次调用都会覆盖旧的全部天数，必须一次性传入完整的多天内容，绝不能分批多次调用（分批会互相覆盖导致已保存的行程丢失）。每天是一个按访问顺序排列的条目时间线：站内点位条目挂 pointId；外部地点条目（迪士尼等）挂 payload.place；点位之间插入 transit 条目并在 payload.transport 照抄 estimate_travel 的 transportPayload。每个安排都写 reason。这是计划的唯一落库方式，规划结果必须通过它保存。服务端会自动把所有条目归一成具体时间区间并按时间排序。全部天数条目总和上限 150 条，超出会被直接拒绝。',
-    {
-      type: 'object',
-      properties: {
-        days: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              dayIndex: { type: 'number', description: '第几天，从 1 开始' },
-              citySlug: { type: 'string', description: '当天主要城市，如 kyoto' },
-              summary: { type: 'string', description: '当天一句话概述' },
-              items: { type: 'array', items: itemSchema },
-            },
-            required: ['dayIndex', 'items'],
-          },
-        },
-      },
-      required: ['days'],
-    },
+    SAVE_PLAN_DAYS_PARAMETERS,
   ),
   tool(
     'ask_user',
@@ -549,7 +471,9 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           ...(travelMode ? { travelMode } : {}),
           budget: enrichBudget,
         }
+        await deps.renewLease?.() // 第九轮 L1：补齐脚本可能 1–2 分钟，先续租再进长补齐
         const { enrich, schedule } = await enrichAndNormalizeDays(days, enrichContext)
+        await deps.renewLease?.() // 补齐结束后再续一次，保住后续校验与原子落库窗口
         // 外部地点出处账本：已持久化在计划里的 placeId（此前经 resolve_place 验证过）
         const persistedPlaces = collectPlanPlaces(plan)
         /**

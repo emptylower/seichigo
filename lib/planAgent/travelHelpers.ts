@@ -318,6 +318,7 @@ export async function runEstimateTransitTool(deps: PlanAgentToolDeps, args: Reco
     transfers: null,
     provider: 'estimate',
     estimated: true,
+    source: 'heuristic',
     note,
     mapsUrl,
     fetchedAt: new Date().toISOString(),

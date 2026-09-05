@@ -26,7 +26,7 @@ export type TravelQueryOutcome =
   | { ok: true; response: Record<string, unknown> }
   | { ok: false; code?: string; message: string }
 
-/** Google step → 模型可读的紧凑分段摘要（线路/上下车站/站数/时刻） */
+/** Google step → 模型可读的紧凑分段摘要（线路/上下车站/站数/时刻/方向） */
 export function summarizeLegForModel(step: {
   travelMode: string
   instruction: string
@@ -40,6 +40,7 @@ export function summarizeLegForModel(step: {
         numStops: number
         departureTime?: string
         arrivalTime?: string
+        headsign?: string
       }
     | null
 }) {
@@ -56,6 +57,7 @@ export function summarizeLegForModel(step: {
           numStops: step.transitDetails.numStops,
           ...(step.transitDetails.departureTime ? { departureTime: step.transitDetails.departureTime } : {}),
           ...(step.transitDetails.arrivalTime ? { arrivalTime: step.transitDetails.arrivalTime } : {}),
+          ...(step.transitDetails.headsign ? { headsign: step.transitDetails.headsign } : {}),
         }
       : {}),
   }
@@ -128,6 +130,7 @@ export async function resolveJapanTransitFallback(input: {
       mode: 'transit',
       estimated: true,
       provider: 'estimate',
+      source: 'japan-fallback',
       durationMin,
       distanceKm,
       transfers: null,
@@ -141,6 +144,7 @@ export async function resolveJapanTransitFallback(input: {
         transfers: null,
         provider: 'estimate',
         estimated: true,
+        source: 'japan-fallback',
         note: JAPAN_TRANSIT_ESTIMATE_NOTE,
         mapsUrl,
         fetchedAt: new Date().toISOString(),
@@ -201,6 +205,7 @@ export async function queryTravelBetween(
     transfers: result.transfers,
     walkMin: Math.round(result.walkSeconds / 60),
     provider: 'google',
+    source: 'google',
     fetchedAt: new Date().toISOString(),
     ...(input.departureTimeSec ? { departureEpoch: input.departureTimeSec } : {}),
     ...((result.polyline ?? []).length ? { polyline: result.polyline } : {}),
@@ -216,6 +221,7 @@ export async function queryTravelBetween(
       transfers: result.transfers,
       walkMin: Math.round(result.walkSeconds / 60),
       googleMode: resultMode === 'walk' ? 'walking' : resultMode,
+      source: 'google',
       legs,
       transportPayload,
     },

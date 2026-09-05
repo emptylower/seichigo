@@ -143,4 +143,26 @@ describe('save_plan_days 质量门控（M4）', () => {
     const saved = await repo.getPlan(plan.id)
     expect(saved?.days[0].items.filter((i) => i.type === 'transit')).toHaveLength(1)
   })
+
+  it('第九轮 L1：save 期间长补齐阶段前后各续一次租——renewLease 至少调用 2 次', async () => {
+    const { deps } = await makeDeps()
+    const renewLease = vi.fn(async () => {})
+    const out = JSON.parse(
+      await executePlanTool({ ...deps, renewLease }, 'save_plan_days', {
+        days: [
+          {
+            dayIndex: 1,
+            items: [
+              { type: 'point', pointId: 'p1', title: '宇治桥' },
+              { type: 'point', pointId: 'p2', title: '大吉山' },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(out.ok).toBe(true)
+    // enrichAndNormalizeDays（补齐脚本可能 1–2 分钟）之前与之后各续一次，
+    // 90 秒短租约下长工具不会跑着跑着被误判过期
+    expect(renewLease.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
 })

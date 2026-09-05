@@ -33,7 +33,7 @@ function assistantMessage(partial: Partial<ChatMessage>): ChatMessage {
 }
 
 describe('runPlanAgent telemetry events', () => {
-  it('emits reasoning deltas as reasoning events and keeps content as one final text event', async () => {
+  it('emits reasoning deltas as coalesced reasoning events and keeps content as one final text event', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
 
@@ -56,14 +56,47 @@ describe('runPlanAgent telemetry events', () => {
       (e) => events.push(e),
     )
 
+    // 第九轮 A2：emit 经事件合并器——同一毫秒内到达的两个 reasoning 增量
+    // 未达时间/字数阈值，合并成单条事件（text 事件到来时先 flush 缓冲）
     const reasoningEvents = events.filter((e) => e.type === 'reasoning')
-    expect(reasoningEvents).toEqual([
-      { type: 'reasoning', delta: '思考A' },
-      { type: 'reasoning', delta: '思考B' },
-    ])
+    expect(reasoningEvents).toEqual([{ type: 'reasoning', delta: '思考A思考B' }])
     // content 增量不转发，仍由完整 text 事件承载
     const textEvents = events.filter((e) => e.type === 'text')
     expect(textEvents).toEqual([{ type: 'text', text: '安排好了！去宇治桥。' }])
+    // 顺序保真：reasoning 在 text 之前
+    expect(events.findIndex((e) => e.type === 'reasoning')).toBeLessThan(events.findIndex((e) => e.type === 'text'))
+    expect(events[events.length - 1].type).toBe('done')
+  })
+
+  it('第九轮 A2：大量 reasoning 增量被合并——事件总数远小于增量数且内容完整', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    // 100 个 3 字符增量（300 字符）同步到达：字数阈值（160）触发一次合并，
+    // 其余缓冲在 text/done 前被强制刷出——而不是 100 条逐 token 事件
+    const total = Array.from({ length: 100 }, (_, i) => String(i).padStart(3, '0'))
+    const createMessage = vi.fn(
+      async (
+        _params: { messages: unknown[]; tools: unknown[] },
+        onDelta?: (d: { reasoning?: string }) => void,
+      ) => {
+        for (const delta of total) onDelta?.({ reasoning: delta })
+        return assistantMessage({ content: '安排好了。' })
+      },
+    )
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder } },
+      'hi',
+      (e) => events.push(e),
+    )
+
+    const reasoningEvents = events.filter((e) => e.type === 'reasoning')
+    expect(reasoningEvents.length).toBeLessThanOrEqual(2)
+    expect((reasoningEvents as Array<{ delta: string }>).map((e) => e.delta).join('')).toBe(total.join(''))
+    // 整个 run 的事件总数（reasoning 合并 + text + done）远小于增量数
+    expect(events.length).toBeLessThan(10)
     expect(events[events.length - 1].type).toBe('done')
   })
 

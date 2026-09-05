@@ -126,6 +126,46 @@ export type TripPlanRunLogRecord = TripPlanRunLogEntry & {
   createdAt: Date
 }
 
+/** §0.1 契约：运行实况行（plan GET 在 agentBusy 时附带；reasoning 已截尾） */
+export type TripPlanRunLiveRecord = {
+  planId: string
+  runToken: string
+  reasoning: string
+  statusText: string | null
+  toolCalls: Prisma.JsonValue | null
+  updatedAt: Date
+}
+
+/**
+ * upsertRunLive 的写入语义：
+ * - 行不存在或行上 runToken 与本次不同 → 视为新 run 接管，整行重置；
+ * - runToken 相同 → reasoningAppend 追加 / reasoningReplace 整体替换，
+ *   statusText/toolCalls 传入时覆盖（undefined = 保持原值）；
+ * - reasoning 超过 RUN_LIVE_REASONING_MAX 字符时截头保尾。
+ */
+export type TripPlanRunLivePatch = {
+  runToken: string
+  reasoningAppend?: string
+  reasoningReplace?: string
+  statusText?: string | null
+  toolCalls?: Prisma.JsonValue | null
+}
+
+/** 运行实况 reasoning 的持久化上限（超出保留末尾） */
+export const RUN_LIVE_REASONING_MAX = 20_000
+
+/**
+ * 用户停止的实况行标记（stopAgentRun 写入 TripPlanRunLive.statusText；同
+ * run 的后续实况 flush 不覆盖）。常量归属仓储层（第十一轮修复 L5）：repo/
+ * repoMemory/repoPrisma 与 planAgent/stop.ts 共用，agent 层从这里 re-export。
+ */
+export const RUN_STOP_MARKER = '__stop_requested__'
+
+/** reasoning 截尾：超出上限时保留末尾（最新的思考在后） */
+export function clampRunLiveReasoning(text: string): string {
+  return text.length > RUN_LIVE_REASONING_MAX ? text.slice(text.length - RUN_LIVE_REASONING_MAX) : text
+}
+
 export interface TripPlanRepo {
   createPlan(input: { userId: string; title: string }): Promise<TripPlan>
   listPlans(userId: string): Promise<TripPlan[]>
@@ -141,11 +181,13 @@ export interface TripPlanRepo {
    * 必须是同一个原子操作。拆开任意两步都会被并发请求穿过——配额分离会
    * 无限烧模型额度，互斥分离会让两个循环交错写同一份对话历史。
    * busy 位带 TTL（busyTtlMs），进程崩溃未清锁时到期自动可接管。
+   * content 传 null（第八轮 resume 回合）时只抢 busy 位不追加 human 消息；
+   * 配额检查仍按已落库 human 数计算。
    */
   beginAgentRun(input: {
     planId: string
     userId: string
-    content: Prisma.JsonValue
+    content: Prisma.JsonValue | null
     since: Date
     limit: number
     busyTtlMs: number
@@ -158,6 +200,27 @@ export interface TripPlanRepo {
    * 是别人的）。token 不匹配时静默跳过，不影响当前持有者。
    */
   endAgentRun(planId: string, token: string): Promise<void>
+  /**
+   * 第八轮 F3：run 存活期间续租 busy 位——token 仍是当前持有者时把
+   * agentBusyUntil 推迟到 now + ttlMs；已被接管（token 不匹配）时是空操作，
+   * 绝不动新持有者的锁。route 在每次模型调用前调用，配合缩短到 3 分钟的
+   * TTL：活着的 run 靠不断续租保住持有权（单次慢推理可超过 TTL），硬杀的
+   * run 最长 3 分钟自动释放。返回是否续租成功。
+   */
+  renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean>
+  /**
+   * 第十一轮 A3（§0）：用户显式停止正在运行的 run。条件清空 busy/token
+   * （仍是当前持有者才动），并在 TripPlanRunLive 行写停止标记
+   * statusText='__stop_requested__'（跨隔离体可见：运行中的租约看守与循环
+   * 收尾据此区分"用户停止"与"被新请求接管"；同 run 的后续实况 flush 不
+   * 覆盖标记，新 run 接管时随行重置）。返回是否真的停掉了 run。
+   */
+  stopAgentRun(planId: string): Promise<boolean>
+  /**
+   * 第十一轮 A3：该 run 的 token 已不再是当前持有者（用户停止已清空，或已
+    * 被新请求接管）→ true。模型流式期的租约看守定期轮询（默认 3 秒）。
+   */
+  isAgentRunStopped(planId: string, token: string): Promise<boolean>
   /**
    * 与 appendMessage 语义相同，但 token 校验与写入在同一个原子操作内完成
    * （Prisma 实现用 `SELECT ... FOR UPDATE` 锁住该计划行再校验再写），不留
@@ -220,11 +283,17 @@ export interface TripPlanRepo {
   appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord>
   /** M4 运行日志读取：按时间升序（回归分析/后续思维链持久化复用） */
   listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]>
+  /** 运行实况写入（第七轮 A1）：每计划一行，由当前 run 的 writer 覆盖；语义见 TripPlanRunLivePatch */
+  upsertRunLive(planId: string, patch: TripPlanRunLivePatch): Promise<TripPlanRunLiveRecord>
+  /** 运行实况读取：无行返回 null（plan GET 据此组装 live 字段） */
+  getRunLive(planId: string): Promise<TripPlanRunLiveRecord | null>
+  /** 运行实况清除：run 结束（writer.finish）时删除行 */
+  clearRunLive(planId: string): Promise<void>
 }
 
 export type ReplaceDaysWithDaymapResult = { plan: TripPlanWithDays; message: TripPlanMessage }
 
 export type BeginAgentRunResult =
-  | { status: 'ok'; message: TripPlanMessage; token: string }
+  | { status: 'ok'; message: TripPlanMessage | null; token: string }
   | { status: 'quota_exceeded' }
   | { status: 'busy' }

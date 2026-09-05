@@ -19,6 +19,11 @@ import {
 } from './protocolGuard'
 import { EMPTY_TURN_ERROR_MESSAGE, EMPTY_TURN_RETRY_INSTRUCTION } from './emptyTurn'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
+import { createRunLiveWriter, type RunLiveWriter } from './runLive'
+import { createEventCoalescer } from './eventCoalescer'
+import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
+import { describePlanAgentModel } from './api'
+import { sanitizeHistoryForModel } from './historySanitize'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -26,6 +31,14 @@ export type PlanAgentEvent =
   | { type: 'plan_updated' }
   | { type: 'done' }
   | { type: 'error'; message: string }
+  /** 第十一轮 A3（§0）：用户显式停止——随后紧跟 done；不落库 */
+  | { type: 'stopped' }
+  /**
+   * 第十一轮 A3（§0）：每回合第一次模型调用结束后的模型信息（仅 SSE，不落库）。
+   * reasoning=false 表示该次调用没收到任何思考增量——前端据此提示"当前模型
+   * 不公开思考过程，仅显示工具进度"。
+   */
+  | { type: 'model_info'; providerName: string; model: string; reasoning: boolean }
   /** 瞬时遥测：当前工具在做什么的中文短语（仅 SSE，不落库） */
   | { type: 'status'; phase: string }
   /** 瞬时遥测：单个工具调用的开始/结束帧（仅 SSE，不落库） */
@@ -60,6 +73,8 @@ export type CreateMessageFn = (
   params: {
     messages: ChatMessageParam[]
     tools: OpenAI.Chat.Completions.ChatCompletionTool[]
+    /** 第十一轮 A3：租约看守触发停止时 abort（createChatCompletion 一路传到 HTTP 层） */
+    signal?: AbortSignal
   },
   onDelta?: (delta: { reasoning?: string; content?: string }) => void,
 ) => Promise<PlanAgentChatMessage>
@@ -86,6 +101,25 @@ export type PlanAgentDeps = {
    * （route 侧装配）；缺省时用 void promise 浮动执行。
    */
   runInBackground?: (task: () => Promise<unknown>) => void
+  /**
+   * 第八轮 A3：resume 回合的中断说明。拼进本回合 [系统状态] 前缀（仅在
+   * 发给模型的内存 messages 上，不落库）——模型基于已保存进度继续而不
+   * 重复已完成的工具调用。
+   */
+  resumeNote?: string
+  /**
+   * 第九轮 L1：忙碌租约续租（route 注入，封装 renewAgentRun；被接管时抛
+   * RunFencedError，按现有栅栏语义静默结束本 run）。循环在每次模型调用前
+   * 与每次工具执行前续租，并透传给 save_plan_days 这类长工具在内部续租；
+   * 不传（内部测试等不涉及并发的调用方）不续租。
+   */
+  renewLease?: () => Promise<void>
+  /**
+   * 第十一轮 A3：停止检查（route 注入 isAgentRunStopped 封装）。模型流式
+   * 期间租约看守定期轮询（默认 3 秒，L7），发现 token 已不匹配就 abort 模型请求；
+   * 不传（内部测试等）时流式期不检测停止（renewLease 的栅栏语义仍生效）。
+   */
+  isStopped?: () => Promise<boolean>
 }
 
 /**
@@ -131,8 +165,28 @@ function withFencing(repo: TripPlanRepo, token: string): TripPlanRepo {
 
 const DEFAULT_MAX_ITERATIONS = 12
 
+/** M1：writer 收尾最多阻塞 run 这么久（库慢时 SSE 也要按时收束） */
+const RUN_LIVE_FINISH_TIMEOUT_MS = 2_000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function isChatMessage(value: Prisma.JsonValue): value is Prisma.JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && 'role' in value
+}
+
+/**
+ * 第八轮 A1：是否客户端断开（刷新/断网）导致的中止——route 用
+ * `DOMException('client_disconnected', 'AbortError')` 作为 abort reason，
+ * 与服务端主动结束（无 reason）区分开。
+ */
+function isClientDisconnected(signal: AbortSignal | undefined): boolean {
+  if (!signal?.aborted) return false
+  const reason: unknown = signal.reason
+  return (
+    typeof reason === 'object' && reason !== null && (reason as { message?: unknown }).message === 'client_disconnected'
+  )
 }
 
 /**
@@ -201,7 +255,9 @@ export async function runPlanAgent(
 
   // system 消息恒为原始提示词（保住前缀缓存）；阶段上下文拼进内存中最新
   // human 消息的内容前部（N5，见下方 stageContext 分支——只在内存，不落库、
-  // 不进 sanitizeChatHistory 的输入——它只处理持久化历史）
+  // 不进 sanitizeChatHistory 的输入——它只处理持久化历史）。第八轮 A3：
+  // resume 回合的中断说明并进同一份 [系统状态]（同样只在内存）
+  const statusContext = [stageContext, deps.resumeNote].filter(Boolean).join('\n')
   const messages: ChatMessageParam[] = [
     {
       role: 'system',
@@ -214,12 +270,12 @@ export async function runPlanAgent(
         .map((m) => m as unknown as ChatMessageParam),
     ),
   ]
-  if (stageContext) {
+  if (statusContext) {
     // N5：不再单独插入 [系统状态] user 消息（避免连续 user 消息），改为把
     // 阶段上下文拼进内存中最新 human 消息的内容前部；落库行仍是纯用户原文
     // （appendMessage 写的是 userParam，此改写只发生在发给模型的 messages
     // 数组上；sanitizeChatHistory 的输入是持久化历史，不受影响）
-    const prefix = `[系统状态]\n${stageContext}\n\n[用户消息]\n`
+    const prefix = `[系统状态]\n${statusContext}\n\n[用户消息]\n`
     let lastUserIndex = -1
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
@@ -233,7 +289,7 @@ export async function runPlanAgent(
         messages[lastUserIndex] = { ...target, content: `${prefix}${target.content}` }
       }
     } else {
-      messages.push({ role: 'user', content: `[系统状态]\n${stageContext}` })
+      messages.push({ role: 'user', content: `[系统状态]\n${statusContext}` })
     }
   }
 
@@ -248,19 +304,42 @@ export async function runPlanAgent(
   // 直接用裸 repo
   const runRepo = deps.runToken ? withFencing(deps.repo, deps.runToken) : deps.repo
 
+  // 第七轮 A1：运行实况旁路写库（刷新恢复用）。只在持有 runToken 时启用；
+  // emit 把事件同时发给 SSE 与 writer（节流落库），不改变既有事件行为
+  const runLiveWriter: RunLiveWriter | null = deps.runToken
+    ? createRunLiveWriter({ repo: deps.repo, planId: deps.planId, runToken: deps.runToken })
+    : null
+  // 第九轮 A4：事件计数素材——run 结束打一条 summary 日志；被平台硬杀时
+  // 这条不会出现（finally 都跑不到），可作为日志侧证据
+  let emittedEvents = 0
+  let reasoningChars = 0
+  const forwardEvent = (event: PlanAgentEvent) => {
+    emittedEvents += 1
+    if (event.type === 'reasoning') reasoningChars += event.delta.length
+    onEvent(event)
+    runLiveWriter?.onEvent(event)
+  }
+  // 第九轮 A2：emit 经事件合并器——reasoning/text 增量按时间/字数阈值合并
+  // 成单条事件再下发（SSE 与实况 writer 都在合并器之后接收）；每 token 一条
+  // SSE 事件是长 run 的 CPU 大头。done/error 前强制 flush 保证内容完整
+  const eventCoalescer = createEventCoalescer(forwardEvent)
+  const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
+
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
+    // 第九轮 L1：租约续租透传给工具——save_plan_days 在长补齐前后各续一次
+    renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
     // directions/places 配额，避免每次 save 重置预算重烧 Google 调用
     enrichBudget: deps.toolDeps.enrichBudget ?? createEnrichBudget(),
     onPlanUpdated: () => {
       deps.toolDeps.onPlanUpdated?.()
-      onEvent({ type: 'plan_updated' })
+      emit({ type: 'plan_updated' })
     },
     onDaymapSaved: (daymap) => {
       deps.toolDeps.onDaymapSaved?.(daymap)
-      onEvent(daymap)
+      emit(daymap)
     },
     // save_plan_days 的门控评估结果回传（通过与拒绝都回调），run 结束写运行日志
     onSaveEvaluated: (evaluation) => {
@@ -272,6 +351,44 @@ export async function runPlanAgent(
   // 被新请求接管（RunFencedError）的 run 不写运行日志：它对这份计划已失去
   // 写权，接管的 run 会写下自己的日志，两条并存会污染 turn 统计
   let fenced = false
+  // 第八轮 A1：客户端断开（刷新/断网）中止的 run——写 stage=interrupted
+  // 日志、清实况行、不再向已关闭的 SSE 发 done（落库照常）
+  let interrupted = false
+  // 第十一轮 A3：用户显式停止的 run——SSE 发 stopped+done、日志 stage=stopped、
+  // 实况行清空、不派发补齐续跑（§0：停止后不自动续跑，手动 resume 仍允许）
+  let stopped = false
+  // §0 model_info：每回合只在第一次模型调用结束后发一次
+  let modelInfoEmitted = false
+  let reasoningSeen = false
+  // 停止证据检查（§0 + H2）：token 已不匹配的栅栏/abort 是否因"用户停止"而
+  // 起。两份证据任一成立即可：实况行停止标记（loop 收尾前、GET 5 分钟保鲜
+  // 内），或同 token 的持久 stopped 运行日志（stopAgentRun 落笔，不会被
+  // GET 回收——标记行被并发清掉时 loop 仍能正确归类）
+  const stopEvidencePresent = async (): Promise<boolean> => {
+    if (!deps.runToken) return false
+    try {
+      const row = await deps.repo.getRunLive(deps.planId)
+      if (row?.runToken === deps.runToken && row.statusText === RUN_STOP_MARKER) return true
+    } catch {
+      // 读实况失败继续查日志
+    }
+    try {
+      const logs = await deps.repo.listRunLogs(deps.planId)
+      return logs.some((log) => log.stage === 'stopped' && log.runToken === deps.runToken)
+    } catch {
+      return false
+    }
+  }
+  // H2：stopAgentRun 是否已为本次停止写过持久日志（loop 收尾据此去重）
+  const stoppedLogExists = async (): Promise<boolean> => {
+    if (!deps.runToken) return false
+    try {
+      const logs = await deps.repo.listRunLogs(deps.planId)
+      return logs.some((log) => log.stage === 'stopped' && log.runToken === deps.runToken)
+    } catch {
+      return false
+    }
+  }
   try {
     // 强制 ask_user 协议守卫（M3 修订）：只要本轮响应里没有 ask_user 调用，
     // 正文又像"向用户提问"（含"解释文字 + 其它工具调用"的组合），整条响应
@@ -281,16 +398,49 @@ export async function runPlanAgent(
     let questionGuardRetried = false
     let emptyTurnRetried = false
     outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
-      if (deps.signal?.aborted) break
+      if (deps.signal?.aborted) {
+        interrupted = isClientDisconnected(deps.signal)
+        break
+      }
       // 通用防线：无论哪条路径在内存消息里留下悬空 tool_calls（守卫扣下、
       // 信号中止、栅栏错误……），都在发给模型前补齐占位回执，绝不产出
       // "assistant 带 tool_calls 但无 tool 回执"的非法序列（DeepSeek 400）
       assertNoOrphanToolCalls(messages)
       // reasoning 增量逐帧透传给 SSE（content 增量不转发：最终答案等本轮结束后
       // 仍走下面那个完整 text 事件，这是"思考过程流式、答案整段"的产品取舍）
-      const response = await deps.createMessage({ messages, tools: PLAN_AGENT_TOOLS }, (delta) => {
-        if (delta.reasoning) onEvent({ type: 'reasoning', delta: delta.reasoning })
-      })
+      // 第九轮 L1：模型调用前续租（职责自 route 的 createMessageWithLease 移入
+      // 循环，配合 90 秒短租约——单次慢推理不会被误判过期；被接管则抛
+      // RunFencedError 静默收尾）
+      await deps.renewLease?.()
+      // 第十一轮 A3 + L7：模型流式期间由租约看守定期轮询停止状态（默认 3
+      // 秒），发现被停止就 abort 模型请求（user_stopped）——流式可能持续
+      // 几十秒，栅栏只在调用间隙生效，看守保证停止在数秒内传导到在途请求
+      const modelAbort = new AbortController()
+      const watcher = deps.isStopped ? createLeaseWatcher({ check: deps.isStopped }) : null
+      watcher?.start(modelAbort)
+      let response: PlanAgentChatMessage
+      try {
+      // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
+      response = await deps.createMessage(
+        { messages: sanitizeHistoryForModel(messages), tools: PLAN_AGENT_TOOLS, signal: modelAbort.signal },
+          (delta) => {
+            if (delta.reasoning) {
+              reasoningSeen = true
+              emit({ type: 'reasoning', delta: delta.reasoning })
+            }
+          },
+        )
+      } finally {
+        watcher?.stop()
+      }
+
+      // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
+      // 是否收到过任何思考增量；不落库，前端据此提示"不公开思考过程"）
+      if (!modelInfoEmitted) {
+        modelInfoEmitted = true
+        const info = describePlanAgentModel(response)
+        emit({ type: 'model_info', providerName: info.providerName, model: info.model, reasoning: reasoningSeen })
+      }
 
       // DeepSeek 推理模型响应带 reasoning_content，回传历史与落库前只保留协议字段
       const assistantParam = {
@@ -316,7 +466,7 @@ export async function runPlanAgent(
           messages.push({ role: 'user', content: PROTOCOL_RETRY_INSTRUCTION })
           continue
         }
-        onEvent({ type: 'error', message: PROTOCOL_ERROR_MESSAGE })
+        emit({ type: 'error', message: PROTOCOL_ERROR_MESSAGE })
         break
       }
 
@@ -330,16 +480,16 @@ export async function runPlanAgent(
       if (isEmptyTurn) {
         if (!emptyTurnRetried) {
           emptyTurnRetried = true
-          onEvent({ type: 'status', phase: '模型上一轮没有产出内容，正在让它精简思考重试' })
+          emit({ type: 'status', phase: '模型上一轮没有产出内容，正在让它精简思考重试' })
           messages.push({ role: 'user', content: EMPTY_TURN_RETRY_INSTRUCTION })
           continue
         }
-        onEvent({ type: 'error', message: EMPTY_TURN_ERROR_MESSAGE })
+        emit({ type: 'error', message: EMPTY_TURN_ERROR_MESSAGE })
         break
       }
 
       if (typeof response.content === 'string' && response.content) {
-        onEvent({ type: 'text', text: response.content })
+        emit({ type: 'text', text: response.content })
       }
       messages.push(assistantParam as ChatMessageParam)
       await runRepo.appendMessage(deps.planId, 'assistant', assistantParam as unknown as Prisma.JsonValue)
@@ -357,8 +507,8 @@ export async function runPlanAgent(
         }
         const argsSummary = summarizeToolArgs(call.function.name, input)
         // status/tool_call 事件只发 SSE，是瞬时遥测，绝不写进 TripPlanMessage
-        onEvent({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
-        onEvent({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
+        emit({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
+        emit({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
         const startedAt = Date.now()
         let result: string
         try {
@@ -372,6 +522,9 @@ export async function runPlanAgent(
                 '工具调用参数不是合法 JSON（可能被模型输出长度截断）。请重新生成完整、合法的参数；若因内容过长被截断，请精简条目文字后重试，不要原样重发。',
             })
           } else {
+            // 第九轮 L1：工具执行前续租——同轮多次连续工具调用期间租约不会
+            // 到期；被接管（续租被拒）时 RunFencedError 冒泡，按现有语义静默收尾
+            await deps.renewLease?.()
             result = await executePlanTool(toolDeps, call.function.name, input)
           }
         } catch (err) {
@@ -384,7 +537,7 @@ export async function runPlanAgent(
           // role 字段，isChatMessage 过滤后与紧邻的回执仍然相邻），然后发 ask
           // 事件、提前进入与正常结束一致的收尾流程（done 事件 + 外层
           // endAgentRun），不再发起下一次模型调用。
-          onEvent({
+          emit({
             type: 'tool_call',
             id: call.id,
             name: call.function.name,
@@ -404,10 +557,10 @@ export async function runPlanAgent(
               note: '已向用户发起结构化提问，本轮对话结束，等待用户通过下一条消息回答',
             }),
           } as unknown as Prisma.JsonValue)
-          onEvent({ type: 'ask', ...err.payload })
+          emit({ type: 'ask', ...err.payload })
           break outer
         }
-        onEvent({
+        emit({
           type: 'tool_call',
           id: call.id,
           name: call.function.name,
@@ -423,42 +576,74 @@ export async function runPlanAgent(
       }
     }
   } catch (err) {
-    if (err instanceof RunFencedError) {
-      // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话，
-      // 也不写运行日志（见上方 fenced 注释）
-      fenced = true
+    if (err instanceof RunFencedError || isUserStoppedAbort(err)) {
+      // A3（§0）+ H2：栅栏失败或看守 abort 既可能是"用户停止"（stopAgentRun
+      // 清了 token、留下标记行/持久日志），也可能是 busy 过期被新请求接管
+      // （保持既有静默收尾语义）。按停止证据区分归属：证据在 → stopped 收尾；
+      // 否则 fenced
+      if (await stopEvidencePresent()) {
+        stopped = true
+      } else {
+        // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话，
+        // 也不写运行日志（见上方 fenced 注释）
+        fenced = true
+      }
     } else {
       // 瞬时网络错误（workerd "Network connection lost." 等）映射成友好中文，
       // 其余上游错误保留原文案（鉴权/配额等有诊断价值）
-      onEvent({ type: 'error', message: agentErrorMessage(err) })
+      emit({ type: 'error', message: agentErrorMessage(err) })
     }
   } finally {
+    // 第七轮 A1（M1/M2 修订）：实况 writer 收尾。正常结束的 run 强制 flush
+    // 最后一份实况并清除该行（busy 落幕后 GET 不再返回 live）；被接管的
+    // run 既不 flush 也不 clear——旧 token 落笔会覆盖新 run 的实况行，
+    // 残留行由接管 run 覆盖、读侧 runToken 过滤与 GET 的顺手清理兜底。
+    // 第八轮 A1：客户端断开的 run 不 flush（没人再看）但 clear——GET 才能
+    // 区分「在跑」与「被打断」。
+    // M1：finish 最多阻塞 2 秒——库慢时 SSE 的 done 事件不能被拖住，超时
+    // 后收尾继续在后台完成（浮动 promise，失败只 warn）；writer 内部吞错，
+    // 这里的 catch 只是兜底防未处理拒绝。必须先于运行日志写入完成。
+    if (runLiveWriter) {
+      const finishing = runLiveWriter.finish(
+        interrupted || stopped ? { flush: false, clear: true } : { flush: !fenced, clear: !fenced },
+      )
+      await Promise.race([finishing, sleep(RUN_LIVE_FINISH_TIMEOUT_MS)])
+      finishing.catch((err) => console.warn('[planAgent/runLive] 后台收尾失败（不影响对话）', err))
+    }
     // M4 运行日志：run 结束（正常/报错）都写一条；被栅栏接管的 run 不写。
     // 写日志本身绝不能把 run 拖垮，失败只 warn。enrich/gate 取本 run 最后
-    // 一次 save 的评估结果（onSaveEvaluated 捕获），没有 save 过则为 null
+    // 一次 save 的评估结果（onSaveEvaluated 捕获），没有 save 过则为 null。
+    // 第八轮 A1：客户端断开的 run 写 stage=interrupted（其余字段照常），
+    // GET 据此向前端暴露「上次被打断、可自动续跑」
     if (!fenced) {
-      try {
-        await deps.repo.appendRunLog({
-          planId: deps.planId,
-          runToken: deps.runToken ?? null,
-          turnIndex,
-          stage,
-          enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
-          gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
-          toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
-          modelUsage: null,
-          durationMs: Date.now() - runStartedAt,
-        })
-      } catch (err) {
-        console.warn('[planAgent] appendRunLog failed', err)
+      // H2：stopAgentRun 已为本次停止写过持久 stopped 日志时不重复写
+      //（以 runToken 去重），否则该回合会留下两条 stopped 污染 turn 统计
+      const skipRunLog = stopped && (await stoppedLogExists())
+      if (!skipRunLog) {
+        try {
+          await deps.repo.appendRunLog({
+            planId: deps.planId,
+            runToken: deps.runToken ?? null,
+            turnIndex,
+            stage: stopped ? 'stopped' : interrupted ? 'interrupted' : stage,
+            enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
+            gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
+            toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
+            modelUsage: null,
+            durationMs: Date.now() - runStartedAt,
+          })
+        } catch (err) {
+          console.warn('[planAgent] appendRunLog failed', err)
+        }
       }
       // R4 补齐续跑（S3/S10 修订）：只在最后一次保存**通过门控**且仍有
       // 「预算已用完」类 skipped 或 restaurantPending 条目时派发——先只看
       // 评估报告，无需续跑直接跳过，不做 getPlan 往返；门控未过的保存在
       // 上面已被拒绝落库（整改单是模型的活），补齐脚本不该再碰这份计划
+      // A3：用户停止的 run 不派发（§0：停止后不自动续跑）
       try {
         const evaluation = saveEvaluation.current
-        if (evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
+        if (!stopped && evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
           const planAfterRun = await deps.repo.getPlan(deps.planId)
           if (planAfterRun && planNeedsContinuation(evaluation.enrich, planAfterRun.days)) {
             const task = () =>
@@ -487,5 +672,18 @@ export async function runPlanAgent(
     }
   }
 
-  onEvent({ type: 'done' })
+  // 第八轮 A1：客户端断开时 SSE 已关闭，不再发 done（正常/报错收尾照发）
+  // A3（§0）：停止收尾先发 stopped 再发 done
+  if (stopped) emit({ type: 'stopped' })
+  if (!interrupted) emit({ type: 'done' })
+  // 第九轮 A2/A4：收尾合并器（刷出残余缓冲、取消定时器），然后打 run summary
+  eventCoalescer.dispose()
+  console.log('[agent] run summary', {
+    planId: deps.planId,
+    turnIndex,
+    durationMs: Date.now() - runStartedAt,
+    events: emittedEvents,
+    reasoningChars,
+    toolCalls: toolCallSummaries.length,
+  })
 }

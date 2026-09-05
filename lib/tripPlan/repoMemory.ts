@@ -10,10 +10,13 @@ import type {
   TripPlanMetaUpdate,
   TripPlanPointLite,
   TripPlanRepo,
+  TripPlanRunLivePatch,
+  TripPlanRunLiveRecord,
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
   TripPlanWithDays,
 } from './repo'
+import { clampRunLiveReasoning, RUN_STOP_MARKER } from './repo'
 
 type MemoryOptions = {
   points?: Map<string, TripPlanPointLite>
@@ -30,6 +33,7 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   private plans = new Map<string, TripPlanWithDays>()
   private messages: TripPlanMessage[] = []
   private runLogs: TripPlanRunLogRecord[] = []
+  private runLive = new Map<string, TripPlanRunLiveRecord>()
   private agentBusy = new Map<string, { until: Date; token: string }>()
   private points: Map<string, TripPlanPointLite>
   private seq = 0
@@ -181,7 +185,7 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   async beginAgentRun(input: {
     planId: string
     userId: string
-    content: Prisma.JsonValue
+    content: Prisma.JsonValue | null
     since: Date
     limit: number
     busyTtlMs: number
@@ -192,6 +196,8 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     if (existing && existing.until.getTime() > Date.now()) return { status: 'busy' }
     const token = this.nextId('run')
     this.agentBusy.set(input.planId, { until: new Date(Date.now() + input.busyTtlMs), token })
+    // content=null（resume 回合）：不追加 human 消息，历史原样
+    if (input.content === null) return { status: 'ok', message: null, token }
     const message = await this.appendMessage(input.planId, 'human', input.content)
     return { status: 'ok', message, token }
   }
@@ -200,6 +206,40 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     if (this.agentBusy.get(planId)?.token === token) {
       this.agentBusy.delete(planId)
     }
+  }
+
+  /** 第八轮 F3：与 Prisma 的条件 updateMany 同语义——token 匹配才续租 */
+  async renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean> {
+    const entry = this.agentBusy.get(planId)
+    if (!entry || entry.token !== token) return false
+    entry.until = new Date(Date.now() + ttlMs)
+    return true
+  }
+
+  /**
+   * 第十一轮 A3（H2 修订）：与 Prisma 实现同语义——条件清空 + 持久 stopped
+   * 日志 + 实况行停止标记。日志是 inferInterrupted/canResume 真正读的持久
+   * 证据（不会被 GET 顺手清理回收）；loop 收尾以 runToken 去重不重复写。
+   */
+  async stopAgentRun(planId: string): Promise<boolean> {
+    const token = this.agentBusy.get(planId)?.token
+    if (!token) return false
+    this.agentBusy.delete(planId)
+    const logs = this.runLogs.filter((log) => log.planId === planId)
+    const lastTurnIndex = logs.length ? logs[logs.length - 1]!.turnIndex : 0
+    await this.appendRunLog({
+      planId,
+      runToken: token,
+      turnIndex: lastTurnIndex + 1,
+      stage: 'stopped',
+      durationMs: 0,
+    })
+    await this.upsertRunLive(planId, { runToken: token, statusText: RUN_STOP_MARKER })
+    return true
+  }
+
+  async isAgentRunStopped(planId: string, token: string): Promise<boolean> {
+    return this.agentBusy.get(planId)?.token !== token
   }
 
   async isAgentBusy(planId: string): Promise<boolean> {
@@ -226,6 +266,43 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
 
   async listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]> {
     return this.runLogs.filter((log) => log.planId === planId)
+  }
+
+  /** 第七轮 A1：与 Prisma 实现同语义（runToken 不同 = 接管重置；同 token 追加/保留） */
+  async upsertRunLive(planId: string, patch: TripPlanRunLivePatch): Promise<TripPlanRunLiveRecord> {
+    const existing = this.runLive.get(planId)
+    const sameRun = existing !== undefined && existing.runToken === patch.runToken
+    const reasoning = clampRunLiveReasoning(
+      patch.reasoningReplace !== undefined
+        ? patch.reasoningReplace
+        : (sameRun ? existing.reasoning : '') + (patch.reasoningAppend ?? ''),
+    )
+    const record: TripPlanRunLiveRecord = {
+      planId,
+      runToken: patch.runToken,
+      reasoning,
+      // A3：停止标记粘性——同 run 的后续实况 flush 不冲掉 '__stop_requested__'，
+      // 新 run（不同 token）接管时行被整体重置，标记自然消失
+      statusText:
+        sameRun && existing.statusText === RUN_STOP_MARKER && patch.statusText !== RUN_STOP_MARKER
+          ? RUN_STOP_MARKER
+          : sameRun && patch.statusText === undefined
+            ? existing.statusText
+            : patch.statusText ?? null,
+      toolCalls: sameRun && patch.toolCalls === undefined ? existing.toolCalls : patch.toolCalls ?? null,
+      updatedAt: new Date(),
+    }
+    this.runLive.set(planId, record)
+    return { ...record }
+  }
+
+  async getRunLive(planId: string): Promise<TripPlanRunLiveRecord | null> {
+    const record = this.runLive.get(planId)
+    return record ? { ...record } : null
+  }
+
+  async clearRunLive(planId: string): Promise<void> {
+    this.runLive.delete(planId)
   }
 
   private isCurrentHolder(planId: string, token: string): boolean {

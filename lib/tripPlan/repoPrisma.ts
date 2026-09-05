@@ -11,11 +11,14 @@ import type {
   TripPlanMessageKind,
   TripPlanMetaUpdate,
   TripPlanRepo,
+  TripPlanRunLivePatch,
+  TripPlanRunLiveRecord,
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
   TripPlanStatus,
   TripPlanWithDays,
 } from './repo'
+import { clampRunLiveReasoning, RUN_STOP_MARKER } from './repo'
 
 const POINT_SELECT = {
   select: { id: true, name: true, nameZh: true, geoLat: true, geoLng: true, image: true },
@@ -232,7 +235,7 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
   async beginAgentRun(input: {
     planId: string
     userId: string
-    content: Prisma.JsonValue
+    content: Prisma.JsonValue | null
     since: Date
     limit: number
     busyTtlMs: number
@@ -257,6 +260,8 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
         data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs), agentRunToken: token },
       })
       if (claimed.count === 0) return { status: 'busy' }
+      // content=null（第八轮 resume 回合）：不追加 human 消息，历史原样
+      if (input.content === null) return { status: 'ok', token, message: null }
       const row = await tx.tripPlanMessage.create({
         data: { planId: input.planId, kind: 'human', content: input.content as Prisma.InputJsonValue },
       })
@@ -282,6 +287,50 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       where: { id: planId, agentRunToken: token },
       data: { agentBusyUntil: null, agentRunToken: null },
     })
+  }
+
+  async renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean> {
+    // 第八轮 F3：token 不匹配（已被新请求接管）时影响 0 行，不会动新持有者的锁
+    const renewed = await prisma.tripPlan.updateMany({
+      where: { id: planId, agentRunToken: token },
+      data: { agentBusyUntil: new Date(Date.now() + ttlMs) },
+    })
+    return renewed.count > 0
+  }
+
+  async stopAgentRun(planId: string): Promise<boolean> {
+    // A3：条件清空（仍是当前持有者才动），停止标记写进实况行（跨隔离体可见）
+    const plan = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { agentRunToken: true } })
+    const token = plan?.agentRunToken
+    if (!token) return false
+    const cleared = await prisma.tripPlan.updateMany({
+      where: { id: planId, agentRunToken: token },
+      data: { agentBusyUntil: null, agentRunToken: null },
+    })
+    if (cleared.count === 0) return false
+    // H2：立即留下持久证据——运行日志里的 stage='stopped' 是
+    // inferInterrupted/canResume 真正读的东西，GET 的顺手清理收不回它；
+    // loop 收尾以 runToken 去重不重复写。写失败只 warn：停止的核心语义
+    // （清 token）已达成，不能被日志抖动拖垮
+    try {
+      const lastLog = await prisma.tripPlanRunLog.findFirst({
+        where: { planId },
+        orderBy: { createdAt: 'desc' },
+        select: { turnIndex: true },
+      })
+      await prisma.tripPlanRunLog.create({
+        data: { planId, runToken: token, turnIndex: (lastLog?.turnIndex ?? 0) + 1, stage: 'stopped', durationMs: 0 },
+      })
+    } catch (err) {
+      console.warn('[tripPlan/repoPrisma] stopAgentRun 写停止日志失败', err)
+    }
+    await this.upsertRunLive(planId, { runToken: token, statusText: RUN_STOP_MARKER })
+    return true
+  }
+
+  async isAgentRunStopped(planId: string, token: string): Promise<boolean> {
+    const plan = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { agentRunToken: true } })
+    return plan?.agentRunToken !== token
   }
 
   async isAgentBusy(planId: string): Promise<boolean> {
@@ -328,6 +377,65 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       id: row.id,
       createdAt: row.createdAt,
     }))
+  }
+
+  /**
+   * 第七轮 A1 运行实况：先读旧行判断是否同 run（runToken 相同才允许追加/
+   * 保留字段；不同 = 新 run 接管，整行按本次 patch 重置），再原子 upsert。
+   * 并发窗口（接管瞬间新旧 writer 交错）由读侧的 runToken 匹配过滤兜底，
+   * 这里不做行锁——实况是尽力而为的瞬时视图，写失败由 writer warn 吞掉。
+   */
+  async upsertRunLive(planId: string, patch: TripPlanRunLivePatch): Promise<TripPlanRunLiveRecord> {
+    const existing = await prisma.tripPlanRunLive.findUnique({ where: { planId } })
+    const sameRun = existing?.runToken === patch.runToken
+    const reasoning = clampRunLiveReasoning(
+      patch.reasoningReplace !== undefined
+        ? patch.reasoningReplace
+        : (sameRun ? existing?.reasoning ?? '' : '') + (patch.reasoningAppend ?? ''),
+    )
+    const statusText =
+      sameRun && patch.statusText === undefined ? existing?.statusText ?? null : patch.statusText ?? null
+    // A3：停止标记粘性——同 run 的后续实况 flush（reasoning 增量等）不把
+    // '__stop_requested__' 冲掉；新 run（不同 token）接管时行被重置，自然消失
+    const preservedMarker = sameRun && existing?.statusText === RUN_STOP_MARKER && patch.statusText !== RUN_STOP_MARKER
+    const toolCalls = sameRun && patch.toolCalls === undefined ? existing?.toolCalls ?? null : patch.toolCalls ?? null
+    const data = {
+      runToken: patch.runToken,
+      reasoning,
+      statusText: preservedMarker ? RUN_STOP_MARKER : statusText,
+      toolCalls: toolCalls === null ? PrismaRuntime.DbNull : (toolCalls as Prisma.InputJsonValue),
+    }
+    const row = await prisma.tripPlanRunLive.upsert({
+      where: { planId },
+      create: { planId, ...data },
+      update: data,
+    })
+    return {
+      planId: row.planId,
+      runToken: row.runToken,
+      reasoning: row.reasoning,
+      statusText: row.statusText,
+      toolCalls: row.toolCalls,
+      updatedAt: row.updatedAt,
+    }
+  }
+
+  async getRunLive(planId: string): Promise<TripPlanRunLiveRecord | null> {
+    const row = await prisma.tripPlanRunLive.findUnique({ where: { planId } })
+    return row
+      ? {
+          planId: row.planId,
+          runToken: row.runToken,
+          reasoning: row.reasoning,
+          statusText: row.statusText,
+          toolCalls: row.toolCalls,
+          updatedAt: row.updatedAt,
+        }
+      : null
+  }
+
+  async clearRunLive(planId: string): Promise<void> {
+    await prisma.tripPlanRunLive.deleteMany({ where: { planId } })
   }
 
   /**

@@ -3,6 +3,8 @@ import type { Prisma } from '@prisma/client'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 import { resolveLlmForScope, type ResolvedLlm } from '@/lib/llm/registry'
 import { LlmEmptyStreamError, LlmHttpError } from '@/lib/llm/client'
+import { createReasoningExtractor } from '@/lib/llm/reasoningExtract'
+import { isUserStoppedAbort, userStoppedAbort } from './stop'
 import type { CreateMessageFn, PlanAgentChatMessage } from './loop'
 import { isTransientNetworkError } from './netErrors'
 
@@ -55,17 +57,6 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/**
- * DeepSeek 推理模型的非标准扩展字段：流式时挂在 chunk 的 delta 上、非流式时挂在
- * message 上，OpenAI SDK 类型均未声明。收敛到这一个断言点，其余代码只读它。
- */
-type WithReasoningContent = { reasoning_content?: string | null }
-
-function extractReasoningDelta(delta: OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta): string {
-  const value = (delta as WithReasoningContent).reasoning_content
-  return typeof value === 'string' ? value : ''
-}
-
 type AccumulatedToolCall = {
   id: string
   type: 'function'
@@ -77,19 +68,27 @@ async function attemptStreamOnce(
   messages: Parameters<CreateMessageFn>[0]['messages'],
   tools: Parameters<CreateMessageFn>[0]['tools'],
   onDelta?: (delta: { reasoning?: string; content?: string }) => void,
+  signal?: AbortSignal,
 ): Promise<PlanAgentChatMessage> {
-  const stream = await getClient().chat.completions.create({
-    model: MODEL,
-    max_tokens: MAX_OUTPUT_TOKENS,
-    messages,
-    tools,
-    stream: true,
-  })
+  const stream = await getClient().chat.completions.create(
+    {
+      model: MODEL,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      messages,
+      tools,
+      stream: true,
+    },
+    // A3 停止：loop 传入的 signal（租约看守触发停止时 abort）真正传到 SDK
+    signal ? { signal } : undefined,
+  )
 
   let content = ''
   let reasoning = ''
   let finishReason: string | null | undefined
   const toolCalls = new Map<number, AccumulatedToolCall>()
+  // A2：统一思考增量口径（reasoning_content / reasoning / reasoning_details /
+  // content 内嵌 <think> 标签），与 lib/llm/openaiClient.ts 共用同一实现
+  const extractor = createReasoningExtractor()
   // 等价恢复非流式时代的 if (!message) throw 保护：连一个 chunk 都没产出
   // （连接建立后立刻关闭、空响应体等）意味着上游从未真正给出响应，必须报错，
   // 否则会伪装成一条合法的空 assistant 消息被当作正常回合落库。
@@ -105,15 +104,15 @@ async function attemptStreamOnce(
     // 与"预算耗尽"，至少可供日志与后续策略使用）
     if (choice.finish_reason) finishReason = choice.finish_reason
 
-    const reasoningDelta = extractReasoningDelta(delta)
+    const { reasoning: reasoningDelta, content: contentDelta } = extractor.consume(delta ?? {})
     if (reasoningDelta) {
       reasoning += reasoningDelta
       onDelta?.({ reasoning: reasoningDelta })
     }
 
-    if (typeof delta.content === 'string' && delta.content) {
-      content += delta.content
-      onDelta?.({ content: delta.content })
+    if (contentDelta) {
+      content += contentDelta
+      onDelta?.({ content: contentDelta })
     }
 
     for (const part of delta.tool_calls ?? []) {
@@ -135,7 +134,15 @@ async function attemptStreamOnce(
     }
   }
 
+  // M1：流结束但 signal 已 abort（SDK/中转可能把 abort 后的流收尾成正常
+  // 结束）——必须按用户停止抛出，不能把半截流伪装成一次成功调用落库
+  if (signal?.aborted) throw userStoppedAbort()
   if (!sawAnyChunk) throw new EmptyStreamError()
+
+  // 流结束：吐出挂起的"疑似半截 <think> 标签"尾巴（按当前状态归类）
+  const tail = extractor.flush()
+  if (tail.content) content += tail.content
+  if (tail.reasoning) reasoning += tail.reasoning
 
   const rebuiltToolCalls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call)
   // 镜像 DeepSeek 非流式响应里 message 自带 reasoning_content 的形状；loop
@@ -165,7 +172,7 @@ async function attemptStreamOnce(
  * LlmHttpError 429/408/5xx（上游限流/瞬时过载）就地重试本次调用；其余错误
  * （参数/鉴权/4xx）原样抛出，不做无差别重试。
  */
-export const createChatCompletion: CreateMessageFn = async ({ messages, tools }, onDelta) => {
+export const createChatCompletion: CreateMessageFn = async ({ messages, tools, signal }, onDelta) => {
   // 测试可通过 env 把退避压到 1ms（调用时读取，避免模块加载顺序问题）
   const backoffMs = Number(process.env.PLAN_AGENT_STREAM_RETRY_BACKOFF_MS) || 500
   let lastError: unknown
@@ -180,15 +187,22 @@ export const createChatCompletion: CreateMessageFn = async ({ messages, tools },
             messages,
             tools,
             maxTokens: provider.maxOutputTokens,
+            // A3 停止：LlmChatInput.signal 一路传到 HTTP 层（此前未传）
+            ...(signal ? { signal } : {}),
           },
           onDelta,
         )
         lastReturnedMessage = attachProviderUsage(message, providerUsageOf(provider))
         return lastReturnedMessage
       }
-      lastReturnedMessage = await attemptStreamOnce(messages, tools, onDelta)
+      lastReturnedMessage = await attemptStreamOnce(messages, tools, onDelta, signal)
       return lastReturnedMessage
     } catch (err) {
+      // A3 停止：user_stopped abort 是确定性指令，绝不重试
+      if (isUserStoppedAbort(err)) throw err
+      // M1：abort 可能以其它错误形态冒出（SDK 包装的连接错误等）——signal
+      // 已 abort 就按用户停止立即抛出，不再消耗重试预算
+      if (signal?.aborted) throw userStoppedAbort()
       lastError = err
       if (!isRetryableStreamError(err)) throw err
     }
@@ -250,6 +264,18 @@ let lastReturnedMessage: PlanAgentChatMessage | null = null
 
 function providerUsageOfMessage(message: PlanAgentChatMessage | null): PlanAgentModelUsage | null {
   return (message as WithProviderUsage | null)?.provider ?? null
+}
+
+/**
+ * 第十一轮 A3（§0）：本次模型调用的展示信息（model_info 事件用）。接管供应
+ * 商时读返回消息上附着的 provider（非枚举字段）；env 路径（PLAN_AGENT_*）
+ * 没有供应商信息，回退为 providerName='默认模型'（L3：'env' 是内部路径名，
+ * 不该出现在面向用户的提示里）+ 环境变量模型名。
+ */
+export function describePlanAgentModel(message: PlanAgentChatMessage | null): { providerName: string; model: string } {
+  const usage = providerUsageOfMessage(message)
+  if (usage) return { providerName: usage.providerName, model: usage.model }
+  return { providerName: '默认模型', model: MODEL }
 }
 
 /**
