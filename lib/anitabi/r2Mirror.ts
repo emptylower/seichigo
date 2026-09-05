@@ -22,6 +22,7 @@ export type R2MirrorCustomMetadata = {
 type R2ObjectMetadata = {
   customMetadata?: R2MirrorCustomMetadata
   httpMetadata?: { contentType?: string }
+  httpEtag?: string
   size?: number
 }
 
@@ -143,6 +144,7 @@ export async function getMirroredImage(
   bytes: ArrayBuffer
   customMetadata: R2MirrorCustomMetadata
   httpContentType?: string
+  httpEtag?: string
   size?: number
 } | null> {
   const candidates = await resolveMirrorKeys(rawUrl, mimeType)
@@ -163,6 +165,7 @@ export async function getMirroredImage(
           contentLength: object.size ? String(object.size) : '',
         },
         httpContentType: object.httpMetadata?.contentType,
+        httpEtag: object.httpEtag,
         size: object.size,
       }
     } catch {

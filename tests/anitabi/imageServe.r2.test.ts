@@ -225,7 +225,7 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('image/webp')
-    expect(response.headers.get('Cache-Control')).toBe('public, s-maxage=86400, stale-while-revalidate=604800')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800')
     expect(response.headers.get('Content-Disposition')).toBe('inline')
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
     expect(response.headers.get('X-Seichigo-Image-Source')).toBe('r2-primary')
@@ -464,7 +464,7 @@ describe('serveImageRequest R2 primary read', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('image/webp')
-    expect(response.headers.get('Cache-Control')).toBe('public, s-maxage=86400, stale-while-revalidate=604800')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800')
     expect(response.headers.get('Content-Disposition')).toBe('inline')
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
     expect(response.headers.get('X-Seichigo-Image-Source')).toBe('r2-fallback')

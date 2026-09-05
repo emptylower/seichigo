@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server'
 import { lookup } from 'node:dns/promises'
 import net from 'node:net'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
+import { RENDER_CACHE_CONTROL, buildNotModifiedResponse, matchesIfNoneMatch } from '@/lib/anitabi/handlers/imageServeCache'
 import { buildContentDisposition, buildDownloadFilename } from '@/lib/anitabi/handlers/imageServeDownload'
 import {
   matchRenderCache,
   normalizeUrlHostname,
   resolveRenderCacheDiagnosticSource,
   storeRenderCache,
+  storeRenderCacheUnlessNotModified,
 } from '@/lib/anitabi/handlers/imageServeRenderCache'
 import { resolveProxyTargetUrl } from '@/lib/anitabi/handlers/imageServeTarget'
 import { getMirroredImage, putMirroredImage, type R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
@@ -19,7 +21,6 @@ const POINT_RENDER_FETCH_TIMEOUT_MS = 8_500
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const EXTRA_ALLOWED_IMAGE_HOSTS = ['anitabi.cn', 'bgm.tv']
-const RENDER_CACHE_CONTROL = 'public, s-maxage=86400, stale-while-revalidate=604800'
 const RENDER_UPSTREAM_CACHE_TTL_SECONDS = 86400
 type ImageRouteMode = 'download' | 'render'
 type MirroredImage = NonNullable<Awaited<ReturnType<typeof getMirroredImage>>>
@@ -489,13 +490,16 @@ async function buildDownloadResponse(input: {
 async function loadMirroredRenderResponse(
   bucket: R2MirrorBucket,
   rawUrl: string,
-  source: 'r2-primary' | 'r2-fallback',
-): Promise<{ mirrored: MirroredImage; response: Response } | null> {
+  source: 'r2-primary' | 'r2-fallback', ifNoneMatch: string | null,
+): Promise<{ mirrored: MirroredImage; response: Response; notModified: boolean } | null> {
   const mirrored = await getMirroredImage(bucket, rawUrl).catch(() => null)
   if (!mirrored) return null
 
   const mirroredSize = mirrored.size ?? mirrored.bytes.byteLength
   if (mirroredSize > MAX_IMAGE_BYTES) return null
+
+  const etag = mirrored.httpEtag
+  if (etag && matchesIfNoneMatch(ifNoneMatch, etag)) return { mirrored, response: buildNotModifiedResponse(etag), notModified: true }
 
   const headers = new Headers({
     'Content-Type': mirrored.httpContentType || mirrored.customMetadata.mimeType || 'image/jpeg',
@@ -505,17 +509,13 @@ async function loadMirroredRenderResponse(
     'X-Seichigo-Image-Source': source,
     'X-Original-Source': mirrored.customMetadata.originalUrl || rawUrl,
   })
-  if (mirroredSize >= 0) {
-    headers.set('Content-Length', String(mirroredSize))
-  }
+  if (mirroredSize >= 0) headers.set('Content-Length', String(mirroredSize))
+  if (etag) headers.set('ETag', etag)
   if (mirrored.customMetadata.mirroredAt) {
     headers.set('X-Seichigo-Image-Mirrored-At', mirrored.customMetadata.mirroredAt)
   }
 
-  return {
-    mirrored,
-    response: new Response(mirrored.bytes, { status: 200, headers }),
-  }
+  return { mirrored, response: new Response(mirrored.bytes, { status: 200, headers }), notModified: false }
 }
 
 export async function serveImageRequest(
@@ -545,7 +545,7 @@ export async function serveImageRequest(
     return NextResponse.redirect(canonicalUrl, { status: 307 })
   }
   if (mode === 'render') {
-    const cached = await matchRenderCache(requestUrl)
+    const cached = await matchRenderCache(requestUrl, req.headers.get('if-none-match'))
     if (cached) {
       emitProxyEvent({
         stage: 'proxy_cache_state',
@@ -613,7 +613,7 @@ export async function serveImageRequest(
     return withR2Debug(blocked)
   }
   if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
-    const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary')
+    const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-primary', req.headers.get('if-none-match'))
     if (mirrored) {
       emitImageCacheState({
         outcome: 'cache_hit_r2_primary',
@@ -621,7 +621,7 @@ export async function serveImageRequest(
         targetHostBucket: normalizeHost(target.hostname),
         evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
       })
-      return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
+      return storeRenderCacheUnlessNotModified({ requestUrl, response: withR2Debug(mirrored.response, true), notModified: mirrored.notModified })
     }
   }
   if (mode === 'render') {
@@ -665,7 +665,7 @@ export async function serveImageRequest(
         } else {
           const upstreamFailureOutcome = fetched.response.status === 504 ? 'timeout' : 'network_error'
           if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
-            const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+            const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback', req.headers.get('if-none-match'))
             if (mirrored) {
               emitProxyEvent({
                 stage: 'proxy_fetch_terminal',
@@ -680,7 +680,7 @@ export async function serveImageRequest(
                 targetHostBucket,
                 evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key },
               })
-              return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
+              return storeRenderCacheUnlessNotModified({ requestUrl, response: withR2Debug(mirrored.response, true), notModified: mirrored.notModified })
             }
           }
           emitProxyEvent({
@@ -773,7 +773,7 @@ export async function serveImageRequest(
       if (mode === 'render') {
         const targetHostBucketForFailure = fetched.ok ? normalizeHost(fetched.finalUrl.hostname) : normalizeHost(target.hostname)
         if (renderR2ReadEnabled && deps.env?.MAP_IMAGE_CACHE) {
-          const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback')
+          const mirrored = await loadMirroredRenderResponse(deps.env.MAP_IMAGE_CACHE, target.toString(), 'r2-fallback', req.headers.get('if-none-match'))
           if (mirrored) {
             emitProxyEvent({
               stage: 'proxy_stream_terminal',
@@ -792,7 +792,7 @@ export async function serveImageRequest(
               targetHostBucket: targetHostBucketForFailure,
               evidence: { mirrorSource: mirrored.mirrored.customMetadata.mirrorSource, r2Key: mirrored.mirrored.key, recoveredFrom: 'response_too_large' },
             })
-            return await storeRenderCache(requestUrl, withR2Debug(mirrored.response, true))
+            return storeRenderCacheUnlessNotModified({ requestUrl, response: withR2Debug(mirrored.response, true), notModified: mirrored.notModified })
           }
         }
         emitProxyEvent({
