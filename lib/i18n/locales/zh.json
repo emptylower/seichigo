@@ -205,6 +205,47 @@
   },
   "pages": {
     "home": {
+      "v2": {
+        "heroTitle": "动漫圣地巡礼行程，AI 规划师帮你排好",
+        "heroSubtitle": "全球 {points}+ 巡礼点位地图 · 说出作品和假期，规划师排好每天的路线、交通与餐厅 · 人写的巡礼攻略",
+        "heroBrandLine": "SeichiGo 圣地GO · 动漫圣地巡礼",
+        "heroDemoLabel": "规划师工作演示",
+        "heroDemoStep1": "搜索作品",
+        "heroDemoStep2": "查点位",
+        "heroDemoStep3": "排 Day 1",
+        "heroDemoStep4": "查交通",
+        "heroDemoDayBadge": "Day 1",
+        "heroDemoTransit": "步行 12 分钟",
+        "heroWorksLabel": "已收录的作品",
+        "composerPlaceholder": "例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》",
+        "composerSubmit": "开始规划",
+        "composerExample1": "圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》",
+        "composerExample2": "五一去京都奈良 5 天，巡礼《吹响吧！上低音号》",
+        "composerExample3": "周末两天在镰仓，巡礼《灌篮高手》",
+        "entryPlanTitle": "AI 行程规划",
+        "entryPlanDesc": "说出作品和假期，规划师排好每天的路线与交通",
+        "entryMapTitle": "地图探索",
+        "entryMapDesc": "在全球地图上找到作品的取景地",
+        "entryGuidesTitle": "巡礼攻略",
+        "entryGuidesDesc": "读一遍别人走过的路线再出发",
+        "statPoints": "个巡礼点位",
+        "statWorks": "部作品",
+        "statCities": "座城市",
+        "statPosts": "篇攻略",
+        "showcaseTitle": "看看规划师做出来的行程",
+        "showcaseSubtitle": "真实生成的行程，可以逐天翻看。",
+        "showcaseCta": "用规划师做一份我的",
+        "mapTeaserTitle": "全球 {count} 个巡礼点位",
+        "mapTeaserSubtitle": "点开地图看每一个点",
+        "mapTeaserCta": "打开地图",
+        "guidesTitle": "巡礼攻略",
+        "guidesViewAll": "全部攻略",
+        "browseTitle": "按作品和城市浏览",
+        "browseAnimeTitle": "热门作品",
+        "browseAnimeMore": "全部作品",
+        "browseCityTitle": "热门城市",
+        "browseCityMore": "全部城市"
+      },
       "heroTitle": "出发，",
       "heroTitleLine2": "去见证那个风景。",
       "heroSubtitle": "用好读的长文、精致排版和实用的地点列表，",
@@ -265,6 +306,15 @@
       "faqQ5": "如果发现坐标或信息有误，怎么反馈？",
       "faqA5": "可以通过页脚联系方式反馈问题，尽量附上作品名、城市和错误点位，我们会更快复核并修正。"
     },
+    "planStart": {
+      "title": "开始规划",
+      "backHome": "回到网站",
+      "greeting": "告诉我你看过的作品、想去的城市和有几天假，我来排一份能直接导航的巡礼行程。",
+      "placeholder": "例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》",
+      "send": "发送",
+      "errorCreate": "创建失败，请稍后再试",
+      "errorNetwork": "网络错误，请稍后再试"
+    },
     "about": {
       "heroTitle": "连接",
       "heroTitleDimension": "次元",
@@ -290,6 +340,11 @@
       "contactTitle": "联系我们",
       "contactDescription": "无论是发现数据错误、投稿你的巡礼故事，还是有商务合作意向，我们都非常期待听到你的声音。"
     },
+    "posts": {
+      "title": "巡礼攻略",
+      "subtitle": "已发布的圣地巡礼路线与攻略全集，按发布时间从新到旧排列。",
+      "empty": "还没有已发布的攻略，先去地图或规划师那边逛逛吧。"
+    },
     "components": {
       "featuredPost": {
         "featuredBadge": "本周精选",
@@ -299,6 +354,18 @@
       "bookShelf": {
         "emptyState": "暂无文章内容，先用投稿把书架填满吧。"
       }
+    }
+  },
+  "auth": {
+    "modal": {
+      "title": "登录后开始规划",
+      "subtitle": "用邮箱验证码登录，输入的内容不会丢。",
+      "close": "关闭",
+      "email": "邮箱",
+      "code": "验证码",
+      "codePlaceholder": "6 位验证码",
+      "submit": "登录",
+      "submitting": "验证中…"
     }
   }
 }

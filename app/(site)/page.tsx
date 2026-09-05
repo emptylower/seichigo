@@ -3,21 +3,25 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildZhAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
+const TITLE = '动漫圣地巡礼行程规划 · AI 规划师 + 全球巡礼点位地图 | SeichiGo'
+const DESCRIPTION =
+  '说出看过的作品和假期，AI 规划师帮你做动漫圣地巡礼的行程规划：每天的路线、交通与餐厅一次排好，配全球巡礼地图与人写的巡礼攻略。'
+
 export const metadata: Metadata = {
-  title: { absolute: 'SeichiGo — 动漫圣地巡礼攻略' },
-  description: '帮动漫爱好者规划日本圣地巡礼之旅：动漫取景地图鉴、日本动漫旅游指南、你的名字圣地巡礼、孤独摇滚巡礼路线。用好读的长文、精致排版和实用地图，完成第一次圣地巡礼的想象与规划。',
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   alternates: buildZhAlternates({ path: '/' }),
   openGraph: {
     type: 'website',
     url: '/',
-    title: 'SeichiGo — 动漫圣地巡礼攻略',
-    description: '帮动漫爱好者规划日本圣地巡礼之旅：动漫取景地图鉴、日本动漫旅游指南、你的名字圣地巡礼、孤独摇滚巡礼路线。用好读的长文、精致排版和实用地图，完成第一次圣地巡礼的想象与规划。',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SeichiGo — 动漫圣地巡礼攻略',
-    description: '帮动漫爱好者规划日本圣地巡礼之旅：动漫取景地图鉴、日本动漫旅游指南、你的名字圣地巡礼、孤独摇滚巡礼路线。用好读的长文、精致排版和实用地图，完成第一次圣地巡礼的想象与规划。',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/twitter-image'],
   },
 }

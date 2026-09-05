@@ -80,6 +80,19 @@ describe('DayPointCard 迷你地图点位卡（B3）', () => {
     expect(img.getAttribute('data-src')).toContain('/api/google/point-photo?pointId=115908%3Auji')
   })
 
+  it('高-3：有 media.attribution 时在图上渲染署名，没有则不渲染', () => {
+    const withAttribution = renderCard({
+      item: item({
+        payload: { media: { displayUrl: 'https://img.anitabi.cn/a.jpg', source: 'google_places', attribution: '照片：Taro' } },
+      }),
+    })
+    expect(screen.getByText('照片：Taro')).toBeTruthy()
+    withAttribution.unmount()
+
+    renderCard({ item: item({ payload: { media: { displayUrl: 'https://img.anitabi.cn/a.jpg', source: 'point' } } }) })
+    expect(screen.queryByText('照片：Taro')).toBeNull()
+  })
+
   it('L4：主图本身就是 point-photo 兜底时不再重复传 fallbackSrc；主图另有来源时才传', () => {
     const sameStep = renderCard({ item: item({ payload: null }) })
     expect(screen.getByTestId('resilient-image').getAttribute('data-fallback-src')).toBe('')

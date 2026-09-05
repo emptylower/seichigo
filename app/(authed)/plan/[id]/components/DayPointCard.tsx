@@ -3,6 +3,7 @@
 import { ExternalLink, MapPin, Navigation, X } from 'lucide-react'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { getMedia, getSchedule } from './itemPayload'
+import { MediaAttribution } from './ItemThumbnail'
 import { buildPointNavigationUrl } from '../lib/navigationLinks'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 
@@ -44,7 +45,7 @@ export function DayPointCard(props: {
       <div className="relative">
         {image ? (
           // 16:10 封面：Popup 打开即可见，走 eager（不走列表的 lazy）
-          <div className="aspect-[16/10] w-full overflow-hidden rounded-lg bg-gray-100">
+          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-gray-100">
             <ResilientMapImage
               src={image}
               alt={title}
@@ -59,6 +60,7 @@ export function DayPointCard(props: {
                 </div>
               }
             />
+            <MediaAttribution attribution={media?.attribution} />
           </div>
         ) : null}
         {onClose ? (

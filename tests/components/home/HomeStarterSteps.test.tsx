@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import HomeStarterSteps from '@/components/home/HomeStarterSteps'
-import type { HomeStarterItem } from '@/lib/home/types'
+
+// starterSteps 字段第十二轮已从 HomePortalData 删除（低-2），组件不再有人渲染；
+// 类型就从组件自己的 props 取，别再指着已经没了的数据类型
+type HomeStarterItem = Parameters<typeof HomeStarterSteps>[0]['steps'][number]
 
 const steps: HomeStarterItem[] = [
   {

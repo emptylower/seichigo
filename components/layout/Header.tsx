@@ -41,7 +41,7 @@ export default async function Header({ locale = 'zh' }: Props) {
         <nav className="flex items-center gap-4 text-sm">
           <Link href={prefixPath('/plan', locale)} className="hover:text-brand-600">{t('header.plan', locale)}</Link>
           <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
-          <Link href={prefixPath('/', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
+          <Link href={prefixPath('/posts', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
           <Link href={prefixPath('/me', locale)} className="hover:text-brand-600">{t('header.me', locale)}</Link>
           {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{t('header.admin', locale)}</Link> : null}

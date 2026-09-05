@@ -20,6 +20,7 @@ import {
 } from './components/ThinkingChain'
 import { usePlanImagePrewarm } from './hooks/usePlanImagePrewarm'
 import { useAgentStop } from './hooks/useAgentStop'
+import { usePendingDraft } from './hooks/usePendingDraft'
 import {
   attachThinkingToLast,
   autoResumeStorageKey,
@@ -86,6 +87,13 @@ export function PlanPlanner(props: {
 
   // 「交给规划师调整」：预填输入框并聚焦（不自动发送）
   const composeDraft = (text: string) => { setInput(text); textareaRef.current?.focus() }
+
+  // `/plan/start` 交接过来的第一条消息：空计划自动发出，已有对话只预填
+  usePendingDraft({
+    hasMessages: props.initialChat.length > 0,
+    onAutoSend: (text) => (busy ? false : (void postAndStream({ message: text }), true)),
+    onPrefill: composeDraft,
+  })
 
   async function refreshPlan() {
     const res = await fetch(`/api/me/plans/${props.planId}`)

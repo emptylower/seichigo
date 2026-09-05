@@ -6,41 +6,31 @@ import {
   HomePortalDataUnavailableError,
   toHomeDataSourceError,
 } from '@/lib/home/dataSourceError'
+import { getHomeStats } from '@/lib/home/getHomeStats'
+import { orderGuides } from '@/lib/home/guidesOrder'
+import { readHomeHeroDemoFile, readHomeMapClustersFile, readHomeShowcaseFile } from '@/lib/home/generatedHomeFiles'
 import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
 import type { PublicPostListItem } from '@/lib/posts/types'
-import type { HomeHeroItem, HomePopularAnimeItem, HomePortalData, HomeStarterItem } from './types'
-
-const HOME_STARTER_STEPS: HomeStarterItem[] = [
-  {
-    id: 'anime',
-    href: '/anime',
-    titleKey: 'pages.home.starterStep1Title',
-    descKey: 'pages.home.starterStep1Desc',
-    ctaKey: 'pages.home.viewAllAnimeLinkAlt',
-  },
-  {
-    id: 'city',
-    href: '/city',
-    titleKey: 'pages.home.starterStep2Title',
-    descKey: 'pages.home.starterStep2Desc',
-    ctaKey: 'pages.home.viewAllCityLink',
-  },
-  {
-    id: 'resources',
-    href: '/resources',
-    titleKey: 'pages.home.starterStep3Title',
-    descKey: 'pages.home.starterStep3Desc',
-    ctaKey: 'header.resources',
-  },
-]
+import type {
+  HomeHeroDemo,
+  HomeMapClusters,
+  HomePopularAnimeItem,
+  HomePortalData,
+  HomeShowcase,
+  HomeStats,
+} from './types'
 
 type HomeDataDeps = {
   getAllPublicPosts: typeof getAllPublicPostsForHome
   getAllAnime: typeof getAllAnimeForHome
   getCityCountsByLocale: typeof getCityCountsByLocaleForHome
+  getHomeStats: (locale: SupportedLocale) => Promise<HomeStats>
+  readHomeShowcase: () => Promise<HomeShowcase>
+  readHomeMapClusters: () => Promise<HomeMapClusters>
+  readHomeHeroDemo: () => Promise<HomeHeroDemo>
 }
 
 export const HOME_DATA_TIMEOUT_MS = 15_000
@@ -60,19 +50,6 @@ function localizedCityName(
   locale: SupportedLocale
 ): string {
   return getLocalizedDisplayName(city, locale)
-}
-
-function buildHeroDisplay(animeList: Anime[], locale: SupportedLocale): HomeHeroItem[] {
-  const heroDisplay: HomeHeroItem[] = animeList
-    .filter((a) => a.cover)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3)
-    .map((a) => ({ src: a.cover!, name: getLocalizedDisplayName(a, locale) }))
-
-  while (heroDisplay.length < 3) {
-    heroDisplay.push({ src: null })
-  }
-  return heroDisplay
 }
 
 function buildAnimeKeyToIdMap(animeList: Anime[]): Map<string, string> {
@@ -254,6 +231,23 @@ async function loadHomeDataSource<T>(
   }
 }
 
+/** 攻略段：全部公开文章按 path 去重后交给 orderGuides（置顶作品优先，其余按 routeLength/cover 优先） */
+function buildGuides(posts: PublicPostListItem[]): PublicPostListItem[] {
+  const pool: PublicPostListItem[] = []
+  for (const post of posts) {
+    if (!pool.some((p) => p.path === post.path)) pool.push(post)
+  }
+  return orderGuides(pool)
+}
+
+/** 失败已在统一收集处抛出；这里只做收窄（不可达的 defensive throw） */
+function unwrapHomeResult<T>(result: HomeDataResult<T>): T {
+  if (result.status === 'rejected') {
+    throw new Error('unreachable: home data failure was not rethrown')
+  }
+  return result.value
+}
+
 export async function getHomePortalData(
   locale: SupportedLocale,
   deps: Partial<HomeDataDeps> = {}
@@ -262,40 +256,58 @@ export async function getHomePortalData(
     getAllPublicPosts: getAllPublicPostsForHome,
     getAllAnime: getAllAnimeForHome,
     getCityCountsByLocale: getCityCountsByLocaleForHome,
+    getHomeStats,
+    readHomeShowcase: async () => readHomeShowcaseFile(),
+    readHomeMapClusters: async () => readHomeMapClustersFile(),
+    readHomeHeroDemo: async () => readHomeHeroDemoFile(),
     ...deps,
   }
 
-  const [postsResult, animeResult, cityResult] = await Promise.all([
-    loadHomeDataSource(
-      'posts.aggregate',
-      () => effectiveDeps.getAllPublicPosts(locale)
-    ),
-    loadHomeDataSource(
-      'anime.aggregate',
-      () => effectiveDeps.getAllAnime()
-    ),
-    loadHomeDataSource(
-      'city.aggregate',
-      () => effectiveDeps.getCityCountsByLocale(locale)
-    ),
-  ])
+  const [postsResult, animeResult, cityResult, statsResult, showcaseResult, mapClustersResult, heroDemoResult] =
+    await Promise.all([
+      loadHomeDataSource(
+        'posts.aggregate',
+        () => effectiveDeps.getAllPublicPosts(locale)
+      ),
+      loadHomeDataSource(
+        'anime.aggregate',
+        () => effectiveDeps.getAllAnime()
+      ),
+      loadHomeDataSource(
+        'city.aggregate',
+        () => effectiveDeps.getCityCountsByLocale(locale)
+      ),
+      loadHomeDataSource(
+        'home.stats',
+        () => effectiveDeps.getHomeStats(locale)
+      ),
+      loadHomeDataSource(
+        'home.showcase',
+        () => effectiveDeps.readHomeShowcase()
+      ),
+      loadHomeDataSource(
+        'home.mapClusters',
+        () => effectiveDeps.readHomeMapClusters()
+      ),
+      loadHomeDataSource(
+        'home.heroDemo',
+        () => effectiveDeps.readHomeHeroDemo()
+      ),
+    ])
 
-  if (
-    postsResult.status === 'rejected'
-    || animeResult.status === 'rejected'
-    || cityResult.status === 'rejected'
-  ) {
-    const failures: HomeDataSourceError[] = []
-    if (postsResult.status === 'rejected') {
-      failures.push(postsResult.reason)
-    }
-    if (animeResult.status === 'rejected') {
-      failures.push(animeResult.reason)
-    }
-    if (cityResult.status === 'rejected') {
-      failures.push(cityResult.reason)
-    }
+  const failures = [
+    postsResult,
+    animeResult,
+    cityResult,
+    statsResult,
+    showcaseResult,
+    mapClustersResult,
+    heroDemoResult,
+  ]
+    .filter((result): result is { status: 'rejected'; reason: HomeDataSourceError } => result.status === 'rejected')
+    .map((result) => result.reason)
 
+  if (failures.length > 0) {
     for (const failure of failures) {
       console.error(
         `[home:data-source-error] locale=${locale} source=${failure.source} kind=${failure.kind}`,
@@ -305,20 +317,29 @@ export async function getHomePortalData(
     throw new HomePortalDataUnavailableError(locale, failures)
   }
 
-  const posts = postsResult.value
-  const animeList = animeResult.value
-  const cityData = cityResult.value
+  const posts = unwrapHomeResult(postsResult)
+  const animeList = unwrapHomeResult(animeResult)
+  const cityData = unwrapHomeResult(cityResult)
+  const stats = unwrapHomeResult(statsResult)
+  const showcase = unwrapHomeResult(showcaseResult)
+  const mapClusters = unwrapHomeResult(mapClustersResult)
+  const heroDemo = unwrapHomeResult(heroDemoResult)
 
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
   const localizedPosts = localizePostListItems(visiblePosts, animeList, cityData.cities, locale)
 
+  const featured = localizedPosts[0] || null
+  const latestShelf = localizedPosts.slice(0, 12)
+
   return {
-    featured: localizedPosts[0] || null,
-    latestShelf: localizedPosts.slice(0, 12),
-    more: localizedPosts.slice(12, 24),
-    heroDisplay: buildHeroDisplay(animeList, locale),
-    starterSteps: HOME_STARTER_STEPS,
+    featured,
+    latestShelf,
     popularAnime: buildPopularAnime(animeList, visiblePosts, locale),
     popularCities: buildPopularCities(cityData, locale),
+    stats,
+    showcase,
+    mapClusters,
+    heroDemo,
+    guides: buildGuides(localizedPosts),
   }
 }

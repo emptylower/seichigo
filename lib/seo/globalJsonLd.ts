@@ -15,6 +15,30 @@ export function buildWebSiteJsonLd(): JsonLdObject {
   }
 }
 
+/**
+ * 首页专属的 WebSite 节点：带 SearchAction，把「说一句话开始规划」声明成站内
+ * 搜索入口（`/plan/start?draft=…`）。`@id` 与全站 WebSite 同源，搜索引擎按 @id 合并。
+ */
+export function buildHomeWebSiteJsonLd(): JsonLdObject {
+  const origin = getSiteOrigin()
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    '@id': `${origin}#website`,
+    name: 'SeichiGo',
+    url: origin,
+    inLanguage: ['zh', 'en', 'ja'],
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${origin}/plan/start?draft={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  }
+}
+
 export function buildOrganizationJsonLd(): JsonLdObject {
   const origin = getSiteOrigin()
   return {

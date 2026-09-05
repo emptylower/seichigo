@@ -3,21 +3,25 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
+const TITLE = 'Anime Pilgrimage Itinerary Planner · AI Trip Planning + Global Pilgrimage Map | SeichiGo'
+const DESCRIPTION =
+  'Name the anime and your dates: SeichiGo AI planner builds a day-by-day pilgrimage itinerary with routes, transit and meals, backed by a global pilgrimage map and guides.'
+
 export const metadata: Metadata = {
-  title: { absolute: 'SeichiGo — Anime Pilgrimage Guides' },
-  description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   alternates: buildEnAlternates({ zhPath: '/' }),
   openGraph: {
     type: 'website',
     url: '/en',
-    title: 'SeichiGo — Anime Pilgrimage Guides',
-    description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SeichiGo — Anime Pilgrimage Guides',
-    description: 'Plan your anime pilgrimage to Japan: real-life anime locations, Your Name filming spots, Bocchi the Rock Shimokitazawa guide, anime tourism Japan. Beautifully written travel guides with navigable route maps.',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/twitter-image'],
   },
 }

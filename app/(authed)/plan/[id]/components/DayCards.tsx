@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { List, Loader2, Map as MapIcon, MapPin, MessageSquarePlus, Navigation } from 'lucide-react'
-import ResilientMapImage from '@/components/map/ResilientMapImage'
+import { List, Loader2, Map as MapIcon, MessageSquarePlus, Navigation } from 'lucide-react'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
 import { MarkdownBubble } from './MarkdownBubble'
 import { TransitConnector } from './TransitConnector'
-import { DayMap } from './DayMap'
+import { ItemThumbnail } from './ItemThumbnail'
+import { DayMap } from './DayMapLazy'
 import {
   dayTravelMode,
   ensureDayScheduleForRender,
@@ -23,7 +23,11 @@ import { dayItemContentKeys, dayRoutePoints, fetchRouteGeometry, routeSignature 
 import { composeDayRoute } from './dayRouteCompose'
 import { buildDayNavigationUrls, buildPointNavigationUrl, defaultMaxNavigationWaypoints } from '../lib/navigationLinks'
 import { useClientFormattedTime } from '../hooks/useClientFormattedTime'
+import { useDayAutoRotate } from '../hooks/useDayAutoRotate'
 import type { DaymapMessagePayload, TripPlanDayView, TripPlanItemView } from '@/lib/tripPlan/view'
+
+/** 静态展示：当前天前 6 张缩略图 eager，其余 lazy（第二屏首帧直接出图） */
+const EAGER_IMAGE_COUNT = 6
 
 const TYPE_LABELS: Record<string, string> = {
   point: '点位',
@@ -101,6 +105,10 @@ function TimelineCardRow(props: {
   dayIndex?: number
   snapshotSavedAt?: string | null
   onComposeDraft?: (text: string) => void
+  /** 静态展示：不用需要登录的 /api/google/point-photo 兜底 */
+  staticMode?: boolean
+  /** 静态展示时当前天的前几张图 eager 加载（首帧直接出图），其余保持 lazy */
+  eagerImage?: boolean
 }) {
   const {
     item,
@@ -114,6 +122,8 @@ function TimelineCardRow(props: {
     dayIndex = 0,
     snapshotSavedAt = null,
     onComposeDraft,
+    staticMode = false,
+    eagerImage = false,
   } = props
   // 计序口径（M3 修订）：type='point'（含历史缺坐标数据）与带 payload.place 的
   // 外部地点条目（point/attraction）都是完整行程点——计序号、展示媒体图；
@@ -124,9 +134,11 @@ function TimelineCardRow(props: {
   // 站内点位无图时用 /api/google/point-photo 兜底 URL 作为 src（不再直接渲染占位），
   // 并始终作为 fallbackSrc 追加为候选梯最后一档（同源去重，不会重复请求）
   const media = getMedia(item)
-  const pointPhotoSrc = item.pointId
-    ? `/api/google/point-photo?pointId=${encodeURIComponent(item.pointId)}&maxwidth=400`
-    : null
+  // 静态展示（首页）不能用这个需要登录的兜底：游客会拿到 401
+  const pointPhotoSrc =
+    item.pointId && !staticMode
+      ? `/api/google/point-photo?pointId=${encodeURIComponent(item.pointId)}&maxwidth=400`
+      : null
   const image = media?.displayUrl ?? item.point?.image ?? pointPhotoSrc
   const description = item.reason ?? item.note ?? null
   const isExternal = isVisit && !item.pointId && getPlace(item) !== null
@@ -169,40 +181,15 @@ function TimelineCardRow(props: {
         {showLine ? <span className="w-px flex-1 bg-gray-200" /> : null}
       </div>
 
-      {/* 图片：无图 → 渐变占位 + pin 图标；只要有媒体图（payload.media 或 point.image）就渲染——非计序条目（free/
-          参考类 lodging、meal 等）有图也显示，仅计序规则不变；neighbor 来源图右下角加极小"参考"角标。
-          点位图复用地图的 ResilientMapImage（直连失败自动走 /api/anitabi/image-render 代理重试）；
-          80–96px 小卡用 point-thumbnail（h160 缩略图变体，R2 已镜像命中率高），不走 point 的 w=640 档 */}
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
-        {image ? (
-          <ResilientMapImage
-            src={image}
-            alt={item.title}
-            kind="point-thumbnail"
-            className="h-full w-full object-cover"
-            loading="lazy"
-            fallbackSrc={pointPhotoSrc}
-            fallback={
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
-                <MapPin className="h-6 w-6 text-brand-300" />
-              </div>
-            }
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-pink-50">
-            <MapPin className="h-6 w-6 text-brand-300" />
-          </div>
-        )}
-        {media?.source === 'neighbor' ? (
-          // 邻近条目借用图：右下角极小"参考"角标提示图片来源，其他来源不加
-          <span
-            title="借用邻近条目的图片"
-            className="absolute bottom-1 right-1 rounded bg-black/55 px-1 py-0.5 text-[10px] leading-none text-white/95"
-          >
-            参考
-          </span>
-        ) : null}
-      </div>
+      {/* 图片 + 来源角标 + Google 照片署名（ItemThumbnail） */}
+      <ItemThumbnail
+        image={image}
+        alt={item.title}
+        fallbackSrc={pointPhotoSrc}
+        media={media}
+        staticMode={staticMode}
+        eager={eagerImage}
+      />
 
       {/* 内容区 */}
       <div className="min-w-0 flex-1">
@@ -291,8 +278,23 @@ export function DayCards(props: {
   onComposeDraft?: (text: string) => void
   /** snapshot scope 的保存时间（如 09-01 08:30）：调整文案前缀「基于 … 那版行程，」 */
   snapshotSavedAt?: string | null
+  /**
+   * 静态展示（首页第二屏）：不预取路网、不显示保存/调整入口、不用需要登录的
+   * 点位图兜底接口；导航外链保留。
+   */
+  static?: boolean
+  /** 静态展示时 Day 标签每 5 秒自动轮播，用户交互后停止 */
+  autoRotate?: boolean
 }) {
-  const { planId, days, scope = 'current', onComposeDraft, snapshotSavedAt = null } = props
+  const {
+    planId,
+    days,
+    scope = 'current',
+    onComposeDraft,
+    snapshotSavedAt = null,
+    static: staticMode = false,
+    autoRotate = false,
+  } = props
   const router = useRouter()
   const [view, setView] = useState<'list' | 'map'>('list')
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
@@ -317,6 +319,8 @@ export function DayCards(props: {
   // 避免"切 tab 才开始请求"造成的明显等待；同 signature 请求在 fetchRouteGeometry 内去重。
   // 已有 provider 折线（estimate_travel 落库）的天优先用权威几何，不再预取通用路网。
   useEffect(() => {
+    // 静态展示不预取路网（首页不应为展示计划发请求）
+    if (staticMode) return
     for (const day of days) {
       const points = dayRoutePoints(day)
       if (points.length < 2) continue
@@ -324,9 +328,16 @@ export function DayCards(props: {
       if (composeDayRoute(points, day.items).coverage !== 'none') continue
       void fetchRouteGeometry(planId, routeSignature(points), dayTravelMode(day.items))
     }
-  }, [planId, days])
+  }, [planId, days, staticMode])
 
   const active = days.find((d) => d.dayIndex === selectedDay) ?? days[0]
+
+  // 首页展示：Day 标签自动轮播，任何手动交互后停止
+  const autoRotation = useDayAutoRotate({
+    enabled: autoRotate,
+    dayIndexes: days.map((d) => d.dayIndex),
+    onRotate: setSelectedDay,
+  })
 
   // 切天重置联动状态
   useEffect(() => {
@@ -416,7 +427,7 @@ export function DayCards(props: {
   const itemKeys = dayItemContentKeys(sortedItems)
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div ref={autoRotation.containerRef} className="rounded-2xl border border-gray-200 bg-white shadow-sm">
       {/* header：列表/地图切换 + 保存到我的地图 */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
         <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs">
@@ -429,7 +440,10 @@ export function DayCards(props: {
             <button
               key={key}
               type="button"
-              onClick={() => setView(key)}
+              onClick={() => {
+                autoRotation.stop()
+                setView(key)
+              }}
               className={
                 view === key
                   ? 'inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 font-semibold text-gray-900 shadow-sm'
@@ -442,7 +456,7 @@ export function DayCards(props: {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {scope === 'snapshot' ? (
+          {staticMode ? null : scope === 'snapshot' ? (
             <span className="text-xs text-gray-400">历史快照 · 只读</span>
           ) : (
             <>
@@ -473,7 +487,10 @@ export function DayCards(props: {
             <button
               key={day.dayIndex}
               type="button"
-              onClick={() => setSelectedDay(day.dayIndex)}
+              onClick={() => {
+                autoRotation.stop()
+                setSelectedDay(day.dayIndex)
+              }}
               className={
                 day.dayIndex === active.dayIndex
                   ? 'shrink-0 rounded-full bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white'
@@ -590,6 +607,8 @@ export function DayCards(props: {
                   dayIndex={active.dayIndex}
                   snapshotSavedAt={snapshotSavedAt}
                   onComposeDraft={onComposeDraft}
+                  staticMode={staticMode}
+                  eagerImage={idx < EAGER_IMAGE_COUNT}
                 />
               )
             })
@@ -599,6 +618,7 @@ export function DayCards(props: {
         <div className="pt-3">
           <DayMap
             planId={planId}
+            static={staticMode}
             day={active}
             activePointId={activePointId}
             onPointSelect={handlePointSelect}
@@ -623,22 +643,33 @@ export function DayCards(props: {
  * 后填本地时区 MM-DD HH:mm；「交给规划师调整」前缀在点击时取值，
  * 此时 state 已是本地格式。
  */
-export function DaymapCard(props: { planId: string; daymap: DaymapMessagePayload; onComposeDraft?: (text: string) => void }) {
-  const { daymap } = props
+export function DaymapCard(props: {
+  planId: string
+  daymap: DaymapMessagePayload
+  onComposeDraft?: (text: string) => void
+  /** 静态展示（首页第二屏）：不发请求、不显示快照抬头与保存/调整入口 */
+  static?: boolean
+  autoRotate?: boolean
+}) {
+  const { daymap, static: staticMode = false, autoRotate = false } = props
   const savedAtLabel = useClientFormattedTime(daymap.savedAt)
   return (
     <div data-daymap-revision={daymap.revisionId} className="pt-1">
-      <div className="flex items-center gap-1.5 px-1 pb-1.5 text-xs text-gray-400">
-        <MapIcon className="h-3.5 w-3.5 shrink-0" />
-        <span>行程快照 · 已保存</span>
-        {savedAtLabel ? <span className="tabular-nums">{savedAtLabel}</span> : null}
-      </div>
+      {staticMode ? null : (
+        <div className="flex items-center gap-1.5 px-1 pb-1.5 text-xs text-gray-400">
+          <MapIcon className="h-3.5 w-3.5 shrink-0" />
+          <span>行程快照 · 已保存</span>
+          {savedAtLabel ? <span className="tabular-nums">{savedAtLabel}</span> : null}
+        </div>
+      )}
       <DayCards
         planId={props.planId}
         days={daymap.days}
         scope="snapshot"
         snapshotSavedAt={savedAtLabel || null}
         onComposeDraft={props.onComposeDraft}
+        static={staticMode}
+        autoRotate={autoRotate}
       />
     </div>
   )
