@@ -33,6 +33,11 @@ export type TransportLeg = {
   fromStop?: string
   toStop?: string
   numStops?: number
+  /** §0.2：乘车方向（Google headsign） */
+  headsign?: string
+  /** §0.2：发车/到达时刻文本（Google departure_time/arrival_time 的 text） */
+  departureTime?: string
+  arrivalTime?: string
 }
 
 export type TransportPayload = {
@@ -44,8 +49,12 @@ export type TransportPayload = {
   provider?: string
   /** 日本公交覆盖缺口兜底：时长/距离是按道路距离推算的参考值，非真实时刻 */
   estimated?: boolean
-  /** 兜底 transit 段附带的 Google 地图外链（前端渲染"在 Google 地图查看"） */
+  /** 兜底 transit 段附带的 Google 地图外链（前端渲染"在 Google 地图打开"） */
   mapsUrl?: string
+  /** §0.2：兜底说明文案（如日本公交暂无法查询的提示） */
+  note?: string
+  /** §0.2：方案来源：google 真实查询 / heuristic 估算 / japan-fallback 日本兜底 */
+  source?: string
   legs?: TransportLeg[]
   polyline?: Array<[number, number]>
 }
@@ -121,6 +130,8 @@ export function getTransport(item: TripPlanItemView): TransportPayload | null {
   if (typeof source.provider === 'string') result.provider = source.provider
   if (source.estimated === true) result.estimated = true
   if (typeof source.mapsUrl === 'string' && source.mapsUrl) result.mapsUrl = source.mapsUrl
+  if (typeof source.note === 'string' && source.note) result.note = source.note
+  if (typeof source.source === 'string' && source.source) result.source = source.source
   if (Array.isArray(source.legs)) {
     result.legs = source.legs
       .filter((leg): leg is Record<string, unknown> => Boolean(leg) && typeof leg === 'object' && !Array.isArray(leg))
@@ -133,6 +144,9 @@ export function getTransport(item: TripPlanItemView): TransportPayload | null {
         ...(typeof leg.fromStop === 'string' ? { fromStop: leg.fromStop } : {}),
         ...(typeof leg.toStop === 'string' ? { toStop: leg.toStop } : {}),
         ...(Number.isFinite(Number(leg.numStops)) ? { numStops: Number(leg.numStops) } : {}),
+        ...(typeof leg.headsign === 'string' && leg.headsign ? { headsign: leg.headsign } : {}),
+        ...(typeof leg.departureTime === 'string' && leg.departureTime ? { departureTime: leg.departureTime } : {}),
+        ...(typeof leg.arrivalTime === 'string' && leg.arrivalTime ? { arrivalTime: leg.arrivalTime } : {}),
       }))
   }
   if (Array.isArray(source.polyline)) {
@@ -244,22 +258,6 @@ export function dayTravelMode(items: TripPlanItemView[]): 'walking' | 'driving' 
     if (transport?.mode === 'driving') return 'driving'
   }
   return 'walking'
-}
-
-/** 拼接当天 transit 条目里的 provider 折线（[lat,lng] → [lng,lat]），无则空数组 */
-export function collectProviderGeometry(items: TripPlanItemView[]): Array<[number, number]> {
-  const coordinates: Array<[number, number]> = []
-  for (const item of items) {
-    const transport = getTransport(item)
-    if (!transport?.polyline?.length) continue
-    for (const point of transport.polyline) {
-      const next: [number, number] = [point[1], point[0]]
-      const last = coordinates[coordinates.length - 1]
-      if (last && last[0] === next[0] && last[1] === next[1]) continue
-      coordinates.push(next)
-    }
-  }
-  return coordinates
 }
 
 /** 防御性排序：按 schedule.start 升序（无 schedule 的条目保持相对原序垫底） */

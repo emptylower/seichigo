@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -113,5 +114,35 @@ describe('DaymapCard（聊天时间线里的历史快照）', () => {
     // B 仍在 Day 1
     expect(screen.getByText('B 第 1 天')).toBeTruthy()
     expect(screen.queryByText('B 第 2 天')).toBeNull()
+  })
+})
+
+describe('DaymapCard 时间文本水合安全（React #418）', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('SSR 首帧输出不含时间文本：服务端（UTC）与客户端首次渲染一致（空）', () => {
+    const html = renderToString(<DaymapCard planId="plan-1" daymap={daymap()} />)
+    expect(html).toContain('行程快照 · 已保存')
+    expect(html).not.toMatch(/\d{2}-\d{2} \d{2}:\d{2}/)
+  })
+
+  it('客户端 effect 完成后显示本地时区时间', () => {
+    render(<DaymapCard planId="plan-1" daymap={daymap()} />)
+    const d = new Date(Date.parse('2026-09-01T08:30:00Z'))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const expected = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    expect(screen.getByText(expected)).toBeTruthy()
+  })
+
+  it('「交给规划师调整」前缀在挂载后携带本地时间（点击时取本地格式）', () => {
+    const onComposeDraft = vi.fn()
+    render(<DaymapCard planId="plan-1" daymap={daymap()} onComposeDraft={onComposeDraft} />)
+    const d = new Date(Date.parse('2026-09-01T08:30:00Z'))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const expected = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    fireEvent.click(screen.getByText('交给规划师调整这一天'))
+    expect(onComposeDraft).toHaveBeenCalledWith(`基于 ${expected} 那版行程，请调整第 1 天的安排：`)
   })
 })

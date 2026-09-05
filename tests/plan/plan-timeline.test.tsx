@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // PlanPlanner 依赖链的轻量桩：Link 需要 app router 上下文，地图/图片是重依赖
 vi.mock('next/link', () => ({
@@ -163,6 +163,24 @@ describe('PlanPlanner 聊天时间线（daymap 交付物）', () => {
     expect(screen.queryByText('保存到我的地图')).toBeNull()
     expect(screen.getByText('宇治桥')).toBeTruthy()
   })
+
+  it('DaymapCard「交给规划师调整」→ 预填输入框（含「基于」前缀）并聚焦，不自动发送', () => {
+    render(
+      <PlanPlanner
+        plans={[]}
+        planId="plan-1"
+        initialPlan={makePlan(['大吉山'])}
+        initialChat={[{ role: 'assistant', text: '', daymap: makeDaymap('rev-draft', '宇治桥') }]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '交给规划师调整这一天' }))
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(textarea.value).toContain('基于 ')
+    expect(textarea.value).toContain('那版行程，请调整第 1 天的安排：')
+    expect(document.activeElement).toBe(textarea)
+    // 不自动发送：值保留、未清空
+    expect(textarea.value).not.toBe('')
+  })
 })
 
 describe('PlanPlanner 实时 SSE 路径', () => {
@@ -255,8 +273,9 @@ describe('PlanPlanner 实时 SSE 路径', () => {
     await waitFor(() => {
       expect(screen.getByText('自驾/租车')).toBeTruthy()
     })
-    // 意见卡语义：无图片、无 3:4 封面
-    expect(container.querySelector('img')).toBeNull()
+    // 意见卡语义：对话流内无图片、无 3:4 封面（侧栏站点区的 Logo img 不在断言范围）
+    const chatColumn = container.querySelector('.max-w-3xl') as HTMLElement
+    expect(within(chatColumn).queryByRole('img')).toBeNull()
     expect(container.innerHTML).not.toContain('aspect-[3/4]')
     expect(screen.getByText('公共交通')).toBeTruthy()
     expect(screen.getByRole('button', { name: /其他（自行输入）/ })).toBeTruthy()
@@ -324,7 +343,9 @@ describe('PlanPlanner 断线恢复与运行状态', () => {
     expect(screen.getByText('前半段')).toBeTruthy()
     expect(screen.getByText('查看思考过程')).toBeTruthy()
     fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '还在跑吗' } })
-    expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', true)
+    // B1：busy 期间发送按钮位置换成「停止」，此时无法发送
+    expect(screen.queryByRole('button', { name: '发送' })).toBeNull()
+    expect(screen.getByRole('button', { name: '停止' })).toBeTruthy()
 
     // 放行第一次轮询：服务端已落库 user + 前半段 + 断线期间补完的条目，agentBusy=false
     resolveFirstPoll!(
@@ -391,6 +412,70 @@ describe('PlanPlanner 断线恢复与运行状态', () => {
     await waitFor(() => expect(screen.queryByText('规划仍在进行中…')).toBeNull())
     fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '继续规划' } })
     expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', false)
+  })
+
+  it('刷新恢复：busy 轮询携带 live 实况时展示思考内容；idle 后整体替换 chat 并渲染 daymap', async () => {
+    let callCount = 0
+    let resolveSecondPoll: ((res: Response) => void) | null = null
+    const fetchMock = vi.fn(async () => {
+      callCount += 1
+      if (callCount === 1) {
+        // 首挂载核对：run 仍在跑，且携带运行实况（§0.1 契约）
+        return new Response(
+          JSON.stringify({
+            plan: makePlan([]),
+            chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
+            agentBusy: true,
+            chatRevision: 1,
+            live: {
+              runToken: 'run-1',
+              reasoning: '正在比对宇治桥与大吉山的取景点位…',
+              statusText: '查询点位中',
+              toolCalls: [{ name: 'list_points', status: 'running', summary: '作品 id 115908' }],
+              updatedAt: '2026-09-03T01:00:00.000Z',
+            },
+          }),
+          { status: 200 },
+        )
+      }
+      return await new Promise<Response>((resolve) => {
+        resolveSecondPoll = resolve
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = render(
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
+    )
+
+    // 实况：横幅 + 服务端 reasoning/状态短语/工具调用直接展示（不再是空壳）
+    await waitFor(() => expect(screen.getByText('规划仍在进行中…')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/正在比对宇治桥与大吉山的取景点位/)).toBeTruthy())
+    expect(screen.getByText('查询点位中')).toBeTruthy()
+    expect(screen.getByText('作品 id 115908')).toBeTruthy()
+    // 服务端已有条目按整体替换口径补齐
+    expect(screen.getByText('帮我规划宇治巡礼')).toBeTruthy()
+
+    // run 结束：idle + chat 含 daymap + assistant → 整体替换后渲染 daymap 卡与文本，横幅消失
+    resolveSecondPoll!(
+      new Response(
+        JSON.stringify({
+          plan: makePlan(['宇治桥']),
+          chat: [
+            { role: 'user', text: '帮我规划宇治巡礼' },
+            { role: 'assistant', text: '', daymap: makeDaymap('rev-recover', '宇治桥') },
+            { role: 'assistant', text: '行程已保存，刷新后也能看到。' },
+          ],
+          agentBusy: false,
+          chatRevision: 3,
+        }),
+      ),
+    )
+    await waitFor(() => expect(container.querySelectorAll('[data-daymap-revision="rev-recover"]')).toHaveLength(1))
+    expect(screen.getByText('行程已保存，刷新后也能看到。')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('规划仍在进行中…')).toBeNull())
+    // 实况思维链随 run 结束消失
+    expect(screen.queryByText('查询点位中')).toBeNull()
   })
 })
 
@@ -499,6 +584,25 @@ describe('PlanPlanner 重试与空消息守卫', () => {
 })
 
 describe('PlanPlanner 布局：悬浮输入胶囊（传统 AI Chat 布局）', () => {
+  it('标题栏是白底 sticky 条：bg-white + 底边框，不再是透明毛玻璃', () => {
+    const { container } = render(
+      <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,
+    )
+    const bar = container.querySelector('.sticky.top-0')!
+    expect(bar).toBeTruthy()
+    expect(bar.className).toContain('bg-white')
+    expect(bar.className).toContain('border-b')
+    expect(bar.className).not.toContain('backdrop-blur')
+    expect(bar.className).not.toContain('bg-transparent')
+  })
+
+  it('标题栏右侧是“回到网站”链接（href=/），不再有待上线的“更多操作”按钮', () => {
+    render(<PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />)
+    const home = screen.getByRole('link', { name: '回到网站' })
+    expect(home.getAttribute('href')).toBe('/')
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull()
+  })
+
   it('输入区是 max-w-3xl 对话列内的悬浮胶囊，不再存在全宽 border-t 白板输入条', () => {
     const { container } = render(
       <PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />,

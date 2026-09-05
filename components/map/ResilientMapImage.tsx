@@ -14,7 +14,9 @@ import {
   resolveHostTimeoutMs,
 } from '@/components/map/utils/mapImageHostPolicy'
 import {
+  forgetLoadedMapImage,
   hasLoadedMapImage,
+  hasPersistedMapImage,
   rememberLoadedMapImage,
 } from '@/components/map/utils/mapImageLoadedCache'
 import {
@@ -146,11 +148,9 @@ export default function ResilientMapImage({
   const [candidateIndex, setCandidateIndex] = useState(0)
   const [failed, setFailed] = useState(!raw)
   const [requestSrc, setRequestSrc] = useState('')
-  // 视口门控：lazy 且环境支持 IntersectionObserver 时，先观察哨兵，相交后才发请求；
-  // eager / jsdom（无 IntersectionObserver）时立即视为已相交
-  const [inView, setInView] = useState(
-    () => loading === 'eager' || typeof IntersectionObserver === 'undefined',
-  )
+  // 视口门控：初始值在服务端与客户端必须一致（lazy 一律 false、eager 一律 true），
+  // 否则水合首帧不匹配；jsdom/老浏览器（无 IntersectionObserver）由挂载后的 effect 兜底为已相交
+  const [inView, setInView] = useState(() => loading === 'eager')
   const activeRequestRef = useRef<{ requestUrl: string; requestId: string } | null>(null)
   const activeLeaseRef = useRef<MapImageRequestLease | null>(null)
   const timeoutIdRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null)
@@ -183,11 +183,20 @@ export default function ResilientMapImage({
   const candidates = candidateQueueRef.current
   const currentCandidate = candidates[candidateIndex] || raw
   const resolvedSrc = currentCandidate ? withRetryNonce(currentCandidate, retryNonce) : ''
-  // 已加载缓存命中：候选梯中第一个已成功加载过的 URL（同一图片的 _retry 档视为同图）
+  // 已加载缓存命中（本会话 onload 验证过）：候选梯中第一个已验证的 URL（同一图片的 _retry 档视为同图）
   const cachedCandidateIndex = raw && !failed ? candidates.findIndex((c) => hasLoadedMapImage(c)) : -1
   const cachedCandidate = cachedCandidateIndex >= 0 ? candidates[cachedCandidateIndex]! : null
+  // M6：persisted 命中（上个会话水合、本会话未验证）——首选该候选、跳过视口门控，
+  // 但仍走 lease + 计时器链路验证一次，onload 后 rememberLoadedMapImage 升级为已验证
+  const persistedCandidateIndex =
+    cachedCandidate || !raw || failed ? -1 : candidates.findIndex((c) => hasPersistedMapImage(c))
+  const persistedCandidate = persistedCandidateIndex >= 0 ? candidates[persistedCandidateIndex]! : null
   const trackedCandidateCount =
     candidates.length + (candidates.some((candidate) => isMapImageProxyUrl(candidate)) ? 1 : 0)
+  // 请求门控：已相交，或 cached/persisted 命中（跳过视口门控）。
+  // 用合成值做请求 effect 依赖：persisted 命中时门控恒开，挂载后 inView 的 false→true
+  // 翻转不会触发 effect 重跑（否则在-flight 请求链被 abort 后无谓重启一遍）
+  const gateOpen = inView || Boolean(cachedCandidate || persistedCandidate)
   const diagnosticsEnabled = Boolean(
     diagnosticSlotKey
     && diagnosticSurface
@@ -304,9 +313,16 @@ export default function ResilientMapImage({
       setRequestSrc(cachedCandidate)
       return
     }
+    // M6：persisted 命中首选该候选——把候选梯指针移过去，重跑本 effect 走正常请求链
+    if (persistedCandidate && persistedCandidateIndex !== candidateIndex) {
+      setCandidateIndex(persistedCandidateIndex)
+      setRetryNonce(0)
+      return
+    }
     // 视口门控：lazy 且尚未相交时不发起请求——视口外的图浏览器根本不发请求，
-    // 若计时器从赋 src 起算会被一律误判成"超时失败"
-    if (!inView) {
+    // 若计时器从赋 src 起算会被一律误判成"超时失败"。
+    // M6：persisted 命中视为已相交（浏览器缓存大概率命中，直接验证一次）
+    if (!gateOpen) {
       return
     }
     // host 被断路器封禁（超时预算 0）时不再秒失败，直接跳到下一候选；
@@ -364,7 +380,9 @@ export default function ResilientMapImage({
     diagnosticSurface,
     diagnosticsEnabled,
     failed,
-    inView,
+    gateOpen,
+    persistedCandidate,
+    persistedCandidateIndex,
     rawChanged,
     resolvedSrc,
     retryNonce,
@@ -438,6 +456,10 @@ export default function ResilientMapImage({
         })
       }}
       onError={() => {
+        // 缓存命中直渲仍失败（浏览器缓存被逐出且上游失败）：先忘掉再走正常失败链
+        if (cachedCandidate && requestSrc === cachedCandidate) forgetLoadedMapImage(cachedCandidate)
+        // M6：persisted 候选验证失败同样忘掉，避免后续渲染反复优先它
+        else if (persistedCandidate && currentCandidate === persistedCandidate) forgetLoadedMapImage(persistedCandidate)
         advanceAfterFailure('network_error')
       }}
     />

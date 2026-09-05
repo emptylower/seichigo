@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import type { TripPlanItemView, TripPlanView } from '@/lib/tripPlan/view'
 
 const mockPush = vi.fn()
@@ -174,6 +174,91 @@ describe('DayCards', () => {
       makeItem({ id: 'i2', type: 'point', title: 'B 点' }),
     ]
     renderDayCards({ days: [{ ...plan.days[0]!, items }] })
+
     expect(screen.getByText('乘车 25 分钟 · 3.3km')).toBeTruthy()
+  })
+})
+
+describe('DayCards 导航与「交给规划师调整」（第十轮 B4）', () => {
+  function pointDay(titles: string[]) {
+    return {
+      id: 'day-nav',
+      dayIndex: 1,
+      date: null,
+      citySlug: null,
+      summary: null,
+      items: titles.map((title, i) =>
+        makeItem({
+          id: `nav-${i}`,
+          type: 'point',
+          title,
+          pointId: `pn-${i}`,
+          point: { id: `pn-${i}`, name: title, nameZh: null, lat: 35 + i * 0.01, lng: 135 + i * 0.01, image: null },
+        }),
+      ),
+    }
+  }
+
+  it('带坐标条目行尾有「导航」外链，href 为单点格式（起点留空）', () => {
+    renderDayCards()
+    const link = screen.getByRole('link', { name: '导航到宇治桥' })
+    expect(link.getAttribute('href')).toBe(
+      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('34.889200,135.807500')}&travelmode=transit`,
+    )
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toContain('noopener')
+  })
+
+  it('「整日导航」：3 个带坐标点 → href 含 waypoints 中继点', () => {
+    renderDayCards({ days: [pointDay(['甲', '乙', '丙'])] })
+    const link = screen.getByRole('link', { name: /整日导航/ })
+    const href = link.getAttribute('href') ?? ''
+    expect(href).toContain('waypoints=')
+    expect(href).toContain(encodeURIComponent('35.010000,135.010000'))
+    expect(href).toContain('travelmode=transit')
+  })
+
+  it('M7：首渲染 12 点按桌面 9 途经点切 2 段（渲染期不读 matchMedia，避免 hydration mismatch）', () => {
+    renderDayCards({ days: [pointDay(Array.from({ length: 12 }, (_, i) => `点${i + 1}`))] })
+    // jsdom 无 matchMedia：useEffect 不改值，首屏恒按 9 → 12 点 = 2 段
+    expect(screen.getByText('整日导航（2 段）')).toBeTruthy()
+  })
+
+  it('条目「交给规划师调整」→ onComposeDraft 收到含天数、序号、标题的文案', () => {
+    const onComposeDraft = vi.fn()
+    render(<DayCards planId="plan-1" days={plan.days} scope="current" onComposeDraft={onComposeDraft} />)
+    fireEvent.click(screen.getByRole('button', { name: '交给规划师调整：宇治桥' }))
+    expect(onComposeDraft).toHaveBeenCalledWith('请调整第 1 天第 1 个点位「宇治桥」：')
+  })
+
+  it('整日「交给规划师调整」→ 收到整日文案', () => {
+    const onComposeDraft = vi.fn()
+    render(<DayCards planId="plan-1" days={plan.days} scope="current" onComposeDraft={onComposeDraft} />)
+    fireEvent.click(screen.getByRole('button', { name: '交给规划师调整这一天' }))
+    expect(onComposeDraft).toHaveBeenCalledWith('请调整第 1 天的安排：')
+  })
+
+  it('snapshot scope：文案带「基于 {savedAt} 那版行程，」前缀；导航同样显示', () => {
+    const onComposeDraft = vi.fn()
+    render(
+      <DayCards
+        planId="plan-1"
+        days={plan.days}
+        scope="snapshot"
+        snapshotSavedAt="09-01 08:30"
+        onComposeDraft={onComposeDraft}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '交给规划师调整：宇治桥' }))
+    expect(onComposeDraft).toHaveBeenCalledWith('基于 09-01 08:30 那版行程，请调整第 1 天第 1 个点位「宇治桥」：')
+    fireEvent.click(screen.getByRole('button', { name: '交给规划师调整这一天' }))
+    expect(onComposeDraft).toHaveBeenCalledWith('基于 09-01 08:30 那版行程，请调整第 1 天的安排：')
+    // 快照 scope 也显示导航
+    expect(screen.getByRole('link', { name: '导航到宇治桥' })).toBeTruthy()
+  })
+
+  it('未传 onComposeDraft 时不渲染调整入口', () => {
+    renderDayCards()
+    expect(screen.queryByRole('button', { name: /交给规划师调整/ })).toBeNull()
   })
 })

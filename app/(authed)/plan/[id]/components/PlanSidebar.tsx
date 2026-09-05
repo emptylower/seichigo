@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Building2, CircleUser, FileText, Loader2, Map as MapIcon, Plus, X } from 'lucide-react'
 import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
+import { useClientText } from '../hooks/useClientFormattedTime'
 
 /** 会话列表刷新事件：plan_updated SSE 事件（标题生成等元数据变化）后由 PlanPlanner 派发 */
 export const PLANS_CHANGED_EVENT = 'seichigo:plans-changed'
@@ -27,6 +30,51 @@ export function formatPlanListDay(iso: string, now: Date = new Date()): string {
   if (diffDays === 0) return '今天'
   if (diffDays === 1) return '昨天'
   return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+/** 列表时间标签：今天 / 昨天 / M月D日。水合安全（React #418）：标签依赖本地
+ *  时区与当前时刻，首帧空串（服务端/客户端首次渲染一致），effect 后填充。 */
+function PlanListDayLabel(props: { updatedAt: string }) {
+  const label = useClientText(props.updatedAt, formatPlanListDay)
+  return <span className="mt-0.5 block text-xs text-gray-400">{label}</span>
+}
+
+/** 站点区紧凑导航（图标 + 文字）：沉浸布局隐藏了站点 Header，这里是回到网站其它页面的出口 */
+const SITE_NAV_ITEMS = [
+  { href: '/map', label: '地图', Icon: MapIcon },
+  { href: '/', label: '文章', Icon: FileText },
+  { href: '/city', label: '城市', Icon: Building2 },
+  { href: '/me', label: '我的', Icon: CircleUser },
+] as const
+
+function SiteNavSection() {
+  return (
+    <div className="border-b border-pink-100/80 px-3 pb-3 pt-4">
+      <Link href="/" className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/70">
+        <Image
+          src="/brand/app-logo-64.png"
+          alt="SeichiGo"
+          width={24}
+          height={24}
+          className="h-6 w-6 rounded-md bg-white object-cover"
+          unoptimized
+        />
+        <span className="font-display text-sm font-semibold text-gray-900">SeichiGo</span>
+      </Link>
+      <nav aria-label="站点导航" className="mt-2 grid grid-cols-4 gap-1">
+        {SITE_NAV_ITEMS.map(({ href, label, Icon }) => (
+          <Link
+            key={label}
+            href={href}
+            className="flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-xs text-gray-600 transition hover:bg-white hover:text-brand-600"
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </Link>
+        ))}
+      </nav>
+    </div>
+  )
 }
 
 /**
@@ -94,7 +142,8 @@ export function PlanSidebar(props: {
 
   const list = (
     <>
-      <div className="px-3 pb-2 pt-4">
+      <SiteNavSection />
+      <div className="px-3 pb-2 pt-3">
         <button
           type="button"
           onClick={() => void createPlan()}
@@ -122,7 +171,7 @@ export function PlanSidebar(props: {
               <span className={`block truncate text-sm ${active ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
                 {displayTitle(p.title)}
               </span>
-              <span className="mt-0.5 block text-xs text-gray-400">{formatPlanListDay(p.updatedAt)}</span>
+              <PlanListDayLabel updatedAt={p.updatedAt} />
             </button>
           )
         })}

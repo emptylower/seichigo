@@ -1,10 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 
 const pushMock = vi.hoisted(() => vi.fn())
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+}))
+
+// PlanSidebar 站点区用 next/link（app router 上下文在 jsdom 不存在），替换为普通 a
+vi.mock('next/link', () => ({
+  default: (props: { href: string; 'aria-label'?: string; children: React.ReactNode; className?: string }) => (
+    <a href={props.href} aria-label={props['aria-label']} className={props.className}>
+      {props.children}
+    </a>
+  ),
 }))
 
 import { PLANS_CHANGED_EVENT, PlanSidebar, type PlanSidebarPlan } from '@/app/(authed)/plan/[id]/components/PlanSidebar'
@@ -53,6 +63,18 @@ describe('PlanSidebar 会话列表', () => {
     expect(screen.getByText('昨天')).toBeTruthy()
   })
 
+  it('SSR 首帧不含「今天/昨天/M月D日」本地时间文本（水合一致）', () => {
+    const plans = [
+      plan({ id: 'p1', title: '最新对话', updatedAt: daysAgoIso(0) }),
+      plan({ id: 'p2', title: '京都三日', updatedAt: daysAgoIso(2) }),
+    ]
+    const html = renderToString(<PlanSidebar plans={plans} currentPlanId="p1" mobileOpen={false} onCloseMobile={() => {}} />)
+    expect(html).toContain('最新对话')
+    expect(html).not.toContain('今天')
+    expect(html).not.toContain('昨天')
+    expect(html).not.toMatch(/\d+月\d+日/)
+  })
+
   it('点击“新建对话”调用 POST /api/me/plans 并跳转到新对话', async () => {
     vi.stubGlobal(
       'fetch',
@@ -72,6 +94,27 @@ describe('PlanSidebar 会话列表', () => {
     expect(
       calls.some(([url, init]) => String(url) === '/api/me/plans' && (init as RequestInit | undefined)?.method === 'POST'),
     ).toBe(true)
+  })
+
+  it('顶部站点区：Logo 链接回首页，含 地图/文章/城市/我的 紧凑导航，再下面是“新建对话”', () => {
+    render(<PlanSidebar plans={[]} currentPlanId="p1" mobileOpen={false} onCloseMobile={() => {}} />)
+
+    // Logo/站点名回首页
+    expect(screen.getByText('SeichiGo').closest('a')?.getAttribute('href')).toBe('/')
+    // 紧凑导航四项
+    expect(screen.getByRole('link', { name: /地图/ }).getAttribute('href')).toBe('/map')
+    expect(screen.getByRole('link', { name: /文章/ }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: /城市/ }).getAttribute('href')).toBe('/city')
+    expect(screen.getByRole('link', { name: /我的/ }).getAttribute('href')).toBe('/me')
+    // 新建对话入口仍在
+    expect(screen.getByRole('button', { name: /新建对话/ })).toBeTruthy()
+  })
+
+  it('移动端抽屉同样包含站点导航', () => {
+    render(<PlanSidebar plans={[]} currentPlanId="p1" mobileOpen onCloseMobile={() => {}} />)
+    // 桌面侧栏 + 移动抽屉各渲染一份站点导航
+    expect(screen.getAllByRole('link', { name: /地图/ }).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByRole('link', { name: /城市/ }).length).toBeGreaterThanOrEqual(2)
   })
 
   it('收到 plans 变更事件后重新 GET /api/me/plans 拉取最新列表', async () => {

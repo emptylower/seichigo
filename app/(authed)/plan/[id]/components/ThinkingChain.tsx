@@ -14,16 +14,17 @@ import {
   Search,
   Tv,
   Wrench,
+  XCircle,
   type LucideIcon,
 } from 'lucide-react'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 
-/** 单个工具调用的展示条目（与 SSE tool_call 事件同形） */
+/** 单个工具调用的展示条目（与 SSE tool_call 事件同形；恢复轮询的 live 快照可带 error 态） */
 export type ToolCallEntry = {
   id: string
   name: string
   argsSummary: string
-  status: 'running' | 'done'
+  status: 'running' | 'done' | 'error'
   durationMs?: number
   resultSummary?: string
 }
@@ -40,6 +41,9 @@ export type ThinkingTurn = {
   startedAt: number
   endedAt?: number
 }
+
+/** M5：用户主动停止本轮时定格用的状态短语（定格态摘要行显示它而不是「已完成」） */
+export const STOPPED_PHRASE = '已停止'
 
 export function newThinkingTurn(now = Date.now()): ThinkingTurn {
   return { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: now }
@@ -100,6 +104,8 @@ function ToolCallRow({ call }: { call: ToolCallEntry }) {
       <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
         {call.status === 'running' ? (
           <Icon className="h-3.5 w-3.5 animate-pulse text-brand-500" />
+        ) : call.status === 'error' ? (
+          <XCircle className="h-3.5 w-3.5 text-rose-500" />
         ) : (
           <Check className="h-3.5 w-3.5 text-emerald-500" />
         )}
@@ -162,12 +168,19 @@ export function ThinkingChain(props: {
   onToggle: () => void
   /** 进行中流式内容自动滚动跟随到最新（仅 active 场景传入） */
   followScroll?: boolean
+  /** 无状态短语时的兜底文案（断线中断场景传「已中断」） */
+  idlePhrase?: string
+  /**
+   * §0 model_info：当前模型不回显思考增量时的头部提示（reasoning=false）。
+   * 刷新恢复（live 快照）路径没有该信息，此时传 null 即不显示。
+   */
+  modelNotice?: { providerName: string; model: string } | null
 }) {
   const { thinking, active, expanded, onToggle } = props
   const timeline = expanded ? <ThinkingTimeline thinking={thinking} followScroll={props.followScroll} /> : null
 
   if (active) {
-    const phrase = thinking.statusPhrase ?? '规划师思考中…'
+    const phrase = thinking.statusPhrase ?? props.idlePhrase ?? '规划师思考中…'
     return (
       <div className="space-y-2">
         <button
@@ -183,31 +196,43 @@ export function ThinkingChain(props: {
           <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           <span aria-hidden="true" className="plan-shimmer pointer-events-none absolute inset-0" />
         </button>
+        {props.modelNotice ? (
+          <p className="px-1 text-[11px] leading-4 text-gray-400">
+            当前模型（{props.modelNotice.providerName} · {props.modelNotice.model}）不公开思考过程，这里只显示工具进度
+          </p>
+        ) : null}
         {timeline}
       </div>
     )
   }
 
-  if (!hasThinkingContent(thinking)) return null
+  // M5：被用户停止的回合即使没攒下遥测也要留痕（摘要行显示「已停止」）
+  const stopped = thinking.statusPhrase === STOPPED_PHRASE
+  const reviewable = hasThinkingContent(thinking)
+  if (!reviewable && !stopped) return null
   const steps = thinking.toolCalls.length
   const secs =
     typeof thinking.endedAt === 'number' ? Math.max(0, Math.round((thinking.endedAt - thinking.startedAt) / 1000)) : null
   return (
     <div className="space-y-2">
       <p className="text-xs text-gray-400">
-        {steps > 0 ? `已完成 ${steps} 步` : '已完成思考'}
+        {stopped ? STOPPED_PHRASE : steps > 0 ? `已完成 ${steps} 步` : '已完成思考'}
         {secs != null ? ` · 用时 ${secs}s` : ''}
-        {' · '}
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className="cursor-pointer text-brand-500 underline decoration-dotted underline-offset-2"
-        >
-          {expanded ? '收起思考过程' : '查看思考过程'}
-        </button>
+        {reviewable ? (
+          <>
+            {' · '}
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={expanded}
+              className="cursor-pointer text-brand-500 underline decoration-dotted underline-offset-2"
+            >
+              {expanded ? '收起思考过程' : '查看思考过程'}
+            </button>
+          </>
+        ) : null}
       </p>
-      {timeline}
+      {reviewable ? timeline : null}
     </div>
   )
 }

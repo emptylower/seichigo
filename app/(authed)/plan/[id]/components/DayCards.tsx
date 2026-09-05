@@ -1,30 +1,29 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bus, Car, Footprints, List, Loader2, Map as MapIcon, MapPin } from 'lucide-react'
-import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
+import { List, Loader2, Map as MapIcon, MapPin, MessageSquarePlus, Navigation } from 'lucide-react'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
 import { MarkdownBubble } from './MarkdownBubble'
+import { TransitConnector } from './TransitConnector'
+import { DayMap } from './DayMap'
 import {
-  collectProviderGeometry,
   dayTravelMode,
   ensureDayScheduleForRender,
-  formatLegsText,
-  formatTransportText,
   getMedia,
   getPlace,
   getSchedule,
-  getTransport,
   isNumberedVisitItem,
   isRoutablePointItem,
   itemLatLng,
   sortItemsBySchedule,
 } from './itemPayload'
+import { dayItemContentKeys, dayRoutePoints, fetchRouteGeometry, routeSignature } from './dayRouteGeometry'
+import { composeDayRoute } from './dayRouteCompose'
+import { buildDayNavigationUrls, buildPointNavigationUrl, defaultMaxNavigationWaypoints } from '../lib/navigationLinks'
+import { useClientFormattedTime } from '../hooks/useClientFormattedTime'
 import type { DaymapMessagePayload, TripPlanDayView, TripPlanItemView } from '@/lib/tripPlan/view'
-
-type RouteLineString = { type: 'LineString'; coordinates: [number, number][] }
 
 const TYPE_LABELS: Record<string, string> = {
   point: '点位',
@@ -40,65 +39,6 @@ const SCHEDULE_CONFIDENCE_LABELS: Record<string, string> = {
   estimated: '预估',
 }
 
-type RouteGeometryResult = { ok: true; geometry: RouteLineString } | { ok: false; error: string }
-
-// 路线几何模块级缓存：跨 列表/地图 tab 切换、组件重挂载复用；
-// DayCards 挂载时后台预取各天路线，切到地图 tab 直接命中
-const routeGeometryCache = new Map<string, RouteLineString>()
-const routeGeometryInflight = new Map<string, Promise<RouteGeometryResult>>()
-
-function routeCacheKey(planId: string, signature: string, mode: string): string {
-  return `${planId}:${signature}:${mode}`
-}
-
-/** 拉取某天真实道路路线（同源 API，失败结果不缓存以便重试；同 signature 在途请求去重） */
-function fetchRouteGeometry(planId: string, signature: string, mode: 'walking' | 'driving'): Promise<RouteGeometryResult> {
-  const key = routeCacheKey(planId, signature, mode)
-  const cached = routeGeometryCache.get(key)
-  if (cached) return Promise.resolve({ ok: true, geometry: cached })
-  const inflight = routeGeometryInflight.get(key)
-  if (inflight) return inflight
-  const promise = (async (): Promise<RouteGeometryResult> => {
-    try {
-      const res = await fetch(
-        `/api/me/plans/${planId}/route-geometry?points=${encodeURIComponent(signature)}&mode=${mode}`,
-      )
-      const data = (await res.json().catch(() => null)) as
-        | { ok?: boolean; geometry?: RouteLineString; error?: string }
-        | null
-      if (res.ok && data?.ok && data.geometry) {
-        routeGeometryCache.set(key, data.geometry)
-        return { ok: true, geometry: data.geometry }
-      }
-      return { ok: false, error: data?.error ?? '路线加载失败' }
-    } catch {
-      return { ok: false, error: '网络错误' }
-    } finally {
-      routeGeometryInflight.delete(key)
-    }
-  })()
-  routeGeometryInflight.set(key, promise)
-  return promise
-}
-
-/** 当天参与地图/路线的点（必须有坐标：站内点位 + 外部地点）；渲染期时间兜底后排序 */
-function dayRoutePoints(day: TripPlanDayView): Array<{ lat: number; lng: number; label: string }> {
-  const result: Array<{ lat: number; lng: number; label: string }> = []
-  let seq = 0
-  for (const item of sortItemsBySchedule(ensureDayScheduleForRender(day.items))) {
-    if (!isRoutablePointItem(item)) continue
-    const latLng = itemLatLng(item)
-    if (!latLng) continue
-    seq += 1
-    result.push({ lat: latLng.lat, lng: latLng.lng, label: String(seq) })
-  }
-  return result
-}
-
-function routeSignature(points: Array<{ lat: number; lng: number }>): string {
-  return points.map((p) => `${p.lng},${p.lat}`).join('|')
-}
-
 function formatDayDate(date: string | null): string | null {
   if (!date) return null
   // ISO 串直接切月/日，避免时区换算偏移
@@ -107,42 +47,18 @@ function formatDayDate(date: string | null): string | null {
   return `${Number(match[1])}/${Number(match[2])}`
 }
 
-function TransportModeIcon(props: { mode?: string }) {
-  if (props.mode === 'walk') return <Footprints className="h-3.5 w-3.5 shrink-0" />
-  if (props.mode === 'driving') return <Car className="h-3.5 w-3.5 shrink-0" />
-  return <Bus className="h-3.5 w-3.5 shrink-0" />
+// 「交给规划师调整」预填文案（§0）：点位级带天数/序号/标题；整日级只带天数；
+// 历史快照额外前缀「基于 {savedAt} 那版行程，」（快照不可悄悄修改，只做预填转述）
+function snapshotDraftPrefix(snapshotSavedAt?: string | null): string {
+  return snapshotSavedAt ? `基于 ${snapshotSavedAt} 那版行程，` : ''
 }
 
-function TransitConnectorRow(props: { item: TripPlanItemView }) {
-  const { item } = props
-  const transport = getTransport(item)
-  const legsText = transport ? formatLegsText(transport) : null
-  const mainText = transport ? formatTransportText(transport) : ''
-  // 旧数据/LLM 未按 schema 写 payload 时兜底用 title/note，绝不空行
-  const fallbackText = [item.title, item.note].filter(Boolean).join(' · ')
-  const text = legsText || mainText || fallbackText
-  const secondary = legsText ? mainText : null
-  return (
-    <li className="flex items-start gap-2 py-1 pl-9 text-xs text-gray-400">
-      <span className="mt-0.5">
-        <TransportModeIcon mode={transport?.mode} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">{text}</span>
-        {secondary ? <span className="block truncate text-[11px] text-gray-300">{secondary}</span> : null}
-        {transport?.mapsUrl ? (
-          <a
-            href={transport.mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-0.5 inline-block text-[11px] text-brand-500 underline decoration-brand-200 underline-offset-2"
-          >
-            在 Google 地图查看
-          </a>
-        ) : null}
-      </span>
-    </li>
-  )
+function buildPointAdjustDraft(day: number, seq: number, title: string, snapshotSavedAt?: string | null): string {
+  return `${snapshotDraftPrefix(snapshotSavedAt)}请调整第 ${day} 天第 ${seq} 个点位「${title}」：`
+}
+
+function buildDayAdjustDraft(day: number, snapshotSavedAt?: string | null): string {
+  return `${snapshotDraftPrefix(snapshotSavedAt)}请调整第 ${day} 天的安排：`
 }
 
 function ScheduleTimeChip(props: { item: TripPlanItemView }) {
@@ -170,8 +86,35 @@ function ScheduleTimeChip(props: { item: TripPlanItemView }) {
   return null
 }
 
-function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; showLine: boolean }) {
-  const { item, seq, showLine } = props
+function TimelineCardRow(props: {
+  item: TripPlanItemView
+  seq: number | null
+  showLine: boolean
+  /** 内容签名 key（与地图 marker 的 data-point-id 同值）；无坐标的条目为 null（不可点） */
+  pointKey?: string | null
+  active?: boolean
+  flashing?: boolean
+  onSelectPoint?: (id: string) => void
+  /** 「在地图上看」：切到地图 tab 并高亮该点 */
+  onShowOnMap?: (id: string) => void
+  /** 所属天序号 + 快照时间戳：供「导航」与「交给规划师调整」文案使用 */
+  dayIndex?: number
+  snapshotSavedAt?: string | null
+  onComposeDraft?: (text: string) => void
+}) {
+  const {
+    item,
+    seq,
+    showLine,
+    pointKey = null,
+    active = false,
+    flashing = false,
+    onSelectPoint,
+    onShowOnMap,
+    dayIndex = 0,
+    snapshotSavedAt = null,
+    onComposeDraft,
+  } = props
   // 计序口径（M3 修订）：type='point'（含历史缺坐标数据）与带 payload.place 的
   // 外部地点条目（point/attraction）都是完整行程点——计序号、展示媒体图；
   // 地图/路线仅纳入有坐标的点（dayRoutePoints 另行过滤）
@@ -187,8 +130,33 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
   const image = media?.displayUrl ?? item.point?.image ?? pointPhotoSrc
   const description = item.reason ?? item.note ?? null
   const isExternal = isVisit && !item.pointId && getPlace(item) !== null
+  // 行尾操作：有坐标（进了地图）的条目给「导航」外链；计序点位给「交给规划师调整」
+  const navLatLng = pointKey ? itemLatLng(item) : null
+  const showRowActions = Boolean(navLatLng) || (seq !== null && Boolean(onComposeDraft))
+  // L16：可点选条目键盘可达（role=button + tabIndex + Enter/Space 触发同 onClick）
+  const rowSelectable = Boolean(pointKey && onSelectPoint)
+  const selectThisPoint = () => {
+    if (pointKey && onSelectPoint) onSelectPoint(pointKey)
+  }
   return (
-    <li className="flex gap-3 px-4 py-3">
+    <li
+      data-point-id={pointKey ?? undefined}
+      data-active={active ? 'true' : undefined}
+      onClick={rowSelectable ? selectThisPoint : undefined}
+      role={rowSelectable ? 'button' : undefined}
+      tabIndex={rowSelectable ? 0 : undefined}
+      onKeyDown={
+        rowSelectable
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                selectThisPoint()
+              }
+            }
+          : undefined
+      }
+      className={`flex gap-3 px-4 py-3${rowSelectable ? ' cursor-pointer' : ''}${flashing ? ' rounded-xl ring-2 ring-rose-400' : ''}`}
+    >
       {/* 左列：序号徽标 + 向下连接线（点位计序号，其他类型灰点弱化） */}
       <div className="flex w-6 shrink-0 flex-col items-center gap-1">
         {isVisit ? (
@@ -257,117 +225,54 @@ function TimelineCardRow(props: { item: TripPlanItemView; seq: number | null; sh
           </div>
         ) : null}
       </div>
+
+      {/* 行尾操作列：在地图上看（切 tab 高亮）+ 导航外链（Google 地图，新窗口）+ 交给规划师调整（预填聊天输入） */}
+      {showRowActions ? (
+        <div className="flex shrink-0 flex-col items-center gap-1 self-start pt-0.5">
+          {pointKey && onShowOnMap ? (
+            <button
+              type="button"
+              aria-label={`在地图上看：${item.title}`}
+              title="在地图上看"
+              onClick={(event) => {
+                event.stopPropagation()
+                onShowOnMap(pointKey)
+              }}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
+            >
+              <MapIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          {navLatLng ? (
+            <a
+              href={buildPointNavigationUrl(navLatLng)}
+              target="_blank"
+              rel="noopener"
+              aria-label={`导航到${item.title}`}
+              title="在 Google 地图导航到这里"
+              onClick={(event) => event.stopPropagation()}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
+          {seq !== null && onComposeDraft ? (
+            <button
+              type="button"
+              aria-label={`交给规划师调整：${item.title}`}
+              title="交给规划师调整"
+              onClick={(event) => {
+                event.stopPropagation()
+                onComposeDraft(buildPointAdjustDraft(dayIndex, seq, item.title, snapshotSavedAt))
+              }}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </li>
-  )
-}
-
-function DayMap(props: { planId: string; day: TripPlanDayView }) {
-  const { planId, day } = props
-  const [geometry, setGeometry] = useState<RouteLineString | null>(null)
-  const [sourceLabel, setSourceLabel] = useState<'provider' | 'fallback' | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [retryToken, setRetryToken] = useState(0)
-
-  // 当天参与路线的点（序号与列表徽标一致：站内点位 + 外部地点）
-  const dayPoints = useMemo(() => dayRoutePoints(day), [day])
-  // 与时间线同源的出行模式：任何自驾段 → driving，否则 walking
-  const mode = useMemo(() => dayTravelMode(day.items), [day])
-  // provider 几何（estimate_travel 落库的折线）：权威路线，优先于通用路网几何
-  const providerGeometry = useMemo(() => collectProviderGeometry(day.items), [day])
-
-  const signature = routeSignature(dayPoints)
-  const hasProviderGeometry = providerGeometry.length >= 2
-
-  useEffect(() => {
-    if (dayPoints.length < 2) {
-      setGeometry(null)
-      setSourceLabel(null)
-      setError(null)
-      setLoading(false)
-      return
-    }
-    if (hasProviderGeometry) {
-      // 权威 provider 几何：与时间线描述的路线/模式同源，不再请求通用路网
-      setGeometry({ type: 'LineString', coordinates: providerGeometry })
-      setSourceLabel('provider')
-      setError(null)
-      setLoading(false)
-      return
-    }
-    // 预取/上次渲染可能已填充模块级缓存，命中即同步展示
-    const cached = routeGeometryCache.get(routeCacheKey(planId, signature, mode))
-    if (cached) {
-      setGeometry(cached)
-      setSourceLabel('fallback')
-      setError(null)
-      setLoading(false)
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    void fetchRouteGeometry(planId, signature, mode).then((result) => {
-      if (cancelled) return
-      if (result.ok) {
-        setGeometry(result.geometry)
-        setSourceLabel('fallback')
-        setError(null)
-      } else {
-        setGeometry(null)
-        setSourceLabel(null)
-        setError(result.error)
-      }
-      setLoading(false)
-    })
-    return () => {
-      cancelled = true
-    }
-    // retryToken 手动重试；signature/mode 变化（切天/plan 更新）自动重取
-  }, [planId, signature, mode, dayPoints.length, hasProviderGeometry, providerGeometry, retryToken])
-
-  if (!dayPoints.length) {
-    return (
-      <div className="mx-4 mb-4 flex h-40 items-center justify-center rounded-2xl bg-gray-50 text-xs text-gray-400">
-        当天还没有带坐标的点位
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative mx-4 mb-4 h-64 sm:h-80">
-      <RoutePreviewMap
-        points={dayPoints}
-        routeGeometry={geometry}
-        interactive={false}
-        className="h-full w-full overflow-hidden rounded-2xl"
-      />
-      <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-500 shadow-sm">
-        双指缩放地图
-      </div>
-      {sourceLabel === 'fallback' ? (
-        <div
-          className="pointer-events-none absolute right-3 top-9 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-400 shadow-sm"
-          title="未取到所选交通方式的权威路线，按路网示意连接"
-        >
-          参考路线（示意）
-        </div>
-      ) : null}
-      {loading ? (
-        <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-500 shadow-sm">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          路线加载中…
-        </div>
-      ) : null}
-      {!loading && error ? (
-        <button
-          type="button"
-          onClick={() => setRetryToken((t) => t + 1)}
-          className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-red-500 shadow-sm"
-        >
-          路线加载失败 · 重试
-        </button>
-      ) : null}
-    </div>
   )
 }
 
@@ -382,28 +287,90 @@ export function DayCards(props: {
    * 切天状态在组件内部，多个 DayCards 实例（多张 daymap）互不影响。
    */
   scope?: 'current' | 'snapshot'
+  /** 「交给规划师调整」：把预填文案交给聊天输入框（不自动发送）；不传则不渲染调整入口 */
+  onComposeDraft?: (text: string) => void
+  /** snapshot scope 的保存时间（如 09-01 08:30）：调整文案前缀「基于 … 那版行程，」 */
+  snapshotSavedAt?: string | null
 }) {
-  const { planId, days, scope = 'current' } = props
+  const { planId, days, scope = 'current', onComposeDraft, snapshotSavedAt = null } = props
   const router = useRouter()
   const [view, setView] = useState<'list' | 'map'>('list')
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [savedRouteBookId, setSavedRouteBookId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // marker ↔ 列表条目联动：activePointId 共享给地图高亮；flashPointId 触发 1.5s 高亮环
+  const [activePointId, setActivePointId] = useState<string | null>(null)
+  const [flashPointId, setFlashPointId] = useState<string | null>(null)
+  // M7：途经点上限首屏恒按桌面 9 渲染（避免 hydration mismatch），
+  // 挂载后才按 matchMedia 修正为移动端 3
+  const [maxWaypoints, setMaxWaypoints] = useState(9)
+  const listRef = useRef<HTMLOListElement>(null)
   // 天数很多时 tab 横向溢出；滚动条全站隐藏后桌面鼠标靠拖拽访问
   const dayTabsDrag = useDragToScroll()
+
+  useEffect(() => {
+    setMaxWaypoints(defaultMaxNavigationWaypoints())
+  }, [])
 
   // 后台预取各天真实道路路线（不阻塞渲染）：切到地图 tab 时命中模块级缓存直接展示，
   // 避免"切 tab 才开始请求"造成的明显等待；同 signature 请求在 fetchRouteGeometry 内去重。
   // 已有 provider 折线（estimate_travel 落库）的天优先用权威几何，不再预取通用路网。
   useEffect(() => {
     for (const day of days) {
-      if (collectProviderGeometry(day.items).length >= 2) continue
       const points = dayRoutePoints(day)
       if (points.length < 2) continue
+      // R2：逐段拼线后仍无任何真实折线的天才需要通用路网兜底
+      if (composeDayRoute(points, day.items).coverage !== 'none') continue
       void fetchRouteGeometry(planId, routeSignature(points), dayTravelMode(day.items))
     }
   }, [planId, days])
+
+  const active = days.find((d) => d.dayIndex === selectedDay) ?? days[0]
+
+  // 切天重置联动状态
+  useEffect(() => {
+    setActivePointId(null)
+    setFlashPointId(null)
+  }, [active?.dayIndex])
+
+  // L17：高亮环定时器与 tab 无关——只要 flashPointId 在场就 1.5 秒后清除；
+  // 切天/卸载由 effect cleanup 清定时器（切天另有重置置 null）
+  useEffect(() => {
+    if (!flashPointId) return
+    const timer = setTimeout(() => setFlashPointId(null), 1500)
+    return () => clearTimeout(timer)
+  }, [flashPointId])
+
+  // marker/「查看条目」联动：列表 tab 下滚动到对应条目（高亮环由上面的定时器收口）
+  useEffect(() => {
+    if (!flashPointId || view !== 'list') return
+    const rows = listRef.current?.querySelectorAll('[data-point-id]') ?? []
+    for (const row of rows) {
+      if (row.getAttribute('data-point-id') === flashPointId) {
+        const el = row as HTMLElement
+        if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [flashPointId, view])
+
+  // M3：marker 点选只设高亮（不切 tab——Popup 在地图上展示，「查看条目」才切回列表）
+  function handlePointSelect(id: string) {
+    setActivePointId(id)
+  }
+
+  // Popup「查看条目」：切回列表、滚动到对应条目并闪烁 1.5 秒高亮环
+  function handleRequestShowItem(id: string) {
+    setActivePointId(id)
+    setFlashPointId(id)
+    setView('list')
+  }
+
+  // 条目行尾「在地图上看」：切到地图 tab，activePointId 生效（放大/easeTo/自动 Popup）
+  function handleShowOnMap(id: string) {
+    setActivePointId(id)
+    setView('map')
+  }
 
   async function handleSave() {
     if (saveState === 'saving') return
@@ -439,11 +406,14 @@ export function DayCards(props: {
     )
   }
 
-  const active = days.find((d) => d.dayIndex === selectedDay) ?? days[0]
   // 渲染期时间兜底（M3 修订）：历史数据无 schedule 也推导出具体时钟时间；
   // 再按结构化时间防御性二次排序（不信任插入顺序，服务端已排过是双保险）
   const renderedItems = ensureDayScheduleForRender(active.items)
   const sortedItems = sortItemsBySchedule(renderedItems)
+  // 列表 key/联动 id 不再用 item.id（每次保存 deleteMany+createMany 后 id 全换，
+  // 轮询拿到新计划会全量重挂载、图片重新请求）：改用内容签名，
+  // 同一天内重复签名追加 #序号；与地图 marker 的 data-point-id 同值
+  const itemKeys = dayItemContentKeys(sortedItems)
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -524,30 +494,102 @@ export function DayCards(props: {
         </div>
       ) : null}
 
+      {/* Day 头部操作条：整日导航（多段时列出各段）+ 交给规划师调整；两种 scope 都显示 */}
+      {(() => {
+        const dayNavUrls = buildDayNavigationUrls(dayRoutePoints(active), { maxWaypoints })
+        if (!dayNavUrls.length && !onComposeDraft) return null
+        return (
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-2">
+            {dayNavUrls.length === 1 ? (
+              <a
+                href={dayNavUrls[0]}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600"
+              >
+                <Navigation className="h-3 w-3" />
+                整日导航
+              </a>
+            ) : dayNavUrls.length > 1 ? (
+              <details className="relative">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600">
+                  <Navigation className="h-3 w-3" />
+                  整日导航（{dayNavUrls.length} 段）
+                </summary>
+                <div className="absolute left-0 z-10 mt-1 flex min-w-28 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                  {dayNavUrls.map((url, index) => (
+                    <a
+                      key={index}
+                      href={url}
+                      target="_blank"
+                      rel="noopener"
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+                    >
+                      第 {index + 1} 段
+                    </a>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+            {onComposeDraft ? (
+              <button
+                type="button"
+                onClick={() => onComposeDraft(buildDayAdjustDraft(active.dayIndex, snapshotSavedAt))}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600"
+              >
+                <MessageSquarePlus className="h-3 w-3" />
+                交给规划师调整这一天
+              </button>
+            ) : null}
+          </div>
+        )
+      })()}
+
       {view === 'list' ? (
-        <ol className="max-h-96 overflow-y-auto py-1">
+        <ol ref={listRef} className="max-h-96 overflow-y-auto py-1">
           {(() => {
             let seq = 0
-            // 列表 key 不再用 item.id（每次保存 deleteMany+createMany 后 id 全换，
-            // 轮询拿到新计划会全量重挂载、图片重新请求）：改用内容签名，
-            // 同一天内重复签名追加 #序号
-            const keyCounts = new Map<string, number>()
             return sortedItems.map((item, idx) => {
-              const signature = `${item.type}|${item.pointId ?? ''}|${item.title}`
-              const occurrence = keyCounts.get(signature) ?? 0
-              keyCounts.set(signature, occurrence + 1)
-              const itemKey = occurrence > 0 ? `${signature}#${occurrence}` : signature
+              const itemKey = itemKeys[idx]!
               if (item.type === 'transit') {
-                return <TransitConnectorRow key={itemKey} item={item} />
+                // 起终点坐标：取前后最近的带坐标条目，供无 mapsUrl 的兜底载荷拼
+                // Google 导航链接（"拿不到方案就告诉用户去哪查"）
+                let origin: { lat: number; lng: number } | null = null
+                for (let j = idx - 1; j >= 0; j--) {
+                  const latLng = itemLatLng(sortedItems[j]!)
+                  if (latLng) {
+                    origin = latLng
+                    break
+                  }
+                }
+                let destination: { lat: number; lng: number } | null = null
+                for (let j = idx + 1; j < sortedItems.length; j++) {
+                  const latLng = itemLatLng(sortedItems[j]!)
+                  if (latLng) {
+                    destination = latLng
+                    break
+                  }
+                }
+                return <TransitConnector key={itemKey} item={item} origin={origin} destination={destination} />
               }
               const isVisit = isNumberedVisitItem(item)
               if (isVisit) seq += 1
+              // 与地图 marker 联动的条目：有坐标、进了 dayRoutePoints 的才给 pointKey
+              const pointKey = isRoutablePointItem(item) && itemLatLng(item) ? itemKey : null
               return (
                 <TimelineCardRow
                   key={itemKey}
                   item={item}
                   seq={isVisit ? seq : null}
                   showLine={idx < sortedItems.length - 1}
+                  pointKey={pointKey}
+                  active={pointKey !== null && pointKey === activePointId}
+                  flashing={pointKey !== null && pointKey === flashPointId}
+                  onSelectPoint={pointKey ? setActivePointId : undefined}
+                  onShowOnMap={pointKey ? handleShowOnMap : undefined}
+                  dayIndex={active.dayIndex}
+                  snapshotSavedAt={snapshotSavedAt}
+                  onComposeDraft={onComposeDraft}
                 />
               )
             })
@@ -555,7 +597,13 @@ export function DayCards(props: {
         </ol>
       ) : (
         <div className="pt-3">
-          <DayMap planId={planId} day={active} />
+          <DayMap
+            planId={planId}
+            day={active}
+            activePointId={activePointId}
+            onPointSelect={handlePointSelect}
+            onRequestShowItem={handleRequestShowItem}
+          />
         </div>
       )}
     </div>
@@ -564,23 +612,20 @@ export function DayCards(props: {
 
 // ---------- daymap 聊天交付物包装 ----------
 
-function formatDaymapSavedAt(iso: string): string {
-  const ms = Date.parse(iso)
-  if (Number.isNaN(ms)) return ''
-  const d = new Date(ms)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 /**
  * 聊天时间线里的 daymap 交付物：渲染 save_plan_days 成功那一刻的不可变
  * 快照（DayCards scope=snapshot，只读）。每个实例的 Day tab 状态独立，
  * 互不影响；路线优先用快照内的 provider 几何，缺失时走现有路线 API
  * 缓存与失败重试（DayCards/DayMap 既有行为）。
+ *
+ * 保存时间标签走 useClientFormattedTime：首帧空串（服务端 UTC 与浏览器
+ * 本地时区格式化不同，直接算会触发 React #418 文本水合不一致），effect
+ * 后填本地时区 MM-DD HH:mm；「交给规划师调整」前缀在点击时取值，
+ * 此时 state 已是本地格式。
  */
-export function DaymapCard(props: { planId: string; daymap: DaymapMessagePayload }) {
+export function DaymapCard(props: { planId: string; daymap: DaymapMessagePayload; onComposeDraft?: (text: string) => void }) {
   const { daymap } = props
-  const savedAtLabel = formatDaymapSavedAt(daymap.savedAt)
+  const savedAtLabel = useClientFormattedTime(daymap.savedAt)
   return (
     <div data-daymap-revision={daymap.revisionId} className="pt-1">
       <div className="flex items-center gap-1.5 px-1 pb-1.5 text-xs text-gray-400">
@@ -588,7 +633,13 @@ export function DaymapCard(props: { planId: string; daymap: DaymapMessagePayload
         <span>行程快照 · 已保存</span>
         {savedAtLabel ? <span className="tabular-nums">{savedAtLabel}</span> : null}
       </div>
-      <DayCards planId={props.planId} days={daymap.days} scope="snapshot" />
+      <DayCards
+        planId={props.planId}
+        days={daymap.days}
+        scope="snapshot"
+        snapshotSavedAt={savedAtLabel || null}
+        onComposeDraft={props.onComposeDraft}
+      />
     </div>
   )
 }

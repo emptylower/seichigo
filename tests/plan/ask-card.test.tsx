@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import { AskCard, type AskAnswer } from '@/app/(authed)/plan/[id]/components/AskCard'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 
@@ -73,6 +74,14 @@ describe('DateRangeAsk（精确模式）', () => {
     render(<AskCard payload={datePayload()} onSubmit={onSubmit} />)
     fireEvent.click(screen.getByRole('button', { name: '跳过' }))
     expect(onSubmit).toHaveBeenCalledWith({ readableText: '（跳过这个问题）', answerValue: {} })
+  })
+
+  it('SSR 首帧不含依赖本地时区的日历/月份文本（水合一致）', () => {
+    // renderToString 会在相邻文本节点间插入 <!-- --> 注释分隔符，先剥离再断言
+    const html = renderToString(<AskCard payload={datePayload()} onSubmit={vi.fn()} />).replace(/<!--.*?-->/g, '')
+    expect(html).toContain('打算什么时候出发？')
+    expect(html).not.toMatch(/\d{4}年\d+月/)
+    expect(html).not.toMatch(/本月（\d+月）/)
   })
 })
 

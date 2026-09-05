@@ -5,10 +5,34 @@ import { render, screen, fireEvent } from '@testing-library/react'
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
+const routeMapState = vi.hoisted(() => ({
+  latestProps: null as null | {
+    points: Array<{ id?: string; lat: number; lng: number; label: string }>
+    routeGeometry: unknown
+    activePointId?: string | null
+    onPointSelect?: (id: string) => void
+    renderPopup?: (id: string) => HTMLElement | null
+    interactive?: boolean
+  },
+  /** 置 true 时 mock 组件渲染即抛错（错误边界用例：模拟 WebGL 初始化失败冒泡） */
+  shouldThrow: false,
+}))
 vi.mock('@/components/route/RoutePreviewMap', () => ({
-  RoutePreviewMap: (props: { points: Array<{ lat: number; lng: number; label: string }>; routeGeometry: unknown }) => (
-    <div data-testid="route-map" data-points={JSON.stringify(props.points)} data-has-geometry={props.routeGeometry ? '1' : '0'} />
-  ),
+  RoutePreviewMap: (props: NonNullable<typeof routeMapState.latestProps>) => {
+    if (routeMapState.shouldThrow) {
+      throw new Error('webglcontextcreationerror: Failed to initialize WebGL')
+    }
+    routeMapState.latestProps = props
+    return (
+      <div
+        data-testid="route-map"
+        data-points={JSON.stringify(props.points)}
+        data-has-geometry={props.routeGeometry ? '1' : '0'}
+        data-active-point-id={props.activePointId ?? ''}
+        data-interactive={String(props.interactive ?? true)}
+      />
+    )
+  },
 }))
 vi.mock('@/components/map/ResilientMapImage', async () => {
   const { getMapDisplayImageCandidates } = await import('@/lib/anitabi/imageProxy')
@@ -36,6 +60,7 @@ vi.mock('@/components/map/ResilientMapImage', async () => {
 
 import { DayCards } from '@/app/(authed)/plan/[id]/components/DayCards'
 import type { TripPlanItemView, TripPlanView } from '@/lib/tripPlan/view'
+import { act } from '@testing-library/react'
 
 function planItem(overrides: Partial<TripPlanItemView>): TripPlanItemView {
   return {
@@ -123,6 +148,8 @@ function renderDayCards(plan = makePlan()) {
 describe('DayCards（M3 行程卡渲染）', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    routeMapState.latestProps = null
+    routeMapState.shouldThrow = false
   })
 
   it('每个点位卡显示具体时钟时间；参考/预估时间带标注', () => {
@@ -144,13 +171,25 @@ describe('DayCards（M3 行程卡渲染）', () => {
     expect(screen.getByText('Google 地点')).toBeInTheDocument()
   })
 
-  it('transit 行渲染分段详情（步行 → 线路/站数/上下车站）与主文案', () => {
+  it('transit 行默认折叠为归并摘要，展开显示逐步导航、总计与 Google 地图链接', () => {
     renderDayCards()
-    expect(screen.getByText(/JR奈良线 4 站（从宇治駅到京都駅）/)).toBeInTheDocument()
-    expect(screen.getByText('乘车 35 分钟 · 18.5km')).toBeInTheDocument()
+    // 折叠摘要：walk + transit 两段归并（transit 段无时长则不显示分钟数）
+    expect(screen.getByText('先步行 3 分钟，再乘车')).toBeInTheDocument()
+    // 展开前不渲染逐步详情
+    expect(screen.queryByText(/宇治駅 → 京都駅/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /先步行 3 分钟/ }))
+    expect(screen.getByText('步行 3 分钟（200 m）')).toBeInTheDocument()
+    expect(screen.getByText('乘 JR奈良线 · 宇治駅 → 京都駅 · 4 站')).toBeInTheDocument()
+    expect(screen.getByText('总计 35 分钟 · 18.5 km')).toBeInTheDocument()
+    // 无 mapsUrl：用前后条目坐标拼 Google 导航链接（宇治桥 → 迪士尼）
+    const link = screen.getByRole('link', { name: '在 Google 地图打开' })
+    expect(link.getAttribute('href')).toBe(
+      'https://www.google.com/maps/dir/?api=1&origin=34.8892,135.8075&destination=35.6329,139.8804&travelmode=transit',
+    )
   })
 
-  it('estimated 兜底 transit 段：主文案带"（参考估算）"并渲染 Google 地图外链', () => {
+  it('estimated 兜底 transit 段：折叠显示"约 45 分钟 · 参考估算"，展开显示提示与 Google 地图外链', () => {
     const plan = makePlan()
     plan.days[0]!.items[1] = planItem({
       id: 'item-estimated-transit',
@@ -169,15 +208,20 @@ describe('DayCards（M3 行程卡渲染）', () => {
       },
     })
     renderDayCards(plan)
-    expect(screen.getByText('乘车 45 分钟 · 20.0km（参考估算）')).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: '在 Google 地图查看' })
+    expect(screen.getByText('约 45 分钟 · 参考估算')).toBeInTheDocument()
+    // 链接收在展开态里
+    expect(screen.queryByRole('link', { name: '在 Google 地图打开' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /约 45 分钟/ }))
+    const link = screen.getByRole('link', { name: '在 Google 地图打开' })
     expect(link.getAttribute('href')).toBe(
       'https://www.google.com/maps/dir/?api=1&origin=35.69,139.7&destination=35.5,138.76&travelmode=transit',
     )
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toContain('noopener')
-    // 非 estimated 的 transit 行不渲染外链（本用例里只有这一条 transit）
-    expect(screen.getAllByRole('link', { name: '在 Google 地图查看' })).toHaveLength(1)
+    // 估算展开态给出当地实时查询提示；全页仅这一条 transit → 仅一个链接
+    expect(screen.getByText('到达当地后可用 Google 地图 / Yahoo!乗換案内 查询实时路线')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: '在 Google 地图打开' })).toHaveLength(1)
   })
 
   it('地图 tab：外部+站内点位都进地图；provider 折线优先（不请求通用路网）', async () => {
@@ -185,9 +229,11 @@ describe('DayCards（M3 行程卡渲染）', () => {
     const transitPayload = plan.days[0].items[1].payload as Record<string, unknown>
     transitPayload.transport = {
       ...(transitPayload.transport as Record<string, unknown>),
+      // polyline 是 [lat, lng]；首尾必须落在两端点上，否则不算这段的路线
       polyline: [
-        [34.89, 135.8],
+        [34.8892, 135.8075],
         [34.98, 135.76],
+        [35.6329, 139.8804],
       ],
     }
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
@@ -319,7 +365,11 @@ describe('DayCards（M3 行程卡渲染）', () => {
     const calledUrl = String(fetchSpy.mock.calls[0]?.[0] ?? '')
     expect(calledUrl).toContain('/route-geometry')
     expect(calledUrl).toContain('mode=walking')
-    expect(await screen.findByText('参考路线（示意）')).toBeInTheDocument()
+    const schematicLabel = await screen.findByText('参考路线（示意）')
+    expect(schematicLabel).toBeInTheDocument()
+    // M5：示意标注挪到左上第二行，避开右上缩放控件
+    expect(schematicLabel.className).toContain('left-3')
+    expect(schematicLabel.className).toContain('top-9')
     fetchSpy.mockRestore()
   })
 
@@ -438,5 +488,234 @@ describe('DayCards（M3 行程卡渲染）', () => {
     const googleDecoded = decodeURIComponent(googleImg.src)
     expect(googleDecoded).toContain('/api/google/place-photo')
     expect(googleDecoded).not.toContain('plan=')
+  })
+})
+
+describe('DayCards ↔ 地图联动（第十轮 B3）', () => {
+  const UJI_KEY = 'point|115908:uji|宇治桥'
+
+  it('列表条目带 data-point-id；点击条目 → data-active=true，切到地图 tab 后 RoutePreviewMap 收到 activePointId', async () => {
+    const { container } = renderDayCards()
+    const row = container.querySelector(`[data-point-id="${UJI_KEY}"]`)
+    expect(row).not.toBeNull()
+
+    fireEvent.click(row!)
+    expect(row!.getAttribute('data-active')).toBe('true')
+
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+    expect(routeMapState.latestProps?.activePointId).toBe(UJI_KEY)
+    // 地图点带与列表条目一致的 id
+    const mapPoints = routeMapState.latestProps?.points ?? []
+    expect(mapPoints.map((p) => p.id)).toContain(UJI_KEY)
+  })
+
+  it('M3 新语义：地图触发 onPointSelect(id) → 不切 tab（仍在地图），activePointId 传给 RoutePreviewMap', async () => {
+    renderDayCards()
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+    expect(typeof routeMapState.latestProps?.onPointSelect).toBe('function')
+
+    act(() => {
+      routeMapState.latestProps?.onPointSelect?.(UJI_KEY)
+    })
+    // marker 点选不再把地图卸载：仍在地图 tab，高亮 id 已传下去
+    expect(screen.getByTestId('route-map')).toBeInTheDocument()
+    expect(routeMapState.latestProps?.activePointId).toBe(UJI_KEY)
+  })
+
+  it('L16：可点选条目键盘可达——role=button、tabIndex=0，Enter/Space 触发同 onClick', () => {
+    const { container } = renderDayCards()
+    const row = container.querySelector(`[data-point-id="${UJI_KEY}"]`)!
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.getAttribute('tabindex')).toBe('0')
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(row.getAttribute('data-active')).toBe('true')
+
+    // Space 同样触发（另一条目验证）
+    const disneyRow = container.querySelector('[data-point-id="point||東京ディズニーランド"]')!
+    fireEvent.keyDown(disneyRow, { key: ' ' })
+    expect(disneyRow.getAttribute('data-active')).toBe('true')
+    // 其它键不触发
+    fireEvent.keyDown(disneyRow, { key: 'ArrowDown' })
+  })
+
+  it('M3 新语义：条目行尾「在地图上看」→ 切到地图 tab 且 activePointId 为该条目', async () => {
+    renderDayCards()
+    fireEvent.click(screen.getByRole('button', { name: '在地图上看：宇治桥' }))
+
+    await screen.findByTestId('route-map')
+    expect(routeMapState.latestProps?.activePointId).toBe(UJI_KEY)
+  })
+
+  it('L17：高亮环 1.5 秒后自动清除；闪烁中卸载不残留定时器', async () => {
+    vi.useFakeTimers()
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true, geometry: { type: 'LineString', coordinates: [[135.8, 34.89], [139.88, 35.63]] } })))
+    try {
+      const { container, unmount } = renderDayCards()
+      fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+      // mock 的 RoutePreviewMap 同步渲染，直接可取 renderPopup
+      const renderPopup = routeMapState.latestProps?.renderPopup
+      expect(typeof renderPopup).toBe('function')
+      // Popup 内容由 React portal 渲染，需在 act 内触发才会同步落到容器
+      let popupEl!: HTMLElement
+      act(() => {
+        popupEl = renderPopup!(UJI_KEY)!
+      })
+      const button = Array.from(popupEl.querySelectorAll('button')).find((el) => el.textContent === '查看条目')!
+      act(() => {
+        button.click()
+      })
+      const row = container.querySelector(`[data-point-id="${UJI_KEY}"]`)!
+      expect(row.className).toContain('ring-rose-400')
+
+      // 1.5 秒定时器到点后高亮环清除
+      act(() => {
+        vi.advanceTimersByTime(1600)
+      })
+      expect(row.className).not.toContain('ring-rose-400')
+
+      // 再次触发后闪烁中卸载：清定时器，不抛错。
+      // 第一次「查看条目」已切回列表 → 地图与 Popup 卡片随之卸载，需重新开一次
+      fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+      let popupAgain!: HTMLElement
+      act(() => {
+        popupAgain = routeMapState.latestProps!.renderPopup!(UJI_KEY)!
+      })
+      act(() => {
+        Array.from(popupAgain.querySelectorAll('button')).find((el) => el.textContent === '查看条目')!.click()
+      })
+      expect(container.querySelector(`[data-point-id="${UJI_KEY}"]`)!.className).toContain('ring-rose-400')
+      unmount()
+      act(() => {
+        vi.advanceTimersByTime(2000)
+      })
+    } finally {
+      fetchSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('M3 新语义：Popup「查看条目」回调 → 切回列表，对应条目 data-active=true 且带高亮环 class', async () => {
+    const { container } = renderDayCards()
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+    const renderPopup = routeMapState.latestProps?.renderPopup
+    expect(typeof renderPopup).toBe('function')
+
+    let popupEl!: HTMLElement | null
+    act(() => {
+      popupEl = renderPopup!(UJI_KEY)
+    })
+    expect(popupEl).not.toBeNull()
+    expect(popupEl!.textContent).toContain('宇治桥')
+    const button = Array.from(popupEl!.querySelectorAll('button')).find((el) => el.textContent === '查看条目')
+    expect(button).toBeTruthy()
+    act(() => {
+      button!.click()
+    })
+
+    // 切回列表：地图卸载，对应条目高亮并带 1.5 秒高亮环
+    expect(screen.queryByTestId('route-map')).toBeNull()
+    const row = container.querySelector(`[data-point-id="${UJI_KEY}"]`)
+    expect(row).not.toBeNull()
+    expect(row!.getAttribute('data-active')).toBe('true')
+    expect(row!.className).toContain('ring-rose-400')
+  })
+
+  it('B3：renderPopup 返回的容器里是点位卡——封面图、标题、时间 chip 与三个动作', async () => {
+    renderDayCards()
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+    const renderPopup = routeMapState.latestProps?.renderPopup
+    let popupEl!: HTMLElement | null
+    act(() => {
+      popupEl = renderPopup!(UJI_KEY)
+    })
+    expect(popupEl).not.toBeNull()
+    // 标题 + 与列表同源的时间 chip（reference 档也照常展示区间）
+    expect(popupEl!.textContent).toContain('宇治桥')
+    expect(popupEl!.textContent).toContain('13:00–14:00')
+    // 站内点位无 point.image → /api/google/point-photo 兜底作为候选梯首档
+    const img = popupEl!.querySelector('[data-testid="resilient-image"]')
+    expect(img?.getAttribute('data-src')).toContain('/api/google/point-photo?pointId=115908%3Auji')
+    // 三个动作齐备
+    expect(Array.from(popupEl!.querySelectorAll('button')).some((el) => el.textContent === '查看条目')).toBe(true)
+    const hrefs = Array.from(popupEl!.querySelectorAll('a')).map((el) => el.getAttribute('href') ?? '')
+    expect(hrefs.some((href) => href.includes('google.com/maps/dir/'))).toBe(true)
+    expect(hrefs.some((href) => href.includes('map_action=pano&viewpoint=34.889200,135.807500'))).toBe(true)
+  })
+
+  it('地图"展开"按钮 → 全屏 role=dialog（内部地图全交互），Esc 关闭', async () => {
+    renderDayCards()
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+
+    const expandButton = screen.getByRole('button', { name: '展开' })
+    // M5：「展开」移到右下，避开右上角的 ± 缩放控件
+    expect(expandButton.className).toContain('right-3')
+    expect(expandButton.className).toContain('bottom-3')
+    expect(expandButton.className).not.toContain('top-3')
+    fireEvent.click(expandButton)
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    // 展开态内部地图是全交互（interactive=true 的 RoutePreviewMap）
+    expect(routeMapState.latestProps?.interactive).toBe(true)
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('L13：打开展开态焦点移到关闭按钮，关闭后还原到「展开」按钮；dialog 带 aria-modal 与 aria-label', async () => {
+    renderDayCards()
+    fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+    await screen.findByTestId('route-map')
+
+    const expandButton = screen.getByRole('button', { name: '展开' })
+    expandButton.focus()
+    fireEvent.click(expandButton)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('aria-label')).toBe('第 1 天 · 路线')
+    // 打开后焦点在关闭按钮上
+    const closeButton = screen.getByRole('button', { name: '关闭' })
+    expect(document.activeElement).toBe(closeButton)
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // 关闭后焦点还原到触发元素
+    expect(document.activeElement).toBe(expandButton)
+  })
+
+  it('第十轮：RoutePreviewMap 渲染抛错时错误边界只丢地图——DayCards 之外的兄弟内容与 tab 切换不受影响', async () => {
+    routeMapState.shouldThrow = true
+    // React 捕获边界错误时会向 console.error 打日志，用例里静音避免噪音
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <div>
+          <div data-testid="chat-sibling">聊天时间线其它消息</div>
+          <DayCards planId="plan-1" days={makePlan().days} scope="current" />
+        </div>,
+      )
+
+      fireEvent.click(screen.getByText('地图', { selector: 'button' }))
+
+      // 地图区域降级为占位（与 WebGL 占位同款文案）
+      expect(await screen.findByText('地图暂不可用（浏览器不支持 WebGL）')).toBeInTheDocument()
+      // DayCards 之外的兄弟内容不受影响（不再整树卸载）
+      expect(screen.getByTestId('chat-sibling')).toBeInTheDocument()
+      // DayCards 自身未卸载：切回列表 tab 后时间线条目照常渲染
+      fireEvent.click(screen.getByText('列表', { selector: 'button' }))
+      expect(await screen.findByText('宇治桥')).toBeInTheDocument()
+      expect(screen.getByText('13:00–14:00')).toBeInTheDocument()
+    } finally {
+      routeMapState.shouldThrow = false
+      consoleErrorSpy.mockRestore()
+    }
   })
 })

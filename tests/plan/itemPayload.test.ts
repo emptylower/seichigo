@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 import {
-  collectProviderGeometry,
   dayTravelMode,
   ensureDayScheduleForRender,
   formatLegsText,
@@ -134,25 +133,39 @@ describe('交通文案', () => {
   it('无 legs 返回 null（回退主文案）', () => {
     expect(formatLegsText({ mode: 'transit', durationMin: 45 })).toBeNull()
   })
+
+  it('§0.2 字段透传：legs 的 headsign/departureTime/arrivalTime 与 transport 的 note/source/walkMin/transfers', () => {
+    const view = item({
+      type: 'transit',
+      payload: {
+        transport: {
+          mode: 'transit',
+          durationMin: 26,
+          note: '日本公交线路暂无法查询',
+          source: 'japan-fallback',
+          walkMin: 8,
+          transfers: 1,
+          legs: [
+            { mode: 'walk', durationMin: 5 },
+            { mode: 'transit', line: 'JR奈良线', headsign: '京都', departureTime: '09:12', arrivalTime: '09:30' },
+          ],
+        },
+      },
+    })
+    const transport = getTransport(view)!
+    expect(transport.note).toBe('日本公交线路暂无法查询')
+    expect(transport.source).toBe('japan-fallback')
+    expect(transport.walkMin).toBe(8)
+    expect(transport.transfers).toBe(1)
+    expect(transport.legs?.[1]).toMatchObject({ headsign: '京都', departureTime: '09:12', arrivalTime: '09:30' })
+  })
 })
 
-describe('地图模式与 provider 几何', () => {
+describe('地图模式', () => {
   it('任一自驾段 → driving，否则 walking', () => {
     expect(dayTravelMode([item({ type: 'transit', payload: { transport: { mode: 'driving' } } })])).toBe('driving')
     expect(dayTravelMode([item({ type: 'transit', payload: { transport: { mode: 'walk' } } })])).toBe('walking')
     expect(dayTravelMode([item({})])).toBe('walking')
-  })
-
-  it('拼接各 transit 段折线（[lat,lng] → [lng,lat]，跨段去重衔接点）', () => {
-    const geometry = collectProviderGeometry([
-      item({ type: 'transit', payload: { transport: { polyline: [[35.0, 139.0], [35.1, 139.1]] } } }),
-      item({ type: 'transit', payload: { transport: { polyline: [[35.1, 139.1], [35.2, 139.2]] } } }),
-    ])
-    expect(geometry).toEqual([
-      [139.0, 35.0],
-      [139.1, 35.1],
-      [139.2, 35.2],
-    ])
   })
 })
 

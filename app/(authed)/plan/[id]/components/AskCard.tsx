@@ -5,6 +5,7 @@ import { CalendarCheck, Check, ChevronLeft, ChevronRight, Lightbulb, ListChecks,
 import { isAskCustomOption, reservedCustomOption, type AskUserOption, type AskUserPayload } from '@/lib/planAgent/askUser'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { useClientToday } from '../hooks/useClientFormattedTime'
 import { MapPin } from 'lucide-react'
 
 /** 结构化组件提交给 ui.tsx 的回答：可读文本进消息流，answerValue 随 answerTo 回传后端 */
@@ -84,14 +85,19 @@ type DateRangeMode = 'exact' | 'fuzzy'
 
 function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
   const [mode, setMode] = useState<DateRangeMode>('exact')
-  const today = useMemo(() => startOfDay(new Date()), [])
-  const [view, setView] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() }))
+  // 水合安全（React #418）：渲染期「今天」依赖本地时区，SSR（UTC）与浏览器
+  // 可能不同日/不同月；首帧 null（日历/月份文本不渲染），effect 后填充
+  const today = useClientToday()
+  // 视图月份：无手动翻页时跟随 today 派生（today 未就绪为 null，不渲染日历）
+  const [viewOverride, setViewOverride] = useState<{ year: number; month: number } | null>(null)
+  const view = viewOverride ?? (today ? { year: today.getFullYear(), month: today.getMonth() } : null)
   const [start, setStart] = useState<Date | null>(null)
   const [end, setEnd] = useState<Date | null>(null)
   const [chipOffset, setChipOffset] = useState(1)
   const [fuzzyDays, setFuzzyDays] = useState(3)
 
   const monthChips = useMemo(() => {
+    if (!today) return []
     return [0, 1, 2, 3].map((offset) => {
       const d = new Date(today.getFullYear(), today.getMonth() + offset, 1)
       const month = d.getMonth() + 1
@@ -106,14 +112,13 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
   const dayCount = start && end ? Math.round((startOfDay(end).getTime() - startOfDay(start).getTime()) / DAY_MS) + 1 : null
 
   function shiftMonth(delta: number) {
-    setView((v) => {
-      const d = new Date(v.year, v.month + delta, 1)
-      return { year: d.getFullYear(), month: d.getMonth() }
-    })
+    if (!view) return
+    const d = new Date(view.year, view.month + delta, 1)
+    setViewOverride({ year: d.getFullYear(), month: d.getMonth() })
   }
 
   function pickDay(day: Date) {
-    if (disabled || day < today) return
+    if (disabled || !today || day < today) return
     if (!start || (start && end)) {
       setStart(day)
       setEnd(null)
@@ -145,9 +150,9 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
     })
   }
 
-  // 单月历格子：周一开头，前置空白 + 当月天数
-  const firstWeekday = (new Date(view.year, view.month, 1).getDay() + 6) % 7
-  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate()
+  // 单月历格子：周一开头，前置空白 + 当月天数（today/view 未就绪时给 0，日历不渲染）
+  const firstWeekday = view ? (new Date(view.year, view.month, 1).getDay() + 6) % 7 : 0
+  const daysInMonth = view ? new Date(view.year, view.month + 1, 0).getDate() : 0
   const startTime = start ? startOfDay(start).getTime() : null
   const endTime = end ? startOfDay(end).getTime() : null
 
@@ -174,130 +179,137 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
         ))}
       </div>
 
-      {mode === 'exact' ? (
-        <div className="pt-3">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              aria-label="上个月"
-              disabled={disabled}
-              onClick={() => shiftMonth(-1)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-sm font-semibold text-gray-900">
-              {view.year}年{view.month + 1}月
-            </span>
-            <button
-              type="button"
-              aria-label="下个月"
-              disabled={disabled}
-              onClick={() => shiftMonth(1)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 pt-2 text-center text-[11px] text-gray-400">
-            {WEEKDAY_LABELS.map((w) => (
-              <span key={w}>{w}</span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1 pt-1">
-            {Array.from({ length: firstWeekday }, (_, i) => (
-              <span key={`blank-${i}`} />
-            ))}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day = new Date(view.year, view.month, i + 1)
-              const time = day.getTime()
-              const isPast = day < today
-              const isStart = startTime !== null && time === startTime
-              const isEnd = endTime !== null && time === endTime
-              const inRange = startTime !== null && endTime !== null && time > startTime && time < endTime
-              return (
-                <button
-                  key={i + 1}
-                  type="button"
-                  disabled={disabled || isPast}
-                  onClick={() => pickDay(day)}
-                  className={`h-9 w-full rounded-full text-sm transition ${
-                    isStart || isEnd
-                      ? 'bg-brand-600 font-semibold text-white'
-                      : inRange
-                        ? 'bg-brand-100 text-gray-900'
-                        : isPast
-                          ? 'text-gray-300'
-                          : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              )
-            })}
-          </div>
-          <div className="flex items-center justify-between pt-3">
-            <span className="text-xs text-gray-500">{dayCount ? `共 ${dayCount} 天` : start ? '再选返回日期' : '点选出发日期'}</span>
-            <button
-              type="button"
-              disabled={disabled || !dayCount}
-              onClick={submitExact}
-              className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
-            >
-              确认
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3 pt-3">
-          <div className="flex flex-wrap gap-2">
-            {monthChips.map((chip) => (
+      {/* today 未就绪（SSR/水合首帧）时不渲染依赖本地时区的日历/月份文本，同尺寸占位防跳动 */}
+      {today && view ? (
+        mode === 'exact' ? (
+          <div className="pt-3">
+            <div className="flex items-center justify-between">
               <button
-                key={chip.offset}
                 type="button"
+                aria-label="上个月"
                 disabled={disabled}
-                onClick={() => setChipOffset(chip.offset)}
-                className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                  chipOffset === chip.offset
-                    ? 'border-transparent bg-brand-600 font-semibold text-white'
-                    : 'border-gray-200 text-gray-600 hover:border-brand-300'
-                }`}
+                onClick={() => shiftMonth(-1)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
               >
-                {chip.label}
+                <ChevronLeft className="h-4 w-4" />
               </button>
-            ))}
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-3">
+              <span className="text-sm font-semibold text-gray-900">
+                {view.year}年{view.month + 1}月
+              </span>
               <button
                 type="button"
-                aria-label="减少天数"
-                disabled={disabled || fuzzyDays <= 1}
-                onClick={() => setFuzzyDays((n) => Math.max(1, n - 1))}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
+                aria-label="下个月"
+                disabled={disabled}
+                onClick={() => shiftMonth(1)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
               >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <span className="min-w-12 text-center text-sm font-semibold text-gray-900">{fuzzyDays} 天</span>
-              <button
-                type="button"
-                aria-label="增加天数"
-                disabled={disabled || fuzzyDays >= 30}
-                onClick={() => setFuzzyDays((n) => Math.min(30, n + 1))}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
-              >
-                <Plus className="h-3.5 w-3.5" />
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={submitFuzzy}
-              className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
-            >
-              确认
-            </button>
+            <div className="grid grid-cols-7 gap-1 pt-2 text-center text-[11px] text-gray-400">
+              {WEEKDAY_LABELS.map((w) => (
+                <span key={w}>{w}</span>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 pt-1">
+              {Array.from({ length: firstWeekday }, (_, i) => (
+                <span key={`blank-${i}`} />
+              ))}
+              {Array.from({ length: daysInMonth }, (_, i) => {
+                const day = new Date(view.year, view.month, i + 1)
+                const time = day.getTime()
+                const isPast = day < today
+                const isStart = startTime !== null && time === startTime
+                const isEnd = endTime !== null && time === endTime
+                const inRange = startTime !== null && endTime !== null && time > startTime && time < endTime
+                return (
+                  <button
+                    key={i + 1}
+                    type="button"
+                    disabled={disabled || isPast}
+                    onClick={() => pickDay(day)}
+                    className={`h-9 w-full rounded-full text-sm transition ${
+                      isStart || isEnd
+                        ? 'bg-brand-600 font-semibold text-white'
+                        : inRange
+                          ? 'bg-brand-100 text-gray-900'
+                          : isPast
+                            ? 'text-gray-300'
+                            : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex items-center justify-between pt-3">
+              <span className="text-xs text-gray-500">{dayCount ? `共 ${dayCount} 天` : start ? '再选返回日期' : '点选出发日期'}</span>
+              <button
+                type="button"
+                disabled={disabled || !dayCount}
+                onClick={submitExact}
+                className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
+              >
+                确认
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="space-y-3 pt-3">
+            <div className="flex flex-wrap gap-2">
+              {monthChips.map((chip) => (
+                <button
+                  key={chip.offset}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setChipOffset(chip.offset)}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                    chipOffset === chip.offset
+                      ? 'border-transparent bg-brand-600 font-semibold text-white'
+                      : 'border-gray-200 text-gray-600 hover:border-brand-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="减少天数"
+                  disabled={disabled || fuzzyDays <= 1}
+                  onClick={() => setFuzzyDays((n) => Math.max(1, n - 1))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-12 text-center text-sm font-semibold text-gray-900">{fuzzyDays} 天</span>
+                <button
+                  type="button"
+                  aria-label="增加天数"
+                  disabled={disabled || fuzzyDays >= 30}
+                  onClick={() => setFuzzyDays((n) => Math.min(30, n + 1))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={submitFuzzy}
+                className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="pt-3">
+          <div className="h-80" />
         </div>
       )}
     </CardShell>
