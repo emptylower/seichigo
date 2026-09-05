@@ -1,5 +1,5 @@
+import type { HomeHeroDemoLike } from '@/components/home/heroDemoShape'
 import type {
-  HomeHeroDemo,
   HomeMapClusters,
   HomePopularAnimeItem,
   HomePopularCityItem,
@@ -170,8 +170,68 @@ export function popularAnimeFixture(count = 3): HomePopularAnimeItem[] {
   }))
 }
 
-/** 首屏微演示数据（content/generated/home-hero-demo.json，§0 契约形状） */
-export function heroDemoFixture(): HomeHeroDemo {
+/**
+ * 首屏演示数据（content/generated/home-hero-demo.json，第十四轮 §0 契约形状）：
+ * 条目带 `lat/lng`、`transit` 是相邻两点各一条的数组、外加一张静态地图截图 `map`。
+ * 类型用组件侧的 `HomeHeroDemoLike`（读取侧宽松形状），
+ * 这样同一份 fixture 也能喂给只认旧形状的调用方。
+ */
+export function heroDemoFixture(): HomeHeroDemoLike {
+  return {
+    planTitle: '东京 8 日巡礼',
+    day: {
+      dayIndex: 2,
+      summary: '《你的名字》取景地一日',
+      items: [
+        {
+          id: 'h1',
+          title: '须贺神社男坂',
+          titles: { zh: '须贺神社男坂', en: 'Suga Shrine Steps', ja: '須賀神社の男坂' },
+          time: '09:30',
+          imageUrl: '/images/showcase/h1.jpg',
+          lat: 35.6866,
+          lng: 139.7288,
+        },
+        {
+          id: 'h2',
+          title: '信浓町步道桥',
+          titles: { zh: '信浓町步道桥', en: 'Shinanomachi Footbridge', ja: '信濃町歩道橋' },
+          time: '10:20',
+          imageUrl: '/images/showcase/h2.jpg',
+          lat: 35.6805,
+          lng: 139.7205,
+        },
+        {
+          id: 'h3',
+          title: '四谷见附桥',
+          titles: { zh: '四谷见附桥', en: 'Yotsuya Mitsuke Bridge', ja: '四ツ谷見附橋' },
+          time: '11:10',
+          imageUrl: '/images/showcase/h3.jpg',
+          lat: 35.6862,
+          lng: 139.7305,
+        },
+      ],
+      transit: [
+        { fromId: 'h1', toId: 'h2', mode: 'walk', label: '步行 · 约 8 分钟' },
+        { fromId: 'h2', toId: 'h3', mode: 'walk', label: '步行 · 约 12 分钟' },
+      ],
+    },
+    map: {
+      src: '/images/home/hero-phone-map.webp',
+      width: 320,
+      height: 240,
+      markers: [
+        { itemId: 'h1', x: 62, y: 88 },
+        { itemId: 'h2', x: 158, y: 142 },
+        { itemId: 'h3', x: 246, y: 74 },
+      ],
+      attribution: '© MapTiler © OpenStreetMap contributors',
+    },
+  }
+}
+
+/** 旧形状（`transit` 是单个对象、没有 lat/lng/map）：断言组件对 A 未落盘时的兼容 */
+export function heroDemoLegacyFixture(): HomeHeroDemoLike {
   return {
     planTitle: '京吹京都巡礼 3 日',
     day: {
@@ -219,7 +279,9 @@ export function portalDataFixture(overrides: Partial<HomePortalData> = {}): Home
     showcase: showcaseFixture(),
     mapClusters: mapClustersFixture(),
     guides: guidesFixture(6),
-    heroDemo: heroDemoFixture(),
+    // 组件侧读的是宽松形状 `HomeHeroDemoLike`（lat/lng/transit 都可缺省，兼容 A 落盘前后），
+    // 它比 `HomePortalData['heroDemo']` 的必填字段少，所以这里显式转一次。
+    heroDemo: heroDemoFixture() as unknown as HomePortalData['heroDemo'],
     ...overrides,
   }
 }

@@ -21,7 +21,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
   for (const item of heroDemoItems(showcase.days, 4)) preload(item.image, { as: 'image' })
 
   return (
-    <section className="mx-auto max-w-3xl space-y-3 px-4 sm:px-6">
+    <section id="home-showcase" className="mx-auto max-w-3xl space-y-3 px-4 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-brand-500 pl-3">
         <h2 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">{t('pages.home.v2.showcaseTitle', locale)}</h2>
         <Link

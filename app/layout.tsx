@@ -2,6 +2,7 @@ import '../styles/globals.css'
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
+import TranslateGuard from '@/components/layout/TranslateGuard'
 import { getSiteUrl } from '@/lib/seo/site'
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
@@ -22,6 +23,9 @@ export const metadata: Metadata = {
   },
   description: '用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划。',
   metadataBase: new URL(getSiteUrl()),
+  // iOS 的数据探测器会把时间/电话/地址文本自动包成 <a>，改动 React 之外的 DOM，
+  // 水合修复时 insertBefore 找不到参照节点，抛 NotFoundError。全站关掉。
+  formatDetection: { telephone: false, date: false, address: false, email: false, url: false },
   robots: {
     index: true,
     follow: true,
@@ -61,6 +65,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh" className={inter.variable}>
       <body>
+        {/* 放在 body 最前面：补丁要早于任何会更新 DOM 的组件跑起来 */}
+        <TranslateGuard />
         <HtmlLangSync />
         <Script id="jsonld-website" type="application/ld+json" strategy="beforeInteractive">
           {jsonLdWebsite}

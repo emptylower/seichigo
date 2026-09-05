@@ -206,17 +206,22 @@
   "pages": {
     "home": {
       "v2": {
-        "heroTitle": "Anime pilgrimage itineraries, planned by AI",
+        "heroTitle": "Anime pilgrimage itineraries, {accent}",
+        "heroTitleAccent": "planned by an AI planner",
         "heroSubtitle": "A map of {points}+ pilgrimage spots worldwide · Name the anime and your dates, the planner sets each day’s route, transit and meals · Guides written by people",
         "heroBrandLine": "SeichiGo · Anime pilgrimage",
+        "heroSlogan": "A pilgrimage platform by anime fans, for anime fans",
         "heroDemoLabel": "How the planner works",
         "heroDemoStep1": "Find the anime",
         "heroDemoStep2": "Look up spots",
         "heroDemoStep3": "Build Day 1",
         "heroDemoStep4": "Check transit",
         "heroDemoDayBadge": "Day 1",
+        "heroDemoSummary": "Day {day} · {count} stops",
+        "heroDemoWalkTotal": "about {minutes} min walking",
         "heroDemoTransit": "12 min walk",
         "heroWorksLabel": "Anime already mapped",
+        "heroScrollHint": "Scroll down",
         "composerPlaceholder": "e.g. 8 days in Tokyo over Christmas, chasing Weathering With You and Your Name",
         "composerSubmit": "Start planning",
         "composerExample1": "8 days in Tokyo over Christmas, chasing Weathering With You and Your Name",

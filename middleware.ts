@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { pickLocaleFromAcceptLanguage } from './lib/i18n/acceptLanguage'
 
-const CHINESE_ZONES = new Set(['CN', 'HK', 'TW', 'MO'])
-const JAPANESE_ZONES = new Set(['JP'])
 const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
 const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanifest|favicon\.ico|favicon\.png|brand\/app-logo\.png)$/
 const LOCALE_PREFIXED_AUTH_ALIAS_PATTERN = /^\/(en|ja)\/auth(?:\/.*)?$/
@@ -15,13 +14,6 @@ function detectLocale(pathname: string): 'zh' | 'en' | 'ja' {
   if (pathname === '/en' || pathname.startsWith('/en/')) return 'en'
   if (pathname === '/ja' || pathname.startsWith('/ja/')) return 'ja'
   return 'zh'
-}
-
-function getLocaleForCountry(country: string): 'zh' | 'en' | 'ja' {
-  const upperCountry = country.toUpperCase()
-  if (CHINESE_ZONES.has(upperCountry)) return 'zh'
-  if (JAPANESE_ZONES.has(upperCountry)) return 'ja'
-  return 'en'
 }
 
 function isApiRoute(pathname: string): boolean {
@@ -104,7 +96,7 @@ export function middleware(req: NextRequest) {
   }
 
   // Explicit locale prefixes are a deliberate choice by the user or crawler.
-  // Never rewrite them by IP; the same URL must resolve identically for everyone.
+  // Never rewrite them by browser language; the same URL must resolve identically for everyone.
   if (currentLocale !== 'zh') {
     return NextResponse.next({ request: { headers } })
   }
@@ -114,18 +106,13 @@ export function middleware(req: NextRequest) {
     return NextResponse.next({ request: { headers } })
   }
 
-  const country = req.headers.get('x-vercel-ip-country')
-  if (!country) {
+  const targetLocale = pickLocaleFromAcceptLanguage(req.headers.get('accept-language'))
+
+  if (!targetLocale || targetLocale === currentLocale) {
     return NextResponse.next({ request: { headers } })
   }
 
-  const targetLocale = getLocaleForCountry(country)
-
-  if (targetLocale === currentLocale) {
-    return NextResponse.next({ request: { headers } })
-  }
-
-  // Only the bare homepage participates in geo language routing.
+  // Only the bare homepage participates in browser language routing.
   // Deep links must stay stable so shared URLs and crawlers see one canonical target.
   if (pathname !== '/') {
     return NextResponse.next({ request: { headers } })

@@ -63,8 +63,35 @@ describe.each(PREFIXES)('%s i18n keys', (prefix) => {
 describe('新首页关键 key 在位', () => {
   const homeV2 = flatten(at(zh as Dict, 'pages.home.v2'))
 
-  it.each(['heroTitle', 'composerPlaceholder', 'showcaseTitle', 'mapTeaserTitle'])('%s', (key) => {
+  it.each([
+    'heroTitle',
+    'heroTitleAccent',
+    'heroSlogan',
+    'heroDemoSummary',
+    'heroDemoWalkTotal',
+    'composerPlaceholder',
+    'showcaseTitle',
+    'mapTeaserTitle',
+    'heroScrollHint',
+  ])('%s', (key) => {
     expect(homeV2).toHaveProperty(key)
+  })
+
+  it('heroTitle 三语都是带 {accent} 的两段式模板（第十四轮标题高亮）', () => {
+    for (const [, dict] of LOCALES) {
+      const home = flatten(at(dict, 'pages.home.v2'))
+      expect(home['heroTitle']).toContain('{accent}')
+      expect(home['heroTitleAccent']).not.toContain('{')
+    }
+  })
+
+  it('手机演示汇总行是带占位的整句模板', () => {
+    for (const [, dict] of LOCALES) {
+      const home = flatten(at(dict, 'pages.home.v2'))
+      expect(home['heroDemoSummary']).toContain('{count}')
+      expect(home['heroDemoSummary']).toContain('{day}')
+      expect(home['heroDemoWalkTotal']).toContain('{minutes}')
+    }
   })
 
   it('mapTeaserTitle 是带 {count} 的整句模板（低-7：不再空格硬拼）', () => {

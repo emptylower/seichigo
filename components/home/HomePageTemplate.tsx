@@ -1,5 +1,4 @@
 import HomeBrowse from '@/components/home/HomeBrowse'
-import HomeEntryCards from '@/components/home/HomeEntryCards'
 import HomeFaq from '@/components/home/HomeFaq'
 import HomeGuides from '@/components/home/HomeGuides'
 import HomeHero from '@/components/home/HomeHero'
@@ -20,28 +19,44 @@ function guideItems(data: HomePortalData): PublicPostListItem[] {
 
 /**
  * 首页编排壳（第十二轮）：以规划师为主线、地图与攻略为两翼。
- * 顺序＝输入框 → 三个入口 → 展示计划 → 地图预览 → 攻略 → 作品/城市浏览 → FAQ。
+ * 顺序＝输入框 → 三个入口 → 展示计划 → 地图预览 → 攻略 → 作品/城市浏览 → FAQ；
+ * 第十三轮起前两段合成一整屏由 `HomeHero` 自己排（入口卡是它的收尾行），
+ * 这里不再单独渲染 `HomeEntryCards`，否则入口链接会出现两份。
+ *
+ * 第十三轮第二批的两处布局约束：
+ * 1. 根元素同时带 `data-layout-wide`（外壳 `<main>` 去掉 max-width 与左右内边距）
+ *    与 `data-layout-flush`（去掉 `<main>` 顶部内边距），首屏才能真正通栏并紧贴页眉；
+ * 2. 根元素自己不再用 `space-y-*`——JSON-LD 的 `<script>` 曾是它的第一个子节点，
+ *    `space-y` 把 64px 上边距加到了首屏上。所以 `<script>` 挪到最后，
+ *    段间距交给下面那个与上线版本同宽（max-w-5xl + px-4）的容器。
+ *
  * 各段自成组件，这里只做布局与降级（A 部分数据缺失时对应段不渲染）；
- * 首屏的微演示/点阵/滚动条数据在这里（服务端）从已有数据里派生，客户端不多拿一份。
+ * 首屏的演示/滚动条数据在这里（服务端）从已有数据里派生，客户端不多拿一份。
+ * 第十四轮首屏背景换成静态插画，不再需要地图网格，所以不再向 `HomeHero` 传 `dots`。
  */
 export default function HomePageTemplate({ locale, data }: { locale: SiteLocale; data: HomePortalData }) {
   return (
-    <div className="space-y-12 pb-12 sm:space-y-16">
-      {/* 首页专属的 WebSite JSON-LD：把规划师起始页声明成站内搜索入口，与 FAQ JSON-LD 并存 */}
-      <PlaceJsonLd data={buildHomeWebSiteJsonLd()} keyPrefix={`home-website-${locale}`} />
+    <div data-layout-wide="true" data-layout-flush="true" className="pb-12">
       <HomeHero
         locale={locale}
         points={data.stats?.points}
         works={heroWorkNames(data.popularAnime, locale)}
         demo={data.heroDemo}
-        dots={data.mapClusters ? { cells: data.mapClusters.cells, bbox: data.mapClusters.bbox } : undefined}
+        stats={data.stats}
       />
-      <HomeEntryCards locale={locale} stats={data.stats} />
-      {data.showcase ? <HomeShowcasePlan locale={locale} showcase={data.showcase} /> : null}
-      {data.mapClusters ? <HomeMapTeaser locale={locale} clusters={data.mapClusters} /> : null}
-      <HomeGuides locale={locale} items={guideItems(data)} />
-      <HomeBrowse locale={locale} anime={data.popularAnime} cities={data.popularCities} />
-      <HomeFaq locale={locale} />
+
+      {/* 首屏之外的各段：宽度与上线版本（外壳 max-w-5xl + px-4）完全一致，不因通栏而变宽 */}
+      <div data-home-sections className="mx-auto w-full max-w-5xl space-y-12 px-4 pt-20 sm:space-y-16">
+        {data.showcase ? <HomeShowcasePlan locale={locale} showcase={data.showcase} /> : null}
+        {data.mapClusters ? <HomeMapTeaser locale={locale} clusters={data.mapClusters} /> : null}
+        <HomeGuides locale={locale} items={guideItems(data)} />
+        <HomeBrowse locale={locale} anime={data.popularAnime} cities={data.popularCities} />
+        <HomeFaq locale={locale} />
+      </div>
+
+      {/* 首页专属的 WebSite JSON-LD：把规划师起始页声明成站内搜索入口，与 FAQ JSON-LD 并存。
+          放在最后——它是不可见的 <script>，排在最前会被兄弟间距规则当成"第一段"。 */}
+      <PlaceJsonLd data={buildHomeWebSiteJsonLd()} keyPrefix={`home-website-${locale}`} />
     </div>
   )
 }

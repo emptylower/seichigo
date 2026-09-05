@@ -43,6 +43,12 @@ html, body {
   padding: 0;
 }
 
+/* 首页第十三轮：首屏要紧贴页眉通栏铺开，只去掉外壳 <main> 的顶部内边距，
+   底部内边距、页眉与页脚都照常（配合根元素上的 data-layout-wide 去掉 max-width）。 */
+.site-shell-public:has([data-layout-flush='true']) > .site-shell-public__main {
+  padding-top: 0;
+}
+
 /* 全局「完全隐藏」滚动条：滚动条（轨道 track、滑块 thumb 及其占位空间）彻底不渲染、
    不可见、不占任何视觉空间，页面观感与无滚动条的普通容器一致。
    仅隐藏视觉呈现，不改任何 overflow 行为，滚轮/触控板/触屏/键盘滚动功能完全保留。

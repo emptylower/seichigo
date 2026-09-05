@@ -20,12 +20,19 @@ describe('generatedHomeFiles (static import readers)', () => {
 
     const heroDemo = readHomeHeroDemoFile()
     expect(heroDemo.planTitle).toBeTruthy()
-    expect(heroDemo.day.dayIndex).toBe(1)
+    expect(heroDemo.day.dayIndex).toBeGreaterThanOrEqual(1)
     expect(heroDemo.day.items.length).toBeGreaterThanOrEqual(3)
     for (const item of heroDemo.day.items) {
       expect(item.imageUrl).toMatch(/^\/images\/showcase\//)
+      expect(Number.isFinite(item.lat)).toBe(true)
+      expect(Number.isFinite(item.lng)).toBe(true)
     }
-    expect(heroDemo.day.transit.label).toBeTruthy()
+    expect(heroDemo.day.transit).toHaveLength(heroDemo.day.items.length - 1)
+    for (const entry of heroDemo.day.transit) {
+      expect(entry.label).toBeTruthy()
+    }
+    expect(heroDemo.map?.src).toBe('/images/home/hero-phone-map.webp')
+    expect(heroDemo.map?.markers.map((marker) => marker.itemId)).toEqual(heroDemo.day.items.map((item) => item.id))
   })
 
   it('throws a HomeDataSourceError for invalid showcase payloads', () => {

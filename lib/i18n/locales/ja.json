@@ -206,17 +206,22 @@
   "pages": {
     "home": {
       "v2": {
-        "heroTitle": "アニメ聖地巡礼の旅程を、AIプランナーが組み立てる",
+        "heroTitle": "アニメ聖地巡礼の旅程を、{accent}が組み立てる",
+        "heroTitleAccent": "AIプランナー",
         "heroSubtitle": "世界{points}か所以上の聖地マップ · 作品と休みを伝えれば、毎日のルート・交通・食事までプランナーが用意 · 人が書いた巡礼ガイドも",
         "heroBrandLine": "SeichiGo 聖地GO · アニメ聖地巡礼",
+        "heroSlogan": "アニメファンによる、アニメファンのための聖地巡礼プラットフォーム",
         "heroDemoLabel": "プランナーの動き",
         "heroDemoStep1": "作品を検索",
         "heroDemoStep2": "聖地を調べる",
         "heroDemoStep3": "Day 1 を組む",
         "heroDemoStep4": "交通を確認",
         "heroDemoDayBadge": "Day 1",
+        "heroDemoSummary": "Day {day} · {count} か所",
+        "heroDemoWalkTotal": "徒歩 約{minutes}分",
         "heroDemoTransit": "徒歩 12 分",
         "heroWorksLabel": "収録済みの作品",
+        "heroScrollHint": "下へ",
         "composerPlaceholder": "例：クリスマス週に東京へ 8 日間、『天気の子』と『君の名は。』を巡礼したい",
         "composerSubmit": "プランを作る",
         "composerExample1": "クリスマス週に東京へ 8 日間、『天気の子』と『君の名は。』を巡礼",
