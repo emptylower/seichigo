@@ -8,6 +8,7 @@ beforeEach(() => {
   process.env.PLAN_AGENT_API_KEY = 'sk-plan-agent-key-1'
   process.env.PLAN_AGENT_MODEL = 'deepseek-v4-flash'
   process.env.GEMINI_API_KEY = 'AIza-gemini-key-9999'
+  delete process.env.PLAN_AGENT_BASE_URL
 })
 
 describe('seedProvidersFromEnv (concurrency safety)', () => {
@@ -16,6 +17,38 @@ describe('seedProvidersFromEnv (concurrency safety)', () => {
     await seedProvidersFromEnv(repo)
     const rows = await repo.list()
     expect(rows.map((r) => r.envKey).sort()).toEqual(['gemini', 'plan_agent'])
+  })
+
+  it('M4：DeepSeek 端点按现网口径拼 …/chat/completions（不再 /v1）；Gemini 记 v1beta/openai 基地址并归一', async () => {
+    const repo = createMemoryLlmProviderRepo()
+    await seedProvidersFromEnv(repo)
+    const rows = await repo.list()
+    const deepseek = rows.find((r) => r.envKey === 'plan_agent')!
+    // 现网：OpenAI SDK 对 baseURL 直接拼 /chat/completions（无 /v1）
+    expect(deepseek.baseUrl).toBe('https://api.deepseek.com')
+    expect(deepseek.endpointUrl).toBe('https://api.deepseek.com/chat/completions')
+
+    const gemini = rows.find((r) => r.envKey === 'gemini')!
+    expect(gemini.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta/openai')
+    expect(gemini.endpointUrl).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    )
+  })
+
+  it('M4：PLAN_AGENT_BASE_URL 显式给值时仍按现网口径（/v1 或已完整 URL 均幂等）', async () => {
+    process.env.PLAN_AGENT_BASE_URL = 'https://api.deepseek.com/v1'
+    const first = createMemoryLlmProviderRepo()
+    await seedProvidersFromEnv(first)
+    expect((await first.list()).find((r) => r.envKey === 'plan_agent')!.endpointUrl).toBe(
+      'https://api.deepseek.com/v1/chat/completions',
+    )
+
+    process.env.PLAN_AGENT_BASE_URL = 'https://gw.example.com/chat/completions'
+    const second = createMemoryLlmProviderRepo()
+    await seedProvidersFromEnv(second)
+    expect((await second.list()).find((r) => r.envKey === 'plan_agent')!.endpointUrl).toBe(
+      'https://gw.example.com/chat/completions',
+    )
   })
 
   it('skips the whole seeding when the table already has rows', async () => {

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Button from '@/components/shared/Button'
 import type { LlmProtocol, LlmProviderView } from './types'
-import { validateProviderValues, type ProviderFormValues } from './validation'
+import { normalizeEndpointUrl, validateProviderValues, type ProviderFormValues } from './validation'
 
 type ModelRow = { name: string; contextLength: string; maxOutputTokens: string }
 
@@ -30,16 +30,54 @@ function rowsFromProvider(provider: LlmProviderView | undefined): ModelRow[] {
   return [{ name: '', contextLength: '128000', maxOutputTokens: '' }]
 }
 
+/** 拉取结果合并进行列表：已存在的行保留用户填的上下文长度；新行用返回值或 128000；丢弃未填名的占位行 */
+function mergeDiscoveredModels(
+  rows: ModelRow[],
+  models: Array<{ name: string; contextLength: number | null }>,
+): ModelRow[] {
+  const next = rows.filter((row) => row.name.trim())
+  const names = new Set(next.map((row) => row.name.trim()))
+  for (const model of models) {
+    if (names.has(model.name)) continue
+    if (next.length >= 20) break
+    names.add(model.name)
+    next.push({ name: model.name, contextLength: String(model.contextLength ?? 128000), maxOutputTokens: '' })
+  }
+  return next.length ? next : [{ name: '', contextLength: '128000', maxOutputTokens: '' }]
+}
+
+/** 新建态本地预览归一后的请求 URL（编辑态展示服务端视图里的 endpointUrl） */
+function localEndpointPreview(protocol: LlmProtocol, baseUrl: string): string | null {
+  const trimmed = baseUrl.trim()
+  if (!trimmed) return null
+  try {
+    new URL(trimmed)
+  } catch {
+    return null
+  }
+  return normalizeEndpointUrl(protocol, trimmed)
+}
+
 export default function ProviderForm({ mode, provider, saving, serverError, onCancel, onSubmit }: ProviderFormProps) {
   const [name, setName] = useState(provider?.name ?? '')
   const [protocol, setProtocol] = useState<LlmProtocol>(provider?.protocol ?? 'openai')
-  const [endpointUrl, setEndpointUrl] = useState(provider?.endpointUrl ?? '')
+  // 基地址：编辑态回填 baseUrl（旧视图缺省时回退 endpointUrl，归一后同值）
+  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? provider?.endpointUrl ?? '')
   const [apiKey, setApiKey] = useState('')
   const [enabled, setEnabled] = useState(provider?.enabled ?? true)
   const [rows, setRows] = useState<ModelRow[]>(() => rowsFromProvider(provider))
   const [localError, setLocalError] = useState<string | null>(null)
+  // 拉取模型列表：discovering=请求中；discoverNote=结果提示（成功/失败）
+  const [discovering, setDiscovering] = useState(false)
+  const [discoverNote, setDiscoverNote] = useState<{ ok: boolean; text: string } | null>(null)
 
   const error = localError ?? serverError
+
+  // 拉取模型需要 key：新建态用表单里的 key；编辑态用服务端已保存的 key（也可新填覆盖）
+  const discoverKeyMissing = mode === 'create' ? !apiKey.trim() : !apiKey.trim() && !provider?.hasApiKey
+  const canDiscover = Boolean(baseUrl.trim()) && !discoverKeyMissing && !discovering
+  const endpointPreview =
+    mode === 'edit' && provider ? provider.endpointUrl : localEndpointPreview(protocol, baseUrl)
 
   function updateRow(index: number, patch: Partial<ModelRow>) {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
@@ -49,12 +87,56 @@ export default function ProviderForm({ mode, provider, saving, serverError, onCa
     setRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))
   }
 
+  /** 拉取模型列表（§0.4）：成功合并进行列表并提示数量；失败显示脱敏后的 message */
+  async function handleDiscover() {
+    if (!canDiscover) return
+    setDiscovering(true)
+    setDiscoverNote(null)
+    try {
+      const res = await fetch('/api/admin/llm/providers/discover-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: baseUrl.trim(),
+          protocol,
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+          ...(mode === 'edit' && provider ? { providerId: provider.id } : {}),
+        }),
+      })
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean
+        models?: Array<{ name?: unknown; contextLength?: unknown }>
+        message?: string
+      } | null
+      if (!res.ok || !data) {
+        setDiscoverNote({ ok: false, text: '拉取失败，请稍后再试' })
+        return
+      }
+      if (data.ok !== true) {
+        setDiscoverNote({ ok: false, text: data.message ?? '拉取失败' })
+        return
+      }
+      const models = (Array.isArray(data.models) ? data.models : [])
+        .map((m) => ({
+          name: String(m?.name ?? '').trim(),
+          contextLength: typeof m?.contextLength === 'number' && Number.isFinite(m.contextLength) ? m.contextLength : null,
+        }))
+        .filter((m) => m.name)
+      setRows((prev) => mergeDiscoveredModels(prev, models))
+      setDiscoverNote({ ok: true, text: `已拉取 ${models.length} 个模型` })
+    } catch {
+      setDiscoverNote({ ok: false, text: '网络错误，拉取失败' })
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     const values: ProviderFormValues = {
       name,
       protocol,
-      endpointUrl,
+      baseUrl,
       apiKey,
       enabled,
       models: rows.map((row) => ({
@@ -132,16 +214,24 @@ export default function ProviderForm({ mode, provider, saving, serverError, onCa
 
           <div>
             <label htmlFor="llm-form-endpoint" className="mb-1 block text-sm font-medium text-gray-700">
-              请求完整 URL
+              接口地址
             </label>
             <input
               id="llm-form-endpoint"
               type="text"
               className={inputClass}
-              value={endpointUrl}
-              onChange={(e) => setEndpointUrl(e.target.value)}
-              placeholder="https://api.deepseek.com/chat/completions 或 https://api.anthropic.com/v1/messages"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://your-sub2api.example.com/v1"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              填基地址即可，如 https://your-sub2api.example.com/v1，系统自动补全 /chat/completions 或 /v1/messages
+            </p>
+            {endpointPreview ? (
+              <p className="mt-1 break-all text-xs text-gray-500">
+                请求 URL：<span className="font-mono">{endpointPreview}</span>
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -165,16 +255,35 @@ export default function ProviderForm({ mode, provider, saving, serverError, onCa
           <div>
             <div className="mb-1 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">模型列表</span>
-              <Button
-                type="button"
-                variant="ghost"
-                className="px-2 py-1 text-xs"
-                onClick={() => setRows((prev) => [...prev, { name: '', contextLength: '128000', maxOutputTokens: '' }])}
-                disabled={rows.length >= 20}
-              >
-                添加模型
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="px-2 py-1 text-xs"
+                  onClick={() => void handleDiscover()}
+                  disabled={!canDiscover}
+                >
+                  {discovering ? '拉取中…' : '拉取模型列表'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="px-2 py-1 text-xs"
+                  onClick={() => setRows((prev) => [...prev, { name: '', contextLength: '128000', maxOutputTokens: '' }])}
+                  disabled={rows.length >= 20}
+                >
+                  添加模型
+                </Button>
+              </div>
             </div>
+            {discoverKeyMissing ? (
+              <p className="mb-1 text-xs text-gray-400">填写 API key 后可一键拉取可用模型{mode === 'edit' ? '（已保存 key 的供应商可直接拉取）' : ''}</p>
+            ) : null}
+            {discoverNote ? (
+              <p className={`mb-1 text-xs ${discoverNote.ok ? 'text-emerald-600' : 'text-rose-600'}`} role="status">
+                {discoverNote.text}
+              </p>
+            ) : null}
             <div className="space-y-2">
               {rows.map((row, index) => (
                 <div key={index} className="flex flex-wrap items-center gap-2">

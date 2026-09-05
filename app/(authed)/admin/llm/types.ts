@@ -11,6 +11,9 @@ export type LlmProviderView = {
   id: string
   name: string
   protocol: LlmProtocol
+  /** §0.3：用户输入的基地址（可为 https://host/v1 形态） */
+  baseUrl: string
+  /** §0.3：服务端归一后的完整请求 URL（只读展示） */
   endpointUrl: string
   apiKeyHint: string | null
   hasApiKey: boolean

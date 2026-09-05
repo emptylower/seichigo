@@ -3,10 +3,40 @@ import type { LlmModelConfig, LlmProtocol } from './types'
 export type ProviderFormValues = {
   name: string
   protocol: LlmProtocol
-  endpointUrl: string
+  /** 用户输入的基地址（服务端按 §0.3 归一成完整请求 URL） */
+  baseUrl: string
   apiKey: string
   enabled: boolean
   models: LlmModelConfig[]
+}
+
+/**
+ * 与服务端 A4 同规则的 endpoint 归一（新建态本地预览用）：
+ * openai：已是 /chat/completions → 原样；以 /v1 结尾 → 补 /chat/completions；
+ * 其他 → 补 /v1/chat/completions。anthropic 同理（/messages）。保留 query。
+ */
+export function normalizeEndpointUrl(protocol: LlmProtocol, baseUrl: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(baseUrl.trim())
+  } catch {
+    return baseUrl.trim()
+  }
+  const path = parsed.pathname.replace(/\/+$/, '')
+  if (protocol === 'openai') {
+    parsed.pathname = path.endsWith('/chat/completions')
+      ? path
+      : path.endsWith('/v1')
+        ? `${path}/chat/completions`
+        : `${path}/v1/chat/completions`
+  } else {
+    parsed.pathname = path.endsWith('/messages')
+      ? path
+      : path.endsWith('/v1')
+        ? `${path}/messages`
+        : `${path}/v1/messages`
+  }
+  return parsed.toString()
 }
 
 function isPrivateHost(hostname: string): boolean {
@@ -34,16 +64,16 @@ export function validateProviderValues(values: ProviderFormValues, mode: 'create
   const name = values.name.trim()
   if (name.length < 1 || name.length > 60) return '供应商名称需为 1–60 字'
 
-  const endpointUrl = values.endpointUrl.trim()
-  if (endpointUrl.length > 500) return '请求 URL 长度不能超过 500 字'
+  const baseUrl = values.baseUrl.trim()
+  if (baseUrl.length > 500) return '接口地址长度不能超过 500 字'
   let parsed: URL
   try {
-    parsed = new URL(endpointUrl)
+    parsed = new URL(baseUrl)
   } catch {
-    return '请求 URL 必须是以 https:// 开头的完整 URL'
+    return '接口地址必须是以 https:// 开头的完整 URL'
   }
-  if (parsed.protocol !== 'https:') return '请求 URL 必须使用 https://'
-  if (isPrivateHost(parsed.hostname)) return '请求 URL 不允许指向内网或本机地址'
+  if (parsed.protocol !== 'https:') return '接口地址必须使用 https://'
+  if (isPrivateHost(parsed.hostname)) return '接口地址不允许指向内网或本机地址'
 
   if (mode === 'create' && !values.apiKey.trim()) return '请填写 API key'
 

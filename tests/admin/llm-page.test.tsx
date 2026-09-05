@@ -30,6 +30,7 @@ function makeProvider(overrides: Partial<LlmProviderView> = {}): LlmProviderView
     id: 'p1',
     name: 'DeepSeek 主',
     protocol: 'openai',
+    baseUrl: 'https://api.deepseek.com',
     endpointUrl: 'https://api.deepseek.com/chat/completions',
     apiKeyHint: 'sk-…a1b2',
     hasApiKey: true,
@@ -51,6 +52,7 @@ const providerP2 = makeProvider({
   id: 'p2',
   name: 'Claude 备用',
   protocol: 'anthropic',
+  baseUrl: 'https://api.anthropic.com',
   endpointUrl: 'https://api.anthropic.com/v1/messages',
   apiKeyHint: null,
   hasApiKey: false,
@@ -84,6 +86,17 @@ function installFetchMock() {
     }
     if (url.startsWith('/api/admin/llm/providers/') && method === 'DELETE') {
       return jsonResponse({ ok: true })
+    }
+    if (url === '/api/admin/llm/providers/discover-models' && method === 'POST') {
+      return jsonResponse({
+        ok: true,
+        endpointUrl: 'https://sub2api.example.com/v1/chat/completions',
+        models: [
+          { name: 'deepseek-v4-flash', contextLength: 128000 },
+          { name: 'gpt-5.2', contextLength: 200000 },
+          { name: 'claude-sonnet-4', contextLength: null },
+        ],
+      })
     }
     return jsonResponse({ error: 'not found' }, 404)
   })
@@ -190,7 +203,7 @@ describe('admin llm UI', () => {
 
     const dialog = await screen.findByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('供应商名称'), { target: { value: '测试供应商' } })
-    fireEvent.change(within(dialog).getByLabelText('请求完整 URL'), {
+    fireEvent.change(within(dialog).getByLabelText('接口地址'), {
       target: { value: 'http://api.example.com/v1/chat/completions' },
     })
     fireEvent.change(within(dialog).getByLabelText('API key'), { target: { value: 'sk-test-key' } })
@@ -198,8 +211,85 @@ describe('admin llm UI', () => {
     fireEvent.change(within(dialog).getByLabelText('上下文长度 1'), { target: { value: '128000' } })
     fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
 
-    expect(await within(dialog).findByText(/https/)).toBeInTheDocument()
+    // 错误提示出现在 alert 里（提示文案本身也含 https 示例，用 role 精确定位）
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert.textContent).toContain('https')
     expect(calls.filter((c) => c.url === '/api/admin/llm/providers' && c.init?.method === 'POST')).toHaveLength(0)
+  })
+
+  it('新建态填基地址后本地预览归一后的请求 URL（/v1 → 补全 /chat/completions；裸域 → 补全 /v1/chat/completions）', async () => {
+    installFetchMock()
+    const { default: AdminLlmClient } = await import('@/app/(authed)/admin/llm/ui')
+    render(<AdminLlmClient />)
+
+    await screen.findByText('DeepSeek 主')
+    fireEvent.click(screen.getByRole('button', { name: '新建供应商' }))
+    const dialog = await screen.findByRole('dialog')
+
+    fireEvent.change(within(dialog).getByLabelText('接口地址'), { target: { value: 'https://x.example.com/v1' } })
+    expect(within(dialog).getByText('https://x.example.com/v1/chat/completions')).toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByLabelText('接口地址'), { target: { value: 'https://x.example.com' } })
+    expect(within(dialog).getByText('https://x.example.com/v1/chat/completions')).toBeInTheDocument()
+
+    // anthropic 协议切换预览规则
+    fireEvent.click(within(dialog).getByLabelText('Anthropic'))
+    expect(within(dialog).getByText('https://x.example.com/v1/messages')).toBeInTheDocument()
+  })
+
+  it('点「拉取模型列表」发 POST 且 body 含 baseUrl/protocol/apiKey；返回 3 个模型后行数为 3', async () => {
+    const { calls } = installFetchMock()
+    const { default: AdminLlmClient } = await import('@/app/(authed)/admin/llm/ui')
+    render(<AdminLlmClient />)
+
+    await screen.findByText('DeepSeek 主')
+    fireEvent.click(screen.getByRole('button', { name: '新建供应商' }))
+    const dialog = await screen.findByRole('dialog')
+
+    fireEvent.change(within(dialog).getByLabelText('接口地址'), {
+      target: { value: 'https://sub2api.example.com/v1' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('API key'), { target: { value: 'sk-sub2api-key' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '拉取模型列表' }))
+
+    await waitFor(() => {
+      const post = calls.find(
+        (c) => c.url === '/api/admin/llm/providers/discover-models' && c.init?.method === 'POST',
+      )
+      expect(post).toBeTruthy()
+      expect(JSON.parse(String(post?.init?.body))).toMatchObject({
+        baseUrl: 'https://sub2api.example.com/v1',
+        protocol: 'openai',
+        apiKey: 'sk-sub2api-key',
+      })
+    })
+
+    // 3 个模型合并进行列表（占位空行被替换），并显示成功提示
+    expect(await within(dialog).findByText('已拉取 3 个模型')).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue('deepseek-v4-flash')).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue('gpt-5.2')).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue('claude-sonnet-4')).toBeInTheDocument()
+    expect(within(dialog).getAllByLabelText(/模型名 \d+/)).toHaveLength(3)
+    // contextLength 缺省（null）时用 128000
+    const row3 = within(dialog).getByLabelText('上下文长度 3') as HTMLInputElement
+    expect(row3.value).toBe('128000')
+  })
+
+  it('编辑态：表单回填 baseUrl 并只读展示服务端归一后的 endpointUrl；卡片主行显示 baseUrl', async () => {
+    installFetchMock()
+    const { default: AdminLlmClient } = await import('@/app/(authed)/admin/llm/ui')
+    render(<AdminLlmClient />)
+
+    await screen.findByText('DeepSeek 主')
+    // 卡片：主行 baseUrl，次行归一后的 endpoint
+    const card = cardOf('DeepSeek 主')
+    expect(within(card).getByText('https://api.deepseek.com')).toBeInTheDocument()
+    expect(within(card).getByText('https://api.deepseek.com/chat/completions')).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: '编辑' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('接口地址')).toHaveValue('https://api.deepseek.com')
+    expect(within(dialog).getByText('https://api.deepseek.com/chat/completions')).toBeInTheDocument()
   })
 
   it('编辑时 API key 留空则不发送 apiKey 字段', async () => {

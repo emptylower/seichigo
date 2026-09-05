@@ -105,6 +105,91 @@ describe('admin llm providers api', () => {
     expect(rows).toHaveLength(0) // 新 deps 是新 repo；上面那个 repo 不在此处
   })
 
+  it('第七轮 A4：POST 接受 baseUrl（可为基地址）——归一后入库 endpointUrl，视图同时输出 baseUrl/endpointUrl', async () => {
+    const deps = makeDeps()
+    const handlers = createHandlers(deps)
+    const res = await handlers.POST(
+      jsonReq({
+        ...VALID_BODY,
+        baseUrl: 'https://gw.sub2api.example.com/v1/',
+        endpointUrl: undefined,
+      }),
+    )
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as {
+      provider: { baseUrl: string; endpointUrl: string }
+    }
+    expect(data.provider.baseUrl).toBe('https://gw.sub2api.example.com/v1/')
+    expect(data.provider.endpointUrl).toBe('https://gw.sub2api.example.com/v1/chat/completions')
+
+    const row = (await deps.repo.list())[0]!
+    expect(row.baseUrl).toBe('https://gw.sub2api.example.com/v1/')
+    expect(row.endpointUrl).toBe('https://gw.sub2api.example.com/v1/chat/completions')
+
+    // anthropic 基地址同理
+    const res2 = await handlers.POST(
+      jsonReq({
+        name: 'Claude 网关',
+        protocol: 'anthropic',
+        baseUrl: 'https://gw.example.com',
+        apiKey: 'sk-ant-abcdef123456',
+        models: [{ name: 'claude-4-5', contextLength: 200000 }],
+      }),
+    )
+    const data2 = (await res2.json()) as { provider: { baseUrl: string; endpointUrl: string } }
+    expect(data2.provider.endpointUrl).toBe('https://gw.example.com/v1/messages')
+  })
+
+  it('第七轮 A4：旧客户端只传 endpointUrl 仍可用（baseUrl 回落为完整 URL）；两者都不传 POST 报 400', async () => {
+    const deps = makeDeps()
+    const handlers = createHandlers(deps)
+    const res = await handlers.POST(jsonReq(VALID_BODY))
+    const data = (await res.json()) as { provider: { id: string; baseUrl: string; endpointUrl: string } }
+    expect(data.provider.baseUrl).toBe(VALID_BODY.endpointUrl)
+    expect(data.provider.endpointUrl).toBe(VALID_BODY.endpointUrl)
+
+    const bad = await handlers.POST(jsonReq({ ...VALID_BODY, endpointUrl: undefined }))
+    expect(bad.status).toBe(400)
+    expect(((await bad.json()) as { error: string }).error).toContain('baseUrl')
+
+    // PUT 传内网 baseUrl → 归一结果被 SSRF 守卫拦下
+    const put = await handlers.PUT(jsonReq({ baseUrl: 'https://192.168.0.10/v1' }), data.provider.id)
+    expect(put.status).toBe(400)
+  })
+
+  it('L6：baseUrl 携带 userinfo 时入库前剥掉（origin+pathname+search），endpointUrl 同样无凭据', async () => {
+    const deps = makeDeps()
+    const handlers = createHandlers(deps)
+    const res = await handlers.POST(
+      jsonReq({
+        ...VALID_BODY,
+        baseUrl: 'https://relay:secret%40pass@gw.example.com:8443/v1?q=1',
+        endpointUrl: undefined,
+      }),
+    )
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { provider: { baseUrl: string; endpointUrl: string } }
+    expect(data.provider.baseUrl).toBe('https://gw.example.com:8443/v1?q=1')
+    expect(data.provider.endpointUrl).toBe('https://gw.example.com:8443/v1/chat/completions?q=1')
+
+    const row = (await deps.repo.list())[0]!
+    expect(row.baseUrl).not.toContain('relay:')
+    expect(row.baseUrl).not.toContain('secret')
+
+    // 旧客户端只传 endpointUrl 的分支同样剥凭据（baseUrl 镜像值不带 userinfo）
+    const second = await handlers.POST(
+      jsonReq({
+        name: '再来一家',
+        protocol: 'openai',
+        endpointUrl: 'https://user:pass@relay2.example.com/v1/chat/completions',
+        apiKey: 'sk-another-key-9999',
+        models: [{ name: 'm2', contextLength: 128000 }],
+      }),
+    )
+    const data2 = (await second.json()) as { provider: { baseUrl: string; endpointUrl: string } }
+    expect(data2.provider.baseUrl).toBe('https://relay2.example.com/v1/chat/completions')
+  })
+
   it('PUT takeover.agent=true clears the flag on other providers (mutex) and validates agentModel', async () => {
     const deps = makeDeps()
     const handlers = createHandlers(deps)
@@ -188,8 +273,29 @@ describe('admin llm providers api', () => {
     expect(data.result.latencyMs).toBeGreaterThanOrEqual(0)
     expect(data.result.sample).toBe('OK')
 
+    // 第七轮 A5：请求 max_tokens 8 → 64（推理模型 reasoning 也要耗 completion 预算）
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body)) as { max_tokens: number }
+    expect(body.max_tokens).toBe(64)
+
     const row = await deps.repo.get(id)
     expect(row?.lastTest).toMatchObject({ model: 'gpt-mini', ok: true })
+  })
+
+  it('TEST：推理模型 content 为空时 sample 显示（仅推理无正文）', async () => {
+    const deps = makeDeps()
+    const handlers = createHandlers(deps)
+    const created = await handlers.POST(jsonReq(VALID_BODY))
+    const id = ((await created.json()) as { provider: { id: string } }).provider.id
+
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }),
+    )
+    const res = await createHandlers({ ...deps, fetchImpl: fetchImpl as unknown as typeof fetch })
+      .TEST(jsonReq({ model: 'gpt-mini' }), id)
+
+    const data = (await res.json()) as { result: { ok: boolean; sample: string } }
+    expect(data.result.ok).toBe(true)
+    expect(data.result.sample).toBe('(仅推理无正文)')
   })
 
   it('TEST reports failure inside result.message (HTTP 200) and redacts key-like strings', async () => {

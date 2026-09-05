@@ -8,6 +8,8 @@ export type LlmProviderRow = {
   id: string
   name: string
   protocol: string
+  /** 用户输入的接口地址（可为基地址）；旧行为 null，视图层回落到 endpointUrl */
+  baseUrl: string | null
   endpointUrl: string
   apiKeyCiphertext: string | null
   apiKeyHint: string | null
@@ -27,6 +29,7 @@ export type LlmProviderRow = {
 export type LlmProviderCreateInput = {
   name: string
   protocol: string
+  baseUrl?: string | null
   endpointUrl: string
   apiKeyCiphertext: string | null
   apiKeyHint: string | null
@@ -93,6 +96,7 @@ export function toProviderView(row: LlmProviderRow): LlmProviderView {
     id: row.id,
     name: row.name,
     protocol: (row.protocol === 'anthropic' ? 'anthropic' : 'openai') as LlmProtocol,
+    baseUrl: row.baseUrl ?? row.endpointUrl,
     endpointUrl: row.endpointUrl,
     apiKeyHint: row.apiKeyHint ?? null,
     hasApiKey: Boolean(row.apiKeyCiphertext),

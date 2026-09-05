@@ -11,6 +11,7 @@ type DbRow = {
   id: string
   name: string
   protocol: string
+  baseUrl: string | null
   endpointUrl: string
   apiKeyCiphertext: string | null
   apiKeyHint: string | null
@@ -50,6 +51,7 @@ export function createPrismaLlmProviderRepo(db: typeof prisma = prisma): LlmProv
           data: {
             name: input.name,
             protocol: input.protocol,
+            baseUrl: input.baseUrl ?? null,
             endpointUrl: input.endpointUrl,
             apiKeyCiphertext: input.apiKeyCiphertext,
             apiKeyHint: input.apiKeyHint,
@@ -70,6 +72,7 @@ export function createPrismaLlmProviderRepo(db: typeof prisma = prisma): LlmProv
       const data: Prisma.LlmProviderUpdateInput = {}
       if (patch.name !== undefined) data.name = patch.name
       if (patch.protocol !== undefined) data.protocol = patch.protocol
+      if (patch.baseUrl !== undefined) data.baseUrl = patch.baseUrl
       if (patch.endpointUrl !== undefined) data.endpointUrl = patch.endpointUrl
       if (patch.apiKeyCiphertext !== undefined) data.apiKeyCiphertext = patch.apiKeyCiphertext
       if (patch.apiKeyHint !== undefined) data.apiKeyHint = patch.apiKeyHint

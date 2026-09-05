@@ -14,7 +14,9 @@ export type LlmProviderView = {
   id: string
   name: string
   protocol: LlmProtocol
-  /** 完整请求 URL，如 https://api.deepseek.com/chat/completions 或 https://api.anthropic.com/v1/messages */
+  /** 用户输入的接口地址（可为基地址，如 https://gw.example.com/v1）；旧行回落到 endpointUrl */
+  baseUrl: string
+  /** 服务端归一后的完整请求 URL，如 https://api.deepseek.com/chat/completions 或 https://api.anthropic.com/v1/messages */
   endpointUrl: string
   /** 形如 "sk-…a1b2"（前 3 + 后 4），未设置为 null */
   apiKeyHint: string | null

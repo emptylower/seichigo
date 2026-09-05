@@ -10,6 +10,7 @@ import type { LlmModelConfig, LlmProviderView } from '../types'
 import { isAdminSession } from './common'
 import {
   InputError,
+  normalizeEndpointUrl,
   validateApiKeyForCreate,
   validateApiKeyForUpdate,
   validateEndpointUrl,
@@ -61,12 +62,53 @@ async function keyBoxOf(apiKey: string) {
   return { apiKeyCiphertext: await encryptSecret(apiKey), apiKeyHint: apiKeyHintOf(apiKey) }
 }
 
-/** 剔除错误文案里形如 key 的片段（sk-…/Bearer …），防止泄漏到面板。 */
-function redactKeyLikeStrings(text: string): string {
+/** 剔除错误文案里形如 key 的片段（sk-…/Bearer …），防止泄漏到面板。discover-models 复用。 */
+export function redactKeyLikeStrings(text: string): string {
   return text
     .replace(/\b(?:sk|rk|pk|ak)-[A-Za-z0-9_\-]{6,}\b/g, '[redacted]')
     .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
     .slice(0, 300)
+}
+
+/**
+ * L6：baseUrl 入库前剥掉 userinfo（`https://user:pass@host/path` →
+ * `https://host/path`）——URL 的 origin 不含凭据，重新拼 origin+pathname+
+ * search 即可；防把中转站的 Basic Auth 凭据顺带存进库里。
+ */
+function stripUrlCredentials(raw: string): string {
+  try {
+    const parsed = new URL(raw)
+    return `${parsed.origin}${parsed.pathname}${parsed.search}`
+  } catch {
+    throw new InputError('接口地址格式不合法')
+  }
+}
+
+/**
+ * 第七轮 A4：URL 入参归一。POST/PUT 都接受 baseUrl（推荐，可为基地址），
+ * endpointUrl 仅为旧客户端兼容——二者取其一：
+ * - 给了 baseUrl → 归一成完整请求 URL（归一内部自带 SSRF/https 守卫），
+ *   入库前再剥掉 userinfo（L6）；
+ * - 只给 endpointUrl（完整 URL）→ 直接校验使用，baseUrl 记同一值（同样剥凭据）；
+ * - 都不给 → PUT 保持原值，POST 报错。
+ */
+function resolveProviderUrls(
+  body: Record<string, unknown>,
+  protocol: 'openai' | 'anthropic',
+  existing: { baseUrl: string | null; endpointUrl: string } | null,
+): { baseUrl: string; endpointUrl: string } {
+  if (typeof body.baseUrl === 'string' && body.baseUrl.trim()) {
+    const baseUrl = stripUrlCredentials(body.baseUrl.trim())
+    return { baseUrl, endpointUrl: validateEndpointUrl(normalizeEndpointUrl(protocol, baseUrl)) }
+  }
+  if (body.endpointUrl !== undefined) {
+    const endpointUrl = validateEndpointUrl(body.endpointUrl)
+    return { baseUrl: stripUrlCredentials(endpointUrl), endpointUrl }
+  }
+  if (existing) {
+    return { baseUrl: existing.baseUrl ?? existing.endpointUrl, endpointUrl: existing.endpointUrl }
+  }
+  throw new InputError('接口地址（baseUrl）不能为空')
 }
 
 export function createHandlers(deps: LlmAdminApiDeps) {
@@ -100,7 +142,7 @@ export function createHandlers(deps: LlmAdminApiDeps) {
       try {
         const name = validateName(body.name)
         const protocol = validateProtocol(body.protocol)
-        const endpointUrl = validateEndpointUrl(body.endpointUrl)
+        const { baseUrl, endpointUrl } = resolveProviderUrls(body, protocol, null)
         const models = validateModels(body.models)
         const apiKey = validateApiKeyForCreate(body.apiKey)
         const enabled = body.enabled === undefined ? true : Boolean(body.enabled)
@@ -108,6 +150,7 @@ export function createHandlers(deps: LlmAdminApiDeps) {
         const row = await deps.repo.create({
           name,
           protocol,
+          baseUrl,
           endpointUrl,
           ...(await keyBoxOf(apiKey)),
           models,
@@ -140,8 +183,11 @@ export function createHandlers(deps: LlmAdminApiDeps) {
         const name = body.name !== undefined ? validateName(body.name) : existing.name
         const protocol =
           body.protocol !== undefined ? validateProtocol(body.protocol) : existing.protocol
-        const endpointUrl =
-          body.endpointUrl !== undefined ? validateEndpointUrl(body.endpointUrl) : existing.endpointUrl
+        const { baseUrl, endpointUrl } = resolveProviderUrls(
+          body,
+          protocol === 'anthropic' ? 'anthropic' : 'openai',
+          existing,
+        )
         const models = body.models !== undefined ? validateModels(body.models) : existing.models
         const enabled = body.enabled !== undefined ? Boolean(body.enabled) : existing.enabled
 
@@ -177,6 +223,7 @@ export function createHandlers(deps: LlmAdminApiDeps) {
         const patch = {
           name,
           protocol,
+          baseUrl,
           endpointUrl,
           models,
           enabled,
@@ -218,7 +265,8 @@ export function createHandlers(deps: LlmAdminApiDeps) {
     },
 
     /**
-     * 连通性测试：用保存的 key 发一条最小请求（"回复 OK"，max_tokens 8），
+     * 连通性测试：用保存的 key 发一条最小请求（"回复 OK"，max_tokens 64——
+     * 第七轮 A5：推理模型的 reasoning 也耗 completion 预算，8 根本不够出正文），
      * 计时并落 lastTest。HTTP 200 即使失败——失败信息在 result.message。
      */
     async TEST(req: Request, id: string) {
@@ -260,14 +308,15 @@ export function createHandlers(deps: LlmAdminApiDeps) {
         const sample = await client.completeText({
           model,
           prompt: '回复 OK',
-          maxTokens: 8,
+          maxTokens: 64,
           signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
         })
         result = {
           ok: true,
           latencyMs: Date.now() - startedAt,
           message: null,
-          sample: sample.slice(0, 40),
+          // 第七轮 A5：推理模型可能只输出 reasoning、content 为空——显式标注而不是留白
+          sample: sample.trim() ? sample.slice(0, 40) : '(仅推理无正文)',
         }
       } catch (err) {
         const raw =

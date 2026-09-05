@@ -97,6 +97,42 @@ export function validateEndpointUrl(raw: unknown): string {
   return url
 }
 
+/**
+ * 第七轮 A4（M4 修订）：把用户填的接口地址（可为基地址，如 sub2api 的
+ * `https://gw.example.com/v1` 或 Gemini 的 `…/v1beta/openai`）归一成完整
+ * 请求 URL。规则：
+ * - 先去掉尾部 `/`；
+ * - 路径为空或 `/` → 追加 `/v1/chat/completions`（anthropic `/v1/messages`）；
+ * - 路径已以 `/chat/completions`（anthropic `/messages`）结尾 → 原样；
+ * - 其他非空路径 → **只追加** `/chat/completions`（anthropic `/messages`），
+ *   不再插入 `/v1`——`…/v1beta/openai` 归一为 `…/v1beta/openai/chat/completions`，
+ *   `…/api` 归一为 `…/api/chat/completions`；
+ * - 后缀比较用小写；端口与 query 保留。
+ * L7：归一内部即做 https/私网守卫——绕过 validateEndpointUrl 直接调用本函数
+ * 也不会把 http:// 或内网地址放行。
+ */
+export function normalizeEndpointUrl(protocol: LlmProtocol, rawBaseUrl: string): string {
+  const trimmed = rawBaseUrl.trim().replace(/\/+$/, '')
+  if (!trimmed) throw new InputError('接口地址不能为空')
+  if (trimmed.length > URL_MAX) throw new InputError(`接口地址长度不能超过 ${URL_MAX}`)
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new InputError('接口地址格式不合法')
+  }
+  if (parsed.protocol !== 'https:') throw new InputError('接口地址必须以 https:// 开头')
+  if (isPrivateHost(parsed.hostname)) throw new InputError('接口地址不能指向内网或本机地址')
+  const suffix = protocol === 'openai' ? '/chat/completions' : '/messages'
+  let path = parsed.pathname.replace(/\/+$/, '')
+  if (!path) {
+    path = protocol === 'openai' ? '/v1/chat/completions' : '/v1/messages'
+  } else if (!path.toLowerCase().endsWith(suffix)) {
+    path += suffix
+  }
+  return `${parsed.origin}${path}${parsed.search}`
+}
+
 export function validateProtocol(raw: unknown): LlmProtocol {
   if (raw === 'openai' || raw === 'anthropic') return raw
   throw new InputError('协议必须是 openai 或 anthropic')

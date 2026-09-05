@@ -2,17 +2,11 @@ import type OpenAI from 'openai'
 import type { LlmClient, LlmClientConfig, LlmChatInput, LlmStreamDelta } from './types'
 import type { PlanAgentChatMessage } from '@/lib/planAgent/loop'
 import { LlmEmptyStreamError, LlmHttpError, postJson, readSseDataPayloads } from './http'
+import { createReasoningExtractor } from './reasoningExtract'
+import { GEMINI_THINKING_EXTRA_BODY, isGoogleGeminiOpenAiEndpoint } from './geminiCompat'
 
 type Delta = OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta
 type Chunk = OpenAI.Chat.Completions.ChatCompletionChunk
-
-/** DeepSeek 推理模型的非标准扩展字段：流式 chunk 的 delta 上带 reasoning_content。 */
-type WithReasoningContent = { reasoning_content?: string | null }
-
-function extractReasoningDelta(delta: Delta): string {
-  const value = (delta as WithReasoningContent).reasoning_content
-  return typeof value === 'string' ? value : ''
-}
 
 type AccumulatedToolCall = {
   id: string
@@ -43,6 +37,11 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
         messages: input.messages,
         ...(input.tools?.length ? { tools: input.tools } : {}),
         stream: true,
+        // A2 补充：仅 Google 官方 OpenAI 兼容端点追加思考回显开关（不与
+        // reasoning_effort 同传、不指定 thinking_level）；其它 host 不加任何额外字段
+        ...(isGoogleGeminiOpenAiEndpoint(config.endpointUrl)
+          ? { extra_body: GEMINI_THINKING_EXTRA_BODY }
+          : {}),
       },
       input.signal,
     )
@@ -51,6 +50,9 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
     let reasoning = ''
     let finishReason: string | null | undefined
     const toolCalls = new Map<number, AccumulatedToolCall>()
+    // A2：统一思考增量口径（reasoning_content / reasoning / reasoning_details /
+    // content 内嵌 <think> 标签），见 reasoningExtract.ts
+    const extractor = createReasoningExtractor()
 
     const payloadCount = await readSseDataPayloads(res, (payload) => {
       let chunk: Chunk
@@ -64,14 +66,14 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
       const delta = choice.delta
       if (choice.finish_reason) finishReason = choice.finish_reason
 
-      const reasoningDelta = extractReasoningDelta(delta)
+      const { reasoning: reasoningDelta, content: contentDelta } = extractor.consume(delta ?? {})
       if (reasoningDelta) {
         reasoning += reasoningDelta
         onDelta?.({ reasoning: reasoningDelta })
       }
-      if (typeof delta?.content === 'string' && delta.content) {
-        content += delta.content
-        onDelta?.({ content: delta.content })
+      if (contentDelta) {
+        content += contentDelta
+        onDelta?.({ content: contentDelta })
       }
       for (const part of delta?.tool_calls ?? []) {
         const existing = toolCalls.get(part.index)
@@ -93,6 +95,11 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
     })
 
     if (payloadCount === 0) throw new LlmEmptyStreamError()
+
+    // 流结束：吐出挂起的"疑似半截 <think> 标签"尾巴（按当前状态归类）
+    const tail = extractor.flush()
+    if (tail.content) content += tail.content
+    if (tail.reasoning) reasoning += tail.reasoning
 
     const rebuiltToolCalls = [...toolCalls.entries()]
       .sort(([a], [b]) => a - b)

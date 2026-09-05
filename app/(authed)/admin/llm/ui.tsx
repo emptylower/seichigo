@@ -108,7 +108,13 @@ function ProviderCard({
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">已停用</span>
             ) : null}
           </div>
-          <p className="break-all font-mono text-xs text-gray-500">{provider.endpointUrl}</p>
+          <p className="break-all font-mono text-xs text-gray-500">{provider.baseUrl}</p>
+          <p
+            className="break-all font-mono text-[11px] text-gray-400"
+            title={`归一后的请求 URL：${provider.endpointUrl}`}
+          >
+            {provider.endpointUrl}
+          </p>
           <p className="text-xs text-gray-500">API key：{provider.apiKeyHint ?? '未设置'}</p>
         </div>
         <div className="flex gap-2">
@@ -295,7 +301,8 @@ export default function AdminLlmClient() {
       const body: Record<string, unknown> = {
         name: values.name.trim(),
         protocol: values.protocol,
-        endpointUrl: values.endpointUrl.trim(),
+        // §0.3：提交基地址，服务端归一为完整请求 URL（endpointUrl 仅兼容旧客户端）
+        baseUrl: values.baseUrl.trim(),
         enabled: values.enabled,
         models: values.models.map((m) => ({
           name: m.name.trim(),
