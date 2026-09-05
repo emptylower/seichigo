@@ -31,8 +31,10 @@ export function DayMap(props: {
   onPointSelect?: (id: string) => void
   /** Popup 里「查看条目」按钮的回调：切回列表、滚动到条目并闪烁高亮环 */
   onRequestShowItem?: (id: string) => void
+  /** 静态展示（首页展示计划）：没有权威折线时也不请求通用路网，直接画直线 */
+  static?: boolean
 }) {
-  const { planId, day, activePointId = null, onPointSelect, onRequestShowItem } = props
+  const { planId, day, activePointId = null, onPointSelect, onRequestShowItem, static: staticMode = false } = props
   const [geometry, setGeometry] = useState<RouteLineString | null>(null)
   const [sourceLabel, setSourceLabel] = useState<'provider' | 'mixed' | 'fallback' | null>(null)
   const [loading, setLoading] = useState(false)
@@ -73,6 +75,14 @@ export function DayMap(props: {
       setLoading(false)
       return
     }
+    if (staticMode) {
+      // 静态展示不请求路网：没有 provider 折线时由 RoutePreviewMap 画直线示意
+      setGeometry(null)
+      setSourceLabel(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
     // 预取/上次渲染可能已填充模块级缓存，命中即同步展示
     const cached = readRouteGeometryCache(planId, signature, mode)
     if (cached) {
@@ -101,7 +111,7 @@ export function DayMap(props: {
       cancelled = true
     }
     // retryToken 手动重试；signature/mode 变化（切天/plan 更新）自动重取
-  }, [planId, signature, mode, dayPoints.length, composed, retryToken])
+  }, [planId, signature, mode, dayPoints.length, composed, retryToken, staticMode])
 
   if (!dayPoints.length) {
     return (
