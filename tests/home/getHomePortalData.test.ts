@@ -54,16 +54,43 @@ const mapClustersFixture = {
 }
 
 const heroDemoFixture = {
-  planTitle: '京吹京都巡礼 3 日',
+  planTitle: '你的名字 东京巡礼 8 日',
   day: {
-    dayIndex: 1,
-    summary: '京都市内线',
+    dayIndex: 2,
+    summary: '新宿一带',
     items: [
-      { id: 'a', title: '京都音乐厅', time: '上午', imageUrl: '/images/showcase/a.jpg' },
-      { id: 'b', title: '出町桥', time: '上午', imageUrl: '/images/showcase/b.jpg' },
-      { id: 'c', title: '河原町三条', time: '上午', imageUrl: '/images/showcase/c.jpg' },
+      {
+        id: 'a',
+        title: '须贺神社男坂',
+        titles: { zh: '须贺神社男坂', en: 'Suga Shrine Menstair', ja: '須賀神社男坂' },
+        time: '09:30',
+        imageUrl: '/images/showcase/a.jpg',
+        lat: 35.7013,
+        lng: 139.7966,
+      },
+      {
+        id: 'b',
+        title: '信浓町步道桥',
+        titles: { zh: '信浓町步道桥', en: 'Shinanomachi Pedestrian Bridge', ja: '信濃町歩道橋' },
+        time: '10:20',
+        imageUrl: '/images/showcase/b.jpg',
+        lat: 35.6985,
+        lng: 139.7982,
+      },
+      {
+        id: 'c',
+        title: '四谷见附桥',
+        titles: { zh: '四谷见附桥', en: 'Yotsuya Mitsuke Bridge', ja: '四谷見附橋' },
+        time: '11:10',
+        imageUrl: '/images/showcase/c.jpg',
+        lat: 35.6856,
+        lng: 139.7361,
+      },
     ],
-    transit: { mode: 'walk', label: '步行 · 约 10 分钟' },
+    transit: [
+      { fromId: 'a', toId: 'b', mode: 'walk', label: '步行 12 分钟' },
+      { fromId: 'b', toId: 'c', mode: 'train', label: '电车 8 分钟' },
+    ],
   },
 }
 

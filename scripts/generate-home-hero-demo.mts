@@ -1,14 +1,19 @@
 /**
- * 生成首屏微演示数据（第十二轮第三批 A2，§0 契约）。
+ * 生成首屏手机演示数据（第十四轮 §0 契约；第十二轮第三批 A2 初版）。
  *
  *   npx tsx scripts/generate-home-hero-demo.mts \
- *     [--plan cmth2dorw00048axy6oat70up] [--out content/generated/home-hero-demo.json]
+ *     [--plan cmtk6aetq0000psp7292p6uu8] [--anime 你的名字] \
+ *     [--out content/generated/home-hero-demo.json]
  *
- * 只读生产库（.env.local 的 DATABASE_URL）：取计划最新 daymap 快照的 Day 1，
- * 用 pickHeroDemo 选前 3 个带图可路由点位；图片经生产站的公开
- * /api/anitabi/image-render 代理静态化到 public/images/showcase/（注意：须在
- * generate-home-showcase 之后运行，后者会清空该目录）。形状校验后紧凑 JSON
- * 落盘；不足 3 条即失败退出（微演示固定三步填充）。
+ * 只读生产库（.env.local 的 DATABASE_URL）：取计划最新 daymap 快照的 days，
+ * pickHeroDemo 选「标题含 anime 关键词的点位条目最多」的一天（当前为 Day 2），
+ * 优先取标题含 anime 关键词的带图可路由点位，不足 3 个用当天其它条目按原
+ * 顺序补齐（lat/lng 透传，transit 为相邻点位间数组）；
+ * 图片经生产站的公开 /api/anitabi/image-render 代理静态化到
+ * public/images/showcase/（注意：须在 generate-home-showcase 之后运行，后者会
+ * 清空该目录）。形状校验后紧凑 JSON 落盘；不足 3 条即失败退出（微演示固定
+ * 三步填充）。本脚本不写 map 字段——由 generate-home-hero-phone-map.mts
+ * 随后补写，故重跑本脚本后需再跑地图脚本。
  */
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -19,25 +24,31 @@ import { parseHomeHeroDemo, pickHeroDemo } from '@/lib/home/heroDemo'
 import { PrismaTripPlanRepo } from '@/lib/tripPlan/repoPrisma'
 import { parseDaymapPayload, toPlanView } from '@/lib/tripPlan/view'
 
-/** §0：首屏演示固定用京吹京都巡礼 3 日计划 */
-const DEFAULT_PLAN_ID = 'cmth2dorw00048axy6oat70up'
+/** §0（第十四轮）：首屏演示固定用东京 8 日计划，选《你的名字》点位最多的一天 */
+const DEFAULT_PLAN_ID = 'cmtk6aetq0000psp7292p6uu8'
+const DEFAULT_ANIME = '你的名字'
 /** 公开 image-render 代理以生产站为基（候选 URL 在 Node 下已是绝对地址，防御相对路径） */
 const PROXY_BASE_ORIGIN = 'https://seichigo.com'
 
-function parseArgs(argv: string[]): { planId: string; outPath: string } {
+function parseArgs(argv: string[]): { planId: string; outPath: string; anime: string } {
   const planId = flagValue(argv, '--plan') || DEFAULT_PLAN_ID
+  const anime = flagValue(argv, '--anime') || DEFAULT_ANIME
   const outPath = flagValue(argv, '--out') || 'content/generated/home-hero-demo.json'
-  return { planId, outPath }
+  return { planId, outPath, anime }
 }
 
 async function main(): Promise<void> {
   loadEnvLocal()
-  const { planId, outPath } = parseArgs(process.argv.slice(2))
+  const { planId, outPath, anime } = parseArgs(process.argv.slice(2))
   if (!process.env.DATABASE_URL) {
     console.error('DATABASE_URL is not set (.env.local missing?)')
     process.exit(1)
   }
 
+  // 动态导入：静态 import 会被提升到 loadEnvLocal 之前执行，而 @prisma/client
+  // 在模块加载时会自动读取 .env（本地 localhost 库），loadEnvLocal 的
+  // "只填未设置键"策略就再也盖不回 .env.local 的生产库地址了
+  const { PrismaTripPlanRepo } = await import('@/lib/tripPlan/repoPrisma')
   const repo = new PrismaTripPlanRepo()
   const plan = await repo.getPlan(planId)
   if (!plan) {
@@ -95,13 +106,13 @@ async function main(): Promise<void> {
     return publicPath
   }
 
-  const day = await pickHeroDemo(days, resolveImage)
+  const day = await pickHeroDemo(days, resolveImage, { anime })
   if (!day) {
-    console.error(`plan ${planId} has no routable point items with images on day 1`)
+    console.error(`plan ${planId} has no routable point items with images for anime="${anime}"`)
     process.exit(1)
   }
   if (day.items.length < 3) {
-    console.error(`hero demo needs 3 items but only ${day.items.length} resolved images on day 1`)
+    console.error(`hero demo needs 3 items but only ${day.items.length} resolved images on day ${day.dayIndex}`)
     process.exit(1)
   }
 
@@ -116,11 +127,16 @@ async function main(): Promise<void> {
   await mkdir(path.dirname(outFilePath), { recursive: true })
   await writeFile(outFilePath, serialized, 'utf8')
 
-  console.log(`[hero-demo] plan=${planId} (${plan.title}) -> ${outPath}`)
+  console.log(`[hero-demo] plan=${planId} (${plan.title}) anime=${anime} day=${day.dayIndex} -> ${outPath}`)
   console.log(
-    `[hero-demo] items: ${day.items.map((item) => `${item.time} ${item.title}`).join(' / ')}`
+    `[hero-demo] items: ${day.items
+      .map((item) => `${item.time} ${item.title} [ja:${item.titles.ja} en:${item.titles.en}]`)
+      .join(' / ')}`
   )
-  console.log(`[hero-demo] transit: ${day.transit.label} (images downloaded=${downloaded} reused=${reused})`)
+  console.log(
+    `[hero-demo] transit: ${day.transit.map((entry) => entry.label).join(' / ')} ` +
+      `(images downloaded=${downloaded} reused=${reused})`
+  )
 }
 
 await main()
