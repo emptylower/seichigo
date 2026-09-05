@@ -996,6 +996,7 @@ model TripPlan {
   days           TripPlanDay[]
   messages       TripPlanMessage[]
   runLogs        TripPlanRunLog[]
+  runLive        TripPlanRunLive?
 
   @@index([userId])
   @@index([status])
@@ -1062,6 +1063,19 @@ model TripPlanRunLog {
   @@index([planId, createdAt])
 }
 
+/// plan agent 运行期实况（第七轮 A1）：刷新恢复用。每计划至多一行，由当前
+/// 持有 run 的 writer 覆盖写；run 结束（writer.finish）即删除。reasoning 超
+/// 20,000 字符在 repo 层截头保尾。
+model TripPlanRunLive {
+  planId     String   @id
+  runToken   String
+  reasoning  String   @db.Text
+  statusText String?
+  toolCalls  Json?
+  updatedAt  DateTime @updatedAt
+  plan       TripPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
 model ExternalPlace {
   id                String   @id @default(cuid())
   provider          String   @default("google")
@@ -1105,6 +1119,8 @@ model LlmProvider {
   id                  String   @id @default(cuid())
   name                String
   protocol            String // openai | anthropic
+  /** 用户输入的接口地址（可为基地址）；服务端归一后写入 endpointUrl */
+  baseUrl             String?
   endpointUrl         String
   apiKeyCiphertext    String?
   apiKeyHint          String?
