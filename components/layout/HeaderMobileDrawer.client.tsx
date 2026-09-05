@@ -79,7 +79,7 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
     () => [
       { href: prefixPath('/plan', locale), label: t('header.plan', locale), icon: CalendarRange },
       { href: prefixPath('/map', locale), label: t('header.map', locale), icon: MapPinned },
-      { href: prefixPath('/', locale), label: t('header.posts', locale), icon: Home },
+      { href: prefixPath('/posts', locale), label: t('header.posts', locale), icon: Home },
       { href: prefixPath('/city', locale), label: t('header.city', locale), icon: BookOpen },
     ],
     [locale]

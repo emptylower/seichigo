@@ -30,7 +30,7 @@ export default function Footer({ locale = 'zh' }: Props) {
     {
       title: t('footer.product', locale),
       links: [
-        { label: t('footer.posts', locale), href: '/' },
+        { label: t('footer.posts', locale), href: '/posts' },
         { label: t('footer.anime', locale), href: '/anime' },
         { label: t('footer.city', locale), href: '/city' },
         { label: t('footer.resources', locale), href: '/resources' },
