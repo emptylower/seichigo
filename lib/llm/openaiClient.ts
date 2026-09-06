@@ -4,6 +4,7 @@ import type { PlanAgentChatMessage } from '@/lib/planAgent/loop'
 import { LlmEmptyStreamError, LlmHttpError, postJson, readSseDataPayloads } from './http'
 import { createReasoningExtractor } from './reasoningExtract'
 import { GEMINI_THINKING_EXTRA_BODY, isGoogleGeminiOpenAiEndpoint } from './geminiCompat'
+import { attachLlmUsage, parseOpenAiUsage, type LlmUsage } from './usage'
 
 type Delta = OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta
 type Chunk = OpenAI.Chat.Completions.ChatCompletionChunk
@@ -37,6 +38,7 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
         messages: input.messages,
         ...(input.tools?.length ? { tools: input.tools } : {}),
         stream: true,
+        stream_options: { include_usage: true },
         // A2 补充：仅 Google 官方 OpenAI 兼容端点追加思考回显开关（不与
         // reasoning_effort 同传、不指定 thinking_level）；其它 host 不加任何额外字段
         ...(isGoogleGeminiOpenAiEndpoint(config.endpointUrl)
@@ -49,6 +51,7 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
     let content = ''
     let reasoning = ''
     let finishReason: string | null | undefined
+    let usage: LlmUsage | null = null
     const toolCalls = new Map<number, AccumulatedToolCall>()
     // A2：统一思考增量口径（reasoning_content / reasoning / reasoning_details /
     // content 内嵌 <think> 标签），见 reasoningExtract.ts
@@ -61,6 +64,9 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
       } catch {
         return
       }
+      // 末帧 usage（choices 为空数组）：先于 choice 判空读取，否则会被 return 丢掉
+      const parsedUsage = parseOpenAiUsage((chunk as { usage?: unknown }).usage)
+      if (parsedUsage) usage = parsedUsage
       const choice = chunk.choices?.[0]
       if (!choice) return
       const delta = choice.delta
@@ -112,6 +118,7 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
       ...(reasoning ? { reasoning_content: reasoning } : {}),
       ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
     }
+    if (usage) attachLlmUsage(message, usage)
     return message
   }
 

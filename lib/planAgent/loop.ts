@@ -24,6 +24,8 @@ import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
+import { llmUsageOf, type LlmUsage, addUsage } from '@/lib/llm/usage'
+import { EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -296,6 +298,10 @@ export async function runPlanAgent(
   // M4 运行日志素材：turnIndex 是本轮 human 消息的序号（含本轮）
   const turnIndex = stageHistory.filter((m) => m.kind === 'human').length
   const toolCallSummaries: Array<{ name: string; durationMs: number }> = []
+  // 计量层（设计 §7）：按模型累加 usage；缺 usage 的调用记 usageMissing
+  const usageByModel = new Map<string, LlmUsage>()
+  let modelCalls = 0
+  let usageMissing = false
   // 对象持有者：闭包内赋值后，外层读取不会被控制流分析窄化成 null
   const saveEvaluation: { current: { enrich: EnrichReport; quality: PlanQualityReport } | null } = { current: null }
 
@@ -325,6 +331,8 @@ export async function runPlanAgent(
   const eventCoalescer = createEventCoalescer(forwardEvent)
   const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
 
+  const enrichBudget = deps.toolDeps.enrichBudget ?? createEnrichBudget()
+
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
@@ -332,7 +340,7 @@ export async function runPlanAgent(
     renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
     // directions/places 配额，避免每次 save 重置预算重烧 Google 调用
-    enrichBudget: deps.toolDeps.enrichBudget ?? createEnrichBudget(),
+    enrichBudget,
     onPlanUpdated: () => {
       deps.toolDeps.onPlanUpdated?.()
       emit({ type: 'plan_updated' })
@@ -432,6 +440,15 @@ export async function runPlanAgent(
         )
       } finally {
         watcher?.stop()
+      }
+
+      modelCalls += 1
+      const callUsage = llmUsageOf(response)
+      if (callUsage) {
+        const modelName = describePlanAgentModel(response).model
+        usageByModel.set(modelName, addUsage(usageByModel.get(modelName) ?? { inputMiss: 0, inputCacheHit: 0, output: 0, reasoning: 0 }, callUsage))
+      } else {
+        usageMissing = true
       }
 
       // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
@@ -629,7 +646,13 @@ export async function runPlanAgent(
             enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
             gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
             toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
-            modelUsage: null,
+            modelUsage: summarizeRunCost({
+              usageByModel,
+              calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
+              modelCalls,
+              usageMissing: usageMissing || modelCalls === 0,
+              withTitle: Boolean(userMessage),
+            }) as unknown as Prisma.JsonValue,
             durationMs: Date.now() - runStartedAt,
           })
         } catch (err) {
@@ -685,5 +708,6 @@ export async function runPlanAgent(
     events: emittedEvents,
     reasoningChars,
     toolCalls: toolCallSummaries.length,
+    modelCalls,
   })
 }

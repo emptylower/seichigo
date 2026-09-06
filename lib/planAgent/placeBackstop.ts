@@ -1,7 +1,7 @@
 import { haversineKm } from './cluster'
 import { extractPlaceQuery } from './placeQuery'
 import { normalizePlaceQuery, validateExternalPlacePayload, type PlaceResolver, type ResolvedPlace } from '@/lib/googlePlaces/places'
-import { placesRemaining, type EnrichBudget } from './enrich/types'
+import { countGoogleCall, placesRemaining, type EnrichBudget } from './enrich/types'
 
 /**
  * save_plan_days 的服务端兜底（设计 §5.5）：模型经常把非作品停留点写成
@@ -83,8 +83,8 @@ export async function backfillExternalPlaces(input: {
   let resolved = 0
   let googleCallsUsed = 0
   const budgetExhausted = () => (input.budget ? placesRemaining(input.budget) <= 0 : googleCallsUsed >= maxGoogleCalls)
-  const countGoogleCall = () => {
-    if (input.budget) input.budget.places.used += 1
+  const countGoogleCallLocal = () => {
+    if (input.budget) countGoogleCall(input.budget, 'placesTextSearch')
     else googleCallsUsed += 1
   }
 
@@ -119,7 +119,7 @@ export async function backfillExternalPlaces(input: {
           String(rawQuery).trim(),
           {
             ...(centroid ? { near: centroid, radiusM: NEAR_RADIUS_M } : {}),
-            onGoogleCall: countGoogleCall,
+            onGoogleCall: countGoogleCallLocal,
           },
         )
         if (result.ok) {

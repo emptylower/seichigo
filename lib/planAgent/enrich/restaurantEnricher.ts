@@ -1,6 +1,6 @@
 import { validateExternalPlacePayload } from '@/lib/googlePlaces/places'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
-import type { EnrichContext, EnrichDay, EnrichReport } from './types'
+import { meterGoogleCall, type EnrichContext, type EnrichDay, type EnrichReport } from './types'
 
 /**
  * restaurant enricher（A6 餐厅必达；R3 并发化；S4/S6 第五轮审查修订）：
@@ -171,6 +171,7 @@ export async function runRestaurantEnricher(days: EnrichDay[], ctx: EnrichContex
           lng: group.center.lng,
           onGoogleCall: () => {
             group.actualCalls += 1
+            if (ctx.budget) meterGoogleCall(ctx.budget, 'placesNearby')
           },
         })
       } catch {

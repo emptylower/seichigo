@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createLlmClient } from '@/lib/llm/client'
 import { LlmHttpError } from '@/lib/llm/http'
+import { llmUsageOf } from '@/lib/llm/usage'
 
 function sseResponse(events: string[]): Response {
   const encoder = new TextEncoder()
@@ -241,6 +242,40 @@ describe('openai-compatible client', () => {
 
     expect(message.content).toBe('跨片')
     expect(message.finish_reason).toBe('stop')
+  })
+
+  it('requests stream_options.include_usage and attaches the final usage chunk', async () => {
+    const usageChunk =
+      'data: ' +
+      JSON.stringify({
+        id: 'chatcmpl-test',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: {
+          prompt_tokens: 1200,
+          completion_tokens: 300,
+          prompt_cache_hit_tokens: 1000,
+          prompt_cache_miss_tokens: 200,
+          completion_tokens_details: { reasoning_tokens: 120 },
+        },
+      }) +
+      '\n\n'
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseResponse([chunk({ role: 'assistant' }), chunk({ content: '好' }), chunk({}, 'stop'), usageChunk, 'data: [DONE]\n\n']),
+    )
+    const client = createLlmClient({
+      protocol: 'openai',
+      endpointUrl: 'https://api.deepseek.com/chat/completions',
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const message = await client.streamChat({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'hi' }], maxTokens: 64 })
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body)).stream_options).toEqual({ include_usage: true })
+    expect(message.content).toBe('好')
+    expect(llmUsageOf(message)).toEqual({ inputMiss: 200, inputCacheHit: 1000, output: 300, reasoning: 120 })
+    expect(Object.keys(message)).not.toContain('llm_usage')
   })
 
   it('rejects 3xx redirects without following them and never sends a second request', async () => {

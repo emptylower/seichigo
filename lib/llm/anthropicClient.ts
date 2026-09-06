@@ -2,6 +2,7 @@ import type OpenAI from 'openai'
 import type { LlmClient, LlmClientConfig, LlmChatInput, LlmStreamDelta } from './types'
 import type { PlanAgentChatMessage } from '@/lib/planAgent/loop'
 import { LlmEmptyStreamError, postJson, readSseDataPayloads } from './http'
+import { attachLlmUsage, parseAnthropicUsage, type AnthropicDeltaUsage, type AnthropicStartUsage } from './usage'
 
 type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 type ChatTool = OpenAI.Chat.Completions.ChatCompletionTool
@@ -123,6 +124,8 @@ type AnthropicStreamEvent = {
   type: string
   index?: number
   content_block?: { type: string; id?: string; name?: string }
+  message?: { usage?: AnthropicStartUsage }
+  usage?: AnthropicDeltaUsage
   delta?: {
     type?: string
     text?: string
@@ -166,6 +169,8 @@ export function createAnthropicClient(config: LlmClientConfig): LlmClient {
     let reasoning = ''
     let finishReason: string | undefined
     let stopReasonRaw: string | undefined
+    let startUsage: AnthropicStartUsage | undefined
+    let deltaUsage: AnthropicDeltaUsage | undefined
     const toolCalls = new Map<number, { id: string; name: string; arguments: string }>()
 
     const payloadCount = await readSseDataPayloads(res, (payload) => {
@@ -175,6 +180,11 @@ export function createAnthropicClient(config: LlmClientConfig): LlmClient {
       } catch {
         return
       }
+      if (event.type === 'message_start' && event.message?.usage) {
+        startUsage = event.message.usage
+        return
+      }
+      if (event.type === 'message_delta' && event.usage) deltaUsage = event.usage
       if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
         toolCalls.set(event.index ?? toolCalls.size, {
           id: event.content_block.id ?? '',
@@ -221,6 +231,8 @@ export function createAnthropicClient(config: LlmClientConfig): LlmClient {
       ...(reasoning ? { reasoning_content: reasoning } : {}),
       ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
     }
+    const usage = parseAnthropicUsage(startUsage, deltaUsage)
+    if (usage) attachLlmUsage(message, usage)
     return message
   }
 

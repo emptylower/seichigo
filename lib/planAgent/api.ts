@@ -4,6 +4,7 @@ import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 import { resolveLlmForScope, type ResolvedLlm } from '@/lib/llm/registry'
 import { LlmEmptyStreamError, LlmHttpError } from '@/lib/llm/client'
 import { createReasoningExtractor } from '@/lib/llm/reasoningExtract'
+import { attachLlmUsage, parseOpenAiUsage, type LlmUsage } from '@/lib/llm/usage'
 import { isUserStoppedAbort, userStoppedAbort } from './stop'
 import type { CreateMessageFn, PlanAgentChatMessage } from './loop'
 import { isTransientNetworkError } from './netErrors'
@@ -77,6 +78,7 @@ async function attemptStreamOnce(
       messages,
       tools,
       stream: true,
+      stream_options: { include_usage: true },
     },
     // A3 停止：loop 传入的 signal（租约看守触发停止时 abort）真正传到 SDK
     signal ? { signal } : undefined,
@@ -85,6 +87,7 @@ async function attemptStreamOnce(
   let content = ''
   let reasoning = ''
   let finishReason: string | null | undefined
+  let usage: LlmUsage | null = null
   const toolCalls = new Map<number, AccumulatedToolCall>()
   // A2：统一思考增量口径（reasoning_content / reasoning / reasoning_details /
   // content 内嵌 <think> 标签），与 lib/llm/openaiClient.ts 共用同一实现
@@ -96,6 +99,8 @@ async function attemptStreamOnce(
 
   for await (const chunk of stream) {
     sawAnyChunk = true
+    const parsedUsage = parseOpenAiUsage((chunk as { usage?: unknown }).usage)
+    if (parsedUsage) usage = parsedUsage
     const choice = chunk.choices[0]
     if (!choice) continue
     const delta = choice.delta
@@ -155,6 +160,7 @@ async function attemptStreamOnce(
     ...(reasoning ? { reasoning_content: reasoning } : {}),
     ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
   }
+  if (usage) attachLlmUsage(message, usage)
   return message
 }
 
@@ -291,9 +297,16 @@ export function withModelUsageInRunLog<T extends TripPlanRepo>(repo: T): T {
       if (prop === 'appendRunLog') {
         return async (entry: Parameters<TripPlanRepo['appendRunLog']>[0]) => {
           const usage = providerUsageOfMessage(lastReturnedMessage)
-          return target.appendRunLog(
-            usage ? { ...entry, modelUsage: usage as unknown as Prisma.JsonValue } : entry,
-          )
+          if (!usage) return target.appendRunLog(entry)
+          // loop 写入的 tokens/calls/costMicros 与供应商信息合并；两边字段名不重叠
+          const base =
+            entry.modelUsage && typeof entry.modelUsage === 'object' && !Array.isArray(entry.modelUsage)
+              ? (entry.modelUsage as Record<string, unknown>)
+              : {}
+          return target.appendRunLog({
+            ...entry,
+            modelUsage: { ...base, ...usage } as unknown as Prisma.JsonValue,
+          })
         }
       }
       const value = Reflect.get(target, prop, receiver)

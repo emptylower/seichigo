@@ -29,7 +29,7 @@ import {
   runEstimateTransitTool,
   BUDGET_EXHAUSTED_RESULT,
 } from './travelHelpers'
-import { createEnrichBudget, readTravelMode, type EnrichBudget, type EnrichContext, type EnrichReport } from './enrich'
+import { createEnrichBudget, countGoogleCall, readTravelMode, type EnrichBudget, type EnrichContext, type EnrichReport } from './enrich'
 import { scheduleFailureSummary } from './enrich/scheduleEnricher'
 import { enrichAndNormalizeDays } from './enrichPipeline'
 import { evaluatePlanGates, type PlanQualityReport } from './gates'
@@ -325,9 +325,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
             : undefined
         const resolution = await deps.places.resolveByText(query, {
           ...(near ? { near } : {}),
-          onGoogleCall: () => {
-            budget.places.used += 1
-          },
+          onGoogleCall: () => countGoogleCall(budget, 'placesTextSearch'),
         })
         if (!resolution.ok) {
           return JSON.stringify({ error: resolution.message, code: resolution.code, ...(resolution.code === 'not_found' ? { hint: '可尝试更官方/更具体的名称重试一次；仍查不到就如实告知用户' } : {}) })
@@ -376,9 +374,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           lng,
           ...(Number.isFinite(Number(args.radiusM)) ? { radiusM: Number(args.radiusM) } : {}),
           ...(typeof args.keyword === 'string' && args.keyword.trim() ? { keyword: args.keyword.trim() } : {}),
-          onGoogleCall: () => {
-            budget.places.used += 1
-          },
+          onGoogleCall: () => countGoogleCall(budget, 'placesNearby'),
         })
         if (!result.ok) return JSON.stringify({ error: result.message, code: result.code })
         if (!result.restaurants.length) {
