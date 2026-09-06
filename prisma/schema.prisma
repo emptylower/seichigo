@@ -12,29 +12,37 @@ datasource db {
 }
 
 model User {
-  id                   String               @id @default(cuid())
+  id                   String                @id @default(cuid())
   name                 String?
-  email                String?              @unique
+  email                String?               @unique
   emailVerified        DateTime?
   image                String?
-  passwordHash         String?              @db.Text
-  mustChangePassword   Boolean              @default(false)
-  disabled             Boolean              @default(false)
-  isAdmin              Boolean              @default(false)
-  /** 订阅档位：free | standard | pro（设计 2026-09-06 §8） */
-  tier                 String               @default("free")
-  /** 当前计费周期起点（订阅日锚点；免费档为注册日） */
-  periodStart          DateTime             @default(now())
-  /** 订阅日/注册日锚点，滚动周期时不变（月末钳制不会让它逐月漂移） */
-  periodAnchor         DateTime             @default(now())
-  /** 当前计费周期终点；null 表示尚未初始化，首次访问时由 billing service 计算 */
+  passwordHash         String?               @db.Text
+  mustChangePassword   Boolean               @default(false)
+  disabled             Boolean               @default(false)
+  isAdmin              Boolean               @default(false)
+  /**
+   * 订阅档位：free | standard | pro（设计 2026-09-06 §8）
+   */
+  tier                 String                @default("free")
+  /**
+   * 当前计费周期起点（订阅日锚点；免费档为注册日）
+   */
+  periodStart          DateTime              @default(now())
+  /**
+   * 订阅日/注册日锚点，滚动周期时不变（月末钳制不会让它逐月漂移）
+   */
+  periodAnchor         DateTime              @default(now())
+  /**
+   * 当前计费周期终点；null 表示尚未初始化，首次访问时由 billing service 计算
+   */
   periodEnd            DateTime?
-  bio                  String?              @db.Text
+  bio                  String?               @db.Text
   bilibili             String?
   weibo                String?
   github               String?
   twitter              String?
-  createdAt            DateTime             @default(now())
+  createdAt            DateTime              @default(now())
   accounts             Account[]
   sessions             Session[]
   submissions          Submission[]
@@ -44,10 +52,10 @@ model User {
   favorites            Favorite[]
   mdxFavorites         MdxFavorite[]
   waitlistEntry        WaitlistEntry?
-  comments             Comment[]            @relation("CommentAuthor")
+  comments             Comment[]             @relation("CommentAuthor")
   commentLikes         CommentLike[]
-  commentReports       CommentReport[]      @relation("CommentReporter")
-  hiddenComments       Comment[]            @relation("CommentHiddenBy")
+  commentReports       CommentReport[]       @relation("CommentReporter")
+  hiddenComments       Comment[]             @relation("CommentHiddenBy")
   translationHistories TranslationHistory[]
   anitabiFavorites     AnitabiFavorite[]
   anitabiViewHistory   AnitabiViewHistory[]
@@ -58,6 +66,7 @@ model User {
   publicOverrides      PublicOverride[]
   tripPlans            TripPlan[]
   usageLedger          UsageLedger[]
+  billingSubscriptions BillingSubscription[]
 }
 
 model Account {
@@ -698,30 +707,32 @@ model AnitabiBangumi {
 }
 
 model AnitabiPoint {
-  id             String   @id
-  bangumiId      Int
-  name           String
-  nameZh         String?
-  geoLat         Float?
-  geoLng         Float?
-  ep             String?
-  s              String?
-  image          String?
-  origin         String?
-  originUrl      String?
-  originLink     String?
-  density        Int?
-  mark           String?
-  folder         String?
-  uid            String?
-  reviewUid      String?
-  datasetVersion String
+  id                    String    @id
+  bangumiId             Int
+  name                  String
+  nameZh                String?
+  geoLat                Float?
+  geoLng                Float?
+  ep                    String?
+  s                     String?
+  image                 String?
+  origin                String?
+  originUrl             String?
+  originLink            String?
+  density               Int?
+  mark                  String?
+  folder                String?
+  uid                   String?
+  reviewUid             String?
+  datasetVersion        String
   googlePlaceId         String?
-  /** resolved | not_found；null 表示从未尝试 */
+  /**
+   * resolved | not_found；null 表示从未尝试
+   */
   googlePlaceStatus     String?
   googlePlaceResolvedAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   bangumi         AnitabiBangumi       @relation(fields: [bangumiId], references: [id], onDelete: Cascade)
   i18n            AnitabiPointI18n[]
@@ -1086,8 +1097,8 @@ model TripPlanRunLive {
 }
 
 model ExternalPlace {
-  id                String   @id @default(cuid())
-  provider          String   @default("google")
+  id                String               @id @default(cuid())
+  provider          String               @default("google")
   placeId           String
   name              String
   address           String?
@@ -1097,14 +1108,16 @@ model ExternalPlace {
   photoReference    String?
   photoAttribution  String?
   photoMirrorKey    String?
-  photoMirrorStatus String   @default("none") // none | pending | mirrored | failed
+  photoMirrorStatus String               @default("none") // none | pending | mirrored | failed
   photoMirroredAt   DateTime?
-  /** 最多 10 张照片：[{ photoReference, attribution }]；photoReference 列始终等于 photos[0] */
+  /**
+   * 最多 10 张照片：[{ photoReference, attribution }]；photoReference 列始终等于 photos[0]
+   */
   photos            Json?
   fetchedAt         DateTime
-  lastUsedAt        DateTime @default(now())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  lastUsedAt        DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
   queries           ExternalPlaceQuery[]
 
   @@unique([provider, placeId])
@@ -1128,7 +1141,9 @@ model LlmProvider {
   id                  String   @id @default(cuid())
   name                String
   protocol            String // openai | anthropic
-  /** 用户输入的接口地址（可为基地址）；服务端归一后写入 endpointUrl */
+  /**
+   * 用户输入的接口地址（可为基地址）；服务端归一后写入 endpointUrl
+   */
   baseUrl             String?
   endpointUrl         String
   apiKeyCiphertext    String?
@@ -1154,7 +1169,9 @@ model UsageLedger {
   id           String   @id @default(cuid())
   userId       String
   planId       String?
-  /** 一次 run 的计费引用（route 生成的 uuid），reserve/settle/refund 用它配对 */
+  /**
+   * 一次 run 的计费引用（route 生成的 uuid），reserve/settle/refund 用它配对
+   */
   runRef       String?
   kind         String
   deltaMicros  BigInt
@@ -1165,4 +1182,36 @@ model UsageLedger {
 
   @@index([userId, periodStart])
   @@index([runRef])
+}
+
+/// Creem 订阅（设计 2026-09-06 §3）：一个用户同一时间最多一条活跃订阅
+model BillingSubscription {
+  id                  String    @id @default(cuid())
+  userId              String
+  provider            String    @default("creem")
+  creemCustomerId     String
+  creemSubscriptionId String    @unique
+  creemProductId      String
+  tier                String
+  status              String
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean   @default(false)
+  canceledAt          DateTime?
+  lastEventAt         DateTime
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Creem webhook 事件（幂等与审计）
+model BillingWebhookEvent {
+  id          String    @id
+  type        String
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+  payload     Json
 }

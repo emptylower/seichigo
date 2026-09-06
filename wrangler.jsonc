@@ -38,7 +38,12 @@
     // 2026-09-06 §0.3：规划 run 队列投递开关。已部署版本为 "1"；预览版本用
     // --var PLAN_AGENT_QUEUE_ENABLED=0 覆盖（队列消费者与自引用绑定只对已
     // 部署版本生效，预览跑不了消费者，路由会回落 SSE 内联路径）
-    "PLAN_AGENT_QUEUE_ENABLED": "1"
+    "PLAN_AGENT_QUEUE_ENABLED": "1",
+    // 2026-09-06 Creem 订阅（设计 §6）：预览环境用 --var 覆盖为测试模式
+    // （CREEM_API_BASE=https://test-api.creem.io 与测试模式 product id）；
+    // CREEM_API_KEY 与 CREEM_WEBHOOK_SECRET 走 secret，不进 vars
+    "CREEM_API_BASE": "https://api.creem.io",
+    "CREEM_PRODUCT_STANDARD_ID": ""
   },
   "r2_buckets": [
     {
