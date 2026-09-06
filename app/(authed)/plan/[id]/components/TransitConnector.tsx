@@ -3,17 +3,16 @@
 import { useState } from 'react'
 import { Bus, Car, ChevronDown, Footprints, type LucideIcon } from 'lucide-react'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { formatTransportText, getTransport, type TransportLeg, type TransportPayload } from './itemPayload'
 
 /** 起终点坐标（由 DayCards 从前后最近带坐标条目取）：无 mapsUrl 时拼 Google 导航链接 */
 export type TransitEndpoint = { lat: number; lng: number }
 
-/** 估算/兜底展开态的当地实时查询提示 */
-const ESTIMATE_LOCAL_HINT = '到达当地后可用 Google 地图 / Yahoo!乗換案内 查询实时路线'
-
 type LegKind = 'walk' | 'ride' | 'drive'
 
-const KIND_LABEL: Record<LegKind, string> = { walk: '步行', ride: '乘车', drive: '自驾' }
+const KIND_KEY: Record<LegKind, string> = { walk: 'transit.walk', ride: 'transit.ride', drive: 'transit.drive' }
 const KIND_ICON: Record<LegKind, LucideIcon> = { walk: Footprints, ride: Bus, drive: Car }
 
 function legKind(leg: TransportLeg): LegKind {
@@ -55,9 +54,10 @@ function mergeLegsIntoSegments(legs: TransportLeg[]): MergedSegment[] {
   return segments
 }
 
-function segmentText(segment: MergedSegment): string {
-  const minutes = segment.durationMin !== null ? ` ${segment.durationMin} 分钟` : ''
-  return `${KIND_LABEL[segment.kind]}${minutes}`
+function segmentText(segment: MergedSegment, tx: PlanTextFn): string {
+  const label = tx(KIND_KEY[segment.kind])
+  if (segment.durationMin === null) return label
+  return `${label} ${tx('transit.durationMin', { minutes: segment.durationMin })}`
 }
 
 /** 换乘次数：优先 transport.transfers；否则按乘车段数 - 1 推导 */
@@ -84,48 +84,66 @@ function sumSegmentDurations(segments: MergedSegment[]): number | null {
  * 混合（≤3 段）→ 先步行 5 分钟，再乘车 18 分钟，最后步行 3 分钟；
  * 更多段 → 乘车 xx 分钟，含换乘 n 次。无 legs 返回 null（调用方走兜底文案）。
  */
-export function summarizeTransportLegs(transport: TransportPayload): string | null {
+export function summarizeTransportLegs(transport: TransportPayload, locale: SupportedLocale = 'zh'): string | null {
   const legs = transport.legs ?? []
   if (!legs.length) return null
+  const tx = planTextFor(locale)
   const segments = mergeLegsIntoSegments(legs)
   if (segments.length === 1) {
     const only = segments[0]!
-    const text = segmentText(only)
+    const text = segmentText(only, tx)
     if (only.kind !== 'ride') return text
     const transfers = transferCount(transport)
-    return transfers > 0 ? `${text}（换乘 ${transfers} 次）` : text
+    return transfers > 0 ? tx('transit.withTransfers', { text, count: transfers }) : text
   }
   if (segments.length <= 3) {
-    const prefixes = segments.length === 2 ? ['先', '再'] : ['先', '再', '最后']
-    return segments.map((segment, index) => `${prefixes[index]}${segmentText(segment)}`).join('，')
+    const keys =
+      segments.length === 2
+        ? ['transit.prefixFirst', 'transit.prefixThen']
+        : ['transit.prefixFirst', 'transit.prefixThen', 'transit.prefixLast']
+    return segments
+      .map((segment, index) => tx(keys[index]!, { text: segmentText(segment, tx) }))
+      .join(tx('transit.mixJoin'))
   }
   const rideMin = sumSegmentDurations(segments.filter((s) => s.kind === 'ride'))
   const transfers = transferCount(transport)
-  const rideText = rideMin !== null ? `乘车 ${rideMin} 分钟` : '多次乘车'
-  return `${rideText}，含换乘 ${transfers} 次`
+  const ride =
+    rideMin !== null
+      ? `${tx('transit.ride')} ${tx('transit.durationMin', { minutes: rideMin })}`
+      : tx('transit.multipleRides')
+  return tx('transit.rideWithTransfers', { ride, count: transfers })
 }
 
 /** 展开态单步文案：步行/自驾 `步行 5 分钟（400 m） · 指示`；乘车含方向/上下车站/站数/时刻 */
-function legStepText(leg: TransportLeg): string {
+function legStepText(leg: TransportLeg, tx: PlanTextFn): string {
   const kind = legKind(leg)
-  const minutes = typeof leg.durationMin === 'number' ? `${Math.round(leg.durationMin)} 分钟` : null
+  const minutes =
+    typeof leg.durationMin === 'number' ? tx('transit.durationMin', { minutes: Math.round(leg.durationMin) }) : null
   if (kind === 'ride') {
-    const parts = [`乘 ${leg.line || '公共交通'}${leg.headsign ? `（往 ${leg.headsign}）` : ''}`]
-    if (leg.fromStop || leg.toStop) parts.push(`${leg.fromStop ?? '出发站'} → ${leg.toStop ?? '到达站'}`)
-    if (typeof leg.numStops === 'number' && leg.numStops > 0) parts.push(`${leg.numStops} 站`)
+    const line = tx('transit.rideLine', { line: leg.line || tx('transit.publicTransport') })
+    const parts = [`${line}${leg.headsign ? tx('transit.towards', { headsign: leg.headsign }) : ''}`]
+    if (leg.fromStop || leg.toStop) {
+      parts.push(`${leg.fromStop ?? tx('transit.fromStop')} → ${leg.toStop ?? tx('transit.toStop')}`)
+    }
+    if (typeof leg.numStops === 'number' && leg.numStops > 0) parts.push(tx('transit.stops', { count: leg.numStops }))
     if (minutes) parts.push(minutes)
     if (leg.departureTime || leg.arrivalTime) {
-      parts.push(`${leg.departureTime ?? '未定'} 发 – ${leg.arrivalTime ?? '未定'} 到`)
+      parts.push(
+        tx('transit.departArrive', {
+          departure: leg.departureTime ?? tx('transit.unknownTime'),
+          arrival: leg.arrivalTime ?? tx('transit.unknownTime'),
+        }),
+      )
     }
     return parts.join(' · ')
   }
   const distance = typeof leg.distanceKm === 'number' && leg.distanceKm > 0 ? `（${formatDistanceSpaced(leg.distanceKm)}）` : ''
-  const head = `${KIND_LABEL[kind]}${minutes ? ` ${minutes}` : ''}${distance}`
+  const head = `${tx(KIND_KEY[kind])}${minutes ? ` ${minutes}` : ''}${distance}`
   return leg.instruction ? `${head} · ${leg.instruction}` : head
 }
 
 /** 总计行：`总计 26 分钟 · 5.4 km`；时长/距离优先根字段，缺省按 legs 求和 */
-function totalLine(transport: TransportPayload): string | null {
+function totalLine(transport: TransportPayload, tx: PlanTextFn): string | null {
   let minutes = typeof transport.durationMin === 'number' ? Math.round(transport.durationMin) : null
   if (minutes === null) minutes = sumSegmentDurations(mergeLegsIntoSegments(transport.legs ?? []))
   let km = typeof transport.distanceKm === 'number' && transport.distanceKm > 0 ? transport.distanceKm : null
@@ -141,7 +159,7 @@ function totalLine(transport: TransportPayload): string | null {
     if (seen) km = Math.round(sum * 10) / 10
   }
   const parts: string[] = []
-  if (minutes !== null) parts.push(`总计 ${minutes} 分钟`)
+  if (minutes !== null) parts.push(tx('transit.total', { minutes }))
   if (km !== null) parts.push(formatDistanceSpaced(km))
   return parts.length ? parts.join(' · ') : null
 }
@@ -167,8 +185,11 @@ export function TransitConnector(props: {
   item: TripPlanItemView
   origin?: TransitEndpoint | null
   destination?: TransitEndpoint | null
+  locale?: SupportedLocale
 }) {
   const { item } = props
+  const locale = props.locale ?? 'zh'
+  const tx = planTextFor(locale)
   const [expanded, setExpanded] = useState(false)
   const transport = getTransport(item)
   const legs = transport?.legs ?? []
@@ -177,18 +198,21 @@ export function TransitConnector(props: {
   // 折叠摘要：legs 归并摘要 → 估算"约 xx 分钟 · 参考估算" → 旧主文案 → title/note 兜底
   let summary: string
   if (legs.length && transport) {
-    summary = summarizeTransportLegs(transport) ?? formatTransportText(transport)
+    summary = summarizeTransportLegs(transport, locale) ?? formatTransportText(transport, locale)
   } else if (isEstimate && transport) {
-    const minutes = typeof transport.durationMin === 'number' ? `约 ${Math.round(transport.durationMin)} 分钟 · ` : ''
-    summary = `${minutes}参考估算`
+    const minutes =
+      typeof transport.durationMin === 'number'
+        ? `${tx('transit.approxMinutes', { minutes: Math.round(transport.durationMin) })} · `
+        : ''
+    summary = `${minutes}${tx('transit.estimateLabel')}`
   } else if (transport) {
-    summary = formatTransportText(transport) || [item.title, item.note].filter(Boolean).join(' · ')
+    summary = formatTransportText(transport, locale) || [item.title, item.note].filter(Boolean).join(' · ')
   } else {
     // 旧数据/LLM 未按 schema 写 payload 时兜底用 title/note，绝不空行
     summary = [item.title, item.note].filter(Boolean).join(' · ')
   }
 
-  const total = transport ? totalLine(transport) : null
+  const total = transport ? totalLine(transport, tx) : null
   const mapsUrl = transport ? resolveMapsUrl(transport, props.origin ?? null, props.destination ?? null) : null
   const hasDetails = legs.length > 0 || Boolean(transport?.note) || Boolean(total) || Boolean(mapsUrl)
   const Icon = transport ? mainModeIcon(transport.mode) : Bus
@@ -224,7 +248,7 @@ export function TransitConnector(props: {
                 return (
                   <li key={index} className="flex items-start gap-1.5">
                     <StepIcon className="mt-0.5 h-3 w-3 shrink-0 text-gray-300" />
-                    <span className="min-w-0 flex-1 text-gray-500">{legStepText(leg)}</span>
+                    <span className="min-w-0 flex-1 text-gray-500">{legStepText(leg, tx)}</span>
                   </li>
                 )
               })}
@@ -233,7 +257,7 @@ export function TransitConnector(props: {
           {!legs.length && isEstimate ? (
             <>
               {transport?.note ? <p className="text-gray-500">{transport.note}</p> : null}
-              <p className="text-gray-400">{ESTIMATE_LOCAL_HINT}</p>
+              <p className="text-gray-400">{tx('transit.localHint')}</p>
             </>
           ) : null}
           {total ? <p className="tabular-nums text-gray-500">{total}</p> : null}
@@ -244,7 +268,7 @@ export function TransitConnector(props: {
               rel="noopener noreferrer"
               className="inline-block text-[11px] text-brand-500 underline decoration-brand-200 underline-offset-2"
             >
-              在 Google 地图打开
+              {tx('transit.openInGoogleMaps')}
             </a>
           ) : null}
         </div>

@@ -3,6 +3,8 @@
 import { MapPin } from 'lucide-react'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planTextFor } from '../lib/planText'
 import type { MediaPayload } from './itemPayload'
 
 function Placeholder() {
@@ -61,8 +63,10 @@ export function ItemThumbnail(props: {
   /** 静态展示（首页第二屏）：走原生 img，固定宽高、可 eager，首帧直接出图 */
   staticMode?: boolean
   eager?: boolean
+  locale?: SupportedLocale
 }) {
   const { image, alt, fallbackSrc, media, staticMode = false, eager = false } = props
+  const tx = planTextFor(props.locale ?? 'zh')
   const staticSrc = staticMode ? staticImageSrc(image, media) : null
   return (
     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
@@ -96,10 +100,10 @@ export function ItemThumbnail(props: {
       )}
       {media?.source === 'neighbor' ? (
         <span
-          title="借用邻近条目的图片"
+          title={tx('thumbnail.neighborTitle')}
           className="absolute right-1 top-1 rounded bg-black/55 px-1 py-0.5 text-[10px] leading-none text-white/95"
         >
-          参考
+          {tx('thumbnail.neighborBadge')}
         </span>
       ) : null}
       <MediaAttribution attribution={media?.attribution} />

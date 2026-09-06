@@ -18,6 +18,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planText, planTextFor } from '../lib/planText'
 
 /** 单个工具调用的展示条目（与 SSE tool_call 事件同形；恢复轮询的 live 快照可带 error 态） */
 export type ToolCallEntry = {
@@ -43,7 +45,18 @@ export type ThinkingTurn = {
 }
 
 /** M5：用户主动停止本轮时定格用的状态短语（定格态摘要行显示它而不是「已完成」） */
-export const STOPPED_PHRASE = '已停止'
+export function stoppedPhrase(locale: SupportedLocale = 'zh'): string {
+  return planText(locale, 'thinking.stopped')
+}
+
+/** 中文常量：既有 import 与历史落库快照仍按中文比对 */
+export const STOPPED_PHRASE = stoppedPhrase('zh')
+
+/** 定格短语是不是「已停止」——三语任一命中即算（站点语言可能与定格时不同） */
+export function isStoppedPhrase(phrase: string | null | undefined): boolean {
+  if (!phrase) return false
+  return (['zh', 'en', 'ja'] as const).some((locale) => stoppedPhrase(locale) === phrase)
+}
 
 export function newThinkingTurn(now = Date.now()): ThinkingTurn {
   return { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: now }
@@ -175,12 +188,14 @@ export function ThinkingChain(props: {
    * 刷新恢复（live 快照）路径没有该信息，此时传 null 即不显示。
    */
   modelNotice?: { providerName: string; model: string } | null
+  locale?: SupportedLocale
 }) {
   const { thinking, active, expanded, onToggle } = props
+  const tx = planTextFor(props.locale ?? 'zh')
   const timeline = expanded ? <ThinkingTimeline thinking={thinking} followScroll={props.followScroll} /> : null
 
   if (active) {
-    const phrase = thinking.statusPhrase ?? props.idlePhrase ?? '规划师思考中…'
+    const phrase = thinking.statusPhrase ?? props.idlePhrase ?? tx('thinking.thinking')
     return (
       <div className="space-y-2">
         <button
@@ -198,7 +213,7 @@ export function ThinkingChain(props: {
         </button>
         {props.modelNotice ? (
           <p className="px-1 text-[11px] leading-4 text-gray-400">
-            当前模型（{props.modelNotice.providerName} · {props.modelNotice.model}）不公开思考过程，这里只显示工具进度
+            {tx('thinking.modelNotice', { provider: props.modelNotice.providerName, model: props.modelNotice.model })}
           </p>
         ) : null}
         {timeline}
@@ -207,7 +222,7 @@ export function ThinkingChain(props: {
   }
 
   // M5：被用户停止的回合即使没攒下遥测也要留痕（摘要行显示「已停止」）
-  const stopped = thinking.statusPhrase === STOPPED_PHRASE
+  const stopped = isStoppedPhrase(thinking.statusPhrase)
   const reviewable = hasThinkingContent(thinking)
   if (!reviewable && !stopped) return null
   const steps = thinking.toolCalls.length
@@ -216,8 +231,8 @@ export function ThinkingChain(props: {
   return (
     <div className="space-y-2">
       <p className="text-xs text-gray-400">
-        {stopped ? STOPPED_PHRASE : steps > 0 ? `已完成 ${steps} 步` : '已完成思考'}
-        {secs != null ? ` · 用时 ${secs}s` : ''}
+        {stopped ? tx('thinking.stopped') : steps > 0 ? tx('thinking.doneSteps', { steps }) : tx('thinking.doneThinking')}
+        {secs != null ? ` · ${tx('thinking.elapsed', { seconds: secs })}` : ''}
         {reviewable ? (
           <>
             {' · '}
@@ -227,7 +242,7 @@ export function ThinkingChain(props: {
               aria-expanded={expanded}
               className="cursor-pointer text-brand-500 underline decoration-dotted underline-offset-2"
             >
-              {expanded ? '收起思考过程' : '查看思考过程'}
+              {expanded ? tx('thinking.collapse') : tx('thinking.expand')}
             </button>
           </>
         ) : null}
