@@ -19,6 +19,7 @@ import {
 } from './protocolGuard'
 import { EMPTY_TURN_ERROR_MESSAGE, EMPTY_TURN_RETRY_INSTRUCTION } from './emptyTurn'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
+import { serverText } from './serverText'
 import { createRunLiveWriter, type RunLiveWriter } from './runLive'
 import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
@@ -26,6 +27,7 @@ import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
 import { llmUsageOf, type LlmUsage, addUsage } from '@/lib/llm/usage'
 import { EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -122,6 +124,20 @@ export type PlanAgentDeps = {
    * 不传（内部测试等）时流式期不检测停止（renewLease 的栅栏语义仍生效）。
    */
   isStopped?: () => Promise<boolean>
+  /**
+   * §0.6 站点语言（route 从 getLocale() 取）：只影响服务端固定文案（思维链
+   * 短语、ask 收尾备注、网络错误），不参与模型回复语言（由提示词的
+   * "回复语言"段约束模型自行跟随用户）。缺省 zh。
+   */
+  locale?: SupportedLocale
+  /**
+   * 2026-09-06 §0.5 软截止时间（epoch ms）：队列消费者单次调用有 15 分钟
+   * 硬上限，内部路由传入 start + 13 min。循环每次迭代开头检查，到点即按
+   * 客户端断开同一收尾（interrupted=true：写 stage=interrupted 日志、清实况
+   * 行、不发 done、不派发补齐续跑），客户端靠现有"上次被打断 → 续跑"路径
+   * 接着跑。SSE 路径不传。
+   */
+  deadlineAt?: number
 }
 
 /**
@@ -227,6 +243,8 @@ export async function runPlanAgent(
 ): Promise<void> {
   const maxIterations = deps.maxIterations ?? DEFAULT_MAX_ITERATIONS
   const runStartedAt = Date.now()
+  // §0.6：本 run 的服务端固定文案语言（status/summary/netError/askUserNote）
+  const locale = deps.locale ?? 'zh'
 
   const history = await deps.repo.listMessages(deps.planId)
 
@@ -336,6 +354,8 @@ export async function runPlanAgent(
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
+    // §0.6：补齐层（餐食标签等用户可见文案）按站点语言
+    locale,
     // 第九轮 L1：租约续租透传给工具——save_plan_days 在长补齐前后各续一次
     renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
@@ -408,6 +428,12 @@ export async function runPlanAgent(
     outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
       if (deps.signal?.aborted) {
         interrupted = isClientDisconnected(deps.signal)
+        break
+      }
+      // §0.5 软截止：队列消费者的硬杀兜底——到点按客户端断开同一收尾，
+      // 剩余工作交给现有"上次被打断 → 续跑"路径
+      if (deps.deadlineAt !== undefined && Date.now() >= deps.deadlineAt) {
+        interrupted = true
         break
       }
       // 通用防线：无论哪条路径在内存消息里留下悬空 tool_calls（守卫扣下、
@@ -522,9 +548,9 @@ export async function runPlanAgent(
         } catch {
           malformedArgs = true
         }
-        const argsSummary = summarizeToolArgs(call.function.name, input)
+        const argsSummary = summarizeToolArgs(call.function.name, input, locale)
         // status/tool_call 事件只发 SSE，是瞬时遥测，绝不写进 TripPlanMessage
-        emit({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
+        emit({ type: 'status', phase: toolStatusPhrase(call.function.name, input, locale) })
         emit({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
         const startedAt = Date.now()
         let result: string
@@ -571,7 +597,7 @@ export async function runPlanAgent(
             content: JSON.stringify({
               status: 'asked',
               askId: err.payload.askId,
-              note: '已向用户发起结构化提问，本轮对话结束，等待用户通过下一条消息回答',
+              note: serverText(locale).askUserNote,
             }),
           } as unknown as Prisma.JsonValue)
           emit({ type: 'ask', ...err.payload })
@@ -584,7 +610,7 @@ export async function runPlanAgent(
           argsSummary,
           status: 'done',
           durationMs: Date.now() - startedAt,
-          resultSummary: summarizeToolResult(call.function.name, result),
+          resultSummary: summarizeToolResult(call.function.name, result, locale),
         })
         toolCallSummaries.push({ name: call.function.name, durationMs: Date.now() - startedAt })
         const toolParam: ChatMessageParam = { role: 'tool', tool_call_id: call.id, content: result }
@@ -606,9 +632,9 @@ export async function runPlanAgent(
         fenced = true
       }
     } else {
-      // 瞬时网络错误（workerd "Network connection lost." 等）映射成友好中文，
-      // 其余上游错误保留原文案（鉴权/配额等有诊断价值）
-      emit({ type: 'error', message: agentErrorMessage(err) })
+      // 瞬时网络错误（workerd "Network connection lost." 等）按站点语言映射成
+      // 友好文案，其余上游错误保留原文案（鉴权/配额等有诊断价值）
+      emit({ type: 'error', message: agentErrorMessage(err, locale) })
     }
   } finally {
     // 第七轮 A1（M1/M2 修订）：实况 writer 收尾。正常结束的 run 强制 flush
@@ -663,10 +689,11 @@ export async function runPlanAgent(
       // 「预算已用完」类 skipped 或 restaurantPending 条目时派发——先只看
       // 评估报告，无需续跑直接跳过，不做 getPlan 往返；门控未过的保存在
       // 上面已被拒绝落库（整改单是模型的活），补齐脚本不该再碰这份计划
-      // A3：用户停止的 run 不派发（§0：停止后不自动续跑）
+      // A3：用户停止的 run 不派发（§0：停止后不自动续跑）；§0.5 软截止/
+      // 客户端断开收尾的 run 同样不派发（interrupted 回合交给用户侧续跑）
       try {
         const evaluation = saveEvaluation.current
-        if (!stopped && evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
+        if (!stopped && !interrupted && evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
           const planAfterRun = await deps.repo.getPlan(deps.planId)
           if (planAfterRun && planNeedsContinuation(evaluation.enrich, planAfterRun.days)) {
             const task = () =>

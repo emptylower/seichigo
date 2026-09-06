@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CityLite } from '@/lib/city/db'
 import { HomeDataSourceError } from '@/lib/home/dataSourceError'
 import { getHomePortalData, HOME_DATA_TIMEOUT_MS } from '@/lib/home/getHomePortalData'
+import { readHomeMapClustersFile, readHomeShowcaseFile } from '@/lib/home/generatedHomeFiles'
 import type { PublicPostListItem } from '@/lib/posts/types'
 
 function makePost(overrides: Partial<PublicPostListItem> = {}): PublicPostListItem {
@@ -36,6 +37,70 @@ function makeCity(overrides: Partial<CityLite> = {}): CityLite {
   }
 }
 
+const homeStatsFixture = { points: 12_345, works: 678, cities: 3, posts: 9 }
+
+const showcaseFixture = {
+  revisionId: 'rev-1',
+  savedAt: '2026-09-05T00:00:00.000Z',
+  title: '东京 8 日巡礼',
+  summary: '一段助手摘要',
+  days: [],
+}
+
+const mapClustersFixture = {
+  generatedAt: '2026-09-05T00:00:00.000Z',
+  totalPoints: 12_345,
+  cells: [{ lng: 139.65, lat: 35.65, count: 42 }],
+}
+
+const heroDemoFixture = {
+  planTitle: '你的名字 东京巡礼 8 日',
+  day: {
+    dayIndex: 2,
+    summary: '新宿一带',
+    items: [
+      {
+        id: 'a',
+        title: '须贺神社男坂',
+        titles: { zh: '须贺神社男坂', en: 'Suga Shrine Menstair', ja: '須賀神社男坂' },
+        time: '09:30',
+        imageUrl: '/images/showcase/a.jpg',
+        lat: 35.7013,
+        lng: 139.7966,
+      },
+      {
+        id: 'b',
+        title: '信浓町步道桥',
+        titles: { zh: '信浓町步道桥', en: 'Shinanomachi Pedestrian Bridge', ja: '信濃町歩道橋' },
+        time: '10:20',
+        imageUrl: '/images/showcase/b.jpg',
+        lat: 35.6985,
+        lng: 139.7982,
+      },
+      {
+        id: 'c',
+        title: '四谷见附桥',
+        titles: { zh: '四谷见附桥', en: 'Yotsuya Mitsuke Bridge', ja: '四谷見附橋' },
+        time: '11:10',
+        imageUrl: '/images/showcase/c.jpg',
+        lat: 35.6856,
+        lng: 139.7361,
+      },
+    ],
+    transit: [
+      { fromId: 'a', toId: 'b', mode: 'walk', label: '步行 12 分钟' },
+      { fromId: 'b', toId: 'c', mode: 'train', label: '电车 8 分钟' },
+    ],
+  },
+}
+
+const generatedDeps = {
+  getHomeStats: async () => ({ ...homeStatsFixture }),
+  readHomeShowcase: async () => JSON.parse(JSON.stringify(showcaseFixture)) as typeof showcaseFixture,
+  readHomeMapClusters: async () => JSON.parse(JSON.stringify(mapClustersFixture)) as typeof mapClustersFixture,
+  readHomeHeroDemo: async () => JSON.parse(JSON.stringify(heroDemoFixture)) as typeof heroDemoFixture,
+}
+
 describe('getHomePortalData', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -54,6 +119,7 @@ describe('getHomePortalData', () => {
   ] as const)('rejects the render when %s fails', async (source, _depName, failingDep) => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const promise = getHomePortalData('en', {
+      ...generatedDeps,
       getAllPublicPosts: async () => [],
       getAllAnime: async () => [],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -74,6 +140,7 @@ describe('getHomePortalData', () => {
     try {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
       const promise = getHomePortalData('en', {
+        ...generatedDeps,
         getAllPublicPosts: () => new Promise<PublicPostListItem[]>(() => {}),
         getAllAnime: async () => [],
         getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -98,6 +165,7 @@ describe('getHomePortalData', () => {
     const sourceFailure = new HomeDataSourceError('posts.database', 'failure', reason)
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const promise = getHomePortalData('ja', {
+      ...generatedDeps,
       getAllPublicPosts: async () => { throw sourceFailure },
       getAllAnime: async () => [],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -115,6 +183,7 @@ describe('getHomePortalData', () => {
 
   it('accepts successful empty data sources as a genuinely empty database', async () => {
     const data = await getHomePortalData('en', {
+      ...generatedDeps,
       getAllPublicPosts: async () => [],
       getAllAnime: async () => [],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -134,6 +203,7 @@ describe('getHomePortalData', () => {
     ]
 
     const data = await getHomePortalData('en', {
+      ...generatedDeps,
       getAllPublicPosts: async () => posts,
       getAllAnime: async () => [{ id: 'alpha', name: 'Alpha', cover: '/assets/alpha' }],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -147,6 +217,7 @@ describe('getHomePortalData', () => {
 
   it('adds locale display names to homepage post cards without changing source ids', async () => {
     const data = await getHomePortalData('en', {
+      ...generatedDeps,
       getAllPublicPosts: async () => [makePost({ animeIds: ['中文作品'], city: '东京' })],
       getAllAnime: async () => [{ id: 'anime-1', name: '中文作品', name_en: 'English Anime' }],
       getCityCountsByLocale: async () => ({
@@ -196,6 +267,7 @@ describe('getHomePortalData', () => {
       makeCity({ id: 'tokyo', slug: 'tokyo', name_zh: '东京', name_en: 'Tokyo', name_ja: '東京' }),
     ]
     const deps = {
+      ...generatedDeps,
       getAllPublicPosts: async () => posts,
       getAllAnime: async () => anime,
       getCityCountsByLocale: async () => ({ cities, counts: {} }),
@@ -245,6 +317,7 @@ describe('getHomePortalData', () => {
     ]
 
     const data = await getHomePortalData('en', {
+      ...generatedDeps,
       getAllPublicPosts: async () => posts,
       getAllAnime: async () => anime,
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -257,6 +330,7 @@ describe('getHomePortalData', () => {
 
   it('gracefully hides popular cities when city source is empty', async () => {
     const data = await getHomePortalData('ja', {
+      ...generatedDeps,
       getAllPublicPosts: async () => [makePost({ path: '/ja/posts/real-1', animeIds: ['alpha'] })],
       getAllAnime: async () => [{ id: 'alpha', name: 'Alpha', cover: '/assets/alpha' }],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
@@ -265,14 +339,170 @@ describe('getHomePortalData', () => {
     expect(data.popularCities).toEqual([])
   })
 
-  it('always returns 3 hero items and fills missing covers with static fallbacks', async () => {
+  it('no longer ships the unrendered heroDisplay/more/starterSteps fields', async () => {
     const data = await getHomePortalData('zh', {
+      ...generatedDeps,
       getAllPublicPosts: async () => [makePost({ path: '/posts/real-1', animeIds: ['alpha'] })],
       getAllAnime: async () => [{ id: 'alpha', name: 'Alpha' }],
       getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
     })
 
-    expect(data.heroDisplay).toHaveLength(3)
-    expect(data.heroDisplay.map(({ src }) => src)).toEqual([null, null, null])
+    expect(data).not.toHaveProperty('heroDisplay')
+    expect(data).not.toHaveProperty('more')
+    expect(data).not.toHaveProperty('starterSteps')
+  })
+
+  it('exposes stats, showcase, map clusters and hero demo from the generated home sources', async () => {
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.stats).toEqual(homeStatsFixture)
+    expect(data.showcase).toEqual(showcaseFixture)
+    expect(data.mapClusters).toEqual(mapClustersFixture)
+    expect(data.heroDemo).toEqual(heroDemoFixture)
+  })
+
+  it('rejects the render when the hero demo source fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      readHomeHeroDemo: async () => {
+        throw new Error('hero demo unavailable')
+      },
+    })
+
+    await expect(promise).rejects.toThrow(
+      '[home:portal-unavailable] locale=en failures=home.heroDemo:failure'
+    )
+  })
+
+  it('passes the page locale through to getHomeStats so posts are counted per locale', async () => {
+    const calls: string[] = []
+    const data = await getHomePortalData('ja', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      getHomeStats: async (locale) => {
+        calls.push(locale)
+        return { ...homeStatsFixture }
+      },
+    })
+
+    expect(calls).toEqual(['ja'])
+    expect(data.stats).toEqual(homeStatsFixture)
+  })
+
+  it('rejects the render when the showcase payload has an invalid shape', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      readHomeShowcase: async () => readHomeShowcaseFile({ revisionId: '', savedAt: '', title: '', days: [] }),
+    })
+
+    await expect(promise).rejects.toThrow(
+      '[home:portal-unavailable] locale=en failures=home.showcase:failure'
+    )
+    expect(consoleError).toHaveBeenCalledWith(
+      '[home:data-source-error] locale=en source=home.showcase kind=failure',
+      expect.any(Error)
+    )
+  })
+
+  it('rejects the render when the map clusters payload has an invalid shape', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      readHomeMapClusters: async () => readHomeMapClustersFile({ generatedAt: '', totalPoints: -1, cells: [] }),
+    })
+
+    await expect(promise).rejects.toThrow(
+      '[home:portal-unavailable] locale=en failures=home.mapClusters:failure'
+    )
+  })
+
+  it('rejects the render when the stats source fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const promise = getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      getHomeStats: async () => {
+        throw new Error('counts unavailable')
+      },
+    })
+
+    await expect(promise).rejects.toThrow(
+      '[home:portal-unavailable] locale=en failures=home.stats:failure'
+    )
+  })
+
+  it('includes pinned-work articles outside the latest 12 shelf at the front of guides', async () => {
+    const fillers = Array.from({ length: 17 }, (_, i) =>
+      makePost({ path: `/posts/filler-${i}`, title: `filler ${i}` })
+    )
+    const pinned = [
+      makePost({ path: '/posts/your-name-1', title: 'Your Name. Guide: Shibuya', animeIds: ['Your Name'] }),
+      makePost({ path: '/posts/your-name-2', title: 'Your Name. Guide: Hida', animeIds: ['Your Name'] }),
+      makePost({ path: '/posts/your-name-3', title: 'Your Name. Guide: Suwa', animeIds: ['Your Name'] }),
+    ]
+    const posts = [...fillers.slice(0, 14), ...pinned, ...fillers.slice(14)]
+
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => posts,
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.guides.slice(0, 3).map((p) => p.path)).toEqual([
+      '/posts/your-name-1',
+      '/posts/your-name-2',
+      '/posts/your-name-3',
+    ])
+    expect(data.guides).toHaveLength(8)
+  })
+
+  it('picks up to 8 guides from featured and latest, routeLength+cover first within the misc pool', async () => {
+    const posts = [
+      makePost({ path: '/posts/featured', title: 'featured bare' }),
+      makePost({ path: '/posts/both', title: 'both', routeLength: '3 天', cover: '/c.png' }),
+      makePost({ path: '/posts/length-only', title: 'length only', routeLength: '2 天' }),
+      makePost({ path: '/posts/cover-only', title: 'cover only', cover: '/c2.png' }),
+      ...Array.from({ length: 10 }, (_, i) => makePost({ path: `/posts/filler-${i}`, title: `filler ${i}` })),
+    ]
+
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      getAllPublicPosts: async () => posts,
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.guides).toHaveLength(8)
+    expect(data.guides.slice(0, 1).map((p) => p.path)).toEqual(['/posts/both'])
+    expect(data.guides.slice(1).map((p) => p.path)).toEqual([
+      '/posts/featured',
+      '/posts/length-only',
+      '/posts/cover-only',
+      '/posts/filler-0',
+      '/posts/filler-1',
+      '/posts/filler-2',
+      '/posts/filler-3',
+    ])
   })
 })

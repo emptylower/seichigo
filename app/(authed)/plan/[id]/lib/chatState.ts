@@ -39,6 +39,29 @@ export type PlanRunLive = {
   updatedAt?: string
 }
 
+/**
+ * §0.6 契约：只读观察流 GET `/agent/stream` 的事件。run 在队列里跑，浏览器另开
+ * 一条观察流看进度；每条事件带自增 `seq`（`ready` 为 0），断线重连时回传
+ * `after=<最后 seq>`。快照类事件（`live`/`chat`）幂等，重放不会写坏本地状态。
+ */
+export type AgentWatchEvent =
+  | { type: 'ready'; seq: number }
+  | ({ type: 'live'; seq: number } & PlanRunLive)
+  | { type: 'chat'; seq: number; chatRevision?: number; chat: ChatEntryView[] }
+  | { type: 'plan_updated'; seq: number }
+  | {
+      type: 'done'
+      seq: number
+      /**
+       * `finished`=run 已结束（收尾）；`rotate`=连接到 15 min 上限但 run 仍在跑
+       * （只换连接，不收尾）。缺省按 `finished` 处理，兼容不带该字段的旧事件。
+       */
+      reason?: 'finished' | 'rotate'
+      /** run 因用户点「停止」而结束（缺省 false）：收尾前把本轮思维链以「已停止」定格 */
+      stopped?: boolean
+      interrupted?: InterruptedInfo | null
+    }
+
 /** 自动续跑去重键：sessionStorage 记 planId:turnIndex，同一页面会话只自动续一次 */
 export function autoResumeStorageKey(planId: string): string {
   return `planAutoResume:${planId}`

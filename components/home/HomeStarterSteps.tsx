@@ -2,7 +2,15 @@ import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import { t } from '@/lib/i18n'
-import type { HomeStarterItem } from '@/lib/home/types'
+
+/** 第十二轮起不再渲染（数据字段 starterSteps 已删）；类型就地保留以便历史参考 */
+type HomeStarterItem = {
+  id: 'anime' | 'city' | 'resources'
+  href: string
+  titleKey: string
+  descKey: string
+  ctaKey: string
+}
 
 const STEP_STYLES: Record<HomeStarterItem['id'], string> = {
   anime: 'from-brand-500/15 to-brand-100/10',

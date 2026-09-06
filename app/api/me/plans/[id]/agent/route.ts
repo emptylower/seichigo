@@ -1,26 +1,18 @@
 import { NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
-import { startOfToday } from '@/lib/tripPlan/handlers/plans'
-import { createChatCompletion, generatePlanTitle, withModelUsageInRunLog } from '@/lib/planAgent/api'
+import { handlerLocale, startOfToday } from '@/lib/tripPlan/handlers/plans'
 import { planMetaFromAnswer } from '@/lib/planAgent/askUser'
-import { searchBgmSubjects } from '@/lib/planAgent/bgm'
 import { agentErrorMessage } from '@/lib/planAgent/netErrors'
-import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
-import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
-import { canResume, RESUME_NOTE } from '@/lib/planAgent/resume'
-import { RunFencedError } from '@/lib/planAgent/runFence'
-import { getPlanAgentServerDeps } from '@/lib/planAgent/serverDeps'
-import { maybeSetGeneratedTitle } from '@/lib/planAgent/title'
+import { executePlanAgentRun, AGENT_BUSY_TTL_MS } from '@/lib/planAgent/execute'
+import type { PlanAgentEvent } from '@/lib/planAgent/loop'
+import { canResume } from '@/lib/planAgent/resume'
+import { serverText } from '@/lib/planAgent/serverText'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 export const runtime = 'nodejs'
 
 const DAILY_MESSAGE_LIMIT = 20
-// busy 位 TTL（第九轮 L1）：90 秒——硬杀（isolate 直接被杀、finally 不执行）后
-// 最长 90 秒释放 busy 位，前端就能自动续跑（旧值 3 分钟等太久）。活着的 run
-// 由循环在每次模型调用前与每次工具执行前的续租保住持有权（见下方 renewLease
-// 与 loop.ts），单次慢推理或长工具（save_plan_days）期间也不会被误判过期
-const AGENT_BUSY_TTL_MS = 90 * 1000
 
 /**
  * 第八轮 A1：客户端断开（刷新/断网）的 abort reason 标记。loop 据此把 run
@@ -36,14 +28,18 @@ function abortForClientDisconnect(): DOMException {
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const deps = await getTripPlanApiDeps()
+  // §0.6：站点语言（x-seichigo-locale > cookie > accept-language）——错误响应
+  // 与服务端固定文案走字典，模型回复语言不受它影响（提示词的"回复语言"段）
+  const locale = await handlerLocale(deps)
+  const errors = serverText(locale).errors
 
   const session = await deps.getSession()
   const userId = session?.user?.id
-  if (!userId) return NextResponse.json({ error: '未登录' }, { status: 401 })
+  if (!userId) return NextResponse.json({ error: errors.notSignedIn }, { status: 401 })
 
   const plan = await deps.repo.getPlan(id)
-  if (!plan) return NextResponse.json({ error: '计划不存在' }, { status: 404 })
-  if (plan.userId !== userId) return NextResponse.json({ error: '无权访问' }, { status: 403 })
+  if (!plan) return NextResponse.json({ error: errors.planNotFound }, { status: 404 })
+  if (plan.userId !== userId) return NextResponse.json({ error: errors.forbidden }, { status: 403 })
 
   let message = ''
   let answerTo = ''
@@ -84,7 +80,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok: true, stopped })
   }
 
-  if (!message && !resume) return NextResponse.json({ error: '消息不能为空' }, { status: 400 })
+  if (!message && !resume) return NextResponse.json({ error: errors.emptyMessage }, { status: 400 })
 
   // 第八轮 §0 / F2：对话已自然收尾时无事可续——HTTP 200 告知前端而不是起一个
   // 空 run。canResume 与 GET 的 interrupted 推断共享同一套状态规则（F1 三条），
@@ -118,30 +114,60 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     busyTtlMs: AGENT_BUSY_TTL_MS,
   })
   if (begin.status === 'quota_exceeded') {
-    return NextResponse.json({ error: '今日 AI 规划额度已用完，明天再来吧' }, { status: 429 })
+    return NextResponse.json({ error: errors.agentQuotaExhausted }, { status: 429 })
   }
   if (begin.status === 'busy') {
-    return NextResponse.json({ error: '这个计划正在规划中，等当前回复完成后再发送' }, { status: 409 })
+    return NextResponse.json({ error: errors.planBusy }, { status: 409 })
   }
   const runToken = begin.token
 
-  // 第九轮 L1：租约续租（token 匹配才续，被接管后自动失效）。循环在每次
-  // 模型调用前与每次工具执行前调用，save_plan_days 内部还会再续两次；被
-  // 接管 → 抛 RunFencedError 结束本 run（现有栅栏语义）；瞬时库错误不打断对话
-  const renewLease = async (): Promise<void> => {
-    const renewed = await deps.repo.renewAgentRun(id, runToken, AGENT_BUSY_TTL_MS).catch(() => true)
-    if (!renewed) throw new RunFencedError()
+  // 结构化回答 → 元信息直写补丁（纯函数，提前算好）。date_range 的
+  // startDate/dayCount 在 agent 启动前就写入，后续 LLM 一进来就能看到
+  // "日期已确定"，不必再从自由文本里猜、也不必重复调 update_plan_meta。
+  const answerMetaPatch = planMetaFromAnswer(answerTo, answerValue)
+
+  // Task A3（§0.3）：PLAN_AGENT_QUEUE_ENABLED=1（wrangler.jsonc vars；预览
+  // 版本会用 --var 覆盖成 0——队列消费者与自引用绑定只对已部署版本生效，
+  // 预览跑不了消费者）且有队列绑定时投递队列并 202——run 在 Cloudflare
+  // Queue 消费者里跑，与浏览器连接彻底解耦（断流/切后台/刷新都不再杀 run）。
+  // answerMetaPatch 直写必须在投递前完成（SSE start() 里的直写与
+  // plan_updated 事件都不会发生；观察流会按 plan.updatedAt 推 plan_updated）。
+  // 任何一步失败都回落到下方现有 SSE 内联路径（不额外 endAgentRun，SSE
+  // 路径的 finally 会释放）。
+  const queue =
+    process.env.PLAN_AGENT_QUEUE_ENABLED === '1' ? getCfBindings()?.env?.PLAN_AGENT_QUEUE : undefined
+  if (queue) {
+    let directWriteOk = true
+    if (answerMetaPatch) {
+      try {
+        await deps.repo.updateMetaIfActive(id, runToken, answerMetaPatch)
+      } catch (err) {
+        console.warn('[planAgent/queue] answerMetaPatch direct write failed, falling back to inline SSE', err)
+        directWriteOk = false
+      }
+    }
+    if (directWriteOk) {
+      try {
+        await queue.send({
+          v: 1,
+          planId: id,
+          runToken,
+          locale,
+          message: resume ? null : message,
+          resume,
+          enqueuedAt: new Date().toISOString(),
+        })
+        return NextResponse.json({ queued: true, runToken }, { status: 202 })
+      } catch (err) {
+        console.warn('[planAgent/queue] send failed, falling back to inline SSE', err)
+      }
+    }
   }
 
   const encoder = new TextEncoder()
   const abort = new AbortController()
   // 两个触发源都是客户端断开（请求 abort / 流 cancel），统一带上 reason 标记
   req.signal.addEventListener('abort', () => abort.abort(abortForClientDisconnect()))
-
-  // 结构化回答 → 元信息直写补丁（纯函数，提前算好）。date_range 的
-  // startDate/dayCount 在 agent 启动前就写入，后续 LLM 一进来就能看到
-  // "日期已确定"，不必再从自由文本里猜、也不必重复调 update_plan_meta。
-  const answerMetaPatch = planMetaFromAnswer(answerTo, answerValue)
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -161,58 +187,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           const applied = await deps.repo.updateMetaIfActive(id, runToken, answerMetaPatch)
           if (applied) send({ type: 'plan_updated' })
         }
-        await Promise.all([
-          runPlanAgent(
-            {
-              createMessage: createChatCompletion,
-              repo: withModelUsageInRunLog(deps.repo),
-              planId: id,
-              renewLease,
-              toolDeps: {
-                planId: id,
-                repo: deps.repo,
-                points: new PrismaPointFinder(),
-                bgmSearch: searchBgmSubjects,
-                ...getPlanAgentServerDeps(id),
-              },
-              signal: abort.signal,
-              userMessagePersisted: true,
-              runToken,
-              // 第十一轮 A3（§0）：模型流式期间的停止检查（租约看守定期
-              // 轮询，发现 token 已被 stopAgentRun 清掉就 abort 模型请求）
-              isStopped: () => deps.repo.isAgentRunStopped(id, runToken),
-              // 第八轮 A3：resume 回合注入中断说明（loop 拼进本回合 [系统状态]，
-              // 仅内存不落库），模型从已保存的进度继续
-              ...(resume ? { resumeNote: RESUME_NOTE } : {}),
-            },
-            message,
-            send,
-          ),
-          // 标题侧信道：与主循环并行的一次轻量标题生成，让标题在第一轮
-          // 消息后就出现（不走 run-token 栅栏，见 lib/planAgent/title.ts）。
-          // resume 无新用户消息可作标题素材，跳过
-          ...(message
-            ? [
-                maybeSetGeneratedTitle(
-                  {
-                    repo: deps.repo,
-                    planId: id,
-                    createTitle: (userMessage) => generatePlanTitle(userMessage, abort.signal),
-                    onTitleUpdated: () => send({ type: 'plan_updated' }),
-                  },
-                  message,
-                ),
-              ]
-            : []),
-        ])
+        // Task A1：执行体抽到 executePlanAgentRun（deps 组装、renewLease、
+        // 标题侧信道、finally { endAgentRun }），SSE 路径与队列内部路由共用
+        await executePlanAgentRun({
+          repo: deps.repo,
+          planId: id,
+          runToken,
+          locale,
+          message,
+          resume,
+          signal: abort.signal,
+          onEvent: send,
+          busyTtlMs: AGENT_BUSY_TTL_MS,
+        })
       } catch (err) {
         // 循环 try 块之外的异常（历史读取/直写补丁等）与瞬时网络错误统一经
-        // agentErrorMessage 映射：网络类 → 友好中文，其余保留原始 message
-        send({ type: 'error', message: agentErrorMessage(err) })
+        // agentErrorMessage 映射：网络类按站点语言的友好文案，其余保留原始 message
+        send({ type: 'error', message: agentErrorMessage(err, locale) })
         send({ type: 'done' })
       } finally {
         // 无论正常结束、报错还是客户端断开，都要释放 busy 位，
-        // 否则该计划要等 TTL 过期才能继续对话
+        // 否则该计划要等 TTL 过期才能继续对话（endAgentRun 幂等：token 已
+        // 清时是空操作，与执行体内部的 finally 重复调用无害）
         await deps.repo.endAgentRun(id, runToken).catch(() => undefined)
       }
       try {

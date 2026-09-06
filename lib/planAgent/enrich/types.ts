@@ -4,6 +4,7 @@ import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
 import type { TravelQueryFn } from '../travelQuery'
 import { EMPTY_GOOGLE_CALLS, type GoogleCallCategory, type GoogleCallCounts } from '@/lib/billing/cost'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 /**
  * M4 补齐层（设计 §4）：save_plan_days 落库前按固定顺序执行的服务端脚本。
@@ -142,6 +143,8 @@ export type EnrichContext = {
   dayCoordinates?: (dayIndex: number) => Array<{ lat: number; lng: number }>
   travelMode?: EnrichTravelMode
   budget?: EnrichBudget
+  /** §0.6 站点语言：补齐层写入用户可见文案（餐食标签等）时使用；缺省 zh */
+  locale?: SupportedLocale
 }
 
 export function emptyEnrichReport(): EnrichReport {

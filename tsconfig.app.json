@@ -15,6 +15,7 @@
     "hooks/**/*.tsx",
     "lib/**/*.ts",
     "lib/**/*.tsx",
+    "worker/**/*.ts",
     "middleware.ts",
     "instrumentation.ts",
     "instrumentation-client.ts",

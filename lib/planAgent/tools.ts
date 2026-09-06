@@ -32,6 +32,7 @@ import {
 import { createEnrichBudget, countGoogleCall, readTravelMode, type EnrichBudget, type EnrichContext, type EnrichReport } from './enrich'
 import { scheduleFailureSummary } from './enrich/scheduleEnricher'
 import { enrichAndNormalizeDays } from './enrichPipeline'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { evaluatePlanGates, type PlanQualityReport } from './gates'
 import type { WorkCover } from './coverImage'
 import type { DaymapMessagePayload } from '@/lib/tripPlan/view'
@@ -77,6 +78,8 @@ export type PlanAgentToolDeps = {
   enrichBudget?: EnrichBudget
   /** 第九轮 L1：长工具内部续租（save_plan_days 在补齐前后各续一次）；被接管时抛 RunFencedError（现有栅栏语义） */
   renewLease?: () => Promise<void>
+  /** §0.6 站点语言：loop 注入，传给补齐层（EnrichContext.locale）写用户可见文案 */
+  locale?: SupportedLocale
 }
 
 /**
@@ -465,6 +468,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           coordsByPointId,
           dayCoordinates: (dayIndex) => coordsByDay.get(dayIndex) ?? [],
           ...(travelMode ? { travelMode } : {}),
+          ...(deps.locale ? { locale: deps.locale } : {}),
           budget: enrichBudget,
         }
         await deps.renewLease?.() // 第九轮 L1：补齐脚本可能 1–2 分钟，先续租再进长补齐

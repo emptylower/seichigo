@@ -69,7 +69,7 @@ describe('DaymapCard（聊天时间线里的历史快照）', () => {
     const { container } = render(<DaymapCard planId="plan-1" daymap={daymap()} />)
     expect(container.querySelector('[data-daymap-revision="rev-1"]')).not.toBeNull()
     expect(screen.getByText('行程快照 · 已保存')).toBeTruthy()
-    expect(screen.getByText(/09-01/)).toBeTruthy()
+    expect(screen.getByText(/09\/01/)).toBeTruthy()
     expect(screen.getByText('Day 1')).toBeTruthy()
     expect(screen.getByText('Day 2')).toBeTruthy()
     expect(screen.getByText('宇治桥')).toBeTruthy()
@@ -117,6 +117,14 @@ describe('DaymapCard（聊天时间线里的历史快照）', () => {
   })
 })
 
+/** 与 formatSnapshotTimestamp 同一套 Intl 组合：本地时区 MM/DD HH:mm */
+function localSavedAt(intlLocale: string): string {
+  const d = new Date(Date.parse('2026-09-01T08:30:00Z'))
+  const date = new Intl.DateTimeFormat(intlLocale, { month: '2-digit', day: '2-digit' }).format(d)
+  const time = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit', hour12: false }).format(d)
+  return `${date} ${time}`
+}
+
 describe('DaymapCard 时间文本水合安全（React #418）', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -125,24 +133,29 @@ describe('DaymapCard 时间文本水合安全（React #418）', () => {
   it('SSR 首帧输出不含时间文本：服务端（UTC）与客户端首次渲染一致（空）', () => {
     const html = renderToString(<DaymapCard planId="plan-1" daymap={daymap()} />)
     expect(html).toContain('行程快照 · 已保存')
-    expect(html).not.toMatch(/\d{2}-\d{2} \d{2}:\d{2}/)
+    expect(html).not.toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/)
   })
 
   it('客户端 effect 完成后显示本地时区时间', () => {
     render(<DaymapCard planId="plan-1" daymap={daymap()} />)
-    const d = new Date(Date.parse('2026-09-01T08:30:00Z'))
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const expected = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-    expect(screen.getByText(expected)).toBeTruthy()
+    expect(screen.getByText(localSavedAt('zh-CN'))).toBeTruthy()
   })
 
   it('「交给规划师调整」前缀在挂载后携带本地时间（点击时取本地格式）', () => {
     const onComposeDraft = vi.fn()
     render(<DaymapCard planId="plan-1" daymap={daymap()} onComposeDraft={onComposeDraft} />)
-    const d = new Date(Date.parse('2026-09-01T08:30:00Z'))
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const expected = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
     fireEvent.click(screen.getByText('交给规划师调整这一天'))
-    expect(onComposeDraft).toHaveBeenCalledWith(`基于 ${expected} 那版行程，请调整第 1 天的安排：`)
+    expect(onComposeDraft).toHaveBeenCalledWith(`基于 ${localSavedAt('zh-CN')} 那版行程，请调整第 1 天的安排：`)
+  })
+
+  it('locale=en：快照时间按 en-US 格式化，调整草稿也是英文', () => {
+    const onComposeDraft = vi.fn()
+    render(<DaymapCard planId="plan-1" daymap={daymap()} onComposeDraft={onComposeDraft} locale="en" />)
+    expect(screen.getByText('Itinerary snapshot · saved')).toBeTruthy()
+    expect(screen.getByText(localSavedAt('en-US'))).toBeTruthy()
+    fireEvent.click(screen.getByText('Ask the planner to adjust this day'))
+    expect(onComposeDraft).toHaveBeenCalledWith(
+      `Based on the itinerary saved at ${localSavedAt('en-US')}, Please adjust the plan for day 1:`,
+    )
   })
 })

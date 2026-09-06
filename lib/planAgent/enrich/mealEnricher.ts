@@ -1,4 +1,6 @@
 import { parseStartMinutes } from '../schedule'
+import { serverText } from '../serverText'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { validateExternalPlacePayload } from '@/lib/googlePlaces/places'
 import type { EnrichContext, EnrichDay, EnrichReport } from './types'
 
@@ -18,10 +20,15 @@ import type { EnrichContext, EnrichDay, EnrichReport } from './types'
  * 幂等：连跑两次第二次 applied.meal 为 0。
  */
 
-const MEAL_HINT_PATTERN = /(早餐|早饭|午餐|午饭|中饭|晚餐|晚饭|夜宵|用餐|就餐|吃饭|自理)/
-const BREAKFAST_PATTERN = /早餐|早饭/
-const LUNCH_PATTERN = /午餐|午饭|中饭/
-const DINNER_PATTERN = /晚餐|晚饭|夜宵/
+/**
+ * 用餐关键词（§0.7 三语扩展）：英文不区分大小写（i 标志），日文口语词
+ * （朝食/昼食/夕食/晩御飯/ランチ/ディナー等）一并命中。HINT 只负责"像是
+ * 一顿饭"，具体 slot 由 BREAKFAST/LUNCH/DINNER 三条细分正则判定。
+ */
+const MEAL_HINT_PATTERN = /(早餐|早饭|午餐|午饭|中饭|晚餐|晚饭|夜宵|用餐|就餐|吃饭|自理|breakfast|lunch|dinner|brunch|supper|meal|朝食|昼食|夕食|晩御飯|晩ご飯|ランチ|ディナー|食事)/i
+const BREAKFAST_PATTERN = /早餐|早饭|breakfast|朝食/i
+const LUNCH_PATTERN = /午餐|午饭|中饭|lunch|brunch|昼食|ランチ/i
+const DINNER_PATTERN = /晚餐|晚饭|夜宵|dinner|supper|夕食|晩御飯|晩ご飯|ディナー/i
 const TITLE_CLEANUP_PATTERN = /自理|自行安排|自行解决|自由用餐/g
 const EDGE_PUNCTUATION_PATTERN = /^[\s·、，,。；;：:·!！?？\-—~～]+|[\s·、，,。；;：:·!！?？\-—~～]+$/g
 
@@ -51,11 +58,13 @@ function cleanTitle(title: string): string {
     .trim()
 }
 
-function slotLabel(slot: MealSlot): string {
-  return slot === 'breakfast' ? '早餐' : slot === 'lunch' ? '午餐' : '晚餐'
+/** 清洗后为空的兜底标题：按 slot 取站点语言标签（§0.6 字典） */
+function slotLabel(slot: MealSlot, locale: SupportedLocale): string {
+  return serverText(locale).meal[slot]
 }
 
 export function runMealEnricher(days: EnrichDay[], ctx: EnrichContext, report: EnrichReport): void {
+  const locale = ctx.locale ?? 'zh'
   let changed = 0
   for (const day of days) {
     for (const item of day.items) {
@@ -79,7 +88,7 @@ export function runMealEnricher(days: EnrichDay[], ctx: EnrichContext, report: E
       // 3) 标题清洗：去掉「自理」等与首尾标点；清洗后为空按 slot 写回
       const cleaned = cleanTitle(item.title ?? '')
       if (cleaned !== item.title) {
-        item.title = cleaned || slotLabel(item.payload.mealSlot as MealSlot)
+        item.title = cleaned || slotLabel(item.payload.mealSlot as MealSlot, locale)
         touched = true
       }
       if (touched) changed += 1

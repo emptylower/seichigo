@@ -2,9 +2,10 @@
 
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import Button from '@/components/shared/Button'
 import Image from 'next/image'
+import { useEmailCodeLogin } from '@/components/auth/useEmailCodeLogin'
 
 type SignInResult = {
   error?: string
@@ -20,108 +21,32 @@ export default function SignInClient() {
 
   const [method, setMethod] = useState<'email' | 'password'>('email')
 
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
+  // 邮箱验证码流程与首页登录弹窗共用一套逻辑（行为不变）
+  const login = useEmailCodeLogin({ callbackUrl })
+
   const [password, setPassword] = useState('')
-
-  const [loading, setLoading] = useState<'email-send' | 'email-verify' | 'password' | null>(null)
-
-  const [emailHint, setEmailHint] = useState<string | null>(null)
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
-
-  const [cooldown, setCooldown] = useState(0)
-
-  useEffect(() => {
-    if (cooldown <= 0) return
-    const t = window.setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000)
-    return () => window.clearInterval(t)
-  }, [cooldown])
-
-  const canSendCode = cooldown <= 0 && loading !== 'email-send'
-  const sendLabel = useMemo(() => {
-    if (loading === 'email-send') return '发送中…'
-    if (cooldown > 0) return `重新发送（${cooldown}s）`
-    return '发送验证码'
-  }, [cooldown, loading])
 
   async function requestCode(e: React.SyntheticEvent) {
     e.preventDefault()
-    setEmailError(null)
-    setEmailHint(null)
     setPasswordError(null)
-
-    const cleanedEmail = email.trim()
-    if (!cleanedEmail) {
-      setEmailError('请填写邮箱')
-      return
-    }
-
-    setLoading('email-send')
-    const res = await fetch('/api/auth/request-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanedEmail }),
-    })
-    setLoading(null)
-
-    const j = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      const msg = j?.error || '发送失败，请稍后重试'
-      setEmailError(msg)
-      if (res.status === 429 && typeof j?.retryAfterSeconds === 'number') {
-        setCooldown(Math.max(1, Math.min(60, Math.floor(j.retryAfterSeconds))))
-      }
-      return
-    }
-
-    const seconds = typeof j?.cooldownSeconds === 'number' ? Math.floor(j.cooldownSeconds) : 60
-    setCooldown(Math.max(1, Math.min(60, seconds)))
-    setEmailHint('验证码已发送，请查收邮件。')
+    await login.requestCode()
   }
 
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault()
-    setEmailError(null)
-    setEmailHint(null)
     setPasswordError(null)
-
-    const cleanedEmail = email.trim()
-    const cleanedCode = code.trim()
-    if (!cleanedEmail) {
-      setEmailError('请填写邮箱')
-      return
-    }
-    if (!cleanedCode) {
-      setEmailError('请填写验证码')
-      return
-    }
-
-    setLoading('email-verify')
-    const res = (await signIn('email-code', {
-      email: cleanedEmail,
-      code: cleanedCode,
-      redirect: false,
-      callbackUrl,
-    })) as SignInResult | undefined
-    setLoading(null)
-    if (!res) {
-      setEmailError('登录失败，请稍后重试')
-      return
-    }
-    if (res.error) {
-      setEmailError('验证码不正确或已过期')
-      return
-    }
-    window.location.href = res.url || callbackUrl
+    const result = await login.verifyCode()
+    if (result.ok) window.location.href = result.url
   }
 
   async function onPasswordSubmit(e: React.FormEvent) {
     e.preventDefault()
     setPasswordError(null)
-    setEmailError(null)
-    setEmailHint(null)
-    const cleanedEmail = email.trim()
+    login.setError(null)
+    login.setHint(null)
+    const cleanedEmail = login.email.trim()
     if (!cleanedEmail) {
       setPasswordError('请填写邮箱')
       return
@@ -131,14 +56,14 @@ export default function SignInClient() {
       return
     }
 
-    setLoading('password')
+    setPasswordLoading(true)
     const res = (await signIn('credentials', {
       email: cleanedEmail,
       password,
       redirect: false,
       callbackUrl,
     })) as SignInResult | undefined
-    setLoading(null)
+    setPasswordLoading(false)
     if (!res) {
       setPasswordError('登录失败，请稍后重试')
       return
@@ -208,13 +133,13 @@ export default function SignInClient() {
                     id="login-email"
                     className={inputClass}
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={login.email}
+                    onChange={(e) => login.setEmail(e.target.value)}
                     autoComplete="email"
                     required
                   />
-                  <Button type="button" variant="ghost" disabled={!canSendCode} onClick={requestCode} className="h-11 shrink-0 whitespace-nowrap sm:h-auto">
-                    {sendLabel}
+                  <Button type="button" variant="ghost" disabled={!login.canSendCode} onClick={requestCode} className="h-11 shrink-0 whitespace-nowrap sm:h-auto">
+                    {login.sendLabel}
                   </Button>
                 </div>
               </div>
@@ -229,17 +154,17 @@ export default function SignInClient() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   placeholder="6 位验证码"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  value={login.code}
+                  onChange={(e) => login.setCode(e.target.value)}
                   required
                 />
               </div>
 
-              {emailHint ? <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{emailHint}</div> : null}
-              {emailError ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{emailError}</div> : null}
+              {login.hint ? <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{login.hint}</div> : null}
+              {login.error ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{login.error}</div> : null}
 
-              <Button type="submit" disabled={loading === 'email-verify'} className="h-11 w-full">
-                {loading === 'email-verify' ? '验证中…' : '登录'}
+              <Button type="submit" disabled={login.loading === 'email-verify'} className="h-11 w-full">
+                {login.loading === 'email-verify' ? '验证中…' : '登录'}
               </Button>
             </form>
           ) : (
@@ -252,8 +177,8 @@ export default function SignInClient() {
                   id="password-email"
                   className={`${inputClass} mt-1`}
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={login.email}
+                  onChange={(e) => login.setEmail(e.target.value)}
                   autoComplete="email"
                   required
                 />
@@ -275,8 +200,8 @@ export default function SignInClient() {
 
               {passwordError ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{passwordError}</div> : null}
 
-              <Button type="submit" disabled={loading === 'password'} className="h-11 w-full">
-                {loading === 'password' ? '登录中…' : '登录'}
+              <Button type="submit" disabled={passwordLoading} className="h-11 w-full">
+                {passwordLoading ? '登录中…' : '登录'}
               </Button>
             </form>
           )}

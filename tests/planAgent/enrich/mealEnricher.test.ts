@@ -123,3 +123,48 @@ describe('runMealEnricher（用餐归一 + 餐厅必达预留）', () => {
     expect(capped.places.reserved).toBe(1) // 上限 places.max
   })
 })
+
+describe('runMealEnricher（多语言关键词 + 标签）', () => {
+  it('英文标题 Lunch / Dinner on your own 归一为 meal 并推断 slot', () => {
+    const days = day([
+      { type: 'free', title: 'Lunch' },
+      { type: 'free', title: 'Dinner on your own' },
+      { type: 'free', title: 'Breakfast near the inn' },
+    ])
+    const ctx: EnrichContext = { deps: {}, coordsByPointId: new Map(), locale: 'en' }
+    runMealEnricher(days, ctx, emptyEnrichReport())
+    expect(days[0].items.map((i) => i.type)).toEqual(['meal', 'meal', 'meal'])
+    expect(days[0].items.map((i) => i.payload?.mealSlot)).toEqual(['lunch', 'dinner', 'breakfast'])
+  })
+
+  it('日文标题 夕食 / 朝食 / ランチ 命中对应 slot', () => {
+    const days = day([
+      { type: 'free', title: '夕食' },
+      { type: 'free', title: '朝食' },
+      { type: 'free', title: 'ランチ' },
+    ])
+    runMealEnricher(days, ctxWithBudget(), emptyEnrichReport())
+    expect(days[0].items.map((i) => i.payload?.mealSlot)).toEqual(['dinner', 'breakfast', 'lunch'])
+  })
+
+  it('英文关键词不区分大小写：LUNCH 也命中', () => {
+    const days = day([{ type: 'free', title: 'quick LUNCH stop' }])
+    runMealEnricher(days, ctxWithBudget(), emptyEnrichReport())
+    expect(days[0].items[0].type).toBe('meal')
+    expect(days[0].items[0].payload?.mealSlot).toBe('lunch')
+  })
+
+  it('ctx.locale=en 时标题清洗后为空按 slot 写英文标签 Lunch', () => {
+    const days = day([{ type: 'free', title: '自理' }])
+    const ctx: EnrichContext = { deps: {}, coordsByPointId: new Map(), locale: 'en' }
+    runMealEnricher(days, ctx, emptyEnrichReport())
+    expect(days[0].items[0].type).toBe('meal')
+    expect(days[0].items[0].title).toBe('Lunch')
+  })
+
+  it('不传 locale 时标签保持中文（缺省行为不变）', () => {
+    const days = day([{ type: 'free', title: '自理' }])
+    runMealEnricher(days, ctxWithBudget(), emptyEnrichReport())
+    expect(days[0].items[0].title).toBe('午餐')
+  })
+})

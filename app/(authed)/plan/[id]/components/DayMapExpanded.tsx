@@ -5,6 +5,8 @@ import { X } from 'lucide-react'
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
 import type { DayRoutePoint, RouteLineString } from './dayRouteGeometry'
 import type { PreviewPopupControls } from '@/components/route/routePreviewPopup'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planTextFor } from '../lib/planText'
 
 /**
  * 单日路线全屏展开态：inline 态是协作手势（防滚动劫持），完整交互（缩放/平移）
@@ -24,8 +26,11 @@ export function DayMapExpanded(props: {
   /** 点位卡「关闭」用的地图侧入口（H3/L1） */
   popupControlsRef?: MutableRefObject<PreviewPopupControls | null>
   onClose: () => void
+  locale?: SupportedLocale
 }) {
   const { dayIndex, points, routeGeometry, activePointId = null, onPointSelect, renderPopup, onClose } = props
+  const tx = planTextFor(props.locale ?? 'zh')
+  const title = tx('map.dayRouteTitle', { day: dayIndex })
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   // L13：焦点管理——打开时移到关闭按钮，关闭时还原到触发元素（「展开」按钮）
@@ -51,13 +56,13 @@ export function DayMapExpanded(props: {
   }, [onClose])
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`第 ${dayIndex} 天 · 路线`} className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex flex-col bg-white">
       <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-gray-900">第 {dayIndex} 天 · 路线</h2>
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
         <button
           type="button"
           ref={closeButtonRef}
-          aria-label="关闭"
+          aria-label={tx('common.close')}
           onClick={onClose}
           className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
         >

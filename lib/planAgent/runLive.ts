@@ -41,8 +41,13 @@ export type RunLiveWriter = {
   finish(options?: { flush?: boolean; clear?: boolean }): Promise<void>
 }
 
-const DEFAULT_FLUSH_INTERVAL_MS = 1_500
-const DEFAULT_FLUSH_CHARS = 400
+/**
+ * 2026-09-06 §0.6.2 观察流节奏：500 ms / 200 字（原 1500 / 400）。观察流
+ * 服务端每 500 ms 读一次快照，实况行落库节奏与之对齐（写库频率上限约
+ * 2 次/秒/run）。
+ */
+const DEFAULT_FLUSH_INTERVAL_MS = 500
+const DEFAULT_FLUSH_CHARS = 200
 /** 内存缓冲上限：远大于落库截尾上限即可，防止超长 run 无界增长 */
 const REASONING_BUFFER_MAX = 64_000
 

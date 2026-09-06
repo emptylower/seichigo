@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // PlanPlanner 依赖链的轻量桩：Link 需要 app router 上下文，地图/图片是重依赖
 vi.mock('next/link', () => ({
@@ -51,6 +51,23 @@ function makeDaymap(revisionId: string, itemTitle: string): DaymapMessagePayload
     revisionId,
     savedAt: '2026-09-01T08:30:00Z',
     days: [{ id: `day-${revisionId}`, dayIndex: 1, date: null, citySlug: null, summary: null, items: [makeItem(itemTitle)] }],
+  }
+}
+
+/** §0.6 只读观察流：可手动推帧的 SSE 响应 */
+function makeWatchStream() {
+  const encoder = new TextEncoder()
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c
+    },
+  })
+  return {
+    response: new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+    push(event: unknown) {
+      controller!.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+    },
   }
 }
 
@@ -372,75 +389,60 @@ describe('PlanPlanner 断线恢复与运行状态', () => {
     expect(screen.getByText('查看思考过程')).toBeTruthy()
   })
 
-  it('首挂载发现 agentBusy=true：进入恢复轮询并显示“规划仍在进行中…”，结束后横幅消失', async () => {
-    let callCount = 0
-    let resolveSecondPoll: ((res: Response) => void) | null = null
-    const fetchMock = vi.fn(async () => {
-      callCount += 1
-      if (callCount === 1) {
-        // 首挂载核对：另一标签页/刷新中断的 run 仍在跑
-        return new Response(
-          JSON.stringify({
-            plan: makePlan([]),
-            chat: [{ role: 'user', text: '之前发的消息' }],
-            agentBusy: true,
-          }), { status: 200 })
-      }
-      return await new Promise<Response>((resolve) => {
-        resolveSecondPoll = resolve
-      })
+  it('首挂载发现 agentBusy=true：观察流接管并显示“规划仍在进行中…”，done 后横幅消失', async () => {
+    // §0.6.3：刷新后发现服务端仍在跑 → 打开只读观察流（轮询只作兜底）
+    const watch = makeWatchStream()
+    const fetchMock = vi.fn(async (input: unknown) => {
+      if (String(input).includes('/agent/stream')) return watch.response
+      // 首挂载核对：另一标签页/刷新中断的 run 仍在跑
+      return new Response(
+        JSON.stringify({
+          plan: makePlan([]),
+          chat: [{ role: 'user', text: '之前发的消息' }],
+          agentBusy: true,
+        }),
+        { status: 200 },
+      )
     })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<PlanPlanner plans={[]} planId="plan-1" initialPlan={makePlan([])} initialChat={[]} />)
 
-    // 进入恢复轮询：横幅 + 服务端已有条目补齐
+    // 横幅 + 服务端已有条目补齐 + 观察流已打开
     await waitFor(() => expect(screen.getByText('规划仍在进行中…')).toBeTruthy())
     expect(screen.getByText('之前发的消息')).toBeTruthy()
-    expect(callCount).toBeGreaterThanOrEqual(2)
-
-    // 下一轮轮询：run 结束 → 横幅消失、busy 解除
-    resolveSecondPoll!(
-      new Response(
-        JSON.stringify({
-          plan: makePlan([]),
-          chat: [{ role: 'user', text: '之前发的消息' }],
-          agentBusy: false,
-        }),
-      ),
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/stream'))).toHaveLength(1),
     )
+
+    // 观察流推 done：run 结束 → 横幅消失、busy 解除
+    act(() => watch.push({ type: 'done', seq: 1, interrupted: null }))
     await waitFor(() => expect(screen.queryByText('规划仍在进行中…')).toBeNull())
     fireEvent.change(screen.getByPlaceholderText(/告诉规划师/), { target: { value: '继续规划' } })
     expect(screen.getByRole('button', { name: '发送' })).toHaveProperty('disabled', false)
   })
 
-  it('刷新恢复：busy 轮询携带 live 实况时展示思考内容；idle 后整体替换 chat 并渲染 daymap', async () => {
-    let callCount = 0
-    let resolveSecondPoll: ((res: Response) => void) | null = null
-    const fetchMock = vi.fn(async () => {
-      callCount += 1
-      if (callCount === 1) {
-        // 首挂载核对：run 仍在跑，且携带运行实况（§0.1 契约）
-        return new Response(
-          JSON.stringify({
-            plan: makePlan([]),
-            chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
-            agentBusy: true,
-            chatRevision: 1,
-            live: {
-              runToken: 'run-1',
-              reasoning: '正在比对宇治桥与大吉山的取景点位…',
-              statusText: '查询点位中',
-              toolCalls: [{ name: 'list_points', status: 'running', summary: '作品 id 115908' }],
-              updatedAt: '2026-09-03T01:00:00.000Z',
-            },
-          }),
-          { status: 200 },
-        )
-      }
-      return await new Promise<Response>((resolve) => {
-        resolveSecondPoll = resolve
-      })
+  it('刷新恢复：挂载核对的 live 实况展示思考内容；观察流 chat + done 后渲染 daymap', async () => {
+    const watch = makeWatchStream()
+    const fetchMock = vi.fn(async (input: unknown) => {
+      if (String(input).includes('/agent/stream')) return watch.response
+      // 首挂载核对：run 仍在跑，且携带运行实况（§0.1 契约）
+      return new Response(
+        JSON.stringify({
+          plan: makePlan([]),
+          chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
+          agentBusy: true,
+          chatRevision: 1,
+          live: {
+            runToken: 'run-1',
+            reasoning: '正在比对宇治桥与大吉山的取景点位…',
+            statusText: '查询点位中',
+            toolCalls: [{ name: 'list_points', status: 'running', summary: '作品 id 115908' }],
+            updatedAt: '2026-09-03T01:00:00.000Z',
+          },
+        }),
+        { status: 200 },
+      )
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -456,23 +458,23 @@ describe('PlanPlanner 断线恢复与运行状态', () => {
     // 服务端已有条目按整体替换口径补齐
     expect(screen.getByText('帮我规划宇治巡礼')).toBeTruthy()
 
-    // run 结束：idle + chat 含 daymap + assistant → 整体替换后渲染 daymap 卡与文本，横幅消失
-    resolveSecondPoll!(
-      new Response(
-        JSON.stringify({
-          plan: makePlan(['宇治桥']),
-          chat: [
-            { role: 'user', text: '帮我规划宇治巡礼' },
-            { role: 'assistant', text: '', daymap: makeDaymap('rev-recover', '宇治桥') },
-            { role: 'assistant', text: '行程已保存，刷新后也能看到。' },
-          ],
-          agentBusy: false,
-          chatRevision: 3,
-        }),
-      ),
+    // 观察流：chat 全量快照 + done → 渲染 daymap 卡与文本，横幅与实况消失
+    act(() =>
+      watch.push({
+        type: 'chat',
+        seq: 1,
+        chatRevision: 3,
+        chat: [
+          { role: 'user', text: '帮我规划宇治巡礼' },
+          { role: 'assistant', text: '', daymap: makeDaymap('rev-recover', '宇治桥') },
+          { role: 'assistant', text: '行程已保存，刷新后也能看到。' },
+        ],
+      }),
     )
     await waitFor(() => expect(container.querySelectorAll('[data-daymap-revision="rev-recover"]')).toHaveLength(1))
     expect(screen.getByText('行程已保存，刷新后也能看到。')).toBeTruthy()
+
+    act(() => watch.push({ type: 'done', seq: 2, interrupted: null }))
     await waitFor(() => expect(screen.queryByText('规划仍在进行中…')).toBeNull())
     // 实况思维链随 run 结束消失
     expect(screen.queryByText('查询点位中')).toBeNull()

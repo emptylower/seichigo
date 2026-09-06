@@ -48,7 +48,7 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
           <nav className="flex min-w-0 items-center justify-end gap-4 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Link href={prefixPath('/plan', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.plan', locale)}</Link>
             <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
-            <Link href={prefixPath('/', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
+            <Link href={prefixPath('/posts', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
             <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
             <CommunityMenu locale={locale} />
           </nav>

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { DayPointCard } from '../components/DayPointCard'
 import type { DayRoutePoint } from '../components/dayRouteGeometry'
 import type { PreviewPopupControls } from '@/components/route/routePreviewPopup'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 
 export type DayPointPopup = {
@@ -28,6 +29,7 @@ export function useDayPointPopup(input: {
   items: TripPlanItemView[]
   /** Popup 里「查看条目」按钮的回调：切回列表、滚动到条目并闪烁高亮环 */
   onRequestShowItem?: (id: string) => void
+  locale?: SupportedLocale
 }): DayPointPopup {
   const [host, setHost] = useState<{ id: string; el: HTMLElement } | null>(null)
   const popupControlsRef = useRef<PreviewPopupControls | null>(null)
@@ -62,6 +64,7 @@ export function useDayPointPopup(input: {
             lng={point.lng}
             onShowItem={onRequestShowItemRef.current ? () => onRequestShowItemRef.current?.(point.id) : undefined}
             onClose={closeCard}
+            locale={input.locale}
           />,
           host.el,
         )
