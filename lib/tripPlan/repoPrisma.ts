@@ -21,7 +21,15 @@ import type {
 import { clampRunLiveReasoning, RUN_STOP_MARKER } from './repo'
 
 const POINT_SELECT = {
-  select: { id: true, name: true, nameZh: true, geoLat: true, geoLng: true, image: true },
+  select: {
+    id: true,
+    name: true,
+    nameZh: true,
+    geoLat: true,
+    geoLng: true,
+    image: true,
+    i18n: { where: { language: 'en' }, select: { name: true }, take: 1 },
+  },
 } as const
 
 const PLAN_INCLUDE = {
@@ -118,6 +126,7 @@ function toPlanWithDays(row: PrismaPlanWithDays): TripPlanWithDays {
               id: item.point.id,
               name: item.point.name,
               nameZh: item.point.nameZh,
+              nameEn: item.point.i18n[0]?.name ?? null,
               lat: item.point.geoLat,
               lng: item.point.geoLng,
               image: item.point.image,

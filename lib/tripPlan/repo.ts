@@ -13,6 +13,8 @@ export type TripPlanPointLite = {
   id: string
   name: string
   nameZh: string | null
+  /** §0.4 英文译名（AnitabiPointI18n language='en'）；可选以兼容现有 fixture */
+  nameEn?: string | null
   lat: number | null
   lng: number | null
   image: string | null
