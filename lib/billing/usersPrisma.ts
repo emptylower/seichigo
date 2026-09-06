@@ -14,4 +14,7 @@ export class PrismaBillingUsers implements BillingUserRepo {
   async setPeriod(userId: string, periodStart: Date, periodEnd: Date): Promise<void> {
     await prisma.user.update({ where: { id: userId }, data: { periodStart, periodEnd } })
   }
+  async setTier(userId: string, tier: BillingUser['tier'], periodAnchor: Date, periodStart: Date, periodEnd: Date): Promise<void> {
+    await prisma.user.update({ where: { id: userId }, data: { tier, periodAnchor, periodStart, periodEnd } })
+  }
 }

@@ -137,7 +137,7 @@ describe('POST /api/billing/creem/webhook', () => {
     expect(deps.users.applied.length).toBe(1)
   })
 
-  it('处理抛错 → 仍 200，error 写入事件表', async () => {
+  it('F3：处理抛错 → 仍 200，error/attempts 落库且 processedAt 保持 null（待对账重放）', async () => {
     const subs = new MemoryBillingSubscriptionRepo()
     const original = subs.upsert.bind(subs)
     const boom = new Error('db exploded')
@@ -154,7 +154,10 @@ describe('POST /api/billing/creem/webhook', () => {
 
     expect(res.status).toBe(200)
     const stored = deps.events.get('evt_boom')
-    expect(stored?.processedAt).not.toBeNull()
+    expect(stored?.processedAt).toBeNull()
     expect(stored?.error).toContain('db exploded')
+    expect(stored?.attempts).toBe(1)
+    const unprocessed = await deps.events.listUnprocessed(10)
+    expect(unprocessed.map((e) => e.id)).toContain('evt_boom')
   })
 })

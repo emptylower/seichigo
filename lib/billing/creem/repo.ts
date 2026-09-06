@@ -28,13 +28,23 @@ export interface BillingSubscriptionRepo {
   findActiveByUser(userId: string): Promise<SubscriptionRecord | null>
   /** status 活跃且 currentPeriodEnd < olderThan（对账候选） */
   listNeedingReconcile(olderThan: Date): Promise<SubscriptionRecord[]>
+  /** F2：status in canceled/expired/scheduled_cancel 且 currentPeriodEnd <= now 且用户 tier 仍非 free */
+  listExpiredPendingDowngrade(now: Date): Promise<SubscriptionRecord[]>
   upsert(record: Omit<SubscriptionRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<SubscriptionRecord>
 }
+
+/** F3：失败事件的最大重放次数，超过后不再进入重放候选 */
+export const WEBHOOK_MAX_ATTEMPTS = 5
 
 export interface BillingWebhookEventRepo {
   /** 以事件 id 幂等落库：首次 'new'，重复 'duplicate' */
   claim(event: { id: string; type: string; payload: unknown }): Promise<'new' | 'duplicate'>
+  /** F3：成功写 processedAt；失败不写 processedAt，只记 error 与 attempts+1 */
   markProcessed(id: string, error?: string): Promise<void>
+  /** F3：processedAt 为 null 且 attempts < 上限（对账重放候选） */
+  listUnprocessed(limit: number): Promise<Array<{ id: string; type: string; payload: unknown }>>
+  /** F11：最近 withinMs 内是否存在 payload.userId 匹配的同类型记录（结账去重） */
+  findRecentByType(type: string, userId: string, withinMs: number): Promise<boolean>
 }
 
 export interface UserTierRepo {

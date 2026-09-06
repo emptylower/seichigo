@@ -45,11 +45,12 @@ function subscriptionEvent(overrides: {
   subId?: string
   eventType?: string
   object?: Record<string, unknown>
+  created_at?: number
 }): CreemEvent {
   return {
     id: overrides.id ?? 'evt_1',
     eventType: overrides.eventType ?? 'subscription.active',
-    created_at: T0_START.getTime(),
+    created_at: overrides.created_at ?? T0_START.getTime(),
     object: {
       id: overrides.subId ?? 'sub_1',
       status: 'active',
@@ -82,18 +83,52 @@ describe('parseCreemEvent', () => {
 })
 
 describe('periodOf', () => {
-  it('优先 current_period_*', () => {
-    const obj = { current_period_start_date: 1000, current_period_end_date: 2000, last_transaction_date: 3000, next_transaction_date: 4000 }
-    expect(periodOf(obj, NOW)).toEqual({ start: new Date(1000), end: new Date(2000) })
+  it('优先 current_period_*（毫秒 epoch）', () => {
+    const obj = {
+      current_period_start_date: T0_START.getTime(),
+      current_period_end_date: T0_END.getTime(),
+      last_transaction_date: T0_END.getTime() + 1,
+      next_transaction_date: T0_END.getTime() + 2,
+    }
+    expect(periodOf(obj, NOW)).toEqual({ start: T0_START, end: T0_END })
+  })
+
+  it('F1：兼容 ISO 字符串日期', () => {
+    const obj = {
+      current_period_start_date: '2026-09-06T00:00:00Z',
+      current_period_end_date: '2026-10-06T00:00:00Z',
+    }
+    expect(periodOf(obj, NOW)).toEqual({ start: T0_START, end: T0_END })
+  })
+
+  it('F1：秒级 epoch（< 1e12）自动 ×1000', () => {
+    const obj = {
+      current_period_start_date: Math.floor(T0_START.getTime() / 1000),
+      current_period_end_date: Math.floor(T0_END.getTime() / 1000),
+    }
+    expect(periodOf(obj, NOW)).toEqual({ start: T0_START, end: T0_END })
+  })
+
+  it('F1：不可解析的字符串视为缺失', () => {
+    const obj = { current_period_start_date: 'not-a-date', current_period_end_date: T0_END.getTime() }
+    expect(periodOf(obj, NOW)).toEqual({ start: NOW, end: T0_END })
   })
 
   it('缺 current_period_* 时回退 last/next transaction', () => {
-    const obj = { last_transaction_date: 1000, next_transaction_date: 2000 }
-    expect(periodOf(obj, NOW)).toEqual({ start: new Date(1000), end: new Date(2000) })
+    const obj = { last_transaction_date: T0_START.getTime(), next_transaction_date: T0_END.getTime() }
+    expect(periodOf(obj, NOW)).toEqual({ start: T0_START, end: T0_END })
   })
 
   it('周期字段全缺时 start=now，end=addMonthsClamped(start,1)', () => {
     expect(periodOf({}, NOW)).toEqual({ start: NOW, end: addMonthsClamped(NOW, 1) })
+  })
+
+  it('F1：落到兜底 now 分支时打 warn（含 eventId 与字段名）', () => {
+    const logs: LogEntry[] = []
+    periodOf({}, NOW, { eventId: 'evt_x', log: (level, msg, extra) => logs.push({ level, msg, extra }) })
+    expect(logs).toEqual([
+      { level: 'warn', msg: 'creem period fields missing, using fallback', extra: { eventId: 'evt_x', keys: [] } },
+    ])
   })
 })
 
@@ -112,11 +147,26 @@ describe('resolveUserId', () => {
     await expect(resolveUserId(event, users)).resolves.toBe('u-req')
   })
 
-  it('再按 customer.email 查库回退', async () => {
+  it('F4：allowEmailFallback 时按 customer.email 查库回退并打 warn；默认不允许回退', async () => {
     const users = new MemoryUserTierRepo()
     users.seedEmail('u@example.com', 'u-by-email')
     const event = subscriptionEvent({ object: { metadata: undefined } })
-    await expect(resolveUserId(event, users)).resolves.toBe('u-by-email')
+    await expect(resolveUserId(event, users)).resolves.toBeNull()
+    const logs: LogEntry[] = []
+    await expect(
+      resolveUserId(event, users, {
+        allowEmailFallback: true,
+        log: (level, msg, extra) => logs.push({ level, msg, extra }),
+      }),
+    ).resolves.toBe('u-by-email')
+    expect(logs).toEqual([{ level: 'warn', msg: 'resolved by email fallback', extra: { eventId: 'evt_1', subId: 'sub_1' } }])
+  })
+
+  it('F4：email 大小写不敏感匹配（memory 仓储 toLowerCase）', async () => {
+    const users = new MemoryUserTierRepo()
+    users.seedEmail('U@Example.COM', 'u-by-email')
+    const event = subscriptionEvent({ object: { metadata: undefined, customer: { id: 'cus_1', email: 'u@example.com' } } })
+    await expect(resolveUserId(event, users, { allowEmailFallback: true })).resolves.toBe('u-by-email')
   })
 
   it('都没有返回 null', async () => {
@@ -231,17 +281,17 @@ describe('handleCreemEvent', () => {
     expect(await ctx.subs.findByCreemId('sub_1')).toMatchObject({ status: 'expired' })
   })
 
-  it('subscription.canceled：周期未结束 → 只更新记录不降档', async () => {
+  it('subscription.canceled：周期未结束 → 只更新记录不降档；缺 canceled_at 用 created_at 兜底', async () => {
     const ctx = makeDeps()
     await handleCreemEvent(subscriptionEvent({}), ctx)
     const result = await handleCreemEvent(
-      subscriptionEvent({ id: 'evt_2', eventType: 'subscription.canceled', object: { status: 'canceled' } }),
+      subscriptionEvent({ id: 'evt_2', eventType: 'subscription.canceled', created_at: T0_END.getTime(), object: { status: 'canceled' } }),
       ctx,
     )
     expect(result.handled).toBe(true)
     expect(ctx.users.getUser('u1')?.tier).toBe('standard')
     expect(ctx.users.applied.length).toBe(1)
-    expect(await ctx.subs.findByCreemId('sub_1')).toMatchObject({ status: 'canceled', canceledAt: null })
+    expect(await ctx.subs.findByCreemId('sub_1')).toMatchObject({ status: 'canceled', canceledAt: T0_END })
   })
 
   it('subscription.paused：立即降免费', async () => {
@@ -349,7 +399,7 @@ describe('handleCreemEvent', () => {
     expect(ctx.logs.some((l) => l.level === 'error')).toBe(true)
   })
 
-  it('同一用户第二条 active 订阅以新为准并 warn', async () => {
+  it('F11：同一用户第二条 active 订阅以新为准并 log error duplicate active subscription', async () => {
     const ctx = makeDeps()
     await handleCreemEvent(subscriptionEvent({}), ctx)
     const second = await handleCreemEvent(
@@ -357,8 +407,92 @@ describe('handleCreemEvent', () => {
       ctx,
     )
     expect(second.handled).toBe(true)
-    expect(ctx.logs.some((l) => l.level === 'warn')).toBe(true)
+    const dup = ctx.logs.find((l) => l.msg === 'duplicate active subscription')
+    expect(dup?.level).toBe('error')
+    expect(dup?.extra).toEqual({ userId: 'u1', old: 'sub_1', new: 'sub_2' })
     expect(await ctx.subs.findActiveByUser('u1')).toMatchObject({ creemSubscriptionId: 'sub_2' })
+  })
+
+  it('F10：晚到的旧 expired 不覆盖新 active', async () => {
+    const ctx = makeDeps()
+    // 新 active（created_at 较晚）先到
+    await handleCreemEvent(
+      subscriptionEvent({
+        id: 'evt_active',
+        created_at: T1_START.getTime() + 1000,
+        object: { current_period_start_date: T1_START.getTime(), current_period_end_date: T1_END.getTime() },
+      }),
+      ctx,
+    )
+    expect(ctx.users.getUser('u1')?.tier).toBe('standard')
+    // 旧 expired（created_at 较早）后到 → stale 拒绝
+    const stale = await handleCreemEvent(
+      subscriptionEvent({
+        id: 'evt_old',
+        eventType: 'subscription.expired',
+        created_at: T0_START.getTime(),
+        object: { status: 'expired', current_period_start_date: T0_START.getTime(), current_period_end_date: T0_END.getTime() },
+      }),
+      ctx,
+    )
+    expect(stale).toEqual({ handled: false, note: 'stale event' })
+    expect(ctx.users.getUser('u1')?.tier).toBe('standard')
+    expect(ctx.users.getUser('u1')?.periodEnd).toEqual(T1_END)
+    expect((await ctx.subs.findByCreemId('sub_1'))?.status).toBe('active')
+  })
+
+  it('F10：lastEventAt 改写为事件 created_at 而非 now', async () => {
+    const ctx = makeDeps()
+    await handleCreemEvent(
+      subscriptionEvent({ id: 'evt_1', created_at: T0_START.getTime() }),
+      ctx,
+    )
+    expect((await ctx.subs.findByCreemId('sub_1'))?.lastEventAt).toEqual(T0_START)
+  })
+
+  it('F4：canceled 事件缺 metadata 且 email 匹配他人 → handled false 且不改任何人', async () => {
+    const ctx = makeDeps()
+    ctx.users.seedEmail('attacker@example.com', 'victim')
+    const result = await handleCreemEvent(
+      subscriptionEvent({
+        eventType: 'subscription.canceled',
+        object: {
+          metadata: undefined,
+          request_id: undefined,
+          status: 'canceled',
+          customer: { id: 'cus_1', email: 'attacker@example.com' },
+        },
+      }),
+      ctx,
+    )
+    expect(result.handled).toBe(false)
+    expect(ctx.users.applied.length).toBe(0)
+    expect(await ctx.subs.findByCreemId('sub_1')).toBeNull()
+    expect(ctx.users.getUser('victim')).toBeNull()
+  })
+
+  it('F4：已有记录时以记录 userId 为准（email 指向他人也不覆盖）', async () => {
+    const ctx = makeDeps()
+    await handleCreemEvent(subscriptionEvent({}), ctx)
+    ctx.users.seedEmail('other@example.com', 'u2')
+    const result = await handleCreemEvent(
+      subscriptionEvent({
+        id: 'evt_2',
+        eventType: 'subscription.paid',
+        object: {
+          metadata: undefined,
+          request_id: undefined,
+          customer: { id: 'cus_1', email: 'other@example.com' },
+          current_period_start_date: T1_START.getTime(),
+          current_period_end_date: T1_END.getTime(),
+        },
+      }),
+      ctx,
+    )
+    expect(result.handled).toBe(true)
+    expect((await ctx.subs.findByCreemId('sub_1'))?.userId).toBe('u1')
+    expect(ctx.users.getUser('u1')?.tier).toBe('standard')
+    expect(ctx.users.getUser('u2')).toBeNull()
   })
 
   it('未知事件类型 → handled false', async () => {

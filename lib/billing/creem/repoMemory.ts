@@ -1,6 +1,7 @@
 import type { Tier } from '@/lib/billing/tiers'
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
+  WEBHOOK_MAX_ATTEMPTS,
   type BillingSubscriptionRepo,
   type BillingWebhookEventRepo,
   type SubscriptionRecord,
@@ -8,6 +9,9 @@ import {
 } from './repo'
 
 /** memory 仓储（测试用）：与 prisma 实现语义一致 */
+
+/** F2：与 prisma 侧 user.tier 过滤对齐的降档候选状态 */
+const EXPIRED_PENDING_STATUSES: readonly string[] = ['canceled', 'expired', 'scheduled_cancel']
 
 type UpsertInput = Omit<SubscriptionRecord, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -21,11 +25,17 @@ export class MemoryBillingSubscriptionRepo implements BillingSubscriptionRepo {
   private rows = new Map<string, SubscriptionRecord>()
   private order = new Map<string, number>()
   private seq = 0
+  private userTiers = new Map<string, string>()
 
   seed(record: SubscriptionRecord): void {
     this.seq += 1
     this.order.set(record.id, this.seq)
     this.rows.set(record.id, { ...record })
+  }
+
+  /** F2：模拟 prisma 的 user.tier 过滤（未 seed 视为非 free） */
+  seedUserTier(userId: string, tier: string): void {
+    this.userTiers.set(userId, tier)
   }
 
   private copy(record: SubscriptionRecord): SubscriptionRecord {
@@ -57,6 +67,17 @@ export class MemoryBillingSubscriptionRepo implements BillingSubscriptionRepo {
       .map((r) => this.copy(r))
   }
 
+  async listExpiredPendingDowngrade(now: Date): Promise<SubscriptionRecord[]> {
+    return [...this.rows.values()]
+      .filter(
+        (r) =>
+          EXPIRED_PENDING_STATUSES.includes(r.status) &&
+          r.currentPeriodEnd.getTime() <= now.getTime() &&
+          this.userTiers.get(r.userId) !== 'free',
+      )
+      .map((r) => this.copy(r))
+  }
+
   async upsert(input: UpsertInput): Promise<SubscriptionRecord> {
     const existing = this.findByCreemIdSync(input.creemSubscriptionId)
     if (existing) {
@@ -80,6 +101,7 @@ type StoredWebhookEvent = {
   receivedAt: Date
   processedAt: Date | null
   error: string | null
+  attempts: number
 }
 
 export class MemoryBillingWebhookEventRepo implements BillingWebhookEventRepo {
@@ -92,16 +114,41 @@ export class MemoryBillingWebhookEventRepo implements BillingWebhookEventRepo {
 
   async claim(event: { id: string; type: string; payload: unknown }): Promise<'new' | 'duplicate'> {
     if (this.events.has(event.id)) return 'duplicate'
-    this.events.set(event.id, { ...event, receivedAt: new Date(), processedAt: null, error: null })
+    this.events.set(event.id, { ...event, receivedAt: new Date(), processedAt: null, error: null, attempts: 0 })
     return 'new'
   }
 
   async markProcessed(id: string, error?: string): Promise<void> {
     const stored = this.events.get(id)
-    if (stored) {
+    if (!stored) return
+    if (error === undefined) {
       stored.processedAt = new Date()
-      stored.error = error ?? null
+      stored.error = null
+    } else {
+      // F3：失败不写 processedAt，attempts + 1，等待重放
+      stored.error = error
+      stored.attempts += 1
     }
+  }
+
+  async listUnprocessed(limit: number): Promise<Array<{ id: string; type: string; payload: unknown }>> {
+    return [...this.events.values()]
+      .filter((e) => e.processedAt === null && e.attempts < WEBHOOK_MAX_ATTEMPTS)
+      .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime())
+      .slice(0, limit)
+      .map((e) => ({ id: e.id, type: e.type, payload: e.payload }))
+  }
+
+  async findRecentByType(type: string, userId: string, withinMs: number): Promise<boolean> {
+    const since = Date.now() - withinMs
+    for (const e of this.events.values()) {
+      if (e.type !== type || e.receivedAt.getTime() < since) continue
+      const payload = e.payload
+      if (payload && typeof payload === 'object' && !Array.isArray(payload) && (payload as Record<string, unknown>).userId === userId) {
+        return true
+      }
+    }
+    return false
   }
 }
 
@@ -127,7 +174,12 @@ export class MemoryUserTierRepo implements UserTierRepo {
   }
 
   async findUserIdByEmail(email: string): Promise<string | null> {
-    return this.emails.get(email) ?? null
+    // F4：与 prisma 的 mode: 'insensitive' 对齐，大小写不敏感
+    const lower = email.toLowerCase()
+    for (const [stored, userId] of this.emails) {
+      if (stored.toLowerCase() === lower) return userId
+    }
+    return null
   }
 
   async applyTier(input: {

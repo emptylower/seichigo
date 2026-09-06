@@ -85,6 +85,19 @@ describe('SubscriptionCard', () => {
     expect(await screen.findByText('暂时无法打开订阅管理页，请稍后再试')).toBeInTheDocument()
   })
 
+  it('F7：portalUrl 非 https:// → 按“门户不可用”处理，不跳转', async () => {
+    const assign = stubLocation()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(json(standardView))
+      .mockImplementationOnce(json({ portalUrl: 'http://evil.example.com/portal' }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<SubscriptionCard locale="zh" />)
+    fireEvent.click(await screen.findByRole('button', { name: '管理订阅' }))
+    expect(await screen.findByText('暂时无法打开订阅管理页，请稍后再试')).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
   it('接口不可用时整块隐藏', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(json({}, 404)))
     const { container } = render(<SubscriptionCard locale="zh" />)

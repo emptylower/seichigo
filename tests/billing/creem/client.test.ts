@@ -104,7 +104,7 @@ describe('createBillingPortal', () => {
     expect(JSON.parse(String(init.body))).toEqual({ customer_id: 'cus_1' })
   })
 
-  it('无 customer_portal_link 时兜底取第一个 http 开头的字符串字段', async () => {
+  it('无 customer_portal_link 时按白名单 portal_url 兜底', async () => {
     const fetchImpl = makeFetch(() =>
       jsonResponse(200, { id: 'cus_1', link: 'not-a-url', portal_url: 'https://portal.creem.io/fallback' }),
     )
@@ -112,7 +112,33 @@ describe('createBillingPortal', () => {
     await expect(client.createBillingPortal('cus_1')).resolves.toEqual({ portalUrl: 'https://portal.creem.io/fallback' })
   })
 
-  it('没有任何 http 链接时抛错', async () => {
+  it('F6：白名单第三个键 url 也可作为兜底', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse(200, { id: 'cus_1', url: 'https://portal.creem.io/by-url' }))
+    const client = createCreemClient(CONFIG, fetchImpl)
+    await expect(client.createBillingPortal('cus_1')).resolves.toEqual({ portalUrl: 'https://portal.creem.io/by-url' })
+  })
+
+  it('F6：含无关 http:// 字段的响应不被误选（必须 https）', async () => {
+    const fetchImpl = makeFetch(() =>
+      jsonResponse(200, {
+        id: 'cus_1',
+        customer_portal_link: 'http://portal.creem.io/insecure',
+        portal_url: 'http://portal.creem.io/insecure-too',
+        url: 'http://evil.example.com/x',
+        link: 'http://evil.example.com/y',
+      }),
+    )
+    const client = createCreemClient(CONFIG, fetchImpl)
+    await expect(client.createBillingPortal('cus_1')).rejects.toBeInstanceOf(CreemApiError)
+  })
+
+  it('F6：白名单键都不存在时抛 CreemApiError（不取任意 http 字段）', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse(200, { id: 'cus_1', link: 'http://some.example.com/z' }))
+    const client = createCreemClient(CONFIG, fetchImpl)
+    await expect(client.createBillingPortal('cus_1')).rejects.toBeInstanceOf(CreemApiError)
+  })
+
+  it('没有任何链接时抛错', async () => {
     const fetchImpl = makeFetch(() => jsonResponse(200, { id: 'cus_1' }))
     const client = createCreemClient(CONFIG, fetchImpl)
     await expect(client.createBillingPortal('cus_1')).rejects.toThrow()

@@ -29,14 +29,12 @@ export function getCreemRepos(): CreemRepos {
 }
 
 let cachedDeps: CreemDeps | null = null
-let depsResolved = false
 
-/** 配置不全返回 null（路由据此 503） */
+/** 配置不全返回 null（路由据此 503）；nit：不缓存 null，配置补齐后无需重启进程 */
 export function getCreemDeps(): CreemDeps | null {
-  if (!depsResolved) {
-    depsResolved = true
-    const config = readCreemConfig()
-    cachedDeps = config ? { ...getCreemRepos(), config, client: createCreemClient(config) } : null
-  }
+  if (cachedDeps) return cachedDeps
+  const config = readCreemConfig()
+  if (!config) return null
+  cachedDeps = { ...getCreemRepos(), config, client: createCreemClient(config) }
   return cachedDeps
 }

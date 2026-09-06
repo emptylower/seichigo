@@ -113,6 +113,7 @@ Daily crons declared in `vercel.json`:
 | `/api/cron/anitabi/daily` | `10 3 * * *` | Anitabi delta sync |
 | `/api/cron/anitabi/translate` | `25 3 * * *` | Translation batch |
 | `/api/cron/ops/daily` | `0 0 * * *` | Ops report |
+| `/api/cron/billing/reconcile` | `40 3 * * *` | Creem billing reconcile（header `x-ops-cron-secret`） |
 
 > Vercel Hobby does **not** support hourly crons. Use daily delta plus
 > an external scheduler if hourly hits are required.

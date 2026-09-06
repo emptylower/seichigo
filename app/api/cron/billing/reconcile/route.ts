@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   if (!deps) return NextResponse.json({ error: 'billing not configured' }, { status: 503 })
 
   try {
-    const result = await runBillingReconcile({ client: deps.client, subs: deps.subs, users: deps.users })
+    const result = await runBillingReconcile({ client: deps.client, subs: deps.subs, users: deps.users, events: deps.events })
     return NextResponse.json({ ok: true, ...result })
   } catch (err) {
     console.error('[api/cron/billing/reconcile] GET failed', err)

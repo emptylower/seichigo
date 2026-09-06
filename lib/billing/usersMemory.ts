@@ -13,4 +13,8 @@ export class MemoryBillingUsers implements BillingUserRepo {
     const u = this.users.get(userId)
     if (u) this.users.set(userId, { ...u, periodStart, periodEnd })
   }
+  async setTier(userId: string, tier: BillingUser['tier'], periodAnchor: Date, periodStart: Date, periodEnd: Date): Promise<void> {
+    const u = this.users.get(userId)
+    if (u) this.users.set(userId, { ...u, tier, periodAnchor, periodStart, periodEnd })
+  }
 }

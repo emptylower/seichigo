@@ -45,7 +45,8 @@ export function CheckoutButton(props: {
         return
       }
       const data = (await res.json().catch(() => null)) as { checkoutUrl?: string } | null
-      if (!data?.checkoutUrl) {
+      // F7：跳转前校验协议，非 https 一律按“支付暂不可用”处理
+      if (!data?.checkoutUrl || !data.checkoutUrl.startsWith('https://')) {
         setStatus('unavailable')
         return
       }

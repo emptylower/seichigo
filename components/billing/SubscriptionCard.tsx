@@ -66,7 +66,8 @@ export function SubscriptionCard(props: { locale?: SupportedLocale; pendingActiv
       const res = await fetch('/api/me/billing/portal', { method: 'POST' })
       if (!res.ok) throw new Error(String(res.status))
       const data = (await res.json()) as { portalUrl?: string }
-      if (!data?.portalUrl) throw new Error('missing portalUrl')
+      // F7：跳转前校验协议，非 https 一律按“门户不可用”处理
+      if (!data?.portalUrl || !data.portalUrl.startsWith('https://')) throw new Error('insecure portalUrl')
       window.location.assign(data.portalUrl)
     } catch {
       setPortalError(true)

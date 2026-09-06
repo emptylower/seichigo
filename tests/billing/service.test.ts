@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createBillingService } from '@/lib/billing/service'
 import { MemoryUsageLedger } from '@/lib/billing/ledgerMemory'
 import { MemoryBillingUsers } from '@/lib/billing/usersMemory'
@@ -176,5 +176,79 @@ describe('billing service', () => {
     expect(settles).toHaveLength(2)
     expect(settles[1]!.deltaMicros).toBe(-5_000)
     expect((await billing.getAccount('u1'))!.balanceMicros).toBe(account.budgetMicros - 105_000)
+  })
+
+  describe('F2：getAccount 读时兜底降档', () => {
+    function setupF2(activeSub: { currentPeriodEnd: Date } | null, user?: { tier?: 'free' | 'standard'; isAdmin?: boolean }) {
+      const now = new Date('2026-09-25T00:00:00Z')
+      const ledger = new MemoryUsageLedger(() => now)
+      const users = new MemoryBillingUsers()
+      users.seed({
+        id: 'u1',
+        tier: user?.tier ?? 'standard',
+        periodStart: new Date('2026-08-20T00:00:00Z'),
+        periodAnchor: new Date('2026-08-20T00:00:00Z'),
+        periodEnd: new Date('2026-09-20T00:00:00Z'),
+        isAdmin: user?.isAdmin ?? false,
+      })
+      const findActiveByUser = vi.fn().mockResolvedValue(activeSub)
+      const billing = createBillingService({
+        ledger,
+        users,
+        subscriptions: { findActiveByUser },
+        now: () => now,
+        isRunActive: async () => false,
+      })
+      return { billing, users, findActiveByUser, now }
+    }
+
+    it('tier=standard、无活跃订阅、periodEnd 已过 → 返回 free 且写回用户', async () => {
+      const { billing, users, now } = setupF2(null)
+      const a = await billing.getAccount('u1')
+      expect(a?.tier).toBe('free')
+      expect(a?.budgetMicros).toBe(monthlyBudgetMicros('free'))
+      const stored = await users.get('u1')
+      expect(stored?.tier).toBe('free')
+      expect(stored?.periodAnchor).toEqual(now)
+      expect(stored?.periodEnd?.getTime()).toBeGreaterThan(now.getTime())
+    })
+
+    it('仍有活跃订阅 → 不降档', async () => {
+      const { billing, users } = setupF2({ currentPeriodEnd: new Date('2026-10-20T00:00:00Z') })
+      const a = await billing.getAccount('u1')
+      expect(a?.tier).toBe('standard')
+      expect((await users.get('u1'))?.tier).toBe('standard')
+    })
+
+    it('管理员不降档', async () => {
+      const { billing, users } = setupF2(null, { isAdmin: true })
+      const a = await billing.getAccount('u1')
+      expect(a?.tier).toBe('standard')
+      expect(a?.isAdmin).toBe(true)
+      expect((await users.get('u1'))?.tier).toBe('standard')
+    })
+
+    it('periodEnd 未过 → 不降档', async () => {
+      const now = new Date('2026-09-25T00:00:00Z')
+      const ledger = new MemoryUsageLedger(() => now)
+      const users = new MemoryBillingUsers()
+      users.seed({
+        id: 'u1',
+        tier: 'standard',
+        periodStart: new Date('2026-09-20T00:00:00Z'),
+        periodAnchor: new Date('2026-08-20T00:00:00Z'),
+        periodEnd: new Date('2026-10-20T00:00:00Z'),
+        isAdmin: false,
+      })
+      const billing = createBillingService({
+        ledger,
+        users,
+        subscriptions: { findActiveByUser: vi.fn().mockResolvedValue(null) },
+        now: () => now,
+        isRunActive: async () => false,
+      })
+      expect((await billing.getAccount('u1'))?.tier).toBe('standard')
+      expect((await users.get('u1'))?.tier).toBe('standard')
+    })
   })
 })

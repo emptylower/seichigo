@@ -14,11 +14,11 @@ export type CreemConfig = {
 export type CreemSubscriptionObject = {
   id: string
   status?: string
-  current_period_start_date?: number
-  current_period_end_date?: number
-  last_transaction_date?: number
-  next_transaction_date?: number
-  canceled_at?: number | null
+  current_period_start_date?: string | number
+  current_period_end_date?: string | number
+  last_transaction_date?: string | number
+  next_transaction_date?: string | number
+  canceled_at?: string | number | null
   request_id?: string | null
   metadata?: Record<string, unknown>
   customer?: { id?: string; email?: string } | null
@@ -51,13 +51,15 @@ export function readCreemConfig(env: Record<string, string | undefined> = proces
   return { apiKey, apiBase, productStandardId, webhookSecret }
 }
 
+/** F6：只认白名单键且必须 https://，避免误选响应里的任意链接 */
+const PORTAL_URL_KEYS: readonly string[] = ['customer_portal_link', 'portal_url', 'url']
+
 function extractPortalUrl(data: Record<string, unknown>): string {
-  const primary = data.customer_portal_link
-  if (typeof primary === 'string' && primary) return primary
-  for (const value of Object.values(data)) {
-    if (typeof value === 'string' && value.startsWith('http')) return value
+  for (const key of PORTAL_URL_KEYS) {
+    const value = data[key]
+    if (typeof value === 'string' && value.startsWith('https://')) return value
   }
-  throw new Error('Creem billing portal response contains no portal link')
+  throw new CreemApiError(200, JSON.stringify(data))
 }
 
 export function createCreemClient(config: CreemConfig, fetchImpl: typeof fetch = fetch) {

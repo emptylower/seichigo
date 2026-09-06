@@ -52,6 +52,24 @@ describe('CheckoutButton', () => {
     expect(assign).not.toHaveBeenCalled()
   })
 
+  it('F7：checkoutUrl 非 https:// → 按“支付暂不可用”处理，不跳转', async () => {
+    const assign = stubLocation()
+    mockFetch(new Response(JSON.stringify({ checkoutUrl: 'http://evil.example.com/checkout' }), { status: 200 }))
+    render(<CheckoutButton locale="zh" />)
+    fireEvent.click(screen.getByRole('button', { name: '开通标准版' }))
+    expect(await screen.findByText('支付暂不可用，请稍后再试')).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('F7：checkoutUrl 为 javascript: 伪协议 → 同样拒绝', async () => {
+    const assign = stubLocation()
+    mockFetch(new Response(JSON.stringify({ checkoutUrl: 'javascript:alert(1)' }), { status: 200 }))
+    render(<CheckoutButton locale="zh" />)
+    fireEvent.click(screen.getByRole('button', { name: '开通标准版' }))
+    expect(await screen.findByText('支付暂不可用，请稍后再试')).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
   it('401：跳登录并带 callbackUrl 回定价页', async () => {
     const assign = stubLocation()
     mockFetch(new Response('{}', { status: 401 }))

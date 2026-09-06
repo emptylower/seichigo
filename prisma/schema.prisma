@@ -1213,5 +1213,6 @@ model BillingWebhookEvent {
   receivedAt  DateTime  @default(now())
   processedAt DateTime?
   error       String?
+  attempts    Int       @default(0)
   payload     Json
 }
