@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "seichigo",
-  "main": ".open-next/worker.js",
+  // 2026-09-06 §0.1：自定义入口——OpenNext handler 变成 worker/entry.ts 的
+  // 一个导出（三个 DO 类原样再导出），并挂上规划 run 的队列消费者
+  "main": "worker/entry.ts",
   "compatibility_date": "2026-04-14",
   "compatibility_flags": [
     "nodejs_compat",
@@ -13,10 +15,30 @@
     // （无 finally、无运行日志）；wall-clock 本就不限
     "cpu_ms": 300000
   },
+  // 2026-09-06 §0.1：规划 run 队列。max_retries=0（绝不重试——硬杀后的续跑
+  // 交给现有"悬空 run → 续跑"路径，避免同一回合跑两遍）；max_batch_size=1
+  //（一条消息一个消费者调用，内部路由的 13 分钟软截止对着 15 分钟硬上限）；
+  // max_concurrency=10（不同计划并行）
+  "queues": {
+    "producers": [{ "binding": "PLAN_AGENT_QUEUE", "queue": "seichigo-plan-agent" }],
+    "consumers": [
+      {
+        "queue": "seichigo-plan-agent",
+        "max_batch_size": 1,
+        "max_batch_timeout": 0,
+        "max_retries": 0,
+        "max_concurrency": 10
+      }
+    ]
+  },
   "vars": {
     "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1",
     "NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "1",
-    "NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "1"
+    "NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "1",
+    // 2026-09-06 §0.3：规划 run 队列投递开关。已部署版本为 "1"；预览版本用
+    // --var PLAN_AGENT_QUEUE_ENABLED=0 覆盖（队列消费者与自引用绑定只对已
+    // 部署版本生效，预览跑不了消费者，路由会回落 SSE 内联路径）
+    "PLAN_AGENT_QUEUE_ENABLED": "1"
   },
   "r2_buckets": [
     {
