@@ -1,5 +1,6 @@
 {
   "header": {
+    "pricing": "プラン",
     "posts": "人気ガイド",
     "anime": "作品",
     "map": "マップ",
@@ -25,6 +26,7 @@
     "user": "ユーザー"
   },
   "footer": {
+    "pricing": "プラン",
     "product": "プロダクト",
     "support": "サポート",
     "company": "会社情報",
@@ -228,6 +230,7 @@
         "composerExample2": "京都と奈良へ 5 日間、『響け！ユーフォニアム』を巡礼",
         "composerExample3": "週末 2 日間、鎌倉で『SLAM DUNK』を巡礼",
         "entryPlanTitle": "AI 行程プランナー",
+        "entryPricingLink": "プランを見る",
         "entryPlanDesc": "作品と休みを伝えるだけで、日ごとのルートまで組み立て",
         "entryMapTitle": "マップで探す",
         "entryMapDesc": "世界地図から作品の聖地を見つける",

@@ -50,6 +50,8 @@ export default function HeaderPublic({ locale = 'zh' }: Props) {
             <Link href={prefixPath('/map', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.map', locale)}</Link>
             <Link href={prefixPath('/posts', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.posts', locale)}</Link>
             <Link href={prefixPath('/city', locale)} prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.city', locale)}</Link>
+            {/* /pricing 无语言前缀路由（app/en、app/ja 下没有镜像），直接用裸路径 */}
+            <Link href="/pricing" prefetch={false} className="inline-flex min-h-11 items-center hover:text-brand-600">{t('header.pricing', locale)}</Link>
             <CommunityMenu locale={locale} />
           </nav>
           <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-4">

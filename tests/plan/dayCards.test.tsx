@@ -367,9 +367,10 @@ describe('DayCards（M3 行程卡渲染）', () => {
     expect(calledUrl).toContain('mode=walking')
     const schematicLabel = await screen.findByText('参考路线（示意）')
     expect(schematicLabel).toBeInTheDocument()
-    // M5：示意标注挪到左上第二行，避开右上缩放控件
-    expect(schematicLabel.className).toContain('left-3')
-    expect(schematicLabel.className).toContain('top-9')
+    // M5：示意标注挪到左上第二行，避开右上缩放控件（定位在徽标所在的行容器上）
+    const schematicRow = schematicLabel.parentElement!
+    expect(schematicRow.className).toContain('left-3')
+    expect(schematicRow.className).toContain('top-9')
     fetchSpy.mockRestore()
   })
 

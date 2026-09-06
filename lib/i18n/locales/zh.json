@@ -1,5 +1,6 @@
 {
   "header": {
+    "pricing": "套餐",
     "posts": "热门攻略",
     "anime": "作品",
     "map": "地图",
@@ -25,6 +26,7 @@
     "user": "用户"
   },
   "footer": {
+    "pricing": "套餐",
     "product": "产品",
     "support": "支持",
     "company": "关于",
@@ -228,6 +230,7 @@
         "composerExample2": "五一去京都奈良 5 天，巡礼《吹响吧！上低音号》",
         "composerExample3": "周末两天在镰仓，巡礼《灌篮高手》",
         "entryPlanTitle": "AI 行程规划",
+        "entryPricingLink": "查看套餐",
         "entryPlanDesc": "说出作品和假期，规划师排好每天的路线与交通",
         "entryMapTitle": "地图探索",
         "entryMapDesc": "在全球地图上找到作品的取景地",

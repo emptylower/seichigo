@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { List, Loader2, Map as MapIcon, MessageSquarePlus, Navigation } from 'lucide-react'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
 import { TierHint } from '@/components/billing/TierHint'
+import { DaysLimitHint } from '@/components/billing/DaysLimitHint'
 import type { TierHints } from '@/hooks/useUsage'
 import { MarkdownBubble } from './MarkdownBubble'
 import { TransitConnector } from './TransitConnector'
@@ -493,6 +494,7 @@ export function DayCards(props: {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <DaysLimitHint dayCount={days.length} maxDays={tierHints?.maxDays} />
           {staticMode ? null : scope === 'snapshot' ? (
             <span className="text-xs text-gray-400">{tx('day.snapshotReadonly')}</span>
           ) : (
@@ -671,6 +673,7 @@ export function DayCards(props: {
             activePointId={activePointId}
             onPointSelect={handlePointSelect}
             onRequestShowItem={handleRequestShowItem}
+            tierHints={tierHints}
             locale={locale}
           />
         </div>

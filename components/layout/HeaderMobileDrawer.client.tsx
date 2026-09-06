@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, CalendarRange, ChevronRight, Home, MapPinned, UserRound, X } from 'lucide-react'
+import { BookOpen, CalendarRange, ChevronRight, Home, MapPinned, Sparkles, UserRound, X } from 'lucide-react'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 import { t } from '@/lib/i18n'
@@ -81,6 +81,8 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
       { href: prefixPath('/map', locale), label: t('header.map', locale), icon: MapPinned },
       { href: prefixPath('/posts', locale), label: t('header.posts', locale), icon: Home },
       { href: prefixPath('/city', locale), label: t('header.city', locale), icon: BookOpen },
+      // /pricing 无语言前缀路由（app/en、app/ja 下没有镜像），直接用裸路径
+      { href: '/pricing', label: t('header.pricing', locale), icon: Sparkles },
     ],
     [locale]
   )
