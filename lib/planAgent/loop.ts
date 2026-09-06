@@ -476,6 +476,9 @@ export async function runPlanAgent(
       watcher?.start(modelAbort)
       let response: PlanAgentChatMessage
       try {
+      // F4：调用发起即计数——抛错的调用同样消耗了一次模型往返；未拿到响应
+      // 则标 usageMissing（成本口径不能只统计成功返回的调用）
+      modelCalls += 1
       // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
       response = await deps.createMessage(
         { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
@@ -486,11 +489,13 @@ export async function runPlanAgent(
             }
           },
         )
+      } catch (err) {
+        usageMissing = true
+        throw err
       } finally {
         watcher?.stop()
       }
 
-      modelCalls += 1
       const callUsage = llmUsageOf(response)
       if (callUsage) {
         const modelName = describePlanAgentModel(response).model
@@ -710,10 +715,17 @@ export async function runPlanAgent(
     // 第八轮 A1：客户端断开的 run 写 stage=interrupted（其余字段照常），
     // GET 据此向前端暴露「上次被打断、可自动续跑」
     if (!fenced) {
-      // H2：stopAgentRun 已为本次停止写过持久 stopped 日志时不重复写
-      //（以 runToken 去重），否则该回合会留下两条 stopped 污染 turn 统计
-      const skipRunLog = stopped && (await stoppedLogExists())
-      if (!skipRunLog) {
+      // H2：stopAgentRun 已写过持久 stopped 日志时不重复写（以 runToken 去重，
+      // 否则两条 stopped 污染 turn 统计）。F2：改跳过为把成本写进那条已有
+      // 日志——用户停止的 run 也消耗了真实的模型/Google 调用，不落即漏计
+      const stoppedLogWritten = stopped && (await stoppedLogExists())
+      if (stoppedLogWritten) {
+        try {
+          await deps.repo.updateRunLogModelUsage(deps.planId, deps.runToken ?? null, runCost as unknown as Prisma.JsonValue)
+        } catch (err) {
+          console.warn('[planAgent] updateRunLogModelUsage failed', err)
+        }
+      } else {
         try {
           await deps.repo.appendRunLog({
             planId: deps.planId,

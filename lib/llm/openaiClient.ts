@@ -16,6 +16,21 @@ type AccumulatedToolCall = {
 }
 
 /**
+ * F1：已判定不支持 stream_options 的端点（400 且响应体提到该字段）。
+ * 模块级记忆——同一端点后续请求直接不带该字段，避免每次都先吃一个 400。
+ */
+const endpointsWithoutStreamOptions = new Set<string>()
+
+/** F1：400 且响应体文本提到 stream_options（大小写不敏感）才降级重发，其它 400 原样抛出 */
+function isStreamOptionsReject(err: unknown): boolean {
+  return (
+    err instanceof LlmHttpError &&
+    err.status === 400 &&
+    err.bodySnippet.toLowerCase().includes('stream_options')
+  )
+}
+
+/**
  * OpenAI 兼容协议客户端：直连用户填写的完整 URL（不走 SDK 的 baseURL
  * 推导），自己解析 SSE。累积逻辑与 lib/planAgent/api.ts 的
  * attemptStreamOnce 完全同构：content / reasoning_content 增量、
@@ -28,25 +43,46 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
     input: LlmChatInput,
     onDelta?: (d: LlmStreamDelta) => void,
   ): Promise<PlanAgentChatMessage> {
-    const res = await postJson(
-      fetchImpl,
-      config.endpointUrl,
-      { Authorization: `Bearer ${config.apiKey}` },
-      {
-        model: input.model,
-        max_tokens: input.maxTokens,
-        messages: input.messages,
-        ...(input.tools?.length ? { tools: input.tools } : {}),
-        stream: true,
-        stream_options: { include_usage: true },
-        // A2 补充：仅 Google 官方 OpenAI 兼容端点追加思考回显开关（不与
-        // reasoning_effort 同传、不指定 thinking_level）；其它 host 不加任何额外字段
-        ...(isGoogleGeminiOpenAiEndpoint(config.endpointUrl)
-          ? { extra_body: GEMINI_THINKING_EXTRA_BODY }
-          : {}),
-      },
-      input.signal,
-    )
+    // F1：带 stream_options 先试；端点 400 且报文提到该字段 → 记住端点并立即
+    // 去掉重发一次。不认该字段的兼容端点不会再每次请求都白吃一个 400。
+    const includeStreamOptions = !endpointsWithoutStreamOptions.has(config.endpointUrl)
+    const buildBody = (withStreamOptions: boolean) => ({
+      model: input.model,
+      max_tokens: input.maxTokens,
+      messages: input.messages,
+      ...(input.tools?.length ? { tools: input.tools } : {}),
+      stream: true,
+      ...(withStreamOptions ? { stream_options: { include_usage: true } } : {}),
+      // A2 补充：仅 Google 官方 OpenAI 兼容端点追加思考回显开关（不与
+      // reasoning_effort 同传、不指定 thinking_level）；其它 host 不加任何额外字段
+      ...(isGoogleGeminiOpenAiEndpoint(config.endpointUrl)
+        ? { extra_body: GEMINI_THINKING_EXTRA_BODY }
+        : {}),
+    })
+
+    let res: Response
+    try {
+      res = await postJson(
+        fetchImpl,
+        config.endpointUrl,
+        { Authorization: `Bearer ${config.apiKey}` },
+        buildBody(includeStreamOptions),
+        input.signal,
+      )
+    } catch (err) {
+      if (includeStreamOptions && isStreamOptionsReject(err)) {
+        endpointsWithoutStreamOptions.add(config.endpointUrl)
+        res = await postJson(
+          fetchImpl,
+          config.endpointUrl,
+          { Authorization: `Bearer ${config.apiKey}` },
+          buildBody(false),
+          input.signal,
+        )
+      } else {
+        throw err
+      }
+    }
 
     let content = ''
     let reasoning = ''
@@ -57,7 +93,10 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
     // content 内嵌 <think> 标签），见 reasoningExtract.ts
     const extractor = createReasoningExtractor()
 
-    const payloadCount = await readSseDataPayloads(res, (payload) => {
+    // F8：空流判据是"见过带 choices[0] 的 chunk"——只含 usage 的末帧（choices
+    // 为空数组）不构成模型产出，不能凭它把连接判成正常响应
+    let sawChoice = false
+    await readSseDataPayloads(res, (payload) => {
       let chunk: Chunk
       try {
         chunk = JSON.parse(payload) as Chunk
@@ -69,6 +108,7 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
       if (parsedUsage) usage = parsedUsage
       const choice = chunk.choices?.[0]
       if (!choice) return
+      sawChoice = true
       const delta = choice.delta
       if (choice.finish_reason) finishReason = choice.finish_reason
 
@@ -100,7 +140,7 @@ export function createOpenAiCompatibleClient(config: LlmClientConfig): LlmClient
       }
     })
 
-    if (payloadCount === 0) throw new LlmEmptyStreamError()
+    if (!sawChoice) throw new LlmEmptyStreamError()
 
     // 流结束：吐出挂起的"疑似半截 <think> 标签"尾巴（按当前状态归类）
     const tail = extractor.flush()

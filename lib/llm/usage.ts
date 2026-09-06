@@ -24,7 +24,8 @@ export function addUsage(a: LlmUsage, b: LlmUsage): LlmUsage {
 }
 
 function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null
+  // nit：token 数不可能为负——负值同样按畸形处理（防上游异常值混入计价）
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
 }
 
 /**

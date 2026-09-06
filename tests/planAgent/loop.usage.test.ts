@@ -67,4 +67,21 @@ describe('loop usage accounting', () => {
     const [log] = await repo.listRunLogs(plan.id)
     expect((log.modelUsage as Record<string, any>).usageMissing).toBe(true)
   })
+
+  it('F4：createMessage 抛错也计一次 modelCalls 并标 usageMissing', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const createMessage = vi.fn(async (): Promise<PlanAgentChatMessage> => {
+      throw new Error('boom')
+    })
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder }, maxIterations: 5 },
+      '你好',
+      () => {},
+    )
+    const [log] = await repo.listRunLogs(plan.id)
+    const usage = log.modelUsage as Record<string, any>
+    expect(usage.modelCalls).toBe(1)
+    expect(usage.usageMissing).toBe(true)
+  })
 })

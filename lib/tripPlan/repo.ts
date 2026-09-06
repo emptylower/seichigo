@@ -283,6 +283,12 @@ export interface TripPlanRepo {
   updateStage(planId: string, stage: string): Promise<void>
   /** M4 运行日志：追加一条 run 记录（loop 在 finally 里调用，失败不冒泡由调用方兜底） */
   appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord>
+  /**
+   * F2：把 run 成本写进 stopAgentRun 已落笔的 stopped 日志（用户停止的 run
+   * 同样发生了真实的模型/Google 消耗；匹配 planId + runToken + stage=stopped
+   * 的全部行，幂等覆盖 modelUsage）。
+   */
+  updateRunLogModelUsage(planId: string, runToken: string | null, modelUsage: Prisma.JsonValue): Promise<void>
   /** M4 运行日志读取：按时间升序（回归分析/后续思维链持久化复用） */
   listRunLogs(planId: string): Promise<TripPlanRunLogRecord[]>
   /** 运行实况写入（第七轮 A1）：每计划一行，由当前 run 的 writer 覆盖；语义见 TripPlanRunLivePatch */

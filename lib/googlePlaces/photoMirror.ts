@@ -72,11 +72,14 @@ type PlaceDetailsBody = {
 /**
  * 用 Place Details（fields=photos）拉取一个地点的全部照片引用（最多前 10 个
  * 合法引用）。无照片/请求失败返回 null。API key 只进请求 URL。
+ * F7：onGoogleCall 只在真实向 Google 发 Place Details 请求前回调一次——
+ * 由计数发生在真实外呼处的语义保证（镜像/缓存命中不产生请求就不计数）。
  */
 export async function fetchPlacePhotos(input: {
   placeId: string
   apiKey: string
   fetchImpl?: typeof fetch
+  onGoogleCall?: () => void
 }): Promise<PlacePhotoRef[] | null> {
   const fetchImpl = input.fetchImpl ?? fetch
   try {
@@ -85,6 +88,7 @@ export async function fetchPlacePhotos(input: {
       fields: 'photos',
       key: input.apiKey,
     })
+    input.onGoogleCall?.()
     const res = await fetchImpl(`https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`, {
       signal: AbortSignal.timeout(DETAILS_TIMEOUT_MS),
     })

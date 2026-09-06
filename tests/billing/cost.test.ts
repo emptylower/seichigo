@@ -14,6 +14,17 @@ describe('costOfModelUsage', () => {
     const usage = { inputMiss: 1_000_000, inputCacheHit: 0, output: 0, reasoning: 0 }
     expect(costOfModelUsage('some-unknown-model', usage)).toBe(MODEL_PRICES.default.inputMissPerM)
   })
+  it('F5：原型链上的模型名（constructor/toString）按 default 价格计价且不为 NaN', () => {
+    const usage = { inputMiss: 1_000_000, inputCacheHit: 2_000_000, output: 500_000, reasoning: 0 }
+    const d = MODEL_PRICES.default
+    const expected = Math.round(
+      (usage.inputMiss * d.inputMissPerM + usage.inputCacheHit * d.inputCacheHitPerM + usage.output * d.outputPerM) / 1_000_000,
+    )
+    expect(costOfModelUsage('constructor', usage)).toBe(expected)
+    expect(costOfModelUsage('toString', usage)).toBe(expected)
+    expect(costOfModelUsage('constructor', usage)).not.toBeNaN()
+    expect(costOfModelUsage('toString', usage)).not.toBeNaN()
+  })
 })
 
 describe('costOfGoogleCalls', () => {
@@ -49,5 +60,20 @@ describe('summarizeRunCost', () => {
     expect(summary.modelCalls).toBe(3)
     expect(summary.usageMissing).toBe(false)
     expect(summary.priceTableVersion).toBe(PRICE_TABLE_VERSION)
+    expect(summary.priceFallbackModels).toEqual([])
+  })
+
+  it('F6：含未知模型时 priceFallbackModels 列出回退 default 计价的模型名', () => {
+    const summary = summarizeRunCost({
+      usageByModel: new Map([
+        ['deepseek-v4-flash', { inputMiss: 100, inputCacheHit: 900, output: 50, reasoning: 10 }],
+        ['some-unknown-model', { inputMiss: 100, inputCacheHit: 0, output: 50, reasoning: 0 }],
+      ]),
+      calls: { ...EMPTY_GOOGLE_CALLS },
+      modelCalls: 2,
+      usageMissing: false,
+      withTitle: false,
+    })
+    expect(summary.priceFallbackModels).toEqual(['some-unknown-model'])
   })
 })

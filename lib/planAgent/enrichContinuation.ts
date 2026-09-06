@@ -4,6 +4,7 @@ import type { PointFinder } from './points'
 import { dayHasBackfillCandidate } from './placeBackstop'
 import { createEnrichBudget, readTravelMode, type EnrichContext, type EnrichDay, type EnrichReport } from './enrich/types'
 import { enrichAndNormalizeDays } from './enrichPipeline'
+import { EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
 
 /**
  * 补齐续跑（R4）：run 结束时若最后一次保存仍有「预算已用完」类 skipped 或
@@ -126,12 +127,15 @@ export async function runEnrichContinuation(input: EnrichContinuationInput): Pro
         coordsByDay.set(day.dayIndex, coords)
       }
       const travelMode = readTravelMode(plan.preferences)
+      // F3：续跑补齐的 Google 调用同样计量——预算自带 calls 计数，写日志时
+      // 经 summarizeRunCost 汇总成 modelUsage（此前固定 null 会漏计成本）
+      const budget = createEnrichBudget()
       const ctx: EnrichContext = {
         deps: input.deps,
         coordsByPointId,
         dayCoordinates: (dayIndex) => coordsByDay.get(dayIndex) ?? [],
         ...(travelMode ? { travelMode } : {}),
-        budget: createEnrichBudget(),
+        budget,
       }
       const { enrich, schedule } = await enrichAndNormalizeDays(days, ctx)
       if (!schedule.ok) return // 归一化失败：放弃本轮（不落库）
@@ -163,7 +167,13 @@ export async function runEnrichContinuation(input: EnrichContinuationInput): Pro
         enrichReport: enrich as Prisma.JsonValue,
         gateReport: null,
         toolCalls: [{ name: 'enrich_continuation', durationMs }] as unknown as Prisma.JsonValue,
-        modelUsage: null,
+        modelUsage: summarizeRunCost({
+          usageByModel: new Map(),
+          calls: budget.calls ?? { ...EMPTY_GOOGLE_CALLS },
+          modelCalls: 0,
+          usageMissing: false,
+          withTitle: false,
+        }) as unknown as Prisma.JsonValue,
         durationMs,
       })
       if (!planNeedsContinuation(enrich, days)) return

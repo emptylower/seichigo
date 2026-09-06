@@ -206,4 +206,26 @@ describe('fetchPlacePhotos（A4：整组照片补拉，Place Details fields=phot
     })
     expect(failing).toBeNull()
   })
+
+  it('F7：onGoogleCall 只在真实 Place Details 外呼前回调恰好一次（先于 fetch）', async () => {
+    const onGoogleCall = vi.fn()
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL) =>
+      ({
+        ok: true,
+        json: async () => ({
+          status: 'OK',
+          result: {
+            photos: [{ photo_reference: 'Aref_f7_call_0001', html_attributions: [] }],
+          },
+        }),
+      }) as unknown as Response,
+    )
+
+    const photos = await fetchPlacePhotos({ placeId: place.placeId, apiKey: 'k', fetchImpl, onGoogleCall })
+
+    expect(photos).toHaveLength(1)
+    expect(onGoogleCall).toHaveBeenCalledTimes(1)
+    // 计数先于真实请求（外呼发生时已计数，请求失败也记得上）
+    expect(onGoogleCall.mock.invocationCallOrder[0]).toBeLessThan(fetchImpl.mock.invocationCallOrder[0])
+  })
 })

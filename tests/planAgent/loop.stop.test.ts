@@ -4,7 +4,9 @@ import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { RunFencedError } from '@/lib/planAgent/runFence'
+import { userStoppedAbort } from '@/lib/planAgent/stop'
 import { canResume, inferInterrupted } from '@/lib/planAgent/resume'
+import { attachLlmUsage } from '@/lib/llm/usage'
 import type { PointFinder } from '@/lib/planAgent/points'
 
 /** 第十一轮 A3：停止（§0：停止是一等服务端语义，不是断开连接） */
@@ -177,6 +179,58 @@ describe('runPlanAgent 停止', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('F2：已有 stopped 日志时不再跳过——把本 run 成本写进那条日志', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await beginRun(repo, plan.id)
+
+    // 第一次调用成功返回（带 usage），工具回执后进入第二次调用；第二次调用
+    // 里用户停止（stopAgentRun 落持久 stopped 日志）并以 user_stopped abort 拒绝
+    let call = 0
+    const createMessage = vi.fn(async (): Promise<ChatMessage> => {
+      call += 1
+      if (call === 1) {
+        return attachLlmUsage(
+          assistantMessage({
+            content: null,
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_plan', arguments: '{}' } }],
+          }),
+          { inputMiss: 100, inputCacheHit: 900, output: 50, reasoning: 10 },
+        )
+      }
+      await repo.stopAgentRun(plan.id)
+      throw userStoppedAbort()
+    })
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage,
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        userMessagePersisted: true,
+        runToken: begin.token,
+      },
+      '帮我排一天',
+      (e) => events.push(e),
+    )
+
+    const types = events.map((e) => e.type)
+    expect(types[types.length - 2]).toBe('stopped')
+    expect(types[types.length - 1]).toBe('done')
+
+    // 只有一条 stopped 日志（stopAgentRun 落笔），且成本被写进它——tokens 非零
+    const logs = await repo.listRunLogs(plan.id)
+    expect(logs).toHaveLength(1)
+    expect(logs[0]!.stage).toBe('stopped')
+    const usage = logs[0]!.modelUsage as
+      | { tokens?: { inputMiss: number; inputCacheHit: number; output: number; reasoning: number }; modelCalls?: number }
+      | null
+    expect(usage?.tokens).toEqual({ inputMiss: 100, inputCacheHit: 900, output: 50, reasoning: 10 })
+    expect(usage?.modelCalls).toBe(2)
   })
 
   it('model_info：每回合第一次模型调用结束后发送（reasoning=本次是否收到思考增量）', async () => {

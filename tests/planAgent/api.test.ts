@@ -558,3 +558,56 @@ describe('A4：env 路径 usage 附着与 withModelUsageInRunLog 合并', () => 
     })
   })
 })
+
+describe('F1/F8：env 路径 stream_options 降级与 usage-only 空流', () => {
+  it('F8：只含 usage 帧（choices 为空数组）的流触发传输层重试', async () => {
+    fakeCreate
+      .mockResolvedValueOnce(
+        fakeStream([
+          {
+            id: 'chatcmpl-test',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'test',
+            choices: [],
+            usage: { prompt_tokens: 10, completion_tokens: 5 },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+
+    expect(message.content).toBe('ok')
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+  })
+
+  it('F1：env 端点 400 提到 stream_options → 去掉该字段立即重发一次并记忆', async () => {
+    const err400 = Object.assign(new Error('400 Unknown parameter: stream_options.'), { status: 400 })
+    fakeCreate
+      .mockRejectedValueOnce(err400)
+      .mockResolvedValueOnce(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+    expect(message.content).toBe('ok')
+    expect((fakeCreate.mock.calls[0]![0] as Record<string, unknown>).stream_options).toEqual({
+      include_usage: true,
+    })
+    expect((fakeCreate.mock.calls[1]![0] as Record<string, unknown>).stream_options).toBeUndefined()
+
+    // 记忆生效：后续请求只调一次且直接不带 stream_options
+    fakeCreate.mockReset()
+    fakeCreate.mockResolvedValue(fakeStream([chunk({ content: '再来' }, 'stop')]))
+    await createChatCompletion({ messages: [], tools: [] })
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+    expect((fakeCreate.mock.calls[0]![0] as Record<string, unknown>).stream_options).toBeUndefined()
+  })
+
+  it('F1：与 stream_options 无关的 400 立即抛出，不重试', async () => {
+    fakeCreate.mockRejectedValueOnce(new Error('400 max_tokens is too large'))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('max_tokens is too large')
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+  })
+})

@@ -269,6 +269,15 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return this.runLogs.filter((log) => log.planId === planId)
   }
 
+  /** F2：与 Prisma 的条件 updateMany 同语义——stopped 日志的 modelUsage 幂等覆盖 */
+  async updateRunLogModelUsage(planId: string, runToken: string | null, modelUsage: Prisma.JsonValue): Promise<void> {
+    for (const log of this.runLogs) {
+      if (log.planId === planId && log.runToken === runToken && log.stage === 'stopped') {
+        log.modelUsage = modelUsage
+      }
+    }
+  }
+
   /** 第七轮 A1：与 Prisma 实现同语义（runToken 不同 = 接管重置；同 token 追加/保留） */
   async upsertRunLive(planId: string, patch: TripPlanRunLivePatch): Promise<TripPlanRunLiveRecord> {
     const existing = this.runLive.get(planId)

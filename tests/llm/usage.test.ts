@@ -31,6 +31,12 @@ describe('parseOpenAiUsage', () => {
     expect(parseOpenAiUsage(undefined)).toBeNull()
     expect(parseOpenAiUsage({ prompt_tokens: 'x' })).toBeNull()
   })
+
+  it('treats negative token counts as malformed (null)', () => {
+    expect(parseOpenAiUsage({ prompt_tokens: -10, completion_tokens: 5 })).toBeNull()
+    expect(parseOpenAiUsage({ prompt_tokens: 10, completion_tokens: -5 })).toBeNull()
+    expect(parseOpenAiUsage({ prompt_tokens: 10, completion_tokens: 5, prompt_cache_hit_tokens: -3 })?.inputCacheHit).toBe(0)
+  })
 })
 
 describe('parseAnthropicUsage', () => {
