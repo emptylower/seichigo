@@ -68,7 +68,7 @@ Plan 页的 agent 目前由站方 DeepSeek key 和 Google key 直接承担全部
 
 1. **工具暴露**：组装 tools 时按能力表过滤。免费档不注入 `estimate_travel` 与 `find_restaurants`，提示词追加一句“本档位交通只能用直线估算，不要尝试查询餐厅”。工具被调用但档位不允许时（防提示词失效），返回 `{ error, code: 'tier_forbidden' }`，模型按现有 `budget_exhausted` 同样的收尾规则处理。
 2. **补齐层**：`EnrichBudget` 的 `places.max` 与 `directions.max` 由能力表初始化。免费档 `directions.max = 0`，transportEnricher 现有的“预算耗尽走 heuristicTransit”路径自然生效，估算行保留 `source:'heuristic'` 标记。restaurantEnricher 与 mealEnricher 在能力表关闭时直接跳过并在 enrichReport 记录 `skipped: 'tier'`。
-3. **前端**：交通与餐厅的档位提示（§4）由服务端在 plan 响应里给出 `tierHints`，前端只渲染，不自行判断 tier。
+3. **前端**：交通与餐厅的档位提示（§4）由 `GET /api/me/usage` 的 `hints` 字段给出（`transitEstimateOnly`、`restaurantsLocked`、`maxDays`），前端只渲染，不自行判断 tier。
 
 天数上限在 `save_plan_days` 与 `update_plan_meta` 的服务端校验里生效，超出时返回结构化错误让模型缩减天数并告知用户。
 
@@ -84,9 +84,11 @@ Plan 页的 agent 目前由站方 DeepSeek key 和 Google key 直接承担全部
 - **预扣**：POST `/api/me/plans/[id]/agent` 投队列前，按该档最近 30 天 run 成本 p75（价格表里维护的常量 `reserveMicros[tier]`）预扣一笔 `reserve`。余量不足以覆盖预扣则拒绝，返回 `402` 与恢复日期。
 - **结算**：run 结束时按真实 costMicros 写 `settle`，同时冲销对应 `reserve`。真实成本超过预扣时按真实值扣，允许余量短暂为负；为负时不能再启动新 run。
 - **退回**：run 因内部错误、供应商 5xx、被用户停止而未产生任何模型输出时，`refund` 全额；已产生部分输出的 run 按真实成本结算，不退。
-- **单次上限**：标准与高级档一个 run 的 costMicros 不得超过月预算的 15%；免费档预算本身只够两到三次，单次上限取月预算的 50%。达到时 loop 走现有 `budget_exhausted` 收尾路径保存进度，不再发起新一轮模型调用。
+- **单次上限**：标准与高级档一个 run 的 costMicros 不得超过月预算的 15%；免费档预算本身只够两到三次，单次上限取月预算的 50%。达到时 loop 把本 run 的 Google 预算上限压到已用量（后续补齐全部走直线估算），向模型注入一条“预算已用完，立即保存并结束”的系统状态，并最多再允许两次模型调用用于保存与收尾。
+- **现有日限**：`DAILY_MESSAGE_LIMIT`（每日 20 条）保留为防滥用闸门，与预算层并存。
 - **run 中途跨周期**：以 run 开始时所在周期记账，不拆分。
 - **管理员**：`isAdmin` 用户不预扣不结算，但仍完整记录 run 成本（用于回归与校准）。
+- **被接管的 run**：栅栏接管后仍按真实成本结算（成本已经发生）；接管方的新请求在预扣前把该用户超过两倍 busy TTL 仍未结算的孤儿预扣全部退回。
 
 ### 6.3 免费档预算
 
@@ -103,14 +105,14 @@ Plan 页的 agent 目前由站方 DeepSeek key 和 Google key 直接承担全部
 
 ### 7.2 外部调用计数
 
-`EnrichBudget` 现有 `used` 计数按 60 秒窗口滚动，不能直接当 run 总量。新增一个随 run 生命周期存在的 `RunMeter`，由 `serverDeps` 注入，所有外呼点（`placeEnricher`、`restaurantEnricher`、`mealEnricher`、`transportEnricher`、`travelHelpers`、`placeBackstop`、照片镜像首次拉取）在真实发出请求时各 `+1`，按类别分：`placesTextSearch`、`placesNearby`、`placeDetails`、`placePhotos`、`directions`。缓存命中不计。
+`EnrichBudget` 现有 `used` 计数按 60 秒窗口滚动，不能直接当 run 总量。在 `EnrichBudget` 上新增随 run 生命周期累加、不随窗口归零的 `calls` 分类计数，所有外呼点（工具 `resolve_place`、`find_restaurants`、`estimate_travel`，以及 `placeBackstop`、`imageDedupeEnricher`、`restaurantEnricher`、`transportEnricher`）在真实发出请求时各 `+1`，按类别分：`placesTextSearch`、`placesNearby`、`placeDetails`、`directions`。缓存命中不计。照片（Photos）经镜像在 run 之外拉取、无法按 run 归集，按次价摊进 `placeDetails` 的单价；标题侧信道每个带新用户消息的 run 按固定常量 `TITLE_OVERHEAD_MICROS` 摊入模型成本。
 
 ### 7.3 价格表
 
 服务端单文件常量，不进库，键为模型名或调用类别，值为每单位微美元：
 
 - 模型：每百万 token 的 `inputMiss`、`inputCacheHit`、`output`（reasoning 计入 output）。
-- Google：每次调用的价格，按上面五类。
+- Google：每次调用的价格，按上面四类（Photos 摊入 placeDetails）。
 - 未来项预留：`japanTransit`、`hotelSearch`、`flightSearch`。
 - 汇率常量与 `reserveMicros[tier]`、`freeBudgetMicros`。
 
@@ -124,8 +126,10 @@ Plan 页的 agent 目前由站方 DeepSeek key 和 Google key 直接承担全部
 {
   providerId, providerName, model, protocol,           // 现有
   tokens: { inputMiss, inputCacheHit, output, reasoning },
-  calls: { placesTextSearch, placesNearby, placeDetails, placePhotos, directions },
+  models: { [modelName]: tokens },
+  calls: { placesTextSearch, placesNearby, placeDetails, directions },
   costMicros: { model, google, total },
+  modelCalls: number,
   usageMissing: boolean,
   priceTableVersion: string
 }
@@ -140,7 +144,7 @@ User 新增：
 ```
 tier          String   @default("free")   // free | standard | pro
 periodStart   DateTime @default(now())
-periodEnd     DateTime                      // 首期由 periodStart + 1 月计算
+periodEnd     DateTime?                     // null = 尚未初始化，首次访问时由 billing service 计算
 ```
 
 新表 UsageLedger：
@@ -149,14 +153,14 @@ periodEnd     DateTime                      // 首期由 periodStart + 1 月计�
 id            String   @id @default(cuid())
 userId        String
 planId        String?
-runToken      String?
+runRef        String?                      // 路由生成的计费引用，reserve/settle/refund 配对
 kind          String                       // grant | reserve | settle | refund
 deltaMicros   BigInt                       // grant 为正，其余为负或冲销
 balanceAfter  BigInt
 periodStart   DateTime
 createdAt     DateTime @default(now())
 @@index([userId, periodStart])
-@@index([runToken])
+@@index([runRef])
 ```
 
 余量 = 该用户当前周期内所有账目 `deltaMicros` 之和，`balanceAfter` 只作对账快照。周期内查询在一次事务里完成，预扣使用 `SELECT ... FOR UPDATE` 锁用户行防并发双扣。
@@ -167,7 +171,7 @@ createdAt     DateTime @default(now())
 
 高级档首期：能力表完整、预算常量存在、定价页展示卡片、按钮置灰、没有任何可购买路径。服务端拒绝一切把用户写成 `pro` 的入口（管理员手工改库除外，用于内测）。
 
-模型选择的设计草案，随高级档一起实现但受能力表关闭：
+模型选择的设计草案，**在高级档开放购买时（§13 第 4 期）实现**，首期只在能力表与定价页留占位：
 
 - 管理员在 `/admin/llm` 的供应商模型列表上多一个 `exposeToPro` 开关。
 - Plan 页设置里，高级档用户可从被暴露的模型里选一个，落在 `TripPlan.preferences.modelOverride`。
@@ -185,7 +189,7 @@ createdAt     DateTime @default(now())
 
 ## 11. 错误处理与边界
 
-- 预扣后进程崩溃、run 永远不结束：现有 `agentBusyUntil` 超时接管时，对该 `runToken` 尚未结算的 `reserve` 写 `refund`。
+- 预扣后进程崩溃、run 永远不结束：该用户下一次请求预扣前，把超过两倍 busy TTL 仍未结算的 `reserve` 全部写 `refund`。
 - 供应商未返回 usage：按 §7.1 兜底估算并告警，不阻断 run。
 - 用户在 run 中被降级或周期切换：以 run 开始时的 tier 与周期为准，能力表在 run 开始时快照进 deps。
 - 余量为负：只禁止新 run，不影响读取与导出。
