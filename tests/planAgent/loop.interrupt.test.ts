@@ -5,7 +5,7 @@ import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import type { PointFinder } from '@/lib/planAgent/points'
 
-/** 第八轮 A1：客户端断开（client_disconnected）的中断标记 */
+/** 第八轮 A1：客户端断开（client_disconnected）的中断标记 + 2026-09-06 软截止 */
 
 const finder: PointFinder = {
   async searchBangumi() {
@@ -148,6 +148,61 @@ describe('runPlanAgent 中断标记（第八轮 A1）', () => {
     expect(events.some((e) => e.type === 'done')).toBe(true)
     const logs = await repo.listRunLogs(plan.id)
     expect(logs).toHaveLength(1)
+    expect(logs[0]!.stage).not.toBe('interrupted')
+  })
+
+  it('软截止（deadlineAt 已过）：不调用模型、stage=interrupted、无 done', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: 60_000,
+      content: { role: 'user', content: 'hi' },
+    })
+    if (begin.status !== 'ok') throw new Error('unreachable')
+
+    const createMessage = vi.fn()
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage: createMessage as unknown as Parameters<typeof runPlanAgent>[0]['createMessage'],
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        userMessagePersisted: true,
+        runToken: begin.token,
+        deadlineAt: Date.now() - 1,
+      },
+      'hi',
+      (e) => events.push(e),
+    )
+
+    expect(createMessage).not.toHaveBeenCalled()
+    expect(events.some((e) => e.type === 'done')).toBe(false)
+    const logs = await repo.listRunLogs(plan.id)
+    expect(logs).toHaveLength(1)
+    expect(logs[0]!.stage).toBe('interrupted')
+    expect(logs[0]!.toolCalls).toEqual([])
+  })
+
+  it('软截止未到：正常跑完（deadlineAt 在远未来不影响行为）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage: vi.fn(async () => assistantMessage({ content: '安排好了。' })) as unknown as Parameters<typeof runPlanAgent>[0]['createMessage'],
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        deadlineAt: Date.now() + 60_000,
+      },
+      '安排一天',
+      (e) => events.push(e),
+    )
+
+    expect(events[events.length - 1].type).toBe('done')
+    const logs = await repo.listRunLogs(plan.id)
     expect(logs[0]!.stage).not.toBe('interrupted')
   })
 })
