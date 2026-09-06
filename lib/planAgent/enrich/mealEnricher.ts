@@ -95,8 +95,9 @@ export function runMealEnricher(days: EnrichDay[], ctx: EnrichContext, report: E
     }
   }
   report.applied.meal += changed
-  // 4) 预算预留：午餐/晚餐且无合法 place 的 meal 条目数（上限 places.max）
-  if (ctx.budget) {
+  // 4) 预算预留：午餐/晚餐且无合法 place 的 meal 条目数（上限 places.max）。
+  //    档位不含餐厅推荐时不预留（restaurant enricher 会按档位整体跳过）
+  if (ctx.budget && !(ctx.entitlements && !ctx.entitlements.restaurants)) {
     let pending = 0
     for (const day of days) {
       for (const item of day.items) {

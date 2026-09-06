@@ -111,6 +111,14 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
 }
 
 export async function runRestaurantEnricher(days: EnrichDay[], ctx: EnrichContext, report: EnrichReport): Promise<void> {
+  if (ctx.entitlements && !ctx.entitlements.restaurants) {
+    for (const day of days) {
+      for (const item of day.items) {
+        if (item.type === 'meal') report.skipped.push({ enricher: 'restaurant', itemTitle: item.title, reason: '当前档位不含餐厅推荐' })
+      }
+    }
+    return
+  }
   const findRestaurants = ctx.deps.findRestaurants
   const allMeals: PendingMeal[] = []
   const groups = new Map<string, SearchGroup>()

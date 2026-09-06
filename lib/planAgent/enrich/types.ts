@@ -4,6 +4,7 @@ import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
 import type { TravelQueryFn } from '../travelQuery'
 import { EMPTY_GOOGLE_CALLS, type GoogleCallCategory, type GoogleCallCounts } from '@/lib/billing/cost'
+import type { Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 /**
@@ -145,6 +146,8 @@ export type EnrichContext = {
   budget?: EnrichBudget
   /** §0.6 站点语言：补齐层写入用户可见文案（餐食标签等）时使用；缺省 zh */
   locale?: SupportedLocale
+  /** 档位能力表（设计 §5 卡点 2）；缺省视为全开 */
+  entitlements?: Entitlements
 }
 
 export function emptyEnrichReport(): EnrichReport {

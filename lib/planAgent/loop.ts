@@ -26,7 +26,8 @@ import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
 import { llmUsageOf, type LlmUsage, addUsage } from '@/lib/llm/usage'
-import { EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
+import { EMPTY_GOOGLE_CALLS, summarizeRunCost, type RunCostSummary } from '@/lib/billing/cost'
+import { forbiddenToolsOf, tierPromptNote, type Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -138,6 +139,12 @@ export type PlanAgentDeps = {
    * 接着跑。SSE 路径不传。
    */
   deadlineAt?: number
+  /** 档位能力表（设计 §5）：过滤工具、附注提示词、初始化补齐预算上限；缺省全开 */
+  entitlements?: Entitlements
+  /** 单 run 成本上限（微美元，设计 §6.2）；达到后最多再允许两次模型调用用于保存收尾 */
+  runCapMicros?: number
+  /** run 结束（含报错/停止/接管）回调一次：成本汇总与是否产生过模型输出（route 用它结算） */
+  onRunCost?: (summary: RunCostSummary, hadModelOutput: boolean) => Promise<void>
 }
 
 /**
@@ -281,7 +288,7 @@ export async function runPlanAgent(
   const messages: ChatMessageParam[] = [
     {
       role: 'system',
-      content: PLAN_AGENT_SYSTEM_PROMPT,
+      content: [PLAN_AGENT_SYSTEM_PROMPT, deps.entitlements ? tierPromptNote(deps.entitlements) : null].filter(Boolean).join('\n\n'),
     },
     ...sanitizeChatHistory(
       stageHistory
@@ -350,12 +357,24 @@ export async function runPlanAgent(
   const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
 
   const enrichBudget = deps.toolDeps.enrichBudget ?? createEnrichBudget()
+  if (deps.entitlements) {
+    enrichBudget.places.max = deps.entitlements.placesMax
+    enrichBudget.directions.max = deps.entitlements.directionsMax
+  }
+  const forbiddenTools = deps.entitlements ? forbiddenToolsOf(deps.entitlements) : new Set<string>()
+  // ChatCompletionTool 是联合类型（function 工具 + 自定义工具），只有带
+  // function 的成员才有可禁用的名字；自定义工具原样保留
+  const modelTools = PLAN_AGENT_TOOLS.filter((t) => !('function' in t) || !forbiddenTools.has(t.function.name))
 
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
     // §0.6：补齐层（餐食标签等用户可见文案）按站点语言
     locale,
+    // 档位卡点（设计 §5）：禁用工具集合、天数上限与补齐层能力表
+    forbiddenTools,
+    maxDays: deps.entitlements?.maxDays,
+    entitlements: deps.entitlements,
     // 第九轮 L1：租约续租透传给工具——save_plan_days 在长补齐前后各续一次
     renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
@@ -425,7 +444,10 @@ export async function runPlanAgent(
     // 的协议错误（正文依旧扣下），绝不留下无法回答的悬空提问。
     let questionGuardRetried = false
     let emptyTurnRetried = false
-    outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾
+    let iterationLimit = maxIterations
+    let capReached = false
+    outer: for (let iteration = 0; iteration < iterationLimit; iteration++) {
       if (deps.signal?.aborted) {
         interrupted = isClientDisconnected(deps.signal)
         break
@@ -456,7 +478,7 @@ export async function runPlanAgent(
       try {
       // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
       response = await deps.createMessage(
-        { messages: sanitizeHistoryForModel(messages), tools: PLAN_AGENT_TOOLS, signal: modelAbort.signal },
+        { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
           (delta) => {
             if (delta.reasoning) {
               reasoningSeen = true
@@ -475,6 +497,18 @@ export async function runPlanAgent(
         usageByModel.set(modelName, addUsage(usageByModel.get(modelName) ?? { inputMiss: 0, inputCacheHit: 0, output: 0, reasoning: 0 }, callUsage))
       } else {
         usageMissing = true
+      }
+
+      // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾
+      if (deps.runCapMicros !== undefined && !capReached) {
+        const running = summarizeRunCost({ usageByModel, calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS }, modelCalls, usageMissing, withTitle: false })
+        if (running.costMicros.total >= deps.runCapMicros) {
+          capReached = true
+          iterationLimit = Math.min(maxIterations, iteration + 3)
+          enrichBudget.places.max = enrichBudget.places.used
+          enrichBudget.directions.max = enrichBudget.directions.used
+          messages.push({ role: 'user', content: '[系统状态]\n本回合可用预算已用完：不要再发起任何外部查询，立即用 save_plan_days 保存当前进度并向用户简短说明，然后结束本轮。' })
+        }
       }
 
       // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
@@ -653,6 +687,23 @@ export async function runPlanAgent(
       await Promise.race([finishing, sleep(RUN_LIVE_FINISH_TIMEOUT_MS)])
       finishing.catch((err) => console.warn('[planAgent/runLive] 后台收尾失败（不影响对话）', err))
     }
+    // 计费结算（设计 §6.2）：run 结束（含报错/停止/接管，无论 fenced 与否）
+    // 回调一次成本汇总与是否产生过模型输出；route 用它配对预扣做结算。
+    // 写在 appendRunLog 之前并复用同一份 summary，避免算两遍。
+    const runCost = summarizeRunCost({
+      usageByModel,
+      calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
+      modelCalls,
+      usageMissing: usageMissing || modelCalls === 0,
+      withTitle: Boolean(userMessage),
+    })
+    if (deps.onRunCost) {
+      try {
+        await deps.onRunCost(runCost, modelCalls > 0)
+      } catch (err) {
+        console.warn('[planAgent] onRunCost failed', err)
+      }
+    }
     // M4 运行日志：run 结束（正常/报错）都写一条；被栅栏接管的 run 不写。
     // 写日志本身绝不能把 run 拖垮，失败只 warn。enrich/gate 取本 run 最后
     // 一次 save 的评估结果（onSaveEvaluated 捕获），没有 save 过则为 null。
@@ -672,13 +723,7 @@ export async function runPlanAgent(
             enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
             gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
             toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
-            modelUsage: summarizeRunCost({
-              usageByModel,
-              calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
-              modelCalls,
-              usageMissing: usageMissing || modelCalls === 0,
-              withTitle: Boolean(userMessage),
-            }) as unknown as Prisma.JsonValue,
+            modelUsage: runCost as unknown as Prisma.JsonValue,
             durationMs: Date.now() - runStartedAt,
           })
         } catch (err) {

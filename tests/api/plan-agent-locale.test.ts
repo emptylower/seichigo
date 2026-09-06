@@ -26,6 +26,16 @@ vi.mock('@/lib/planAgent/serverDeps', () => ({
   runInBackground: vi.fn(),
 }))
 
+vi.mock('@/lib/billing/serverDeps', async () => {
+  const { createBillingService } = await import('@/lib/billing/service')
+  const { MemoryUsageLedger } = await import('@/lib/billing/ledgerMemory')
+  const { MemoryBillingUsers } = await import('@/lib/billing/usersMemory')
+  const users = new MemoryBillingUsers()
+  users.seed({ id: 'u1', tier: 'standard', periodStart: new Date('2026-08-20T00:00:00Z'), periodEnd: null, isAdmin: true })
+  const billing = createBillingService({ ledger: new MemoryUsageLedger(), users })
+  return { getBillingService: () => billing }
+})
+
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import { POST } from '@/app/api/me/plans/[id]/agent/route'

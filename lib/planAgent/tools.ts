@@ -30,6 +30,7 @@ import {
   BUDGET_EXHAUSTED_RESULT,
 } from './travelHelpers'
 import { createEnrichBudget, countGoogleCall, readTravelMode, type EnrichBudget, type EnrichContext, type EnrichReport } from './enrich'
+import type { Entitlements } from '@/lib/billing/tiers'
 import { scheduleFailureSummary } from './enrich/scheduleEnricher'
 import { enrichAndNormalizeDays } from './enrichPipeline'
 import type { SupportedLocale } from '@/lib/i18n/types'
@@ -80,6 +81,12 @@ export type PlanAgentToolDeps = {
   renewLease?: () => Promise<void>
   /** §0.6 站点语言：loop 注入，传给补齐层（EnrichContext.locale）写用户可见文案 */
   locale?: SupportedLocale
+  /** 档位禁用的工具名（设计 §5 卡点 1）；被调用时返回 tier_forbidden */
+  forbiddenTools?: Set<string>
+  /** 档位天数上限；缺省 30（与 update_plan_meta 现有钳制一致） */
+  maxDays?: number
+  /** 透传给补齐层（EnrichContext.entitlements） */
+  entitlements?: Entitlements
 }
 
 /**
@@ -246,6 +253,13 @@ function asRecord(input: unknown): Record<string, unknown> {
 export async function executePlanTool(deps: PlanAgentToolDeps, name: string, input: unknown): Promise<string> {
   const args = asRecord(input)
   try {
+    if (deps.forbiddenTools?.has(name)) {
+      return JSON.stringify({
+        error: '当前档位不支持该功能：交通请用 estimate_transit 直线估算，餐厅不要推荐，直接保存进度并向用户说明',
+        code: 'tier_forbidden',
+      })
+    }
+    const maxDays = deps.maxDays ?? 30
     switch (name) {
       case 'search_anime': {
         const query = String(args.query ?? '').trim()
@@ -282,6 +296,9 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         const dayCount = Number(args.dayCount)
         if (!pointIds.length || !Number.isFinite(dayCount)) {
           return JSON.stringify({ error: 'pointIds 与 dayCount 必填' })
+        }
+        if (dayCount > maxDays) {
+          return JSON.stringify({ error: `当前档位单个行程最多 ${maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
         }
         // 把 plan 关联的 bangumiIds 传下去，供服务端容错层给裸 id 拼前缀兜底
         const plan = await deps.repo.getPlan(deps.planId)
@@ -403,7 +420,13 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
       case 'update_plan_meta': {
         const patch: Parameters<TripPlanRepo['updateMeta']>[1] = {}
         if (typeof args.title === 'string' && args.title.trim()) patch.title = args.title.trim().slice(0, 80)
-        if (Number.isFinite(Number(args.dayCount))) patch.dayCount = Math.min(30, Math.max(1, Math.floor(Number(args.dayCount))))
+        if (Number.isFinite(Number(args.dayCount))) {
+          const requested = Math.max(1, Math.floor(Number(args.dayCount)))
+          if (requested > maxDays) {
+            return JSON.stringify({ error: `当前档位单个行程最多 ${maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
+          }
+          patch.dayCount = Math.min(30, requested)
+        }
         if (typeof args.startDate === 'string') {
           if (!args.startDate.trim()) {
             patch.startDate = null
@@ -469,6 +492,7 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
           dayCoordinates: (dayIndex) => coordsByDay.get(dayIndex) ?? [],
           ...(travelMode ? { travelMode } : {}),
           ...(deps.locale ? { locale: deps.locale } : {}),
+          ...(deps.entitlements ? { entitlements: deps.entitlements } : {}),
           budget: enrichBudget,
         }
         await deps.renewLease?.() // 第九轮 L1：补齐脚本可能 1–2 分钟，先续租再进长补齐
