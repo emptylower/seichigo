@@ -222,6 +222,41 @@ describe('PlanComposer', () => {
     expectNoCjk(container)
   })
 
+  it('en/ja：402 提示条的升级按钮三语且链接带语言前缀', () => {
+    const notice = { message: 'Monthly usage is used up.', upgradeAvailable: true }
+    const en = render(
+      <PlanComposer
+        value=""
+        onChange={() => {}}
+        onSend={() => {}}
+        busy={false}
+        answering={false}
+        stopRequested={false}
+        onStop={() => {}}
+        budgetNotice={notice}
+        locale="en"
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', '/en/pricing')
+    expectNoCjk(en.container)
+    en.unmount()
+
+    render(
+      <PlanComposer
+        value=""
+        onChange={() => {}}
+        onSend={() => {}}
+        busy={false}
+        answering={false}
+        stopRequested={false}
+        onStop={() => {}}
+        budgetNotice={{ message: '今月の利用量を使い切りました。', upgradeAvailable: true }}
+        locale="ja"
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'アップグレード' })).toHaveAttribute('href', '/ja/pricing')
+  })
+
   it('ja：送信ボタン', () => {
     render(
       <PlanComposer

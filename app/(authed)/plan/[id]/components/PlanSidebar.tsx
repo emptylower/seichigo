@@ -196,7 +196,7 @@ export function PlanSidebar(props: {
       </nav>
       {usage ? (
         <div className="border-t border-pink-100/80 p-3">
-          <UsageMeter usage={usage} size="compact" />
+          <UsageMeter usage={usage} size="compact" locale={locale} />
         </div>
       ) : null}
     </>

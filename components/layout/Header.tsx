@@ -43,8 +43,7 @@ export default async function Header({ locale = 'zh' }: Props) {
           <Link href={prefixPath('/map', locale)} className="hover:text-brand-600">{t('header.map', locale)}</Link>
           <Link href={prefixPath('/posts', locale)} className="hover:text-brand-600">{t('header.posts', locale)}</Link>
           <Link href={prefixPath('/city', locale)} className="hover:text-brand-600">{t('header.city', locale)}</Link>
-          {/* /pricing 无语言前缀路由（app/en、app/ja 下没有镜像），直接用裸路径 */}
-          <Link href="/pricing" className="hover:text-brand-600">{t('header.pricing', locale)}</Link>
+          <Link href={prefixPath('/pricing', locale)} className="hover:text-brand-600">{t('header.pricing', locale)}</Link>
           <Link href={prefixPath('/me', locale)} className="hover:text-brand-600">{t('header.me', locale)}</Link>
           {session?.user?.isAdmin ? <Link href={prefixPath('/admin/panel', locale)} className="hover:text-brand-600">{t('header.admin', locale)}</Link> : null}
           <LanguageSwitcher locale={locale} />

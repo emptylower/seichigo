@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
 import { UsageMeterClient } from '@/components/billing/UsageMeterClient'
+import { getLocale } from '@/lib/i18n/getLocale'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,12 +17,13 @@ const SECTIONS = [
 export default async function MePage() {
   const session = await getServerAuthSession()
   if (!session?.user?.id) redirect('/auth/signin?callbackUrl=/me')
+  const locale = await getLocale()
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-bold text-gray-900">我的</h1>
       {/* 用量表：接口缺席/未登录时 UsageMeter 返回 null，不留空节点（外层 space-y-6 不会多出间距） */}
-      <UsageMeterClient size="full" />
+      <UsageMeterClient size="full" locale={locale} />
       <ul className="grid gap-4 sm:grid-cols-2">
         {SECTIONS.map((section) => (
           <li key={section.href}>

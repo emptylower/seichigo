@@ -352,7 +352,8 @@
         "placeholder": "告诉规划师你的巡礼想法…（Enter 发送，Shift+Enter 换行）",
         "placeholderAnswer": "直接输入你的回答，会作为这条提问的自定义答案提交…（Enter 发送）",
         "send": "发送",
-        "stop": "停止"
+        "stop": "停止",
+        "upgrade": "升级"
       },
       "chat": {
         "emptyHint": "试试：“帮我安排下个月中旬去京都，做京吹圣地巡礼的 3 天计划”",
@@ -539,6 +540,42 @@
       "bookShelf": {
         "emptyState": "暂无文章内容，先用投稿把书架填满吧。"
       }
+    },
+    "pricing": {
+      "metaTitle": "套餐 · SeichiGo",
+      "metaDescription": "SeichiGo 巡礼规划套餐：免费、标准与高级三档的功能对比与每月用量说明。",
+      "title": "选择你的巡礼规划套餐",
+      "subtitle": "按月订阅，用量每月恢复。用量以百分比显示在计划页与账户页。",
+      "comingSoon": "即将推出",
+      "featureHeader": "功能",
+      "included": "包含",
+      "notIncluded": "不包含",
+      "freeName": "免费",
+      "freeCta": "当前可用",
+      "standardName": "标准",
+      "standardPeriod": "/月",
+      "standardCta": "开通标准版",
+      "proName": "高级",
+      "rowPlanning": "AI 巡礼规划、追问与重生成",
+      "rowSpots": "点位、封面与日程排布",
+      "rowPlaces": "地点解析与照片",
+      "rowRestaurants": "餐厅推荐",
+      "rowTransit": "交通信息",
+      "rowHotels": "酒店与航班建议",
+      "rowModels": "更多模型可选",
+      "rowDays": "单个行程天数",
+      "rowUsage": "每月 agent 用量",
+      "transitFree": "参考估算",
+      "transitStandard": "真实路线",
+      "transitPro": "真实路线 + 日本公交",
+      "daysFree": "最多 3 天",
+      "daysStandard": "最多 7 天",
+      "daysPro": "不限",
+      "usageFree": "体验额度",
+      "usageStandard": "标准额度",
+      "usagePro": "大额度",
+      "footnoteComingSoon": "高级档全部功能即将推出。",
+      "footnotePayment": "开通入口将在支付上线后开放；在此之前“开通标准版”仅跳转到规划页。"
     }
   },
   "auth": {
@@ -551,6 +588,25 @@
       "codePlaceholder": "6 位验证码",
       "submit": "登录",
       "submitting": "验证中…"
+    }
+  },
+  "billing": {
+    "tier": {
+      "free": "免费",
+      "standard": "标准",
+      "pro": "高级"
+    },
+    "usage": {
+      "sectionLabel": "本月 agent 用量",
+      "remaining": "本月 agent 用量剩余 {percent}",
+      "resets": "{date}恢复",
+      "upgradeCta": "升级解锁真实路线与餐厅推荐"
+    },
+    "hint": {
+      "transit": "升级后可查看真实路线与耗时",
+      "restaurant": "升级后可推荐餐厅",
+      "map": "升级后显示真实路线",
+      "days": "升级可规划更多天数"
     }
   }
 }

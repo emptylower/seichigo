@@ -12,8 +12,8 @@ describe('HomeEntryCards', () => {
     expect(screen.getByRole('link', { name: /AI trip planner/ })).toHaveAttribute('href', '/plan/start?locale=en')
     expect(screen.getByRole('link', { name: /Explore the map/ })).toHaveAttribute('href', '/en/map')
     expect(screen.getByRole('link', { name: /Pilgrimage guides/ })).toHaveAttribute('href', '/en/posts')
-    // 次级入口：/pricing 是三语共用的非本地化路由，不加语言前缀
-    expect(screen.getByRole('link', { name: 'See pricing' })).toHaveAttribute('href', '/pricing')
+    // 次级入口：/pricing 现在三语都有镜像页，走 prefixPath
+    expect(screen.getByRole('link', { name: 'See pricing' })).toHaveAttribute('href', '/en/pricing')
   })
 
   it('用 Intl.NumberFormat(locale) 展示真实计数', () => {

@@ -352,7 +352,8 @@
         "placeholder": "巡礼のアイデアを教えてください…（Enter で送信、Shift+Enter で改行）",
         "placeholderAnswer": "この質問への自由回答を入力…（Enter で送信）",
         "send": "送信",
-        "stop": "停止"
+        "stop": "停止",
+        "upgrade": "アップグレード"
       },
       "chat": {
         "emptyHint": "例：「来月中旬に京都で『響け！ユーフォニアム』の聖地巡礼を 3 日間」",
@@ -539,6 +540,42 @@
       "bookShelf": {
         "emptyState": "まだ記事がありません。投稿で本棚を埋めましょう。"
       }
+    },
+    "pricing": {
+      "metaTitle": "プラン · SeichiGo",
+      "metaDescription": "SeichiGo の巡礼プランニング料金プラン：無料・スタンダード・プロの機能比較と毎月の利用量についてご説明します。",
+      "title": "巡礼プランニングのプランをお選びください",
+      "subtitle": "月額制です。利用量は毎月回復し、プラン画面とアカウント画面に残量が％で表示されます。",
+      "comingSoon": "近日公開",
+      "featureHeader": "機能",
+      "included": "対応",
+      "notIncluded": "非対応",
+      "freeName": "無料",
+      "freeCta": "今すぐ利用できます",
+      "standardName": "スタンダード",
+      "standardPeriod": "/月",
+      "standardCta": "スタンダードを開始",
+      "proName": "プロ",
+      "rowPlanning": "AI による巡礼プラン作成・追加の相談・作り直し",
+      "rowSpots": "スポット、カバー画像、日程の組み立て",
+      "rowPlaces": "地点の解析と写真",
+      "rowRestaurants": "レストランの提案",
+      "rowTransit": "交通情報",
+      "rowHotels": "ホテルと航空券の提案",
+      "rowModels": "選べるモデルが増えます",
+      "rowDays": "1 つの旅程の日数",
+      "rowUsage": "毎月のエージェント利用量",
+      "transitFree": "おおよその見積もり",
+      "transitStandard": "実際のルート",
+      "transitPro": "実際のルート＋日本の公共交通",
+      "daysFree": "最大 3 日",
+      "daysStandard": "最大 7 日",
+      "daysPro": "無制限",
+      "usageFree": "お試しの量",
+      "usageStandard": "標準の量",
+      "usagePro": "たっぷりの量",
+      "footnoteComingSoon": "プロのすべての機能は近日公開です。",
+      "footnotePayment": "決済の開始後に申し込み導線を公開します。それまで「スタンダードを開始」はプランニング画面へ移動するだけです。"
     }
   },
   "auth": {
@@ -551,6 +588,25 @@
       "codePlaceholder": "6 桁のコード",
       "submit": "ログイン",
       "submitting": "確認中…"
+    }
+  },
+  "billing": {
+    "tier": {
+      "free": "無料",
+      "standard": "スタンダード",
+      "pro": "プロ"
+    },
+    "usage": {
+      "sectionLabel": "今月のエージェント利用量",
+      "remaining": "今月のエージェント残量 {percent}",
+      "resets": "{date}に回復します",
+      "upgradeCta": "アップグレードで実際のルートとレストラン提案が使えます"
+    },
+    "hint": {
+      "transit": "アップグレードすると実際のルートと所要時間を表示します",
+      "restaurant": "アップグレードするとレストランを提案します",
+      "map": "アップグレードすると実際のルートを表示します",
+      "days": "アップグレードするともっと長い日程を組めます"
     }
   }
 }

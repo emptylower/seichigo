@@ -63,7 +63,7 @@ export function DayMapExpanded(props: {
       <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-sm font-semibold text-gray-900">{title}</h2>
-          {props.showMapUpgradeHint ? <TierHint kind="map" /> : null}
+          {props.showMapUpgradeHint ? <TierHint kind="map" locale={props.locale ?? 'zh'} /> : null}
         </div>
         <button
           type="button"

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { SendHorizontal, Square } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { prefixPath } from '@/components/layout/prefixPath'
 import { planTextFor } from '../lib/planText'
 
 const TEXTAREA_MAX_HEIGHT_PX = 144 // ≈ 6 行（text-sm 20px 行高 + 上下 padding）
@@ -51,8 +52,11 @@ export function PlanComposer(props: {
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <span>{budgetNotice.message}</span>
             {budgetNotice.upgradeAvailable ? (
-              <Link href="/pricing" className="shrink-0 font-medium text-brand-600 hover:text-brand-500">
-                升级
+              <Link
+                href={prefixPath('/pricing', props.locale ?? 'zh')}
+                className="shrink-0 font-medium text-brand-600 hover:text-brand-500"
+              >
+                {tx('composer.upgrade')}
               </Link>
             ) : null}
           </div>

@@ -8,9 +8,15 @@ describe('usageText', () => {
     expect(formatPercent(37)).toBe('37%')
     expect(formatPercent(100)).toBe('100%')
   })
-  it('formatResetDate renders M月D日恢复', () => {
-    expect(formatResetDate('2026-09-20T00:00:00.000Z')).toMatch(/^9 月 (19|20) 日恢复$/)
+  it('formatResetDate 默认中文渲染 M月D日恢复', () => {
+    expect(formatResetDate('2026-09-20T00:00:00.000Z')).toMatch(/^9月(19|20)日恢复$/)
     expect(formatResetDate('not-a-date')).toBe('')
+  })
+  it('formatResetDate en 用缩写月名', () => {
+    expect(formatResetDate('2026-09-20T00:00:00.000Z', 'en')).toMatch(/^Resets on Sep (19|20)$/)
+  })
+  it('formatResetDate ja 用「9月20日に回復します」', () => {
+    expect(formatResetDate('2026-09-20T00:00:00.000Z', 'ja')).toMatch(/^9月(19|20)日に回復します$/)
   })
   it('usageBarTone maps percent to a tone', () => {
     expect(usageBarTone(80)).toBe('ok')

@@ -245,7 +245,7 @@ export function TransitConnector(props: {
       {/* 摘要行是个 button，链接不能嵌在里面：提示另起一行挂在按钮下方 */}
       {isEstimate && props.showEstimateUpgradeHint ? (
         <div className="ml-6 mt-1">
-          <TierHint kind="transit" />
+          <TierHint kind="transit" locale={locale} />
         </div>
       ) : null}
 
