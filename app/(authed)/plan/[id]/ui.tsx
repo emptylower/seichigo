@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Home, Menu } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { createSseFrameReader } from '@/lib/sseFrames'
 import { planTextFor } from './lib/planText'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import { parseDaymapPayload } from '@/lib/tripPlan/view'
@@ -23,6 +24,7 @@ import { usePlanImagePrewarm } from './hooks/usePlanImagePrewarm'
 import { useAgentStop } from './hooks/useAgentStop'
 import { usePendingDraft } from './hooks/usePendingDraft'
 import { usePlanRunSync } from './hooks/usePlanRunSync'
+import { useAgentWatchStream } from './hooks/useAgentWatchStream'
 import {
   attachThinkingToLast,
   autoResumeStorageKey,
@@ -96,6 +98,25 @@ export function PlanPlanner(props: {
     setInterrupted,
     setActiveThinking,
     onIdle: () => maybeAutoResume(),
+    // 刷新后发现服务端仍在跑：观察流接管进度，轮询只在观察流连不上时兜底
+    onRunInProgress: () => watch.open(),
+  })
+
+  // §0.6 只读观察流：run 在队列里跑时的进度来源（done 事件负责收尾）
+  const watch = useAgentWatchStream({
+    planId: props.planId,
+    setChat,
+    setBusy,
+    setSyncBanner,
+    setInterrupted,
+    setActiveThinking,
+    runSync,
+    onDone: () => {
+      setResumeBanner((cur) => (cur === 'resuming' ? null : cur))
+      void maybeAutoResume()
+    },
+    // done.stopped：不再依赖 useAgentStop 的 5 秒兜底，直接按「已停止」定格
+    onStopped: (turn) => freezeStoppedTurn(turn),
   })
 
   function handleScroll() {
@@ -114,6 +135,17 @@ export function PlanPlanner(props: {
     if (!nearBottomRef.current) return
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [chat, busy, plan.days.length])
+
+  /**
+   * 「已停止」定格（M5）：把本轮遥测以停止短语挂进历史。POST 流的 `stopped`
+   * 事件与观察流的 `done.stopped` 共用这一段——两条路径的收尾必须一致。
+   */
+  function freezeStoppedTurn(turn: ThinkingTurn | null) {
+    agentStop.markStopped()
+    const frozen = { ...(turn ?? newThinkingTurn()), statusPhrase: stoppedPhrase(locale), endedAt: Date.now() }
+    runSync.bumpChatEpoch()
+    setChat((prev) => attachThinkingToLast(prev, frozen, { appendIfNone: true }))
+  }
 
   /** 本地流式追加入口：每次追加推进纪元，让在途轮询响应识别自己已过期 */
   function appendLocalChat(entry: ChatEntry) {
@@ -183,6 +215,16 @@ export function PlanPlanner(props: {
         body: JSON.stringify(body),
         signal,
       })
+      // 队列化 run（§0.3）：POST 只负责投递，202 之后进度改由只读观察流推送；
+      // busy 保持 true，收尾交给观察流的 done 事件
+      if (res.status === 202) {
+        const queued = (await res.json().catch(() => null)) as { queued?: boolean } | null
+        if (queued?.queued === true) {
+          runSync.clearInterrupted()
+          watch.open()
+          return
+        }
+      }
       const contentType = res.headers.get('content-type') ?? ''
       if (!res.ok || !res.body || !contentType.includes('text/event-stream')) {
         const errBody = (await res.json().catch(() => null)) as { error?: string; reason?: string } | null
@@ -204,106 +246,86 @@ export function PlanPlanner(props: {
       // 新 run 的流已开始：旧的中断标记随之失效（续跑/新回合都会覆盖它）
       runSync.clearInterrupted()
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
       try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const frames = buffer.split('\n\n')
-          buffer = frames.pop() ?? ''
-          for (const frame of frames) {
-            const line = frame.trim()
-            if (!line.startsWith('data:')) continue
-            let event: PlanStreamEvent
-            try {
-              event = JSON.parse(line.slice(5)) as PlanStreamEvent
-            } catch {
-              continue
+        for await (const raw of createSseFrameReader(res.body)) {
+          const event = raw as PlanStreamEvent
+          switch (event.type) {
+            case 'text': {
+              const thinking = freezeTurn()
+              appendLocalChat({ role: 'assistant', text: event.text, thinking })
+              break
             }
-            switch (event.type) {
-              case 'text': {
-                const thinking = freezeTurn()
-                appendLocalChat({ role: 'assistant', text: event.text, thinking })
-                break
+            case 'ask': {
+              // ask_user 结构化提问：本体挂 ask 字段，prompt 同时作 text 降级展示；
+              // 本轮对话就此结束（后端随后会发 done）
+              const thinking = freezeTurn()
+              const ask: AskUserPayload = {
+                askId: event.askId,
+                kind: event.kind,
+                taskType: event.taskType,
+                prompt: event.prompt,
+                options: event.options,
+                allowSkip: event.allowSkip,
               }
-              case 'ask': {
-                // ask_user 结构化提问：本体挂 ask 字段，prompt 同时作 text 降级展示；
-                // 本轮对话就此结束（后端随后会发 done）
-                const thinking = freezeTurn()
-                const ask: AskUserPayload = {
-                  askId: event.askId,
-                  kind: event.kind,
-                  taskType: event.taskType,
-                  prompt: event.prompt,
-                  options: event.options,
-                  allowSkip: event.allowSkip,
-                }
-                setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
-                runSync.bumpChatEpoch()
-                break
-              }
-              case 'daymap': {
-                // save_plan_days 的交付快照：与刷新后 toChatView 用同一个载荷
-                // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
-                const parsed = parseDaymapPayload(event)
-                if (!parsed) break
-                runSync.bumpChatEpoch()
-                setChat((prev) =>
-                  prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
-                    ? prev
-                    : [...prev, { role: 'assistant', text: '', daymap: parsed }],
-                )
-                break
-              }
-              case 'plan_updated':
-                await runSync.refreshPlan()
-                // 标题生成等元数据变化 → 侧栏会话列表重新拉取
-                window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
-                break
-              case 'error': {
-                const thinking = freezeTurn()
-                // 偶发网络/运行时错误：附重试入口，用户不必手打重发（答复/续跑轮同样可重试）
-                appendLocalChat({
-                  role: 'assistant',
-                  text: tx('errors.streamError', { message: event.message }),
-                  thinking,
-                  retry: body,
-                })
-                break
-              }
-              case 'done': {
-                // 回合末尾仍残留未挂接的遥测（最后一段只有工具调用没有正文）时，
-                // 挂到最近一条还没有思维链的 assistant 消息上
-                const frozen = { ...turn, endedAt: Date.now() }
-                turn = newThinkingTurn()
-                if (hasThinkingContent(frozen)) setChat((prev) => attachThinkingToLast(prev, frozen))
-                break
-              }
-              case 'stopped': {
-                // M5 服务端已按用户请求结束本轮：把本轮遥测以「已停止」定格进历史
-                // （随后的 done 只看到空 turn，不会再清掉它）
-                agentStop.markStopped()
-                const frozen = { ...turn, statusPhrase: stoppedPhrase(locale), endedAt: Date.now() }
-                turn = newThinkingTurn()
-                setActiveThinking(turn)
-                runSync.bumpChatEpoch()
-                setChat((prev) => attachThinkingToLast(prev, frozen, { appendIfNone: true }))
-                break
-              }
-              case 'model_info':
-                // reasoning=false：该供应商不回显思考增量，头部提示只显示工具进度
-                setModelNotice(event.reasoning ? null : { providerName: event.providerName, model: event.model })
-                break
-              case 'status':
-              case 'reasoning':
-              case 'tool_call':
-                turn = applyThinkingEvent(turn, event)
-                setActiveThinking(turn)
-                break
+              setChat((prev) => [...prev, { role: 'assistant', text: event.prompt, ask, thinking }])
+              runSync.bumpChatEpoch()
+              break
             }
+            case 'daymap': {
+              // save_plan_days 的交付快照：与刷新后 toChatView 用同一个载荷
+              // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
+              const parsed = parseDaymapPayload(event)
+              if (!parsed) break
+              runSync.bumpChatEpoch()
+              setChat((prev) =>
+                prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
+                  ? prev
+                  : [...prev, { role: 'assistant', text: '', daymap: parsed }],
+              )
+              break
+            }
+            case 'plan_updated':
+              await runSync.refreshPlan()
+              // 标题生成等元数据变化 → 侧栏会话列表重新拉取
+              window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
+              break
+            case 'error': {
+              const thinking = freezeTurn()
+              // 偶发网络/运行时错误：附重试入口，用户不必手打重发（答复/续跑轮同样可重试）
+              appendLocalChat({
+                role: 'assistant',
+                text: tx('errors.streamError', { message: event.message }),
+                thinking,
+                retry: body,
+              })
+              break
+            }
+            case 'done': {
+              // 回合末尾仍残留未挂接的遥测（最后一段只有工具调用没有正文）时，
+              // 挂到最近一条还没有思维链的 assistant 消息上
+              const frozen = { ...turn, endedAt: Date.now() }
+              turn = newThinkingTurn()
+              if (hasThinkingContent(frozen)) setChat((prev) => attachThinkingToLast(prev, frozen))
+              break
+            }
+            case 'stopped': {
+              // 服务端已按用户请求结束本轮：定格后本地 turn 复位
+              // （随后的 done 只看到空 turn，不会再清掉它）
+              freezeStoppedTurn(turn)
+              turn = newThinkingTurn()
+              setActiveThinking(turn)
+              break
+            }
+            case 'model_info':
+              // reasoning=false：该供应商不回显思考增量，头部提示只显示工具进度
+              setModelNotice(event.reasoning ? null : { providerName: event.providerName, model: event.model })
+              break
+            case 'status':
+            case 'reasoning':
+            case 'tool_call':
+              turn = applyThinkingEvent(turn, event)
+              setActiveThinking(turn)
+              break
           }
         }
       } catch {
@@ -315,8 +337,8 @@ export function PlanPlanner(props: {
         return
       }
     } finally {
-      // 进入恢复轮询时由轮询循环负责收尾（busy/banner/thinking）
-      if (!runSync.isPolling()) {
+      // 进入恢复轮询或观察流模式时，由它们负责收尾（busy/banner/thinking）
+      if (!runSync.isPolling() && !watch.isOpen()) {
         setBusy(false)
         setActiveThinking(null)
         setResumeBanner((cur) => (cur === 'resuming' ? null : cur))

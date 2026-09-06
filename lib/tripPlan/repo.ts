@@ -291,6 +291,59 @@ export interface TripPlanRepo {
   getRunLive(planId: string): Promise<TripPlanRunLiveRecord | null>
   /** 运行实况清除：run 结束（writer.finish）时删除行 */
   clearRunLive(planId: string): Promise<void>
+  /**
+   * 2026-09-06 §0.6.1 轻量快照：观察流每 500 ms 读一次的最小字段集（一次
+   * 往返）。live 只在 agentBusy 且实况行 runToken 仍是当前持有者时附带
+   * （与 GET 的 live 判定同规则）；chatRevision 沿用 GET 公式
+   * （messageCount × 1e14 + lastMessageAt），只在变化时才需要取全量消息。
+   * planRevision 由与运行租约无关的字段拼成（见 composePlanRevision），
+   * renewAgentRun 只写 agentBusyUntil 不会动它——观察流据此判 plan_updated，
+   * 不会被心跳续租刷成误报。
+   */
+  getRunSnapshotMeta(planId: string): Promise<TripPlanRunSnapshotMeta | null>
+}
+
+export type TripPlanRunSnapshotMeta = {
+  agentBusy: boolean
+  /** composePlanRevision 的产物：与运行租约无关的计划修订号（不透明字符串） */
+  planRevision: string
+  messageCount: number
+  lastMessageAt: Date | null
+  live: {
+    runToken: string
+    reasoning: string
+    statusText: string | null
+    toolCalls: Prisma.JsonValue | null
+    updatedAt: Date
+  } | null
+}
+
+/**
+ * §0.6.1 计划修订号：只用与运行租约（agentBusyUntil/agentRunToken）无关的
+ * 展示字段拼成——title/status/dayCount/startDate/bangumiIds/stage 加 days
+ * 数量（TripPlanDay 无 updatedAt 列，天数增减即结构变化信号）。观察流的
+ * plan_updated 只认它，续租心跳（renewAgentRun 写 agentBusyUntil 会顺带
+ * 刷 TripPlan.updatedAt）不再误报。memory 与 prisma 实现共用本函数保证
+ * 同语义；对调用方不透明，只做相等比较。
+ */
+export function composePlanRevision(plan: {
+  title: string
+  status: string
+  startDate: Date | null
+  dayCount: number
+  bangumiIds: number[]
+  stage: string | null
+  dayTotal: number
+}): string {
+  return JSON.stringify([
+    plan.title,
+    plan.status,
+    plan.dayCount,
+    plan.startDate ? plan.startDate.getTime() : null,
+    plan.bangumiIds,
+    plan.stage,
+    plan.dayTotal,
+  ])
 }
 
 export type ReplaceDaysWithDaymapResult = { plan: TripPlanWithDays; message: TripPlanMessage }

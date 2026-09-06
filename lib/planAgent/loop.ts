@@ -128,6 +128,14 @@ export type PlanAgentDeps = {
    * "回复语言"段约束模型自行跟随用户）。缺省 zh。
    */
   locale?: SupportedLocale
+  /**
+   * 2026-09-06 §0.5 软截止时间（epoch ms）：队列消费者单次调用有 15 分钟
+   * 硬上限，内部路由传入 start + 13 min。循环每次迭代开头检查，到点即按
+   * 客户端断开同一收尾（interrupted=true：写 stage=interrupted 日志、清实况
+   * 行、不发 done、不派发补齐续跑），客户端靠现有"上次被打断 → 续跑"路径
+   * 接着跑。SSE 路径不传。
+   */
+  deadlineAt?: number
 }
 
 /**
@@ -414,6 +422,12 @@ export async function runPlanAgent(
         interrupted = isClientDisconnected(deps.signal)
         break
       }
+      // §0.5 软截止：队列消费者的硬杀兜底——到点按客户端断开同一收尾，
+      // 剩余工作交给现有"上次被打断 → 续跑"路径
+      if (deps.deadlineAt !== undefined && Date.now() >= deps.deadlineAt) {
+        interrupted = true
+        break
+      }
       // 通用防线：无论哪条路径在内存消息里留下悬空 tool_calls（守卫扣下、
       // 信号中止、栅栏错误……），都在发给模型前补齐占位回执，绝不产出
       // "assistant 带 tool_calls 但无 tool 回执"的非法序列（DeepSeek 400）
@@ -652,10 +666,11 @@ export async function runPlanAgent(
       // 「预算已用完」类 skipped 或 restaurantPending 条目时派发——先只看
       // 评估报告，无需续跑直接跳过，不做 getPlan 往返；门控未过的保存在
       // 上面已被拒绝落库（整改单是模型的活），补齐脚本不该再碰这份计划
-      // A3：用户停止的 run 不派发（§0：停止后不自动续跑）
+      // A3：用户停止的 run 不派发（§0：停止后不自动续跑）；§0.5 软截止/
+      // 客户端断开收尾的 run 同样不派发（interrupted 回合交给用户侧续跑）
       try {
         const evaluation = saveEvaluation.current
-        if (!stopped && evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
+        if (!stopped && !interrupted && evaluation?.quality.passed && planNeedsContinuation(evaluation.enrich)) {
           const planAfterRun = await deps.repo.getPlan(deps.planId)
           if (planAfterRun && planNeedsContinuation(evaluation.enrich, planAfterRun.days)) {
             const task = () =>

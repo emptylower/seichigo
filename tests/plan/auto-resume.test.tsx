@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // PlanPlanner 依赖链的轻量桩：Link 需要 app router 上下文，地图/图片是重依赖
 vi.mock('next/link', () => ({
@@ -154,37 +154,42 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
     })
   })
 
-  it('恢复轮询发现 run 被打断（live 为空 + interrupted 非空）：ThinkingChain 显示「已中断」而不是「思考中」', async () => {
-    let callCount = 0
-    let resolveSecondPoll: ((res: Response) => void) | null = null
+  it('观察流 done 带回中断标记：ThinkingChain 显示「已中断」并自动续跑', async () => {
+    // §0.6.3：刷新后仍在跑 → 观察流接管；run 被打断时 done 带 interrupted
+    const encoderLocal = new TextEncoder()
+    let watchController: ReadableStreamDefaultController<Uint8Array> | null = null
+    const watchResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          watchController = c
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )
+    const pushWatch = (event: unknown) =>
+      watchController!.enqueue(encoderLocal.encode(`data: ${JSON.stringify(event)}\n\n`))
+
     const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
       const url = String(input)
-      if (url.includes('/agent')) {
-        // 自动续跑的 resume 请求挂起：观察中断定格帧
-        return await new Promise<Response>(() => {})
-      }
-      callCount += 1
-      if (callCount === 1) {
-        // 首挂载核对：run 仍在跑且携带实况
-        return new Response(
-          JSON.stringify({
-            plan: makePlan(),
-            chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
-            agentBusy: true,
-            live: {
-              runToken: 'run-1',
-              reasoning: '整理点位中',
-              statusText: '查询点位中',
-              toolCalls: [],
-              updatedAt: '2026-09-03T02:00:00.000Z',
-            },
-          }),
-          { status: 200 },
-        )
-      }
-      return await new Promise<Response>((resolve) => {
-        resolveSecondPoll = resolve
-      })
+      if (url.includes('/agent/stream')) return watchResponse
+      // 自动续跑的 resume 请求挂起：观察中断定格帧
+      if (url.includes('/agent')) return await new Promise<Response>(() => {})
+      // 挂载核对：run 仍在跑且携带实况
+      return new Response(
+        JSON.stringify({
+          plan: makePlan(),
+          chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
+          agentBusy: true,
+          live: {
+            runToken: 'run-1',
+            reasoning: '整理点位中',
+            statusText: '查询点位中',
+            toolCalls: [],
+            updatedAt: '2026-09-03T02:00:00.000Z',
+          },
+        }),
+        { status: 200 },
+      )
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -193,26 +198,20 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
     // 进行中：横幅 + 实况短语（确认此时仍是正常进行中态）
     await waitFor(() => expect(screen.getByText('规划仍在进行中…')).toBeTruthy())
     expect(screen.getByText('查询点位中')).toBeTruthy()
-
-    // 下一轮轮询：run 已被客户端断开打断（live 清空 + interrupted 标记）
-    resolveSecondPoll!(
-      new Response(
-        JSON.stringify({
-          plan: makePlan(),
-          chat: [{ role: 'user', text: '帮我规划宇治巡礼' }],
-          agentBusy: false,
-          live: null,
-          interrupted: { at: '2026-09-03T02:05:00.000Z', turnIndex: 4 },
-        }),
-        { status: 200 },
-      ),
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent/stream'))).toHaveLength(1),
     )
 
-    // 中断定格：ThinkingChain 兜底短语变为「已中断」，并进入自动续跑
+    // 观察流收尾：run 被客户端断开/软截止打断（done 带 interrupted 标记）
+    act(() => pushWatch({ type: 'done', seq: 1, interrupted: { at: '2026-09-03T02:05:00.000Z', turnIndex: 4 } }))
+
+    // 中断定格：续跑回合的思维链兜底短语变为「已中断」，并进入自动续跑
     await waitFor(() => expect(screen.getByText('已中断')).toBeTruthy())
     expect(screen.queryByText('规划师思考中…')).toBeNull()
     await waitFor(() => expect(screen.getByText(/正在自动继续/)).toBeTruthy())
-    const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+    const agentCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream'),
+    )
     expect(JSON.parse(String(agentCalls[0]![1]?.body))).toEqual({ resume: true })
   })
 })

@@ -14,9 +14,10 @@ import type {
   TripPlanRunLiveRecord,
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
+  TripPlanRunSnapshotMeta,
   TripPlanWithDays,
 } from './repo'
-import { clampRunLiveReasoning, RUN_STOP_MARKER } from './repo'
+import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
 
 type MemoryOptions = {
   points?: Map<string, TripPlanPointLite>
@@ -303,6 +304,38 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
 
   async clearRunLive(planId: string): Promise<void> {
     this.runLive.delete(planId)
+  }
+
+  /** §0.6.1 轻量快照：从现有存储组装（live 判定与 GET 同规则——busy 且 token 匹配） */
+  async getRunSnapshotMeta(planId: string): Promise<TripPlanRunSnapshotMeta | null> {
+    const plan = this.plans.get(planId)
+    if (!plan) return null
+    const messages = this.messages.filter((m) => m.planId === planId)
+    const last = messages.length ? messages[messages.length - 1]! : null
+    const agentBusy = await this.isAgentBusy(planId)
+    let live: TripPlanRunSnapshotMeta['live'] = null
+    if (agentBusy) {
+      const row = this.runLive.get(planId)
+      const holderToken = this.agentBusy.get(planId)?.token
+      if (row && row.runToken === holderToken) {
+        live = { ...row }
+      }
+    }
+    return {
+      agentBusy,
+      planRevision: composePlanRevision({
+        title: plan.title,
+        status: plan.status,
+        startDate: plan.startDate,
+        dayCount: plan.dayCount,
+        bangumiIds: plan.bangumiIds,
+        stage: plan.stage,
+        dayTotal: plan.days.length,
+      }),
+      messageCount: messages.length,
+      lastMessageAt: last?.createdAt ?? null,
+      live,
+    }
   }
 
   private isCurrentHolder(planId: string, token: string): boolean {

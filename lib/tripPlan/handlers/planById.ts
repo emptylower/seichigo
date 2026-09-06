@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { TRIP_PLAN_STATUSES, type TripPlanStatus, type TripPlanWithDays } from '@/lib/tripPlan/repo'
+import { TRIP_PLAN_STATUSES, type TripPlanStatus, type TripPlanWithDays, type TripPlanMessage } from '@/lib/tripPlan/repo'
 import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import { inferInterrupted } from '@/lib/planAgent/resume'
 import { RUN_STOP_MARKER } from '@/lib/planAgent/stop'
@@ -10,6 +10,72 @@ type AuthorizeResult = { error: NextResponse } | { plan: TripPlanWithDays; userI
 
 /** H2：停止标记行的保鲜期——期间并发 GET 不得顺手清掉（loop 收尾还要读它） */
 const STOP_MARKER_GRACE_MS = 5 * 60 * 1000
+
+export type PlanRunState = {
+  agentBusy: boolean
+  /** busy 且实况行 runToken 仍是当前持有者时的运行实况（与 GET 的 live 字段同构） */
+  live: {
+    reasoning: string
+    statusText: string | null
+    toolCalls: unknown
+    updatedAt: string
+  } | null
+  /** agentBusy=false 时从持久化状态推断的「上一次 run 被打断」（F1 三条），供前端自动续跑 */
+  interrupted: { at: string; turnIndex: number; reason: 'run_log' | 'missing_run_log' | 'dangling' } | null
+  /** §0.6 done 事件用：agentBusy=false 时最新一条运行日志 stage==='stopped'（无日志为 false）——上一次 run 是用户主动停止 */
+  stopped: boolean
+}
+
+/**
+ * 2026-09-06 §0.6.1：GET 计划与观察流共用的 run 状态判定（纯搬运自 GET
+ * 处理器）。只做读取（GET 的"顺手清理残留实况行"留在 GET——观察流是只读
+ * 的，每 500 ms 一次的循环里不应有写）。preloaded 允许调用方传入已取到的
+ * plan/messages，避免 GET 重复往返。计划不存在时返回 null。
+ */
+export async function readPlanRunState(
+  deps: TripPlanHandlerDeps,
+  planId: string,
+  preloaded?: { plan?: TripPlanWithDays; messages?: TripPlanMessage[] },
+): Promise<PlanRunState | null> {
+  const plan = preloaded?.plan ?? (await deps.repo.getPlan(planId))
+  if (!plan) return null
+  const agentBusy = await deps.repo.isAgentBusy(planId)
+  // 第七轮 A1：busy 时附带运行实况；行上的 runToken 必须仍是当前持有者
+  // （过期 run 的残留行不算数），否则视为没有实况。L5：runToken 只用于
+  // 服务端匹配，不再回传——前端不依赖它
+  let live: PlanRunState['live'] = null
+  if (agentBusy) {
+    const row = await deps.repo.getRunLive(planId)
+    if (row && row.runToken === plan.agentRunToken) {
+      live = {
+        reasoning: row.reasoning,
+        statusText: row.statusText,
+        toolCalls: Array.isArray(row.toolCalls) ? row.toolCalls : [],
+        updatedAt: row.updatedAt.toISOString(),
+      }
+    }
+  }
+  // 第八轮 §0/A2 + F1：上一次 run 是否被打断——从持久化状态推断（共享
+  // inferInterrupted，与 resume 分支的 canResume 完全对齐）；agentBusy=false
+  // 时才判定；reason 供排查，前端可忽略
+  let interrupted: PlanRunState['interrupted'] = null
+  let stopped = false
+  if (!agentBusy) {
+    const messages = preloaded?.messages ?? (await deps.repo.listMessages(planId))
+    const runLogs = await deps.repo.listRunLogs(planId)
+    const lastLog = runLogs.length ? runLogs[runLogs.length - 1]! : null
+    stopped = lastLog?.stage === 'stopped'
+    const inferred = inferInterrupted(messages, runLogs)
+    if (inferred) {
+      interrupted = {
+        at: inferred.at.toISOString(),
+        turnIndex: inferred.turnIndex,
+        reason: inferred.reason,
+      }
+    }
+  }
+  return { agentBusy, live, interrupted, stopped }
+}
 
 export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
   /** 错误响应统一走 §0.6 字典（站点语言） */
@@ -33,28 +99,10 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
       if ('error' in auth) return auth.error
       const messages = await deps.repo.listMessages(planId)
       const chat = toChatView(messages)
-      // A4：暴露 agent 运行状态——前端断线/刷新后据此进入轮询恢复而不是误判已完成
-      const agentBusy = await deps.repo.isAgentBusy(planId)
-      // 第七轮 A1：busy 时附带运行实况；行上的 runToken 必须仍是当前持有者
-      // （过期 run 的残留行不算数），否则视为没有实况。L5：runToken 只用于
-      // 服务端匹配，不再回传——前端不依赖它
-      let live: {
-        reasoning: string
-        statusText: string | null
-        toolCalls: unknown
-        updatedAt: string
-      } | null = null
-      if (agentBusy) {
-        const row = await deps.repo.getRunLive(planId)
-        if (row && row.runToken === auth.plan.agentRunToken) {
-          live = {
-            reasoning: row.reasoning,
-            statusText: row.statusText,
-            toolCalls: Array.isArray(row.toolCalls) ? row.toolCalls : [],
-            updatedAt: row.updatedAt.toISOString(),
-          }
-        }
-      } else {
+      // A4 + §0.6.1：agentBusy/live/interrupted 的判定抽到 readPlanRunState
+      //（观察流共用）；本处理器只保留响应组装与残留实况行的顺手清理
+      const runState = await readPlanRunState(deps, planId, { plan: auth.plan, messages })
+      if (runState && !runState.agentBusy) {
         // L8：busy 已落幕后仍残留的实况行（fenced run 不写库、finish 超时
         // 未清等）顺手清掉——失败只 warn，不影响本次响应。H2 例外：5 分钟
         // 内的停止标记行是"用户停止"的跨隔离体证据（运行中的 loop 靠它区分
@@ -79,31 +127,13 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
       const chatRevision = lastMessage
         ? messages.length * 1e14 + lastMessage.createdAt.getTime()
         : 0
-      // 第八轮 §0/A2 + F1：上一次 run 是否被打断——不再只信 finally 写下的
-      // stage=interrupted 日志（isolate 被硬杀时 finally 不执行、日志写不到），
-      // 改为从持久化状态推断（共享 lib/planAgent/resume 的 inferInterrupted，
-      // 与 resume 分支的 canResume 完全对齐）。agentBusy=false 时才判定；
-      // reason 供排查，前端可忽略
-      let interrupted: { at: string; turnIndex: number; reason: 'run_log' | 'missing_run_log' | 'dangling' } | null =
-        null
-      if (!agentBusy) {
-        const runLogs = await deps.repo.listRunLogs(planId)
-        const inferred = inferInterrupted(messages, runLogs)
-        if (inferred) {
-          interrupted = {
-            at: inferred.at.toISOString(),
-            turnIndex: inferred.turnIndex,
-            reason: inferred.reason,
-          }
-        }
-      }
       return NextResponse.json({
         plan: toPlanView(auth.plan),
         chat,
-        agentBusy,
+        agentBusy: runState?.agentBusy ?? false,
         chatRevision,
-        interrupted,
-        ...(live ? { live } : {}),
+        interrupted: runState?.interrupted ?? null,
+        ...(runState?.live ? { live: runState.live } : {}),
       })
     },
 

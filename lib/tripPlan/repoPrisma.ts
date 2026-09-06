@@ -15,10 +15,11 @@ import type {
   TripPlanRunLiveRecord,
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
+  TripPlanRunSnapshotMeta,
   TripPlanStatus,
   TripPlanWithDays,
 } from './repo'
-import { clampRunLiveReasoning, RUN_STOP_MARKER } from './repo'
+import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
 
 const POINT_SELECT = {
   select: {
@@ -445,6 +446,58 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
 
   async clearRunLive(planId: string): Promise<void> {
     await prisma.tripPlanRunLive.deleteMany({ where: { planId } })
+  }
+
+  /**
+   * §0.6.1 轻量快照：一次 findUnique 携带全部所需字段（含 _count 与倒序
+   * take 1 的消息时间戳），绝不取全量消息。agentBusy 判定与 isAgentBusy
+   * 同一规则（agentBusyUntil > now）。planRevision 走 composePlanRevision
+   * （不含 updatedAt——renewAgentRun 续租会顺带刷它，见 §0.6.1）。
+   */
+  async getRunSnapshotMeta(planId: string): Promise<TripPlanRunSnapshotMeta | null> {
+    const row = await prisma.tripPlan.findUnique({
+      where: { id: planId },
+      select: {
+        title: true,
+        status: true,
+        startDate: true,
+        dayCount: true,
+        bangumiIds: true,
+        stage: true,
+        agentBusyUntil: true,
+        agentRunToken: true,
+        runLive: { select: { runToken: true, reasoning: true, statusText: true, toolCalls: true, updatedAt: true } },
+        _count: { select: { messages: true, days: true } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+      },
+    })
+    if (!row) return null
+    const agentBusy = row.agentBusyUntil !== null && row.agentBusyUntil.getTime() > Date.now()
+    const live =
+      agentBusy && row.runLive !== null && row.runLive.runToken === row.agentRunToken
+        ? {
+            runToken: row.runLive.runToken,
+            reasoning: row.runLive.reasoning,
+            statusText: row.runLive.statusText,
+            toolCalls: row.runLive.toolCalls,
+            updatedAt: row.runLive.updatedAt,
+          }
+        : null
+    return {
+      agentBusy,
+      planRevision: composePlanRevision({
+        title: row.title,
+        status: row.status,
+        startDate: row.startDate,
+        dayCount: row.dayCount,
+        bangumiIds: row.bangumiIds,
+        stage: row.stage,
+        dayTotal: row._count.days,
+      }),
+      messageCount: row._count.messages,
+      lastMessageAt: row.messages[0]?.createdAt ?? null,
+      live,
+    }
   }
 
   /**

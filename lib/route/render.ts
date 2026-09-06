@@ -152,28 +152,77 @@ function renderRouteMapCard(spots: SeichiRouteSpotV1[], locale: SupportedLocale 
   )
 }
 
+/**
+ * 表格列描述（§0.7）：`order`/`location` 恒显示，其余列「所有 spot 都为空」时
+ * 整列不渲染（窄屏卡片里不留空行，桌面也不留空白列）。`cell` 返回已转义的 HTML。
+ */
+type RouteTableColumn = {
+  key: 'order' | 'location' | 'nearestStation' | 'photoTip' | 'timestamp' | 'navigation'
+  label: string
+  cell: (spot: SeichiRouteSpotV1, order: number) => string
+  /** 恒显示的列不传；其余列由 spots 是否有内容决定 */
+  visible?: (spots: SeichiRouteSpotV1[]) => boolean
+}
+
+function anyNonEmpty(spots: SeichiRouteSpotV1[], read: (spot: SeichiRouteSpotV1) => unknown): boolean {
+  return spots.some((spot) => String(read(spot) || '').trim().length > 0)
+}
+
+function routeTableColumns(locale: SupportedLocale): RouteTableColumn[] {
+  return [
+    { key: 'order', label: t('route.table.order', locale), cell: (_spot, order) => String(order) },
+    { key: 'location', label: t('route.table.location', locale), cell: (spot, order) => escapeHtml(spotLabel(spot, order)) },
+    {
+      key: 'nearestStation',
+      label: t('route.table.nearestStation', locale),
+      cell: (spot) => escapeHtml(String(spot.nearestStation_zh || '').trim()),
+      visible: (spots) => anyNonEmpty(spots, (spot) => spot.nearestStation_zh),
+    },
+    {
+      key: 'photoTip',
+      label: t('route.table.photoTip', locale),
+      cell: (spot) => escapeHtml(String(spot.photoTip || '').trim()),
+      visible: (spots) => anyNonEmpty(spots, (spot) => spot.photoTip),
+    },
+    {
+      key: 'timestamp',
+      label: t('route.table.timestamp', locale),
+      cell: (spot) => escapeHtml(String(spot.animeScene || '').trim()),
+      visible: (spots) => anyNonEmpty(spots, (spot) => spot.animeScene),
+    },
+    {
+      key: 'navigation',
+      label: t('route.table.navigation', locale),
+      cell: (spot) => {
+        const url = sanitizeHttpUrl(spot.googleMapsUrl)
+        return url
+          ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t('route.table.open', locale))}</a>`
+          : ''
+      },
+      visible: (spots) => spots.some((spot) => sanitizeHttpUrl(spot.googleMapsUrl) != null),
+    },
+  ]
+}
+
 function renderRouteTable(spots: SeichiRouteSpotV1[], locale: SupportedLocale = 'zh'): string {
+  const columns = routeTableColumns(locale).filter((column) => (column.visible ? column.visible(spots) : true))
+
   const header =
     '<thead><tr>' +
-    `<th>${escapeHtml(t('route.table.order', locale))}</th>` +
-    `<th>${escapeHtml(t('route.table.location', locale))}</th>` +
-    `<th>${escapeHtml(t('route.table.nearestStation', locale))}</th>` +
-    `<th>${escapeHtml(t('route.table.photoTip', locale))}</th>` +
-    `<th>${escapeHtml(t('route.table.timestamp', locale))}</th>` +
-    `<th>${escapeHtml(t('route.table.navigation', locale))}</th>` +
+    columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('') +
     '</tr></thead>'
 
   const rows = spots
     .map((spot, idx) => {
       const order = idx + 1
-      const name = escapeHtml(spotLabel(spot, order))
-      const station = escapeHtml(String(spot.nearestStation_zh || ''))
-      const photoTip = escapeHtml(String(spot.photoTip || ''))
-      const scene = escapeHtml(String(spot.animeScene || ''))
-      const url = sanitizeHttpUrl(spot.googleMapsUrl)
-      const link = url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t('route.table.open', locale))}</a>` : ''
-
-      return `<tr><td>${order}</td><td>${name}</td><td>${station}</td><td>${photoTip}</td><td>${scene}</td><td>${link}</td></tr>`
+      // data-col 供样式挂钩，data-label 供窄屏卡片的 ::before 显示列名
+      const cells = columns
+        .map(
+          (column) =>
+            `<td data-col="${column.key}" data-label="${escapeAttr(column.label)}">${column.cell(spot, order)}</td>`,
+        )
+        .join('')
+      return `<tr>${cells}</tr>`
     })
     .join('')
 

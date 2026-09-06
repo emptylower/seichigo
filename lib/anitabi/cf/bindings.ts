@@ -42,6 +42,12 @@ export type CfBindingsEnv = {
   IMAGES?: ImagesBinding
   NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
   NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
+  /**
+   * 2026-09-06 §0.3：规划 run 队列（Cloudflare Queues 生产者绑定的结构子集）。
+   * 存在时 POST /api/me/plans/:id/agent 投递队列并返回 202；无绑定（next dev、
+   * vitest）走现有 SSE 内联路径。
+   */
+  PLAN_AGENT_QUEUE?: { send(body: unknown): Promise<void> }
 }
 
 export type CfBindingsCtx = {

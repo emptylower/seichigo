@@ -20,6 +20,8 @@ export type PlanRunSync = {
   bumpChatEpoch: () => void
   /** 新 run 的流已开始：旧的中断标记随之失效 */
   clearInterrupted: () => void
+  /** 观察流 done 带回的中断标记：与轮询同源写入，供自动续跑读取 */
+  noteInterrupted: (info: InterruptedInfo) => void
   /** 上一次 run 的中断标记（自动续跑入口读它） */
   readInterrupted: () => InterruptedInfo | null
   /** 恢复轮询是否仍在跑（在跑时由轮询循环负责收尾 busy/banner/thinking） */
@@ -41,6 +43,11 @@ export function usePlanRunSync(input: {
   setActiveThinking: Dispatch<SetStateAction<ThinkingTurn | null>>
   /** 轮询/挂载核对到 idle 后：上一次 run 被打断则自动续跑 */
   onIdle: () => Promise<void>
+  /**
+   * 挂载核对发现服务端仍在跑时的接管者（§0.6.3：改为打开只读观察流，
+   * 轮询只作兜底）。未提供时退回原有的 3 秒恢复轮询。
+   */
+  onRunInProgress?: () => void
 }): PlanRunSync {
   const ref = useRef(input)
   ref.current = input
@@ -159,7 +166,15 @@ export function usePlanRunSync(input: {
       const state = await pollAgentRunOnce()
       if (cancelled) return
       if (state === 'busy') {
-        enterRunRecovery('in-progress')
+        // 刷新/另一标签页里 run 仍在跑：优先交给观察流，横幅仍显示「进行中」
+        const takeOver = ref.current.onRunInProgress
+        if (takeOver) {
+          ref.current.setSyncBanner('in-progress')
+          ref.current.setBusy(true)
+          takeOver()
+        } else {
+          enterRunRecovery('in-progress')
+        }
         return
       }
       if (state === 'idle') await ref.current.onIdle()
@@ -188,6 +203,9 @@ export function usePlanRunSync(input: {
     clearInterrupted: () => {
       lastInterruptedRef.current = null
       ref.current.setInterrupted(null)
+    },
+    noteInterrupted: (info: InterruptedInfo) => {
+      lastInterruptedRef.current = info
     },
     readInterrupted: () => lastInterruptedRef.current,
     isPolling: () => pollingActiveRef.current,
