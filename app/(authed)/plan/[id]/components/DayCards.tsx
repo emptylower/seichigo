@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { List, Loader2, Map as MapIcon, MessageSquarePlus, Navigation } from 'lucide-react'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { TierHint } from '@/components/billing/TierHint'
+import { DaysLimitHint } from '@/components/billing/DaysLimitHint'
+import type { TierHints } from '@/hooks/useUsage'
 import { MarkdownBubble } from './MarkdownBubble'
 import { TransitConnector } from './TransitConnector'
 import { ItemThumbnail } from './ItemThumbnail'
@@ -122,6 +125,8 @@ function TimelineCardRow(props: {
   staticMode?: boolean
   /** 静态展示时当前天的前几张图 eager 加载（首帧直接出图），其余保持 lazy */
   eagerImage?: boolean
+  /** 免费档：没有具体餐厅的用餐条目下给一条升级提示（设计 §4） */
+  showRestaurantUpgradeHint?: boolean
   locale?: SupportedLocale
 }) {
   const {
@@ -138,6 +143,7 @@ function TimelineCardRow(props: {
     onComposeDraft,
     staticMode = false,
     eagerImage = false,
+    showRestaurantUpgradeHint = false,
     locale = 'zh',
   } = props
   const tx = planTextFor(locale)
@@ -158,6 +164,8 @@ function TimelineCardRow(props: {
   const image = media?.displayUrl ?? item.point?.image ?? pointPhotoSrc
   const description = item.reason ?? item.note ?? null
   const isExternal = isVisit && !item.pointId && getPlace(item) !== null
+  // 免费档不推荐具体餐厅：用餐条目没落到具体地点时给占位提示
+  const showMealHint = showRestaurantUpgradeHint && item.type === 'meal' && !item.pointId && getPlace(item) === null
   // 行尾操作：有坐标（进了地图）的条目给「导航」外链；计序点位给「交给规划师调整」
   const navLatLng = pointKey ? itemLatLng(item) : null
   const showRowActions = Boolean(navLatLng) || (seq !== null && Boolean(onComposeDraft))
@@ -228,6 +236,11 @@ function TimelineCardRow(props: {
           // AI 生成的推荐理由/备注，过 markdown 管线避免字面 ** 泄漏
           <div className="mt-1 line-clamp-2 text-xs text-gray-500">
             <MarkdownBubble text={description} />
+          </div>
+        ) : null}
+        {showMealHint ? (
+          <div className="mt-1.5">
+            <TierHint kind="restaurant" />
           </div>
         ) : null}
       </div>
@@ -304,6 +317,8 @@ export function DayCards(props: {
   static?: boolean
   /** 静态展示时 Day 标签每 5 秒自动轮播，用户交互后停止 */
   autoRotate?: boolean
+  /** 档位差异提示开关（设计 §4）：由 PlanPlanner 的单个 useUsage 向下传，缺省不提示 */
+  tierHints?: TierHints | null
   locale?: SupportedLocale
 }) {
   const {
@@ -314,6 +329,7 @@ export function DayCards(props: {
     snapshotSavedAt = null,
     static: staticMode = false,
     autoRotate = false,
+    tierHints = null,
     locale = 'zh',
   } = props
   const tx = planTextFor(locale)
@@ -478,6 +494,7 @@ export function DayCards(props: {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <DaysLimitHint dayCount={days.length} maxDays={tierHints?.maxDays} />
           {staticMode ? null : scope === 'snapshot' ? (
             <span className="text-xs text-gray-400">{tx('day.snapshotReadonly')}</span>
           ) : (
@@ -610,7 +627,14 @@ export function DayCards(props: {
                   }
                 }
                 return (
-                  <TransitConnector key={itemKey} item={item} origin={origin} destination={destination} locale={locale} />
+                  <TransitConnector
+                    key={itemKey}
+                    item={item}
+                    origin={origin}
+                    destination={destination}
+                    showEstimateUpgradeHint={tierHints?.transitEstimateOnly ?? false}
+                    locale={locale}
+                  />
                 )
               }
               const isVisit = isNumberedVisitItem(item)
@@ -633,6 +657,7 @@ export function DayCards(props: {
                   onComposeDraft={onComposeDraft}
                   staticMode={staticMode}
                   eagerImage={idx < EAGER_IMAGE_COUNT}
+                  showRestaurantUpgradeHint={tierHints?.restaurantsLocked ?? false}
                   locale={locale}
                 />
               )
@@ -648,6 +673,7 @@ export function DayCards(props: {
             activePointId={activePointId}
             onPointSelect={handlePointSelect}
             onRequestShowItem={handleRequestShowItem}
+            tierHints={tierHints}
             locale={locale}
           />
         </div>
@@ -676,6 +702,7 @@ export function DaymapCard(props: {
   /** 静态展示（首页第二屏）：不发请求、不显示快照抬头与保存/调整入口 */
   static?: boolean
   autoRotate?: boolean
+  tierHints?: TierHints | null
   locale?: SupportedLocale
 }) {
   const { daymap, static: staticMode = false, autoRotate = false, locale = 'zh' } = props
@@ -697,6 +724,7 @@ export function DaymapCard(props: {
         onComposeDraft={props.onComposeDraft}
         static={staticMode}
         autoRotate={autoRotate}
+        tierHints={props.tierHints ?? null}
         locale={locale}
       />
     </div>

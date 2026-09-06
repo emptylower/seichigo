@@ -7,6 +7,7 @@ import type { DayRoutePoint, RouteLineString } from './dayRouteGeometry'
 import type { PreviewPopupControls } from '@/components/route/routePreviewPopup'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { planTextFor } from '../lib/planText'
+import { TierHint } from '@/components/billing/TierHint'
 
 /**
  * 单日路线全屏展开态：inline 态是协作手势（防滚动劫持），完整交互（缩放/平移）
@@ -26,6 +27,8 @@ export function DayMapExpanded(props: {
   /** 点位卡「关闭」用的地图侧入口（H3/L1） */
   popupControlsRef?: MutableRefObject<PreviewPopupControls | null>
   onClose: () => void
+  /** 免费档只有估算路线时，标题旁给一个升级入口（与 inline 态同一开关） */
+  showMapUpgradeHint?: boolean
   locale?: SupportedLocale
 }) {
   const { dayIndex, points, routeGeometry, activePointId = null, onPointSelect, renderPopup, onClose } = props
@@ -58,7 +61,10 @@ export function DayMapExpanded(props: {
   return (
     <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex flex-col bg-white">
       <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-sm font-semibold text-gray-900">{title}</h2>
+          {props.showMapUpgradeHint ? <TierHint kind="map" /> : null}
+        </div>
         <button
           type="button"
           ref={closeButtonRef}

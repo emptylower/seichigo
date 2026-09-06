@@ -22,6 +22,8 @@ import { createChatCompletion, describePlanAgentModel, withModelUsageInRunLog, t
 import { isUserStoppedAbort } from '@/lib/planAgent/stop'
 import { createLlmClient } from '@/lib/llm/client'
 import { LlmHttpError } from '@/lib/llm/http'
+import { llmUsageOf } from '@/lib/llm/usage'
+import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import type { TripPlanRepo, TripPlanRunLogEntry } from '@/lib/tripPlan/repo'
 
 type Delta = Record<string, unknown>
@@ -496,5 +498,116 @@ describe('provider-path retry alignment (LlmHttpError 429/408/5xx)', () => {
     expect(err).toBeInstanceOf(LlmHttpError)
     expect((err as LlmHttpError).status).toBe(400)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('A4：env 路径 usage 附着与 withModelUsageInRunLog 合并', () => {
+  it('env path attaches usage from the final stream chunk', async () => {
+    fakeCreate.mockResolvedValue(
+      fakeStream([
+        chunk({ content: 'ok' }, 'stop'),
+        {
+          id: 'chatcmpl-test',
+          object: 'chat.completion.chunk',
+          created: 0,
+          model: 'test',
+          choices: [],
+          usage: { prompt_tokens: 10, completion_tokens: 5, prompt_cache_hit_tokens: 4, prompt_cache_miss_tokens: 6 },
+        },
+      ]),
+    )
+    const message = await createChatCompletion({ messages: [{ role: 'user', content: 'hi' }], tools: [] })
+    expect(llmUsageOf(message)).toEqual({ inputMiss: 6, inputCacheHit: 4, output: 5, reasoning: 0 })
+  })
+
+  it('withModelUsageInRunLog merges provider info into an existing modelUsage object', async () => {
+    // 先制造一次供应商接管的调用，让 lastReturnedMessage 带 provider
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(openaiSseResponse([openaiSseChunk({ content: 'ok' }, 'stop')]))
+    resolveLlmForScope.mockResolvedValue({
+      client: createLlmClient({
+        protocol: 'openai',
+        endpointUrl: 'https://relay.example.com/v1/chat/completions',
+        apiKey: 'sk-relay',
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+      model: 'gpt-mini',
+      maxOutputTokens: 8,
+      providerId: 'llm-1',
+      providerName: '中转',
+      protocol: 'openai',
+    })
+    await createChatCompletion({ messages: [], tools: [] })
+
+    const repo = new MemoryTripPlanRepo()
+    const wrapped = withModelUsageInRunLog(repo)
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const record = await wrapped.appendRunLog({
+      planId: plan.id,
+      turnIndex: 1,
+      stage: 'deliver',
+      modelUsage: { tokens: { inputMiss: 1, inputCacheHit: 0, output: 1, reasoning: 0 } },
+      durationMs: 1,
+    })
+    // 供应商字段与 loop 写入的 tokens 必须合并在同一个 modelUsage 对象里
+    expect(record.modelUsage).toMatchObject({
+      tokens: { inputMiss: 1 },
+      providerId: 'llm-1',
+      model: 'gpt-mini',
+    })
+  })
+})
+
+describe('F1/F8：env 路径 stream_options 降级与 usage-only 空流', () => {
+  it('F8：只含 usage 帧（choices 为空数组）的流触发传输层重试', async () => {
+    fakeCreate
+      .mockResolvedValueOnce(
+        fakeStream([
+          {
+            id: 'chatcmpl-test',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'test',
+            choices: [],
+            usage: { prompt_tokens: 10, completion_tokens: 5 },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+
+    expect(message.content).toBe('ok')
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+  })
+
+  it('F1：env 端点 400 提到 stream_options → 去掉该字段立即重发一次并记忆', async () => {
+    const err400 = Object.assign(new Error('400 Unknown parameter: stream_options.'), { status: 400 })
+    fakeCreate
+      .mockRejectedValueOnce(err400)
+      .mockResolvedValueOnce(fakeStream([chunk({ content: 'ok' }, 'stop')]))
+
+    const message = await createChatCompletion({ messages: [], tools: [] })
+
+    expect(fakeCreate).toHaveBeenCalledTimes(2)
+    expect(message.content).toBe('ok')
+    expect((fakeCreate.mock.calls[0]![0] as Record<string, unknown>).stream_options).toEqual({
+      include_usage: true,
+    })
+    expect((fakeCreate.mock.calls[1]![0] as Record<string, unknown>).stream_options).toBeUndefined()
+
+    // 记忆生效：后续请求只调一次且直接不带 stream_options
+    fakeCreate.mockReset()
+    fakeCreate.mockResolvedValue(fakeStream([chunk({ content: '再来' }, 'stop')]))
+    await createChatCompletion({ messages: [], tools: [] })
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
+    expect((fakeCreate.mock.calls[0]![0] as Record<string, unknown>).stream_options).toBeUndefined()
+  })
+
+  it('F1：与 stream_options 无关的 400 立即抛出，不重试', async () => {
+    fakeCreate.mockRejectedValueOnce(new Error('400 max_tokens is too large'))
+    await expect(createChatCompletion({ messages: [], tools: [] })).rejects.toThrow('max_tokens is too large')
+    expect(fakeCreate).toHaveBeenCalledTimes(1)
   })
 })

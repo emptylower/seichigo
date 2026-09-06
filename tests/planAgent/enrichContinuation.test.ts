@@ -5,6 +5,9 @@ import { planNeedsContinuation, runEnrichContinuation } from '@/lib/planAgent/en
 import type { PointFinder } from '@/lib/planAgent/points'
 import type { NearbyRestaurant, NearbySearchResult } from '@/lib/googlePlaces/nearby'
 import { emptyEnrichReport } from '@/lib/planAgent/enrich/types'
+import type { TravelResult } from '@/lib/directions/googleClient'
+import { GOOGLE_PRICES_MICROS } from '@/lib/billing/priceTable'
+import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
 
 /**
  * R4 补齐续跑：run 结束后若仍有预算耗尽类 skipped 或 restaurantPending 条目，
@@ -278,6 +281,45 @@ describe('runEnrichContinuation（内存 repo + 内存装配）', () => {
     expect(logs[2]!.turnIndex).toBe(6)
   })
 
+  it('F3：续跑补齐的 Google 调用计入 enrich 日志（directions 计数与成本）', async () => {
+    const { repo, planId } = await setup()
+    // p1/p2 两个有坐标的相邻点位 → transport enricher 发起一次真实 Directions 外呼
+    const travel = vi.fn(async (): Promise<TravelResult> => ({
+      ok: true,
+      mode: 'walking',
+      legs: [],
+      durationSeconds: 600,
+      distanceMeters: 800,
+      transfers: 0,
+      walkSeconds: 600,
+      transitSeconds: 0,
+      polyline: [],
+    }))
+
+    await runEnrichContinuation({
+      planId,
+      runToken: 'run-token-f3',
+      repo,
+      points: finder,
+      deps: { travel },
+      sleep: immediateSleep,
+    })
+
+    expect(travel).toHaveBeenCalledTimes(1)
+    const logs = await repo.listRunLogs(planId)
+    // 两餐无 findRestaurants 可用 → 第二轮 pass 继续跑（共 2 条日志）；
+    // directions 只发生在第一轮（第二轮交通已合格，不再外呼）
+    expect(logs).toHaveLength(2)
+    const usage = logs[0]!.modelUsage as
+      | { calls?: { directions: number }; costMicros?: { google: number; model: number } }
+      | null
+    expect(usage?.calls?.directions).toBe(1)
+    expect(usage?.costMicros?.google).toBe(GOOGLE_PRICES_MICROS.directions)
+    expect(usage?.costMicros?.model).toBe(0)
+    const secondUsage = logs[1]!.modelUsage as { calls?: { directions: number } } | null
+    expect(secondUsage?.calls?.directions).toBe(0)
+  })
+
   it('续跑异常只 warn 不抛（repo 抛错也不冒泡）', async () => {
     const { repo, planId } = await setup()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -307,5 +349,61 @@ describe('runEnrichContinuation（内存 repo + 内存装配）', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('G8：免费档 entitlements 下续跑不发餐厅与交通外呼，零外呼不触发 onExtraCost', async () => {
+    const { repo, planId } = await setup()
+    const findRestaurants = vi.fn(async () => ({ ok: true as const, restaurants: [restaurant(0)] }))
+    const travel = vi.fn(async (): Promise<TravelResult> => ({
+      ok: true,
+      mode: 'walking',
+      legs: [],
+      durationSeconds: 600,
+      distanceMeters: 800,
+      transfers: 0,
+      walkSeconds: 600,
+      transitSeconds: 0,
+      polyline: [],
+    }))
+    const onExtraCost = vi.fn(async () => {})
+
+    await runEnrichContinuation({
+      planId,
+      runToken: 'run-token-g8a',
+      repo,
+      points: finder,
+      deps: { findRestaurants, travel },
+      entitlements: TIER_ENTITLEMENTS.free,
+      onExtraCost,
+      sleep: immediateSleep,
+    })
+
+    expect(findRestaurants).not.toHaveBeenCalled()
+    expect(travel).not.toHaveBeenCalled()
+    expect(onExtraCost).not.toHaveBeenCalled()
+  })
+
+  it('G8：续跑的真实 Google 外呼经 onExtraCost 按价格表计费', async () => {
+    const { repo, planId } = await setup()
+    const findRestaurants = vi.fn(async (input: { onGoogleCall?: () => void }) => {
+      input.onGoogleCall?.() // 真实实现外呼时经此计量
+      return { ok: true as const, restaurants: [restaurant(0), restaurant(1)] }
+    })
+    const onExtraCost = vi.fn(async () => {})
+
+    await runEnrichContinuation({
+      planId,
+      runToken: 'run-token-g8b',
+      repo,
+      points: finder,
+      deps: { findRestaurants },
+      onExtraCost,
+      sleep: immediateSleep,
+    })
+
+    // 两餐两个搜索中心 → 2 次 placesNearby
+    expect(findRestaurants).toHaveBeenCalledTimes(2)
+    expect(onExtraCost).toHaveBeenCalledTimes(1)
+    expect(onExtraCost).toHaveBeenCalledWith(2 * GOOGLE_PRICES_MICROS.placesNearby)
   })
 })

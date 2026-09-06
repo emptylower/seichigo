@@ -25,6 +25,8 @@ import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
+import { createRunCostTracker, type RunCostDeps } from './runCost'
+import { forbiddenToolsOf, tierPromptNote, type Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -136,7 +138,9 @@ export type PlanAgentDeps = {
    * 接着跑。SSE 路径不传。
    */
   deadlineAt?: number
-}
+  /** 档位能力表（设计 §5）：过滤工具、附注提示词、初始化补齐预算上限；缺省全开 */
+  entitlements?: Entitlements
+} & RunCostDeps
 
 /**
  * 把 repo 的写方法（appendMessage/replaceDays/updateMeta）替换成 token 校验
@@ -279,7 +283,7 @@ export async function runPlanAgent(
   const messages: ChatMessageParam[] = [
     {
       role: 'system',
-      content: PLAN_AGENT_SYSTEM_PROMPT,
+      content: [PLAN_AGENT_SYSTEM_PROMPT, deps.entitlements ? tierPromptNote(deps.entitlements) : null].filter(Boolean).join('\n\n'),
     },
     ...sanitizeChatHistory(
       stageHistory
@@ -343,16 +347,31 @@ export async function runPlanAgent(
   const eventCoalescer = createEventCoalescer(forwardEvent)
   const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
 
+  const enrichBudget = deps.toolDeps.enrichBudget ?? createEnrichBudget()
+  if (deps.entitlements) {
+    enrichBudget.places.max = deps.entitlements.placesMax
+    enrichBudget.directions.max = deps.entitlements.directionsMax
+  }
+  const runCost = createRunCostTracker({ enrichBudget, runCapMicros: deps.runCapMicros, maxIterations, withTitle: Boolean(userMessage) })
+  const forbiddenTools = deps.entitlements ? forbiddenToolsOf(deps.entitlements) : new Set<string>()
+  // ChatCompletionTool 是联合类型（function 工具 + 自定义工具），只有带
+  // function 的成员才有可禁用的名字；自定义工具原样保留
+  const modelTools = PLAN_AGENT_TOOLS.filter((t) => !('function' in t) || !forbiddenTools.has(t.function.name))
+
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
     // §0.6：补齐层（餐食标签等用户可见文案）按站点语言
     locale,
+    // 档位卡点（设计 §5）：禁用工具集合、天数上限与补齐层能力表
+    forbiddenTools,
+    maxDays: deps.entitlements?.maxDays,
+    entitlements: deps.entitlements,
     // 第九轮 L1：租约续租透传给工具——save_plan_days 在长补齐前后各续一次
     renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
     // directions/places 配额，避免每次 save 重置预算重烧 Google 调用
-    enrichBudget: deps.toolDeps.enrichBudget ?? createEnrichBudget(),
+    enrichBudget,
     onPlanUpdated: () => {
       deps.toolDeps.onPlanUpdated?.()
       emit({ type: 'plan_updated' })
@@ -417,7 +436,7 @@ export async function runPlanAgent(
     // 的协议错误（正文依旧扣下），绝不留下无法回答的悬空提问。
     let questionGuardRetried = false
     let emptyTurnRetried = false
-    outer: for (let iteration = 0; iteration < maxIterations; iteration++) {
+    outer: for (let iteration = 0; iteration < runCost.iterationLimit; iteration++) {
       if (deps.signal?.aborted) {
         interrupted = isClientDisconnected(deps.signal)
         break
@@ -448,7 +467,7 @@ export async function runPlanAgent(
       try {
       // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
       response = await deps.createMessage(
-        { messages: sanitizeHistoryForModel(messages), tools: PLAN_AGENT_TOOLS, signal: modelAbort.signal },
+        { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
           (delta) => {
             if (delta.reasoning) {
               reasoningSeen = true
@@ -456,9 +475,14 @@ export async function runPlanAgent(
             }
           },
         )
+      } catch (err) {
+        runCost.recordModelCall(null)
+        throw err
       } finally {
         watcher?.stop()
       }
+
+      runCost.recordModelCall(response)
 
       // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
       // 是否收到过任何思考增量；不落库，前端据此提示"不公开思考过程"）
@@ -600,6 +624,10 @@ export async function runPlanAgent(
         messages.push(toolParam)
         await runRepo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
       }
+
+      // 单次上限（§6.2/G7）：在本轮全部工具回执之后检查（合同见 runCost.ts）
+      const cap = runCost.checkCap(iteration)
+      if (cap.systemNote !== undefined) messages.push({ role: 'user', content: cap.systemNote })
     }
   } catch (err) {
     if (err instanceof RunFencedError || isUserStoppedAbort(err)) {
@@ -636,16 +664,18 @@ export async function runPlanAgent(
       await Promise.race([finishing, sleep(RUN_LIVE_FINISH_TIMEOUT_MS)])
       finishing.catch((err) => console.warn('[planAgent/runLive] 后台收尾失败（不影响对话）', err))
     }
+    // 计费结算（§6.2）：settle 回调 onRunCost，返回的 summary 供下方 appendRunLog 复用
+    const runCostSummary = await runCost.settle(deps.onRunCost)
     // M4 运行日志：run 结束（正常/报错）都写一条；被栅栏接管的 run 不写。
     // 写日志本身绝不能把 run 拖垮，失败只 warn。enrich/gate 取本 run 最后
     // 一次 save 的评估结果（onSaveEvaluated 捕获），没有 save 过则为 null。
     // 第八轮 A1：客户端断开的 run 写 stage=interrupted（其余字段照常），
     // GET 据此向前端暴露「上次被打断、可自动续跑」
     if (!fenced) {
-      // H2：stopAgentRun 已为本次停止写过持久 stopped 日志时不重复写
-      //（以 runToken 去重），否则该回合会留下两条 stopped 污染 turn 统计
-      const skipRunLog = stopped && (await stoppedLogExists())
-      if (!skipRunLog) {
+      const stoppedLogWritten = stopped && (await stoppedLogExists())
+      if (stoppedLogWritten) {
+        await runCost.writeStoppedLogUsage(deps.repo, deps.planId, deps.runToken ?? null)
+      } else {
         try {
           await deps.repo.appendRunLog({
             planId: deps.planId,
@@ -655,7 +685,7 @@ export async function runPlanAgent(
             enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
             gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
             toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
-            modelUsage: null,
+            modelUsage: runCostSummary as unknown as Prisma.JsonValue,
             durationMs: Date.now() - runStartedAt,
           })
         } catch (err) {
@@ -686,6 +716,9 @@ export async function runPlanAgent(
                   findRestaurants: deps.toolDeps.findRestaurants,
                   travel: deps.toolDeps.travel,
                 },
+                // G8：续跑补齐同样受档位约束，真实外呼成本经 onExtraCost 入账
+                ...(deps.entitlements ? { entitlements: deps.entitlements } : {}),
+                ...(deps.onExtraCost ? { onExtraCost: deps.onExtraCost } : {}),
               })
             // S1：route 不注入时缺省走 serverDeps 的 runInBackground——生产
             // （Cloudflare）用它挂 ctx.waitUntil，续跑的 61s sleep 才不会随
@@ -712,5 +745,6 @@ export async function runPlanAgent(
     events: emittedEvents,
     reasoningChars,
     toolCalls: toolCallSummaries.length,
+    modelCalls: runCost.modelCalls,
   })
 }

@@ -3,6 +3,7 @@ import type { PlanAgentToolDeps } from './tools'
 import { computeDepartureEpochSec, DAY_START_MIN } from './schedule'
 import { queryTravelBetween } from './travelQuery'
 import {
+  countGoogleCall,
   createEnrichBudget,
   modelDirectionsCap,
   modelPlacesCap,
@@ -275,9 +276,7 @@ export async function runEstimateTravelTool(deps: PlanAgentToolDeps, args: Recor
     {
       travel: deps.travel,
       // 真实外呼计数：与 transport enricher 同一份预算（N4）
-      onGoogleCall: () => {
-        budget.directions.used += 1
-      },
+      onGoogleCall: () => countGoogleCall(budget, 'directions'),
     },
     { from, to, mode, departureTimeSec },
   )

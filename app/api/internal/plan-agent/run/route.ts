@@ -1,6 +1,9 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
+import { getBillingService } from '@/lib/billing/serverDeps'
+import { runCapMicros } from '@/lib/billing/budget'
+import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
 import { AGENT_BUSY_TTL_MS, executePlanAgentRun } from '@/lib/planAgent/execute'
 import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
 
@@ -62,6 +65,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ skipped: 'stale_token' })
   }
 
+  // 计费：按计划归属用户的档位装配能力表（队列消息不带 userId）。
+  // G3：getAccount 失败必须 fail-closed 回落免费档，绝不能放开全部能力
+  const billingAccount = await getBillingService()
+    .getAccount(plan.userId)
+    .catch((err) => {
+      console.error('[api/internal/plan-agent/run] getAccount failed, falling back to free entitlements', err)
+      return null
+    })
+  const billing = billingAccount
+    ? { entitlements: billingAccount.entitlements, runCapMicros: billingAccount.runCapMicros }
+    : { entitlements: TIER_ENTITLEMENTS.free, runCapMicros: runCapMicros('free') }
+
   const encoder = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -87,6 +102,7 @@ export async function POST(req: Request) {
           onEvent: () => undefined,
           busyTtlMs: AGENT_BUSY_TTL_MS,
           deadlineAt: Date.now() + SOFT_DEADLINE_MS,
+          billing,
         })
       } catch (err) {
         console.error('[api/internal/plan-agent/run] executePlanAgentRun failed', err)

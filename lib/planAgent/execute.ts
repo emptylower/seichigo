@@ -1,5 +1,7 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
+import { getBillingService } from '@/lib/billing/serverDeps'
+import type { Entitlements } from '@/lib/billing/tiers'
 import { createChatCompletion, generatePlanTitle, withModelUsageInRunLog } from './api'
 import { searchBgmSubjects } from './bgm'
 import { runPlanAgent, type PlanAgentEvent } from './loop'
@@ -31,6 +33,8 @@ export type ExecutePlanAgentRunInput = {
   busyTtlMs: number
   /** 软截止时间（epoch ms，§0.5）：内部路由传入，到点后循环按 interrupted 收尾 */
   deadlineAt?: number
+  /** 计费（设计 §5/§6）：档位能力表与单次上限；缺省（内部测试）不限档位、不设上限 */
+  billing?: { entitlements: Entitlements; runCapMicros: number }
 }
 
 /**
@@ -78,6 +82,12 @@ export async function executePlanAgentRun(input: ExecutePlanAgentRunInput): Prom
           ...(resume ? { resumeNote: RESUME_NOTE } : {}),
           // §0.5 软截止（内部路由传入 start + 13 min；SSE 路径不传）
           ...(input.deadlineAt !== undefined ? { deadlineAt: input.deadlineAt } : {}),
+          ...(input.billing ? { entitlements: input.billing.entitlements, runCapMicros: input.billing.runCapMicros } : {}),
+          // 结算（设计 §6.2）：runRef 即 runToken；管理员/无预扣时 settleRun 是 no-op
+          onRunCost: (summary, hadModelOutput) =>
+            getBillingService().settleRun({ runRef: runToken, actualMicros: summary.costMicros.total, hadModelOutput }),
+          // G8：补齐续跑的额外 Google 成本挂同一 runRef 入账
+          onExtraCost: (micros) => getBillingService().chargeExtra({ runRef: runToken, micros }),
         },
         message,
         onEvent,

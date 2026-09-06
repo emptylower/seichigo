@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createLlmClient } from '@/lib/llm/client'
 import { convertMessages } from '@/lib/llm/anthropicClient'
+import { llmUsageOf } from '@/lib/llm/usage'
 
 function sseResponse(events: string[]): Response {
   const encoder = new TextEncoder()
@@ -157,6 +158,25 @@ describe('anthropic client', () => {
       { reasoning: '考' },
       { content: '答案' },
     ])
+  })
+
+  it('attaches usage from message_start and message_delta', async () => {
+    const events = [
+      { type: 'message_start', message: { usage: { input_tokens: 100, cache_creation_input_tokens: 50, cache_read_input_tokens: 800 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '好' } },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 70 } },
+      { type: 'message_stop' },
+    ].map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse(events))
+    const client = createLlmClient({
+      protocol: 'anthropic',
+      endpointUrl: 'https://api.anthropic.com/v1/messages',
+      apiKey: 'sk-ant',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const message = await client.streamChat({ model: 'claude-sonnet-5', messages: [{ role: 'user', content: 'hi' }], maxTokens: 64 })
+    expect(llmUsageOf(message)).toEqual({ inputMiss: 150, inputCacheHit: 800, output: 70, reasoning: 0 })
   })
 
   it('completeText posts a non-stream request and joins text blocks', async () => {

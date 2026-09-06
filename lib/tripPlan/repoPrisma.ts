@@ -389,6 +389,14 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     }))
   }
 
+  /** F2：把 run 成本写进 stopAgentRun 已落笔的 stopped 日志（幂等覆盖 modelUsage） */
+  async updateRunLogModelUsage(planId: string, runToken: string | null, modelUsage: Prisma.JsonValue): Promise<void> {
+    await prisma.tripPlanRunLog.updateMany({
+      where: { planId, runToken, stage: 'stopped' },
+      data: { modelUsage: modelUsage as Prisma.InputJsonValue },
+    })
+  }
+
   /**
    * 第七轮 A1 运行实况：先读旧行判断是否同 run（runToken 相同才允许追加/
    * 保留字段；不同 = 新 run 接管，整行按本次 patch 重置），再原子 upsert。

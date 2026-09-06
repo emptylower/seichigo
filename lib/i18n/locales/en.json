@@ -1,5 +1,6 @@
 {
   "header": {
+    "pricing": "Pricing",
     "posts": "Top Guides",
     "anime": "Anime",
     "map": "Map",
@@ -25,6 +26,7 @@
     "user": "User"
   },
   "footer": {
+    "pricing": "Pricing",
     "product": "Product",
     "support": "Support",
     "company": "About",
@@ -228,6 +230,7 @@
         "composerExample2": "5 days in Kyoto and Nara for Sound! Euphonium",
         "composerExample3": "A weekend in Kamakura for Slam Dunk",
         "entryPlanTitle": "AI trip planner",
+        "entryPricingLink": "See pricing",
         "entryPlanDesc": "Name the series and your dates, get a day-by-day route",
         "entryMapTitle": "Explore the map",
         "entryMapDesc": "Find every filming spot on a worldwide map",

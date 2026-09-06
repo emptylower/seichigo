@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createLlmClient } from '@/lib/llm/client'
 import { LlmHttpError } from '@/lib/llm/http'
+import { llmUsageOf } from '@/lib/llm/usage'
 
 function sseResponse(events: string[]): Response {
   const encoder = new TextEncoder()
@@ -218,6 +219,78 @@ describe('openai-compatible client', () => {
     )
   })
 
+  it('F8：只含 usage 帧（choices 为空数组）的流仍判空流', async () => {
+    const usageOnlyFrame =
+      'data: ' +
+      JSON.stringify({
+        id: 'chatcmpl-test',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }) +
+      '\n\n'
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([usageOnlyFrame, 'data: [DONE]\n\n']))
+    const client = createLlmClient({
+      protocol: 'openai',
+      endpointUrl: 'https://f8-usage-only.example.com/v1/chat/completions',
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    await expect(client.streamChat({ model: 'm', messages: [], maxTokens: 1 })).rejects.toThrow('模型未返回消息')
+  })
+
+  it('F1：端点 400 提到 stream_options → 去掉该字段立即重发一次，并记住该端点', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"error":{"message":"Unknown parameter: stream_options"}}', { status: 400 }),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([chunk({ role: 'assistant' }), chunk({ content: '好' }), chunk({}, 'stop'), 'data: [DONE]\n\n']),
+      )
+    const client = createLlmClient({
+      protocol: 'openai',
+      endpointUrl: 'https://legacy-f1.example.com/v1/chat/completions',
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    const message = await client.streamChat({ model: 'm', messages: [], maxTokens: 8 })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(message.content).toBe('好')
+    const firstBody = JSON.parse(String((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body))
+    const secondBody = JSON.parse(String((fetchImpl.mock.calls[1] as [string, RequestInit])[1].body))
+    expect(firstBody.stream_options).toEqual({ include_usage: true })
+    expect(secondBody.stream_options).toBeUndefined()
+
+    // 同端点再发：记忆生效，只调一次 fetch 且直接不带 stream_options
+    fetchImpl.mockReset()
+    fetchImpl.mockResolvedValue(sseResponse([chunk({ content: '再来' }), chunk({}, 'stop'), 'data: [DONE]\n\n']))
+    const again = await client.streamChat({ model: 'm', messages: [], maxTokens: 8 })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(again.content).toBe('再来')
+    expect(JSON.parse(String((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body)).stream_options).toBeUndefined()
+  })
+
+  it('F1：与 stream_options 无关的 400 原样抛出（单次请求，不做无差别重试）', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response('{"error":{"message":"max_tokens is too large"}}', { status: 400 }))
+    const client = createLlmClient({
+      protocol: 'openai',
+      endpointUrl: 'https://other400-f1.example.com/v1/chat/completions',
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    const err: unknown = await client.streamChat({ model: 'm', messages: [], maxTokens: 1 }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(LlmHttpError)
+    expect((err as LlmHttpError).status).toBe(400)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   it('reassembles a data: line split across multiple chunks mid-JSON', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       sseResponseChunks([
@@ -241,6 +314,40 @@ describe('openai-compatible client', () => {
 
     expect(message.content).toBe('跨片')
     expect(message.finish_reason).toBe('stop')
+  })
+
+  it('requests stream_options.include_usage and attaches the final usage chunk', async () => {
+    const usageChunk =
+      'data: ' +
+      JSON.stringify({
+        id: 'chatcmpl-test',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: {
+          prompt_tokens: 1200,
+          completion_tokens: 300,
+          prompt_cache_hit_tokens: 1000,
+          prompt_cache_miss_tokens: 200,
+          completion_tokens_details: { reasoning_tokens: 120 },
+        },
+      }) +
+      '\n\n'
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseResponse([chunk({ role: 'assistant' }), chunk({ content: '好' }), chunk({}, 'stop'), usageChunk, 'data: [DONE]\n\n']),
+    )
+    const client = createLlmClient({
+      protocol: 'openai',
+      endpointUrl: 'https://api.deepseek.com/chat/completions',
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const message = await client.streamChat({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'hi' }], maxTokens: 64 })
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body)).stream_options).toEqual({ include_usage: true })
+    expect(message.content).toBe('好')
+    expect(llmUsageOf(message)).toEqual({ inputMiss: 200, inputCacheHit: 1000, output: 300, reasoning: 120 })
+    expect(Object.keys(message)).not.toContain('llm_usage')
   })
 
   it('rejects 3xx redirects without following them and never sends a second request', async () => {

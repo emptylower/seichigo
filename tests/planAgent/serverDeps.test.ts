@@ -121,6 +121,28 @@ describe('buildPlanAgentServerDeps / getPlanAgentServerDeps（按计划隔离装
     expect(deps.resolveOptionCover).toBeDefined()
   })
 
+  it('F7：fetchPlacePhotos 的 onGoogleCall 透传到 photoMirror（真实外呼前恰好一次）', async () => {
+    const onGoogleCall = vi.fn()
+    const fetchImpl = vi.fn(async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          status: 'OK',
+          result: { photos: [{ photo_reference: 'Aref_f7_passthrough', html_attributions: [] }] },
+        }),
+      }) as unknown as Response,
+    )
+    const deps = buildPlanAgentServerDeps({ apiKey: 'k', rateKey: 'plan-f7', fetchImpl })
+
+    const photos = await deps.fetchPlacePhotos!({ placeId: 'ChIJ_f7', onGoogleCall })
+
+    expect(photos).toHaveLength(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // 计数与真实外呼绑定：恰好一次，且先于 fetch 发起
+    expect(onGoogleCall).toHaveBeenCalledTimes(1)
+    expect(onGoogleCall.mock.invocationCallOrder[0]).toBeLessThan(fetchImpl.mock.invocationCallOrder[0])
+  })
+
   it('地点库修订：注入 store 后库命中不打网络（内存 → 库 → Google 阶梯生效）', async () => {
     const store = createMemoryExternalPlaceStore()
     await store.upsert(

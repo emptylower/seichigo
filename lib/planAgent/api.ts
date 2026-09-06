@@ -4,6 +4,7 @@ import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 import { resolveLlmForScope, type ResolvedLlm } from '@/lib/llm/registry'
 import { LlmEmptyStreamError, LlmHttpError } from '@/lib/llm/client'
 import { createReasoningExtractor } from '@/lib/llm/reasoningExtract'
+import { attachLlmUsage, parseOpenAiUsage, type LlmUsage } from '@/lib/llm/usage'
 import { isUserStoppedAbort, userStoppedAbort } from './stop'
 import type { CreateMessageFn, PlanAgentChatMessage } from './loop'
 import { isTransientNetworkError } from './netErrors'
@@ -53,6 +54,19 @@ class EmptyStreamError extends Error {
   }
 }
 
+/**
+ * F1：env 端点 400 且错误信息提到 stream_options（大小写不敏感）——该字段
+ * 被端点拒绝，去掉重发；其它 400 原样抛出，不做无差别重试。
+ */
+let envStreamOptionsUnsupported = false
+
+function isStreamOptionsReject(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  if ((err as { status?: unknown }).status !== 400) return false
+  const message = (err as { message?: unknown }).message
+  return typeof message === 'string' && message.toLowerCase().includes('stream_options')
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -70,34 +84,56 @@ async function attemptStreamOnce(
   onDelta?: (delta: { reasoning?: string; content?: string }) => void,
   signal?: AbortSignal,
 ): Promise<PlanAgentChatMessage> {
-  const stream = await getClient().chat.completions.create(
-    {
-      model: MODEL,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      messages,
-      tools,
-      stream: true,
-    },
-    // A3 停止：loop 传入的 signal（租约看守触发停止时 abort）真正传到 SDK
-    signal ? { signal } : undefined,
-  )
+  // F1：env 端点被判定不支持 stream_options（400 且报文提到该字段）→ 后续
+  // 请求直接不带该字段（模块级记忆，与 openaiClient 的端点 Set 同思路）
+  const includeStreamOptions = !envStreamOptionsUnsupported
+  const openStream = (withStreamOptions: boolean) =>
+    getClient().chat.completions.create(
+      {
+        model: MODEL,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        messages,
+        tools,
+        stream: true,
+        ...(withStreamOptions ? { stream_options: { include_usage: true } } : {}),
+      },
+      // A3 停止：loop 传入的 signal（租约看守触发停止时 abort）真正传到 SDK
+      signal ? { signal } : undefined,
+    )
+
+  let stream: Awaited<ReturnType<typeof openStream>>
+  try {
+    stream = await openStream(includeStreamOptions)
+  } catch (err) {
+    if (includeStreamOptions && isStreamOptionsReject(err)) {
+      envStreamOptionsUnsupported = true
+      stream = await openStream(false)
+    } else {
+      throw err
+    }
+  }
 
   let content = ''
   let reasoning = ''
   let finishReason: string | null | undefined
+  let usage: LlmUsage | null = null
   const toolCalls = new Map<number, AccumulatedToolCall>()
   // A2：统一思考增量口径（reasoning_content / reasoning / reasoning_details /
   // content 内嵌 <think> 标签），与 lib/llm/openaiClient.ts 共用同一实现
   const extractor = createReasoningExtractor()
-  // 等价恢复非流式时代的 if (!message) throw 保护：连一个 chunk 都没产出
-  // （连接建立后立刻关闭、空响应体等）意味着上游从未真正给出响应，必须报错，
-  // 否则会伪装成一条合法的空 assistant 消息被当作正常回合落库。
+  // 等价恢复非流式时代的 if (!message) throw 保护：连一个带 choices[0] 的
+  // chunk 都没产出（连接建立后立刻关闭、空响应体等）意味着上游从未真正给出
+  // 响应，必须报错，否则会伪装成一条合法的空 assistant 消息被当作正常回合
+  // 落库。F8：判据收紧为"见过带 choices[0] 的 chunk"——只含 usage 的末帧
+  // （choices 为空数组）不构成模型产出，同样按空流触发传输层重试。
   let sawAnyChunk = false
 
   for await (const chunk of stream) {
-    sawAnyChunk = true
+    const parsedUsage = parseOpenAiUsage((chunk as { usage?: unknown }).usage)
+    if (parsedUsage) usage = parsedUsage
     const choice = chunk.choices[0]
     if (!choice) continue
+    sawAnyChunk = true
     const delta = choice.delta
     // 记录最后一个非空 finish_reason（流式协议里通常只有末帧携带；
     // length=被输出预算截断、stop=正常结束，循环层据此区分"主动结束"
@@ -155,6 +191,7 @@ async function attemptStreamOnce(
     ...(reasoning ? { reasoning_content: reasoning } : {}),
     ...(finishReason !== undefined ? { finish_reason: finishReason } : {}),
   }
+  if (usage) attachLlmUsage(message, usage)
   return message
 }
 
@@ -291,9 +328,18 @@ export function withModelUsageInRunLog<T extends TripPlanRepo>(repo: T): T {
       if (prop === 'appendRunLog') {
         return async (entry: Parameters<TripPlanRepo['appendRunLog']>[0]) => {
           const usage = providerUsageOfMessage(lastReturnedMessage)
-          return target.appendRunLog(
-            usage ? { ...entry, modelUsage: usage as unknown as Prisma.JsonValue } : entry,
-          )
+          if (!usage) return target.appendRunLog(entry)
+          // loop 写入的 tokens/calls/costMicros 与供应商信息合并；两边字段名
+          // 不重叠，nit：{ ...usage, ...base } 让 loop 字段优先，防未来撞名时
+          // 供应商信息覆盖计量数据
+          const base =
+            entry.modelUsage && typeof entry.modelUsage === 'object' && !Array.isArray(entry.modelUsage)
+              ? (entry.modelUsage as Record<string, unknown>)
+              : {}
+          return target.appendRunLog({
+            ...entry,
+            modelUsage: { ...usage, ...base } as unknown as Prisma.JsonValue,
+          })
         }
       }
       const value = Reflect.get(target, prop, receiver)

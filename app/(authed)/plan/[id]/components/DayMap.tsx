@@ -14,6 +14,8 @@ import {
   type RouteLineString,
 } from './dayRouteGeometry'
 import { DayMapExpanded } from './DayMapExpanded'
+import { TierHint } from '@/components/billing/TierHint'
+import type { TierHints } from '@/hooks/useUsage'
 import { useDayPointPopup } from '../hooks/useDayPointPopup'
 import { planTextFor } from '../lib/planText'
 import type { SupportedLocale } from '@/lib/i18n/types'
@@ -35,6 +37,8 @@ export function DayMap(props: {
   onRequestShowItem?: (id: string) => void
   /** 静态展示（首页展示计划）：没有权威折线时也不请求通用路网，直接画直线 */
   static?: boolean
+  /** 档位差异提示开关（设计 §4）：免费档只有估算路线时，示意徽标旁给一个升级入口 */
+  tierHints?: TierHints | null
   locale?: SupportedLocale
 }) {
   const { planId, day, activePointId = null, onPointSelect, onRequestShowItem, static: staticMode = false } = props
@@ -46,6 +50,10 @@ export function DayMap(props: {
   const [error, setError] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
   const [expanded, setExpanded] = useState(false)
+  // 免费档（transitEstimateOnly）+ 路线是直线补齐时，才在示意徽标旁给升级入口
+  const estimateOnly = props.tierHints?.transitEstimateOnly ?? false
+  const isEstimateRoute = sourceLabel === 'fallback' || sourceLabel === 'mixed'
+  const showMapUpgradeHint = estimateOnly && isEstimateRoute
 
   // 当天参与路线的点（id 与列表条目 key 同值，序号与列表徽标一致）
   const dayPoints = useMemo(() => dayRoutePoints(day), [day])
@@ -150,12 +158,16 @@ export function DayMap(props: {
         <Maximize2 className="h-3 w-3" />
         {tx('map.expand')}
       </button>
-      {sourceLabel === 'fallback' || sourceLabel === 'mixed' ? (
-        <div
-          className="pointer-events-none absolute left-3 top-9 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-400 shadow-sm"
-          title={tx(sourceLabel === 'mixed' ? 'map.mixedTitle' : 'map.fallbackTitle')}
-        >
-          {tx(sourceLabel === 'mixed' ? 'map.mixedBadge' : 'map.fallbackBadge')}
+      {/* M5 布局避让：示意标注固定在左上第二行，升级提示接在同一行右侧（右上缩放控件、右下「展开」都不受影响） */}
+      {isEstimateRoute ? (
+        <div className="absolute left-3 top-9 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
+          <div
+            className="pointer-events-none rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-400 shadow-sm"
+            title={tx(sourceLabel === 'mixed' ? 'map.mixedTitle' : 'map.fallbackTitle')}
+          >
+            {tx(sourceLabel === 'mixed' ? 'map.mixedBadge' : 'map.fallbackBadge')}
+          </div>
+          {showMapUpgradeHint ? <TierHint kind="map" /> : null}
         </div>
       ) : null}
       {loading ? (
@@ -186,6 +198,7 @@ export function DayMap(props: {
             onPopupClosed={expandedPopup.onPopupClosed}
             popupControlsRef={expandedPopup.popupControlsRef}
             onClose={() => setExpanded(false)}
+            showMapUpgradeHint={showMapUpgradeHint}
             locale={locale}
           />
           {expandedPopup.card}

@@ -21,6 +21,14 @@ model User {
   mustChangePassword   Boolean              @default(false)
   disabled             Boolean              @default(false)
   isAdmin              Boolean              @default(false)
+  /** 订阅档位：free | standard | pro（设计 2026-09-06 §8） */
+  tier                 String               @default("free")
+  /** 当前计费周期起点（订阅日锚点；免费档为注册日） */
+  periodStart          DateTime             @default(now())
+  /** 订阅日/注册日锚点，滚动周期时不变（月末钳制不会让它逐月漂移） */
+  periodAnchor         DateTime             @default(now())
+  /** 当前计费周期终点；null 表示尚未初始化，首次访问时由 billing service 计算 */
+  periodEnd            DateTime?
   bio                  String?              @db.Text
   bilibili             String?
   weibo                String?
@@ -49,6 +57,7 @@ model User {
   badges               UserBadge[]
   publicOverrides      PublicOverride[]
   tripPlans            TripPlan[]
+  usageLedger          UsageLedger[]
 }
 
 model Account {
@@ -1137,4 +1146,23 @@ model LlmProvider {
   updatedAt           DateTime @updatedAt
 
   @@unique([envKey])
+}
+
+/// 用量账本（设计 2026-09-06 §8）：grant / reserve / settle / refund 四种记账，
+/// 余量 = 当前周期内 deltaMicros 之和；balanceAfter 只作对账快照。
+model UsageLedger {
+  id           String   @id @default(cuid())
+  userId       String
+  planId       String?
+  /** 一次 run 的计费引用（route 生成的 uuid），reserve/settle/refund 用它配对 */
+  runRef       String?
+  kind         String
+  deltaMicros  BigInt
+  balanceAfter BigInt
+  periodStart  DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, periodStart])
+  @@index([runRef])
 }

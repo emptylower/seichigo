@@ -117,17 +117,17 @@ export function buildPlanAgentServerDeps(options: {
     ...(places ? { places } : {}),
     // 地点库单例直传：media enricher 用它给被模型裁剪的 place 回填 photo
     externalPlaces: placeStore,
-    // A4 图片去重：整组照片补拉（onGoogleCall 先于真实外呼回调，计量 places 预算）
+    // A4 图片去重：整组照片补拉。F7：onGoogleCall 透传给 photoMirror——计数
+    // 只发生在真实外呼前（包装层不再无条件触发，镜像/缓存命中不计 placeDetails）
     ...(options.apiKey
       ? {
-          fetchPlacePhotos: (input: { placeId: string; onGoogleCall?: () => void }) => {
-            input.onGoogleCall?.()
-            return mirrorFetchPlacePhotos({
+          fetchPlacePhotos: (input: { placeId: string; onGoogleCall?: () => void }) =>
+            mirrorFetchPlacePhotos({
               placeId: input.placeId,
               apiKey: options.apiKey,
               fetchImpl: options.fetchImpl,
-            })
-          },
+              onGoogleCall: input.onGoogleCall,
+            }),
         }
       : {}),
     ...(options.apiKey

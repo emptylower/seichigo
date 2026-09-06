@@ -7,7 +7,9 @@ import { agentErrorMessage } from '@/lib/planAgent/netErrors'
 import { executePlanAgentRun, AGENT_BUSY_TTL_MS } from '@/lib/planAgent/execute'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { canResume } from '@/lib/planAgent/resume'
-import { serverText } from '@/lib/planAgent/serverText'
+import { formatResetDate, serverText } from '@/lib/planAgent/serverText'
+import { getBillingService } from '@/lib/billing/serverDeps'
+import { STALE_RESERVE_AFTER_MS } from '@/lib/billing/service'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 export const runtime = 'nodejs'
@@ -93,6 +95,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
+  // 预算层（设计 §6.2）：先退孤儿预扣（它不依赖 account，只需 userId；管理员
+  // 也可安全调用，管理员没有 reserve），再读账户做只读预检 → 抢 busy 位 →
+  // 无条件预扣（force）。预检拦住的请求不落库人类消息；预检通过后并发挤过
+  // 的极少数请求允许余量短暂为负。
+  // G1：阈值用 STALE_RESERVE_AFTER_MS（软截止 13 分钟 + 两倍 TTL）——真实
+  // run 靠续租可跑 13 分钟，比这更短的窗口会把在跑的 run 当孤儿退掉
+  const billing = getBillingService()
+  await billing.refundStaleReserves(userId, new Date(Date.now() - STALE_RESERVE_AFTER_MS)).catch(() => undefined)
+  const account = await billing.getAccount(userId)
+  if (!account) return NextResponse.json({ error: errors.serverError }, { status: 500 })
+  if (!billing.canStartRun(account)) {
+    return NextResponse.json(
+      {
+        error: errors.budgetExhausted.replace('{date}', formatResetDate(locale, account.periodEnd)),
+        code: 'budget_exhausted',
+        resetsAt: account.periodEnd.toISOString(),
+        upgradeAvailable: account.tier === 'free',
+      },
+      { status: 402 },
+    )
+  }
+
   // 配额检查、同计划互斥、人类消息落库在同一事务（按用户 advisory lock 串行化）：
   // 并发请求既不能各自烧模型额度，也不能在同一计划上交错写对话历史。
   // 人类消息 content 同时携带原始结构化回答（answerTo/answerValue），供回放
@@ -120,6 +144,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: errors.planBusy }, { status: 409 })
   }
   const runToken = begin.token
+
+  // 抢到 busy 位后无条件预扣（runRef = runToken，执行体结算时配对）
+  await billing.reserveRun({ account, planId: id, runRef: runToken, force: true }).catch((err) => {
+    console.warn('[planAgent/billing] reserve failed (run continues, will be settled without reserve)', err)
+  })
+  const billingInput = { entitlements: account.entitlements, runCapMicros: account.runCapMicros }
 
   // 结构化回答 → 元信息直写补丁（纯函数，提前算好）。date_range 的
   // startDate/dayCount 在 agent 启动前就写入，后续 LLM 一进来就能看到
@@ -199,6 +229,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           signal: abort.signal,
           onEvent: send,
           busyTtlMs: AGENT_BUSY_TTL_MS,
+          billing: billingInput,
         })
       } catch (err) {
         // 循环 try 块之外的异常（历史读取/直写补丁等）与瞬时网络错误统一经

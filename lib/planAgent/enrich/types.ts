@@ -3,6 +3,8 @@ import type { PlacePhotoRef, PlaceResolver } from '@/lib/googlePlaces/places'
 import type { ExternalPlaceStore } from '@/lib/googlePlaces/store'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
 import type { TravelQueryFn } from '../travelQuery'
+import { EMPTY_GOOGLE_CALLS, type GoogleCallCategory, type GoogleCallCounts } from '@/lib/billing/cost'
+import type { Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 /**
@@ -38,6 +40,8 @@ export type EnrichBudget = {
   places: { used: number; max: number; /** 餐厅补齐预留（缺省视为 0） */ reserved?: number }
   /** 当前预算窗口开始时间（epoch ms） */
   windowStartedAt: number
+  /** 本 run 累计真实外呼次数（不随时间窗归零；设计 §7.2 计量层） */
+  calls?: GoogleCallCounts
   /** 可注入时钟（测试）；缺省 Date.now */
   now?: () => number
 }
@@ -55,6 +59,7 @@ export function createEnrichBudget(options?: { now?: () => number }): EnrichBudg
   return {
     directions: { used: 0, max: ENRICH_DIRECTIONS_MAX_DEFAULT },
     places: { used: 0, max: ENRICH_PLACES_MAX_DEFAULT, reserved: 0 },
+    calls: { ...EMPTY_GOOGLE_CALLS },
     windowStartedAt: now(),
     now,
   }
@@ -141,6 +146,8 @@ export type EnrichContext = {
   budget?: EnrichBudget
   /** §0.6 站点语言：补齐层写入用户可见文案（餐食标签等）时使用；缺省 zh */
   locale?: SupportedLocale
+  /** 档位能力表（设计 §5 卡点 2）；缺省视为全开 */
+  entitlements?: Entitlements
 }
 
 export function emptyEnrichReport(): EnrichReport {
@@ -149,4 +156,17 @@ export function emptyEnrichReport(): EnrichReport {
     skipped: [],
     googleCallsUsed: { directions: 0, places: 0 },
   }
+}
+
+/** 只累加本 run 计量（预算桶已由调用方预扣时用） */
+export function meterGoogleCall(budget: EnrichBudget, category: GoogleCallCategory): void {
+  if (!budget.calls) budget.calls = { ...EMPTY_GOOGLE_CALLS }
+  budget.calls[category] += 1
+}
+
+/** 真实外呼一次：预算桶 used+1（places 三类共用 places 桶）并累加本 run 计量 */
+export function countGoogleCall(budget: EnrichBudget, category: GoogleCallCategory): void {
+  if (category === 'directions') budget.directions.used += 1
+  else budget.places.used += 1
+  meterGoogleCall(budget, category)
 }

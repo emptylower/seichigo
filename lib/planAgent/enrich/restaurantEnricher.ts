@@ -1,6 +1,6 @@
 import { validateExternalPlacePayload } from '@/lib/googlePlaces/places'
 import type { NearbySearchResult } from '@/lib/googlePlaces/nearby'
-import type { EnrichContext, EnrichDay, EnrichReport } from './types'
+import { meterGoogleCall, type EnrichContext, type EnrichDay, type EnrichReport } from './types'
 
 /**
  * restaurant enricher（A6 餐厅必达；R3 并发化；S4/S6 第五轮审查修订）：
@@ -111,6 +111,14 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
 }
 
 export async function runRestaurantEnricher(days: EnrichDay[], ctx: EnrichContext, report: EnrichReport): Promise<void> {
+  if (ctx.entitlements && !ctx.entitlements.restaurants) {
+    for (const day of days) {
+      for (const item of day.items) {
+        if (item.type === 'meal') report.skipped.push({ enricher: 'restaurant', itemTitle: item.title, reason: '当前档位不含餐厅推荐' })
+      }
+    }
+    return
+  }
   const findRestaurants = ctx.deps.findRestaurants
   const allMeals: PendingMeal[] = []
   const groups = new Map<string, SearchGroup>()
@@ -171,6 +179,7 @@ export async function runRestaurantEnricher(days: EnrichDay[], ctx: EnrichContex
           lng: group.center.lng,
           onGoogleCall: () => {
             group.actualCalls += 1
+            if (ctx.budget) meterGoogleCall(ctx.budget, 'placesNearby')
           },
         })
       } catch {

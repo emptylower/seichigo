@@ -1,7 +1,7 @@
 import { haversineKm } from '../cluster'
 import { queryTravelBetween, type TravelQueryMode } from '../travelQuery'
 import { buildHeuristicTransitPayload } from './heuristicTransit'
-import type { EnrichContext, EnrichDay, EnrichReport, EnrichTravelMode } from './types'
+import { countGoogleCall, type EnrichContext, type EnrichDay, type EnrichReport, type EnrichTravelMode } from './types'
 
 /**
  * transport enricher：同一天相邻两个有坐标条目之间的交通补齐。
@@ -84,7 +84,7 @@ async function resolveSegmentPayload(
           // 真实外呼计数：主查询与日本兜底补查（driving/walking）各一次，
           // 抛错路径同样计数（回调先于 await）
           onGoogleCall: () => {
-            if (ctx.budget) ctx.budget.directions.used += 1
+            if (ctx.budget) countGoogleCall(ctx.budget, 'directions')
           },
         },
         { from, to, mode },

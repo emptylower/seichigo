@@ -3,7 +3,7 @@ import {
   isSafePlacePhotoDisplayUrl,
   type PlacePhotoRef,
 } from '@/lib/googlePlaces/places'
-import type { EnrichContext, EnrichDay, EnrichReport } from './types'
+import { countGoogleCall, type EnrichContext, type EnrichDay, type EnrichReport } from './types'
 
 /**
  * 计划内图片去重（回归第四轮 A4）：同一 Google 地点被多条条目解析到时
@@ -133,7 +133,7 @@ export async function runImageDedupeEnricher(days: EnrichDay[], ctx: EnrichConte
         const fetched = await ctx.deps.fetchPlacePhotos({
           placeId,
           onGoogleCall: () => {
-            if (ctx.budget) ctx.budget.places.used += 1
+            if (ctx.budget) countGoogleCall(ctx.budget, 'placeDetails')
           },
         })
         if (fetched && fetched.length > 0) {

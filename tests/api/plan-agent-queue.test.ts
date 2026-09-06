@@ -26,14 +26,48 @@ vi.mock('@/lib/planAgent/serverDeps', () => ({
   runInBackground: vi.fn(),
 }))
 
+vi.mock('@/lib/planAgent/execute', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/planAgent/execute')>()
+  return { ...actual, executePlanAgentRun: vi.fn(actual.executePlanAgentRun) }
+})
+
+vi.mock('@/lib/billing/serverDeps', async () => {
+  const { createBillingService } = await import('@/lib/billing/service')
+  const { MemoryUsageLedger } = await import('@/lib/billing/ledgerMemory')
+  const { MemoryBillingUsers } = await import('@/lib/billing/usersMemory')
+  const users = new MemoryBillingUsers()
+  users.seed({ id: 'u1', tier: 'standard', periodStart: new Date('2026-08-20T00:00:00Z'), periodAnchor: new Date('2026-08-20T00:00:00Z'), periodEnd: null, isAdmin: true })
+  const billing = createBillingService({ ledger: new MemoryUsageLedger(), users, isRunActive: async () => false })
+  const holder: { current: unknown } = { current: billing }
+  return {
+    getBillingService: () => holder.current,
+    __setBillingService: (next: unknown) => {
+      holder.current = next
+    },
+    __resetBillingService: () => {
+      holder.current = billing
+    },
+  }
+})
+
 vi.mock('@/lib/anitabi/cf/bindings', () => ({
   getCfBindings: vi.fn((): null => null),
 }))
 
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { runPlanAgent } from '@/lib/planAgent/loop'
+import { executePlanAgentRun } from '@/lib/planAgent/execute'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
+import * as billingServerDeps from '@/lib/billing/serverDeps'
+import { runCapMicros } from '@/lib/billing/budget'
 import { POST } from '@/app/api/me/plans/[id]/agent/route'
+import { POST as POSTInternalRun } from '@/app/api/internal/plan-agent/run/route'
+
+// vi.mock 工厂里的测试辅助导出不在真实模块类型上，经断言取用
+const { __setBillingService, __resetBillingService } = billingServerDeps as unknown as {
+  __setBillingService: (next: unknown) => void
+  __resetBillingService: () => void
+}
 
 function makeDeps(repo: MemoryTripPlanRepo): TripPlanHandlerDeps {
   return { repo, getSession: vi.fn().mockResolvedValue({ user: { id: 'u1' } }) }
@@ -53,8 +87,10 @@ describe('agent route 队列投递（Task A3）', () => {
   beforeEach(() => {
     vi.mocked(getTripPlanApiDeps).mockReset()
     vi.mocked(runPlanAgent).mockClear()
+    vi.mocked(executePlanAgentRun).mockClear()
     vi.mocked(getCfBindings).mockReset()
     vi.mocked(getCfBindings).mockReturnValue(null)
+    __resetBillingService()
   })
 
   afterEach(() => {
@@ -189,5 +225,67 @@ describe('agent route 队列投递（Task A3）', () => {
     expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
     await res.text()
     expect(vi.mocked(runPlanAgent)).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('internal run route 计费装配（G3 fail-closed）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.mocked(executePlanAgentRun).mockClear()
+    __resetBillingService()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    __resetBillingService()
+  })
+
+  it('getAccount 抛错 → 回落免费档能力表传给 executePlanAgentRun', async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    expect(begin.status).toBe('ok')
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    __setBillingService({
+      getAccount: async () => {
+        throw new Error('db down')
+      },
+    })
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await POSTInternalRun(
+        new Request('http://localhost/api/internal/plan-agent/run', {
+          method: 'POST',
+          headers: { 'x-plan-agent-secret': 's3cret' },
+          body: JSON.stringify({
+            v: 1,
+            planId: plan.id,
+            runToken: begin.status === 'ok' ? begin.token : '',
+            locale: 'zh',
+            message: 'hi',
+            resume: false,
+            enqueuedAt: new Date().toISOString(),
+          }),
+        }),
+      )
+      await res.text()
+      expect(vi.mocked(executePlanAgentRun)).toHaveBeenCalledTimes(1)
+      const arg = vi.mocked(executePlanAgentRun).mock.calls[0]![0] as {
+        billing?: { entitlements: { tier: string }; runCapMicros: number }
+      }
+      expect(arg.billing?.entitlements.tier).toBe('free')
+      expect(arg.billing?.runCapMicros).toBe(runCapMicros('free'))
+      expect(errorLog).toHaveBeenCalledWith('[api/internal/plan-agent/run] getAccount failed, falling back to free entitlements', expect.any(Error))
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 })

@@ -12,6 +12,8 @@ describe('HomeEntryCards', () => {
     expect(screen.getByRole('link', { name: /AI trip planner/ })).toHaveAttribute('href', '/plan/start?locale=en')
     expect(screen.getByRole('link', { name: /Explore the map/ })).toHaveAttribute('href', '/en/map')
     expect(screen.getByRole('link', { name: /Pilgrimage guides/ })).toHaveAttribute('href', '/en/posts')
+    // 次级入口：/pricing 是三语共用的非本地化路由，不加语言前缀
+    expect(screen.getByRole('link', { name: 'See pricing' })).toHaveAttribute('href', '/pricing')
   })
 
   it('用 Intl.NumberFormat(locale) 展示真实计数', () => {
@@ -26,7 +28,8 @@ describe('HomeEntryCards', () => {
   it('第十四轮：卡片是压在插画上的半透明毛玻璃（hover 更实）', () => {
     render(<HomeEntryCards locale="zh" stats={statsFixture} />)
 
-    const links = [...document.querySelectorAll('a')]
+    // 只看卡片本身（卡片下方还有一条指向 /pricing 的次级文字链）
+    const links = [...document.querySelectorAll('.grid a')]
     expect(links).toHaveLength(3)
     for (const link of links) {
       expect(link.className).toContain('bg-white/75')
