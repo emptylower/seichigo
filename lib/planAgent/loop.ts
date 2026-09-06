@@ -25,8 +25,7 @@ import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
-import { llmUsageOf, type LlmUsage, addUsage } from '@/lib/llm/usage'
-import { EMPTY_GOOGLE_CALLS, summarizeRunCost, type RunCostSummary } from '@/lib/billing/cost'
+import { createRunCostTracker, type RunCostDeps } from './runCost'
 import { forbiddenToolsOf, tierPromptNote, type Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
@@ -141,13 +140,7 @@ export type PlanAgentDeps = {
   deadlineAt?: number
   /** 档位能力表（设计 §5）：过滤工具、附注提示词、初始化补齐预算上限；缺省全开 */
   entitlements?: Entitlements
-  /** 单 run 成本上限（微美元，设计 §6.2）；达到后最多再允许两次模型调用用于保存收尾 */
-  runCapMicros?: number
-  /** run 结束（含报错/停止/接管）回调一次：成本汇总与是否产生过模型输出（route 用它结算） */
-  onRunCost?: (summary: RunCostSummary, hadModelOutput: boolean) => Promise<void>
-  /** 补齐续跑的额外 Google 成本回调（G8：route 注入 billing.chargeExtra） */
-  onExtraCost?: (micros: number) => Promise<void>
-}
+} & RunCostDeps
 
 /**
  * 把 repo 的写方法（appendMessage/replaceDays/updateMeta）替换成 token 校验
@@ -325,10 +318,6 @@ export async function runPlanAgent(
   // M4 运行日志素材：turnIndex 是本轮 human 消息的序号（含本轮）
   const turnIndex = stageHistory.filter((m) => m.kind === 'human').length
   const toolCallSummaries: Array<{ name: string; durationMs: number }> = []
-  // 计量层（设计 §7）：按模型累加 usage；缺 usage 的调用记 usageMissing
-  const usageByModel = new Map<string, LlmUsage>()
-  let modelCalls = 0
-  let usageMissing = false
   // 对象持有者：闭包内赋值后，外层读取不会被控制流分析窄化成 null
   const saveEvaluation: { current: { enrich: EnrichReport; quality: PlanQualityReport } | null } = { current: null }
 
@@ -363,6 +352,7 @@ export async function runPlanAgent(
     enrichBudget.places.max = deps.entitlements.placesMax
     enrichBudget.directions.max = deps.entitlements.directionsMax
   }
+  const runCost = createRunCostTracker({ enrichBudget, runCapMicros: deps.runCapMicros, maxIterations, withTitle: Boolean(userMessage) })
   const forbiddenTools = deps.entitlements ? forbiddenToolsOf(deps.entitlements) : new Set<string>()
   // ChatCompletionTool 是联合类型（function 工具 + 自定义工具），只有带
   // function 的成员才有可禁用的名字；自定义工具原样保留
@@ -446,10 +436,7 @@ export async function runPlanAgent(
     // 的协议错误（正文依旧扣下），绝不留下无法回答的悬空提问。
     let questionGuardRetried = false
     let emptyTurnRetried = false
-    // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾
-    let iterationLimit = maxIterations
-    let capReached = false
-    outer: for (let iteration = 0; iteration < iterationLimit; iteration++) {
+    outer: for (let iteration = 0; iteration < runCost.iterationLimit; iteration++) {
       if (deps.signal?.aborted) {
         interrupted = isClientDisconnected(deps.signal)
         break
@@ -478,9 +465,6 @@ export async function runPlanAgent(
       watcher?.start(modelAbort)
       let response: PlanAgentChatMessage
       try {
-      // F4：调用发起即计数——抛错的调用同样消耗了一次模型往返；未拿到响应
-      // 则标 usageMissing（成本口径不能只统计成功返回的调用）
-      modelCalls += 1
       // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
       response = await deps.createMessage(
         { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
@@ -492,19 +476,13 @@ export async function runPlanAgent(
           },
         )
       } catch (err) {
-        usageMissing = true
+        runCost.recordModelCall(null)
         throw err
       } finally {
         watcher?.stop()
       }
 
-      const callUsage = llmUsageOf(response)
-      if (callUsage) {
-        const modelName = describePlanAgentModel(response).model
-        usageByModel.set(modelName, addUsage(usageByModel.get(modelName) ?? { inputMiss: 0, inputCacheHit: 0, output: 0, reasoning: 0 }, callUsage))
-      } else {
-        usageMissing = true
-      }
+      runCost.recordModelCall(response)
 
       // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
       // 是否收到过任何思考增量；不落库，前端据此提示"不公开思考过程"）
@@ -647,26 +625,9 @@ export async function runPlanAgent(
         await runRepo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
       }
 
-      // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾。
-      // G7：检查放在本轮全部工具回执之后——[系统状态] 消息必须排在
-      // assistant(tool_calls) → tool 之后，模型下一轮才能同时看到工具结果与预算
-      // 通知；本轮没有 tool_calls 时在上方 break 直接结束，不注入
-      if (deps.runCapMicros !== undefined && !capReached) {
-        const running = summarizeRunCost({
-          usageByModel,
-          calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
-          modelCalls,
-          usageMissing,
-          withTitle: Boolean(userMessage),
-        })
-        if (running.costMicros.total >= deps.runCapMicros) {
-          capReached = true
-          iterationLimit = Math.min(maxIterations, iteration + 3)
-          enrichBudget.places.max = enrichBudget.places.used
-          enrichBudget.directions.max = enrichBudget.directions.used
-          messages.push({ role: 'user', content: '[系统状态]\n本回合可用预算已用完：不要再发起任何外部查询，立即用 save_plan_days 保存当前进度并向用户简短说明，然后结束本轮。' })
-        }
-      }
+      // 单次上限（§6.2/G7）：在本轮全部工具回执之后检查（合同见 runCost.ts）
+      const cap = runCost.checkCap(iteration)
+      if (cap.systemNote !== undefined) messages.push({ role: 'user', content: cap.systemNote })
     }
   } catch (err) {
     if (err instanceof RunFencedError || isUserStoppedAbort(err)) {
@@ -703,39 +664,17 @@ export async function runPlanAgent(
       await Promise.race([finishing, sleep(RUN_LIVE_FINISH_TIMEOUT_MS)])
       finishing.catch((err) => console.warn('[planAgent/runLive] 后台收尾失败（不影响对话）', err))
     }
-    // 计费结算（设计 §6.2）：run 结束（含报错/停止/接管，无论 fenced 与否）
-    // 回调一次成本汇总与是否产生过模型输出；route 用它配对预扣做结算。
-    // 写在 appendRunLog 之前并复用同一份 summary，避免算两遍。
-    const runCost = summarizeRunCost({
-      usageByModel,
-      calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
-      modelCalls,
-      usageMissing: usageMissing || modelCalls === 0,
-      withTitle: Boolean(userMessage),
-    })
-    if (deps.onRunCost) {
-      try {
-        await deps.onRunCost(runCost, modelCalls > 0)
-      } catch (err) {
-        console.warn('[planAgent] onRunCost failed', err)
-      }
-    }
+    // 计费结算（§6.2）：settle 回调 onRunCost，返回的 summary 供下方 appendRunLog 复用
+    const runCostSummary = await runCost.settle(deps.onRunCost)
     // M4 运行日志：run 结束（正常/报错）都写一条；被栅栏接管的 run 不写。
     // 写日志本身绝不能把 run 拖垮，失败只 warn。enrich/gate 取本 run 最后
     // 一次 save 的评估结果（onSaveEvaluated 捕获），没有 save 过则为 null。
     // 第八轮 A1：客户端断开的 run 写 stage=interrupted（其余字段照常），
     // GET 据此向前端暴露「上次被打断、可自动续跑」
     if (!fenced) {
-      // H2：stopAgentRun 已写过持久 stopped 日志时不重复写（以 runToken 去重，
-      // 否则两条 stopped 污染 turn 统计）。F2：改跳过为把成本写进那条已有
-      // 日志——用户停止的 run 也消耗了真实的模型/Google 调用，不落即漏计
       const stoppedLogWritten = stopped && (await stoppedLogExists())
       if (stoppedLogWritten) {
-        try {
-          await deps.repo.updateRunLogModelUsage(deps.planId, deps.runToken ?? null, runCost as unknown as Prisma.JsonValue)
-        } catch (err) {
-          console.warn('[planAgent] updateRunLogModelUsage failed', err)
-        }
+        await runCost.writeStoppedLogUsage(deps.repo, deps.planId, deps.runToken ?? null)
       } else {
         try {
           await deps.repo.appendRunLog({
@@ -746,7 +685,7 @@ export async function runPlanAgent(
             enrichReport: (saveEvaluation.current?.enrich ?? null) as Prisma.JsonValue | null,
             gateReport: (saveEvaluation.current?.quality ?? null) as Prisma.JsonValue | null,
             toolCalls: toolCallSummaries as unknown as Prisma.JsonValue,
-            modelUsage: runCost as unknown as Prisma.JsonValue,
+            modelUsage: runCostSummary as unknown as Prisma.JsonValue,
             durationMs: Date.now() - runStartedAt,
           })
         } catch (err) {
@@ -806,6 +745,6 @@ export async function runPlanAgent(
     events: emittedEvents,
     reasoningChars,
     toolCalls: toolCallSummaries.length,
-    modelCalls,
+    modelCalls: runCost.modelCalls,
   })
 }
