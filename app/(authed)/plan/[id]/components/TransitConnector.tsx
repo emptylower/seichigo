@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Bus, Car, ChevronDown, Footprints, type LucideIcon } from 'lucide-react'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { TierHint } from '@/components/billing/TierHint'
 import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { formatTransportText, getTransport, type TransportLeg, type TransportPayload } from './itemPayload'
 
@@ -185,6 +186,8 @@ export function TransitConnector(props: {
   item: TripPlanItemView
   origin?: TransitEndpoint | null
   destination?: TransitEndpoint | null
+  /** 免费档：估算行下方给一条指向定价页的升级提示（设计 §4） */
+  showEstimateUpgradeHint?: boolean
   locale?: SupportedLocale
 }) {
   const { item } = props
@@ -238,6 +241,13 @@ export function TransitConnector(props: {
           />
         ) : null}
       </button>
+
+      {/* 摘要行是个 button，链接不能嵌在里面：提示另起一行挂在按钮下方 */}
+      {isEstimate && props.showEstimateUpgradeHint ? (
+        <div className="ml-6 mt-1">
+          <TierHint kind="transit" />
+        </div>
+      ) : null}
 
       {expanded && hasDetails ? (
         <div className="ml-6 mt-1.5 space-y-1.5 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2">

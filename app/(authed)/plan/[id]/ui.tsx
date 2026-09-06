@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Home, Menu } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { createSseFrameReader } from '@/lib/sseFrames'
+import { notifyUsageChanged, useUsage } from '@/hooks/useUsage'
 import { planTextFor } from './lib/planText'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import { parseDaymapPayload } from '@/lib/tripPlan/view'
@@ -60,6 +61,8 @@ export function PlanPlanner(props: {
   const [interrupted, setInterrupted] = useState<InterruptedInfo | null>(null)
   // resuming=正在自动续跑；done=无可续内容（短暂提示后淡出）；manual=本会话已自动续过，等用户手动点继续
   const [resumeBanner, setResumeBanner] = useState<'resuming' | 'done' | 'manual' | null>(null)
+  // 本月用量耗尽（/agent 返回 402）：输入禁用 + 提示条，直到下次刷新拿到真实状态
+  const [budgetExhausted, setBudgetExhausted] = useState<{ message: string; upgradeAvailable: boolean } | null>(null)
   const [activeThinking, setActiveThinking] = useState<ThinkingTurn | null>(null)
   // §0 model_info：当前模型不公开思考过程时的头部灰字提示（reasoning=true 时为 null）
   const [modelNotice, setModelNotice] = useState<ModelNotice | null>(null)
@@ -74,6 +77,9 @@ export function PlanPlanner(props: {
 
   // B1 停止本轮规划（§0）：POST {stop:true} + 本地兜底 abort + 关掉自动续跑
   const agentStop = useAgentStop(props.planId)
+
+  // 本月 agent 用量（设计 §4）：全页唯一来源，侧栏用量表与行程卡档位提示都由此向下传
+  const { usage } = useUsage()
 
   // 图片预热：挂载即开始；plan.days/daymap 快照的新 URL 只追加到队尾，不打断进行中
   usePlanImagePrewarm(plan.days, chat)
@@ -113,6 +119,8 @@ export function PlanPlanner(props: {
     runSync,
     onDone: () => {
       setResumeBanner((cur) => (cur === 'resuming' ? null : cur))
+      // 队列化 run 的收尾同样刷新用量（POST 流的 done 分支在 streamAgentRequest 里）
+      notifyUsageChanged()
       void maybeAutoResume()
     },
     // done.stopped：不再依赖 useAgentStop 的 5 秒兜底，直接按「已停止」定格
@@ -227,7 +235,18 @@ export function PlanPlanner(props: {
       }
       const contentType = res.headers.get('content-type') ?? ''
       if (!res.ok || !res.body || !contentType.includes('text/event-stream')) {
-        const errBody = (await res.json().catch(() => null)) as { error?: string; reason?: string } | null
+        const errBody = (await res.json().catch(() => null)) as
+          | { error?: string; reason?: string; code?: string; upgradeAvailable?: boolean }
+          | null
+        // 本月用量已用完：不当作请求失败塞进对话，只禁用输入并给恢复日期与升级入口
+        if (res.status === 402 && errBody?.code === 'budget_exhausted') {
+          setBudgetExhausted({
+            message: errBody.error ?? '本月 AI 规划用量已用完',
+            upgradeAvailable: Boolean(errBody.upgradeAvailable),
+          })
+          notifyUsageChanged()
+          return
+        }
         if (res.ok && errBody?.reason === 'nothing_to_resume') {
           // 对话其实已收尾：只提示，不起 run、不重试
           setResumeBanner('done')
@@ -306,6 +325,8 @@ export function PlanPlanner(props: {
               const frozen = { ...turn, endedAt: Date.now() }
               turn = newThinkingTurn()
               if (hasThinkingContent(frozen)) setChat((prev) => attachThinkingToLast(prev, frozen))
+              // 一轮跑完，用量已变：让侧栏/账户页的用量表重新拉取
+              notifyUsageChanged()
               break
             }
             case 'stopped': {
@@ -390,6 +411,7 @@ export function PlanPlanner(props: {
         currentPlanId={props.planId}
         mobileOpen={mobileNavOpen}
         onCloseMobile={() => setMobileNavOpen(false)}
+        usage={usage}
         locale={locale}
       />
 
@@ -449,6 +471,7 @@ export function PlanPlanner(props: {
               else void postAndStream(retry)
             }}
             chatEndRef={chatEndRef}
+            tierHints={usage?.hints ?? null}
             locale={locale}
           />
 
@@ -460,6 +483,7 @@ export function PlanPlanner(props: {
             answering={pendingAsk != null}
             stopRequested={agentStop.stopRequested}
             onStop={() => void agentStop.requestStop()}
+            budgetNotice={budgetExhausted}
             textareaRef={textareaRef}
             locale={locale}
           />

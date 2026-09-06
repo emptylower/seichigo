@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Building2, CircleUser, FileText, Loader2, Map as MapIcon, Plus, X } from 'lucide-react'
 import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
+import type { UsageView } from '@/hooks/useUsage'
+import { UsageMeter } from '@/components/billing/UsageMeter'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { planText, planTextFor } from '../lib/planText'
@@ -96,6 +98,8 @@ export function PlanSidebar(props: {
   currentPlanId: string
   mobileOpen: boolean
   onCloseMobile: () => void
+  /** 本月 agent 用量（设计 §4）：null 时整块不渲染（接口缺席/未登录/网络失败） */
+  usage?: UsageView | null
   locale?: SupportedLocale
 }) {
   const locale = props.locale ?? 'zh'
@@ -104,6 +108,7 @@ export function PlanSidebar(props: {
   const [plans, setPlans] = useState(props.plans)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const usage = props.usage ?? null
 
   // 跳转/SSR 刷新后 props 变化时同步
   useEffect(() => {
@@ -189,6 +194,11 @@ export function PlanSidebar(props: {
         })}
         {sorted.length === 0 ? <p className="px-3 py-2 text-xs text-gray-400">{tx('sidebar.empty')}</p> : null}
       </nav>
+      {usage ? (
+        <div className="border-t border-pink-100/80 p-3">
+          <UsageMeter usage={usage} size="compact" />
+        </div>
+      ) : null}
     </>
   )
 
