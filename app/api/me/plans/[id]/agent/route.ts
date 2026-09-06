@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
-import { startOfToday } from '@/lib/tripPlan/handlers/plans'
+import { handlerLocale, startOfToday } from '@/lib/tripPlan/handlers/plans'
 import { createChatCompletion, generatePlanTitle, withModelUsageInRunLog } from '@/lib/planAgent/api'
 import { planMetaFromAnswer } from '@/lib/planAgent/askUser'
 import { searchBgmSubjects } from '@/lib/planAgent/bgm'
@@ -10,6 +10,7 @@ import { runPlanAgent, type PlanAgentEvent } from '@/lib/planAgent/loop'
 import { PrismaPointFinder } from '@/lib/planAgent/pointsPrisma'
 import { canResume, RESUME_NOTE } from '@/lib/planAgent/resume'
 import { RunFencedError } from '@/lib/planAgent/runFence'
+import { serverText } from '@/lib/planAgent/serverText'
 import { getPlanAgentServerDeps } from '@/lib/planAgent/serverDeps'
 import { maybeSetGeneratedTitle } from '@/lib/planAgent/title'
 
@@ -36,14 +37,18 @@ function abortForClientDisconnect(): DOMException {
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const deps = await getTripPlanApiDeps()
+  // §0.6：站点语言（x-seichigo-locale > cookie > accept-language）——错误响应
+  // 与服务端固定文案走字典，模型回复语言不受它影响（提示词的"回复语言"段）
+  const locale = await handlerLocale(deps)
+  const errors = serverText(locale).errors
 
   const session = await deps.getSession()
   const userId = session?.user?.id
-  if (!userId) return NextResponse.json({ error: '未登录' }, { status: 401 })
+  if (!userId) return NextResponse.json({ error: errors.notSignedIn }, { status: 401 })
 
   const plan = await deps.repo.getPlan(id)
-  if (!plan) return NextResponse.json({ error: '计划不存在' }, { status: 404 })
-  if (plan.userId !== userId) return NextResponse.json({ error: '无权访问' }, { status: 403 })
+  if (!plan) return NextResponse.json({ error: errors.planNotFound }, { status: 404 })
+  if (plan.userId !== userId) return NextResponse.json({ error: errors.forbidden }, { status: 403 })
 
   let message = ''
   let answerTo = ''
@@ -84,7 +89,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok: true, stopped })
   }
 
-  if (!message && !resume) return NextResponse.json({ error: '消息不能为空' }, { status: 400 })
+  if (!message && !resume) return NextResponse.json({ error: errors.emptyMessage }, { status: 400 })
 
   // 第八轮 §0 / F2：对话已自然收尾时无事可续——HTTP 200 告知前端而不是起一个
   // 空 run。canResume 与 GET 的 interrupted 推断共享同一套状态规则（F1 三条），
@@ -118,10 +123,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     busyTtlMs: AGENT_BUSY_TTL_MS,
   })
   if (begin.status === 'quota_exceeded') {
-    return NextResponse.json({ error: '今日 AI 规划额度已用完，明天再来吧' }, { status: 429 })
+    return NextResponse.json({ error: errors.agentQuotaExhausted }, { status: 429 })
   }
   if (begin.status === 'busy') {
-    return NextResponse.json({ error: '这个计划正在规划中，等当前回复完成后再发送' }, { status: 409 })
+    return NextResponse.json({ error: errors.planBusy }, { status: 409 })
   }
   const runToken = begin.token
 
@@ -178,6 +183,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
               signal: abort.signal,
               userMessagePersisted: true,
               runToken,
+              // §0.6：服务端固定文案（思维链短语/网络错误/补齐标签）的站点语言
+              locale,
               // 第十一轮 A3（§0）：模型流式期间的停止检查（租约看守定期
               // 轮询，发现 token 已被 stopAgentRun 清掉就 abort 模型请求）
               isStopped: () => deps.repo.isAgentRunStopped(id, runToken),
@@ -207,8 +214,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         ])
       } catch (err) {
         // 循环 try 块之外的异常（历史读取/直写补丁等）与瞬时网络错误统一经
-        // agentErrorMessage 映射：网络类 → 友好中文，其余保留原始 message
-        send({ type: 'error', message: agentErrorMessage(err) })
+        // agentErrorMessage 映射：网络类按站点语言的友好文案，其余保留原始 message
+        send({ type: 'error', message: agentErrorMessage(err, locale) })
         send({ type: 'done' })
       } finally {
         // 无论正常结束、报错还是客户端断开，都要释放 busy 位，

@@ -3,6 +3,9 @@ import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { createPlansHandlers, DAILY_PLAN_CREATE_LIMIT } from '@/lib/tripPlan/handlers/plans'
 import { createPlanByIdHandlers } from '@/lib/tripPlan/handlers/planById'
 import type { TripPlanHandlerDeps } from '@/lib/tripPlan/handlers/plans'
+import type { SupportedLocale } from '@/lib/i18n/types'
+
+const getLocaleEn = vi.fn(async (): Promise<SupportedLocale> => 'en')
 
 function makeDeps(overrides?: Partial<TripPlanHandlerDeps>): TripPlanHandlerDeps {
   return {
@@ -17,6 +20,16 @@ describe('plans handlers', () => {
     const deps = makeDeps({ getSession: vi.fn().mockResolvedValue(null) })
     const res = await createPlansHandlers(deps).GET()
     expect(res.status).toBe(401)
+  })
+
+  it('A7：deps.getLocale=en 时错误响应为英文', async () => {
+    const deps = makeDeps({
+      getSession: vi.fn().mockResolvedValue(null),
+      getLocale: getLocaleEn,
+    })
+    const res = await createPlansHandlers(deps).GET()
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Please sign in' })
   })
 
   it('creates a plan and lists it', async () => {
@@ -48,6 +61,22 @@ describe('plans handlers', () => {
       new Request('http://localhost/api/me/plans', { method: 'POST', body: JSON.stringify({ title: 'over' }) }),
     )
     expect(blocked.status).toBe(429)
+    const zhBody = await blocked.json()
+    expect(zhBody.error).toBe('今日创建计划次数已达上限，明天再来吧')
+  })
+
+  it('A7：getLocale=en 时创建上限错误为英文', async () => {
+    const deps = makeDeps({ getLocale: getLocaleEn })
+    for (let i = 0; i < DAILY_PLAN_CREATE_LIMIT; i++) {
+      await createPlansHandlers(deps).POST(
+        new Request('http://localhost/api/me/plans', { method: 'POST', body: JSON.stringify({ title: `p${i}` }) }),
+      )
+    }
+    const blocked = await createPlansHandlers(deps).POST(
+      new Request('http://localhost/api/me/plans', { method: 'POST', body: JSON.stringify({ title: 'over' }) }),
+    )
+    expect(blocked.status).toBe(429)
+    expect((await blocked.json()).error).toContain("today's plan creation limit")
   })
 })
 

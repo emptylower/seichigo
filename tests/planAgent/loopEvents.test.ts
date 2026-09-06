@@ -253,4 +253,46 @@ describe('runPlanAgent telemetry events', () => {
     ) as Extract<PlanAgentEvent, { type: 'tool_call' }>
     expect(doneFrame.resultSummary).toBe('失败：未知工具: mystery_tool')
   })
+
+  it('deps.locale 传入时 status / argsSummary / resultSummary 用站点语言', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+
+    const responses: ChatMessage[] = [
+      assistantMessage({
+        tool_calls: [
+          {
+            id: 'call_en',
+            type: 'function',
+            function: { name: 'list_points', arguments: JSON.stringify({ bangumiId: 115908 }) },
+          },
+        ] as ChatMessage['tool_calls'],
+      }),
+      assistantMessage({ content: 'All set.' }),
+    ]
+    const createMessage = vi.fn(async () => responses.shift() as ChatMessage)
+
+    const events: PlanAgentEvent[] = []
+    await runPlanAgent(
+      {
+        createMessage,
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        locale: 'en',
+      },
+      'plan a one-day pilgrimage',
+      (e) => events.push(e),
+    )
+
+    expect(events).toContainEqual({ type: 'status', phase: 'Loading spots' })
+    const running = events.find(
+      (e) => e.type === 'tool_call' && e.status === 'running',
+    ) as Extract<PlanAgentEvent, { type: 'tool_call' }>
+    expect(running.argsSummary).toBe('Work id 115908')
+    const done = events.find(
+      (e) => e.type === 'tool_call' && e.status === 'done',
+    ) as Extract<PlanAgentEvent, { type: 'tool_call' }>
+    expect(done.resultSummary).toBe('Found 2 spots')
+  })
 })

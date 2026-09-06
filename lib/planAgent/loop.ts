@@ -19,11 +19,13 @@ import {
 } from './protocolGuard'
 import { EMPTY_TURN_ERROR_MESSAGE, EMPTY_TURN_RETRY_INSTRUCTION } from './emptyTurn'
 import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './statusPhrases'
+import { serverText } from './serverText'
 import { createRunLiveWriter, type RunLiveWriter } from './runLive'
 import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 export type PlanAgentEvent =
@@ -120,6 +122,12 @@ export type PlanAgentDeps = {
    * 不传（内部测试等）时流式期不检测停止（renewLease 的栅栏语义仍生效）。
    */
   isStopped?: () => Promise<boolean>
+  /**
+   * §0.6 站点语言（route 从 getLocale() 取）：只影响服务端固定文案（思维链
+   * 短语、ask 收尾备注、网络错误），不参与模型回复语言（由提示词的
+   * "回复语言"段约束模型自行跟随用户）。缺省 zh。
+   */
+  locale?: SupportedLocale
 }
 
 /**
@@ -225,6 +233,8 @@ export async function runPlanAgent(
 ): Promise<void> {
   const maxIterations = deps.maxIterations ?? DEFAULT_MAX_ITERATIONS
   const runStartedAt = Date.now()
+  // §0.6：本 run 的服务端固定文案语言（status/summary/netError/askUserNote）
+  const locale = deps.locale ?? 'zh'
 
   const history = await deps.repo.listMessages(deps.planId)
 
@@ -328,6 +338,8 @@ export async function runPlanAgent(
   const toolDeps: PlanAgentToolDeps = {
     ...deps.toolDeps,
     repo: runRepo,
+    // §0.6：补齐层（餐食标签等用户可见文案）按站点语言
+    locale,
     // 第九轮 L1：租约续租透传给工具——save_plan_days 在长补齐前后各续一次
     renewLease: deps.renewLease,
     // Google 补齐预算每个 run 创建一次：同一 run 内多次 save 共享同一份
@@ -505,9 +517,9 @@ export async function runPlanAgent(
         } catch {
           malformedArgs = true
         }
-        const argsSummary = summarizeToolArgs(call.function.name, input)
+        const argsSummary = summarizeToolArgs(call.function.name, input, locale)
         // status/tool_call 事件只发 SSE，是瞬时遥测，绝不写进 TripPlanMessage
-        emit({ type: 'status', phase: toolStatusPhrase(call.function.name, input) })
+        emit({ type: 'status', phase: toolStatusPhrase(call.function.name, input, locale) })
         emit({ type: 'tool_call', id: call.id, name: call.function.name, argsSummary, status: 'running' })
         const startedAt = Date.now()
         let result: string
@@ -554,7 +566,7 @@ export async function runPlanAgent(
             content: JSON.stringify({
               status: 'asked',
               askId: err.payload.askId,
-              note: '已向用户发起结构化提问，本轮对话结束，等待用户通过下一条消息回答',
+              note: serverText(locale).askUserNote,
             }),
           } as unknown as Prisma.JsonValue)
           emit({ type: 'ask', ...err.payload })
@@ -567,7 +579,7 @@ export async function runPlanAgent(
           argsSummary,
           status: 'done',
           durationMs: Date.now() - startedAt,
-          resultSummary: summarizeToolResult(call.function.name, result),
+          resultSummary: summarizeToolResult(call.function.name, result, locale),
         })
         toolCallSummaries.push({ name: call.function.name, durationMs: Date.now() - startedAt })
         const toolParam: ChatMessageParam = { role: 'tool', tool_call_id: call.id, content: result }
@@ -589,9 +601,9 @@ export async function runPlanAgent(
         fenced = true
       }
     } else {
-      // 瞬时网络错误（workerd "Network connection lost." 等）映射成友好中文，
-      // 其余上游错误保留原文案（鉴权/配额等有诊断价值）
-      emit({ type: 'error', message: agentErrorMessage(err) })
+      // 瞬时网络错误（workerd "Network connection lost." 等）按站点语言映射成
+      // 友好文案，其余上游错误保留原文案（鉴权/配额等有诊断价值）
+      emit({ type: 'error', message: agentErrorMessage(err, locale) })
     }
   } finally {
     // 第七轮 A1（M1/M2 修订）：实况 writer 收尾。正常结束的 run 强制 flush

@@ -1,3 +1,6 @@
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { serverText } from './serverText'
+
 /**
  * plan agent 的网络瞬时错误识别与用户文案映射。
  *
@@ -50,17 +53,17 @@ export function isTransientNetworkError(err: unknown): boolean {
   return false
 }
 
-/** 瞬时网络错误的用户可见文案（中文，明确告知已保存内容不丢失）。 */
+/** 瞬时网络错误的用户可见中文文案（zh 常量保留：现有测试与旧调用方使用）。 */
 export const AGENT_NETWORK_ERROR_MESSAGE =
   '网络连接不稳定，本轮回复被中断。已完成的规划内容和行程不会丢失，请再发一条消息继续即可。'
 
 /**
  * 统一把 agent 回合里冒泡的异常映射成 SSE error 事件的 message：
- * 瞬时网络错误 → 友好中文；其余 Error → 原样 message（保留 401/配额等
- * 有诊断价值的上游文案）；非 Error 抛出物 → 字符串化。
+ * 瞬时网络错误 → 按 locale 的友好文案（§0.6 字典）；其余 Error → 原样
+ * message（保留 401/配额等有诊断价值的上游文案）；非 Error 抛出物 → 字符串化。
  */
-export function agentErrorMessage(err: unknown): string {
-  if (isTransientNetworkError(err)) return AGENT_NETWORK_ERROR_MESSAGE
+export function agentErrorMessage(err: unknown, locale: SupportedLocale = 'zh'): string {
+  if (isTransientNetworkError(err)) return serverText(locale).netError
   if (err instanceof Error) return err.message
   return String(err)
 }

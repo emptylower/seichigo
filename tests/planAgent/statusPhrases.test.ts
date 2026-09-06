@@ -23,6 +23,14 @@ describe('toolStatusPhrase', () => {
   it('falls back to a generic phrase for unknown tools', () => {
     expect(toolStatusPhrase('mystery_tool', {})).toBe('正在处理…')
   })
+
+  it('renders phrases in en / ja when locale is passed', () => {
+    expect(toolStatusPhrase('search_anime', { query: 'x' }, 'en')).toBe('Searching for "x"')
+    expect(toolStatusPhrase('search_anime', { query: 'x' }, 'ja')).toBe('作品「x」を検索中')
+    expect(toolStatusPhrase('list_points', {}, 'en')).toBe('Loading spots')
+    expect(toolStatusPhrase('ask_user', { taskType: 'date_range' }, 'en')).toBe('Asking about your travel dates')
+    expect(toolStatusPhrase('mystery_tool', {}, 'ja')).toBe('処理中…')
+  })
 })
 
 describe('summarizeToolArgs', () => {
@@ -74,5 +82,15 @@ describe('summarizeToolResult', () => {
     expect(summarizeToolResult('update_plan_meta', JSON.stringify({ ok: true }))).toBe('已完成')
     expect(summarizeToolResult('read_plan', JSON.stringify({ plan: {} }))).toBe('已完成')
     expect(summarizeToolResult('mystery_tool', '{}')).toBe('已完成')
+  })
+
+  it('renders results in en / ja when locale is passed', () => {
+    expect(summarizeToolResult('estimate_travel', '{"mode":"walk","durationMin":8}', 'en')).toBe('Walk 8 min')
+    expect(summarizeToolResult('estimate_travel', '{"mode":"driving","durationMin":25}', 'en')).toBe('Drive 25 min')
+    expect(summarizeToolResult('estimate_travel', '{"mode":"walk","durationMin":8}', 'ja')).toBe('徒歩 8 分')
+    expect(summarizeToolResult('list_points', '{"points":[{},{}]}', 'en')).toBe('Found 2 spots')
+    expect(summarizeToolResult('list_points', '{"error":"boom"}', 'en')).toBe('Failed: boom')
+    expect(summarizeToolResult('mystery_tool', '{}', 'en')).toBe('Done')
+    expect(summarizeToolArgs('cluster_points', { pointIds: ['a'], dayCount: 2 }, 'en')).toBe('1 spots · 2 days')
   })
 })

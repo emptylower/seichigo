@@ -3,7 +3,8 @@ import { TRIP_PLAN_STATUSES, type TripPlanStatus, type TripPlanWithDays } from '
 import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import { inferInterrupted } from '@/lib/planAgent/resume'
 import { RUN_STOP_MARKER } from '@/lib/planAgent/stop'
-import type { TripPlanHandlerDeps } from './plans'
+import { serverText } from '@/lib/planAgent/serverText'
+import { handlerLocale, type TripPlanHandlerDeps } from './plans'
 
 type AuthorizeResult = { error: NextResponse } | { plan: TripPlanWithDays; userId: string }
 
@@ -11,13 +12,18 @@ type AuthorizeResult = { error: NextResponse } | { plan: TripPlanWithDays; userI
 const STOP_MARKER_GRACE_MS = 5 * 60 * 1000
 
 export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
+  /** 错误响应统一走 §0.6 字典（站点语言） */
+  async function errors() {
+    return serverText(await handlerLocale(deps)).errors
+  }
+
   async function authorize(planId: string): Promise<AuthorizeResult> {
     const session = await deps.getSession()
     const userId = session?.user?.id
-    if (!userId) return { error: NextResponse.json({ error: '未登录' }, { status: 401 }) }
+    if (!userId) return { error: NextResponse.json({ error: (await errors()).notSignedIn }, { status: 401 }) }
     const plan = await deps.repo.getPlan(planId)
-    if (!plan) return { error: NextResponse.json({ error: '计划不存在' }, { status: 404 }) }
-    if (plan.userId !== userId) return { error: NextResponse.json({ error: '无权访问' }, { status: 403 }) }
+    if (!plan) return { error: NextResponse.json({ error: (await errors()).planNotFound }, { status: 404 }) }
+    if (plan.userId !== userId) return { error: NextResponse.json({ error: (await errors()).forbidden }, { status: 403 }) }
     return { plan, userId }
   }
 
@@ -109,19 +115,19 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
       try {
         body = (await req.json()) as { title?: unknown; status?: unknown }
       } catch {
-        return NextResponse.json({ error: '请求体不是合法 JSON' }, { status: 400 })
+        return NextResponse.json({ error: (await errors()).invalidJson }, { status: 400 })
       }
 
       const patch: { title?: string; status?: TripPlanStatus } = {}
       if (body.title !== undefined) {
         if (typeof body.title !== 'string' || !body.title.trim()) {
-          return NextResponse.json({ error: '标题不能为空' }, { status: 400 })
+          return NextResponse.json({ error: (await errors()).emptyTitle }, { status: 400 })
         }
         patch.title = body.title.trim().slice(0, 80)
       }
       if (body.status !== undefined) {
         if (typeof body.status !== 'string' || !TRIP_PLAN_STATUSES.includes(body.status as TripPlanStatus)) {
-          return NextResponse.json({ error: '非法状态' }, { status: 400 })
+          return NextResponse.json({ error: (await errors()).invalidStatus }, { status: 400 })
         }
         patch.status = body.status as TripPlanStatus
       }
