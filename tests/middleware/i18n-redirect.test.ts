@@ -368,6 +368,47 @@ describe('i18n Accept-Language redirect middleware', () => {
     })
   })
 
+  describe('x-seichigo-locale request header', () => {
+    function requestLocaleHeader(res: ReturnType<typeof middleware>): string | null {
+      return (
+        res.headers.get('x-seichigo-locale') ||
+        res.headers.get('x-middleware-request-x-seichigo-locale')
+      )
+    }
+
+    it('propagates NEXT_LOCALE cookie locale on non-prefixed plan paths', () => {
+      const req = createRequest('/plan/x', { cookie: 'NEXT_LOCALE=ja' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(requestLocaleHeader(res)).toBe('ja')
+    })
+
+    it('propagates accept-language locale on non-prefixed plan paths without cookie', () => {
+      const req = createRequest('/plan/x', { acceptLanguage: 'en-US,en;q=0.9' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(requestLocaleHeader(res)).toBe('en')
+    })
+
+    it('falls back to zh for wildcard accept-language on api routes', () => {
+      const req = createRequest('/api/me/plans/1/agent', { acceptLanguage: '*' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(requestLocaleHeader(res)).toBe('zh')
+    })
+
+    it('keeps path-prefix locale even when cookie disagrees', () => {
+      const req = createRequest('/en/posts/article', { cookie: 'NEXT_LOCALE=ja' })
+      const res = middleware(req)
+
+      expect(res.status).not.toBe(307)
+      expect(requestLocaleHeader(res)).toBe('en')
+    })
+  })
+
   describe('edge cases', () => {
     it('handles empty path correctly', () => {
       const req = createRequest('', { acceptLanguage: 'ja' })

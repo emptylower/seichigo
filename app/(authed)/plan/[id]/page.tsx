@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
+import { getLocale } from '@/lib/i18n/getLocale'
 import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import { PlanPlanner } from './ui'
 
@@ -21,5 +22,14 @@ export default async function PlanDetailPage(props: { params: Promise<{ id: stri
     title: p.title,
     updatedAt: p.updatedAt.toISOString(),
   }))
-  return <PlanPlanner planId={id} initialPlan={toPlanView(plan)} initialChat={chat} plans={plans} />
+  const locale = await getLocale()
+  return (
+    <PlanPlanner
+      planId={id}
+      initialPlan={toPlanView(plan)}
+      initialChat={chat}
+      plans={plans}
+      locale={locale}
+    />
+  )
 }

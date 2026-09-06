@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { pickLocaleFromAcceptLanguage } from './lib/i18n/acceptLanguage'
+import { resolveRequestLocale } from './lib/i18n/resolveRequestLocale'
 
 const STATIC_FILE_EXT_PATTERN = /\/[^/]+\.[^/]+$/
 const LOCALE_PREFIXED_STATIC_ALIAS_PATTERN = /^\/(en|ja)\/(?:manifest\.webmanifest|favicon\.ico|favicon\.png|brand\/app-logo\.png)$/
@@ -64,7 +65,14 @@ export function middleware(req: NextRequest) {
 
   const headers = new Headers(req.headers)
   headers.set('x-seichigo-pathname', pathname)
-  headers.set('x-seichigo-locale', currentLocale)
+  headers.set(
+    'x-seichigo-locale',
+    resolveRequestLocale({
+      pathname,
+      cookieHeader: req.headers.get('cookie'),
+      acceptLanguage: req.headers.get('accept-language'),
+    })
+  )
 
   const staticAliasPath = resolveLocaleStaticAlias(pathname)
   if (staticAliasPath) {
