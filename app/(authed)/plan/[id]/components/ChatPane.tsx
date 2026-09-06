@@ -4,6 +4,7 @@ import { RotateCcw } from 'lucide-react'
 import type { TripPlanDayView } from '@/lib/tripPlan/view'
 import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import type { TierHints } from '@/hooks/useUsage'
 import { planTextFor } from '../lib/planText'
 import { AskAnswerChip, AskCard, type AskAnswer } from './AskCard'
 import { DayCards, DaymapCard } from './DayCards'
@@ -46,6 +47,8 @@ export function ChatPane(props: {
   onAnswerAsk: (ask: AskUserPayload, answer: AskAnswer) => void
   onRetry: (retry: AgentPostBody) => void
   chatEndRef: React.RefObject<HTMLDivElement | null>
+  /** 档位差异提示开关（设计 §4）：ui.tsx 的单个 useUsage 向下传给每张行程卡 */
+  tierHints?: TierHints | null
   locale?: SupportedLocale
 }) {
   const { chat, busy } = props
@@ -125,6 +128,7 @@ export function ChatPane(props: {
               planId={props.planId}
               daymap={entry.daymap}
               onComposeDraft={props.onComposeDraft}
+              tierHints={props.tierHints ?? null}
               locale={locale}
             />
           )
@@ -216,6 +220,7 @@ export function ChatPane(props: {
             days={props.days}
             scope="current"
             onComposeDraft={props.onComposeDraft}
+            tierHints={props.tierHints ?? null}
             locale={locale}
           />
         </div>
