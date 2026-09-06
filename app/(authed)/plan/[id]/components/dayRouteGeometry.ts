@@ -42,6 +42,8 @@ export function fetchRouteGeometry(planId: string, signature: string, mode: 'wal
         routeGeometryCache.set(key, data.geometry)
         return { ok: true, geometry: data.geometry }
       }
+      // 这两条只作为失败标记在内存里流转：DayMap 只判断 error 是否存在，
+      // 展示的是三语的 map.loadFailedRetry，不会把这里的中文渲染到页面上
       return { ok: false, error: data?.error ?? '路线加载失败' }
     } catch {
       return { ok: false, error: '网络错误' }

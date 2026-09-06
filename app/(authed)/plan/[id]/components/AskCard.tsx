@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from 'react'
 import { CalendarCheck, Check, ChevronLeft, ChevronRight, Lightbulb, ListChecks, Minus, PenLine, Plus } from 'lucide-react'
-import { isAskCustomOption, reservedCustomOption, type AskUserOption, type AskUserPayload } from '@/lib/planAgent/askUser'
+import { isAskCustomOption, type AskUserOption, type AskUserPayload } from '@/lib/planAgent/askUser'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { toIntlLocale } from '@/lib/i18n/intlLocale'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { useClientToday } from '../hooks/useClientFormattedTime'
 import { MapPin } from 'lucide-react'
 
@@ -15,6 +18,7 @@ type AskCardProps = {
   payload: AskUserPayload
   disabled?: boolean
   onSubmit: (answer: AskAnswer) => void
+  locale?: SupportedLocale
 }
 
 /**
@@ -42,25 +46,32 @@ export function AskAnswerChip(props: { payload: AskUserPayload; answerText: stri
   )
 }
 
-function SkipButton(props: { disabled?: boolean; onSubmit: (answer: AskAnswer) => void }) {
+function SkipButton(props: { disabled?: boolean; onSubmit: (answer: AskAnswer) => void; tx: PlanTextFn }) {
   return (
     <button
       type="button"
       disabled={props.disabled}
-      onClick={() => props.onSubmit({ readableText: '（跳过这个问题）', answerValue: {} })}
+      onClick={() => props.onSubmit({ readableText: props.tx('ask.skipReadable'), answerValue: {} })}
       className="text-xs text-gray-400 underline underline-offset-2 transition hover:text-gray-600 disabled:opacity-50"
     >
-      跳过
+      {props.tx('ask.skip')}
     </button>
   )
 }
 
-function CardShell(props: { prompt: string; allowSkip?: boolean; disabled?: boolean; onSubmit: (answer: AskAnswer) => void; children: React.ReactNode }) {
+function CardShell(props: {
+  prompt: string
+  allowSkip?: boolean
+  disabled?: boolean
+  onSubmit: (answer: AskAnswer) => void
+  tx: PlanTextFn
+  children: React.ReactNode
+}) {
   return (
     <div className="max-w-[92%] rounded-2xl border border-brand-100 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-gray-900">{props.prompt}</p>
-        {props.allowSkip ? <SkipButton disabled={props.disabled} onSubmit={props.onSubmit} /> : null}
+        {props.allowSkip ? <SkipButton disabled={props.disabled} onSubmit={props.onSubmit} tx={props.tx} /> : null}
       </div>
       <div className="pt-3">{props.children}</div>
     </div>
@@ -69,7 +80,7 @@ function CardShell(props: { prompt: string; allowSkip?: boolean; disabled?: bool
 
 // ---------- 日期区间 ----------
 
-const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日']
+const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 const DAY_MS = 24 * 60 * 60 * 1000
 
 function startOfDay(d: Date): Date {
@@ -83,7 +94,9 @@ function toISODate(d: Date): string {
 
 type DateRangeMode = 'exact' | 'fuzzy'
 
-function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
+function DateRangeAsk({ payload, disabled, onSubmit, locale = 'zh' }: AskCardProps) {
+  const tx = planTextFor(locale)
+  const intl = toIntlLocale(locale)
   const [mode, setMode] = useState<DateRangeMode>('exact')
   // 水合安全（React #418）：渲染期「今天」依赖本地时区，SSR（UTC）与浏览器
   // 可能不同日/不同月；首帧 null（日历/月份文本不渲染），effect 后填充
@@ -98,16 +111,23 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
 
   const monthChips = useMemo(() => {
     if (!today) return []
+    const monthFormat = new Intl.DateTimeFormat(intl, { month: 'short' })
     return [0, 1, 2, 3].map((offset) => {
       const d = new Date(today.getFullYear(), today.getMonth() + offset, 1)
-      const month = d.getMonth() + 1
+      const short = monthFormat.format(d)
       const crossYear = d.getFullYear() !== today.getFullYear()
-      const monthName = crossYear ? `${d.getFullYear()}年${month}月` : `${month}月`
-      const label = offset === 0 ? `本月（${monthName}）` : offset === 1 ? `下个月（${monthName}）` : monthName
-      const spoken = offset === 0 ? '这个月' : offset === 1 ? '下个月' : monthName
+      const monthName = crossYear ? tx('ask.monthWithYear', { year: d.getFullYear(), month: short }) : short
+      const label =
+        offset === 0
+          ? tx('ask.thisMonthLabel', { month: monthName })
+          : offset === 1
+            ? tx('ask.nextMonthLabel', { month: monthName })
+            : monthName
+      const spoken = offset === 0 ? tx('ask.thisMonthSpoken') : offset === 1 ? tx('ask.nextMonthSpoken') : monthName
       return { offset, label, spoken }
     })
-  }, [today])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, locale])
 
   const dayCount = start && end ? Math.round((startOfDay(end).getTime() - startOfDay(start).getTime()) / DAY_MS) + 1 : null
 
@@ -134,10 +154,11 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
 
   function submitExact() {
     if (!start || !end || !dayCount) return
-    const endPart =
-      (end.getFullYear() !== start.getFullYear() ? `${end.getFullYear()}年` : '') + `${end.getMonth() + 1}月${end.getDate()}日`
+    const full = new Intl.DateTimeFormat(intl, { year: 'numeric', month: 'short', day: 'numeric' })
+    const short = new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric' })
+    const endPart = end.getFullYear() !== start.getFullYear() ? full.format(end) : short.format(end)
     onSubmit({
-      readableText: `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日出发，${endPart}返回，共${dayCount}天`,
+      readableText: tx('ask.exactReadable', { start: full.format(start), end: endPart, days: dayCount }),
       answerValue: { startDate: toISODate(start), dayCount },
     })
   }
@@ -145,7 +166,7 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
   function submitFuzzy() {
     const chip = monthChips.find((c) => c.offset === chipOffset) ?? monthChips[1]
     onSubmit({
-      readableText: `大概${chip.spoken}出发，玩${fuzzyDays}天`,
+      readableText: tx('ask.fuzzyReadable', { when: chip.spoken, days: fuzzyDays }),
       answerValue: { dayCount: fuzzyDays },
     })
   }
@@ -157,14 +178,14 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
   const endTime = end ? startOfDay(end).getTime() : null
 
   return (
-    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit}>
+    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit} tx={tx}>
       <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs">
         {(
           [
-            ['exact', '精确日期'],
-            ['fuzzy', '大概时间'],
+            ['exact', 'ask.modeExact'],
+            ['fuzzy', 'ask.modeFuzzy'],
           ] as const
-        ).map(([value, label]) => (
+        ).map(([value, labelKey]) => (
           <button
             key={value}
             type="button"
@@ -174,7 +195,7 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
               mode === value ? 'bg-white font-semibold text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {label}
+            {tx(labelKey)}
           </button>
         ))}
       </div>
@@ -186,7 +207,7 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
             <div className="flex items-center justify-between">
               <button
                 type="button"
-                aria-label="上个月"
+                aria-label={tx('ask.prevMonth')}
                 disabled={disabled}
                 onClick={() => shiftMonth(-1)}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
@@ -194,11 +215,14 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="text-sm font-semibold text-gray-900">
-                {view.year}年{view.month + 1}月
+                {tx('ask.monthWithYear', {
+                  year: view.year,
+                  month: new Intl.DateTimeFormat(intl, { month: 'short' }).format(new Date(view.year, view.month, 1)),
+                })}
               </span>
               <button
                 type="button"
-                aria-label="下个月"
+                aria-label={tx('ask.nextMonth')}
                 disabled={disabled}
                 onClick={() => shiftMonth(1)}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 disabled:opacity-40"
@@ -207,8 +231,8 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
               </button>
             </div>
             <div className="grid grid-cols-7 gap-1 pt-2 text-center text-[11px] text-gray-400">
-              {WEEKDAY_LABELS.map((w) => (
-                <span key={w}>{w}</span>
+              {WEEKDAY_KEYS.map((key) => (
+                <span key={key}>{tx(`ask.weekdays.${key}`)}</span>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1 pt-1">
@@ -244,14 +268,16 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
               })}
             </div>
             <div className="flex items-center justify-between pt-3">
-              <span className="text-xs text-gray-500">{dayCount ? `共 ${dayCount} 天` : start ? '再选返回日期' : '点选出发日期'}</span>
+              <span className="text-xs text-gray-500">
+                {dayCount ? tx('ask.dayCount', { days: dayCount }) : tx(start ? 'ask.pickReturn' : 'ask.pickStart')}
+              </span>
               <button
                 type="button"
                 disabled={disabled || !dayCount}
                 onClick={submitExact}
                 className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
               >
-                确认
+                {tx('common.confirm')}
               </button>
             </div>
           </div>
@@ -278,17 +304,19 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
               <div className="inline-flex items-center gap-3">
                 <button
                   type="button"
-                  aria-label="减少天数"
+                  aria-label={tx('ask.decreaseDays')}
                   disabled={disabled || fuzzyDays <= 1}
                   onClick={() => setFuzzyDays((n) => Math.max(1, n - 1))}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </button>
-                <span className="min-w-12 text-center text-sm font-semibold text-gray-900">{fuzzyDays} 天</span>
+                <span className="min-w-12 text-center text-sm font-semibold text-gray-900">
+                  {tx('ask.daysUnit', { days: fuzzyDays })}
+                </span>
                 <button
                   type="button"
-                  aria-label="增加天数"
+                  aria-label={tx('ask.increaseDays')}
                   disabled={disabled || fuzzyDays >= 30}
                   onClick={() => setFuzzyDays((n) => Math.min(30, n + 1))}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-brand-300 disabled:opacity-40"
@@ -302,7 +330,7 @@ function DateRangeAsk({ payload, disabled, onSubmit }: AskCardProps) {
                 onClick={submitFuzzy}
                 className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
               >
-                确认
+                {tx('common.confirm')}
               </button>
             </div>
           </div>
@@ -352,7 +380,8 @@ function OptionCover(props: { option: AskUserOption }) {
  * 历史过渡期落库的 work 载荷可能残留保留的 __custom__ 选项，这里统一过滤，
  * 保证旧作品卡 UI 不变。
  */
-function ChoiceAsk({ payload, disabled, onSubmit }: AskCardProps) {
+function ChoiceAsk({ payload, disabled, onSubmit, locale = 'zh' }: AskCardProps) {
+  const tx = planTextFor(locale)
   const modelOptions = (payload.options ?? []).filter((o) => !isAskCustomOption(o))
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -368,7 +397,7 @@ function ChoiceAsk({ payload, disabled, onSubmit }: AskCardProps) {
     const chosen = modelOptions.filter((o) => selected.has(o.id))
     if (chosen.length === 0) return
     onSubmit({
-      readableText: chosen.map((o) => o.label).join('、'),
+      readableText: chosen.map((o) => o.label).join(tx('ask.joinSeparator')),
       answerValue:
         payload.kind === 'single_choice' && chosen.length === 1
           ? { optionId: chosen[0]!.id }
@@ -377,7 +406,7 @@ function ChoiceAsk({ payload, disabled, onSubmit }: AskCardProps) {
   }
 
   return (
-    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit}>
+    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit} tx={tx}>
       <div
         ref={dragScroll.ref}
         {...dragScroll.handlers}
@@ -414,14 +443,14 @@ function ChoiceAsk({ payload, disabled, onSubmit }: AskCardProps) {
       </div>
 
       <div className="flex items-center justify-between pt-3">
-        <span className="text-xs text-gray-500">已选 {selectedIds.length} 项</span>
+        <span className="text-xs text-gray-500">{tx('ask.selectedCount', { count: selectedIds.length })}</span>
         <button
           type="button"
           disabled={disabled || selectedIds.length === 0}
           onClick={submit}
           className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
         >
-          确认
+          {tx('common.confirm')}
         </button>
       </div>
     </CardShell>
@@ -441,7 +470,8 @@ function optionMarker(index: number): string {
  * 语义。单选保持点选后提交；多选勾选后确认；末位"自行输入"打开卡内
  * 输入框回传 { custom }。
  */
-function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProps & { multiple: boolean }) {
+function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit, locale = 'zh' }: AskCardProps & { multiple: boolean }) {
+  const tx = planTextFor(locale)
   const options = payload.options ?? []
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [customOpen, setCustomOpen] = useState(false)
@@ -450,7 +480,9 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
 
   const hasCustomOption = options.some(isAskCustomOption)
   const modelOptions = hasCustomOption ? options.filter((o) => !isAskCustomOption(o)) : options
-  const customLabel = (options.find(isAskCustomOption) ?? reservedCustomOption()).label
+  // 保留选项的身份在 id 上（isAskCustomOption），文案按站点语言渲染——
+  // 服务端常量 ASK_CUSTOM_OPTION_LABEL 是中文，不能直接摆到英文站上
+  const customLabel = tx('ask.customOption')
 
   function pickSingle(option: AskUserOption) {
     if (disabled) return
@@ -476,7 +508,9 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
     const chosen = modelOptions.filter((o) => selected.has(o.id))
     const text = customText.trim()
     if (chosen.length === 0 && !text) return
-    const readable = [...chosen.map((o) => o.label), ...(text ? [`自定义：${text}`] : [])].join('、')
+    const readable = [...chosen.map((o) => o.label), ...(text ? [tx('ask.customPrefix', { text })] : [])].join(
+      tx('ask.joinSeparator'),
+    )
     onSubmit({
       readableText: readable,
       answerValue: {
@@ -487,7 +521,7 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
   }
 
   return (
-    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit}>
+    <CardShell prompt={payload.prompt} allowSkip={payload.allowSkip} disabled={disabled} onSubmit={onSubmit} tx={tx}>
       <div className="space-y-2">
         {modelOptions.map((option, idx) => {
           const isSelected = selected.has(option.id)
@@ -556,7 +590,7 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
                 else submitCustomSingle()
               }
             }}
-            placeholder={multiple ? '补充自定义内容（可与所选选项并存）' : '输入你的回答…'}
+            placeholder={tx(multiple ? 'ask.customPlaceholderMulti' : 'ask.customPlaceholderSingle')}
             className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
           />
           <button
@@ -565,7 +599,7 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
             onClick={() => (multiple ? submitMulti() : submitCustomSingle())}
             className="shrink-0 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
           >
-            {multiple ? '确认' : '提交'}
+            {tx(multiple ? 'common.confirm' : 'common.submit')}
           </button>
         </div>
       ) : null}
@@ -573,7 +607,8 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
       {multiple ? (
         <div className="flex items-center justify-between pt-3">
           <span className="text-xs text-gray-500">
-            已选 {selectedIds.length} 项{customText.trim() ? ' + 自定义' : ''}
+            {tx('ask.selectedCount', { count: selectedIds.length })}
+            {customText.trim() ? tx('ask.plusCustom') : ''}
           </span>
           <button
             type="button"
@@ -581,7 +616,7 @@ function OpinionChoiceAsk({ payload, multiple, disabled, onSubmit }: AskCardProp
             onClick={submitMulti}
             className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
           >
-            确认
+            {tx('common.confirm')}
           </button>
         </div>
       ) : null}

@@ -159,13 +159,33 @@ describe('规划师起始页（游客可进，发送时才登录）', () => {
   })
 })
 
+describe('syncLocaleCookie：显式 ?locale= 时把语言落到 NEXT_LOCALE cookie', () => {
+  beforeEach(() => {
+    // jsdom 的 document.cookie 不能整体清空，逐个过期即可
+    for (const pair of document.cookie.split(';')) {
+      const name = pair.split('=')[0]?.trim()
+      if (name) document.cookie = `${name}=; path=/; max-age=0`
+    }
+  })
+
+  it('syncLocaleCookie 为 true 时写 cookie', () => {
+    render(<PlanStartClient initialDraft="" signedIn locale="ja" syncLocaleCookie />)
+    expect(document.cookie).toContain('NEXT_LOCALE=ja')
+  })
+
+  it('不传时不写 cookie（站点解析出来的语言不该被起始页固化）', () => {
+    render(<PlanStartClient initialDraft="" signedIn locale="ja" />)
+    expect(document.cookie).not.toContain('NEXT_LOCALE')
+  })
+})
+
 describe('parseStartLocale（?locale= 只认三种语言）', () => {
-  it('认识 en/ja，其余一律回落 zh', () => {
+  it('认识 en/ja，其余返回 null 由页面回落 getLocale', () => {
     expect(parseStartLocale('en')).toBe('en')
     expect(parseStartLocale('ja')).toBe('ja')
     expect(parseStartLocale(['ja', 'en'])).toBe('ja')
-    expect(parseStartLocale(undefined)).toBe('zh')
-    expect(parseStartLocale('de')).toBe('zh')
-    expect(parseStartLocale('')).toBe('zh')
+    expect(parseStartLocale(undefined)).toBeNull()
+    expect(parseStartLocale('de')).toBeNull()
+    expect(parseStartLocale('')).toBeNull()
   })
 })

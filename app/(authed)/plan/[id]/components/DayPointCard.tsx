@@ -5,6 +5,8 @@ import ResilientMapImage from '@/components/map/ResilientMapImage'
 import { getMedia, getSchedule } from './itemPayload'
 import { MediaAttribution } from './ItemThumbnail'
 import { buildPointNavigationUrl } from '../lib/navigationLinks'
+import { planTextFor } from '../lib/planText'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 
 /** Google 街景外链（page-in 全景浮层留到后续轮次，本轮先保证可交付） */
@@ -30,8 +32,11 @@ export function DayPointCard(props: {
   /** 「查看条目」：切回列表、滚动到条目并闪烁高亮环 */
   onShowItem?: () => void
   onClose?: () => void
+  locale?: SupportedLocale
 }) {
   const { item, title, lat, lng, onShowItem, onClose } = props
+  const locale = props.locale ?? 'zh'
+  const tx = planTextFor(locale)
   const media = item ? getMedia(item) : null
   const pointPhotoSrc = item?.pointId
     ? `/api/google/point-photo?pointId=${encodeURIComponent(item.pointId)}&maxwidth=400`
@@ -66,7 +71,7 @@ export function DayPointCard(props: {
         {onClose ? (
           <button
             type="button"
-            aria-label="关闭"
+            aria-label={tx('common.close')}
             onClick={onClose}
             className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/45 text-white transition hover:bg-black/65"
           >
@@ -95,16 +100,16 @@ export function DayPointCard(props: {
             onClick={onShowItem}
             className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-brand-500"
           >
-            查看条目
+            {tx('map.showItem')}
           </button>
         ) : null}
         <a href={buildPointNavigationUrl({ lat, lng })} target="_blank" rel="noreferrer" className={ACTION_CLASS}>
           <Navigation className="h-3 w-3" />
-          导航
+          {tx('map.navigate')}
         </a>
         <a href={buildStreetViewUrl({ lat, lng })} target="_blank" rel="noreferrer" className={ACTION_CLASS}>
           <ExternalLink className="h-3 w-3" />
-          实景
+          {tx('map.streetView')}
         </a>
       </div>
     </div>

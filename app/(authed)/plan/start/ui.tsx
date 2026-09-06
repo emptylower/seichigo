@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Home, Loader2, SendHorizontal } from 'lucide-react'
@@ -10,6 +10,11 @@ import { t } from '@/lib/i18n'
 import { PENDING_DRAFT_KEY } from '@/app/(authed)/plan/[id]/hooks/usePendingDraft'
 
 const TITLE_MAX_LENGTH = 30
+
+/** 与 components/LanguageSwitcher.tsx 的 setLocaleCookie 同参数 */
+function setLocaleCookie(locale: SiteLocale) {
+  document.cookie = `NEXT_LOCALE=${locale}; path=/; max-age=31536000; SameSite=Lax`
+}
 
 /** 示例 chip 与首页输入框同一组文案，不另写一份免得两边漂移 */
 const EXAMPLE_KEYS = ['composerExample1', 'composerExample2', 'composerExample3'] as const
@@ -22,13 +27,26 @@ export default function PlanStartClient({
   initialDraft,
   signedIn,
   locale = 'zh',
+  syncLocaleCookie = false,
 }: {
   initialDraft: string
   signedIn: boolean
   /** 低-6：首页跳过来时带的 `?locale=`（zh 不带，缺省即中文） */
   locale?: SiteLocale
+  /** ?locale= 显式给出时为 true：挂载后写一次 NEXT_LOCALE cookie */
+  syncLocaleCookie?: boolean
 }) {
   const router = useRouter()
+  // 首页带 `?locale=` 跳进来时把语言落到 cookie：创建后跳转的 /plan/<id>
+  // （非前缀路由）才能继续用同一种语言渲染
+  useEffect(() => {
+    if (!syncLocaleCookie) return
+    try {
+      setLocaleCookie(locale)
+    } catch {
+      /* 禁用 cookie 的浏览器：起始页本身仍是正确语言，不影响本次创建 */
+    }
+  }, [syncLocaleCookie, locale])
   const examples = EXAMPLE_KEYS.map((key) => t(`pages.home.v2.${key}`, locale))
   const [text, setText] = useState(initialDraft)
   const [busy, setBusy] = useState(false)

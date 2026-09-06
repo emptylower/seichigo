@@ -1,6 +1,7 @@
 import SiteShellPublic from '@/components/layout/SiteShellPublic'
 import { redirect } from 'next/navigation'
 import { getServerAuthSession } from '@/lib/auth/session'
+import { getLocale } from '@/lib/i18n/getLocale'
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerAuthSession()
@@ -10,5 +11,6 @@ export default async function AuthedLayout({ children }: { children: React.React
   if (session?.user?.isAdmin && session?.user?.mustChangePassword) {
     redirect('/auth/change-password')
   }
-  return <SiteShellPublic>{children}</SiteShellPublic>
+  const locale = await getLocale()
+  return <SiteShellPublic locale={locale}>{children}</SiteShellPublic>
 }

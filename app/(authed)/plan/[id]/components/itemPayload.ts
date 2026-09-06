@@ -1,4 +1,6 @@
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { planTextFor } from '../lib/planText'
 import { normalizeDaySchedule } from '@/lib/planAgent/schedule'
 
 /**
@@ -209,41 +211,52 @@ export function formatDistanceKm(distanceKm: number): string {
 }
 
 /** 交通段主文案："步行 8 分钟 · 650m"；estimated 兜底值追加"（参考估算）"标注 */
-export function formatTransportText(transport: TransportPayload): string {
+export function formatTransportText(transport: TransportPayload, locale: SupportedLocale = 'zh'): string {
+  const tx = planTextFor(locale)
   const parts: string[] = []
-  const modeLabel =
-    transport.mode === 'walk' ? '步行' : transport.mode === 'driving' ? '自驾' : transport.mode === 'transit' ? '乘车' : null
-  if (typeof transport.durationMin === 'number' && modeLabel) {
-    parts.push(`${modeLabel} ${Math.round(transport.durationMin)} 分钟`)
+  const modeKey =
+    transport.mode === 'walk'
+      ? 'transit.walk'
+      : transport.mode === 'driving'
+        ? 'transit.drive'
+        : transport.mode === 'transit'
+          ? 'transit.ride'
+          : null
+  if (typeof transport.durationMin === 'number' && modeKey) {
+    parts.push(`${tx(modeKey)} ${tx('transit.durationMin', { minutes: Math.round(transport.durationMin) })}`)
   }
   if (typeof transport.distanceKm === 'number' && transport.distanceKm > 0) {
     parts.push(formatDistanceKm(transport.distanceKm))
   }
   const text = parts.join(' · ')
-  if (transport.estimated && text) return `${text}（参考估算）`
+  if (transport.estimated && text) return `${text}${tx('transit.estimateSuffix')}`
   return text
 }
 
 /** 分段摘要："步行至京都站 → 京阪本线 5 站 → 步行 300m"；无 legs 返回 null */
-export function formatLegsText(transport: TransportPayload): string | null {
+export function formatLegsText(transport: TransportPayload, locale: SupportedLocale = 'zh'): string | null {
   const legs = transport.legs
   if (!legs || !legs.length) return null
+  const tx = planTextFor(locale)
   const segments = legs.map((leg) => {
     if (leg.mode === 'transit' || (leg.line && (leg.fromStop || leg.toStop))) {
-      const line = leg.line || '公共交通'
-      const stops = typeof leg.numStops === 'number' && leg.numStops > 0 ? ` ${leg.numStops} 站` : ''
-      const from = leg.fromStop ? `从${leg.fromStop}` : ''
-      const to = leg.toStop ? `到${leg.toStop}` : ''
+      const line = leg.line || tx('transit.publicTransport')
+      const stops =
+        typeof leg.numStops === 'number' && leg.numStops > 0 ? ` ${tx('transit.stops', { count: leg.numStops })}` : ''
+      const from = leg.fromStop ? tx('transit.legFrom', { stop: leg.fromStop }) : ''
+      const to = leg.toStop ? tx('transit.legTo', { stop: leg.toStop }) : ''
       return `${line}${stops}${from || to ? `（${from}${to}）` : ''}`.trim()
     }
     if (leg.mode === 'walk') {
-      const minutes = typeof leg.durationMin === 'number' ? ` ${Math.round(leg.durationMin)} 分钟` : ''
+      const minutes =
+        typeof leg.durationMin === 'number' ? ` ${tx('transit.durationMin', { minutes: Math.round(leg.durationMin) })}` : ''
       const distance = typeof leg.distanceKm === 'number' && leg.distanceKm > 0 ? ` · ${formatDistanceKm(leg.distanceKm)}` : ''
-      return `步行${minutes}${distance}`.trim()
+      return `${tx('transit.walk')}${minutes}${distance}`.trim()
     }
     if (leg.mode === 'drive') {
-      const minutes = typeof leg.durationMin === 'number' ? ` ${Math.round(leg.durationMin)} 分钟` : ''
-      return `自驾${minutes}`.trim()
+      const minutes =
+        typeof leg.durationMin === 'number' ? ` ${tx('transit.durationMin', { minutes: Math.round(leg.durationMin) })}` : ''
+      return `${tx('transit.drive')}${minutes}`.trim()
     }
     return leg.instruction?.slice(0, 40) ?? ''
   })

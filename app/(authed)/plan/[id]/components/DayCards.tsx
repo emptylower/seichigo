@@ -22,25 +22,28 @@ import {
 import { dayItemContentKeys, dayRoutePoints, fetchRouteGeometry, routeSignature } from './dayRouteGeometry'
 import { composeDayRoute } from './dayRouteCompose'
 import { buildDayNavigationUrls, buildPointNavigationUrl, defaultMaxNavigationWaypoints } from '../lib/navigationLinks'
+import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { useClientFormattedTime } from '../hooks/useClientFormattedTime'
 import { useDayAutoRotate } from '../hooks/useDayAutoRotate'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DaymapMessagePayload, TripPlanDayView, TripPlanItemView } from '@/lib/tripPlan/view'
 
 /** 静态展示：当前天前 6 张缩略图 eager，其余 lazy（第二屏首帧直接出图） */
 const EAGER_IMAGE_COUNT = 6
 
-const TYPE_LABELS: Record<string, string> = {
-  point: '点位',
-  meal: '用餐',
-  lodging: '住宿',
-  attraction: '景点',
-  free: '自由',
+const TYPE_LABEL_KEYS: Record<string, string> = {
+  point: 'day.typePoint',
+  meal: 'day.typeMeal',
+  lodging: 'day.typeLodging',
+  attraction: 'day.typeAttraction',
+  free: 'day.typeFree',
 }
 
-const SCHEDULE_CONFIDENCE_LABELS: Record<string, string> = {
-  explicit: '',
-  reference: '参考',
-  estimated: '预估',
+/** explicit 是模型显式给的时间，不加标注；其余按参考/预估标注 */
+const SCHEDULE_CONFIDENCE_KEYS: Record<string, string | null> = {
+  explicit: null,
+  reference: 'day.confidenceReference',
+  estimated: 'day.confidenceEstimated',
 }
 
 function formatDayDate(date: string | null): string | null {
@@ -53,30 +56,40 @@ function formatDayDate(date: string | null): string | null {
 
 // 「交给规划师调整」预填文案（§0）：点位级带天数/序号/标题；整日级只带天数；
 // 历史快照额外前缀「基于 {savedAt} 那版行程，」（快照不可悄悄修改，只做预填转述）
-function snapshotDraftPrefix(snapshotSavedAt?: string | null): string {
-  return snapshotSavedAt ? `基于 ${snapshotSavedAt} 那版行程，` : ''
+function snapshotDraftPrefix(tx: PlanTextFn, snapshotSavedAt?: string | null): string {
+  return snapshotSavedAt ? tx('day.draftSnapshotPrefix', { savedAt: snapshotSavedAt }) : ''
 }
 
-function buildPointAdjustDraft(day: number, seq: number, title: string, snapshotSavedAt?: string | null): string {
-  return `${snapshotDraftPrefix(snapshotSavedAt)}请调整第 ${day} 天第 ${seq} 个点位「${title}」：`
+function buildPointAdjustDraft(
+  tx: PlanTextFn,
+  day: number,
+  seq: number,
+  title: string,
+  snapshotSavedAt?: string | null,
+): string {
+  return `${snapshotDraftPrefix(tx, snapshotSavedAt)}${tx('day.draftAdjustPoint', { day, seq, title })}`
 }
 
-function buildDayAdjustDraft(day: number, snapshotSavedAt?: string | null): string {
-  return `${snapshotDraftPrefix(snapshotSavedAt)}请调整第 ${day} 天的安排：`
+function buildDayAdjustDraft(tx: PlanTextFn, day: number, snapshotSavedAt?: string | null): string {
+  return `${snapshotDraftPrefix(tx, snapshotSavedAt)}${tx('day.draftAdjustDay', { day })}`
 }
 
-function ScheduleTimeChip(props: { item: TripPlanItemView }) {
-  const { item } = props
+function ScheduleTimeChip(props: { item: TripPlanItemView; tx: PlanTextFn }) {
+  const { item, tx } = props
   const schedule = getSchedule(item)
   if (schedule) {
-    const marker = SCHEDULE_CONFIDENCE_LABELS[schedule.confidence] ?? '预估'
+    const markerKey =
+      schedule.confidence in SCHEDULE_CONFIDENCE_KEYS
+        ? SCHEDULE_CONFIDENCE_KEYS[schedule.confidence]!
+        : 'day.confidenceEstimated'
+    const marker = markerKey ? tx(markerKey) : ''
     return (
       <span className="flex shrink-0 items-center gap-1">
         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] tabular-nums text-gray-600">
           {schedule.start}–{schedule.end}
         </span>
         {marker ? (
-          <span className="rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600" title="由宽泛时段换算的参考/预估时间">
+          <span className="rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600" title={tx('day.confidenceTitle')}>
             {marker}
           </span>
         ) : null}
@@ -109,6 +122,7 @@ function TimelineCardRow(props: {
   staticMode?: boolean
   /** 静态展示时当前天的前几张图 eager 加载（首帧直接出图），其余保持 lazy */
   eagerImage?: boolean
+  locale?: SupportedLocale
 }) {
   const {
     item,
@@ -124,7 +138,9 @@ function TimelineCardRow(props: {
     onComposeDraft,
     staticMode = false,
     eagerImage = false,
+    locale = 'zh',
   } = props
+  const tx = planTextFor(locale)
   // 计序口径（M3 修订）：type='point'（含历史缺坐标数据）与带 payload.place 的
   // 外部地点条目（point/attraction）都是完整行程点——计序号、展示媒体图；
   // 地图/路线仅纳入有坐标的点（dayRoutePoints 另行过滤）
@@ -189,19 +205,22 @@ function TimelineCardRow(props: {
         media={media}
         staticMode={staticMode}
         eager={eagerImage}
+        locale={locale}
       />
 
       {/* 内容区 */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="min-w-0 truncate text-sm font-semibold text-gray-900">{item.title}</span>
-          <ScheduleTimeChip item={item} />
-          {!isVisit && TYPE_LABELS[item.type] ? (
-            <span className="shrink-0 rounded bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-400">{TYPE_LABELS[item.type]}</span>
+          <ScheduleTimeChip item={item} tx={tx} />
+          {!isVisit && TYPE_LABEL_KEYS[item.type] ? (
+            <span className="shrink-0 rounded bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-400">
+              {tx(TYPE_LABEL_KEYS[item.type]!)}
+            </span>
           ) : null}
           {isExternal ? (
-            <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-600" title="来自 Google 地点的非巡礼地点">
-              Google 地点
+            <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-600" title={tx('day.googlePlaceTitle')}>
+              {tx('day.googlePlace')}
             </span>
           ) : null}
         </div>
@@ -219,8 +238,8 @@ function TimelineCardRow(props: {
           {pointKey && onShowOnMap ? (
             <button
               type="button"
-              aria-label={`在地图上看：${item.title}`}
-              title="在地图上看"
+              aria-label={tx('day.showOnMapAria', { title: item.title })}
+              title={tx('day.showOnMap')}
               onClick={(event) => {
                 event.stopPropagation()
                 onShowOnMap(pointKey)
@@ -235,8 +254,8 @@ function TimelineCardRow(props: {
               href={buildPointNavigationUrl(navLatLng)}
               target="_blank"
               rel="noopener"
-              aria-label={`导航到${item.title}`}
-              title="在 Google 地图导航到这里"
+              aria-label={tx('day.navigateAria', { title: item.title })}
+              title={tx('day.navigateHere')}
               onClick={(event) => event.stopPropagation()}
               className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
             >
@@ -246,11 +265,11 @@ function TimelineCardRow(props: {
           {seq !== null && onComposeDraft ? (
             <button
               type="button"
-              aria-label={`交给规划师调整：${item.title}`}
-              title="交给规划师调整"
+              aria-label={tx('day.adjustAria', { title: item.title })}
+              title={tx('day.adjust')}
               onClick={(event) => {
                 event.stopPropagation()
-                onComposeDraft(buildPointAdjustDraft(dayIndex, seq, item.title, snapshotSavedAt))
+                onComposeDraft(buildPointAdjustDraft(tx, dayIndex, seq, item.title, snapshotSavedAt))
               }}
               className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
             >
@@ -285,6 +304,7 @@ export function DayCards(props: {
   static?: boolean
   /** 静态展示时 Day 标签每 5 秒自动轮播，用户交互后停止 */
   autoRotate?: boolean
+  locale?: SupportedLocale
 }) {
   const {
     planId,
@@ -294,7 +314,9 @@ export function DayCards(props: {
     snapshotSavedAt = null,
     static: staticMode = false,
     autoRotate = false,
+    locale = 'zh',
   } = props
+  const tx = planTextFor(locale)
   const router = useRouter()
   const [view, setView] = useState<'list' | 'map'>('list')
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
@@ -401,18 +423,18 @@ export function DayCards(props: {
         setSaveState('saved')
       } else {
         setSaveState('idle')
-        setSaveError(data?.error ?? '保存失败，请稍后再试')
+        setSaveError(data?.error ?? tx('day.saveFailed'))
       }
     } catch {
       setSaveState('idle')
-      setSaveError('网络错误，请稍后再试')
+      setSaveError(tx('day.networkError'))
     }
   }
 
   if (!days.length) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
-        还没有行程——在左侧告诉规划师你想去哪、巡礼哪部作品吧。
+        {tx('day.empty')}
       </div>
     )
   }
@@ -433,10 +455,10 @@ export function DayCards(props: {
         <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-xs">
           {(
             [
-              { key: 'list', label: '列表', Icon: List },
-              { key: 'map', label: '地图', Icon: MapIcon },
+              { key: 'list', textKey: 'day.tabList', Icon: List },
+              { key: 'map', textKey: 'day.tabMap', Icon: MapIcon },
             ] as const
-          ).map(({ key, label, Icon }) => (
+          ).map(({ key, textKey, Icon }) => (
             <button
               key={key}
               type="button"
@@ -451,13 +473,13 @@ export function DayCards(props: {
               }
             >
               <Icon className="h-3.5 w-3.5" />
-              {label}
+              {tx(textKey)}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-2">
           {staticMode ? null : scope === 'snapshot' ? (
-            <span className="text-xs text-gray-400">历史快照 · 只读</span>
+            <span className="text-xs text-gray-400">{tx('day.snapshotReadonly')}</span>
           ) : (
             <>
               {saveError ? <span className="text-xs text-red-500">{saveError}</span> : null}
@@ -472,7 +494,7 @@ export function DayCards(props: {
                 }
               >
                 {saveState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                {saveState === 'saved' ? '已保存 · 查看我的地图' : '保存到我的地图'}
+                {saveState === 'saved' ? tx('day.savedViewMap') : tx('day.saveToMyMap')}
               </button>
             </>
           )}
@@ -497,7 +519,7 @@ export function DayCards(props: {
                   : 'shrink-0 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-sm text-gray-600 hover:border-brand-300'
               }
             >
-              {`Day ${day.dayIndex}`}
+              {tx('day.dayLabel', { day: day.dayIndex })}
               {date ? <span className="ml-1 text-xs opacity-80">· {date}</span> : null}
             </button>
           )
@@ -525,13 +547,13 @@ export function DayCards(props: {
                 className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600"
               >
                 <Navigation className="h-3 w-3" />
-                整日导航
+                {tx('day.dayNav')}
               </a>
             ) : dayNavUrls.length > 1 ? (
               <details className="relative">
                 <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600">
                   <Navigation className="h-3 w-3" />
-                  整日导航（{dayNavUrls.length} 段）
+                  {tx('day.dayNavSegments', { count: dayNavUrls.length })}
                 </summary>
                 <div className="absolute left-0 z-10 mt-1 flex min-w-28 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
                   {dayNavUrls.map((url, index) => (
@@ -542,7 +564,7 @@ export function DayCards(props: {
                       rel="noopener"
                       className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-brand-600"
                     >
-                      第 {index + 1} 段
+                      {tx('day.segment', { index: index + 1 })}
                     </a>
                   ))}
                 </div>
@@ -551,11 +573,11 @@ export function DayCards(props: {
             {onComposeDraft ? (
               <button
                 type="button"
-                onClick={() => onComposeDraft(buildDayAdjustDraft(active.dayIndex, snapshotSavedAt))}
+                onClick={() => onComposeDraft(buildDayAdjustDraft(tx, active.dayIndex, snapshotSavedAt))}
                 className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600"
               >
                 <MessageSquarePlus className="h-3 w-3" />
-                交给规划师调整这一天
+                {tx('day.adjustDay')}
               </button>
             ) : null}
           </div>
@@ -587,7 +609,9 @@ export function DayCards(props: {
                     break
                   }
                 }
-                return <TransitConnector key={itemKey} item={item} origin={origin} destination={destination} />
+                return (
+                  <TransitConnector key={itemKey} item={item} origin={origin} destination={destination} locale={locale} />
+                )
               }
               const isVisit = isNumberedVisitItem(item)
               if (isVisit) seq += 1
@@ -609,6 +633,7 @@ export function DayCards(props: {
                   onComposeDraft={onComposeDraft}
                   staticMode={staticMode}
                   eagerImage={idx < EAGER_IMAGE_COUNT}
+                  locale={locale}
                 />
               )
             })
@@ -623,6 +648,7 @@ export function DayCards(props: {
             activePointId={activePointId}
             onPointSelect={handlePointSelect}
             onRequestShowItem={handleRequestShowItem}
+            locale={locale}
           />
         </div>
       )}
@@ -650,15 +676,16 @@ export function DaymapCard(props: {
   /** 静态展示（首页第二屏）：不发请求、不显示快照抬头与保存/调整入口 */
   static?: boolean
   autoRotate?: boolean
+  locale?: SupportedLocale
 }) {
-  const { daymap, static: staticMode = false, autoRotate = false } = props
-  const savedAtLabel = useClientFormattedTime(daymap.savedAt)
+  const { daymap, static: staticMode = false, autoRotate = false, locale = 'zh' } = props
+  const savedAtLabel = useClientFormattedTime(daymap.savedAt, locale)
   return (
     <div data-daymap-revision={daymap.revisionId} className="pt-1">
       {staticMode ? null : (
         <div className="flex items-center gap-1.5 px-1 pb-1.5 text-xs text-gray-400">
           <MapIcon className="h-3.5 w-3.5 shrink-0" />
-          <span>行程快照 · 已保存</span>
+          <span>{planTextFor(locale)('day.snapshotSaved')}</span>
           {savedAtLabel ? <span className="tabular-nums">{savedAtLabel}</span> : null}
         </div>
       )}
@@ -670,6 +697,7 @@ export function DaymapCard(props: {
         onComposeDraft={props.onComposeDraft}
         static={staticMode}
         autoRotate={autoRotate}
+        locale={locale}
       />
     </div>
   )

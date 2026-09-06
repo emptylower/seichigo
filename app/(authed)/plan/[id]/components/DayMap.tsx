@@ -15,6 +15,8 @@ import {
 } from './dayRouteGeometry'
 import { DayMapExpanded } from './DayMapExpanded'
 import { useDayPointPopup } from '../hooks/useDayPointPopup'
+import { planTextFor } from '../lib/planText'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanDayView } from '@/lib/tripPlan/view'
 
 /**
@@ -33,8 +35,11 @@ export function DayMap(props: {
   onRequestShowItem?: (id: string) => void
   /** 静态展示（首页展示计划）：没有权威折线时也不请求通用路网，直接画直线 */
   static?: boolean
+  locale?: SupportedLocale
 }) {
   const { planId, day, activePointId = null, onPointSelect, onRequestShowItem, static: staticMode = false } = props
+  const locale = props.locale ?? 'zh'
+  const tx = planTextFor(locale)
   const [geometry, setGeometry] = useState<RouteLineString | null>(null)
   const [sourceLabel, setSourceLabel] = useState<'provider' | 'mixed' | 'fallback' | null>(null)
   const [loading, setLoading] = useState(false)
@@ -54,8 +59,8 @@ export function DayMap(props: {
 
   // M11 marker Popup：把一个空容器交给 maplibre，内容由 React portal 渲染成点位卡。
   // L2：inline 与展开态各持一份宿主（两张地图可同时在场），互不顶掉。
-  const inlinePopup = useDayPointPopup({ points: dayPoints, items: dayItems, onRequestShowItem })
-  const expandedPopup = useDayPointPopup({ points: dayPoints, items: dayItems, onRequestShowItem })
+  const inlinePopup = useDayPointPopup({ points: dayPoints, items: dayItems, onRequestShowItem, locale })
+  const expandedPopup = useDayPointPopup({ points: dayPoints, items: dayItems, onRequestShowItem, locale })
 
   const signature = routeSignature(dayPoints)
 
@@ -116,7 +121,7 @@ export function DayMap(props: {
   if (!dayPoints.length) {
     return (
       <div className="mx-4 mb-4 flex h-40 items-center justify-center rounded-2xl bg-gray-50 text-xs text-gray-400">
-        当天还没有带坐标的点位
+        {tx('map.noPoints')}
       </div>
     )
   }
@@ -143,24 +148,20 @@ export function DayMap(props: {
         className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-gray-600 shadow-sm hover:bg-white"
       >
         <Maximize2 className="h-3 w-3" />
-        展开
+        {tx('map.expand')}
       </button>
       {sourceLabel === 'fallback' || sourceLabel === 'mixed' ? (
         <div
           className="pointer-events-none absolute left-3 top-9 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-400 shadow-sm"
-          title={
-            sourceLabel === 'mixed'
-              ? '部分路段没有权威路线数据，用直线连接示意'
-              : '未取到所选交通方式的权威路线，按路网示意连接'
-          }
+          title={tx(sourceLabel === 'mixed' ? 'map.mixedTitle' : 'map.fallbackTitle')}
         >
-          {sourceLabel === 'mixed' ? '部分示意' : '参考路线（示意）'}
+          {tx(sourceLabel === 'mixed' ? 'map.mixedBadge' : 'map.fallbackBadge')}
         </div>
       ) : null}
       {loading ? (
         <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] text-gray-500 shadow-sm">
           <Loader2 className="h-3 w-3 animate-spin" />
-          路线加载中…
+          {tx('map.loading')}
         </div>
       ) : null}
       {!loading && error ? (
@@ -169,7 +170,7 @@ export function DayMap(props: {
           onClick={() => setRetryToken((t) => t + 1)}
           className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-red-500 shadow-sm"
         >
-          路线加载失败 · 重试
+          {tx('map.loadFailedRetry')}
         </button>
       ) : null}
       {inlinePopup.card}
@@ -185,6 +186,7 @@ export function DayMap(props: {
             onPopupClosed={expandedPopup.onPopupClosed}
             popupControlsRef={expandedPopup.popupControlsRef}
             onClose={() => setExpanded(false)}
+            locale={locale}
           />
           {expandedPopup.card}
         </>

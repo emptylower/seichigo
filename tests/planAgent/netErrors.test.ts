@@ -36,8 +36,18 @@ describe('agentErrorMessage', () => {
     expect(agentErrorMessage(new TypeError('Network connection lost.'))).toContain('不会丢失')
   })
 
+  it('maps transient network errors to localized messages', () => {
+    expect(agentErrorMessage(new TypeError('Network connection lost.'), 'en')).toBe(
+      'The network connection dropped and this reply was cut off. Everything saved so far is safe — just send another message to continue.',
+    )
+    const ja = agentErrorMessage(new Error('Network connection lost.'), 'ja')
+    expect(ja).toContain('ネットワーク接続')
+    expect(ja).toContain('失われません')
+  })
+
   it('keeps the raw message for ordinary errors and stringifies non-Error throwables', () => {
     expect(agentErrorMessage(new Error('rate limited'))).toBe('rate limited')
+    expect(agentErrorMessage(new Error('rate limited'), 'ja')).toBe('rate limited')
     expect(agentErrorMessage('boom')).toBe('boom')
   })
 })

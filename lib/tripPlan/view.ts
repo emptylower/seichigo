@@ -13,7 +13,7 @@ export type TripPlanItemView = {
   note: string | null
   reason: string | null
   payload: Prisma.JsonValue | null
-  point: { id: string; name: string; nameZh: string | null; lat: number | null; lng: number | null; image: string | null } | null
+  point: { id: string; name: string; nameZh: string | null; nameEn?: string | null; lat: number | null; lng: number | null; image: string | null } | null
 }
 
 export type TripPlanDayView = {
