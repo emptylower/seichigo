@@ -36,7 +36,9 @@
 | 修改 `lib/planAgent/tools.ts` | `forbiddenTools`、`maxDays`、`tier_forbidden` 与天数校验 |
 | 修改 `lib/planAgent/enrich/types.ts`、`restaurantEnricher.ts`、`mealEnricher.ts` | `EnrichContext.entitlements` 与跳过 |
 | 修改 `lib/planAgent/loop.ts` | 工具过滤、提示词附注、单次上限、结算回调 |
-| 修改 `app/api/me/plans/[id]/agent/route.ts` | 预扣、402、注入 |
+| 修改 `app/api/me/plans/[id]/agent/route.ts` | 预检、402、预扣 |
+| 修改 `lib/planAgent/execute.ts`、`app/api/internal/plan-agent/run/route.ts` | 能力表与结算回调注入（SSE 与队列两条路径） |
+| 修改 `lib/planAgent/serverText.ts` | 三语 `budgetExhausted` 文案 |
 | 新建 `app/api/me/usage/route.ts` | 用量查询接口 |
 
 ---
@@ -815,6 +817,15 @@ describe('billing service', () => {
     if (!denied.ok) expect(denied.resetsAt.toISOString()).toBe('2026-09-20T00:00:00.000Z')
   })
 
+  it('canStartRun is a read-only precheck and force reserve skips the balance check', async () => {
+    const { billing } = setup()
+    const account = (await billing.getAccount('u1'))!
+    expect(billing.canStartRun(account)).toBe(true)
+    expect(billing.canStartRun({ ...account, balanceMicros: RESERVE_MICROS.standard - 1 })).toBe(false)
+    const forced = await billing.reserveRun({ account: { ...account, balanceMicros: 0 }, planId: 'p1', runRef: 'f1', force: true })
+    expect(forced.ok).toBe(true)
+  })
+
   it('admins are never charged', async () => {
     const { billing, ledger } = setup()
     const account = (await billing.getAccount('admin'))!
@@ -872,7 +883,13 @@ export type ReserveResult = { ok: true } | { ok: false; resetsAt: Date }
 export type BillingService = {
   /** 读取账户并保证周期有效：periodEnd 为空或已过 → 滚动周期并写入整月 grant */
   getAccount(userId: string): Promise<BillingAccount | null>
-  reserveRun(input: { account: BillingAccount; planId: string; runRef: string }): Promise<ReserveResult>
+  /**
+   * 预扣。force=true 跳过余量检查（路由已在 beginAgentRun 之前做过预检，
+   * 抢到 busy 位后无条件预扣，允许余量短暂为负，避免回滚已落库的人类消息）
+   */
+  reserveRun(input: { account: BillingAccount; planId: string; runRef: string; force?: boolean }): Promise<ReserveResult>
+  /** 只读预检：余量是否够一次预扣；管理员恒 true */
+  canStartRun(account: BillingAccount): boolean
   /** 按真实成本结算；hadModelOutput=false 时全额退回 */
   settleRun(input: { runRef: string; actualMicros: number; hadModelOutput: boolean }): Promise<void>
   /** 进程崩溃等留下的孤儿 reserve：早于 olderThan 且未配对的一律退回 */
@@ -922,14 +939,18 @@ export function createBillingService(deps: {
     }
   }
 
-  async function reserveRun(input: { account: BillingAccount; planId: string; runRef: string }): Promise<ReserveResult> {
+  function canStartRun(account: BillingAccount): boolean {
+    return account.isAdmin || account.balanceMicros >= RESERVE_MICROS[account.tier]
+  }
+
+  async function reserveRun(input: { account: BillingAccount; planId: string; runRef: string; force?: boolean }): Promise<ReserveResult> {
     const { account } = input
     if (account.isAdmin) return { ok: true }
     const amount = RESERVE_MICROS[account.tier]
     return deps.ledger.withUserLock(account.userId, async function (this: UsageLedgerRepo | void) {
       const ledger = (this as UsageLedgerRepo | undefined) ?? deps.ledger
       const balance = await ledger.balance(account.userId, account.periodStart)
-      if (balance < amount) return { ok: false as const, resetsAt: account.periodEnd }
+      if (!input.force && balance < amount) return { ok: false as const, resetsAt: account.periodEnd }
       await ledger.append({
         userId: account.userId,
         planId: input.planId,
@@ -969,7 +990,7 @@ export function createBillingService(deps: {
     }
   }
 
-  return { getAccount, reserveRun, settleRun, refundStaleReserves }
+  return { getAccount, canStartRun, reserveRun, settleRun, refundStaleReserves }
 }
 ```
 
@@ -1398,10 +1419,15 @@ Expected: PASS。
 
 ---
 
-### Task B8: agent 路由预扣与注入；`GET /api/me/usage`
+### Task B8: 路由预检与预扣、执行体注入、`GET /api/me/usage`
+
+**当前结构（以此为准，不是计划初稿里的旧结构）：** `app/api/me/plans/[id]/agent/route.ts` 只做鉴权、`beginAgentRun`、队列投递或 SSE；真正的 run 在 `lib/planAgent/execute.ts` 的 `executePlanAgentRun`，SSE 路径与队列消费者的内部路由 `app/api/internal/plan-agent/run/route.ts` 都调它。计费引用 `runRef` 直接使用 `runToken`（两条路径都有它）。
 
 **Files:**
 - Modify: `app/api/me/plans/[id]/agent/route.ts`
+- Modify: `lib/planAgent/execute.ts`
+- Modify: `app/api/internal/plan-agent/run/route.ts`
+- Modify: `lib/planAgent/serverText.ts`（三语新增 `errors.budgetExhausted`）
 - Create: `app/api/me/usage/route.ts`
 - Create: `lib/billing/usageView.ts`
 - Test: `tests/billing/usageView.test.ts`
@@ -1461,7 +1487,7 @@ describe('toUsageView', () => {
 Run: `npx vitest run tests/billing/usageView.test.ts`
 Expected: FAIL。
 
-- [ ] **Step 3: 实现视图与接口**
+- [ ] **Step 3: 视图与用量接口**
 
 ```ts
 // lib/billing/usageView.ts
@@ -1497,7 +1523,7 @@ export function toUsageView(account: BillingAccount): UsageView {
 ```ts
 // app/api/me/usage/route.ts
 import { NextResponse } from 'next/server'
-import { getServerAuthSession } from '@/lib/auth/session'
+import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { getBillingService } from '@/lib/billing/serverDeps'
 import { toUsageView } from '@/lib/billing/usageView'
 
@@ -1505,81 +1531,119 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const session = await getServerAuthSession()
+  const deps = await getTripPlanApiDeps()
+  const session = await deps.getSession()
   const userId = session?.user?.id
-  if (!userId) return NextResponse.json({ error: '未登录' }, { status: 401 })
+  if (!userId) return NextResponse.json({ error: 'not signed in' }, { status: 401 })
   try {
     const account = await getBillingService().getAccount(userId)
-    if (!account) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
+    if (!account) return NextResponse.json({ error: 'user not found' }, { status: 404 })
     return NextResponse.json(toUsageView(account), { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     console.error('[api/me/usage] GET failed', err)
-    return NextResponse.json({ error: '服务器错误' }, { status: 500 })
+    return NextResponse.json({ error: 'server error' }, { status: 500 })
   }
 }
 ```
 
-（`session.user.id` 的取法以 `app/api/me/plans/route.ts` 现有写法为准。）
+（`getSession` 的取法与 agent 路由一致；tierLabel 首期只有中文，前端 i18n 后续再补。）
 
-- [ ] **Step 4: 改 agent 路由**
+- [ ] **Step 4: serverText 新增错误文案**
+
+`lib/planAgent/serverText.ts` 的 `errors` 类型加 `budgetExhausted: string`，三语字典各加一条（`{date}` 由路由替换成 “9 月 20 日” / “Sep 20” / “9月20日”）：
+
+- zh：`'本月 AI 规划用量已用完，{date}恢复'`
+- en：`'You have used up this month\'s AI planning allowance. It resets on {date}.'`
+- ja：`'今月の AI プランニング利用量を使い切りました。{date}に回復します。'`
+
+在 serverText.ts 末尾加一个纯函数：
+
+```ts
+export function formatResetDate(locale: SupportedLocale, d: Date): string {
+  if (locale === 'en') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  if (locale === 'ja') return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
+  return `${d.getUTCMonth() + 1} 月 ${d.getUTCDate()} 日`
+}
+```
+
+- [ ] **Step 5: 执行体注入（两条路径共用）**
+
+`lib/planAgent/execute.ts`：
+
+1. import：`import { getBillingService } from '@/lib/billing/serverDeps'`、`import type { Entitlements } from '@/lib/billing/tiers'`
+2. `ExecutePlanAgentRunInput` 加：
+
+```ts
+  /** 计费（设计 §5/§6）：档位能力表与单次上限；缺省（内部测试）不限档位、不设上限 */
+  billing?: { entitlements: Entitlements; runCapMicros: number }
+```
+
+3. `runPlanAgent` 的 deps 里加：
+
+```ts
+          ...(input.billing ? { entitlements: input.billing.entitlements, runCapMicros: input.billing.runCapMicros } : {}),
+          // 结算（设计 §6.2）：runRef 即 runToken；管理员/无预扣时 settleRun 是 no-op
+          onRunCost: (summary, hadModelOutput) =>
+            getBillingService().settleRun({ runRef: runToken, actualMicros: summary.costMicros.total, hadModelOutput }),
+```
+
+`app/api/internal/plan-agent/run/route.ts`：在 `renewed` 检查通过之后、构造 stream 之前加：
+
+```ts
+  // 计费：按计划归属用户的档位装配能力表（队列消息不带 userId）
+  const billingAccount = await getBillingService().getAccount(plan.userId).catch(() => null)
+  const billing = billingAccount ? { entitlements: billingAccount.entitlements, runCapMicros: billingAccount.runCapMicros } : undefined
+```
+
+并在 `executePlanAgentRun({...})` 参数里加 `billing,`。import `getBillingService`。
+
+- [ ] **Step 6: agent 路由预检与预扣**
 
 `app/api/me/plans/[id]/agent/route.ts`：
 
-1. import：
-
-```ts
-import { getBillingService } from '@/lib/billing/serverDeps'
-```
-
+1. import：`import { getBillingService } from '@/lib/billing/serverDeps'`、`import { formatResetDate } from '@/lib/planAgent/serverText'`（与现有 serverText import 合并）。
 2. 在 `const begin = await deps.repo.beginAgentRun({` **之前**加：
 
 ```ts
-  // 预算层（设计 §6.2）：先预扣再抢 busy 位；抢不到或配额闸门拒绝时退回预扣
+  // 预算层（设计 §6.2）：只读预检 → 抢 busy 位 → 无条件预扣（force）。
+  // 预检拦住的请求不落库人类消息；预检通过后并发挤过的极少数请求允许余量短暂为负。
   const billing = getBillingService()
   const account = await billing.getAccount(userId)
-  if (!account) return NextResponse.json({ error: '用户不存在' }, { status: 404 })
-  const runRef = crypto.randomUUID()
+  if (!account) return NextResponse.json({ error: errors.planNotFound }, { status: 404 })
   if (!account.isAdmin) {
-    // 进程崩溃等留下的孤儿预扣：超过两倍 busy TTL 仍未结算的一律退回
     await billing.refundStaleReserves(userId, new Date(Date.now() - AGENT_BUSY_TTL_MS * 2)).catch(() => undefined)
   }
-  const reserved = await billing.reserveRun({ account, planId: id, runRef })
-  if (!reserved.ok) {
-    const resetsAt = reserved.resetsAt
+  if (!billing.canStartRun(account)) {
     return NextResponse.json(
       {
-        error: `本月 AI 规划用量已用完，${resetsAt.getMonth() + 1} 月 ${resetsAt.getDate()} 日恢复`,
+        error: errors.budgetExhausted.replace('{date}', formatResetDate(locale, account.periodEnd)),
         code: 'budget_exhausted',
-        resetsAt: resetsAt.toISOString(),
+        resetsAt: account.periodEnd.toISOString(),
         upgradeAvailable: account.tier === 'free',
       },
       { status: 402 },
     )
   }
-  let settled = false
-  const settle = async (actualMicros: number, hadModelOutput: boolean) => {
-    if (settled) return
-    settled = true
-    await billing.settleRun({ runRef, actualMicros, hadModelOutput })
-  }
 ```
 
-3. `quota_exceeded` 与 `busy` 两个 return 之前各加一行 `await settle(0, false)`（退回预扣）。
+（注意：`refundStaleReserves` 在 `getAccount` 之后调用会让刚算出的 `account.balanceMicros` 偏低；把顺序改成先退孤儿、再 `getAccount`：即先 `const billing = ...`，再 `await billing.refundStaleReserves(...)`（它内部不依赖 account，只需 userId），再 `const account = await billing.getAccount(userId)`。管理员也可以安全调用，因为管理员没有 reserve。）
 
-4. `runPlanAgent` 的 deps 对象加：
+3. `const runToken = begin.token` 之后加：
 
 ```ts
-              entitlements: account.entitlements,
-              runCapMicros: account.runCapMicros,
-              onRunCost: (summary, hadModelOutput) => settle(summary.costMicros.total, hadModelOutput),
+  // 抢到 busy 位后无条件预扣（runRef = runToken，执行体结算时配对）
+  await billing.reserveRun({ account, planId: id, runRef: runToken, force: true }).catch((err) => {
+    console.warn('[planAgent/billing] reserve failed (run continues, will be settled without reserve)', err)
+  })
+  const billingInput = { entitlements: account.entitlements, runCapMicros: account.runCapMicros }
 ```
 
-5. 流的 `finally` 里 `await deps.repo.endAgentRun(...)` 之后加：`await settle(0, false).catch(() => undefined)`（loop 正常结束时 settled 已为 true，这行是兜底退回）。
+4. SSE 路径的 `executePlanAgentRun({ ... })` 参数加 `billing: billingInput,`。队列路径不用改（消费者端按 plan.userId 取档位）。
 
-- [ ] **Step 5: 运行确认通过**
+- [ ] **Step 7: 运行确认通过**
 
-Run: `npx vitest run tests/billing tests/planAgent && npm run typecheck`
-Expected: PASS，无类型错误。现有 `tests/planAgent/routeStop.test.ts` 等若 mock 了 route 依赖，需要给 `@/lib/billing/serverDeps` 加 `vi.mock`，返回一个基于 `createBillingService` + memory 仓储、管理员账户的实例。
+Run: `npx vitest run tests/billing tests/planAgent tests/tripPlan && npm run typecheck`
+Expected: PASS，无新增类型错误。若现有路由测试（`tests/planAgent/routeStop.test.ts`、`tests/plan/*` 等）因引入 `@/lib/billing/serverDeps` 需要 mock：`vi.mock('@/lib/billing/serverDeps', ...)` 返回基于 `createBillingService` + `MemoryUsageLedger` + `MemoryBillingUsers`（种一个 `isAdmin: true` 的账户）的实例。
 
 ---
 
@@ -1588,6 +1652,7 @@ Expected: PASS，无类型错误。现有 `tests/planAgent/routeStop.test.ts` �
 - 免费档 run：模型工具列表里没有 estimate_travel / find_restaurants；system prompt 末尾有 `[档位限制]`；EnrichBudget.directions.max = 0，交通行 `source:'heuristic'`；enrichReport 里 restaurant 的 skipped reason 含"档位"。
 - 标准档 run：行为与改动前完全一致。
 - 一次成功 run：UsageLedger 有 reserve + settle 两条，余量 = 预算 − 实际成本。
-- 一次 402：没有 human 消息落库，没有 busy 位被占。
+- 一次 402：没有 human 消息落库，没有 busy 位被占，账本无新记录。
+- 队列路径（PLAN_AGENT_QUEUE_ENABLED=1）：消费者执行的 run 同样按 plan.userId 的档位过滤工具并结算。
 - 管理员：账本无记录，run log 仍有完整 modelUsage。
 - 未改动 `app/(authed)/plan/**`、`app/(site)/**`、`components/**`。
