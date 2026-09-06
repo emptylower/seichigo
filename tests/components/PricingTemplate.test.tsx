@@ -9,7 +9,7 @@ describe('PricingTemplate', () => {
     render(<PricingTemplate locale="zh" />)
     expect(screen.getByRole('heading', { level: 1, name: '选择你的巡礼规划套餐' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: /免费/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '开通标准版' })).toHaveAttribute('href', '/plan?upgrade=standard')
+    expect(screen.getByRole('button', { name: '开通标准版' })).toBeEnabled()
     expect(screen.getByText('真实路线 + 日本公交')).toBeInTheDocument()
     expect(screen.getByText('高级档全部功能即将推出。')).toBeInTheDocument()
   })
@@ -17,7 +17,7 @@ describe('PricingTemplate', () => {
   it('en：全英文，无中日文残留', () => {
     const { container } = render(<PricingTemplate locale="en" />)
     expect(screen.getByRole('heading', { level: 1, name: 'Pick the plan that fits your pilgrimage' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Get Standard' })).toHaveAttribute('href', '/plan?upgrade=standard')
+    expect(screen.getByRole('button', { name: 'Get Standard' })).toBeEnabled()
     expect(screen.getByText('Up to 3 days')).toBeInTheDocument()
     expect(screen.getAllByText('Coming soon').length).toBeGreaterThan(0)
     expect(CJK.test(container.textContent ?? ''), container.textContent ?? '').toBe(false)

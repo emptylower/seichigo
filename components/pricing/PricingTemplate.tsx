@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Check, Minus } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { CheckoutButton } from '@/components/billing/CheckoutButton'
 
 type Row = { key: string; free: string | boolean; standard: string | boolean; pro: string | boolean }
 
@@ -32,10 +33,11 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
   const comingSoon = tx(locale, 'comingSoon')
   // /plan 是三语共用的非本地化路由（prefixPath 的 NON_LOCALIZED_PREFIXES 里），不加语言前缀
   const planHref = '/plan'
-  const tiers = [
-    { key: 'free', name: tx(locale, 'freeName'), price: '$0', period: '', badge: null, cta: { label: tx(locale, 'freeCta'), href: planHref, disabled: false, primary: false } },
-    { key: 'standard', name: tx(locale, 'standardName'), price: '$9.9', period: tx(locale, 'standardPeriod'), badge: null, cta: { label: tx(locale, 'standardCta'), href: `${planHref}?upgrade=standard`, disabled: false, primary: true } },
-    { key: 'pro', name: tx(locale, 'proName'), price: '', period: '', badge: comingSoon, cta: { label: comingSoon, href: '#', disabled: true, primary: false } },
+  // kind: link=普通跳转，checkout=调结账接口，disabled=未上线
+  const tiers: { key: string; name: string; price: string; period: string; badge: string | null; cta: { kind: 'link' | 'checkout' | 'disabled'; label: string; href: string; primary: boolean } }[] = [
+    { key: 'free', name: tx(locale, 'freeName'), price: '$0', period: '', badge: null, cta: { kind: 'link', label: tx(locale, 'freeCta'), href: planHref, primary: false } },
+    { key: 'standard', name: tx(locale, 'standardName'), price: '$9.9', period: tx(locale, 'standardPeriod'), badge: null, cta: { kind: 'checkout', label: tx(locale, 'standardCta'), href: '', primary: true } },
+    { key: 'pro', name: tx(locale, 'proName'), price: '', period: '', badge: comingSoon, cta: { kind: 'disabled', label: comingSoon, href: '#', primary: false } },
   ]
 
   return (
@@ -47,7 +49,7 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
         {tiers.map((tier) => (
           <section
             key={tier.key}
-            className={`rounded-2xl border p-5 ${tier.cta.primary ? 'border-brand-300 bg-brand-50/40 shadow-sm' : 'border-pink-100 bg-white'} ${tier.cta.disabled ? 'opacity-70' : ''}`}
+            className={`rounded-2xl border p-5 ${tier.cta.primary ? 'border-brand-300 bg-brand-50/40 shadow-sm' : 'border-pink-100 bg-white'} ${tier.cta.kind === 'disabled' ? 'opacity-70' : ''}`}
           >
             <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
               {tier.name}
@@ -63,7 +65,7 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
                 <span className="text-sm font-normal text-gray-400">{tier.period}</span>
               </p>
             ) : null}
-            {tier.cta.disabled ? (
+            {tier.cta.kind === 'disabled' ? (
               <button
                 type="button"
                 disabled
@@ -71,6 +73,12 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
               >
                 {tier.cta.label}
               </button>
+            ) : tier.cta.kind === 'checkout' ? (
+              <CheckoutButton
+                locale={locale}
+                label={tier.cta.label}
+                className="mt-4 w-full rounded-full bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+              />
             ) : (
               <Link
                 href={tier.cta.href}

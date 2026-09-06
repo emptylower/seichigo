@@ -575,7 +575,7 @@
       "usageStandard": "標準の量",
       "usagePro": "たっぷりの量",
       "footnoteComingSoon": "プロのすべての機能は近日公開です。",
-      "footnotePayment": "決済の開始後に申し込み導線を公開します。それまで「スタンダードを開始」はプランニング画面へ移動するだけです。"
+      "footnotePayment": "決済と請求書は Creem が処理します。解約はアカウントページからいつでも可能です。"
     }
   },
   "auth": {
@@ -607,6 +607,23 @@
       "restaurant": "アップグレードするとレストランを提案します",
       "map": "アップグレードすると実際のルートを表示します",
       "days": "アップグレードするともっと長い日程を組めます"
+    },
+    "checkout": {
+      "loading": "移動中…",
+      "alreadySubscribed": "すでにスタンダードプランをご利用中です",
+      "alreadySubscribedCta": "サブスクリプションを見る",
+      "unavailable": "現在お支払いをご利用いただけません。しばらくしてからお試しください"
+    },
+    "subscription": {
+      "sectionLabel": "サブスクリプション",
+      "current": "現在のプラン：{tier}",
+      "renewsOn": "次回更新 {date}",
+      "endsOn": "{date} に終了します",
+      "upgradeCta": "スタンダードにアップグレード",
+      "manageCta": "サブスクリプションを管理",
+      "pending": "開通処理中です。通常は数秒で反映されます",
+      "activated": "開通が完了しました",
+      "portalError": "現在サブスクリプション管理ページを開けません。しばらくしてからお試しください"
     }
   }
 }

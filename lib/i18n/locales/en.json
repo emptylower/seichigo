@@ -575,7 +575,7 @@
       "usageStandard": "Standard amount",
       "usagePro": "Large amount",
       "footnoteComingSoon": "Everything in Pro is still in the works.",
-      "footnotePayment": "Checkout opens once payments go live. Until then, “Get Standard” simply takes you to the planner."
+      "footnotePayment": "Payments and invoices are handled by Creem; you can cancel your subscription anytime from your account page."
     }
   },
   "auth": {
@@ -607,6 +607,23 @@
       "restaurant": "Upgrade to get restaurant picks",
       "map": "Upgrade to show real routes",
       "days": "Upgrade to plan more days"
+    },
+    "checkout": {
+      "loading": "Redirecting…",
+      "alreadySubscribed": "You are already on the Standard plan",
+      "alreadySubscribedCta": "View subscription",
+      "unavailable": "Checkout is unavailable right now, please try again later"
+    },
+    "subscription": {
+      "sectionLabel": "Subscription",
+      "current": "Current plan: {tier}",
+      "renewsOn": "Renews on {date}",
+      "endsOn": "Ends on {date}",
+      "upgradeCta": "Upgrade to Standard",
+      "manageCta": "Manage subscription",
+      "pending": "Activating your plan, this usually takes a few seconds",
+      "activated": "Your plan is active",
+      "portalError": "Cannot open the subscription portal right now, please try again later"
     }
   }
 }

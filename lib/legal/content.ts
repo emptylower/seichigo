@@ -150,7 +150,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最近更新',
       contactLabel: '联系我们',
       effectiveDate: '2026-02-07',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-09-06',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -212,7 +212,17 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. 服务可用性与责任限制',
+          heading: '8. 付费订阅',
+          bullets: [
+            '标准档为按月自动续费的付费订阅，价格与包含内容以定价页公示为准。',
+            '你可以随时在账户页取消订阅；取消在当前计费周期结束时生效，在此之前仍可正常使用。',
+            '除下一条另有约定外，已支付的当期费用不予退款。',
+            `若因我们的服务故障导致你在当期内无法正常使用，可在故障发生后 7 天内联系 ${CONTACT_EMAIL} 申请退款，我们核实后处理。`,
+            '我们可能调整价格；调价将提前通知，并自通知后的下一个计费周期起生效。',
+          ],
+        },
+        {
+          heading: '9. 服务可用性与责任限制',
           bullets: [
             '服务按“现状”和“可用”提供，我们不承诺服务持续无中断、无错误或绝对满足你的特定目标。',
             '在法律允许范围内，对于因你使用或无法使用本服务导致的间接损失、附带损失或利润损失，我们不承担责任。',
@@ -220,7 +230,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. 协议变更、终止与适用规则',
+          heading: '10. 协议变更、终止与适用规则',
           bullets: [
             '我们可根据业务和法规变化更新本协议，更新后将发布在本页面。',
             '若你在协议更新后继续使用服务，视为接受更新后的协议。',
@@ -360,7 +370,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: 'Last Updated',
       contactLabel: 'Contact',
       effectiveDate: 'February 7, 2026',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-09-06',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -422,7 +432,17 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. Disclaimer and Liability Limits',
+          heading: '8. Paid Subscriptions',
+          bullets: [
+            'The Standard plan is a paid subscription that renews automatically each month. Prices and included features are those published on the pricing page.',
+            'You may cancel at any time from your account page. Cancellation takes effect at the end of the current billing period, and access continues until then.',
+            'Except as stated in the next bullet, fees already paid for the current period are non-refundable.',
+            `If a failure on our side prevents you from using the service during a paid period, you may request a refund within 7 days of the incident by contacting ${CONTACT_EMAIL}; we will review and process the request.`,
+            'We may change prices with advance notice; new prices take effect from the next billing period after that notice.',
+          ],
+        },
+        {
+          heading: '9. Disclaimer and Liability Limits',
           bullets: [
             'The service is provided on an "as is" and "as available" basis without guarantees of uninterrupted operation or fitness for your specific purpose.',
             'To the extent permitted by law, SeichiGo is not liable for indirect, incidental, special, or consequential damages from use of the service.',
@@ -430,7 +450,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. Changes, Termination, and Governing Rules',
+          heading: '10. Changes, Termination, and Governing Rules',
           bullets: [
             'We may update these Terms and publish the latest version on this page.',
             'Continued use after updates means acceptance of revised Terms.',
@@ -570,7 +590,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
       updatedDateLabel: '最終更新日',
       contactLabel: 'お問い合わせ',
       effectiveDate: '2026年2月7日',
-      updatedDate: '2026-08-04',
+      updatedDate: '2026-09-06',
       contactEmail: CONTACT_EMAIL,
       sections: [
         {
@@ -632,7 +652,17 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '8. 免責と責任制限',
+          heading: '8. 有料サブスクリプション',
+          bullets: [
+            'スタンダードプランは毎月自動更新される有料サブスクリプションです。料金と提供内容は料金ページの表示に従います。',
+            'アカウントページからいつでも解約できます。解約は当該請求期間の終了時に有効となり、それまでは引き続きご利用いただけます。',
+            '次項に定める場合を除き、支払い済みの当期料金は返金されません。',
+            `当社のサービス障害により当期中に利用できなかった場合は、発生から 7 日以内に ${CONTACT_EMAIL} までご連絡ください。確認のうえ返金を対応します。`,
+            '料金は変更する場合があります。変更は事前に通知し、通知後の次回請求期間から適用されます。',
+          ],
+        },
+        {
+          heading: '9. 免責と責任制限',
           bullets: [
             '本サービスは「現状有姿」かつ「提供可能な範囲」で提供され、無停止・無瑕疵を保証しません。',
             '法令で認められる範囲で、間接損害、特別損害、付随的損害について責任を負いません。',
@@ -640,7 +670,7 @@ const documents: Record<LegalLocale, Record<LegalDocumentType, LegalDocument>> =
           ],
         },
         {
-          heading: '9. 改定・終了・準拠ルール',
+          heading: '10. 改定・終了・準拠ルール',
           bullets: [
             '当社は本規約を改定でき、最新版を本ページで公開します。',
             '改定後も利用を継続した場合、改定規約に同意したものとみなされます。',

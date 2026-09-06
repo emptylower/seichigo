@@ -575,7 +575,7 @@
       "usageStandard": "标准额度",
       "usagePro": "大额度",
       "footnoteComingSoon": "高级档全部功能即将推出。",
-      "footnotePayment": "开通入口将在支付上线后开放；在此之前“开通标准版”仅跳转到规划页。"
+      "footnotePayment": "支付与发票由 Creem 处理；可随时在账户页取消订阅。"
     }
   },
   "auth": {
@@ -607,6 +607,23 @@
       "restaurant": "升级后可推荐餐厅",
       "map": "升级后显示真实路线",
       "days": "升级可规划更多天数"
+    },
+    "checkout": {
+      "loading": "正在跳转…",
+      "alreadySubscribed": "你已经是标准档",
+      "alreadySubscribedCta": "查看订阅",
+      "unavailable": "支付暂不可用，请稍后再试"
+    },
+    "subscription": {
+      "sectionLabel": "订阅",
+      "current": "当前：{tier}",
+      "renewsOn": "下次续费 {date}",
+      "endsOn": "将于 {date} 到期",
+      "upgradeCta": "升级到标准版",
+      "manageCta": "管理订阅",
+      "pending": "正在开通，通常几秒内生效",
+      "activated": "开通成功",
+      "portalError": "暂时无法打开订阅管理页，请稍后再试"
     }
   }
 }
