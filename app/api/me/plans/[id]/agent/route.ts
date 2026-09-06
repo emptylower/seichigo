@@ -9,6 +9,7 @@ import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import { canResume } from '@/lib/planAgent/resume'
 import { formatResetDate, serverText } from '@/lib/planAgent/serverText'
 import { getBillingService } from '@/lib/billing/serverDeps'
+import { STALE_RESERVE_AFTER_MS } from '@/lib/billing/service'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 export const runtime = 'nodejs'
@@ -98,10 +99,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // 也可安全调用，管理员没有 reserve），再读账户做只读预检 → 抢 busy 位 →
   // 无条件预扣（force）。预检拦住的请求不落库人类消息；预检通过后并发挤过
   // 的极少数请求允许余量短暂为负。
+  // G1：阈值用 STALE_RESERVE_AFTER_MS（软截止 13 分钟 + 两倍 TTL）——真实
+  // run 靠续租可跑 13 分钟，比这更短的窗口会把在跑的 run 当孤儿退掉
   const billing = getBillingService()
-  await billing.refundStaleReserves(userId, new Date(Date.now() - AGENT_BUSY_TTL_MS * 2)).catch(() => undefined)
+  await billing.refundStaleReserves(userId, new Date(Date.now() - STALE_RESERVE_AFTER_MS)).catch(() => undefined)
   const account = await billing.getAccount(userId)
-  if (!account) return NextResponse.json({ error: errors.planNotFound }, { status: 404 })
+  if (!account) return NextResponse.json({ error: errors.serverError }, { status: 500 })
   if (!billing.canStartRun(account)) {
     return NextResponse.json(
       {

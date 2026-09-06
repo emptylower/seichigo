@@ -12,15 +12,25 @@ export function addMonthsClamped(date: Date, months: number): Date {
 /**
  * 以 anchor（订阅日/注册日）为锚按月滚动，返回包含 now 的周期
  * [periodStart, periodEnd)。now 早于 anchor 时返回第一个周期。
+ *
+ * G11：n 用月差直接算（(now.year − anchor.year) × 12 + (now.month − anchor.month)），
+ * 再前后各校正一次，避免逐月 while 循环在长周期上空转。
  */
 export function computePeriod(anchor: Date, now: Date): { periodStart: Date; periodEnd: Date } {
-  let start = new Date(anchor.getTime())
-  let end = addMonthsClamped(anchor, 1)
-  let n = 1
-  while (now.getTime() >= end.getTime()) {
-    start = end
+  const diff = (now.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + (now.getUTCMonth() - anchor.getUTCMonth())
+  let n = Math.max(0, diff)
+  let start = addMonthsClamped(anchor, n)
+  // 后校正：算出的起点已晚于 now（如 1/31 锚点在 3 月初）→ 退一个月；不低于第一个周期
+  if (start.getTime() > now.getTime()) {
+    n = Math.max(0, n - 1)
+    start = addMonthsClamped(anchor, n)
+  }
+  let end = addMonthsClamped(anchor, n + 1)
+  // 前校正：now 已越过终点（钳制导致月差偏小）→ 进一个月
+  if (now.getTime() >= end.getTime()) {
     n += 1
-    end = addMonthsClamped(anchor, n)
+    start = end
+    end = addMonthsClamped(anchor, n + 1)
   }
   return { periodStart: start, periodEnd: end }
 }

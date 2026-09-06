@@ -3,6 +3,12 @@ ALTER TABLE "public"."User" ADD COLUMN "tier" TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE "public"."User" ADD COLUMN "periodStart" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE "public"."User" ADD COLUMN "periodEnd" TIMESTAMP(3);
 
+-- AlterTable (G4：订阅日/注册日锚点，滚动周期时不变)
+ALTER TABLE "public"."User" ADD COLUMN "periodAnchor" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- Backfill (G4：存量用户以 createdAt 为锚点，periodStart 一并对齐，消除钳制漂移)
+UPDATE "public"."User" SET "periodStart" = "createdAt", "periodAnchor" = "createdAt";
+
 -- CreateTable (用量账本)
 CREATE TABLE "public"."UsageLedger" (
     "id" TEXT NOT NULL,

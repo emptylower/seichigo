@@ -83,7 +83,7 @@ export type PlanAgentToolDeps = {
   locale?: SupportedLocale
   /** 档位禁用的工具名（设计 §5 卡点 1）；被调用时返回 tier_forbidden */
   forbiddenTools?: Set<string>
-  /** 档位天数上限；缺省 30（与 update_plan_meta 现有钳制一致） */
+  /** 档位天数上限（设计 §5 卡点 3）；未传（无档位路径）时各处维持旧的 30 天钳制 */
   maxDays?: number
   /** 透传给补齐层（EnrichContext.entitlements） */
   entitlements?: Entitlements
@@ -259,7 +259,6 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         code: 'tier_forbidden',
       })
     }
-    const maxDays = deps.maxDays ?? 30
     switch (name) {
       case 'search_anime': {
         const query = String(args.query ?? '').trim()
@@ -297,8 +296,8 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         if (!pointIds.length || !Number.isFinite(dayCount)) {
           return JSON.stringify({ error: 'pointIds 与 dayCount 必填' })
         }
-        if (dayCount > maxDays) {
-          return JSON.stringify({ error: `当前档位单个行程最多 ${maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
+        if (deps.maxDays !== undefined && dayCount > deps.maxDays) {
+          return JSON.stringify({ error: `当前档位单个行程最多 ${deps.maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
         }
         // 把 plan 关联的 bangumiIds 传下去，供服务端容错层给裸 id 拼前缀兜底
         const plan = await deps.repo.getPlan(deps.planId)
@@ -422,8 +421,8 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         if (typeof args.title === 'string' && args.title.trim()) patch.title = args.title.trim().slice(0, 80)
         if (Number.isFinite(Number(args.dayCount))) {
           const requested = Math.max(1, Math.floor(Number(args.dayCount)))
-          if (requested > maxDays) {
-            return JSON.stringify({ error: `当前档位单个行程最多 ${maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
+          if (deps.maxDays !== undefined && requested > deps.maxDays) {
+            return JSON.stringify({ error: `当前档位单个行程最多 ${deps.maxDays} 天，请缩减天数或建议用户升级后再规划`, code: 'tier_max_days' })
           }
           patch.dayCount = Math.min(30, requested)
         }
@@ -445,6 +444,10 @@ export async function executePlanTool(deps: PlanAgentToolDeps, name: string, inp
         const rawDays = Array.isArray(args.days) ? args.days : null
         if (!rawDays) return JSON.stringify({ error: 'days 必须是数组' })
         const days: ParsedSaveDays = parseSavePlanDaysInput(rawDays)
+        // G2（blocker）：档位天数上限必须卡在落库主通道上，不能只拦 cluster/meta
+        if (deps.maxDays !== undefined && days.length > deps.maxDays) {
+          return JSON.stringify({ error: `当前档位单个行程最多 ${deps.maxDays} 天，请缩减天数后重新保存`, code: 'tier_max_days' })
+        }
         if (days.length > 30) return JSON.stringify({ error: '天数过多（上限 30）' })
         const totalItems = days.reduce((sum, day) => sum + day.items.length, 0)
         if (totalItems > SAVE_PLAN_DAYS_MAX_TOTAL_ITEMS) {

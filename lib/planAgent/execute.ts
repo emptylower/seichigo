@@ -86,6 +86,8 @@ export async function executePlanAgentRun(input: ExecutePlanAgentRunInput): Prom
           // 结算（设计 §6.2）：runRef 即 runToken；管理员/无预扣时 settleRun 是 no-op
           onRunCost: (summary, hadModelOutput) =>
             getBillingService().settleRun({ runRef: runToken, actualMicros: summary.costMicros.total, hadModelOutput }),
+          // G8：补齐续跑的额外 Google 成本挂同一 runRef 入账
+          onExtraCost: (micros) => getBillingService().chargeExtra({ runRef: runToken, micros }),
         },
         message,
         onEvent,

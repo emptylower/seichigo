@@ -25,6 +25,8 @@ model User {
   tier                 String               @default("free")
   /** 当前计费周期起点（订阅日锚点；免费档为注册日） */
   periodStart          DateTime             @default(now())
+  /** 订阅日/注册日锚点，滚动周期时不变（月末钳制不会让它逐月漂移） */
+  periodAnchor         DateTime             @default(now())
   /** 当前计费周期终点；null 表示尚未初始化，首次访问时由 billing service 计算 */
   periodEnd            DateTime?
   bio                  String?              @db.Text

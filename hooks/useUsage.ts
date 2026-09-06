@@ -6,6 +6,8 @@ export type UsageView = {
   tier: 'free' | 'standard' | 'pro'
   tierLabel: string
   remainingPercent: number
+  /** 有余量但取整百分比已到 0：显示 "<1%"（G10） */
+  nearlyEmpty?: boolean
   resetsAt: string
   upgradeAvailable: boolean
   hints: { transitEstimateOnly: boolean; restaurantsLocked: boolean; maxDays: number }

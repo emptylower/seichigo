@@ -5,6 +5,8 @@
  * 上线扣费前必须对照 DeepSeek 与 Google Maps Platform 当前价格页逐项核对，
  * 改动任何数值都要同时更新 PRICE_TABLE_VERSION（run log 用它标记口径）。
  */
+import type { Tier } from './tiers'
+
 export const PRICE_TABLE_VERSION = '2026-09-06'
 
 /** 每百万 token 的价格（微美元）。$0.28/M = 280_000。 */
@@ -28,7 +30,6 @@ export const GOOGLE_PRICES_MICROS = {
 
 /** 标题侧信道（每个带新用户消息的 run 一次，几百 token）按固定值摊入模型成本 */
 export const TITLE_OVERHEAD_MICROS = 500
-import type { Tier } from './tiers'
 
 /** 人民币标价 → 美元成本口径的换算（调价时人工更新） */
 export const CNY_PER_USD = 7.2
@@ -47,7 +48,7 @@ export const COST_SHARE = 0.45
 export const FREE_BUDGET_MICROS = 400_000
 
 /** run 开始时的预扣额（微美元）：各档最近 30 天 p75 单次成本。示例值，计量数据出来后校准 */
-export const RESERVE_MICROS: Record<Tier, number> = { free: 150_000, standard: 400_000, pro: 400_000 }
+export const RESERVE_MICROS: Record<Tier, number> = { free: 150_000, standard: 250_000, pro: 250_000 }
 
 /** 单 run 成本上限占月预算的比例（设计 §6.2：付费 15%，免费 50%） */
 export const RUN_CAP_SHARE: Record<Tier, number> = { free: 0.5, standard: 0.15, pro: 0.15 }

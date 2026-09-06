@@ -44,4 +44,22 @@ describe('tier gates in executePlanTool', () => {
     const ok = JSON.parse(await executePlanTool(deps, 'update_plan_meta', { dayCount: 3 }))
     expect(ok.code).toBeUndefined()
   })
+
+  it('G2：save_plan_days 超 maxDays 返回 tier_max_days 且计划未被写入', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const days = [1, 2, 3, 4].map((d) => ({ dayIndex: d, items: [{ type: 'point', pointId: 'p1', title: 'x' }] }))
+    const out = JSON.parse(await executePlanTool({ planId: plan.id, repo, points: finder, maxDays: 3 }, 'save_plan_days', { days }))
+    expect(out.code).toBe('tier_max_days')
+    expect(out.error).toContain('最多 3 天')
+    expect((await repo.getPlan(plan.id))?.days).toHaveLength(0)
+  })
+
+  it('G2：不传 maxDays 时 update_plan_meta 传 50 天被钳到 30 而不是报错', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const out = JSON.parse(await executePlanTool({ planId: plan.id, repo, points: finder }, 'update_plan_meta', { dayCount: 50 }))
+    expect(out.code).toBeUndefined()
+    expect((await repo.getPlan(plan.id))?.dayCount).toBe(30)
+  })
 })

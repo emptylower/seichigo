@@ -22,8 +22,24 @@ describe('toUsageView', () => {
       remainingPercent: 30,
       resetsAt: '2026-09-20T00:00:00.000Z',
       upgradeAvailable: true,
+      nearlyEmpty: false,
       hints: { transitEstimateOnly: true, restaurantsLocked: true, maxDays: 3 },
     })
+  })
+  it('G10：非管理员有余量但取整百分比为 0 时标记 nearlyEmpty', () => {
+    const view = toUsageView({
+      userId: 'u1',
+      tier: 'free',
+      entitlements: TIER_ENTITLEMENTS.free,
+      isAdmin: false,
+      periodStart: new Date('2026-08-20T00:00:00Z'),
+      periodEnd: new Date('2026-09-20T00:00:00Z'),
+      budgetMicros: 400_000,
+      balanceMicros: 999,
+      remainingPercent: 0,
+      runCapMicros: 200_000,
+    })
+    expect(view.nearlyEmpty).toBe(true)
   })
   it('admins always show 100% and no upgrade', () => {
     const view = toUsageView({

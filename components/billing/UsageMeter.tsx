@@ -31,7 +31,7 @@ export function UsageMeter(props: { usage: UsageView | null; size: 'compact' | '
     >
       <div className="flex items-center justify-between gap-2">
         <p className={compact ? 'text-xs font-medium text-gray-700' : 'text-sm font-semibold text-gray-900'}>
-          本月 agent 用量剩余 {formatPercent(percent)}
+          本月 agent 用量剩余 {formatPercent(usage.nearlyEmpty ? 0.5 : percent)}
         </p>
         <span className="shrink-0 rounded-full bg-pink-50 px-2 py-0.5 text-[11px] font-medium text-brand-600">
           {usage.tierLabel}

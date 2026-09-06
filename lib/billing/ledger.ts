@@ -26,7 +26,9 @@ export interface UsageLedgerRepo {
   hasEntries(userId: string, periodStart: Date): Promise<boolean>
   /** 尚无 settle/refund 配对的 reserve */
   findOpenReserve(runRef: string): Promise<LedgerEntry | null>
+  /** 同一 runRef 的全部账目（settle 兜底与 chargeExtra 取 userId/periodStart 用） */
+  findByRunRef(runRef: string): Promise<LedgerEntry[]>
   /** 该用户所有早于 olderThan 且仍未配对的 reserve */
   listOpenReserves(userId: string, olderThan: Date): Promise<LedgerEntry[]>
-  withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>
+  withUserLock<T>(userId: string, fn: (repo: UsageLedgerRepo) => Promise<T>): Promise<T>
 }

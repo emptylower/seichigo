@@ -29,6 +29,10 @@ export class MemoryUsageLedger implements UsageLedgerRepo {
     return related.some((e) => e.kind === 'settle' || e.kind === 'refund') ? null : reserve
   }
 
+  async findByRunRef(runRef: string): Promise<LedgerEntry[]> {
+    return this.entries.filter((e) => e.runRef === runRef)
+  }
+
   async listOpenReserves(userId: string, olderThan: Date): Promise<LedgerEntry[]> {
     const out: LedgerEntry[] = []
     for (const e of this.entries) {
@@ -39,7 +43,7 @@ export class MemoryUsageLedger implements UsageLedgerRepo {
     return out
   }
 
-  async withUserLock<T>(_userId: string, fn: () => Promise<T>): Promise<T> {
-    return fn()
+  async withUserLock<T>(_userId: string, fn: (repo: UsageLedgerRepo) => Promise<T>): Promise<T> {
+    return fn(this)
   }
 }

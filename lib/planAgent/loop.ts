@@ -145,6 +145,8 @@ export type PlanAgentDeps = {
   runCapMicros?: number
   /** run 结束（含报错/停止/接管）回调一次：成本汇总与是否产生过模型输出（route 用它结算） */
   onRunCost?: (summary: RunCostSummary, hadModelOutput: boolean) => Promise<void>
+  /** 补齐续跑的额外 Google 成本回调（G8：route 注入 billing.chargeExtra） */
+  onExtraCost?: (micros: number) => Promise<void>
 }
 
 /**
@@ -504,18 +506,6 @@ export async function runPlanAgent(
         usageMissing = true
       }
 
-      // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾
-      if (deps.runCapMicros !== undefined && !capReached) {
-        const running = summarizeRunCost({ usageByModel, calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS }, modelCalls, usageMissing, withTitle: false })
-        if (running.costMicros.total >= deps.runCapMicros) {
-          capReached = true
-          iterationLimit = Math.min(maxIterations, iteration + 3)
-          enrichBudget.places.max = enrichBudget.places.used
-          enrichBudget.directions.max = enrichBudget.directions.used
-          messages.push({ role: 'user', content: '[系统状态]\n本回合可用预算已用完：不要再发起任何外部查询，立即用 save_plan_days 保存当前进度并向用户简短说明，然后结束本轮。' })
-        }
-      }
-
       // §0 model_info：每回合第一次模型调用结束后发一次（reasoning=该次调用
       // 是否收到过任何思考增量；不落库，前端据此提示"不公开思考过程"）
       if (!modelInfoEmitted) {
@@ -656,6 +646,27 @@ export async function runPlanAgent(
         messages.push(toolParam)
         await runRepo.appendMessage(deps.planId, 'tool', toolParam as unknown as Prisma.JsonValue)
       }
+
+      // 单次上限（设计 §6.2）：达到后关掉 Google 预算、只留两轮让模型保存收尾。
+      // G7：检查放在本轮全部工具回执之后——[系统状态] 消息必须排在
+      // assistant(tool_calls) → tool 之后，模型下一轮才能同时看到工具结果与预算
+      // 通知；本轮没有 tool_calls 时在上方 break 直接结束，不注入
+      if (deps.runCapMicros !== undefined && !capReached) {
+        const running = summarizeRunCost({
+          usageByModel,
+          calls: enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
+          modelCalls,
+          usageMissing,
+          withTitle: Boolean(userMessage),
+        })
+        if (running.costMicros.total >= deps.runCapMicros) {
+          capReached = true
+          iterationLimit = Math.min(maxIterations, iteration + 3)
+          enrichBudget.places.max = enrichBudget.places.used
+          enrichBudget.directions.max = enrichBudget.directions.used
+          messages.push({ role: 'user', content: '[系统状态]\n本回合可用预算已用完：不要再发起任何外部查询，立即用 save_plan_days 保存当前进度并向用户简短说明，然后结束本轮。' })
+        }
+      }
     }
   } catch (err) {
     if (err instanceof RunFencedError || isUserStoppedAbort(err)) {
@@ -766,6 +777,9 @@ export async function runPlanAgent(
                   findRestaurants: deps.toolDeps.findRestaurants,
                   travel: deps.toolDeps.travel,
                 },
+                // G8：续跑补齐同样受档位约束，真实外呼成本经 onExtraCost 入账
+                ...(deps.entitlements ? { entitlements: deps.entitlements } : {}),
+                ...(deps.onExtraCost ? { onExtraCost: deps.onExtraCost } : {}),
               })
             // S1：route 不注入时缺省走 serverDeps 的 runInBackground——生产
             // （Cloudflare）用它挂 ctx.waitUntil，续跑的 61s sleep 才不会随

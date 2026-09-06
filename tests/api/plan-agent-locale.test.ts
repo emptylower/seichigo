@@ -31,8 +31,8 @@ vi.mock('@/lib/billing/serverDeps', async () => {
   const { MemoryUsageLedger } = await import('@/lib/billing/ledgerMemory')
   const { MemoryBillingUsers } = await import('@/lib/billing/usersMemory')
   const users = new MemoryBillingUsers()
-  users.seed({ id: 'u1', tier: 'standard', periodStart: new Date('2026-08-20T00:00:00Z'), periodEnd: null, isAdmin: true })
-  const billing = createBillingService({ ledger: new MemoryUsageLedger(), users })
+  users.seed({ id: 'u1', tier: 'standard', periodStart: new Date('2026-08-20T00:00:00Z'), periodAnchor: new Date('2026-08-20T00:00:00Z'), periodEnd: null, isAdmin: true })
+  const billing = createBillingService({ ledger: new MemoryUsageLedger(), users, isRunActive: async () => false })
   return { getBillingService: () => billing }
 })
 

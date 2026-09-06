@@ -18,4 +18,9 @@ describe('period', () => {
     expect(periodStart).toEqual(anchor)
     expect(periodEnd.toISOString()).toBe('2026-10-10T00:00:00.000Z')
   })
+  it('G4：1/31 锚点在 3/15 滚动到 2/28–3/31（月末日跟随锚点而不是漂移）', () => {
+    const { periodStart, periodEnd } = computePeriod(new Date('2026-01-31T00:00:00Z'), new Date('2026-03-15T00:00:00Z'))
+    expect(periodStart.toISOString()).toBe('2026-02-28T00:00:00.000Z')
+    expect(periodEnd.toISOString()).toBe('2026-03-31T00:00:00.000Z')
+  })
 })

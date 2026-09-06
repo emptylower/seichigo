@@ -75,12 +75,11 @@ export function forbiddenToolsOf(e: Entitlements): Set<string> {
   return set
 }
 
-/** 拼进 system prompt 末尾的档位说明；标准档及以上无附注 */
-export function tierPromptNote(e: Entitlements): string | null {
+/** 拼进 system prompt 末尾的档位说明；所有档位都返回（G9：天数上限行对全档生效），免费档另含交通/餐厅两行 */
+export function tierPromptNote(e: Entitlements): string {
   const lines: string[] = []
   if (!e.directions) lines.push('- 本档位交通只能用 estimate_transit 做直线估算，不要尝试查询真实路线；transit 条目照常写入，服务端会标注为参考估算。')
   if (!e.restaurants) lines.push('- 本档位不提供餐厅推荐，不要尝试搜索餐厅；meal 条目仍要输出（title 写「午餐」/「晚餐」），payload.place 留空。')
   lines.push(`- 本档位单个行程最多 ${e.maxDays} 天，用户要求更多天数时说明上限并建议分成多个行程。`)
-  if (e.directions && e.restaurants) return null
   return `[档位限制]\n${lines.join('\n')}`
 }

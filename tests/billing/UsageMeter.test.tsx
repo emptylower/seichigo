@@ -28,4 +28,8 @@ describe('UsageMeter', () => {
     const { container } = render(<UsageMeter usage={null} size="compact" />)
     expect(container).toBeEmptyDOMElement()
   })
+  it('G10：nearlyEmpty 时取整百分比为 0 也显示 "<1%"', () => {
+    render(<UsageMeter usage={{ ...view, remainingPercent: 0, nearlyEmpty: true }} size="compact" />)
+    expect(screen.getByText(/<1%/)).toBeInTheDocument()
+  })
 })

@@ -69,6 +69,11 @@ export class PrismaUsageLedger implements UsageLedgerRepo {
     return rows.some((r) => r.kind === 'settle' || r.kind === 'refund') ? null : toEntry(reserve)
   }
 
+  async findByRunRef(runRef: string): Promise<LedgerEntry[]> {
+    const rows = await this.db.usageLedger.findMany({ where: { runRef } })
+    return rows.map(toEntry)
+  }
+
   async listOpenReserves(userId: string, olderThan: Date): Promise<LedgerEntry[]> {
     const reserves = await this.db.usageLedger.findMany({
       where: { userId, kind: 'reserve', createdAt: { lt: olderThan }, runRef: { not: null } },
@@ -82,13 +87,13 @@ export class PrismaUsageLedger implements UsageLedgerRepo {
     return reserves.filter((r) => !closedRefs.has(r.runRef)).map(toEntry)
   }
 
-  async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  async withUserLock<T>(userId: string, fn: (repo: UsageLedgerRepo) => Promise<T>): Promise<T> {
     return prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))::text`
         const scoped = new PrismaUsageLedger()
         scoped.db = tx
-        return fn.call(scoped)
+        return fn(scoped)
       },
       { maxWait: 10_000, timeout: 15_000 },
     )

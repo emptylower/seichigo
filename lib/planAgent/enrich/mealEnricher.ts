@@ -96,8 +96,16 @@ export function runMealEnricher(days: EnrichDay[], ctx: EnrichContext, report: E
   }
   report.applied.meal += changed
   // 4) 预算预留：午餐/晚餐且无合法 place 的 meal 条目数（上限 places.max）。
-  //    档位不含餐厅推荐时不预留（restaurant enricher 会按档位整体跳过）
-  if (ctx.budget && !(ctx.entitlements && !ctx.entitlements.restaurants)) {
+  //    档位不含餐厅推荐时不预留（restaurant enricher 会按档位整体跳过），
+  //    并为每个 meal 条目显式记 skipped（G11：模型与用户可解释为何没有餐厅）
+  if (ctx.entitlements && !ctx.entitlements.restaurants) {
+    for (const day of days) {
+      for (const item of day.items) {
+        if (item.type !== 'meal') continue
+        report.skipped.push({ enricher: 'meal', itemTitle: item.title ?? '', reason: '当前档位不含餐厅推荐' })
+      }
+    }
+  } else if (ctx.budget) {
     let pending = 0
     for (const day of days) {
       for (const item of day.items) {

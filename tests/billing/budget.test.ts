@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { monthlyBudgetMicros, remainingPercent, runCapMicros } from '@/lib/billing/budget'
-import { CNY_PER_USD, COST_SHARE, FREE_BUDGET_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_CNY } from '@/lib/billing/priceTable'
+import { CNY_PER_USD, COST_SHARE, FREE_BUDGET_MICROS, RESERVE_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_CNY } from '@/lib/billing/priceTable'
+import { TIERS } from '@/lib/billing/tiers'
 
 describe('budget', () => {
   it('free budget is the fixed constant', () => {
@@ -19,5 +20,12 @@ describe('budget', () => {
     expect(remainingPercent(1000, 1000)).toBe(100)
     expect(remainingPercent(-5, 1000)).toBe(0)
     expect(remainingPercent(5, 0)).toBe(0)
+  })
+  it('G6：三档预扣额统一为 free 150_000 / 其余 250_000，且预算足以覆盖预扣', () => {
+    expect(RESERVE_MICROS).toEqual({ free: 150_000, standard: 250_000, pro: 250_000 })
+    for (const tier of TIERS) {
+      expect(runCapMicros(tier)).toBeGreaterThanOrEqual(RESERVE_MICROS[tier])
+      expect(monthlyBudgetMicros(tier)).toBeGreaterThanOrEqual(2 * RESERVE_MICROS[tier])
+    }
   })
 })

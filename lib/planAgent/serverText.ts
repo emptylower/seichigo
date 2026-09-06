@@ -72,6 +72,7 @@ export type ServerTextDict = {
     emptyTitle: string
     invalidStatus: string
     budgetExhausted: string
+    serverError: string
   }
   meal: { breakfast: string; lunch: string; dinner: string }
   askUserNote: string
@@ -140,6 +141,7 @@ const ZH: ServerTextDict = {
     emptyTitle: '标题不能为空',
     invalidStatus: '非法状态',
     budgetExhausted: '本月 AI 规划用量已用完，{date}恢复',
+    serverError: '服务器开小差了，请稍后重试',
   },
   meal: { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' },
   askUserNote: '已向用户发起结构化提问，本轮对话结束，等待用户通过下一条消息回答',
@@ -209,6 +211,7 @@ const EN: ServerTextDict = {
     emptyTitle: 'Title cannot be empty',
     invalidStatus: 'Invalid status',
     budgetExhausted: "You have used up this month's AI planning allowance. It resets on {date}.",
+    serverError: 'Something went wrong on our side. Please try again later.',
   },
   meal: { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' },
   askUserNote:
@@ -279,6 +282,7 @@ const JA: ServerTextDict = {
     emptyTitle: 'タイトルは空にできません',
     invalidStatus: '無効なステータスです',
     budgetExhausted: '今月の AI プランニング利用量を使い切りました。{date}に回復します。',
+    serverError: 'サーバーで問題が発生しました。しばらくしてからもう一度お試しください。',
   },
   meal: { breakfast: '朝食', lunch: '昼食', dinner: '夕食' },
   askUserNote: 'ユーザーに構造化された質問を送信しました。このターンはここで終了し、次のメッセージでの回答を待ちます。',

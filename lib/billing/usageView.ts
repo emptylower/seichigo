@@ -6,6 +6,8 @@ export type UsageView = {
   tier: Tier
   tierLabel: string
   remainingPercent: number
+  /** 非管理员有余量但取整百分比已到 0：前端显示 "<1%" 而不是误导性的 "0%"（G10） */
+  nearlyEmpty: boolean
   resetsAt: string
   upgradeAvailable: boolean
   hints: { transitEstimateOnly: boolean; restaurantsLocked: boolean; maxDays: number }
@@ -16,6 +18,7 @@ export function toUsageView(account: BillingAccount): UsageView {
     tier: account.tier,
     tierLabel: TIER_LABELS[account.tier],
     remainingPercent: account.isAdmin ? 100 : account.remainingPercent,
+    nearlyEmpty: !account.isAdmin && account.balanceMicros > 0 && account.remainingPercent === 0,
     resetsAt: account.periodEnd.toISOString(),
     upgradeAvailable: !account.isAdmin && account.tier === 'free',
     hints: {

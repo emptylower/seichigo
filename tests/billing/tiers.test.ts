@@ -25,7 +25,10 @@ describe('tiers', () => {
     expect(std.restaurants).toBe(true)
     expect(std.maxDays).toBe(7)
     expect(forbiddenToolsOf(std).size).toBe(0)
-    expect(tierPromptNote(std)).toBeNull()
+    // G9：全开档也返回附注（含天数上限行），但不含免费档的交通/餐厅行
+    const note = tierPromptNote(std)!
+    expect(note).toContain('最多 7 天')
+    expect(note).not.toContain('直线估算')
   })
 
   it('pro is not purchasable yet', () => {

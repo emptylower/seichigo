@@ -4,7 +4,8 @@ import type { PointFinder } from './points'
 import { dayHasBackfillCandidate } from './placeBackstop'
 import { createEnrichBudget, readTravelMode, type EnrichContext, type EnrichDay, type EnrichReport } from './enrich/types'
 import { enrichAndNormalizeDays } from './enrichPipeline'
-import { EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
+import { costOfGoogleCalls, EMPTY_GOOGLE_CALLS, summarizeRunCost } from '@/lib/billing/cost'
+import type { Entitlements } from '@/lib/billing/tiers'
 
 /**
  * 补齐续跑（R4）：run 结束时若最后一次保存仍有「预算已用完」类 skipped 或
@@ -49,6 +50,10 @@ export type EnrichContinuationInput = {
   points: PointFinder
   /** serverDeps 里的 Google 依赖（places/externalPlaces/findRestaurants/travel/fetchPlacePhotos） */
   deps: EnrichContext['deps']
+  /** 档位能力表（G8）：免费档续跑不发餐厅/交通外呼 */
+  entitlements?: Entitlements
+  /** 本轮续跑的真实 Google 外呼成本回调（G8：route 注入 billing.chargeExtra）；失败只 warn */
+  onExtraCost?: (micros: number) => Promise<void>
   /** 最多补几轮（缺省 2） */
   maxPasses?: number
   /** 每轮先等多久让 60s 预算/限速窗口滚动（缺省 61s） */
@@ -128,16 +133,35 @@ export async function runEnrichContinuation(input: EnrichContinuationInput): Pro
       }
       const travelMode = readTravelMode(plan.preferences)
       // F3：续跑补齐的 Google 调用同样计量——预算自带 calls 计数，写日志时
-      // 经 summarizeRunCost 汇总成 modelUsage（此前固定 null 会漏计成本）
+      // 经 summarizeRunCost 汇总成 modelUsage（此前固定 null 会漏计成本）。
+      // G8：预算上限与 EnrichContext 都带档位——免费档不发餐厅/交通外呼
       const budget = createEnrichBudget()
+      if (input.entitlements) {
+        budget.places.max = input.entitlements.placesMax
+        budget.directions.max = input.entitlements.directionsMax
+      }
       const ctx: EnrichContext = {
         deps: input.deps,
         coordsByPointId,
         dayCoordinates: (dayIndex) => coordsByDay.get(dayIndex) ?? [],
         ...(travelMode ? { travelMode } : {}),
+        ...(input.entitlements ? { entitlements: input.entitlements } : {}),
         budget,
       }
       const { enrich, schedule } = await enrichAndNormalizeDays(days, ctx)
+      // G8：本轮真实外呼立即计费（写回失败成本也已发生，不能因放弃写回漏账）
+      const passCalls = budget.calls
+      if (
+        input.onExtraCost &&
+        passCalls &&
+        (passCalls.directions || passCalls.placesTextSearch || passCalls.placesNearby || passCalls.placeDetails)
+      ) {
+        try {
+          await input.onExtraCost(costOfGoogleCalls(passCalls))
+        } catch (err) {
+          console.warn('[planAgent] enrich continuation onExtraCost failed', err)
+        }
+      }
       if (!schedule.ok) return // 归一化失败：放弃本轮（不落库）
       const normalizedDays: TripPlanDayInput[] = schedule.normalizedDays
       normalizedDays.sort((a, b) => a.dayIndex - b.dayIndex)

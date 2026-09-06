@@ -31,4 +31,24 @@ describe('MemoryUsageLedger', () => {
     const stale = await ledger.listOpenReserves('u1', new Date('2026-09-06T00:30:00Z'))
     expect(stale.map((e) => e.runRef)).toEqual(['old'])
   })
+
+  it('G5：withUserLock 以显式参数把 repo 传给回调', async () => {
+    const ledger = new MemoryUsageLedger()
+    const seen: unknown[] = []
+    await ledger.withUserLock('u1', async (repo) => {
+      seen.push(repo)
+      await repo.append({ userId: 'u1', planId: null, runRef: null, kind: 'grant', deltaMicros: 100, periodStart: period })
+    })
+    expect(seen[0]).toBe(ledger)
+    expect(await ledger.balance('u1', period)).toBe(100)
+  })
+
+  it('G1：findByRunRef 返回同 runRef 的全部账目', async () => {
+    const ledger = new MemoryUsageLedger()
+    await ledger.append({ userId: 'u1', planId: 'p1', runRef: 'r1', kind: 'reserve', deltaMicros: -300, periodStart: period })
+    await ledger.append({ userId: 'u1', planId: 'p1', runRef: 'r1', kind: 'settle', deltaMicros: 300, periodStart: period })
+    await ledger.append({ userId: 'u1', planId: 'p2', runRef: 'r2', kind: 'reserve', deltaMicros: -300, periodStart: period })
+    expect((await ledger.findByRunRef('r1')).map((e) => e.kind)).toEqual(['reserve', 'settle'])
+    expect(await ledger.findByRunRef('missing')).toEqual([])
+  })
 })

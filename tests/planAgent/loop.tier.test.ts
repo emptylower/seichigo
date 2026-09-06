@@ -96,4 +96,39 @@ describe('loop tier integration', () => {
     // 第 1 次调用触发上限 → 最多再允许 2 次
     expect(createMessage.mock.calls.length).toBeLessThanOrEqual(3)
   })
+
+  it('G7：cap 触发的那轮，下一次模型调用收到的消息末尾为 assistant(tool_calls) → tool → user([系统状态])', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const snapshots: Array<OpenAI.Chat.Completions.ChatCompletionMessageParam[]> = []
+    let call = 0
+    const createMessage = vi.fn(async (params: { messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] }): Promise<PlanAgentChatMessage> => {
+      call += 1
+      snapshots.push(params.messages.map((m) => ({ ...m })))
+      if (call === 1) {
+        return attachLlmUsage(
+          {
+            role: 'assistant',
+            content: null,
+            refusal: null,
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_plan', arguments: '{}' } }],
+          },
+          { inputMiss: 1_000, inputCacheHit: 0, output: 0, reasoning: 0 },
+        )
+      }
+      return { role: 'assistant', content: '好', refusal: null }
+    })
+    await runPlanAgent(
+      { createMessage, repo, planId: plan.id, toolDeps: { planId: plan.id, repo, points: finder }, runCapMicros: 1, maxIterations: 12 },
+      '你好',
+      () => {},
+    )
+    expect(createMessage).toHaveBeenCalledTimes(2)
+    const second = snapshots[1]!
+    expect(second.slice(-3).map((m) => m.role)).toEqual(['assistant', 'tool', 'user'])
+    const assistant = second[second.length - 3] as { role: string; tool_calls?: Array<{ id: string }> }
+    expect(assistant.tool_calls?.[0]?.id).toBe('c1')
+    expect((second[second.length - 2] as { tool_call_id?: string }).tool_call_id).toBe('c1')
+    expect(String(second[second.length - 1]!.content)).toContain('[系统状态]')
+  })
 })
