@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { monthlyBudgetMicros, remainingPercent, runCapMicros } from '@/lib/billing/budget'
-import { CNY_PER_USD, COST_SHARE, FREE_BUDGET_MICROS, RESERVE_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_CNY } from '@/lib/billing/priceTable'
+import { COST_SHARE, FREE_BUDGET_MICROS, RESERVE_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_USD } from '@/lib/billing/priceTable'
 import { TIERS } from '@/lib/billing/tiers'
 
 describe('budget', () => {
   it('free budget is the fixed constant', () => {
     expect(monthlyBudgetMicros('free')).toBe(FREE_BUDGET_MICROS)
   })
-  it('paid budget = price / fx × cost share, in micro-USD', () => {
-    const expected = Math.round((TIER_MONTHLY_PRICE_CNY.standard / CNY_PER_USD) * COST_SHARE * 1_000_000)
+  it('paid budget = usd price × cost share, in micro-USD', () => {
+    const expected = Math.round(TIER_MONTHLY_PRICE_USD.standard * COST_SHARE * 1_000_000)
     expect(monthlyBudgetMicros('standard')).toBe(expected)
+  })
+  it('standard budget is 4_455_000 micro-USD ($9.9 × 45%)', () => {
+    expect(monthlyBudgetMicros('standard')).toBe(4_455_000)
   })
   it('run cap is a share of the monthly budget', () => {
     expect(runCapMicros('free')).toBe(Math.round(FREE_BUDGET_MICROS * RUN_CAP_SHARE.free))

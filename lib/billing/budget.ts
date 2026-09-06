@@ -1,10 +1,10 @@
 import type { Tier } from './tiers'
-import { CNY_PER_USD, COST_SHARE, FREE_BUDGET_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_CNY } from './priceTable'
+import { COST_SHARE, FREE_BUDGET_MICROS, RUN_CAP_SHARE, TIER_MONTHLY_PRICE_USD } from './priceTable'
 
-/** 月度成本预算（微美元）：免费档固定值；付费档 = 月价 / 汇率 × 成本占比 */
+/** 月度成本预算（微美元）：免费档固定值；付费档 = 美元月价 × 成本占比 */
 export function monthlyBudgetMicros(tier: Tier): number {
   if (tier === 'free') return FREE_BUDGET_MICROS
-  return Math.round((TIER_MONTHLY_PRICE_CNY[tier] / CNY_PER_USD) * COST_SHARE * 1_000_000)
+  return Math.round(TIER_MONTHLY_PRICE_USD[tier] * COST_SHARE * 1_000_000)
 }
 
 /** 单 run 成本上限（微美元） */

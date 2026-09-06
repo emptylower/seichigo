@@ -31,15 +31,11 @@ export const GOOGLE_PRICES_MICROS = {
 /** 标题侧信道（每个带新用户消息的 run 一次，几百 token）按固定值摊入模型成本 */
 export const TITLE_OVERHEAD_MICROS = 500
 
-/** 人民币标价 → 美元成本口径的换算（调价时人工更新） */
-export const CNY_PER_USD = 7.2
-
 /**
- * 套餐月价（人民币）。**示例值**：标准档月价在计量层跑满两周、拿到 p75
- * 单次成本后按设计 §10 校准；高级档首期不可购买，这里的数值只用于计算
- * 内测账号的预算。
+ * 套餐月价（美元）。标准档 $9.9/月由产品拍板（2026-09-06）；高级档首期
+ * 不可购买，这里的数值只用于计算内测账号的预算。
  */
-export const TIER_MONTHLY_PRICE_CNY: Record<Tier, number> = { free: 0, standard: 29.9, pro: 99 }
+export const TIER_MONTHLY_PRICE_USD: Record<Tier, number> = { free: 0, standard: 9.9, pro: 29.9 }
 
 /** 月度成本预算占月价的比例（设计 §3：45%，留 5 个点给手续费与摊销） */
 export const COST_SHARE = 0.45

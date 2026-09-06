@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { forbiddenToolsOf, parseTier, TIER_ENTITLEMENTS, tierPromptNote } from '@/lib/billing/tiers'
+import { forbiddenToolsOf, parseTier, TIER_ENTITLEMENTS, tierPromptNote, UNLIMITED_DAYS } from '@/lib/billing/tiers'
 
 describe('tiers', () => {
   it('parseTier defaults to free for unknown values', () => {
@@ -34,5 +34,11 @@ describe('tiers', () => {
   it('pro is not purchasable yet', () => {
     expect(TIER_ENTITLEMENTS.pro.purchasable).toBe(false)
     expect(TIER_ENTITLEMENTS.standard.purchasable).toBe(true)
+  })
+
+  it('pro maxDays equals UNLIMITED_DAYS and has no tier prompt note', () => {
+    expect(TIER_ENTITLEMENTS.pro.maxDays).toBe(UNLIMITED_DAYS)
+    expect(UNLIMITED_DAYS).toBe(30)
+    expect(tierPromptNote(TIER_ENTITLEMENTS.pro)).toBeNull()
   })
 })
