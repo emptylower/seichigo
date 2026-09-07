@@ -97,3 +97,7 @@ Props：`{ locale: SiteLocale; stats?: HomeStats }`。放在 `HomeFaq` 之后、
 ## 5. 汇报
 
 简短中文：改动/新增文件、三条命令结果、需要人工确认的点。
+
+## 6. 顺手修一处（第三屏）
+
+`components/home/homeShowcase.ts` 的 `transitModeLabel`：真实数据里 `transport.mode` 只有 `walk` 与 `transit` 两种，把 `transit` 映射为「公共交通」（en "Transit"，ja「公共交通」），新增 i18n 键 `planTransitPublic`，对应测试同步。这是本文唯一允许改第三屏文件的地方。

@@ -41,12 +41,20 @@ function positionOf(text: string): number {
 }
 
 describe('HomePageTemplate（第十二轮信息架构）', () => {
-  it('按规划师主线排列各段：输入框 → 入口卡 → 地图数据库（第二屏）→ 行程展示（第三屏）→ 攻略 → 浏览 → FAQ', () => {
+  it('按规划师主线排列各段：输入框 → 入口卡 → 地图数据库（第二屏）→ 行程展示（第三屏）→ 攻略（第四屏）→ 浏览（第五屏）→ FAQ → 收尾行动区', () => {
     render(<HomePageTemplate locale="zh" data={portalDataFixture()} />)
 
     expect(screen.getByPlaceholderText('例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》')).toBeInTheDocument()
 
-    const order = ['AI 行程规划', '全球圣地点位数据库', '定制专属巡礼行程', '按作品和城市浏览']
+    const order = [
+      'AI 行程规划',
+      '全球圣地点位数据库',
+      '定制专属巡礼行程',
+      '来自真实旅行者的',
+      '热门作品',
+      '你可能会关心这些问题',
+      '开启你的动漫圣地巡礼之旅',
+    ]
     const positions = order.map(positionOf)
     expect(positions.every((p) => p >= 0)).toBe(true)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
@@ -72,7 +80,18 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     const { container } = render(<HomePageTemplate locale="zh" data={portalDataFixture()} />)
 
     expect(container.querySelector('script[type="application/ld+json"]')).not.toBeNull()
-    expect(screen.getByRole('heading', { name: '常见问题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '你可能会关心这些问题' })).toBeInTheDocument()
+  })
+
+  it('收尾行动区在 FAQ 之后、data-home-sections 容器内最后一段，并拿到真实 stats', () => {
+    const { container } = render(<HomePageTemplate locale="zh" data={portalDataFixture()} />)
+
+    const sections = container.querySelector('[data-home-sections]') as HTMLElement
+    const directSections = [...sections.children].filter((el) => el.tagName === 'SECTION')
+    const lastSection = directSections[directSections.length - 1]! as HTMLElement
+    // statsFixture: points 128456 → 「13 万」，works 1234 原样
+    expect(lastSection.textContent).toContain('全球 13 万+ 巡礼点位 · 1234+ 动漫作品 · 你的专属行程')
+    expect(positionOf('开启你的动漫圣地巡礼之旅')).toBeGreaterThan(positionOf('你可能会关心这些问题'))
   })
 
   it('不再渲染 App 预告段、路线枢纽与新手三步', () => {
@@ -95,7 +114,9 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     expect(screen.getByPlaceholderText('例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》')).toBeInTheDocument()
     expect(screen.queryByText('定制专属巡礼行程')).toBeNull()
     expect(screen.queryByText('全球圣地点位数据库')).toBeNull()
-    expect(screen.getByRole('heading', { name: '按作品和城市浏览' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /热门作品/ })).toBeInTheDocument()
+    // stats 缺失时收尾行动区仍在，只显示「你的专属行程」小节
+    expect(screen.getByText('你的专属行程')).toBeInTheDocument()
   })
 })
 

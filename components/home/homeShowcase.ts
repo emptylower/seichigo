@@ -103,9 +103,10 @@ export function showcaseLodging(days: TripPlanDayView[]): string | null {
   return null
 }
 
-/** 交通方式：walk→步行、train/rail/subway→电车、bus→巴士、其它→交通 */
+/** 交通方式：walk→步行、transit→公共交通（真实数据只有这两种）、train/rail/subway→电车、bus→巴士、其它→交通 */
 export function transitModeLabel(mode: string | undefined, locale: SiteLocale): string {
   if (mode === 'walk') return t('pages.home.v2.planTransitWalk', locale)
+  if (mode === 'transit') return t('pages.home.v2.planTransitPublic', locale)
   if (mode === 'train' || mode === 'rail' || mode === 'subway') return t('pages.home.v2.planTransitTrain', locale)
   if (mode === 'bus') return t('pages.home.v2.planTransitBus', locale)
   return t('pages.home.v2.planTransitOther', locale)

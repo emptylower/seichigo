@@ -1,5 +1,6 @@
 import HomeBrowse from '@/components/home/HomeBrowse'
 import HomeFaq from '@/components/home/HomeFaq'
+import HomeFinalCta from '@/components/home/HomeFinalCta'
 import HomeGuides from '@/components/home/HomeGuides'
 import HomeHero from '@/components/home/HomeHero'
 import HomeMapDatabase from '@/components/home/HomeMapDatabase'
@@ -57,6 +58,8 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         <HomeGuides locale={locale} items={guideItems(data)} />
         <HomeBrowse locale={locale} anime={data.popularAnime} cities={data.popularCities} />
         <HomeFaq locale={locale} />
+        {/* 收尾行动区：FAQ 之后、data-home-sections 容器内最后一段，统计行用真实 stats */}
+        <HomeFinalCta locale={locale} stats={data.stats} />
       </div>
 
       {/* 首页专属的 WebSite JSON-LD：把规划师起始页声明成站内搜索入口，与 FAQ JSON-LD 并存。

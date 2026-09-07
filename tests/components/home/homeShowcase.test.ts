@@ -112,13 +112,18 @@ describe('transitLineText', () => {
     expect(transitLineText(transit, 'ja')).toBe('徒歩 8 分 · 0.6 km')
   })
 
-  it('train/rail/subway→电车、bus→巴士、其它（如 transit）→交通', () => {
+  it('train/rail/subway→电车、bus→巴士、真实数据的 transit→公共交通、其它→交通', () => {
     const train = item({ id: 't', type: 'transit', payload: { transport: { mode: 'rail', durationMin: 33 } } })
     expect(transitLineText(train, 'zh')).toBe('电车 33 分钟')
     const bus = item({ id: 't', type: 'transit', payload: { transport: { mode: 'bus', durationMin: 20 } } })
     expect(transitLineText(bus, 'zh')).toBe('巴士 20 分钟')
-    const other = item({ id: 't', type: 'transit', payload: { transport: { mode: 'transit', durationMin: 33 } } })
-    expect(transitLineText(other, 'zh')).toBe('交通 33 分钟')
+    // 真实 showcase 数据里 transit 条目的 mode 只有 walk 与 transit 两种
+    const transit = item({ id: 't', type: 'transit', payload: { transport: { mode: 'transit', durationMin: 33 } } })
+    expect(transitLineText(transit, 'zh')).toBe('公共交通 33 分钟')
+    expect(transitLineText(transit, 'en')).toBe('Transit 33 min')
+    expect(transitLineText(transit, 'ja')).toBe('公共交通 33 分')
+    const other = item({ id: 't', type: 'transit', payload: { transport: { mode: 'ferry', durationMin: 40 } } })
+    expect(transitLineText(other, 'zh')).toBe('交通 40 分钟')
   })
 
   it('没有 transport 载荷时退成「→」占位；缺 mode 时不编交通方式', () => {
