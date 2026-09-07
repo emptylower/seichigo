@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { preload } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import type { SiteLocale } from '@/components/layout/SiteShell'
@@ -80,6 +81,12 @@ export default function HomeHero({
   const reduced = usePrefersReducedMotion()
   const [text, setText] = useState('')
   const [focused, setFocused] = useState(false)
+
+  // LCP 预载（写法同 HomeShowcasePlan）：移动端首屏两张关键图——竖版背景插画与
+  // 手机演示里的静态地图。桌面已达标，且 preload 无法按 media 区分横竖，只预载竖版。
+  // 与 HomeHeroBackground 的 PORTRAIT 基名保持一致。
+  preload('/images/home/hero-bg-portrait.avif', { as: 'image', fetchPriority: 'high' })
+  if (demo?.map) preload(demo.map.src, { as: 'image', fetchPriority: 'high' })
 
   const submitLabel = t('pages.home.v2.composerSubmit', locale)
   const staticPlaceholder = t('pages.home.v2.composerPlaceholder', locale)

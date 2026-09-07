@@ -56,12 +56,17 @@ describe('HomeBrowse（第五屏：热门作品 & 热门城市）', () => {
     expect(screen.getByText('城')).toBeInTheDocument()
   })
 
-  it('有封面时渲染 <img>', () => {
+  it('有封面时渲染 <img>，/assets/ 封面按尺寸下发（w/q + srcSet）', () => {
     const anime: HomePopularAnimeItem[] = [{ anime: { id: 'a1', name: '有封面' }, postCount: 1, cover: '/assets/a1.jpg' }]
     render(<HomeBrowse locale="zh" anime={anime} cities={[]} />)
 
     const img = document.querySelector('img')!
-    expect(img.getAttribute('src')).toBe('/assets/a1.jpg')
+    expect(img.getAttribute('src')).toBe('/assets/a1.jpg?w=640&q=75')
+    expect(img.getAttribute('srcset')).toBe(
+      '/assets/a1.jpg?w=320&q=75 320w, /assets/a1.jpg?w=640&q=75 640w, /assets/a1.jpg?w=960&q=75 960w',
+    )
+    expect(img.getAttribute('sizes')).toBe('(min-width:1024px) 120px, 45vw')
+    expect(img.getAttribute('loading')).toBe('lazy')
     expect(img.getAttribute('alt')).toBe('有封面')
   })
 

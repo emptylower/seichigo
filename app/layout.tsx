@@ -7,7 +7,6 @@ import { getSiteUrl } from '@/lib/seo/site'
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
 import { serializeJsonLd } from '@/lib/seo/jsonld'
-import { SpeedInsights } from '@vercel/speed-insights/next'
 import { Inter } from 'next/font/google'
 
 const inter = Inter({
@@ -74,14 +73,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="jsonld-org" type="application/ld+json" strategy="beforeInteractive">
           {jsonLdOrg}
         </Script>
+        {/* 第三方脚本一律 lazyOnload：不抢首屏（首页移动端 LCP 优化，2026-09-07）。
+            GA 延后几秒不影响统计口径，page_view 仍会发；JSON-LD 保留 beforeInteractive。 */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5922869290769433"
           crossOrigin="anonymous"
-          strategy="beforeInteractive"
+          strategy="lazyOnload"
         />
-        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" />
-        <Script id="google-analytics" strategy="afterInteractive">
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" strategy="lazyOnload" />
+        <Script id="google-analytics" strategy="lazyOnload">
           {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
@@ -91,7 +92,6 @@ gtag('config', 'G-F7E894BEWR');`}
         <Providers>
           {children}
         </Providers>
-        <SpeedInsights />
       </body>
     </html>
   )
