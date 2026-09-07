@@ -111,7 +111,7 @@ async function buildWorldPng(svg: string, cells: Array<{ lng: number; lat: numbe
     .png()
     .toBuffer()
 
-  // §A-2：叠层基准半径就是 2x 图像素值，无需再放大（1x 由整图缩半得到）
+  // §A-3：叠层基准半径就是 2x 图像素值，无需再放大（1x 由整图缩半得到）
   const overlaySvg = buildPointsOverlaySvg(cells, WORLD_BOUNDS, IMG_2X_WIDTH, IMG_2X_HEIGHT)
   const overlay = await sharp(Buffer.from(overlaySvg)).png().toBuffer()
   return sharp(cropped).composite([{ input: overlay, left: 0, top: 0 }]).png().toBuffer()

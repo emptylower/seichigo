@@ -37,22 +37,33 @@ describe('HomeMapDatabase（静态世界地图）', () => {
     expect(screen.getByText(/来自 1,234 部动漫作品 · 每天都在增加/)).toBeInTheDocument()
   })
 
-  it('标签碰撞：东京/京都只差 4°/0.7° → 京都挤掉，海外标签（伦敦/首尔/洛杉矶）全部保留', () => {
+  it('标签碰撞（B-2 四方位回退）：东京占上方、京都退下方，海外标签（伦敦/首尔/洛杉矶）全部保留', () => {
     render(<HomeMapDatabase locale="zh" world={mapWorldFixture()} />)
 
-    const names = [...document.querySelectorAll('[data-map-label]')].map((el) => el.getAttribute('data-map-label'))
-    expect(names).toEqual(['东京', '伦敦', '洛杉矶', '首尔'])
+    const pills = [...document.querySelectorAll('[data-map-label]')]
+    const names = pills.map((el) => el.getAttribute('data-map-label'))
+    expect(names).toEqual(['东京', '京都', '伦敦', '洛杉矶', '首尔'])
+    const anchorOf = (name: string) =>
+      pills.find((el) => el.getAttribute('data-map-label') === name)!.getAttribute('data-map-anchor')
+    expect(anchorOf('东京')).toBe('top')
+    expect(anchorOf('京都')).toBe('bottom')
+    expect(anchorOf('洛杉矶')).toBe('left')
+    expect(anchorOf('首尔')).toBe('left')
   })
 
-  it('primary（东京）的数字粉色加粗，其它城市数字深灰；标签按 locale 取名', () => {
+  it('primary（东京）的胶囊大一号、数字粉色加粗，其它城市 text-xs、数字深灰；标签按 locale 取名', () => {
     const { unmount } = render(<HomeMapDatabase locale="zh" world={mapWorldFixture()} />)
+    const tokyoPill = document.querySelector('[data-map-label="东京"]')!
+    expect(tokyoPill).toHaveClass('px-3', 'text-[13px]')
+    const londonPill = document.querySelector('[data-map-label="伦敦"]')!
+    expect(londonPill).toHaveClass('px-2.5', 'text-xs')
     expect(screen.getByText('13,959')).toHaveClass('text-brand-600', 'font-bold')
     expect(screen.getByText('666')).toHaveClass('text-gray-900', 'font-semibold')
     unmount()
 
     render(<HomeMapDatabase locale="en" world={mapWorldFixture()} />)
     const names = [...document.querySelectorAll('[data-map-label]')].map((el) => el.getAttribute('data-map-label'))
-    expect(names).toEqual(['Tokyo', 'London', 'Los Angeles', 'Seoul'])
+    expect(names).toEqual(['Tokyo', 'Kyoto', 'London', 'Los Angeles', 'Seoul'])
   })
 
   it('world 为 null 时整段不渲染（A 部分尚未落盘）', () => {
@@ -80,7 +91,7 @@ describe('HomeMapDatabase（静态世界地图）', () => {
     expect(screen.getByText('每天都在增加')).toBeInTheDocument()
   })
 
-  it('放大预览小卡：缩略图 + 3 个真实 marker（首个为选中大点）+ 8 个装饰点 + 点位小卡带作品名', () => {
+  it('放大预览小卡：缩略图 + 3 个真实 marker（首个为选中大点）+ 8 个装饰点 + 点位小卡「点位名 · 《作品名》」', () => {
     const demo = heroDemoFixture()
     demo.day.items[0] = {
       ...demo.day.items[0]!,
@@ -95,10 +106,20 @@ describe('HomeMapDatabase（静态世界地图）', () => {
     // 选中点：大一号带白边
     expect(container.querySelector('circle[r="6.5"]')).not.toBeNull()
     expect(screen.getByText('东京 · 新宿区')).toBeInTheDocument()
-    expect(screen.getByText('你的名字・须贺神社男坂')).toBeInTheDocument()
-    // 作品名取 title 的「・」前段，跟在标题后面
+    // B-2：title「作品名・点位名」显示成「点位名 · 《作品名》」
+    expect(screen.getByText('须贺神社男坂')).toBeInTheDocument()
     expect(screen.getByText(/· 《你的名字》/)).toBeInTheDocument()
+    expect(screen.queryByText('你的名字・须贺神社男坂')).toBeNull()
     expect(screen.getByText('每一个点都能点开看')).toBeInTheDocument()
+  })
+
+  it('放大预览小卡：title 没有「・」时原样显示（不加书名号）', () => {
+    const demo = heroDemoFixture()
+    render(<HomeMapDatabase locale="zh" world={mapWorldFixture()} demo={demo} />)
+
+    // fixture 的 title 是「须贺神社男坂」（无「・」）
+    expect(screen.getByText('须贺神社男坂')).toBeInTheDocument()
+    expect(screen.queryByText(/《/)).toBeNull()
   })
 
   it('demo 或 demo.map 缺失时不渲染放大预览小卡', () => {

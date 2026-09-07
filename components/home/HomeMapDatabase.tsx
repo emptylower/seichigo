@@ -5,12 +5,12 @@ import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { HomeMapWorld, HomeStats } from '@/lib/home/types'
 import { t } from '@/lib/i18n'
 import type { HomeHeroDemoLike } from './heroDemoShape'
-import { showcaseWorkName } from './homeShowcase'
 import {
   formatRoundedTotal,
   formatStatNumber,
   mapDbSubtitle,
-  MAP_LABEL_GAP,
+  mapInsetPointTitle,
+  MAP_LABEL_ANCHOR_TRANSFORM,
   placeWorldMapLabels,
 } from './homeMapDatabaseUtils'
 
@@ -81,7 +81,7 @@ export default function HomeMapDatabase({
     : null
   const demoItem = demo?.day?.items?.[0] ?? null
   const demoMap = demo?.map ?? null
-  const demoWorkName = demoItem ? showcaseWorkName(demoItem.title) : null
+  const demoPointTitle = demoItem ? mapInsetPointTitle(demoItem.title) : null
 
   return (
     <section id="home-showcase" className="scroll-mt-6">
@@ -115,18 +115,22 @@ export default function HomeMapDatabase({
             className="h-72 w-full object-cover object-center md:h-auto"
           />
 
-          {/* 城市标签：HTML 胶囊浮层（百分比定位 + 碰撞规避），移动端裁切视图下隐藏 */}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
+          {/* 城市标签：HTML 胶囊浮层（百分比定位 + 四方位碰撞规避），lg 以下不显示
+              （碰撞矩形按桌面 1208px 基准计算，更窄视口下胶囊不等比缩小会失真） */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden lg:block">
             {labels.map((label) => (
               <span
                 key={label.key}
                 data-map-label={label.name}
+                data-map-anchor={label.anchor}
                 style={{
                   left: `${label.xPct}%`,
                   top: `${label.yPct}%`,
-                  transform: `translate(-50%, calc(-100% - ${MAP_LABEL_GAP}px))`,
+                  transform: MAP_LABEL_ANCHOR_TRANSFORM[label.anchor],
                 }}
-                className="absolute whitespace-nowrap rounded-full bg-white/95 px-2.5 py-1 text-xs text-gray-700 shadow"
+                className={`absolute whitespace-nowrap rounded-full bg-white/95 py-1 text-gray-700 shadow ${
+                  label.primary ? 'px-3 text-[13px]' : 'px-2.5 text-xs'
+                }`}
               >
                 {label.name}{' '}
                 <span className={label.primary ? 'font-bold text-brand-600' : 'font-semibold text-gray-900'}>
@@ -151,7 +155,7 @@ export default function HomeMapDatabase({
         </div>
 
         {/* 放大预览小卡：静态缩略图 + 点位圆点 + 点位条目，全部来自首屏演示数据；< lg 隐藏 */}
-        {demoMap && demoItem ? (
+        {demoMap && demoItem && demoPointTitle ? (
           <div className="absolute -right-6 -top-8 hidden w-[300px] rounded-2xl border border-gray-100 bg-white p-3 shadow-xl lg:block">
             <div className="relative overflow-hidden rounded-xl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -214,9 +218,11 @@ export default function HomeMapDatabase({
                 decoding="async"
                 className="h-12 w-12 shrink-0 rounded-lg object-cover"
               />
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-900">
-                {demoItem.titles?.[locale] ?? demoItem.title}
-                {demoWorkName ? <span className="font-normal text-gray-500"> · 《{demoWorkName}》</span> : null}
+              <span className="min-w-0 flex-1 line-clamp-1 text-xs font-medium text-gray-900">
+                {demoPointTitle.pointName}
+                {demoPointTitle.workName ? (
+                  <span className="font-normal text-gray-500"> · 《{demoPointTitle.workName}》</span>
+                ) : null}
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
             </div>

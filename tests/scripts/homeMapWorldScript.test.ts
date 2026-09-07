@@ -150,13 +150,13 @@ describe('radiusForCount', () => {
 })
 
 describe('buildPointsOverlaySvg', () => {
-  it('uses the §A-2 point radii (2x-image pixels) so dense grids stay distinct dots', () => {
-    expect(GLOW_R_2X).toEqual([2.5, 7])
-    expect(MID_R_2X).toEqual([1.2, 3])
-    expect(CORE_R_2X).toEqual([0.7, 1.6])
-    expect(GLOW_CENTER_OPACITY).toBe(0.22)
-    expect(MID_OPACITY).toBe(0.28)
-    expect(CORE_OPACITY).toBe(0.9)
+  it('uses the §A-3 point radii (2x-image pixels) so dense grids stay distinct dots', () => {
+    expect(GLOW_R_2X).toEqual([3.5, 10])
+    expect(MID_R_2X).toEqual([1.6, 4])
+    expect(CORE_R_2X).toEqual([0.8, 1.8])
+    expect(GLOW_CENTER_OPACITY).toBe(0.3)
+    expect(MID_OPACITY).toBe(0.34)
+    expect(CORE_OPACITY).toBe(0.92)
   })
 
   it('draws three stacked circles per in-bounds cell with a gradient glow instead of filters', () => {
@@ -169,7 +169,7 @@ describe('buildPointsOverlaySvg', () => {
 
     expect(svg.match(/<circle /g)).toHaveLength(6)
     expect(svg).toContain('<radialGradient id="pw-glow"')
-    expect(svg).toContain('stop-color="#ec4899" stop-opacity="0.22"')
+    expect(svg).toContain('stop-color="#ec4899" stop-opacity="0.3"')
     expect(svg).not.toContain('<filter')
     // glow → mid → core 三个 pass：核心 circle 排在最后
     // （needle 带上 fill，避免误匹配 defs 里的 stop-opacity）

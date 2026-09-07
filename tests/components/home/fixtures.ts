@@ -140,9 +140,8 @@ export function mapClustersFixture(): HomeMapClusters & { labels: HomeMapLabelFi
 /**
  * 静态世界地图（content/generated/home-map-world.json，§1 契约形状）：
  * bounds 与 1x 图尺寸同真实产物。标签放东京/京都/伦敦/首尔/洛杉矶——
- * 东京与京都经度只差 4°、纬度只差 0.7°，在 1208px 基准下矩形相交（京都应被挤掉）；
- * 首尔的纬度比真实值（37.57）北移到 45°：真实坐标下首尔胶囊与东京胶囊相交
- * （Δx≈45px < 两胶囊半宽之和≈81px），会被碰撞规避丢掉，就没法验证「海外标签全在」。
+ * 东京与京都经度只差 4°、纬度只差 0.7°，B-2 的四方位回退下京都会退到「下方」锚位
+ * （旧版只放上方时京都直接被挤掉）；首尔用真实坐标，落在「左侧」锚位。
  */
 export function mapWorldFixture(): HomeMapWorld {
   return {
@@ -161,7 +160,7 @@ export function mapWorldFixture(): HomeMapWorld {
       { key: 'kyoto', name: { zh: '京都', en: 'Kyoto', ja: '京都' }, count: 4392, lng: 135.77, lat: 35.01 },
       { key: 'london', name: { zh: '伦敦', en: 'London', ja: 'ロンドン' }, count: 666, lng: -0.13, lat: 51.51 },
       { key: 'los-angeles', name: { zh: '洛杉矶', en: 'Los Angeles', ja: 'ロサンゼルス' }, count: 45, lng: -118.24, lat: 34.05 },
-      { key: 'seoul', name: { zh: '首尔', en: 'Seoul', ja: 'ソウル' }, count: 33, lng: 126.98, lat: 45 },
+      { key: 'seoul', name: { zh: '首尔', en: 'Seoul', ja: 'ソウル' }, count: 33, lng: 126.98, lat: 37.57 },
     ],
   }
 }

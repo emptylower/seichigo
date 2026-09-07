@@ -157,22 +157,22 @@ export function radiusForCount(
 const PINK = '#ec4899'
 
 /**
- * 烘焙点位各层的半径与透明度（§A-2 看图修正）。数值都是 **2x 图上的像素值**
- * （1x 由整图缩半得到）：0.1° 格子在 2416px 宽的图上只有约 0.7px 间距，
- * 半径给到 6→22 会把日本糊成一整块、欧洲糊成大圆斑；改小后日本仍最亮但
- * 能看出由很多小点组成，海外是清晰的小簇而不是圆斑。
+ * 烘焙点位各层的半径与透明度（§A-3 看图回调，取 A-1 与 A-2 之间）。数值都是
+ * **2x 图上的像素值**（1x 由整图缩半得到）：A-2 的 2.5→7 在 1x 显示（约
+ * 1150px 宽）下日本只剩一条细粉带、欧洲几乎看不见；回调后日本是一片明显
+ * 发亮但仍能看出内部疏密纹理的粉色区域，海外是一眼能看到的小簇。
  */
-export const GLOW_R_2X: readonly [number, number] = [2.5, 7]
-export const MID_R_2X: readonly [number, number] = [1.2, 3]
-export const CORE_R_2X: readonly [number, number] = [0.7, 1.6]
-export const GLOW_CENTER_OPACITY = 0.22
-export const MID_OPACITY = 0.28
-export const CORE_OPACITY = 0.9
+export const GLOW_R_2X: readonly [number, number] = [3.5, 10]
+export const MID_R_2X: readonly [number, number] = [1.6, 4]
+export const CORE_R_2X: readonly [number, number] = [0.8, 1.8]
+export const GLOW_CENTER_OPACITY = 0.3
+export const MID_OPACITY = 0.34
+export const CORE_OPACITY = 0.92
 
 /**
- * 烘焙点位的 SVG 叠层：每个格子三层 circle（光晕 radialGradient 中心 0.22 →
- * 边缘 0，代替 blur——librsvg 对 SVG filter 支持不稳；中层 0.28；核心 0.9），
- * 半径按 count 对数插值（基准为 §A-2 的 2x 像素值，radiusScale 缺省 1）。
+ * 烘焙点位的 SVG 叠层：每个格子三层 circle（光晕 radialGradient 中心 0.3 →
+ * 边缘 0，代替 blur——librsvg 对 SVG filter 支持不稳；中层 0.34；核心 0.92），
+ * 半径按 count 对数插值（基准为 §A-3 的 2x 像素值，radiusScale 缺省 1）。
  * 投到画布外的格子直接跳过。三个 pass 分层绘制保证核心永远在最上。
  */
 export function buildPointsOverlaySvg(
