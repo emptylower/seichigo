@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import { getSchedule } from '@/app/(authed)/plan/[id]/components/itemPayload'
 import { useDayAutoRotate } from '@/app/(authed)/plan/[id]/hooks/useDayAutoRotate'
-import { heroDemoItems } from './heroData'
 import {
   cityDisplayName,
   defaultDayIndex,
