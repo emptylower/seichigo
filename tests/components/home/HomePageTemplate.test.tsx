@@ -89,8 +89,8 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     const sections = container.querySelector('[data-home-sections]') as HTMLElement
     const directSections = [...sections.children].filter((el) => el.tagName === 'SECTION')
     const lastSection = directSections[directSections.length - 1]! as HTMLElement
-    // statsFixture: points 128456 → 「13 万」，works 1234 原样
-    expect(lastSection.textContent).toContain('全球 13 万+ 巡礼点位 · 1234+ 动漫作品 · 你的专属行程')
+    // statsFixture: points 128456 → 「13 万」，works 1234 → 千分位「1,234」
+    expect(lastSection.textContent).toContain('全球 13 万+ 巡礼点位 · 1,234+ 动漫作品 · 你的专属行程')
     expect(positionOf('开启你的动漫圣地巡礼之旅')).toBeGreaterThan(positionOf('你可能会关心这些问题'))
   })
 

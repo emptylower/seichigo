@@ -3,6 +3,7 @@ import type { SiteLocale } from '@/components/layout/SiteShell'
 import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import { t } from '@/lib/i18n'
 import type { TripPlanDayView, TripPlanItemView } from '@/lib/tripPlan/view'
+import { heroDemoItems } from './heroData'
 
 /**
  * 第三屏「规划师行程展示」的纯函数：标题截断、作品名提取、城市名静态表、
@@ -180,4 +181,31 @@ export function showcaseItemImage(item: TripPlanItemView): { src: string | null;
   const raw = item.point?.image ?? null
   if (!raw) return { src: null, attribution: null }
   return { src: getMapDisplayImageCandidates(raw, { kind: 'point-thumbnail' })[0] ?? null, attribution: null }
+}
+
+/**
+ * 左栏底部大图：跨所有天取第一个 type === 'point' 且有图
+ * （payload.media.displayUrl 或 point.image）的条目——Day 1 没有圣地时
+ * 不能落到酒店/餐厅照片；全都没有再退回 Day 1 的带图条目。
+ */
+export function showcaseOverviewImage(days: TripPlanDayView[]): string | null {
+  for (const day of days) {
+    for (const item of day.items) {
+      if (item.type !== 'point') continue
+      const { src } = showcaseItemImage(item)
+      if (src) return src
+    }
+  }
+  return heroDemoItems(days, 1)[0]?.image ?? null
+}
+
+/**
+ * 默认选中的天：第一个含 point 条目的天（当前数据 Day 1 没有圣地，默认应落在 Day 2）。
+ * 自动轮播从这一天开始往后循环。全都没有 point 时退回第一天；空行程兜底 1。
+ */
+export function defaultDayIndex(days: TripPlanDayView[]): number {
+  for (const day of days) {
+    if (day.items.some((item) => item.type === 'point')) return day.dayIndex
+  }
+  return days[0]?.dayIndex ?? 1
 }

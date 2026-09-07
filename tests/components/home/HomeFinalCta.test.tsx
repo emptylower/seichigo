@@ -50,7 +50,7 @@ describe('HomeFinalCta（收尾行动区）', () => {
   it('底部统计行：points 取整 + 真实 works，两侧各一枝月桂枝', () => {
     render(<HomeFinalCta locale="zh" stats={statsFixture} />)
 
-    expect(screen.getByText('全球 13 万+ 巡礼点位 · 1234+ 动漫作品 · 你的专属行程')).toBeInTheDocument()
+    expect(screen.getByText('全球 13 万+ 巡礼点位 · 1,234+ 动漫作品 · 你的专属行程')).toBeInTheDocument()
     expect(document.querySelectorAll('[data-hero-laurel]')).toHaveLength(2)
   })
 

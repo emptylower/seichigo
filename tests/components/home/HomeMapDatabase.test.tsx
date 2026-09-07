@@ -126,15 +126,15 @@ describe('HomeMapDatabase', () => {
     expect(screen.getByText('50,000')).toBeInTheDocument()
     expect(screen.getByText('+')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '巡礼点位，全部落在地图上' })).toBeInTheDocument()
-    // 统计胶囊（桌面浮层 + 移动端横排两处同数据）：作品 1,234 / 城市 96 / 攻略 87
+    // 统计胶囊（桌面浮层 + 移动端横排两处同数据）：作品 1,234 / 巡礼点位 50,597（精确值）/ 攻略 87
     expect(screen.getAllByText('1,234').length).toBe(2)
-    expect(screen.getAllByText('96').length).toBe(2)
+    expect(screen.getAllByText('50,597').length).toBe(2)
     expect(screen.getAllByText('87').length).toBe(2)
     expect(screen.getAllByText('作品').length).toBe(2)
-    expect(screen.getAllByText('城市').length).toBe(2)
+    expect(screen.getAllByText('巡礼点位').length).toBe(2)
     expect(screen.getAllByText('攻略').length).toBe(2)
-    // 副标题由真实数据拼出
-    expect(screen.getByText(/来自 1,234 部动漫作品 · 覆盖 96 座城市/)).toBeInTheDocument()
+    // 副标题由真实数据拼出（不再含城市数）
+    expect(screen.getByText(/来自 1,234 部动漫作品 · 每天都在增加/)).toBeInTheDocument()
   })
 
   it('地图段根 section 带 id="home-showcase"（接住首屏滚动提示），CTA 指向 /map', () => {
@@ -145,14 +145,15 @@ describe('HomeMapDatabase', () => {
     expect(screen.getByText('免登录，随便逛')).toBeInTheDocument()
   })
 
-  it('进入视口后才初始化地图：世界视野、不重复渲染、同一个 source 叠三层热力 circle', async () => {
+  it('进入视口后才初始化地图：世界视野以日本为中心、重复渲染铺满容器、同一个 source 叠三层热力 circle', async () => {
     render(<HomeMapDatabase locale="zh" clusters={clusters50597()} stats={statsFixture} />)
     const map = await mountedMap()
 
     expect(map.options.interactive).toBe(false)
     expect(map.options.attributionControl).toBe(false)
-    expect(map.options.renderWorldCopies).toBe(false)
-    expect(map.options.center).toEqual([140, 20])
+    // renderWorldCopies=true：zoom 1.x 时世界比容器窄，不重复画 MapLibre 无法把中心放到日本
+    expect(map.options.renderWorldCopies).toBe(true)
+    expect(map.options.center).toEqual([138, 28])
 
     const source = map.sources.get(HOME_MAPDB_SOURCE_ID) as
       | { type: string; cluster?: boolean; data: { features: Array<{ properties: { count: number } }> } }
@@ -192,10 +193,12 @@ describe('HomeMapDatabase', () => {
     expect(map.hiddenSymbols).toEqual(['place-label', 'country-label'])
   })
 
-  it('城市标签是 HTML 胶囊：名字按 locale 取、count 粉色、做碰撞规避', async () => {
+  it('城市标签是 HTML 胶囊：load 后出、名字按 locale 取、count 粉色、做碰撞规避', async () => {
     render(<HomeMapDatabase locale="zh" clusters={clusters50597()} />)
     await mountedMap()
 
+    // FakeMap.project 返回确定坐标：两个城市标签都在（明显重叠的才会被碰撞规避去掉）
+    expect(document.querySelectorAll('[data-map-label]')).toHaveLength(2)
     const tokyo = screen.getByText('4,210')
     expect(tokyo).toHaveClass('text-brand-600')
     expect(tokyo.parentElement?.textContent).toContain('东京')

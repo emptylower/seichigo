@@ -38,8 +38,11 @@ export const HOME_MAPDB_MID_LAYER_ID = 'home-mapdb-mid'
 export const HOME_MAPDB_CORE_LAYER_ID = 'home-mapdb-core'
 /** 品牌粉，与首屏同色 */
 const CELL_COLOR = '#ec4899'
-/** 世界视野中心：东亚/澳洲/北美西岸/欧洲一屏同框 */
-const WORLD_CENTER: [number, number] = [140, 20]
+/**
+ * 世界视野中心 [138, 28]：日本略偏中上，下方留出东南亚与澳大利亚，
+ * 左侧欧洲、右侧北美西岸都在画面内（配合 renderWorldCopies + zoomForWidth）。
+ */
+const WORLD_CENTER: [number, number] = [138, 28]
 
 function toCellCollection(cells: HomeMapCell[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
   return {
@@ -130,8 +133,10 @@ export default function HomeMapDatabase({
             zoom: zoomForWidth(container.clientWidth),
             interactive: false,
             attributionControl: false,
-            // 世界不左右重复画：光斑被复制成好几份会读不出密度
-            renderWorldCopies: false,
+            // 世界左右重复铺满：zoom 1.x 时世界比容器窄，不重复画 MapLibre 就无法把
+            // 中心放到日本（会被迫居中在非洲/欧洲）。点位 source 不变，
+            // 副本只会在极窄容器时出现，可接受。
+            renderWorldCopies: true,
           })
         } catch {
           // WebGL 不可用（老设备/无头环境）：静默降级为纯数字卡片
@@ -232,6 +237,8 @@ export default function HomeMapDatabase({
         instance.on('load', attach)
         instance.on('style.load', attach)
         instance.on('move', reposition)
+        // idle：初次渲染 settle 后再算一次，兜底 load 时 glyph/sprite 未齐导致的投影偏差
+        instance.on('idle', reposition)
         const onWindowResize = () => reposition()
         window.addEventListener('resize', onWindowResize)
         cleanupResize = () => window.removeEventListener('resize', onWindowResize)
@@ -275,7 +282,8 @@ export default function HomeMapDatabase({
   const capsules = stats
     ? [
         { icon: Film, label: t('pages.home.v2.mapDbStatWorks', locale), value: formatStatNumber(stats.works, locale) },
-        { icon: MapPin, label: t('pages.home.v2.mapDbStatCities', locale), value: formatStatNumber(stats.cities, locale) },
+        // 「巡礼点位」用 totalPoints 精确值（City 表条数太少，放这里拖后腿）
+        { icon: MapPin, label: t('pages.home.v2.mapDbStatPoints', locale), value: formatStatNumber(clusters.totalPoints, locale) },
         { icon: BookOpen, label: t('pages.home.v2.mapDbStatPosts', locale), value: formatStatNumber(stats.posts, locale) },
       ]
     : null
@@ -308,6 +316,7 @@ export default function HomeMapDatabase({
           {labelChips.map((chip) => (
             <span
               key={chip.key}
+              data-map-label={chip.name}
               style={{ left: chip.x, top: chip.y, transform: `translate(-50%, calc(-100% - ${MAP_LABEL_GAP}px))` }}
               className="absolute whitespace-nowrap rounded-full bg-white/95 px-2.5 py-1 text-xs text-gray-700 shadow"
             >

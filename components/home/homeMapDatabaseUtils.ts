@@ -21,31 +21,29 @@ export function formatRoundedTotal(points: number, locale: SiteLocale): string {
   return new Intl.NumberFormat(NUMBER_LOCALE[locale]).format(roundDownToThousands(points))
 }
 
-/** 统计胶囊里的数字（作品/城市/攻略），按 locale 分组 */
+/** 统计胶囊里的数字（作品/巡礼点位/攻略），按 locale 分组 */
 export function formatStatNumber(value: number, locale: SiteLocale): string {
   return new Intl.NumberFormat(NUMBER_LOCALE[locale]).format(value)
 }
 
 /**
- * 副标题：「来自 {works} 部动漫作品 · 覆盖 {cities} 座城市 · 每天都在增加」。
- * stats 缺失（或字段为 0）时只保留「每天都在增加」这一小节——
+ * 副标题：「来自 {works} 部动漫作品 · 每天都在增加」。
+ * stats 缺失（或 works 为 0）时只保留「每天都在增加」这一小节——
  * 与 HomeHero 的 heroSubtitle 处理 {points} 缺失同口径，不把占位符漏到页面上。
  */
-export function mapDbSubtitle(locale: SiteLocale, stats?: { works: number; cities: number } | null): string {
-  if (!stats || !stats.works || !stats.cities) return t('pages.home.v2.mapDbSubtitleTail', locale)
-  return t('pages.home.v2.mapDbSubtitle', locale)
-    .replace('{works}', formatStatNumber(stats.works, locale))
-    .replace('{cities}', formatStatNumber(stats.cities, locale))
+export function mapDbSubtitle(locale: SiteLocale, stats?: { works: number } | null): string {
+  if (!stats || !stats.works) return t('pages.home.v2.mapDbSubtitleTail', locale)
+  return t('pages.home.v2.mapDbSubtitle', locale).replace('{works}', formatStatNumber(stats.works, locale))
 }
 
 /**
- * 初始 zoom 随容器宽度在 1.2–1.8 间线性取值（lg≈1.6）：
- * 世界视野一屏内同时看到东亚、澳大利亚、北美西岸与欧洲，不再 fitBounds 到日本。
+ * 初始 zoom 随容器宽度取 log2(width/256)+0.08（下限 1.2）：世界宽度略大于容器，
+ * 正好铺满且不出现第二份日本（桌面 1150px 容器约 2.25）；不再 fitBounds 到日本。
+ * 注意不能给上限：renderWorldCopies=true 后更宽的容器需要更高 zoom 才能铺满。
  */
 export function zoomForWidth(width: number): number {
   const w = Number.isFinite(width) && width > 0 ? width : 960
-  const ratio = Math.min(1, Math.max(0, (w - 320) / (1440 - 320)))
-  return Math.round((1.2 + ratio * 0.6) * 100) / 100
+  return Math.round(Math.max(1.2, Math.log2(w / 256) + 0.08) * 100) / 100
 }
 
 /** 城市标签胶囊的估计高度（px-2.5 py-1 text-xs 白底胶囊） */

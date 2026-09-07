@@ -1,6 +1,7 @@
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { HomeStats } from '@/lib/home/types'
 import { t } from '@/lib/i18n'
+import { formatStatNumber } from './homeMapDatabaseUtils'
 
 /**
  * 收尾行动区（HomeFinalCta）的纯函数：点位取整、标题模板拆段、底部统计行。
@@ -40,13 +41,14 @@ export function finalCtaTitleSegments(
 
 /**
  * 底部小字：「全球 {points}+ 巡礼点位 · {works}+ 动漫作品 · 你的专属行程」。
- * points 按 roundedPoints 取整、works 用真实值；stats 缺失（或 points 无效）时
- * 只显示「你的专属行程」这一小节，不把占位符漏到页面上。
+ * points 按 roundedPoints 取整、works 用真实值（Intl.NumberFormat 按 locale 千分位，
+ * 如 1,523）；stats 缺失（或 points 无效）时只显示「你的专属行程」这一小节，
+ * 不把占位符漏到页面上。
  */
 export function finalCtaStatsLine(locale: SiteLocale, stats?: HomeStats): string {
   const points = roundedPoints(stats?.points, locale)
   if (!stats || !points) return t('pages.home.v2.finalCtaStatsTail', locale)
   return t('pages.home.v2.finalCtaStatsLine', locale)
     .replace('{points}', points)
-    .replace('{works}', String(stats.works))
+    .replace('{works}', formatStatNumber(stats.works, locale))
 }

@@ -44,13 +44,13 @@ describe('finalCtaTitleSegments', () => {
 })
 
 describe('finalCtaStatsLine', () => {
-  it('有 stats：points 按口径取整、works 用真实值（zh）', () => {
-    expect(finalCtaStatsLine('zh', statsFixture)).toBe('全球 13 万+ 巡礼点位 · 1234+ 动漫作品 · 你的专属行程')
+  it('有 stats：points 按口径取整、works 用真实值千分位（zh）', () => {
+    expect(finalCtaStatsLine('zh', statsFixture)).toBe('全球 13 万+ 巡礼点位 · 1,234+ 动漫作品 · 你的专属行程')
   })
 
-  it('en/ja 用各自模板与取整口径', () => {
+  it('en/ja 用各自模板与取整口径，works 同样千分位', () => {
     expect(finalCtaStatsLine('en', statsFixture)).toBe(
-      '128k+ pilgrimage spots worldwide · 1234+ anime series · your own itinerary',
+      '128k+ pilgrimage spots worldwide · 1,234+ anime series · your own itinerary',
     )
     expect(finalCtaStatsLine('ja', { points: 50597, works: 100, cities: 5, posts: 3 })).toBe(
       '世界 5万+ の巡礼スポット · 100+ のアニメ作品 · あなただけの行程',

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   cityDisplayName,
+  defaultDayIndex,
   showcaseCitySlugs,
   showcaseDayDate,
   showcaseItemImage,
   showcaseLodging,
+  showcaseOverviewImage,
   showcasePointCount,
   showcaseShortTitle,
   showcaseWorks,
@@ -197,5 +199,55 @@ describe('showcaseItemImage', () => {
     // node 环境没有 window，代理 URL 用兜底 origin；浏览器里是同源相对路径
     expect(showcaseItemImage(pointOnly).src).toContain('/api/anitabi/image-render')
     expect(showcaseItemImage(item({ id: 'p2' })).src).toBeNull()
+  })
+})
+
+describe('showcaseOverviewImage', () => {
+  it('跨天取第一个带图的 point 条目（Day 1 的酒店/餐厅照片不算）', () => {
+    const days = [
+      day(1, [
+        item({ id: 'm1', type: 'meal', title: '午餐：某餐厅', payload: { media: { displayUrl: '/images/showcase/m1.jpg' } } }),
+        item({ id: 'p1', title: '你的名字・无图点位' }),
+      ]),
+      day(2, [
+        item({ id: 'p2', title: '言叶之庭・有图点位', payload: { media: { displayUrl: '/images/showcase/p2.jpg' } } }),
+      ]),
+    ]
+    expect(showcaseOverviewImage(days)).toBe('/images/showcase/p2.jpg')
+  })
+
+  it('point 只有站外 point.image 时走代理；全都没图才退回 Day 1 的带图条目', () => {
+    const proxied = [
+      day(1, [
+        item({ id: 'p1', point: { id: 'p', name: 'p', nameZh: 'p', lat: 1, lng: 1, image: 'https://image.anitabi.cn/points/1/x.jpg' } }),
+      ]),
+    ]
+    expect(showcaseOverviewImage(proxied)).toContain('/api/anitabi/image-render')
+
+    const fallback = [
+      day(1, [
+        item({ id: 'p1', title: '无图点位' }),
+        item({ id: 'm1', type: 'meal', title: '午餐：某餐厅', payload: { media: { displayUrl: '/images/showcase/m1.jpg' } } }),
+      ]),
+    ]
+    expect(showcaseOverviewImage(fallback)).toBe('/images/showcase/m1.jpg')
+    expect(showcaseOverviewImage([day(1, [item({ id: 'p1' })])])).toBeNull()
+  })
+})
+
+describe('defaultDayIndex', () => {
+  it('第一个含 point 条目的天（Day 1 没有圣地时落到 Day 2）', () => {
+    const days = [
+      day(1, [item({ id: 'm1', type: 'meal', title: '午餐：某餐厅' }), item({ id: 'l1', type: 'lodging', title: '住宿：某酒店' })]),
+      day(2, [item({ id: 'p1', title: '你的名字・须贺神社' })]),
+      day(3, [item({ id: 'p2', title: '天气之子・歌舞伎町' })]),
+    ]
+    expect(defaultDayIndex(days)).toBe(2)
+  })
+
+  it('第一天就有 point 时保持 1；全都没有退回第一天；空行程兜底 1', () => {
+    expect(defaultDayIndex([day(1, [item({ id: 'p1' })]), day(2, [])])).toBe(1)
+    expect(defaultDayIndex([day(3, [item({ id: 'm1', type: 'meal' })])])).toBe(3)
+    expect(defaultDayIndex([])).toBe(1)
   })
 })

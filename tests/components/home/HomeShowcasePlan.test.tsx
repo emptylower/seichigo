@@ -200,6 +200,33 @@ describe('HomeShowcasePlan（第三屏重做）', () => {
     expect(screen.getByText('大阪一日')).toBeInTheDocument()
   })
 
+  it('Day 1 没有 point 时默认选中第一个含 point 的天，轮播从这天开始往后循环', () => {
+    const base = showcaseFixture()
+    // Day 1 只剩用餐/住宿（当前真实数据如此：Day 1 没有圣地）
+    const day1: TripPlanDayView = {
+      ...base.days[0]!,
+      items: [
+        item({
+          id: 'm1',
+          sortOrder: 0,
+          type: 'meal',
+          title: '午餐：CRUZ BURGERS',
+          payload: { media: { displayUrl: '/images/showcase/m1.jpg', attribution: '照片：Kenji' } },
+        }),
+      ],
+    }
+    render(<HomeShowcasePlan locale="zh" showcase={{ ...base, days: [day1, base.days[1]!, base.days[2]!] }} />)
+
+    // 初始落在 Day 2（第一个含 point 的天），不是 Day 1
+    expect(screen.getByText('京都一日')).toBeInTheDocument()
+    expect(screen.queryByText('新宿御苑与须贺神社')).toBeNull()
+    // 轮播从 Day 2 往后：下一帧是 Day 3
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(screen.getByText('大阪一日')).toBeInTheDocument()
+  })
+
   it('en：标题 accent、CTA 带 ?locale=en，交通小行英文化', () => {
     render(<HomeShowcasePlan locale="en" showcase={showcaseFixture()} />)
 

@@ -94,11 +94,11 @@ describe('新首页关键 key 在位', () => {
     }
   })
 
-  it('地图数据库副标题是带 {works}/{cities} 占位的整句模板（不再硬拼数字）', () => {
+  it('地图数据库副标题是带 {works} 占位的整句模板（不再硬拼数字，不含城市数）', () => {
     for (const [, dict] of LOCALES) {
       const subtitle = flatten(at(dict, 'pages.home.v2'))['mapDbSubtitle']!
       expect(subtitle).toContain('{works}')
-      expect(subtitle).toContain('{cities}')
+      expect(subtitle).not.toContain('{cities}')
     }
   })
 

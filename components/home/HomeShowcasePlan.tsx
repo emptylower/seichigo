@@ -21,10 +21,12 @@ import { useDayAutoRotate } from '@/app/(authed)/plan/[id]/hooks/useDayAutoRotat
 import { heroDemoItems } from './heroData'
 import {
   cityDisplayName,
+  defaultDayIndex,
   showcaseCitySlugs,
   showcaseDayDate,
   showcaseItemImage,
   showcaseLodging,
+  showcaseOverviewImage,
   showcasePointCount,
   showcaseShortTitle,
   showcaseWorks,
@@ -115,25 +117,30 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
   const reduced = usePrefersReducedMotion()
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const days = showcase.days
+  // 默认天 = 第一个含 point 条目的天（Day 1 可能没有圣地）；轮播从这天开始往后循环
+  const fallbackDayIndex = defaultDayIndex(days)
+  const defaultPos = days.findIndex((day) => day.dayIndex === fallbackDayIndex)
+  const orderedDays = defaultPos > 0 ? [...days.slice(defaultPos), ...days.slice(0, defaultPos)] : days
   const rotation = useDayAutoRotate({
     enabled: !reduced && days.length > 1,
-    dayIndexes: days.map((day) => day.dayIndex),
+    dayIndexes: orderedDays.map((day) => day.dayIndex),
     onRotate: setSelectedDay,
   })
 
   if (!days.length) return null
 
-  // 首帧就要出图：把 Day 1 前 4 张缩略图交给浏览器提前拿，渲染时命中缓存不再空白
-  for (const item of heroDemoItems(days, 4)) preload(item.image, { as: 'image' })
+  // 首帧就要出图：把默认天前 4 张缩略图交给浏览器提前拿，渲染时命中缓存不再空白
+  for (const item of heroDemoItems(orderedDays, 4)) preload(item.image, { as: 'image' })
 
-  const active = days.find((day) => day.dayIndex === selectedDay) ?? days[0]!
+  const active =
+    days.find((day) => day.dayIndex === selectedDay) ?? days.find((day) => day.dayIndex === fallbackDayIndex) ?? days[0]!
   const title = showcaseShortTitle(showcase.title)
   const works = showcaseWorks(days)
   const cities = showcaseCitySlugs(days).map((slug) => cityDisplayName(slug, locale))
   const pointCount = showcasePointCount(days)
   const lodging = showcaseLodging(days)
   const dayCountText = t('pages.home.v2.planDays', locale).replace('{n}', String(days.length))
-  const overviewImage = heroDemoItems(days, 1)[0]?.image ?? null
+  const overviewImage = showcaseOverviewImage(days)
   const { rows, hiddenCount } = visibleDayTimeline(active.items)
 
   const infoRows: Array<{ icon: LucideIcon; label: string; value: string }> = [
@@ -212,8 +219,9 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
 
         {/* 右栏：逐天 */}
         <div ref={rotation.containerRef} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-lg lg:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
+          <div className="flex items-start gap-3">
+            {/* 标签区独立横向滚动（隐藏滚动条），「查看完整行程」固定在行右侧不被挤压 */}
+            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {days.map((day) => {
                 const selected = day.dayIndex === active.dayIndex
                 const date = showcaseDayDate(day.date)

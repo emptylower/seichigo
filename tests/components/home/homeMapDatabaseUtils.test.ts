@@ -29,35 +29,36 @@ describe('roundDownToThousands / formatRoundedTotal', () => {
 })
 
 describe('mapDbSubtitle', () => {
-  it('有 stats 时替换 {works}/{cities} 占位（数字千分位）', () => {
-    expect(mapDbSubtitle('zh', { works: 1234, cities: 96 })).toBe('来自 1,234 部动漫作品 · 覆盖 96 座城市 · 每天都在增加')
-    expect(mapDbSubtitle('en', { works: 1234, cities: 96 })).toContain('1,234 anime series')
-    expect(mapDbSubtitle('ja', { works: 1234, cities: 96 })).toContain('96 都市')
+  it('有 stats 时替换 {works} 占位（数字千分位），不再出现城市数', () => {
+    expect(mapDbSubtitle('zh', { works: 1234 })).toBe('来自 1,234 部动漫作品 · 每天都在增加')
+    expect(mapDbSubtitle('en', { works: 1234 })).toContain('1,234 anime series')
+    expect(mapDbSubtitle('ja', { works: 1234 })).toContain('1,234 作品から')
   })
 
-  it('stats 缺失或字段为 0 时只保留「每天都在增加」小节，不漏占位符', () => {
+  it('stats 缺失或 works 为 0 时只保留「每天都在增加」小节，不漏占位符', () => {
     expect(mapDbSubtitle('zh', null)).toBe('每天都在增加')
     expect(mapDbSubtitle('zh', undefined)).toBe('每天都在增加')
-    expect(mapDbSubtitle('zh', { works: 0, cities: 96 })).toBe('每天都在增加')
+    expect(mapDbSubtitle('zh', { works: 0 })).toBe('每天都在增加')
     expect(mapDbSubtitle('en', null)).toBe('Growing every day')
     expect(mapDbSubtitle('ja', null)).toBe('毎日増えています')
   })
 })
 
 describe('zoomForWidth', () => {
-  it('按容器宽度取 1.2 ~ 1.8，lg（1024）约 1.6', () => {
+  it('log2(width/256)+0.08、下限 1.2：世界略宽于容器正好铺满，桌面 1150px 约 2.25', () => {
+    expect(zoomForWidth(256)).toBe(1.2)
     expect(zoomForWidth(320)).toBe(1.2)
-    expect(zoomForWidth(1440)).toBe(1.8)
-    expect(zoomForWidth(2000)).toBe(1.8)
-    const lg = zoomForWidth(1024)
-    expect(lg).toBeGreaterThanOrEqual(1.5)
-    expect(lg).toBeLessThanOrEqual(1.65)
+    expect(zoomForWidth(1024)).toBe(2.08)
+    expect(zoomForWidth(1150)).toBe(2.25)
+    // 无上限：更宽的容器需要更高 zoom 才能铺满
+    expect(zoomForWidth(2000)).toBeGreaterThan(zoomForWidth(1150))
   })
 
-  it('容器宽度读不到（0/NaN）时给一个中档默认值', () => {
+  it('容器宽度读不到（0/NaN）时按 960 给默认值', () => {
     const fallback = zoomForWidth(0)
-    expect(fallback).toBeGreaterThan(1.2)
-    expect(fallback).toBeLessThan(1.8)
+    expect(fallback).toBe(zoomForWidth(960))
+    expect(fallback).toBeGreaterThan(1.9)
+    expect(fallback).toBeLessThan(2.1)
     expect(zoomForWidth(Number.NaN)).toBe(fallback)
   })
 })
