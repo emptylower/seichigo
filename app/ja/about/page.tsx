@@ -107,6 +107,26 @@ export default function AboutJaPage() {
         </div>
       </section>
 
+      {/* Press & Citation */}
+      <section className="mx-auto max-w-3xl px-6">
+        <h2 className="text-center text-2xl font-bold text-gray-900">{t('pages.about.pressTitle', 'ja')}</h2>
+        <p className="mt-6 text-lg text-gray-600 leading-relaxed">
+          {t('pages.about.pressWhatWeAre', 'ja')}
+        </p>
+        <div className="mt-8 rounded-2xl bg-gray-50 p-8 shadow-sm">
+          <h3 className="text-xl font-bold text-gray-900">{t('pages.about.pressCiteTitle', 'ja')}</h3>
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-gray-600 leading-relaxed">
+            <li>{t('pages.about.pressCiteText', 'ja')}</li>
+            <li>{t('pages.about.pressCitePhotos', 'ja')}</li>
+            <li>{t('pages.about.pressCiteFrames', 'ja')}</li>
+          </ul>
+          <p className="mt-4 text-gray-600 leading-relaxed">
+            {t('pages.about.pressContact', 'ja')}{' '}
+            <a href={`mailto:${CONTACT_EMAIL}`} className="text-brand-600 hover:underline">{CONTACT_EMAIL}</a>
+          </p>
+        </div>
+      </section>
+
       {/* Future & Contact */}
       <section className="mx-auto max-w-4xl px-6">
         <div className="overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">

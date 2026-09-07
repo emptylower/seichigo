@@ -13,6 +13,7 @@ import CommentSection from '@/components/comments/CommentSection'
 import ArticleShareButtons from '@/components/content/ArticleShareButtons'
 import ProgressiveImagesRuntime from '@/components/content/ProgressiveImagesRuntime'
 import FavoriteButton from '@/components/content/FavoriteButton'
+import AiAssistedNotice from '@/components/legal/AiAssistedNotice'
 import CopyrightNotice from '@/components/legal/CopyrightNotice'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import EmergencyNotice from '@/components/public/EmergencyNotice'
@@ -336,6 +337,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             </div>
             <h1>{title}</h1>
             <PostMeta anime={anime} city={city} routeLength={routeLength} publishDate={publishDate} />
+            {tags?.includes('seo-spoke') && <AiAssistedNotice locale="zh" />}
             <div className="not-prose mt-3 flex flex-wrap items-center justify-between gap-3">
               <ArticleShareButtons url={canonicalUrl} title={seoTitle} locale="zh" tag="Seichigo" />
               {favoritesEnabled ? (
