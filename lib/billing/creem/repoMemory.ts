@@ -2,8 +2,10 @@ import type { Tier } from '@/lib/billing/tiers'
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
   WEBHOOK_MAX_ATTEMPTS,
+  type BillingCheckoutIntentRepo,
   type BillingSubscriptionRepo,
   type BillingWebhookEventRepo,
+  type CheckoutIntentStats,
   type SubscriptionRecord,
   type UserTierRepo,
 } from './repo'
@@ -149,6 +151,70 @@ export class MemoryBillingWebhookEventRepo implements BillingWebhookEventRepo {
       }
     }
     return false
+  }
+}
+
+type StoredIntent = {
+  userId: string | null
+  tier: string
+  source: string
+  locale: string | null
+  gated: boolean
+  createdAt: Date
+}
+
+/** F2 2026-09-07：付费意向 memory 仓储（测试用）；stats 语义与 prisma 实现一致 */
+export class MemoryBillingCheckoutIntentRepo implements BillingCheckoutIntentRepo {
+  private rows: StoredIntent[] = []
+
+  /** 以受控 createdAt 落一条（stats 单测用；等价于 record 时钟拨到 createdAt） */
+  seed(row: StoredIntent): void {
+    this.rows.push({ ...row, createdAt: new Date(row.createdAt) })
+  }
+
+  /** 全量快照（断言用） */
+  list(): StoredIntent[] {
+    return this.rows.map((r) => ({ ...r, createdAt: new Date(r.createdAt) }))
+  }
+
+  async record(input: {
+    userId: string | null
+    tier: string
+    source: string
+    locale: string | null
+    gated: boolean
+  }): Promise<void> {
+    this.rows.push({ ...input, createdAt: new Date() })
+  }
+
+  async stats(now: Date): Promise<CheckoutIntentStats> {
+    const at = now.getTime()
+    const days = new Map<string, number>()
+    for (let i = 13; i >= 0; i -= 1) {
+      days.set(new Date(at - i * 86_400_000).toISOString().slice(0, 10), 0)
+    }
+    const users = new Set<string>()
+    let last24h = 0
+    let last7d = 0
+    let anonymous = 0
+    for (const row of this.rows) {
+      if (row.userId === null) anonymous += 1
+      else users.add(row.userId)
+      const ts = row.createdAt.getTime()
+      if (ts >= at - 86_400_000) last24h += 1
+      if (ts >= at - 7 * 86_400_000) last7d += 1
+      const day = row.createdAt.toISOString().slice(0, 10)
+      const known = days.get(day)
+      if (known !== undefined) days.set(day, known + 1)
+    }
+    return {
+      total: this.rows.length,
+      last24h,
+      last7d,
+      uniqueUsers: users.size,
+      anonymous,
+      byDay: [...days.entries()].map(([day, count]) => ({ day, count })),
+    }
   }
 }
 

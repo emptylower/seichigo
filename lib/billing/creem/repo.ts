@@ -61,3 +61,25 @@ export interface UserTierRepo {
     periodEnd: Date
   }): Promise<void>
 }
+
+/** 付费意向统计（管理端漏斗观察；byDay 为最近 14 个 UTC 日，升序含零天） */
+export type CheckoutIntentStats = {
+  total: number
+  last24h: number
+  last7d: number
+  uniqueUsers: number
+  anonymous: number
+  byDay: Array<{ day: string; count: number }>
+}
+
+/** F2 2026-09-07：付费意向（含未登录点击），开关关闭期也照记 */
+export interface BillingCheckoutIntentRepo {
+  record(input: {
+    userId: string | null
+    tier: string
+    source: string
+    locale: string | null
+    gated: boolean
+  }): Promise<void>
+  stats(now: Date): Promise<CheckoutIntentStats>
+}

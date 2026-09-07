@@ -637,9 +637,14 @@
       "loading": "移動中…",
       "alreadySubscribed": "すでにスタンダードプランをご利用中です",
       "alreadySubscribedCta": "サブスクリプションを見る",
-      "unavailable": "現在お支払いをご利用いただけません。しばらくしてからお試しください",
+      "temporarilyUnavailable": "現在お支払いをご利用いただけません。しばらくしてからお試しください",
       "currentPlan": "現在のプラン",
-      "manage": "サブスクリプションを管理"
+      "manage": "サブスクリプションを管理",
+      "unavailable": {
+        "title": "サブスクリプションはまだ開始していません",
+        "body": "スタンダードプランを準備中です。まもなくご利用いただけます。ご関心を記録しましたので、開始後にアプリ内でお知らせします。",
+        "confirm": "了解"
+      }
     },
     "subscription": {
       "sectionLabel": "サブスクリプション",

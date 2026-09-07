@@ -106,6 +106,7 @@ export function SubscriptionCard(props: { locale?: SupportedLocale; pendingActiv
         ) : (
           <CheckoutButton
             locale={locale}
+            source="profile"
             skipPlanCheck
             callbackUrl="/me"
             label={t('billing.subscription.upgradeCta', locale)}

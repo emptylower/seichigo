@@ -43,7 +43,10 @@
     // （CREEM_API_BASE=https://test-api.creem.io 与测试模式 product id）；
     // CREEM_API_KEY 与 CREEM_WEBHOOK_SECRET 走 secret，不进 vars
     "CREEM_API_BASE": "https://api.creem.io",
-    "CREEM_PRODUCT_STANDARD_ID": ""
+    "CREEM_PRODUCT_STANDARD_ID": "",
+    // 2026-09-07 订阅开关（Part F2）：Creem 审核通过并配置好生产 product id
+    // 与 secrets 后改 "1"；预览用 --var BILLING_CHECKOUT_ENABLED=1 覆盖
+    "BILLING_CHECKOUT_ENABLED": "0"
   },
   "r2_buckets": [
     {

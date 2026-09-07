@@ -16,6 +16,7 @@ import {
   Wrench,
   MessageSquareWarning,
   Cpu,
+  CreditCard,
 } from "lucide-react"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -98,6 +99,11 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           title: "维护工具",
           href: "/admin/maintenance",
           icon: Wrench,
+        },
+        {
+          title: "订阅意向",
+          href: "/admin/billing",
+          icon: CreditCard,
         },
         {
           title: "模型接入",

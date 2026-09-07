@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 import {
+  MemoryBillingCheckoutIntentRepo,
   MemoryBillingSubscriptionRepo,
   MemoryBillingWebhookEventRepo,
   MemoryUserTierRepo,
@@ -33,6 +34,7 @@ function makeDeps(overrides?: { subs?: MemoryBillingSubscriptionRepo }) {
     subs: overrides?.subs ?? new MemoryBillingSubscriptionRepo(),
     events: new MemoryBillingWebhookEventRepo(),
     users: new MemoryUserTierRepo(),
+    intents: new MemoryBillingCheckoutIntentRepo(),
   }
 }
 

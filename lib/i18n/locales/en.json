@@ -637,9 +637,14 @@
       "loading": "Redirecting…",
       "alreadySubscribed": "You are already on the Standard plan",
       "alreadySubscribedCta": "View subscription",
-      "unavailable": "Checkout is unavailable right now, please try again later",
+      "temporarilyUnavailable": "Checkout is unavailable right now, please try again later",
       "currentPlan": "Current plan",
-      "manage": "Manage subscription"
+      "manage": "Manage subscription",
+      "unavailable": {
+        "title": "Subscriptions not open yet",
+        "body": "The Standard plan is still being prepared and will open soon. We've noted your interest and will let you know in the app once it opens.",
+        "confirm": "Got it"
+      }
     },
     "subscription": {
       "sectionLabel": "Subscription",

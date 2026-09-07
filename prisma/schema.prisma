@@ -1206,6 +1206,20 @@ model BillingSubscription {
   @@index([userId])
 }
 
+/// 付费意向：每次点击“开通”都记一条（含未登录）。用于观察付费意愿。
+model BillingCheckoutIntent {
+  id        String   @id @default(cuid())
+  userId    String?
+  tier      String
+  source    String
+  locale    String?
+  gated     Boolean
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
 /// Creem webhook 事件（幂等与审计）
 model BillingWebhookEvent {
   id          String    @id

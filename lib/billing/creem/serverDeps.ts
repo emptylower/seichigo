@@ -1,6 +1,16 @@
 import { createCreemClient, readCreemConfig, type CreemClient, type CreemConfig } from './client'
-import type { BillingSubscriptionRepo, BillingWebhookEventRepo, UserTierRepo } from './repo'
-import { PrismaBillingSubscriptionRepo, PrismaBillingWebhookEventRepo, PrismaUserTierRepo } from './repoPrisma'
+import type {
+  BillingCheckoutIntentRepo,
+  BillingSubscriptionRepo,
+  BillingWebhookEventRepo,
+  UserTierRepo,
+} from './repo'
+import {
+  PrismaBillingCheckoutIntentRepo,
+  PrismaBillingSubscriptionRepo,
+  PrismaBillingWebhookEventRepo,
+  PrismaUserTierRepo,
+} from './repoPrisma'
 
 /** 生产装配（prisma 实现），缓存单例；测试用 vi.mock 替换 getCreemDeps。 */
 
@@ -8,6 +18,8 @@ export type CreemRepos = {
   subs: BillingSubscriptionRepo
   events: BillingWebhookEventRepo
   users: UserTierRepo
+  /** F2 2026-09-07：付费意向（不依赖 Creem 配置，开关关闭期也照记） */
+  intents: BillingCheckoutIntentRepo
 }
 
 export type CreemDeps = CreemRepos & {
@@ -23,6 +35,7 @@ export function getCreemRepos(): CreemRepos {
       subs: new PrismaBillingSubscriptionRepo(),
       events: new PrismaBillingWebhookEventRepo(),
       users: new PrismaUserTierRepo(),
+      intents: new PrismaBillingCheckoutIntentRepo(),
     }
   }
   return cachedRepos

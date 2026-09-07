@@ -4,8 +4,10 @@ import type { Tier } from '@/lib/billing/tiers'
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
   WEBHOOK_MAX_ATTEMPTS,
+  type BillingCheckoutIntentRepo,
   type BillingSubscriptionRepo,
   type BillingWebhookEventRepo,
+  type CheckoutIntentStats,
   type SubscriptionRecord,
   type UserTierRepo,
 } from './repo'
@@ -106,6 +108,55 @@ export class PrismaBillingWebhookEventRepo implements BillingWebhookEventRepo {
       },
     })
     return count > 0
+  }
+}
+
+export class PrismaBillingCheckoutIntentRepo implements BillingCheckoutIntentRepo {
+  async record(input: {
+    userId: string | null
+    tier: string
+    source: string
+    locale: string | null
+    gated: boolean
+  }): Promise<void> {
+    await prisma.billingCheckoutIntent.create({ data: input })
+  }
+
+  async stats(now: Date): Promise<CheckoutIntentStats> {
+    const at = now.getTime()
+    const [total, last24h, last7d, anonymous, distinctUsers] = await Promise.all([
+      prisma.billingCheckoutIntent.count(),
+      prisma.billingCheckoutIntent.count({ where: { createdAt: { gte: new Date(at - 86_400_000) } } }),
+      prisma.billingCheckoutIntent.count({ where: { createdAt: { gte: new Date(at - 7 * 86_400_000) } } }),
+      prisma.billingCheckoutIntent.count({ where: { userId: null } }),
+      prisma.billingCheckoutIntent.findMany({ where: { userId: { not: null } }, select: { userId: true }, distinct: ['userId'] }),
+    ])
+    // 与 memory 实现同口径：14 个 UTC 日升序、零天补位；窗口起点为 13 天前的 UTC 日界
+    const dayKeys = new Map<string, number>()
+    const startOfToday = new Date(at)
+    startOfToday.setUTCHours(0, 0, 0, 0)
+    for (let i = 13; i >= 0; i -= 1) {
+      dayKeys.set(new Date(startOfToday.getTime() - i * 86_400_000).toISOString().slice(0, 10), 0)
+    }
+    const windowStart = new Date(startOfToday.getTime() - 13 * 86_400_000)
+    const rawDays = await prisma.$queryRaw<Array<{ day: Date; count: number }>>`
+      SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::int AS count
+      FROM "public"."BillingCheckoutIntent"
+      WHERE "createdAt" >= ${windowStart}
+      GROUP BY 1
+    `
+    for (const row of rawDays) {
+      const key = new Date(row.day).toISOString().slice(0, 10)
+      if (dayKeys.has(key)) dayKeys.set(key, Number(row.count))
+    }
+    return {
+      total,
+      last24h,
+      last7d,
+      uniqueUsers: distinctUsers.length,
+      anonymous,
+      byDay: [...dayKeys.entries()].map(([day, count]) => ({ day, count })),
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  MemoryBillingCheckoutIntentRepo,
   MemoryBillingSubscriptionRepo,
   MemoryBillingWebhookEventRepo,
   MemoryUserTierRepo,
@@ -10,11 +11,14 @@ import type { CreemConfig } from '@/lib/billing/creem/client'
 /**
  * F5/F11 + nit：POST /api/me/billing/checkout。
  * success_url 用站点权威地址；并发结账 60 秒去重；409 只对 active/trialing 生效。
+ * F（2026-09-07）：开关关闭 403 checkout_disabled + 记付费意向；开启照常结账。
  */
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getCreemDeps: vi.fn(),
+  getCreemRepos: vi.fn(),
+  getLocale: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/session', () => ({
@@ -23,6 +27,11 @@ vi.mock('@/lib/auth/session', () => ({
 
 vi.mock('@/lib/billing/creem/serverDeps', () => ({
   getCreemDeps: () => mocks.getCreemDeps(),
+  getCreemRepos: () => mocks.getCreemRepos(),
+}))
+
+vi.mock('@/lib/i18n/getLocale', () => ({
+  getLocale: () => mocks.getLocale(),
 }))
 
 import { POST } from '@/app/api/me/billing/checkout/route'
@@ -71,10 +80,19 @@ function request(): Request {
   return new Request('http://evil.example.com/api/me/billing/checkout', { method: 'POST' })
 }
 
+function requestWithBody(body: string): Request {
+  return new Request('http://evil.example.com/api/me/billing/checkout', { method: 'POST', body })
+}
+
 beforeEach(() => {
   mocks.getSession.mockReset()
   mocks.getSession.mockResolvedValue({ user: { id: 'u1', email: 'u@example.com' } })
   mocks.getCreemDeps.mockReset()
+  mocks.getCreemRepos.mockReset()
+  mocks.getLocale.mockReset()
+  mocks.getLocale.mockResolvedValue('zh')
+  // 既有用例默认"开关打开"世界；开关专项用例自行覆盖/删除
+  vi.stubEnv('BILLING_CHECKOUT_ENABLED', '1')
 })
 
 afterEach(() => {
@@ -164,5 +182,83 @@ describe('POST /api/me/billing/checkout', () => {
     mocks.getCreemDeps.mockReturnValue(null)
     const res2 = await POST(request())
     expect(res2.status).toBe(503)
+  })
+})
+
+describe('POST /api/me/billing/checkout（订阅开关与付费意向，2026-09-07 Part F）', () => {
+  it('开关关闭：未登录 → 403 checkout_disabled 且记一条 gated 意向（userId null）', async () => {
+    vi.stubEnv('BILLING_CHECKOUT_ENABLED', '0')
+    const intents = new MemoryBillingCheckoutIntentRepo()
+    mocks.getCreemRepos.mockReturnValue({ intents })
+    mocks.getSession.mockResolvedValue(null)
+
+    const res = await POST(requestWithBody('{"source":"pricing"}'))
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ code: 'checkout_disabled' })
+    expect(intents.list()).toHaveLength(1)
+    expect(intents.list()[0]).toMatchObject({
+      userId: null,
+      tier: 'standard',
+      source: 'pricing',
+      locale: 'zh',
+      gated: true,
+    })
+  })
+
+  it('开关关闭：已登录 → 403 且记 gated 意向；不依赖 Creem 配置（不调 getCreemDeps）', async () => {
+    vi.stubEnv('BILLING_CHECKOUT_ENABLED', '0')
+    const intents = new MemoryBillingCheckoutIntentRepo()
+    mocks.getCreemRepos.mockReturnValue({ intents })
+
+    const res = await POST(request())
+    expect(res.status).toBe(403)
+    expect(mocks.getCreemDeps).not.toHaveBeenCalled()
+    expect(intents.list()).toHaveLength(1)
+    expect(intents.list()[0]).toMatchObject({ userId: 'u1', gated: true, source: 'unknown' })
+  })
+
+  it('开关关闭：非法 source 与非法 JSON 都归 unknown；locale 走请求语言', async () => {
+    vi.stubEnv('BILLING_CHECKOUT_ENABLED', '0')
+    mocks.getLocale.mockResolvedValue('en')
+    const intents = new MemoryBillingCheckoutIntentRepo()
+    mocks.getCreemRepos.mockReturnValue({ intents })
+
+    await POST(requestWithBody('{"source":"banner"}'))
+    await POST(requestWithBody('{bad json'))
+    const rows = intents.list()
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ source: 'unknown', locale: 'en' })
+    expect(rows[1]).toMatchObject({ source: 'unknown', locale: 'en' })
+  })
+
+  it('开关开启：先记 gated:false 意向，再照常创建结账', async () => {
+    const intents = new MemoryBillingCheckoutIntentRepo()
+    mocks.getCreemRepos.mockReturnValue({ intents })
+    const { deps, createCheckout } = makeDeps()
+    mocks.getCreemDeps.mockReturnValue(deps)
+
+    const res = await POST(requestWithBody('{"source":"profile"}'))
+    expect(res.status).toBe(200)
+    expect(createCheckout).toHaveBeenCalledOnce()
+    expect(intents.list()).toHaveLength(1)
+    expect(intents.list()[0]).toMatchObject({ userId: 'u1', source: 'profile', gated: false })
+  })
+
+  it('意向记录失败只 warn，不影响主流程（关闭期仍 403，开启期仍 200）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const intents: { record: () => Promise<void> } = { record: vi.fn().mockRejectedValue(new Error('db down')) }
+    mocks.getCreemRepos.mockReturnValue({ intents })
+
+    vi.stubEnv('BILLING_CHECKOUT_ENABLED', '0')
+    const res = await POST(request())
+    expect(res.status).toBe(403)
+
+    vi.stubEnv('BILLING_CHECKOUT_ENABLED', '1')
+    const { deps } = makeDeps()
+    mocks.getCreemDeps.mockReturnValue(deps)
+    const res2 = await POST(request())
+    expect(res2.status).toBe(200)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

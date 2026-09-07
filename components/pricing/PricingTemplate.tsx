@@ -76,6 +76,7 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
             ) : tier.cta.kind === 'checkout' ? (
               <CheckoutButton
                 locale={locale}
+                source="pricing"
                 label={tier.cta.label}
                 className="mt-4 w-full rounded-full bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
