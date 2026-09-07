@@ -612,7 +612,9 @@
       "loading": "移動中…",
       "alreadySubscribed": "すでにスタンダードプランをご利用中です",
       "alreadySubscribedCta": "サブスクリプションを見る",
-      "unavailable": "現在お支払いをご利用いただけません。しばらくしてからお試しください"
+      "unavailable": "現在お支払いをご利用いただけません。しばらくしてからお試しください",
+      "currentPlan": "現在のプラン",
+      "manage": "サブスクリプションを管理"
     },
     "subscription": {
       "sectionLabel": "サブスクリプション",

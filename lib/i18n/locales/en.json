@@ -612,7 +612,9 @@
       "loading": "Redirecting…",
       "alreadySubscribed": "You are already on the Standard plan",
       "alreadySubscribedCta": "View subscription",
-      "unavailable": "Checkout is unavailable right now, please try again later"
+      "unavailable": "Checkout is unavailable right now, please try again later",
+      "currentPlan": "Current plan",
+      "manage": "Manage subscription"
     },
     "subscription": {
       "sectionLabel": "Subscription",

@@ -6,14 +6,9 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import { notifyUsageChanged } from '@/hooks/useUsage'
 import { CheckoutButton } from './CheckoutButton'
 import { formatMonthDay } from './usageText'
+import type { BillingView } from './useBillingPlan'
 
-export type BillingView = {
-  tier: 'free' | 'standard' | 'pro'
-  hasSubscription: boolean
-  status: string | null
-  currentPeriodEnd: string | null
-  cancelAtPeriodEnd: boolean
-}
+export type { BillingView }
 
 /** 从 Creem 结账页回来后轮询开通结果：3 秒一次，最多 30 秒（设计 §8） */
 const POLL_INTERVAL_MS = 3000
@@ -110,6 +105,7 @@ export function SubscriptionCard(props: { locale?: SupportedLocale; pendingActiv
         ) : (
           <CheckoutButton
             locale={locale}
+            skipPlanCheck
             callbackUrl="/me"
             label={t('billing.subscription.upgradeCta', locale)}
             className="rounded-full bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"

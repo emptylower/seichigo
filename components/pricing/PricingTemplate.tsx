@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import { Check, Minus } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { CheckoutButton } from '@/components/billing/CheckoutButton'
+import { PricingFreeCta } from './PricingCtas'
 
 type Row = { key: string; free: string | boolean; standard: string | boolean; pro: string | boolean }
 
@@ -80,12 +80,12 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
                 className="mt-4 w-full rounded-full bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
             ) : (
-              <Link
+              <PricingFreeCta
+                locale={locale}
                 href={tier.cta.href}
+                label={tier.cta.label}
                 className={`mt-4 block w-full rounded-full px-4 py-2 text-center text-sm font-medium ${tier.cta.primary ? 'bg-brand-600 text-white hover:bg-brand-500' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-              >
-                {tier.cta.label}
-              </Link>
+              />
             )}
           </section>
         ))}

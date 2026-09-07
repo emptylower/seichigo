@@ -612,7 +612,9 @@
       "loading": "正在跳转…",
       "alreadySubscribed": "你已经是标准档",
       "alreadySubscribedCta": "查看订阅",
-      "unavailable": "支付暂不可用，请稍后再试"
+      "unavailable": "支付暂不可用，请稍后再试",
+      "currentPlan": "当前套餐",
+      "manage": "管理订阅"
     },
     "subscription": {
       "sectionLabel": "订阅",
