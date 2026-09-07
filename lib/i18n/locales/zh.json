@@ -581,7 +581,14 @@
       "futureDescriptionLine2": "我们的目标是把所有圣地装进口袋，成为你打破次元壁最可靠的伙伴。",
       "futureComingSoon": "Coming Soon",
       "contactTitle": "联系我们",
-      "contactDescription": "无论是发现数据错误、投稿你的巡礼故事，还是有商务合作意向，我们都非常期待听到你的声音。"
+      "contactDescription": "无论是发现数据错误、投稿你的巡礼故事，还是有商务合作意向，我们都非常期待听到你的声音。",
+      "pressTitle": "媒体与引用",
+      "pressWhatWeAre": "SeichiGo 是动漫圣地巡礼的行程工具与攻略站。全球巡礼地图收录 5 万+ 点位、1,500+ 部作品；输入作品与天数，AI 行程规划会生成含交通衔接的逐日路线。支持简体中文、繁体中文、日语、英语。",
+      "pressCiteTitle": "引用与素材",
+      "pressCiteText": "欢迎媒体与个人引用本站内容：请注明来源「SeichiGo」并链接到对应页面。",
+      "pressCitePhotos": "本站自行拍摄的实景照片，可在注明来源的前提下用于报道与非商业用途。",
+      "pressCiteFrames": "动画画面版权归各著作权人所有，本站仅在场景对照范围内引用，无法授权二次使用。",
+      "pressContact": "媒体合作、素材申请与数据说明，请联系"
     },
     "posts": {
       "title": "巡礼攻略",

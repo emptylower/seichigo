@@ -581,7 +581,14 @@
       "futureDescriptionLine2": "Our goal is to put all pilgrimage sites in your pocket, becoming your most reliable companion in breaking the dimensional wall.",
       "futureComingSoon": "Coming Soon",
       "contactTitle": "Contact Us",
-      "contactDescription": "Whether you've found data errors, want to submit your pilgrimage story, or have business collaboration inquiries, we look forward to hearing from you."
+      "contactDescription": "Whether you've found data errors, want to submit your pilgrimage story, or have business collaboration inquiries, we look forward to hearing from you.",
+      "pressTitle": "Press & Citation",
+      "pressWhatWeAre": "SeichiGo is a route-planning tool and guide site for anime pilgrimage. On top of a global map of 50,000+ locations across 1,500+ anime, the AI planner turns an anime and a number of days into a day-by-day route with transit connections. Available in English, Japanese, and Simplified and Traditional Chinese.",
+      "pressCiteTitle": "Citing our content",
+      "pressCiteText": "You're welcome to cite our content. Please credit \"SeichiGo\" and link to the page you're citing.",
+      "pressCitePhotos": "Our own on-location photos may be used for editorial and non-commercial purposes with credit.",
+      "pressCiteFrames": "Anime frames belong to their respective rights holders. We reproduce them only for scene comparison and cannot license further use.",
+      "pressContact": "For press, image requests or questions about our data, contact"
     },
     "posts": {
       "title": "Pilgrimage guides",

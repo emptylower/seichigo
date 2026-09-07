@@ -103,6 +103,26 @@ export default function AboutEnPage() {
         </div>
       </section>
 
+      {/* Press & Citation */}
+      <section className="mx-auto max-w-3xl px-6">
+        <h2 className="text-center text-2xl font-bold text-gray-900">{t('pages.about.pressTitle', 'en')}</h2>
+        <p className="mt-6 text-lg text-gray-600 leading-relaxed">
+          {t('pages.about.pressWhatWeAre', 'en')}
+        </p>
+        <div className="mt-8 rounded-2xl bg-gray-50 p-8 shadow-sm">
+          <h3 className="text-xl font-bold text-gray-900">{t('pages.about.pressCiteTitle', 'en')}</h3>
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-gray-600 leading-relaxed">
+            <li>{t('pages.about.pressCiteText', 'en')}</li>
+            <li>{t('pages.about.pressCitePhotos', 'en')}</li>
+            <li>{t('pages.about.pressCiteFrames', 'en')}</li>
+          </ul>
+          <p className="mt-4 text-gray-600 leading-relaxed">
+            {t('pages.about.pressContact', 'en')}{' '}
+            <a href={`mailto:${CONTACT_EMAIL}`} className="text-brand-600 hover:underline">{CONTACT_EMAIL}</a>
+          </p>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-4xl px-6">
         <div className="overflow-hidden rounded-3xl bg-gray-900 text-white shadow-xl">
           <div className="grid md:grid-cols-2">
