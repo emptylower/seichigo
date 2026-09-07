@@ -37,13 +37,14 @@ export function mapDbSubtitle(locale: SiteLocale, stats?: { works: number } | nu
 }
 
 /**
- * 初始 zoom 随容器宽度取 log2(width/256)+0.08（下限 1.2）：世界宽度略大于容器，
- * 正好铺满且不出现第二份日本（桌面 1150px 容器约 2.25）；不再 fitBounds 到日本。
+ * 初始 zoom 随容器宽度取 log2(width/512)+0.08（下限 0.6）：MapLibre 的 zoom 0 是
+ * 512px 宽的世界（不是 256），这样世界宽度略大于容器、正好铺满且不出现第二份日本
+ * （桌面 1150px 容器约 1.25）；不再 fitBounds 到日本。
  * 注意不能给上限：renderWorldCopies=true 后更宽的容器需要更高 zoom 才能铺满。
  */
 export function zoomForWidth(width: number): number {
   const w = Number.isFinite(width) && width > 0 ? width : 960
-  return Math.round(Math.max(1.2, Math.log2(w / 256) + 0.08) * 100) / 100
+  return Math.round(Math.max(0.6, Math.log2(w / 512) + 0.08) * 100) / 100
 }
 
 /** 城市标签胶囊的估计高度（px-2.5 py-1 text-xs 白底胶囊） */

@@ -45,11 +45,11 @@ describe('mapDbSubtitle', () => {
 })
 
 describe('zoomForWidth', () => {
-  it('log2(width/256)+0.08、下限 1.2：世界略宽于容器正好铺满，桌面 1150px 约 2.25', () => {
-    expect(zoomForWidth(256)).toBe(1.2)
-    expect(zoomForWidth(320)).toBe(1.2)
-    expect(zoomForWidth(1024)).toBe(2.08)
-    expect(zoomForWidth(1150)).toBe(2.25)
+  it('log2(width/512)+0.08、下限 0.6：MapLibre zoom 0 是 512px 世界，桌面 1150px 约 1.25', () => {
+    expect(zoomForWidth(256)).toBe(0.6)
+    expect(zoomForWidth(320)).toBe(0.6)
+    expect(zoomForWidth(1024)).toBe(1.08)
+    expect(zoomForWidth(1150)).toBe(1.25)
     // 无上限：更宽的容器需要更高 zoom 才能铺满
     expect(zoomForWidth(2000)).toBeGreaterThan(zoomForWidth(1150))
   })
@@ -57,8 +57,8 @@ describe('zoomForWidth', () => {
   it('容器宽度读不到（0/NaN）时按 960 给默认值', () => {
     const fallback = zoomForWidth(0)
     expect(fallback).toBe(zoomForWidth(960))
-    expect(fallback).toBeGreaterThan(1.9)
-    expect(fallback).toBeLessThan(2.1)
+    expect(fallback).toBeGreaterThan(0.9)
+    expect(fallback).toBeLessThan(1.1)
     expect(zoomForWidth(Number.NaN)).toBe(fallback)
   })
 })
