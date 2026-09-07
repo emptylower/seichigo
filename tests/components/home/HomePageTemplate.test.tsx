@@ -41,12 +41,12 @@ function positionOf(text: string): number {
 }
 
 describe('HomePageTemplate（第十二轮信息架构）', () => {
-  it('按规划师主线排列各段：输入框 → 入口卡 → 展示计划 → 地图 → 攻略 → 浏览 → FAQ', () => {
+  it('按规划师主线排列各段：输入框 → 入口卡 → 地图数据库（第二屏）→ 行程展示（第三屏）→ 攻略 → 浏览 → FAQ', () => {
     render(<HomePageTemplate locale="zh" data={portalDataFixture()} />)
 
     expect(screen.getByPlaceholderText('例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》')).toBeInTheDocument()
 
-    const order = ['AI 行程规划', '看看规划师做出来的行程', '全球 128,456 个巡礼点位', '按作品和城市浏览']
+    const order = ['AI 行程规划', '全球圣地点位数据库', '定制专属巡礼行程', '按作品和城市浏览']
     const positions = order.map(positionOf)
     expect(positions.every((p) => p >= 0)).toBe(true)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
@@ -93,7 +93,8 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     )
 
     expect(screen.getByPlaceholderText('例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '看看规划师做出来的行程' })).toBeNull()
+    expect(screen.queryByText('定制专属巡礼行程')).toBeNull()
+    expect(screen.queryByText('全球圣地点位数据库')).toBeNull()
     expect(screen.getByRole('heading', { name: '按作品和城市浏览' })).toBeInTheDocument()
   })
 })

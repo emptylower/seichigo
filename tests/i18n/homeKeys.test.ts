@@ -70,8 +70,8 @@ describe('新首页关键 key 在位', () => {
     'heroDemoSummary',
     'heroDemoWalkTotal',
     'composerPlaceholder',
-    'showcaseTitle',
-    'mapTeaserTitle',
+    'planTitle',
+    'mapDbTitle',
     'heroScrollHint',
   ])('%s', (key) => {
     expect(homeV2).toHaveProperty(key)
@@ -94,10 +94,19 @@ describe('新首页关键 key 在位', () => {
     }
   })
 
-  it('mapTeaserTitle 是带 {count} 的整句模板（低-7：不再空格硬拼）', () => {
+  it('地图数据库副标题是带 {works}/{cities} 占位的整句模板（不再硬拼数字）', () => {
     for (const [, dict] of LOCALES) {
-      const title = flatten(at(dict, 'pages.home.v2'))['mapTeaserTitle']!
-      expect(title).toContain('{count}')
+      const subtitle = flatten(at(dict, 'pages.home.v2'))['mapDbSubtitle']!
+      expect(subtitle).toContain('{works}')
+      expect(subtitle).toContain('{cities}')
+    }
+  })
+
+  it('第三屏标题是带 {accent} 的模板（与 heroTitle 同做法），accent 本身不含占位', () => {
+    for (const [, dict] of LOCALES) {
+      const home = flatten(at(dict, 'pages.home.v2'))
+      expect(home['planTitle']).toContain('{accent}')
+      expect(home['planTitleAccent']).not.toContain('{')
     }
   })
 })
