@@ -53,6 +53,36 @@ const mapClustersFixture = {
   cells: [{ lng: 139.65, lat: 35.65, count: 42 }],
 }
 
+const mapWorldFixture = {
+  generatedAt: '2026-09-07T00:00:00.000Z',
+  totalPoints: 12_345,
+  image: {
+    src: '/images/home/map-world.webp',
+    src2x: '/images/home/map-world@2x.webp',
+    width: 1208,
+    height: 441,
+    bounds: { lngStart: -22, lngSpan: 345, latTop: 74, latBottom: -52 },
+    attribution: '底图：TUBS / Wikimedia Commons, CC BY-SA 3.0',
+  },
+  labels: [
+    {
+      key: 'tokyo',
+      name: { zh: '东京', en: 'Tokyo', ja: '東京' },
+      count: 13959,
+      lng: 139.69,
+      lat: 35.69,
+      primary: true,
+    },
+    {
+      key: 'london',
+      name: { zh: '伦敦', en: 'London', ja: 'ロンドン' },
+      count: 612,
+      lng: -0.13,
+      lat: 51.51,
+    },
+  ],
+}
+
 const heroDemoFixture = {
   planTitle: '你的名字 东京巡礼 8 日',
   day: {
@@ -99,6 +129,7 @@ const generatedDeps = {
   readHomeShowcase: async () => JSON.parse(JSON.stringify(showcaseFixture)) as typeof showcaseFixture,
   readHomeMapClusters: async () => JSON.parse(JSON.stringify(mapClustersFixture)) as typeof mapClustersFixture,
   readHomeHeroDemo: async () => JSON.parse(JSON.stringify(heroDemoFixture)) as typeof heroDemoFixture,
+  readHomeMapWorld: async () => null,
 }
 
 describe('getHomePortalData', () => {
@@ -364,6 +395,53 @@ describe('getHomePortalData', () => {
     expect(data.showcase).toEqual(showcaseFixture)
     expect(data.mapClusters).toEqual(mapClustersFixture)
     expect(data.heroDemo).toEqual(heroDemoFixture)
+  })
+
+  it('yields mapWorld null when the source is missing while the rest of the portal stays intact', async () => {
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      readHomeMapWorld: async () => null,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.mapWorld).toBeNull()
+    expect(data.mapClusters).toEqual(mapClustersFixture)
+    expect(data.heroDemo).toEqual(heroDemoFixture)
+    expect(data.stats).toEqual(homeStatsFixture)
+  })
+
+  it('passes a valid mapWorld payload through to the portal data', async () => {
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      readHomeMapWorld: async () => JSON.parse(JSON.stringify(mapWorldFixture)) as typeof mapWorldFixture,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.mapWorld).toEqual(mapWorldFixture)
+  })
+
+  it('tolerates a throwing mapWorld source instead of failing the whole page', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const data = await getHomePortalData('en', {
+      ...generatedDeps,
+      readHomeMapWorld: async () => {
+        throw new Error('map world unavailable')
+      },
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+    })
+
+    expect(data.mapWorld).toBeNull()
+    expect(data.mapClusters).toEqual(mapClustersFixture)
+    expect(consoleError).toHaveBeenCalledWith(
+      '[home:data-source-error] locale=en source=home.mapWorld kind=failure',
+      expect.any(Error)
+    )
   })
 
   it('rejects the render when the hero demo source fails', async () => {

@@ -8,7 +8,7 @@ import {
 } from '@/lib/home/dataSourceError'
 import { getHomeStats } from '@/lib/home/getHomeStats'
 import { orderGuides } from '@/lib/home/guidesOrder'
-import { readHomeHeroDemoFile, readHomeMapClustersFile, readHomeShowcaseFile } from '@/lib/home/generatedHomeFiles'
+import { readHomeHeroDemoFile, readHomeMapClustersFile, readHomeMapWorldFile, readHomeShowcaseFile } from '@/lib/home/generatedHomeFiles'
 import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
@@ -17,6 +17,7 @@ import type { PublicPostListItem } from '@/lib/posts/types'
 import type {
   HomeHeroDemo,
   HomeMapClusters,
+  HomeMapWorld,
   HomePopularAnimeItem,
   HomePortalData,
   HomeShowcase,
@@ -31,6 +32,8 @@ type HomeDataDeps = {
   readHomeShowcase: () => Promise<HomeShowcase>
   readHomeMapClusters: () => Promise<HomeMapClusters>
   readHomeHeroDemo: () => Promise<HomeHeroDemo>
+  /** 可选源：缺失/失败返回 null，不参与整页失败判定 */
+  readHomeMapWorld?: () => Promise<HomeMapWorld | null>
 }
 
 export const HOME_DATA_TIMEOUT_MS = 15_000
@@ -260,6 +263,7 @@ export async function getHomePortalData(
     readHomeShowcase: async () => readHomeShowcaseFile(),
     readHomeMapClusters: async () => readHomeMapClustersFile(),
     readHomeHeroDemo: async () => readHomeHeroDemoFile(),
+    readHomeMapWorld: async () => readHomeMapWorldFile(),
     ...deps,
   }
 
@@ -325,6 +329,19 @@ export async function getHomePortalData(
   const mapClusters = unwrapHomeResult(mapClustersResult)
   const heroDemo = unwrapHomeResult(heroDemoResult)
 
+  // 静态世界地图是可选产物：读取失败只退回 null（第二屏不渲染），不拖垮整页
+  let mapWorld: HomeMapWorld | null = null
+  if (effectiveDeps.readHomeMapWorld) {
+    try {
+      mapWorld = await effectiveDeps.readHomeMapWorld()
+    } catch (reason) {
+      console.error(
+        `[home:data-source-error] locale=${locale} source=home.mapWorld kind=failure`,
+        reason
+      )
+    }
+  }
+
   const visiblePosts = posts.filter((p) => !isSeoSpokePost(p))
   const localizedPosts = localizePostListItems(visiblePosts, animeList, cityData.cities, locale)
 
@@ -340,6 +357,7 @@ export async function getHomePortalData(
     showcase,
     mapClusters,
     heroDemo,
+    mapWorld,
     guides: buildGuides(localizedPosts),
   }
 }

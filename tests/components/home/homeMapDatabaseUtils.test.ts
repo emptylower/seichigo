@@ -5,10 +5,11 @@ import {
   mapDbSubtitle,
   mapLabelRect,
   placeMapLabels,
+  placeWorldMapLabels,
   rectsOverlap,
   roundDownToThousands,
-  zoomForWidth,
 } from '@/components/home/homeMapDatabaseUtils'
+import { mapWorldFixture } from './fixtures'
 
 describe('roundDownToThousands / formatRoundedTotal', () => {
   it('向下取整到千位：50597 → 50000，千分位按 locale 格式化', () => {
@@ -44,22 +45,31 @@ describe('mapDbSubtitle', () => {
   })
 })
 
-describe('zoomForWidth', () => {
-  it('log2(width/512)+0.08、下限 0.6：MapLibre zoom 0 是 512px 世界，桌面 1150px 约 1.25', () => {
-    expect(zoomForWidth(256)).toBe(0.6)
-    expect(zoomForWidth(320)).toBe(0.6)
-    expect(zoomForWidth(1024)).toBe(1.08)
-    expect(zoomForWidth(1150)).toBe(1.25)
-    // 无上限：更宽的容器需要更高 zoom 才能铺满
-    expect(zoomForWidth(2000)).toBeGreaterThan(zoomForWidth(1150))
+describe('placeWorldMapLabels（静态世界地图标签）', () => {
+  const world = mapWorldFixture()
+
+  it('经纬度按 bounds 换算成百分比坐标（东京 ≈ 合同里的世界位置）', () => {
+    const placed = placeWorldMapLabels(world.labels, world.image.bounds, 1208, 441, 'zh')
+    const tokyo = placed.find((label) => label.key === 'tokyo')!
+    // (139.69+22)/345 ≈ 46.87%，(74-35.69)/126 ≈ 30.40%
+    expect(tokyo.xPct).toBeCloseTo(46.87, 1)
+    expect(tokyo.yPct).toBeCloseTo(30.4, 1)
   })
 
-  it('容器宽度读不到（0/NaN）时按 960 给默认值', () => {
-    const fallback = zoomForWidth(0)
-    expect(fallback).toBe(zoomForWidth(960))
-    expect(fallback).toBeGreaterThan(0.9)
-    expect(fallback).toBeLessThan(1.1)
-    expect(zoomForWidth(Number.NaN)).toBe(fallback)
+  it('按 count 降序先到先得：东京/京都矩形相交 → 京都挤掉，海外标签全保留', () => {
+    const placed = placeWorldMapLabels(world.labels, world.image.bounds, 1208, 441, 'zh')
+    expect(placed.map((label) => label.key)).toEqual(['tokyo', 'london', 'los-angeles', 'seoul'])
+  })
+
+  it('保留 primary 标记、按 locale 取名与千分位数字', () => {
+    const placed = placeWorldMapLabels(world.labels, world.image.bounds, 1208, 441, 'en')
+    const tokyo = placed.find((label) => label.key === 'tokyo')!
+    expect(tokyo.primary).toBe(true)
+    expect(tokyo.name).toBe('Tokyo')
+    expect(tokyo.countText).toBe('13,959')
+    const seoul = placed.find((label) => label.key === 'seoul')!
+    expect(seoul.primary).toBe(false)
+    expect(seoul.name).toBe('Seoul')
   })
 })
 

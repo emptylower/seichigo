@@ -9,6 +9,7 @@ import {
   showcaseOverviewImage,
   showcasePointCount,
   showcaseShortTitle,
+  showcaseWorkName,
   showcaseWorks,
   transitLineText,
   visibleDayTimeline,
@@ -39,6 +40,15 @@ describe('showcaseShortTitle', () => {
     expect(showcaseShortTitle('2026东京圣诞周8日｜天气之子×你的名字 巡礼')).toBe('2026东京圣诞周8日')
     expect(showcaseShortTitle('东京 8 日 | 细分标题')).toBe('东京 8 日')
     expect(showcaseShortTitle('没有分隔符的标题')).toBe('没有分隔符的标题')
+  })
+})
+
+describe('showcaseWorkName', () => {
+  it('取「・」前段作为作品名；无分隔符或前段为空返回 null', () => {
+    expect(showcaseWorkName('你的名字・须贺神社男坂')).toBe('你的名字')
+    expect(showcaseWorkName('须贺神社男坂')).toBeNull()
+    expect(showcaseWorkName('・须贺神社')).toBeNull()
+    expect(showcaseWorkName('・')).toBeNull()
   })
 })
 

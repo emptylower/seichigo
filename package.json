@@ -22,6 +22,7 @@
     "anitabi:repair-covers": "npx ts-node -T --project tsconfig.node.json -r tsconfig-paths/register scripts/anitabi-repair-cover-hosts.ts",
     "i18n:coverage": "npx tsx scripts/measure-i18n-coverage.ts",
     "glossary:build": "npx tsx scripts/build-glossary.ts",
+    "generate:home-map-world": "npx tsx scripts/generate-home-map-world.mts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

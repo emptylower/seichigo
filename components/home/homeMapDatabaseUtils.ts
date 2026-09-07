@@ -1,10 +1,12 @@
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { projectMapWorld } from '@/lib/home/mapWorld'
+import type { HomeMapWorldBounds, HomeMapWorldLabel } from '@/lib/home/types'
 import { t } from '@/lib/i18n'
 
 /**
- * 第二屏「全球点位数据库」的纯函数：数字取整、副标题拼接、城市标签的
- * 像素碰撞规避。组件（HomeMapDatabase.tsx）只做渲染与地图装配，
- * 这里的一切都能在 node 里直接单测。
+ * 第二屏「全球点位数据库」的纯函数：数字取整、副标题拼接、静态世界地图
+ * 城市标签的碰撞规避（百分比坐标 → 桌面基准像素 → 矩形相交）。
+ * 组件（HomeMapDatabase.tsx）只做渲染，这里的一切都能在 node 里直接单测。
  */
 
 /** 数字格式化 locale（沿用旧 HomeMapTeaser 的口径） */
@@ -34,17 +36,6 @@ export function formatStatNumber(value: number, locale: SiteLocale): string {
 export function mapDbSubtitle(locale: SiteLocale, stats?: { works: number } | null): string {
   if (!stats || !stats.works) return t('pages.home.v2.mapDbSubtitleTail', locale)
   return t('pages.home.v2.mapDbSubtitle', locale).replace('{works}', formatStatNumber(stats.works, locale))
-}
-
-/**
- * 初始 zoom 随容器宽度取 log2(width/512)+0.08（下限 0.6）：MapLibre 的 zoom 0 是
- * 512px 宽的世界（不是 256），这样世界宽度略大于容器、正好铺满且不出现第二份日本
- * （桌面 1150px 容器约 1.25）；不再 fitBounds 到日本。
- * 注意不能给上限：renderWorldCopies=true 后更宽的容器需要更高 zoom 才能铺满。
- */
-export function zoomForWidth(width: number): number {
-  const w = Number.isFinite(width) && width > 0 ? width : 960
-  return Math.round(Math.max(0.6, Math.log2(w / 512) + 0.08) * 100) / 100
 }
 
 /** 城市标签胶囊的估计高度（px-2.5 py-1 text-xs 白底胶囊） */
@@ -90,4 +81,54 @@ export function placeMapLabels<T extends MapLabelCandidate>(candidates: T[]): T[
     out.push(candidate)
   }
   return out
+}
+
+/** 静态世界地图上一条放置成功的标签（渲染只需要百分比坐标与文本） */
+export type PlacedWorldMapLabel = {
+  key: string
+  name: string
+  countText: string
+  primary: boolean
+  xPct: number
+  yPct: number
+}
+
+/**
+ * 静态世界地图的标签布局：按 count 降序，用 projectMapWorld 把经纬度换算成
+ * 百分比坐标，再换算成桌面基准（1x 图 1208×441）下的像素，配合估计胶囊宽度
+ * 做矩形相交规避；渲染时仍按百分比定位（卡片宽度随视口缩放，标签跟随缩放）。
+ */
+export function placeWorldMapLabels(
+  labels: HomeMapWorldLabel[],
+  bounds: HomeMapWorldBounds,
+  baseWidth: number,
+  baseHeight: number,
+  locale: SiteLocale,
+): PlacedWorldMapLabel[] {
+  const candidates = [...labels]
+    .sort((a, b) => b.count - a.count)
+    .map((label) => {
+      const { xPct, yPct } = projectMapWorld(bounds, label.lng, label.lat)
+      const name = label.name[locale] ?? label.name.zh
+      const countText = formatStatNumber(label.count, locale)
+      return {
+        key: label.key,
+        name,
+        countText,
+        primary: label.primary === true,
+        xPct,
+        yPct,
+        x: (xPct / 100) * baseWidth,
+        y: (yPct / 100) * baseHeight,
+        width: estimateMapLabelWidth(`${name} ${countText}`),
+      }
+    })
+  return placeMapLabels(candidates).map((placed) => ({
+    key: placed.key,
+    name: placed.name,
+    countText: placed.countText,
+    primary: placed.primary,
+    xPct: placed.xPct,
+    yPct: placed.yPct,
+  }))
 }

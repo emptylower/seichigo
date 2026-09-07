@@ -51,9 +51,7 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
           → 规划师行程逐天展示（第三屏，id="home-plan"）→ 攻略 → 浏览 → FAQ。
           地图段自己的卡片在 lg 破框到 max-w-6xl（组件内部处理，移动端不溢出）。 */}
       <div data-home-sections className="mx-auto w-full max-w-5xl space-y-12 px-4 pt-20 sm:space-y-16">
-        {data.mapClusters ? (
-          <HomeMapDatabase locale={locale} clusters={data.mapClusters} stats={data.stats} demo={data.heroDemo} />
-        ) : null}
+        <HomeMapDatabase locale={locale} world={data.mapWorld ?? null} stats={data.stats} demo={data.heroDemo} />
         {data.showcase ? <HomeShowcasePlan locale={locale} showcase={data.showcase} /> : null}
         <HomeGuides locale={locale} items={guideItems(data)} />
         <HomeBrowse locale={locale} anime={data.popularAnime} cities={data.popularCities} />

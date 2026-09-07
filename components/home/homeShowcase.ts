@@ -17,6 +17,13 @@ export function showcaseShortTitle(title: string): string {
   return cut || title.trim()
 }
 
+/** point 条目标题的格式是「作品名・点位名」：取「・」之前的部分作为作品名，取不到（无分隔符/前段为空）返回 null */
+export function showcaseWorkName(title: string): string | null {
+  const idx = title.indexOf('・')
+  if (idx <= 0) return null
+  return title.slice(0, idx).trim() || null
+}
+
 /** point 条目标题的格式是「作品名・点位名」：取「・」之前的部分，去重，最多 max 个 */
 export function showcaseWorks(days: TripPlanDayView[], max = 4): string[] {
   const out: string[] = []
@@ -24,9 +31,7 @@ export function showcaseWorks(days: TripPlanDayView[], max = 4): string[] {
   for (const day of days) {
     for (const item of day.items) {
       if (item.type !== 'point') continue
-      const idx = item.title.indexOf('・')
-      if (idx <= 0) continue
-      const work = item.title.slice(0, idx).trim()
+      const work = showcaseWorkName(item.title)
       if (!work || seen.has(work)) continue
       seen.add(work)
       out.push(work)

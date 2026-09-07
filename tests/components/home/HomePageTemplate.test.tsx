@@ -14,24 +14,6 @@ vi.mock('@/components/map/ResilientMapImage', () => ({
     <div data-testid="resilient-image" data-src={props.src ?? ''} aria-label={props.alt} />
   ),
 }))
-vi.mock('maplibre-gl', () => {
-  class FakeMap {
-    constructor(public options: Record<string, unknown>) {}
-    on() {}
-    off() {}
-    addSource() {}
-    getSource() {
-      return undefined
-    }
-    addLayer() {}
-    getLayer() {
-      return undefined
-    }
-    fitBounds() {}
-    remove() {}
-  }
-  return { default: { Map: FakeMap } }
-})
 
 import HomePageTemplate from '@/components/home/HomePageTemplate'
 import { portalDataFixture } from './fixtures'
@@ -107,7 +89,7 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     render(
       <HomePageTemplate
         locale="zh"
-        data={portalDataFixture({ stats: undefined, showcase: undefined, mapClusters: undefined, guides: [] })}
+        data={portalDataFixture({ stats: undefined, showcase: undefined, mapWorld: null, guides: [] })}
       />,
     )
 
