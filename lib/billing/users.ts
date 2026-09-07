@@ -13,4 +13,6 @@ export type BillingUser = {
 export interface BillingUserRepo {
   get(userId: string): Promise<BillingUser | null>
   setPeriod(userId: string, periodStart: Date, periodEnd: Date): Promise<void>
+  /** F2：读时兜底降档——整写 tier 与锚点/周期 */
+  setTier(userId: string, tier: Tier, periodAnchor: Date, periodStart: Date, periodEnd: Date): Promise<void>
 }

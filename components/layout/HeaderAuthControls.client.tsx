@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import Avatar from '@/components/shared/Avatar'
+import { useUsage } from '@/hooks/useUsage'
+import { t } from '@/lib/i18n'
 import type { SiteLocale } from './SiteShell'
 import { prefixPath } from './prefixPath'
 
@@ -41,6 +43,11 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   const { data: sessionData, status } = useSession()
   const session = sessionData as Session
   const loaded = status !== 'loading'
+  // 套餐档位：接口缺席/未登录时 usage 为 null，头像与名字区都不显示档位（不阻断渲染）
+  const { usage } = useUsage()
+  const tier = usage?.tier
+  const tierLabel = tier ? t(`billing.tier.${tier}`, locale) : undefined
+  const tierText = tier && tier !== 'free' ? tierLabel : undefined
 
   const userLabel = useMemo(() => {
     const v = String(session?.user?.name || session?.user?.email || labels.user).trim()
@@ -101,9 +108,10 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
         {showAuthed ? (
           <>
             <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-2">
-              <Avatar src={session?.user?.image} name={userLabel} size={32} />
+              <Avatar src={session?.user?.image} name={userLabel} size={32} tier={tier} tierLabel={tierLabel} />
               <div className="min-w-0">
                 <div className="line-clamp-1 text-[15px] font-semibold text-slate-800">{userLabel}</div>
+                {tierText ? <div className="text-[11px] leading-tight text-slate-500">{tierText}</div> : null}
               </div>
             </div>
             <Link href={prefixPath('/me', locale)} prefetch={false} className={drawerItemClass}>
@@ -150,9 +158,10 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
         {showAuthed ? (
           <>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
-              <Avatar src={session?.user?.image} name={userLabel} size={32} />
+              <Avatar src={session?.user?.image} name={userLabel} size={32} tier={tier} tierLabel={tierLabel} />
               <div className="min-w-0">
                 <div className="line-clamp-1 text-sm font-medium text-slate-800">{userLabel}</div>
+                {tierText ? <div className="text-[11px] leading-tight text-slate-500">{tierText}</div> : null}
               </div>
             </div>
             <Link href={prefixPath('/me', locale)} prefetch={false} className={stackButtonClass}>
@@ -205,6 +214,8 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
               src={session?.user?.image}
               name={userLabel}
               size={34}
+              tier={tier}
+              tierLabel={tierLabel}
             />
             <span className="sr-only">{userLabel}</span>
           </summary>

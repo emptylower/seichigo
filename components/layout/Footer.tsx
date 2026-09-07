@@ -13,8 +13,6 @@ type FooterLink = {
   label: string
   href: string
   isExternal?: boolean
-  /** 无语言前缀路由（app/en、app/ja 下没有镜像），直接用裸路径 */
-  noLocalePrefix?: boolean
 }
 
 type FooterColumn = {
@@ -36,7 +34,7 @@ export default function Footer({ locale = 'zh' }: Props) {
         { label: t('footer.anime', locale), href: '/anime' },
         { label: t('footer.city', locale), href: '/city' },
         { label: t('footer.resources', locale), href: '/resources' },
-        { label: t('footer.pricing', locale), href: '/pricing', noLocalePrefix: true },
+        { label: t('footer.pricing', locale), href: '/pricing' },
       ],
     },
     {
@@ -107,7 +105,7 @@ export default function Footer({ locale = 'zh' }: Props) {
                           {link.label}
                         </a>
                       ) : (
-                        <Link href={link.noLocalePrefix ? link.href : getHref(link.href)} prefetch={false} className="text-gray-500 hover:text-brand-600">
+                        <Link href={getHref(link.href)} prefetch={false} className="text-gray-500 hover:text-brand-600">
                           {link.label}
                         </Link>
                       )}

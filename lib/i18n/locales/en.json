@@ -352,7 +352,8 @@
         "placeholder": "Tell the planner your pilgrimage idea… (Enter to send, Shift+Enter for a new line)",
         "placeholderAnswer": "Type your own answer to this question… (Enter to send)",
         "send": "Send",
-        "stop": "Stop"
+        "stop": "Stop",
+        "upgrade": "Upgrade"
       },
       "chat": {
         "emptyHint": "Try: “Plan me 3 days in Kyoto in the middle of next month for a Sound! Euphonium pilgrimage”",
@@ -539,6 +540,67 @@
       "bookShelf": {
         "emptyState": "No articles yet, fill the bookshelf with your submissions."
       }
+    },
+    "pricing": {
+      "metaTitle": "Pricing · SeichiGo",
+      "metaDescription": "SeichiGo pilgrimage planning plans: what Free, Standard and Pro include, and how monthly usage works.",
+      "title": "Pick the plan that fits your pilgrimage",
+      "subtitle": "Billed monthly. Your usage refills every month and shows as a percentage on the plan and account pages.",
+      "comingSoon": "Coming soon",
+      "featureHeader": "Feature",
+      "included": "Included",
+      "notIncluded": "Not included",
+      "freeName": "Free",
+      "freeCta": "Available now",
+      "standardName": "Standard",
+      "standardPeriod": "/mo",
+      "standardCta": "Get Standard",
+      "proName": "Pro",
+      "rowPlanning": "AI planning, follow-up questions and re-runs",
+      "rowSpots": "Spots, cover images and day-by-day scheduling",
+      "rowPlaces": "Place lookup and photos",
+      "rowRestaurants": "Restaurant picks",
+      "rowTransit": "Transit details",
+      "rowHotels": "Hotel and flight suggestions",
+      "rowModels": "More models to choose from",
+      "rowDays": "Days per trip",
+      "rowUsage": "Monthly agent usage",
+      "transitFree": "Rough estimates",
+      "transitStandard": "Real routes",
+      "transitPro": "Real routes + Japan transit",
+      "daysFree": "Up to 3 days",
+      "daysStandard": "Up to 7 days",
+      "daysPro": "Unlimited",
+      "usageFree": "Starter amount",
+      "usageStandard": "Standard amount",
+      "usagePro": "Large amount",
+      "footnoteComingSoon": "Everything in Pro is still in the works.",
+      "footnotePayment": "Payments and invoices are handled by Creem; you can cancel your subscription anytime from your account page."
+    },
+    "me": {
+      "title": "My Home",
+      "sections": {
+        "plans": {
+          "title": "My Plans",
+          "desc": "Multi-day pilgrimage itineraries planned by AI"
+        },
+        "favorites": {
+          "title": "Favorites",
+          "desc": "Saved spots and guides"
+        },
+        "routebooks": {
+          "title": "My Maps",
+          "desc": "Hand-curated spot route books"
+        },
+        "submit": {
+          "title": "Submit",
+          "desc": "Share your pilgrimage guide"
+        },
+        "settings": {
+          "title": "Settings",
+          "desc": "Account and preferences"
+        }
+      }
     }
   },
   "auth": {
@@ -551,6 +613,49 @@
       "codePlaceholder": "6-digit code",
       "submit": "Sign in",
       "submitting": "Verifying…"
+    }
+  },
+  "billing": {
+    "tier": {
+      "free": "Free",
+      "standard": "Standard",
+      "pro": "Pro"
+    },
+    "usage": {
+      "sectionLabel": "Agent usage this month",
+      "remaining": "Agent usage left this month: {percent}",
+      "resets": "Resets on {date}",
+      "upgradeCta": "Upgrade for real routes and restaurant picks"
+    },
+    "hint": {
+      "transit": "Upgrade to see real routes and travel times",
+      "restaurant": "Upgrade to get restaurant picks",
+      "map": "Upgrade to show real routes",
+      "days": "Upgrade to plan more days"
+    },
+    "checkout": {
+      "loading": "Redirecting…",
+      "alreadySubscribed": "You are already on the Standard plan",
+      "alreadySubscribedCta": "View subscription",
+      "temporarilyUnavailable": "Checkout is unavailable right now, please try again later",
+      "currentPlan": "Current plan",
+      "manage": "Manage subscription",
+      "unavailable": {
+        "title": "Subscriptions not open yet",
+        "body": "The Standard plan is still being prepared and will open soon. We've noted your interest and will let you know in the app once it opens.",
+        "confirm": "Got it"
+      }
+    },
+    "subscription": {
+      "sectionLabel": "Subscription",
+      "current": "Current plan: {tier}",
+      "renewsOn": "Renews on {date}",
+      "endsOn": "Ends on {date}",
+      "upgradeCta": "Upgrade to Standard",
+      "manageCta": "Manage subscription",
+      "pending": "Activating your plan, this usually takes a few seconds",
+      "activated": "Your plan is active",
+      "portalError": "Cannot open the subscription portal right now, please try again later"
     }
   }
 }

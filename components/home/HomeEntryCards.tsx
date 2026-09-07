@@ -85,9 +85,8 @@ export default function HomeEntryCards({ locale, stats }: { locale: SiteLocale; 
           </Link>
         ))}
       </div>
-      {/* 次级入口：/pricing 无语言前缀路由（app/en、app/ja 下没有镜像），直接用裸路径 */}
       <div className="mt-2 text-center">
-        <Link href="/pricing" className="text-xs font-medium text-gray-600 no-underline hover:text-brand-600">
+        <Link href={prefixPath('/pricing', locale)} className="text-xs font-medium text-gray-600 no-underline hover:text-brand-600">
           {t('pages.home.v2.entryPricingLink', locale)}
         </Link>
       </div>

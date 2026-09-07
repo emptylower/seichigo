@@ -167,7 +167,7 @@ export function DayMap(props: {
           >
             {tx(sourceLabel === 'mixed' ? 'map.mixedBadge' : 'map.fallbackBadge')}
           </div>
-          {showMapUpgradeHint ? <TierHint kind="map" /> : null}
+          {showMapUpgradeHint ? <TierHint kind="map" locale={locale} /> : null}
         </div>
       ) : null}
       {loading ? (

@@ -17,6 +17,7 @@ const LABEL_MAP: Record<string, string> = {
   seo: "SEO 管理",
   maintenance: "维护工具",
   ops: "运维检查",
+  billing: "订阅意向",
   rankings: "排名监控",
   "spoke-factory": "长尾页面工厂",
 }

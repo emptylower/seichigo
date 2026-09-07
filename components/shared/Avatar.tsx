@@ -4,17 +4,39 @@ import { useMemo, useState } from 'react'
 import Image from 'next/image'
 import { getGradientColors } from '@/lib/utils/avatarGradient'
 
+export type AvatarTier = 'free' | 'standard' | 'pro'
+
 type Props = {
   src?: string | null
   name: string
   size?: number
   className?: string
+  /** 套餐等级：standard/pro 加渐变环与右下角档位徽标；free/未传保持现状 */
+  tier?: AvatarTier
+  /** 档位名（字典 billing.tier.*），用作徽标 title */
+  tierLabel?: string
 }
 
 type Rgb = {
   r: number
   g: number
   b: number
+}
+
+/** 环用绝对定位的渐变圆片垫在头像底下，露出 2px 边缘，不改变外层布局尺寸 */
+const TIER_RING_CLASS: Record<'standard' | 'pro', string> = {
+  standard: 'from-brand-400 to-pink-400',
+  pro: 'from-amber-400 to-yellow-300',
+}
+
+const TIER_BADGE_CLASS: Record<'standard' | 'pro', string> = {
+  standard: 'bg-brand-600',
+  pro: 'bg-amber-500',
+}
+
+const TIER_BADGE_TEXT: Record<'standard' | 'pro', string> = {
+  standard: 'S',
+  pro: 'P',
 }
 
 function hexToRgb(hex: string): Rgb {
@@ -36,7 +58,7 @@ function relativeLuminance({ r, g, b }: Rgb): number {
   return rr * 0.2126 + gg * 0.7152 + bb * 0.0722
 }
 
-export default function Avatar({ src, name, size = 32, className = '' }: Props) {
+export default function Avatar({ src, name, size = 32, className = '', tier, tierLabel }: Props) {
   const [imageError, setImageError] = useState(false)
 
   const [c1, c2] = useMemo(() => getGradientColors(name), [name])
@@ -49,13 +71,8 @@ export default function Avatar({ src, name, size = 32, className = '' }: Props) 
 
   const showImage = src && !imageError
 
-  return (
-    <div
-      className={`relative inline-flex items-center justify-center overflow-hidden rounded-full ring-1 ring-black/10 shadow-[0_4px_12px_rgba(17,24,39,0.18)] ${className}`}
-      style={{ width: size, height: size }}
-      role="img"
-      aria-label={name}
-    >
+  const body = (
+    <>
       {showImage ? (
         <Image
           src={src}
@@ -77,6 +94,46 @@ export default function Avatar({ src, name, size = 32, className = '' }: Props) 
         aria-hidden
         className="pointer-events-none absolute inset-0 rounded-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),inset_0_-1px_2px_rgba(15,23,42,0.2)]"
       />
+    </>
+  )
+
+  if (!tier || tier === 'free') {
+    return (
+      <div
+        className={`relative inline-flex items-center justify-center overflow-hidden rounded-full ring-1 ring-black/10 shadow-[0_4px_12px_rgba(17,24,39,0.18)] ${className}`}
+        style={{ width: size, height: size }}
+        role="img"
+        aria-label={name}
+      >
+        {body}
+      </div>
+    )
+  }
+
+  const badgeSize = Math.max(11, Math.round(size * 0.42))
+
+  return (
+    <div className={`relative inline-flex ${className}`} style={{ width: size, height: size }}>
+      <span
+        aria-hidden
+        data-testid="avatar-tier-ring"
+        className={`pointer-events-none absolute -inset-[2px] rounded-full bg-gradient-to-br ${TIER_RING_CLASS[tier]}`}
+      />
+      <div
+        className="relative inline-flex h-full w-full items-center justify-center overflow-hidden rounded-full ring-1 ring-black/10 shadow-[0_4px_12px_rgba(17,24,39,0.18)]"
+        role="img"
+        aria-label={name}
+      >
+        {body}
+      </div>
+      <span
+        data-testid="avatar-tier-badge"
+        title={tierLabel ?? tier}
+        className={`absolute -bottom-0.5 -right-0.5 flex select-none items-center justify-center rounded-full font-bold text-white ring-1 ring-white ${TIER_BADGE_CLASS[tier]}`}
+        style={{ width: badgeSize, height: badgeSize, fontSize: Math.max(7, Math.round(badgeSize * 0.6)) }}
+      >
+        {TIER_BADGE_TEXT[tier]}
+      </span>
     </div>
   )
 }

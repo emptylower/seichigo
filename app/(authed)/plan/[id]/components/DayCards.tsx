@@ -240,7 +240,7 @@ function TimelineCardRow(props: {
         ) : null}
         {showMealHint ? (
           <div className="mt-1.5">
-            <TierHint kind="restaurant" />
+            <TierHint kind="restaurant" locale={locale} />
           </div>
         ) : null}
       </div>
@@ -494,7 +494,7 @@ export function DayCards(props: {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <DaysLimitHint dayCount={days.length} maxDays={tierHints?.maxDays} />
+          <DaysLimitHint dayCount={days.length} maxDays={tierHints?.maxDays} locale={locale} />
           {staticMode ? null : scope === 'snapshot' ? (
             <span className="text-xs text-gray-400">{tx('day.snapshotReadonly')}</span>
           ) : (

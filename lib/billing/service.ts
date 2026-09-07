@@ -50,6 +50,8 @@ export function createBillingService(deps: {
   users: BillingUserRepo
   /** run 是否仍在跑（tripPlan.agentRunToken 仍等于 runRef）；孤儿退款前复核用 */
   isRunActive: (planId: string, runRef: string) => Promise<boolean>
+  /** F2：读时兜底降档用——用户是否仍有活跃订阅（active/trialing/past_due/scheduled_cancel） */
+  subscriptions?: { findActiveByUser(userId: string): Promise<{ currentPeriodEnd: Date } | null> }
   now?: () => Date
 }): BillingService {
   const now = deps.now ?? (() => new Date())
@@ -57,12 +59,34 @@ export function createBillingService(deps: {
   async function getAccount(userId: string): Promise<BillingAccount | null> {
     const user = await deps.users.get(userId)
     if (!user) return null
-    const budgetMicros = monthlyBudgetMicros(user.tier)
     const current = now()
-    let { periodStart, periodEnd } = user
+
+    // F2：非 free、非管理员、无活跃订阅且 periodEnd 已过 → 兜底降为 free（防未到期的取消/过期事件丢失）
+    let tier = user.tier
+    let periodAnchor = user.periodAnchor
+    let periodStart = user.periodStart
+    let periodEnd = user.periodEnd
+    if (
+      deps.subscriptions &&
+      tier !== 'free' &&
+      !user.isAdmin &&
+      periodEnd &&
+      current.getTime() >= periodEnd.getTime() &&
+      !(await deps.subscriptions.findActiveByUser(userId))
+    ) {
+      const at = now()
+      const free = computePeriod(at, at)
+      await deps.users.setTier(userId, 'free', at, free.periodStart, free.periodEnd)
+      tier = 'free'
+      periodAnchor = at
+      periodStart = free.periodStart
+      periodEnd = free.periodEnd
+    }
+
+    const budgetMicros = monthlyBudgetMicros(tier)
     if (!periodEnd || current.getTime() >= periodEnd.getTime()) {
       // G4：滚动周期锚定 periodAnchor（订阅日/注册日），钳制漂移不会逐月后退
-      const next = computePeriod(user.periodAnchor, current)
+      const next = computePeriod(periodAnchor, current)
       periodStart = next.periodStart
       periodEnd = next.periodEnd
       await deps.users.setPeriod(userId, periodStart, periodEnd)
@@ -83,15 +107,15 @@ export function createBillingService(deps: {
     }
     return {
       userId,
-      tier: user.tier,
-      entitlements: TIER_ENTITLEMENTS[user.tier],
+      tier,
+      entitlements: TIER_ENTITLEMENTS[tier],
       isAdmin: user.isAdmin,
       periodStart,
       periodEnd: periodEnd as Date,
       budgetMicros,
       balanceMicros,
       remainingPercent: remainingPercent(balanceMicros, budgetMicros),
-      runCapMicros: runCapMicros(user.tier),
+      runCapMicros: runCapMicros(tier),
     }
   }
 
