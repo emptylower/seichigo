@@ -206,6 +206,16 @@ export async function handleCreemEvent(
   /** 降免费：anchor = now，周期 = computePeriod(now, now)（设计 §4）；F2 抽出供对账复用 */
   const downgradeToFree = (): Promise<void> => downgradeUserToFree(deps.users, userId, now())
 
+  /**
+   * 2026-09-07：该订阅首次出现（Creem 可能不发 subscription.active，首个事件即 paid/update），
+   * 或用户当前档位与订阅档位不一致（以用户活跃订阅记录的 tier 代理判断）→ 按“开通”处理（applyTier 需重置锚点）。
+   */
+  const isTierActivation = async (): Promise<boolean> => {
+    if (!existing) return true
+    const current = await deps.subs.findActiveByUser(userId)
+    return !current || current.tier !== recordTier
+  }
+
   switch (event.eventType) {
     case 'subscription.active':
     case 'subscription.trialing': {
@@ -222,15 +232,26 @@ export async function handleCreemEvent(
       return { handled: true }
     }
     case 'subscription.paid': {
-      // 续费：只推进周期（anchor 不动）；tier 若被人工改动一并纠正
       const period = periodOf(obj, now(), { eventId: event.id, log })
       await save(statusOf('active'), period, false)
-      await deps.users.applyTier({ userId, tier, periodStart: period.start, periodEnd: period.end })
+      if (await isTierActivation()) {
+        // 2026-09-07：首个事件即 paid（无 subscription.active）→ 按开通处理，重置锚点
+        await deps.users.applyTier({ userId, tier, periodAnchor: period.start, periodStart: period.start, periodEnd: period.end })
+      } else {
+        // 续费：只推进周期（anchor 不动）；tier 若被人工改动一并纠正
+        await deps.users.applyTier({ userId, tier, periodStart: period.start, periodEnd: period.end })
+      }
       return { handled: true }
     }
     case 'subscription.update': {
       const cancelAtPeriodEnd = typeof obj.cancel_at_period_end === 'boolean' ? obj.cancel_at_period_end : existing?.cancelAtPeriodEnd ?? false
-      await save(statusOf(existing?.status ?? 'active'), periodForSync(obj, existing, now()), cancelAtPeriodEnd)
+      const period = periodForSync(obj, existing, now())
+      const status = statusOf(existing?.status ?? 'active')
+      await save(status, period, cancelAtPeriodEnd)
+      // 2026-09-07：首个事件即 update 且 status=active → 按开通处理（重置锚点）
+      if (status === 'active' && (await isTierActivation())) {
+        await deps.users.applyTier({ userId, tier, periodAnchor: period.start, periodStart: period.start, periodEnd: period.end })
+      }
       return { handled: true }
     }
     case 'subscription.scheduled_cancel': {

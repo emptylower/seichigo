@@ -239,6 +239,70 @@ describe('handleCreemEvent', () => {
     expect(record?.currentPeriodEnd).toEqual(T1_END)
   })
 
+  it('2026-09-07：首个事件是 subscription.paid（无 active 事件）→ 按开通处理，重置锚点（真实载荷形状）', async () => {
+    const ctx = makeDeps()
+    // 生产事故形态：用户档位残留旧锚点；新订阅 Creem 只发 paid（object.status=active）与 checkout.completed
+    ctx.users.seedUser('u1', {
+      tier: 'free',
+      periodAnchor: new Date('2026-08-11T00:00:00Z'),
+      periodStart: new Date('2026-08-11T00:00:00Z'),
+      periodEnd: new Date('2026-09-11T00:00:00Z'),
+    })
+    const result = await handleCreemEvent(
+      subscriptionEvent({
+        id: 'evt_paid_first',
+        eventType: 'subscription.paid',
+        created_at: new Date('2026-09-07T00:00:00Z').getTime(),
+        object: {
+          status: 'active',
+          current_period_start_date: '2026-09-07T00:00:00Z',
+          current_period_end_date: '2026-10-07T00:00:00Z',
+          metadata: { userId: 'u1', tier: 'standard' },
+        },
+      }),
+      ctx,
+    )
+    expect(result.handled).toBe(true)
+    expect(ctx.users.getUser('u1')).toEqual({
+      tier: 'standard',
+      periodAnchor: new Date('2026-09-07T00:00:00Z'),
+      periodStart: new Date('2026-09-07T00:00:00Z'),
+      periodEnd: new Date('2026-10-07T00:00:00Z'),
+    })
+    expect(await ctx.subs.findByCreemId('sub_1')).toMatchObject({ userId: 'u1', tier: 'standard', status: 'active' })
+  })
+
+  it('2026-09-07：首个事件是 subscription.update 且 status=active → 同样按开通处理，重置锚点', async () => {
+    const ctx = makeDeps()
+    ctx.users.seedUser('u1', {
+      tier: 'free',
+      periodAnchor: new Date('2026-08-11T00:00:00Z'),
+      periodStart: new Date('2026-08-11T00:00:00Z'),
+      periodEnd: new Date('2026-09-11T00:00:00Z'),
+    })
+    const result = await handleCreemEvent(
+      subscriptionEvent({
+        id: 'evt_update_first',
+        eventType: 'subscription.update',
+        created_at: new Date('2026-09-07T00:00:00Z').getTime(),
+        object: {
+          status: 'active',
+          current_period_start_date: '2026-09-07T00:00:00Z',
+          current_period_end_date: '2026-10-07T00:00:00Z',
+          metadata: { userId: 'u1', tier: 'standard' },
+        },
+      }),
+      ctx,
+    )
+    expect(result.handled).toBe(true)
+    expect(ctx.users.getUser('u1')).toEqual({
+      tier: 'standard',
+      periodAnchor: new Date('2026-09-07T00:00:00Z'),
+      periodStart: new Date('2026-09-07T00:00:00Z'),
+      periodEnd: new Date('2026-10-07T00:00:00Z'),
+    })
+  })
+
   it('subscription.scheduled_cancel：只标记 cancelAtPeriodEnd，不动档位与周期', async () => {
     const ctx = makeDeps()
     await handleCreemEvent(subscriptionEvent({}), ctx)
