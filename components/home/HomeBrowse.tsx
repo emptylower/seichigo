@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, BookOpen, Clapperboard, MapPin } from 'lucide-react'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { assetCoverSrc, assetCoverSrcSet } from '@/lib/asset/coverSrc'
 import type { HomePopularAnimeItem, HomePopularCityItem } from '@/lib/home/types'
 import { getLocalizedDisplayName } from '@/lib/i18n/displayName'
 import { t } from '@/lib/i18n'
@@ -44,7 +45,9 @@ function AnimePosterCard({ item, locale }: { item: HomePopularAnimeItem; locale:
         {item.cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.cover}
+            src={assetCoverSrc(item.cover, { width: 640 })}
+            srcSet={assetCoverSrcSet(item.cover, [320, 640, 960])}
+            sizes="(min-width:1024px) 120px, 45vw"
             alt={name}
             loading="lazy"
             decoding="async"
@@ -67,7 +70,9 @@ function CityCoverCard({ item, locale }: { item: HomePopularCityItem; locale: Si
         {item.city.cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.city.cover}
+            src={assetCoverSrc(item.city.cover, { width: 640 })}
+            srcSet={assetCoverSrcSet(item.city.cover, [320, 640, 960])}
+            sizes="(min-width:1024px) 120px, 45vw"
             alt={name}
             loading="lazy"
             decoding="async"

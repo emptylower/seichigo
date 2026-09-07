@@ -3,6 +3,7 @@ import { Fragment } from 'react'
 import { ArrowRight, CalendarDays, Camera, MapPin, MessageSquareText, Users, type LucideIcon } from 'lucide-react'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { assetCoverSrc, assetCoverSrcSet } from '@/lib/asset/coverSrc'
 import type { PublicPostListItem } from '@/lib/posts/types'
 import { t } from '@/lib/i18n'
 
@@ -74,7 +75,9 @@ function GuideCard({ item }: { item: PublicPostListItem }) {
         {item.cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.cover}
+            src={assetCoverSrc(item.cover, { width: 640 })}
+            srcSet={assetCoverSrcSet(item.cover, [320, 640, 960])}
+            sizes="(min-width:1024px) 300px, (min-width:768px) 45vw, 100vw"
             alt={item.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"

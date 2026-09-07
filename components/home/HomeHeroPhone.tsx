@@ -202,6 +202,7 @@ export default function HomeHeroPhone({ locale, demo }: { locale: SiteLocale; de
               width={map.width}
               height={map.height}
               loading="eager"
+              fetchPriority="high"
               decoding="async"
               className="block h-auto w-full"
             />

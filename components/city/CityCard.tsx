@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { assetCoverSrc, assetCoverSrcSet } from '@/lib/asset/coverSrc'
 import { getLocalizedDisplayName } from '@/lib/i18n/displayName'
 
 type Props = {
@@ -34,27 +35,13 @@ function coverGradient(seedKey: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 55% 46%), hsl(${hue2} 70% 56%))`
 }
 
-function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: number }): string {
-  const raw = String(input || '').trim()
-  if (!raw) return raw
-
-  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
-  const base = hasAbsolute ? undefined : 'https://seichigo.com'
-
-  try {
-    const url = new URL(raw, base)
-    if (!url.pathname.startsWith('/assets/')) return raw
-    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
-    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
-    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
-  } catch {
-    return raw
-  }
-}
+/** 城市索引网格（grid-cols-1 sm:2 lg:3，容器 max-w-7xl）里卡片的实际渲染宽度 */
+const COVER_SIZES = '(min-width:1024px) 400px, (min-width:640px) 50vw, 100vw'
 
 export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
   const coverRaw = typeof city.cover === 'string' && city.cover.trim() ? city.cover.trim() : null
-  const coverSrc = coverRaw ? optimizeAssetCoverSrc(coverRaw, { width: 1200, quality: 78 }) : null
+  const coverSrc = coverRaw ? assetCoverSrc(coverRaw, { width: 640 }) : null
+  const coverSrcSet = coverRaw ? assetCoverSrcSet(coverRaw, [320, 640, 960]) : undefined
   const seedKey = city.slug || city.id
   const displayName = getLocalizedDisplayName(city, locale)
 
@@ -75,9 +62,11 @@ export default function CityCard({ city, postCount, locale = 'zh' }: Props) {
         {coverSrc ? (
           <img
             src={coverSrc}
+            srcSet={coverSrcSet}
+            sizes={COVER_SIZES}
             alt={displayName}
-            width={1200}
-            height={900}
+            width={640}
+            height={480}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
             decoding="async"

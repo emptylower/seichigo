@@ -149,6 +149,9 @@ describe('HomeHeroPhone（手机壳里的规划师演示）', () => {
     expect(img.getAttribute('width')).toBe('320')
     expect(img.getAttribute('height')).toBe('240')
     expect(img.getAttribute('alt')).toBe('')
+    // 移动端 LCP 元素：eager + fetchpriority=high（2026-09-07 首屏性能修复）
+    expect(img.getAttribute('loading')).toBe('eager')
+    expect(img.getAttribute('fetchpriority')).toBe('high')
 
     const svg = map.querySelector('svg')!
     expect(svg.getAttribute('viewBox')).toBe('0 0 320 240')

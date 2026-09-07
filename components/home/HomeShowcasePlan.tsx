@@ -2,7 +2,6 @@
 
 import { Fragment, useState } from 'react'
 import Link from 'next/link'
-import { preload } from 'react-dom'
 import {
   ArrowRight,
   BedDouble,
@@ -18,7 +17,6 @@ import {
 } from 'lucide-react'
 import { getSchedule } from '@/app/(authed)/plan/[id]/components/itemPayload'
 import { useDayAutoRotate } from '@/app/(authed)/plan/[id]/hooks/useDayAutoRotate'
-import { heroDemoItems } from './heroData'
 import {
   cityDisplayName,
   defaultDayIndex,
@@ -129,8 +127,8 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
 
   if (!days.length) return null
 
-  // 首帧就要出图：把默认天前 4 张缩略图交给浏览器提前拿，渲染时命中缓存不再空白
-  for (const item of heroDemoItems(orderedDays, 4)) preload(item.image, { as: 'image' })
+  // 第三屏在首屏之下很远，不再 preload 缩略图：移动端这 4 个 preload 会和首屏 LCP 图抢带宽，
+  // 卡片本身 lazy 加载即可（性能修复 2026-09-07）。
 
   const active =
     days.find((day) => day.dayIndex === selectedDay) ?? days.find((day) => day.dayIndex === fallbackDayIndex) ?? days[0]!

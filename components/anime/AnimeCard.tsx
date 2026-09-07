@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { prefixPath } from '@/components/layout/prefixPath'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { Anime } from '@/lib/anime/getAllAnime'
+import { assetCoverSrc, assetCoverSrcSet } from '@/lib/asset/coverSrc'
 import { getLocalizedDisplayName } from '@/lib/i18n/displayName'
 
 type Props = {
@@ -26,26 +27,12 @@ function coverGradient(seedKey: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 55% 46%), hsl(${hue2} 70% 56%))`
 }
 
-function optimizeAssetCoverSrc(input: string, opts: { width: number; quality: number }): string {
-  const raw = String(input || '').trim()
-  if (!raw) return raw
-
-  const hasAbsolute = raw.startsWith('http://') || raw.startsWith('https://')
-  const base = hasAbsolute ? undefined : 'https://seichigo.com'
-
-  try {
-    const url = new URL(raw, base)
-    if (!url.pathname.startsWith('/assets/')) return raw
-    if (!url.searchParams.has('w')) url.searchParams.set('w', String(opts.width))
-    if (!url.searchParams.has('q')) url.searchParams.set('q', String(opts.quality))
-    return hasAbsolute ? url.toString() : `${url.pathname}${url.search}`
-  } catch {
-    return raw
-  }
-}
+/** 作品索引网格（grid-cols-2 sm:3 lg:4 xl:5，容器 max-w-7xl）里卡片的实际渲染宽度 */
+const COVER_SIZES = '(min-width:1280px) 232px, (min-width:1024px) 22vw, (min-width:640px) 30vw, 45vw'
 
 export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Props) {
-  const coverSrc = cover ? optimizeAssetCoverSrc(cover, { width: 900, quality: 78 }) : null
+  const coverSrc = cover ? assetCoverSrc(cover, { width: 640 }) : null
+  const coverSrcSet = cover ? assetCoverSrcSet(cover, [320, 640, 960]) : undefined
   const displayName = getLocalizedDisplayName(anime, locale)
 
   return (
@@ -61,9 +48,11 @@ export default function AnimeCard({ anime, postCount, cover, locale = 'zh' }: Pr
         {coverSrc ? (
           <img
             src={coverSrc}
+            srcSet={coverSrcSet}
+            sizes={COVER_SIZES}
             alt={displayName}
-            width={900}
-            height={1200}
+            width={640}
+            height={853}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
             decoding="async"
