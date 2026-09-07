@@ -2,87 +2,88 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import HomeGuides from '@/components/home/HomeGuides'
-import { guidesFixture } from './fixtures'
+import { guidesFixture, postFixture } from './fixtures'
+import type { PublicPostListItem } from '@/lib/posts/types'
 
-function cardsOf(container: HTMLElement) {
+function makeItem(overrides: Partial<PublicPostListItem>): PublicPostListItem {
+  return { ...postFixture(1), ...overrides }
+}
+
+function cardLinks(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('a[href^="/posts/guide-"]')]
 }
 
-describe('HomeGuides', () => {
-  it('渲染 8 张攻略卡与「全部攻略」入口', () => {
-    render(<HomeGuides locale="zh" items={guidesFixture(8)} />)
+describe('HomeGuides（第四屏：左右两栏 + 3×2 攻略卡）', () => {
+  it('最多渲染 6 篇，8 篇时裁掉多余的两篇', () => {
+    const { container } = render(<HomeGuides locale="zh" items={guidesFixture(8)} />)
 
-    expect(screen.getByRole('heading', { name: '巡礼攻略' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '全部攻略' })).toHaveAttribute('href', '/posts')
-    for (let i = 1; i <= 8; i++) {
-      expect(screen.getByRole('link', { name: new RegExp(`巡礼攻略 ${i}`) })).toHaveAttribute('href', `/posts/guide-${i}`)
-    }
+    const cards = cardLinks(container)
+    expect(cards).toHaveLength(6)
+    expect(cards.map((el) => el.getAttribute('href'))).toEqual(guidesFixture(6).map((item) => item.path))
+    expect(screen.queryByRole('link', { name: /巡礼攻略 7/ })).toBeNull()
   })
 
-  it('卡片带作品名、城市与路线长度', () => {
+  it('封面左上胶囊显示「作品 · 城市」，卡片带城市与日期，标题加粗', () => {
     render(<HomeGuides locale="zh" items={guidesFixture(1)} />)
 
-    expect(screen.getByText(/作品 1/)).toBeInTheDocument()
-    expect(screen.getByText(/东京/)).toBeInTheDocument()
-    expect(screen.getByText(/3 天/)).toBeInTheDocument()
+    expect(screen.getByText('作品 1 · 东京')).toBeInTheDocument()
+    expect(screen.getByText('东京')).toBeInTheDocument()
+    expect(screen.getByText('2026-08-01')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '巡礼攻略 1' })).toBeInTheDocument()
   })
 
-  it('8 篇时 2 大 6 小，顺序与输入一致', () => {
-    const items = guidesFixture(8)
-    const { container } = render(<HomeGuides locale="zh" items={items} />)
+  it('无作品名（或 unknown）时胶囊只显示城市', () => {
+    const { container } = render(<HomeGuides locale="zh" items={[makeItem({ localizedAnimeNames: ['unknown'] })]} />)
 
-    const cards = cardsOf(container)
-    expect(cards.map((el) => el.getAttribute('href'))).toEqual(items.map((item) => item.path))
-    expect(cards.map((el) => el.dataset.guideSize)).toEqual([
-      'large',
-      'large',
-      'small',
-      'small',
-      'small',
-      'small',
-      'small',
-      'small',
-    ])
+    const capsule = container.querySelector('.backdrop-blur')
+    expect(capsule).not.toBeNull()
+    expect(capsule!.textContent).toBe('东京')
+    expect(screen.queryByText(/unknown/)).toBeNull()
   })
 
-  it('5 篇时 2 大 3 小，不留空位', () => {
-    const items = guidesFixture(5)
-    const { container } = render(<HomeGuides locale="zh" items={items} />)
-
-    const cards = cardsOf(container)
-    expect(cards.map((el) => el.getAttribute('href'))).toEqual(items.map((item) => item.path))
-    expect(cards.filter((el) => el.dataset.guideSize === 'large')).toHaveLength(2)
-    expect(cards.filter((el) => el.dataset.guideSize === 'small')).toHaveLength(3)
+  it('作品名与城市都没有时不渲染胶囊', () => {
+    const { container } = render(
+      <HomeGuides locale="zh" items={[makeItem({ localizedAnimeNames: [], localizedCity: undefined, city: '' })]} />,
+    )
+    expect(container.querySelector('.backdrop-blur')).toBeNull()
   })
 
-  it('只有一篇时 1 大 0 小', () => {
-    const { container } = render(<HomeGuides locale="zh" items={guidesFixture(1)} />)
+  it('publishDate 与 publishedAt 都没有时不显示日期', () => {
+    render(<HomeGuides locale="zh" items={[makeItem({ publishDate: undefined, publishedAt: undefined })]} />)
 
-    const cards = cardsOf(container)
-    expect(cards).toHaveLength(1)
-    expect(cards[0]!.dataset.guideSize).toBe('large')
+    expect(screen.queryByText('2026-08-01')).toBeNull()
+    expect(screen.queryByText(/\d{4}-\d{2}-\d{2}/)).toBeNull()
   })
 
-  it('大卡区两列、小卡区三列，移动端单列', () => {
-    const { container } = render(<HomeGuides locale="zh" items={guidesFixture(8)} />)
-
-    const large = cardsOf(container).find((el) => el.dataset.guideSize === 'large')!
-    const small = cardsOf(container).find((el) => el.dataset.guideSize === 'small')!
-    expect(large.parentElement?.className).toContain('grid-cols-1')
-    expect(large.parentElement?.className).toContain('md:grid-cols-2')
-    expect(small.parentElement?.className).toContain('grid-cols-1')
-    expect(small.parentElement?.className).toContain('md:grid-cols-3')
+  it('publishedAt（ISO 时间）兜底成 YYYY-MM-DD', () => {
+    render(<HomeGuides locale="zh" items={[makeItem({ publishDate: undefined, publishedAt: '2026-03-02T08:00:00Z' })]} />)
+    expect(screen.getByText('2026-03-02')).toBeInTheDocument()
   })
 
-  it('大卡封面 eager、小卡 lazy，封面统一 16:9', () => {
-    const { container } = render(<HomeGuides locale="zh" items={guidesFixture(8)} />)
+  it('大标题里的 {accent} 拆成粉色片段，前后文仍在', () => {
+    render(<HomeGuides locale="zh" items={guidesFixture(1)} />)
 
-    const cards = cardsOf(container)
-    for (const card of cards) {
-      const img = card.querySelector('img')!
-      expect(img.getAttribute('loading')).toBe(card.dataset.guideSize === 'large' ? 'eager' : 'lazy')
-      expect(img.parentElement?.className).toContain('aspect-[16/9]')
+    const accent = document.querySelector('[data-guides-accent]')!
+    expect(accent.textContent).toBe('真实旅行者')
+    expect(accent.className).toContain('text-brand-600')
+    const heading = accent.closest('h2')!
+    expect(heading.textContent).toContain('来自')
+    expect(heading.textContent).toContain('动漫圣地巡礼攻略')
+  })
+
+  it('左栏四个卖点与「查看全部攻略」入口', () => {
+    render(<HomeGuides locale="zh" items={guidesFixture(1)} />)
+
+    for (const title of ['真实体验', '详细路线', '实拍照片', '实用建议']) {
+      expect(screen.getByText(title)).toBeInTheDocument()
     }
+    expect(screen.getByRole('link', { name: /全部攻略/ })).toHaveAttribute('href', '/posts')
+  })
+
+  it('没有任何「作者」「摘要」相关 DOM（PublicPostListItem 没有这些字段）', () => {
+    const { container } = render(<HomeGuides locale="zh" items={guidesFixture(6)} />)
+    expect(container.textContent).not.toContain('作者')
+    expect(container.textContent).not.toContain('摘要')
   })
 
   it('没有攻略时整段不渲染', () => {

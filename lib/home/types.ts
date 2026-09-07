@@ -60,6 +60,39 @@ export type HomeMapClusters = {
   bbox?: [number, number, number, number]
 }
 
+/** 静态世界地图图片覆盖的地理范围（等距圆柱投影：经度自 lngStart 向东跨 lngSpan 度，跨 180° 回绕；纬度 latTop 到 latBottom） */
+export type HomeMapWorldBounds = {
+  lngStart: number
+  lngSpan: number
+  latTop: number
+  latBottom: number
+}
+
+/** 静态世界地图上的城市/地区标签（A 部分脚本产物；按 count 降序，primary 只给最大的一条） */
+export type HomeMapWorldLabel = {
+  key: string
+  name: { zh: string; en: string; ja: string }
+  count: number
+  lng: number
+  lat: number
+  primary?: boolean
+}
+
+/** 首页第二屏静态世界地图（content/generated/home-map-world.json；缺省时前端整段不渲染） */
+export type HomeMapWorld = {
+  generatedAt: string
+  totalPoints: number
+  image: {
+    src: string
+    src2x: string
+    width: number
+    height: number
+    bounds: HomeMapWorldBounds
+    attribution: string
+  }
+  labels: HomeMapWorldLabel[]
+}
+
 export type HomePortalData = {
   featured: PublicPostListItem | null
   latestShelf: PublicPostListItem[]
@@ -70,5 +103,7 @@ export type HomePortalData = {
   mapClusters: HomeMapClusters
   /** 首屏微演示（content/generated/home-hero-demo.json，§0 第十二轮第三批） */
   heroDemo: HomeHeroDemo
+  /** 静态世界地图（content/generated/home-map-world.json）；可选产物，缺失为 null 且不影响其它数据 */
+  mapWorld?: HomeMapWorld | null
   guides: PublicPostListItem[]
 }

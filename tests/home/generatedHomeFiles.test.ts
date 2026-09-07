@@ -3,6 +3,7 @@ import { HomeDataSourceError } from '@/lib/home/dataSourceError'
 import {
   readHomeHeroDemoFile,
   readHomeMapClustersFile,
+  readHomeMapWorldFile,
   readHomeShowcaseFile,
 } from '@/lib/home/generatedHomeFiles'
 
@@ -48,5 +49,21 @@ describe('generatedHomeFiles (static import readers)', () => {
   it('throws a HomeDataSourceError for invalid hero demo payloads', () => {
     expect(() => readHomeHeroDemoFile({ planTitle: '', day: null })).toThrow(HomeDataSourceError)
     expect(() => readHomeHeroDemoFile('nope')).toThrow(HomeDataSourceError)
+  })
+
+  it('reads the optional world map artifact and returns null (never throws) for invalid payloads', () => {
+    const world = readHomeMapWorldFile()
+    expect(world).not.toBeNull()
+    expect(world?.image.src).toBe('/images/home/map-world.webp')
+    expect(world?.image.src2x).toBe('/images/home/map-world@2x.webp')
+    expect(world?.image.width).toBe(1208)
+    expect(world?.image.height).toBe(441)
+    expect(world?.image.bounds).toEqual({ lngStart: -22, lngSpan: 345, latTop: 74, latBottom: -52 })
+    expect(world?.image.attribution).toContain('CC BY-SA 3.0')
+    expect((world?.labels.length ?? 0)).toBeGreaterThanOrEqual(6)
+    expect(world?.labels.filter((label) => label.primary)).toHaveLength(1)
+
+    expect(readHomeMapWorldFile({ labels: [] })).toBeNull()
+    expect(readHomeMapWorldFile('nope')).toBeNull()
   })
 })

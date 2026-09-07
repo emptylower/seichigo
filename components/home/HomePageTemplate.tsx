@@ -1,8 +1,9 @@
 import HomeBrowse from '@/components/home/HomeBrowse'
 import HomeFaq from '@/components/home/HomeFaq'
+import HomeFinalCta from '@/components/home/HomeFinalCta'
 import HomeGuides from '@/components/home/HomeGuides'
 import HomeHero from '@/components/home/HomeHero'
-import HomeMapTeaser from '@/components/home/HomeMapTeaser'
+import HomeMapDatabase from '@/components/home/HomeMapDatabase'
 import HomeShowcasePlan from '@/components/home/HomeShowcasePlan'
 import { heroWorkNames } from '@/components/home/heroData'
 import type { SiteLocale } from '@/components/layout/SiteShell'
@@ -45,13 +46,18 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         stats={data.stats}
       />
 
-      {/* 首屏之外的各段：宽度与上线版本（外壳 max-w-5xl + px-4）完全一致，不因通栏而变宽 */}
+      {/* 首屏之外的各段：宽度与上线版本（外壳 max-w-5xl + px-4）完全一致，不因通栏而变宽。
+          顺序（第十五轮）：地图数据库（第二屏，带 id="home-showcase" 接住首屏滚动提示）
+          → 规划师行程逐天展示（第三屏，id="home-plan"）→ 攻略 → 浏览 → FAQ。
+          地图段自己的卡片在 lg 破框到 max-w-6xl（组件内部处理，移动端不溢出）。 */}
       <div data-home-sections className="mx-auto w-full max-w-5xl space-y-12 px-4 pt-20 sm:space-y-16">
+        <HomeMapDatabase locale={locale} world={data.mapWorld ?? null} stats={data.stats} demo={data.heroDemo} />
         {data.showcase ? <HomeShowcasePlan locale={locale} showcase={data.showcase} /> : null}
-        {data.mapClusters ? <HomeMapTeaser locale={locale} clusters={data.mapClusters} /> : null}
         <HomeGuides locale={locale} items={guideItems(data)} />
         <HomeBrowse locale={locale} anime={data.popularAnime} cities={data.popularCities} />
         <HomeFaq locale={locale} />
+        {/* 收尾行动区：FAQ 之后、data-home-sections 容器内最后一段，统计行用真实 stats */}
+        <HomeFinalCta locale={locale} stats={data.stats} />
       </div>
 
       {/* 首页专属的 WebSite JSON-LD：把规划师起始页声明成站内搜索入口，与 FAQ JSON-LD 并存。

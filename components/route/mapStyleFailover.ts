@@ -29,8 +29,28 @@ const FAILOVER_TIMEOUT_MAX_MS = 30000
 /** 切换 provider 后，旧样式挂起请求仍会触发错误事件；窗口内抑制级联切换，避免竞态连跳。 */
 const PROVIDER_SWITCH_SUPPRESS_MS = 2000
 
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
+/** 本模块读取的 NEXT_PUBLIC_* 环境变量名（字面量联合，见 readEnv） */
+type EnvName =
+  | 'NEXT_PUBLIC_MAPTILER_KEY'
+  | 'NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN'
+  | 'NEXT_PUBLIC_STADIA_MAPS_API_KEY'
+  | 'NEXT_PUBLIC_MAP_STYLE_PROVIDER_ORDER'
+  | 'NEXT_PUBLIC_MAP_STYLE_FAILOVER_TIMEOUT_MS'
+
+/**
+ * 调用时读取 env（测试靠它切换配置），但必须是字面量访问：
+ * Next 只内联字面量的 process.env.NEXT_PUBLIC_*，`process.env[name]` 动态取值
+ * 在浏览器 bundle 里恒为 undefined，客户端会永远落到 raster 兜底。
+ * 字面量访问在 Node 里同样是运行时读取，测试覆盖不受影响。
+ */
+function readEnv(name: EnvName): string {
+  switch (name) {
+    case 'NEXT_PUBLIC_MAPTILER_KEY': return String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
+    case 'NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN': return String(process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '').trim()
+    case 'NEXT_PUBLIC_STADIA_MAPS_API_KEY': return String(process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || '').trim()
+    case 'NEXT_PUBLIC_MAP_STYLE_PROVIDER_ORDER': return String(process.env.NEXT_PUBLIC_MAP_STYLE_PROVIDER_ORDER || '').trim()
+    case 'NEXT_PUBLIC_MAP_STYLE_FAILOVER_TIMEOUT_MS': return String(process.env.NEXT_PUBLIC_MAP_STYLE_FAILOVER_TIMEOUT_MS || '').trim()
+  }
 }
 
 /** 与 RoutePreviewMap 既有 fallback 完全一致的无 key OSM raster 样式。 */
