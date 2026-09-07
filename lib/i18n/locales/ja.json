@@ -576,6 +576,31 @@
       "usagePro": "たっぷりの量",
       "footnoteComingSoon": "プロのすべての機能は近日公開です。",
       "footnotePayment": "決済と請求書は Creem が処理します。解約はアカウントページからいつでも可能です。"
+    },
+    "me": {
+      "title": "マイページ",
+      "sections": {
+        "plans": {
+          "title": "私の巡礼計画",
+          "desc": "AI が作成する複数日の巡礼プランです"
+        },
+        "favorites": {
+          "title": "お気に入り",
+          "desc": "保存したスポットと攻略です"
+        },
+        "routebooks": {
+          "title": "マイマップ",
+          "desc": "手動でまとめたスポットのルートブックです"
+        },
+        "submit": {
+          "title": "投稿",
+          "desc": "巡礼攻略をシェアしましょう"
+        },
+        "settings": {
+          "title": "設定",
+          "desc": "アカウントと環境設定です"
+        }
+      }
     }
   },
   "auth": {

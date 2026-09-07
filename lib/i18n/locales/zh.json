@@ -576,6 +576,31 @@
       "usagePro": "大额度",
       "footnoteComingSoon": "高级档全部功能即将推出。",
       "footnotePayment": "支付与发票由 Creem 处理；可随时在账户页取消订阅。"
+    },
+    "me": {
+      "title": "我的",
+      "sections": {
+        "plans": {
+          "title": "我的巡礼计划",
+          "desc": "AI 规划的多日巡礼行程"
+        },
+        "favorites": {
+          "title": "我的收藏",
+          "desc": "收藏的点位与攻略"
+        },
+        "routebooks": {
+          "title": "个人地图",
+          "desc": "手动整理的点位路书"
+        },
+        "submit": {
+          "title": "投稿",
+          "desc": "分享你的巡礼攻略"
+        },
+        "settings": {
+          "title": "设置",
+          "desc": "账号与偏好设置"
+        }
+      }
     }
   },
   "auth": {

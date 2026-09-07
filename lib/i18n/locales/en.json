@@ -576,6 +576,31 @@
       "usagePro": "Large amount",
       "footnoteComingSoon": "Everything in Pro is still in the works.",
       "footnotePayment": "Payments and invoices are handled by Creem; you can cancel your subscription anytime from your account page."
+    },
+    "me": {
+      "title": "My Home",
+      "sections": {
+        "plans": {
+          "title": "My Plans",
+          "desc": "Multi-day pilgrimage itineraries planned by AI"
+        },
+        "favorites": {
+          "title": "Favorites",
+          "desc": "Saved spots and guides"
+        },
+        "routebooks": {
+          "title": "My Maps",
+          "desc": "Hand-curated spot route books"
+        },
+        "submit": {
+          "title": "Submit",
+          "desc": "Share your pilgrimage guide"
+        },
+        "settings": {
+          "title": "Settings",
+          "desc": "Account and preferences"
+        }
+      }
     }
   },
   "auth": {

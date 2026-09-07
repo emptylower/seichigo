@@ -49,6 +49,13 @@ describe('SubscriptionCard', () => {
     expect(screen.getByRole('button', { name: '升级到标准版' })).toBeInTheDocument()
   })
 
+  it('外层 section 带 id="subscription"，供 ProfileTierHeader 锚点跳转', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(json(standardView)))
+    const { container } = render(<SubscriptionCard locale="zh" />)
+    expect(await screen.findByText('当前：标准')).toBeInTheDocument()
+    expect(container.querySelector('#subscription')).not.toBeNull()
+  })
+
   it('标准档：显示下次续费日期与管理订阅按钮', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(json(standardView)))
     render(<SubscriptionCard locale="zh" />)

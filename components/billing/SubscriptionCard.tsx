@@ -83,6 +83,7 @@ export function SubscriptionCard(props: { locale?: SupportedLocale; pendingActiv
 
   return (
     <section
+      id="subscription"
       aria-label={t('billing.subscription.sectionLabel', locale)}
       className="rounded-2xl border border-pink-100 bg-white px-5 py-4 shadow-sm"
     >
