@@ -325,6 +325,16 @@ describe('PointSharePanel 点位上下文', () => {
     expect(lastCardInput?.pointName).toBe('须贺神社')
   })
 
+  it('v2.1：胶囊三语文案经 t() 注入 cardText，不是回落的 key 名', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(lastCardInput?.cardText).toBeTruthy())
+    expect(lastCardInput?.cardText).toEqual({
+      qrTitle: '扫码获取点位导航',
+      qrSub: '地图 · 交通 · 周边点位',
+      tagline: '5 万+ 动画取景地 · AI 巡礼行程',
+    })
+  })
+
   it('context 里的 displayName 覆盖 props 的 pointName', async () => {
     fetchPointContextMock.mockResolvedValue({
       address: null,
