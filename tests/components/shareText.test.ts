@@ -98,6 +98,15 @@ describe('buildCardFilename', () => {
   it('名字部分截断到 40 字符', () => {
     expect(buildCardFilename('あ'.repeat(50))).toBe(`seichigo-${'あ'.repeat(40)}.jpg`)
   })
+
+  it('WebP 内容给 .webp 扩展名', () => {
+    expect(buildCardFilename('须贺神社', 'image/webp')).toBe('seichigo-须贺神社.webp')
+  })
+
+  it('不传或非 webp 时仍是 .jpg', () => {
+    expect(buildCardFilename('须贺神社')).toBe('seichigo-须贺神社.jpg')
+    expect(buildCardFilename('须贺神社', 'image/jpeg')).toBe('seichigo-须贺神社.jpg')
+  })
 })
 
 describe('toHashtag', () => {
