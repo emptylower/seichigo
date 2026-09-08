@@ -1,0 +1,88 @@
+import { describe, expect, it } from 'vitest'
+import { MemoryShareLinkRepo } from '@/lib/share/repoMemory'
+
+function baseInput(overrides: Partial<Parameters<MemoryShareLinkRepo['create']>[0]> = {}) {
+  return {
+    code: 'AAAAAAAA',
+    pointId: '101:station',
+    bangumiId: 101,
+    locale: 'zh' as const,
+    layout: 'portrait' as const,
+    userId: null,
+    ipHash: 'hash-1',
+    ...overrides,
+  }
+}
+
+describe('MemoryShareLinkRepo', () => {
+  it('create 后能按 code 查回', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T00:00:00Z'))
+    const created = await repo.create(baseInput())
+    expect(created.code).toBe('AAAAAAAA')
+    expect(created.clicks).toBe(0)
+    expect(created.imageKey).toBeNull()
+    expect(await repo.findByCode('AAAAAAAA')).toEqual(created)
+    expect(await repo.findByCode('ZZZZZZZZ')).toBeNull()
+  })
+
+  it('code 重复抛 P2002', async () => {
+    const repo = new MemoryShareLinkRepo()
+    await repo.create(baseInput())
+    await expect(repo.create(baseInput())).rejects.toMatchObject({ code: 'P2002' })
+  })
+
+  it('findRecentDuplicate 只匹配同 point/locale/layout/user 且在窗口内', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
+    await repo.create(baseInput())
+    const since = new Date('2026-09-07T12:00:00Z')
+    expect(
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: null, since }),
+    ).not.toBeNull()
+    expect(
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'landscape', userId: null, since }),
+    ).toBeNull()
+    expect(
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: 'u1', since }),
+    ).toBeNull()
+    expect(
+      await repo.findRecentDuplicate({
+        pointId: '101:station',
+        locale: 'zh',
+        layout: 'portrait',
+        userId: null,
+        since: new Date('2026-09-08T13:00:00Z'),
+      }),
+    ).toBeNull()
+  })
+
+  it('countByIpHashSince 只数窗口内同一 ipHash', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
+    await repo.create(baseInput({ code: 'AAAAAAAA' }))
+    await repo.create(baseInput({ code: 'BBBBBBBB', layout: 'landscape' }))
+    await repo.create(baseInput({ code: 'CCCCCCCC', ipHash: 'hash-2' }))
+    expect(await repo.countByIpHashSince('hash-1', new Date('2026-09-07T12:00:00Z'))).toBe(2)
+    expect(await repo.countByIpHashSince('hash-1', new Date('2026-09-08T13:00:00Z'))).toBe(0)
+  })
+
+  it('markUploaded 写 imageKey 与 userId，countUploadsByUserSince 只数已上传的', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
+    await repo.create(baseInput({ code: 'AAAAAAAA' }))
+    await repo.create(baseInput({ code: 'BBBBBBBB', userId: 'u1', ipHash: null, layout: 'landscape' }))
+    const since = new Date('2026-09-07T12:00:00Z')
+    expect(await repo.countUploadsByUserSince('u1', since)).toBe(0)
+    const updated = await repo.markUploaded('AAAAAAAA', { imageKey: 'share/AAAAAAAA.jpg', userId: 'u1' })
+    expect(updated?.imageKey).toBe('share/AAAAAAAA.jpg')
+    expect(updated?.userId).toBe('u1')
+    expect(await repo.countUploadsByUserSince('u1', since)).toBe(1)
+    expect(await repo.markUploaded('ZZZZZZZZ', { imageKey: 'x', userId: 'u1' })).toBeNull()
+  })
+
+  it('incrementClicks 累加', async () => {
+    const repo = new MemoryShareLinkRepo()
+    await repo.create(baseInput())
+    await repo.incrementClicks('AAAAAAAA')
+    await repo.incrementClicks('AAAAAAAA')
+    expect((await repo.findByCode('AAAAAAAA'))?.clicks).toBe(2)
+    await expect(repo.incrementClicks('ZZZZZZZZ')).resolves.toBeUndefined()
+  })
+})
