@@ -19,6 +19,21 @@ const MUSASHINO = {
   ],
 }
 
+/** 海外点位 fixture：旧金山（country 段拼进地址的用例） */
+const SAN_FRANCISCO = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      id: 'place.1',
+      context: [
+        { id: 'place.11', text_zh: '旧金山', text_en: 'San Francisco', text_ja: 'サンフランシスコ' },
+        { id: 'region.12', text_zh: '加利福尼亚州', text_en: 'California', text_ja: 'カリフォルニア州' },
+        { id: 'country.13', text_zh: '美国', text_en: 'United States', text_ja: 'アメリカ' },
+      ],
+    },
+  ],
+}
+
 describe('parseGeocodeAddresses', () => {
   it('zh/ja 由粗到细用空格拼，en 由细到粗用逗号拼', () => {
     expect(parseGeocodeAddresses(MUSASHINO)).toEqual({
@@ -30,6 +45,36 @@ describe('parseGeocodeAddresses', () => {
 
   it('zh 的「东京都/東京都」并列取 / 前一段', () => {
     expect(parseGeocodeAddresses(MUSASHINO).zh?.startsWith('东京都 ')).toBe(true)
+  })
+
+  it('ja/en 的斜杠并列不拆分，只有 zh 取 / 前一段', () => {
+    const payload = {
+      features: [
+        {
+          context: [
+            { id: 'region.1', text_zh: '东京都/東京都', text_en: 'Tokyo/Kyo', text_ja: '東京/トウキョウ' },
+          ],
+        },
+      ],
+    }
+    const parsed = parseGeocodeAddresses(payload)
+    expect(parsed.zh).toBe('东京都')
+    expect(parsed.en).toBe('Tokyo/Kyo')
+    expect(parsed.ja).toBe('東京/トウキョウ')
+  })
+
+  it('includeCountry 时海外地址带上国家：en 末尾、zh/ja 前置（旧金山 fixture）', () => {
+    const parsed = parseGeocodeAddresses(SAN_FRANCISCO, { includeCountry: true })
+    expect(parsed.zh).toBe('美国 加利福尼亚州 旧金山')
+    expect(parsed.ja).toBe('アメリカ カリフォルニア州 サンフランシスコ')
+    expect(parsed.en).toBe('San Francisco, California, United States')
+  })
+
+  it('不开 includeCountry 时照旧跳过国家段', () => {
+    const parsed = parseGeocodeAddresses(SAN_FRANCISCO)
+    expect(parsed.zh).toBe('加利福尼亚州 旧金山')
+    expect(parsed.ja).toBe('カリフォルニア州 サンフランシスコ')
+    expect(parsed.en).toBe('San Francisco, California')
   })
 
   it('跳过邮编与国家', () => {

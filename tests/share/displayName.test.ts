@@ -14,6 +14,12 @@ describe('foldTitleText', () => {
   it('CJK 原样保留', () => {
     expect(foldTitleText('摇曳露营△')).toBe('摇曳露营△')
   })
+
+  it('小写后长度会变的字符放弃折叠（土耳其 İ）', () => {
+    // 'İ'.toLowerCase() 是 'i' + 组合上点（两个码位），会破坏下标映射，必须整字符保留
+    expect(foldTitleText('İX カフェ')).toBe('İx カフェ')
+    expect(foldTitleText('İX カフェ')).toHaveLength('İX カフェ'.length)
+  })
 })
 
 describe('stripAnimeTitlePrefix', () => {

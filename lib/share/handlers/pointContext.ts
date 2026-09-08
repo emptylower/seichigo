@@ -13,7 +13,12 @@ export const DAILY_GEOCODE_BUDGET = 2_000
 
 export type PointContextDeps = {
   repo: PointContextRepo
-  geocode: (input: { lat: number; lng: number }) => Promise<GeocodeAddresses | null>
+  geocode: (input: {
+    lat: number
+    lng: number
+    /** 海外点位要国家段（en 末尾 / zh、ja 前置） */
+    includeCountry?: boolean
+  }) => Promise<GeocodeAddresses | null>
   now: () => Date
 }
 
@@ -85,7 +90,11 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
       }
     }
 
-    const point = await deps.repo.findPoint(pointId, locale)
+    // 点位与地址缓存并发读，串行会白等一个 RTT
+    const [point, addressRow] = await Promise.all([
+      deps.repo.findPoint(pointId, locale),
+      deps.repo.findAddress(pointId),
+    ])
     if (!point) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
 
     const rawName = String(point.localizedName || point.name || '').trim()
@@ -105,14 +114,15 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
     const note = String(point.localizedNote || point.mark || '').trim() || null
     const geo: [number, number] | null =
       point.geoLat != null && point.geoLng != null ? [point.geoLat, point.geoLng] : null
+    const inJapan = geo ? isInJapan(geo[0], geo[1]) : false
 
-    let address = pickAddress(await deps.repo.findAddress(pointId), locale)
+    let address = pickAddress(addressRow, locale)
     if (!address && geo) {
       // 全局日预算：当日已回填的行数用完就不再打上游，address 留 null 按短缓存返回
       const utcDayStart = new Date(Math.floor(now.getTime() / 86_400_000) * 86_400_000)
       const resolvedToday = await deps.repo.countResolvedSince(utcDayStart)
       if (resolvedToday < DAILY_GEOCODE_BUDGET) {
-        const resolved = await deps.geocode({ lat: geo[0], lng: geo[1] })
+        const resolved = await deps.geocode({ lat: geo[0], lng: geo[1], includeCountry: !inJapan })
         // 三语全空说明上游没给出可用的行政区，不写缓存，下次还能再试
         if (resolved && (resolved.zh || resolved.en || resolved.ja)) {
           const row: PointAddressRow = {
@@ -133,7 +143,7 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
       address,
       geo,
       note,
-      inJapan: geo ? isInJapan(geo[0], geo[1]) : false,
+      inJapan,
       displayName,
       animeTitle,
     }

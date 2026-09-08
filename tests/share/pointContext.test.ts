@@ -70,7 +70,7 @@ describe('GET /api/share/point-context', () => {
       animeTitle: '摇曳露营△ 三期',
     })
     expect(geocode).toHaveBeenCalledTimes(1)
-    expect(geocode).toHaveBeenCalledWith({ lat: 35.7, lng: 139.56 })
+    expect(geocode).toHaveBeenCalledWith({ lat: 35.7, lng: 139.56, includeCountry: false })
     expect((await repo.findAddress('101:budo'))?.addressJa).toBe(ADDRESSES.ja)
   })
 
@@ -129,6 +129,25 @@ describe('GET /api/share/point-context', () => {
     const json = await res.json()
     expect(json.inJapan).toBe(false)
     expect(json.address).toBe(ADDRESSES.zh)
+  })
+
+  it('海外点位地址带 country 段并请求上游包含国家（旧金山 fixture）', async () => {
+    const SF_ADDRESSES = {
+      zh: '美国 加利福尼亚州 旧金山',
+      en: 'San Francisco, California, United States',
+      ja: 'アメリカ カリフォルニア州 サンフランシスコ',
+    }
+    const repo = new MemoryPointContextRepo([{ ...ROW, geoLat: 37.7749, geoLng: -122.4194 }])
+    const geocode = vi.fn(async () => SF_ADDRESSES)
+    const res = await createGetPointContextHandler(makeDeps({ repo, geocode }))(
+      makeRequest('pointId=101%3Abudo&locale=zh'),
+    )
+    const json = await res.json()
+    expect(json.inJapan).toBe(false)
+    expect(json.address).toBe('美国 加利福尼亚州 旧金山')
+    expect(geocode).toHaveBeenCalledWith({ lat: 37.7749, lng: -122.4194, includeCountry: true })
+    // 写回缓存的也是带 country 的地址，缓存命中后无需再拼
+    expect((await repo.findAddress('101:budo'))?.addressEn).toBe(SF_ADDRESSES.en)
   })
 
   it('i18n 的 name/note 优先于原始 name/mark', async () => {

@@ -10,19 +10,23 @@ const BRACKETS: ReadonlyArray<readonly [string, string]> = [
 const SEPARATORS: readonly string[] = [' ', ':']
 
 /**
- * 长度保持的全角半角折叠 + 小写。
+ * 长度保持的折叠 + 小写（全角 ASCII + 表意空格折叠，不含半角片假名）。
  * 刻意不用 NFKC：NFKC 会改变字符串长度（如 ㍿ → 株式会社），
  * 而这里折叠后的下标要拿去 slice 原串，必须逐字符 1:1 映射。
+ * 小写也因此逐字符做：`İ`.toLowerCase() 会展开成两个码位（i + 组合上点），
+ * 长度一变就放弃折叠该字符，保住下标对应关系。
  */
 export function foldTitleText(value: string): string {
   let out = ''
   for (const ch of String(value || '')) {
+    let folded = ch
     const code = ch.codePointAt(0)!
-    if (code >= 0xff01 && code <= 0xff5e) out += String.fromCharCode(code - 0xfee0)
-    else if (code === 0x3000) out += ' '
-    else out += ch
+    if (code >= 0xff01 && code <= 0xff5e) folded = String.fromCharCode(code - 0xfee0)
+    else if (code === 0x3000) folded = ' '
+    const lowered = folded.toLowerCase()
+    out += lowered.length === folded.length ? lowered : folded
   }
-  return out.toLowerCase()
+  return out
 }
 
 /**
