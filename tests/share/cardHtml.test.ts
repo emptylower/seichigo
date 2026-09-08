@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CARD_METRICS, buildAnimeMetaLine, escapeHtml, formatSceneTime } from '@/lib/share/cardHtml'
+import {
+  CARD_METRICS,
+  buildAnimeMetaLine,
+  buildCardHtml,
+  escapeHtml,
+  formatSceneTime,
+  type CardHtmlInput,
+} from '@/lib/share/cardHtml'
 import { SHARE_CARD_SIZES } from '@/lib/share/types'
 
 describe('formatSceneTime', () => {
@@ -62,5 +69,116 @@ describe('CARD_METRICS', () => {
     expect(CARD_METRICS.portrait.nameSize).toBe(60)
     expect(CARD_METRICS.portrait.nameLines).toBe(2)
     expect(CARD_METRICS.landscape.nameLines).toBe(1)
+  })
+})
+
+const BASE: CardHtmlInput = {
+  layout: 'landscape',
+  locale: 'zh',
+  displayName: '须贺神社',
+  animeTitle: '你的名字。',
+  episode: '1',
+  scene: '19:54',
+  address: '東京都 新宿区 须贺町',
+  note: '男女主角重逢的阶梯',
+  geo: [35.6895, 139.7],
+  inJapan: true,
+  animeImageDataUri: 'data:image/webp;base64,QUJD',
+  photoDataUri: null,
+  qrTargetUrl: 'https://seichigo.com/map?b=101&p=101%3Asuga',
+  text: { qrTitle: '扫码获取点位导航', qrSub: '地图 · 交通 · 周边点位', tagline: '5 万+ 动画取景地' },
+}
+
+describe('buildCardHtml', () => {
+  it('输出完整 HTML 文档，body 固定为该版式尺寸', () => {
+    const html = buildCardHtml(BASE)
+    expect(html.startsWith('<!DOCTYPE html>')).toBe(true)
+    expect(html).toContain('</html>')
+    expect(html).toContain('width:1200px')
+    expect(html).toContain('height:630px')
+    expect(html).toContain('margin:0')
+    expect(html).toContain('overflow:hidden')
+  })
+
+  it('竖版换成 1080×1440', () => {
+    const html = buildCardHtml({ ...BASE, layout: 'portrait' })
+    expect(html).toContain('width:1080px')
+    expect(html).toContain('height:1440px')
+  })
+
+  it('用 Browser Run 自带的 CJK 字体栈', () => {
+    expect(buildCardHtml(BASE)).toContain(
+      '"Noto Sans CJK SC","Noto Sans CJK JP",system-ui,sans-serif',
+    )
+  })
+
+  it('断行交给浏览器：点位名与说明用 -webkit-line-clamp', () => {
+    const html = buildCardHtml(BASE)
+    expect(html).toContain('-webkit-line-clamp:1')
+    expect(html).toContain('-webkit-line-clamp:2')
+    const portrait = buildCardHtml({ ...BASE, layout: 'portrait' })
+    expect(portrait).toContain('-webkit-line-clamp:2')
+  })
+
+  it('文字全部转义，不留未替换占位符', () => {
+    const html = buildCardHtml({ ...BASE, displayName: '<script>x</script>' })
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>x</script>')
+    expect(html).not.toMatch(/\{\{|\}\}|__[A-Z_]+__/)
+  })
+
+  it('有动画截图时内联 base64，没有时用粉色渐变兜底', () => {
+    expect(buildCardHtml(BASE)).toContain('src="data:image/webp;base64,QUJD"')
+    const noImage = buildCardHtml({ ...BASE, animeImageDataUri: null })
+    expect(noImage).not.toContain('data:image')
+    expect(noImage).toContain('linear-gradient(135deg,#fce7f3,#fdf2f8)')
+  })
+
+  it('有实拍时切对比布局（两张图都出现）', () => {
+    const html = buildCardHtml({ ...BASE, photoDataUri: 'data:image/jpeg;base64,WFla' })
+    expect(html).toContain('data:image/webp;base64,QUJD')
+    expect(html).toContain('data:image/jpeg;base64,WFla')
+    expect(html).toContain('class="visual compare"')
+  })
+
+  it('无地址 / 无说明时对应的行整体不渲染', () => {
+    const html = buildCardHtml({ ...BASE, address: null, note: null })
+    expect(html).not.toContain('class="row address"')
+    expect(html).not.toContain('class="row note"')
+    expect(html).toContain('class="row name"')
+  })
+
+  it('inJapan 为 false 时不渲染轮廓', () => {
+    const html = buildCardHtml({ ...BASE, inJapan: false, geo: [1.35, 103.8] })
+    expect(html).not.toContain('class="locator"')
+  })
+
+  it('无坐标时不渲染坐标行，胶囊只剩两行', () => {
+    const html = buildCardHtml({ ...BASE, geo: null, inJapan: false })
+    expect(html).not.toContain('class="cap-coord"')
+    expect(html).toContain('class="cap-title')
+    expect(html).toContain('class="cap-sub')
+  })
+
+  it('有坐标时坐标行保留 4 位小数并用等宽字体', () => {
+    const html = buildCardHtml(BASE)
+    expect(html).toContain('35.6895, 139.7000')
+    expect(html).toContain('ui-monospace')
+  })
+
+  it('二维码内联成 SVG，且编码的是稳定深链而不是短链', () => {
+    const html = buildCardHtml(BASE)
+    expect(html).toContain('<svg xmlns="http://www.w3.org/2000/svg"')
+    expect(html).not.toContain('/s/')
+  })
+
+  it('三语 × 两版式都能出图且都带页脚站点名', () => {
+    for (const locale of ['zh', 'en', 'ja'] as const) {
+      for (const layout of ['portrait', 'landscape'] as const) {
+        const html = buildCardHtml({ ...BASE, locale, layout })
+        expect(html, `${locale}/${layout}`).toContain('seichigo.com')
+        expect(html, `${locale}/${layout}`).toContain('5 万+ 动画取景地')
+      }
+    }
   })
 })

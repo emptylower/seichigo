@@ -1,4 +1,6 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { buildJapanOutlinePath, projectJapanLatLng } from '@/lib/share/japanPath'
+import { buildQrSvg } from '@/lib/share/qrSvg'
 import { SHARE_CARD_SIZES, type ShareCardLayout } from '@/lib/share/types'
 
 /**
@@ -178,4 +180,207 @@ export function buildAnimeMetaLine(input: {
   }
   if (input.scene) parts.push(formatSceneTime(input.scene))
   return parts.join(' · ')
+}
+
+export type CardHtmlInput = {
+  layout: ShareCardLayout
+  locale: SupportedLocale
+  /** 已由 point-context 去掉作品名前缀的点位名 */
+  displayName: string
+  animeTitle: string
+  episode: string | null
+  /** 已格式化的 mm:ss */
+  scene: string | null
+  address: string | null
+  note: string | null
+  geo: [number, number] | null
+  inJapan: boolean
+  /** data:image/...;base64,... —— 渲染时不发外部请求，保证截图确定性 */
+  animeImageDataUri: string | null
+  /** 有值时切对比布局（横版左右、竖版上下） */
+  photoDataUri: string | null
+  qrTargetUrl: string
+  text: { qrTitle: string; qrSub: string; tagline: string }
+}
+
+/** Browser Run 环境自带中日文字体，直接点名即可 */
+const FONT_STACK = '"Noto Sans CJK SC","Noto Sans CJK JP",system-ui,sans-serif'
+const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+
+const COLORS = {
+  name: '#0f172a',
+  anime: '#db2777',
+  address: '#334155',
+  note: '#64748b',
+  capsuleBg: '#fdf2f8',
+  capsuleBorder: '#fbcfe8',
+  capsuleTitle: '#be185d',
+  capsuleCoord: '#334155',
+  capsuleSub: '#64748b',
+  pin: '#ec4899',
+  locatorFill: '#fbcfe8',
+  locatorStroke: '#ec4899',
+  locatorMarker: '#db2777',
+  footer: '#64748b',
+  tagline: '#94a3b8',
+} as const
+
+/** 坐标行：`纬度, 经度`，各保留 4 位小数（约 11m 精度） */
+function formatGeoLine(geo: readonly [number, number]): string {
+  return `${geo[0].toFixed(4)}, ${geo[1].toFixed(4)}`
+}
+
+/** 地址行前缀的矢量小图钉：圆头 + 下方三角 + 白色内点。不用 emoji，缺字体会掉豆腐块 */
+function addressPinSvg(size: number): string {
+  const w = size * 0.62
+  return [
+    `<svg class="pin" width="${w.toFixed(2)}" height="${size}" viewBox="0 0 20 32" aria-hidden="true">`,
+    `<path d="M10 0C4.48 0 0 4.48 0 10c0 7.5 10 22 10 22s10-14.5 10-22C20 4.48 15.52 0 10 0z" fill="${COLORS.pin}"/>`,
+    `<circle cx="10" cy="10" r="4" fill="#ffffff"/>`,
+    '</svg>',
+  ].join('')
+}
+
+/** 坐标行左侧 GPS 十字圆标：圆环 + 四向短线 */
+function gpsIconSvg(size: number): string {
+  return [
+    `<svg class="gps" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">`,
+    `<g fill="none" stroke="${COLORS.pin}" stroke-width="2" stroke-linecap="round">`,
+    '<circle cx="12" cy="12" r="7"/>',
+    '<path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>',
+    '</g></svg>',
+  ].join('')
+}
+
+function locatorSvg(metrics: CardMetrics, geo: readonly [number, number] | null): string {
+  const size = metrics.outlineSize
+  const box = { width: size, height: size }
+  const d = buildJapanOutlinePath(box)
+  const strokeWidth = Math.max(1, size / 160)
+  let marker = ''
+  if (geo) {
+    const point = projectJapanLatLng(box, geo[0], geo[1])
+    const r = Math.max(3, size * 0.035)
+    marker = `<circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${r.toFixed(2)}" fill="${COLORS.locatorMarker}"/>`
+  }
+  return [
+    `<svg class="locator" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">`,
+    `<path d="${d}" fill="${COLORS.locatorFill}" stroke="${COLORS.locatorStroke}" stroke-width="${strokeWidth.toFixed(2)}" stroke-linejoin="round"/>`,
+    marker,
+    '</svg>',
+  ].join('')
+}
+
+function visualSection(input: CardHtmlInput, metrics: CardMetrics): string {
+  const shot = (uri: string) => `<img class="shot" src="${uri}" alt="">`
+  if (input.photoDataUri && input.animeImageDataUri) {
+    return `<div class="visual compare">${shot(input.animeImageDataUri)}${shot(input.photoDataUri)}</div>`
+  }
+  if (input.animeImageDataUri) return `<div class="visual">${shot(input.animeImageDataUri)}</div>`
+  if (input.photoDataUri) return `<div class="visual">${shot(input.photoDataUri)}</div>`
+  void metrics
+  return '<div class="visual empty"></div>'
+}
+
+function textRows(input: CardHtmlInput, metrics: CardMetrics): string {
+  const rows: string[] = []
+  const name = String(input.displayName || '').trim()
+  if (name) {
+    rows.push(`<div class="row name">${escapeHtml(name)}</div>`)
+  }
+  const anime = buildAnimeMetaLine({
+    locale: input.locale,
+    animeTitle: input.animeTitle,
+    episode: input.episode,
+    scene: input.scene,
+  })
+  if (anime) rows.push(`<div class="row anime clamp1">${escapeHtml(anime)}</div>`)
+  const address = String(input.address || '').trim()
+  if (address) {
+    rows.push(
+      `<div class="row address">${addressPinSvg(metrics.addressSize)}<span class="clamp1">${escapeHtml(address)}</span></div>`,
+    )
+  }
+  const note = String(input.note || '').trim()
+  if (note) rows.push(`<div class="row note clamp2">${escapeHtml(note)}</div>`)
+  return rows.join('')
+}
+
+function capsuleSection(input: CardHtmlInput, metrics: CardMetrics): string {
+  const locator = input.inJapan ? locatorSvg(metrics, input.geo) : ''
+  const coord = input.geo
+    ? `<div class="cap-coord">${gpsIconSvg(metrics.coordSize)}<span>${escapeHtml(formatGeoLine(input.geo))}</span></div>`
+    : ''
+  const qr = buildQrSvg(input.qrTargetUrl)
+  return [
+    '<div class="capsule">',
+    locator,
+    '<div class="middle">',
+    `<div class="cap-title clamp1">${escapeHtml(input.text.qrTitle)}</div>`,
+    coord,
+    `<div class="cap-sub clamp1">${escapeHtml(input.text.qrSub)}</div>`,
+    '</div>',
+    `<div class="qr">${qr}</div>`,
+    '</div>',
+  ].join('')
+}
+
+function styles(input: CardHtmlInput, metrics: CardMetrics): string {
+  const isPortrait = input.layout === 'portrait'
+  // 无坐标行时副标题接在标题后面，用标题后的间距
+  const subGap = input.geo ? metrics.subGap : metrics.titleGap
+  return `
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden}
+body{width:${metrics.width}px;height:${metrics.height}px;background:#ffffff;font-family:${FONT_STACK};-webkit-font-smoothing:antialiased}
+.card{width:${metrics.width}px;height:${metrics.height}px;display:flex;flex-direction:${isPortrait ? 'column' : 'row'};background:#ffffff}
+.visual{flex:none;${isPortrait ? `width:${metrics.width}px;height:${metrics.visual}px` : `width:${metrics.visual}px;height:${metrics.height}px`};display:flex;flex-direction:${isPortrait ? 'column' : 'row'};overflow:hidden}
+.visual.empty{background:linear-gradient(135deg,#fce7f3,#fdf2f8)}
+.visual .shot{width:100%;height:100%;object-fit:cover;display:block}
+.visual.compare .shot{${isPortrait ? 'height:50%' : 'width:50%'}}
+.column{flex:1;min-width:0;display:flex;flex-direction:column;padding:${metrics.columnTop}px ${metrics.columnRight}px ${metrics.columnBottom}px ${metrics.columnLeft}px}
+.spacer{flex:1;min-height:${metrics.capsuleTopGap}px}
+.clamp1,.clamp2{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.clamp1{-webkit-line-clamp:1}
+.clamp2{-webkit-line-clamp:2}
+.row{word-break:break-word}
+.row.name{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;-webkit-line-clamp:${metrics.nameLines};font-size:${metrics.nameSize}px;line-height:1.25;font-weight:700;color:${COLORS.name};margin-bottom:${metrics.nameGap}px}
+.row.anime{font-size:${metrics.animeSize}px;line-height:1.3;font-weight:600;color:${COLORS.anime};margin-bottom:${metrics.animeGap}px}
+.row.address{display:flex;align-items:center;gap:${(metrics.addressSize * 0.28).toFixed(2)}px;font-size:${metrics.addressSize}px;line-height:1.3;font-weight:400;color:${COLORS.address};margin-bottom:${metrics.addressGap}px}
+.row.address .pin{flex:none}
+.row.address span{min-width:0}
+.row.note{font-size:${metrics.noteSize}px;line-height:1.35;font-weight:400;color:${COLORS.note}}
+.capsule{flex:none;display:flex;align-items:center;gap:${metrics.capsuleGap}px;background:${COLORS.capsuleBg};border:1px solid ${COLORS.capsuleBorder};border-radius:${metrics.capsuleRadius}px;padding:${metrics.capsulePadV}px ${metrics.capsulePadH}px}
+.capsule .locator{flex:none;width:${metrics.outlineSize}px;height:${metrics.outlineSize}px}
+.middle{flex:1;min-width:0}
+.cap-title{font-size:${metrics.titleSize}px;line-height:1.2;font-weight:700;color:${COLORS.capsuleTitle}}
+.cap-coord{display:flex;align-items:center;gap:${(metrics.coordSize * 0.3).toFixed(2)}px;font-size:${metrics.coordSize}px;line-height:1.2;color:${COLORS.capsuleCoord};font-family:${MONO_STACK};margin-top:${metrics.titleGap}px}
+.cap-coord .gps{flex:none}
+.cap-sub{font-size:${metrics.subSize}px;line-height:1.2;font-weight:400;color:${COLORS.capsuleSub};margin-top:${subGap}px}
+.qr{flex:none;width:${metrics.qrSize}px;height:${metrics.qrSize}px;background:#ffffff;border:1px solid ${COLORS.capsuleBorder};border-radius:${metrics.qrRadius}px;padding:${metrics.qrPad}px}
+.qr svg{width:100%;height:100%;display:block}
+.footer{flex:none;display:flex;align-items:baseline;justify-content:space-between;margin-top:${metrics.footerGap}px;font-size:${metrics.footerSize}px;font-weight:500;color:${COLORS.footer}}
+.tagline{font-size:${metrics.taglineSize}px;font-weight:400;color:${COLORS.tagline};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:16px}
+`.trim()
+}
+
+/**
+ * 卡片的唯一渲染源：输出一份自包含的 HTML 文档，交给 Browser Run 截图。
+ * 图片一律内联 base64，渲染时不发任何外部请求，保证截图确定性。
+ */
+export function buildCardHtml(input: CardHtmlInput): string {
+  const metrics = CARD_METRICS[input.layout]
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="' + escapeHtml(input.locale) + '"><head><meta charset="utf-8">',
+    `<style>${styles(input, metrics)}</style>`,
+    '</head><body><div class="card">',
+    visualSection(input, metrics),
+    '<div class="column">',
+    `<div class="text">${textRows(input, metrics)}</div>`,
+    '<div class="spacer"></div>',
+    capsuleSection(input, metrics),
+    `<div class="footer"><span>⛩ seichigo.com</span><span class="tagline">${escapeHtml(input.text.tagline)}</span></div>`,
+    '</div></div></body></html>',
+  ].join('')
 }
