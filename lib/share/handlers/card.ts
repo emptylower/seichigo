@@ -76,8 +76,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+/** data URI 的 contentType 白名单：来自上游响应头与 R2 元数据，不能直接进 HTML 属性 */
+const IMAGE_CONTENT_TYPE_PATTERN = /^image\/[a-z0-9.+-]{1,32}$/
+
 function toDataUri(bytes: Uint8Array, contentType: string): string {
-  const type = String(contentType || '').trim() || 'image/jpeg'
+  const raw = String(contentType || '').trim().toLowerCase()
+  const type = IMAGE_CONTENT_TYPE_PATTERN.test(raw) ? raw : 'image/jpeg'
   return `data:${type};base64,${bytesToBase64(bytes)}`
 }
 

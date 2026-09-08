@@ -272,7 +272,7 @@ function locatorSvg(metrics: CardMetrics, geo: readonly [number, number] | null)
 }
 
 function visualSection(input: CardHtmlInput, metrics: CardMetrics): string {
-  const shot = (uri: string) => `<img class="shot" src="${uri}" alt="">`
+  const shot = (uri: string) => `<img class="shot" src="${escapeHtml(uri)}" alt="">`
   if (input.photoDataUri && input.animeImageDataUri) {
     return `<div class="visual compare">${shot(input.animeImageDataUri)}${shot(input.photoDataUri)}</div>`
   }

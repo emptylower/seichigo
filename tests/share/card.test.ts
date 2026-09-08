@@ -276,6 +276,25 @@ describe('renderAndStoreCard', () => {
     })
     expect(renderCard.mock.calls[0]![0].html).toContain('data:image/webp;base64,CQkJ')
   })
+
+  it('上游 contentType 含引号时白名单回落 image/jpeg，不产生属性逃逸', async () => {
+    const renderCard = vi.fn(
+      async (_input: { html: string; width: number; height: number }) => new Uint8Array([1]),
+    )
+    await renderAndStoreCard(
+      makeDeps({
+        renderCard,
+        fetchImage: async () => ({
+          bytes: new Uint8Array([1]),
+          contentType: 'image/jpeg" onload="alert(1)',
+        }),
+      }),
+      { pointId: '101:suga', locale: 'zh', layout: 'landscape', photoKey: null },
+    )
+    const html = renderCard.mock.calls[0]![0].html
+    expect(html).toContain('data:image/jpeg;base64,')
+    expect(html).not.toContain('onload')
+  })
 })
 
 function get(url: string, ip?: string): Request {

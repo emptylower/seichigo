@@ -134,6 +134,12 @@ describe('buildCardHtml', () => {
     expect(noImage).toContain('linear-gradient(135deg,#fce7f3,#fdf2f8)')
   })
 
+  it('img src 过 escapeHtml，data URI 携带引号时逃不出属性', () => {
+    const html = buildCardHtml({ ...BASE, animeImageDataUri: 'data:image/jpeg;base64,ab"c' })
+    expect(html).toContain('src="data:image/jpeg;base64,ab&quot;c"')
+    expect(html).not.toContain('ab"c')
+  })
+
   it('有实拍时切对比布局（两张图都出现）', () => {
     const html = buildCardHtml({ ...BASE, photoDataUri: 'data:image/jpeg;base64,WFla' })
     expect(html).toContain('data:image/webp;base64,QUJD')
