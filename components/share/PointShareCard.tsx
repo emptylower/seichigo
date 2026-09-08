@@ -6,15 +6,27 @@ import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
+  CAPSULE_METRICS,
   CARD_FOOTER_SIZES,
+  CARD_FOOTER_TAGLINE_SIZES,
   CARD_ROW_METRICS,
+  GEO_FONT_STACK,
+  LANDSCAPE_NOTE_WRAP_INSET,
   addressPinMetrics,
+  avoidOrphanTail,
+  buildCapsuleMiddle,
+  buildCapsuleMiddleRows,
   buildCardLayout,
   buildCardTextPlan,
+  cardTextBlockHeight,
   computeCoverRect,
+  formatGeoLine,
+  gpsIconMetrics,
+  portraitVisualHeight,
   resolveCardVariant,
   wrapLines,
   type CardTextRowKind,
+  type Rect,
 } from '@/components/share/pointShareCardDraw'
 import { drawJapanLocator, loadJapanOutline } from '@/components/share/japanLocator'
 
@@ -42,6 +54,15 @@ export type PointShareCardInput = {
   shareUrl: string
   /** 二维码内容：带 c=save 渠道参数的短链 */
   qrUrl?: string
+  /** 胶囊与页脚的三语文案，由 Panel 用 t() 注入 */
+  cardText: {
+    /** 胶囊中列第一行（share.cardQrTitle） */
+    qrTitle: string
+    /** 胶囊中列第三行（share.cardQrSub） */
+    qrSub: string
+    /** 页脚右侧标语（share.cardTagline） */
+    tagline: string
+  }
 }
 
 const QUALITY_FIRST = 0.9
@@ -106,17 +127,61 @@ function drawAddressPin(ctx: CanvasRenderingContext2D, x: number, y: number, siz
 }
 
 const ROW_COLORS: Readonly<Record<CardTextRowKind, string>> = {
-  name: '#111827',
-  anime: '#be185d',
-  address: '#374151',
-  note: '#6b7280',
+  name: '#0f172a',
+  anime: '#db2777',
+  address: '#334155',
+  note: '#64748b',
 }
 
 const ROW_WEIGHTS: Readonly<Record<CardTextRowKind, string>> = {
-  name: 'bold',
+  name: '700',
   anime: '600',
   address: '400',
   note: '400',
+}
+
+/** 胶囊配色（v2.1 定稿）：粉底、粉边、品牌粉标题 */
+const CAPSULE_COLORS = {
+  bg: '#fdf2f8',
+  border: '#fbcfe8',
+  title: '#be185d',
+  coord: '#334155',
+  sub: '#64748b',
+  gps: '#ec4899',
+} as const
+
+/** 手写圆角矩形路径：不依赖 ctx.roundRect（老 Safari 没有），测试里也好断言 */
+function roundRectPath(ctx: CanvasRenderingContext2D, rect: Rect, radius: number): void {
+  const r = Math.min(radius, rect.width / 2, rect.height / 2)
+  ctx.beginPath()
+  ctx.moveTo(rect.x + r, rect.y)
+  ctx.arcTo(rect.x + rect.width, rect.y, rect.x + rect.width, rect.y + rect.height, r)
+  ctx.arcTo(rect.x + rect.width, rect.y + rect.height, rect.x, rect.y + rect.height, r)
+  ctx.arcTo(rect.x, rect.y + rect.height, rect.x, rect.y, r)
+  ctx.arcTo(rect.x, rect.y, rect.x + rect.width, rect.y, r)
+  ctx.closePath()
+}
+
+/** GPS 十字圆标：圆环 + 四向短线。y 是坐标行行顶（textBaseline top），图标边长同字号 */
+function drawGpsCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  const cx = x + size / 2
+  const cy = y + size / 2
+  const ring = size * 0.32
+  const stubInner = ring + size * 0.09
+  const stubOuter = size * 0.5
+  ctx.save()
+  ctx.strokeStyle = CAPSULE_COLORS.gps
+  ctx.lineWidth = Math.max(1.5, size * 0.08)
+  ctx.beginPath()
+  ctx.arc(cx, cy, ring, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
+    ctx.moveTo(cx + dx * stubInner, cy + dy * stubInner)
+    ctx.lineTo(cx + dx * stubOuter, cy + dy * stubOuter)
+  }
+  ctx.stroke()
+  ctx.restore()
 }
 
 /** 作品行：《作品名》 · 第 N 集 · mm:ss，缺哪段就少哪段 */
@@ -176,13 +241,16 @@ export default function PointShareCard({
         : null
       if (isCancelled()) return
       const variant = resolveCardVariant(Boolean(photoImg))
-      const layout = buildCardLayout(input.layout, variant)
-      canvas.width = layout.canvas.width
-      canvas.height = layout.canvas.height
+      // P2：竖版要先量出文字块行数才能定主视觉高度；textWidth/padding 不随 visualHeight 变
+      const baseLayout = buildCardLayout(input.layout, variant)
+      const capsuleM = CAPSULE_METRICS[input.layout]
+      const qrImageSize = baseLayout.qr.size - capsuleM.qrPad * 2
+      canvas.width = baseLayout.canvas.width
+      canvas.height = baseLayout.canvas.height
 
       const qrDataUrl = await QRCode.toDataURL(input.qrUrl || input.shareUrl, {
         margin: 1,
-        width: layout.qr.size,
+        width: qrImageSize,
         color: { dark: '#111827', light: '#ffffff' },
       })
       if (isCancelled()) return
@@ -201,10 +269,9 @@ export default function PointShareCard({
         return null
       }
 
-      const [animeImg, qrImg, logoImg, outline] = await Promise.all([
+      const [animeImg, qrImg, outline] = await Promise.all([
         loadAnime(),
         loadImage(qrDataUrl).catch(() => null),
-        loadImage('/brand/web-logo.png').catch(() => null),
         // 轮廓 JSON 只有日本境内点位才下载；下不来就不画轮廓，别拖垮整张卡
         input.inJapan ? loadJapanOutline().catch(() => null) : Promise.resolve(null),
       ])
@@ -212,7 +279,63 @@ export default function PointShareCard({
 
       // 底色
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, layout.canvas.width, layout.canvas.height)
+      ctx.fillRect(0, 0, baseLayout.canvas.width, baseLayout.canvas.height)
+
+      // 文字块行数先量出来：P1 孤字防护与 P2 竖版主视觉补偿都依赖断行结果
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      const rowMetrics = CARD_ROW_METRICS[input.layout]
+      const measure = (text: string) => ctx.measureText(text).width
+
+      ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
+      const nameLines = avoidOrphanTail(
+        wrapLines(measure, input.pointName, baseLayout.textWidth, rowMetrics.name.maxLines),
+        measure,
+        baseLayout.textWidth,
+        rowMetrics.name.size,
+      )
+
+      ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
+      const animeLineText =
+        wrapLines(measure, animeMetaLine(input), baseLayout.textWidth, 1)[0] || ''
+
+      ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
+      const addressPin = addressPinMetrics(rowMetrics.address.size)
+      const addressLineText = input.address
+        ? wrapLines(measure, input.address, baseLayout.textWidth - addressPin.offset, 1)[0] || ''
+        : ''
+
+      ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
+      // P1：横版说明行右缘留 8px 安全余量，尾字不再被挤到第二行；孤字并入上一行
+      const noteWrapWidth =
+        baseLayout.textWidth - (input.layout === 'landscape' ? LANDSCAPE_NOTE_WRAP_INSET : 0)
+      const noteLines = avoidOrphanTail(
+        wrapLines(measure, String(input.note || ''), noteWrapWidth, rowMetrics.note.maxLines),
+        measure,
+        noteWrapWidth,
+        rowMetrics.note.size,
+      )
+
+      // P2：竖版主视觉 = min(760, 640 + 满行与实际文字块高度差)；横版几何不变
+      const layout =
+        input.layout === 'portrait'
+          ? buildCardLayout(input.layout, variant, {
+              visualHeight: portraitVisualHeight(
+                cardTextBlockHeight('portrait', {
+                  nameLines: rowMetrics.name.maxLines,
+                  hasAnime: Boolean(animeLineText),
+                  hasAddress: Boolean(addressLineText),
+                  noteLines: rowMetrics.note.maxLines,
+                }),
+                cardTextBlockHeight('portrait', {
+                  nameLines: nameLines.length,
+                  hasAnime: Boolean(animeLineText),
+                  hasAddress: Boolean(addressLineText),
+                  noteLines: noteLines.length,
+                }),
+              ),
+            })
+          : baseLayout
 
       // 主视觉
       if (animeImg) {
@@ -226,32 +349,7 @@ export default function PointShareCard({
       }
       if (layout.photo && photoImg) drawCover(ctx, photoImg, layout.photo)
 
-      // 文字块：先按各自字号量出行，再交给 buildCardTextPlan 排 y
-      ctx.textBaseline = 'top'
-      ctx.textAlign = 'left'
-      const rowMetrics = CARD_ROW_METRICS[input.layout]
-      const measure = (text: string) => ctx.measureText(text).width
-
-      ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
-      const nameLines = wrapLines(measure, input.pointName, layout.textWidth, rowMetrics.name.maxLines)
-
-      ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
-      const animeLineText = wrapLines(measure, animeMetaLine(input), layout.textWidth, 1)[0] || ''
-
-      ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
-      const addressPin = addressPinMetrics(rowMetrics.address.size)
-      const addressLineText = input.address
-        ? wrapLines(measure, input.address, layout.textWidth - addressPin.offset, 1)[0] || ''
-        : ''
-
-      ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
-      const noteLines = wrapLines(
-        measure,
-        String(input.note || ''),
-        layout.textWidth,
-        rowMetrics.note.maxLines,
-      )
-
+      // 文字块落位：buildCardTextPlan 按存在的行排 y
       const plan = buildCardTextPlan({
         layout: input.layout,
         geometry: layout,
@@ -269,7 +367,15 @@ export default function PointShareCard({
         ctx.fillText(row.text, isAddress ? layout.textX + addressPin.offset : layout.textX, row.y)
       }
 
-      // 日本轮廓定位小图：海外点位不画，位置留白（二维码位置不变）
+      // 导航胶囊（v2.1）：粉底圆角横条，左轮廓 / 中三行 / 右二维码白卡
+      roundRectPath(ctx, layout.capsule, capsuleM.radius)
+      ctx.fillStyle = CAPSULE_COLORS.bg
+      ctx.fill()
+      ctx.strokeStyle = CAPSULE_COLORS.border
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      // 左：日本轮廓定位小图；海外点位不画，中列左移贴胶囊左缘
       if (input.inJapan && outline) {
         drawJapanLocator(
           ctx,
@@ -279,27 +385,63 @@ export default function PointShareCard({
         )
       }
 
-      // 二维码
+      // 右：二维码白卡（白底、粉边、圆角），图按 qrPad 内缩
+      roundRectPath(
+        ctx,
+        { x: layout.qr.x, y: layout.qr.y, width: layout.qr.size, height: layout.qr.size },
+        capsuleM.qrRadius,
+      )
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      ctx.strokeStyle = CAPSULE_COLORS.border
+      ctx.lineWidth = 1
+      ctx.stroke()
       if (qrImg) {
-        ctx.drawImage(qrImg, layout.qr.x, layout.qr.y, layout.qr.size, layout.qr.size)
+        ctx.drawImage(qrImg, layout.qr.x + capsuleM.qrPad, layout.qr.y + capsuleM.qrPad, qrImageSize, qrImageSize)
       }
 
-      // 页脚：鸟居图标 + 站点名
+      // 中：三行——胶囊标题 / 等宽坐标行（左侧 GPS 十字圆标）/ 副标题；无坐标时两行居中
+      const middle = buildCapsuleMiddle(layout, input.inJapan)
+      const middleRows = buildCapsuleMiddleRows(input.layout, middle, Boolean(input.geo))
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      ctx.font = fontOf(capsuleM.titleSize, '700')
+      const qrTitleText = wrapLines(measure, input.cardText.qrTitle, middle.width, 1)[0] || ''
+      ctx.fillStyle = CAPSULE_COLORS.title
+      ctx.fillText(qrTitleText, middle.x, middleRows.title.y)
+      if (middleRows.coord && input.geo) {
+        drawGpsCrosshair(ctx, middle.x, middleRows.coord.y, capsuleM.coordSize)
+        ctx.font = `${capsuleM.coordSize}px ${GEO_FONT_STACK}`
+        ctx.fillStyle = CAPSULE_COLORS.coord
+        ctx.fillText(
+          formatGeoLine(input.geo),
+          middle.x + gpsIconMetrics(capsuleM.coordSize).offset,
+          middleRows.coord.y,
+        )
+      }
+      ctx.font = fontOf(capsuleM.subSize, '400')
+      const qrSubText = wrapLines(measure, input.cardText.qrSub, middle.width, 1)[0] || ''
+      ctx.fillStyle = CAPSULE_COLORS.sub
+      ctx.fillText(qrSubText, middle.x, middleRows.sub.y)
+
+      // 页脚（v2.1）：左 ⛩ seichigo.com，右 tagline 右对齐、宽度不够时省略；不再画小 logo
       ctx.textBaseline = 'alphabetic'
       const footerSize = CARD_FOOTER_SIZES[input.layout]
-      ctx.fillStyle = '#9ca3af'
-      ctx.font = `500 ${footerSize}px system-ui, -apple-system, sans-serif`
-      ctx.fillText('⛩ seichigo.com', layout.footerX, layout.footerY)
-      if (logoImg) {
-        const logoHeight = footerSize + 8
-        const logoWidth = logoHeight * (logoImg.width / logoImg.height || 1)
-        ctx.drawImage(
-          logoImg,
-          layout.canvas.width - layout.padding - logoWidth,
-          layout.footerY - logoHeight + 6,
-          logoWidth,
-          logoHeight,
-        )
+      const siteText = '⛩ seichigo.com'
+      ctx.fillStyle = '#64748b'
+      ctx.font = `500 ${footerSize}px ${FONT_STACK}`
+      ctx.fillText(siteText, layout.footerX, layout.footerY)
+      const siteWidth = ctx.measureText(siteText).width
+      const tagline = String(input.cardText.tagline || '').trim()
+      if (tagline) {
+        ctx.font = `400 ${CARD_FOOTER_TAGLINE_SIZES[input.layout]}px ${FONT_STACK}`
+        const taglineWidth = ctx.measureText(tagline).width
+        if (layout.footerX + siteWidth + 16 + taglineWidth <= layout.footerRightX) {
+          ctx.textAlign = 'right'
+          ctx.fillStyle = '#94a3b8'
+          ctx.fillText(tagline, layout.footerRightX, layout.footerY)
+          ctx.textAlign = 'left'
+        }
       }
 
       let blob = await toBlob(canvas, QUALITY_FIRST)

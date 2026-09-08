@@ -64,9 +64,11 @@ describe('share i18n keys', () => {
   ]
   // 2026-09-08 Track B 低危修复：文案编辑器的收起 / 恢复默认
   const CAPTION_EDITOR_KEYS = ['collapseCaption', 'resetCaption']
+  // 2026-09-08 分享卡片 v2.1 导航胶囊：胶囊标题 / 副标题 / 页脚标语
+  const V2_1_KEYS = ['cardQrTitle', 'cardQrSub', 'cardTagline']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
-    for (const key of [...REVIEW_FIX_KEYS, ...V2_KEYS, ...CAPTION_EDITOR_KEYS]) {
+    for (const key of [...REVIEW_FIX_KEYS, ...V2_KEYS, ...CAPTION_EDITOR_KEYS, ...V2_1_KEYS]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }
   })

@@ -178,6 +178,12 @@ export default function PointSharePanel({
       shareUrl,
       // 扫码进站的算「存图」渠道：二维码画带 c=save 的短链
       qrUrl: withShareChannel(shareUrl, 'save'),
+      // v2.1 导航胶囊三语文案（C5 补齐 locales，t() 缺 key 时先回落 key 名）
+      cardText: {
+        qrTitle: t('share.cardQrTitle', locale),
+        qrSub: t('share.cardQrSub', locale),
+        tagline: t('share.cardTagline', locale),
+      },
     }
   }, [
     shareUrl,
