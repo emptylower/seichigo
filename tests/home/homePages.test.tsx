@@ -60,7 +60,7 @@ describe('home page ISR failure handling', () => {
 /** 首页三语的 title/description 与结构化数据（第十二轮第二批 SEO） */
 describe('首页 metadata', () => {
   it('zh：title 与 description 覆盖圣地巡礼／行程规划／巡礼地图／巡礼攻略', () => {
-    expect(zhMetadata.title).toEqual({ absolute: '动漫圣地巡礼行程规划 · AI 规划师 + 全球巡礼点位地图 | SeichiGo' })
+    expect(zhMetadata.title).toEqual({ absolute: 'SeichiGo | 动漫圣地巡礼攻略 · AI 规划 + 全球巡礼点位地图' })
     const description = String(zhMetadata.description)
     for (const keyword of ['圣地巡礼', '行程规划', '巡礼地图', '巡礼攻略']) {
       expect(description).toContain(keyword)

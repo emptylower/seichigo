@@ -3,18 +3,6 @@ import { CONTACT_EMAIL } from '@/lib/email/addresses'
 
 type JsonLdObject = Record<string, any>
 
-export function buildWebSiteJsonLd(): JsonLdObject {
-  const origin = getSiteOrigin()
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'SeichiGo',
-    url: origin,
-    description: '用好读的长文、精致排版和实用的地点列表，帮动漫爱好者完成第一次圣地巡礼的想象与规划。',
-    inLanguage: ['zh', 'en', 'ja'],
-  }
-}
-
 /**
  * 首页专属的 WebSite 节点：带 SearchAction，把「说一句话开始规划」声明成站内
  * 搜索入口（`/plan/start?draft=…`）。`@id` 与全站 WebSite 同源，搜索引擎按 @id 合并。

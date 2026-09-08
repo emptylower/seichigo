@@ -3,7 +3,7 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildZhAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
-const TITLE = '动漫圣地巡礼行程规划 · AI 规划师 + 全球巡礼点位地图 | SeichiGo'
+const TITLE = 'SeichiGo | 动漫圣地巡礼攻略 · AI 规划 + 全球巡礼点位地图'
 const DESCRIPTION =
   '说出看过的作品和假期，AI 规划师帮你做动漫圣地巡礼的行程规划：每天的路线、交通与餐厅一次排好，配全球巡礼地图与人写的巡礼攻略。'
 
