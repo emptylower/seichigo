@@ -628,4 +628,20 @@ describe('PointSharePanel 文案折叠与编辑', () => {
       '我改过的文案 https://seichigo.com/s/AbC12xYz?c=xhs',
     )
   })
+
+  it('编辑器显示原始输入：用户删掉 ?c=copy 后不回填，动作时才改写渠道', async () => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.captionLabel', 'zh') }))
+    const textarea = screen.getByLabelText(t('share.captionLabel', 'zh'))
+    fireEvent.change(textarea, {
+      target: { value: '我的文案 https://seichigo.com/s/AbC12xYz' },
+    })
+    // 编辑器保持用户输入，不把 ?c=copy 回填进去
+    expect(textarea).toHaveValue('我的文案 https://seichigo.com/s/AbC12xYz')
+    // 动作那一刻仍按目的地渠道改写
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(copyTextMock.mock.calls[0]![0]).toBe('我的文案 https://seichigo.com/s/AbC12xYz?c=xhs')
+    expect(textarea).toHaveValue('我的文案 https://seichigo.com/s/AbC12xYz')
+  })
 })

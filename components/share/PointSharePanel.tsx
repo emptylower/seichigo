@@ -236,25 +236,25 @@ export default function PointSharePanel({
     ? toCityLevelAddress(context.address, locale)
     : String(cityName || '').trim()
 
+  // 生成文案固定带 c=copy：编辑器默认内容 = 「复制文案」动作的结果
+  const generatedCaption = buildShareCaption(t('share.captionTemplate', locale), {
+    anime: cardAnimeTitle,
+    point: displayName,
+    address: captionAddress,
+    url: shareUrl ? withShareChannel(shareUrl, 'copy') : '',
+  })
+  // 编辑器与折叠摘要显示原始输入；渠道改写只在动作那一刻做，不回填进编辑器
+  const editorValue = captionOverride ?? generatedCaption
+
   const captionFor = useCallback(
-    (channel: ShareChannel) => {
-      const generated = buildShareCaption(t('share.captionTemplate', locale), {
-        anime: cardAnimeTitle,
-        point: displayName,
-        address: captionAddress,
-        url: shareUrl ? withShareChannel(shareUrl, channel) : '',
-      })
-      if (captionOverride === null) return generated
-      return retargetCaptionChannel(captionOverride, shareUrl, channel)
-    },
-    [locale, cardAnimeTitle, displayName, captionAddress, shareUrl, captionOverride],
+    (channel: ShareChannel) => retargetCaptionChannel(editorValue, shareUrl, channel),
+    [editorValue, shareUrl],
   )
 
-  const copyCaption = captionFor('copy')
   const collapsedCaption =
-    copyCaption.length > CAPTION_COLLAPSED_MAX
-      ? `${copyCaption.slice(0, CAPTION_COLLAPSED_MAX)}…`
-      : copyCaption
+    editorValue.length > CAPTION_COLLAPSED_MAX
+      ? `${editorValue.slice(0, CAPTION_COLLAPSED_MAX)}…`
+      : editorValue
 
   const cardFile = useMemo(
     () => (cardBlob ? blobToFile(cardBlob, buildCardFilename(displayName)) : null),
@@ -358,7 +358,7 @@ export default function PointSharePanel({
     if (busy) return
     setBusy(true)
     try {
-      showToast((await copyText(copyCaption)) ? 'share.toastCopied' : 'share.toastFailed')
+      showToast((await copyText(captionFor('copy'))) ? 'share.toastCopied' : 'share.toastFailed')
     } finally {
       setBusy(false)
     }
@@ -482,7 +482,7 @@ export default function PointSharePanel({
             <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
             <textarea
               rows={3}
-              value={copyCaption}
+              value={editorValue}
               aria-label={t('share.captionLabel', locale)}
               onChange={(event) => setCaptionOverride(event.target.value)}
               className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
