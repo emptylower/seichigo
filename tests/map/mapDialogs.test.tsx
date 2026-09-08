@@ -5,6 +5,10 @@ import MapDialogs from '@/features/map/anitabi/MapDialogs'
 import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
 import { resetMapImageRequestSchedulerForTest } from '@/features/map/anitabi/mapImageRequestScheduler'
 
+vi.mock('next-auth/react', () => ({
+  useSession: vi.fn(() => ({ data: null, status: 'unauthenticated' })),
+}))
+
 beforeEach(() => {
   resetDegradedMapImageHostsForTest()
   resetMapImageRequestSchedulerForTest()

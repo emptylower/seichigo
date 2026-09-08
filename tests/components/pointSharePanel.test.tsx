@@ -27,6 +27,11 @@ vi.mock('@/components/share/shareClient', async () => {
   }
 })
 
+const useSessionMock = vi.fn()
+vi.mock('next-auth/react', () => ({
+  useSession: () => useSessionMock(),
+}))
+
 const PROPS = {
   pointId: '101:suga',
   bangumiId: 101,
@@ -43,6 +48,8 @@ const PROPS = {
 beforeEach(() => {
   createShareLinkMock.mockReset()
   uploadShareAssetsMock.mockReset()
+  useSessionMock.mockReset()
+  useSessionMock.mockReturnValue({ data: { user: { name: 'u' } }, status: 'authenticated' })
   createShareLinkMock.mockResolvedValue({
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
@@ -105,6 +112,21 @@ describe('PointSharePanel 短链与平台按钮', () => {
     await waitFor(() => expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
       '《你的名字。》圣地巡礼｜须贺神社（东京）https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
     ))
+  })
+
+  it('未登录时不发上传请求', async () => {
+    useSessionMock.mockReturnValue({ data: null, status: 'unauthenticated' })
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(1))
+    // 等卡片桩的渲染回调全部跑完再断言
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(uploadShareAssetsMock).not.toHaveBeenCalled()
+  })
+
+  it('登录后卡片渲染完成会静默上传一次', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(uploadShareAssetsMock).toHaveBeenCalledTimes(1))
+    expect(uploadShareAssetsMock.mock.calls[0]![0]).toBe('AbC12xYz')
   })
 
   it('传给卡片的二维码输入带 c=save 渠道参数', async () => {

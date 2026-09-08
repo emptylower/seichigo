@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { Camera, Copy, Download, Loader2, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
@@ -66,6 +67,7 @@ export default function PointSharePanel({
   const [toast, setToast] = useState<string | null>(null)
   const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const { status: sessionStatus } = useSession()
 
   // 版式变了就换一条短链：短链上记录了 layout，OG 图尺寸要对得上
   useEffect(() => {
@@ -131,12 +133,12 @@ export default function PointSharePanel({
         return URL.createObjectURL(blob)
       })
       // 登录用户静默上传一次：401/429/503 都返回 null，匿名分享照常
-      if (code && !uploadedRef.current) {
+      if (code && !uploadedRef.current && sessionStatus === 'authenticated') {
         uploadedRef.current = true
         void uploadShareAssets(code, blob, photo)
       }
     },
-    [code, photo],
+    [code, photo, sessionStatus],
   )
 
   const handleRenderError = useCallback(() => setFailed(true), [])
