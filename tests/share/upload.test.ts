@@ -93,6 +93,12 @@ function cardForm(bytes: Uint8Array<ArrayBuffer>, type = 'image/jpeg') {
   return form
 }
 
+function photoForm(bytes: Uint8Array<ArrayBuffer>, type = 'image/jpeg') {
+  const form = new FormData()
+  form.set('photo', new File([bytes], 'photo.jpg', { type }))
+  return form
+}
+
 describe('POST /api/share/links/[code]/upload', () => {
   it('未登录 401', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
@@ -164,6 +170,7 @@ describe('POST /api/share/links/[code]/upload', () => {
       ok: true,
       imageUrl: '/api/share/img/AbC12xYz',
       photoUrl: null,
+      photoKey: null,
     })
     const row = await repo.findByCode('AbC12xYz')
     expect(row?.imageKey).toMatch(/^share\/AbC12xYz-[0-9a-f]{8}\.jpg$/)
@@ -286,5 +293,58 @@ describe('POST /api/share/links/[code]/upload', () => {
       ctx,
     )
     expect(res.status).toBe(503)
+  })
+})
+
+describe('card 可选（服务端渲染改造后）', () => {
+  it('只传 photo 也成功，返回 photoKey、imageUrl 为 null', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store, objects } = makeStore()
+    const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
+      makeRequest(photoForm(jpeg(1200, 900))),
+      ctx,
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      ok: true,
+      imageUrl: null,
+      photoUrl: '/api/share/photo/u1/101%3Astation',
+      photoKey: 'checkin/u1/101:station.jpg',
+    })
+    expect(objects.has('checkin/u1/101:station.jpg')).toBe(true)
+    expect((await repo.findByCode('AbC12xYz'))?.imageKey).toBeNull()
+  })
+
+  it('photo-only 也计每日配额', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store } = makeStore()
+    const handler = createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))
+    for (let i = 0; i < USER_DAILY_UPLOAD_LIMIT; i++) {
+      expect((await handler(makeRequest(photoForm(jpeg(1200, 900))), ctx)).status).toBe(200)
+    }
+    expect((await handler(makeRequest(photoForm(jpeg(1200, 900))), ctx)).status).toBe(429)
+  })
+
+  it('card 与 photo 都没有 → 400', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store } = makeStore()
+    const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
+      makeRequest(new FormData()),
+      ctx,
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('传了 card 时校验一条不放（415/413/422 全部保持）', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store } = makeStore()
+    const handler = createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))
+    expect((await handler(makeRequest(cardForm(jpeg(1080, 1440), 'image/png')), ctx)).status).toBe(415)
+    expect((await handler(makeRequest(cardForm(jpeg(1080, 1440, 1_600_000))), ctx)).status).toBe(413)
+    expect((await handler(makeRequest(cardForm(jpeg(1080, 1350))), ctx)).status).toBe(422)
   })
 })

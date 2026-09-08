@@ -79,11 +79,11 @@ export class MemoryShareLinkRepo implements ShareLinkRepo {
 
   async markUploaded(
     code: string,
-    input: { imageKey: string; userId: string },
+    input: { imageKey: string | null; userId: string },
   ): Promise<ShareLinkRecord | null> {
     const found = this.rows.get(code)
     if (!found) return null
-    found.imageKey = input.imageKey
+    if (input.imageKey !== null) found.imageKey = input.imageKey
     found.userId = input.userId
     found.uploadCount += 1
     found.updatedAt = this.now()

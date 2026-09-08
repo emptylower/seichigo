@@ -73,18 +73,24 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
       return NextResponse.json({ error: '无效的表单数据' }, { status: 400 })
     }
 
+    // card 自 2026-09-08 服务端渲染改造后可选：前端不再生成卡片，只补传实拍。
+    // 传了就一条校验不放（尺寸/类型/体积），没传就跳过整段。
     const card = form.get('card')
-    if (!isFileLike(card)) return NextResponse.json({ error: '缺少卡片图片' }, { status: 400 })
-    const cardType = normalizeType(card.type)
-    if (cardType !== 'image/jpeg' && cardType !== 'image/webp') {
-      return NextResponse.json({ error: '卡片仅支持 JPEG 或 WebP' }, { status: 415 })
-    }
-    const cardBytes = new Uint8Array(await card.arrayBuffer())
-    if (cardBytes.byteLength > SHARE_CARD_MAX_BYTES) {
-      return NextResponse.json({ error: '卡片图片过大' }, { status: 413 })
-    }
-    if (!isAllowedShareCardSize(parseImageSize(cardBytes, cardType))) {
-      return NextResponse.json({ error: '卡片尺寸必须是 1080×1440 或 1200×630' }, { status: 422 })
+    const hasCard = isFileLike(card)
+    let cardBytes: Uint8Array<ArrayBuffer> | null = null
+    let cardType = ''
+    if (hasCard) {
+      cardType = normalizeType(card.type)
+      if (cardType !== 'image/jpeg' && cardType !== 'image/webp') {
+        return NextResponse.json({ error: '卡片仅支持 JPEG 或 WebP' }, { status: 415 })
+      }
+      cardBytes = new Uint8Array(await card.arrayBuffer())
+      if (cardBytes.byteLength > SHARE_CARD_MAX_BYTES) {
+        return NextResponse.json({ error: '卡片图片过大' }, { status: 413 })
+      }
+      if (!isAllowedShareCardSize(parseImageSize(cardBytes, cardType))) {
+        return NextResponse.json({ error: '卡片尺寸必须是 1080×1440 或 1200×630' }, { status: 422 })
+      }
     }
 
     // photo 的类型/大小校验放在写 R2 之前，避免卡片已落库但整个请求还是 4xx
@@ -100,26 +106,38 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
       }
     }
 
+    if (!cardBytes && !photoBytes) {
+      return NextResponse.json({ error: '缺少上传内容' }, { status: 400 })
+    }
+
     const store = deps.getStore()
     if (!store) return NextResponse.json({ error: '存储暂不可用' }, { status: 503 })
 
-    const fingerprint = await cardFingerprint(cardBytes)
-    const cardKey = shareCardKey(code, fingerprint, cardType)
-    await store.put(cardKey, cardBytes, cardType)
+    let cardKey: string | null = null
+    if (cardBytes) {
+      const fingerprint = await cardFingerprint(cardBytes)
+      cardKey = shareCardKey(code, fingerprint, cardType)
+      await store.put(cardKey, cardBytes, cardType)
+    }
+
     const previousKey = link.imageKey
+    // photo-only 也走这里：imageKey 传 null 不动原值，但 uploadCount 照样 +1，
+    // 否则「只传实拍」就成了没配额的上传口子
     const updated = await deps.repo.markUploaded(code, { imageKey: cardKey, userId })
     if (!updated) return NextResponse.json({ error: '短链不存在' }, { status: 404 })
 
     // 换内容后清掉旧卡片对象；失败只记日志，不影响本次上传结果
-    if (previousKey && previousKey !== cardKey) {
+    if (cardKey && previousKey && previousKey !== cardKey) {
       await store.delete(previousKey).catch((error) => {
         console.error('[share.upload.delete_stale_failed]', { code, key: previousKey, error })
       })
     }
 
     let photoUrl: string | null = null
+    let photoKey: string | null = null
     if (photoBytes) {
-      await store.put(checkinPhotoKey(userId, link.pointId), photoBytes, 'image/jpeg')
+      photoKey = checkinPhotoKey(userId, link.pointId)
+      await store.put(photoKey, photoBytes, 'image/jpeg')
       // pointId 里可能有冒号（如 101:station），进 URL 必须编码，进 R2 key 保持原样
       photoUrl = `/api/share/photo/${encodeURIComponent(userId)}/${encodeURIComponent(link.pointId)}`
       await deps.pointStateRepo.upsert(userId, link.pointId, 'checked_in', {
@@ -130,8 +148,9 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
 
     const body: ShareUploadResponse = {
       ok: true,
-      imageUrl: `/api/share/img/${code}`,
+      imageUrl: cardKey ? `/api/share/img/${code}` : null,
       photoUrl,
+      photoKey,
     }
     return NextResponse.json(body, { status: 200 })
   }

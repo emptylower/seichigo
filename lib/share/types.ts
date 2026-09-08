@@ -58,10 +58,12 @@ export type CreateShareLinkResponse = {
 
 export type ShareUploadResponse = {
   ok: true
-  /** 卡片公开读取地址 /api/share/img/<code> */
-  imageUrl: string
+  /** 卡片公开读取地址 /api/share/img/<code>；这次没传 card 时为 null */
+  imageUrl: string | null
   /** 写进 UserPointState.photoUrl 的地址；没传 photo 时为 null */
   photoUrl: string | null
+  /** 实拍的 R2 key，前端拿它拼带 photo 参数的卡片 URL；没传 photo 时为 null */
+  photoKey: string | null
 }
 
 export type ShareErrorResponse = { error: string }

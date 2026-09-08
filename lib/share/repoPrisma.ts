@@ -75,13 +75,14 @@ export class PrismaShareLinkRepo implements ShareLinkRepo {
 
   async markUploaded(
     code: string,
-    input: { imageKey: string; userId: string },
+    input: { imageKey: string | null; userId: string },
   ): Promise<ShareLinkRecord | null> {
     try {
       const updated = await prisma.shareLink.update({
         where: { code },
         data: {
-          imageKey: input.imageKey,
+          // imageKey 为 null 表示只传了实拍：整个字段不出现在 data 里，保持原值
+          ...(input.imageKey !== null ? { imageKey: input.imageKey } : {}),
           userId: input.userId,
           uploadCount: { increment: 1 },
         },

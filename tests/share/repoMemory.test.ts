@@ -106,4 +106,15 @@ describe('MemoryShareLinkRepo', () => {
     expect((await repo.findByCode('AAAAAAAA'))?.clicks).toBe(2)
     await expect(repo.incrementClicks('ZZZZZZZZ')).resolves.toBeUndefined()
   })
+
+  it('markUploaded 传 null imageKey 时只自增 uploadCount', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
+    const created = await repo.create(
+      baseInput({ code: 'AbC12xYz', userId: 'u1', ipHash: null }),
+    )
+    expect(created.imageKey).toBeNull()
+    const updated = await repo.markUploaded('AbC12xYz', { imageKey: null, userId: 'u1' })
+    expect(updated?.imageKey).toBeNull()
+    expect(updated?.uploadCount).toBe(1)
+  })
 })
