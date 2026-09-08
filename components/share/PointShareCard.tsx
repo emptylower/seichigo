@@ -84,7 +84,7 @@ export default function PointShareCard({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const render = useCallback(async () => {
+  const render = useCallback(async (isCancelled: () => boolean) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -95,6 +95,7 @@ export default function PointShareCard({
       const photoImg = input.photoObjectUrl
         ? await loadImage(input.photoObjectUrl).catch(() => null)
         : null
+      if (isCancelled()) return
       const variant = resolveCardVariant(Boolean(photoImg))
       const layout = buildCardLayout(input.layout, variant)
       canvas.width = layout.canvas.width
@@ -105,6 +106,7 @@ export default function PointShareCard({
         width: layout.qr.size,
         color: { dark: '#111827', light: '#ffffff' },
       })
+      if (isCancelled()) return
 
       // 动画截图走与地图一致的候选梯（同源代理优先）：anitabi 投递域不带 CORS 头，
       // crossOrigin='anonymous' 直连必失败，逐个候选降级
@@ -114,6 +116,7 @@ export default function PointShareCard({
       const loadAnime = async (): Promise<HTMLImageElement | null> => {
         for (const candidate of candidates) {
           const img = await loadImage(candidate, 'anonymous').catch(() => null)
+          if (isCancelled()) return null
           if (img) return img
         }
         return null
@@ -124,6 +127,7 @@ export default function PointShareCard({
         loadImage(qrDataUrl).catch(() => null),
         loadImage('/brand/web-logo.png').catch(() => null),
       ])
+      if (isCancelled()) return
 
       // 底色
       ctx.fillStyle = '#ffffff'
@@ -206,9 +210,11 @@ export default function PointShareCard({
       }
 
       let blob = await toBlob(canvas, QUALITY_FIRST)
+      if (isCancelled()) return
       if (blob && blob.size > SHARE_CARD_MAX_BYTES) {
         // 体积超标只降一次质量：再降画质就不能看了，宁可让上传报 413
         blob = (await toBlob(canvas, QUALITY_RETRY)) ?? blob
+        if (isCancelled()) return
       }
       if (!blob) {
         onError()
@@ -216,13 +222,19 @@ export default function PointShareCard({
       }
       onRendered(blob)
     } catch (error) {
+      if (isCancelled()) return
       console.error('[share.card.render_failed]', error)
       onError()
     }
   }, [input, onRendered, onError])
 
+  // input 变化时上一次渲染立刻作废，避免旧图画完覆盖新图
   useEffect(() => {
-    void render()
+    let cancelled = false
+    void render(() => cancelled)
+    return () => {
+      cancelled = true
+    }
   }, [render])
 
   return <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
