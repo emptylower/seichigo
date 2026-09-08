@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { hasAuthHintCookie } from '@/lib/auth/clientAuthHint'
 
 export type UsageView = {
   tier: 'free' | 'standard' | 'pro'
@@ -38,6 +39,13 @@ export function useUsage(): { usage: UsageView | null; status: Status; refresh: 
   const [status, setStatus] = useState<Status>('loading')
 
   const refresh = useCallback(() => {
+    // 匿名访客（无 sg_auth 标记）不发 /api/me/usage（性能优化 2026-09-07）：
+    // 未登录本就归 unavailable，调用方整块隐藏的逻辑不变。
+    if (!hasAuthHintCookie()) {
+      setUsage(null)
+      setStatus('unavailable')
+      return () => {}
+    }
     let cancelled = false
     ;(async () => {
       try {

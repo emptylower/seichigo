@@ -59,6 +59,32 @@ function hasLocaleCookie(req: NextRequest): boolean {
   return cookieHeader.includes('NEXT_LOCALE=')
 }
 
+/**
+ * 登录态提示标记（性能优化 2026-09-07）：有 next-auth 会话 cookie 时在响应上
+ * 打非 httpOnly 的 `sg_auth=1`，没有则清除。客户端（Providers/useUsage）据此
+ * 跳过匿名访客的 /api/auth/session 与 /api/me/usage 初始化请求。
+ * authOptions 未自定义 cookie 名，这里用 next-auth v4 的默认会话 cookie 名。
+ */
+const SESSION_COOKIE_NAMES = ['__Secure-next-auth.session-token', 'next-auth.session-token']
+const AUTH_HINT_COOKIE = 'sg_auth'
+/** 与 next-auth 默认会话 maxAge（30 天）同量级 */
+const AUTH_HINT_MAX_AGE = 30 * 24 * 60 * 60
+
+function stampAuthHint(req: NextRequest, res: NextResponse): NextResponse {
+  const hasSession = SESSION_COOKIE_NAMES.some((name) => req.cookies.has(name))
+  if (hasSession) {
+    res.cookies.set(AUTH_HINT_COOKIE, '1', {
+      path: '/',
+      sameSite: 'lax',
+      secure: req.nextUrl.protocol === 'https:',
+      maxAge: AUTH_HINT_MAX_AGE,
+    })
+  } else if (req.cookies.has(AUTH_HINT_COOKIE)) {
+    res.cookies.set(AUTH_HINT_COOKIE, '', { path: '/', maxAge: 0 })
+  }
+  return res
+}
+
 export function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
   const currentLocale = detectLocale(pathname)
@@ -78,57 +104,57 @@ export function middleware(req: NextRequest) {
   if (staticAliasPath) {
     const url = req.nextUrl.clone()
     url.pathname = staticAliasPath
-    return NextResponse.rewrite(url, { request: { headers } })
+    return stampAuthHint(req, NextResponse.rewrite(url, { request: { headers } }))
   }
 
   const authAliasPath = resolveLocaleAuthAlias(pathname)
   if (authAliasPath) {
     const url = req.nextUrl.clone()
     url.pathname = authAliasPath
-    return NextResponse.rewrite(url, { request: { headers } })
+    return stampAuthHint(req, NextResponse.rewrite(url, { request: { headers } }))
   }
 
   const adminAliasPath = resolveLocaleAdminAlias(pathname)
   if (adminAliasPath) {
     const url = req.nextUrl.clone()
     url.pathname = adminAliasPath
-    return NextResponse.rewrite(url, { request: { headers } })
+    return stampAuthHint(req, NextResponse.rewrite(url, { request: { headers } }))
   }
 
   if (hasLocaleCookie(req)) {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   if (isApiRoute(pathname) || isStaticAssetRoute(pathname) || isAdminRoute(pathname)) {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   // Explicit locale prefixes are a deliberate choice by the user or crawler.
   // Never rewrite them by browser language; the same URL must resolve identically for everyone.
   if (currentLocale !== 'zh') {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   const userAgent = req.headers.get('user-agent')
   if (isBot(userAgent)) {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   const targetLocale = pickLocaleFromAcceptLanguage(req.headers.get('accept-language'))
 
   if (!targetLocale || targetLocale === currentLocale) {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   // Only the bare homepage participates in browser language routing.
   // Deep links must stay stable so shared URLs and crawlers see one canonical target.
   if (pathname !== '/') {
-    return NextResponse.next({ request: { headers } })
+    return stampAuthHint(req, NextResponse.next({ request: { headers } }))
   }
 
   const url = req.nextUrl.clone()
   url.pathname = `/${targetLocale}`
-  return NextResponse.redirect(url, 307)
+  return stampAuthHint(req, NextResponse.redirect(url, 307))
 }
 
 export const config = {

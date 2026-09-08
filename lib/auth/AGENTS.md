@@ -1,15 +1,16 @@
 # AUTH DOMAIN
 
 ## OVERVIEW
-`lib/auth/` centralizes authentication and authorization — NextAuth configuration, session management, password hashing, OTP generation, and admin verification. 4 files, 282 lines. Security-critical.
+`lib/auth/` centralizes authentication and authorization — NextAuth configuration, session management, password hashing, OTP generation, and admin verification. 5 files. Security-critical.
 
 ## STRUCTURE
 ```text
 lib/auth/
-|- options.ts      # NextAuth authOptions (providers, callbacks, pages)
-|- session.ts      # getServerAuthSession wrapper
-|- admin.ts        # Admin allowlist check, default password bootstrap
-`- password.ts     # Password hashing and verification
+|- options.ts         # NextAuth authOptions (providers, callbacks, pages)
+|- session.ts         # getServerAuthSession wrapper
+|- admin.ts           # Admin allowlist check, default password bootstrap, password hashing
+|- emailOtp.ts        # Email OTP generation/hashing
+`- clientAuthHint.ts  # Client-readable sg_auth hint cookie (perf: skip anon session/usage fetches)
 ```
 
 ## WHERE TO LOOK
