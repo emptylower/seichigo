@@ -7,6 +7,14 @@ import type { SupportedLocale } from '@/lib/i18n/types'
  */
 export type PointContextRow = {
   pointId: string
+  /** AnitabiPoint.bangumiId：二维码深链的 `b` 参数 */
+  bangumiId: number
+  /** AnitabiPoint.ep：作品行的集数 */
+  ep: string | null
+  /** AnitabiPoint.s：场景出现的秒数（未格式化） */
+  scene: string | null
+  /** AnitabiPoint.image：动画截图原始 URL（未归一） */
+  image: string | null
   /** AnitabiPoint.name（原始名，可能带作品名前缀） */
   name: string
   /** AnitabiPointI18n.name（当前 locale），没有就是 null */

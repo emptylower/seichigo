@@ -15,6 +15,10 @@ const NOW = new Date('2026-09-08T12:00:00Z')
 
 const ROW: PointContextRow = {
   pointId: '101:budo',
+  bangumiId: 101,
+  ep: '3',
+  scene: '1194',
+  image: 'https://image.anitabi.cn/points/101/budo.jpg',
   name: '『摇曳露营△ SEASON 3』葡萄牛奶',
   localizedName: null,
   mark: '武州屋 x 远林 x 摇曳露营 推出了联名饮品',
@@ -310,5 +314,20 @@ describe('全局每日地理编码预算', () => {
     )
     expect(geocode).toHaveBeenCalledTimes(1)
     expect((await res.json()).address).toBe(ADDRESSES.zh)
+  })
+})
+
+describe('point-context 响应体不因卡片改造而变宽', () => {
+  it('只返回既有的六个字段', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    const handler = createGetPointContextHandler({
+      repo,
+      geocode: async () => null,
+      now: () => NOW,
+    })
+    const res = await handler(new Request('https://x/api/share/point-context?pointId=101:budo'))
+    expect(Object.keys(await res.json()).sort()).toEqual(
+      ['address', 'animeTitle', 'displayName', 'geo', 'inJapan', 'note'].sort(),
+    )
   })
 })
