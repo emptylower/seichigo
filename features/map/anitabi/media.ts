@@ -32,7 +32,7 @@ import type {
   UrlState,
 } from './shared'
 import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
-import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
+import { toMapDisplayImageUrl, toMapDisplayImageUrlAsync } from '@/lib/anitabi/imageProxy'
 
 function parseUrlState(): UrlState {
   if (typeof window === 'undefined') {
@@ -170,6 +170,20 @@ function normalizeCoverImageUrl(input: string | null | undefined): string | null
   if (!raw) return null
   // 封面预热必须与真实展示走同一条 URL 链路（投递 host / 代理），否则预热命中不了浏览器缓存。
   return toMapDisplayImageUrl(raw, { kind: 'cover' })
+}
+
+/**
+ * 预热用的封面首档候选（异步版）：R2 公共域开启时首档是 R2 直出 URL，
+ * 与 CoverAvatarLoader/ResilientMapImage 的展示候选梯保持同一链路。
+ */
+async function normalizeCoverImageUrlAsync(input: string | null | undefined): Promise<string | null> {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+  try {
+    return await toMapDisplayImageUrlAsync(raw, { kind: 'cover' })
+  } catch {
+    return raw
+  }
 }
 
 function createRequestSignalWithTimeout(
@@ -682,6 +696,7 @@ export {
   normalizePointImageUrl,
   normalizePointImageSaveUrl,
   normalizeCoverImageUrl,
+  normalizeCoverImageUrlAsync,
   createRequestSignalWithTimeout,
   withPromiseTimeout,
   yieldToMainThread,

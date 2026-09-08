@@ -51,7 +51,12 @@ function toEventRecord(
     finalUrl: event.final_url ?? null,
     proxyJoinValue: `${event.chain_id}:${event.request_id}`,
     targetHostBucket: event.target_host_bucket ?? null,
-    evidence: toPrismaJson(event.evidence),
+    // candidate_kind 无独立列：并入 evidence JSON 透传存储（面板无需改动）
+    evidence: toPrismaJson(
+      event.candidate_kind
+        ? { ...(event.evidence || {}), candidate_kind: event.candidate_kind }
+        : event.evidence,
+    ),
     createdAt: event.occurred_at ? new Date(event.occurred_at) : new Date(now.getTime() + index),
   }))
 }

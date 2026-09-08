@@ -1,8 +1,13 @@
 'use client'
 
 import { MapPin } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
-import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import {
+  getMapDisplayImageCandidates,
+  getMapDisplayImageCandidatesAsync,
+  isMapImageR2PublicBaseConfigured,
+} from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { planTextFor } from '../lib/planText'
 import type { MediaPayload } from './itemPayload'
@@ -55,6 +60,86 @@ function staticImageSrc(image: string | null, media: MediaPayload | null): strin
   return getMapDisplayImageCandidates(raw, { kind: 'point-thumbnail' })[0] ?? null
 }
 
+/**
+ * 静态展示（原生 <img>）的异步版首档：R2 公共域开启时首档是 R2 直出 URL
+ * （mirror key 解析不了就回落到同步首档，即代理）。
+ */
+async function staticImageSrcAsync(image: string | null, media: MediaPayload | null): Promise<string | null> {
+  const fromMedia = String(media?.displayUrl || '').trim()
+  if (fromMedia) return fromMedia
+  const raw = String(image || '').trim()
+  if (!raw) return null
+  return (await getMapDisplayImageCandidatesAsync(raw, { kind: 'point-thumbnail' }))[0] ?? null
+}
+
+/**
+ * 静态展示（原生 <img>，无 ResilientMapImage 候选梯）：R2 公共域开启时首档
+ * 走 R2 直出（异步解析 mirror key，期间先渲染占位避免先发代理请求再换图）；
+ * 未镜像的 0.2% 图在该域 404，onError 回退到代理档。开关为空时与旧版一致，
+ * 同步取代理首档、单档无回退。
+ */
+function StaticImage(props: {
+  image: string | null
+  media: MediaPayload | null
+  alt: string
+  eager: boolean
+}) {
+  const { image, media, alt, eager } = props
+  const [candidates, setCandidates] = useState<string[]>(() => {
+    if (isMapImageR2PublicBaseConfigured()) return []
+    const src = staticImageSrc(image, media)
+    return src ? [src] : []
+  })
+  const [attemptIndex, setAttemptIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isMapImageR2PublicBaseConfigured()) {
+      const src = staticImageSrc(image, media)
+      setCandidates(src ? [src] : [])
+      setAttemptIndex(0)
+      return
+    }
+    let cancelled = false
+    void Promise.all([
+      staticImageSrcAsync(image, media),
+      Promise.resolve(staticImageSrc(image, media)),
+    ]).then(([primary, fallback]) => {
+      if (cancelled) return
+      const list: string[] = []
+      if (primary) list.push(primary)
+      if (fallback && !list.includes(fallback)) list.push(fallback)
+      setCandidates(list)
+      setAttemptIndex(0)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [image, media])
+
+  const src = candidates[attemptIndex] ?? null
+  if (!src) {
+    return <Placeholder />
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={src}
+      src={src}
+      alt={alt}
+      width={96}
+      height={96}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      className="h-full w-full object-cover"
+      onError={() => {
+        if (attemptIndex + 1 < candidates.length) {
+          setAttemptIndex(attemptIndex + 1)
+        }
+      }}
+    />
+  )
+}
+
 export function ItemThumbnail(props: {
   image: string | null
   alt: string
@@ -67,24 +152,10 @@ export function ItemThumbnail(props: {
 }) {
   const { image, alt, fallbackSrc, media, staticMode = false, eager = false } = props
   const tx = planTextFor(props.locale ?? 'zh')
-  const staticSrc = staticMode ? staticImageSrc(image, media) : null
   return (
     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
       {staticMode ? (
-        staticSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={staticSrc}
-          alt={alt}
-          width={96}
-          height={96}
-          loading={eager ? 'eager' : 'lazy'}
-          decoding="async"
-          className="h-full w-full object-cover"
-        />
-        ) : (
-          <Placeholder />
-        )
+        <StaticImage image={image} media={media} alt={alt} eager={eager} />
       ) : image ? (
         <ResilientMapImage
           src={image}

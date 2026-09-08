@@ -3,6 +3,8 @@ import { z } from 'zod'
 export const escalationReasonSchema = z.enum(['failed', 'fallback', 'slow']).nullable().optional()
 export const terminalStateSchema = z.enum(['succeeded', 'failed', 'aborted', 'superseded']).optional()
 export const displayOutcomeSchema = z.enum(['visible', 'fallback']).optional()
+/** 候选档类型：R2 公共域直出 / 站内代理 / 直连投递（由候选 URL 的 host/路径判定） */
+export const candidateKindSchema = z.enum(['r2', 'proxy', 'direct']).optional()
 export const mapImageDiagStageValues = [
   'dom_request_start',
   'dom_request_terminal',
@@ -44,6 +46,7 @@ export const ingestEventSchema = z.object({
   terminal_state: terminalStateSchema,
   display_outcome: displayOutcomeSchema,
   outcome: z.string().min(1).optional(),
+  candidate_kind: candidateKindSchema,
   target_host_bucket: z.string().min(1).optional(),
   evidence: z.record(z.string(), z.unknown()),
 })
