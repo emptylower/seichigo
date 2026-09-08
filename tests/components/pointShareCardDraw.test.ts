@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CARD_FONT_SIZES,
+  CARD_FOOTER_SIZES,
+  CARD_ROW_METRICS,
   buildCardLayout,
+  buildCardTextPlan,
   computeCoverRect,
   resolveCardVariant,
   wrapLines,
@@ -45,43 +47,138 @@ describe('resolveCardVariant', () => {
   })
 })
 
-describe('buildCardLayout', () => {
-  it('竖版 default：主视觉占上半，文字块在下', () => {
+describe('buildCardLayout 竖版', () => {
+  it('default：主视觉 720 高，文字块与轮廓/二维码带各就各位', () => {
     const layout = buildCardLayout('portrait', 'default')
     expect(layout.canvas).toEqual({ width: 1080, height: 1440 })
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 1000 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 720 })
     expect(layout.photo).toBeNull()
-    expect(layout.textTop).toBe(1060)
-    expect(layout.qr).toEqual({ x: 840, y: 1140, size: 180 })
+    expect(layout.textTop).toBe(768)
+    expect(layout.textX).toBe(64)
+    // 轮廓与二维码换到底部横带，文字不再需要给二维码让出宽度
+    expect(layout.textWidth).toBe(952)
+    expect(layout.locator).toEqual({ x: 64, y: 1096, width: 240, height: 240 })
+    expect(layout.qr).toEqual({ x: 836, y: 1126, size: 180 })
+    expect(layout.footerX).toBe(64)
+    expect(layout.footerY).toBe(1380)
   })
 
-  it('竖版 compare：上下两张图各占一半', () => {
+  it('compare：上下两张图各占主视觉一半', () => {
     const layout = buildCardLayout('portrait', 'compare')
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 500 })
-    expect(layout.photo).toEqual({ x: 0, y: 500, width: 1080, height: 500 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 360 })
+    expect(layout.photo).toEqual({ x: 0, y: 360, width: 1080, height: 360 })
   })
+})
 
-  it('横版 compare：左右两张图各占一半', () => {
-    const layout = buildCardLayout('landscape', 'compare')
-    expect(layout.canvas).toEqual({ width: 1200, height: 630 })
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 600, height: 360 })
-    expect(layout.photo).toEqual({ x: 600, y: 0, width: 600, height: 360 })
-  })
-
-  it('横版 default：紧凑边距，二维码贴右下角，页脚让位', () => {
+describe('buildCardLayout 横版', () => {
+  it('default：左 55% 是图，文字/轮廓/二维码/页脚全在右列', () => {
     const layout = buildCardLayout('landscape', 'default')
-    expect(layout.padding).toBe(40)
-    expect(layout.textTop).toBe(384)
-    expect(layout.textWidth).toBe(978)
-    expect(layout.qr).toEqual({ x: 1050, y: 480, size: 110 })
-    expect(layout.footerY).toBe(590)
+    expect(layout.canvas).toEqual({ width: 1200, height: 630 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 660, height: 630 })
+    expect(layout.photo).toBeNull()
+    expect(layout.textTop).toBe(48)
+    expect(layout.textX).toBe(692)
+    expect(layout.textWidth).toBe(468)
+    expect(layout.locator).toEqual({ x: 692, y: 434, width: 150, height: 150 })
+    expect(layout.qr).toEqual({ x: 1050, y: 474, size: 110 })
+    // 页脚不能压在左侧图片上
+    expect(layout.footerX).toBe(692)
+    expect(layout.footerY).toBe(616)
   })
 
-  it.each(['portrait', 'landscape'] as const)('%s 文字块不越界也不压页脚', (l) => {
+  it('compare：左半区再对半分给截图与实拍', () => {
+    const layout = buildCardLayout('landscape', 'compare')
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 330, height: 630 })
+    expect(layout.photo).toEqual({ x: 330, y: 0, width: 330, height: 630 })
+  })
+})
+
+describe('卡片几何不重叠', () => {
+  it.each(['portrait', 'landscape'] as const)('%s：轮廓与二维码都在页脚之上', (l) => {
     const layout = buildCardLayout(l, 'default')
-    const { title: titleSize, body: bodySize, footer: footerSize } = CARD_FONT_SIZES[l]
-    const metaBottom = layout.textTop + 2 * (titleSize + 12) + (bodySize + 18) + bodySize
-    expect(metaBottom).toBeLessThanOrEqual(layout.footerY - footerSize)
-    expect(metaBottom).toBeLessThanOrEqual(layout.canvas.height)
+    const footerTop = layout.footerY - CARD_FOOTER_SIZES[l]
+    expect(layout.locator.y + layout.locator.height).toBeLessThanOrEqual(footerTop)
+    expect(layout.qr.y + layout.qr.size).toBeLessThanOrEqual(footerTop)
+    expect(layout.footerY).toBeLessThanOrEqual(layout.canvas.height)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s：轮廓与二维码横向不相撞', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    expect(layout.locator.x + layout.locator.width).toBeLessThanOrEqual(layout.qr.x)
+    expect(layout.qr.x + layout.qr.size).toBeLessThanOrEqual(layout.canvas.width)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s：文字块右边界不越画布', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    expect(layout.textX + layout.textWidth).toBeLessThanOrEqual(layout.canvas.width)
+  })
+})
+
+describe('buildCardTextPlan', () => {
+  const fullRows = (l: 'portrait' | 'landscape') => {
+    const metrics = CARD_ROW_METRICS[l]
+    return {
+      layout: l,
+      geometry: buildCardLayout(l, 'default'),
+      nameLines: Array.from({ length: metrics.name.maxLines }, (_, i) => `名字${i}`),
+      animeLine: '《摇曳露营△ 三期》 · 第 1 集 · 19:54',
+      addressLine: '📍 東京都 武蔵野市 中町一丁目',
+      noteLines: Array.from({ length: metrics.note.maxLines }, (_, i) => `说明${i}`),
+    }
+  }
+
+  it.each(['portrait', 'landscape'] as const)('%s：满行内容仍然全部在轮廓带之上', (l) => {
+    const plan = buildCardTextPlan(fullRows(l))
+    expect(plan.rows.length).toBe(
+      CARD_ROW_METRICS[l].name.maxLines + 1 + 1 + CARD_ROW_METRICS[l].note.maxLines,
+    )
+    expect(plan.bottom).toBeLessThanOrEqual(buildCardLayout(l, 'default').locator.y)
+  })
+
+  it('行从 textTop 开始，按各行字号与间距逐行下移', () => {
+    const geometry = buildCardLayout('portrait', 'default')
+    const metrics = CARD_ROW_METRICS.portrait
+    const plan = buildCardTextPlan({
+      layout: 'portrait',
+      geometry,
+      nameLines: ['葡萄牛奶'],
+      animeLine: '《摇曳露营△ 三期》',
+      addressLine: '📍 東京都 武蔵野市',
+      noteLines: ['联名饮品'],
+    })
+    expect(plan.rows.map((row) => row.kind)).toEqual(['name', 'anime', 'address', 'note'])
+    expect(plan.rows[0]!.y).toBe(geometry.textTop)
+    expect(plan.rows[1]!.y).toBe(geometry.textTop + metrics.name.size + metrics.name.gap)
+    expect(plan.rows[0]!.size).toBe(metrics.name.size)
+    expect(plan.rows[3]!.size).toBe(metrics.note.size)
+  })
+
+  it('缺地址与说明时后面的行直接上移，不留空档', () => {
+    const geometry = buildCardLayout('portrait', 'default')
+    const metrics = CARD_ROW_METRICS.portrait
+    const plan = buildCardTextPlan({
+      layout: 'portrait',
+      geometry,
+      nameLines: ['葡萄牛奶'],
+      animeLine: '《摇曳露营△ 三期》',
+      addressLine: '',
+      noteLines: [],
+    })
+    expect(plan.rows.map((row) => row.kind)).toEqual(['name', 'anime'])
+    expect(plan.bottom).toBe(geometry.textTop + metrics.name.size + metrics.name.gap + metrics.anime.size)
+  })
+
+  it('一行都没有时 bottom 等于 textTop', () => {
+    const geometry = buildCardLayout('landscape', 'default')
+    const plan = buildCardTextPlan({
+      layout: 'landscape',
+      geometry,
+      nameLines: [],
+      animeLine: '',
+      addressLine: '',
+      noteLines: [],
+    })
+    expect(plan.rows).toEqual([])
+    expect(plan.bottom).toBe(geometry.textTop)
   })
 })

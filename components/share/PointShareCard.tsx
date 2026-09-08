@@ -6,7 +6,8 @@ import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
-  CARD_FONT_SIZES,
+  CARD_FOOTER_SIZES,
+  CARD_ROW_METRICS,
   buildCardLayout,
   computeCoverRect,
   resolveCardVariant,
@@ -161,7 +162,9 @@ export default function PointShareCard({
       // 文字块
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
-      const { title: titleSize, body: bodySize } = CARD_FONT_SIZES[input.layout]
+      const rowMetrics = CARD_ROW_METRICS[input.layout]
+      const titleSize = rowMetrics.name.size
+      const bodySize = rowMetrics.address.size
 
       ctx.fillStyle = '#111827'
       ctx.font = `bold ${titleSize}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
@@ -206,10 +209,10 @@ export default function PointShareCard({
 
       // 页脚：鸟居图标 + 站点名
       ctx.textBaseline = 'alphabetic'
-      const footerSize = CARD_FONT_SIZES[input.layout].footer
+      const footerSize = CARD_FOOTER_SIZES[input.layout]
       ctx.fillStyle = '#9ca3af'
       ctx.font = `500 ${footerSize}px system-ui, -apple-system, sans-serif`
-      ctx.fillText('⛩ seichigo.com', layout.padding, layout.footerY)
+      ctx.fillText('⛩ seichigo.com', layout.footerX, layout.footerY)
       if (logoImg) {
         const logoHeight = footerSize + 8
         const logoWidth = logoHeight * (logoImg.width / logoImg.height || 1)
