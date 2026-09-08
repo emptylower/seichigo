@@ -4,9 +4,9 @@ import PointSharePanel from '@/components/share/PointSharePanel'
 import { t } from '@/lib/i18n'
 
 // 卡片渲染器在 jsdom 里没有 canvas，直接桩成「立刻回调一个 Blob」
-let lastCardInput: { shareUrl?: string; qrUrl?: string } | null = null
+let lastCardInput: Record<string, unknown> | null = null
 vi.mock('@/components/share/PointShareCard', () => ({
-  default: ({ input, onRendered }: { input: { shareUrl?: string; qrUrl?: string }; onRendered: (blob: Blob) => void }) => {
+  default: ({ input, onRendered }: { input: Record<string, unknown>; onRendered: (blob: Blob) => void }) => {
     lastCardInput = input
     const blob = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
     setTimeout(() => onRendered(blob), 0)
@@ -19,6 +19,7 @@ const uploadShareAssetsMock = vi.fn()
 const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
+const fetchPointContextMock = vi.fn()
 vi.mock('@/components/share/shareClient', async () => {
   const actual = await vi.importActual<typeof import('@/components/share/shareClient')>(
     '@/components/share/shareClient',
@@ -30,6 +31,7 @@ vi.mock('@/components/share/shareClient', async () => {
     transcodeToJpeg: (...args: any[]) => transcodeToJpegMock(...args),
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
+    fetchPointContext: (...args: any[]) => fetchPointContextMock(...args),
   }
 })
 
@@ -60,6 +62,15 @@ beforeEach(() => {
   transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
   copyImageMock.mockReset()
   downloadBlobMock.mockReset()
+  fetchPointContextMock.mockReset()
+  fetchPointContextMock.mockResolvedValue({
+    address: '東京都 新宿区 須賀町',
+    geo: [35.68, 139.72],
+    note: '楼梯在神社南侧',
+    inJapan: true,
+    displayName: '须贺神社',
+    animeTitle: '你的名字。',
+  })
   createShareLinkMock.mockResolvedValue({
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
@@ -115,15 +126,6 @@ describe('PointSharePanel 短链与平台按钮', () => {
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     expect(createShareLinkMock.mock.calls[1]![0].layout).toBe('landscape')
     expect(globalThis.localStorage.getItem('seichigo.share.layout')).toBe('landscape')
-  })
-
-  it('文案预填含作品、点位名与短链；没有地址时不留悬空的 ·', async () => {
-    render(<PointSharePanel {...PROPS} />)
-    await waitFor(() =>
-      expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
-        '《你的名字。》圣地巡礼｜须贺神社 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
-      ),
-    )
   })
 
   it('未登录时不发上传请求', async () => {
@@ -264,5 +266,80 @@ describe('PointSharePanel 短链与平台按钮', () => {
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     expect(createShareLinkMock.mock.calls[0]![0].layout).toBe('portrait')
     expect(createShareLinkMock.mock.calls[1]![0].layout).toBe('landscape')
+  })
+})
+
+describe('PointSharePanel 点位上下文', () => {
+  it('打开时与建短链并行拉一次 point-context', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(fetchPointContextMock).toHaveBeenCalledTimes(1))
+    expect(fetchPointContextMock).toHaveBeenCalledWith('101:suga', 'zh')
+  })
+
+  it('把地址、说明、坐标、inJapan 与去前缀点位名传给卡片', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(lastCardInput?.address).toBe('東京都 新宿区 須賀町'))
+    expect(lastCardInput?.note).toBe('楼梯在神社南侧')
+    expect(lastCardInput?.geo).toEqual([35.68, 139.72])
+    expect(lastCardInput?.inJapan).toBe(true)
+    expect(lastCardInput?.pointName).toBe('须贺神社')
+  })
+
+  it('context 里的 displayName 覆盖 props 的 pointName', async () => {
+    fetchPointContextMock.mockResolvedValue({
+      address: null,
+      geo: null,
+      note: null,
+      inJapan: false,
+      displayName: '葡萄牛奶',
+      animeTitle: '摇曳露营△ 三期',
+    })
+    render(<PointSharePanel {...PROPS} pointName="『摇曳露营△ 三期』葡萄牛奶" />)
+    await waitFor(() => expect(lastCardInput?.pointName).toBe('葡萄牛奶'))
+    expect(lastCardInput?.animeTitle).toBe('摇曳露营△ 三期')
+  })
+
+  it('context 拉取失败时按无地址无说明画，不阻塞卡片', async () => {
+    fetchPointContextMock.mockResolvedValue(null)
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(lastCardInput?.shareUrl).toBe('https://seichigo.com/s/AbC12xYz'))
+    expect(lastCardInput?.address).toBeNull()
+    expect(lastCardInput?.note).toBeNull()
+    expect(lastCardInput?.inJapan).toBe(false)
+    expect(lastCardInput?.pointName).toBe('须贺神社')
+  })
+
+  it('文案带城市级地址（前两级，去掉空格）', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
+        '《你的名字。》圣地巡礼｜须贺神社 · 東京都新宿区 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
+      ),
+    )
+  })
+
+  it('没有地址时文案退回 props 的 cityName', async () => {
+    fetchPointContextMock.mockResolvedValue({
+      address: null,
+      geo: null,
+      note: null,
+      inJapan: false,
+      displayName: '须贺神社',
+      animeTitle: '你的名字。',
+    })
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
+        '《你的名字。》圣地巡礼｜须贺神社 · 东京 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
+      ),
+    )
+  })
+
+  it('换版式不重复拉 point-context（跟版式无关）', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(fetchPointContextMock).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') }))
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
+    expect(fetchPointContextMock).toHaveBeenCalledTimes(1)
   })
 })

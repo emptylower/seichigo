@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { Camera, Copy, Download, Loader2, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { SHARE_PHOTO_MAX_BYTES, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
+import { SHARE_PHOTO_MAX_BYTES, type PointContextResponse, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
 import PointShareCard, { type PointShareCardInput } from '@/components/share/PointShareCard'
 import {
   buildCardFilename,
@@ -13,6 +13,7 @@ import {
   buildRedditSubmitUrl,
   buildShareCaption,
   buildXIntentUrl,
+  toCityLevelAddress,
   withShareChannel,
 } from '@/components/share/shareText'
 import {
@@ -21,6 +22,7 @@ import {
   copyText,
   createShareLink,
   downloadBlob,
+  fetchPointContext,
   readPreferredLayout,
   shareViaSystem,
   transcodeToJpeg,
@@ -65,6 +67,7 @@ export default function PointSharePanel({
   useEffect(() => {
     setLayout(readPreferredLayout())
   }, [])
+  const [context, setContext] = useState<PointContextResponse | null>(null)
   const [shareUrl, setShareUrl] = useState<string>('')
   const [code, setCode] = useState<string>('')
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -102,6 +105,18 @@ export default function PointSharePanel({
     }
   }, [pointId, bangumiId, locale, layout, retryNonce])
 
+  // 与建短链并行：地址/说明/去前缀点位名。失败就保持 null，卡片按无地址画
+  useEffect(() => {
+    let cancelled = false
+    setContext(null)
+    fetchPointContext(pointId, locale).then((result) => {
+      if (!cancelled) setContext(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [pointId, locale, retryNonce])
+
   const previewUrlRef = useRef<string | null>(null)
   const photoObjectUrlRef = useRef<string | null>(null)
   useEffect(() => {
@@ -118,26 +133,40 @@ export default function PointSharePanel({
     }
   }, [])
 
+  const displayName = context?.displayName?.trim() || pointName
+  const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
+
   const cardInput: PointShareCardInput | null = useMemo(() => {
     if (!shareUrl) return null
     return {
       layout,
       locale,
-      pointName,
-      animeTitle,
+      pointName: displayName,
+      animeTitle: cardAnimeTitle,
       episode,
       scene,
-      address: null,
-      note: null,
-      geo: null,
-      inJapan: false,
+      address: context?.address ?? null,
+      note: context?.note ?? null,
+      geo: context?.geo ?? null,
+      inJapan: Boolean(context?.inJapan),
       animeImage,
       photoObjectUrl,
       shareUrl,
       // 扫码进站的算「存图」渠道：二维码画带 c=save 的短链
       qrUrl: withShareChannel(shareUrl, 'save'),
     }
-  }, [shareUrl, layout, locale, pointName, animeTitle, episode, scene, animeImage, photoObjectUrl])
+  }, [
+    shareUrl,
+    layout,
+    locale,
+    displayName,
+    cardAnimeTitle,
+    episode,
+    scene,
+    context,
+    animeImage,
+    photoObjectUrl,
+  ])
 
   const handleRendered = useCallback(
     (blob: Blob) => {
@@ -170,15 +199,20 @@ export default function PointSharePanel({
     }
   }, [])
 
+  // 文案里的地址只到市区一级；没拿到 context 时退回作品的 city
+  const captionAddress = context?.address
+    ? toCityLevelAddress(context.address, locale)
+    : String(cityName || '').trim()
+
   const captionFor = useCallback(
     (channel: ShareChannel) =>
       buildShareCaption(t('share.captionTemplate', locale), {
-        anime: animeTitle,
-        point: pointName,
-        address: '',
+        anime: cardAnimeTitle,
+        point: displayName,
+        address: captionAddress,
         url: shareUrl ? withShareChannel(shareUrl, channel) : '',
       }),
-    [locale, animeTitle, pointName, shareUrl],
+    [locale, cardAnimeTitle, displayName, captionAddress, shareUrl],
   )
 
   const copyCaption = captionFor('copy')
