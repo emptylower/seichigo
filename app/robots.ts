@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       // /s/[code] 的 OG 图走 /api/share/*，需要在 /api/ 的 disallow 之上显式放行
-      allow: ['/', '/api/share/img/', '/api/share/photo/'],
+      allow: ['/', '/api/share/img/', '/api/share/photo/', '/api/share/card/'],
       disallow: ['/auth/', '/admin/', '/submit', '/me/', '/api/'],
     },
     sitemap: `${base}/sitemap.xml`,
