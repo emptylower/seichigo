@@ -136,6 +136,20 @@ export function addressPinMetrics(size: number): { width: number; gap: number; o
   return { width, gap, offset: width + gap }
 }
 
+/** 胶囊坐标行的等宽字体栈：数字对齐，扫码前肉眼好核对 */
+export const GEO_FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+
+/** 坐标行文本：`纬度, 经度`，各保留 4 位小数（约 11m 精度，足够找到打卡点） */
+export function formatGeoLine(geo: readonly [number, number]): string {
+  return `${geo[0].toFixed(4)}, ${geo[1].toFixed(4)}`
+}
+
+/** 坐标行左侧 GPS 十字圆标：边长同字号，文字右移 offset */
+export function gpsIconMetrics(size: number): { size: number; gap: number; offset: number } {
+  const gap = size * 0.3
+  return { size, gap, offset: size + gap }
+}
+
 export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVariant): CardLayout {
   const canvas = SHARE_CARD_SIZES[layout]
 

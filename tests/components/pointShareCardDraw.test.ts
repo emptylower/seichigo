@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   CARD_FOOTER_SIZES,
   CARD_ROW_METRICS,
+  GEO_FONT_STACK,
   addressPinMetrics,
   buildCardLayout,
   buildCardTextPlan,
   computeCoverRect,
+  formatGeoLine,
+  gpsIconMetrics,
   resolveCardVariant,
   wrapLines,
 } from '@/components/share/pointShareCardDraw'
@@ -132,6 +135,40 @@ describe('addressPinMetrics', () => {
 describe('CARD_ROW_METRICS', () => {
   it('竖版说明行行距给到 12，两行说明不至于贴在一起', () => {
     expect(CARD_ROW_METRICS.portrait.note.gap).toBe(12)
+  })
+})
+
+// 2026-09-08 分享卡片 v2.1：坐标行进胶囊（C1）
+describe('formatGeoLine', () => {
+  it('纬度在前、经度在后，各保留 4 位小数，逗号后一个空格', () => {
+    expect(formatGeoLine([35.7, 139.56])).toBe('35.7000, 139.5600')
+  })
+
+  it('负坐标带负号，不足 4 位补零', () => {
+    expect(formatGeoLine([-33.8688, 151.2093])).toBe('-33.8688, 151.2093')
+  })
+
+  it('超过 4 位的部分四舍五入', () => {
+    expect(formatGeoLine([35.65804, 139.70166])).toBe('35.6580, 139.7017')
+  })
+})
+
+describe('GEO_FONT_STACK', () => {
+  it('坐标行用等宽字体栈', () => {
+    expect(GEO_FONT_STACK).toBe('ui-monospace, SFMono-Regular, Menlo, monospace')
+  })
+})
+
+describe('gpsIconMetrics', () => {
+  it('图标边长等于字号，offset 是图标加右侧留白', () => {
+    const m = gpsIconMetrics(19)
+    expect(m.size).toBe(19)
+    expect(m.offset).toBeCloseTo(m.size + m.gap, 6)
+    expect(m.gap).toBeGreaterThan(0)
+  })
+
+  it('offset 随字号等比放大', () => {
+    expect(gpsIconMetrics(28).offset).toBeGreaterThan(gpsIconMetrics(19).offset)
   })
 })
 
