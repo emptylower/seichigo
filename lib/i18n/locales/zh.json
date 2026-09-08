@@ -738,7 +738,6 @@
     "captionLabel": "分享文案",
     "captionTemplate": "《{anime}》圣地巡礼｜{point} · {address} {url} #圣地巡礼 #{anime}",
     "redditTitle": "{point}｜{anime}",
-    "systemShare": "系统分享",
     "copyImage": "复制图片",
     "copyText": "复制文案",
     "saveImage": "保存图片",
@@ -750,10 +749,14 @@
     "toastCopied": "文案已复制",
     "toastImageCopied": "图片已复制",
     "toastSaved": "图片已保存",
-    "toastPasteInApp": "图片和文案已就绪，打开 App 粘贴即可",
     "toastShareFilesUnsupported": "当前浏览器不能直接分享图片，请先保存图片再手动发布",
     "toastFailed": "操作失败，请重试",
     "toastPhotoTooLarge": "图片超过 5MB，换一张小一点的吧",
-    "toastPhotoUnsupported": "这种图片格式不支持，请换 JPEG、PNG 或 WebP"
+    "toastPhotoUnsupported": "这种图片格式不支持，请换 JPEG、PNG 或 WebP",
+    "shareTo": "分享到…",
+    "more": "更多",
+    "toastImageCopiedPasteInPost": "图片已复制，在推文里粘贴",
+    "toastImageDownloadedDragIntoPost": "图片已下载，拖进推文即可",
+    "toastSavedAndCopiedOpenApp": "图片已保存、文案已复制，打开{app}粘贴"
   }
 }

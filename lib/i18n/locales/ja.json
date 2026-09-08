@@ -738,7 +738,6 @@
     "captionLabel": "共有テキスト",
     "captionTemplate": "『{anime}』聖地巡礼｜{point} · {address} {url} #聖地巡礼 #{anime}",
     "redditTitle": "{point}｜{anime}",
-    "systemShare": "共有",
     "copyImage": "画像をコピー",
     "copyText": "テキストをコピー",
     "saveImage": "画像を保存",
@@ -750,10 +749,14 @@
     "toastCopied": "テキストをコピーしました",
     "toastImageCopied": "画像をコピーしました",
     "toastSaved": "画像を保存しました",
-    "toastPasteInApp": "画像とテキストの準備ができました。アプリを開いて貼り付けてください",
     "toastShareFilesUnsupported": "このブラウザーでは画像を直接共有できません。先に画像を保存してから投稿してください。",
     "toastFailed": "操作に失敗しました。もう一度お試しください。",
     "toastPhotoTooLarge": "写真が 5MB を超えています。もう少し小さい写真を選んでください",
-    "toastPhotoUnsupported": "この画像形式はサポートされていません。JPEG・PNG・WebP をご利用ください"
+    "toastPhotoUnsupported": "この画像形式はサポートされていません。JPEG・PNG・WebP をご利用ください",
+    "shareTo": "共有先を選ぶ…",
+    "more": "その他",
+    "toastImageCopiedPasteInPost": "画像をコピーしました。投稿に貼り付けてください",
+    "toastImageDownloadedDragIntoPost": "画像を保存しました。投稿にドラッグしてください",
+    "toastSavedAndCopiedOpenApp": "画像を保存し、テキストをコピーしました。{app}を開いて貼り付けてください"
   }
 }

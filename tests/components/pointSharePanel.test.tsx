@@ -20,6 +20,11 @@ const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
 const fetchPointContextMock = vi.fn()
+const canShareFilesMock = vi.fn()
+const shareViaSystemMock = vi.fn()
+const copyTextMock = vi.fn()
+const openBlankWindowMock = vi.fn()
+const openOrNavigateMock = vi.fn()
 vi.mock('@/components/share/shareClient', async () => {
   const actual = await vi.importActual<typeof import('@/components/share/shareClient')>(
     '@/components/share/shareClient',
@@ -32,6 +37,11 @@ vi.mock('@/components/share/shareClient', async () => {
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
     fetchPointContext: (...args: any[]) => fetchPointContextMock(...args),
+    canShareFiles: (...args: any[]) => canShareFilesMock(...args),
+    shareViaSystem: (...args: any[]) => shareViaSystemMock(...args),
+    copyText: (...args: any[]) => copyTextMock(...args),
+    openBlankWindow: (...args: any[]) => openBlankWindowMock(...args),
+    openOrNavigate: (...args: any[]) => openOrNavigateMock(...args),
   }
 })
 
@@ -71,6 +81,17 @@ beforeEach(() => {
     displayName: '须贺神社',
     animeTitle: '你的名字。',
   })
+  canShareFilesMock.mockReset()
+  canShareFilesMock.mockReturnValue(false) // 默认桌面路径
+  shareViaSystemMock.mockReset()
+  shareViaSystemMock.mockResolvedValue('files')
+  copyTextMock.mockReset()
+  copyTextMock.mockResolvedValue(true)
+  copyImageMock.mockResolvedValue(true)
+  openBlankWindowMock.mockReset()
+  openBlankWindowMock.mockReturnValue({ location: { href: '' } })
+  openOrNavigateMock.mockReset()
+  openOrNavigateMock.mockReturnValue(true)
   createShareLinkMock.mockResolvedValue({
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
@@ -103,13 +124,9 @@ describe('PointSharePanel 短链与平台按钮', () => {
     })
   })
 
-  it('平台按钮 href 带正确的渠道参数与编码', async () => {
+  it('平台链接 href 带正确的渠道参数与编码', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(screen.getByRole('link', { name: 'X' })).toBeInTheDocument())
-
-    const x = screen.getByRole('link', { name: 'X' }) as HTMLAnchorElement
-    expect(x.href).toContain('https://twitter.com/intent/tweet?text=')
-    expect(decodeURIComponent(x.href)).toContain('https://seichigo.com/s/AbC12xYz?c=x')
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Reddit' })).toBeInTheDocument())
 
     const reddit = screen.getByRole('link', { name: 'Reddit' }) as HTMLAnchorElement
     expect(reddit.href).toContain(encodeURIComponent('https://seichigo.com/s/AbC12xYz?c=rd'))
@@ -154,14 +171,12 @@ describe('PointSharePanel 短链与平台按钮', () => {
     render(<PointSharePanel {...PROPS} />)
     const retry = await screen.findByRole('button', { name: t('share.retry', 'zh') })
     expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument()
-    // 短链未就绪时平台入口是禁用态（无 href，getByRole('link') 匹配不到，用文本找）
-    const x = screen.getByText('X').closest('a')!
-    expect(x).toHaveAttribute('aria-disabled', 'true')
-    expect(x.className).toContain('pointer-events-none')
+    // 短链未就绪时平台入口是禁用态
+    expect(screen.getByRole('button', { name: 'X' })).toBeDisabled()
     fireEvent.click(retry)
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     // 重试成功后平台链接出现
-    await screen.findByRole('link', { name: 'X' })
+    await screen.findByRole('link', { name: 'Reddit' })
   })
 
   it('加实拍后切换版式，仍在使用的实拍 objectURL 不会被 revoke', async () => {
@@ -222,6 +237,8 @@ describe('PointSharePanel 短链与平台按钮', () => {
   it('复制图片不可用时降级为下载并提示已保存', async () => {
     copyImageMock.mockResolvedValue(false)
     render(<PointSharePanel {...PROPS} />)
+    // 桌面路径下「复制图片」收在「更多」里
+    fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
     const copyBtn = await screen.findByRole('button', { name: t('share.copyImage', 'zh') })
     await waitFor(() => expect(copyBtn).not.toBeDisabled())
     fireEvent.click(copyBtn)
@@ -311,10 +328,10 @@ describe('PointSharePanel 点位上下文', () => {
 
   it('文案带城市级地址（前两级，去掉空格）', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() =>
-      expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
-        '《你的名字。》圣地巡礼｜须贺神社 · 東京都新宿区 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
-      ),
+    const collapsed = await screen.findByRole('button', { name: t('share.captionLabel', 'zh') })
+    fireEvent.click(collapsed)
+    expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
+      '《你的名字。》圣地巡礼｜须贺神社 · 東京都新宿区 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
     )
   })
 
@@ -328,6 +345,8 @@ describe('PointSharePanel 点位上下文', () => {
       animeTitle: '你的名字。',
     })
     render(<PointSharePanel {...PROPS} />)
+    const collapsed = await screen.findByRole('button', { name: t('share.captionLabel', 'zh') })
+    fireEvent.click(collapsed)
     await waitFor(() =>
       expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
         '《你的名字。》圣地巡礼｜须贺神社 · 东京 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
@@ -341,5 +360,177 @@ describe('PointSharePanel 点位上下文', () => {
     fireEvent.click(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') }))
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     expect(fetchPointContextMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+async function readyPanel(props = PROPS) {
+  render(<PointSharePanel {...props} />)
+  await waitFor(() => expect(lastCardInput?.shareUrl).toBe('https://seichigo.com/s/AbC12xYz'))
+  await waitFor(() => expect(fetchPointContextMock).toHaveBeenCalled())
+  // 再等卡片渲染回调落地（cardBlob 就绪）：两条路径的 X 按钮都从禁用变可点
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: t('share.platformX', 'zh') })).not.toBeDisabled(),
+  )
+}
+
+describe('PointSharePanel 桌面路径', () => {
+  it('不显示「分享到…」主按钮', async () => {
+    await readyPanel()
+    expect(screen.queryByRole('button', { name: t('share.shareTo', 'zh') })).not.toBeInTheDocument()
+  })
+
+  it('X：先同步开窗口，再写剪贴板，最后设 location', async () => {
+    await readyPanel()
+    const button = screen.getByRole('button', { name: t('share.platformX', 'zh') })
+    await waitFor(() => expect(button).not.toBeDisabled())
+    fireEvent.click(button)
+    await waitFor(() => expect(openOrNavigateMock).toHaveBeenCalledTimes(1))
+    // 同步链路：window.open 必须发生在 await copyImage 之前
+    expect(openBlankWindowMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      copyImageMock.mock.invocationCallOrder[0]!,
+    )
+    expect(openOrNavigateMock.mock.calls[0]![1]).toContain('https://twitter.com/intent/tweet?text=')
+    expect(decodeURIComponent(String(openOrNavigateMock.mock.calls[0]![1]))).toContain(
+      'https://seichigo.com/s/AbC12xYz?c=x',
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastImageCopiedPasteInPost', 'zh'),
+    )
+  })
+
+  it('X：剪贴板写图失败改为下载并换提示', async () => {
+    copyImageMock.mockResolvedValue(false)
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformX', 'zh') }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastImageDownloadedDragIntoPost', 'zh'),
+    )
+  })
+
+  it('X：窗口被彻底拦截时提示失败', async () => {
+    openBlankWindowMock.mockReturnValue(null)
+    openOrNavigateMock.mockReturnValue(false)
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformX', 'zh') }))
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh'))
+  })
+
+  it('Reddit / LINE 仍然是带渠道参数的普通链接', async () => {
+    await readyPanel()
+    const reddit = screen.getByRole('link', { name: t('share.platformReddit', 'zh') }) as HTMLAnchorElement
+    expect(reddit.href).toContain(encodeURIComponent('https://seichigo.com/s/AbC12xYz?c=rd'))
+    const line = screen.getByRole('link', { name: t('share.platformLine', 'zh') }) as HTMLAnchorElement
+    expect(line.href).toContain(encodeURIComponent('https://seichigo.com/s/AbC12xYz?c=ln'))
+  })
+
+  it('小红书：一次点击 = 下载图片 + 复制文案 + 提示打开小红书', async () => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(String(copyTextMock.mock.calls[0]![0])).toContain('?c=xhs')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastSavedAndCopiedOpenApp', 'zh').replace('{app}', t('share.platformXiaohongshu', 'zh')),
+    )
+  })
+
+  it('微信：同样一次点击做完，提示里的 app 换成微信', async () => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformWechat', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(String(copyTextMock.mock.calls[0]![0])).toContain('?c=wx')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastSavedAndCopiedOpenApp', 'zh').replace('{app}', t('share.platformWechat', 'zh')),
+    )
+  })
+
+  it('保存图片在主区，复制图片/复制文案收进「更多」', async () => {
+    await readyPanel()
+    expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('share.copyImage', 'zh') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('share.copyText', 'zh') })).not.toBeInTheDocument()
+
+    const more = screen.getByRole('button', { name: t('share.more', 'zh') })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: t('share.copyImage', 'zh') })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('share.copyText', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(String(copyTextMock.mock.calls[0]![0])).toContain('?c=copy')
+  })
+})
+
+describe('PointSharePanel 手机路径', () => {
+  beforeEach(() => {
+    canShareFilesMock.mockReturnValue(true)
+  })
+
+  it('显示「分享到…」主按钮，走系统面板且渠道是 sys', async () => {
+    await readyPanel()
+    const primary = screen.getByRole('button', { name: t('share.shareTo', 'zh') })
+    fireEvent.click(primary)
+    await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
+    expect(shareViaSystemMock.mock.calls[0]![0].url).toBe('https://seichigo.com/s/AbC12xYz?c=sys')
+    expect(shareViaSystemMock.mock.calls[0]![0].files).toHaveLength(1)
+  })
+
+  it.each([
+    ['share.platformX', 'x'],
+    ['share.platformReddit', 'rd'],
+    ['share.platformLine', 'ln'],
+    ['share.platformXiaohongshu', 'xhs'],
+    ['share.platformWechat', 'wx'],
+  ] as const)('%s 也走系统面板，渠道 %s', async (labelKey, channel) => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t(labelKey, 'zh') }))
+    await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
+    expect(shareViaSystemMock.mock.calls[0]![0].url).toBe(
+      `https://seichigo.com/s/AbC12xYz?c=${channel}`,
+    )
+    expect(String(shareViaSystemMock.mock.calls[0]![0].text)).toContain(`?c=${channel}`)
+  })
+
+  it('系统面板吃不下图片时提示手动发布', async () => {
+    shareViaSystemMock.mockResolvedValue('text')
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.shareTo', 'zh') }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastShareFilesUnsupported', 'zh'),
+    )
+  })
+
+  it('「更多」里是保存图片与复制文案，没有复制图片', async () => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
+    expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('share.copyText', 'zh') })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('share.copyImage', 'zh') })).not.toBeInTheDocument()
+  })
+})
+
+describe('PointSharePanel 文案折叠与编辑', () => {
+  it('默认折叠成一行摘要（前 40 字 + …）', async () => {
+    await readyPanel()
+    const collapsed = screen.getByRole('button', { name: t('share.captionLabel', 'zh') })
+    const full =
+      '《你的名字。》圣地巡礼｜须贺神社 · 東京都新宿区 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。'
+    expect(collapsed).toHaveTextContent(`${full.slice(0, 40)}…`)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('展开后可编辑，编辑后的文案用于所有动作且渠道参数被改写', async () => {
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.captionLabel', 'zh') }))
+    const textarea = screen.getByLabelText(t('share.captionLabel', 'zh'))
+    fireEvent.change(textarea, {
+      target: { value: '我改过的文案 https://seichigo.com/s/AbC12xYz?c=copy' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(copyTextMock.mock.calls[0]![0]).toBe(
+      '我改过的文案 https://seichigo.com/s/AbC12xYz?c=xhs',
+    )
   })
 })

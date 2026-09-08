@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Camera, Copy, Download, Loader2, Share2, X } from 'lucide-react'
+import { Camera, ChevronRight, Copy, Download, Loader2, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_PHOTO_MAX_BYTES, type PointContextResponse, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
@@ -13,16 +13,20 @@ import {
   buildRedditSubmitUrl,
   buildShareCaption,
   buildXIntentUrl,
+  retargetCaptionChannel,
   toCityLevelAddress,
   withShareChannel,
 } from '@/components/share/shareText'
 import {
   blobToFile,
+  canShareFiles,
   copyImage,
   copyText,
   createShareLink,
   downloadBlob,
   fetchPointContext,
+  openBlankWindow,
+  openOrNavigate,
   readPreferredLayout,
   shareViaSystem,
   transcodeToJpeg,
@@ -48,6 +52,17 @@ const BUTTON_BASE =
 
 /** canvas 与 <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG */
 const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+/** 手机路径下五个目的地都走系统面板，只有渠道参数不同 */
+const MOBILE_DESTINATIONS: ReadonlyArray<{ channel: ShareChannel; labelKey: string }> = [
+  { channel: 'x', labelKey: 'share.platformX' },
+  { channel: 'rd', labelKey: 'share.platformReddit' },
+  { channel: 'ln', labelKey: 'share.platformLine' },
+  { channel: 'xhs', labelKey: 'share.platformXiaohongshu' },
+  { channel: 'wx', labelKey: 'share.platformWechat' },
+]
+
+const CAPTION_COLLAPSED_MAX = 40
 
 export default function PointSharePanel({
   pointId,
@@ -79,6 +94,9 @@ export default function PointSharePanel({
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [captionOverride, setCaptionOverride] = useState<string | null>(null)
+  const [captionExpanded, setCaptionExpanded] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -187,11 +205,18 @@ export default function PointSharePanel({
 
   const handleRenderError = useCallback(() => setFailed(true), [])
 
-  const showToast = useCallback((key: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast(t(key, locale))
-    toastTimerRef.current = setTimeout(() => setToast(null), 2200)
-  }, [locale])
+  const showToast = useCallback(
+    (key: string, vars?: Record<string, string>) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      let text = t(key, locale)
+      if (vars) {
+        for (const [name, value] of Object.entries(vars)) text = text.replace(`{${name}}`, value)
+      }
+      setToast(text)
+      toastTimerRef.current = setTimeout(() => setToast(null), 2600)
+    },
+    [locale],
+  )
 
   useEffect(() => {
     return () => {
@@ -205,17 +230,31 @@ export default function PointSharePanel({
     : String(cityName || '').trim()
 
   const captionFor = useCallback(
-    (channel: ShareChannel) =>
-      buildShareCaption(t('share.captionTemplate', locale), {
+    (channel: ShareChannel) => {
+      const generated = buildShareCaption(t('share.captionTemplate', locale), {
         anime: cardAnimeTitle,
         point: displayName,
         address: captionAddress,
         url: shareUrl ? withShareChannel(shareUrl, channel) : '',
-      }),
-    [locale, cardAnimeTitle, displayName, captionAddress, shareUrl],
+      })
+      if (captionOverride === null) return generated
+      return retargetCaptionChannel(captionOverride, shareUrl, channel)
+    },
+    [locale, cardAnimeTitle, displayName, captionAddress, shareUrl, captionOverride],
   )
 
   const copyCaption = captionFor('copy')
+  const collapsedCaption =
+    copyCaption.length > CAPTION_COLLAPSED_MAX
+      ? `${copyCaption.slice(0, CAPTION_COLLAPSED_MAX)}…`
+      : copyCaption
+
+  const cardFile = useMemo(
+    () => (cardBlob ? blobToFile(cardBlob, buildCardFilename(displayName)) : null),
+    [cardBlob, displayName],
+  )
+  // 手机/桌面只看 navigator.canShare({ files })，不看 UA
+  const mobilePath = useMemo(() => (cardFile ? canShareFiles([cardFile]) : false), [cardFile])
 
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -255,18 +294,38 @@ export default function PointSharePanel({
     uploadedRef.current = false
   }
 
-  const handleSystemShare = async () => {
-    if (!cardBlob || busy) return
+  const shareToSystem = async (channel: ShareChannel) => {
+    if (!cardFile || !shareUrl || busy) return
     setBusy(true)
     try {
-      const file = blobToFile(cardBlob, buildCardFilename(pointName))
       const result = await shareViaSystem({
-        files: [file],
-        text: captionFor('sys'),
-        url: withShareChannel(shareUrl, 'sys'),
+        files: [cardFile],
+        text: captionFor(channel),
+        url: withShareChannel(shareUrl, channel),
       })
       if (result === 'text') showToast('share.toastShareFilesUnsupported')
       if (result === 'failed') showToast('share.toastFailed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 桌面 X：window.open 必须留在 click 的同步链路里 —— 先拿窗口引用，
+   * 再 await 剪贴板，最后设 location，否则 await 之后的 open 会被弹窗拦截。
+   */
+  const handleDesktopX = async () => {
+    if (!cardBlob || !shareUrl || busy) return
+    setBusy(true)
+    const win = openBlankWindow()
+    try {
+      const copied = await copyImage(cardBlob)
+      if (!copied) downloadBlob(cardBlob, buildCardFilename(displayName))
+      if (!openOrNavigate(win, buildXIntentUrl(captionFor('x')))) {
+        showToast('share.toastFailed')
+        return
+      }
+      showToast(copied ? 'share.toastImageCopiedPasteInPost' : 'share.toastImageDownloadedDragIntoPost')
     } finally {
       setBusy(false)
     }
@@ -281,7 +340,7 @@ export default function PointSharePanel({
         return
       }
       // 剪贴板不可用时降级为下载，别让操作无声失败
-      downloadBlob(cardBlob, buildCardFilename(pointName))
+      downloadBlob(cardBlob, buildCardFilename(displayName))
       showToast('share.toastSaved')
     } finally {
       setBusy(false)
@@ -298,19 +357,22 @@ export default function PointSharePanel({
     }
   }
 
-  const handleSave = (channel: ShareChannel = 'save') => {
+  const handleSave = () => {
     if (!cardBlob) return
-    downloadBlob(cardBlob, buildCardFilename(pointName))
-    if (channel === 'save') showToast('share.toastSaved')
+    downloadBlob(cardBlob, buildCardFilename(displayName))
+    showToast('share.toastSaved')
   }
 
+  /** 桌面小红书/微信：下载图片 + 复制文案，一次点击做完 */
   const handleAppFlow = async (channel: 'xhs' | 'wx') => {
-    if (busy) return
+    if (!cardBlob || busy) return
     setBusy(true)
     try {
-      handleSave(channel)
+      downloadBlob(cardBlob, buildCardFilename(displayName))
       await copyText(captionFor(channel))
-      showToast('share.toastPasteInApp')
+      showToast('share.toastSavedAndCopiedOpenApp', {
+        app: t(channel === 'xhs' ? 'share.platformXiaohongshu' : 'share.platformWechat', locale),
+      })
     } finally {
       setBusy(false)
     }
@@ -408,69 +470,164 @@ export default function PointSharePanel({
           onChange={handlePhotoChange}
         />
 
-        <label className="block space-y-1">
-          <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
-          <textarea
-            readOnly
-            rows={3}
-            value={copyCaption}
+        {captionExpanded ? (
+          <label className="block space-y-1">
+            <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
+            <textarea
+              rows={3}
+              value={copyCaption}
+              aria-label={t('share.captionLabel', locale)}
+              onChange={(event) => setCaptionOverride(event.target.value)}
+              className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
             aria-label={t('share.captionLabel', locale)}
-            className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
-          />
-        </label>
+            aria-expanded={false}
+            onClick={() => setCaptionExpanded(true)}
+            className="flex w-full items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700"
+          >
+            <span className="min-w-0 flex-1 truncate">{collapsedCaption}</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+          </button>
+        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" disabled={!ready} onClick={handleSystemShare} className={`${BUTTON_BASE} bg-gray-900 text-white sm:hidden`}>
+        {mobilePath ? (
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => shareToSystem('sys')}
+            className={`${BUTTON_BASE} w-full bg-gray-900 text-white`}
+          >
             <Share2 className="h-4 w-4" />
-            {t('share.systemShare', locale)}
+            {t('share.shareTo', locale)}
           </button>
-          <button type="button" disabled={!ready} onClick={handleCopyImage} className={`${BUTTON_BASE} hidden bg-gray-900 text-white sm:inline-flex`}>
-            <Copy className="h-4 w-4" />
-            {t('share.copyImage', locale)}
-          </button>
-          <button type="button" disabled={!shareUrl} onClick={handleCopyText} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.copyText', locale)}
-          </button>
-        </div>
+        ) : null}
 
         <div className="grid grid-cols-3 gap-2">
-          <a
-            href={shareUrl ? buildXIntentUrl(captionFor('x')) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+          {mobilePath ? (
+            MOBILE_DESTINATIONS.map((destination) => (
+              <button
+                key={destination.channel}
+                type="button"
+                disabled={!ready}
+                onClick={() => shareToSystem(destination.channel)}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+              >
+                {t(destination.labelKey, locale)}
+              </button>
+            ))
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={handleDesktopX}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformX', locale)}
+              </button>
+              <a
+                href={
+                  shareUrl
+                    ? buildRedditSubmitUrl(
+                        withShareChannel(shareUrl, 'rd'),
+                        t('share.redditTitle', locale)
+                          .replace('{point}', displayName)
+                          .replace('{anime}', cardAnimeTitle),
+                      )
+                    : undefined
+                }
+                aria-disabled={!shareUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+              >
+                {t('share.platformReddit', locale)}
+              </a>
+              <a
+                href={shareUrl ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
+                aria-disabled={!shareUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+              >
+                {t('share.platformLine', locale)}
+              </a>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => handleAppFlow('xhs')}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformXiaohongshu', locale)}
+              </button>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => handleAppFlow('wx')}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformWechat', locale)}
+              </button>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={handleSave}
+                className={`${BUTTON_BASE} w-full bg-brand text-white`}
+              >
+                <Download className="h-4 w-4" />
+                {t('share.saveImage', locale)}
+              </button>
+            </>
+          )}
+        </div>
+
+        <div>
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((value) => !value)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-500"
           >
-            {t('share.platformX', locale)}
-          </a>
-          <a
-            href={shareUrl ? buildRedditSubmitUrl(withShareChannel(shareUrl, 'rd'), t('share.redditTitle', locale).replace('{point}', pointName).replace('{anime}', animeTitle)) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
-          >
-            {t('share.platformReddit', locale)}
-          </a>
-          <a
-            href={shareUrl ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
-          >
-            {t('share.platformLine', locale)}
-          </a>
-          <button type="button" disabled={!ready} onClick={() => handleAppFlow('xhs')} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.platformXiaohongshu', locale)}
+            {t('share.more', locale)}
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          <button type="button" disabled={!ready} onClick={() => handleAppFlow('wx')} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.platformWechat', locale)}
-          </button>
-          <button type="button" disabled={!ready} onClick={() => handleSave()} className={`${BUTTON_BASE} bg-brand text-white`}>
-            <Download className="h-4 w-4" />
-            {t('share.saveImage', locale)}
-          </button>
+          {moreOpen ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {mobilePath ? (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={handleSave}
+                  className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+                >
+                  <Download className="h-4 w-4" />
+                  {t('share.saveImage', locale)}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={handleCopyImage}
+                  className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+                >
+                  <Copy className="h-4 w-4" />
+                  {t('share.copyImage', locale)}
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!shareUrl}
+                onClick={handleCopyText}
+                className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+              >
+                {t('share.copyText', locale)}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {toast ? (

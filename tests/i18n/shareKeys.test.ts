@@ -54,10 +54,27 @@ describe('share i18n keys', () => {
 
   // 2026-09-08 Track B 评审修复新增的键，逐个登记防漏翻
   const REVIEW_FIX_KEYS = ['retry', 'toastPhotoTooLarge', 'toastPhotoUnsupported', 'redditTitle']
+  // 2026-09-08 分享 v2 目的地驱动面板新增的键
+  const V2_KEYS = [
+    'shareTo',
+    'more',
+    'toastImageCopiedPasteInPost',
+    'toastImageDownloadedDragIntoPost',
+    'toastSavedAndCopiedOpenApp',
+  ]
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
-    for (const key of REVIEW_FIX_KEYS) {
+    for (const key of [...REVIEW_FIX_KEYS, ...V2_KEYS]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }
+  })
+
+  it.each(LOCALES)('%s 的 toastSavedAndCopiedOpenApp 带 {app} 占位', (_locale, dict) => {
+    expect(String(at(dict, 'share.toastSavedAndCopiedOpenApp'))).toContain('{app}')
+  })
+
+  it.each(LOCALES)('%s 已删除 v1 的 systemShare / toastPasteInApp', (_locale, dict) => {
+    expect(at(dict, 'share.systemShare')).toBeUndefined()
+    expect(at(dict, 'share.toastPasteInApp')).toBeUndefined()
   })
 })
