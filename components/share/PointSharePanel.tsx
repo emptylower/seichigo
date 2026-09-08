@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Camera, ChevronRight, Copy, Download, Loader2, Share2, X } from 'lucide-react'
+import { Camera, ChevronRight, Copy, Download, Loader2, LogIn, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { SHARE_PHOTO_MAX_BYTES, type PointContextResponse, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
-import PointShareCard, { type PointShareCardInput } from '@/components/share/PointShareCard'
+import {
+  SHARE_PHOTO_MAX_BYTES,
+  buildCardImagePath,
+  type PointContextResponse,
+  type ShareCardLayout,
+  type ShareChannel,
+} from '@/lib/share/types'
 import {
   buildCardFilename,
   buildLineShareUrl,
@@ -24,13 +29,14 @@ import {
   copyText,
   createShareLink,
   downloadBlob,
+  fetchCardBlob,
   fetchPointContext,
   openBlankWindow,
   openOrNavigate,
   readPreferredLayout,
   shareViaSystem,
   transcodeToJpeg,
-  uploadShareAssets,
+  uploadSharePhoto,
   writePreferredLayout,
 } from '@/components/share/shareClient'
 
@@ -40,6 +46,7 @@ export type PointSharePanelProps = {
   pointName: string
   animeTitle: string
   cityName: string
+  /** 卡片改服务端渲染后由后端从库里读，这两项保留只为不动 MapDialogs 的调用点 */
   episode: string | null
   scene: string | null
   animeImage: string
@@ -50,7 +57,7 @@ export type PointSharePanelProps = {
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
 
-/** canvas 与 <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG */
+/** <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG 再上传 */
 const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 /** 手机路径下五个目的地都走系统面板，只有渠道参数不同 */
@@ -70,9 +77,6 @@ export default function PointSharePanel({
   pointName,
   animeTitle,
   cityName,
-  episode,
-  scene,
-  animeImage,
   locale = 'zh',
   onClose,
 }: PointSharePanelProps) {
@@ -83,35 +87,30 @@ export default function PointSharePanel({
     setLayout(readPreferredLayout())
   }, [])
   const [context, setContext] = useState<PointContextResponse | null>(null)
-  // context 还没回来（含失败落定）都不算 settled：卡片必须等它落定再画，
-  // 否则会先出一版无地址卡片，再被带地址版本覆盖（上传也会跟着错版）
-  const [contextSettled, setContextSettled] = useState(false)
   const [shareUrl, setShareUrl] = useState<string>('')
   const [code, setCode] = useState<string>('')
+  const [linkFailed, setLinkFailed] = useState(false)
+  const [photoKey, setPhotoKey] = useState<string | null>(null)
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [photo, setPhoto] = useState<File | null>(null)
-  const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [linkFailed, setLinkFailed] = useState(false)
+  const [cardFailed, setCardFailed] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [captionOverride, setCaptionOverride] = useState<string | null>(null)
   const [captionExpanded, setCaptionExpanded] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-  const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { status: sessionStatus } = useSession()
+  const signedIn = sessionStatus === 'authenticated'
 
-  // 版式变了就换一条短链：短链上记录了 layout，OG 图尺寸要对得上
+  // 版式变了就换一条短链：短链上记录了 layout，分享出去的那条要对得上
   useEffect(() => {
     let cancelled = false
     setShareUrl('')
     setCode('')
     setLinkFailed(false)
-    uploadedRef.current = false
     createShareLink({ pointId, bangumiId, locale, layout }).then((result) => {
       if (cancelled) return
       if (!result) {
@@ -126,97 +125,59 @@ export default function PointSharePanel({
     }
   }, [pointId, bangumiId, locale, layout, retryNonce])
 
-  // 与建短链并行：地址/说明/去前缀点位名。失败也置 settled，卡片按无地址画
+  // 文案里的地址要它；卡片本身已经由服务端读同一份上下文，前端不再等它
   useEffect(() => {
     let cancelled = false
     setContext(null)
-    setContextSettled(false)
     fetchPointContext(pointId, locale).then((result) => {
       if (cancelled) return
       setContext(result)
-      setContextSettled(true)
     })
     return () => {
       cancelled = true
     }
   }, [pointId, locale, retryNonce])
 
+  const cardUrl = useMemo(
+    () => buildCardImagePath(pointId, locale, layout, photoKey),
+    [pointId, locale, layout, photoKey],
+  )
+
+  // 预览、保存、复制、系统分享共用同一个 blob：整条链路只发一次卡片请求
+  useEffect(() => {
+    let cancelled = false
+    setCardFailed(false)
+    setCardBlob(null)
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    fetchCardBlob(cardUrl).then((blob) => {
+      if (cancelled) return
+      if (!blob) {
+        setCardFailed(true)
+        return
+      }
+      setCardBlob(blob)
+      setPreviewUrl(URL.createObjectURL(blob))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [cardUrl, retryNonce])
+
   const previewUrlRef = useRef<string | null>(null)
-  const photoObjectUrlRef = useRef<string | null>(null)
   useEffect(() => {
     previewUrlRef.current = previewUrl
   }, [previewUrl])
   useEffect(() => {
-    photoObjectUrlRef.current = photoObjectUrl
-  }, [photoObjectUrl])
-  // 只在卸载时 revoke：previewUrl/photoObjectUrl 变化时另一个可能还在被卡片渲染器用着
-  useEffect(() => {
     return () => {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-      if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current)
     }
   }, [])
 
   const displayName = context?.displayName?.trim() || pointName
   const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
-
-  const cardInput: PointShareCardInput | null = useMemo(() => {
-    if (!shareUrl || !contextSettled) return null
-    return {
-      layout,
-      locale,
-      pointName: displayName,
-      animeTitle: cardAnimeTitle,
-      episode,
-      scene,
-      address: context?.address ?? null,
-      note: context?.note ?? null,
-      geo: context?.geo ?? null,
-      inJapan: Boolean(context?.inJapan),
-      animeImage,
-      photoObjectUrl,
-      shareUrl,
-      // 扫码进站的算「存图」渠道：二维码画带 c=save 的短链
-      qrUrl: withShareChannel(shareUrl, 'save'),
-      // v2.1 导航胶囊三语文案（C5 补齐 locales，t() 缺 key 时先回落 key 名）
-      cardText: {
-        qrTitle: t('share.cardQrTitle', locale),
-        qrSub: t('share.cardQrSub', locale),
-        tagline: t('share.cardTagline', locale),
-      },
-    }
-  }, [
-    shareUrl,
-    contextSettled,
-    layout,
-    locale,
-    displayName,
-    cardAnimeTitle,
-    episode,
-    scene,
-    context,
-    animeImage,
-    photoObjectUrl,
-  ])
-
-  const handleRendered = useCallback(
-    (blob: Blob) => {
-      setFailed(false)
-      setCardBlob(blob)
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return URL.createObjectURL(blob)
-      })
-      // 登录用户静默上传一次：401/429/503 都返回 null，匿名分享照常
-      if (code && !uploadedRef.current && sessionStatus === 'authenticated') {
-        uploadedRef.current = true
-        void uploadShareAssets(code, blob, photo)
-      }
-    },
-    [code, photo, sessionStatus],
-  )
-
-  const handleRenderError = useCallback(() => setFailed(true), [])
 
   const showToast = useCallback(
     (key: string, vars?: Record<string, string>) => {
@@ -249,7 +210,6 @@ export default function PointSharePanel({
     address: captionAddress,
     url: shareUrl ? withShareChannel(shareUrl, 'copy') : '',
   })
-  // 编辑器与折叠摘要显示原始输入；渠道改写只在动作那一刻做，不回填进编辑器
   const editorValue = captionOverride ?? generatedCaption
 
   const captionFor = useCallback(
@@ -257,7 +217,6 @@ export default function PointSharePanel({
     [editorValue, shareUrl],
   )
 
-  // 摘要只有一行，短链占掉一半没意义：先把 URL 剥掉再截
   const captionSummarySource = editorValue
     .replace(/https?:\/\/\S+/g, '')
     .replace(/\s{2,}/g, ' ')
@@ -267,19 +226,31 @@ export default function PointSharePanel({
       ? `${captionSummarySource.slice(0, CAPTION_COLLAPSED_MAX)}…`
       : captionSummarySource
 
+  const cardFilename = useMemo(
+    () => buildCardFilename(displayName, cardBlob?.type),
+    [displayName, cardBlob],
+  )
   const cardFile = useMemo(
-    () => (cardBlob ? blobToFile(cardBlob, buildCardFilename(displayName)) : null),
-    [cardBlob, displayName],
+    () => (cardBlob ? blobToFile(cardBlob, cardFilename) : null),
+    [cardBlob, cardFilename],
   )
   // 手机/桌面只看 navigator.canShare({ files })，不看 UA
   const mobilePath = useMemo(() => (cardFile ? canShareFiles([cardFile]) : false), [cardFile])
 
+  const goSignIn = () => {
+    const back = typeof window !== 'undefined' ? window.location.href : '/'
+    window.location.assign(`/auth/signin?callbackUrl=${encodeURIComponent(back)}`)
+  }
+
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    const reset = () => {
+      if (fileRef.current) fileRef.current.value = ''
+    }
     if (file.size > SHARE_PHOTO_MAX_BYTES) {
       showToast('share.toastPhotoTooLarge')
-      if (fileRef.current) fileRef.current.value = ''
+      reset()
       return
     }
     let next = file
@@ -287,29 +258,36 @@ export default function PointSharePanel({
       const transcoded = await transcodeToJpeg(file)
       if (!transcoded) {
         showToast('share.toastPhotoUnsupported')
-        if (fileRef.current) fileRef.current.value = ''
+        reset()
         return
       }
       next = new File([transcoded], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, {
         type: 'image/jpeg',
       })
     }
-    setPhoto(next)
-    setPhotoObjectUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return URL.createObjectURL(next)
-    })
-    uploadedRef.current = false
+    if (!code) {
+      showToast('share.toastFailed')
+      reset()
+      return
+    }
+    setBusy(true)
+    try {
+      // 先把实拍传上去拿 R2 key，再用带 photo 参数的卡片 URL 刷新预览
+      const result = await uploadSharePhoto(code, next)
+      if (!result?.photoKey) {
+        showToast('share.toastFailed')
+        return
+      }
+      setPhotoKey(result.photoKey)
+    } finally {
+      setBusy(false)
+      reset()
+    }
   }
 
   const removePhoto = () => {
-    setPhoto(null)
-    setPhotoObjectUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
+    setPhotoKey(null)
     if (fileRef.current) fileRef.current.value = ''
-    uploadedRef.current = false
   }
 
   const shareToSystem = async (channel: ShareChannel) => {
@@ -338,9 +316,8 @@ export default function PointSharePanel({
     const win = openBlankWindow()
     try {
       const copied = await copyImage(cardBlob)
-      if (!copied) downloadBlob(cardBlob, buildCardFilename(displayName))
+      if (!copied) downloadBlob(cardBlob, cardFilename)
       if (!openOrNavigate(win, buildXIntentUrl(captionFor('x')))) {
-        // 弹窗被彻底拦截：图片已在手上，把文案也复制好，让用户自己开 X 粘贴
         const copiedText = await copyText(captionFor('x'))
         if (copiedText) {
           showToast('share.toastSavedAndCopiedOpenApp', { app: t('share.platformX', locale) })
@@ -363,8 +340,7 @@ export default function PointSharePanel({
         showToast('share.toastImageCopied')
         return
       }
-      // 剪贴板不可用时降级为下载，别让操作无声失败
-      downloadBlob(cardBlob, buildCardFilename(displayName))
+      downloadBlob(cardBlob, cardFilename)
       showToast('share.toastSaved')
     } finally {
       setBusy(false)
@@ -383,7 +359,7 @@ export default function PointSharePanel({
 
   const handleSave = () => {
     if (!cardBlob) return
-    downloadBlob(cardBlob, buildCardFilename(displayName))
+    downloadBlob(cardBlob, cardFilename)
     showToast('share.toastSaved')
   }
 
@@ -392,8 +368,7 @@ export default function PointSharePanel({
     if (!cardBlob || busy) return
     setBusy(true)
     try {
-      downloadBlob(cardBlob, buildCardFilename(displayName))
-      // 文案没复制成就别提示「已复制」：只说图片已保存
+      downloadBlob(cardBlob, cardFilename)
       const copied = await copyText(captionFor(channel))
       if (copied) {
         showToast('share.toastSavedAndCopiedOpenApp', {
@@ -429,7 +404,7 @@ export default function PointSharePanel({
             <img src={previewUrl} alt={t('share.panelTitle', locale)} className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-400">
-              {failed || linkFailed ? (
+              {cardFailed || linkFailed ? (
                 <>
                   <p className="text-sm">{t('share.generateFailed', locale)}</p>
                   <button
@@ -469,7 +444,17 @@ export default function PointSharePanel({
             </button>
           ))}
           <div className="ml-auto flex flex-col items-end gap-1">
-            {photo ? (
+            {!signedIn ? (
+              // 匿名上传会被拿来传违规图：实拍一律要登录
+              <button
+                type="button"
+                onClick={goSignIn}
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand"
+              >
+                <LogIn className="h-4 w-4" />
+                {t('share.addPhotoLoginRequired', locale)}
+              </button>
+            ) : photoKey ? (
               <button type="button" onClick={removePhoto} className="text-xs font-medium text-gray-500 underline">
                 {t('share.removePhoto', locale)}
               </button>
@@ -477,8 +462,9 @@ export default function PointSharePanel({
               <>
                 <button
                   type="button"
+                  disabled={busy || !code}
                   onClick={() => fileRef.current?.click()}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-brand"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand disabled:opacity-50"
                 >
                   <Camera className="h-4 w-4" />
                   {t('share.addPhoto', locale)}
@@ -576,7 +562,6 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={() => shareToSystem(destination.channel)}
-                // 五个目的地挤一行，字号跟着缩一档，窄屏才装得下
                 className={`${BUTTON_BASE} w-full bg-gray-100 px-1.5 text-xs text-gray-800`}
               >
                 {t(destination.labelKey, locale)}
@@ -700,10 +685,6 @@ export default function PointSharePanel({
           </div>
         ) : null}
       </div>
-
-      {cardInput ? (
-        <PointShareCard input={cardInput} onRendered={handleRendered} onError={handleRenderError} />
-      ) : null}
     </div>
   )
 }
