@@ -12,9 +12,15 @@ vi.mock('@/lib/anitabi/imageProxy', () => ({
   getMapDisplayImageCandidates: (...args: any[]) => candidatesMock(...args),
 }))
 
+const drawLocatorSpy = vi.fn()
+vi.mock('@/components/share/japanLocator', () => ({
+  drawJapanLocator: (...args: any[]) => drawLocatorSpy(...args),
+}))
+
 const blobSizes: number[] = []
 const failingSrcs = new Set<string>()
 const drawImageSpy = vi.fn()
+const fillTextCalls: Array<[string, number, number]> = []
 
 function stubCanvas() {
   const ctx = new Proxy(
@@ -22,6 +28,9 @@ function stubCanvas() {
       measureText: (text: string) => ({ width: text.length * 10 }),
       createLinearGradient: () => ({ addColorStop: () => undefined }),
       drawImage: drawImageSpy,
+      fillText: (text: string, x: number, y: number) => {
+        fillTextCalls.push([text, x, y])
+      },
     } as Record<string, unknown>,
     {
       get(target, prop) {
@@ -51,7 +60,9 @@ function stubCanvas() {
 beforeEach(() => {
   blobSizes.length = 0
   failingSrcs.clear()
+  fillTextCalls.length = 0
   drawImageSpy.mockClear()
+  drawLocatorSpy.mockClear()
   candidatesMock.mockReset()
   candidatesMock.mockImplementation((src: string) => [src])
   ;(QRCode.toDataURL as ReturnType<typeof vi.fn>).mockClear()
@@ -78,11 +89,14 @@ afterEach(() => {
 const INPUT = {
   layout: 'portrait' as const,
   locale: 'zh' as const,
-  pointName: '须贺神社',
-  animeTitle: '你的名字。',
-  cityName: '东京',
+  pointName: '葡萄牛奶',
+  animeTitle: '摇曳露营△ 三期',
   episode: '1',
-  scene: null,
+  scene: '1194',
+  address: '東京都 武蔵野市 中町一丁目',
+  note: '武州屋 x 远林 x 摇曳露营 推出了联名饮品',
+  geo: [35.7, 139.56] as [number, number],
+  inJapan: true,
   animeImage: 'https://image.anitabi.cn/points/101/suga.jpg',
   photoObjectUrl: null,
   shareUrl: 'https://seichigo.com/s/AbC12xYz',
@@ -173,5 +187,97 @@ describe('formatSceneTime', () => {
     expect(formatSceneTime('65')).toBe('1:05')
     expect(formatSceneTime('3725')).toBe('1:02:05')
     expect(formatSceneTime('第3話 冒頭')).toBe('第3話 冒頭')
+  })
+})
+
+describe('PointShareCard v2 文字与轮廓', () => {
+  const textsOf = () => fillTextCalls.map(([text]) => text)
+
+  it('依次画点位名、作品行、地址行、说明行，最后是页脚', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const texts = textsOf()
+    expect(texts[0]).toBe('葡萄牛奶')
+    expect(texts[1]).toBe('《摇曳露营△ 三期》 · 第 1 集 · 19:54')
+    expect(texts[2]).toBe('📍 東京都 武蔵野市 中町一丁目')
+    expect(texts[3]).toContain('武州屋')
+    expect(texts[texts.length - 1]).toBe('⛩ seichigo.com')
+  })
+
+  it('文字左边界用 textX（竖版 64）', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(fillTextCalls[0]![1]).toBe(64)
+  })
+
+  it('横版文字与页脚都落在右列 692', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, layout: 'landscape' }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(fillTextCalls[0]![1]).toBe(692)
+    expect(fillTextCalls[fillTextCalls.length - 1]![1]).toBe(692)
+  })
+
+  it('没有地址就不画地址行，没有说明就不画说明行', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, address: null, note: null }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const texts = textsOf()
+    expect(texts.some((text) => text.startsWith('📍'))).toBe(false)
+    expect(texts.some((text) => text.includes('武州屋'))).toBe(false)
+    expect(texts[0]).toBe('葡萄牛奶')
+    expect(texts[1]).toBe('《摇曳露营△ 三期》 · 第 1 集 · 19:54')
+  })
+
+  it('三语作品行分别用《》/『』/裸标题', async () => {
+    for (const [locale, expected] of [
+      ['zh', '《摇曳露营△ 三期》 · 第 1 集 · 19:54'],
+      ['ja', '『摇曳露营△ 三期』 · 第1話 · 19:54'],
+      ['en', '摇曳露营△ 三期 · EP 1 · 19:54'],
+    ] as const) {
+      fillTextCalls.length = 0
+      const onRendered = vi.fn()
+      const { unmount } = render(
+        <PointShareCard input={{ ...INPUT, locale }} onRendered={onRendered} onError={vi.fn()} />,
+      )
+      await waitFor(() => expect(onRendered).toHaveBeenCalled())
+      expect(textsOf()[1], locale).toBe(expected)
+      unmount()
+    }
+  })
+
+  it('inJapan 为 true 时按 layout.locator 画轮廓并带定位点', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(drawLocatorSpy).toHaveBeenCalledTimes(1)
+    expect(drawLocatorSpy.mock.calls[0]![1]).toEqual({ x: 64, y: 1096, width: 240, height: 240 })
+    expect(drawLocatorSpy.mock.calls[0]![2]).toEqual({ lat: 35.7, lng: 139.56 })
+  })
+
+  it('inJapan 为 false 时不画轮廓', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, inJapan: false }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(drawLocatorSpy).not.toHaveBeenCalled()
+  })
+
+  it('inJapan 为 true 但没有坐标时画轮廓不打点', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={{ ...INPUT, geo: null }} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(drawLocatorSpy.mock.calls[0]![2]).toBeNull()
   })
 })
