@@ -54,3 +54,64 @@ export function projectToBox(
 ): { x: number; y: number } {
   return project(buildProjection(box, bbox), lon, lat)
 }
+
+export const LOCATOR_COLORS = {
+  fill: '#fbcfe8',
+  stroke: '#ec4899',
+  marker: '#db2777',
+} as const
+
+/** 只用到 canvas 的这几个成员，测试里给个同形状的桩就够 */
+export type LocatorContext = Pick<
+  CanvasRenderingContext2D,
+  | 'save'
+  | 'restore'
+  | 'beginPath'
+  | 'closePath'
+  | 'moveTo'
+  | 'lineTo'
+  | 'fill'
+  | 'stroke'
+  | 'arc'
+  | 'fillStyle'
+  | 'strokeStyle'
+  | 'lineWidth'
+>
+
+export function drawJapanLocator(
+  ctx: LocatorContext,
+  box: LocatorBox,
+  point: { lat: number; lng: number } | null,
+  geometry: LocatorGeometry = JAPAN_OUTLINE,
+): void {
+  // 投影只算一次：1097 个点每个都重建投影是纯浪费
+  const projection = buildProjection(box, geometry.bbox)
+  const shortSide = Math.min(box.width, box.height)
+
+  ctx.save()
+  ctx.fillStyle = LOCATOR_COLORS.fill
+  ctx.strokeStyle = LOCATOR_COLORS.stroke
+  ctx.lineWidth = Math.max(1, shortSide / 160)
+  for (const ring of geometry.rings) {
+    if (!Array.isArray(ring) || ring.length < 3) continue
+    ctx.beginPath()
+    for (let index = 0; index < ring.length; index++) {
+      const pair = ring[index]!
+      const projected = project(projection, pair[0]!, pair[1]!)
+      if (index === 0) ctx.moveTo(projected.x, projected.y)
+      else ctx.lineTo(projected.x, projected.y)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  if (point) {
+    const projected = project(projection, point.lng, point.lat)
+    ctx.beginPath()
+    ctx.fillStyle = LOCATOR_COLORS.marker
+    ctx.arc(projected.x, projected.y, Math.max(3, shortSide * 0.035), 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
