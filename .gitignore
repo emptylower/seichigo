@@ -37,3 +37,6 @@ bundle.js
 # Claude Code 本地技能/会话状态（同 .omc 先例，不入库）
 .claude/skills/
 skills-lock.json
+
+# opencode dry-run / scratch output
+scratch/
