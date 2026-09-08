@@ -23,6 +23,8 @@ export type CardDeps = PointContextDeps & {
   fetchImage: (url: string) => Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null>
   /** 站点权威 origin，用来拼二维码深链 */
   origin: string
+  /** 请求路径 deadline 覆盖（单测用）；缺省 COLD_PATH_DEADLINE_MS */
+  renderDeadlineMs?: number
 }
 
 const LOCALES: readonly string[] = ['zh', 'en', 'ja']
@@ -229,6 +231,40 @@ export async function renderAndStoreCard(
 // pointId 会进 R2 key 与 URL，字符集与 lib/share/handlers/links.ts:23 保持一致
 const POINT_ID_PATTERN = /^[A-Za-z0-9_:.-]{1,200}$/
 
+/**
+ * 请求路径冷路径总 deadline：最坏路径 DB + MapTiler + 抓图 6 秒 + Browser Run
+ * 20 秒可跑到 30 秒外，社媒爬虫会超时放弃「无预览」。只限 HTTP 路径；
+ * 预热（prewarmCard）不受限，可以慢慢把缓存补上。
+ */
+export const COLD_PATH_DEADLINE_MS = 8_000
+
+/**
+ * Promise.race 式的软 deadline：到点 resolve `{ status: 'failed' }` 走兜底，
+ * 落败的渲染继续在后台跑（写缓存照常，下次请求就命中了），迟到异常不再冒泡。
+ */
+function withRenderDeadline(
+  work: Promise<RenderOutcome>,
+  deadlineMs: number,
+  pointId: string,
+): Promise<RenderOutcome> {
+  return new Promise<RenderOutcome>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      console.error('[share.card.render_deadline]', { pointId, deadlineMs })
+      resolve({ status: 'failed' })
+    }, deadlineMs)
+    work.then(
+      (outcome) => {
+        clearTimeout(timer)
+        resolve(outcome)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 const IMMUTABLE = 'public, max-age=31536000, immutable'
 /** 失败兜底不写缓存，公共缓存只敢放 60 秒 */
 const FALLBACK_CACHE = 'public, max-age=60'
@@ -332,13 +368,17 @@ export function createGetCardHandler(deps: CardDeps) {
 
     let outcome: RenderOutcome
     try {
-      outcome = await renderAndStoreCard(deps, {
+      outcome = await withRenderDeadline(
+        renderAndStoreCard(deps, {
+          pointId,
+          locale,
+          layout,
+          photoKey,
+          authorizeRender: ipHash ? () => checkCardRate(ipHash, now) : undefined,
+        }),
+        deps.renderDeadlineMs ?? COLD_PATH_DEADLINE_MS,
         pointId,
-        locale,
-        layout,
-        photoKey,
-        authorizeRender: ipHash ? () => checkCardRate(ipHash, now) : undefined,
-      })
+      )
     } catch (error) {
       // loadPointContext 的 Prisma 报错、base64 的 OOM 等都不能抛穿成 500 JSON，
       // 各平台会把「无预览」缓存下来

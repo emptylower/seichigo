@@ -477,6 +477,21 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(renderCard).not.toHaveBeenCalled()
   })
 
+  it('冷路径超过 deadline 时不再等渲染，直接走兜底', async () => {
+    const { store, objects } = makeStore()
+    const renderCard = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+      return new Uint8Array([1])
+    })
+    const res = await createGetCardHandler(
+      makeDeps({ getStore: () => store, renderCard, renderDeadlineMs: 50 }),
+    )(get(CARD_URL, '1.2.3.4'), params())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('location')).toBeNull()
+    expect(renderCard).toHaveBeenCalled()
+    expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
+  })
+
   it('匿名超过日限流 → 429（缓存命中不计入）', async () => {
     const { store } = makeStore()
     const handler = createGetCardHandler(makeDeps({ getStore: () => store }))
