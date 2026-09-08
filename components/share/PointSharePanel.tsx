@@ -113,6 +113,7 @@ export default function PointSharePanel({
     createShareLink({ pointId, bangumiId, locale, layout }).then((result) => {
       if (cancelled) return
       if (!result) {
+        destinationsSettledRef.current = true
         setLinkFailed(true)
         return
       }
@@ -159,6 +160,12 @@ export default function PointSharePanel({
     if (blob) cardBlobRef.current = { forCardUrl: cardUrl, blob }
     return blob
   }, [cardUrl])
+
+  // 骨架只在初次加载出现：任何一次就绪/失败落定后目的地网格就常显（未就绪时禁用），
+  // 失败态不再一直显示骨架——「更多 → 复制文案」这条不依赖卡片的路要保持可见
+  const destinationsSettledRef = useRef(false)
+  const showDestinationSkeleton =
+    !imgLoaded && !cardFailed && !linkFailed && !destinationsSettledRef.current
 
   const displayName = context?.displayName?.trim() || pointName
   const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
@@ -425,8 +432,14 @@ export default function PointSharePanel({
             key={`${cardUrl}|${retryNonce}`}
             src={cardUrl}
             alt={t('share.panelTitle', locale)}
-            onLoad={() => setImgLoaded(true)}
-            onError={() => setCardFailed(true)}
+            onLoad={() => {
+              destinationsSettledRef.current = true
+              setImgLoaded(true)
+            }}
+            onError={() => {
+              destinationsSettledRef.current = true
+              setCardFailed(true)
+            }}
             className={imgLoaded && !linkFailed ? 'h-full w-full object-contain' : 'hidden'}
           />
           {!(imgLoaded && !linkFailed) ? (
@@ -569,8 +582,8 @@ export default function PointSharePanel({
           </button>
         ) : null}
 
-        {/* 卡片没就绪时先出骨架占位 */}
-        {!imgLoaded ? (
+        {/* 骨架只在初次加载出现；取图/建链失败后渲染禁用态的目的地网格 */}
+        {showDestinationSkeleton ? (
           <div className="grid grid-cols-3 gap-2" data-testid="share-destinations-skeleton" aria-hidden="true">
             {[0, 1, 2, 3, 4, 5].map((slot) => (
               <div key={slot} className="h-11 animate-pulse rounded-xl bg-gray-100" />

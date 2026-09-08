@@ -287,6 +287,27 @@ describe('目的地与文案（回归）', () => {
     expect(screen.getByTestId('share-destinations-skeleton')).toBeInTheDocument()
   })
 
+  it('取图失败时不渲染骨架，目的地网格禁用但可见', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    fireEvent.error(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
+    expect(screen.queryByTestId('share-destinations-skeleton')).toBeNull()
+    expect(screen.getByText(t('share.platformX', 'zh'))).toBeDisabled()
+    expect(screen.getByText(t('share.saveImage', 'zh'))).toBeDisabled()
+    // 「更多 → 复制文案」不依赖卡片图，失败态下仍然可用
+    fireEvent.click(screen.getByText(t('share.more', 'zh')))
+    await waitFor(() => expect(screen.getByText(t('share.copyText', 'zh'))).not.toBeDisabled())
+  })
+
+  it('建短链失败时目的地网格同样禁用可见', async () => {
+    createShareLinkMock.mockResolvedValue(null)
+    render(<PointSharePanel {...PROPS} />)
+    await screen.findByAltText(t('share.panelTitle', 'zh'))
+    await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
+    expect(screen.queryByTestId('share-destinations-skeleton')).toBeNull()
+    expect(screen.getByText(t('share.platformX', 'zh'))).toBeDisabled()
+  })
+
   it('桌面路径出三列六个目的地', async () => {
     render(<PointSharePanel {...PROPS} />)
     fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
