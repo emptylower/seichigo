@@ -116,16 +116,20 @@ describe('cardCacheKey', () => {
 })
 
 describe('renderAndStoreCard', () => {
-  it('渲染成功后写进 R2 并返回字节', async () => {
+  it('渲染成功后写进 R2 并返回 rendered', async () => {
     const { store, objects } = makeStore()
     const deps = makeDeps({ getStore: () => store })
-    const bytes = await renderAndStoreCard(deps, {
+    const outcome = await renderAndStoreCard(deps, {
       pointId: '101:suga',
       locale: 'zh',
       layout: 'landscape',
       photoKey: null,
     })
-    expect(bytes).not.toBeNull()
+    expect(outcome.status).toBe('rendered')
+    if (outcome.status === 'rendered') {
+      expect(outcome.bytes.byteLength).toBeGreaterThan(0)
+      expect(outcome.contentType).toBe('image/webp')
+    }
     expect(objects.get('og-cards/101:suga__zh__landscape.webp')?.contentType).toBe('image/webp')
   })
 
@@ -147,13 +151,13 @@ describe('renderAndStoreCard', () => {
 
   it('取动画截图失败时用粉色渐变兜底，仍然出图', async () => {
     const deps = makeDeps({ fetchImage: async () => null })
-    const bytes = await renderAndStoreCard(deps, {
+    const outcome = await renderAndStoreCard(deps, {
       pointId: '101:suga',
       locale: 'zh',
       layout: 'landscape',
       photoKey: null,
     })
-    expect(bytes).not.toBeNull()
+    expect(outcome.status).toBe('rendered')
   })
 
   it('二维码编码的是稳定深链，不含短码', async () => {
@@ -170,32 +174,78 @@ describe('renderAndStoreCard', () => {
     expect(renderCard.mock.calls[0]![0].html).not.toContain('/s/')
   })
 
-  it('点位不存在返回 null 且不写 R2', async () => {
+  it('点位不存在返回 not_found 且不写 R2', async () => {
     const { store, objects } = makeStore()
     const deps = makeDeps({ getStore: () => store, repo: new MemoryPointContextRepo([]) })
-    expect(
-      await renderAndStoreCard(deps, {
-        pointId: 'nope',
-        locale: 'zh',
-        layout: 'landscape',
-        photoKey: null,
-      }),
-    ).toBeNull()
+    const outcome = await renderAndStoreCard(deps, {
+      pointId: 'nope',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    expect(outcome.status).toBe('not_found')
     expect(objects.size).toBe(0)
   })
 
-  it('渲染器返回 null 时不写缓存', async () => {
+  it('渲染器返回 null 时返回 failed 且不写缓存', async () => {
     const { store, objects } = makeStore()
     const deps = makeDeps({ getStore: () => store, renderCard: async () => null })
-    expect(
-      await renderAndStoreCard(deps, {
-        pointId: '101:suga',
-        locale: 'zh',
-        layout: 'landscape',
-        photoKey: null,
-      }),
-    ).toBeNull()
+    const outcome = await renderAndStoreCard(deps, {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    expect(outcome.status).toBe('failed')
     expect(objects.size).toBe(0)
+  })
+
+  it('缓存已存在时返回 cached 且不调渲染器（预热与请求共用同一条路）', async () => {
+    const { store } = makeStore({
+      'og-cards/101:suga__zh__landscape.webp': new Uint8Array([7, 7, 7]),
+    })
+    const renderCard = vi.fn(async () => new Uint8Array([9]))
+    const outcome = await renderAndStoreCard(makeDeps({ getStore: () => store, renderCard }), {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    expect(outcome.status).toBe('cached')
+    if (outcome.status === 'cached') {
+      expect(Array.from(outcome.bytes)).toEqual([7, 7, 7])
+    }
+    expect(renderCard).not.toHaveBeenCalled()
+  })
+
+  it('预热路径的渲染同样计入日预算', async () => {
+    const { store, objects } = makeStore()
+    const outcome = await renderAndStoreCard(makeDeps({ getStore: () => store }), {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    expect(outcome.status).toBe('rendered')
+    const budget = objects.get('og-cards/_budget/2026-09-08.json')
+    expect(new TextDecoder().decode(budget!.bytes)).toBe('{"count":1}')
+  })
+
+  it('预算耗尽时预热直接返回 budget_exhausted，不再渲染', async () => {
+    const { store } = makeStore({
+      'og-cards/_budget/2026-09-08.json': new TextEncoder().encode(
+        JSON.stringify({ count: DAILY_RENDER_BUDGET }),
+      ),
+    })
+    const renderCard = vi.fn(async () => new Uint8Array([1]))
+    const outcome = await renderAndStoreCard(makeDeps({ getStore: () => store, renderCard }), {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    expect(outcome.status).toBe('budget_exhausted')
+    expect(renderCard).not.toHaveBeenCalled()
   })
 
   it('带实拍时从 ASSET_STORE 读原图并内联', async () => {

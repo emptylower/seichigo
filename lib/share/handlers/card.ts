@@ -81,7 +81,7 @@ function toDataUri(bytes: Uint8Array, contentType: string): string {
   return `data:${type};base64,${bytesToBase64(bytes)}`
 }
 
-async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array<ArrayBuffer>> {
   const reader = stream.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
@@ -103,9 +103,21 @@ async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Ar
 }
 
 /**
- * 渲染一张卡片并写进 R2。返回字节；任何一环失败都返回 null 且不写缓存，
- * 由调用方走兜底（302 到动画截图 / /opengraph-image）。
- * 预热与请求路径共用这一个函数。
+ * renderAndStoreCard 的判别式结果：handler 按 status 决定响应，
+ * 预热（lib/share/api.ts）与 HTTP 请求共用这条渲染路径。
+ */
+export type RenderOutcome =
+  | { status: 'rendered'; bytes: Uint8Array<ArrayBuffer>; contentType: string }
+  | { status: 'cached'; bytes: Uint8Array<ArrayBuffer>; contentType: string }
+  | { status: 'rate_limited' }
+  | { status: 'budget_exhausted' }
+  | { status: 'not_found' }
+  | { status: 'failed' }
+
+/**
+ * 渲染一张卡片并写进 R2。缓存检查、匿名限流、全局日预算三道闸门都在这里面，
+ * 请求与预热共用：命中缓存不渲染、不计限流；预算耗尽不再起 Browser Run。
+ * 任何一环失败返回 `{ status: 'failed' }` 且不写缓存，由调用方走兜底。
  */
 export async function renderAndStoreCard(
   deps: CardDeps,
@@ -114,12 +126,37 @@ export async function renderAndStoreCard(
     locale: SupportedLocale
     layout: ShareCardLayout
     photoKey: string | null
+    /** 缓存未命中、真正开渲前的放行闸（匿名限流）。预热不传，直接放行。 */
+    authorizeRender?: () => boolean
   },
-): Promise<Uint8Array<ArrayBuffer> | null> {
-  const context = await loadPointContext(deps, input.pointId, input.locale)
-  if (!context) return null
-
+): Promise<RenderOutcome> {
   const store = deps.getStore()
+
+  // 闸 1：缓存命中直接回，不计限流、不动预算
+  const key = await cardCacheKey(input.pointId, input.locale, input.layout, input.photoKey)
+  if (store) {
+    const cached = await store.get(key).catch(() => null)
+    if (cached) {
+      return {
+        status: 'cached',
+        bytes: await readAllBytes(cached.body),
+        contentType: cached.contentType || 'image/webp',
+      }
+    }
+  }
+
+  // 闸 2：匿名限流（只有未命中才走到这）
+  if (input.authorizeRender && !input.authorizeRender()) {
+    return { status: 'rate_limited' }
+  }
+
+  const context = await loadPointContext(deps, input.pointId, input.locale)
+  if (!context) return { status: 'not_found' }
+
+  // 闸 3：全局日预算：耗尽就不再渲染
+  if (store && (await readRenderBudget(store, deps.now())) >= DAILY_RENDER_BUDGET) {
+    return { status: 'budget_exhausted' }
+  }
 
   const animeUrl = context.image ? await deps.resolveAnimeImageUrl(context.image) : null
   const animeImage = animeUrl ? await deps.fetchImage(animeUrl) : null
@@ -155,15 +192,17 @@ export async function renderAndStoreCard(
   })
 
   const bytes = await deps.renderCard({ html, width: size.width, height: size.height })
-  if (!bytes) return null
+  if (!bytes) return { status: 'failed' }
 
   if (store) {
-    const key = await cardCacheKey(input.pointId, input.locale, input.layout, input.photoKey)
+    await bumpRenderBudget(store, deps.now()).catch((error: unknown) => {
+      console.error('[share.card.budget_write_failed]', { error })
+    })
     await store.put(key, bytes, 'image/webp').catch((error: unknown) => {
       console.error('[share.card.cache_write_failed]', { key, error })
     })
   }
-  return bytes
+  return { status: 'rendered', bytes, contentType: 'image/webp' }
 }
 
 // pointId 会进 R2 key 与 URL，字符集与 lib/share/handlers/links.ts:23 保持一致
@@ -173,11 +212,11 @@ const IMMUTABLE = 'public, max-age=31536000, immutable'
 /** 失败兜底不写缓存，公共缓存只敢放 60 秒 */
 const FALLBACK_CACHE = 'public, max-age=60'
 
-function imageResponse(body: BodyInit): Response {
+function imageResponse(body: BodyInit, contentType = 'image/webp'): Response {
   return new Response(body, {
     status: 200,
     headers: {
-      'content-type': 'image/webp',
+      'content-type': contentType,
       'cache-control': IMMUTABLE,
       'x-content-type-options': 'nosniff',
     },
@@ -195,8 +234,9 @@ function redirect(location: string): Response {
  * 兜底：Browser Run 报错/超时/预算耗尽 → 302 到该点位的动画截图 R2 公共域 URL；
  * 都没有 → 302 到站点默认 OG。
  */
-async function fallbackResponse(deps: CardDeps, image: string | null): Promise<Response> {
-  const mirror = image ? await deps.resolveAnimeImageUrl(image) : null
+async function fallbackResponse(deps: CardDeps, pointId: string, locale: SupportedLocale): Promise<Response> {
+  const context = await loadPointContext(deps, pointId, locale).catch(() => null)
+  const mirror = context?.image ? await deps.resolveAnimeImageUrl(context.image) : null
   return redirect(mirror || `${deps.origin}/opengraph-image`)
 }
 
@@ -225,42 +265,28 @@ export function createGetCardHandler(deps: CardDeps) {
       if (exists) photoKey = photoParam
     }
 
-    // 1) 缓存命中：直接回，且不计限流、不动预算
-    if (store) {
-      const key = await cardCacheKey(pointId, locale, layout, photoKey)
-      const cached = await store.get(key).catch(() => null)
-      if (cached) return imageResponse(cached.body)
-    }
-
+    // 匿名限流闸挂在渲染路径里（缓存命中不计），见 renderAndStoreCard
     const now = deps.now()
-
-    // 2) 匿名限流（只有未命中才走到这）
     const ip = readClientIp(req)
-    if (ip) {
-      const ipHash = await hashIp(ip, now)
-      if (!checkCardRate(ipHash, now)) {
-        return NextResponse.json({ error: '今日请求次数已达上限，请明天再试' }, { status: 429 })
-      }
+    const ipHash = ip ? await hashIp(ip, now) : null
+
+    const outcome = await renderAndStoreCard(deps, {
+      pointId,
+      locale,
+      layout,
+      photoKey,
+      authorizeRender: ipHash ? () => checkCardRate(ipHash, now) : undefined,
+    })
+
+    if (outcome.status === 'rendered' || outcome.status === 'cached') {
+      return imageResponse(outcome.bytes, outcome.contentType)
     }
-
-    // 3) 全局日预算：耗尽就不再渲染，直接兜底
-    if (store && (await readRenderBudget(store, now)) >= DAILY_RENDER_BUDGET) {
-      const context = await loadPointContext(deps, pointId, locale)
-      if (!context) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
-      return fallbackResponse(deps, context.image)
+    if (outcome.status === 'rate_limited') {
+      return NextResponse.json({ error: '今日请求次数已达上限，请明天再试' }, { status: 429 })
     }
-
-    const context = await loadPointContext(deps, pointId, locale)
-    if (!context) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
-
-    const bytes = await renderAndStoreCard(deps, { pointId, locale, layout, photoKey })
-    if (!bytes) return fallbackResponse(deps, context.image)
-
-    if (store) {
-      await bumpRenderBudget(store, now).catch((error: unknown) => {
-        console.error('[share.card.budget_write_failed]', { error })
-      })
+    if (outcome.status === 'not_found') {
+      return NextResponse.json({ error: '点位不存在' }, { status: 404 })
     }
-    return imageResponse(bytes)
+    return fallbackResponse(deps, pointId, locale)
   }
 }
