@@ -108,11 +108,11 @@ function createImagesBinding(options?: FakeImagesOptions) {
   return { binding: binding as unknown as ImagesBindingFromContext, transforms }
 }
 
-function installCfContext(env: Partial<NonNullable<CfBindings['env']>>) {
+function installCfContext(env: Partial<NonNullable<CfBindings['env']>>, ctx?: CfBindings['ctx']) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, CF_CONTEXT_SYMBOL)
   Object.defineProperty(globalThis, CF_CONTEXT_SYMBOL, {
     configurable: true,
-    value: { env } satisfies CfBindings,
+    value: (ctx ? { env, ctx } : { env }) satisfies CfBindings,
   })
   return () => {
     if (previous) Object.defineProperty(globalThis, CF_CONTEXT_SYMBOL, previous)
@@ -209,6 +209,36 @@ describe('asset r2 read path', () => {
       const res2 = await get(new Request(`http://localhost/assets/${asset.id}?w=64&q=72`), getCtx(asset.id))
       expect(Array.from(new Uint8Array(await res2.arrayBuffer()))).toEqual(Array.from(normalized))
       expect(transforms).toHaveLength(1)
+    } finally {
+      restore()
+    }
+  })
+
+  it('hands the variant write to ctx.waitUntil with the correct this (regression: Illegal invocation)', async () => {
+    const repo = new InMemoryAssetRepo()
+    const asset = await repo.create({ ownerId: 'user-1', contentType: 'image/webp', bytes: new Uint8Array([1, 2, 3]) })
+    const { bucket, objects } = createFakeBucket()
+    const normalized = new Uint8Array([9, 9])
+    const { binding } = createImagesBinding({ outputBytes: normalized })
+    // 模拟 workerd 的 ExecutionContext：waitUntil 被拆下来单独调用时抛 Illegal invocation
+    const pending: Promise<unknown>[] = []
+    const ctx = {
+      waitUntil(this: unknown, promise: Promise<unknown>) {
+        if (this !== ctx) throw new TypeError('Illegal invocation')
+        pending.push(promise)
+      },
+      passThroughOnException() {},
+    }
+    const restore = installCfContext({ ASSET_STORE: bucket, IMAGES: binding }, ctx as unknown as CfBindings['ctx'])
+    try {
+      const get = createGetAssetHandler({ assetRepo: repo })
+      const res = await get(new Request(`http://localhost/assets/${asset.id}?w=64&q=72`), getCtx(asset.id))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('image/webp')
+      expect(res.headers.get('cache-control')).toContain('immutable')
+      expect(pending).toHaveLength(1)
+      await Promise.all(pending)
+      expect(objects.get(variantKey(asset.id, 64, 72))).toBeDefined()
     } finally {
       restore()
     }
