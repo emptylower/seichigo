@@ -89,6 +89,15 @@ describe('POST /api/share/links', () => {
     expect((await handler(makeRequest({ ...VALID, pointId: '' }))).status).toBe(400)
   })
 
+  it('pointId 含 / 或 .. 等非法字符返回 400', async () => {
+    const handler = createPostShareLinkHandler(makeDeps())
+    expect((await handler(makeRequest({ ...VALID, pointId: '../etc/passwd' }))).status).toBe(400)
+    expect((await handler(makeRequest({ ...VALID, pointId: 'a/b' }))).status).toBe(400)
+    expect((await handler(makeRequest({ ...VALID, pointId: 'a..b' }))).status).toBe(400)
+    // 合法字符集：字母数字与 _ : . -
+    expect((await handler(makeRequest({ ...VALID, pointId: '101:station-2.x' }))).status).toBe(201)
+  })
+
   it('短码冲突时换码重试而不是 500', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
     const original = repo.create.bind(repo)

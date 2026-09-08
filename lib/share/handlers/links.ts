@@ -15,7 +15,13 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export const ANON_DAILY_LINK_LIMIT = 100
 
 const bodySchema = z.object({
-  pointId: z.string().min(1).max(200),
+  // pointId 会进 R2 key 与 URL，字符集收口在字母数字与 _ : . - 之内，并显式拒绝 .. 穿越
+  pointId: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(/^[A-Za-z0-9_:.-]+$/)
+    .refine((value) => !value.includes('..')),
   bangumiId: z.number().int().positive(),
   locale: z.enum(['zh', 'en', 'ja']),
   layout: z.enum(['portrait', 'landscape']),
