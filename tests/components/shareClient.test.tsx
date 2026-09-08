@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LAYOUT_STORAGE_KEY,
   createShareLink,
+  fetchPointContext,
+  openBlankWindow,
+  openOrNavigate,
   readPreferredLayout,
   transcodeToJpeg,
   uploadShareAssets,
@@ -121,5 +124,78 @@ describe('版式记忆', () => {
     expect(readPreferredLayout()).toBe('landscape')
     globalThis.localStorage.setItem(LAYOUT_STORAGE_KEY, 'square')
     expect(readPreferredLayout()).toBe('portrait')
+  })
+})
+
+describe('fetchPointContext', () => {
+  const CONTEXT = {
+    address: '東京都 武蔵野市 中町一丁目',
+    geo: [35.7, 139.56],
+    note: '联名饮品',
+    inJapan: true,
+    displayName: '葡萄牛奶',
+    animeTitle: '摇曳露营△ 三期',
+  }
+
+  it('GET /api/share/point-context 并带 pointId 与 locale', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(CONTEXT), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    await expect(fetchPointContext('101:budo', 'ja')).resolves.toEqual(CONTEXT)
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      '/api/share/point-context?pointId=101%3Abudo&locale=ja',
+    )
+  })
+
+  it('非 2xx 返回 null 而不是抛', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }))
+    await expect(fetchPointContext('101:budo', 'zh')).resolves.toBeNull()
+  })
+
+  it('网络异常返回 null', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'))
+    await expect(fetchPointContext('101:budo', 'zh')).resolves.toBeNull()
+  })
+})
+
+describe('openBlankWindow / openOrNavigate', () => {
+  it('同步开一个空白窗口并拿到引用', () => {
+    const win = { location: { href: '' } }
+    const openSpy = vi.fn(() => win)
+    vi.stubGlobal('open', openSpy)
+    expect(openBlankWindow()).toBe(win)
+    expect(openSpy).toHaveBeenCalledWith('about:blank')
+  })
+
+  it('弹窗被拦截时返回 null', () => {
+    vi.stubGlobal('open', vi.fn(() => null))
+    expect(openBlankWindow()).toBeNull()
+  })
+
+  it('有窗口引用时先断开 opener 再改写它的 location', () => {
+    const win = { location: { href: '' }, opener: {} } as unknown as Window
+    expect(openOrNavigate(win, 'https://x.com/intent')).toBe(true)
+    expect(win.opener).toBeNull()
+    expect(win.location.href).toBe('https://x.com/intent')
+  })
+
+  it('没有窗口引用时退回再开一次：不带 noopener 特性串，手动断开 opener', () => {
+    const popup = { opener: {} } as unknown as Window
+    // 真实语义 stub：带 'noopener' 特性串的 open 一律被拦（返回 null）
+    const openSpy = vi.fn((_url: string, _target?: string, features?: string) =>
+      features?.includes('noopener') ? null : popup,
+    )
+    vi.stubGlobal('open', openSpy)
+    expect(openOrNavigate(null, 'https://x.com/intent')).toBe(true)
+    expect(openSpy).toHaveBeenCalledWith('https://x.com/intent', '_blank')
+    expect((popup as { opener: unknown }).opener).toBeNull()
+  })
+
+  it('兜底也被拦截时返回 false', () => {
+    vi.stubGlobal('open', vi.fn(() => null))
+    expect(openOrNavigate(null, 'https://x.com/intent')).toBe(false)
   })
 })

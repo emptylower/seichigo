@@ -156,15 +156,15 @@ export default function DetailPanel(props: DetailPanelProps) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {geoHref ? (
-              <a className="inline-flex min-w-[92px] items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoHref} target="_blank" rel="noreferrer">
+              <a className="inline-flex w-full items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoHref} target="_blank" rel="noreferrer">
                 {label.openInGoogle}
               </a>
             ) : null}
             <button
               type="button"
-              className="inline-flex min-w-[92px] items-center justify-center rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex w-full items-center justify-center rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
               onClick={onEnterPanorama}
               disabled={!selectedPointPanoramaAvailable}
               title={selectedPointPanoramaAvailable ? undefined : label.panoramaUnavailable}
@@ -174,7 +174,7 @@ export default function DetailPanel(props: DetailPanelProps) {
             {showWantToGoAction ? (
               <button
                 type="button"
-                className="inline-flex min-w-[108px] items-center justify-center rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                className="inline-flex w-full items-center justify-center rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                 onClick={onAddSelectedPointToPool}
               >
                 {label.addToPointPool}
@@ -182,7 +182,7 @@ export default function DetailPanel(props: DetailPanelProps) {
             ) : null}
             <button
               type="button"
-              className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
+              className="inline-flex w-full items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
               onClick={onShowSharePanel}
             >
               {label.share}

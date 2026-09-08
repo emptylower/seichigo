@@ -11,11 +11,17 @@ export type CardLayout = {
   photo: Rect | null
   /** 文字块起始 y */
   textTop: number
-  /** 左右安全边距 */
+  /** 画布安全边距 */
   padding: number
-  /** 文字可用宽度（已扣掉二维码与边距） */
+  /** 文字块左边界（横版是右列起点，不等于 padding） */
+  textX: number
+  /** 文字可用宽度 */
   textWidth: number
+  /** 日本轮廓定位小图的框；inJapan 为 false 时渲染器跳过不画，位置照留 */
+  locator: Rect
   qr: { x: number; y: number; size: number }
+  /** 页脚左边界（横版同样在右列，否则会压在图片上） */
+  footerX: number
   /** 页脚基线 y（鸟居图标 + seichigo.com） */
   footerY: number
 }
@@ -79,12 +85,55 @@ export function resolveCardVariant(hasPhoto: boolean): ShareCardVariant {
   return hasPhoto ? 'compare' : 'default'
 }
 
-/** 卡片字号常量：渲染器与排版几何测试共用同一份，改动只在这里发生 */
-export const CARD_FONT_SIZES: Readonly<
-  Record<ShareCardLayout, { title: number; body: number; footer: number }>
+/** 页脚字号：渲染器与几何测试共用 */
+export const CARD_FOOTER_SIZES: Readonly<Record<ShareCardLayout, number>> = {
+  portrait: 30,
+  landscape: 22,
+}
+
+export type CardRowMetric = { size: number; gap: number }
+
+/**
+ * 四类文字行的字号、行后间距与最大行数。
+ * 竖版的总高度预算：textTop 768 → 满行 bottom 1078 < locator.y 1096。
+ */
+export const CARD_ROW_METRICS: Readonly<
+  Record<
+    ShareCardLayout,
+    {
+      name: CardRowMetric & { maxLines: number }
+      anime: CardRowMetric
+      address: CardRowMetric
+      note: CardRowMetric & { maxLines: number }
+    }
+  >
 > = {
-  portrait: { title: 60, body: 34, footer: 30 },
-  landscape: { title: 40, body: 24, footer: 22 },
+  portrait: {
+    name: { size: 60, gap: 10, maxLines: 2 },
+    anime: { size: 38, gap: 14 },
+    address: { size: 34, gap: 12 },
+    note: { size: 32, gap: 12, maxLines: 2 },
+  },
+  landscape: {
+    name: { size: 40, gap: 12, maxLines: 1 },
+    anime: { size: 28, gap: 12 },
+    address: { size: 24, gap: 10 },
+    note: { size: 22, gap: 10, maxLines: 1 },
+  },
+}
+
+/** 地址行图钉：宽 0.62em、右侧留 0.28em，文字整体右移 offset */
+const ADDRESS_PIN_WIDTH_RATIO = 0.62
+const ADDRESS_PIN_GAP_RATIO = 0.28
+
+/**
+ * 地址行前缀图钉的尺寸。渲染器按它画矢量图钉并右移文字起点，
+ * 断行测量也要减掉 offset，否则地址会顶出文字块右边界。
+ */
+export function addressPinMetrics(size: number): { width: number; gap: number; offset: number } {
+  const width = size * ADDRESS_PIN_WIDTH_RATIO
+  const gap = size * ADDRESS_PIN_GAP_RATIO
+  return { width, gap, offset: width + gap }
 }
 
 export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVariant): CardLayout {
@@ -92,8 +141,10 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
 
   if (layout === 'portrait') {
     const padding = 64
-    const visualHeight = 1000
+    const visualHeight = 720
+    const locatorSize = 240
     const qrSize = 180
+    const locatorY = 1096
     // 竖版 compare 有意上下分栏：左右分会把两张图各压到 540 宽，实拍细节没法看
     return {
       canvas,
@@ -105,33 +156,87 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
         variant === 'compare'
           ? { x: 0, y: visualHeight / 2, width: canvas.width, height: visualHeight / 2 }
           : null,
-      textTop: visualHeight + padding - 4,
+      textTop: visualHeight + 48,
       padding,
-      textWidth: canvas.width - padding * 2 - qrSize - 32,
-      qr: { x: canvas.width - padding - qrSize + 4, y: canvas.height - padding - qrSize - 56, size: qrSize },
-      footerY: canvas.height - padding,
+      textX: padding,
+      textWidth: canvas.width - padding * 2,
+      locator: { x: padding, y: locatorY, width: locatorSize, height: locatorSize },
+      qr: {
+        x: canvas.width - padding - qrSize,
+        y: locatorY + (locatorSize - qrSize) / 2,
+        size: qrSize,
+      },
+      footerX: padding,
+      footerY: canvas.height - 60,
     }
   }
 
-  // 横版只有 630 高：边距与主视觉压紧，二维码贴右下角，页脚顶到画布底，
-  // 否则文字块（标题两行 + 作品 + meta）会压到页脚
+  // 横版：左 55% 是主视觉，文字/轮廓/二维码/页脚全部落在右列。
+  // v1 用 padding 当页脚 x，改成左图右文之后那个位置会压在图片上，所以单独有 footerX。
   const padding = 40
-  const visualHeight = 360
+  const visualWidth = Math.round(canvas.width * 0.55)
+  const columnX = visualWidth + 32
+  const locatorSize = 150
   const qrSize = 110
+  const locatorY = 434
   return {
     canvas,
     main:
       variant === 'compare'
-        ? { x: 0, y: 0, width: canvas.width / 2, height: visualHeight }
-        : { x: 0, y: 0, width: canvas.width, height: visualHeight },
+        ? { x: 0, y: 0, width: visualWidth / 2, height: canvas.height }
+        : { x: 0, y: 0, width: visualWidth, height: canvas.height },
     photo:
       variant === 'compare'
-        ? { x: canvas.width / 2, y: 0, width: canvas.width / 2, height: visualHeight }
+        ? { x: visualWidth / 2, y: 0, width: visualWidth / 2, height: canvas.height }
         : null,
-    textTop: visualHeight + 24,
+    textTop: 48,
     padding,
-    textWidth: canvas.width - padding * 2 - qrSize - 32,
-    qr: { x: canvas.width - padding - qrSize, y: canvas.height - padding - qrSize, size: qrSize },
-    footerY: canvas.height - padding,
+    textX: columnX,
+    textWidth: canvas.width - columnX - padding,
+    locator: { x: columnX, y: locatorY, width: locatorSize, height: locatorSize },
+    qr: {
+      x: canvas.width - padding - qrSize,
+      // 横版轮廓带只有 150 高，二维码底对齐（474），居中会悬在带上半截
+      y: locatorY + locatorSize - qrSize,
+      size: qrSize,
+    },
+    footerX: columnX,
+    footerY: canvas.height - 14,
   }
+}
+
+export type CardTextRowKind = 'name' | 'anime' | 'address' | 'note'
+export type CardTextRow = { kind: CardTextRowKind; text: string; y: number; size: number }
+
+/**
+ * 按存在的行动态排版：缺地址或缺说明时后面的行直接上移，页脚与轮廓带位置固定。
+ * 返回 bottom 供几何测试断言「所有行都在轮廓带之上」。
+ */
+export function buildCardTextPlan(input: {
+  layout: ShareCardLayout
+  geometry: CardLayout
+  nameLines: readonly string[]
+  animeLine: string
+  addressLine: string
+  noteLines: readonly string[]
+}): { rows: CardTextRow[]; bottom: number } {
+  const metrics = CARD_ROW_METRICS[input.layout]
+  const rows: CardTextRow[] = []
+  let cursor = input.geometry.textTop
+  let lastSize = 0
+
+  const push = (kind: CardTextRowKind, text: string, metric: CardRowMetric) => {
+    if (!String(text || '').trim()) return
+    rows.push({ kind, text, y: cursor, size: metric.size })
+    cursor += metric.size + metric.gap
+    lastSize = metric.size
+  }
+
+  for (const line of input.nameLines.slice(0, metrics.name.maxLines)) push('name', line, metrics.name)
+  push('anime', input.animeLine, metrics.anime)
+  push('address', input.addressLine, metrics.address)
+  for (const line of input.noteLines.slice(0, metrics.note.maxLines)) push('note', line, metrics.note)
+
+  const last = rows[rows.length - 1]
+  return { rows, bottom: last ? last.y + lastSize : input.geometry.textTop }
 }
