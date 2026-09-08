@@ -6,6 +6,7 @@ import {
   checkPointContextRate,
   createGetPointContextHandler,
   DAILY_GEOCODE_BUDGET,
+  loadPointContext,
   pointContextRateSize,
   resetPointContextRate,
   type PointContextDeps,
@@ -329,5 +330,50 @@ describe('point-context 响应体不因卡片改造而变宽', () => {
     expect(Object.keys(await res.json()).sort()).toEqual(
       ['address', 'animeTitle', 'displayName', 'geo', 'inJapan', 'note'].sort(),
     )
+  })
+})
+
+describe('loadPointContext（卡片 handler 复用的内部函数）', () => {
+  it('返回卡片需要的全部字段，含 bangumiId/ep/scene/image', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    const loaded = await loadPointContext(
+      { repo, geocode: async () => null, now: () => NOW },
+      '101:budo',
+      'zh',
+    )
+    expect(loaded).toMatchObject({
+      bangumiId: 101,
+      episode: '3',
+      scene: '1194',
+      image: 'https://image.anitabi.cn/points/101/budo.jpg',
+    })
+    expect(typeof loaded!.displayName).toBe('string')
+    expect(typeof loaded!.animeTitle).toBe('string')
+  })
+
+  it('点位不存在返回 null', async () => {
+    const repo = new MemoryPointContextRepo([])
+    expect(
+      await loadPointContext({ repo, geocode: async () => null, now: () => NOW }, 'nope', 'zh'),
+    ).toBeNull()
+  })
+
+  it('有坐标却拿不到地址时 addressPending 为 true', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    const loaded = await loadPointContext(
+      { repo, geocode: async () => null, now: () => NOW },
+      '101:budo',
+      'zh',
+    )
+    expect(loaded!.address).toBeNull()
+    expect(loaded!.addressPending).toBe(true)
+  })
+
+  it('不做限流：限流只属于 HTTP 层', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    const deps = { repo, geocode: async () => null, now: () => NOW }
+    for (let i = 0; i < 400; i++) {
+      expect(await loadPointContext(deps, '101:budo', 'zh')).not.toBeNull()
+    }
   })
 })

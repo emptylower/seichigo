@@ -71,6 +71,98 @@ function pickAddress(row: PointAddressRow | null, locale: SupportedLocale): stri
   return trimmed || null
 }
 
+/** 卡片渲染要用、但 PointContextResponse 里没有的那几项也一并带出来 */
+export type LoadedPointContext = {
+  bangumiId: number
+  displayName: string
+  animeTitle: string
+  address: string | null
+  geo: [number, number] | null
+  note: string | null
+  inJapan: boolean
+  episode: string | null
+  /** 未格式化的场景秒数；卡片侧用 formatSceneTime 转 mm:ss */
+  scene: string | null
+  /** 动画截图原始 URL（未归一） */
+  image: string | null
+  /** 有坐标却没拿到地址（上游未回 / 预算耗尽）：HTTP 层据此把公共缓存收到 5 分钟 */
+  addressPending: boolean
+}
+
+/**
+ * 点位上下文的读取与地理编码回填。HTTP handler 与卡片 handler 共用这一份，
+ * 卡片路由据此不用打自己一次 HTTP。限流与响应头留在 HTTP 层，这里不做。
+ */
+export async function loadPointContext(
+  deps: PointContextDeps,
+  pointId: string,
+  locale: SupportedLocale,
+): Promise<LoadedPointContext | null> {
+  const now = deps.now()
+  // 点位与地址缓存并发读，串行会白等一个 RTT
+  const [point, addressRow] = await Promise.all([
+    deps.repo.findPoint(pointId, locale),
+    deps.repo.findAddress(pointId),
+  ])
+  if (!point) return null
+
+  const rawName = String(point.localizedName || point.name || '').trim()
+  // animeTitle 兜底按 locale 定：localized i18n 标题 → bangumi 标题列（ja: jaRaw→original；
+  // en: english→romaji；zh: zh）→ candidates[0]
+  const localeFallback = point.localizedBangumiTitle
+    ?? (locale === 'ja'
+      ? point.bangumiTitles.jaRaw || point.bangumiTitles.original
+      : locale === 'en'
+        ? point.bangumiTitles.english || point.bangumiTitles.romaji
+        : point.bangumiTitles.zh)
+  const animeTitle = String(localeFallback || point.bangumiTitleCandidates[0] || '').trim()
+  const candidates = [point.localizedBangumiTitle, ...point.bangumiTitleCandidates].filter(
+    (value): value is string => Boolean(value && value.trim()),
+  )
+  const displayName = stripAnimeTitlePrefix(rawName, candidates)
+  const note = String(point.localizedNote || point.mark || '').trim() || null
+  const geo: [number, number] | null =
+    point.geoLat != null && point.geoLng != null ? [point.geoLat, point.geoLng] : null
+  const inJapan = geo ? isInJapan(geo[0], geo[1]) : false
+
+  let address = pickAddress(addressRow, locale)
+  if (!address && geo) {
+    // 全局日预算：当日已回填的行数用完就不再打上游，address 留 null 按短缓存返回
+    const utcDayStart = new Date(Math.floor(now.getTime() / 86_400_000) * 86_400_000)
+    const resolvedToday = await deps.repo.countResolvedSince(utcDayStart)
+    if (resolvedToday < DAILY_GEOCODE_BUDGET) {
+      const resolved = await deps.geocode({ lat: geo[0], lng: geo[1], includeCountry: !inJapan })
+      // 三语全空说明上游没给出可用的行政区，不写缓存，下次还能再试
+      if (resolved && (resolved.zh || resolved.en || resolved.ja)) {
+        const row: PointAddressRow = {
+          pointId,
+          addressZh: resolved.zh,
+          addressEn: resolved.en,
+          addressJa: resolved.ja,
+        }
+        await deps.repo.saveAddress({ ...row, source: 'maptiler' }).catch((error: unknown) => {
+          console.error('[share.point_context.cache_write_failed]', { pointId, error })
+        })
+        address = pickAddress(row, locale)
+      }
+    }
+  }
+
+  return {
+    bangumiId: point.bangumiId,
+    displayName,
+    animeTitle,
+    address,
+    geo,
+    note,
+    inJapan,
+    episode: point.ep,
+    scene: point.scene,
+    image: point.image,
+    addressPending: Boolean(geo && !address),
+  }
+}
+
 export function createGetPointContextHandler(deps: PointContextDeps) {
   return async function getPointContext(req: Request): Promise<Response> {
     const url = new URL(req.url)
@@ -90,65 +182,19 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
       }
     }
 
-    // 点位与地址缓存并发读，串行会白等一个 RTT
-    const [point, addressRow] = await Promise.all([
-      deps.repo.findPoint(pointId, locale),
-      deps.repo.findAddress(pointId),
-    ])
-    if (!point) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
-
-    const rawName = String(point.localizedName || point.name || '').trim()
-    // animeTitle 兜底按 locale 定：localized i18n 标题 → bangumi 标题列（ja: jaRaw→original；
-    // en: english→romaji；zh: zh）→ candidates[0]
-    const localeFallback = point.localizedBangumiTitle
-      ?? (locale === 'ja'
-        ? point.bangumiTitles.jaRaw || point.bangumiTitles.original
-        : locale === 'en'
-          ? point.bangumiTitles.english || point.bangumiTitles.romaji
-          : point.bangumiTitles.zh)
-    const animeTitle = String(localeFallback || point.bangumiTitleCandidates[0] || '').trim()
-    const candidates = [point.localizedBangumiTitle, ...point.bangumiTitleCandidates].filter(
-      (value): value is string => Boolean(value && value.trim()),
-    )
-    const displayName = stripAnimeTitlePrefix(rawName, candidates)
-    const note = String(point.localizedNote || point.mark || '').trim() || null
-    const geo: [number, number] | null =
-      point.geoLat != null && point.geoLng != null ? [point.geoLat, point.geoLng] : null
-    const inJapan = geo ? isInJapan(geo[0], geo[1]) : false
-
-    let address = pickAddress(addressRow, locale)
-    if (!address && geo) {
-      // 全局日预算：当日已回填的行数用完就不再打上游，address 留 null 按短缓存返回
-      const utcDayStart = new Date(Math.floor(now.getTime() / 86_400_000) * 86_400_000)
-      const resolvedToday = await deps.repo.countResolvedSince(utcDayStart)
-      if (resolvedToday < DAILY_GEOCODE_BUDGET) {
-        const resolved = await deps.geocode({ lat: geo[0], lng: geo[1], includeCountry: !inJapan })
-        // 三语全空说明上游没给出可用的行政区，不写缓存，下次还能再试
-        if (resolved && (resolved.zh || resolved.en || resolved.ja)) {
-          const row: PointAddressRow = {
-            pointId,
-            addressZh: resolved.zh,
-            addressEn: resolved.en,
-            addressJa: resolved.ja,
-          }
-          await deps.repo.saveAddress({ ...row, source: 'maptiler' }).catch((error: unknown) => {
-            console.error('[share.point_context.cache_write_failed]', { pointId, error })
-          })
-          address = pickAddress(row, locale)
-        }
-      }
-    }
+    const loaded = await loadPointContext(deps, pointId, locale)
+    if (!loaded) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
 
     const body: PointContextResponse = {
-      address,
-      geo,
-      note,
-      inJapan,
-      displayName,
-      animeTitle,
+      address: loaded.address,
+      geo: loaded.geo,
+      note: loaded.note,
+      inJapan: loaded.inJapan,
+      displayName: loaded.displayName,
+      animeTitle: loaded.animeTitle,
     }
     // 有坐标却没拿到地址（上游未回/预算耗尽）：可能是暂时性失败，公共缓存只敢放 5 分钟
-    const cacheControl = geo && !address ? 'public, max-age=300' : 'public, max-age=86400'
+    const cacheControl = loaded.addressPending ? 'public, max-age=300' : 'public, max-age=86400'
     return NextResponse.json(body, {
       status: 200,
       headers: { 'cache-control': cacheControl },
