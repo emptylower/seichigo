@@ -8,6 +8,7 @@ import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
   CAPSULE_METRICS,
   CARD_FOOTER_SIZES,
+  CARD_FOOTER_TAGLINE_SIZES,
   CARD_ROW_METRICS,
   GEO_FONT_STACK,
   addressPinMetrics,
@@ -263,10 +264,9 @@ export default function PointShareCard({
         return null
       }
 
-      const [animeImg, qrImg, logoImg, outline] = await Promise.all([
+      const [animeImg, qrImg, outline] = await Promise.all([
         loadAnime(),
         loadImage(qrDataUrl).catch(() => null),
-        loadImage('/brand/web-logo.png').catch(() => null),
         // 轮廓 JSON 只有日本境内点位才下载；下不来就不画轮廓，别拖垮整张卡
         input.inJapan ? loadJapanOutline().catch(() => null) : Promise.resolve(null),
       ])
@@ -388,22 +388,24 @@ export default function PointShareCard({
       ctx.fillStyle = CAPSULE_COLORS.sub
       ctx.fillText(qrSubText, middle.x, middleRows.sub.y)
 
-      // 页脚：鸟居图标 + 站点名
+      // 页脚（v2.1）：左 ⛩ seichigo.com，右 tagline 右对齐、宽度不够时省略；不再画小 logo
       ctx.textBaseline = 'alphabetic'
       const footerSize = CARD_FOOTER_SIZES[input.layout]
-      ctx.fillStyle = '#9ca3af'
-      ctx.font = `500 ${footerSize}px system-ui, -apple-system, sans-serif`
-      ctx.fillText('⛩ seichigo.com', layout.footerX, layout.footerY)
-      if (logoImg) {
-        const logoHeight = footerSize + 8
-        const logoWidth = logoHeight * (logoImg.width / logoImg.height || 1)
-        ctx.drawImage(
-          logoImg,
-          layout.canvas.width - layout.padding - logoWidth,
-          layout.footerY - logoHeight + 6,
-          logoWidth,
-          logoHeight,
-        )
+      const siteText = '⛩ seichigo.com'
+      ctx.fillStyle = '#64748b'
+      ctx.font = `500 ${footerSize}px ${FONT_STACK}`
+      ctx.fillText(siteText, layout.footerX, layout.footerY)
+      const siteWidth = ctx.measureText(siteText).width
+      const tagline = String(input.cardText.tagline || '').trim()
+      if (tagline) {
+        ctx.font = `400 ${CARD_FOOTER_TAGLINE_SIZES[input.layout]}px ${FONT_STACK}`
+        const taglineWidth = ctx.measureText(tagline).width
+        if (layout.footerX + siteWidth + 16 + taglineWidth <= layout.footerRightX) {
+          ctx.textAlign = 'right'
+          ctx.fillStyle = '#94a3b8'
+          ctx.fillText(tagline, layout.footerRightX, layout.footerY)
+          ctx.textAlign = 'left'
+        }
       }
 
       let blob = await toBlob(canvas, QUALITY_FIRST)

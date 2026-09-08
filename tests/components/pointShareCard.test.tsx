@@ -225,7 +225,7 @@ describe('PointShareCard v2 文字与轮廓', () => {
     // 图钉改成矢量绘制，地址行不再带 📍 字符
     expect(texts[2]).toBe('東京都 武蔵野市 中町一丁目')
     expect(texts[3]).toContain('武州屋')
-    expect(texts[texts.length - 1]).toBe('⛩ seichigo.com')
+    expect(texts).toContain('⛩ seichigo.com')
   })
 
   it('地址行左侧画品牌粉图钉，文字起点右移一个图钉宽', async () => {
@@ -424,5 +424,56 @@ describe('PointShareCard v2.1 导航胶囊', () => {
       (call) => call.length === 5 && call[3] === 92 && call[4] === 92,
     )
     expect(qrDraw).toBeDefined()
+  })
+})
+
+describe('PointShareCard v2.1 页脚', () => {
+  const textsOf = () => fillTextCalls.map(([text]) => text)
+
+  it('左侧站点名 #64748b，右侧 tagline #94a3b8 右对齐贴 footerRightX', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const siteCall = fillTextCalls.find(([text]) => text === '⛩ seichigo.com')!
+    expect(siteCall[1]).toBe(64)
+    expect(siteCall[2]).toBe(1398)
+    const taglineCall = fillTextCalls.find(([text]) => text === '5 万+ 动画取景地 · AI 巡礼行程')!
+    expect(taglineCall[1]).toBe(1016)
+    expect(fillStyles).toContain('#64748b')
+    expect(fillStyles).toContain('#94a3b8')
+  })
+
+  it('横版 tagline 右对齐贴 1164', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, layout: 'landscape' }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const taglineCall = fillTextCalls.find(([text]) => text === '5 万+ 动画取景地 · AI 巡礼行程')!
+    expect(taglineCall[1]).toBe(1164)
+  })
+
+  it('tagline 太长、与站点名挤不下时省略右侧', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, cardText: { ...INPUT.cardText, tagline: '长'.repeat(100) } }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(textsOf()).not.toContain('长'.repeat(100))
+    expect(textsOf()).toContain('⛩ seichigo.com')
+  })
+
+  it('v2.1 起不再加载与绘制 /brand/web-logo.png', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const drawnSrcs = drawImageSpy.mock.calls.map(
+      (call) => (call[0] as { __loadedSrc?: string }).__loadedSrc,
+    )
+    expect(drawnSrcs).not.toContain('/brand/web-logo.png')
   })
 })
