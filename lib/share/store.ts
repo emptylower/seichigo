@@ -16,6 +16,8 @@ export type ShareObject = {
 export interface ShareStore {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>
   get(key: string): Promise<ShareObject | null>
+  /** 只取元数据的存在性探测（R2 原生 head）：不产生 body 流，handler 探测 photo 用这个 */
+  head(key: string): Promise<{ size: number; contentType: string } | null>
   /** 换卡片后清旧对象；失败只记日志，不阻断上传 */
   delete(key: string): Promise<void>
 }
@@ -40,10 +42,13 @@ type ShareBucket = NonNullable<
 >
 
 /**
- * R2Bucket 还有 delete，但 bindings.ts 的手写结构子集没覆盖到；
- * 运行时真桶有这个方法，这里只在 share 域内补齐形状（bindings 不归 Track A 管）。
+ * R2Bucket 还有 delete 与 head，但 bindings.ts 的手写结构子集没覆盖到；
+ * 运行时真桶有这些方法，这里只在 share 域内补齐形状（bindings 不归 Track A 管）。
  */
-type DeletableShareBucket = ShareBucket & { delete(key: string): Promise<void> }
+type DeletableShareBucket = ShareBucket & {
+  delete(key: string): Promise<void>
+  head(key: string): Promise<{ size: number; httpMetadata?: { contentType?: string } } | null>
+}
 
 class R2ShareStore implements ShareStore {
   constructor(private readonly bucket: DeletableShareBucket) {}
@@ -59,6 +64,15 @@ class R2ShareStore implements ShareStore {
       body: object.body,
       contentType: String(object.httpMetadata?.contentType || 'application/octet-stream'),
       size: object.size,
+    }
+  }
+
+  async head(key: string): Promise<{ size: number; contentType: string } | null> {
+    const object = await this.bucket.head(key)
+    if (!object) return null
+    return {
+      size: object.size,
+      contentType: String(object.httpMetadata?.contentType || 'application/octet-stream'),
     }
   }
 

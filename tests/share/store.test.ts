@@ -3,7 +3,9 @@ import { checkinPhotoKey, getShareStore, shareCardFingerprint, shareCardKey } fr
 import type { CfBindings } from '@/lib/anitabi/cf/bindings'
 
 const CF_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
-type Bucket = NonNullable<NonNullable<CfBindings['env']>['ASSET_STORE']>
+type Bucket = NonNullable<NonNullable<CfBindings['env']>['ASSET_STORE']> & {
+  head(key: string): Promise<{ size: number; httpMetadata?: { contentType?: string } } | null>
+}
 
 function toStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -44,6 +46,11 @@ function installBucket() {
         size: found.bytes.byteLength,
         httpMetadata: { contentType: found.contentType },
       }
+    },
+    async head(key) {
+      const found = objects.get(key)
+      if (!found) return null
+      return { size: found.bytes.byteLength, httpMetadata: { contentType: found.contentType } }
     },
     async put(key, value, options) {
       const bytes = value instanceof Uint8Array ? value : new Uint8Array(value as ArrayBuffer)
@@ -90,5 +97,17 @@ describe('getShareStore', () => {
     expect(got?.contentType).toBe('image/jpeg')
     expect(Array.from(await readAll(got!.body))).toEqual([1, 2, 3])
     expect(await store!.get('share/none.jpg')).toBeNull()
+  })
+
+  it('head 只回元数据不读 body，存在性探测用这个', async () => {
+    installBucket()
+    const store = getShareStore()
+    expect(store).not.toBeNull()
+    await store!.put('share/AbC12xYz.jpg', Uint8Array.from([1, 2, 3, 4]), 'image/jpeg')
+    await expect(store!.head('share/AbC12xYz.jpg')).resolves.toEqual({
+      size: 4,
+      contentType: 'image/jpeg',
+    })
+    await expect(store!.head('share/none.jpg')).resolves.toBeNull()
   })
 })

@@ -357,7 +357,8 @@ export function createGetCardHandler(deps: CardDeps) {
     const photoParam = String(url.searchParams.get('photo') || '').trim()
     let photoKey: string | null = null
     if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
-      const exists = await store.get(photoParam).catch(() => null)
+      // 存在性探测走 head：不产生 body 流，渲染需要字节时再 get 一次
+      const exists = await store.head(photoParam).catch(() => null)
       if (exists) photoKey = photoParam
     }
 

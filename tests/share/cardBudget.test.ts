@@ -33,6 +33,12 @@ function makeStore(seed?: Record<string, string>) {
         size: bytes.byteLength,
       }
     },
+    async head(key) {
+      const found = objects.get(key)
+      if (found === undefined) return null
+      const size = new TextEncoder().encode(found).byteLength
+      return { size, contentType: 'application/json' }
+    },
     async delete(key) {
       objects.delete(key)
     },
