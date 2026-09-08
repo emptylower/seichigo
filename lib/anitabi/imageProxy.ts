@@ -264,14 +264,15 @@ function applyMapImageRetryNonce(
   }
 }
 
-const R2_PUBLIC_BASE_ENV = 'NEXT_PUBLIC_MAP_IMAGE_R2_PUBLIC_BASE'
 
 /**
  * R2 镜像桶自定义公共域（例如 https://img.seichigo.com）。为空时完全不生成
  * R2 直出候选，候选梯行为与历史版本一致。
  */
 export function readMapImageR2PublicBase(): string {
-  const raw = String(process.env[R2_PUBLIC_BASE_ENV] || '').trim()
+  // 必须字面量访问：Next 只对 process.env.NEXT_PUBLIC_* 的静态引用做构建期内联，
+  // 动态下标在浏览器里永远是 undefined（2026-09-08 首次部署踩坑）
+  const raw = String(process.env.NEXT_PUBLIC_MAP_IMAGE_R2_PUBLIC_BASE || '').trim()
   if (!raw) return ''
   try {
     const parsed = new URL(raw)
