@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { parseGeocodeAddresses } from '@/lib/share/geocode'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchMapTilerAddresses, parseGeocodeAddresses } from '@/lib/share/geocode'
 
 /** 手工构造的 MapTiler 反查响应（language=zh,en,ja&limit=1），不发真实请求 */
 const MUSASHINO = {
@@ -84,5 +84,61 @@ describe('parseGeocodeAddresses', () => {
     expect(parseGeocodeAddresses({ features: [{}] })).toEqual(empty)
     expect(parseGeocodeAddresses(null)).toEqual(empty)
     expect(parseGeocodeAddresses('nope')).toEqual(empty)
+  })
+})
+
+describe('fetchMapTilerAddresses', () => {
+  const ORIGINAL_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_MAPTILER_KEY = 'mt-key'
+  })
+
+  afterEach(() => {
+    if (ORIGINAL_KEY === undefined) delete process.env.NEXT_PUBLIC_MAPTILER_KEY
+    else process.env.NEXT_PUBLIC_MAPTILER_KEY = ORIGINAL_KEY
+    vi.restoreAllMocks()
+  })
+
+  it('一次请求带 lng,lat 与 language=zh,en,ja&limit=1', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(MUSASHINO), { status: 200 }))
+    const result = await fetchMapTilerAddresses({ lat: 35.7, lng: 139.56, fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(result?.ja).toBe('東京都 武蔵野市 中町一丁目')
+    const url = String(fetchImpl.mock.calls[0]![0])
+    expect(url).toBe(
+      'https://api.maptiler.com/geocoding/139.56,35.7.json?key=mt-key&language=zh%2Cen%2Cja&limit=1',
+    )
+  })
+
+  it('没有 key 时不发请求，直接返回 null', async () => {
+    process.env.NEXT_PUBLIC_MAPTILER_KEY = ''
+    const fetchImpl = vi.fn()
+    await expect(
+      fetchMapTilerAddresses({ lat: 1, lng: 2, fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBeNull()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('非 2xx 返回 null', async () => {
+    const fetchImpl = vi.fn(async () => new Response('rate limited', { status: 429 }))
+    await expect(
+      fetchMapTilerAddresses({ lat: 1, lng: 2, fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBeNull()
+  })
+
+  it('上游抛错（超时）返回 null 而不是往外扔', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('The operation was aborted due to timeout')
+    })
+    await expect(
+      fetchMapTilerAddresses({ lat: 1, lng: 2, fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBeNull()
+  })
+
+  it('响应不是 JSON 时返回 null', async () => {
+    const fetchImpl = vi.fn(async () => new Response('<html>', { status: 200 }))
+    await expect(
+      fetchMapTilerAddresses({ lat: 1, lng: 2, fetchImpl: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBeNull()
   })
 })

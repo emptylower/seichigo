@@ -58,3 +58,37 @@ export function parseGeocodeAddresses(payload: unknown): GeocodeAddresses {
   }
   return out
 }
+
+/** 上游 4 秒不回就放弃：分享面板等不起，拿不到地址就按无地址画卡片 */
+const GEOCODE_TIMEOUT_MS = 4_000
+
+/**
+ * 反向地理编码。key 必须字面量访问 `process.env.NEXT_PUBLIC_MAPTILER_KEY`：
+ * 动态取值在构建期不会被内联（同 features/map/anitabi/shared.ts:51）。
+ * 任何失败（无 key / 非 2xx / 超时 / 响应不是 JSON）都返回 null，由调用方按无地址处理。
+ */
+export async function fetchMapTilerAddresses(input: {
+  lat: number
+  lng: number
+  fetchImpl?: typeof fetch
+}): Promise<GeocodeAddresses | null> {
+  const key = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
+  if (!key) return null
+  const params = new URLSearchParams()
+  params.set('key', key)
+  params.set('language', 'zh,en,ja')
+  params.set('limit', '1')
+  const url = `https://api.maptiler.com/geocoding/${input.lng},${input.lat}.json?${params.toString()}`
+  try {
+    const doFetch = input.fetchImpl ?? fetch
+    const res = await doFetch(url, { signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return parseGeocodeAddresses(await res.json())
+  } catch (error) {
+    console.error('[share.geocode.failed]', {
+      event: 'share_geocode_failed',
+      error: error instanceof Error ? { name: error.name, message: error.message } : { message: String(error) },
+    })
+    return null
+  }
+}
