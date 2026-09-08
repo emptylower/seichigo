@@ -1,7 +1,44 @@
-import { google } from 'googleapis'
+import { GoogleAuth } from 'google-auth-library'
 import { readFile } from 'node:fs/promises'
 
-export async function createGscClient() {
+const GSC_API_BASE = 'https://www.googleapis.com/webmasters/v3'
+
+export interface SearchAnalyticsRow {
+  keys: string[]
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
+export type GscDimension = 'query' | 'page' | 'date'
+
+export interface GscSearchAnalyticsQueryParams {
+  siteUrl: string
+  requestBody: {
+    startDate: string
+    endDate: string
+    dimensions: GscDimension[]
+    dataState: 'all' | 'final'
+    searchType: string
+    rowLimit: number
+  }
+}
+
+export interface GscSitesListResponse {
+  siteEntry?: Array<{ siteUrl?: string; permissionLevel?: string }>
+}
+
+export interface GscClient {
+  searchanalytics: {
+    query(params: GscSearchAnalyticsQueryParams): Promise<{ data: { rows?: SearchAnalyticsRow[] } }>
+  }
+  sites: {
+    list(): Promise<{ data: GscSitesListResponse }>
+  }
+}
+
+export async function createGscClient(): Promise<GscClient> {
   const credJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   const credPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH
 
@@ -31,26 +68,50 @@ export async function createGscClient() {
     }
   }
 
-  const auth = new google.auth.GoogleAuth({
+  const auth = new GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
   })
 
-  return google.webmasters({ version: 'v3', auth })
-}
+  async function gscFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = await auth.getAccessToken()
+    const response = await fetch(`${GSC_API_BASE}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    })
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(
+        `GSC API ${response.status} ${response.statusText}: ${body.slice(0, 500)}`
+      )
+    }
+    return (await response.json()) as T
+  }
 
-export interface SearchAnalyticsRow {
-  keys: string[]
-  clicks: number
-  impressions: number
-  ctr: number
-  position: number
+  return {
+    searchanalytics: {
+      query: async ({ siteUrl, requestBody }) => {
+        const data = await gscFetch<{ rows?: SearchAnalyticsRow[] }>(
+          `/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+          { method: 'POST', body: JSON.stringify(requestBody) }
+        )
+        return { data }
+      },
+    },
+    sites: {
+      list: async () => ({
+        data: await gscFetch<GscSitesListResponse>('/sites'),
+      }),
+    },
+  }
 }
-
-export type GscDimension = 'query' | 'page' | 'date'
 
 export async function fetchSearchAnalytics(
-  client: ReturnType<typeof google.webmasters>,
+  client: GscClient,
   siteUrl: string,
   startDate: string,
   endDate: string,
