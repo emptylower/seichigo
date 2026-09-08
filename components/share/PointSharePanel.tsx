@@ -91,8 +91,10 @@ export default function PointSharePanel({
   const [code, setCode] = useState<string>('')
   const [linkFailed, setLinkFailed] = useState(false)
   const [photoKey, setPhotoKey] = useState<string | null>(null)
-  const [imgLoaded, setImgLoaded] = useState(false)
-  const [cardFailed, setCardFailed] = useState(false)
+  // 预览的加载/失败态与 cardUrl 绑定：切版式/换实拍后旧 URL 的就绪态同一帧失效，
+  // 不会把旧图当「已就绪」多画一帧（useEffect 后于 paint，布尔 + effect 重置会闪旧图）
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -144,11 +146,9 @@ export default function PointSharePanel({
   )
 
   // 预览直挂 <img src={cardUrl}>：后端降级是 302 到跨域图床（无 CORS 头），fetch 必抛错，
-  // 但 <img> 不受此限。加载态由 onLoad/onError 上报；cardUrl 变化后旧状态作废。
-  useEffect(() => {
-    setImgLoaded(false)
-    setCardFailed(false)
-  }, [cardUrl, retryNonce])
+  // 但 <img> 不受此限。加载态由 onLoad/onError 按当时请求的 URL 上报。
+  const imgReady = loadedUrl === cardUrl
+  const cardFailed = failedUrl === cardUrl
 
   // 卡片 blob 改成惰性：只有用户点「保存图片」「复制图片」「系统分享」等动作时才取，
   // 按 cardUrl 缓存一份，动作之间复用；失败只对当前动作提示，不影响预览与其它入口
@@ -165,7 +165,7 @@ export default function PointSharePanel({
   // 失败态不再一直显示骨架——「更多 → 复制文案」这条不依赖卡片的路要保持可见
   const destinationsSettledRef = useRef(false)
   const showDestinationSkeleton =
-    !imgLoaded && !cardFailed && !linkFailed && !destinationsSettledRef.current
+    !imgReady && !cardFailed && !linkFailed && !destinationsSettledRef.current
 
   const displayName = context?.displayName?.trim() || pointName
   const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
@@ -409,7 +409,7 @@ export default function PointSharePanel({
     }
   }
 
-  const ready = Boolean(shareUrl && imgLoaded)
+  const ready = Boolean(shareUrl && imgReady)
 
   return (
     <div className="flex max-h-[88dvh] flex-col overflow-hidden rounded-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl">
@@ -434,22 +434,26 @@ export default function PointSharePanel({
             alt={t('share.panelTitle', locale)}
             onLoad={() => {
               destinationsSettledRef.current = true
-              setImgLoaded(true)
+              setLoadedUrl(cardUrl)
             }}
             onError={() => {
               destinationsSettledRef.current = true
-              setCardFailed(true)
+              setFailedUrl(cardUrl)
             }}
-            className={imgLoaded && !linkFailed ? 'h-full w-full object-contain' : 'hidden'}
+            className={imgReady && !linkFailed ? 'h-full w-full object-contain' : 'hidden'}
           />
-          {!(imgLoaded && !linkFailed) ? (
+          {!(imgReady && !linkFailed) ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-400">
               {cardFailed || linkFailed ? (
                 <>
                   <p className="text-sm">{t('share.generateFailed', locale)}</p>
                   <button
                     type="button"
-                    onClick={() => setRetryNonce((n) => n + 1)}
+                    onClick={() => {
+                      setLoadedUrl(null)
+                      setFailedUrl(null)
+                      setRetryNonce((n) => n + 1)
+                    }}
                     className="rounded-full bg-brand px-4 py-1.5 text-xs font-medium text-white"
                   >
                     {t('share.retry', locale)}

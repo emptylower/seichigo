@@ -103,6 +103,23 @@ describe('PointSharePanel 预览走服务端卡片', () => {
     )
   })
 
+  it('切版式后旧图的就绪态立即失效，回到加载态直到新图 onLoad', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.queryByText(t('share.generating', 'zh'))).toBeNull())
+    fireEvent.click(screen.getByText(t('share.layoutLandscape', 'zh')))
+    await waitFor(() =>
+      expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
+        'src',
+        '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      ),
+    )
+    // 预览与 URL 绑定：旧竖版图不再以「已就绪」身份停留在屏幕上
+    expect(screen.getByText(t('share.generating', 'zh'))).toBeInTheDocument()
+    fireEvent.load(screen.getByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.queryByText(t('share.generating', 'zh'))).toBeNull())
+  })
+
   it('加载失败显示重试，点重试重新加载', async () => {
     render(<PointSharePanel {...PROPS} />)
     fireEvent.error(await screen.findByAltText(t('share.panelTitle', 'zh')))
