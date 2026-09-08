@@ -2,12 +2,16 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { resolveMapShareSnapshot } from '@/lib/anitabi/share'
-import { resolveMirrorPublicUrl } from '@/lib/anitabi/imageProxy'
 import { runShareBackground } from '@/lib/share/background'
 import { getShareApiDeps } from '@/lib/share/api'
 import { isShareCode } from '@/lib/share/shortCode'
 import { shareCardFingerprint } from '@/lib/share/store'
-import { buildShareDescription, buildShareRedirectTarget, buildShareTitle } from '@/lib/share/view'
+import {
+  buildShareDescription,
+  buildShareOgImageUrl,
+  buildShareRedirectTarget,
+  buildShareTitle,
+} from '@/lib/share/view'
 import type { ShareLinkRecord } from '@/lib/share/repo'
 
 // 短链每次都要读库拿 imageKey 与 clicks，不能被静态化
@@ -51,13 +55,16 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     p: link.pointId,
   })
 
-  // 卡片路由本身 immutable，靠 ?v=<指纹> 让换图后的 OG URL 变化，绕开爬虫侧旧缓存
-  const fingerprint = link.imageKey ? shareCardFingerprint(link.imageKey) : null
-  const image = link.imageKey
-    ? `${origin}/api/share/img/${link.code}${fingerprint ? `?v=${fingerprint}` : ''}`
-    : (snapshot?.pointImage
-        ? await resolveMirrorPublicUrl(snapshot.pointImage, { kind: 'point' })
-        : null) || `${origin}/opengraph-image`
+  // 有 imageKey（登录用户传过带实拍的卡）→ 维持现状并靠 ?v=<指纹> 破爬虫缓存；
+  // 否则指向服务端卡片路由——匿名分享从此也有完整卡片预览，不需要任何用户上传
+  const image = buildShareOgImageUrl({
+    origin,
+    code: link.code,
+    pointId: link.pointId,
+    locale: link.locale,
+    imageKey: link.imageKey,
+    fingerprint: link.imageKey ? shareCardFingerprint(link.imageKey) : null,
+  })
 
   const title = buildShareTitle({
     locale: link.locale,
