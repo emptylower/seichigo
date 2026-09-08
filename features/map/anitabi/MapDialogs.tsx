@@ -4,7 +4,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
-import CheckInCard from '@/components/share/CheckInCard'
+import PointSharePanel from '@/components/share/PointSharePanel'
 import ComparisonImageGenerator from '@/components/comparison/ComparisonImageGenerator'
 import QuickPilgrimageMode from '@/components/quickPilgrimage/QuickPilgrimageMode'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
@@ -63,8 +63,8 @@ type MapDialogsProps = {
   imageSaving: boolean
   saveOriginalImage: () => Promise<void>
   imageSaveError: string | null
-  showCheckInCard: boolean
-  setShowCheckInCard: Dispatch<SetStateAction<boolean>>
+  showSharePanel: boolean
+  setShowSharePanel: Dispatch<SetStateAction<boolean>>
   showRouteBookCard: boolean
   setShowRouteBookCard: Dispatch<SetStateAction<boolean>>
   showComparisonGenerator: boolean
@@ -108,8 +108,8 @@ export default function MapDialogs(props: MapDialogsProps) {
     imageSaving,
     saveOriginalImage,
     imageSaveError,
-    showCheckInCard,
-    setShowCheckInCard,
+    showSharePanel,
+    setShowSharePanel,
     showRouteBookCard,
     setShowRouteBookCard,
     showComparisonGenerator,
@@ -306,19 +306,26 @@ export default function MapDialogs(props: MapDialogsProps) {
         </Dialog.Portal>
       </Dialog.Root>
 
-      <Dialog.Root open={showCheckInCard} onOpenChange={setShowCheckInCard}>
+      <Dialog.Root open={showSharePanel} onOpenChange={setShowSharePanel}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[131] w-full max-w-md -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none">
-            <CheckInCard
-              animeTitle={detail?.card.title || ''}
-              pointName={selectedPoint?.name || ''}
-              cityName={detail?.card.city || ''}
-              imageUrl={comparisonImageUrl || selectedPointImagePreviewUrl || ''}
-              locale={locale}
-              shareUrl={typeof window !== 'undefined' ? window.location.href : ''}
-              onClose={() => setShowCheckInCard(false)}
-            />
+          <Dialog.Content className="fixed bottom-0 left-1/2 z-[131] w-full max-w-md -translate-x-1/2 p-3 focus:outline-none sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:p-4">
+            <Dialog.Title className="sr-only">{label.share}</Dialog.Title>
+            <Dialog.Description className="sr-only">{selectedPoint?.name || ''}</Dialog.Description>
+            {selectedPoint ? (
+              <PointSharePanel
+                pointId={selectedPoint.id}
+                bangumiId={selectedPoint.bangumiId ?? detail?.card.id}
+                pointName={selectedPoint.name}
+                animeTitle={detail?.card.title || ''}
+                cityName={detail?.card.city || ''}
+                episode={selectedPoint.ep}
+                scene={selectedPoint.s}
+                animeImage={selectedPointImagePreviewUrl || selectedPoint.image || ''}
+                locale={locale}
+                onClose={() => setShowSharePanel(false)}
+              />
+            ) : null}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
