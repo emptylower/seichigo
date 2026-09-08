@@ -8,6 +8,7 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_PHOTO_MAX_BYTES, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
 import PointShareCard, { type PointShareCardInput } from '@/components/share/PointShareCard'
 import {
+  buildCardFilename,
   buildLineShareUrl,
   buildRedditSubmitUrl,
   buildShareCaption,
@@ -205,7 +206,7 @@ export default function PointSharePanel({
 
   const handleSystemShare = async () => {
     if (!cardBlob) return
-    const file = blobToFile(cardBlob, `seichigo-${pointName}.jpg`)
+    const file = blobToFile(cardBlob, buildCardFilename(pointName))
     const result = await shareViaSystem({
       files: [file],
       text: captionFor('sys'),
@@ -217,7 +218,13 @@ export default function PointSharePanel({
 
   const handleCopyImage = async () => {
     if (!cardBlob) return
-    showToast((await copyImage(cardBlob)) ? 'share.toastImageCopied' : 'share.toastFailed')
+    if (await copyImage(cardBlob)) {
+      showToast('share.toastImageCopied')
+      return
+    }
+    // 剪贴板不可用时降级为下载，别让操作无声失败
+    downloadBlob(cardBlob, buildCardFilename(pointName))
+    showToast('share.toastSaved')
   }
 
   const handleCopyText = async () => {
@@ -226,7 +233,7 @@ export default function PointSharePanel({
 
   const handleSave = (channel: ShareChannel = 'save') => {
     if (!cardBlob) return
-    downloadBlob(cardBlob, `seichigo-${pointName}-${Date.now()}.jpg`)
+    downloadBlob(cardBlob, buildCardFilename(pointName))
     if (channel === 'save') showToast('share.toastSaved')
   }
 

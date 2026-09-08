@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildCardFilename,
   buildLineShareUrl,
   buildRedditSubmitUrl,
   buildShareCaption,
@@ -50,6 +51,18 @@ describe('withShareChannel', () => {
     expect(withShareChannel('https://seichigo.com/s/AbC12xYz?c=save', 'wx')).toBe(
       'https://seichigo.com/s/AbC12xYz?c=wx',
     )
+  })
+})
+
+describe('buildCardFilename', () => {
+  it('保留各国文字与数字，其余字符折叠成 -', () => {
+    expect(buildCardFilename('须贺神社')).toBe('seichigo-须贺神社.jpg')
+    expect(buildCardFilename('Your Name.')).toBe('seichigo-Your-Name-.jpg')
+    expect(buildCardFilename('須賀神社/元宮')).toBe('seichigo-須賀神社-元宮.jpg')
+  })
+
+  it('名字部分截断到 40 字符', () => {
+    expect(buildCardFilename('あ'.repeat(50))).toBe(`seichigo-${'あ'.repeat(40)}.jpg`)
   })
 })
 

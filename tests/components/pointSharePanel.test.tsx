@@ -17,6 +17,8 @@ vi.mock('@/components/share/PointShareCard', () => ({
 const createShareLinkMock = vi.fn()
 const uploadShareAssetsMock = vi.fn()
 const transcodeToJpegMock = vi.fn()
+const copyImageMock = vi.fn()
+const downloadBlobMock = vi.fn()
 vi.mock('@/components/share/shareClient', async () => {
   const actual = await vi.importActual<typeof import('@/components/share/shareClient')>(
     '@/components/share/shareClient',
@@ -26,6 +28,8 @@ vi.mock('@/components/share/shareClient', async () => {
     createShareLink: (...args: any[]) => createShareLinkMock(...args),
     uploadShareAssets: (...args: any[]) => uploadShareAssetsMock(...args),
     transcodeToJpeg: (...args: any[]) => transcodeToJpegMock(...args),
+    copyImage: (...args: any[]) => copyImageMock(...args),
+    downloadBlob: (...args: any[]) => downloadBlobMock(...args),
   }
 })
 
@@ -54,6 +58,8 @@ beforeEach(() => {
   useSessionMock.mockReturnValue({ data: { user: { name: 'u' } }, status: 'authenticated' })
   transcodeToJpegMock.mockReset()
   transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
+  copyImageMock.mockReset()
+  downloadBlobMock.mockReset()
   createShareLinkMock.mockResolvedValue({
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
@@ -207,5 +213,16 @@ describe('PointSharePanel 短链与平台按钮', () => {
     fireEvent.change(fileInput, { target: { files: [gif] } })
     expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastPhotoUnsupported', 'zh'))
     expect(screen.getByRole('button', { name: t('share.addPhoto', 'zh') })).toBeInTheDocument()
+  })
+
+  it('复制图片不可用时降级为下载并提示已保存', async () => {
+    copyImageMock.mockResolvedValue(false)
+    render(<PointSharePanel {...PROPS} />)
+    const copyBtn = await screen.findByRole('button', { name: t('share.copyImage', 'zh') })
+    await waitFor(() => expect(copyBtn).not.toBeDisabled())
+    fireEvent.click(copyBtn)
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    expect(downloadBlobMock.mock.calls[0]![1]).toBe('seichigo-须贺神社.jpg')
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastSaved', 'zh'))
   })
 })

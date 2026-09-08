@@ -46,3 +46,12 @@ export function buildRedditSubmitUrl(url: string, title: string): string {
 export function buildLineShareUrl(url: string, text: string): string {
   return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`
 }
+
+/**
+ * 分享卡片文件名：点位名只保留各国文字/数字/_/-，其余折叠成单个 -，截 40 字符。
+ * 下载与系统分享共用，避免裸点位名里的空白/符号在部分系统上变成非法文件名。
+ */
+export function buildCardFilename(name: string): string {
+  const slug = String(name || '').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40)
+  return `seichigo-${slug || 'card'}.jpg`
+}
