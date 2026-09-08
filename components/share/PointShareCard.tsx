@@ -176,7 +176,11 @@ export default function PointShareCard({
       ctx.fillStyle = '#6b7280'
       ctx.font = `400 ${bodySize}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
       const meta = metaLine(input)
-      if (meta) ctx.fillText(meta, layout.padding, cursorY)
+      if (meta) {
+        // 城市·集数·场景拼起来可能很长，限 1 行超出省略，避免顶到页脚
+        const [line] = wrapLines((text) => ctx.measureText(text).width, meta, layout.textWidth, 1)
+        if (line) ctx.fillText(line, layout.padding, cursorY)
+      }
 
       // 二维码
       if (qrImg) {
