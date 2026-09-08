@@ -7,6 +7,9 @@ import { SHARE_CARD_MAX_BYTES, SHARE_PHOTO_MAX_BYTES, type ShareUploadResponse }
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** 卡片 1.5MB + 实拍 5MB + 表单开销；formData() 前先按声明值拒收，避免把超大 body 缓进内存 */
+const MAX_UPLOAD_BODY_BYTES = SHARE_CARD_MAX_BYTES + SHARE_PHOTO_MAX_BYTES + 64 * 1024
+
 /** 每用户每日 30 次上传（计数方式同 lib/tripPlan/repoPrisma.ts:261 的按日配额） */
 export const USER_DAILY_UPLOAD_LIMIT = 30
 
@@ -31,6 +34,11 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
   ): Promise<Response> {
     const { code } = await ctx.params
     if (!isShareCode(code)) return NextResponse.json({ error: '短链不存在' }, { status: 404 })
+
+    const declared = Number(req.headers.get('content-length') || '')
+    if (Number.isFinite(declared) && declared > MAX_UPLOAD_BODY_BYTES) {
+      return NextResponse.json({ error: '上传内容过大' }, { status: 413 })
+    }
 
     const session = await deps.getSession()
     const userId = String(session?.user?.id || '').trim()

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MemoryShareLinkRepo } from '@/lib/share/repoMemory'
 import { USER_DAILY_UPLOAD_LIMIT, createPostShareUploadHandler } from '@/lib/share/handlers/upload'
+import { SHARE_CARD_MAX_BYTES, SHARE_PHOTO_MAX_BYTES } from '@/lib/share/types'
 import type { ShareApiDeps } from '@/lib/share/api'
 import type { ShareStore } from '@/lib/share/store'
 
@@ -208,6 +209,27 @@ describe('POST /api/share/links/[code]/upload', () => {
       ctx,
     )
     expect(res.status).toBe(429)
+  })
+
+  it('声明 content-length 超限时直接 413，不读 formData', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store } = makeStore()
+    const formData = vi.fn(async () => {
+      throw new Error('formData should not be called')
+    })
+    const oversized = {
+      headers: new Headers({
+        'content-length': String(SHARE_CARD_MAX_BYTES + SHARE_PHOTO_MAX_BYTES + 64 * 1024 + 1),
+      }),
+      formData,
+    } as unknown as Request
+    const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
+      oversized,
+      ctx,
+    )
+    expect(res.status).toBe(413)
+    expect(formData).not.toHaveBeenCalled()
   })
 
   it('拿不到 R2 绑定 503', async () => {
