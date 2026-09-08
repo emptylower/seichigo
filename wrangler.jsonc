@@ -39,11 +39,13 @@
     // --var PLAN_AGENT_QUEUE_ENABLED=0 覆盖（队列消费者与自引用绑定只对已
     // 部署版本生效，预览跑不了消费者，路由会回落 SSE 内联路径）
     "PLAN_AGENT_QUEUE_ENABLED": "1",
-    // 2026-09-06 Creem 订阅（设计 §6）：预览环境用 --var 覆盖为测试模式
-    // （CREEM_API_BASE=https://test-api.creem.io 与测试模式 product id）；
+    // 2026-09-06 Creem 订阅（设计 §6）；2026-09-08 填入生产模式 product id
+    // （$9.90/月，recurring，tax_mode=exclusive——结账时按用户所在地另加税）。
+    // 预览环境仍可用 --var 覆盖为测试模式（CREEM_API_BASE=
+    // https://test-api.creem.io 与测试模式 product id）；
     // CREEM_API_KEY 与 CREEM_WEBHOOK_SECRET 走 secret，不进 vars
     "CREEM_API_BASE": "https://api.creem.io",
-    "CREEM_PRODUCT_STANDARD_ID": "",
+    "CREEM_PRODUCT_STANDARD_ID": "prod_vM2g6cj87WpCDCWJuRdDd",
     // 2026-09-07 订阅开关（Part F2）：Creem 审核通过并配置好生产 product id
     // 与 secrets 后改 "1"；预览用 --var BILLING_CHECKOUT_ENABLED=1 覆盖
     "BILLING_CHECKOUT_ENABLED": "0"

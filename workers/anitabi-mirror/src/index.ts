@@ -55,9 +55,11 @@ export default {
     if (controller.cron === '0 * * * *') {
       ctx.waitUntil(triggerMainSiteCron(env, '/api/cron/anitabi/daily', 'x-anitabi-cron-secret', env.ANITABI_CRON_SECRET))
     } else if (controller.cron === '15 3 * * *') {
-      // 原 vercel.json 的 25 3（translate）与 0 0（ops）两条 daily，合并到同一 tick。
+      // 原 vercel.json 的 25 3（translate）与 0 0（ops）两条 daily，合并到同一 tick；
+      // 2026-09-08 起计费对账（billing/reconcile）也并入本 tick（同走 x-ops-cron-secret）。
       ctx.waitUntil(triggerMainSiteCron(env, '/api/cron/anitabi/translate', 'x-anitabi-cron-secret', env.ANITABI_CRON_SECRET))
       ctx.waitUntil(triggerMainSiteCron(env, '/api/cron/ops/daily', 'x-ops-cron-secret', env.OPS_CRON_SECRET))
+      ctx.waitUntil(triggerMainSiteCron(env, '/api/cron/billing/reconcile', 'x-ops-cron-secret', env.OPS_CRON_SECRET))
     }
 
     if (String(env.MAP_IMAGE_MIRROR_CRON_ENABLED) !== '1') {

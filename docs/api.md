@@ -106,7 +106,7 @@ fetching. **Do not** copy `fetch(userInput)` patterns from elsewhere.
 | `GET /api/cron/anitabi/translate` | `25 3 * * *` UTC | Translation queue batch |
 | `GET /api/cron/anitabi/enrich` | external trigger | Enrichment pass |
 | `GET /api/cron/ops/daily` | `0 0 * * *` UTC | Ops daily report |
-| `GET /api/cron/billing/reconcile` | `40 3 * * *` UTC | Creem billing reconcile（header `x-ops-cron-secret`） |
+| `GET /api/cron/billing/reconcile` | `15 3 * * *` UTC | Creem billing reconcile（header `x-ops-cron-secret`） |
 
 Each cron checks `Authorization: Bearer <secret>` against
 `ANITABI_CRON_SECRET` / `OPS_CRON_SECRET` as appropriate. One-time
