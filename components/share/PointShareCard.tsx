@@ -6,21 +6,34 @@ import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
-  CARD_FONT_SIZES,
+  CARD_FOOTER_SIZES,
+  CARD_ROW_METRICS,
+  addressPinMetrics,
   buildCardLayout,
+  buildCardTextPlan,
   computeCoverRect,
   resolveCardVariant,
   wrapLines,
+  type CardTextRowKind,
 } from '@/components/share/pointShareCardDraw'
+import { drawJapanLocator, loadJapanOutline } from '@/components/share/japanLocator'
 
 export type PointShareCardInput = {
   layout: ShareCardLayout
   locale: SupportedLocale
+  /** 已由 point-context 去掉作品名前缀的点位名 */
   pointName: string
   animeTitle: string
-  cityName: string
   episode: string | null
   scene: string | null
+  /** 行政区地址（都道府县 市区町村 町丁目）；null 时不画地址行 */
+  address: string | null
+  /** 点位说明；null 时不画说明行 */
+  note: string | null
+  /** [lat, lng]，用来在轮廓上打定位点 */
+  geo: [number, number] | null
+  /** 坐标是否落在日本 bbox 内；false 时不画轮廓，位置留白 */
+  inJapan: boolean
   /** 点位动画截图原始 URL */
   animeImage: string
   /** 用户实拍的 object URL；有值就切 compare 布局 */
@@ -57,11 +70,70 @@ function drawCover(
   ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, box.x, box.y, box.width, box.height)
 }
 
-function metaLine(input: PointShareCardInput): string {
+const FONT_STACK = 'system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif'
+
+function fontOf(size: number, weight: string): string {
+  return `${weight} ${size}px ${FONT_STACK}`
+}
+
+/** 品牌粉。地址行前缀不再用 📍 —— 设备没有 emoji 字体时会掉成豆腐块 */
+const ADDRESS_PIN_COLOR = '#ec4899'
+
+/**
+ * 矢量小图钉：圆头 + 下方三角 + 白色内点，整体宽 addressPinMetrics(size).width、高 size。
+ * y 是文字行顶（textBaseline 为 top），与地址文字对齐。
+ */
+function drawAddressPin(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  const radius = addressPinMetrics(size).width / 2
+  const cx = x + radius
+  const cy = y + radius + size * 0.1
+  ctx.save()
+  ctx.fillStyle = ADDRESS_PIN_COLOR
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(cx - radius * 0.62, cy + radius * 0.62)
+  ctx.lineTo(cx + radius * 0.62, cy + radius * 0.62)
+  ctx.lineTo(cx, y + size)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+const ROW_COLORS: Readonly<Record<CardTextRowKind, string>> = {
+  name: '#111827',
+  anime: '#be185d',
+  address: '#374151',
+  note: '#6b7280',
+}
+
+const ROW_WEIGHTS: Readonly<Record<CardTextRowKind, string>> = {
+  name: 'bold',
+  anime: '600',
+  address: '400',
+  note: '400',
+}
+
+/** 作品行：《作品名》 · 第 N 集 · mm:ss，缺哪段就少哪段 */
+function animeMetaLine(input: PointShareCardInput): string {
   const parts: string[] = []
-  if (input.cityName) parts.push(input.cityName)
+  const title = String(input.animeTitle || '').trim()
+  if (title) {
+    parts.push(input.locale === 'en' ? title : input.locale === 'ja' ? `『${title}』` : `《${title}》`)
+  }
   if (input.episode) {
-    parts.push(input.locale === 'en' ? `EP ${input.episode}` : `第 ${input.episode} 集`)
+    parts.push(
+      input.locale === 'en'
+        ? `EP ${input.episode}`
+        : input.locale === 'ja'
+          ? `第${input.episode}話`
+          : `第 ${input.episode} 集`,
+    )
   }
   if (input.scene) parts.push(formatSceneTime(input.scene))
   return parts.join(' · ')
@@ -78,12 +150,6 @@ export function formatSceneTime(scene: string): string {
   const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
   const ss = String(sec).padStart(2, '0')
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
-function animeLine(input: PointShareCardInput): string {
-  if (input.locale === 'en') return input.animeTitle
-  if (input.locale === 'ja') return `『${input.animeTitle}』`
-  return `《${input.animeTitle}》`
 }
 
 export default function PointShareCard({
@@ -135,10 +201,12 @@ export default function PointShareCard({
         return null
       }
 
-      const [animeImg, qrImg, logoImg] = await Promise.all([
+      const [animeImg, qrImg, logoImg, outline] = await Promise.all([
         loadAnime(),
         loadImage(qrDataUrl).catch(() => null),
         loadImage('/brand/web-logo.png').catch(() => null),
+        // 轮廓 JSON 只有日本境内点位才下载；下不来就不画轮廓，别拖垮整张卡
+        input.inJapan ? loadJapanOutline().catch(() => null) : Promise.resolve(null),
       ])
       if (isCancelled()) return
 
@@ -158,45 +226,57 @@ export default function PointShareCard({
       }
       if (layout.photo && photoImg) drawCover(ctx, photoImg, layout.photo)
 
-      // 文字块
+      // 文字块：先按各自字号量出行，再交给 buildCardTextPlan 排 y
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
-      const { title: titleSize, body: bodySize } = CARD_FONT_SIZES[input.layout]
+      const rowMetrics = CARD_ROW_METRICS[input.layout]
+      const measure = (text: string) => ctx.measureText(text).width
 
-      ctx.fillStyle = '#111827'
-      ctx.font = `bold ${titleSize}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
-      const nameLines = wrapLines(
-        (text) => ctx.measureText(text).width,
-        input.pointName,
+      ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
+      const nameLines = wrapLines(measure, input.pointName, layout.textWidth, rowMetrics.name.maxLines)
+
+      ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
+      const animeLineText = wrapLines(measure, animeMetaLine(input), layout.textWidth, 1)[0] || ''
+
+      ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
+      const addressPin = addressPinMetrics(rowMetrics.address.size)
+      const addressLineText = input.address
+        ? wrapLines(measure, input.address, layout.textWidth - addressPin.offset, 1)[0] || ''
+        : ''
+
+      ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
+      const noteLines = wrapLines(
+        measure,
+        String(input.note || ''),
         layout.textWidth,
-        2,
+        rowMetrics.note.maxLines,
       )
-      let cursorY = layout.textTop
-      for (const line of nameLines) {
-        ctx.fillText(line, layout.padding, cursorY)
-        cursorY += titleSize + 12
+
+      const plan = buildCardTextPlan({
+        layout: input.layout,
+        geometry: layout,
+        nameLines,
+        animeLine: animeLineText,
+        addressLine: addressLineText,
+        noteLines,
+      })
+      for (const row of plan.rows) {
+        // 地址行左侧留给矢量图钉，文字整体右移一个 offset
+        const isAddress = row.kind === 'address'
+        if (isAddress) drawAddressPin(ctx, layout.textX, row.y, row.size)
+        ctx.fillStyle = ROW_COLORS[row.kind]
+        ctx.font = fontOf(row.size, ROW_WEIGHTS[row.kind])
+        ctx.fillText(row.text, isAddress ? layout.textX + addressPin.offset : layout.textX, row.y)
       }
 
-      ctx.fillStyle = '#be185d'
-      ctx.font = `600 ${bodySize + 4}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
-      const animeLines = wrapLines(
-        (text) => ctx.measureText(text).width,
-        animeLine(input),
-        layout.textWidth,
-        1,
-      )
-      for (const line of animeLines) {
-        ctx.fillText(line, layout.padding, cursorY)
-        cursorY += bodySize + 18
-      }
-
-      ctx.fillStyle = '#6b7280'
-      ctx.font = `400 ${bodySize}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
-      const meta = metaLine(input)
-      if (meta) {
-        // 城市·集数·场景拼起来可能很长，限 1 行超出省略，避免顶到页脚
-        const [line] = wrapLines((text) => ctx.measureText(text).width, meta, layout.textWidth, 1)
-        if (line) ctx.fillText(line, layout.padding, cursorY)
+      // 日本轮廓定位小图：海外点位不画，位置留白（二维码位置不变）
+      if (input.inJapan && outline) {
+        drawJapanLocator(
+          ctx,
+          layout.locator,
+          input.geo ? { lat: input.geo[0], lng: input.geo[1] } : null,
+          outline,
+        )
       }
 
       // 二维码
@@ -206,10 +286,10 @@ export default function PointShareCard({
 
       // 页脚：鸟居图标 + 站点名
       ctx.textBaseline = 'alphabetic'
-      const footerSize = CARD_FONT_SIZES[input.layout].footer
+      const footerSize = CARD_FOOTER_SIZES[input.layout]
       ctx.fillStyle = '#9ca3af'
       ctx.font = `500 ${footerSize}px system-ui, -apple-system, sans-serif`
-      ctx.fillText('⛩ seichigo.com', layout.padding, layout.footerY)
+      ctx.fillText('⛩ seichigo.com', layout.footerX, layout.footerY)
       if (logoImg) {
         const logoHeight = footerSize + 8
         const logoWidth = logoHeight * (logoImg.width / logoImg.height || 1)

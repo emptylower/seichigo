@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Camera, Copy, Download, Loader2, Share2, X } from 'lucide-react'
+import { Camera, ChevronRight, Copy, Download, Loader2, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { SHARE_PHOTO_MAX_BYTES, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
+import { SHARE_PHOTO_MAX_BYTES, type PointContextResponse, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
 import PointShareCard, { type PointShareCardInput } from '@/components/share/PointShareCard'
 import {
   buildCardFilename,
@@ -13,14 +13,20 @@ import {
   buildRedditSubmitUrl,
   buildShareCaption,
   buildXIntentUrl,
+  retargetCaptionChannel,
+  toCityLevelAddress,
   withShareChannel,
 } from '@/components/share/shareText'
 import {
   blobToFile,
+  canShareFiles,
   copyImage,
   copyText,
   createShareLink,
   downloadBlob,
+  fetchPointContext,
+  openBlankWindow,
+  openOrNavigate,
   readPreferredLayout,
   shareViaSystem,
   transcodeToJpeg,
@@ -42,10 +48,21 @@ export type PointSharePanelProps = {
 }
 
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
 
 /** canvas 与 <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG */
 const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+/** 手机路径下五个目的地都走系统面板，只有渠道参数不同 */
+const MOBILE_DESTINATIONS: ReadonlyArray<{ channel: ShareChannel; labelKey: string }> = [
+  { channel: 'x', labelKey: 'share.platformX' },
+  { channel: 'rd', labelKey: 'share.platformReddit' },
+  { channel: 'ln', labelKey: 'share.platformLine' },
+  { channel: 'xhs', labelKey: 'share.platformXiaohongshu' },
+  { channel: 'wx', labelKey: 'share.platformWechat' },
+]
+
+const CAPTION_COLLAPSED_MAX = 40
 
 export default function PointSharePanel({
   pointId,
@@ -65,6 +82,10 @@ export default function PointSharePanel({
   useEffect(() => {
     setLayout(readPreferredLayout())
   }, [])
+  const [context, setContext] = useState<PointContextResponse | null>(null)
+  // context 还没回来（含失败落定）都不算 settled：卡片必须等它落定再画，
+  // 否则会先出一版无地址卡片，再被带地址版本覆盖（上传也会跟着错版）
+  const [contextSettled, setContextSettled] = useState(false)
   const [shareUrl, setShareUrl] = useState<string>('')
   const [code, setCode] = useState<string>('')
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -76,6 +97,9 @@ export default function PointSharePanel({
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [captionOverride, setCaptionOverride] = useState<string | null>(null)
+  const [captionExpanded, setCaptionExpanded] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -102,6 +126,21 @@ export default function PointSharePanel({
     }
   }, [pointId, bangumiId, locale, layout, retryNonce])
 
+  // 与建短链并行：地址/说明/去前缀点位名。失败也置 settled，卡片按无地址画
+  useEffect(() => {
+    let cancelled = false
+    setContext(null)
+    setContextSettled(false)
+    fetchPointContext(pointId, locale).then((result) => {
+      if (cancelled) return
+      setContext(result)
+      setContextSettled(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [pointId, locale, retryNonce])
+
   const previewUrlRef = useRef<string | null>(null)
   const photoObjectUrlRef = useRef<string | null>(null)
   useEffect(() => {
@@ -118,23 +157,41 @@ export default function PointSharePanel({
     }
   }, [])
 
+  const displayName = context?.displayName?.trim() || pointName
+  const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
+
   const cardInput: PointShareCardInput | null = useMemo(() => {
-    if (!shareUrl) return null
+    if (!shareUrl || !contextSettled) return null
     return {
       layout,
       locale,
-      pointName,
-      animeTitle,
-      cityName,
+      pointName: displayName,
+      animeTitle: cardAnimeTitle,
       episode,
       scene,
+      address: context?.address ?? null,
+      note: context?.note ?? null,
+      geo: context?.geo ?? null,
+      inJapan: Boolean(context?.inJapan),
       animeImage,
       photoObjectUrl,
       shareUrl,
       // 扫码进站的算「存图」渠道：二维码画带 c=save 的短链
       qrUrl: withShareChannel(shareUrl, 'save'),
     }
-  }, [shareUrl, layout, locale, pointName, animeTitle, cityName, episode, scene, animeImage, photoObjectUrl])
+  }, [
+    shareUrl,
+    contextSettled,
+    layout,
+    locale,
+    displayName,
+    cardAnimeTitle,
+    episode,
+    scene,
+    context,
+    animeImage,
+    photoObjectUrl,
+  ])
 
   const handleRendered = useCallback(
     (blob: Blob) => {
@@ -155,11 +212,18 @@ export default function PointSharePanel({
 
   const handleRenderError = useCallback(() => setFailed(true), [])
 
-  const showToast = useCallback((key: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast(t(key, locale))
-    toastTimerRef.current = setTimeout(() => setToast(null), 2200)
-  }, [locale])
+  const showToast = useCallback(
+    (key: string, vars?: Record<string, string>) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      let text = t(key, locale)
+      if (vars) {
+        for (const [name, value] of Object.entries(vars)) text = text.replace(`{${name}}`, value)
+      }
+      setToast(text)
+      toastTimerRef.current = setTimeout(() => setToast(null), 2600)
+    },
+    [locale],
+  )
 
   useEffect(() => {
     return () => {
@@ -167,18 +231,42 @@ export default function PointSharePanel({
     }
   }, [])
 
+  // 文案里的地址只到市区一级；没拿到 context 时退回作品的 city
+  const captionAddress = context?.address
+    ? toCityLevelAddress(context.address, locale)
+    : String(cityName || '').trim()
+
+  // 生成文案固定带 c=copy：编辑器默认内容 = 「复制文案」动作的结果
+  const generatedCaption = buildShareCaption(t('share.captionTemplate', locale), {
+    anime: cardAnimeTitle,
+    point: displayName,
+    address: captionAddress,
+    url: shareUrl ? withShareChannel(shareUrl, 'copy') : '',
+  })
+  // 编辑器与折叠摘要显示原始输入；渠道改写只在动作那一刻做，不回填进编辑器
+  const editorValue = captionOverride ?? generatedCaption
+
   const captionFor = useCallback(
-    (channel: ShareChannel) =>
-      buildShareCaption(t('share.captionTemplate', locale), {
-        anime: animeTitle,
-        point: pointName,
-        city: cityName,
-        url: shareUrl ? withShareChannel(shareUrl, channel) : '',
-      }),
-    [locale, animeTitle, pointName, cityName, shareUrl],
+    (channel: ShareChannel) => retargetCaptionChannel(editorValue, shareUrl, channel),
+    [editorValue, shareUrl],
   )
 
-  const copyCaption = captionFor('copy')
+  // 摘要只有一行，短链占掉一半没意义：先把 URL 剥掉再截
+  const captionSummarySource = editorValue
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  const collapsedCaption =
+    captionSummarySource.length > CAPTION_COLLAPSED_MAX
+      ? `${captionSummarySource.slice(0, CAPTION_COLLAPSED_MAX)}…`
+      : captionSummarySource
+
+  const cardFile = useMemo(
+    () => (cardBlob ? blobToFile(cardBlob, buildCardFilename(displayName)) : null),
+    [cardBlob, displayName],
+  )
+  // 手机/桌面只看 navigator.canShare({ files })，不看 UA
+  const mobilePath = useMemo(() => (cardFile ? canShareFiles([cardFile]) : false), [cardFile])
 
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -218,18 +306,44 @@ export default function PointSharePanel({
     uploadedRef.current = false
   }
 
-  const handleSystemShare = async () => {
-    if (!cardBlob || busy) return
+  const shareToSystem = async (channel: ShareChannel) => {
+    if (!cardFile || !shareUrl || busy) return
     setBusy(true)
     try {
-      const file = blobToFile(cardBlob, buildCardFilename(pointName))
       const result = await shareViaSystem({
-        files: [file],
-        text: captionFor('sys'),
-        url: withShareChannel(shareUrl, 'sys'),
+        files: [cardFile],
+        text: captionFor(channel),
+        url: withShareChannel(shareUrl, channel),
       })
       if (result === 'text') showToast('share.toastShareFilesUnsupported')
       if (result === 'failed') showToast('share.toastFailed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 桌面 X：window.open 必须留在 click 的同步链路里 —— 先拿窗口引用，
+   * 再 await 剪贴板，最后设 location，否则 await 之后的 open 会被弹窗拦截。
+   */
+  const handleDesktopX = async () => {
+    if (!cardBlob || !shareUrl || busy) return
+    setBusy(true)
+    const win = openBlankWindow()
+    try {
+      const copied = await copyImage(cardBlob)
+      if (!copied) downloadBlob(cardBlob, buildCardFilename(displayName))
+      if (!openOrNavigate(win, buildXIntentUrl(captionFor('x')))) {
+        // 弹窗被彻底拦截：图片已在手上，把文案也复制好，让用户自己开 X 粘贴
+        const copiedText = await copyText(captionFor('x'))
+        if (copiedText) {
+          showToast('share.toastSavedAndCopiedOpenApp', { app: t('share.platformX', locale) })
+        } else {
+          showToast('share.toastFailed')
+        }
+        return
+      }
+      showToast(copied ? 'share.toastImageCopiedPasteInPost' : 'share.toastImageDownloadedDragIntoPost')
     } finally {
       setBusy(false)
     }
@@ -244,7 +358,7 @@ export default function PointSharePanel({
         return
       }
       // 剪贴板不可用时降级为下载，别让操作无声失败
-      downloadBlob(cardBlob, buildCardFilename(pointName))
+      downloadBlob(cardBlob, buildCardFilename(displayName))
       showToast('share.toastSaved')
     } finally {
       setBusy(false)
@@ -255,25 +369,33 @@ export default function PointSharePanel({
     if (busy) return
     setBusy(true)
     try {
-      showToast((await copyText(copyCaption)) ? 'share.toastCopied' : 'share.toastFailed')
+      showToast((await copyText(captionFor('copy'))) ? 'share.toastCopied' : 'share.toastFailed')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleSave = (channel: ShareChannel = 'save') => {
+  const handleSave = () => {
     if (!cardBlob) return
-    downloadBlob(cardBlob, buildCardFilename(pointName))
-    if (channel === 'save') showToast('share.toastSaved')
+    downloadBlob(cardBlob, buildCardFilename(displayName))
+    showToast('share.toastSaved')
   }
 
+  /** 桌面小红书/微信：下载图片 + 复制文案，一次点击做完 */
   const handleAppFlow = async (channel: 'xhs' | 'wx') => {
-    if (busy) return
+    if (!cardBlob || busy) return
     setBusy(true)
     try {
-      handleSave(channel)
-      await copyText(captionFor(channel))
-      showToast('share.toastPasteInApp')
+      downloadBlob(cardBlob, buildCardFilename(displayName))
+      // 文案没复制成就别提示「已复制」：只说图片已保存
+      const copied = await copyText(captionFor(channel))
+      if (copied) {
+        showToast('share.toastSavedAndCopiedOpenApp', {
+          app: t(channel === 'xhs' ? 'share.platformXiaohongshu' : 'share.platformWechat', locale),
+        })
+      } else {
+        showToast('share.toastSaved')
+      }
     } finally {
       setBusy(false)
     }
@@ -371,69 +493,199 @@ export default function PointSharePanel({
           onChange={handlePhotoChange}
         />
 
-        <label className="block space-y-1">
-          <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
-          <textarea
-            readOnly
-            rows={3}
-            value={copyCaption}
+        {captionExpanded ? (
+          <div className="space-y-1">
+            <label className="block space-y-1">
+              <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
+              <textarea
+                rows={3}
+                value={editorValue}
+                aria-label={t('share.captionLabel', locale)}
+                onChange={(event) => setCaptionOverride(event.target.value)}
+                className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
+              />
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-expanded
+                onClick={() => setCaptionExpanded(false)}
+                className="text-xs font-medium text-gray-500"
+              >
+                {t('share.collapseCaption', locale)}
+              </button>
+              {captionOverride !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setCaptionOverride(null)}
+                  className="text-xs font-medium text-brand"
+                >
+                  {t('share.resetCaption', locale)}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
             aria-label={t('share.captionLabel', locale)}
-            className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
-          />
-        </label>
+            aria-expanded={false}
+            onClick={() => setCaptionExpanded(true)}
+            className="flex w-full items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700"
+          >
+            <span className="min-w-0 flex-1 truncate">{collapsedCaption}</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+          </button>
+        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" disabled={!ready} onClick={handleSystemShare} className={`${BUTTON_BASE} bg-gray-900 text-white sm:hidden`}>
+        {mobilePath ? (
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => shareToSystem('sys')}
+            className={`${BUTTON_BASE} text-sm w-full bg-gray-900 text-white`}
+          >
             <Share2 className="h-4 w-4" />
-            {t('share.systemShare', locale)}
+            {t('share.shareTo', locale)}
           </button>
-          <button type="button" disabled={!ready} onClick={handleCopyImage} className={`${BUTTON_BASE} hidden bg-gray-900 text-white sm:inline-flex`}>
-            <Copy className="h-4 w-4" />
-            {t('share.copyImage', locale)}
-          </button>
-          <button type="button" disabled={!shareUrl} onClick={handleCopyText} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.copyText', locale)}
-          </button>
-        </div>
+        ) : null}
 
-        <div className="grid grid-cols-3 gap-2">
-          <a
-            href={shareUrl ? buildXIntentUrl(captionFor('x')) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+        {/* 卡片没就绪时 mobilePath 还判不出来（要靠 canShare({files})），
+            先出骨架占位，别让整片按钮在两条路径之间翻一次页 */}
+        {!cardBlob ? (
+          <div className="grid grid-cols-3 gap-2" data-testid="share-destinations-skeleton" aria-hidden="true">
+            {[0, 1, 2, 3, 4, 5].map((slot) => (
+              <div key={slot} className="h-11 animate-pulse rounded-xl bg-gray-100" />
+            ))}
+          </div>
+        ) : (
+        <div
+          data-testid="share-destinations"
+          className={`grid gap-2 ${mobilePath ? 'grid-cols-5' : 'grid-cols-3'}`}
+        >
+          {mobilePath ? (
+            MOBILE_DESTINATIONS.map((destination) => (
+              <button
+                key={destination.channel}
+                type="button"
+                disabled={!ready}
+                onClick={() => shareToSystem(destination.channel)}
+                // 五个目的地挤一行，字号跟着缩一档，窄屏才装得下
+                className={`${BUTTON_BASE} w-full bg-gray-100 px-1.5 text-xs text-gray-800`}
+              >
+                {t(destination.labelKey, locale)}
+              </button>
+            ))
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={handleDesktopX}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformX', locale)}
+              </button>
+              <a
+                href={
+                  ready
+                    ? buildRedditSubmitUrl(
+                        withShareChannel(shareUrl, 'rd'),
+                        t('share.redditTitle', locale)
+                          .replace('{point}', displayName)
+                          .replace('{anime}', cardAnimeTitle),
+                      )
+                    : undefined
+                }
+                aria-disabled={!ready}
+                target="_blank"
+                rel="noreferrer"
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
+              >
+                {t('share.platformReddit', locale)}
+              </a>
+              <a
+                href={ready ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
+                aria-disabled={!ready}
+                target="_blank"
+                rel="noreferrer"
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
+              >
+                {t('share.platformLine', locale)}
+              </a>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => handleAppFlow('xhs')}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformXiaohongshu', locale)}
+              </button>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => handleAppFlow('wx')}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
+              >
+                {t('share.platformWechat', locale)}
+              </button>
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={handleSave}
+                className={`${BUTTON_BASE} text-sm w-full bg-brand text-white`}
+              >
+                <Download className="h-4 w-4" />
+                {t('share.saveImage', locale)}
+              </button>
+            </>
+          )}
+        </div>
+        )}
+
+        <div>
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((value) => !value)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-500"
           >
-            {t('share.platformX', locale)}
-          </a>
-          <a
-            href={shareUrl ? buildRedditSubmitUrl(withShareChannel(shareUrl, 'rd'), t('share.redditTitle', locale).replace('{point}', pointName).replace('{anime}', animeTitle)) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
-          >
-            {t('share.platformReddit', locale)}
-          </a>
-          <a
-            href={shareUrl ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
-            aria-disabled={!shareUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
-          >
-            {t('share.platformLine', locale)}
-          </a>
-          <button type="button" disabled={!ready} onClick={() => handleAppFlow('xhs')} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.platformXiaohongshu', locale)}
+            {t('share.more', locale)}
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          <button type="button" disabled={!ready} onClick={() => handleAppFlow('wx')} className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}>
-            {t('share.platformWechat', locale)}
-          </button>
-          <button type="button" disabled={!ready} onClick={() => handleSave()} className={`${BUTTON_BASE} bg-brand text-white`}>
-            <Download className="h-4 w-4" />
-            {t('share.saveImage', locale)}
-          </button>
+          {moreOpen ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {mobilePath ? (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={handleSave}
+                  className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
+                >
+                  <Download className="h-4 w-4" />
+                  {t('share.saveImage', locale)}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={handleCopyImage}
+                  className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
+                >
+                  <Copy className="h-4 w-4" />
+                  {t('share.copyImage', locale)}
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!shareUrl}
+                onClick={handleCopyText}
+                className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
+              >
+                {t('share.copyText', locale)}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {toast ? (

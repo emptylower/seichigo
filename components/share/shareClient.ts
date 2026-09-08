@@ -1,6 +1,8 @@
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type {
   CreateShareLinkRequest,
   CreateShareLinkResponse,
+  PointContextResponse,
   ShareCardLayout,
   ShareUploadResponse,
 } from '@/lib/share/types'
@@ -171,5 +173,67 @@ export async function transcodeToJpeg(file: File): Promise<Blob | null> {
     return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
   } catch {
     return null
+  }
+}
+
+/**
+ * 点位上下文（地址 / 说明 / 去前缀点位名 / 是否在日本）。
+ * 与建短链并行发，失败返回 null —— 卡片按无地址无说明画，不阻塞分享。
+ */
+export async function fetchPointContext(
+  pointId: string,
+  locale: SupportedLocale,
+): Promise<PointContextResponse | null> {
+  try {
+    const params = new URLSearchParams({ pointId, locale })
+    const res = await fetch(`/api/share/point-context?${params.toString()}`)
+    if (!res.ok) return null
+    return (await res.json()) as PointContextResponse
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 在 click 的同步链路里先把窗口开出来。
+ * 之后 `await` 剪贴板写入再改 `location`，否则 await 之后的 open 会被弹窗拦截。
+ */
+export function openBlankWindow(): Window | null {
+  try {
+    return globalThis.open?.('about:blank') ?? null
+  } catch {
+    return null
+  }
+}
+
+/** 有引用就先断 opener 再改它的 location；没有（同步 open 就被拦了）再赌一次 open，仍失败返回 false */
+export function openOrNavigate(win: Window | null, url: string): boolean {
+  if (win) {
+    try {
+      // 跨域窗口赋 opener 可能抛，断开失败不挡导航
+      try {
+        win.opener = null
+      } catch {
+        // 忽略
+      }
+      win.location.href = url
+      return true
+    } catch {
+      // 引用作废（被浏览器回收），落到下面兜底
+    }
+  }
+  try {
+    // 不用 'noopener' 特性串：部分浏览器（含 in-app webview）见到特性串直接拦掉。
+    // 手动断 opener 达到同样的隔离效果
+    const w = globalThis.open?.(url, '_blank')
+    if (!w) return false
+    try {
+      w.opener = null
+    } catch {
+      // 忽略
+    }
+    return true
+  } catch {
+    return false
   }
 }

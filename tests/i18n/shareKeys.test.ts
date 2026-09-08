@@ -46,17 +46,37 @@ describe('share i18n keys', () => {
 
   it.each(LOCALES)('%s 的文案模板四个占位符齐全', (_locale, dict) => {
     const template = at(dict, 'share.captionTemplate') as string
-    for (const token of ['{anime}', '{point}', '{city}', '{url}']) {
+    for (const token of ['{anime}', '{point}', '{address}', '{url}']) {
       expect(template.includes(token), `${token} in ${template}`).toBe(true)
     }
+    expect(template.includes('{city}'), `v1 的 {city} 应已下线：${template}`).toBe(false)
   })
 
   // 2026-09-08 Track B 评审修复新增的键，逐个登记防漏翻
   const REVIEW_FIX_KEYS = ['retry', 'toastPhotoTooLarge', 'toastPhotoUnsupported', 'redditTitle']
+  // 2026-09-08 分享 v2 目的地驱动面板新增的键
+  const V2_KEYS = [
+    'shareTo',
+    'more',
+    'toastImageCopiedPasteInPost',
+    'toastImageDownloadedDragIntoPost',
+    'toastSavedAndCopiedOpenApp',
+  ]
+  // 2026-09-08 Track B 低危修复：文案编辑器的收起 / 恢复默认
+  const CAPTION_EDITOR_KEYS = ['collapseCaption', 'resetCaption']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
-    for (const key of REVIEW_FIX_KEYS) {
+    for (const key of [...REVIEW_FIX_KEYS, ...V2_KEYS, ...CAPTION_EDITOR_KEYS]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }
+  })
+
+  it.each(LOCALES)('%s 的 toastSavedAndCopiedOpenApp 带 {app} 占位', (_locale, dict) => {
+    expect(String(at(dict, 'share.toastSavedAndCopiedOpenApp'))).toContain('{app}')
+  })
+
+  it.each(LOCALES)('%s 已删除 v1 的 systemShare / toastPasteInApp', (_locale, dict) => {
+    expect(at(dict, 'share.systemShare')).toBeUndefined()
+    expect(at(dict, 'share.toastPasteInApp')).toBeUndefined()
   })
 })

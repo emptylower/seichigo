@@ -736,9 +736,10 @@
     "removePhoto": "Remove photo",
     "photoHint": "Add your own shot and the card becomes a side-by-side comparison",
     "captionLabel": "Caption",
-    "captionTemplate": "{anime} anime pilgrimage: {point}, {city} {url} #animepilgrimage #{anime}",
+    "collapseCaption": "Collapse",
+    "resetCaption": "Reset",
+    "captionTemplate": "{anime} anime pilgrimage: {point}, {address} {url} #animepilgrimage #{anime}",
     "redditTitle": "{point} - {anime}",
-    "systemShare": "Share",
     "copyImage": "Copy image",
     "copyText": "Copy caption",
     "saveImage": "Save image",
@@ -750,10 +751,14 @@
     "toastCopied": "Caption copied",
     "toastImageCopied": "Image copied",
     "toastSaved": "Image saved",
-    "toastPasteInApp": "Image and caption are ready — open the app and paste",
     "toastShareFilesUnsupported": "This browser cannot share images directly. Save the image first, then post it manually.",
     "toastFailed": "Something went wrong. Please try again.",
     "toastPhotoTooLarge": "Photo is over 5 MB. Please pick a smaller one.",
-    "toastPhotoUnsupported": "This image format isn't supported. Please use JPEG, PNG, or WebP."
+    "toastPhotoUnsupported": "This image format isn't supported. Please use JPEG, PNG, or WebP.",
+    "shareTo": "Share to…",
+    "more": "More",
+    "toastImageCopiedPasteInPost": "Image copied — paste it into your post",
+    "toastImageDownloadedDragIntoPost": "Image downloaded — drag it into your post",
+    "toastSavedAndCopiedOpenApp": "Image saved and caption copied — open {app} and paste"
   }
 }

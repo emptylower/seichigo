@@ -1,3 +1,4 @@
+import japanOutlineJson from '@/lib/share/data/japan-outline.json'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 /** 分享卡片版式：竖版给小红书/B 站/微信/Instagram，横版给 X/Reddit/LINE 的链接预览 */
@@ -76,4 +77,57 @@ export function isShareChannel(value: unknown): value is ShareChannel {
 /** 短链相对路径；渠道参数只在真正要发出去时才带 */
 export function shareLinkPath(code: string, channel?: ShareChannel): string {
   return channel ? `/s/${code}?c=${channel}` : `/s/${code}`
+}
+
+/**
+ * 分享卡片的点位上下文：地址（按 locale 取一条）、坐标、说明、是否在日本轮廓 bbox 内、
+ * 去掉作品名前缀的点位名、作品名。由 GET /api/share/point-context 返回。
+ */
+export type PointContextResponse = {
+  address: string | null
+  geo: [number, number] | null
+  note: string | null
+  inJapan: boolean
+  displayName: string
+  animeTitle: string
+}
+
+/**
+ * Natural Earth 50m 日本轮廓（公有领域）：`{bbox, rings}`，34 个环共 1097 个点，
+ * 环的坐标是 `[lon, lat]`。与卡片定位小图共用同一份数据（Track B 改从这里 import）。
+ */
+type JapanOutline = {
+  bbox: readonly [number, number, number, number]
+  rings: readonly (readonly (readonly [number, number])[])[]
+}
+
+const JAPAN_OUTLINE = japanOutlineJson as unknown as JapanOutline
+
+/**
+ * 整体外接框，仅供参考；判定见 isInJapan。直接从轮廓 JSON 的 bbox 派生，
+ * 不再手工放宽——真正的国界判定由多边形射线法完成，bbox 只做快速排除。
+ */
+export const JAPAN_BBOX: readonly [number, number, number, number] = JAPAN_OUTLINE.bbox
+
+/**
+ * 射线法（ray casting）点在多边形内判定：从待测点向右水平射出一条射线，
+ * 与环边线的交点数为奇数则在多边形内。环不闭合（首尾点相同）也能正确工作。
+ */
+function pointInRing(lat: number, lng: number, ring: readonly (readonly [number, number])[]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [lngI, latI] = ring[i]!
+    const [lngJ, latJ] = ring[j]!
+    const crosses = latI > lat !== latJ > lat
+    if (!crosses) continue
+    const lngAtLat = ((lngJ - lngI) * (lat - latI)) / (latJ - latI) + lngI
+    if (lng < lngAtLat) inside = !inside
+  }
+  return inside
+}
+
+export function isInJapan(lat: number, lng: number): boolean {
+  const [minLon, minLat, maxLon, maxLat] = JAPAN_BBOX
+  if (lng < minLon || lng > maxLon || lat < minLat || lat > maxLat) return false
+  return JAPAN_OUTLINE.rings.some((ring) => pointInRing(lat, lng, ring))
 }

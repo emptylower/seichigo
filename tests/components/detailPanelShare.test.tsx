@@ -69,3 +69,57 @@ describe('DetailPanel 分享按钮', () => {
     expect(screen.queryByText('打卡卡片')).not.toBeInTheDocument()
   })
 })
+
+describe('DetailPanel 动作区 2×2', () => {
+  function actionRow(container: HTMLElement) {
+    return container.querySelector('.grid.grid-cols-2')
+  }
+
+  it('四个动作按钮的父元素是两列 grid', () => {
+    const { container } = render(
+      <DetailPanel
+        {...(makeProps({ geoHref: 'https://maps.google.com/?q=1,2', showWantToGoAction: true }) as any)}
+      />,
+    )
+    const row = actionRow(container)
+    expect(row).not.toBeNull()
+    expect(row!.className).toContain('grid-cols-2')
+    expect(row!.className).not.toContain('flex-wrap')
+    expect(row!.children).toHaveLength(4)
+  })
+
+  it('顺序是谷歌导航、进入全景、加入我的地图、分享', () => {
+    const { container } = render(
+      <DetailPanel
+        {...(makeProps({ geoHref: 'https://maps.google.com/?q=1,2', showWantToGoAction: true }) as any)}
+      />,
+    )
+    expect(Array.from(actionRow(container)!.children).map((el) => el.textContent?.trim())).toEqual([
+      L.zh.openInGoogle,
+      L.zh.enterPanorama,
+      L.zh.addToPointPool,
+      L.zh.share,
+    ])
+  })
+
+  it('每个按钮都是满格宽，不再靠 min-w 撑', () => {
+    const { container } = render(
+      <DetailPanel
+        {...(makeProps({ geoHref: 'https://maps.google.com/?q=1,2', showWantToGoAction: true }) as any)}
+      />,
+    )
+    for (const child of Array.from(actionRow(container)!.children)) {
+      expect(child.className).toContain('w-full')
+      expect(child.className).not.toMatch(/min-w-\[/)
+    }
+  })
+
+  it('条件按钮缺席时仍然两列排布', () => {
+    const { container } = render(
+      <DetailPanel {...(makeProps({ geoHref: null, showWantToGoAction: false }) as any)} />,
+    )
+    const row = actionRow(container)!
+    expect(row.className).toContain('grid-cols-2')
+    expect(row.children).toHaveLength(2)
+  })
+})

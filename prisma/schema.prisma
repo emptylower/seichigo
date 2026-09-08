@@ -1262,3 +1262,15 @@ model ShareLink {
   @@index([userId, createdAt])
   @@index([ipHash, createdAt])
 }
+
+/// 反向地理编码结果缓存：每个点位只查一次上游。
+/// 刻意不给 AnitabiPoint 加列 —— 那张表由 anitabi 同步管线整表覆盖维护。
+/// 不建外键：anitabi 同步管线会整表覆盖点位，外键会级联删除或阻塞写入；孤儿行接受。
+model AnitabiPointAddress {
+  pointId    String   @id
+  addressZh  String?
+  addressEn  String?
+  addressJa  String?
+  source     String   @default("maptiler")
+  resolvedAt DateTime @default(now())
+}
