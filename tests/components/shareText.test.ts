@@ -5,6 +5,7 @@ import {
   buildRedditSubmitUrl,
   buildShareCaption,
   buildXIntentUrl,
+  toHashtag,
   withShareChannel,
 } from '@/components/share/shareText'
 
@@ -18,6 +19,17 @@ describe('buildShareCaption', () => {
         url: 'https://seichigo.com/s/AbC12xYz?c=xhs',
       }),
     ).toBe('《你的名字。》圣地巡礼｜须贺神社（东京）https://seichigo.com/s/AbC12xYz?c=xhs #圣地巡礼 #你的名字。')
+  })
+
+  it('#{anime} 里的作品名净化成 hashtag，{anime} 保持原样', () => {
+    expect(
+      buildShareCaption('{anime} pilgrimage: {point} #{anime}', {
+        anime: 'Your Name.',
+        point: 'B',
+        city: '',
+        url: 'U',
+      }),
+    ).toBe('Your Name. pilgrimage: B #YourName')
   })
 
   it('城市缺失时不留空括号/空逗号', () => {
@@ -63,6 +75,16 @@ describe('buildCardFilename', () => {
 
   it('名字部分截断到 40 字符', () => {
     expect(buildCardFilename('あ'.repeat(50))).toBe(`seichigo-${'あ'.repeat(40)}.jpg`)
+  })
+})
+
+describe('toHashtag', () => {
+  it('去掉空白与标点符号', () => {
+    expect(toHashtag('Your Name.')).toBe('YourName')
+    expect(toHashtag('天气之子')).toBe('天气之子')
+    expect(toHashtag('Re:Creators')).toBe('ReCreators')
+    expect(toHashtag('「进击的巨人」')).toBe('进击的巨人')
+    expect(toHashtag('舞-HiME')).toBe('舞-HiME')
   })
 })
 

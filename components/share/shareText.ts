@@ -10,18 +10,27 @@ export type ShareCaptionVars = {
 /**
  * 填模板。城市为空时，把包住 {city} 的中/英标点（全角括号、逗号+空格）一并吃掉，
  * 免得出现「须贺神社（）」或「Suga Shrine,  https://…」。
+ * `#{anime}` 是话题标签：作品名先过 toHashtag 净化，再替换普通 `{anime}`。
  */
 export function buildShareCaption(template: string, vars: ShareCaptionVars): string {
   const city = String(vars.city || '').trim()
+  const anime = String(vars.anime || '').trim()
+  const animeTag = toHashtag(anime)
   let out = String(template || '')
   out = city
     ? out.replace(/\{city\}/g, city)
     : out.replace(/（\{city\}）/g, ' ').replace(/,\s*\{city\}/g, '').replace(/\{city\}/g, '')
   out = out
-    .replace(/\{anime\}/g, String(vars.anime || '').trim())
+    .replace(/#\{anime\}/g, animeTag ? `#${animeTag}` : '')
+    .replace(/\{anime\}/g, anime)
     .replace(/\{point\}/g, String(vars.point || '').trim())
     .replace(/\{url\}/g, String(vars.url || '').trim())
   return out.replace(/[ \t]{2,}/g, ' ').trim()
+}
+
+/** 话题标签化：去掉空白与 `# / \ . , : ; ! ? ' " ( ) （ ） 【 】 「 」 『 』 ・`，免得作品名里的符号把话题拆断 */
+export function toHashtag(value: string): string {
+  return String(value || '').replace(/[\s#/\\.,:;!?'"()（）【】「」『』・]+/gu, '')
 }
 
 /** 给短链挂上渠道参数；已有 c 就覆盖 */
