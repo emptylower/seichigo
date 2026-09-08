@@ -104,4 +104,27 @@ describe('PointSharePanel 短链与平台按钮', () => {
       '《你的名字。》圣地巡礼｜须贺神社（东京）https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
     ))
   })
+
+  it('加实拍后切换版式，仍在使用的实拍 objectURL 不会被 revoke', async () => {
+    let n = 0
+    const createMock = vi.fn(() => `blob:${++n}`)
+    const revokeMock = vi.fn()
+    globalThis.URL.createObjectURL = createMock
+    globalThis.URL.revokeObjectURL = revokeMock
+
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(1))
+
+    const fileInput = container.querySelector('input[type="file"]')!
+    const file = new File([new Uint8Array(10)], 'photo.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    const photoUrl = createMock.mock.results[createMock.mock.results.length - 1]!.value as string
+    expect(photoUrl).toMatch(/^blob:/)
+
+    fireEvent.click(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') }))
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
+    // 等卡片桩的 setTimeout 全部跑完，再断言实拍 URL 从头到尾没被 revoke
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(revokeMock).not.toHaveBeenCalledWith(photoUrl)
+  })
 })

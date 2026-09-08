@@ -88,7 +88,11 @@ export default function PointShareCard({
     if (!ctx) return
 
     try {
-      const variant = resolveCardVariant(Boolean(input.photoObjectUrl))
+      // 实拍先加载：失败就退回 default，compare 留个空槽比不出图更难看
+      const photoImg = input.photoObjectUrl
+        ? await loadImage(input.photoObjectUrl).catch(() => null)
+        : null
+      const variant = resolveCardVariant(Boolean(photoImg))
       const layout = buildCardLayout(input.layout, variant)
       canvas.width = layout.canvas.width
       canvas.height = layout.canvas.height
@@ -102,9 +106,8 @@ export default function PointShareCard({
         color: { dark: '#111827', light: '#ffffff' },
       })
 
-      const [animeImg, photoImg, qrImg, logoImg] = await Promise.all([
+      const [animeImg, qrImg, logoImg] = await Promise.all([
         safeAnimeUrl ? loadImage(safeAnimeUrl, 'anonymous').catch(() => null) : Promise.resolve(null),
-        input.photoObjectUrl ? loadImage(input.photoObjectUrl).catch(() => null) : Promise.resolve(null),
         loadImage(qrDataUrl).catch(() => null),
         loadImage('/brand/web-logo.png').catch(() => null),
       ])

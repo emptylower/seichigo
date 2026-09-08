@@ -11,12 +11,15 @@ vi.mock('@/lib/anitabi/imageProxy', () => ({
 }))
 
 const blobSizes: number[] = []
+const failingSrcs = new Set<string>()
+const drawImageSpy = vi.fn()
 
 function stubCanvas() {
   const ctx = new Proxy(
     {
       measureText: (text: string) => ({ width: text.length * 10 }),
       createLinearGradient: () => ({ addColorStop: () => undefined }),
+      drawImage: drawImageSpy,
     } as Record<string, unknown>,
     {
       get(target, prop) {
@@ -45,14 +48,20 @@ function stubCanvas() {
 
 beforeEach(() => {
   blobSizes.length = 0
+  failingSrcs.clear()
+  drawImageSpy.mockClear()
   stubCanvas()
-  // 让 new Image() 的 onload 立刻触发
+  // 让 new Image() 的 onload 立刻触发；failingSrcs 里的 src 走 onerror
   Object.defineProperty(globalThis.Image.prototype, 'src', {
     configurable: true,
-    set(this: HTMLImageElement) {
+    set(this: HTMLImageElement, value: string) {
+      Object.defineProperty(this, '__loadedSrc', { value, configurable: true })
       Object.defineProperty(this, 'width', { value: 1600, configurable: true })
       Object.defineProperty(this, 'height', { value: 900, configurable: true })
-      setTimeout(() => this.onload?.(new Event('load')), 0)
+      setTimeout(() => {
+        if (failingSrcs.has(value)) this.onerror?.(new Event('error'))
+        else this.onload?.(new Event('load'))
+      }, 0)
     },
   })
 })
@@ -102,5 +111,23 @@ describe('PointShareCard', () => {
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(HTMLCanvasElement.prototype.toBlob).toHaveBeenCalledTimes(2)
     expect(onRendered.mock.calls[0]![0].size).toBe(900_000)
+  })
+
+  it('实拍图加载失败时退回 default 布局，不留空槽', async () => {
+    failingSrcs.add('blob:photo')
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, photoObjectUrl: 'blob:photo' }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    // drawImage(img, sx, sy, sw, sh, x, y, w, h)：竖版 default 主视觉高 1000，compare 只有 500
+    const mainDraw = drawImageSpy.mock.calls.find(
+      (call) => call[7] === 1080 && (call[8] === 1000 || call[8] === 500),
+    )
+    expect(mainDraw?.[8]).toBe(1000)
   })
 })

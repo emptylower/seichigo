@@ -81,12 +81,21 @@ export default function PointSharePanel({
     }
   }, [pointId, bangumiId, locale, layout])
 
+  const previewUrlRef = useRef<string | null>(null)
+  const photoObjectUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    previewUrlRef.current = previewUrl
+  }, [previewUrl])
+  useEffect(() => {
+    photoObjectUrlRef.current = photoObjectUrl
+  }, [photoObjectUrl])
+  // 只在卸载时 revoke：previewUrl/photoObjectUrl 变化时另一个可能还在被卡片渲染器用着
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl)
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+      if (photoObjectUrlRef.current) URL.revokeObjectURL(photoObjectUrlRef.current)
     }
-  }, [previewUrl, photoObjectUrl])
+  }, [])
 
   const cardInput: PointShareCardInput | null = useMemo(() => {
     if (!shareUrl) return null
