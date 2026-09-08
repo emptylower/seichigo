@@ -61,7 +61,7 @@ async function sha256Hex(value: string): Promise<string> {
   return hex
 }
 
-/** `og-cards/<pointId>__<locale>__<layout>[__<photoKey sha256 前 12>].webp` */
+/** `og-cards/<pointId>__<locale>__<layout>[__<photoKey sha256 前 12>].jpg` */
 export async function cardCacheKey(
   pointId: string,
   locale: SupportedLocale,
@@ -69,8 +69,8 @@ export async function cardCacheKey(
   photoKey: string | null,
 ): Promise<string> {
   const base = `og-cards/${pointId}__${locale}__${layout}`
-  if (!photoKey) return `${base}.webp`
-  return `${base}__${(await sha256Hex(photoKey)).slice(0, 12)}.webp`
+  if (!photoKey) return `${base}.jpg`
+  return `${base}__${(await sha256Hex(photoKey)).slice(0, 12)}.jpg`
 }
 
 /** Worker 里没有 Buffer 保证，按 8KB 分块走 btoa */
@@ -130,7 +130,7 @@ export async function renderAndStoreCard(
       return {
         status: 'cached',
         bytes: await readAllBytes(cached.body),
-        contentType: cached.contentType || 'image/webp',
+        contentType: cached.contentType || 'image/jpeg',
       }
     }
   }
@@ -200,15 +200,26 @@ export async function renderAndStoreCard(
   if (!bytes) return { status: 'failed' }
 
   if (store) {
-    await store.put(key, bytes, 'image/webp').catch((error: unknown) => {
+    await store.put(key, bytes, 'image/jpeg').catch((error: unknown) => {
       console.error('[share.card.cache_write_failed]', { key, error })
     })
   }
-  return { status: 'rendered', bytes, contentType: 'image/webp' }
+  return { status: 'rendered', bytes, contentType: 'image/jpeg' }
 }
 
 // pointId 会进 R2 key 与 URL，字符集与 lib/share/handlers/links.ts:23 保持一致
 const POINT_ID_PATTERN = /^[A-Za-z0-9_:.-]{1,200}$/
+
+/** 路径式第 4 段：photoKey 的 sha256 前 12 位（小写十六进制）；不可逆，只做形状校验 */
+const PHOTO_HASH_PATTERN = /^[0-9a-f]{12}$/
+
+const PATH_LOCALES: readonly string[] = ['zh', 'en', 'ja']
+const PATH_LAYOUTS: readonly string[] = ['portrait', 'landscape']
+
+/** 剥掉可选的小写 `.jpg` 后缀（`.JPG` 不认，交由上层校验拒绝） */
+function stripJpgSuffix(segment: string): string {
+  return segment.endsWith('.jpg') ? segment.slice(0, -4) : segment
+}
 
 /**
  * 请求路径冷路径总 deadline：最坏路径 DB + MapTiler + 抓图 6 秒 + Browser Run
@@ -248,7 +259,7 @@ const IMMUTABLE = 'public, max-age=31536000, immutable'
 /** 失败兜底不写缓存，公共缓存只敢放 60 秒 */
 const FALLBACK_CACHE = 'public, max-age=60'
 
-function imageResponse(body: BodyInit, contentType = 'image/webp'): Response {
+function imageResponse(body: BodyInit, contentType = 'image/jpeg'): Response {
   return new Response(body, {
     status: 200,
     headers: {
@@ -268,7 +279,7 @@ function redirect(location: string): Response {
 
 /** 静态兜底图 key：由站长侧预先上传到 ASSET_STORE，代码只读不写 */
 function staticFallbackKey(layout: ShareCardLayout): string {
-  return `og-cards/_fallback-${layout}.webp`
+  return `og-cards/_fallback-${layout}.jpg`
 }
 
 function proxyImageResponse(bytes: BodyInit, contentType: string): Response {
@@ -285,7 +296,7 @@ function proxyImageResponse(bytes: BodyInit, contentType: string): Response {
 /**
  * 兜底全部同源（跨域 302 会被前端 fetch 直接抛错，各平台还可能缓存到 404）：
  * 1. 服务端抓该点位动画截图镜像 URL 的字节直接转发（fetchImage 自带超时与大小上限）；
- * 2. 抓不到 → 读 R2 静态兜底图 `og-cards/_fallback-<layout>.webp`；
+ * 2. 抓不到 → 读 R2 静态兜底图 `og-cards/_fallback-<layout>.jpg`；
  * 3. 再没有 → 302 到站点默认 OG。
  */
 async function fallbackResponse(
@@ -308,7 +319,7 @@ async function fallbackResponse(
     if (fallback) {
       return proxyImageResponse(
         await readAllBytes(fallback.body),
-        fallback.contentType || 'image/webp',
+        fallback.contentType || 'image/jpeg',
       )
     }
   }
@@ -318,33 +329,72 @@ async function fallbackResponse(
 export function createGetCardHandler(deps: CardDeps) {
   return async function getCard(
     req: Request,
-    ctx: { params: Promise<{ pointId: string }> },
+    ctx: { params: Promise<{ pointId?: string; segments?: string[] }> },
   ): Promise<Response> {
     const raw = await ctx.params
-    let pointId: string
-    try {
-      pointId = decodeURIComponent(String(raw.pointId || '')).trim()
-    } catch {
-      // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
-      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
-    }
-    if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
-      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
-    }
-
     const url = new URL(req.url)
-    const locale = normalizeCardLocale(url.searchParams.get('locale'))
-    const layout = normalizeCardLayout(url.searchParams.get('layout'))
-
     const store = deps.getStore()
 
-    // photo 只接受实拍 key 的形状，且必须真的存在于 ASSET_STORE；不合格一律当没传
-    const photoParam = String(url.searchParams.get('photo') || '').trim()
+    let pointId: string
+    let locale: SupportedLocale
+    let layout: ShareCardLayout
+    // 路径式（OG 图）只走无实拍渲染；photo 查询参数只在查询串形式（面板预览）下生效
     let photoKey: string | null = null
-    if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
-      // 存在性探测走 head：不产生 body 流，渲染需要字节时再 get 一次
-      const exists = await store.head(photoParam).catch(() => null)
-      if (exists) photoKey = photoParam
+
+    if (raw.segments !== undefined) {
+      // 路径式：/api/share/card/<pointId>/<locale>/<layout>[.jpg][/<photoHash>[.jpg]]
+      // 对非法段严格 400；查询串形式维持宽松归一（normalizeCard* 回落）
+      if (raw.segments.length < 3 || raw.segments.length > 4) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      const decoded: string[] = []
+      try {
+        for (const segment of raw.segments) decoded.push(decodeURIComponent(segment))
+      } catch {
+        // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      const [pointIdSeg, localeSeg, layoutSeg, hashSeg] = decoded
+      pointId = String(pointIdSeg || '').trim()
+      if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      if (!PATH_LOCALES.includes(localeSeg)) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      locale = localeSeg as SupportedLocale
+      const layoutName = stripJpgSuffix(layoutSeg)
+      if (!PATH_LAYOUTS.includes(layoutName)) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      layout = layoutName as ShareCardLayout
+      if (hashSeg !== undefined && !PHOTO_HASH_PATTERN.test(stripJpgSuffix(hashSeg))) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      // sha256 不可逆：合法哈希段也无法反查原始 key，photoKey 按 null 处理
+      // （与三段的渲染结果、缓存键一致）
+    } else if (raw.pointId !== undefined) {
+      try {
+        pointId = decodeURIComponent(String(raw.pointId || '')).trim()
+      } catch {
+        // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      locale = normalizeCardLocale(url.searchParams.get('locale'))
+      layout = normalizeCardLayout(url.searchParams.get('layout'))
+
+      // photo 只接受实拍 key 的形状，且必须真的存在于 ASSET_STORE；不合格一律当没传
+      const photoParam = String(url.searchParams.get('photo') || '').trim()
+      if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
+        // 存在性探测走 head：不产生 body 流，渲染需要字节时再 get 一次
+        const exists = await store.head(photoParam).catch(() => null)
+        if (exists) photoKey = photoParam
+      }
+    } else {
+      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
     }
 
     // 匿名限流闸挂在渲染路径里（缓存命中不计），见 renderAndStoreCard

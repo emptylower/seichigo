@@ -70,8 +70,16 @@ export type ShareErrorResponse = { error: string }
 
 /**
  * 服务端卡片图的相对路径（Track A 与 Track B 的唯一共享契约）。
- * pointId 可能含冒号（`101:station`），进 URL 必须编码；photo 传的是
- * `checkin/<userId>/<pointId>.jpg` 形状的 R2 key，空值时整个参数不出现。
+ * 两种形状，按 photoKey 分流：
+ * - 无实拍（photoKey 为空）→ 路径式 `/api/share/card/<pointId>/<locale>/<layout>.jpg`：
+ *   以 `.jpg` 结尾、无查询串。Telegram 等抓取器靠 URL 扩展名判断图片格式，
+ *   带查询串且无扩展名会被跳过，所以 OG 图（短链页）只走这条。
+ * - 有实拍（photoKey 为「原始 R2 key」，`checkin/<userId>/<pointId>.jpg` 形状）→
+ *   维持查询串形式 `/api/share/card/<pointId>?locale=..&layout=..&photo=..`：
+ *   面板预览用，handler 按原始 key 读桶（见 handlers/card.ts 的 ?photo= 解析）。
+ *   photoKey 分支不出路径式：本函数是同步的（sha256 要走异步 crypto.subtle，算不了
+ *   哈希），原始 key 也放不进路径段；带实拍的分享仍走 /api/share/img/<code>。
+ * pointId 可能含冒号（`101:station`），进 URL 必须编码。
  */
 export function buildCardImagePath(
   pointId: string,
@@ -79,12 +87,16 @@ export function buildCardImagePath(
   layout: ShareCardLayout,
   photoKey?: string | null,
 ): string {
-  const params = new URLSearchParams()
-  params.set('locale', locale)
-  params.set('layout', layout)
+  const encoded = encodeURIComponent(pointId)
   const photo = String(photoKey || '').trim()
-  if (photo) params.set('photo', photo)
-  return `/api/share/card/${encodeURIComponent(pointId)}?${params.toString()}`
+  if (photo) {
+    const params = new URLSearchParams()
+    params.set('locale', locale)
+    params.set('layout', layout)
+    params.set('photo', photo)
+    return `/api/share/card/${encoded}?${params.toString()}`
+  }
+  return `/api/share/card/${encoded}/${locale}/${layout}.jpg`
 }
 
 export function isShareCardLayout(value: unknown): value is ShareCardLayout {

@@ -14,6 +14,7 @@ describe('robots.txt', () => {
     expect(star?.allow).toContain('/')
     expect(star?.allow).toContain('/api/share/img/')
     expect(star?.allow).toContain('/api/share/photo/')
+    expect(star?.allow).toContain('/api/share/card/')
     expect(star?.disallow).toEqual(['/auth/', '/admin/', '/submit', '/me/', '/api/'])
   })
 })

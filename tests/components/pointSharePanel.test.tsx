@@ -80,7 +80,7 @@ describe('PointSharePanel 预览走服务端卡片', () => {
   it('首屏 <img> 直挂竖版卡片 URL，不为预览发 fetch', async () => {
     render(<PointSharePanel {...PROPS} />)
     const img = await screen.findByAltText(t('share.panelTitle', 'zh'))
-    expect(img).toHaveAttribute('src', '/api/share/card/101%3Asuga?locale=zh&layout=portrait')
+    expect(img).toHaveAttribute('src', '/api/share/card/101%3Asuga/zh/portrait.jpg')
     expect(fetchCardBlobMock).not.toHaveBeenCalled()
   })
 
@@ -98,7 +98,7 @@ describe('PointSharePanel 预览走服务端卡片', () => {
     await waitFor(() =>
       expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
         'src',
-        '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+        '/api/share/card/101%3Asuga/zh/landscape.jpg',
       ),
     )
   })
@@ -111,7 +111,7 @@ describe('PointSharePanel 预览走服务端卡片', () => {
     await waitFor(() =>
       expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
         'src',
-        '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+        '/api/share/card/101%3Asuga/zh/landscape.jpg',
       ),
     )
     // 预览与 URL 绑定：旧竖版图不再以「已就绪」身份停留在屏幕上
@@ -218,7 +218,7 @@ describe('添加实拍', () => {
     // 卡片 URL 不带 photo 参数
     expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
       'src',
-      '/api/share/card/101%3Asuga?locale=zh&layout=portrait',
+      '/api/share/card/101%3Asuga/zh/portrait.jpg',
     )
   })
 

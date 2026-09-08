@@ -34,12 +34,12 @@ const SNAPSHOT = {
   pointImage: 'https://image.anitabi.cn/points/101/suga.jpg',
 }
 
-async function seed(code: string, imageKey: string | null) {
+async function seed(code: string, imageKey: string | null, locale: 'zh' | 'en' | 'ja' = 'zh') {
   await repo.create({
     code,
     pointId: '101:suga',
     bangumiId: 101,
-    locale: 'zh',
+    locale,
     layout: 'portrait',
     userId: null,
     ipHash: 'h',
@@ -60,8 +60,12 @@ describe('/s/[code] generateMetadata', () => {
       params: Promise.resolve({ code: 'AAAAAAAA' }),
       searchParams: Promise.resolve({}),
     })
-    expect(meta.openGraph?.images).toEqual(['https://seichigo.com/api/share/img/AAAAAAAA'])
-    expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/AAAAAAAA'])
+    expect(meta.openGraph?.images).toEqual([
+      expect.objectContaining({ url: 'https://seichigo.com/api/share/img/AAAAAAAA' }),
+    ])
+    expect(meta.twitter?.images).toEqual([
+      expect.objectContaining({ url: 'https://seichigo.com/api/share/img/AAAAAAAA' }),
+    ])
     expect(meta.title).toEqual({ absolute: '须贺神社｜《你的名字。》圣地巡礼 | SeichiGo' })
     expect(meta.robots).toEqual({ index: false, follow: true })
   })
@@ -73,8 +77,12 @@ describe('/s/[code] generateMetadata', () => {
       params: Promise.resolve({ code: 'EEEEEEEE' }),
       searchParams: Promise.resolve({}),
     })
-    expect(meta.openGraph?.images).toEqual(['https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34'])
-    expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34'])
+    expect(meta.openGraph?.images).toEqual([
+      expect.objectContaining({ url: 'https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34' }),
+    ])
+    expect(meta.twitter?.images).toEqual([
+      expect.objectContaining({ url: 'https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34' }),
+    ])
   })
 
   it('没有 imageKey 时指向服务端卡片路由的横版（匿名分享也有卡片预览）', async () => {
@@ -86,8 +94,37 @@ describe('/s/[code] generateMetadata', () => {
     })
     // 动画截图兜底已收进卡片路由内部（失败时同源代理/302），短链页不再调 resolveMirrorPublicUrl
     expect(meta.openGraph?.images).toEqual([
-      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      expect.objectContaining({
+        url: 'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
+      }),
     ])
+  })
+
+  it('OG 图对象带 width/height/type：上传卡按链接版式，匿名卡按横版', async () => {
+    await seed('GGGGGGGG', 'share/GGGGGGGG-00000001.jpg')
+    const { generateMetadata } = await import('@/app/s/[code]/page')
+    const uploaded = await generateMetadata({
+      params: Promise.resolve({ code: 'GGGGGGGG' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(uploaded.openGraph?.images).toEqual([
+      expect.objectContaining({ width: 1080, height: 1440, type: 'image/jpeg' }),
+    ])
+    expect(uploaded.twitter?.images).toEqual([
+      expect.objectContaining({ width: 1080, height: 1440, type: 'image/jpeg' }),
+    ])
+
+    await seed('HHHHHHHH', null)
+    const anon = await generateMetadata({
+      params: Promise.resolve({ code: 'HHHHHHHH' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(anon.openGraph?.images).toEqual([
+      expect.objectContaining({ width: 1200, height: 630, type: 'image/jpeg' }),
+    ])
+    expect((anon.openGraph?.images as { alt: string }[])[0]?.alt).toBe(
+      '《你的名字。》须贺神社分享卡片',
+    )
   })
 
   it('卡片路由的兜底由路由自身负责，短链页不再退回站点默认 OG', async () => {
@@ -98,8 +135,38 @@ describe('/s/[code] generateMetadata', () => {
       searchParams: Promise.resolve({}),
     })
     expect(meta.openGraph?.images).toEqual([
-      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      expect.objectContaining({
+        url: 'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
+      }),
     ])
+  })
+
+  it('openGraph 带 siteName=SeichiGo 与按链接语言映射的 og:locale', async () => {
+    await seed('IIIIIIII', null, 'zh')
+    await seed('JJJJJJJJ', null, 'ja')
+    await seed('KKKKKKKK', null, 'en')
+    const { generateMetadata } = await import('@/app/s/[code]/page')
+
+    const zh = await generateMetadata({
+      params: Promise.resolve({ code: 'IIIIIIII' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(zh.openGraph?.siteName).toBe('SeichiGo')
+    expect(zh.openGraph?.locale).toBe('zh_CN')
+
+    const ja = await generateMetadata({
+      params: Promise.resolve({ code: 'JJJJJJJJ' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(ja.openGraph?.siteName).toBe('SeichiGo')
+    expect(ja.openGraph?.locale).toBe('ja_JP')
+
+    const en = await generateMetadata({
+      params: Promise.resolve({ code: 'KKKKKKKK' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(en.openGraph?.siteName).toBe('SeichiGo')
+    expect(en.openGraph?.locale).toBe('en_US')
   })
 
   it('短码不存在时只给 noindex 标题', async () => {

@@ -1,8 +1,10 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
 import {
+  SHARE_CARD_SIZES,
   SHARE_CHANNEL_UTM_MEDIUM,
   buildCardImagePath,
   isShareChannel,
+  type ShareCardLayout,
 } from '@/lib/share/types'
 
 export function buildShareTitle(input: {
@@ -110,4 +112,51 @@ export function buildShareOgImageUrl(input: {
     return `${input.origin}/api/share/img/${input.code}${version}`
   }
   return `${input.origin}${buildCardImagePath(input.pointId, input.locale, 'landscape')}`
+}
+
+/**
+ * OG 图 alt：点位名与作品名按 locale 拼一句。文案收在这里而不加 i18n key
+ * （短链页 OG 专用，卡片 HTML 的文案仍走 t()）。
+ */
+export function buildShareOgImageAlt(input: {
+  locale: SupportedLocale
+  pointName: string
+  bangumiTitle: string
+}): string {
+  const point = String(input.pointName || '').trim()
+  const anime = String(input.bangumiTitle || '').trim()
+  if (input.locale === 'en') {
+    const parts = [point, anime].filter(Boolean).join(' - ')
+    return `${parts || 'SeichiGo'} share card`
+  }
+  if (input.locale === 'ja') {
+    const head = anime ? `『${anime}』` : ''
+    return `${head}${point || (anime ? '聖地巡礼' : 'SeichiGo')}のシェアカード`
+  }
+  const head = anime ? `《${anime}》` : ''
+  return `${head}${point || (anime ? '圣地巡礼' : 'SeichiGo')}分享卡片`
+}
+
+export type ShareOgImage = {
+  url: string
+  width: number
+  height: number
+  type: 'image/jpeg'
+  alt: string
+}
+
+/** og:image 对象：缺 width/height/type 时部分平台（微信/LINE）不出预览 */
+export function buildShareOgImage(input: {
+  url: string
+  layout: ShareCardLayout
+  alt: string
+}): ShareOgImage {
+  const size = SHARE_CARD_SIZES[input.layout]
+  return {
+    url: input.url,
+    width: size.width,
+    height: size.height,
+    type: 'image/jpeg',
+    alt: input.alt,
+  }
 }

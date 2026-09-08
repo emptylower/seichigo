@@ -16,7 +16,7 @@ export async function getCardDeps(): Promise<CardDeps> {
     { PrismaPointContextRepo },
     { fetchMapTilerAddresses },
     { getShareStore },
-    { readBrowserRunConfig, renderHtmlToWebp },
+    { readBrowserRunConfig, renderHtmlToJpeg },
     { resolveMirrorPublicUrl },
     { getSiteOrigin },
   ] = await Promise.all([
@@ -43,7 +43,7 @@ export async function getCardDeps(): Promise<CardDeps> {
         })
         return null
       }
-      return renderHtmlToWebp({ ...input, config })
+      return renderHtmlToJpeg({ ...input, config })
     },
     async fetchImage(url) {
       try {

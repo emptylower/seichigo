@@ -74,24 +74,26 @@ describe('isInJapan', () => {
 })
 
 describe('buildCardImagePath', () => {
-  it('拼出带 locale/layout 的卡片路径', () => {
+  it('无实拍时产出路径式地址并以 .jpg 结尾', () => {
     expect(buildCardImagePath('101:suga', 'zh', 'landscape')).toBe(
-      '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      '/api/share/card/101%3Asuga/zh/landscape.jpg',
     )
   })
 
   it('pointId 里的冒号进 URL 要编码', () => {
-    expect(buildCardImagePath('101:suga', 'ja', 'portrait')).toContain('/101%3Asuga?')
+    expect(buildCardImagePath('101:suga', 'ja', 'portrait')).toBe(
+      '/api/share/card/101%3Asuga/ja/portrait.jpg',
+    )
   })
 
-  it('带实拍 key 时追加 photo 参数', () => {
+  it('带实拍 key 时维持查询串形式（面板预览用，handler 按原始 key 读桶）', () => {
     expect(buildCardImagePath('101:suga', 'en', 'portrait', 'checkin/u1/101:suga.jpg')).toBe(
       '/api/share/card/101%3Asuga?locale=en&layout=portrait&photo=checkin%2Fu1%2F101%3Asuga.jpg',
     )
   })
 
-  it('photo 传空串或 null 时不出现 photo 参数', () => {
-    expect(buildCardImagePath('p1', 'zh', 'landscape', '')).not.toContain('photo')
-    expect(buildCardImagePath('p1', 'zh', 'landscape', null)).not.toContain('photo')
+  it('photo 传空串或 null 时走路径式且无查询串', () => {
+    expect(buildCardImagePath('p1', 'zh', 'landscape', '')).toBe('/api/share/card/p1/zh/landscape.jpg')
+    expect(buildCardImagePath('p1', 'zh', 'landscape', null)).toBe('/api/share/card/p1/zh/landscape.jpg')
   })
 })

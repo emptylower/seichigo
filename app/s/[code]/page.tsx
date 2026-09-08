@@ -8,11 +8,21 @@ import { isShareCode } from '@/lib/share/shortCode'
 import { shareCardFingerprint } from '@/lib/share/store'
 import {
   buildShareDescription,
+  buildShareOgImage,
+  buildShareOgImageAlt,
   buildShareOgImageUrl,
   buildShareRedirectTarget,
   buildShareTitle,
 } from '@/lib/share/view'
 import type { ShareLinkRecord } from '@/lib/share/repo'
+import type { SupportedLocale } from '@/lib/i18n/types'
+
+// og:locale 用语言_地区格式；收在 page 内的小映射，不加 i18n key
+const OG_LOCALE: Record<SupportedLocale, string> = {
+  zh: 'zh_CN',
+  ja: 'ja_JP',
+  en: 'en_US',
+}
 
 // 短链每次都要读库拿 imageKey 与 clicks，不能被静态化
 export const dynamic = 'force-dynamic'
@@ -66,6 +76,18 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     fingerprint: link.imageKey ? shareCardFingerprint(link.imageKey) : null,
   })
 
+  // og:image 对象带 width/height/type/alt：缺尺寸时部分平台不出预览。
+  // 上传卡按链接自身的版式；匿名指向卡片路由固定横版
+  const ogImage = buildShareOgImage({
+    url: image,
+    layout: link.imageKey ? link.layout : 'landscape',
+    alt: buildShareOgImageAlt({
+      locale: link.locale,
+      pointName: snapshot?.pointName || '',
+      bangumiTitle: snapshot?.bangumiTitle || '',
+    }),
+  })
+
   const title = buildShareTitle({
     locale: link.locale,
     pointName: snapshot?.pointName || '',
@@ -83,8 +105,16 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     description,
     // 短链只是分享入口，索引价值全在 /map 与作品页上
     robots: { index: false, follow: true },
-    openGraph: { type: 'website', title, description, url: `${origin}/s/${link.code}`, images: [image] },
-    twitter: { card: 'summary_large_image', title, description, images: [image] },
+    openGraph: {
+      type: 'website',
+      siteName: 'SeichiGo',
+      locale: OG_LOCALE[link.locale],
+      title,
+      description,
+      url: `${origin}/s/${link.code}`,
+      images: [ogImage],
+    },
+    twitter: { card: 'summary_large_image', title, description, images: [ogImage] },
   }
 }
 
