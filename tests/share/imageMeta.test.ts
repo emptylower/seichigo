@@ -113,6 +113,15 @@ describe('parseWebpSize', () => {
     broken[0] = 0x00
     expect(parseWebpSize(broken)).toBeNull()
   })
+
+  it('RIFF 声明长度与实际字节数不符返回 null', () => {
+    const mismatch = makeWebpExtended(1080, 1440)
+    mismatch.set([21, 0, 0, 0], 4) // 声明 21，实际 30-8=22
+    expect(parseWebpSize(mismatch)).toBeNull()
+    const truncated = makeWebpLossy(1080, 1440)
+    truncated.set([99, 0, 0, 0], 4) // 声明远大于实际
+    expect(parseWebpSize(truncated)).toBeNull()
+  })
 })
 
 describe('parseImageSize / isAllowedShareCardSize', () => {

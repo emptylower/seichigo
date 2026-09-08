@@ -62,6 +62,9 @@ export function parseWebpSize(bytes: Uint8Array): ImageSize | null {
   if (bytes.length < 30) return null
   if (readAscii(bytes, 0, 4) !== 'RIFF') return null
   if (readAscii(bytes, 8, 4) !== 'WEBP') return null
+  // RIFF 声明的文件长度必须与实际字节数自洽，防止拿截断/拼接的头部读出伪造尺寸
+  const riffSize = (bytes[4]! | (bytes[5]! << 8) | (bytes[6]! << 16) | (bytes[7]! << 24)) >>> 0
+  if (riffSize + 8 !== bytes.length) return null
 
   const fourcc = readAscii(bytes, 12, 4)
 
