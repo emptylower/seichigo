@@ -63,6 +63,9 @@ export default function PricingTemplate({ locale }: { locale: SupportedLocale })
               <p className="mt-2 text-2xl font-bold text-gray-900">
                 {tier.price}
                 <span className="text-sm font-normal text-gray-400">{tier.period}</span>
+                {tier.price !== '$0' ? (
+                  <span className="ml-1 text-xs font-normal text-gray-400">{tx(locale, 'taxNote')}</span>
+                ) : null}
               </p>
             ) : null}
             {tier.cta.kind === 'disabled' ? (
