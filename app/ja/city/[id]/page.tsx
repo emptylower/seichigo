@@ -95,13 +95,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/ja/city/${encodeURIComponent(city.slug)}`,
-      images: ['/opengraph-image'],
+      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
-      images: ['/twitter-image'],
+      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
     },
   }
 }

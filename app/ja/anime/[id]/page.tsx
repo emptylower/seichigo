@@ -105,11 +105,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/ja${path}`,
+      images: [`${path}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
+      images: [`${path}/opengraph-image`],
     },
   }
 }

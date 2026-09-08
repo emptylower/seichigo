@@ -3,6 +3,8 @@ import type { AnitabiPointDTO } from '@/lib/anitabi/types'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
 import { getBangumiDetail } from '@/lib/anitabi/read'
 import { normalizeText } from '@/lib/anitabi/utils'
+import { getSiteOrigin } from '@/lib/seo/site'
+import { resolveMirrorPublicUrl } from '@/lib/anitabi/imageProxy'
 
 export type SearchParamsInput = Record<string, string | string[] | undefined>
 
@@ -16,12 +18,16 @@ export type MapShareSnapshot = {
   bangumiTitle: string
   bangumiCity: string | null
   bangumiColor: string | null
+  /** 作品封面原始 URL（未归一），给 OG 回退用 */
+  bangumiCover: string | null
   pointsLength: number
   pointId: string | null
   pointName: string | null
   pointEp: string | null
   pointScene: string | null
   pointGeo: [number, number] | null
+  /** 点位动画截图原始 URL（未归一），给 OG 首选用 */
+  pointImage: string | null
 }
 
 function parsePositiveInt(value: string | null | undefined): number | null {
@@ -88,12 +94,30 @@ export function parseMapShareQuery(input: URLSearchParams | SearchParamsInput | 
   }
 }
 
-export function buildMapShareImageUrl(locale: SupportedLocale, query: MapShareQuery): string {
-  const params = new URLSearchParams()
-  params.set('locale', locale)
-  if (query.b != null) params.set('b', String(query.b))
-  if (query.p) params.set('p', query.p)
-  return `/api/anitabi/share-image?${params.toString()}`
+/**
+ * 地图页 / 短链页的 OG 图：点位动画截图 → 作品封面 → 站点默认 OG。
+ * 前两级都走 R2 公共域直出（resolveMirrorPublicUrl，key 与镜像入库零漂移）；
+ * 开关未配（NEXT_PUBLIC_MAP_IMAGE_R2_PUBLIC_BASE 为空）时它返回 null，自然落到默认 OG。
+ */
+export async function buildMapShareImageUrl(
+  locale: SupportedLocale,
+  query: MapShareQuery,
+): Promise<string> {
+  const fallback = `${getSiteOrigin()}/opengraph-image`
+  if (query.b == null) return fallback
+
+  const snapshot = await resolveMapShareSnapshot(locale, query)
+  if (!snapshot) return fallback
+
+  if (snapshot.pointImage) {
+    const url = await resolveMirrorPublicUrl(snapshot.pointImage, { kind: 'point' })
+    if (url) return url
+  }
+  if (snapshot.bangumiCover) {
+    const url = await resolveMirrorPublicUrl(snapshot.bangumiCover, { kind: 'cover' })
+    if (url) return url
+  }
+  return fallback
 }
 
 export async function resolveMapShareSnapshot(locale: SupportedLocale, query: MapShareQuery): Promise<MapShareSnapshot | null> {
@@ -114,12 +138,14 @@ export async function resolveMapShareSnapshot(locale: SupportedLocale, query: Ma
       bangumiTitle: detail.card.title,
       bangumiCity: detail.card.city || null,
       bangumiColor: detail.card.color || null,
+      bangumiCover: detail.card.cover || null,
       pointsLength: detail.points.length,
       pointId: point?.id || null,
       pointName: point?.name || null,
       pointEp: point?.ep || null,
       pointScene: point?.s || null,
       pointGeo: toPointGeo(point),
+      pointImage: point?.image || null,
     }
   } catch {
     return null

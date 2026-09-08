@@ -14,7 +14,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const shareQuery = parseMapShareQuery(params)
   const query = params.toString()
   const path = `/ja/map${query ? `?${query}` : ''}`
-  const shareImage = buildMapShareImageUrl('ja', shareQuery)
+  const shareImage = await buildMapShareImageUrl('ja', shareQuery)
 
   return {
     title: '巡礼マップ',

@@ -28,7 +28,6 @@ type DetailPanelProps = {
   detailPoints: DetailPointItem[]
   selectedPointImage: ReactNode
   showWantToGoAction: boolean
-  checkedInSelectedPoint: boolean
   formatDistance: (meters: number) => string
   geoHref: string | null
   onCloseWorkDetail: () => void
@@ -39,7 +38,7 @@ type DetailPanelProps = {
   onToggleStateFilter: (value: 'want_to_go' | 'planned' | 'checked_in') => void
   onSelectPoint: (point: AnitabiPointDTO) => void
   onAddSelectedPointToPool: () => void
-  onShowCheckInCard: () => void
+  onShowSharePanel: () => void
   onEnterPanorama: () => void
   onAddPointToPool: (pointId: string) => void
   getPointState: (pointId: string) => string
@@ -63,7 +62,6 @@ export default function DetailPanel(props: DetailPanelProps) {
     detailPoints,
     selectedPointImage,
     showWantToGoAction,
-    checkedInSelectedPoint,
     formatDistance,
     geoHref,
     onCloseWorkDetail,
@@ -74,7 +72,7 @@ export default function DetailPanel(props: DetailPanelProps) {
     onToggleStateFilter,
     onSelectPoint,
     onAddSelectedPointToPool,
-    onShowCheckInCard,
+    onShowSharePanel,
     onEnterPanorama,
     onAddPointToPool,
     getPointState,
@@ -182,15 +180,13 @@ export default function DetailPanel(props: DetailPanelProps) {
                 {label.addToPointPool}
               </button>
             ) : null}
-            {checkedInSelectedPoint ? (
-              <button
-                type="button"
-                className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
-                onClick={onShowCheckInCard}
-              >
-                打卡卡片
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="inline-flex min-w-[92px] items-center justify-center rounded border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
+              onClick={onShowSharePanel}
+            >
+              {label.share}
+            </button>
           </div>
         </div>
       ) : (

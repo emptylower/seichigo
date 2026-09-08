@@ -1236,3 +1236,29 @@ model BillingWebhookEvent {
   attempts    Int       @default(0)
   payload     Json
 }
+
+/// 2026-09-08 点位分享：一次分享 = 一条短链。code 是 8 位 base62，服务端生成、
+/// 冲突重试 3 次。imageKey 只有登录用户上传卡片后才有；ipHash 是当日盐哈希，
+/// 只用于匿名限流，不落原始 IP。userId 不建外键，保持列可空的裸字符串。
+model ShareLink {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  kind      String   @default("point")
+  pointId   String
+  bangumiId Int
+  locale    String
+  layout    String
+  imageKey  String?
+  userId    String?
+  ipHash    String?
+  clicks    Int      @default(0)
+  /// 同一短链重复上传也占配额：每次 markUploaded 原子 +1，配额按 sum(uploadCount) 算
+  uploadCount Int    @default(0)
+  createdAt DateTime @default(now())
+  /// 上传时间戳：配额窗口按它过滤，而不是建链的 createdAt
+  updatedAt DateTime @updatedAt
+
+  @@index([pointId])
+  @@index([userId, createdAt])
+  @@index([ipHash, createdAt])
+}
