@@ -524,6 +524,15 @@ export default function PointSharePanel({
           </button>
         ) : null}
 
+        {/* 卡片没就绪时 mobilePath 还判不出来（要靠 canShare({files})），
+            先出骨架占位，别让整片按钮在两条路径之间翻一次页 */}
+        {!cardBlob ? (
+          <div className="grid grid-cols-3 gap-2" data-testid="share-destinations-skeleton" aria-hidden="true">
+            {[0, 1, 2, 3, 4, 5].map((slot) => (
+              <div key={slot} className="h-11 animate-pulse rounded-xl bg-gray-100" />
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-3 gap-2">
           {mobilePath ? (
             MOBILE_DESTINATIONS.map((destination) => (
@@ -549,7 +558,7 @@ export default function PointSharePanel({
               </button>
               <a
                 href={
-                  shareUrl
+                  ready
                     ? buildRedditSubmitUrl(
                         withShareChannel(shareUrl, 'rd'),
                         t('share.redditTitle', locale)
@@ -558,19 +567,19 @@ export default function PointSharePanel({
                       )
                     : undefined
                 }
-                aria-disabled={!shareUrl}
+                aria-disabled={!ready}
                 target="_blank"
                 rel="noreferrer"
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
               >
                 {t('share.platformReddit', locale)}
               </a>
               <a
-                href={shareUrl ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
-                aria-disabled={!shareUrl}
+                href={ready ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
+                aria-disabled={!ready}
                 target="_blank"
                 rel="noreferrer"
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
+                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
               >
                 {t('share.platformLine', locale)}
               </a>
@@ -602,6 +611,7 @@ export default function PointSharePanel({
             </>
           )}
         </div>
+        )}
 
         <div>
           <button

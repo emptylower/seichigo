@@ -127,7 +127,8 @@ describe('PointSharePanel 三语渲染', () => {
   it.each(['zh', 'en', 'ja'] as const)('%s 用对应语言的按钮文案', async (locale) => {
     render(<PointSharePanel {...PROPS} locale={locale} />)
     expect(screen.getByText(t('share.panelTitle', locale))).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: t('share.saveImage', locale) })).toBeInTheDocument()
+    // 目的地区要等卡片就绪才从骨架换成真实按钮
+    expect(await screen.findByRole('button', { name: t('share.saveImage', locale) })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('share.layoutPortrait', locale) })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('share.layoutLandscape', locale) })).toBeInTheDocument()
   })
@@ -192,8 +193,9 @@ describe('PointSharePanel 短链与平台按钮', () => {
     render(<PointSharePanel {...PROPS} />)
     const retry = await screen.findByRole('button', { name: t('share.retry', 'zh') })
     expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument()
-    // 短链未就绪时平台入口是禁用态
-    expect(screen.getByRole('button', { name: 'X' })).toBeDisabled()
+    // 卡片未就绪（手机/桌面路径还没定）时目的地区只有骨架，不出现平台入口
+    expect(screen.getByTestId('share-destinations-skeleton')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'X' })).not.toBeInTheDocument()
     fireEvent.click(retry)
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     // 重试成功后平台链接出现
@@ -635,6 +637,32 @@ describe('PointSharePanel 手机路径', () => {
     expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('share.copyText', 'zh') })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: t('share.copyImage', 'zh') })).not.toBeInTheDocument()
+  })
+})
+
+describe('PointSharePanel 目的地区就绪前占位', () => {
+  it('卡片还没渲染出来时目的地区是骨架，不渲染任何目的地按钮', async () => {
+    cardStubAutoRender = false
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(lastCardInput?.shareUrl).toBe('https://seichigo.com/s/AbC12xYz'))
+    expect(screen.getByTestId('share-destinations-skeleton')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('share.platformX', 'zh') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('share.platformReddit', 'zh') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('share.saveImage', 'zh') })).not.toBeInTheDocument()
+  })
+
+  it('shareUrl 暂时为空时 Reddit / LINE 没有 href，且是 aria-disabled', async () => {
+    await readyPanel()
+    // 换版式会重建短链：卡片还留着上一版 blob，但 shareUrl 已经清空
+    createShareLinkMock.mockReturnValue(new Promise(() => {}))
+    fireEvent.click(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') }))
+    // 没有 href 的 <a> 已经不是 link role 了，按文字取元素
+    const reddit = screen.getByText(t('share.platformReddit', 'zh'))
+    await waitFor(() => expect(reddit).not.toHaveAttribute('href'))
+    expect(reddit).toHaveAttribute('aria-disabled', 'true')
+    const line = screen.getByText(t('share.platformLine', 'zh'))
+    expect(line).not.toHaveAttribute('href')
+    expect(line).toHaveAttribute('aria-disabled', 'true')
   })
 })
 
