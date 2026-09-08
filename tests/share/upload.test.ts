@@ -23,6 +23,7 @@ function jpeg(width: number, height: number, padTo = 0): Uint8Array<ArrayBuffer>
 
 function makeStore() {
   const objects = new Map<string, { bytes: Uint8Array; contentType: string }>()
+  const deleted: string[] = []
   const store: ShareStore = {
     async put(key, bytes, contentType) {
       objects.set(key, { bytes, contentType })
@@ -41,8 +42,12 @@ function makeStore() {
         size: found.bytes.byteLength,
       }
     },
+    async delete(key) {
+      deleted.push(key)
+      objects.delete(key)
+    },
   }
-  return { store, objects }
+  return { store, objects, deleted }
 }
 
 function makeDeps(input: {
@@ -160,10 +165,51 @@ describe('POST /api/share/links/[code]/upload', () => {
       imageUrl: '/api/share/img/AbC12xYz',
       photoUrl: null,
     })
-    expect(objects.has('share/AbC12xYz.jpg')).toBe(true)
     const row = await repo.findByCode('AbC12xYz')
-    expect(row?.imageKey).toBe('share/AbC12xYz.jpg')
+    expect(row?.imageKey).toMatch(/^share\/AbC12xYz-[0-9a-f]{8}\.jpg$/)
+    expect(objects.has(row?.imageKey ?? '')).toBe(true)
     expect(row?.userId).toBe('u1')
+    expect(row?.uploadCount).toBe(1)
+  })
+
+  it('同一 code 重复上传：uploadCount 累加、旧对象删除、新 imageKey 带新指纹', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store, objects, deleted } = makeStore()
+    const handler = createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))
+
+    const first = await handler(makeRequest(cardForm(jpeg(1080, 1440))), ctx)
+    expect(first.status).toBe(200)
+    const firstRow = await repo.findByCode('AbC12xYz')
+    expect(firstRow?.uploadCount).toBe(1)
+    const firstKey = firstRow?.imageKey ?? ''
+    expect(objects.has(firstKey)).toBe(true)
+
+    const second = await handler(makeRequest(cardForm(jpeg(1200, 630))), ctx)
+    expect(second.status).toBe(200)
+    const secondRow = await repo.findByCode('AbC12xYz')
+    expect(secondRow?.uploadCount).toBe(2)
+    expect(secondRow?.imageKey).toMatch(/^share\/AbC12xYz-[0-9a-f]{8}\.jpg$/)
+    expect(secondRow?.imageKey).not.toBe(firstKey)
+    // 旧卡片对象被删、新对象在位
+    expect(objects.has(firstKey)).toBe(false)
+    expect(objects.has(secondRow?.imageKey ?? '')).toBe(true)
+    expect(deleted).toEqual([firstKey])
+  })
+
+  it('配额按上传次数求和：传满 30 次后第 31 次 429', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, 'u1')
+    const { store } = makeStore()
+    const handler = createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))
+    for (let i = 0; i < USER_DAILY_UPLOAD_LIMIT; i++) {
+      const res = await handler(makeRequest(cardForm(jpeg(1080, 1440))), ctx)
+      expect(res.status).toBe(200)
+    }
+    const row = await repo.findByCode('AbC12xYz')
+    expect(row?.uploadCount).toBe(USER_DAILY_UPLOAD_LIMIT)
+    const res31 = await handler(makeRequest(cardForm(jpeg(1080, 1440))), ctx)
+    expect(res31.status).toBe(429)
   })
 
   it('带 photo 时写 checkin key 并回写 UserPointState', async () => {

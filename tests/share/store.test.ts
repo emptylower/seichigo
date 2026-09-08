@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { checkinPhotoKey, getShareStore, shareCardKey } from '@/lib/share/store'
+import { checkinPhotoKey, getShareStore, shareCardFingerprint, shareCardKey } from '@/lib/share/store'
 import type { CfBindings } from '@/lib/anitabi/cf/bindings'
 
 const CF_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
@@ -59,9 +59,16 @@ afterEach(() => {
 })
 
 describe('share key 规则', () => {
-  it('卡片按 contentType 决定扩展名', () => {
-    expect(shareCardKey('AbC12xYz', 'image/jpeg')).toBe('share/AbC12xYz.jpg')
-    expect(shareCardKey('AbC12xYz', 'image/webp')).toBe('share/AbC12xYz.webp')
+  it('卡片 key 带 8 位内容指纹，按 contentType 决定扩展名', () => {
+    expect(shareCardKey('AbC12xYz', 'ab12cd34', 'image/jpeg')).toBe('share/AbC12xYz-ab12cd34.jpg')
+    expect(shareCardKey('AbC12xYz', 'ab12cd34', 'image/webp')).toBe('share/AbC12xYz-ab12cd34.webp')
+  })
+
+  it('shareCardFingerprint 解析新格式 key，旧格式返回 null', () => {
+    expect(shareCardFingerprint('share/AbC12xYz-ab12cd34.jpg')).toBe('ab12cd34')
+    expect(shareCardFingerprint('share/AbC12xYz-00000000.webp')).toBe('00000000')
+    expect(shareCardFingerprint('share/AbC12xYz.jpg')).toBeNull()
+    expect(shareCardFingerprint('checkin/u1/101:station.jpg')).toBeNull()
   })
 
   it('实拍固定 jpg，pointId 里的冒号原样进 key', () => {

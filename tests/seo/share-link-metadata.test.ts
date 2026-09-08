@@ -73,6 +73,17 @@ describe('/s/[code] generateMetadata', () => {
     expect(resolveMirrorPublicUrlMock).not.toHaveBeenCalled()
   })
 
+  it('带指纹的新格式 imageKey 会给 OG 图追加 ?v=<指纹>', async () => {
+    await seed('EEEEEEEE', 'share/EEEEEEEE-ab12cd34.jpg')
+    const { generateMetadata } = await import('@/app/s/[code]/page')
+    const meta = await generateMetadata({
+      params: Promise.resolve({ code: 'EEEEEEEE' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(meta.openGraph?.images).toEqual(['https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34'])
+    expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34'])
+  })
+
   it('没有 imageKey 时退回点位动画截图的 R2 公共域 URL', async () => {
     await seed('BBBBBBBB', null)
     resolveMirrorPublicUrlMock.mockResolvedValue('https://img.seichigo.com/mirror/v1/x/y/jpg')

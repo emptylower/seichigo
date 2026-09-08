@@ -5,6 +5,7 @@ import { resolveMirrorPublicUrl } from '@/lib/anitabi/imageProxy'
 import { runShareBackground } from '@/lib/share/background'
 import { getShareApiDeps } from '@/lib/share/api'
 import { isShareCode } from '@/lib/share/shortCode'
+import { shareCardFingerprint } from '@/lib/share/store'
 import { buildShareDescription, buildShareRedirectTarget, buildShareTitle } from '@/lib/share/view'
 import type { ShareLinkRecord } from '@/lib/share/repo'
 
@@ -45,8 +46,10 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     p: link.pointId,
   })
 
+  // 卡片路由本身 immutable，靠 ?v=<指纹> 让换图后的 OG URL 变化，绕开爬虫侧旧缓存
+  const fingerprint = link.imageKey ? shareCardFingerprint(link.imageKey) : null
   const image = link.imageKey
-    ? `${origin}/api/share/img/${link.code}`
+    ? `${origin}/api/share/img/${link.code}${fingerprint ? `?v=${fingerprint}` : ''}`
     : (snapshot?.pointImage
         ? await resolveMirrorPublicUrl(snapshot.pointImage, { kind: 'point' })
         : null) || `${origin}/opengraph-image`

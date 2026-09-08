@@ -13,7 +13,11 @@ export type ShareLinkRecord = {
   userId: string | null
   ipHash: string | null
   clicks: number
+  /** 每次 markUploaded 原子 +1；同一短链反复上传也计次 */
+  uploadCount: number
   createdAt: Date
+  /** 最近一次上传时间（未上传过时等于建链时间） */
+  updatedAt: Date
 }
 
 export type CreateShareLinkInput = {
@@ -42,8 +46,9 @@ export interface ShareLinkRepo {
   /** 24 小时窗口内同 (pointId, locale, layout, userId[, ipHash]) 的既有记录 */
   findRecentDuplicate(input: FindRecentDuplicateInput): Promise<ShareLinkRecord | null>
   countByIpHashSince(ipHash: string, since: Date): Promise<number>
-  /** 只数 imageKey 非空的记录：配额算的是「上传」而不是「建链」 */
+  /** 配额按次数算：sum(uploadCount) where userId 且 updatedAt 在窗口内 */
   countUploadsByUserSince(userId: string, since: Date): Promise<number>
+  /** 回填 imageKey/userId 并原子自增 uploadCount、刷新 updatedAt */
   markUploaded(
     code: string,
     input: { imageKey: string; userId: string },

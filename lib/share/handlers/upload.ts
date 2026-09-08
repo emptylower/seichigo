@@ -27,6 +27,14 @@ function normalizeType(value: unknown): string {
   return String(value || '').trim().toLowerCase()
 }
 
+/** 卡片字节 sha256 hex 前 8 位：内容一变指纹就变，R2 key 与 `?v=` 缓存击穿都靠它 */
+async function cardFingerprint(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))
+  let hex = ''
+  for (const byte of digest) hex += byte.toString(16).padStart(2, '0')
+  return hex.slice(0, 8)
+}
+
 export function createPostShareUploadHandler(deps: ShareApiDeps) {
   return async function postShareUpload(
     req: Request,
@@ -95,10 +103,19 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
     const store = deps.getStore()
     if (!store) return NextResponse.json({ error: '存储暂不可用' }, { status: 503 })
 
-    const cardKey = shareCardKey(code, cardType)
+    const fingerprint = await cardFingerprint(cardBytes)
+    const cardKey = shareCardKey(code, fingerprint, cardType)
     await store.put(cardKey, cardBytes, cardType)
+    const previousKey = link.imageKey
     const updated = await deps.repo.markUploaded(code, { imageKey: cardKey, userId })
     if (!updated) return NextResponse.json({ error: '短链不存在' }, { status: 404 })
+
+    // 换内容后清掉旧卡片对象；失败只记日志，不影响本次上传结果
+    if (previousKey && previousKey !== cardKey) {
+      await store.delete(previousKey).catch((error) => {
+        console.error('[share.upload.delete_stale_failed]', { code, key: previousKey, error })
+      })
+    }
 
     let photoUrl: string | null = null
     if (photoBytes) {

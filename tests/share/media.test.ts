@@ -23,6 +23,9 @@ function makeStore() {
         size: found.bytes.byteLength,
       }
     },
+    async delete(key) {
+      objects.delete(key)
+    },
   }
   return { store, objects }
 }

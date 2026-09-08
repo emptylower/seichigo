@@ -61,9 +61,11 @@ export class PrismaShareLinkRepo implements ShareLinkRepo {
   }
 
   async countUploadsByUserSince(userId: string, since: Date): Promise<number> {
-    return prisma.shareLink.count({
-      where: { userId, imageKey: { not: null }, createdAt: { gte: since } },
+    const agg = await prisma.shareLink.aggregate({
+      _sum: { uploadCount: true },
+      where: { userId, updatedAt: { gte: since } },
     })
+    return agg._sum.uploadCount ?? 0
   }
 
   async markUploaded(
@@ -73,7 +75,11 @@ export class PrismaShareLinkRepo implements ShareLinkRepo {
     try {
       const updated = await prisma.shareLink.update({
         where: { code },
-        data: { imageKey: input.imageKey, userId: input.userId },
+        data: {
+          imageKey: input.imageKey,
+          userId: input.userId,
+          uploadCount: { increment: 1 },
+        },
       })
       return toRecord(updated)
     } catch (error) {

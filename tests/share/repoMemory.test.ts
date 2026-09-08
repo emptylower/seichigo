@@ -79,16 +79,22 @@ describe('MemoryShareLinkRepo', () => {
     expect(await repo.countByIpHashSince('hash-1', new Date('2026-09-08T13:00:00Z'))).toBe(0)
   })
 
-  it('markUploaded 写 imageKey 与 userId，countUploadsByUserSince 只数已上传的', async () => {
+  it('markUploaded 回填并自增 uploadCount，countUploadsByUserSince 按次数求和', async () => {
     const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
     await repo.create(baseInput({ code: 'AAAAAAAA' }))
     await repo.create(baseInput({ code: 'BBBBBBBB', userId: 'u1', ipHash: null, layout: 'landscape' }))
     const since = new Date('2026-09-07T12:00:00Z')
     expect(await repo.countUploadsByUserSince('u1', since)).toBe(0)
-    const updated = await repo.markUploaded('AAAAAAAA', { imageKey: 'share/AAAAAAAA.jpg', userId: 'u1' })
-    expect(updated?.imageKey).toBe('share/AAAAAAAA.jpg')
+    const updated = await repo.markUploaded('AAAAAAAA', { imageKey: 'share/AAAAAAAA-ab12cd34.jpg', userId: 'u1' })
+    expect(updated?.imageKey).toBe('share/AAAAAAAA-ab12cd34.jpg')
     expect(updated?.userId).toBe('u1')
+    expect(updated?.uploadCount).toBe(1)
+    // 建了链但从没上传过的记录不计次
     expect(await repo.countUploadsByUserSince('u1', since)).toBe(1)
+    // 同一 code 第二次上传：uploadCount 累加、updatedAt 刷新，配额跟着涨
+    await repo.markUploaded('AAAAAAAA', { imageKey: 'share/AAAAAAAA-99887766.jpg', userId: 'u1' })
+    expect((await repo.findByCode('AAAAAAAA'))?.uploadCount).toBe(2)
+    expect(await repo.countUploadsByUserSince('u1', since)).toBe(2)
     expect(await repo.markUploaded('ZZZZZZZZ', { imageKey: 'x', userId: 'u1' })).toBeNull()
   })
 

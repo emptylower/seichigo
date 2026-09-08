@@ -31,7 +31,9 @@ export class MemoryShareLinkRepo implements ShareLinkRepo {
       userId: input.userId,
       ipHash: input.ipHash,
       clicks: 0,
+      uploadCount: 0,
       createdAt: this.now(),
+      updatedAt: this.now(),
     }
     this.rows.set(record.code, record)
     return { ...record }
@@ -66,14 +68,13 @@ export class MemoryShareLinkRepo implements ShareLinkRepo {
   }
 
   async countUploadsByUserSince(userId: string, since: Date): Promise<number> {
-    let count = 0
+    let sum = 0
     for (const row of this.rows.values()) {
       if (row.userId !== userId) continue
-      if (!row.imageKey) continue
-      if (row.createdAt.getTime() < since.getTime()) continue
-      count += 1
+      if (row.updatedAt.getTime() < since.getTime()) continue
+      sum += row.uploadCount
     }
-    return count
+    return sum
   }
 
   async markUploaded(
@@ -84,6 +85,8 @@ export class MemoryShareLinkRepo implements ShareLinkRepo {
     if (!found) return null
     found.imageKey = input.imageKey
     found.userId = input.userId
+    found.uploadCount += 1
+    found.updatedAt = this.now()
     return { ...found }
   }
 

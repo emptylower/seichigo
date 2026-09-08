@@ -1252,7 +1252,11 @@ model ShareLink {
   userId    String?
   ipHash    String?
   clicks    Int      @default(0)
+  /// 同一短链重复上传也占配额：每次 markUploaded 原子 +1，配额按 sum(uploadCount) 算
+  uploadCount Int    @default(0)
   createdAt DateTime @default(now())
+  /// 上传时间戳：配额窗口按它过滤，而不是建链的 createdAt
+  updatedAt DateTime @updatedAt
 
   @@index([pointId])
   @@index([userId, createdAt])
