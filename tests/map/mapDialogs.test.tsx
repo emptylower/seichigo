@@ -29,6 +29,7 @@ function createProps() {
       routeBookCreatePlaceholder: 'placeholder',
       loading: 'loading',
       routeBookCreateAndAdd: 'create',
+      share: '共有',
     } as any,
     detail: null,
     selectedPoint: null,
@@ -169,5 +170,36 @@ describe('MapDialogs 分享面板', () => {
       />,
     )
     expect(screen.getByText('このスポットを共有')).toBeInTheDocument()
+  })
+
+  it('分享 Dialog 带 sr-only 的 Title 与 Description', () => {
+    render(
+      <MapDialogs
+        {...(createProps() as any)}
+        showSharePanel
+        detail={{ card: { id: 101, title: '君の名は。', city: '東京', cover: null }, points: [] } as any}
+        selectedPoint={
+          {
+            id: '101:suga',
+            bangumiId: 101,
+            name: '須賀神社',
+            nameZh: '须贺神社',
+            note: null,
+            geo: [35.6, 139.7],
+            ep: '1',
+            s: null,
+            image: null,
+            origin: null,
+            originUrl: null,
+            originLink: null,
+            density: null,
+            mark: null,
+          } as any
+        }
+      />,
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAccessibleName('共有')
+    expect(dialog).toHaveAccessibleDescription('須賀神社')
   })
 })

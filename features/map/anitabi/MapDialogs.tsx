@@ -310,6 +310,8 @@ export default function MapDialogs(props: MapDialogsProps) {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[130] bg-black/50 backdrop-blur-sm" />
           <Dialog.Content className="fixed bottom-0 left-1/2 z-[131] w-full max-w-md -translate-x-1/2 p-3 focus:outline-none sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:p-4">
+            <Dialog.Title className="sr-only">{label.share}</Dialog.Title>
+            <Dialog.Description className="sr-only">{selectedPoint?.name || ''}</Dialog.Description>
             {selectedPoint ? (
               <PointSharePanel
                 pointId={selectedPoint.id}
