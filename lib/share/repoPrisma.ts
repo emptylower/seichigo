@@ -47,6 +47,8 @@ export class PrismaShareLinkRepo implements ShareLinkRepo {
         locale: input.locale,
         layout: input.layout,
         userId: input.userId,
+        // 匿名链再按 ipHash 收窄，登录链 ipHash 恒为 null、只按 userId 匹配
+        ...(input.userId === null ? { ipHash: input.ipHash } : {}),
         createdAt: { gte: input.since },
       },
       orderBy: { createdAt: 'desc' },

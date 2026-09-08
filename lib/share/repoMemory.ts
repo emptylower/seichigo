@@ -48,6 +48,7 @@ export class MemoryShareLinkRepo implements ShareLinkRepo {
       if (row.locale !== input.locale) continue
       if (row.layout !== input.layout) continue
       if ((row.userId ?? null) !== (input.userId ?? null)) continue
+      if (input.userId === null && (row.ipHash ?? null) !== (input.ipHash ?? null)) continue
       if (row.createdAt.getTime() < input.since.getTime()) continue
       return { ...row }
     }

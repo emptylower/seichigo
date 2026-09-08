@@ -36,13 +36,13 @@ describe('MemoryShareLinkRepo', () => {
     await repo.create(baseInput())
     const since = new Date('2026-09-07T12:00:00Z')
     expect(
-      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: null, since }),
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: null, ipHash: 'hash-1', since }),
     ).not.toBeNull()
     expect(
-      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'landscape', userId: null, since }),
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'landscape', userId: null, ipHash: 'hash-1', since }),
     ).toBeNull()
     expect(
-      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: 'u1', since }),
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: 'u1', ipHash: null, since }),
     ).toBeNull()
     expect(
       await repo.findRecentDuplicate({
@@ -51,8 +51,23 @@ describe('MemoryShareLinkRepo', () => {
         layout: 'portrait',
         userId: null,
         since: new Date('2026-09-08T13:00:00Z'),
+        ipHash: 'hash-1',
       }),
     ).toBeNull()
+  })
+
+  it('匿名去重在 userId 为 null 时还要求 ipHash 相同', async () => {
+    const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
+    await repo.create(baseInput())
+    const since = new Date('2026-09-07T12:00:00Z')
+    expect(
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: null, ipHash: 'hash-2', since }),
+    ).toBeNull()
+    // 登录用户不受 ipHash 影响（ipHash 恒为 null，按 userId 匹配）
+    await repo.create(baseInput({ code: 'DDDDDDDD', userId: 'u1', ipHash: null }))
+    expect(
+      await repo.findRecentDuplicate({ pointId: '101:station', locale: 'zh', layout: 'portrait', userId: 'u1', ipHash: null, since }),
+    ).not.toBeNull()
   })
 
   it('countByIpHashSince 只数窗口内同一 ipHash', async () => {

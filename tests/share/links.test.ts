@@ -47,6 +47,15 @@ describe('POST /api/share/links', () => {
     expect((await res.json()).code).toBe(first.code)
   })
 
+  it('同 point 下不同匿名 ipHash 得到不同 code', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const handler = createPostShareLinkHandler(makeDeps({ repo }))
+    const a = await (await handler(makeRequest(VALID, '1.1.1.1'))).json()
+    const b = await (await handler(makeRequest(VALID, '2.2.2.2'))).json()
+    expect(a.code).toMatch(/^[A-Za-z0-9]{8}$/)
+    expect(b.code).not.toBe(a.code)
+  })
+
   it('换版式就是新记录', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
     const handler = createPostShareLinkHandler(makeDeps({ repo }))

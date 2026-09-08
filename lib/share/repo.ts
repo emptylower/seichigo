@@ -31,13 +31,15 @@ export type FindRecentDuplicateInput = {
   locale: SupportedLocale
   layout: ShareCardLayout
   userId: string | null
+  /** 匿名（userId 为 null）时的第二把去重键，避免不同访客互相吃到同一条短链 */
+  ipHash: string | null
   since: Date
 }
 
 export interface ShareLinkRepo {
   create(input: CreateShareLinkInput): Promise<ShareLinkRecord>
   findByCode(code: string): Promise<ShareLinkRecord | null>
-  /** 24 小时窗口内同 (pointId, locale, layout, userId) 的既有记录 */
+  /** 24 小时窗口内同 (pointId, locale, layout, userId[, ipHash]) 的既有记录 */
   findRecentDuplicate(input: FindRecentDuplicateInput): Promise<ShareLinkRecord | null>
   countByIpHashSince(ipHash: string, since: Date): Promise<number>
   /** 只数 imageKey 非空的记录：配额算的是「上传」而不是「建链」 */

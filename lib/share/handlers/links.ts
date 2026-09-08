@@ -47,6 +47,7 @@ export function createPostShareLinkHandler(deps: ShareApiDeps) {
       locale: parsed.data.locale,
       layout: parsed.data.layout,
       userId,
+      ipHash,
       since,
     })
     if (existing) {
