@@ -197,7 +197,21 @@ describe('renderAndStoreCard', () => {
       photoKey: null,
     })
     expect(outcome.status).toBe('failed')
-    expect(objects.size).toBe(0)
+    expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
+  })
+
+  it('渲染失败时预算仍加一（Browser Run 时长成败都消耗）', async () => {
+    const { store, objects } = makeStore()
+    const deps = makeDeps({ getStore: () => store, renderCard: async () => null })
+    await renderAndStoreCard(deps, {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: null,
+    })
+    const budget = objects.get('og-cards/_budget/2026-09-08.json')
+    expect(new TextDecoder().decode(budget!.bytes)).toBe('{"count":1}')
+    expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
   })
 
   it('缓存已存在时返回 cached 且不调渲染器（预热与请求共用同一条路）', async () => {
@@ -337,7 +351,7 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(true)
   })
 
-  it('Browser Run 失败 → 302 到动画截图公共域，短缓存，不写缓存', async () => {
+  it('Browser Run 失败 → 302 到动画截图公共域，短缓存，不写卡片缓存', async () => {
     const { store, objects } = makeStore()
     const res = await createGetCardHandler(
       makeDeps({ getStore: () => store, renderCard: async () => null }),
@@ -345,7 +359,7 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('https://img.seichigo.com/mirror/v1/x/y.jpg')
     expect(res.headers.get('cache-control')).toBe('public, max-age=60')
-    expect(objects.size).toBe(0)
+    expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
   })
 
   it('连动画截图也没有 → 302 到 /opengraph-image', async () => {

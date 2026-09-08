@@ -191,13 +191,21 @@ export async function renderAndStoreCard(
     },
   })
 
-  const bytes = await deps.renderCard({ html, width: size.width, height: size.height })
+  let bytes: Uint8Array<ArrayBuffer> | null = null
+  try {
+    bytes = await deps.renderCard({ html, width: size.width, height: size.height })
+  } finally {
+    // Browser Run 失败与超时同样消耗浏览器时长：成败都计数，
+    // 否则上游持续报错时预算永不增长、每次未命中都真等 20 秒
+    if (store) {
+      await bumpRenderBudget(store, deps.now()).catch((error: unknown) => {
+        console.error('[share.card.budget_write_failed]', { error })
+      })
+    }
+  }
   if (!bytes) return { status: 'failed' }
 
   if (store) {
-    await bumpRenderBudget(store, deps.now()).catch((error: unknown) => {
-      console.error('[share.card.budget_write_failed]', { error })
-    })
     await store.put(key, bytes, 'image/webp').catch((error: unknown) => {
       console.error('[share.card.cache_write_failed]', { key, error })
     })
