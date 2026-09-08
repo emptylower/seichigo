@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CAPSULE_METRICS,
   CARD_FOOTER_SIZES,
   CARD_ROW_METRICS,
   GEO_FONT_STACK,
   addressPinMetrics,
+  buildCapsuleMiddle,
+  buildCapsuleMiddleRows,
   buildCardLayout,
   buildCardTextPlan,
   computeCoverRect,
@@ -52,19 +55,21 @@ describe('resolveCardVariant', () => {
 })
 
 describe('buildCardLayout 竖版', () => {
-  it('default：主视觉 720 高，文字块与轮廓/二维码带各就各位', () => {
+  it('default：主视觉 720 高，文字块在上、导航胶囊锚底部', () => {
     const layout = buildCardLayout('portrait', 'default')
     expect(layout.canvas).toEqual({ width: 1080, height: 1440 })
     expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 720 })
     expect(layout.photo).toBeNull()
     expect(layout.textTop).toBe(768)
     expect(layout.textX).toBe(64)
-    // 轮廓与二维码换到底部横带，文字不再需要给二维码让出宽度
+    // 文字区占满页宽，胶囊横贯底部
     expect(layout.textWidth).toBe(952)
-    expect(layout.locator).toEqual({ x: 64, y: 1096, width: 240, height: 240 })
-    expect(layout.qr).toEqual({ x: 836, y: 1126, size: 180 })
+    expect(layout.capsule).toEqual({ x: 64, y: 1116, width: 952, height: 228 })
+    expect(layout.locator).toEqual({ x: 92, y: 1140, width: 180, height: 180 })
+    expect(layout.qr).toEqual({ x: 808, y: 1140, size: 180 })
     expect(layout.footerX).toBe(64)
-    expect(layout.footerY).toBe(1380)
+    expect(layout.footerY).toBe(1398)
+    expect(layout.footerRightX).toBe(1016)
   })
 
   it('compare：上下两张图各占主视觉一半', () => {
@@ -75,46 +80,104 @@ describe('buildCardLayout 竖版', () => {
 })
 
 describe('buildCardLayout 横版', () => {
-  it('default：左 55% 是图，文字/轮廓/二维码/页脚全在右列', () => {
+  it('default：左 640 是图，文字/胶囊/页脚全在右列', () => {
     const layout = buildCardLayout('landscape', 'default')
     expect(layout.canvas).toEqual({ width: 1200, height: 630 })
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 660, height: 630 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 640, height: 630 })
     expect(layout.photo).toBeNull()
-    expect(layout.textTop).toBe(48)
-    expect(layout.textX).toBe(692)
-    expect(layout.textWidth).toBe(468)
-    expect(layout.locator).toEqual({ x: 692, y: 434, width: 150, height: 150 })
-    expect(layout.qr).toEqual({ x: 1050, y: 474, size: 110 })
+    expect(layout.textTop).toBe(34)
+    expect(layout.textX).toBe(672)
+    expect(layout.textWidth).toBe(492)
+    expect(layout.capsule).toEqual({ x: 672, y: 452, width: 492, height: 128 })
+    expect(layout.locator).toEqual({ x: 688, y: 466, width: 100, height: 100 })
+    expect(layout.qr).toEqual({ x: 1048, y: 466, size: 100 })
     // 页脚不能压在左侧图片上
-    expect(layout.footerX).toBe(692)
+    expect(layout.footerX).toBe(672)
     expect(layout.footerY).toBe(616)
+    expect(layout.footerRightX).toBe(1164)
   })
 
   it('compare：左半区再对半分给截图与实拍', () => {
     const layout = buildCardLayout('landscape', 'compare')
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 330, height: 630 })
-    expect(layout.photo).toEqual({ x: 330, y: 0, width: 330, height: 630 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 320, height: 630 })
+    expect(layout.photo).toEqual({ x: 320, y: 0, width: 320, height: 630 })
   })
 })
 
-describe('卡片几何不重叠', () => {
-  it.each(['portrait', 'landscape'] as const)('%s：轮廓与二维码都在页脚之上', (l) => {
+describe('导航胶囊几何', () => {
+  it.each(['portrait', 'landscape'] as const)('%s：胶囊整体在画布内且在页脚之上', (l) => {
     const layout = buildCardLayout(l, 'default')
+    const c = layout.capsule
+    expect(c.x).toBeGreaterThanOrEqual(0)
+    expect(c.y).toBeGreaterThanOrEqual(0)
+    expect(c.x + c.width).toBeLessThanOrEqual(layout.canvas.width)
     const footerTop = layout.footerY - CARD_FOOTER_SIZES[l]
-    expect(layout.locator.y + layout.locator.height).toBeLessThanOrEqual(footerTop)
-    expect(layout.qr.y + layout.qr.size).toBeLessThanOrEqual(footerTop)
+    expect(c.y + c.height).toBeLessThanOrEqual(footerTop)
     expect(layout.footerY).toBeLessThanOrEqual(layout.canvas.height)
   })
 
-  it.each(['portrait', 'landscape'] as const)('%s：轮廓与二维码横向不相撞', (l) => {
+  it.each(['portrait', 'landscape'] as const)('%s：轮廓与二维码落在胶囊内容区内，横向不撞', (l) => {
     const layout = buildCardLayout(l, 'default')
-    expect(layout.locator.x + layout.locator.width).toBeLessThanOrEqual(layout.qr.x)
-    expect(layout.qr.x + layout.qr.size).toBeLessThanOrEqual(layout.canvas.width)
+    const c = layout.capsule
+    const m = CAPSULE_METRICS[l]
+    const inner = { x0: c.x + m.padH, x1: c.x + c.width - m.padH, y0: c.y + m.padV, y1: c.y + c.height - m.padV }
+    // 轮廓贴内容区左缘，二维码贴右缘，都垂直居中于内容区
+    expect(layout.locator.x).toBe(inner.x0)
+    expect(layout.locator.y).toBeGreaterThanOrEqual(inner.y0)
+    expect(layout.locator.y + layout.locator.height).toBeLessThanOrEqual(inner.y1)
+    expect(layout.qr.x + layout.qr.size).toBe(inner.x1)
+    expect(layout.qr.y).toBeGreaterThanOrEqual(inner.y0)
+    expect(layout.qr.y + layout.qr.size).toBeLessThanOrEqual(inner.y1)
+    expect(layout.locator.x + layout.locator.width + m.gap).toBeLessThanOrEqual(layout.qr.x - m.gap)
   })
 
-  it.each(['portrait', 'landscape'] as const)('%s：文字块右边界不越画布', (l) => {
+  it.each(['portrait', 'landscape'] as const)('%s：中列在轮廓与二维码之间，inJapan=false 时贴胶囊左缘', (l) => {
     const layout = buildCardLayout(l, 'default')
-    expect(layout.textX + layout.textWidth).toBeLessThanOrEqual(layout.canvas.width)
+    const m = CAPSULE_METRICS[l]
+    const withOutline = buildCapsuleMiddle(layout, true)
+    expect(withOutline.x).toBe(layout.locator.x + layout.locator.width + m.gap)
+    expect(withOutline.x + withOutline.width).toBe(layout.qr.x - m.gap)
+    expect(withOutline.width).toBeGreaterThan(0)
+    const withoutOutline = buildCapsuleMiddle(layout, false)
+    expect(withoutOutline.x).toBe(layout.capsule.x + m.padH)
+    expect(withoutOutline.x + withoutOutline.width).toBe(layout.qr.x - m.gap)
+    // 中列纵向就是内容区
+    expect(withOutline.y).toBe(layout.capsule.y + m.padV)
+    expect(withOutline.height).toBe(layout.capsule.height - m.padV * 2)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s：有坐标时中列三行垂直居中，顺序 标题/坐标/副标题', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    const middle = buildCapsuleMiddle(layout, true)
+    const rows = buildCapsuleMiddleRows(l, middle, true)
+    const m = CAPSULE_METRICS[l]
+    expect(rows.title.size).toBe(m.titleSize)
+    expect(rows.coord?.size).toBe(m.coordSize)
+    expect(rows.sub.size).toBe(m.subSize)
+    expect(rows.coord!.y).toBeGreaterThan(rows.title.y)
+    expect(rows.sub.y).toBeGreaterThan(rows.coord!.y)
+    // 三行整体在内容区内垂直居中（标题顶距 == 副标题底距）
+    const topPad = rows.title.y - middle.y
+    const bottomPad = middle.y + middle.height - (rows.sub.y + rows.sub.size)
+    expect(Math.abs(topPad - bottomPad)).toBeLessThanOrEqual(0.5)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s：无坐标时中列只有两行，仍垂直居中', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    const middle = buildCapsuleMiddle(layout, true)
+    const rows = buildCapsuleMiddleRows(l, middle, false)
+    expect(rows.coord).toBeNull()
+    const topPad = rows.title.y - middle.y
+    const bottomPad = middle.y + middle.height - (rows.sub.y + rows.sub.size)
+    expect(Math.abs(topPad - bottomPad)).toBeLessThanOrEqual(0.5)
+  })
+
+  it('二维码白卡内缩后仍在胶囊内', () => {
+    const layout = buildCardLayout('landscape', 'default')
+    const m = CAPSULE_METRICS.landscape
+    const imageSize = layout.qr.size - m.qrPad * 2
+    expect(imageSize).toBeGreaterThan(0)
+    expect(layout.qr.x + m.qrPad + imageSize).toBeLessThanOrEqual(layout.capsule.x + layout.capsule.width)
   })
 })
 
@@ -135,6 +198,16 @@ describe('addressPinMetrics', () => {
 describe('CARD_ROW_METRICS', () => {
   it('竖版说明行行距给到 12，两行说明不至于贴在一起', () => {
     expect(CARD_ROW_METRICS.portrait.note.gap).toBe(12)
+  })
+
+  it('v2.1 横版：作品行 26px，说明最多 2 行', () => {
+    expect(CARD_ROW_METRICS.landscape.anime.size).toBe(26)
+    expect(CARD_ROW_METRICS.landscape.note.maxLines).toBe(2)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s：文字块右边界不越画布', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    expect(layout.textX + layout.textWidth).toBeLessThanOrEqual(layout.canvas.width)
   })
 })
 
@@ -185,14 +258,14 @@ describe('buildCardTextPlan', () => {
     }
   }
 
-  it.each(['portrait', 'landscape'] as const)('%s：满行内容仍然全部在轮廓带之上', (l) => {
+  it.each(['portrait', 'landscape'] as const)('%s：满行内容仍然全部在胶囊之上', (l) => {
     const plan = buildCardTextPlan(fullRows(l))
     expect(plan.rows.length).toBe(
       CARD_ROW_METRICS[l].name.maxLines + 1 + 1 + CARD_ROW_METRICS[l].note.maxLines,
     )
     // 实际字形高度约字号的 1.2 倍，按这个量算最后一行的底边
     const last = plan.rows[plan.rows.length - 1]!
-    expect(last.y + last.size * 1.2).toBeLessThanOrEqual(buildCardLayout(l, 'default').locator.y)
+    expect(last.y + last.size * 1.2).toBeLessThanOrEqual(buildCardLayout(l, 'default').capsule.y)
   })
 
   it('行从 textTop 开始，按各行字号与间距逐行下移', () => {

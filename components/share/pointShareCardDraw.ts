@@ -4,6 +4,8 @@ export type Rect = { x: number; y: number; width: number; height: number }
 export type CoverRect = { sx: number; sy: number; sw: number; sh: number }
 
 export type CardLayout = {
+  /** 版式：胶囊度量等按它取 */
+  kind: ShareCardLayout
   canvas: { width: number; height: number }
   /** 动画截图槽位 */
   main: Rect
@@ -17,13 +19,18 @@ export type CardLayout = {
   textX: number
   /** 文字可用宽度 */
   textWidth: number
-  /** 日本轮廓定位小图的框；inJapan 为 false 时渲染器跳过不画，位置照留 */
+  /** 导航胶囊整体外框 */
+  capsule: Rect
+  /** 胶囊内日本轮廓框；inJapan 为 false 时渲染器跳过不画，中列左移贴胶囊左缘 */
   locator: Rect
+  /** 胶囊内二维码白卡外框；图本身按 CAPSULE_METRICS.qrPad 内缩 */
   qr: { x: number; y: number; size: number }
   /** 页脚左边界（横版同样在右列，否则会压在图片上） */
   footerX: number
   /** 页脚基线 y（鸟居图标 + seichigo.com） */
   footerY: number
+  /** 页脚右边界：tagline 右对齐的锚点 */
+  footerRightX: number
 }
 
 /** object-fit: cover 的源矩形：等比放大后居中裁掉溢出部分 */
@@ -85,10 +92,73 @@ export function resolveCardVariant(hasPhoto: boolean): ShareCardVariant {
   return hasPhoto ? 'compare' : 'default'
 }
 
-/** 页脚字号：渲染器与几何测试共用 */
+/** 页脚字号：渲染器与几何测试共用。v2.1 横版 20、竖版 30；tagline 另算 */
 export const CARD_FOOTER_SIZES: Readonly<Record<ShareCardLayout, number>> = {
   portrait: 30,
-  landscape: 22,
+  landscape: 20,
+}
+
+/** 页脚右侧 tagline 字号（share.cardTagline），右对齐、宽度不够时省略 */
+export const CARD_FOOTER_TAGLINE_SIZES: Readonly<Record<ShareCardLayout, number>> = {
+  portrait: 24,
+  landscape: 16,
+}
+
+/**
+ * 导航胶囊的版面常量（v2.1 定稿）：粉底圆角横条，左轮廓 / 中三行 / 右二维码。
+ * padV/padH 是内边距（竖×横），gap 是三段之间的横向间距，
+ * titleGap/subGap 是中列标题后、坐标行后的行间距。
+ */
+export const CAPSULE_METRICS: Readonly<
+  Record<
+    ShareCardLayout,
+    {
+      radius: number
+      padV: number
+      padH: number
+      gap: number
+      outlineSize: number
+      qrSize: number
+      qrPad: number
+      qrRadius: number
+      titleSize: number
+      coordSize: number
+      subSize: number
+      titleGap: number
+      subGap: number
+    }
+  >
+> = {
+  portrait: {
+    radius: 24,
+    padV: 24,
+    padH: 28,
+    gap: 24,
+    outlineSize: 180,
+    qrSize: 180,
+    qrPad: 6,
+    qrRadius: 12,
+    titleSize: 34,
+    coordSize: 28,
+    subSize: 22,
+    titleGap: 12,
+    subGap: 10,
+  },
+  landscape: {
+    radius: 16,
+    padV: 14,
+    padH: 16,
+    gap: 14,
+    outlineSize: 100,
+    qrSize: 100,
+    qrPad: 4,
+    qrRadius: 8,
+    titleSize: 22,
+    coordSize: 19,
+    subSize: 15,
+    titleGap: 8,
+    subGap: 6,
+  },
 }
 
 export type CardRowMetric = { size: number; gap: number }
@@ -116,9 +186,9 @@ export const CARD_ROW_METRICS: Readonly<
   },
   landscape: {
     name: { size: 40, gap: 12, maxLines: 1 },
-    anime: { size: 28, gap: 12 },
+    anime: { size: 26, gap: 12 },
     address: { size: 24, gap: 10 },
-    note: { size: 22, gap: 10, maxLines: 1 },
+    note: { size: 22, gap: 10, maxLines: 2 },
   },
 }
 
@@ -156,11 +226,19 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
   if (layout === 'portrait') {
     const padding = 64
     const visualHeight = 720
-    const locatorSize = 240
-    const qrSize = 180
-    const locatorY = 1096
+    const m = CAPSULE_METRICS.portrait
+    // 胶囊锚底：胶囊底 + 24 间距 + 页脚行高（30*1.2）恰好落在 1440-36 的底边距上
+    const capsuleBottom = canvas.height - 36 - 24 - CARD_FOOTER_SIZES.portrait * 1.2
+    const capsuleHeight = m.outlineSize + m.padV * 2
+    const capsule: Rect = {
+      x: padding,
+      y: capsuleBottom - capsuleHeight,
+      width: canvas.width - padding * 2,
+      height: capsuleHeight,
+    }
     // 竖版 compare 有意上下分栏：左右分会把两张图各压到 540 宽，实拍细节没法看
     return {
+      kind: layout,
       canvas,
       main:
         variant === 'compare'
@@ -174,26 +252,42 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
       padding,
       textX: padding,
       textWidth: canvas.width - padding * 2,
-      locator: { x: padding, y: locatorY, width: locatorSize, height: locatorSize },
+      capsule,
+      locator: {
+        x: capsule.x + m.padH,
+        y: capsule.y + m.padV,
+        width: m.outlineSize,
+        height: m.outlineSize,
+      },
       qr: {
-        x: canvas.width - padding - qrSize,
-        y: locatorY + (locatorSize - qrSize) / 2,
-        size: qrSize,
+        x: capsule.x + capsule.width - m.padH - m.qrSize,
+        y: capsule.y + m.padV,
+        size: m.qrSize,
       },
       footerX: padding,
-      footerY: canvas.height - 60,
+      footerY: capsuleBottom + 24 + CARD_FOOTER_SIZES.portrait,
+      footerRightX: canvas.width - padding,
     }
   }
 
-  // 横版：左 55% 是主视觉，文字/轮廓/二维码/页脚全部落在右列。
+  // 横版：左 640 是主视觉，文字/胶囊/页脚全部落在右列（x 672 起，右边距 36）。
   // v1 用 padding 当页脚 x，改成左图右文之后那个位置会压在图片上，所以单独有 footerX。
-  const padding = 40
-  const visualWidth = Math.round(canvas.width * 0.55)
-  const columnX = visualWidth + 32
-  const locatorSize = 150
-  const qrSize = 110
-  const locatorY = 434
+  const visualWidth = 640
+  const columnX = 672
+  const rightMargin = 36
+  const m = CAPSULE_METRICS.landscape
+  const footerY = canvas.height - 14
+  // 胶囊底 = 页脚顶（基线 - 字号，保守按全字号）再往上 16
+  const capsuleBottom = footerY - CARD_FOOTER_SIZES.landscape - 16
+  const capsuleHeight = m.outlineSize + m.padV * 2
+  const capsule: Rect = {
+    x: columnX,
+    y: capsuleBottom - capsuleHeight,
+    width: canvas.width - columnX - rightMargin,
+    height: capsuleHeight,
+  }
   return {
+    kind: layout,
     canvas,
     main:
       variant === 'compare'
@@ -203,20 +297,70 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
       variant === 'compare'
         ? { x: visualWidth / 2, y: 0, width: visualWidth / 2, height: canvas.height }
         : null,
-    textTop: 48,
-    padding,
+    textTop: 34,
+    padding: rightMargin,
     textX: columnX,
-    textWidth: canvas.width - columnX - padding,
-    locator: { x: columnX, y: locatorY, width: locatorSize, height: locatorSize },
+    textWidth: canvas.width - columnX - rightMargin,
+    capsule,
+    locator: {
+      x: capsule.x + m.padH,
+      y: capsule.y + m.padV,
+      width: m.outlineSize,
+      height: m.outlineSize,
+    },
     qr: {
-      x: canvas.width - padding - qrSize,
-      // 横版轮廓带只有 150 高，二维码底对齐（474），居中会悬在带上半截
-      y: locatorY + locatorSize - qrSize,
-      size: qrSize,
+      x: capsule.x + capsule.width - m.padH - m.qrSize,
+      y: capsule.y + m.padV,
+      size: m.qrSize,
     },
     footerX: columnX,
-    footerY: canvas.height - 14,
+    footerY,
+    footerRightX: canvas.width - rightMargin,
   }
+}
+
+/** 胶囊中列（三行文案）的内容框；inJapan 为 false 时轮廓不画，中列贴胶囊左缘 */
+export function buildCapsuleMiddle(layout: CardLayout, inJapan: boolean): Rect {
+  const m = CAPSULE_METRICS[layout.kind]
+  const x = inJapan
+    ? layout.locator.x + layout.locator.width + m.gap
+    : layout.capsule.x + m.padH
+  const right = layout.qr.x - m.gap
+  return {
+    x,
+    y: layout.capsule.y + m.padV,
+    width: right - x,
+    height: layout.capsule.height - m.padV * 2,
+  }
+}
+
+export type CapsuleMiddleRows = {
+  title: { y: number; size: number }
+  /** geo 为 null 时不画坐标行 */
+  coord: { y: number; size: number } | null
+  sub: { y: number; size: number }
+}
+
+/** 中列三行（无坐标时两行）的垂直居中排版；y 是行顶（textBaseline top） */
+export function buildCapsuleMiddleRows(
+  layout: ShareCardLayout,
+  middle: Rect,
+  hasGeo: boolean,
+): CapsuleMiddleRows {
+  const m = CAPSULE_METRICS[layout]
+  const sizes = hasGeo ? [m.titleSize, m.coordSize, m.subSize] : [m.titleSize, m.subSize]
+  const gaps = hasGeo ? [m.titleGap, m.subGap] : [m.titleGap]
+  const total = sizes.reduce((sum, size) => sum + size, 0) + gaps.reduce((sum, gap) => sum + gap, 0)
+  let cursor = middle.y + (middle.height - total) / 2
+  const take = (size: number) => {
+    const slot = { y: cursor, size }
+    cursor += size + (gaps.shift() ?? 0)
+    return slot
+  }
+  const title = take(m.titleSize)
+  const coord = hasGeo ? take(m.coordSize) : null
+  const sub = take(m.subSize)
+  return { title, coord, sub }
 }
 
 export type CardTextRowKind = 'name' | 'anime' | 'address' | 'note'

@@ -24,34 +24,35 @@ vi.mock('@/components/share/japanLocator', () => ({
 const blobSizes: number[] = []
 const failingSrcs = new Set<string>()
 const drawImageSpy = vi.fn()
-const fillTextCalls: Array<[string, number, number]> = []
+const fillTextCalls: Array<[string, number, number, string]> = []
 const fillStyles: string[] = []
+const strokeStyles: string[] = []
 const arcCalls: Array<[number, number, number]> = []
 
 function stubCanvas() {
-  const ctx = new Proxy(
-    {
-      measureText: (text: string) => ({ width: text.length * 10 }),
-      createLinearGradient: () => ({ addColorStop: () => undefined }),
-      drawImage: drawImageSpy,
-      fillText: (text: string, x: number, y: number) => {
-        fillTextCalls.push([text, x, y])
-      },
-      arc: (x: number, y: number, r: number) => {
-        arcCalls.push([x, y, r])
-      },
-    } as Record<string, unknown>,
-    {
-      get(target, prop) {
-        if (prop in target) return target[prop as string]
-        return () => undefined
-      },
-      set(_target, prop, value) {
-        if (prop === 'fillStyle') fillStyles.push(String(value))
-        return true
-      },
+  const target: Record<string, unknown> = {
+    measureText: (text: string) => ({ width: text.length * 10 }),
+    createLinearGradient: () => ({ addColorStop: () => undefined }),
+    drawImage: drawImageSpy,
+    fillText: (text: string, x: number, y: number) => {
+      fillTextCalls.push([text, x, y, String(target.__font ?? '')])
     },
-  )
+    arc: (x: number, y: number, r: number) => {
+      arcCalls.push([x, y, r])
+    },
+  }
+  const ctx = new Proxy(target, {
+    get(t, prop) {
+      if (prop in t) return t[prop as string]
+      return () => undefined
+    },
+    set(t, prop, value) {
+      if (prop === 'fillStyle') fillStyles.push(String(value))
+      if (prop === 'strokeStyle') strokeStyles.push(String(value))
+      if (prop === 'font') t.__font = String(value)
+      return true
+    },
+  })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never)
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
     this: HTMLCanvasElement,
@@ -72,6 +73,7 @@ beforeEach(() => {
   failingSrcs.clear()
   fillTextCalls.length = 0
   fillStyles.length = 0
+  strokeStyles.length = 0
   arcCalls.length = 0
   drawImageSpy.mockClear()
   drawLocatorSpy.mockClear()
@@ -114,6 +116,12 @@ const INPUT = {
   animeImage: 'https://image.anitabi.cn/points/101/suga.jpg',
   photoObjectUrl: null,
   shareUrl: 'https://seichigo.com/s/AbC12xYz',
+  // v2.1 导航胶囊三语文案由 Panel 通过 t() 注入，测试直接给中文定稿
+  cardText: {
+    qrTitle: '扫码获取点位导航',
+    qrSub: '地图 · 交通 · 周边点位',
+    tagline: '5 万+ 动画取景地 · AI 巡礼行程',
+  },
 }
 
 describe('PointShareCard', () => {
@@ -240,8 +248,8 @@ describe('PointShareCard v2 文字与轮廓', () => {
       <PointShareCard input={{ ...INPUT, address: null }} onRendered={onRendered} onError={vi.fn()} />,
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    // 图钉是唯一填充绘制的 #ec4899；胶囊 GPS 十字圆标是描边 strokeStyle，不走 fillStyle
     expect(fillStyles).not.toContain('#ec4899')
-    expect(arcCalls).toHaveLength(0)
   })
 
   it('文字左边界用 textX（竖版 64）', async () => {
@@ -251,14 +259,16 @@ describe('PointShareCard v2 文字与轮廓', () => {
     expect(fillTextCalls[0]![1]).toBe(64)
   })
 
-  it('横版文字与页脚都落在右列 692', async () => {
+  it('横版文字与页脚都落在右列 672', async () => {
     const onRendered = vi.fn()
     render(
       <PointShareCard input={{ ...INPUT, layout: 'landscape' }} onRendered={onRendered} onError={vi.fn()} />,
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
-    expect(fillTextCalls[0]![1]).toBe(692)
-    expect(fillTextCalls[fillTextCalls.length - 1]![1]).toBe(692)
+    expect(fillTextCalls[0]![1]).toBe(672)
+    // 页脚 ⛩ seichigo.com 的 x（v2.1 起 tagline 可能跟在页脚右侧，只查站点名）
+    const footerCall = fillTextCalls.find(([text]) => text === '⛩ seichigo.com')!
+    expect(footerCall[1]).toBe(672)
   })
 
   it('没有地址就不画地址行，没有说明就不画说明行', async () => {
@@ -300,7 +310,8 @@ describe('PointShareCard v2 文字与轮廓', () => {
     render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(drawLocatorSpy).toHaveBeenCalledTimes(1)
-    expect(drawLocatorSpy.mock.calls[0]![1]).toEqual({ x: 64, y: 1096, width: 240, height: 240 })
+    // v2.1：轮廓收进导航胶囊左侧 180×180
+    expect(drawLocatorSpy.mock.calls[0]![1]).toEqual({ x: 92, y: 1140, width: 180, height: 180 })
     expect(drawLocatorSpy.mock.calls[0]![2]).toEqual({ lat: 35.7, lng: 139.56 })
     // 轮廓 JSON 懒加载，画的时候把加载结果传进去
     expect(loadOutlineSpy).toHaveBeenCalledTimes(1)
@@ -331,5 +342,87 @@ describe('PointShareCard v2 文字与轮廓', () => {
     render(<PointShareCard input={{ ...INPUT, geo: null }} onRendered={onRendered} onError={vi.fn()} />)
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(drawLocatorSpy.mock.calls[0]![2]).toBeNull()
+  })
+})
+
+describe('PointShareCard v2.1 导航胶囊', () => {
+  const textsOf = () => fillTextCalls.map(([text]) => text)
+
+  it('画胶囊底 #fdf2f8 与粉边 #fbcfe8', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(fillStyles).toContain('#fdf2f8')
+    expect(strokeStyles).toContain('#fbcfe8')
+  })
+
+  it('二维码画进白卡内缩位：竖版 180 白卡内缩 6，图 168', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    // 竖版 qr 白卡 {808,1140,180}，内缩 6 后图在 (814,1146) 168×168
+    const qrDraw = drawImageSpy.mock.calls.find(
+      (call) => call.length === 5 && call[3] === 168 && call[4] === 168,
+    )
+    expect(qrDraw).toBeDefined()
+    expect(qrDraw![1]).toBe(814)
+    expect(qrDraw![2]).toBe(1146)
+  })
+
+  it('中列依次画胶囊标题、等宽坐标行、副标题', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const texts = textsOf()
+    const titleIdx = texts.indexOf('扫码获取点位导航')
+    const coordIdx = texts.indexOf('35.7000, 139.5600')
+    const subIdx = texts.indexOf('地图 · 交通 · 周边点位')
+    expect(titleIdx).toBeGreaterThanOrEqual(0)
+    expect(coordIdx).toBeGreaterThan(titleIdx)
+    expect(subIdx).toBeGreaterThan(coordIdx)
+    // 坐标行用等宽字体
+    expect(fillTextCalls[coordIdx]![3]).toContain('ui-monospace')
+    // 竖版中列 x：轮廓右缘 92+180 + 间距 24 = 296；坐标文字右移 GPS 图标 offset
+    expect(fillTextCalls[titleIdx]![1]).toBe(296)
+    expect(fillTextCalls[coordIdx]![1]).toBeCloseTo(296 + 28 * 1.3, 6)
+    // 胶囊标题用品牌粉 #be185d
+    expect(fillStyles).toContain('#be185d')
+  })
+
+  it('geo 为 null 时不画坐标行，标题与副标题照画', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={{ ...INPUT, geo: null }} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const texts = textsOf()
+    expect(texts.some((text) => /^\d+\.\d{4}, /.test(text))).toBe(false)
+    expect(texts).toContain('扫码获取点位导航')
+    expect(texts).toContain('地图 · 交通 · 周边点位')
+  })
+
+  it('inJapan 为 false 时中列贴胶囊左缘（64+28=92）', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, inJapan: false }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const titleCall = fillTextCalls.find(([text]) => text === '扫码获取点位导航')!
+    expect(titleCall[1]).toBe(92)
+  })
+
+  it('横版中列从轮廓右缘 802 起，坐标行 19px 等宽', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, layout: 'landscape' }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const titleCall = fillTextCalls.find(([text]) => text === '扫码获取点位导航')!
+    expect(titleCall[1]).toBe(802)
+    const coordCall = fillTextCalls.find(([text]) => text === '35.7000, 139.5600')!
+    expect(coordCall[3]).toContain('19px ui-monospace')
+    // 横版二维码：100 白卡内缩 4，图 92
+    const qrDraw = drawImageSpy.mock.calls.find(
+      (call) => call.length === 5 && call[3] === 92 && call[4] === 92,
+    )
+    expect(qrDraw).toBeDefined()
   })
 })
