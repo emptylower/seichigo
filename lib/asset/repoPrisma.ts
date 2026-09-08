@@ -1,83 +1,80 @@
 import { prisma } from '@/lib/db/prisma'
-import type { Asset, AssetRepo, CreateAssetInput } from './repo'
+import type { Asset, AssetR2Fields, AssetRepo, CreateAssetInput } from './repo'
 
-declare global {
-  // eslint-disable-next-line no-var
-  var assetReadCache: { items: Map<string, Asset>; totalBytes: number } | undefined
-}
+/**
+ * 2026-09-08 图片资产迁 R2：不再进程内缓存原图（旧缓存 12MB/24 张常驻，
+ * 且变体请求会反复把大 PNG 整体拽进内存——/assets 超限根因之一）。
+ * findById 只查元数据（select 排除 bytes）；原始字节按需走 findBytesById。
+ */
 
-const MAX_ASSET_CACHE_ITEMS = 24
-const MAX_ASSET_CACHE_BYTES = 12 * 1024 * 1024
-
-function getAssetReadCache() {
-  if (!global.assetReadCache) {
-    global.assetReadCache = {
-      items: new Map<string, Asset>(),
-      totalBytes: 0,
-    }
-  }
-
-  return global.assetReadCache
-}
-
-function estimateAssetBytes(asset: Asset): number {
-  return asset.bytes.byteLength
-}
-
-function cacheAsset(asset: Asset) {
-  const cache = getAssetReadCache()
-  const existing = cache.items.get(asset.id)
-
-  if (existing) {
-    cache.totalBytes -= estimateAssetBytes(existing)
-    cache.items.delete(asset.id)
-  }
-
-  cache.items.set(asset.id, asset)
-  cache.totalBytes += estimateAssetBytes(asset)
-
-  while (cache.items.size > MAX_ASSET_CACHE_ITEMS || cache.totalBytes > MAX_ASSET_CACHE_BYTES) {
-    const oldestKey = cache.items.keys().next().value
-    if (!oldestKey) break
-    const oldest = cache.items.get(oldestKey)
-    cache.items.delete(oldestKey)
-    if (oldest) {
-      cache.totalBytes -= estimateAssetBytes(oldest)
-    }
-  }
-}
-
-function getCachedAsset(id: string): Asset | null {
-  const cache = getAssetReadCache()
-  const cached = cache.items.get(id)
-  if (!cached) return null
-
-  cache.items.delete(id)
-  cache.items.set(id, cached)
-  return cached
-}
+const ASSET_METADATA_SELECT = {
+  id: true,
+  ownerId: true,
+  contentType: true,
+  filename: true,
+  storageKey: true,
+  byteLength: true,
+  width: true,
+  height: true,
+  createdAt: true,
+} as const
 
 export class PrismaAssetRepo implements AssetRepo {
   async create(input: CreateAssetInput): Promise<Asset> {
-    const created = await prisma.asset.create({
+    return prisma.asset.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         ownerId: input.ownerId,
         contentType: input.contentType,
         filename: input.filename ?? undefined,
         bytes: Buffer.from(input.bytes),
+        storageKey: input.storageKey ?? undefined,
+        byteLength: input.byteLength ?? undefined,
+        width: input.width ?? undefined,
+        height: input.height ?? undefined,
       },
+      select: ASSET_METADATA_SELECT,
     })
-
-    cacheAsset(created)
-    return created
   }
 
   async findById(id: string): Promise<Asset | null> {
-    const cached = getCachedAsset(id)
-    if (cached) return cached
+    return prisma.asset.findUnique({ where: { id }, select: ASSET_METADATA_SELECT })
+  }
 
-    const found = await prisma.asset.findUnique({ where: { id } })
-    if (found) cacheAsset(found)
-    return found
+  async findBytesById(id: string): Promise<Uint8Array | null> {
+    const found = await prisma.asset.findUnique({ where: { id }, select: { bytes: true } })
+    if (!found?.bytes) return null
+    return new Uint8Array(found.bytes)
+  }
+
+  async listUnmigratedIds(limit: number): Promise<string[]> {
+    const rows = await prisma.asset.findMany({
+      where: { storageKey: null },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+      select: { id: true },
+    })
+    return rows.map((row) => row.id)
+  }
+
+  async countAll(): Promise<number> {
+    return prisma.asset.count()
+  }
+
+  async countUnmigrated(): Promise<number> {
+    return prisma.asset.count({ where: { storageKey: null } })
+  }
+
+  async updateR2Fields(id: string, fields: AssetR2Fields): Promise<void> {
+    await prisma.asset.update({
+      where: { id },
+      data: {
+        storageKey: fields.storageKey,
+        byteLength: fields.byteLength,
+        width: fields.width,
+        height: fields.height,
+      },
+      select: { id: true },
+    })
   }
 }

@@ -295,6 +295,12 @@ model Asset {
   contentType String
   filename    String?
   bytes       Bytes
+  // 2026-09-08 图片资产迁 R2：storageKey 为 R2 原图 key（originals/<id>）；
+  // 为 null 表示尚未迁移，读路径回落 bytes。bytes 列本期保留不删（回滚安全）
+  storageKey  String?
+  byteLength  Int?
+  width       Int?
+  height      Int?
   createdAt   DateTime @default(now())
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
