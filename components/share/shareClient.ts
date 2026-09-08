@@ -26,19 +26,52 @@ export async function createShareLink(
   }
 }
 
-/** 上传失败（未登录 401、限流 429、无绑定 503）都只返回 null：匿名分享照常走 */
-export async function uploadShareAssets(
+/**
+ * photo-only 上传的响应：服务端渲染改造后带 photoKey、imageUrl 可空。
+ * 这两个字段由 Track A 并进 lib/share/types.ts 的 ShareUploadResponse；
+ * 本分支不改共享契约，先在客户端本地扩展。
+ * 合流后删除本类型，调用点改用 lib/share/types.ts 的 ShareUploadResponse。
+ */
+export type SharePhotoUploadResponse = Omit<ShareUploadResponse, 'imageUrl'> & {
+  imageUrl: string | null
+  /** 实拍在 R2 的 key（checkin/<userId>/<pointId>.jpg），用来拼带 photo 参数的卡片 URL */
+  photoKey?: string | null
+}
+
+/** 上传结果：成功带 photoKey；失败带 HTTP 状态码（status 0 = 网络层失败），面板按状态码分流提示 */
+export type SharePhotoUploadResult = SharePhotoUploadResponse | { ok: false; status: number }
+
+/**
+ * 只补传实拍：卡片自 2026-09-08 起由服务端渲染，前端不再生成也不再上传 card。
+ * 失败返回 { ok:false, status }（401 未登录 / 429 当日限流 / 其它通用失败）。
+ * 加实拍是锦上添花，失败了继续用不带实拍的服务端卡片。
+ */
+export async function uploadSharePhoto(
   code: string,
-  card: Blob,
-  photo: File | null,
-): Promise<ShareUploadResponse | null> {
+  photo: File,
+): Promise<SharePhotoUploadResult> {
   try {
     const form = new FormData()
-    form.set('card', new File([card], `${code}.jpg`, { type: card.type || 'image/jpeg' }))
-    if (photo) form.set('photo', photo)
+    form.set('photo', photo)
     const res = await fetch(`/api/share/links/${code}/upload`, { method: 'POST', body: form })
+    if (!res.ok) return { ok: false, status: res.status }
+    return (await res.json()) as SharePhotoUploadResponse
+  } catch {
+    return { ok: false, status: 0 }
+  }
+}
+
+/**
+ * 取服务端卡片图，只在保存/复制/系统分享等动作时按需调用（预览走 <img> 直链，不经过这里）。
+ * 渲染失败时后端会 302 到跨域图床（img.seichigo.com）的兜底图，那条响应没有 CORS 头，
+ * 浏览器 fetch 跟随重定向时会直接抛 TypeError——这里返回 null，由动作入口各自提示，
+ * 不影响 <img> 预览与其它入口。
+ */
+export async function fetchCardBlob(url: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(url)
     if (!res.ok) return null
-    return (await res.json()) as ShareUploadResponse
+    return await res.blob()
   } catch {
     return null
   }
