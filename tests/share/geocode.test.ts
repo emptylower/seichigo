@@ -101,7 +101,10 @@ describe('fetchMapTilerAddresses', () => {
   })
 
   it('一次请求带 lng,lat 与 language=zh,en,ja&limit=1', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(MUSASHINO), { status: 200 }))
+    // 参数签名给足：vi.fn 无参实现的 calls 是空元组，[0] 取值过不了 typecheck
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL) =>
+      new Response(JSON.stringify(MUSASHINO), { status: 200 }),
+    )
     const result = await fetchMapTilerAddresses({ lat: 35.7, lng: 139.56, fetchImpl: fetchImpl as unknown as typeof fetch })
     expect(result?.ja).toBe('東京都 武蔵野市 中町一丁目')
     const url = String(fetchImpl.mock.calls[0]![0])
