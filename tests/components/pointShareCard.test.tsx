@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
+import QRCode from 'qrcode'
 import PointShareCard from '@/components/share/PointShareCard'
 
 vi.mock('qrcode', () => ({
@@ -53,6 +54,7 @@ beforeEach(() => {
   drawImageSpy.mockClear()
   candidatesMock.mockReset()
   candidatesMock.mockImplementation((src: string) => [src])
+  ;(QRCode.toDataURL as ReturnType<typeof vi.fn>).mockClear()
   stubCanvas()
   // 让 new Image() 的 onload 立刻触发；failingSrcs 里的 src 走 onerror
   Object.defineProperty(globalThis.Image.prototype, 'src', {
@@ -144,6 +146,22 @@ describe('PointShareCard', () => {
     const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080 && call[8] === 1000)
     expect((mainDraw?.[0] as { __loadedSrc?: string } | undefined)?.__loadedSrc).toBe(
       'https://img.example/ok.jpg',
+    )
+  })
+
+  it('二维码优先用 qrUrl，缺省退回 shareUrl', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, qrUrl: 'https://seichigo.com/s/AbC12xYz?c=save' }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(QRCode.toDataURL).toHaveBeenCalledWith(
+      'https://seichigo.com/s/AbC12xYz?c=save',
+      expect.objectContaining({ margin: 1 }),
     )
   })
 })

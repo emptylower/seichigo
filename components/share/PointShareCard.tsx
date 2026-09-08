@@ -25,8 +25,10 @@ export type PointShareCardInput = {
   animeImage: string
   /** 用户实拍的 object URL；有值就切 compare 布局 */
   photoObjectUrl: string | null
-  /** 短链绝对地址，画进二维码 */
+  /** 短链绝对地址，画进二维码（qrUrl 缺省时退回它） */
   shareUrl: string
+  /** 二维码内容：带 c=save 渠道参数的短链 */
+  qrUrl?: string
 }
 
 const QUALITY_FIRST = 0.9
@@ -98,7 +100,7 @@ export default function PointShareCard({
       canvas.width = layout.canvas.width
       canvas.height = layout.canvas.height
 
-      const qrDataUrl = await QRCode.toDataURL(input.shareUrl, {
+      const qrDataUrl = await QRCode.toDataURL(input.qrUrl || input.shareUrl, {
         margin: 1,
         width: layout.qr.size,
         color: { dark: '#111827', light: '#ffffff' },

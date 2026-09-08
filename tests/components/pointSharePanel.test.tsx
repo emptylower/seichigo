@@ -4,8 +4,10 @@ import PointSharePanel from '@/components/share/PointSharePanel'
 import { t } from '@/lib/i18n'
 
 // 卡片渲染器在 jsdom 里没有 canvas，直接桩成「立刻回调一个 Blob」
+let lastCardInput: { shareUrl?: string; qrUrl?: string } | null = null
 vi.mock('@/components/share/PointShareCard', () => ({
-  default: ({ onRendered }: { onRendered: (blob: Blob) => void }) => {
+  default: ({ input, onRendered }: { input: { shareUrl?: string; qrUrl?: string }; onRendered: (blob: Blob) => void }) => {
+    lastCardInput = input
     const blob = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
     setTimeout(() => onRendered(blob), 0)
     return <canvas data-testid="stub-card" />
@@ -103,6 +105,12 @@ describe('PointSharePanel 短链与平台按钮', () => {
     await waitFor(() => expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
       '《你的名字。》圣地巡礼｜须贺神社（东京）https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
     ))
+  })
+
+  it('传给卡片的二维码输入带 c=save 渠道参数', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(lastCardInput?.shareUrl).toBe('https://seichigo.com/s/AbC12xYz'))
+    expect(lastCardInput?.qrUrl).toBe('https://seichigo.com/s/AbC12xYz?c=save')
   })
 
   it('建短链失败时显示失败提示与重试按钮，点击后重新请求', async () => {

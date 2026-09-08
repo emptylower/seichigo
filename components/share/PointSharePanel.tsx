@@ -117,6 +117,8 @@ export default function PointSharePanel({
       animeImage,
       photoObjectUrl,
       shareUrl,
+      // 扫码进站的算「存图」渠道：二维码画带 c=save 的短链
+      qrUrl: withShareChannel(shareUrl, 'save'),
     }
   }, [shareUrl, layout, locale, pointName, animeTitle, cityName, episode, scene, animeImage, photoObjectUrl])
 
