@@ -722,5 +722,34 @@
       "activated": "Your plan is active",
       "portalError": "Cannot open the subscription portal right now, please try again later"
     }
+  },
+  "share": {
+    "panelTitle": "Share this spot",
+    "close": "Close",
+    "generating": "Rendering your card…",
+    "generateFailed": "Could not render the card. Please try again.",
+    "layoutLabel": "Format",
+    "layoutPortrait": "Portrait",
+    "layoutLandscape": "Landscape",
+    "addPhoto": "Add your photo",
+    "removePhoto": "Remove photo",
+    "photoHint": "Add your own shot and the card becomes a side-by-side comparison",
+    "captionLabel": "Caption",
+    "captionTemplate": "{anime} anime pilgrimage: {point}, {city} {url} #animepilgrimage #{anime}",
+    "systemShare": "Share",
+    "copyImage": "Copy image",
+    "copyText": "Copy caption",
+    "saveImage": "Save image",
+    "platformX": "X",
+    "platformReddit": "Reddit",
+    "platformLine": "LINE",
+    "platformXiaohongshu": "RED",
+    "platformWechat": "WeChat",
+    "toastCopied": "Caption copied",
+    "toastImageCopied": "Image copied",
+    "toastSaved": "Image saved",
+    "toastPasteInApp": "Image and caption are ready — open the app and paste",
+    "toastShareFilesUnsupported": "This browser cannot share images directly. Save the image first, then post it manually.",
+    "toastFailed": "Something went wrong. Please try again."
   }
 }

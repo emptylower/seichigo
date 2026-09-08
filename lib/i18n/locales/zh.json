@@ -722,5 +722,34 @@
       "activated": "开通成功",
       "portalError": "暂时无法打开订阅管理页，请稍后再试"
     }
+  },
+  "share": {
+    "panelTitle": "分享这个点位",
+    "close": "关闭",
+    "generating": "正在生成卡片…",
+    "generateFailed": "卡片生成失败，请重试",
+    "layoutLabel": "版式",
+    "layoutPortrait": "竖版",
+    "layoutLandscape": "横版",
+    "addPhoto": "添加实拍",
+    "removePhoto": "移除实拍",
+    "photoHint": "加上你自己拍的照片，卡片会变成左右对比",
+    "captionLabel": "分享文案",
+    "captionTemplate": "《{anime}》圣地巡礼｜{point}（{city}）{url} #圣地巡礼 #{anime}",
+    "systemShare": "系统分享",
+    "copyImage": "复制图片",
+    "copyText": "复制文案",
+    "saveImage": "保存图片",
+    "platformX": "X",
+    "platformReddit": "Reddit",
+    "platformLine": "LINE",
+    "platformXiaohongshu": "小红书",
+    "platformWechat": "微信",
+    "toastCopied": "文案已复制",
+    "toastImageCopied": "图片已复制",
+    "toastSaved": "图片已保存",
+    "toastPasteInApp": "图片和文案已就绪，打开 App 粘贴即可",
+    "toastShareFilesUnsupported": "当前浏览器不能直接分享图片，请先保存图片再手动发布",
+    "toastFailed": "操作失败，请重试"
   }
 }
