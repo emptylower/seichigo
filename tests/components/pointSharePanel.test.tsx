@@ -540,6 +540,25 @@ describe('PointSharePanel 桌面路径', () => {
     )
   })
 
+  it('小红书：文案复制失败时只提示图片已保存', async () => {
+    copyTextMock.mockResolvedValue(false)
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    const toast = await screen.findByRole('status')
+    expect(toast.textContent).toBe(t('share.toastSaved', 'zh'))
+  })
+
+  it('微信：文案复制失败时只提示图片已保存', async () => {
+    copyTextMock.mockResolvedValue(false)
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformWechat', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    const toast = await screen.findByRole('status')
+    expect(toast.textContent).toBe(t('share.toastSaved', 'zh'))
+  })
+
   it('保存图片在主区，复制图片/复制文案收进「更多」', async () => {
     await readyPanel()
     expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()

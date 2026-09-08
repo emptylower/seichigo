@@ -376,10 +376,15 @@ export default function PointSharePanel({
     setBusy(true)
     try {
       downloadBlob(cardBlob, buildCardFilename(displayName))
-      await copyText(captionFor(channel))
-      showToast('share.toastSavedAndCopiedOpenApp', {
-        app: t(channel === 'xhs' ? 'share.platformXiaohongshu' : 'share.platformWechat', locale),
-      })
+      // 文案没复制成就别提示「已复制」：只说图片已保存
+      const copied = await copyText(captionFor(channel))
+      if (copied) {
+        showToast('share.toastSavedAndCopiedOpenApp', {
+          app: t(channel === 'xhs' ? 'share.platformXiaohongshu' : 'share.platformWechat', locale),
+        })
+      } else {
+        showToast('share.toastSaved')
+      }
     } finally {
       setBusy(false)
     }
