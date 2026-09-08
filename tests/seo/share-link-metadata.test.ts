@@ -68,7 +68,7 @@ describe('/s/[code] generateMetadata', () => {
     })
     expect(meta.openGraph?.images).toEqual(['https://seichigo.com/api/share/img/AAAAAAAA'])
     expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/AAAAAAAA'])
-    expect(meta.title).toBe('须贺神社｜《你的名字。》圣地巡礼 | SeichiGo')
+    expect(meta.title).toEqual({ absolute: '须贺神社｜《你的名字。》圣地巡礼 | SeichiGo' })
     expect(meta.robots).toEqual({ index: false, follow: true })
     expect(resolveMirrorPublicUrlMock).not.toHaveBeenCalled()
   })

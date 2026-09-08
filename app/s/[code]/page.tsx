@@ -42,7 +42,7 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
   const { code } = await params
   const link = await loadLink(code)
   if (!link) {
-    return { title: '链接不存在 | SeichiGo', robots: { index: false, follow: false } }
+    return { title: { absolute: '链接不存在 | SeichiGo' }, robots: { index: false, follow: false } }
   }
 
   const { origin } = await getShareApiDeps()
@@ -72,7 +72,7 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
   })
 
   return {
-    title,
+    title: { absolute: title },
     description,
     // 短链只是分享入口，索引价值全在 /map 与作品页上
     robots: { index: false, follow: true },
