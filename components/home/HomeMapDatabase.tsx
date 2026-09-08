@@ -246,6 +246,7 @@ export default function HomeMapDatabase({
       <div className="mt-6 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
         <Link
           href={prefixPath('/map', locale)}
+          prefetch={false}
           className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
         >
           {t('pages.home.v2.mapDbCta', locale)}

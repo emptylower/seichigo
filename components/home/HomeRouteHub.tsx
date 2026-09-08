@@ -48,6 +48,7 @@ export default function HomeRouteHub({ locale }: { locale: SiteLocale }) {
         <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[1.36fr_1fr]">
           <Link
             href={prefixPath('/map', locale)}
+            prefetch={false}
             className="group relative isolate overflow-hidden rounded-[28px] border border-white/60 bg-white/10 p-4 no-underline shadow-[0_26px_42px_-30px_rgba(14,18,38,0.58)] transition-all duration-300 hover:-translate-y-0.5 hover:no-underline hover:shadow-[0_34px_50px_-32px_rgba(14,18,38,0.74)] sm:p-5"
           >
             <div className="pointer-events-none absolute inset-0 rounded-[28px] border border-white/35" />

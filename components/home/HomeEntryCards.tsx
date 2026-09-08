@@ -63,6 +63,9 @@ export default function HomeEntryCards({ locale, stats }: { locale: SiteLocale; 
           <Link
             key={key}
             href={href}
+            // 首屏性能（2026-09-07）：/plan/start、/map、/posts 改为悬停预取，
+            // 避免进视口即预取 RSC payload 与 LCP 图抢带宽
+            prefetch={false}
             // 第十四轮：卡片压在插画背景上，统一半透明毛玻璃，hover 时变实
             className={
               primary

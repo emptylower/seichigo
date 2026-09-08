@@ -157,6 +157,7 @@ export default function HomeGuides({ locale, items }: { locale: SiteLocale; item
           <div className="flex justify-end">
             <Link
               href={prefixPath('/posts', locale)}
+              prefetch={false}
               className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-brand-300 hover:text-brand-600"
             >
               {t('pages.home.v2.guidesViewAll', locale)}

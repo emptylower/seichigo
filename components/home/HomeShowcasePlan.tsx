@@ -208,6 +208,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
           ) : null}
           <Link
             href={planStartHref(locale)}
+            prefetch={false}
             className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
           >
             {t('pages.home.v2.showcaseCta', locale)}
@@ -245,6 +246,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
             </div>
             <Link
               href={planStartHref(locale)}
+              prefetch={false}
               className="shrink-0 rounded-full border border-gray-200 px-3.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:border-brand-300 hover:text-brand-600"
             >
               {t('pages.home.v2.planViewFull', locale)}
@@ -312,6 +314,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
               <li className="pt-1 text-center">
                 <Link
                   href={planStartHref(locale)}
+                  prefetch={false}
                   className="text-xs text-gray-500 transition-colors hover:text-brand-600"
                 >
                   {t('pages.home.v2.planMore', locale).replace('{n}', String(hiddenCount))} ·{' '}
