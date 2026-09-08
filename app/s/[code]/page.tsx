@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { resolveMapShareSnapshot } from '@/lib/anitabi/share'
 import { resolveMirrorPublicUrl } from '@/lib/anitabi/imageProxy'
 import { runShareBackground } from '@/lib/share/background'
@@ -15,7 +16,11 @@ export const runtime = 'nodejs'
 
 type PageParams = { params: Promise<{ code: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }
 
-async function loadLink(code: string): Promise<ShareLinkRecord | null> {
+/**
+ * React cache()：generateMetadata 与页面体同处一次请求渲染，findByCode 只查一次库。
+ * （vitest 无 React 缓存作用域时退化为直调，行为不变）
+ */
+const loadLink = cache(async (code: string): Promise<ShareLinkRecord | null> => {
   if (!isShareCode(code)) return null
   try {
     const deps = await getShareApiDeps()
@@ -24,7 +29,7 @@ async function loadLink(code: string): Promise<ShareLinkRecord | null> {
     console.error('[share.link.load_failed]', { code, error })
     return null
   }
-}
+})
 
 function readChannel(searchParams: Record<string, string | string[] | undefined>): string | null {
   const raw = searchParams.c

@@ -116,4 +116,20 @@ describe('/s/[code] generateMetadata', () => {
     expect(meta.robots).toEqual({ index: false, follow: false })
     expect(meta.openGraph).toBeUndefined()
   })
+
+  it('页面体渲染 meta refresh + replace 脚本并调度点击计数', async () => {
+    await seed('FFFFFFFF', null)
+    const { default: SharePage } = await import('@/app/s/[code]/page')
+    const tree = await SharePage({
+      params: Promise.resolve({ code: 'FFFFFFFF' }),
+      searchParams: Promise.resolve({ c: 'x' }),
+    })
+    const serialized = JSON.stringify(tree)
+    expect(serialized).toContain('httpEquiv')
+    expect(serialized).toContain('window.location.replace')
+    expect(serialized).toContain('https://seichigo.com/map')
+    // fire-and-forget 计数，稍等一拍后生效
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect((await repo.findByCode('FFFFFFFF'))?.clicks).toBe(1)
+  })
 })
