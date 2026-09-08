@@ -144,6 +144,10 @@ describe('PointSharePanel 短链与平台按钮', () => {
     render(<PointSharePanel {...PROPS} />)
     const retry = await screen.findByRole('button', { name: t('share.retry', 'zh') })
     expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument()
+    // 短链未就绪时平台入口是禁用态（无 href，getByRole('link') 匹配不到，用文本找）
+    const x = screen.getByText('X').closest('a')!
+    expect(x).toHaveAttribute('aria-disabled', 'true')
+    expect(x.className).toContain('pointer-events-none')
     fireEvent.click(retry)
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     // 重试成功后平台链接出现

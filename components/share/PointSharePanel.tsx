@@ -350,25 +350,28 @@ export default function PointSharePanel({
         <div className="grid grid-cols-3 gap-2">
           <a
             href={shareUrl ? buildXIntentUrl(captionFor('x')) : undefined}
+            aria-disabled={!shareUrl}
             target="_blank"
             rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline`}
+            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
           >
             {t('share.platformX', locale)}
           </a>
           <a
             href={shareUrl ? buildRedditSubmitUrl(withShareChannel(shareUrl, 'rd'), `${pointName}｜${animeTitle}`) : undefined}
+            aria-disabled={!shareUrl}
             target="_blank"
             rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline`}
+            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
           >
             {t('share.platformReddit', locale)}
           </a>
           <a
             href={shareUrl ? buildLineShareUrl(withShareChannel(shareUrl, 'ln'), captionFor('ln')) : undefined}
+            aria-disabled={!shareUrl}
             target="_blank"
             rel="noreferrer"
-            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline`}
+            className={`${BUTTON_BASE} bg-gray-100 text-gray-800 no-underline ${shareUrl ? '' : 'pointer-events-none opacity-50'}`}
           >
             {t('share.platformLine', locale)}
           </a>
