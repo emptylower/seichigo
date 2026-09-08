@@ -28,7 +28,7 @@ export async function renderHtmlToWebp(input: {
   height: number
   config: BrowserRunConfig
   fetchImpl?: typeof fetch
-}): Promise<Uint8Array | null> {
+}): Promise<Uint8Array<ArrayBuffer> | null> {
   const url = `https://api.cloudflare.com/client/v4/accounts/${input.config.accountId}/browser-run/screenshot`
   try {
     const doFetch = input.fetchImpl ?? fetch
