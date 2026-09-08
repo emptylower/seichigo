@@ -176,6 +176,7 @@ describe('MapDialogs 分享面板', () => {
     render(
       <MapDialogs
         {...(createProps() as any)}
+        imagePreview={null}
         showSharePanel
         detail={{ card: { id: 101, title: '君の名は。', city: '東京', cover: null }, points: [] } as any}
         selectedPoint={
