@@ -210,6 +210,17 @@ export async function renderAndStoreCard(
 // pointId 会进 R2 key 与 URL，字符集与 lib/share/handlers/links.ts:23 保持一致
 const POINT_ID_PATTERN = /^[A-Za-z0-9_:.-]{1,200}$/
 
+/** 路径式第 4 段：photoKey 的 sha256 前 12 位（小写十六进制）；不可逆，只做形状校验 */
+const PHOTO_HASH_PATTERN = /^[0-9a-f]{12}$/
+
+const PATH_LOCALES: readonly string[] = ['zh', 'en', 'ja']
+const PATH_LAYOUTS: readonly string[] = ['portrait', 'landscape']
+
+/** 剥掉可选的小写 `.jpg` 后缀（`.JPG` 不认，交由上层校验拒绝） */
+function stripJpgSuffix(segment: string): string {
+  return segment.endsWith('.jpg') ? segment.slice(0, -4) : segment
+}
+
 /**
  * 请求路径冷路径总 deadline：最坏路径 DB + MapTiler + 抓图 6 秒 + Browser Run
  * 20 秒可跑到 30 秒外，社媒爬虫会超时放弃「无预览」。只限 HTTP 路径；
@@ -318,33 +329,72 @@ async function fallbackResponse(
 export function createGetCardHandler(deps: CardDeps) {
   return async function getCard(
     req: Request,
-    ctx: { params: Promise<{ pointId: string }> },
+    ctx: { params: Promise<{ pointId?: string; segments?: string[] }> },
   ): Promise<Response> {
     const raw = await ctx.params
-    let pointId: string
-    try {
-      pointId = decodeURIComponent(String(raw.pointId || '')).trim()
-    } catch {
-      // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
-      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
-    }
-    if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
-      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
-    }
-
     const url = new URL(req.url)
-    const locale = normalizeCardLocale(url.searchParams.get('locale'))
-    const layout = normalizeCardLayout(url.searchParams.get('layout'))
-
     const store = deps.getStore()
 
-    // photo 只接受实拍 key 的形状，且必须真的存在于 ASSET_STORE；不合格一律当没传
-    const photoParam = String(url.searchParams.get('photo') || '').trim()
+    let pointId: string
+    let locale: SupportedLocale
+    let layout: ShareCardLayout
+    // 路径式（OG 图）只走无实拍渲染；photo 查询参数只在查询串形式（面板预览）下生效
     let photoKey: string | null = null
-    if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
-      // 存在性探测走 head：不产生 body 流，渲染需要字节时再 get 一次
-      const exists = await store.head(photoParam).catch(() => null)
-      if (exists) photoKey = photoParam
+
+    if (raw.segments !== undefined) {
+      // 路径式：/api/share/card/<pointId>/<locale>/<layout>[.jpg][/<photoHash>[.jpg]]
+      // 对非法段严格 400；查询串形式维持宽松归一（normalizeCard* 回落）
+      if (raw.segments.length < 3 || raw.segments.length > 4) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      const decoded: string[] = []
+      try {
+        for (const segment of raw.segments) decoded.push(decodeURIComponent(segment))
+      } catch {
+        // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      const [pointIdSeg, localeSeg, layoutSeg, hashSeg] = decoded
+      pointId = String(pointIdSeg || '').trim()
+      if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      if (!PATH_LOCALES.includes(localeSeg)) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      locale = localeSeg as SupportedLocale
+      const layoutName = stripJpgSuffix(layoutSeg)
+      if (!PATH_LAYOUTS.includes(layoutName)) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      layout = layoutName as ShareCardLayout
+      if (hashSeg !== undefined && !PHOTO_HASH_PATTERN.test(stripJpgSuffix(hashSeg))) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      // sha256 不可逆：合法哈希段也无法反查原始 key，photoKey 按 null 处理
+      // （与三段的渲染结果、缓存键一致）
+    } else if (raw.pointId !== undefined) {
+      try {
+        pointId = decodeURIComponent(String(raw.pointId || '')).trim()
+      } catch {
+        // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
+        return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+      }
+      locale = normalizeCardLocale(url.searchParams.get('locale'))
+      layout = normalizeCardLayout(url.searchParams.get('layout'))
+
+      // photo 只接受实拍 key 的形状，且必须真的存在于 ASSET_STORE；不合格一律当没传
+      const photoParam = String(url.searchParams.get('photo') || '').trim()
+      if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
+        // 存在性探测走 head：不产生 body 流，渲染需要字节时再 get 一次
+        const exists = await store.head(photoParam).catch(() => null)
+        if (exists) photoKey = photoParam
+      }
+    } else {
+      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
     }
 
     // 匿名限流闸挂在渲染路径里（缓存命中不计），见 renderAndStoreCard

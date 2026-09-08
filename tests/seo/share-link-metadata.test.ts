@@ -95,7 +95,7 @@ describe('/s/[code] generateMetadata', () => {
     // 动画截图兜底已收进卡片路由内部（失败时同源代理/302），短链页不再调 resolveMirrorPublicUrl
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+        url: 'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
       }),
     ])
   })
@@ -136,7 +136,7 @@ describe('/s/[code] generateMetadata', () => {
     })
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+        url: 'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
       }),
     ])
   })

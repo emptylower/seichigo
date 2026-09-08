@@ -103,16 +103,16 @@ describe('buildShareOgImageUrl', () => {
     )
   })
 
-  it('没有 imageKey 时指向卡片路由的横版', () => {
+  it('没有 imageKey 时指向卡片路由横版的路径式地址（.jpg 结尾）', () => {
     expect(buildShareOgImageUrl({ ...base, imageKey: null, fingerprint: null })).toBe(
-      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
     )
   })
 
   it('匿名链的 locale 跟着短链走', () => {
     expect(
       buildShareOgImageUrl({ ...base, locale: 'ja', imageKey: null, fingerprint: null }),
-    ).toContain('locale=ja')
+    ).toContain('/ja/landscape.jpg')
   })
 })
 

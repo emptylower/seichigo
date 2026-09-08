@@ -578,3 +578,141 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(res.status).toBe(200)
   })
 })
+
+const PATH_URL = 'https://seichigo.com/api/share/card/101%3Asuga/ja/portrait.jpg'
+const segParams = (...segments: string[]) => ({ params: Promise.resolve({ segments }) })
+
+describe('GET /api/share/card/[...segments]（路径式）', () => {
+  it('三段解析 pointId/locale/layout 并按段渲染写缓存', async () => {
+    const { store, objects } = makeStore()
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store }))(
+      get(PATH_URL, '1.2.3.4'),
+      segParams('101%3Asuga', 'ja', 'portrait.jpg'),
+    )
+    expect(res.status).toBe(200)
+    expect(objects.has('og-cards/101:suga__ja__portrait.jpg')).toBe(true)
+  })
+
+  it('第 3 段不带 .jpg 后缀也能渲染', async () => {
+    const { store, objects } = makeStore()
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store }))(
+      get('https://seichigo.com/api/share/card/101%3Asuga/ja/portrait', '1.2.3.4'),
+      segParams('101%3Asuga', 'ja', 'portrait'),
+    )
+    expect(res.status).toBe(200)
+    expect(objects.has('og-cards/101:suga__ja__portrait.jpg')).toBe(true)
+  })
+
+  it('第 4 段合法哈希按无实拍渲染，缓存键与三段一致', async () => {
+    const { store, objects } = makeStore()
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store }))(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh/landscape/deadbeefcafe.jpg', '1.2.3.4'),
+      segParams('101%3Asuga', 'zh', 'landscape', 'deadbeefcafe.jpg'),
+    )
+    expect(res.status).toBe(200)
+    expect(objects.has('og-cards/101:suga__zh__landscape.jpg')).toBe(true)
+  })
+
+  it('第 4 段哈希不带 .jpg 也合法', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh/landscape/deadbeefcafe', '1.2.3.4'),
+      segParams('101%3Asuga', 'zh', 'landscape', 'deadbeefcafe'),
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it('第 4 段哈希形状不对 → 400', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh/landscape/not-a-hash'),
+      segParams('101%3Asuga', 'zh', 'landscape', 'not-a-hash'),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('locale 段非法 → 400（路径式不宽松归一）', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/de/landscape.jpg'),
+      segParams('101%3Asuga', 'de', 'landscape.jpg'),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('layout 段非法（含 .JPG 大写后缀）→ 400', async () => {
+    const square = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh/square.jpg'),
+      segParams('101%3Asuga', 'zh', 'square.jpg'),
+    )
+    expect(square.status).toBe(400)
+    const upper = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.JPG'),
+      segParams('101%3Asuga', 'zh', 'landscape.JPG'),
+    )
+    expect(upper.status).toBe(400)
+  })
+
+  it('段数不对（两段 / 五段）→ 400', async () => {
+    const two = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/101%3Asuga/zh'),
+      segParams('101%3Asuga', 'zh'),
+    )
+    expect(two.status).toBe(400)
+    const five = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/a/zh/landscape/deadbeefcafe/extra'),
+      segParams('a', 'zh', 'landscape', 'deadbeefcafe', 'extra'),
+    )
+    expect(five.status).toBe(400)
+  })
+
+  it('pointId 段含 .. → 400', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/..%2Fetc/zh/landscape.jpg'),
+      segParams('..%2Fetc', 'zh', 'landscape.jpg'),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('段里畸形百分号序列 → 400 而不是 500', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/%/zh/landscape.jpg'),
+      segParams('%', 'zh', 'landscape.jpg'),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('路径式忽略 photo 查询参数：OG 路径只走无实拍渲染', async () => {
+    const { store, objects } = makeStore({
+      'checkin/u1/101:suga.jpg': new Uint8Array([9, 9]),
+    })
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store }))(
+      get(
+        'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg?photo=checkin%2Fu1%2F101%3Asuga.jpg',
+        '1.2.3.4',
+      ),
+      segParams('101%3Asuga', 'zh', 'landscape.jpg'),
+    )
+    expect(res.status).toBe(200)
+    // 缓存键不带实拍后缀：按无实拍合成
+    expect(objects.has('og-cards/101:suga__zh__landscape.jpg')).toBe(true)
+    expect([...objects.keys()].some((key) => /__[0-9a-f]{12}\.jpg$/.test(key))).toBe(false)
+  })
+
+  it('缓存命中直接回图（路径式与查询串共用渲染与缓存路径）', async () => {
+    const { store } = makeStore({
+      'og-cards/101:suga__ja__portrait.jpg': new Uint8Array([4, 4]),
+    })
+    const renderCard = vi.fn(async () => new Uint8Array([9]))
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store, renderCard }))(
+      get(PATH_URL),
+      segParams('101%3Asuga', 'ja', 'portrait.jpg'),
+    )
+    expect(res.status).toBe(200)
+    expect(renderCard).not.toHaveBeenCalled()
+  })
+
+  it('点位不存在 → 404（与查询串形式一致）', async () => {
+    const res = await createGetCardHandler(
+      makeDeps({ repo: new MemoryPointContextRepo([]) }),
+    )(get(PATH_URL), segParams('101%3Asuga', 'ja', 'portrait.jpg'))
+    expect(res.status).toBe(404)
+  })
+})
