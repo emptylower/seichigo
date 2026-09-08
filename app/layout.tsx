@@ -65,13 +65,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <TranslateGuard />
         <HtmlLangSync />
         <PlaceJsonLd data={buildOrganizationJsonLd()} keyPrefix="global-org" />
-        {/* 第三方脚本一律 lazyOnload：不抢首屏（首页移动端 LCP 优化，2026-09-07）。
-             GA 延后几秒不影响统计口径，page_view 仍会发。 */}
-        <Script
+        {/* GA 保持 lazyOnload 不抢首屏；延后几秒不影响统计口径，page_view 仍会发。
+             AdSense 改用原生 <script async>：React 19 会把它提升到 SSR 输出的 <head>，
+             渲染成真正的 script 标签，不执行 JS 的抓取路径也能看到。next/script 的
+             beforeInteractive 只给一条 preload 加 body 里的客户端注入 payload，爬虫
+             看不到 script 标签，达不到审核要求；代价是首页移动端 LCP 会回退。 */}
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5922869290769433"
           crossOrigin="anonymous"
-          strategy="lazyOnload"
         />
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" strategy="lazyOnload" />
         <Script id="google-analytics" strategy="lazyOnload">
