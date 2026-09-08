@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CARD_FONT_SIZES,
   buildCardLayout,
   computeCoverRect,
   resolveCardVariant,
@@ -63,7 +64,24 @@ describe('buildCardLayout', () => {
   it('横版 compare：左右两张图各占一半', () => {
     const layout = buildCardLayout('landscape', 'compare')
     expect(layout.canvas).toEqual({ width: 1200, height: 630 })
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 600, height: 430 })
-    expect(layout.photo).toEqual({ x: 600, y: 0, width: 600, height: 430 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 600, height: 360 })
+    expect(layout.photo).toEqual({ x: 600, y: 0, width: 600, height: 360 })
+  })
+
+  it('横版 default：紧凑边距，二维码贴右下角，页脚让位', () => {
+    const layout = buildCardLayout('landscape', 'default')
+    expect(layout.padding).toBe(40)
+    expect(layout.textTop).toBe(384)
+    expect(layout.textWidth).toBe(978)
+    expect(layout.qr).toEqual({ x: 1050, y: 480, size: 110 })
+    expect(layout.footerY).toBe(590)
+  })
+
+  it.each(['portrait', 'landscape'] as const)('%s 文字块不越界也不压页脚', (l) => {
+    const layout = buildCardLayout(l, 'default')
+    const { title: titleSize, body: bodySize, footer: footerSize } = CARD_FONT_SIZES[l]
+    const metaBottom = layout.textTop + 2 * (titleSize + 12) + (bodySize + 18) + bodySize
+    expect(metaBottom).toBeLessThanOrEqual(layout.footerY - footerSize)
+    expect(metaBottom).toBeLessThanOrEqual(layout.canvas.height)
   })
 })

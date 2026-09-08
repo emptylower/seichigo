@@ -79,6 +79,14 @@ export function resolveCardVariant(hasPhoto: boolean): ShareCardVariant {
   return hasPhoto ? 'compare' : 'default'
 }
 
+/** 卡片字号常量：渲染器与排版几何测试共用同一份，改动只在这里发生 */
+export const CARD_FONT_SIZES: Readonly<
+  Record<ShareCardLayout, { title: number; body: number; footer: number }>
+> = {
+  portrait: { title: 60, body: 34, footer: 30 },
+  landscape: { title: 40, body: 24, footer: 22 },
+}
+
 export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVariant): CardLayout {
   const canvas = SHARE_CARD_SIZES[layout]
 
@@ -104,9 +112,11 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
     }
   }
 
-  const padding = 48
-  const visualHeight = 430
-  const qrSize = 120
+  // 横版只有 630 高：边距与主视觉压紧，二维码贴右下角，页脚顶到画布底，
+  // 否则文字块（标题两行 + 作品 + meta）会压到页脚
+  const padding = 40
+  const visualHeight = 360
+  const qrSize = 110
   return {
     canvas,
     main:
@@ -117,10 +127,10 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
       variant === 'compare'
         ? { x: canvas.width / 2, y: 0, width: canvas.width / 2, height: visualHeight }
         : null,
-    textTop: visualHeight + padding - 12,
+    textTop: visualHeight + 24,
     padding,
     textWidth: canvas.width - padding * 2 - qrSize - 32,
-    qr: { x: canvas.width - padding - qrSize, y: visualHeight + 26, size: qrSize },
-    footerY: canvas.height - padding + 12,
+    qr: { x: canvas.width - padding - qrSize, y: canvas.height - padding - qrSize, size: qrSize },
+    footerY: canvas.height - padding,
   }
 }

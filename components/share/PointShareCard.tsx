@@ -6,6 +6,7 @@ import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
+  CARD_FONT_SIZES,
   buildCardLayout,
   computeCoverRect,
   resolveCardVariant,
@@ -131,8 +132,7 @@ export default function PointShareCard({
       // 文字块
       ctx.textBaseline = 'top'
       ctx.textAlign = 'left'
-      const titleSize = input.layout === 'portrait' ? 60 : 40
-      const bodySize = input.layout === 'portrait' ? 34 : 24
+      const { title: titleSize, body: bodySize } = CARD_FONT_SIZES[input.layout]
 
       ctx.fillStyle = '#111827'
       ctx.font = `bold ${titleSize}px system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sans-serif`
@@ -173,7 +173,7 @@ export default function PointShareCard({
 
       // 页脚：鸟居图标 + 站点名
       ctx.textBaseline = 'alphabetic'
-      const footerSize = input.layout === 'portrait' ? 30 : 22
+      const footerSize = CARD_FONT_SIZES[input.layout].footer
       ctx.fillStyle = '#9ca3af'
       ctx.font = `500 ${footerSize}px system-ui, -apple-system, sans-serif`
       ctx.fillText('⛩ seichigo.com', layout.padding, layout.footerY)
