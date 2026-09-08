@@ -9,7 +9,7 @@ import {
   renderAndStoreCard,
 } from '@/lib/share/handlers/card'
 import type { CardDeps } from '@/lib/share/handlers/card'
-import { DAILY_RENDER_BUDGET, resetCardRate } from '@/lib/share/cardBudget'
+import { ANON_DAILY_CARD_LIMIT, DAILY_RENDER_BUDGET, resetCardRate } from '@/lib/share/cardBudget'
 import { MemoryPointContextRepo } from '@/lib/share/pointContextRepoMemory'
 import type { PointContextRow } from '@/lib/share/pointContextRepo'
 import type { ShareStore } from '@/lib/share/store'
@@ -492,7 +492,7 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
   })
 
-  it('匿名超过日限流 → 429（缓存命中不计入）', async () => {
+  it('缓存命中不计入限流', async () => {
     const { store } = makeStore()
     const handler = createGetCardHandler(makeDeps({ getStore: () => store }))
     // 第一次未命中：渲染并写缓存，计 1 次
@@ -506,6 +506,30 @@ describe('GET /api/share/card/[pointId]', () => {
       (await handler(get(`${CARD_URL.replace('layout=landscape', 'layout=portrait')}`, '9.9.9.9'), params()))
         .status,
     ).toBe(200)
+  })
+
+  it('未命中打满每日上限后 → 429', async () => {
+    const { store } = makeStore()
+    const handler = createGetCardHandler(makeDeps({ getStore: () => store }))
+    // 用互不相同的 pointId 制造连续缓存未命中；限流闸在 404 判定之前，照常计数
+    let lastStatus = 0
+    for (let i = 0; i < ANON_DAILY_CARD_LIMIT; i++) {
+      const pointId = `rate${i}`
+      lastStatus = (
+        await handler(
+          get(`https://seichigo.com/api/share/card/${pointId}?locale=zh&layout=landscape`, '8.8.8.8'),
+          params(pointId),
+        )
+      ).status
+    }
+    expect(lastStatus).toBe(404)
+    // 配额打满后再未命中一次：直接 429，不再碰 DB / 渲染
+    const res = await handler(
+      get('https://seichigo.com/api/share/card/rate-final?locale=zh&layout=landscape', '8.8.8.8'),
+      params('rate-final'),
+    )
+    expect(res.status).toBe(429)
+    await expect(res.json()).resolves.toMatchObject({ error: '今日请求次数已达上限，请明天再试' })
   })
 
   it('日预算耗尽 → 走同源兜底且不渲染', async () => {
