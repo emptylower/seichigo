@@ -77,61 +77,92 @@ beforeEach(() => {
 })
 
 describe('PointSharePanel 预览走服务端卡片', () => {
-  it('首屏用竖版卡片 URL 取图', async () => {
+  it('首屏 <img> 直挂竖版卡片 URL，不为预览发 fetch', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalled())
-    expect(fetchCardBlobMock.mock.calls[0][0]).toBe(
-      '/api/share/card/101%3Asuga?locale=zh&layout=portrait',
-    )
+    const img = await screen.findByAltText(t('share.panelTitle', 'zh'))
+    expect(img).toHaveAttribute('src', '/api/share/card/101%3Asuga?locale=zh&layout=portrait')
+    expect(fetchCardBlobMock).not.toHaveBeenCalled()
   })
 
-  it('取到图之前显示骨架文案，取到后显示预览图', async () => {
-    let resolveCard: (blob: Blob) => void = () => {}
-    fetchCardBlobMock.mockReturnValue(new Promise<Blob>((resolve) => { resolveCard = resolve }))
+  it('加载完成前显示骨架文案，onLoad 后显示预览图', async () => {
     render(<PointSharePanel {...PROPS} />)
     expect(screen.getByText(t('share.generating', 'zh'))).toBeInTheDocument()
-    resolveCard(cardBlob())
-    await waitFor(() =>
-      expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toBeInTheDocument(),
-    )
+    fireEvent.load(screen.getByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.queryByText(t('share.generating', 'zh'))).toBeNull())
   })
 
-  it('切横版时换 layout 参数重新取图', async () => {
+  it('切横版时 img src 换成 landscape 的那条', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
     fireEvent.click(screen.getByText(t('share.layoutLandscape', 'zh')))
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(2))
-    expect(fetchCardBlobMock.mock.calls[1][0]).toBe(
-      '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+    await waitFor(() =>
+      expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
+        'src',
+        '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+      ),
     )
   })
 
-  it('取图失败显示重试，点重试重新取', async () => {
-    fetchCardBlobMock.mockResolvedValueOnce(null)
+  it('加载失败显示重试，点重试重新加载', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument())
+    fireEvent.error(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() =>
+      expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument(),
+    )
     fireEvent.click(screen.getByText(t('share.retry', 'zh')))
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(2))
+    // 重试靠 key 变化重挂 img：失败态先消失，再次 onLoad 后恢复预览
+    await waitFor(() => expect(screen.queryByText(t('share.generateFailed', 'zh'))).toBeNull())
+    fireEvent.load(screen.getByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.queryByText(t('share.generating', 'zh'))).toBeNull())
   })
 
-  it('保存图片用的是取回来的那个 blob，不再发第二次请求', async () => {
+  it('保存图片时才第一次取 blob，再点复制图片复用同一份', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toBeInTheDocument())
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.getByText(t('share.saveImage', 'zh'))).not.toBeDisabled())
+    expect(fetchCardBlobMock).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText(t('share.saveImage', 'zh')))
     await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
-    expect(downloadBlobMock.mock.calls[0][1]).toMatch(/\.webp$/)
     expect(fetchCardBlobMock).toHaveBeenCalledTimes(1)
+    expect(downloadBlobMock.mock.calls[0][1]).toMatch(/\.webp$/)
+    fireEvent.click(screen.getByText(t('share.more', 'zh')))
+    fireEvent.click(screen.getByText(t('share.copyImage', 'zh')))
+    await waitFor(() => expect(copyImageMock).toHaveBeenCalledTimes(1))
+    expect(fetchCardBlobMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('动作取图失败只对当前动作提示，预览不受影响', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.getByText(t('share.saveImage', 'zh'))).not.toBeDisabled())
+    fetchCardBlobMock.mockResolvedValueOnce(null)
+    fireEvent.click(screen.getByText(t('share.saveImage', 'zh')))
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh')),
+    )
+    expect(downloadBlobMock).not.toHaveBeenCalled()
+    // 预览还在，没有被打成失败态
+    expect(screen.queryByText(t('share.generateFailed', 'zh'))).toBeNull()
   })
 
   it('不再向上传端点推卡片', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toBeInTheDocument())
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+    await waitFor(() => expect(screen.getByText(t('share.saveImage', 'zh'))).toBeInTheDocument())
     expect(uploadSharePhotoMock).not.toHaveBeenCalled()
   })
 })
 
 describe('添加实拍', () => {
-  it('登录用户选图后上传并用 photo 参数重取卡片', async () => {
+  /** 等短链就绪：添加实拍按钮从 disabled 变可点 */
+  async function waitPhotoEntry(container: HTMLElement) {
+    await waitFor(() =>
+      expect(screen.getByText(t('share.addPhoto', 'zh'))).not.toBeDisabled(),
+    )
+    return container.querySelector('input[type="file"]') as HTMLInputElement
+  }
+
+  it('登录用户选图后上传并用 photo 参数刷新预览', async () => {
     uploadSharePhotoMock.mockResolvedValue({
       ok: true,
       imageUrl: null,
@@ -139,31 +170,35 @@ describe('添加实拍', () => {
       photoKey: 'checkin/u1/101:suga.jpg',
     })
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
     fireEvent.change(input, { target: { files: [file] } })
     await waitFor(() => expect(uploadSharePhotoMock).toHaveBeenCalledWith('AbC12xYz', file))
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(2))
-    expect(fetchCardBlobMock.mock.calls[1][0]).toContain('photo=checkin%2Fu1%2F101%3Asuga.jpg')
+    await waitFor(() =>
+      expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
+        'src',
+        expect.stringContaining('photo=checkin%2Fu1%2F101%3Asuga.jpg'),
+      ),
+    )
   })
 
   it('上传失败时提示且不改卡片 URL', async () => {
     uploadSharePhotoMock.mockResolvedValue(null)
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     fireEvent.change(input, {
       target: { files: [new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })] },
     })
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh')))
-    expect(fetchCardBlobMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
+      'src',
+      '/api/share/card/101%3Asuga?locale=zh&layout=portrait',
+    )
   })
 
   it('超过 5MB 直接提示，不上传', async () => {
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     const big = new File([new Uint8Array(5_000_001)], 'p.jpg', { type: 'image/jpeg' })
     fireEvent.change(input, { target: { files: [big] } })
     await waitFor(() =>
@@ -181,8 +216,7 @@ describe('添加实拍', () => {
       photoKey: 'checkin/u1/101:suga.jpg',
     })
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     const ext = type === 'image/png' ? 'png' : 'webp'
     const file = new File([new Uint8Array([1])], `p.${ext}`, { type })
     fireEvent.change(input, { target: { files: [file] } })
@@ -201,8 +235,7 @@ describe('添加实拍', () => {
       photoKey: 'checkin/u1/101:suga.jpg',
     })
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     const big = new File([new Uint8Array(5_000_001)], 'raw.png', { type: 'image/png' })
     fireEvent.change(input, { target: { files: [big] } })
     await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
@@ -213,8 +246,7 @@ describe('添加实拍', () => {
   it('转码后仍超 5MB 才提示过大且不上传', async () => {
     transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(5_000_001)], { type: 'image/jpeg' }))
     const { container } = render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const input = await waitPhotoEntry(container)
     const png = new File([new Uint8Array([1])], 'p.png', { type: 'image/png' })
     fireEvent.change(input, { target: { files: [png] } })
     await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
@@ -227,7 +259,7 @@ describe('添加实拍', () => {
   it('未登录时显示需登录态且不打开文件选择', async () => {
     useSessionMock.mockReturnValue({ status: 'unauthenticated' })
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalled())
+    await screen.findByAltText(t('share.panelTitle', 'zh'))
     expect(screen.getByText(t('share.addPhotoLoginRequired', 'zh'))).toBeInTheDocument()
     expect(screen.queryByText(t('share.addPhoto', 'zh'))).toBeNull()
   })
@@ -240,7 +272,7 @@ describe('添加实拍', () => {
       value: { href: 'https://seichigo.com/map', assign },
     })
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalled())
+    await screen.findByAltText(t('share.panelTitle', 'zh'))
     fireEvent.click(screen.getByText(t('share.addPhotoLoginRequired', 'zh')))
     expect(assign).toHaveBeenCalledWith(
       '/auth/signin?callbackUrl=https%3A%2F%2Fseichigo.com%2Fmap',
@@ -249,14 +281,15 @@ describe('添加实拍', () => {
 })
 
 describe('目的地与文案（回归）', () => {
-  it('卡片没就绪时先出骨架', () => {
-    fetchCardBlobMock.mockReturnValue(new Promise(() => {}))
+  it('卡片没就绪时先出骨架', async () => {
     render(<PointSharePanel {...PROPS} />)
+    await screen.findByAltText(t('share.panelTitle', 'zh'))
     expect(screen.getByTestId('share-destinations-skeleton')).toBeInTheDocument()
   })
 
   it('桌面路径出三列六个目的地', async () => {
     render(<PointSharePanel {...PROPS} />)
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
     await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
     expect(screen.getByText(t('share.platformX', 'zh'))).toBeInTheDocument()
     expect(screen.getByText(t('share.saveImage', 'zh'))).toBeInTheDocument()
@@ -266,6 +299,7 @@ describe('目的地与文案（回归）', () => {
     canShareFilesMock.mockReturnValue(true)
     shareViaSystemMock.mockResolvedValue('files')
     render(<PointSharePanel {...PROPS} />)
+    fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
     await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
     fireEvent.click(screen.getByText(t('share.platformXiaohongshu', 'zh')))
     await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalled())

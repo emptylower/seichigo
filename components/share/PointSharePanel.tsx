@@ -91,8 +91,7 @@ export default function PointSharePanel({
   const [code, setCode] = useState<string>('')
   const [linkFailed, setLinkFailed] = useState(false)
   const [photoKey, setPhotoKey] = useState<string | null>(null)
-  const [cardBlob, setCardBlob] = useState<Blob | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [imgLoaded, setImgLoaded] = useState(false)
   const [cardFailed, setCardFailed] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
@@ -143,38 +142,23 @@ export default function PointSharePanel({
     [pointId, locale, layout, photoKey],
   )
 
-  // 预览、保存、复制、系统分享共用同一个 blob：整条链路只发一次卡片请求
+  // 预览直挂 <img src={cardUrl}>：后端降级是 302 到跨域图床（无 CORS 头），fetch 必抛错，
+  // 但 <img> 不受此限。加载态由 onLoad/onError 上报；cardUrl 变化后旧状态作废。
   useEffect(() => {
-    let cancelled = false
+    setImgLoaded(false)
     setCardFailed(false)
-    setCardBlob(null)
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
-    fetchCardBlob(cardUrl).then((blob) => {
-      if (cancelled) return
-      if (!blob) {
-        setCardFailed(true)
-        return
-      }
-      setCardBlob(blob)
-      setPreviewUrl(URL.createObjectURL(blob))
-    })
-    return () => {
-      cancelled = true
-    }
   }, [cardUrl, retryNonce])
 
-  const previewUrlRef = useRef<string | null>(null)
-  useEffect(() => {
-    previewUrlRef.current = previewUrl
-  }, [previewUrl])
-  useEffect(() => {
-    return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-    }
-  }, [])
+  // 卡片 blob 改成惰性：只有用户点「保存图片」「复制图片」「系统分享」等动作时才取，
+  // 按 cardUrl 缓存一份，动作之间复用；失败只对当前动作提示，不影响预览与其它入口
+  const cardBlobRef = useRef<{ forCardUrl: string; blob: Blob } | null>(null)
+  const getCardBlob = useCallback(async (): Promise<Blob | null> => {
+    const cached = cardBlobRef.current
+    if (cached && cached.forCardUrl === cardUrl) return cached.blob
+    const blob = await fetchCardBlob(cardUrl)
+    if (blob) cardBlobRef.current = { forCardUrl: cardUrl, blob }
+    return blob
+  }, [cardUrl])
 
   const displayName = context?.displayName?.trim() || pointName
   const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
@@ -226,16 +210,15 @@ export default function PointSharePanel({
       ? `${captionSummarySource.slice(0, CAPTION_COLLAPSED_MAX)}…`
       : captionSummarySource
 
-  const cardFilename = useMemo(
-    () => buildCardFilename(displayName, cardBlob?.type),
-    [displayName, cardBlob],
-  )
-  const cardFile = useMemo(
-    () => (cardBlob ? blobToFile(cardBlob, cardFilename) : null),
-    [cardBlob, cardFilename],
-  )
-  // 手机/桌面只看 navigator.canShare({ files })，不看 UA
-  const mobilePath = useMemo(() => (cardFile ? canShareFiles([cardFile]) : false), [cardFile])
+  // 手机/桌面只看 navigator.canShare({ files })，不看 UA。卡片 blob 改成按需取之后
+  // 没有现成文件可探；canShare 只校验结构不看内容，用 1 字节 JPEG 桩探测即可
+  const mobilePath = useMemo(() => {
+    try {
+      return canShareFiles([new File([new Uint8Array([0xff])], 'probe.jpg', { type: 'image/jpeg' })])
+    } catch {
+      return false
+    }
+  }, [])
 
   const goSignIn = () => {
     const back = typeof window !== 'undefined' ? window.location.href : '/'
@@ -292,11 +275,16 @@ export default function PointSharePanel({
   }
 
   const shareToSystem = async (channel: ShareChannel) => {
-    if (!cardFile || !shareUrl || busy) return
+    if (!shareUrl || busy) return
     setBusy(true)
     try {
+      const blob = await getCardBlob()
+      if (!blob) {
+        showToast('share.toastFailed')
+        return
+      }
       const result = await shareViaSystem({
-        files: [cardFile],
+        files: [blobToFile(blob, buildCardFilename(displayName, blob.type))],
         text: captionFor(channel),
         url: withShareChannel(shareUrl, channel),
       })
@@ -309,15 +297,26 @@ export default function PointSharePanel({
 
   /**
    * 桌面 X：window.open 必须留在 click 的同步链路里 —— 先拿窗口引用，
-   * 再 await 剪贴板，最后设 location，否则 await 之后的 open 会被弹窗拦截。
+   * 再 await 取图与剪贴板，最后设 location，否则 await 之后的 open 会被弹窗拦截。
    */
   const handleDesktopX = async () => {
-    if (!cardBlob || !shareUrl || busy) return
+    if (!shareUrl || busy) return
     setBusy(true)
     const win = openBlankWindow()
     try {
-      const copied = await copyImage(cardBlob)
-      if (!copied) downloadBlob(cardBlob, cardFilename)
+      const blob = await getCardBlob()
+      if (!blob) {
+        // 同步开出来的窗口不留着发呆：能关就关，动作整体算失败
+        try {
+          win?.close()
+        } catch {
+          // 忽略
+        }
+        showToast('share.toastFailed')
+        return
+      }
+      const copied = await copyImage(blob)
+      if (!copied) downloadBlob(blob, buildCardFilename(displayName, blob.type))
       if (!openOrNavigate(win, buildXIntentUrl(captionFor('x')))) {
         const copiedText = await copyText(captionFor('x'))
         if (copiedText) {
@@ -334,14 +333,19 @@ export default function PointSharePanel({
   }
 
   const handleCopyImage = async () => {
-    if (!cardBlob || busy) return
+    if (busy) return
     setBusy(true)
     try {
-      if (await copyImage(cardBlob)) {
+      const blob = await getCardBlob()
+      if (!blob) {
+        showToast('share.toastFailed')
+        return
+      }
+      if (await copyImage(blob)) {
         showToast('share.toastImageCopied')
         return
       }
-      downloadBlob(cardBlob, cardFilename)
+      downloadBlob(blob, buildCardFilename(displayName, blob.type))
       showToast('share.toastSaved')
     } finally {
       setBusy(false)
@@ -358,18 +362,33 @@ export default function PointSharePanel({
     }
   }
 
-  const handleSave = () => {
-    if (!cardBlob) return
-    downloadBlob(cardBlob, cardFilename)
-    showToast('share.toastSaved')
+  const handleSave = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const blob = await getCardBlob()
+      if (!blob) {
+        showToast('share.toastFailed')
+        return
+      }
+      downloadBlob(blob, buildCardFilename(displayName, blob.type))
+      showToast('share.toastSaved')
+    } finally {
+      setBusy(false)
+    }
   }
 
   /** 桌面小红书/微信：下载图片 + 复制文案，一次点击做完 */
   const handleAppFlow = async (channel: 'xhs' | 'wx') => {
-    if (!cardBlob || busy) return
+    if (busy) return
     setBusy(true)
     try {
-      downloadBlob(cardBlob, cardFilename)
+      const blob = await getCardBlob()
+      if (!blob) {
+        showToast('share.toastFailed')
+        return
+      }
+      downloadBlob(blob, buildCardFilename(displayName, blob.type))
       const copied = await copyText(captionFor(channel))
       if (copied) {
         showToast('share.toastSavedAndCopiedOpenApp', {
@@ -383,7 +402,7 @@ export default function PointSharePanel({
     }
   }
 
-  const ready = Boolean(cardBlob && shareUrl)
+  const ready = Boolean(shareUrl && imgLoaded)
 
   return (
     <div className="flex max-h-[88dvh] flex-col overflow-hidden rounded-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl">
@@ -401,9 +420,16 @@ export default function PointSharePanel({
             layout === 'portrait' ? 'aspect-[1080/1440]' : 'aspect-[1200/630]'
           }`}
         >
-          {previewUrl ? (
-            <img src={previewUrl} alt={t('share.panelTitle', locale)} className="h-full w-full object-contain" />
-          ) : (
+          {/* 预览直挂服务端卡片 URL，不经过 fetch；key 带 retryNonce，点重试强制重载同一条 URL */}
+          <img
+            key={`${cardUrl}|${retryNonce}`}
+            src={cardUrl}
+            alt={t('share.panelTitle', locale)}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setCardFailed(true)}
+            className={imgLoaded && !linkFailed ? 'h-full w-full object-contain' : 'hidden'}
+          />
+          {!(imgLoaded && !linkFailed) ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-400">
               {cardFailed || linkFailed ? (
                 <>
@@ -423,7 +449,7 @@ export default function PointSharePanel({
                 </>
               )}
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -543,9 +569,8 @@ export default function PointSharePanel({
           </button>
         ) : null}
 
-        {/* 卡片没就绪时 mobilePath 还判不出来（要靠 canShare({files})），
-            先出骨架占位，别让整片按钮在两条路径之间翻一次页 */}
-        {!cardBlob ? (
+        {/* 卡片没就绪时先出骨架占位 */}
+        {!imgLoaded ? (
           <div className="grid grid-cols-3 gap-2" data-testid="share-destinations-skeleton" aria-hidden="true">
             {[0, 1, 2, 3, 4, 5].map((slot) => (
               <div key={slot} className="h-11 animate-pulse rounded-xl bg-gray-100" />

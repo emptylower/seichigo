@@ -88,7 +88,7 @@ beforeEach(() => {
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
   })
-  // 文案用例只关心文案，卡片给个立即成功的桩即可
+  // 文案用例的卡片动作（小红书/微信流程）才会按需取 blob，给个立即成功的桩即可
   fetchCardBlobMock.mockResolvedValue(new Blob(['card'], { type: 'image/webp' }))
   uploadSharePhotoMock.mockResolvedValue(null)
   globalThis.localStorage.clear()
@@ -98,8 +98,9 @@ beforeEach(() => {
 
 async function readyPanel(props = PROPS) {
   render(<PointSharePanel {...props} />)
+  // 预览是 <img> 直链：fire load 事件让面板进入已加载态，短链就绪后 X 目的地才可点
+  fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
   await waitFor(() => expect(fetchPointContextMock).toHaveBeenCalled())
-  // 卡片 blob（fetchCardBlob 桩）与短链都就绪后，X 目的地按钮才可点
   await waitFor(() =>
     expect(screen.getByRole('button', { name: t('share.platformX', 'zh') })).not.toBeDisabled(),
   )

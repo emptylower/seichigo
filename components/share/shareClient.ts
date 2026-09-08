@@ -58,8 +58,10 @@ export async function uploadSharePhoto(
 }
 
 /**
- * 取服务端卡片图。保存/复制/系统分享与预览共用同一个 blob，只发一次请求。
- * 渲染失败时后端会 302 到动画截图或站点默认 OG，fetch 自动跟随，仍拿得到图。
+ * 取服务端卡片图，只在保存/复制/系统分享等动作时按需调用（预览走 <img> 直链，不经过这里）。
+ * 渲染失败时后端会 302 到跨域图床（img.seichigo.com）的兜底图，那条响应没有 CORS 头，
+ * 浏览器 fetch 跟随重定向时会直接抛 TypeError——这里返回 null，由动作入口各自提示，
+ * 不影响 <img> 预览与其它入口。
  */
 export async function fetchCardBlob(url: string): Promise<Blob | null> {
   try {

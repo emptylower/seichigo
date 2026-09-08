@@ -83,21 +83,15 @@ describe('fetchCardBlob', () => {
     expect(await fetchCardBlob('/api/share/card/p1')).toBeNull()
   })
 
-  it('302 到兜底图时（fetch 自动跟随）仍返回 blob', async () => {
+  it('302 到跨域兜底图（无 CORS 头）时返回 null', async () => {
+    // 真实构造一条重定向响应：302 + Location 指向跨域的 img.seichigo.com。
+    // 浏览器跟着这条重定向走时，目标没有 Access-Control-Allow-Origin，fetch 直接
+    // 抛 TypeError；这里 mock 不跟随、把 302 原样交回来。两条路径的结果都必须是 null。
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(new Uint8Array([9]), {
-            status: 200,
-            headers: { 'content-type': 'image/jpeg' },
-          }),
-      ),
+      vi.fn(async () => Response.redirect('https://img.seichigo.com/og-fallback.png', 302)),
     )
-    const out = await fetchCardBlob('/api/share/card/p1')
-    expect(out).not.toBeNull()
-    expect(out!.size).toBe(1)
-    expect(out!.type).toBe('image/jpeg')
+    await expect(fetchCardBlob('/api/share/card/p1')).resolves.toBeNull()
   })
 
   it('抛错返回 null', async () => {
