@@ -77,3 +77,41 @@ export function isShareChannel(value: unknown): value is ShareChannel {
 export function shareLinkPath(code: string, channel?: ShareChannel): string {
   return channel ? `/s/${code}?c=${channel}` : `/s/${code}`
 }
+
+/**
+ * 分享卡片的点位上下文：地址（按 locale 取一条）、坐标、说明、是否在日本轮廓 bbox 内、
+ * 去掉作品名前缀的点位名、作品名。由 GET /api/share/point-context 返回。
+ */
+export type PointContextResponse = {
+  address: string | null
+  geo: [number, number] | null
+  note: string | null
+  inJapan: boolean
+  displayName: string
+  animeTitle: string
+}
+
+/**
+ * 日本轮廓 bbox 粗判用的经纬度范围（[minLon, minLat, maxLon, maxLat]）。
+ * 与 components/share/data/japan-outline.json 的 bbox [123.68, 24.266, 145.833, 45.51] 同源，
+ * 向外取整放宽一点，避免边界点位被判成海外而丢掉定位小图。
+ */
+export const JAPAN_BBOX: readonly [number, number, number, number] = [123.6, 24.2, 145.9, 45.6]
+
+/**
+ * 实际判定用两块矩形并集：单张 bbox 覆盖与那国岛（约 123°E）就必然把朝鲜半岛南端
+ * （首尔 37.6°N / 127.0°E）一起圈进来，与「首尔算海外」的预期冲突。
+ * 本土框盖本州/北海道/九州/四国/对马，西南诸岛框盖冲绳/奄美/小笠原；
+ * 两框在 lat 31° 分界，韩半岛位于西南诸岛的纬度带之外，被自然排除。
+ */
+const JAPAN_MAINLAND_BOX: readonly [number, number, number, number] = [129.0, 31.0, 145.9, 45.6]
+const JAPAN_RYUKYU_BOX: readonly [number, number, number, number] = [123.6, 24.2, 142.3, 31.0]
+
+function inBox(lat: number, lng: number, box: readonly [number, number, number, number]): boolean {
+  const [minLon, minLat, maxLon, maxLat] = box
+  return lng >= minLon && lng <= maxLon && lat >= minLat && lat <= maxLat
+}
+
+export function isInJapan(lat: number, lng: number): boolean {
+  return inBox(lat, lng, JAPAN_MAINLAND_BOX) || inBox(lat, lng, JAPAN_RYUKYU_BOX)
+}
