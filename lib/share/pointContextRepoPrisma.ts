@@ -96,4 +96,8 @@ export class PrismaPointContextRepo implements PointContextRepo {
       update: data,
     })
   }
+
+  async countResolvedSince(since: Date): Promise<number> {
+    return prisma.anitabiPointAddress.count({ where: { resolvedAt: { gte: since } } })
+  }
 }

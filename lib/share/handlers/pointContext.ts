@@ -8,6 +8,9 @@ import { isInJapan, type PointContextResponse } from '@/lib/share/types'
 
 export const ANON_DAILY_POINT_CONTEXT_LIMIT = 300
 
+/** 全局每日地理编码回填预算：按 AnitabiPointAddress.resolvedAt 当日计数，超出后跳过上游 */
+export const DAILY_GEOCODE_BUDGET = 2_000
+
 export type PointContextDeps = {
   repo: PointContextRepo
   geocode: (input: { lat: number; lng: number }) => Promise<GeocodeAddresses | null>
@@ -27,6 +30,13 @@ export function checkPointContextRate(ipHash: string, now: Date): boolean {
   const day = utcDateStamp(now)
   const entry = rateCounters.get(ipHash)
   if (!entry || entry.day !== day) {
+    // 跨日顺手清理：表被撑到 5000+ 才扫一遍，删掉所有非当日的 key，
+    // 防止只来一次的长尾 IP 把 Map 无限撑大（每天最多清一次量级）
+    if (rateCounters.size > 5000) {
+      for (const [key, value] of rateCounters) {
+        if (value.day !== day) rateCounters.delete(key)
+      }
+    }
     rateCounters.set(ipHash, { day, count: 1 })
     return true
   }
@@ -38,6 +48,11 @@ export function checkPointContextRate(ipHash: string, now: Date): boolean {
 /** 单测隔离用 */
 export function resetPointContextRate(): void {
   rateCounters.clear()
+}
+
+/** 单测观察限流表大小用（跨日清理的验证） */
+export function pointContextRateSize(): number {
+  return rateCounters.size
 }
 
 // pointId 会进 URL 与查询条件，字符集与 lib/share/handlers/links.ts:23 保持一致
@@ -85,19 +100,24 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
 
     let address = pickAddress(await deps.repo.findAddress(pointId), locale)
     if (!address && geo) {
-      const resolved = await deps.geocode({ lat: geo[0], lng: geo[1] })
-      // 三语全空说明上游没给出可用的行政区，不写缓存，下次还能再试
-      if (resolved && (resolved.zh || resolved.en || resolved.ja)) {
-        const row: PointAddressRow = {
-          pointId,
-          addressZh: resolved.zh,
-          addressEn: resolved.en,
-          addressJa: resolved.ja,
+      // 全局日预算：当日已回填的行数用完就不再打上游，address 留 null 按短缓存返回
+      const utcDayStart = new Date(Math.floor(now.getTime() / 86_400_000) * 86_400_000)
+      const resolvedToday = await deps.repo.countResolvedSince(utcDayStart)
+      if (resolvedToday < DAILY_GEOCODE_BUDGET) {
+        const resolved = await deps.geocode({ lat: geo[0], lng: geo[1] })
+        // 三语全空说明上游没给出可用的行政区，不写缓存，下次还能再试
+        if (resolved && (resolved.zh || resolved.en || resolved.ja)) {
+          const row: PointAddressRow = {
+            pointId,
+            addressZh: resolved.zh,
+            addressEn: resolved.en,
+            addressJa: resolved.ja,
+          }
+          await deps.repo.saveAddress({ ...row, source: 'maptiler' }).catch((error: unknown) => {
+            console.error('[share.point_context.cache_write_failed]', { pointId, error })
+          })
+          address = pickAddress(row, locale)
         }
-        await deps.repo.saveAddress({ ...row, source: 'maptiler' }).catch((error: unknown) => {
-          console.error('[share.point_context.cache_write_failed]', { pointId, error })
-        })
-        address = pickAddress(row, locale)
       }
     }
 

@@ -10,8 +10,13 @@ import type {
 export class MemoryPointContextRepo implements PointContextRepo {
   private readonly points = new Map<string, PointContextRow>()
   private readonly addresses = new Map<string, PointAddressRow>()
+  private readonly resolvedAt = new Map<string, Date>()
 
-  constructor(rows: readonly PointContextRow[] = []) {
+  constructor(
+    rows: readonly PointContextRow[] = [],
+    /** saveAddress 的时间戳来源，预算相关测试需要固定时钟 */
+    private readonly now: () => Date = () => new Date(),
+  ) {
     for (const row of rows) this.points.set(row.pointId, { ...row })
   }
 
@@ -32,5 +37,14 @@ export class MemoryPointContextRepo implements PointContextRepo {
       addressEn: input.addressEn,
       addressJa: input.addressJa,
     })
+    this.resolvedAt.set(input.pointId, this.now())
+  }
+
+  async countResolvedSince(since: Date): Promise<number> {
+    let count = 0
+    for (const at of this.resolvedAt.values()) {
+      if (at >= since) count += 1
+    }
+    return count
   }
 }

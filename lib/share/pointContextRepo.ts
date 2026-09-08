@@ -39,4 +39,6 @@ export interface PointContextRepo {
   findPoint(pointId: string, locale: SupportedLocale): Promise<PointContextRow | null>
   findAddress(pointId: string): Promise<PointAddressRow | null>
   saveAddress(input: SaveAddressInput): Promise<void>
+  /** since（含）之后回填的地址行数：handler 用它做全局每日地理编码预算 */
+  countResolvedSince(since: Date): Promise<number>
 }

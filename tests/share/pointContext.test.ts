@@ -3,7 +3,10 @@ import { MemoryPointContextRepo } from '@/lib/share/pointContextRepoMemory'
 import type { PointContextRow } from '@/lib/share/pointContextRepo'
 import {
   ANON_DAILY_POINT_CONTEXT_LIMIT,
+  checkPointContextRate,
   createGetPointContextHandler,
+  DAILY_GEOCODE_BUDGET,
+  pointContextRateSize,
   resetPointContextRate,
   type PointContextDeps,
 } from '@/lib/share/handlers/pointContext'
@@ -196,5 +199,65 @@ describe('GET /api/share/point-context', () => {
       makeRequest('pointId=101%3Abudo&locale=zh', null),
     )
     expect(res.status).toBe(200)
+  })
+})
+
+describe('checkPointContextRate 跨日清理', () => {
+  const TODAY = new Date('2026-09-08T12:00:00Z')
+  const YESTERDAY = new Date('2026-09-07T12:00:00Z')
+
+  it('跨日且条数超过 5000 时删掉所有非当日 key', () => {
+    for (let i = 0; i < 5001; i++) checkPointContextRate(`stale-${i}`, YESTERDAY)
+    expect(pointContextRateSize()).toBe(5001)
+    // 跨日后的第一笔请求触发清理：5001 条昨日 key 全删，只剩当日新 entry
+    expect(checkPointContextRate('today-1', TODAY)).toBe(true)
+    expect(pointContextRateSize()).toBe(1)
+    expect(checkPointContextRate('today-2', TODAY)).toBe(true)
+    expect(pointContextRateSize()).toBe(2)
+  })
+
+  it('条数不超过 5000 时不清理', () => {
+    for (let i = 0; i < 100; i++) checkPointContextRate(`stale-${i}`, YESTERDAY)
+    checkPointContextRate('fresh', TODAY)
+    expect(pointContextRateSize()).toBe(101)
+  })
+})
+
+describe('全局每日地理编码预算', () => {
+  it('预算耗尽时 geocode 不被调用，address 留 null 且按短缓存返回', async () => {
+    const repo = new MemoryPointContextRepo([ROW], () => NOW)
+    for (let i = 0; i < DAILY_GEOCODE_BUDGET; i++) {
+      await repo.saveAddress({
+        pointId: `budget:${i}`,
+        addressZh: '东京都',
+        addressEn: null,
+        addressJa: null,
+        source: 'maptiler',
+      })
+    }
+    const geocode = vi.fn(async () => ADDRESSES)
+    const res = await createGetPointContextHandler(makeDeps({ repo, geocode }))(
+      makeRequest('pointId=101%3Abudo&locale=zh'),
+    )
+    expect(geocode).not.toHaveBeenCalled()
+    expect((await res.json()).address).toBeNull()
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300')
+  })
+
+  it('预算未耗尽时照常回填', async () => {
+    const repo = new MemoryPointContextRepo([ROW], () => NOW)
+    await repo.saveAddress({
+      pointId: 'budget:1',
+      addressZh: '东京都',
+      addressEn: null,
+      addressJa: null,
+      source: 'maptiler',
+    })
+    const geocode = vi.fn(async () => ADDRESSES)
+    const res = await createGetPointContextHandler(makeDeps({ repo, geocode }))(
+      makeRequest('pointId=101%3Abudo&locale=zh'),
+    )
+    expect(geocode).toHaveBeenCalledTimes(1)
+    expect((await res.json()).address).toBe(ADDRESSES.zh)
   })
 })

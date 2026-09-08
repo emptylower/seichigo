@@ -52,4 +52,18 @@ describe('MemoryPointContextRepo', () => {
     first.name = 'mutated'
     expect((await repo.findPoint('101:budo', 'zh'))?.name).toBe(ROW.name)
   })
+
+  it('countResolvedSince 只数 since 之后回填的行', async () => {
+    const repo = new MemoryPointContextRepo([ROW], () => new Date('2026-09-08T12:00:00Z'))
+    expect(await repo.countResolvedSince(new Date('2026-09-08T00:00:00Z'))).toBe(0)
+    await repo.saveAddress({
+      pointId: '101:budo',
+      addressZh: '东京都',
+      addressEn: null,
+      addressJa: null,
+      source: 'maptiler',
+    })
+    expect(await repo.countResolvedSince(new Date('2026-09-08T00:00:00Z'))).toBe(1)
+    expect(await repo.countResolvedSince(new Date('2026-09-09T00:00:00Z'))).toBe(0)
+  })
 })
