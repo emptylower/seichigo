@@ -165,3 +165,13 @@ describe('PointShareCard', () => {
     )
   })
 })
+
+describe('formatSceneTime', () => {
+  it('秒数格式化为 mm:ss，超过一小时带小时', async () => {
+    const { formatSceneTime } = await import('@/components/share/PointShareCard')
+    expect(formatSceneTime('1194')).toBe('19:54')
+    expect(formatSceneTime('65')).toBe('1:05')
+    expect(formatSceneTime('3725')).toBe('1:02:05')
+    expect(formatSceneTime('第3話 冒頭')).toBe('第3話 冒頭')
+  })
+})

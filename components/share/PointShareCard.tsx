@@ -63,8 +63,21 @@ function metaLine(input: PointShareCardInput): string {
   if (input.episode) {
     parts.push(input.locale === 'en' ? `EP ${input.episode}` : `第 ${input.episode} 集`)
   }
-  if (input.scene) parts.push(input.scene)
+  if (input.scene) parts.push(formatSceneTime(input.scene))
   return parts.join(' · ')
+}
+
+/** anitabi 的 `s` 是场景出现的秒数；纯数字时格式化为 mm:ss（超过一小时为 h:mm:ss），否则原样返回。 */
+export function formatSceneTime(scene: string): string {
+  const raw = String(scene).trim()
+  if (!/^\d+(\.\d+)?$/.test(raw)) return raw
+  const total = Math.floor(Number(raw))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sec = total % 60
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  const ss = String(sec).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
 function animeLine(input: PointShareCardInput): string {
