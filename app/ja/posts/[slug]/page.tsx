@@ -136,11 +136,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: seoTitle.absolute,
       description,
       url: `/ja/posts/${encodeSlugForPath(frontmatter.slug)}`,
+      images: [`/posts/${encodeSlugForPath(frontmatter.slug)}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
+      images: [`/posts/${encodeSlugForPath(frontmatter.slug)}/twitter-image`],
     },
   }
 }
