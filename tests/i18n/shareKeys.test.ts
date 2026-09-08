@@ -68,6 +68,8 @@ describe('share i18n keys', () => {
   const V2_1_KEYS = ['cardQrTitle', 'cardQrSub', 'cardTagline']
   // 2026-09-08 服务端渲染改造：未登录时「添加实拍」的需登录态
   const OG_SERVER_RENDER_KEYS = ['addPhotoLoginRequired']
+  // 2026-09-09 Track B 评审修复：实拍已落库，前端「移除」只是本次卡片不用它
+  const PHOTO_UNUSE_KEYS = ['photoUnuse']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
     for (const key of [
@@ -76,9 +78,14 @@ describe('share i18n keys', () => {
       ...CAPTION_EDITOR_KEYS,
       ...V2_1_KEYS,
       ...OG_SERVER_RENDER_KEYS,
+      ...PHOTO_UNUSE_KEYS,
     ]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }
+  })
+
+  it.each(LOCALES)('%s 已删除语义不符的 removePhoto', (_locale, dict) => {
+    expect(at(dict, 'share.removePhoto')).toBeUndefined()
   })
 
   it.each(LOCALES)('%s 的 toastSavedAndCopiedOpenApp 带 {app} 占位', (_locale, dict) => {

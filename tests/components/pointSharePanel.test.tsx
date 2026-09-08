@@ -197,6 +197,10 @@ describe('添加实拍', () => {
         expect.stringContaining('photo=checkin%2Fu1%2F101%3Asuga.jpg'),
       ),
     )
+    // 照片已落库，前端「移除」只是本次卡片不用它：按钮是「不在卡片中使用」语义
+    expect(
+      screen.getByRole('button', { name: t('share.photoUnuse', 'zh') }),
+    ).toBeInTheDocument()
   })
 
   it('上传失败时提示且不改卡片 URL', async () => {

@@ -499,8 +499,9 @@ export default function PointSharePanel({
                 {t('share.addPhotoLoginRequired', locale)}
               </button>
             ) : photoKey ? (
+              // 上传后照片已落库，这里的「移除」只是本次卡片不用它
               <button type="button" onClick={removePhoto} className="text-xs font-medium text-gray-500 underline">
-                {t('share.removePhoto', locale)}
+                {t('share.photoUnuse', locale)}
               </button>
             ) : (
               <>

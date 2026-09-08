@@ -734,7 +734,7 @@
     "layoutLandscape": "Landscape",
     "addPhoto": "Add your photo",
     "addPhotoLoginRequired": "Sign in to add your photo",
-    "removePhoto": "Remove photo",
+    "photoUnuse": "Don't use in card",
     "photoHint": "Add your own shot and the card becomes a side-by-side comparison",
     "captionLabel": "Caption",
     "collapseCaption": "Collapse",
