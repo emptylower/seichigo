@@ -1,12 +1,21 @@
-import japanOutline from '@/components/share/data/japan-outline.json'
-
 export type LocatorBox = { x: number; y: number; width: number; height: number }
 /** [minLon, minLat, maxLon, maxLat] */
 export type LocatorBBox = readonly [number, number, number, number]
 export type LocatorGeometry = { bbox: LocatorBBox; rings: number[][][] }
 
-/** Natural Earth 50m 日本轮廓（公有领域），34 环 1097 点 */
-export const JAPAN_OUTLINE = japanOutline as unknown as LocatorGeometry
+let outlinePromise: Promise<LocatorGeometry> | null = null
+
+/**
+ * Natural Earth 50m 日本轮廓（公有领域），34 环 1097 点。
+ * 只有日本境内的点位才画轮廓，所以 JSON 走动态 import 懒加载：
+ * 海外点位与不开分享面板的会话都不用为这几十 KB 买单。promise 缓存在模块级，只解析一次。
+ */
+export function loadJapanOutline(): Promise<LocatorGeometry> {
+  outlinePromise ??= import('@/lib/share/data/japan-outline.json').then(
+    (module) => (module.default ?? module) as unknown as LocatorGeometry,
+  )
+  return outlinePromise
+}
 
 type Projection = {
   originX: number
@@ -82,7 +91,7 @@ export function drawJapanLocator(
   ctx: LocatorContext,
   box: LocatorBox,
   point: { lat: number; lng: number } | null,
-  geometry: LocatorGeometry = JAPAN_OUTLINE,
+  geometry: LocatorGeometry,
 ): void {
   // 投影只算一次：1097 个点每个都重建投影是纯浪费
   const projection = buildProjection(box, geometry.bbox)

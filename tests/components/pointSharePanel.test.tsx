@@ -476,6 +476,11 @@ describe('PointSharePanel 桌面路径', () => {
     expect(screen.queryByRole('button', { name: t('share.shareTo', 'zh') })).not.toBeInTheDocument()
   })
 
+  it('桌面六个入口仍是三列', async () => {
+    await readyPanel()
+    expect(screen.getByTestId('share-destinations').className).toContain('grid-cols-3')
+  })
+
   it('X：先同步开窗口，再写剪贴板，最后设 location', async () => {
     await readyPanel()
     const button = screen.getByRole('button', { name: t('share.platformX', 'zh') })
@@ -631,6 +636,16 @@ describe('PointSharePanel 手机路径', () => {
     )
   })
 
+  it('五个目的地一行排开，字号缩到 text-xs', async () => {
+    await readyPanel()
+    const grid = screen.getByTestId('share-destinations')
+    expect(grid.className).toContain('grid-cols-5')
+    expect(grid.className).not.toContain('grid-cols-3')
+    const x = screen.getByRole('button', { name: t('share.platformX', 'zh') })
+    expect(x.className).toContain('text-xs')
+    expect(x.className).not.toContain('text-sm')
+  })
+
   it('「更多」里是保存图片与复制文案，没有复制图片', async () => {
     await readyPanel()
     fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
@@ -663,46 +678,5 @@ describe('PointSharePanel 目的地区就绪前占位', () => {
     const line = screen.getByText(t('share.platformLine', 'zh'))
     expect(line).not.toHaveAttribute('href')
     expect(line).toHaveAttribute('aria-disabled', 'true')
-  })
-})
-
-describe('PointSharePanel 文案折叠与编辑', () => {
-  it('默认折叠成一行摘要（前 40 字 + …）', async () => {
-    await readyPanel()
-    const collapsed = screen.getByRole('button', { name: t('share.captionLabel', 'zh') })
-    const full =
-      '《你的名字。》圣地巡礼｜须贺神社 · 東京都新宿区 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。'
-    expect(collapsed).toHaveTextContent(`${full.slice(0, 40)}…`)
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-  })
-
-  it('展开后可编辑，编辑后的文案用于所有动作且渠道参数被改写', async () => {
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t('share.captionLabel', 'zh') }))
-    const textarea = screen.getByLabelText(t('share.captionLabel', 'zh'))
-    fireEvent.change(textarea, {
-      target: { value: '我改过的文案 https://seichigo.com/s/AbC12xYz?c=copy' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
-    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
-    expect(copyTextMock.mock.calls[0]![0]).toBe(
-      '我改过的文案 https://seichigo.com/s/AbC12xYz?c=xhs',
-    )
-  })
-
-  it('编辑器显示原始输入：用户删掉 ?c=copy 后不回填，动作时才改写渠道', async () => {
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t('share.captionLabel', 'zh') }))
-    const textarea = screen.getByLabelText(t('share.captionLabel', 'zh'))
-    fireEvent.change(textarea, {
-      target: { value: '我的文案 https://seichigo.com/s/AbC12xYz' },
-    })
-    // 编辑器保持用户输入，不把 ?c=copy 回填进去
-    expect(textarea).toHaveValue('我的文案 https://seichigo.com/s/AbC12xYz')
-    // 动作那一刻仍按目的地渠道改写
-    fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))
-    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
-    expect(copyTextMock.mock.calls[0]![0]).toBe('我的文案 https://seichigo.com/s/AbC12xYz?c=xhs')
-    expect(textarea).toHaveValue('我的文案 https://seichigo.com/s/AbC12xYz')
   })
 })

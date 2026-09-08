@@ -1,20 +1,33 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import {
-  JAPAN_OUTLINE,
   LOCATOR_COLORS,
   drawJapanLocator,
+  loadJapanOutline,
   projectToBox,
   type LocatorContext,
   type LocatorGeometry,
 } from '@/components/share/japanLocator'
 
 const BOX = { x: 0, y: 0, width: 260, height: 260 }
-const BBOX = JAPAN_OUTLINE.bbox
+/** Natural Earth 50m 日本 bbox，投影用例在收集期就要用，写死一份 */
+const BBOX = [123.68, 24.266, 145.833, 45.51] as const
+let OUTLINE: LocatorGeometry
 
-describe('JAPAN_OUTLINE', () => {
-  it('入库的轮廓有 bbox 与多环', () => {
-    expect(BBOX).toEqual([123.68, 24.266, 145.833, 45.51])
-    expect(JAPAN_OUTLINE.rings.length).toBeGreaterThan(10)
+beforeAll(async () => {
+  OUTLINE = await loadJapanOutline()
+})
+
+describe('loadJapanOutline', () => {
+  it('懒加载的轮廓有 bbox 与多环', () => {
+    expect(OUTLINE.bbox).toEqual(BBOX)
+    expect(OUTLINE.rings.length).toBeGreaterThan(10)
+  })
+
+  it('多次调用复用同一个 promise，不重复解析 JSON', async () => {
+    const first = loadJapanOutline()
+    const second = loadJapanOutline()
+    expect(first).toBe(second)
+    expect(await first).toBe(OUTLINE)
   })
 })
 
@@ -158,7 +171,7 @@ describe('drawJapanLocator', () => {
   it('真实日本轮廓全部落在框内', () => {
     const { ctx, calls } = makeCtx()
     const box = { x: 20, y: 30, width: 240, height: 240 }
-    drawJapanLocator(ctx, box, { lat: 35.68, lng: 139.7 })
+    drawJapanLocator(ctx, box, { lat: 35.68, lng: 139.7 }, OUTLINE)
     const points = calls.filter((c) => c[0] === 'moveTo' || c[0] === 'lineTo')
     expect(points.length).toBeGreaterThan(1000)
     for (const [, x, y] of points as Array<[string, number, number]>) {

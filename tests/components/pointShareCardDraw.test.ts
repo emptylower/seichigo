@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CARD_FOOTER_SIZES,
   CARD_ROW_METRICS,
+  addressPinMetrics,
   buildCardLayout,
   buildCardTextPlan,
   computeCoverRect,
@@ -114,6 +115,26 @@ describe('卡片几何不重叠', () => {
   })
 })
 
+describe('addressPinMetrics', () => {
+  it('图钉宽度与右侧留白都按字号等比，offset 是两者之和', () => {
+    const m = addressPinMetrics(34)
+    expect(m.width).toBeCloseTo(34 * 0.62, 6)
+    expect(m.gap).toBeCloseTo(34 * 0.28, 6)
+    expect(m.offset).toBeCloseTo(m.width + m.gap, 6)
+  })
+
+  it('字号越大图钉越大，且始终窄于一个字', () => {
+    expect(addressPinMetrics(24).width).toBeLessThan(addressPinMetrics(34).width)
+    expect(addressPinMetrics(34).width).toBeLessThan(34)
+  })
+})
+
+describe('CARD_ROW_METRICS', () => {
+  it('竖版说明行行距给到 12，两行说明不至于贴在一起', () => {
+    expect(CARD_ROW_METRICS.portrait.note.gap).toBe(12)
+  })
+})
+
 describe('buildCardTextPlan', () => {
   const fullRows = (l: 'portrait' | 'landscape') => {
     const metrics = CARD_ROW_METRICS[l]
@@ -122,7 +143,7 @@ describe('buildCardTextPlan', () => {
       geometry: buildCardLayout(l, 'default'),
       nameLines: Array.from({ length: metrics.name.maxLines }, (_, i) => `名字${i}`),
       animeLine: '《摇曳露营△ 三期》 · 第 1 集 · 19:54',
-      addressLine: '📍 東京都 武蔵野市 中町一丁目',
+      addressLine: '東京都 武蔵野市 中町一丁目',
       noteLines: Array.from({ length: metrics.note.maxLines }, (_, i) => `说明${i}`),
     }
   }
@@ -132,7 +153,9 @@ describe('buildCardTextPlan', () => {
     expect(plan.rows.length).toBe(
       CARD_ROW_METRICS[l].name.maxLines + 1 + 1 + CARD_ROW_METRICS[l].note.maxLines,
     )
-    expect(plan.bottom).toBeLessThanOrEqual(buildCardLayout(l, 'default').locator.y)
+    // 实际字形高度约字号的 1.2 倍，按这个量算最后一行的底边
+    const last = plan.rows[plan.rows.length - 1]!
+    expect(last.y + last.size * 1.2).toBeLessThanOrEqual(buildCardLayout(l, 'default').locator.y)
   })
 
   it('行从 textTop 开始，按各行字号与间距逐行下移', () => {
@@ -143,7 +166,7 @@ describe('buildCardTextPlan', () => {
       geometry,
       nameLines: ['葡萄牛奶'],
       animeLine: '《摇曳露营△ 三期》',
-      addressLine: '📍 東京都 武蔵野市',
+      addressLine: '東京都 武蔵野市',
       noteLines: ['联名饮品'],
     })
     expect(plan.rows.map((row) => row.kind)).toEqual(['name', 'anime', 'address', 'note'])

@@ -8,6 +8,7 @@ import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
   CARD_FOOTER_SIZES,
   CARD_ROW_METRICS,
+  addressPinMetrics,
   buildCardLayout,
   buildCardTextPlan,
   computeCoverRect,
@@ -15,7 +16,7 @@ import {
   wrapLines,
   type CardTextRowKind,
 } from '@/components/share/pointShareCardDraw'
-import { drawJapanLocator } from '@/components/share/japanLocator'
+import { drawJapanLocator, loadJapanOutline } from '@/components/share/japanLocator'
 
 export type PointShareCardInput = {
   layout: ShareCardLayout
@@ -73,6 +74,35 @@ const FONT_STACK = 'system-ui, -apple-system, "PingFang SC", "Hiragino Sans", sa
 
 function fontOf(size: number, weight: string): string {
   return `${weight} ${size}px ${FONT_STACK}`
+}
+
+/** 品牌粉。地址行前缀不再用 📍 —— 设备没有 emoji 字体时会掉成豆腐块 */
+const ADDRESS_PIN_COLOR = '#ec4899'
+
+/**
+ * 矢量小图钉：圆头 + 下方三角 + 白色内点，整体宽 addressPinMetrics(size).width、高 size。
+ * y 是文字行顶（textBaseline 为 top），与地址文字对齐。
+ */
+function drawAddressPin(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  const radius = addressPinMetrics(size).width / 2
+  const cx = x + radius
+  const cy = y + radius + size * 0.1
+  ctx.save()
+  ctx.fillStyle = ADDRESS_PIN_COLOR
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(cx - radius * 0.62, cy + radius * 0.62)
+  ctx.lineTo(cx + radius * 0.62, cy + radius * 0.62)
+  ctx.lineTo(cx, y + size)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 }
 
 const ROW_COLORS: Readonly<Record<CardTextRowKind, string>> = {
@@ -171,10 +201,12 @@ export default function PointShareCard({
         return null
       }
 
-      const [animeImg, qrImg, logoImg] = await Promise.all([
+      const [animeImg, qrImg, logoImg, outline] = await Promise.all([
         loadAnime(),
         loadImage(qrDataUrl).catch(() => null),
         loadImage('/brand/web-logo.png').catch(() => null),
+        // 轮廓 JSON 只有日本境内点位才下载；下不来就不画轮廓，别拖垮整张卡
+        input.inJapan ? loadJapanOutline().catch(() => null) : Promise.resolve(null),
       ])
       if (isCancelled()) return
 
@@ -207,8 +239,9 @@ export default function PointShareCard({
       const animeLineText = wrapLines(measure, animeMetaLine(input), layout.textWidth, 1)[0] || ''
 
       ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
+      const addressPin = addressPinMetrics(rowMetrics.address.size)
       const addressLineText = input.address
-        ? wrapLines(measure, `📍 ${input.address}`, layout.textWidth, 1)[0] || ''
+        ? wrapLines(measure, input.address, layout.textWidth - addressPin.offset, 1)[0] || ''
         : ''
 
       ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
@@ -228,17 +261,21 @@ export default function PointShareCard({
         noteLines,
       })
       for (const row of plan.rows) {
+        // 地址行左侧留给矢量图钉，文字整体右移一个 offset
+        const isAddress = row.kind === 'address'
+        if (isAddress) drawAddressPin(ctx, layout.textX, row.y, row.size)
         ctx.fillStyle = ROW_COLORS[row.kind]
         ctx.font = fontOf(row.size, ROW_WEIGHTS[row.kind])
-        ctx.fillText(row.text, layout.textX, row.y)
+        ctx.fillText(row.text, isAddress ? layout.textX + addressPin.offset : layout.textX, row.y)
       }
 
       // 日本轮廓定位小图：海外点位不画，位置留白（二维码位置不变）
-      if (input.inJapan) {
+      if (input.inJapan && outline) {
         drawJapanLocator(
           ctx,
           layout.locator,
           input.geo ? { lat: input.geo[0], lng: input.geo[1] } : null,
+          outline,
         )
       }
 

@@ -112,7 +112,7 @@ export const CARD_ROW_METRICS: Readonly<
     name: { size: 60, gap: 10, maxLines: 2 },
     anime: { size: 38, gap: 14 },
     address: { size: 34, gap: 12 },
-    note: { size: 32, gap: 8, maxLines: 2 },
+    note: { size: 32, gap: 12, maxLines: 2 },
   },
   landscape: {
     name: { size: 40, gap: 12, maxLines: 1 },
@@ -120,6 +120,20 @@ export const CARD_ROW_METRICS: Readonly<
     address: { size: 24, gap: 10 },
     note: { size: 22, gap: 10, maxLines: 1 },
   },
+}
+
+/** 地址行图钉：宽 0.62em、右侧留 0.28em，文字整体右移 offset */
+const ADDRESS_PIN_WIDTH_RATIO = 0.62
+const ADDRESS_PIN_GAP_RATIO = 0.28
+
+/**
+ * 地址行前缀图钉的尺寸。渲染器按它画矢量图钉并右移文字起点，
+ * 断行测量也要减掉 offset，否则地址会顶出文字块右边界。
+ */
+export function addressPinMetrics(size: number): { width: number; gap: number; offset: number } {
+  const width = size * ADDRESS_PIN_WIDTH_RATIO
+  const gap = size * ADDRESS_PIN_GAP_RATIO
+  return { width, gap, offset: width + gap }
 }
 
 export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVariant): CardLayout {

@@ -37,17 +37,9 @@ describe('buildShareCaption', () => {
     ).toBe('Your Name. pilgrimage: B #YourName')
   })
 
-  it('地址缺失时把 · 前缀、括号与逗号一起吞掉', () => {
+  it('地址缺失时把 · 前缀与逗号一起吞掉', () => {
     expect(
       buildShareCaption('《{anime}》圣地巡礼｜{point} · {address} {url}', {
-        anime: 'A',
-        point: 'B',
-        address: '',
-        url: 'U',
-      }),
-    ).toBe('《A》圣地巡礼｜B U')
-    expect(
-      buildShareCaption('《{anime}》圣地巡礼｜{point}（{address}）{url}', {
         anime: 'A',
         point: 'B',
         address: '',

@@ -48,7 +48,7 @@ export type PointSharePanelProps = {
 }
 
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
 
 /** canvas 与 <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG */
 const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -251,10 +251,15 @@ export default function PointSharePanel({
     [editorValue, shareUrl],
   )
 
+  // 摘要只有一行，短链占掉一半没意义：先把 URL 剥掉再截
+  const captionSummarySource = editorValue
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
   const collapsedCaption =
-    editorValue.length > CAPTION_COLLAPSED_MAX
-      ? `${editorValue.slice(0, CAPTION_COLLAPSED_MAX)}…`
-      : editorValue
+    captionSummarySource.length > CAPTION_COLLAPSED_MAX
+      ? `${captionSummarySource.slice(0, CAPTION_COLLAPSED_MAX)}…`
+      : captionSummarySource
 
   const cardFile = useMemo(
     () => (cardBlob ? blobToFile(cardBlob, buildCardFilename(displayName)) : null),
@@ -489,16 +494,37 @@ export default function PointSharePanel({
         />
 
         {captionExpanded ? (
-          <label className="block space-y-1">
-            <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
-            <textarea
-              rows={3}
-              value={editorValue}
-              aria-label={t('share.captionLabel', locale)}
-              onChange={(event) => setCaptionOverride(event.target.value)}
-              className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
-            />
-          </label>
+          <div className="space-y-1">
+            <label className="block space-y-1">
+              <span className="text-xs text-gray-500">{t('share.captionLabel', locale)}</span>
+              <textarea
+                rows={3}
+                value={editorValue}
+                aria-label={t('share.captionLabel', locale)}
+                onChange={(event) => setCaptionOverride(event.target.value)}
+                className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
+              />
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-expanded
+                onClick={() => setCaptionExpanded(false)}
+                className="text-xs font-medium text-gray-500"
+              >
+                {t('share.collapseCaption', locale)}
+              </button>
+              {captionOverride !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setCaptionOverride(null)}
+                  className="text-xs font-medium text-brand"
+                >
+                  {t('share.resetCaption', locale)}
+                </button>
+              ) : null}
+            </div>
+          </div>
         ) : (
           <button
             type="button"
@@ -517,7 +543,7 @@ export default function PointSharePanel({
             type="button"
             disabled={!ready}
             onClick={() => shareToSystem('sys')}
-            className={`${BUTTON_BASE} w-full bg-gray-900 text-white`}
+            className={`${BUTTON_BASE} text-sm w-full bg-gray-900 text-white`}
           >
             <Share2 className="h-4 w-4" />
             {t('share.shareTo', locale)}
@@ -533,7 +559,10 @@ export default function PointSharePanel({
             ))}
           </div>
         ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div
+          data-testid="share-destinations"
+          className={`grid gap-2 ${mobilePath ? 'grid-cols-5' : 'grid-cols-3'}`}
+        >
           {mobilePath ? (
             MOBILE_DESTINATIONS.map((destination) => (
               <button
@@ -541,7 +570,8 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={() => shareToSystem(destination.channel)}
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+                // 五个目的地挤一行，字号跟着缩一档，窄屏才装得下
+                className={`${BUTTON_BASE} w-full bg-gray-100 px-1.5 text-xs text-gray-800`}
               >
                 {t(destination.labelKey, locale)}
               </button>
@@ -552,7 +582,7 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={handleDesktopX}
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
               >
                 {t('share.platformX', locale)}
               </button>
@@ -570,7 +600,7 @@ export default function PointSharePanel({
                 aria-disabled={!ready}
                 target="_blank"
                 rel="noreferrer"
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
               >
                 {t('share.platformReddit', locale)}
               </a>
@@ -579,7 +609,7 @@ export default function PointSharePanel({
                 aria-disabled={!ready}
                 target="_blank"
                 rel="noreferrer"
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800 no-underline ${ready ? '' : 'pointer-events-none opacity-50'}`}
               >
                 {t('share.platformLine', locale)}
               </a>
@@ -587,7 +617,7 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={() => handleAppFlow('xhs')}
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
               >
                 {t('share.platformXiaohongshu', locale)}
               </button>
@@ -595,7 +625,7 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={() => handleAppFlow('wx')}
-                className={`${BUTTON_BASE} w-full bg-gray-100 text-gray-800`}
+                className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
               >
                 {t('share.platformWechat', locale)}
               </button>
@@ -603,7 +633,7 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!ready}
                 onClick={handleSave}
-                className={`${BUTTON_BASE} w-full bg-brand text-white`}
+                className={`${BUTTON_BASE} text-sm w-full bg-brand text-white`}
               >
                 <Download className="h-4 w-4" />
                 {t('share.saveImage', locale)}
@@ -630,7 +660,7 @@ export default function PointSharePanel({
                   type="button"
                   disabled={!ready}
                   onClick={handleSave}
-                  className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+                  className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
                 >
                   <Download className="h-4 w-4" />
                   {t('share.saveImage', locale)}
@@ -640,7 +670,7 @@ export default function PointSharePanel({
                   type="button"
                   disabled={!ready}
                   onClick={handleCopyImage}
-                  className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+                  className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
                 >
                   <Copy className="h-4 w-4" />
                   {t('share.copyImage', locale)}
@@ -650,7 +680,7 @@ export default function PointSharePanel({
                 type="button"
                 disabled={!shareUrl}
                 onClick={handleCopyText}
-                className={`${BUTTON_BASE} bg-gray-100 text-gray-800`}
+                className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
               >
                 {t('share.copyText', locale)}
               </button>

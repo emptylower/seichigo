@@ -10,7 +10,7 @@ export type ShareCaptionVars = {
 }
 
 /**
- * 填模板。地址为空时，把包住 {address} 的中/英标点（中点、全角括号、逗号+空格）一并吃掉，
+ * 填模板。地址为空时，把包住 {address} 的中/英标点（中点、逗号+空格）一并吃掉，
  * 免得出现「须贺神社 ·  https://…」或「Suga Shrine,  https://…」。
  * `#{anime}` 是话题标签：作品名先过 toHashtag 净化，再替换普通 `{anime}`。
  */
@@ -22,10 +22,9 @@ export function buildShareCaption(template: string, vars: ShareCaptionVars): str
   out = address
     ? out.replace(/\{address\}/g, address)
     : out
-        // 地址为空时把包住它的中点、全角括号、逗号+空格一并吃掉，
+        // 地址为空时把包住它的中点、逗号+空格一并吃掉，
         // 免得出现「葡萄牛奶 · https://…」或「Budo Milk,  https://…」
         .replace(/\s*·\s*\{address\}/g, '')
-        .replace(/（\{address\}）/g, ' ')
         .replace(/,\s*\{address\}/g, '')
         .replace(/\{address\}/g, '')
   out = out

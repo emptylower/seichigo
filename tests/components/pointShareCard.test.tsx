@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import QRCode from 'qrcode'
 import PointShareCard from '@/components/share/PointShareCard'
+import { CARD_ROW_METRICS, addressPinMetrics } from '@/components/share/pointShareCardDraw'
 
 vi.mock('qrcode', () => ({
   default: { toDataURL: vi.fn(async () => 'data:image/png;base64,qr') },
@@ -13,14 +14,19 @@ vi.mock('@/lib/anitabi/imageProxy', () => ({
 }))
 
 const drawLocatorSpy = vi.fn()
+const loadOutlineSpy = vi.fn()
+const FAKE_OUTLINE = { bbox: [0, 0, 10, 10], rings: [[[0, 0], [10, 0], [10, 10]]] }
 vi.mock('@/components/share/japanLocator', () => ({
   drawJapanLocator: (...args: any[]) => drawLocatorSpy(...args),
+  loadJapanOutline: (...args: any[]) => loadOutlineSpy(...args),
 }))
 
 const blobSizes: number[] = []
 const failingSrcs = new Set<string>()
 const drawImageSpy = vi.fn()
 const fillTextCalls: Array<[string, number, number]> = []
+const fillStyles: string[] = []
+const arcCalls: Array<[number, number, number]> = []
 
 function stubCanvas() {
   const ctx = new Proxy(
@@ -31,13 +37,17 @@ function stubCanvas() {
       fillText: (text: string, x: number, y: number) => {
         fillTextCalls.push([text, x, y])
       },
+      arc: (x: number, y: number, r: number) => {
+        arcCalls.push([x, y, r])
+      },
     } as Record<string, unknown>,
     {
       get(target, prop) {
         if (prop in target) return target[prop as string]
         return () => undefined
       },
-      set() {
+      set(_target, prop, value) {
+        if (prop === 'fillStyle') fillStyles.push(String(value))
         return true
       },
     },
@@ -61,8 +71,12 @@ beforeEach(() => {
   blobSizes.length = 0
   failingSrcs.clear()
   fillTextCalls.length = 0
+  fillStyles.length = 0
+  arcCalls.length = 0
   drawImageSpy.mockClear()
   drawLocatorSpy.mockClear()
+  loadOutlineSpy.mockReset()
+  loadOutlineSpy.mockResolvedValue(FAKE_OUTLINE)
   candidatesMock.mockReset()
   candidatesMock.mockImplementation((src: string) => [src])
   ;(QRCode.toDataURL as ReturnType<typeof vi.fn>).mockClear()
@@ -200,9 +214,34 @@ describe('PointShareCard v2 文字与轮廓', () => {
     const texts = textsOf()
     expect(texts[0]).toBe('葡萄牛奶')
     expect(texts[1]).toBe('《摇曳露营△ 三期》 · 第 1 集 · 19:54')
-    expect(texts[2]).toBe('📍 東京都 武蔵野市 中町一丁目')
+    // 图钉改成矢量绘制，地址行不再带 📍 字符
+    expect(texts[2]).toBe('東京都 武蔵野市 中町一丁目')
     expect(texts[3]).toContain('武州屋')
     expect(texts[texts.length - 1]).toBe('⛩ seichigo.com')
+  })
+
+  it('地址行左侧画品牌粉图钉，文字起点右移一个图钉宽', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const offset = addressPinMetrics(CARD_ROW_METRICS.portrait.address.size).offset
+    const addressCall = fillTextCalls.find(([text]) => text === '東京都 武蔵野市 中町一丁目')!
+    expect(addressCall[1]).toBe(64 + offset)
+    // 图钉是圆头 + 三角，圆头落在文字行左侧、地址行的 y 附近
+    expect(fillStyles).toContain('#ec4899')
+    const head = arcCalls.find(([x]) => x > 64 && x < 64 + offset)
+    expect(head).toBeDefined()
+    expect(head![1]).toBeGreaterThanOrEqual(addressCall[2])
+  })
+
+  it('没有地址时不画图钉', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, address: null }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(fillStyles).not.toContain('#ec4899')
+    expect(arcCalls).toHaveLength(0)
   })
 
   it('文字左边界用 textX（竖版 64）', async () => {
@@ -233,7 +272,7 @@ describe('PointShareCard v2 文字与轮廓', () => {
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     const texts = textsOf()
-    expect(texts.some((text) => text.startsWith('📍'))).toBe(false)
+    expect(texts.some((text) => text.includes('📍'))).toBe(false)
     expect(texts.some((text) => text.includes('武州屋'))).toBe(false)
     expect(texts[0]).toBe('葡萄牛奶')
     expect(texts[1]).toBe('《摇曳露营△ 三期》 · 第 1 集 · 19:54')
@@ -263,6 +302,17 @@ describe('PointShareCard v2 文字与轮廓', () => {
     expect(drawLocatorSpy).toHaveBeenCalledTimes(1)
     expect(drawLocatorSpy.mock.calls[0]![1]).toEqual({ x: 64, y: 1096, width: 240, height: 240 })
     expect(drawLocatorSpy.mock.calls[0]![2]).toEqual({ lat: 35.7, lng: 139.56 })
+    // 轮廓 JSON 懒加载，画的时候把加载结果传进去
+    expect(loadOutlineSpy).toHaveBeenCalledTimes(1)
+    expect(drawLocatorSpy.mock.calls[0]![3]).toBe(FAKE_OUTLINE)
+  })
+
+  it('轮廓 JSON 加载失败时不画轮廓，卡片照常出图', async () => {
+    loadOutlineSpy.mockRejectedValue(new Error('chunk load failed'))
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(drawLocatorSpy).not.toHaveBeenCalled()
   })
 
   it('inJapan 为 false 时不画轮廓', async () => {
@@ -272,6 +322,8 @@ describe('PointShareCard v2 文字与轮廓', () => {
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(drawLocatorSpy).not.toHaveBeenCalled()
+    // 海外点位连轮廓 JSON 都不用下
+    expect(loadOutlineSpy).not.toHaveBeenCalled()
   })
 
   it('inJapan 为 true 但没有坐标时画轮廓不打点', async () => {
