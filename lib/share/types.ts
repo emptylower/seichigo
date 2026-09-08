@@ -1,3 +1,4 @@
+import japanOutlineJson from '@/lib/share/data/japan-outline.json'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 /** 分享卡片版式：竖版给小红书/B 站/微信/Instagram，横版给 X/Reddit/LINE 的链接预览 */
@@ -92,26 +93,41 @@ export type PointContextResponse = {
 }
 
 /**
- * 日本轮廓 bbox 粗判用的经纬度范围（[minLon, minLat, maxLon, maxLat]）。
- * 与 components/share/data/japan-outline.json 的 bbox [123.68, 24.266, 145.833, 45.51] 同源，
- * 向外取整放宽一点，避免边界点位被判成海外而丢掉定位小图。
+ * Natural Earth 50m 日本轮廓（公有领域）：`{bbox, rings}`，34 个环共 1097 个点，
+ * 环的坐标是 `[lon, lat]`。与卡片定位小图共用同一份数据（Track B 改从这里 import）。
  */
-export const JAPAN_BBOX: readonly [number, number, number, number] = [123.6, 24.2, 145.9, 45.6]
+type JapanOutline = {
+  bbox: readonly [number, number, number, number]
+  rings: readonly (readonly (readonly [number, number])[])[]
+}
+
+const JAPAN_OUTLINE = japanOutlineJson as unknown as JapanOutline
 
 /**
- * 实际判定用两块矩形并集：单张 bbox 覆盖与那国岛（约 123°E）就必然把朝鲜半岛南端
- * （首尔 37.6°N / 127.0°E）一起圈进来，与「首尔算海外」的预期冲突。
- * 本土框盖本州/北海道/九州/四国/对马，西南诸岛框盖冲绳/奄美/小笠原；
- * 两框在 lat 31° 分界，韩半岛位于西南诸岛的纬度带之外，被自然排除。
+ * 整体外接框，仅供参考；判定见 isInJapan。直接从轮廓 JSON 的 bbox 派生，
+ * 不再手工放宽——真正的国界判定由多边形射线法完成，bbox 只做快速排除。
  */
-const JAPAN_MAINLAND_BOX: readonly [number, number, number, number] = [129.0, 31.0, 145.9, 45.6]
-const JAPAN_RYUKYU_BOX: readonly [number, number, number, number] = [123.6, 24.2, 142.3, 31.0]
+export const JAPAN_BBOX: readonly [number, number, number, number] = JAPAN_OUTLINE.bbox
 
-function inBox(lat: number, lng: number, box: readonly [number, number, number, number]): boolean {
-  const [minLon, minLat, maxLon, maxLat] = box
-  return lng >= minLon && lng <= maxLon && lat >= minLat && lat <= maxLat
+/**
+ * 射线法（ray casting）点在多边形内判定：从待测点向右水平射出一条射线，
+ * 与环边线的交点数为奇数则在多边形内。环不闭合（首尾点相同）也能正确工作。
+ */
+function pointInRing(lat: number, lng: number, ring: readonly (readonly [number, number])[]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [lngI, latI] = ring[i]!
+    const [lngJ, latJ] = ring[j]!
+    const crosses = latI > lat !== latJ > lat
+    if (!crosses) continue
+    const lngAtLat = ((lngJ - lngI) * (lat - latI)) / (latJ - latI) + lngI
+    if (lng < lngAtLat) inside = !inside
+  }
+  return inside
 }
 
 export function isInJapan(lat: number, lng: number): boolean {
-  return inBox(lat, lng, JAPAN_MAINLAND_BOX) || inBox(lat, lng, JAPAN_RYUKYU_BOX)
+  const [minLon, minLat, maxLon, maxLat] = JAPAN_BBOX
+  if (lng < minLon || lng > maxLon || lat < minLat || lat > maxLat) return false
+  return JAPAN_OUTLINE.rings.some((ring) => pointInRing(lat, lng, ring))
 }
