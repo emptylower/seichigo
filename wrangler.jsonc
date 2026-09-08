@@ -46,9 +46,12 @@
     // CREEM_API_KEY 与 CREEM_WEBHOOK_SECRET 走 secret，不进 vars
     "CREEM_API_BASE": "https://api.creem.io",
     "CREEM_PRODUCT_STANDARD_ID": "prod_vM2g6cj87WpCDCWJuRdDd",
-    // 2026-09-07 订阅开关（Part F2）：Creem 审核通过并配置好生产 product id
-    // 与 secrets 后改 "1"；预览用 --var BILLING_CHECKOUT_ENABLED=1 覆盖
-    "BILLING_CHECKOUT_ENABLED": "0"
+    // 2026-09-07 订阅开关（Part F2）；2026-09-08 生产 product id 与 secrets
+    // 就位、webhook 验签已验证后开为 "1"，正式开放订阅购买。
+    // 这是唯一的停售开关：Creem 故障或发现扣款异常时改回 "0" 重新部署即可
+    // 一分钟内关闭入口（前端会弹 CheckoutUnavailableDialog），无需回滚代码。
+    // 预览用 --var BILLING_CHECKOUT_ENABLED=0 覆盖
+    "BILLING_CHECKOUT_ENABLED": "1"
   },
   "r2_buckets": [
     {
