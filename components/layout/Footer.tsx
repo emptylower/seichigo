@@ -74,7 +74,7 @@ export default function Footer({ locale = 'zh' }: Props) {
           <div className="space-y-4 xl:col-span-1">
             <Link href={prefixPath('/', locale)} prefetch={false} className="flex items-center gap-2">
               <Image
-                src="/brand/app-logo-64.png"
+                src="/brand/app-logo-64.png?v=2"
                 alt="SeichiGo"
                 width={32}
                 height={32}

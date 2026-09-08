@@ -63,7 +63,7 @@ function SiteNavSection({ locale }: { locale: SupportedLocale }) {
     <div className="border-b border-pink-100/80 px-3 pb-3 pt-4">
       <Link href="/" className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/70">
         <Image
-          src="/brand/app-logo-64.png"
+          src="/brand/app-logo-64.png?v=2"
           alt="SeichiGo"
           width={24}
           height={24}

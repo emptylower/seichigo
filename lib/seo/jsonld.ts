@@ -65,7 +65,7 @@ export function buildBlogPostingJsonLd(input: {
 
   let publisherLogoUrl: string | undefined
   try {
-    publisherLogoUrl = safeUrl(new URL('/brand/icons/icon-512.png', siteUrl).toString()) || undefined
+    publisherLogoUrl = safeUrl(new URL('/brand/icons/icon-512.png?v=2', siteUrl).toString()) || undefined
   } catch {
     publisherLogoUrl = undefined
   }

@@ -38,11 +38,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/brand/icons/favicon.ico', sizes: '32x32' },
-      { url: '/brand/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/brand/icons/favicon.ico?v=2', sizes: '32x32' },
+      { url: '/brand/icons/icon-192.png?v=2', type: 'image/png', sizes: '192x192' },
     ],
-    shortcut: '/brand/icons/favicon.ico',
-    apple: '/brand/icons/apple-touch-icon.png',
+    shortcut: '/brand/icons/favicon.ico?v=2',
+    apple: '/brand/icons/apple-touch-icon.png?v=2',
   },
   manifest: '/manifest.webmanifest',
   openGraph: {
