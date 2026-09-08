@@ -733,6 +733,7 @@
     "layoutPortrait": "竖版",
     "layoutLandscape": "横版",
     "addPhoto": "添加实拍",
+    "addPhotoLoginRequired": "登录后添加实拍",
     "removePhoto": "移除实拍",
     "photoHint": "加上你自己拍的照片，卡片会变成左右对比",
     "captionLabel": "分享文案",

@@ -733,6 +733,7 @@
     "layoutPortrait": "縦",
     "layoutLandscape": "横",
     "addPhoto": "実写を追加",
+    "addPhotoLoginRequired": "ログインして実写を追加",
     "removePhoto": "実写を削除",
     "photoHint": "自分で撮った写真を足すと、左右の比較カードになります",
     "captionLabel": "共有テキスト",

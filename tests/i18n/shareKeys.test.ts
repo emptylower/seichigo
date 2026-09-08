@@ -66,9 +66,17 @@ describe('share i18n keys', () => {
   const CAPTION_EDITOR_KEYS = ['collapseCaption', 'resetCaption']
   // 2026-09-08 分享卡片 v2.1 导航胶囊：胶囊标题 / 副标题 / 页脚标语
   const V2_1_KEYS = ['cardQrTitle', 'cardQrSub', 'cardTagline']
+  // 2026-09-08 服务端渲染改造：未登录时「添加实拍」的需登录态
+  const OG_SERVER_RENDER_KEYS = ['addPhotoLoginRequired']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
-    for (const key of [...REVIEW_FIX_KEYS, ...V2_KEYS, ...CAPTION_EDITOR_KEYS, ...V2_1_KEYS]) {
+    for (const key of [
+      ...REVIEW_FIX_KEYS,
+      ...V2_KEYS,
+      ...CAPTION_EDITOR_KEYS,
+      ...V2_1_KEYS,
+      ...OG_SERVER_RENDER_KEYS,
+    ]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }
   })
