@@ -38,13 +38,15 @@ export function normalizeCardLayout(value: string | null): ShareCardLayout {
 }
 
 /**
- * 只接受实拍 key 的形状（`checkin/<userId>/<pointId>.jpg`，见 lib/share/store.ts:34）。
- * 显式挡掉 `..`，防止把读取引到桶里其他对象。
+ * 只接受绑定本次 pointId 的实拍 key（`checkin/<userId>/<pointId>.jpg`，
+ * 见 lib/share/store.ts:34）。显式挡掉 `..` 防路径穿越；点位段不等于是
+ * 拿别人的实拍合成到别的点位（合成结果会被长期缓存），一并拒掉。
  */
-export function isCheckinPhotoKey(value: string): boolean {
+export function isCheckinPhotoKey(value: string, pointId: string): boolean {
   const key = String(value || '')
   if (!key || key.includes('..')) return false
-  return /^checkin\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_:.-]{1,200}\.jpg$/.test(key)
+  if (!/^checkin\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_:.-]{1,200}\.jpg$/.test(key)) return false
+  return key.endsWith(`/${pointId}.jpg`)
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -311,7 +313,7 @@ export function createGetCardHandler(deps: CardDeps) {
     // photo 只接受实拍 key 的形状，且必须真的存在于 ASSET_STORE；不合格一律当没传
     const photoParam = String(url.searchParams.get('photo') || '').trim()
     let photoKey: string | null = null
-    if (photoParam && isCheckinPhotoKey(photoParam) && store) {
+    if (photoParam && isCheckinPhotoKey(photoParam, pointId) && store) {
       const exists = await store.get(photoParam).catch(() => null)
       if (exists) photoKey = photoParam
     }

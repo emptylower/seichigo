@@ -86,12 +86,17 @@ describe('参数归一', () => {
     expect(normalizeCardLayout('square')).toBe('landscape')
   })
 
-  it('photo 只接受 checkin/<userId>/<pointId>.jpg 形状', () => {
-    expect(isCheckinPhotoKey('checkin/u1/101:suga.jpg')).toBe(true)
-    expect(isCheckinPhotoKey('share/AbC12xYz-deadbeef.webp')).toBe(false)
-    expect(isCheckinPhotoKey('checkin/../../etc/passwd.jpg')).toBe(false)
-    expect(isCheckinPhotoKey('checkin/u1/p.png')).toBe(false)
-    expect(isCheckinPhotoKey('')).toBe(false)
+  it('photo 只接受 checkin/<userId>/<pointId>.jpg 形状，且点位段必须等于本次 pointId', () => {
+    expect(isCheckinPhotoKey('checkin/u1/101:suga.jpg', '101:suga')).toBe(true)
+    expect(isCheckinPhotoKey('share/AbC12xYz-deadbeef.webp', '101:suga')).toBe(false)
+    expect(isCheckinPhotoKey('checkin/../../etc/passwd.jpg', '101:suga')).toBe(false)
+    expect(isCheckinPhotoKey('checkin/u1/p.png', '101:suga')).toBe(false)
+    expect(isCheckinPhotoKey('', '101:suga')).toBe(false)
+  })
+
+  it('跨点位的实拍 key 被拒：不能把别人的实拍合成到别的点位', () => {
+    expect(isCheckinPhotoKey('checkin/u1/other:point.jpg', '101:suga')).toBe(false)
+    expect(isCheckinPhotoKey('checkin/u1/101:suga.jpg', 'other:point')).toBe(false)
   })
 })
 
@@ -367,6 +372,19 @@ describe('GET /api/share/card/[pointId]', () => {
       params(),
     )
     expect(res.status).toBe(200)
+    expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(true)
+  })
+
+  it('photo 是别的点位的实拍时当作没传（防跨点位合成后长期缓存）', async () => {
+    const { store, objects } = makeStore({
+      'checkin/u1/other:point.jpg': new Uint8Array([1, 1]),
+    })
+    const res = await createGetCardHandler(makeDeps({ getStore: () => store }))(
+      get(`${CARD_URL}&photo=checkin%2Fu1%2Fother%3Apoint.jpg`),
+      params(),
+    )
+    expect(res.status).toBe(200)
+    // 缓存 key 不带实拍后缀：合成按无实拍处理
     expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(true)
   })
 
