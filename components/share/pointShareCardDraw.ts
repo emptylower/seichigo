@@ -94,6 +94,7 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
     const padding = 64
     const visualHeight = 1000
     const qrSize = 180
+    // 竖版 compare 有意上下分栏：左右分会把两张图各压到 540 宽，实拍细节没法看
     return {
       canvas,
       main:

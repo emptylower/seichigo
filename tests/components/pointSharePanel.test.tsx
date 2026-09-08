@@ -225,4 +225,42 @@ describe('PointSharePanel 短链与平台按钮', () => {
     expect(downloadBlobMock.mock.calls[0]![1]).toBe('seichigo-须贺神社.jpg')
     expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastSaved', 'zh'))
   })
+
+  it('添加实拍按钮旁显示 photoHint 提示', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    expect(screen.getByText(t('share.photoHint', 'zh'))).toBeInTheDocument()
+  })
+
+  it('Reddit 标题走 share.redditTitle 模板（zh 用｜连接）', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    const reddit = (await screen.findByRole('link', { name: 'Reddit' })) as HTMLAnchorElement
+    expect(reddit.href).toContain(encodeURIComponent('须贺神社｜你的名字。'))
+  })
+
+  it('Reddit 标题走 share.redditTitle 模板（en 用 - 连接）', async () => {
+    render(<PointSharePanel {...PROPS} locale="en" />)
+    const reddit = (await screen.findByRole('link', { name: 'Reddit' })) as HTMLAnchorElement
+    expect(reddit.href).toContain(encodeURIComponent('须贺神社 - 你的名字。'))
+  })
+
+  it('当前版式按钮带 aria-pressed=true，另一个为 false', async () => {
+    render(<PointSharePanel {...PROPS} />)
+    expect(screen.getByRole('button', { name: t('share.layoutPortrait', 'zh') })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('挂载后再读 localStorage 里的版式偏好', async () => {
+    globalThis.localStorage.setItem('seichigo.share.layout', 'landscape')
+    render(<PointSharePanel {...PROPS} />)
+    // 初值固定 portrait（避免水合不一致），挂载后读到 landscape 再建一条短链
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
+    expect(createShareLinkMock.mock.calls[0]![0].layout).toBe('portrait')
+    expect(createShareLinkMock.mock.calls[1]![0].layout).toBe('landscape')
+  })
 })

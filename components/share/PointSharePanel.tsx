@@ -59,7 +59,12 @@ export default function PointSharePanel({
   locale = 'zh',
   onClose,
 }: PointSharePanelProps) {
-  const [layout, setLayout] = useState<ShareCardLayout>(() => readPreferredLayout())
+  // 首屏固定 portrait：useState 初值在 SSR 也会跑，直接读 localStorage 会水合不一致，
+  // 挂载后再读本地偏好
+  const [layout, setLayout] = useState<ShareCardLayout>('portrait')
+  useEffect(() => {
+    setLayout(readPreferredLayout())
+  }, [])
   const [shareUrl, setShareUrl] = useState<string>('')
   const [code, setCode] = useState<string>('')
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -70,8 +75,10 @@ export default function PointSharePanel({
   const [linkFailed, setLinkFailed] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { status: sessionStatus } = useSession()
 
   // 版式变了就换一条短链：短链上记录了 layout，OG 图尺寸要对得上
@@ -149,9 +156,16 @@ export default function PointSharePanel({
   const handleRenderError = useCallback(() => setFailed(true), [])
 
   const showToast = useCallback((key: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast(t(key, locale))
-    setTimeout(() => setToast(null), 2200)
+    toastTimerRef.current = setTimeout(() => setToast(null), 2200)
   }, [locale])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
+  }, [])
 
   const captionFor = useCallback(
     (channel: ShareChannel) =>
@@ -205,30 +219,46 @@ export default function PointSharePanel({
   }
 
   const handleSystemShare = async () => {
-    if (!cardBlob) return
-    const file = blobToFile(cardBlob, buildCardFilename(pointName))
-    const result = await shareViaSystem({
-      files: [file],
-      text: captionFor('sys'),
-      url: withShareChannel(shareUrl, 'sys'),
-    })
-    if (result === 'text') showToast('share.toastShareFilesUnsupported')
-    if (result === 'failed') showToast('share.toastFailed')
+    if (!cardBlob || busy) return
+    setBusy(true)
+    try {
+      const file = blobToFile(cardBlob, buildCardFilename(pointName))
+      const result = await shareViaSystem({
+        files: [file],
+        text: captionFor('sys'),
+        url: withShareChannel(shareUrl, 'sys'),
+      })
+      if (result === 'text') showToast('share.toastShareFilesUnsupported')
+      if (result === 'failed') showToast('share.toastFailed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleCopyImage = async () => {
-    if (!cardBlob) return
-    if (await copyImage(cardBlob)) {
-      showToast('share.toastImageCopied')
-      return
+    if (!cardBlob || busy) return
+    setBusy(true)
+    try {
+      if (await copyImage(cardBlob)) {
+        showToast('share.toastImageCopied')
+        return
+      }
+      // 剪贴板不可用时降级为下载，别让操作无声失败
+      downloadBlob(cardBlob, buildCardFilename(pointName))
+      showToast('share.toastSaved')
+    } finally {
+      setBusy(false)
     }
-    // 剪贴板不可用时降级为下载，别让操作无声失败
-    downloadBlob(cardBlob, buildCardFilename(pointName))
-    showToast('share.toastSaved')
   }
 
   const handleCopyText = async () => {
-    showToast((await copyText(copyCaption)) ? 'share.toastCopied' : 'share.toastFailed')
+    if (busy) return
+    setBusy(true)
+    try {
+      showToast((await copyText(copyCaption)) ? 'share.toastCopied' : 'share.toastFailed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleSave = (channel: ShareChannel = 'save') => {
@@ -238,15 +268,21 @@ export default function PointSharePanel({
   }
 
   const handleAppFlow = async (channel: 'xhs' | 'wx') => {
-    handleSave(channel)
-    await copyText(captionFor(channel))
-    showToast('share.toastPasteInApp')
+    if (busy) return
+    setBusy(true)
+    try {
+      handleSave(channel)
+      await copyText(captionFor(channel))
+      showToast('share.toastPasteInApp')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const ready = Boolean(cardBlob && shareUrl)
 
   return (
-    <div className="flex max-h-[88vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div className="flex max-h-[88dvh] flex-col overflow-hidden rounded-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl">
       <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
         <button type="button" onClick={onClose} aria-label={t('share.close', locale)} className="-ml-2 rounded-full p-2 hover:bg-gray-100">
           <X className="h-5 w-5 text-gray-400" />
@@ -292,6 +328,7 @@ export default function PointSharePanel({
             <button
               key={value}
               type="button"
+              aria-pressed={layout === value}
               onClick={() => {
                 setLayout(value)
                 writePreferredLayout(value)
@@ -303,20 +340,25 @@ export default function PointSharePanel({
               {t(value === 'portrait' ? 'share.layoutPortrait' : 'share.layoutLandscape', locale)}
             </button>
           ))}
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-col items-end gap-1">
             {photo ? (
               <button type="button" onClick={removePhoto} className="text-xs font-medium text-gray-500 underline">
                 {t('share.removePhoto', locale)}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="inline-flex items-center gap-1 text-xs font-medium text-brand"
-              >
-                <Camera className="h-4 w-4" />
-                {t('share.addPhoto', locale)}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand"
+                >
+                  <Camera className="h-4 w-4" />
+                  {t('share.addPhoto', locale)}
+                </button>
+                <span className="max-w-[180px] text-right text-[11px] leading-tight text-gray-400">
+                  {t('share.photoHint', locale)}
+                </span>
+              </>
             )}
           </div>
         </div>
@@ -365,7 +407,7 @@ export default function PointSharePanel({
             {t('share.platformX', locale)}
           </a>
           <a
-            href={shareUrl ? buildRedditSubmitUrl(withShareChannel(shareUrl, 'rd'), `${pointName}｜${animeTitle}`) : undefined}
+            href={shareUrl ? buildRedditSubmitUrl(withShareChannel(shareUrl, 'rd'), t('share.redditTitle', locale).replace('{point}', pointName).replace('{anime}', animeTitle)) : undefined}
             aria-disabled={!shareUrl}
             target="_blank"
             rel="noreferrer"

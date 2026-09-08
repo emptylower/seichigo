@@ -737,6 +737,7 @@
     "photoHint": "自分で撮った写真を足すと、左右の比較カードになります",
     "captionLabel": "共有テキスト",
     "captionTemplate": "『{anime}』聖地巡礼｜{point}（{city}）{url} #聖地巡礼 #{anime}",
+    "redditTitle": "{point}｜{anime}",
     "systemShare": "共有",
     "copyImage": "画像をコピー",
     "copyText": "テキストをコピー",

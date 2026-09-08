@@ -315,7 +315,7 @@ export default function MapDialogs(props: MapDialogsProps) {
             {selectedPoint ? (
               <PointSharePanel
                 pointId={selectedPoint.id}
-                bangumiId={detail?.card.id ?? selectedPoint.bangumiId}
+                bangumiId={selectedPoint.bangumiId ?? detail?.card.id}
                 pointName={selectedPoint.name}
                 animeTitle={detail?.card.title || ''}
                 cityName={detail?.card.city || ''}
