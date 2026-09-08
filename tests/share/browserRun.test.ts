@@ -7,7 +7,7 @@ import {
 
 const CONFIG = { accountId: 'acct123', token: 'tok456' }
 
-function imageResponse(bytes: Uint8Array): Response {
+function imageResponse(bytes: Uint8Array<ArrayBuffer>): Response {
   return new Response(bytes, { status: 200, headers: { 'content-type': 'image/webp' } })
 }
 
