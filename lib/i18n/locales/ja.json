@@ -751,6 +751,8 @@
     "toastSaved": "画像を保存しました",
     "toastPasteInApp": "画像とテキストの準備ができました。アプリを開いて貼り付けてください",
     "toastShareFilesUnsupported": "このブラウザーでは画像を直接共有できません。先に画像を保存してから投稿してください。",
-    "toastFailed": "操作に失敗しました。もう一度お試しください。"
+    "toastFailed": "操作に失敗しました。もう一度お試しください。",
+    "toastPhotoTooLarge": "写真が 5MB を超えています。もう少し小さい写真を選んでください",
+    "toastPhotoUnsupported": "この画像形式はサポートされていません。JPEG・PNG・WebP をご利用ください"
   }
 }

@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { Camera, Copy, Download, Loader2, Share2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { ShareCardLayout, ShareChannel } from '@/lib/share/types'
+import { SHARE_PHOTO_MAX_BYTES, type ShareCardLayout, type ShareChannel } from '@/lib/share/types'
 import PointShareCard, { type PointShareCardInput } from '@/components/share/PointShareCard'
 import {
   buildLineShareUrl,
@@ -22,6 +22,7 @@ import {
   downloadBlob,
   readPreferredLayout,
   shareViaSystem,
+  transcodeToJpeg,
   uploadShareAssets,
   writePreferredLayout,
 } from '@/components/share/shareClient'
@@ -41,6 +42,9 @@ export type PointSharePanelProps = {
 
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+
+/** canvas 与 <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG */
+const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 export default function PointSharePanel({
   pointId,
@@ -161,13 +165,30 @@ export default function PointSharePanel({
 
   const copyCaption = captionFor('copy')
 
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    setPhoto(file)
+    if (file.size > SHARE_PHOTO_MAX_BYTES) {
+      showToast('share.toastPhotoTooLarge')
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
+    let next = file
+    if (!NATIVE_PHOTO_TYPES.has(file.type)) {
+      const transcoded = await transcodeToJpeg(file)
+      if (!transcoded) {
+        showToast('share.toastPhotoUnsupported')
+        if (fileRef.current) fileRef.current.value = ''
+        return
+      }
+      next = new File([transcoded], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, {
+        type: 'image/jpeg',
+      })
+    }
+    setPhoto(next)
     setPhotoObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
-      return URL.createObjectURL(file)
+      return URL.createObjectURL(next)
     })
     uploadedRef.current = false
   }

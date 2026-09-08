@@ -150,3 +150,26 @@ export function downloadBlob(blob: Blob, filename: string): void {
 export function blobToFile(blob: Blob, filename: string): File {
   return new File([blob], filename, { type: blob.type || 'image/jpeg' })
 }
+
+/**
+ * 非 JPEG/PNG/WebP 的实拍（典型是 iPhone 的 HEIC）转一道 JPEG 再上传；
+ * 解码/绘制失败返回 null，由调用方提示格式不支持。
+ */
+export async function transcodeToJpeg(file: File): Promise<Blob | null> {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      return null
+    }
+    ctx.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+  } catch {
+    return null
+  }
+}

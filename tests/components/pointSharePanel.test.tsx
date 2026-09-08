@@ -16,6 +16,7 @@ vi.mock('@/components/share/PointShareCard', () => ({
 
 const createShareLinkMock = vi.fn()
 const uploadShareAssetsMock = vi.fn()
+const transcodeToJpegMock = vi.fn()
 vi.mock('@/components/share/shareClient', async () => {
   const actual = await vi.importActual<typeof import('@/components/share/shareClient')>(
     '@/components/share/shareClient',
@@ -24,6 +25,7 @@ vi.mock('@/components/share/shareClient', async () => {
     ...actual,
     createShareLink: (...args: any[]) => createShareLinkMock(...args),
     uploadShareAssets: (...args: any[]) => uploadShareAssetsMock(...args),
+    transcodeToJpeg: (...args: any[]) => transcodeToJpegMock(...args),
   }
 })
 
@@ -50,6 +52,8 @@ beforeEach(() => {
   uploadShareAssetsMock.mockReset()
   useSessionMock.mockReset()
   useSessionMock.mockReturnValue({ data: { user: { name: 'u' } }, status: 'authenticated' })
+  transcodeToJpegMock.mockReset()
+  transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
   createShareLinkMock.mockResolvedValue({
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
@@ -167,5 +171,37 @@ describe('PointSharePanel 短链与平台按钮', () => {
     // 等卡片桩的 setTimeout 全部跑完，再断言实拍 URL 从头到尾没被 revoke
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(revokeMock).not.toHaveBeenCalledWith(photoUrl)
+  })
+
+  it('超过 5MB 的实拍被拒绝并提示，不发 createObjectURL', async () => {
+    const createMock = vi.fn(() => 'blob:never')
+    globalThis.URL.createObjectURL = createMock
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    const fileInput = container.querySelector('input[type="file"]')!
+    const big = new File([new Uint8Array(1)], 'big.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(big, 'size', { value: 6_000_000 })
+    fireEvent.change(fileInput, { target: { files: [big] } })
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastPhotoTooLarge', 'zh'))
+    expect(createMock).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: t('share.addPhoto', 'zh') })).toBeInTheDocument()
+  })
+
+  it('HEIC 等非 jpeg/png/webp 走 JPEG 转码后入槽', async () => {
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    const fileInput = container.querySelector('input[type="file"]')!
+    const heic = new File([new Uint8Array(10)], 'photo.heic', { type: 'image/heic' })
+    fireEvent.change(fileInput, { target: { files: [heic] } })
+    await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('button', { name: t('share.removePhoto', 'zh') })).toBeInTheDocument()
+  })
+
+  it('转码失败提示不支持并清空选择', async () => {
+    transcodeToJpegMock.mockResolvedValue(null)
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    const fileInput = container.querySelector('input[type="file"]')!
+    const gif = new File([new Uint8Array(10)], 'dance.gif', { type: 'image/gif' })
+    fireEvent.change(fileInput, { target: { files: [gif] } })
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastPhotoUnsupported', 'zh'))
+    expect(screen.getByRole('button', { name: t('share.addPhoto', 'zh') })).toBeInTheDocument()
   })
 })

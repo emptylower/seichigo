@@ -3,6 +3,7 @@ import {
   LAYOUT_STORAGE_KEY,
   createShareLink,
   readPreferredLayout,
+  transcodeToJpeg,
   uploadShareAssets,
   writePreferredLayout,
 } from '@/components/share/shareClient'
@@ -17,6 +18,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('createShareLink', () => {
@@ -76,6 +78,35 @@ describe('uploadShareAssets', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: '请先登录' }), { status: 401 }))
     const card = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
     await expect(uploadShareAssets('AbC12xYz', card, null)).resolves.toBeNull()
+  })
+})
+
+describe('transcodeToJpeg', () => {
+  it('把位图转成 JPEG blob（质量 0.85）', async () => {
+    const close = vi.fn()
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 4, height: 2, close })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never)
+    const toBlobSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toBlob')
+      .mockImplementation((callback: BlobCallback, _type?: string, _quality?: number) => {
+        callback(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
+      })
+    const result = await transcodeToJpeg(new File([new Uint8Array(2)], 'a.heic', { type: 'image/heic' }))
+    expect(result?.type).toBe('image/jpeg')
+    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.85)
+    expect(close).toHaveBeenCalled()
+  })
+
+  it('解码失败返回 null', async () => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => {
+        throw new Error('decode failed')
+      }),
+    )
+    await expect(
+      transcodeToJpeg(new File([new Uint8Array(2)], 'a.heic', { type: 'image/heic' })),
+    ).resolves.toBeNull()
   })
 })
 

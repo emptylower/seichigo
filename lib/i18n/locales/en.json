@@ -751,6 +751,8 @@
     "toastSaved": "Image saved",
     "toastPasteInApp": "Image and caption are ready — open the app and paste",
     "toastShareFilesUnsupported": "This browser cannot share images directly. Save the image first, then post it manually.",
-    "toastFailed": "Something went wrong. Please try again."
+    "toastFailed": "Something went wrong. Please try again.",
+    "toastPhotoTooLarge": "Photo is over 5 MB. Please pick a smaller one.",
+    "toastPhotoUnsupported": "This image format isn't supported. Please use JPEG, PNG, or WebP."
   }
 }
