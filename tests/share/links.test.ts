@@ -134,3 +134,45 @@ describe('POST /api/share/links', () => {
     expect(calls).toBe(2)
   })
 })
+
+describe('建链成功后预热卡片', () => {
+  it('新建短链时预热当前语言的两种版式', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const prewarmCard = vi.fn(async () => undefined)
+    const res = await createPostShareLinkHandler({ ...makeDeps({ repo, userId: 'u1' }), prewarmCard })(
+      makeRequest({ pointId: '101:suga', bangumiId: 101, locale: 'ja', layout: 'portrait' }),
+    )
+    expect(res.status).toBe(201)
+    expect(prewarmCard).toHaveBeenCalledTimes(1)
+    expect(prewarmCard).toHaveBeenCalledWith({ pointId: '101:suga', locale: 'ja' })
+  })
+
+  it('预热抛错不影响建链结果', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const prewarmCard = vi.fn(async () => {
+      throw new Error('boom')
+    })
+    const res = await createPostShareLinkHandler({ ...makeDeps({ repo, userId: 'u1' }), prewarmCard })(
+      makeRequest({ pointId: '101:suga', bangumiId: 101, locale: 'zh', layout: 'portrait' }),
+    )
+    expect(res.status).toBe(201)
+  })
+
+  it('命中 24 小时去重（200）时不重复预热', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const prewarmCard = vi.fn(async () => undefined)
+    const deps = { ...makeDeps({ repo, userId: 'u1' }), prewarmCard }
+    const body = { pointId: '101:suga', bangumiId: 101, locale: 'zh' as const, layout: 'portrait' as const }
+    expect((await createPostShareLinkHandler(deps)(makeRequest(body))).status).toBe(201)
+    expect((await createPostShareLinkHandler(deps)(makeRequest(body))).status).toBe(200)
+    expect(prewarmCard).toHaveBeenCalledTimes(1)
+  })
+
+  it('没有 prewarmCard 依赖时照常建链（vitest / next dev）', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const res = await createPostShareLinkHandler(makeDeps({ repo, userId: 'u1' }))(
+      makeRequest({ pointId: '101:suga', bangumiId: 101, locale: 'zh', layout: 'portrait' }),
+    )
+    expect(res.status).toBe(201)
+  })
+})

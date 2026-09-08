@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { ShareApiDeps } from '@/lib/share/api'
+import { runShareBackground } from '@/lib/share/background'
 import { hashIp, readClientIp } from '@/lib/share/ipHash'
 import { allocateShareCode } from '@/lib/share/shortCode'
 import type { CreateShareLinkResponse } from '@/lib/share/types'
@@ -83,6 +84,14 @@ export function createPostShareLinkHandler(deps: ShareApiDeps) {
         ipHash,
       }),
     )
+
+    // 预热：用户看到面板时通常已命中缓存。waitUntil 必须以 ctx 为 this 调用，
+    // 由 runShareBackground 统一处理（见 lib/share/background.ts:21-24）
+    if (deps.prewarmCard) {
+      runShareBackground(
+        deps.prewarmCard({ pointId: parsed.data.pointId, locale: parsed.data.locale }),
+      )
+    }
 
     return NextResponse.json(toResponse(created.code, deps.origin), { status: 201 })
   }
