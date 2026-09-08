@@ -175,17 +175,23 @@ describe('openBlankWindow / openOrNavigate', () => {
     expect(openBlankWindow()).toBeNull()
   })
 
-  it('有窗口引用时改写它的 location', () => {
-    const win = { location: { href: '' } } as unknown as Window
+  it('有窗口引用时先断开 opener 再改写它的 location', () => {
+    const win = { location: { href: '' }, opener: {} } as unknown as Window
     expect(openOrNavigate(win, 'https://x.com/intent')).toBe(true)
+    expect(win.opener).toBeNull()
     expect(win.location.href).toBe('https://x.com/intent')
   })
 
-  it('没有窗口引用时退回再开一次新窗口', () => {
-    const openSpy = vi.fn(() => ({}) as Window)
+  it('没有窗口引用时退回再开一次：不带 noopener 特性串，手动断开 opener', () => {
+    const popup = { opener: {} } as unknown as Window
+    // 真实语义 stub：带 'noopener' 特性串的 open 一律被拦（返回 null）
+    const openSpy = vi.fn((_url: string, _target?: string, features?: string) =>
+      features?.includes('noopener') ? null : popup,
+    )
     vi.stubGlobal('open', openSpy)
     expect(openOrNavigate(null, 'https://x.com/intent')).toBe(true)
-    expect(openSpy).toHaveBeenCalledWith('https://x.com/intent', '_blank', 'noopener')
+    expect(openSpy).toHaveBeenCalledWith('https://x.com/intent', '_blank')
+    expect((popup as { opener: unknown }).opener).toBeNull()
   })
 
   it('兜底也被拦截时返回 false', () => {

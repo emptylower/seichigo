@@ -206,10 +206,16 @@ export function openBlankWindow(): Window | null {
   }
 }
 
-/** 有引用就改它的 location；没有（同步 open 就被拦了）再赌一次 open，仍失败返回 false */
+/** 有引用就先断 opener 再改它的 location；没有（同步 open 就被拦了）再赌一次 open，仍失败返回 false */
 export function openOrNavigate(win: Window | null, url: string): boolean {
   if (win) {
     try {
+      // 跨域窗口赋 opener 可能抛，断开失败不挡导航
+      try {
+        win.opener = null
+      } catch {
+        // 忽略
+      }
       win.location.href = url
       return true
     } catch {
@@ -217,7 +223,16 @@ export function openOrNavigate(win: Window | null, url: string): boolean {
     }
   }
   try {
-    return Boolean(globalThis.open?.(url, '_blank', 'noopener'))
+    // 不用 'noopener' 特性串：部分浏览器（含 in-app webview）见到特性串直接拦掉。
+    // 手动断 opener 达到同样的隔离效果
+    const w = globalThis.open?.(url, '_blank')
+    if (!w) return false
+    try {
+      w.opener = null
+    } catch {
+      // 忽略
+    }
+    return true
   } catch {
     return false
   }
