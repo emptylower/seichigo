@@ -10,7 +10,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * 读取 content/generated/home-showcase.json 时的形状校验：只做结构性检查
- * （days[].items 必须是数组），载荷内容按 §0 契约原样透传给前端组件。
+ * （days[].items 必须是数组），载荷内容经 projectShowcaseDaysForHome 白名单
+ * 投影后交给前端组件（§0 契约的数据文件本身保持全量）。
  * 结构不对返回 null，由调用方决定抛错口径。
  */
 export function parseHomeShowcase(raw: unknown): HomeShowcase | null {
@@ -29,7 +30,7 @@ export function parseHomeShowcase(raw: unknown): HomeShowcase | null {
     savedAt,
     title,
     summary,
-    days: raw.days as TripPlanDayView[],
+    days: projectShowcaseDaysForHome(raw.days as TripPlanDayView[]),
   }
 }
 
@@ -217,6 +218,59 @@ export function slimShowcaseDays(days: TripPlanDayView[]): TripPlanDayView[] {
     items: (day.items || []).map((item) => {
       const payload = asPlainObject(item.payload)
       return payload ? { ...item, payload: slimPayload(payload) as TripPlanDayView['items'][number]['payload'] } : item
+    }),
+  }))
+}
+
+/**
+ * 首页读取路径的投影白名单：components/home/** 只渲染 transport 的
+ * mode/durationMin/distanceKm（transitLineText）、media 的 displayUrl/
+ * source/attribution（getMedia）、schedule 的 start/end（getSchedule）。
+ * polyline/legs/place 等体积大头首页不渲染，不进 RSC flight payload。
+ */
+const HOME_TRANSPORT_KEYS = ['mode', 'durationMin', 'distanceKm'] as const
+const HOME_MEDIA_KEYS = ['displayUrl', 'source', 'attribution'] as const
+const HOME_SCHEDULE_KEYS = ['start', 'end'] as const
+
+function projectHomePayload(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const out: Record<string, unknown> = { ...payload }
+  delete out.place
+
+  const transport = asPlainObject(out.transport)
+  if (transport) {
+    const projected = pickKeys(transport, HOME_TRANSPORT_KEYS)
+    if (Object.keys(projected).length) out.transport = projected
+    else delete out.transport
+  }
+
+  const media = asPlainObject(out.media)
+  if (media) {
+    const projected = pickKeys(media, HOME_MEDIA_KEYS)
+    // getMedia 没有 displayUrl 直接返回 null，media 整块没有渲染价值
+    if (typeof projected.displayUrl === 'string' && projected.displayUrl) out.media = projected
+    else delete out.media
+  }
+
+  const schedule = asPlainObject(out.schedule)
+  if (schedule) out.schedule = pickKeys(schedule, HOME_SCHEDULE_KEYS)
+
+  return Object.keys(out).length ? out : null
+}
+
+/**
+ * 首页 flight payload 投影（parseHomeShowcase 返回前调用）：按首页实际
+ * 渲染的字段收窄每个条目的 payload；条目字段（id/title/note/reason/point
+ * 等）与未列出的 payload 键原样保留。不修改入参，返回新对象；投影后
+ * 为空的 payload 置 null（与 slimShowcaseDays 对空 payload 的口径一致）。
+ */
+export function projectShowcaseDaysForHome(days: TripPlanDayView[]): TripPlanDayView[] {
+  return days.map((day) => ({
+    ...day,
+    items: (day.items || []).map((item) => {
+      const payload = asPlainObject(item.payload)
+      if (!payload) return item
+      const projected = projectHomePayload(payload)
+      return { ...item, payload: projected as TripPlanDayView['items'][number]['payload'] }
     }),
   }))
 }
