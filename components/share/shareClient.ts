@@ -30,6 +30,7 @@ export async function createShareLink(
  * photo-only 上传的响应：服务端渲染改造后带 photoKey、imageUrl 可空。
  * 这两个字段由 Track A 并进 lib/share/types.ts 的 ShareUploadResponse；
  * 本分支不改共享契约，先在客户端本地扩展。
+ * 合流后删除本类型，调用点改用 lib/share/types.ts 的 ShareUploadResponse。
  */
 export type SharePhotoUploadResponse = Omit<ShareUploadResponse, 'imageUrl'> & {
   imageUrl: string | null

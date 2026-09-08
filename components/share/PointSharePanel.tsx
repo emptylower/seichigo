@@ -46,7 +46,7 @@ export type PointSharePanelProps = {
   pointName: string
   animeTitle: string
   cityName: string
-  /** 卡片改服务端渲染后由后端从库里读，这两项保留只为不动 MapDialogs 的调用点 */
+  /** 卡片改服务端渲染后由后端从库里读，这三项保留只为不动 MapDialogs 的调用点 */
   episode: string | null
   scene: string | null
   animeImage: string
