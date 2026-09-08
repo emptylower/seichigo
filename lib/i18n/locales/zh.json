@@ -728,6 +728,7 @@
     "close": "关闭",
     "generating": "正在生成卡片…",
     "generateFailed": "卡片生成失败，请重试",
+    "retry": "重试",
     "layoutLabel": "版式",
     "layoutPortrait": "竖版",
     "layoutLandscape": "横版",

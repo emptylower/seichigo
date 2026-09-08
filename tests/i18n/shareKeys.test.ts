@@ -50,4 +50,13 @@ describe('share i18n keys', () => {
       expect(template.includes(token), `${token} in ${template}`).toBe(true)
     }
   })
+
+  // 2026-09-08 Track B 评审修复新增的键，逐个登记防漏翻
+  const REVIEW_FIX_KEYS = ['retry']
+
+  it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
+    for (const key of REVIEW_FIX_KEYS) {
+      expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
+    }
+  })
 })

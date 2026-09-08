@@ -728,6 +728,7 @@
     "close": "Close",
     "generating": "Rendering your card…",
     "generateFailed": "Could not render the card. Please try again.",
+    "retry": "Retry",
     "layoutLabel": "Format",
     "layoutPortrait": "Portrait",
     "layoutLandscape": "Landscape",

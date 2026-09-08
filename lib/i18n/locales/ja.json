@@ -728,6 +728,7 @@
     "close": "閉じる",
     "generating": "カードを生成中…",
     "generateFailed": "カードの生成に失敗しました。もう一度お試しください。",
+    "retry": "再試行",
     "layoutLabel": "レイアウト",
     "layoutPortrait": "縦",
     "layoutLandscape": "横",

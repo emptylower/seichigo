@@ -105,6 +105,17 @@ describe('PointSharePanel 短链与平台按钮', () => {
     ))
   })
 
+  it('建短链失败时显示失败提示与重试按钮，点击后重新请求', async () => {
+    createShareLinkMock.mockResolvedValueOnce(null)
+    render(<PointSharePanel {...PROPS} />)
+    const retry = await screen.findByRole('button', { name: t('share.retry', 'zh') })
+    expect(screen.getByText(t('share.generateFailed', 'zh'))).toBeInTheDocument()
+    fireEvent.click(retry)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
+    // 重试成功后平台链接出现
+    await screen.findByRole('link', { name: 'X' })
+  })
+
   it('加实拍后切换版式，仍在使用的实拍 objectURL 不会被 revoke', async () => {
     let n = 0
     const createMock = vi.fn(() => `blob:${++n}`)

@@ -61,6 +61,8 @@ export default function PointSharePanel({
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const [linkFailed, setLinkFailed] = useState(false)
+  const [retryNonce, setRetryNonce] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const uploadedRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -70,16 +72,21 @@ export default function PointSharePanel({
     let cancelled = false
     setShareUrl('')
     setCode('')
+    setLinkFailed(false)
     uploadedRef.current = false
     createShareLink({ pointId, bangumiId, locale, layout }).then((result) => {
-      if (cancelled || !result) return
+      if (cancelled) return
+      if (!result) {
+        setLinkFailed(true)
+        return
+      }
       setShareUrl(result.url)
       setCode(result.code)
     })
     return () => {
       cancelled = true
     }
-  }, [pointId, bangumiId, locale, layout])
+  }, [pointId, bangumiId, locale, layout, retryNonce])
 
   const previewUrlRef = useRef<string | null>(null)
   const photoObjectUrlRef = useRef<string | null>(null)
@@ -226,8 +233,17 @@ export default function PointSharePanel({
             <img src={previewUrl} alt={t('share.panelTitle', locale)} className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-400">
-              {failed ? (
-                <p className="text-sm">{t('share.generateFailed', locale)}</p>
+              {failed || linkFailed ? (
+                <>
+                  <p className="text-sm">{t('share.generateFailed', locale)}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryNonce((n) => n + 1)}
+                    className="rounded-full bg-brand px-4 py-1.5 text-xs font-medium text-white"
+                  >
+                    {t('share.retry', locale)}
+                  </button>
+                </>
               ) : (
                 <>
                   <Loader2 className="h-8 w-8 animate-spin text-brand" />
