@@ -27,6 +27,17 @@ export async function createShareLink(
 }
 
 /**
+ * photo-only 上传的响应：服务端渲染改造后带 photoKey、imageUrl 可空。
+ * 这两个字段由 Track A 并进 lib/share/types.ts 的 ShareUploadResponse；
+ * 本分支不改共享契约，先在客户端本地扩展。
+ */
+export type SharePhotoUploadResponse = Omit<ShareUploadResponse, 'imageUrl'> & {
+  imageUrl: string | null
+  /** 实拍在 R2 的 key（checkin/<userId>/<pointId>.jpg），用来拼带 photo 参数的卡片 URL */
+  photoKey?: string | null
+}
+
+/**
  * 只补传实拍：卡片自 2026-09-08 起由服务端渲染，前端不再生成也不再上传 card。
  * 失败（未登录 401、限流 429、无绑定 503）都只返回 null——加实拍是锦上添花，
  * 失败了继续用不带实拍的服务端卡片。
@@ -34,13 +45,13 @@ export async function createShareLink(
 export async function uploadSharePhoto(
   code: string,
   photo: File,
-): Promise<ShareUploadResponse | null> {
+): Promise<SharePhotoUploadResponse | null> {
   try {
     const form = new FormData()
     form.set('photo', photo)
     const res = await fetch(`/api/share/links/${code}/upload`, { method: 'POST', body: form })
     if (!res.ok) return null
-    return (await res.json()) as ShareUploadResponse
+    return (await res.json()) as SharePhotoUploadResponse
   } catch {
     return null
   }

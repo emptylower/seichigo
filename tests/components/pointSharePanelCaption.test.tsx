@@ -3,25 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PointSharePanel from '@/components/share/PointSharePanel'
 import { t } from '@/lib/i18n'
 
-// 卡片渲染器在 jsdom 里没有 canvas，直接桩成「立刻回调一个 Blob」
-// blob 内容带上 input 的地址，方便断言「上传的是带地址那一版」
-let lastCardInput: Record<string, unknown> | null = null
-let cardStubAutoRender = true
-vi.mock('@/components/share/PointShareCard', () => ({
-  default: ({ input, onRendered }: { input: Record<string, unknown>; onRendered: (blob: Blob) => void }) => {
-    lastCardInput = input
-    if (cardStubAutoRender) {
-      const blob = new Blob([JSON.stringify({ address: input.address ?? null })], {
-        type: 'image/jpeg',
-      })
-      setTimeout(() => onRendered(blob), 0)
-    }
-    return <canvas data-testid="stub-card" />
-  },
-}))
-
 const createShareLinkMock = vi.fn()
-const uploadShareAssetsMock = vi.fn()
+const fetchCardBlobMock = vi.fn()
+const uploadSharePhotoMock = vi.fn()
 const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
@@ -38,7 +22,8 @@ vi.mock('@/components/share/shareClient', async () => {
   return {
     ...actual,
     createShareLink: (...args: any[]) => createShareLinkMock(...args),
-    uploadShareAssets: (...args: any[]) => uploadShareAssetsMock(...args),
+    fetchCardBlob: (...args: any[]) => fetchCardBlobMock(...args),
+    uploadSharePhoto: (...args: any[]) => uploadSharePhotoMock(...args),
     transcodeToJpeg: (...args: any[]) => transcodeToJpegMock(...args),
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
@@ -70,10 +55,9 @@ const PROPS = {
 }
 
 beforeEach(() => {
-  lastCardInput = null
-  cardStubAutoRender = true
   createShareLinkMock.mockReset()
-  uploadShareAssetsMock.mockReset()
+  fetchCardBlobMock.mockReset()
+  uploadSharePhotoMock.mockReset()
   useSessionMock.mockReset()
   useSessionMock.mockReturnValue({ data: { user: { name: 'u' } }, status: 'authenticated' })
   transcodeToJpegMock.mockReset()
@@ -104,7 +88,9 @@ beforeEach(() => {
     code: 'AbC12xYz',
     url: 'https://seichigo.com/s/AbC12xYz',
   })
-  uploadShareAssetsMock.mockResolvedValue(null)
+  // 文案用例只关心文案，卡片给个立即成功的桩即可
+  fetchCardBlobMock.mockResolvedValue(new Blob(['card'], { type: 'image/webp' }))
+  uploadSharePhotoMock.mockResolvedValue(null)
   globalThis.localStorage.clear()
   globalThis.URL.createObjectURL = vi.fn(() => 'blob:preview')
   globalThis.URL.revokeObjectURL = vi.fn()
@@ -112,11 +98,16 @@ beforeEach(() => {
 
 async function readyPanel(props = PROPS) {
   render(<PointSharePanel {...props} />)
-  await waitFor(() => expect(lastCardInput?.shareUrl).toBe('https://seichigo.com/s/AbC12xYz'))
   await waitFor(() => expect(fetchPointContextMock).toHaveBeenCalled())
-  // 再等卡片渲染回调落地（cardBlob 就绪）：两条路径的 X 按钮都从禁用变可点
+  // 卡片 blob（fetchCardBlob 桩）与短链都就绪后，X 目的地按钮才可点
   await waitFor(() =>
     expect(screen.getByRole('button', { name: t('share.platformX', 'zh') })).not.toBeDisabled(),
+  )
+  // 文案里的地址靠 point-context 回填，等它落到折叠摘要上再断言，避免竞态
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: t('share.captionLabel', 'zh') })).toHaveTextContent(
+      '東京都新宿区',
+    ),
   )
 }
 
