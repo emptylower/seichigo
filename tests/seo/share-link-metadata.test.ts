@@ -34,12 +34,12 @@ const SNAPSHOT = {
   pointImage: 'https://image.anitabi.cn/points/101/suga.jpg',
 }
 
-async function seed(code: string, imageKey: string | null) {
+async function seed(code: string, imageKey: string | null, locale: 'zh' | 'en' | 'ja' = 'zh') {
   await repo.create({
     code,
     pointId: '101:suga',
     bangumiId: 101,
-    locale: 'zh',
+    locale,
     layout: 'portrait',
     userId: null,
     ipHash: 'h',
@@ -139,6 +139,34 @@ describe('/s/[code] generateMetadata', () => {
         url: 'https://seichigo.com/api/share/card/101%3Asuga/zh/landscape.jpg',
       }),
     ])
+  })
+
+  it('openGraph 带 siteName=SeichiGo 与按链接语言映射的 og:locale', async () => {
+    await seed('IIIIIIII', null, 'zh')
+    await seed('JJJJJJJJ', null, 'ja')
+    await seed('KKKKKKKK', null, 'en')
+    const { generateMetadata } = await import('@/app/s/[code]/page')
+
+    const zh = await generateMetadata({
+      params: Promise.resolve({ code: 'IIIIIIII' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(zh.openGraph?.siteName).toBe('SeichiGo')
+    expect(zh.openGraph?.locale).toBe('zh_CN')
+
+    const ja = await generateMetadata({
+      params: Promise.resolve({ code: 'JJJJJJJJ' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(ja.openGraph?.siteName).toBe('SeichiGo')
+    expect(ja.openGraph?.locale).toBe('ja_JP')
+
+    const en = await generateMetadata({
+      params: Promise.resolve({ code: 'KKKKKKKK' }),
+      searchParams: Promise.resolve({}),
+    })
+    expect(en.openGraph?.siteName).toBe('SeichiGo')
+    expect(en.openGraph?.locale).toBe('en_US')
   })
 
   it('短码不存在时只给 noindex 标题', async () => {

@@ -15,6 +15,14 @@ import {
   buildShareTitle,
 } from '@/lib/share/view'
 import type { ShareLinkRecord } from '@/lib/share/repo'
+import type { SupportedLocale } from '@/lib/i18n/types'
+
+// og:locale 用语言_地区格式；收在 page 内的小映射，不加 i18n key
+const OG_LOCALE: Record<SupportedLocale, string> = {
+  zh: 'zh_CN',
+  ja: 'ja_JP',
+  en: 'en_US',
+}
 
 // 短链每次都要读库拿 imageKey 与 clicks，不能被静态化
 export const dynamic = 'force-dynamic'
@@ -99,6 +107,8 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     robots: { index: false, follow: true },
     openGraph: {
       type: 'website',
+      siteName: 'SeichiGo',
+      locale: OG_LOCALE[link.locale],
       title,
       description,
       url: `${origin}/s/${link.code}`,
