@@ -120,9 +120,24 @@ describe('POST /api/share/links/[code]/upload', () => {
     expect(res.status).toBe(403)
   })
 
+  it('匿名短链不能被登录用户认领，403', async () => {
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    await seed(repo, null)
+    const { store, objects } = makeStore()
+    const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
+      makeRequest(cardForm(jpeg(1080, 1440))),
+      ctx,
+    )
+    expect(res.status).toBe(403)
+    const row = await repo.findByCode('AbC12xYz')
+    expect(row?.userId).toBeNull()
+    expect(row?.imageKey).toBeNull()
+    expect(objects.size).toBe(0)
+  })
+
   it('卡片类型不对 415、过大 413、尺寸不对 422', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     const { store } = makeStore()
     const handler = createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))
     expect((await handler(makeRequest(cardForm(jpeg(1080, 1440), 'image/png')), ctx)).status).toBe(415)
@@ -132,7 +147,7 @@ describe('POST /api/share/links/[code]/upload', () => {
 
   it('合法卡片写进 R2 并回填 imageKey/userId', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     const { store, objects } = makeStore()
     const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
       makeRequest(cardForm(jpeg(1200, 630))),
@@ -152,7 +167,7 @@ describe('POST /api/share/links/[code]/upload', () => {
 
   it('带 photo 时写 checkin key 并回写 UserPointState', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     const { store, objects } = makeStore()
     const upsert = vi.fn(async () => ({}))
     const form = cardForm(jpeg(1080, 1440))
@@ -172,7 +187,7 @@ describe('POST /api/share/links/[code]/upload', () => {
 
   it('photo 只收 JPEG', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     const { store } = makeStore()
     const form = cardForm(jpeg(1080, 1440))
     form.set('photo', new File([jpeg(800, 600)], 'p.webp', { type: 'image/webp' }))
@@ -185,7 +200,7 @@ describe('POST /api/share/links/[code]/upload', () => {
 
   it('每用户每日 30 次上限', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     vi.spyOn(repo, 'countUploadsByUserSince').mockResolvedValue(USER_DAILY_UPLOAD_LIMIT)
     const { store } = makeStore()
     const res = await createPostShareUploadHandler(makeDeps({ repo, store, userId: 'u1' }))(
@@ -197,7 +212,7 @@ describe('POST /api/share/links/[code]/upload', () => {
 
   it('拿不到 R2 绑定 503', async () => {
     const repo = new MemoryShareLinkRepo(() => NOW)
-    await seed(repo)
+    await seed(repo, 'u1')
     const res = await createPostShareUploadHandler(makeDeps({ repo, store: null, userId: 'u1' }))(
       makeRequest(cardForm(jpeg(1080, 1440))),
       ctx,

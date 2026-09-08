@@ -38,7 +38,8 @@ export function createPostShareUploadHandler(deps: ShareApiDeps) {
 
     const link = await deps.repo.findByCode(code)
     if (!link) return NextResponse.json({ error: '短链不存在' }, { status: 404 })
-    if (link.userId && link.userId !== userId) {
+    // 匿名链没有卡片（/s/[code] 已有点位截图兜底），一律不允许被登录用户认领
+    if (link.userId !== userId) {
       return NextResponse.json({ error: '无权修改该分享' }, { status: 403 })
     }
 
