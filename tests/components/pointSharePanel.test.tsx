@@ -71,6 +71,7 @@ beforeEach(() => {
     animeTitle: '你的名字。',
   })
   canShareFilesMock.mockReturnValue(false)
+  transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
   ;(globalThis.URL as any).createObjectURL ??= vi.fn(() => 'blob:preview')
   ;(globalThis.URL as any).revokeObjectURL ??= vi.fn()
 })
@@ -165,6 +166,58 @@ describe('添加实拍', () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     const big = new File([new Uint8Array(5_000_001)], 'p.jpg', { type: 'image/jpeg' })
     fireEvent.change(input, { target: { files: [big] } })
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(t('share.toastPhotoTooLarge', 'zh')),
+    )
+    expect(uploadSharePhotoMock).not.toHaveBeenCalled()
+  })
+
+  // 上传端点只收 JPEG：PNG/WebP 虽然 <img> 能显示，也必须先转码再传
+  it.each(['image/png', 'image/webp'])('%s 先转码成 JPEG 再上传', async (type) => {
+    uploadSharePhotoMock.mockResolvedValue({
+      ok: true,
+      imageUrl: null,
+      photoUrl: '/api/share/photo/u1/101%3Asuga',
+      photoKey: 'checkin/u1/101:suga.jpg',
+    })
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const ext = type === 'image/png' ? 'png' : 'webp'
+    const file = new File([new Uint8Array([1])], `p.${ext}`, { type })
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(uploadSharePhotoMock).toHaveBeenCalledTimes(1))
+    const uploaded = uploadSharePhotoMock.mock.calls[0][1] as File
+    expect(uploaded.type).toBe('image/jpeg')
+    expect(uploaded.name).toBe('p.jpg')
+  })
+
+  it('原图超 5MB 但转码后小于 5MB 时照常上传', async () => {
+    uploadSharePhotoMock.mockResolvedValue({
+      ok: true,
+      imageUrl: null,
+      photoUrl: '/api/share/photo/u1/101%3Asuga',
+      photoKey: 'checkin/u1/101:suga.jpg',
+    })
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const big = new File([new Uint8Array(5_000_001)], 'raw.png', { type: 'image/png' })
+    fireEvent.change(input, { target: { files: [big] } })
+    await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(uploadSharePhotoMock).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('转码后仍超 5MB 才提示过大且不上传', async () => {
+    transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(5_000_001)], { type: 'image/jpeg' }))
+    const { container } = render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(fetchCardBlobMock).toHaveBeenCalledTimes(1))
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const png = new File([new Uint8Array([1])], 'p.png', { type: 'image/png' })
+    fireEvent.change(input, { target: { files: [png] } })
+    await waitFor(() => expect(transcodeToJpegMock).toHaveBeenCalledTimes(1))
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(t('share.toastPhotoTooLarge', 'zh')),
     )

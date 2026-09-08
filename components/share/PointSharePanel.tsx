@@ -57,8 +57,8 @@ export type PointSharePanelProps = {
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50'
 
-/** <img> 原生能吃的格式；其余（HEIC 等）先转 JPEG 再上传 */
-const NATIVE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+/** 上传端点只收 JPEG（lib/share/handlers/upload.ts，其余类型 415）；PNG/WebP/HEIC 一律先转码再传 */
+const UPLOADABLE_PHOTO_TYPES = new Set(['image/jpeg'])
 
 /** 手机路径下五个目的地都走系统面板，只有渠道参数不同 */
 const MOBILE_DESTINATIONS: ReadonlyArray<{ channel: ShareChannel; labelKey: string }> = [
@@ -248,13 +248,8 @@ export default function PointSharePanel({
     const reset = () => {
       if (fileRef.current) fileRef.current.value = ''
     }
-    if (file.size > SHARE_PHOTO_MAX_BYTES) {
-      showToast('share.toastPhotoTooLarge')
-      reset()
-      return
-    }
     let next = file
-    if (!NATIVE_PHOTO_TYPES.has(file.type)) {
+    if (!UPLOADABLE_PHOTO_TYPES.has(file.type)) {
       const transcoded = await transcodeToJpeg(file)
       if (!transcoded) {
         showToast('share.toastPhotoUnsupported')
@@ -264,6 +259,12 @@ export default function PointSharePanel({
       next = new File([transcoded], `${file.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg`, {
         type: 'image/jpeg',
       })
+    }
+    // 大小判定放在转码之后：转码通常更小，先判会把能传的大图误杀掉
+    if (next.size > SHARE_PHOTO_MAX_BYTES) {
+      showToast('share.toastPhotoTooLarge')
+      reset()
+      return
     }
     if (!code) {
       showToast('share.toastFailed')
