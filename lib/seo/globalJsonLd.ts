@@ -35,7 +35,7 @@ export function buildOrganizationJsonLd(): JsonLdObject {
     name: 'SeichiGo',
     url: origin,
     // Keep as URL string for broad validator compatibility.
-    logo: `${origin}/brand/icons/icon-512.png`,
+    logo: `${origin}/brand/icons/icon-512.png?v=2`,
     sameAs: [
       'https://x.com/xixingshu',
       'https://github.com/seichigo',
