@@ -111,9 +111,11 @@ function runBackground(promise: Promise<unknown>): Promise<void> {
       })
     },
   )
-  const waitUntil = getCfBindings()?.ctx?.waitUntil
-  if (waitUntil) {
-    waitUntil(guarded)
+  // 必须以 ctx 为 this 调用：把 waitUntil 拆下来单独调用会抛 "Illegal invocation"
+  //（2026-09-08 上线后实测，导致变体全部走转换失败兜底）
+  const ctx = getCfBindings()?.ctx
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(guarded)
     return Promise.resolve()
   }
   return guarded
