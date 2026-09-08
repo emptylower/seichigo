@@ -618,6 +618,7 @@
       "freeCta": "Available now",
       "standardName": "Standard",
       "standardPeriod": "/mo",
+      "taxNote": "excl. tax",
       "standardCta": "Get Standard",
       "proName": "Pro",
       "rowPlanning": "AI planning, follow-up questions and re-runs",
