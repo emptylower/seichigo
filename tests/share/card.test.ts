@@ -3,6 +3,7 @@ import {
   cardCacheKey,
   createGetCardHandler,
   isCheckinPhotoKey,
+  MAX_INLINE_IMAGE_BYTES,
   normalizeCardLayout,
   normalizeCardLocale,
   renderAndStoreCard,
@@ -280,6 +281,26 @@ describe('renderAndStoreCard', () => {
       photoKey: 'checkin/u1/101:suga.jpg',
     })
     expect(renderCard.mock.calls[0]![0].html).toContain('data:image/webp;base64,CQkJ')
+  })
+
+  it('实拍超过内联上限时不读字节，当没传处理', async () => {
+    const { store } = makeStore({
+      'checkin/u1/101:suga.jpg': new Uint8Array(MAX_INLINE_IMAGE_BYTES + 1),
+    })
+    const renderCard = vi.fn(
+      async (_input: { html: string; width: number; height: number }) => new Uint8Array([1]),
+    )
+    await renderAndStoreCard(makeDeps({ getStore: () => store, renderCard }), {
+      pointId: '101:suga',
+      locale: 'zh',
+      layout: 'landscape',
+      photoKey: 'checkin/u1/101:suga.jpg',
+    })
+    const html = renderCard.mock.calls[0]![0].html
+    // 超限实拍不进 HTML：没有实拍的 data URI，也不切对比布局（动画截图仍内联）
+    expect(html).not.toContain('data:image/webp;base64,CQkJ')
+    expect(html).not.toContain('class="visual compare"')
+    expect(html).toContain('data:image/jpeg;base64,')
   })
 
   it('上游 contentType 含引号时白名单回落 image/jpeg，不产生属性逃逸', async () => {

@@ -27,6 +27,9 @@ export type CardDeps = PointContextDeps & {
 
 const LOCALES: readonly string[] = ['zh', 'en', 'ja']
 
+/** 单张内联图上限 3MB（与 cardApi 的 fetchImage 同一条）：超了不读流，当没图处理 */
+export const MAX_INLINE_IMAGE_BYTES = 3_000_000
+
 export function normalizeCardLocale(value: string | null): SupportedLocale {
   const raw = String(value || '').trim()
   return LOCALES.includes(raw) ? (raw as SupportedLocale) : 'zh'
@@ -168,7 +171,11 @@ export async function renderAndStoreCard(
   const animeImage = animeUrl ? await deps.fetchImage(animeUrl) : null
   const photoObject =
     input.photoKey && store ? await store.get(input.photoKey).catch(() => null) : null
-  const photoBytes = photoObject ? await readAllBytes(photoObject.body) : null
+  // 先按对象 size 判再读流：5MB 实拍 base64 后约 6.7MB，不能整个拖进渲染请求体
+  const photoBytes =
+    photoObject && photoObject.size <= MAX_INLINE_IMAGE_BYTES
+      ? await readAllBytes(photoObject.body)
+      : null
 
   const size = SHARE_CARD_SIZES[input.layout]
   const html = buildCardHtml({

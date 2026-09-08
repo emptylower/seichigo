@@ -1,11 +1,9 @@
-import type { CardDeps } from '@/lib/share/handlers/card'
+import { MAX_INLINE_IMAGE_BYTES, type CardDeps } from '@/lib/share/handlers/card'
 
 let cached: CardDeps | null = null
 
 /** 抓上游图的超时：卡片本身有 20 秒预算，图不能占太多 */
 const IMAGE_FETCH_TIMEOUT_MS = 6_000
-/** 单张内联图上限 3MB：超了就当抓不到，走渐变兜底，别把 Browser Run 的请求体撑爆 */
-const MAX_INLINE_IMAGE_BYTES = 3_000_000
 
 /**
  * 卡片自带一套 deps（同 lib/share/pointContextApi.ts 的理由）：ShareApiDeps 被
