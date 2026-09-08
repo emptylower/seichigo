@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LAYOUT_STORAGE_KEY,
   createShareLink,
+  fetchCardBlob,
   fetchPointContext,
   openBlankWindow,
   openOrNavigate,
   readPreferredLayout,
   transcodeToJpeg,
-  uploadShareAssets,
+  uploadSharePhoto,
   writePreferredLayout,
 } from '@/components/share/shareClient'
 
@@ -58,29 +59,85 @@ describe('createShareLink', () => {
   })
 })
 
-describe('uploadShareAssets', () => {
-  it('把 card/photo 塞进 FormData', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, imageUrl: '/api/share/img/AbC12xYz', photoUrl: null }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+describe('fetchCardBlob', () => {
+  it('把卡片 URL 取成 blob', async () => {
+    // 注意：jsdom 的 Blob 与 undici 的 Response 不同 realm，new Response(blob) 会被
+    // 字符串化成 "[object Blob]"，所以 mock 一律用字节构造，断言落在 size/type 上
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'image/webp' },
+        }),
     )
-    const card = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
-    const photo = new File([new Uint8Array(1)], 'p.jpg', { type: 'image/jpeg' })
-    const result = await uploadShareAssets('AbC12xYz', card, photo)
-    expect(result?.imageUrl).toBe('/api/share/img/AbC12xYz')
-    const [url, init] = fetchMock.mock.calls[0]!
-    expect(url).toBe('/api/share/links/AbC12xYz/upload')
-    const form = init.body as FormData
-    expect(form.get('card')).toBeInstanceOf(File)
-    expect(form.get('photo')).toBeInstanceOf(File)
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await fetchCardBlob('/api/share/card/p1?locale=zh&layout=landscape')
+    expect(out).not.toBeNull()
+    expect(out!.size).toBe(3)
+    expect(out!.type).toBe('image/webp')
+    expect(fetchMock).toHaveBeenCalledWith('/api/share/card/p1?locale=zh&layout=landscape')
   })
 
-  it('401 时返回 null（匿名分享照常，只是不上传）', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: '请先登录' }), { status: 401 }))
-    const card = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
-    await expect(uploadShareAssets('AbC12xYz', card, null)).resolves.toBeNull()
+  it('非 2xx 返回 null', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status: 500 })))
+    expect(await fetchCardBlob('/api/share/card/p1')).toBeNull()
+  })
+
+  it('302 到兜底图时（fetch 自动跟随）仍返回 blob', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([9]), {
+            status: 200,
+            headers: { 'content-type': 'image/jpeg' },
+          }),
+      ),
+    )
+    const out = await fetchCardBlob('/api/share/card/p1')
+    expect(out).not.toBeNull()
+    expect(out!.size).toBe(1)
+    expect(out!.type).toBe('image/jpeg')
+  })
+
+  it('抛错返回 null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline')
+      }),
+    )
+    expect(await fetchCardBlob('/api/share/card/p1')).toBeNull()
+  })
+})
+
+describe('uploadSharePhoto', () => {
+  it('只带 photo 字段发到上传端点，回传 photoKey', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ ok: true, imageUrl: null, photoUrl: '/api/share/photo/u1/p1', photoKey: 'checkin/u1/p1.jpg' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
+    const out = await uploadSharePhoto('AbC12xYz', file)
+    expect(out?.photoKey).toBe('checkin/u1/p1.jpg')
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/share/links/AbC12xYz/upload')
+    expect(init.method).toBe('POST')
+    const form = init.body as FormData
+    expect(form.get('photo')).toBeInstanceOf(File)
+    expect(form.get('card')).toBeNull()
+  })
+
+  it('401 / 429 / 503 都返回 null', async () => {
+    for (const status of [401, 429, 503]) {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status })))
+      const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
+      expect(await uploadSharePhoto('AbC12xYz', file), String(status)).toBeNull()
+    }
   })
 })
 

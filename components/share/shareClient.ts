@@ -26,19 +26,35 @@ export async function createShareLink(
   }
 }
 
-/** 上传失败（未登录 401、限流 429、无绑定 503）都只返回 null：匿名分享照常走 */
-export async function uploadShareAssets(
+/**
+ * 只补传实拍：卡片自 2026-09-08 起由服务端渲染，前端不再生成也不再上传 card。
+ * 失败（未登录 401、限流 429、无绑定 503）都只返回 null——加实拍是锦上添花，
+ * 失败了继续用不带实拍的服务端卡片。
+ */
+export async function uploadSharePhoto(
   code: string,
-  card: Blob,
-  photo: File | null,
+  photo: File,
 ): Promise<ShareUploadResponse | null> {
   try {
     const form = new FormData()
-    form.set('card', new File([card], `${code}.jpg`, { type: card.type || 'image/jpeg' }))
-    if (photo) form.set('photo', photo)
+    form.set('photo', photo)
     const res = await fetch(`/api/share/links/${code}/upload`, { method: 'POST', body: form })
     if (!res.ok) return null
     return (await res.json()) as ShareUploadResponse
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 取服务端卡片图。保存/复制/系统分享与预览共用同一个 blob，只发一次请求。
+ * 渲染失败时后端会 302 到动画截图或站点默认 OG，fetch 自动跟随，仍拿得到图。
+ */
+export async function fetchCardBlob(url: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.blob()
   } catch {
     return null
   }
