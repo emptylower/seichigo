@@ -51,6 +51,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/en`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
     { url: `${base}/ja`, lastModified: now, changeFrequency: 'weekly', priority: 0.5, alternates: { languages: { zh: `${base}/`, en: `${base}/en`, ja: `${base}/ja` } } },
 
+    { url: `${base}/map`, lastModified: now, changeFrequency: 'daily', priority: 0.8, alternates: { languages: { zh: `${base}/map`, en: `${base}/en/map`, ja: `${base}/ja/map` } } },
+    { url: `${base}/en/map`, lastModified: now, changeFrequency: 'daily', priority: 0.5, alternates: { languages: { zh: `${base}/map`, en: `${base}/en/map`, ja: `${base}/ja/map` } } },
+    { url: `${base}/ja/map`, lastModified: now, changeFrequency: 'daily', priority: 0.5, alternates: { languages: { zh: `${base}/map`, en: `${base}/en/map`, ja: `${base}/ja/map` } } },
+
     { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about`, ja: `${base}/ja/about` } } },
     { url: `${base}/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.3, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
     { url: `${base}/en/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.2, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
