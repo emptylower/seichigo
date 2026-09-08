@@ -22,7 +22,9 @@ export class MemoryPointContextRepo implements PointContextRepo {
 
   async findPoint(pointId: string, _locale: SupportedLocale): Promise<PointContextRow | null> {
     const found = this.points.get(pointId)
-    return found ? { ...found, bangumiTitleCandidates: [...found.bangumiTitleCandidates] } : null
+    return found
+      ? { ...found, bangumiTitleCandidates: [...found.bangumiTitleCandidates], bangumiTitles: { ...found.bangumiTitles } }
+      : null
   }
 
   async findAddress(pointId: string): Promise<PointAddressRow | null> {

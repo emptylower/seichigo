@@ -23,6 +23,7 @@ const ROW: PointContextRow = {
   geoLng: 139.56,
   localizedBangumiTitle: '摇曳露营△ 三期',
   bangumiTitleCandidates: ['摇曳露营△ SEASON 3', 'ゆるキャン△ SEASON3'],
+  bangumiTitles: { zh: '摇曳露营△', jaRaw: 'ゆるキャン△', original: null, romaji: null, english: null },
 }
 
 const ADDRESSES = {
@@ -140,6 +141,37 @@ describe('GET /api/share/point-context', () => {
     const json = await res.json()
     expect(json.displayName).toBe('ぶどうみるく')
     expect(json.note).toBe('コラボドリンク')
+  })
+
+  it('localizedBangumiTitle 缺失时 animeTitle 按 locale 兜底', async () => {
+    const repo = new MemoryPointContextRepo([
+      {
+        ...ROW,
+        localizedBangumiTitle: null,
+        bangumiTitles: { zh: null, jaRaw: 'ゆるキャン△', original: 'Yuru Camp', romaji: 'Yuru Kyampu', english: null },
+        bangumiTitleCandidates: ['候补标题'],
+      },
+    ])
+    const handler = createGetPointContextHandler(makeDeps({ repo }))
+    // ja：jaRaw 优先，original 其次
+    const ja = await (await handler(makeRequest('pointId=101%3Abudo&locale=ja'))).json()
+    expect(ja.animeTitle).toBe('ゆるキャン△')
+    const jaOriginal = await (
+      await createGetPointContextHandler(
+        makeDeps({
+          repo: new MemoryPointContextRepo([
+            { ...ROW, localizedBangumiTitle: null, bangumiTitleCandidates: ['候补标题'], bangumiTitles: { zh: null, jaRaw: null, original: 'Yuru Camp', romaji: null, english: null } },
+          ]),
+        }),
+      )(makeRequest('pointId=101%3Abudo&locale=ja'))
+    ).json()
+    expect(jaOriginal.animeTitle).toBe('Yuru Camp')
+    // en：english 优先，romaji 其次
+    const en = await (await handler(makeRequest('pointId=101%3Abudo&locale=en'))).json()
+    expect(en.animeTitle).toBe('Yuru Kyampu')
+    // zh：只用 zh，缺失退到 candidates[0]
+    const zh = await (await handler(makeRequest('pointId=101%3Abudo&locale=zh'))).json()
+    expect(zh.animeTitle).toBe('候补标题')
   })
 
   it('响应带一天的公共缓存头', async () => {

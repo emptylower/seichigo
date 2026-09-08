@@ -89,7 +89,15 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
     if (!point) return NextResponse.json({ error: '点位不存在' }, { status: 404 })
 
     const rawName = String(point.localizedName || point.name || '').trim()
-    const animeTitle = String(point.localizedBangumiTitle || point.bangumiTitleCandidates[0] || '').trim()
+    // animeTitle 兜底按 locale 定：localized i18n 标题 → bangumi 标题列（ja: jaRaw→original；
+    // en: english→romaji；zh: zh）→ candidates[0]
+    const localeFallback = point.localizedBangumiTitle
+      ?? (locale === 'ja'
+        ? point.bangumiTitles.jaRaw || point.bangumiTitles.original
+        : locale === 'en'
+          ? point.bangumiTitles.english || point.bangumiTitles.romaji
+          : point.bangumiTitles.zh)
+    const animeTitle = String(localeFallback || point.bangumiTitleCandidates[0] || '').trim()
     const candidates = [point.localizedBangumiTitle, ...point.bangumiTitleCandidates].filter(
       (value): value is string => Boolean(value && value.trim()),
     )

@@ -12,6 +12,7 @@ const ROW: PointContextRow = {
   geoLng: 139.56,
   localizedBangumiTitle: '摇曳露营△ 三期',
   bangumiTitleCandidates: ['摇曳露营△ SEASON 3', 'ゆるキャン△ SEASON3'],
+  bangumiTitles: { zh: '摇曳露营△', jaRaw: 'ゆるキャン△', original: null, romaji: null, english: null },
 }
 
 describe('MemoryPointContextRepo', () => {

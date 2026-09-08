@@ -35,8 +35,8 @@ export class PrismaPointContextRepo implements PointContextRepo {
             titleOriginal: true,
             titleRomaji: true,
             titleEnglish: true,
-            // 三语标题全取：去前缀要拿点位名跟任一变体比
-            i18n: { select: { language: true, title: true } },
+            // 三语标题全取：去前缀要拿点位名跟任一变体比；orderBy 让行序确定
+            i18n: { select: { language: true, title: true }, orderBy: { language: 'asc' } },
           },
         },
       },
@@ -68,6 +68,13 @@ export class PrismaPointContextRepo implements PointContextRepo {
       geoLng: row.geoLng,
       localizedBangumiTitle,
       bangumiTitleCandidates: Array.from(new Set(candidates)),
+      bangumiTitles: {
+        zh: normalize(bangumi?.titleZh),
+        jaRaw: normalize(bangumi?.titleJaRaw),
+        original: normalize(bangumi?.titleOriginal),
+        romaji: normalize(bangumi?.titleRomaji),
+        english: normalize(bangumi?.titleEnglish),
+      },
     }
   }
 

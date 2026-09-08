@@ -24,6 +24,17 @@ export type PointContextRow = {
    * titleZh / titleJaRaw / titleOriginal / titleRomaji / titleEnglish。
    */
   bangumiTitleCandidates: string[]
+  /**
+   * animeTitle 的 locale 兜底来源（bangumi 表的五个标题列）：
+   * ja 用 jaRaw→original，en 用 english→romaji，zh 用 zh；再不行才退 candidates[0]。
+   */
+  bangumiTitles: {
+    zh: string | null
+    jaRaw: string | null
+    original: string | null
+    romaji: string | null
+    english: string | null
+  }
 }
 
 export type PointAddressRow = {
