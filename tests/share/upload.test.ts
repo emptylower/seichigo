@@ -6,7 +6,7 @@ import type { ShareStore } from '@/lib/share/store'
 
 const NOW = new Date('2026-09-08T12:00:00Z')
 
-function jpeg(width: number, height: number, padTo = 0): Uint8Array {
+function jpeg(width: number, height: number, padTo = 0): Uint8Array<ArrayBuffer> {
   const sof = [
     0xff, 0xc0, 0x00, 0x11, 0x08,
     (height >> 8) & 0xff, height & 0xff,
@@ -81,7 +81,7 @@ function makeRequest(form: FormData) {
 
 const ctx = { params: Promise.resolve({ code: 'AbC12xYz' }) }
 
-function cardForm(bytes: Uint8Array, type = 'image/jpeg') {
+function cardForm(bytes: Uint8Array<ArrayBuffer>, type = 'image/jpeg') {
   const form = new FormData()
   form.set('card', new File([bytes], 'card.jpg', { type }))
   return form
