@@ -1,3 +1,4 @@
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { ShareChannel } from '@/lib/share/types'
 
 export type ShareCaptionVars = {
@@ -63,4 +64,42 @@ export function buildLineShareUrl(url: string, text: string): string {
 export function buildCardFilename(name: string): string {
   const slug = String(name || '').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40)
   return `seichigo-${slug || 'card'}.jpg`
+}
+
+/**
+ * 城市级地址：都道府县 + 市区町村。
+ * zh/ja 的地址是「粗 → 细」空格分隔，取前两级并去掉空格（東京都武蔵野市）；
+ * en 是「细 → 粗」逗号分隔，最粗的两级在末尾（Musashino, Tokyo）。
+ */
+export function toCityLevelAddress(address: string, locale: SupportedLocale): string {
+  const raw = String(address || '').trim()
+  if (!raw) return ''
+  if (locale === 'en') {
+    const parts = raw.split(',').map((part) => part.trim()).filter(Boolean)
+    return parts.slice(-2).join(', ')
+  }
+  const parts = raw.split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).join('')
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 用户编辑过文案之后，各个目的地按钮仍然要带各自的 `?c=`。
+ * 这里只替换文案里的那条短链（含已有的 ?c=xx），其余文字原样保留。
+ */
+export function retargetCaptionChannel(
+  caption: string,
+  shareUrl: string,
+  channel: ShareChannel,
+): string {
+  const base = String(shareUrl || '').trim()
+  if (!base) return String(caption || '')
+  const target = withShareChannel(base, channel)
+  return String(caption || '').replace(
+    new RegExp(`${escapeRegExp(base)}(?:\\?c=[A-Za-z]+)?`, 'g'),
+    target,
+  )
 }

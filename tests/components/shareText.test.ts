@@ -5,6 +5,8 @@ import {
   buildRedditSubmitUrl,
   buildShareCaption,
   buildXIntentUrl,
+  retargetCaptionChannel,
+  toCityLevelAddress,
   toHashtag,
   withShareChannel,
 } from '@/components/share/shareText'
@@ -108,5 +110,64 @@ describe('平台 URL', () => {
     expect(buildLineShareUrl(url, text)).toBe(
       `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
     )
+  })
+})
+
+describe('toCityLevelAddress', () => {
+  it('zh/ja 取前两级并去掉分隔空格', () => {
+    expect(toCityLevelAddress('東京都 武蔵野市 中町一丁目', 'ja')).toBe('東京都武蔵野市')
+    expect(toCityLevelAddress('东京都 武藏野市 中町一丁目', 'zh')).toBe('东京都武藏野市')
+  })
+
+  it('en 取最粗的两级（地址是由细到粗排的）', () => {
+    expect(toCityLevelAddress('Nakacho 1-chome, Musashino, Tokyo', 'en')).toBe('Musashino, Tokyo')
+  })
+
+  it('只有两级时原样返回', () => {
+    expect(toCityLevelAddress('山梨県 富士河口湖町', 'ja')).toBe('山梨県富士河口湖町')
+    expect(toCityLevelAddress('Fujikawaguchiko, Yamanashi', 'en')).toBe('Fujikawaguchiko, Yamanashi')
+  })
+
+  it('只有一级时给一级', () => {
+    expect(toCityLevelAddress('沖縄県', 'ja')).toBe('沖縄県')
+    expect(toCityLevelAddress('Okinawa', 'en')).toBe('Okinawa')
+  })
+
+  it('空串与空白返回空串', () => {
+    expect(toCityLevelAddress('', 'zh')).toBe('')
+    expect(toCityLevelAddress('   ', 'en')).toBe('')
+  })
+})
+
+describe('retargetCaptionChannel', () => {
+  const BASE = 'https://seichigo.com/s/AbC12xYz'
+
+  it('把文案里的短链换成带目标渠道参数的版本', () => {
+    expect(retargetCaptionChannel(`看这里 ${BASE}?c=copy 完`, BASE, 'x')).toBe(
+      `看这里 ${BASE}?c=x 完`,
+    )
+  })
+
+  it('文案里是裸短链时也能挂上渠道', () => {
+    expect(retargetCaptionChannel(`看这里 ${BASE} 完`, BASE, 'xhs')).toBe(`看这里 ${BASE}?c=xhs 完`)
+  })
+
+  it('多处出现全部替换', () => {
+    expect(retargetCaptionChannel(`${BASE}?c=copy 和 ${BASE}`, BASE, 'ln')).toBe(
+      `${BASE}?c=ln 和 ${BASE}?c=ln`,
+    )
+  })
+
+  it('短链里的正则元字符（.）不会被当通配符', () => {
+    const other = 'https://seichigoXcom/s/AbC12xYz'
+    expect(retargetCaptionChannel(`${other}`, BASE, 'x')).toBe(other)
+  })
+
+  it('shareUrl 为空时原样返回', () => {
+    expect(retargetCaptionChannel('原文', '', 'x')).toBe('原文')
+  })
+
+  it('文案里没有短链时原样返回', () => {
+    expect(retargetCaptionChannel('原文', BASE, 'x')).toBe('原文')
   })
 })
