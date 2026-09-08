@@ -477,3 +477,38 @@ describe('PointShareCard v2.1 页脚', () => {
     expect(drawnSrcs).not.toContain('/brand/web-logo.png')
   })
 })
+
+// 2026-09-08 v2.1 P1：横版说明行按 textWidth-8 断行，孤字并入上一行
+describe('PointShareCard v2.1 P1 孤字断行', () => {
+  it('横版 49 字说明在 484 内收尾：只画一行且以 … 收尾，尾字不越界', async () => {
+    // 桩测量 10px/字：横版说明可用宽 492-8=484 → 单行最多 48 字；
+    // 49 字时第 49 字成孤字，并入上一行后以 … 收尾
+    const note49 = '说'.repeat(49)
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, layout: 'landscape', note: note49 }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const noteCalls = fillTextCalls.filter(([text]) => text.includes('说'))
+    expect(noteCalls).toHaveLength(1)
+    expect(noteCalls[0]![0]).toMatch(/…$/)
+    expect(noteCalls[0]![0].length * 10).toBeLessThanOrEqual(484)
+  })
+
+  it('竖版说明行不留 8px 余量：95 字说明仍按 952 断行不带省略号', async () => {
+    // 竖版 textWidth 952，桩测量下单行 95 字正好放得下，不触发省略
+    const note95 = '说'.repeat(95)
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard input={{ ...INPUT, note: note95 }} onRendered={onRendered} onError={vi.fn()} />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const noteCalls = fillTextCalls.filter(([text]) => text.includes('说'))
+    expect(noteCalls).toHaveLength(1)
+    expect(noteCalls[0]![0]).toBe(note95)
+  })
+})

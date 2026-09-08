@@ -88,6 +88,28 @@ export function wrapLines(
   return lines
 }
 
+/** 横版说明行断行安全余量：实际绘制右缘比 textWidth 略窄，尾字正好越界一点点，故留 8px */
+export const LANDSCAPE_NOTE_WRAP_INSET = 8
+
+/**
+ * 断行孤字防护：末行渲染宽度不足两个字（fontSize×2，约 1-2 个 CJK 字符）时，
+ * 把末行并入上一行；上一行从尾部裁短，直到「裁短后 + 孤字 + …」放得下为止。
+ * 点位名/说明被 maxLines 挤出的尾标点（如 】）独占一行很难看，两种版式共用。
+ */
+export function avoidOrphanTail(
+  lines: readonly string[],
+  measure: (text: string) => number,
+  maxWidth: number,
+  fontSize: number,
+): string[] {
+  if (lines.length < 2) return [...lines]
+  const tail = lines[lines.length - 1]!
+  if (measure(tail) >= fontSize * 2) return [...lines]
+  let body = lines[lines.length - 2]!
+  while (body.length > 1 && measure(`${body}${tail}…`) > maxWidth) body = body.slice(0, -1)
+  return [...lines.slice(0, -2), `${body}${tail}…`]
+}
+
 export function resolveCardVariant(hasPhoto: boolean): ShareCardVariant {
   return hasPhoto ? 'compare' : 'default'
 }

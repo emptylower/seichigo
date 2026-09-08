@@ -5,6 +5,7 @@ import {
   CARD_ROW_METRICS,
   GEO_FONT_STACK,
   addressPinMetrics,
+  avoidOrphanTail,
   buildCapsuleMiddle,
   buildCapsuleMiddleRows,
   buildCardLayout,
@@ -44,6 +45,41 @@ describe('wrapLines', () => {
 
   it('空串返回空数组', () => {
     expect(wrapLines(measure, '   ', 100, 2)).toEqual([])
+  })
+})
+
+// 2026-09-08 分享卡片 v2.1 P1：断行孤字（尾标点被挤到第二行）防护
+describe('avoidOrphanTail', () => {
+  const measure = (text: string) => text.length * 10
+
+  it('末行不足两个字宽时并入上一行，上一行裁短后以省略号收尾', () => {
+    // 60 宽单行最多 6 字；尾字 】 独占一行（10 < 10×2）触发合并
+    expect(avoidOrphanTail(['一二三四五六', '】'], measure, 60, 10)).toEqual(['一二三四】…'])
+  })
+
+  it('末行达到两个字宽时原样返回，正常长文本断行结果不变', () => {
+    const lines = ['一二三四五六', '七八']
+    expect(avoidOrphanTail(lines, measure, 60, 10)).toEqual(lines)
+    const wrapped = wrapLines(measure, '一二三四五六七八九', 30, 2)
+    expect(avoidOrphanTail(wrapped, measure, 30, 10)).toEqual(['一二三', '四五…'])
+  })
+
+  it('单行或空数组直接返回', () => {
+    expect(avoidOrphanTail(['单行'], measure, 60, 10)).toEqual(['单行'])
+    expect(avoidOrphanTail([], measure, 60, 10)).toEqual([])
+  })
+
+  it('ジャケット】 类尾部：2 行限制下不出现只含 1-2 字符的末行，且每行不超宽', () => {
+    // 拉丁半宽 11、CJK 全宽 22 的混合测量，复现横版说明行（22px）的真实断行
+    const mixed = (text: string) =>
+      [...text].reduce((width, ch) => width + (ch.charCodeAt(0) > 0xff ? 22 : 11), 0)
+    const wrapped = wrapLines(mixed, '東京【CLANNAD　羽村駅周辺＋DVDジャケット】', 460, 2)
+    // 先确认 fixtures 确实复现了孤字末行（只有 】）
+    expect(mixed(wrapped[wrapped.length - 1]!)).toBeLessThan(22 * 2)
+    const fixed = avoidOrphanTail(wrapped, mixed, 460, 22)
+    expect(fixed).toHaveLength(1)
+    expect(mixed(fixed[0]!)).toBeLessThanOrEqual(460)
+    expect(fixed[0]!).toMatch(/…$/)
   })
 })
 

@@ -11,7 +11,9 @@ import {
   CARD_FOOTER_TAGLINE_SIZES,
   CARD_ROW_METRICS,
   GEO_FONT_STACK,
+  LANDSCAPE_NOTE_WRAP_INSET,
   addressPinMetrics,
+  avoidOrphanTail,
   buildCapsuleMiddle,
   buildCapsuleMiddleRows,
   buildCardLayout,
@@ -295,7 +297,12 @@ export default function PointShareCard({
       const measure = (text: string) => ctx.measureText(text).width
 
       ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
-      const nameLines = wrapLines(measure, input.pointName, layout.textWidth, rowMetrics.name.maxLines)
+      const nameLines = avoidOrphanTail(
+        wrapLines(measure, input.pointName, layout.textWidth, rowMetrics.name.maxLines),
+        measure,
+        layout.textWidth,
+        rowMetrics.name.size,
+      )
 
       ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
       const animeLineText = wrapLines(measure, animeMetaLine(input), layout.textWidth, 1)[0] || ''
@@ -307,11 +314,14 @@ export default function PointShareCard({
         : ''
 
       ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
-      const noteLines = wrapLines(
+      // P1：横版说明行右缘留 8px 安全余量，尾字不再被挤到第二行；孤字并入上一行
+      const noteWrapWidth =
+        layout.textWidth - (input.layout === 'landscape' ? LANDSCAPE_NOTE_WRAP_INSET : 0)
+      const noteLines = avoidOrphanTail(
+        wrapLines(measure, String(input.note || ''), noteWrapWidth, rowMetrics.note.maxLines),
         measure,
-        String(input.note || ''),
-        layout.textWidth,
-        rowMetrics.note.maxLines,
+        noteWrapWidth,
+        rowMetrics.note.size,
       )
 
       const plan = buildCardTextPlan({
