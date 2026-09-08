@@ -21,7 +21,9 @@ export async function hashIp(ip: string, now: Date = new Date()): Promise<string
 
 /**
  * 只信任 Cloudflare 注入的 cf-connecting-ip：x-forwarded-for 客户端可伪造，
- * 匿名限流不能依赖它。缺失（非 CF 入口 / 本地开发）返回 null，由调用方拒绝。
+ * 匿名限流不能依赖它。缺失（非 CF 入口 / 本地开发）返回 null，两种调用约定：
+ * links 建链直接拒绝（拿不到来源不建链）；pointContext 与 card 的限流跳过，
+ * 匿名请求照常放行（卡片有缓存与日预算护栏）。
  */
 export function readClientIp(req: Request): string | null {
   const cf = req.headers.get('cf-connecting-ip')

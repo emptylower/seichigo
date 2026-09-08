@@ -189,7 +189,7 @@ export type CardHtmlInput = {
   displayName: string
   animeTitle: string
   episode: string | null
-  /** 已格式化的 mm:ss */
+  /** 未格式化的场景秒数：纯数字时由 buildAnimeMetaLine 过 formatSceneTime 转 mm:ss */
   scene: string | null
   address: string | null
   note: string | null
@@ -252,6 +252,22 @@ function gpsIconSvg(size: number): string {
   ].join('')
 }
 
+/** 页脚站点名前的小鸟居：与地址图钉同风格的矢量内联 SVG（不用 emoji，缺字体会掉豆腐块） */
+function toriiSvg(size: number): string {
+  const w = size * 1.15
+  const h = size * 0.85
+  return [
+    `<svg class="torii" width="${w.toFixed(2)}" height="${h.toFixed(2)}" viewBox="0 0 30 24" aria-hidden="true">`,
+    `<path fill="${COLORS.pin}" d="`,
+    'M1 4.4C5.2 2.4 10.4 1.5 15 1.5s9.8.9 14 2.9l-.8 2.1C24 4.9 19.5 4.1 15 4.1S6 4.9 1.8 6.5L1 4.4z',
+    'M4.4 9.4h21.2v2.3H4.4z',
+    'M6.5 7.1h2.9l-.8 15.4H5.7L6.5 7.1z',
+    'M20.6 7.1h2.9l.8 15.4h-2.9L20.6 7.1z',
+    '"/>',
+    '</svg>',
+  ].join('')
+}
+
 function locatorSvg(metrics: CardMetrics, geo: readonly [number, number] | null): string {
   const size = metrics.outlineSize
   const box = { width: size, height: size }
@@ -271,14 +287,13 @@ function locatorSvg(metrics: CardMetrics, geo: readonly [number, number] | null)
   ].join('')
 }
 
-function visualSection(input: CardHtmlInput, metrics: CardMetrics): string {
+function visualSection(input: CardHtmlInput): string {
   const shot = (uri: string) => `<img class="shot" src="${escapeHtml(uri)}" alt="">`
   if (input.photoDataUri && input.animeImageDataUri) {
     return `<div class="visual compare">${shot(input.animeImageDataUri)}${shot(input.photoDataUri)}</div>`
   }
   if (input.animeImageDataUri) return `<div class="visual">${shot(input.animeImageDataUri)}</div>`
   if (input.photoDataUri) return `<div class="visual">${shot(input.photoDataUri)}</div>`
-  void metrics
   return '<div class="visual empty"></div>'
 }
 
@@ -341,10 +356,10 @@ body{width:${metrics.width}px;height:${metrics.height}px;background:#ffffff;font
 .column{flex:1;min-width:0;display:flex;flex-direction:column;padding:${metrics.columnTop}px ${metrics.columnRight}px ${metrics.columnBottom}px ${metrics.columnLeft}px}
 .spacer{flex:1;min-height:${metrics.capsuleTopGap}px}
 .clamp1,.clamp2{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
-.clamp1{-webkit-line-clamp:1}
-.clamp2{-webkit-line-clamp:2}
+.clamp1{-webkit-line-clamp:1;max-height:1.3em}
+.clamp2{-webkit-line-clamp:2;max-height:2.7em}
 .row{word-break:break-word}
-.row.name{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;-webkit-line-clamp:${metrics.nameLines};font-size:${metrics.nameSize}px;line-height:1.25;font-weight:700;color:${COLORS.name};margin-bottom:${metrics.nameGap}px}
+.row.name{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;-webkit-line-clamp:${metrics.nameLines};max-height:${(metrics.nameLines * 1.25).toFixed(2)}em;font-size:${metrics.nameSize}px;line-height:1.25;font-weight:700;color:${COLORS.name};margin-bottom:${metrics.nameGap}px}
 .row.anime{font-size:${metrics.animeSize}px;line-height:1.3;font-weight:600;color:${COLORS.anime};margin-bottom:${metrics.animeGap}px}
 .row.address{display:flex;align-items:center;gap:${(metrics.addressSize * 0.28).toFixed(2)}px;font-size:${metrics.addressSize}px;line-height:1.3;font-weight:400;color:${COLORS.address};margin-bottom:${metrics.addressGap}px}
 .row.address .pin{flex:none}
@@ -360,6 +375,7 @@ body{width:${metrics.width}px;height:${metrics.height}px;background:#ffffff;font
 .qr{flex:none;width:${metrics.qrSize}px;height:${metrics.qrSize}px;background:#ffffff;border:1px solid ${COLORS.capsuleBorder};border-radius:${metrics.qrRadius}px;padding:${metrics.qrPad}px}
 .qr svg{width:100%;height:100%;display:block}
 .footer{flex:none;display:flex;align-items:baseline;justify-content:space-between;margin-top:${metrics.footerGap}px;font-size:${metrics.footerSize}px;font-weight:500;color:${COLORS.footer}}
+.footer .torii{vertical-align:-0.1em;margin-right:8px}
 .tagline{font-size:${metrics.taglineSize}px;font-weight:400;color:${COLORS.tagline};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:16px}
 `.trim()
 }
@@ -375,12 +391,12 @@ export function buildCardHtml(input: CardHtmlInput): string {
     '<html lang="' + escapeHtml(input.locale) + '"><head><meta charset="utf-8">',
     `<style>${styles(input, metrics)}</style>`,
     '</head><body><div class="card">',
-    visualSection(input, metrics),
+    visualSection(input),
     '<div class="column">',
     `<div class="text">${textRows(input, metrics)}</div>`,
     '<div class="spacer"></div>',
     capsuleSection(input, metrics),
-    `<div class="footer"><span>⛩ seichigo.com</span><span class="tagline">${escapeHtml(input.text.tagline)}</span></div>`,
+    `<div class="footer"><span>${toriiSvg(metrics.footerSize)}seichigo.com</span><span class="tagline">${escapeHtml(input.text.tagline)}</span></div>`,
     '</div></div></body></html>',
   ].join('')
 }

@@ -1,12 +1,12 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { t } from '@/lib/i18n'
 import { NextResponse } from 'next/server'
-import { buildCardHtml, formatSceneTime } from '@/lib/share/cardHtml'
+import { buildCardHtml } from '@/lib/share/cardHtml'
 import { DAILY_RENDER_BUDGET, bumpRenderBudget, checkCardRate, readRenderBudget } from '@/lib/share/cardBudget'
 import type { PointContextDeps } from '@/lib/share/handlers/pointContext'
 import { loadPointContext } from '@/lib/share/handlers/pointContext'
 import { hashIp, readClientIp } from '@/lib/share/ipHash'
-import type { ShareStore } from '@/lib/share/store'
+import { readAllBytes, type ShareStore } from '@/lib/share/store'
 import { SHARE_CARD_SIZES, isShareCardLayout, type ShareCardLayout } from '@/lib/share/types'
 import { buildCardQrTarget } from '@/lib/share/view'
 
@@ -92,27 +92,6 @@ function toDataUri(bytes: Uint8Array, contentType: string): string {
   return `data:${type};base64,${bytesToBase64(bytes)}`
 }
 
-async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array<ArrayBuffer>> {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      chunks.push(value)
-      total += value.byteLength
-    }
-  }
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return merged
-}
-
 /**
  * renderAndStoreCard 的判别式结果：handler 按 status 决定响应，
  * 预热（lib/share/api.ts）与 HTTP 请求共用这条渲染路径。
@@ -186,7 +165,7 @@ export async function renderAndStoreCard(
     displayName: context.displayName,
     animeTitle: context.animeTitle,
     episode: context.episode,
-    scene: context.scene ? formatSceneTime(context.scene) : null,
+    scene: context.scene,
     address: context.address,
     note: context.note,
     geo: context.geo,
@@ -342,7 +321,13 @@ export function createGetCardHandler(deps: CardDeps) {
     ctx: { params: Promise<{ pointId: string }> },
   ): Promise<Response> {
     const raw = await ctx.params
-    const pointId = decodeURIComponent(String(raw.pointId || '')).trim()
+    let pointId: string
+    try {
+      pointId = decodeURIComponent(String(raw.pointId || '')).trim()
+    } catch {
+      // 畸形百分号序列（如裸 %）会抛 URIError，参数问题回 400 而不是 500
+      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
+    }
     if (!POINT_ID_PATTERN.test(pointId) || pointId.includes('..')) {
       return NextResponse.json({ error: '参数不合法' }, { status: 400 })
     }

@@ -1,5 +1,5 @@
 import { utcDateStamp } from '@/lib/share/ipHash'
-import type { ShareStore } from '@/lib/share/store'
+import { readAllText, type ShareStore } from '@/lib/share/store'
 
 /** 匿名每 IP 每日 300 次卡片渲染请求；缓存命中不计入 */
 export const ANON_DAILY_CARD_LIMIT = 300
@@ -39,30 +39,12 @@ export function resetCardRate(): void {
   rateCounters.clear()
 }
 
-/** 日计数对象：跨日自然过期，不需要清理任务 */
+/**
+ * 日计数对象：R2 没有对象级 TTL，跨日对象不会自动消失——要清理得靠桶的
+ * lifecycle 规则，或者干脆不清（一年 365 个小 JSON 对象，可忽略）。
+ */
 export function cardBudgetKey(now: Date): string {
   return `og-cards/_budget/${utcDateStamp(now)}.json`
-}
-
-async function readAllText(stream: ReadableStream<Uint8Array>): Promise<string> {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      chunks.push(value)
-      total += value.byteLength
-    }
-  }
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(merged)
 }
 
 /**

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { checkinPhotoKey, getShareStore, shareCardFingerprint, shareCardKey } from '@/lib/share/store'
+import {
+  checkinPhotoKey,
+  getShareStore,
+  readAllBytes,
+  readAllText,
+  shareCardFingerprint,
+  shareCardKey,
+} from '@/lib/share/store'
 import type { CfBindings } from '@/lib/anitabi/cf/bindings'
 
 const CF_CONTEXT_SYMBOL = Symbol.for('__cloudflare-context__')
@@ -80,6 +87,24 @@ describe('share key 规则', () => {
 
   it('实拍固定 jpg，pointId 里的冒号原样进 key', () => {
     expect(checkinPhotoKey('u1', '101:station')).toBe('checkin/u1/101:station.jpg')
+  })
+})
+
+function chunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+      controller.close()
+    },
+  })
+}
+
+describe('readAllBytes / readAllText', () => {
+  it('跨多个 chunk 读完整条流', async () => {
+    const bytes = await readAllBytes(chunkedStream(['he', 'll', 'o']))
+    expect(new TextDecoder().decode(bytes)).toBe('hello')
+    await expect(readAllText(chunkedStream(['分享', '域', '共用']))).resolves.toBe('分享域共用')
   })
 })
 

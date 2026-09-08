@@ -120,6 +120,17 @@ describe('buildCardHtml', () => {
     expect(portrait).toContain('-webkit-line-clamp:2')
   })
 
+  it('line-clamp 失效时靠 max-height 保险，不会顶出画布被静默裁掉', () => {
+    const html = buildCardHtml(BASE)
+    // landscape：nameLines=1 → 1.25em
+    expect(html).toContain('max-height:1.25em')
+    expect(html).toContain('max-height:1.3em')
+    expect(html).toContain('max-height:2.7em')
+    const portrait = buildCardHtml({ ...BASE, layout: 'portrait' })
+    // portrait：nameLines=2 → 2.50em
+    expect(portrait).toContain('max-height:2.50em')
+  })
+
   it('文字全部转义，不留未替换占位符', () => {
     const html = buildCardHtml({ ...BASE, displayName: '<script>x</script>' })
     expect(html).toContain('&lt;script&gt;')
@@ -186,5 +197,16 @@ describe('buildCardHtml', () => {
         expect(html, `${locale}/${layout}`).toContain('5 万+ 动画取景地')
       }
     }
+  })
+
+  it('页脚站点名前是矢量小鸟居，不用 emoji', () => {
+    const html = buildCardHtml(BASE)
+    expect(html).toContain('class="torii"')
+    expect(html).not.toContain('⛩')
+  })
+
+  it('scene 传原始秒数，mm:ss 在 cardHtml 内部格式化', () => {
+    const html = buildCardHtml({ ...BASE, scene: '1194' })
+    expect(html).toContain('19:54')
   })
 })

@@ -37,6 +37,35 @@ export function checkinPhotoKey(userId: string, pointId: string): string {
   return `checkin/${userId}/${pointId}.jpg`
 }
 
+/**
+ * 把整条 body 流读成字节 / 文本。share 域内唯一实现，
+ * 卡片 handler 与预算读写共用（原先两处各抄了一份）。
+ */
+export async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array<ArrayBuffer>> {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) {
+      chunks.push(value)
+      total += value.byteLength
+    }
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return merged
+}
+
+export async function readAllText(stream: ReadableStream<Uint8Array>): Promise<string> {
+  return new TextDecoder().decode(await readAllBytes(stream))
+}
+
 type ShareBucket = NonNullable<
   NonNullable<import('@/lib/anitabi/cf/bindings').CfBindings['env']>['ASSET_STORE']
 >

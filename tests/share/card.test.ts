@@ -158,6 +158,8 @@ describe('renderAndStoreCard', () => {
     const html = renderCard.mock.calls[0]![0].html
     expect(html).toContain('data:image/jpeg;base64,')
     expect(html).not.toContain('https://img.seichigo.com')
+    // scene 原样传入，mm:ss 格式化在 cardHtml 内部完成
+    expect(html).toContain('19:54')
   })
 
   it('取动画截图失败时用粉色渐变兜底，仍然出图', async () => {
@@ -367,6 +369,14 @@ describe('GET /api/share/card/[pointId]', () => {
     const res = await createGetCardHandler(makeDeps())(
       get('https://seichigo.com/api/share/card/..%2F..%2Fetc'),
       params('../../etc'),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('畸形百分号序列的 pointId 回 400 而不是 500', async () => {
+    const res = await createGetCardHandler(makeDeps())(
+      get('https://seichigo.com/api/share/card/%'),
+      params('%'),
     )
     expect(res.status).toBe(400)
   })
