@@ -278,13 +278,21 @@ export function createGetCardHandler(deps: CardDeps) {
     const ip = readClientIp(req)
     const ipHash = ip ? await hashIp(ip, now) : null
 
-    const outcome = await renderAndStoreCard(deps, {
-      pointId,
-      locale,
-      layout,
-      photoKey,
-      authorizeRender: ipHash ? () => checkCardRate(ipHash, now) : undefined,
-    })
+    let outcome: RenderOutcome
+    try {
+      outcome = await renderAndStoreCard(deps, {
+        pointId,
+        locale,
+        layout,
+        photoKey,
+        authorizeRender: ipHash ? () => checkCardRate(ipHash, now) : undefined,
+      })
+    } catch (error) {
+      // loadPointContext 的 Prisma 报错、base64 的 OOM 等都不能抛穿成 500 JSON，
+      // 各平台会把「无预览」缓存下来
+      console.error('[share.card.render_threw]', { pointId, error })
+      outcome = { status: 'failed' }
+    }
 
     if (outcome.status === 'rendered' || outcome.status === 'cached') {
       return imageResponse(outcome.bytes, outcome.contentType)

@@ -14,9 +14,15 @@ const QR_LIGHT = '#ffffff'
 export function buildQrSvg(text: string): string {
   const value = String(text || '').trim()
   if (!value) return ''
-  const data = createQrData(value, { errorCorrectionLevel: 'M' })
-  return renderQrSvgTag(data, {
-    margin: 0,
-    color: { dark: QR_DARK, light: QR_LIGHT },
-  }).trim()
+  try {
+    const data = createQrData(value, { errorCorrectionLevel: 'M' })
+    return renderQrSvgTag(data, {
+      margin: 0,
+      color: { dark: QR_DARK, light: QR_LIGHT },
+    }).trim()
+  } catch (error) {
+    // 超长内容等编码失败：二维码没了卡片还在，别把整张卡打成 500
+    console.error('[share.card.qr_failed]', { error })
+    return ''
+  }
 }

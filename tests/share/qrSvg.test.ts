@@ -37,4 +37,8 @@ describe('buildQrSvg', () => {
   it('空串返回空串，不抛', () => {
     expect(buildQrSvg('')).toBe('')
   })
+
+  it('数据超长（编码器抛错）时返回空串，不把异常抛给卡片渲染', () => {
+    expect(buildQrSvg('x'.repeat(10_000))).toBe('')
+  })
 })

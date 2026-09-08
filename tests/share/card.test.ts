@@ -377,6 +377,20 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(res.status).toBe(404)
   })
 
+  it('渲染路径抛异常时走兜底，不返 500（OG 路径永不 500）', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    vi.spyOn(repo, 'findPoint').mockRejectedValue(new Error('prisma down'))
+    const renderCard = vi.fn(async () => new Uint8Array([1]))
+    const res = await createGetCardHandler(makeDeps({ repo, renderCard }))(
+      get(CARD_URL, '1.2.3.4'),
+      params(),
+    )
+    // 兜底路径里 loadPointContext 同样在挂，抓不到上下文 → 302 到站点默认 OG
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('https://seichigo.com/opengraph-image')
+    expect(renderCard).not.toHaveBeenCalled()
+  })
+
   it('匿名超过日限流 → 429（缓存命中不计入）', async () => {
     const { store } = makeStore()
     const handler = createGetCardHandler(makeDeps({ getStore: () => store }))
