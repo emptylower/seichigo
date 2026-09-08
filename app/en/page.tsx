@@ -3,7 +3,7 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
-const TITLE = 'Anime Pilgrimage Itinerary Planner · AI Trip Planning + Global Pilgrimage Map | SeichiGo'
+const TITLE = 'SeichiGo | Anime Pilgrimage Guides · AI Planner + Global Location Map'
 const DESCRIPTION =
   'Name the anime and your dates: SeichiGo AI planner builds a day-by-day pilgrimage itinerary with routes, transit and meals, backed by a global pilgrimage map and guides.'
 

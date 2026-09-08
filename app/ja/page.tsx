@@ -3,7 +3,7 @@ import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import type { Metadata } from 'next'
 
-const TITLE = 'アニメ聖地巡礼の旅程プランニング · AIプランナー + 世界の聖地マップ | SeichiGo'
+const TITLE = 'SeichiGo | アニメ聖地巡礼ガイド · AIプランナー + 世界の聖地マップ'
 const DESCRIPTION =
   '作品と休みを伝えるだけで、AIプランナーがアニメ聖地巡礼の旅程を作成。毎日のルート・交通・食事に加え、世界の聖地マップと人が書いた巡礼ガイドも。'
 

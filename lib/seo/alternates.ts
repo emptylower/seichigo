@@ -17,8 +17,8 @@ export function buildHreflangAlternates(input: {
   const enPath = normalizePath(input.enPath)
   const jaPath = normalizePath(input.jaPath)
 
-  const canonical = encodeURI(canonicalPath)
-  const toAbsoluteUrl = (path: string) => new URL(encodeURI(path), origin).toString()
+  const canonical = encodePathOnce(canonicalPath)
+  const toAbsoluteUrl = (path: string) => new URL(encodePathOnce(path), origin).toString()
 
   const languages: HreflangMap = {
     zh: toAbsoluteUrl(zhPath),
@@ -79,4 +79,19 @@ function normalizePath(path: string): string {
   const raw = String(path || '').trim()
   if (!raw || raw === '/') return '/'
   return raw.startsWith('/') ? raw.replace(/\/$/, '') : `/${raw.replace(/\/$/, '')}`
+}
+
+/**
+ * 路径只做一次百分号编码：文章页传入的路径常已过 encodeSlugForPath 编码，
+ * 直接 encodeURI 会把 `%E4` 变成 `%25E4`。先尝试 decodeURI 还原（失败则原样），
+ * 再统一 encodeURI，保证已编码与未编码输入产出一致。
+ */
+function encodePathOnce(path: string): string {
+  let decoded = path
+  try {
+    decoded = decodeURI(path)
+  } catch {
+    decoded = path
+  }
+  return encodeURI(decoded)
 }

@@ -4,9 +4,9 @@ import Script from 'next/script'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import TranslateGuard from '@/components/layout/TranslateGuard'
 import { getSiteUrl } from '@/lib/seo/site'
-import { buildOrganizationJsonLd, buildWebSiteJsonLd } from '@/lib/seo/globalJsonLd'
+import { buildOrganizationJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
-import { serializeJsonLd } from '@/lib/seo/jsonld'
+import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { Inter } from 'next/font/google'
 
 const inter = Inter({
@@ -58,23 +58,15 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const jsonLdWebsite = serializeJsonLd(buildWebSiteJsonLd())
-  const jsonLdOrg = serializeJsonLd(buildOrganizationJsonLd())
-
   return (
     <html lang="zh" className={inter.variable}>
       <body>
         {/* 放在 body 最前面：补丁要早于任何会更新 DOM 的组件跑起来 */}
         <TranslateGuard />
         <HtmlLangSync />
-        <Script id="jsonld-website" type="application/ld+json" strategy="beforeInteractive">
-          {jsonLdWebsite}
-        </Script>
-        <Script id="jsonld-org" type="application/ld+json" strategy="beforeInteractive">
-          {jsonLdOrg}
-        </Script>
+        <PlaceJsonLd data={buildOrganizationJsonLd()} keyPrefix="global-org" />
         {/* 第三方脚本一律 lazyOnload：不抢首屏（首页移动端 LCP 优化，2026-09-07）。
-            GA 延后几秒不影响统计口径，page_view 仍会发；JSON-LD 保留 beforeInteractive。 */}
+             GA 延后几秒不影响统计口径，page_view 仍会发。 */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5922869290769433"
