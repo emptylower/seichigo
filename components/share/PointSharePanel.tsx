@@ -329,7 +329,13 @@ export default function PointSharePanel({
       const copied = await copyImage(cardBlob)
       if (!copied) downloadBlob(cardBlob, buildCardFilename(displayName))
       if (!openOrNavigate(win, buildXIntentUrl(captionFor('x')))) {
-        showToast('share.toastFailed')
+        // 弹窗被彻底拦截：图片已在手上，把文案也复制好，让用户自己开 X 粘贴
+        const copiedText = await copyText(captionFor('x'))
+        if (copiedText) {
+          showToast('share.toastSavedAndCopiedOpenApp', { app: t('share.platformX', locale) })
+        } else {
+          showToast('share.toastFailed')
+        }
         return
       }
       showToast(copied ? 'share.toastImageCopiedPasteInPost' : 'share.toastImageDownloadedDragIntoPost')

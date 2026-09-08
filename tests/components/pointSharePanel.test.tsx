@@ -503,11 +503,25 @@ describe('PointSharePanel 桌面路径', () => {
     )
   })
 
-  it('X：窗口被彻底拦截时提示失败', async () => {
+  it('X：窗口被彻底拦截时改为复制文案并提示打开 X', async () => {
     openBlankWindowMock.mockReturnValue(null)
     openOrNavigateMock.mockReturnValue(false)
     await readyPanel()
     fireEvent.click(screen.getByRole('button', { name: t('share.platformX', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
+    expect(String(copyTextMock.mock.calls[0]![0])).toContain('?c=x')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      t('share.toastSavedAndCopiedOpenApp', 'zh').replace('{app}', t('share.platformX', 'zh')),
+    )
+  })
+
+  it('X：窗口被拦截且文案也复制不了时才提示失败', async () => {
+    openBlankWindowMock.mockReturnValue(null)
+    openOrNavigateMock.mockReturnValue(false)
+    copyTextMock.mockResolvedValue(false)
+    await readyPanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.platformX', 'zh') }))
+    await waitFor(() => expect(copyTextMock).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh'))
   })
 
