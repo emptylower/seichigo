@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import QRCode from 'qrcode'
 import PointShareCard from '@/components/share/PointShareCard'
-import { CARD_ROW_METRICS, addressPinMetrics } from '@/components/share/pointShareCardDraw'
+import {
+  CARD_ROW_METRICS,
+  addressPinMetrics,
+  cardTextBlockHeight,
+  portraitVisualHeight,
+} from '@/components/share/pointShareCardDraw'
 
 vi.mock('qrcode', () => ({
   default: { toDataURL: vi.fn(async () => 'data:image/png;base64,qr') },
@@ -124,6 +129,12 @@ const INPUT = {
   },
 }
 
+// P2：INPUT 的点位名/说明各 1 行，竖版主视觉由 640 按文字块差值补偿
+const INPUT_MAIN_HEIGHT = portraitVisualHeight(
+  cardTextBlockHeight('portrait', { nameLines: 2, hasAnime: true, hasAddress: true, noteLines: 2 }),
+  cardTextBlockHeight('portrait', { nameLines: 1, hasAnime: true, hasAddress: true, noteLines: 1 }),
+)
+
 describe('PointShareCard', () => {
   it('按版式设置画布尺寸并回调 Blob', async () => {
     const onRendered = vi.fn()
@@ -165,11 +176,11 @@ describe('PointShareCard', () => {
       />,
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
-    // drawImage(img, sx, sy, sw, sh, x, y, w, h)：竖版 default 主视觉高 640，compare 只有 320
+    // drawImage(img, sx, sy, sw, sh, x, y, w, h)：竖版 default 主视觉占整高，compare 只有一半
     const mainDraw = drawImageSpy.mock.calls.find(
-      (call) => call[7] === 1080 && (call[8] === 640 || call[8] === 320),
+      (call) => call[7] === 1080 && (call[8] === INPUT_MAIN_HEIGHT || call[8] === INPUT_MAIN_HEIGHT / 2),
     )
-    expect(mainDraw?.[8]).toBe(640)
+    expect(mainDraw?.[8]).toBe(INPUT_MAIN_HEIGHT)
   })
 
   it('动画截图走同源代理候选梯：第一候选失败时用第二候选', async () => {
@@ -179,7 +190,9 @@ describe('PointShareCard', () => {
     render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(candidatesMock).toHaveBeenCalledWith(INPUT.animeImage, { kind: 'point' })
-    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080 && call[8] === 640)
+    const mainDraw = drawImageSpy.mock.calls.find(
+      (call) => call[7] === 1080 && call[8] === INPUT_MAIN_HEIGHT,
+    )
     expect((mainDraw?.[0] as { __loadedSrc?: string } | undefined)?.__loadedSrc).toBe(
       'https://img.example/ok.jpg',
     )
@@ -510,5 +523,51 @@ describe('PointShareCard v2.1 P1 孤字断行', () => {
     const noteCalls = fillTextCalls.filter(([text]) => text.includes('说'))
     expect(noteCalls).toHaveLength(1)
     expect(noteCalls[0]![0]).toBe(note95)
+  })
+})
+
+// 2026-09-08 v2.1 P2：竖版主视觉随文字块行数补偿，说明 1 行时上方不再留白
+describe('PointShareCard v2.1 P2 主视觉高度补偿', () => {
+  it('说明 1 行时主视觉 > 640，页脚仍锚底 1398', async () => {
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080)
+    expect(mainDraw?.[8]).toBe(INPUT_MAIN_HEIGHT)
+    expect(INPUT_MAIN_HEIGHT).toBeGreaterThan(640)
+    // 文字块整体随主视觉下移，页脚与胶囊位置不变
+    expect(fillTextCalls[0]![2]).toBe(INPUT_MAIN_HEIGHT + 36)
+    const footerCall = fillTextCalls.find(([text]) => text === '⛩ seichigo.com')!
+    expect(footerCall[2]).toBe(1398)
+  })
+
+  it('点位名 2 行 + 说明 2 行（满行）时主视觉维持 640、文字块仍在 676 起', async () => {
+    // 桩测量 10px/字：107 字点位名第二行 12 字（≥ 字号×2），不触发孤字合并
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, pointName: '名'.repeat(107), note: '说'.repeat(102) }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080)
+    expect(mainDraw?.[8]).toBe(640)
+    expect(fillTextCalls[0]![2]).toBe(676)
+  })
+
+  it('主视觉高度封顶 760：只有点位名与作品行时不突破上限', async () => {
+    const onRendered = vi.fn()
+    render(
+      <PointShareCard
+        input={{ ...INPUT, address: null, note: null }}
+        onRendered={onRendered}
+        onError={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080)
+    expect(mainDraw?.[8]).toBe(760)
   })
 })

@@ -18,9 +18,11 @@ import {
   buildCapsuleMiddleRows,
   buildCardLayout,
   buildCardTextPlan,
+  cardTextBlockHeight,
   computeCoverRect,
   formatGeoLine,
   gpsIconMetrics,
+  portraitVisualHeight,
   resolveCardVariant,
   wrapLines,
   type CardTextRowKind,
@@ -239,11 +241,12 @@ export default function PointShareCard({
         : null
       if (isCancelled()) return
       const variant = resolveCardVariant(Boolean(photoImg))
-      const layout = buildCardLayout(input.layout, variant)
+      // P2：竖版要先量出文字块行数才能定主视觉高度；textWidth/padding 不随 visualHeight 变
+      const baseLayout = buildCardLayout(input.layout, variant)
       const capsuleM = CAPSULE_METRICS[input.layout]
-      const qrImageSize = layout.qr.size - capsuleM.qrPad * 2
-      canvas.width = layout.canvas.width
-      canvas.height = layout.canvas.height
+      const qrImageSize = baseLayout.qr.size - capsuleM.qrPad * 2
+      canvas.width = baseLayout.canvas.width
+      canvas.height = baseLayout.canvas.height
 
       const qrDataUrl = await QRCode.toDataURL(input.qrUrl || input.shareUrl, {
         margin: 1,
@@ -276,7 +279,63 @@ export default function PointShareCard({
 
       // 底色
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, layout.canvas.width, layout.canvas.height)
+      ctx.fillRect(0, 0, baseLayout.canvas.width, baseLayout.canvas.height)
+
+      // 文字块行数先量出来：P1 孤字防护与 P2 竖版主视觉补偿都依赖断行结果
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      const rowMetrics = CARD_ROW_METRICS[input.layout]
+      const measure = (text: string) => ctx.measureText(text).width
+
+      ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
+      const nameLines = avoidOrphanTail(
+        wrapLines(measure, input.pointName, baseLayout.textWidth, rowMetrics.name.maxLines),
+        measure,
+        baseLayout.textWidth,
+        rowMetrics.name.size,
+      )
+
+      ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
+      const animeLineText =
+        wrapLines(measure, animeMetaLine(input), baseLayout.textWidth, 1)[0] || ''
+
+      ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
+      const addressPin = addressPinMetrics(rowMetrics.address.size)
+      const addressLineText = input.address
+        ? wrapLines(measure, input.address, baseLayout.textWidth - addressPin.offset, 1)[0] || ''
+        : ''
+
+      ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
+      // P1：横版说明行右缘留 8px 安全余量，尾字不再被挤到第二行；孤字并入上一行
+      const noteWrapWidth =
+        baseLayout.textWidth - (input.layout === 'landscape' ? LANDSCAPE_NOTE_WRAP_INSET : 0)
+      const noteLines = avoidOrphanTail(
+        wrapLines(measure, String(input.note || ''), noteWrapWidth, rowMetrics.note.maxLines),
+        measure,
+        noteWrapWidth,
+        rowMetrics.note.size,
+      )
+
+      // P2：竖版主视觉 = min(760, 640 + 满行与实际文字块高度差)；横版几何不变
+      const layout =
+        input.layout === 'portrait'
+          ? buildCardLayout(input.layout, variant, {
+              visualHeight: portraitVisualHeight(
+                cardTextBlockHeight('portrait', {
+                  nameLines: rowMetrics.name.maxLines,
+                  hasAnime: Boolean(animeLineText),
+                  hasAddress: Boolean(addressLineText),
+                  noteLines: rowMetrics.note.maxLines,
+                }),
+                cardTextBlockHeight('portrait', {
+                  nameLines: nameLines.length,
+                  hasAnime: Boolean(animeLineText),
+                  hasAddress: Boolean(addressLineText),
+                  noteLines: noteLines.length,
+                }),
+              ),
+            })
+          : baseLayout
 
       // 主视觉
       if (animeImg) {
@@ -290,40 +349,7 @@ export default function PointShareCard({
       }
       if (layout.photo && photoImg) drawCover(ctx, photoImg, layout.photo)
 
-      // 文字块：先按各自字号量出行，再交给 buildCardTextPlan 排 y
-      ctx.textBaseline = 'top'
-      ctx.textAlign = 'left'
-      const rowMetrics = CARD_ROW_METRICS[input.layout]
-      const measure = (text: string) => ctx.measureText(text).width
-
-      ctx.font = fontOf(rowMetrics.name.size, ROW_WEIGHTS.name)
-      const nameLines = avoidOrphanTail(
-        wrapLines(measure, input.pointName, layout.textWidth, rowMetrics.name.maxLines),
-        measure,
-        layout.textWidth,
-        rowMetrics.name.size,
-      )
-
-      ctx.font = fontOf(rowMetrics.anime.size, ROW_WEIGHTS.anime)
-      const animeLineText = wrapLines(measure, animeMetaLine(input), layout.textWidth, 1)[0] || ''
-
-      ctx.font = fontOf(rowMetrics.address.size, ROW_WEIGHTS.address)
-      const addressPin = addressPinMetrics(rowMetrics.address.size)
-      const addressLineText = input.address
-        ? wrapLines(measure, input.address, layout.textWidth - addressPin.offset, 1)[0] || ''
-        : ''
-
-      ctx.font = fontOf(rowMetrics.note.size, ROW_WEIGHTS.note)
-      // P1：横版说明行右缘留 8px 安全余量，尾字不再被挤到第二行；孤字并入上一行
-      const noteWrapWidth =
-        layout.textWidth - (input.layout === 'landscape' ? LANDSCAPE_NOTE_WRAP_INSET : 0)
-      const noteLines = avoidOrphanTail(
-        wrapLines(measure, String(input.note || ''), noteWrapWidth, rowMetrics.note.maxLines),
-        measure,
-        noteWrapWidth,
-        rowMetrics.note.size,
-      )
-
+      // 文字块落位：buildCardTextPlan 按存在的行排 y
       const plan = buildCardTextPlan({
         layout: input.layout,
         geometry: layout,

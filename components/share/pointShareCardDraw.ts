@@ -114,6 +114,16 @@ export function resolveCardVariant(hasPhoto: boolean): ShareCardVariant {
   return hasPhoto ? 'compare' : 'default'
 }
 
+/** 竖版主视觉高度：基准 640、上限 760（v2.1 P2，文字块不满行时把差值补进主视觉） */
+export const PORTRAIT_VISUAL_BASE = 640
+export const PORTRAIT_VISUAL_MAX = 760
+
+/** 竖版主视觉高度 = min(760, 640 + 满行与实际文字块的高度差)；实际不低于满行时维持 640 */
+export function portraitVisualHeight(fullTextBlockH: number, actualTextBlockH: number): number {
+  const compensation = Math.max(0, fullTextBlockH - actualTextBlockH)
+  return Math.min(PORTRAIT_VISUAL_MAX, PORTRAIT_VISUAL_BASE + compensation)
+}
+
 /** 页脚字号：渲染器与几何测试共用。v2.1 横版 20、竖版 30；tagline 另算 */
 export const CARD_FOOTER_SIZES: Readonly<Record<ShareCardLayout, number>> = {
   portrait: 30,
@@ -214,6 +224,26 @@ export const CARD_ROW_METRICS: Readonly<
   },
 }
 
+/**
+ * 文字块高度（相对 textTop）：存在的行累加「字号 + 行后间距」，末行不带间距。
+ * 与 buildCardTextPlan 的 bottom - textTop 一致；满行/实际各算一次供 P2 补偿。
+ */
+export function cardTextBlockHeight(
+  layout: ShareCardLayout,
+  rows: { nameLines: number; hasAnime: boolean; hasAddress: boolean; noteLines: number },
+): number {
+  const m = CARD_ROW_METRICS[layout]
+  const metrics: CardRowMetric[] = []
+  for (let i = 0, n = Math.min(rows.nameLines, m.name.maxLines); i < n; i++) metrics.push(m.name)
+  if (rows.hasAnime) metrics.push(m.anime)
+  if (rows.hasAddress) metrics.push(m.address)
+  for (let i = 0, n = Math.min(rows.noteLines, m.note.maxLines); i < n; i++) metrics.push(m.note)
+  if (!metrics.length) return 0
+  const sizes = metrics.reduce((sum, r) => sum + r.size, 0)
+  const gaps = metrics.slice(0, -1).reduce((sum, r) => sum + r.gap, 0)
+  return sizes + gaps
+}
+
 /** 地址行图钉：宽 0.62em、右侧留 0.28em，文字整体右移 offset */
 const ADDRESS_PIN_WIDTH_RATIO = 0.62
 const ADDRESS_PIN_GAP_RATIO = 0.28
@@ -242,13 +272,21 @@ export function gpsIconMetrics(size: number): { size: number; gap: number; offse
   return { size, gap, offset: size + gap }
 }
 
-export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVariant): CardLayout {
+export function buildCardLayout(
+  layout: ShareCardLayout,
+  variant: ShareCardVariant,
+  opts?: { visualHeight?: number },
+): CardLayout {
   const canvas = SHARE_CARD_SIZES[layout]
 
   if (layout === 'portrait') {
     const padding = 64
-    // v2.1：主视觉压到 640 高，给导航胶囊腾出底部空间；文字区上边距 36
-    const visualHeight = 640
+    // v2.1：主视觉基准 640，给导航胶囊腾出底部空间；文字区上边距 36。
+    // P2 起可由调用方传入 visualHeight（文字块不满行时按差值补偿），夹在 640-760。
+    const visualHeight = Math.min(
+      PORTRAIT_VISUAL_MAX,
+      Math.max(PORTRAIT_VISUAL_BASE, opts?.visualHeight ?? PORTRAIT_VISUAL_BASE),
+    )
     const m = CAPSULE_METRICS.portrait
     // 胶囊锚底：胶囊底 + 24 间距 + 页脚行高（30*1.2）恰好落在 1440-36 的底边距上
     const capsuleBottom = canvas.height - 36 - 24 - CARD_FOOTER_SIZES.portrait * 1.2

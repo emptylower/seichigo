@@ -10,9 +10,11 @@ import {
   buildCapsuleMiddleRows,
   buildCardLayout,
   buildCardTextPlan,
+  cardTextBlockHeight,
   computeCoverRect,
   formatGeoLine,
   gpsIconMetrics,
+  portraitVisualHeight,
   resolveCardVariant,
   wrapLines,
 } from '@/components/share/pointShareCardDraw'
@@ -356,5 +358,81 @@ describe('buildCardTextPlan', () => {
     })
     expect(plan.rows).toEqual([])
     expect(plan.bottom).toBe(geometry.textTop)
+  })
+})
+
+// 2026-09-08 分享卡片 v2.1 P2：竖版主视觉随文字块行数补偿，说明 1 行时不再留出大片空白
+describe('P2 竖版主视觉高度补偿', () => {
+  const full = { nameLines: 2, hasAnime: true, hasAddress: true, noteLines: 2 } as const
+
+  it('cardTextBlockHeight 与 buildCardTextPlan 的 bottom - textTop 一致', () => {
+    const geometry = buildCardLayout('portrait', 'default')
+    const plan = buildCardTextPlan({
+      layout: 'portrait',
+      geometry,
+      nameLines: ['甲', '乙'],
+      animeLine: '《作》',
+      addressLine: '東京都',
+      noteLines: ['注'],
+    })
+    const h = cardTextBlockHeight('portrait', {
+      nameLines: 2,
+      hasAnime: true,
+      hasAddress: true,
+      noteLines: 1,
+    })
+    expect(h).toBe(plan.bottom - geometry.textTop)
+  })
+
+  it('说明 1 行时主视觉高度 > 640，胶囊与页脚位置不变', () => {
+    const fullH = cardTextBlockHeight('portrait', full)
+    const actual = cardTextBlockHeight('portrait', { ...full, noteLines: 1 })
+    const layout = buildCardLayout('portrait', 'default', {
+      visualHeight: portraitVisualHeight(fullH, actual),
+    })
+    expect(layout.main.height).toBeGreaterThan(640)
+    expect(layout.main.height).toBe(640 + (fullH - actual))
+    expect(layout.textTop).toBe(layout.main.height + 36)
+    expect(layout.capsule).toEqual({ x: 64, y: 1116, width: 952, height: 228 })
+    expect(layout.footerY).toBe(1398)
+  })
+
+  it('说明 2 行 + 点位名 2 行（满行）时主视觉仍为 640', () => {
+    const fullH = cardTextBlockHeight('portrait', full)
+    const layout = buildCardLayout('portrait', 'default', {
+      visualHeight: portraitVisualHeight(fullH, fullH),
+    })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 640 })
+    expect(layout.textTop).toBe(676)
+  })
+
+  it('文字块很矮时补偿封顶：主视觉高度上限 760 不被突破', () => {
+    const noAddr = { nameLines: 2, hasAnime: true, hasAddress: false, noteLines: 2 } as const
+    const tiny = cardTextBlockHeight('portrait', { ...noAddr, nameLines: 1, noteLines: 0 })
+    const layout = buildCardLayout('portrait', 'default', {
+      visualHeight: portraitVisualHeight(cardTextBlockHeight('portrait', noAddr), tiny),
+    })
+    expect(layout.main.height).toBe(760)
+    expect(layout.main.height).toBeLessThanOrEqual(760)
+    expect(layout.capsule.y).toBe(1116)
+  })
+
+  it('compare 布局（有实拍）同样适用：上下两张各占一半', () => {
+    const actual = cardTextBlockHeight('portrait', { ...full, noteLines: 1 })
+    const vh = portraitVisualHeight(cardTextBlockHeight('portrait', full), actual)
+    const layout = buildCardLayout('portrait', 'compare', { visualHeight: vh })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: vh / 2 })
+    expect(layout.photo).toEqual({ x: 0, y: vh / 2, width: 1080, height: vh / 2 })
+  })
+
+  it('portraitVisualHeight：实际不低于满行时维持 640，且永远夹在 640-760', () => {
+    expect(portraitVisualHeight(200, 400)).toBe(640)
+    expect(portraitVisualHeight(314, 314)).toBe(640)
+    expect(portraitVisualHeight(314, 0)).toBe(760)
+  })
+
+  it('缺省 visualHeight 时维持 640（旧调用行为不变）', () => {
+    expect(buildCardLayout('portrait', 'default').main.height).toBe(640)
+    expect(buildCardLayout('portrait', 'compare').main.height).toBe(320)
   })
 })
