@@ -183,7 +183,7 @@ export function useAnitabiMapController(
   const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null)
   const [imageSaving, setImageSaving] = useState(false)
   const [imageSaveError, setImageSaveError] = useState<string | null>(null)
-  const [showCheckInCard, setShowCheckInCard] = useState(false)
+  const [showSharePanel, setShowSharePanel] = useState(false)
   const [showRouteBookCard, setShowRouteBookCard] = useState(false)
   const [showComparisonGenerator, setShowComparisonGenerator] = useState(false)
   const [showQuickPilgrimage, setShowQuickPilgrimage] = useState(false)
@@ -853,7 +853,7 @@ export function useAnitabiMapController(
     setSearchOpen,
     setSelectedCity,
     setSelectedPointId,
-    setShowCheckInCard,
+    setShowSharePanel,
     setShowComparisonGenerator,
     setShowQuickPilgrimage,
     setShowRouteBookCard,
@@ -862,7 +862,7 @@ export function useAnitabiMapController(
     setTab,
     setViewFilter,
     setWorkDetailExpanded,
-    showCheckInCard,
+    showSharePanel,
     showComparisonGenerator,
     showNearbyLocationCta: !loading && tab === 'nearby' && !userLocation,
     showQuickPilgrimage,

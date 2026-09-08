@@ -20,7 +20,7 @@ export type CardLayout = {
   footerY: number
 }
 
-/** object-fit: cover 的源矩形，与 CheckInCard.tsx:71-87 的 drawImageCover 同算法 */
+/** object-fit: cover 的源矩形：等比放大后居中裁掉溢出部分 */
 export function computeCoverRect(
   imgWidth: number,
   imgHeight: number,

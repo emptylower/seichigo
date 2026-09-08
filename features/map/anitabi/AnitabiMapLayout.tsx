@@ -108,7 +108,7 @@ export default function AnitabiMapLayout(props: any) {
     imageSaving,
     saveOriginalImage,
     imageSaveError,
-    showCheckInCard,
+    showSharePanel,
     showRouteBookCard,
     setShowRouteBookCard,
     showComparisonGenerator,
@@ -118,7 +118,7 @@ export default function AnitabiMapLayout(props: any) {
     checkedInThumbnails,
     setComparisonImageBlob,
     setComparisonImageUrl,
-    setShowCheckInCard,
+    setShowSharePanel,
     locationDialogOpen,
     setLocationDialogOpen,
     locateUser,
@@ -186,9 +186,6 @@ export default function AnitabiMapLayout(props: any) {
         selectedPointImage.previewUrl,
       )}
       showWantToGoAction={showWantToGoAction}
-      checkedInSelectedPoint={Boolean(
-        meState?.pointStates.find((ps: any) => ps.pointId === selectedPoint?.id && ps.state === 'checked_in')
-      )}
       formatDistance={formatDistance}
       geoHref={selectedPoint ? geoLink(selectedPoint) : null}
       onCloseWorkDetail={() => clearActiveBangumiSelection()}
@@ -217,7 +214,7 @@ export default function AnitabiMapLayout(props: any) {
           addPointToPointPool(selectedPoint.id).catch(() => null)
         }
       }}
-      onShowCheckInCard={() => setShowCheckInCard(true)}
+      onShowSharePanel={() => setShowSharePanel(true)}
       onEnterPanorama={enterPanorama}
       onAddPointToPool={(pointId: string) => {
         addPointToPointPool(pointId).catch(() => null)
@@ -509,8 +506,8 @@ export default function AnitabiMapLayout(props: any) {
         imageSaving={imageSaving}
         saveOriginalImage={saveOriginalImage}
         imageSaveError={imageSaveError}
-        showCheckInCard={showCheckInCard}
-        setShowCheckInCard={setShowCheckInCard}
+        showSharePanel={showSharePanel}
+        setShowSharePanel={setShowSharePanel}
         showRouteBookCard={showRouteBookCard}
         setShowRouteBookCard={setShowRouteBookCard}
         showComparisonGenerator={showComparisonGenerator}
@@ -529,7 +526,7 @@ export default function AnitabiMapLayout(props: any) {
           setComparisonImageBlob(blob)
           setComparisonImageUrl(URL.createObjectURL(blob))
           setShowComparisonGenerator(false)
-          setShowCheckInCard(true)
+          setShowSharePanel(true)
         }}
         locationDialogOpen={locationDialogOpen}
         setLocationDialogOpen={setLocationDialogOpen}
