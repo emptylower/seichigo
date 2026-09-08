@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   BROWSER_RUN_TIMEOUT_MS,
   readBrowserRunConfig,
-  renderHtmlToWebp,
+  renderHtmlToJpeg,
 } from '@/lib/share/browserRun'
 
 const CONFIG = { accountId: 'acct123', token: 'tok456' }
 
 function imageResponse(bytes: Uint8Array<ArrayBuffer>): Response {
-  return new Response(bytes, { status: 200, headers: { 'content-type': 'image/webp' } })
+  return new Response(bytes, { status: 200, headers: { 'content-type': 'image/jpeg' } })
 }
 
 describe('readBrowserRunConfig', () => {
@@ -26,11 +26,11 @@ describe('readBrowserRunConfig', () => {
   })
 })
 
-describe('renderHtmlToWebp', () => {
+describe('renderHtmlToJpeg', () => {
   it('按实测形状发请求并返回字节', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4])
     const fetchImpl = vi.fn(async () => imageResponse(bytes))
-    const out = await renderHtmlToWebp({
+    const out = await renderHtmlToJpeg({
       html: '<html></html>',
       width: 1200,
       height: 630,
@@ -45,7 +45,7 @@ describe('renderHtmlToWebp', () => {
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json')
     expect(JSON.parse(String(init.body))).toEqual({
       html: '<html></html>',
-      screenshotOptions: { type: 'webp', quality: 85 },
+      screenshotOptions: { type: 'jpeg', quality: 82 },
       viewport: { width: 1200, height: 630 },
     })
     expect(init.signal).toBeInstanceOf(AbortSignal)
@@ -54,7 +54,7 @@ describe('renderHtmlToWebp', () => {
   it('非 2xx 返回 null', async () => {
     const fetchImpl = vi.fn(async () => new Response('nope', { status: 403 }))
     expect(
-      await renderHtmlToWebp({
+      await renderHtmlToJpeg({
         html: 'x',
         width: 1200,
         height: 630,
@@ -73,7 +73,7 @@ describe('renderHtmlToWebp', () => {
         }),
     )
     expect(
-      await renderHtmlToWebp({
+      await renderHtmlToJpeg({
         html: 'x',
         width: 1200,
         height: 630,
@@ -86,7 +86,7 @@ describe('renderHtmlToWebp', () => {
   it('空响应体算失败', async () => {
     const fetchImpl = vi.fn(async () => imageResponse(new Uint8Array()))
     expect(
-      await renderHtmlToWebp({
+      await renderHtmlToJpeg({
         html: 'x',
         width: 1200,
         height: 630,
@@ -101,7 +101,7 @@ describe('renderHtmlToWebp', () => {
       throw new DOMException('timeout', 'TimeoutError')
     })
     expect(
-      await renderHtmlToWebp({
+      await renderHtmlToJpeg({
         html: 'x',
         width: 1200,
         height: 630,

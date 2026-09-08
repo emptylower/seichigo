@@ -19,10 +19,11 @@ export function readBrowserRunConfig(
 
 /**
  * Cloudflare Browser Run 的 REST 截图接口：直接吃一段 HTML，返回图片二进制。
+ * 输出 JPEG（og:image 用 WebP 在 Telegram/WhatsApp/LINE/Facebook 上不可靠）。
  * 失败时上游会以 200 + JSON `{success:false,errors:[...]}` 回应，所以只认
  * 非 JSON 的响应体；任何失败都返回 null，由调用方决定兜底。
  */
-export async function renderHtmlToWebp(input: {
+export async function renderHtmlToJpeg(input: {
   html: string
   width: number
   height: number
@@ -40,7 +41,7 @@ export async function renderHtmlToWebp(input: {
       },
       body: JSON.stringify({
         html: input.html,
-        screenshotOptions: { type: 'webp', quality: 85 },
+        screenshotOptions: { type: 'jpeg', quality: 82 },
         viewport: { width: input.width, height: input.height },
       }),
       signal: AbortSignal.timeout(BROWSER_RUN_TIMEOUT_MS),

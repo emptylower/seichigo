@@ -61,7 +61,7 @@ async function sha256Hex(value: string): Promise<string> {
   return hex
 }
 
-/** `og-cards/<pointId>__<locale>__<layout>[__<photoKey sha256 前 12>].webp` */
+/** `og-cards/<pointId>__<locale>__<layout>[__<photoKey sha256 前 12>].jpg` */
 export async function cardCacheKey(
   pointId: string,
   locale: SupportedLocale,
@@ -69,8 +69,8 @@ export async function cardCacheKey(
   photoKey: string | null,
 ): Promise<string> {
   const base = `og-cards/${pointId}__${locale}__${layout}`
-  if (!photoKey) return `${base}.webp`
-  return `${base}__${(await sha256Hex(photoKey)).slice(0, 12)}.webp`
+  if (!photoKey) return `${base}.jpg`
+  return `${base}__${(await sha256Hex(photoKey)).slice(0, 12)}.jpg`
 }
 
 /** Worker 里没有 Buffer 保证，按 8KB 分块走 btoa */
@@ -130,7 +130,7 @@ export async function renderAndStoreCard(
       return {
         status: 'cached',
         bytes: await readAllBytes(cached.body),
-        contentType: cached.contentType || 'image/webp',
+        contentType: cached.contentType || 'image/jpeg',
       }
     }
   }
@@ -200,11 +200,11 @@ export async function renderAndStoreCard(
   if (!bytes) return { status: 'failed' }
 
   if (store) {
-    await store.put(key, bytes, 'image/webp').catch((error: unknown) => {
+    await store.put(key, bytes, 'image/jpeg').catch((error: unknown) => {
       console.error('[share.card.cache_write_failed]', { key, error })
     })
   }
-  return { status: 'rendered', bytes, contentType: 'image/webp' }
+  return { status: 'rendered', bytes, contentType: 'image/jpeg' }
 }
 
 // pointId 会进 R2 key 与 URL，字符集与 lib/share/handlers/links.ts:23 保持一致
@@ -248,7 +248,7 @@ const IMMUTABLE = 'public, max-age=31536000, immutable'
 /** 失败兜底不写缓存，公共缓存只敢放 60 秒 */
 const FALLBACK_CACHE = 'public, max-age=60'
 
-function imageResponse(body: BodyInit, contentType = 'image/webp'): Response {
+function imageResponse(body: BodyInit, contentType = 'image/jpeg'): Response {
   return new Response(body, {
     status: 200,
     headers: {
@@ -268,7 +268,7 @@ function redirect(location: string): Response {
 
 /** 静态兜底图 key：由站长侧预先上传到 ASSET_STORE，代码只读不写 */
 function staticFallbackKey(layout: ShareCardLayout): string {
-  return `og-cards/_fallback-${layout}.webp`
+  return `og-cards/_fallback-${layout}.jpg`
 }
 
 function proxyImageResponse(bytes: BodyInit, contentType: string): Response {
@@ -285,7 +285,7 @@ function proxyImageResponse(bytes: BodyInit, contentType: string): Response {
 /**
  * 兜底全部同源（跨域 302 会被前端 fetch 直接抛错，各平台还可能缓存到 404）：
  * 1. 服务端抓该点位动画截图镜像 URL 的字节直接转发（fetchImage 自带超时与大小上限）；
- * 2. 抓不到 → 读 R2 静态兜底图 `og-cards/_fallback-<layout>.webp`；
+ * 2. 抓不到 → 读 R2 静态兜底图 `og-cards/_fallback-<layout>.jpg`；
  * 3. 再没有 → 302 到站点默认 OG。
  */
 async function fallbackResponse(
@@ -308,7 +308,7 @@ async function fallbackResponse(
     if (fallback) {
       return proxyImageResponse(
         await readAllBytes(fallback.body),
-        fallback.contentType || 'image/webp',
+        fallback.contentType || 'image/jpeg',
       )
     }
   }
