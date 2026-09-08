@@ -65,6 +65,22 @@
       "database_id": "46d07e16-76e4-4040-8e2e-3301310676bb"
     }
   ],
+  // 2026-09-07 首页 TTFB 修复：ISR 再生成队列改走 Durable Object（配合
+  // open-next.config.ts 的 do-queue），脱离请求 isolate 的 waitUntil
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DOQueueHandler"]
+    }
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
