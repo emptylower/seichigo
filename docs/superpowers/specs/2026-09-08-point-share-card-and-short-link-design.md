@@ -92,11 +92,13 @@ model ShareLink {
   layout     String                     // portrait | landscape
   imageKey   String?                    // R2 key，登录用户上传后填
   userId     String?
+  ipHash     String?                    // sha256(ip + 当日盐)，匿名限流用
   clicks     Int      @default(0)
   createdAt  DateTime @default(now())
 
   @@index([pointId])
-  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([ipHash, createdAt])
 }
 ```
 
@@ -104,17 +106,19 @@ model ShareLink {
 
 ### API
 
-- `POST /api/share/links`：body `{pointId, bangumiId, locale, layout}`，匿名可调。返回 `{code, url}`。同一 `pointId + locale + layout + userId(或 null)` 24 小时内重复请求返回已有记录，不新建。匿名按 IP 限 100 次/日（复用 `lib/tripPlan/repoPrisma.ts:261` 的按日计数模式，或 KV 计数，实施时二选一并写明）。
-- `POST /api/share/links/[code]/image`：**须登录**（`lib/auth/session.ts` 的 `getServerAuthSession`）。multipart 单文件；校验：JPEG 或 WebP、≤ 1.5 MB、像素尺寸必须等于 1080×1440 或 1200×630（读文件头解析尺寸，不解码整图）；每用户 30 次/日。写入 `ASSET_STORE` 桶，key `share/<code>.<jpg|webp>`；更新 `ShareLink.imageKey` 与 `userId`。
-- `POST /api/share/links/[code]/photo`（可与上一条合并为同一 multipart 的第二个字段 `photo`）：登录用户附带实拍原图时，写入 `ASSET_STORE` key `checkin/<userId>/<pointId>.<ext>`，并通过现有 `lib/userPointState` 写 `photoUrl` 且 `state = 'checked_in'`。实施时按现有 handler 结构决定是否合并端点，spec 只约束行为。
-- 卡片图片公开读取：`GET /api/share/img/<code>` 从 `ASSET_STORE` 读 `share/<code>.*`，`Cache-Control: public, max-age=31536000, immutable`。若 `ASSET_STORE` 已有公共域可直出则优先用公共域，实施时确认。
+- `POST /api/share/links`：body `{pointId, bangumiId, locale, layout}`，匿名可调。返回 `{code, url}`。同一 `pointId + locale + layout + userId(或 null)` 24 小时内重复请求返回已有记录，不新建。限流不用 KV（wrangler 里没有 KV 绑定），直接数 `ShareLink` 表：匿名按 `ipHash` 近 24 小时计数 ≤ 100，登录用户按 `userId` 近 24 小时计数 ≤ 30 次上传（计数方式同 `lib/tripPlan/repoPrisma.ts:261` 的按日配额）。
+- `POST /api/share/links/[code]/upload`：**须登录**（`lib/auth/session.ts` 的 `getServerAuthSession`），且 `ShareLink.userId` 为空或等于当前用户。multipart 两个字段：`card`（必填）、`photo`（可选）。
+  - `card` 校验：JPEG 或 WebP、≤ 1.5 MB、像素尺寸必须等于 1080×1440 或 1200×630（读文件头解析尺寸，不解码整图）。写入 `ASSET_STORE` 桶 key `share/<code>.<jpg|webp>`，更新 `ShareLink.imageKey` 与 `userId`。
+  - `photo` 校验：JPEG/WebP/HEIC 转 JPEG 由客户端完成后上传，≤ 5 MB。写入 key `checkin/<userId>/<pointId>.jpg`，并通过现有 `lib/userPointState` handler 写 `photoUrl = /api/share/photo/<userId>/<pointId>` 且 `state = 'checked_in'`。
+  - 每用户 30 次/日。
+- 卡片图片公开读取：`GET /api/share/img/[code]` 从 `ASSET_STORE` 读 `share/<code>.*`，`Cache-Control: public, max-age=31536000, immutable`，不存在返回 404。`ASSET_STORE` 没有公共域，统一走这个路由（与现有 `/assets/<id>` 模式一致）。
 
 ### 短链页 `app/s/[code]/page.tsx`
 
 - `generateMetadata`：
   - `title`：`{地名}｜{作品} 聖地巡礼 | SeichiGo`（按 `locale`）。
   - `description`：作品、城市、集数一句话。
-  - `openGraph.images` / `twitter.images`：`imageKey` 存在则为卡片图 URL；否则为该点位动画截图的 R2 公共域 URL（`img.seichigo.com`，规则见 `lib/anitabi/imageNormalize.ts:228-234`）。
+  - `openGraph.images` / `twitter.images`：`imageKey` 存在则为 `/api/share/img/<code>` 的绝对 URL；否则为该点位动画截图的 R2 公共域 URL（`img.seichigo.com`，规则见 `lib/anitabi/imageNormalize.ts:228-234`）。
   - `robots: noindex, follow`。
 - 页面主体：一个极简 HTML，包含 `<meta http-equiv="refresh" content="0;url=...">` 与 JS 跳转，目标 `/{locale 前缀}/map?b=&p=&utm_source=share&utm_medium=<c 映射>&utm_campaign=point_card`。`c` 到 `utm_medium` 映射：`x→twitter, rd→reddit, ln→line, xhs→xiaohongshu, wx→wechat, sys→native, copy→copy, save→image`。
 - 每次访问 `clicks + 1`（fire-and-forget，`ctx.waitUntil`，见 memory `seichigo-assets-on-r2`）。
