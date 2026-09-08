@@ -55,12 +55,12 @@ describe('resolveCardVariant', () => {
 })
 
 describe('buildCardLayout 竖版', () => {
-  it('default：主视觉 720 高，文字块在上、导航胶囊锚底部', () => {
+  it('default：主视觉 640 高，文字块上边距 36，导航胶囊锚底部', () => {
     const layout = buildCardLayout('portrait', 'default')
     expect(layout.canvas).toEqual({ width: 1080, height: 1440 })
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 720 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 640 })
     expect(layout.photo).toBeNull()
-    expect(layout.textTop).toBe(768)
+    expect(layout.textTop).toBe(676)
     expect(layout.textX).toBe(64)
     // 文字区占满页宽，胶囊横贯底部
     expect(layout.textWidth).toBe(952)
@@ -72,10 +72,17 @@ describe('buildCardLayout 竖版', () => {
     expect(layout.footerRightX).toBe(1016)
   })
 
-  it('compare：上下两张图各占主视觉一半', () => {
+  it('compare：上下两张图各 320 高', () => {
     const layout = buildCardLayout('portrait', 'compare')
-    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 360 })
-    expect(layout.photo).toEqual({ x: 0, y: 360, width: 1080, height: 360 })
+    expect(layout.main).toEqual({ x: 0, y: 0, width: 1080, height: 320 })
+    expect(layout.photo).toEqual({ x: 0, y: 320, width: 1080, height: 320 })
+  })
+
+  it('几何硬约束：胶囊底 + 24 + 页脚行高 ≤ 1440 - 36', () => {
+    const layout = buildCardLayout('portrait', 'default')
+    const bottom = layout.capsule.y + layout.capsule.height
+    expect(bottom + 24 + CARD_FOOTER_SIZES.portrait * 1.2).toBeLessThanOrEqual(1440 - 36)
+    expect(layout.footerY).toBeLessThanOrEqual(1440 - 36 + CARD_FOOTER_SIZES.portrait * 0.2)
   })
 })
 

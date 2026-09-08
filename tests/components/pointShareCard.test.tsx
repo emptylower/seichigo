@@ -165,11 +165,11 @@ describe('PointShareCard', () => {
       />,
     )
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
-    // drawImage(img, sx, sy, sw, sh, x, y, w, h)：竖版 default 主视觉高 720，compare 只有 360
+    // drawImage(img, sx, sy, sw, sh, x, y, w, h)：竖版 default 主视觉高 640，compare 只有 320
     const mainDraw = drawImageSpy.mock.calls.find(
-      (call) => call[7] === 1080 && (call[8] === 720 || call[8] === 360),
+      (call) => call[7] === 1080 && (call[8] === 640 || call[8] === 320),
     )
-    expect(mainDraw?.[8]).toBe(720)
+    expect(mainDraw?.[8]).toBe(640)
   })
 
   it('动画截图走同源代理候选梯：第一候选失败时用第二候选', async () => {
@@ -179,7 +179,7 @@ describe('PointShareCard', () => {
     render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
     await waitFor(() => expect(onRendered).toHaveBeenCalled())
     expect(candidatesMock).toHaveBeenCalledWith(INPUT.animeImage, { kind: 'point' })
-    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080 && call[8] === 720)
+    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080 && call[8] === 640)
     expect((mainDraw?.[0] as { __loadedSrc?: string } | undefined)?.__loadedSrc).toBe(
       'https://img.example/ok.jpg',
     )

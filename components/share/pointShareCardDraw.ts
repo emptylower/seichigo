@@ -225,7 +225,8 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
 
   if (layout === 'portrait') {
     const padding = 64
-    const visualHeight = 720
+    // v2.1：主视觉压到 640 高，给导航胶囊腾出底部空间；文字区上边距 36
+    const visualHeight = 640
     const m = CAPSULE_METRICS.portrait
     // 胶囊锚底：胶囊底 + 24 间距 + 页脚行高（30*1.2）恰好落在 1440-36 的底边距上
     const capsuleBottom = canvas.height - 36 - 24 - CARD_FOOTER_SIZES.portrait * 1.2
@@ -248,7 +249,7 @@ export function buildCardLayout(layout: ShareCardLayout, variant: ShareCardVaria
         variant === 'compare'
           ? { x: 0, y: visualHeight / 2, width: canvas.width, height: visualHeight / 2 }
           : null,
-      textTop: visualHeight + 48,
+      textTop: visualHeight + 36,
       padding,
       textX: padding,
       textWidth: canvas.width - padding * 2,
