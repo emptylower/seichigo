@@ -19,10 +19,12 @@ export async function hashIp(ip: string, now: Date = new Date()): Promise<string
   return bytesToHex(new Uint8Array(digest))
 }
 
-export function readClientIp(req: Request): string {
+/**
+ * 只信任 Cloudflare 注入的 cf-connecting-ip：x-forwarded-for 客户端可伪造，
+ * 匿名限流不能依赖它。缺失（非 CF 入口 / 本地开发）返回 null，由调用方拒绝。
+ */
+export function readClientIp(req: Request): string | null {
   const cf = req.headers.get('cf-connecting-ip')
   if (cf && cf.trim()) return cf.trim()
-  const forwarded = req.headers.get('x-forwarded-for')
-  if (forwarded && forwarded.trim()) return forwarded.split(',')[0]!.trim()
-  return ''
+  return null
 }

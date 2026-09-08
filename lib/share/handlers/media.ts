@@ -29,6 +29,8 @@ export function createGetShareImageHandler(deps: {
     if (!isShareCode(code)) return notFound()
     const link = await deps.repo.findByCode(code)
     if (!link?.imageKey) return notFound()
+    // 卡片对象只允许落在 share/ 前缀下，防止脏数据把读取引到桶里其他对象
+    if (!link.imageKey.startsWith('share/')) return notFound()
     const store = deps.getStore()
     if (!store) return notFound()
     const object = await store.get(link.imageKey).catch(() => null)

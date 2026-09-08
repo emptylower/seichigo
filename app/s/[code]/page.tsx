@@ -105,7 +105,8 @@ export default async function ShareRedirectPage({ params, searchParams }: PagePa
       <meta httpEquiv="refresh" content={`0;url=${absolute}`} />
       <script
         dangerouslySetInnerHTML={{
-          __html: `window.location.replace(${JSON.stringify(absolute)});`,
+          // `</script>` 若混进 URL 会提前闭合标签，先转义 < 再进 JSON 字符串
+          __html: `window.location.replace(${JSON.stringify(absolute).replace(/</g, '\\u003c')});`,
         }}
       />
       <main style={{ padding: '48px 24px', fontFamily: 'system-ui, sans-serif', textAlign: 'center' }}>

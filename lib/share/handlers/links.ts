@@ -36,17 +36,22 @@ export function createPostShareLinkHandler(deps: ShareApiDeps) {
     const body = await req.json().catch(() => null)
     const parsed = bodySchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0]?.message || '参数错误' },
-        { status: 400 },
-      )
+      // zod 的 issue 文案是面向开发者的，不透传
+      return NextResponse.json({ error: '参数不合法' }, { status: 400 })
     }
 
     const now = deps.now()
     const since = new Date(now.getTime() - DAY_MS)
     const session = await deps.getSession()
     const userId = String(session?.user?.id || '').trim() || null
-    const ipHash = userId ? null : await hashIp(readClientIp(req), now)
+    let ipHash: string | null = null
+    if (!userId) {
+      const ip = readClientIp(req)
+      if (!ip) {
+        return NextResponse.json({ error: '无法识别来源，暂不能创建分享' }, { status: 429 })
+      }
+      ipHash = await hashIp(ip, now)
+    }
 
     const existing = await deps.repo.findRecentDuplicate({
       pointId: parsed.data.pointId,

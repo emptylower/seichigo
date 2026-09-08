@@ -74,6 +74,26 @@ describe('GET /api/share/img/[code]', () => {
     })
     expect((await handler(req, { params: Promise.resolve({ code: 'AbC12xYz' }) })).status).toBe(404)
   })
+
+  it('imageKey 不以 share/ 开头时 404，不读任意对象', async () => {
+    const repo = new MemoryShareLinkRepo()
+    await repo.create({
+      code: 'AbC12xYz',
+      pointId: 'p',
+      bangumiId: 1,
+      locale: 'zh',
+      layout: 'portrait',
+      userId: 'u1',
+      ipHash: null,
+    })
+    await repo.markUploaded('AbC12xYz', { imageKey: 'checkin/u1/p.jpg', userId: 'u1' })
+    const { store, objects } = makeStore()
+    objects.set('checkin/u1/p.jpg', { bytes: Uint8Array.from([1]), contentType: 'image/jpeg' })
+    const res = await createGetShareImageHandler({ repo, getStore: () => store })(req, {
+      params: Promise.resolve({ code: 'AbC12xYz' }),
+    })
+    expect(res.status).toBe(404)
+  })
 })
 
 describe('GET /api/share/photo/[userId]/[pointId]', () => {

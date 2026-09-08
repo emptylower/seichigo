@@ -30,21 +30,28 @@ describe('hashIp', () => {
 })
 
 describe('readClientIp', () => {
-  it('优先 cf-connecting-ip', () => {
+  it('读 cf-connecting-ip，不受 x-forwarded-for 干扰', () => {
     const req = new Request('https://seichigo.com/api/share/links', {
       headers: { 'cf-connecting-ip': '9.9.9.9', 'x-forwarded-for': '1.1.1.1, 2.2.2.2' },
     })
     expect(readClientIp(req)).toBe('9.9.9.9')
   })
 
-  it('回落 x-forwarded-for 的第一段', () => {
+  it('cf-connecting-ip 缺失时返回 null，不再回落 x-forwarded-for', () => {
     const req = new Request('https://seichigo.com/api/share/links', {
       headers: { 'x-forwarded-for': '1.1.1.1, 2.2.2.2' },
     })
-    expect(readClientIp(req)).toBe('1.1.1.1')
+    expect(readClientIp(req)).toBeNull()
   })
 
-  it('都没有时返回空串', () => {
-    expect(readClientIp(new Request('https://seichigo.com/api/share/links'))).toBe('')
+  it('空白 cf-connecting-ip 视为缺失', () => {
+    const req = new Request('https://seichigo.com/api/share/links', {
+      headers: { 'cf-connecting-ip': '   ' },
+    })
+    expect(readClientIp(req)).toBeNull()
+  })
+
+  it('什么头都没有时返回 null', () => {
+    expect(readClientIp(new Request('https://seichigo.com/api/share/links'))).toBeNull()
   })
 })

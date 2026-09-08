@@ -18,10 +18,12 @@ function makeDeps(overrides?: { repo?: MemoryShareLinkRepo; userId?: string | nu
   }
 }
 
-function makeRequest(body: unknown, ip = '1.2.3.4') {
+function makeRequest(body: unknown, ip: string | null = '1.2.3.4') {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (ip !== null) headers['cf-connecting-ip'] = ip
   return new Request('https://seichigo.com/api/share/links', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'cf-connecting-ip': ip },
+    headers,
     body: JSON.stringify(body),
   })
 }
@@ -81,12 +83,32 @@ describe('POST /api/share/links', () => {
     expect(res.status).toBe(429)
   })
 
-  it('参数不合法返回 400', async () => {
+  it('参数不合法返回 400 且不透传 zod 错误细节', async () => {
     const handler = createPostShareLinkHandler(makeDeps())
-    expect((await handler(makeRequest({ ...VALID, layout: 'square' }))).status).toBe(400)
-    expect((await handler(makeRequest({ ...VALID, bangumiId: 0 }))).status).toBe(400)
-    expect((await handler(makeRequest({ ...VALID, locale: 'ko' }))).status).toBe(400)
-    expect((await handler(makeRequest({ ...VALID, pointId: '' }))).status).toBe(400)
+    for (const body of [
+      { ...VALID, layout: 'square' },
+      { ...VALID, bangumiId: 0 },
+      { ...VALID, locale: 'ko' },
+      { ...VALID, pointId: '' },
+      { ...VALID, pointId: 'a/b' },
+    ]) {
+      const res = await handler(makeRequest(body))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: '参数不合法' })
+    }
+  })
+
+  it('匿名请求识别不到来源 IP 时返回 429，登录用户不受影响', async () => {
+    const anonRepo = new MemoryShareLinkRepo(() => NOW)
+    const anonHandler = createPostShareLinkHandler(makeDeps({ repo: anonRepo }))
+    const res = await anonHandler(makeRequest(VALID, null))
+    expect(res.status).toBe(429)
+    expect(await res.json()).toEqual({ error: '无法识别来源，暂不能创建分享' })
+    expect(await anonRepo.findByCode('AbC12xYz')).toBeNull()
+
+    const repo = new MemoryShareLinkRepo(() => NOW)
+    const handler = createPostShareLinkHandler(makeDeps({ repo, userId: 'u1' }))
+    expect((await handler(makeRequest(VALID, null))).status).toBe(201)
   })
 
   it('pointId 含 / 或 .. 等非法字符返回 400', async () => {

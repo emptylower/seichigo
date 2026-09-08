@@ -10,10 +10,15 @@ import type {
 } from '@/lib/share/repo'
 import type { ShareCardLayout } from '@/lib/share/types'
 
+const SUPPORTED_LOCALES: readonly SupportedLocale[] = ['zh', 'en', 'ja']
+
 function toRecord(row: PrismaShareLink): ShareLinkRecord {
+  const rawLocale = row.locale as SupportedLocale
+  // 历史脏数据兜底：locale 不在支持集内时退回 zh，别把非法值漏进 i18n 逻辑
+  const locale = SUPPORTED_LOCALES.includes(rawLocale) ? rawLocale : 'zh'
   return {
     ...row,
-    locale: row.locale as SupportedLocale,
+    locale,
     layout: row.layout as ShareCardLayout,
   }
 }
