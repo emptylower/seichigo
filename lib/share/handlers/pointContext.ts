@@ -109,9 +109,11 @@ export function createGetPointContextHandler(deps: PointContextDeps) {
       displayName,
       animeTitle,
     }
+    // 有坐标却没拿到地址（上游未回/预算耗尽）：可能是暂时性失败，公共缓存只敢放 5 分钟
+    const cacheControl = geo && !address ? 'public, max-age=300' : 'public, max-age=86400'
     return NextResponse.json(body, {
       status: 200,
-      headers: { 'cache-control': 'public, max-age=86400' },
+      headers: { 'cache-control': cacheControl },
     })
   }
 }

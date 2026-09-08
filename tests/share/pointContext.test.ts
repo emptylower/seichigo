@@ -144,6 +144,15 @@ describe('GET /api/share/point-context', () => {
     expect(res.headers.get('cache-control')).toBe('public, max-age=86400')
   })
 
+  it('有坐标但拿不到地址时公共缓存缩到 5 分钟', async () => {
+    const repo = new MemoryPointContextRepo([ROW])
+    const res = await createGetPointContextHandler(makeDeps({ repo, geocode: async () => null }))(
+      makeRequest('pointId=101%3Abudo&locale=zh'),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300')
+  })
+
   it('locale 非法时退回 zh', async () => {
     const res = await createGetPointContextHandler(makeDeps())(makeRequest('pointId=101%3Abudo&locale=fr'))
     expect((await res.json()).address).toBe(ADDRESSES.zh)
