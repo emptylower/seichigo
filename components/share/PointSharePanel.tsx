@@ -83,6 +83,9 @@ export default function PointSharePanel({
     setLayout(readPreferredLayout())
   }, [])
   const [context, setContext] = useState<PointContextResponse | null>(null)
+  // context 还没回来（含失败落定）都不算 settled：卡片必须等它落定再画，
+  // 否则会先出一版无地址卡片，再被带地址版本覆盖（上传也会跟着错版）
+  const [contextSettled, setContextSettled] = useState(false)
   const [shareUrl, setShareUrl] = useState<string>('')
   const [code, setCode] = useState<string>('')
   const [cardBlob, setCardBlob] = useState<Blob | null>(null)
@@ -123,12 +126,15 @@ export default function PointSharePanel({
     }
   }, [pointId, bangumiId, locale, layout, retryNonce])
 
-  // 与建短链并行：地址/说明/去前缀点位名。失败就保持 null，卡片按无地址画
+  // 与建短链并行：地址/说明/去前缀点位名。失败也置 settled，卡片按无地址画
   useEffect(() => {
     let cancelled = false
     setContext(null)
+    setContextSettled(false)
     fetchPointContext(pointId, locale).then((result) => {
-      if (!cancelled) setContext(result)
+      if (cancelled) return
+      setContext(result)
+      setContextSettled(true)
     })
     return () => {
       cancelled = true
@@ -155,7 +161,7 @@ export default function PointSharePanel({
   const cardAnimeTitle = context?.animeTitle?.trim() || animeTitle
 
   const cardInput: PointShareCardInput | null = useMemo(() => {
-    if (!shareUrl) return null
+    if (!shareUrl || !contextSettled) return null
     return {
       layout,
       locale,
@@ -175,6 +181,7 @@ export default function PointSharePanel({
     }
   }, [
     shareUrl,
+    contextSettled,
     layout,
     locale,
     displayName,

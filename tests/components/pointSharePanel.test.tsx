@@ -4,12 +4,20 @@ import PointSharePanel from '@/components/share/PointSharePanel'
 import { t } from '@/lib/i18n'
 
 // 卡片渲染器在 jsdom 里没有 canvas，直接桩成「立刻回调一个 Blob」
+// blob 内容带上 input 的地址，方便断言「上传的是带地址那一版」
 let lastCardInput: Record<string, unknown> | null = null
+let firstCardInput: Record<string, unknown> | null = null
+let cardStubAutoRender = true
 vi.mock('@/components/share/PointShareCard', () => ({
   default: ({ input, onRendered }: { input: Record<string, unknown>; onRendered: (blob: Blob) => void }) => {
     lastCardInput = input
-    const blob = new Blob([new Uint8Array(1)], { type: 'image/jpeg' })
-    setTimeout(() => onRendered(blob), 0)
+    if (!firstCardInput) firstCardInput = input
+    if (cardStubAutoRender) {
+      const blob = new Blob([JSON.stringify({ address: input.address ?? null })], {
+        type: 'image/jpeg',
+      })
+      setTimeout(() => onRendered(blob), 0)
+    }
     return <canvas data-testid="stub-card" />
   },
 }))
@@ -63,7 +71,20 @@ const PROPS = {
   onClose: vi.fn(),
 }
 
+/** jsdom 的 Blob 没有 .text()，走 FileReader 读回内容 */
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(blob)
+  })
+}
+
 beforeEach(() => {
+  lastCardInput = null
+  firstCardInput = null
+  cardStubAutoRender = true
   createShareLinkMock.mockReset()
   uploadShareAssetsMock.mockReset()
   useSessionMock.mockReset()
@@ -360,6 +381,80 @@ describe('PointSharePanel 点位上下文', () => {
     fireEvent.click(screen.getByRole('button', { name: t('share.layoutLandscape', 'zh') }))
     await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(2))
     expect(fetchPointContextMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PointSharePanel 上下文落定才出图', () => {
+  it('context 未返回前不渲染卡片，落定后才渲染', async () => {
+    let resolveContext: (value: unknown) => void = () => {}
+    fetchPointContextMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveContext = resolve
+      }),
+    )
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(1))
+    // 给 shareUrl 状态落定留一拍：此时 context 还在途中，卡片不能先画一版无地址的
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.queryByTestId('stub-card')).not.toBeInTheDocument()
+    expect(firstCardInput).toBeNull()
+
+    resolveContext({
+      address: '東京都 新宿区 須賀町',
+      geo: [35.68, 139.72],
+      note: '楼梯在神社南侧',
+      inJapan: true,
+      displayName: '须贺神社',
+      animeTitle: '你的名字。',
+    })
+    await waitFor(() => expect(lastCardInput?.address).toBe('東京都 新宿区 須賀町'))
+  })
+
+  it('返回后只渲染一个版本：短链先到位时第一版卡片也带地址', async () => {
+    let resolveContext: (value: unknown) => void = () => {}
+    fetchPointContextMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveContext = resolve
+      }),
+    )
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(1))
+    // 短链状态先落定、context 后到：第一版渲染必须等到 context 返回
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    resolveContext({
+      address: '東京都 新宿区 須賀町',
+      geo: [35.68, 139.72],
+      note: '楼梯在神社南侧',
+      inJapan: true,
+      displayName: '须贺神社',
+      animeTitle: '你的名字。',
+    })
+    await waitFor(() => expect(firstCardInput).not.toBeNull())
+    expect(firstCardInput?.address).toBe('東京都 新宿区 須賀町')
+  })
+
+  it('静默上传的 blob 是带地址的那一版', async () => {
+    let resolveContext: (value: unknown) => void = () => {}
+    fetchPointContextMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveContext = resolve
+      }),
+    )
+    render(<PointSharePanel {...PROPS} />)
+    await waitFor(() => expect(createShareLinkMock).toHaveBeenCalledTimes(1))
+    // 短链先到位、context 后到：上传必须等带地址的那版卡片
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    resolveContext({
+      address: '東京都 新宿区 須賀町',
+      geo: [35.68, 139.72],
+      note: '楼梯在神社南侧',
+      inJapan: true,
+      displayName: '须贺神社',
+      animeTitle: '你的名字。',
+    })
+    await waitFor(() => expect(uploadShareAssetsMock).toHaveBeenCalledTimes(1))
+    const blob = uploadShareAssetsMock.mock.calls[0]![1] as Blob
+    expect(await readBlobText(blob)).toContain('東京都 新宿区 須賀町')
   })
 })
 
