@@ -8,6 +8,8 @@ import { isShareCode } from '@/lib/share/shortCode'
 import { shareCardFingerprint } from '@/lib/share/store'
 import {
   buildShareDescription,
+  buildShareOgImage,
+  buildShareOgImageAlt,
   buildShareOgImageUrl,
   buildShareRedirectTarget,
   buildShareTitle,
@@ -66,6 +68,18 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     fingerprint: link.imageKey ? shareCardFingerprint(link.imageKey) : null,
   })
 
+  // og:image 对象带 width/height/type/alt：缺尺寸时部分平台不出预览。
+  // 上传卡按链接自身的版式；匿名指向卡片路由固定横版
+  const ogImage = buildShareOgImage({
+    url: image,
+    layout: link.imageKey ? link.layout : 'landscape',
+    alt: buildShareOgImageAlt({
+      locale: link.locale,
+      pointName: snapshot?.pointName || '',
+      bangumiTitle: snapshot?.bangumiTitle || '',
+    }),
+  })
+
   const title = buildShareTitle({
     locale: link.locale,
     pointName: snapshot?.pointName || '',
@@ -83,8 +97,14 @@ export async function generateMetadata({ params, searchParams }: PageParams): Pr
     description,
     // 短链只是分享入口，索引价值全在 /map 与作品页上
     robots: { index: false, follow: true },
-    openGraph: { type: 'website', title, description, url: `${origin}/s/${link.code}`, images: [image] },
-    twitter: { card: 'summary_large_image', title, description, images: [image] },
+    openGraph: {
+      type: 'website',
+      title,
+      description,
+      url: `${origin}/s/${link.code}`,
+      images: [ogImage],
+    },
+    twitter: { card: 'summary_large_image', title, description, images: [ogImage] },
   }
 }
 

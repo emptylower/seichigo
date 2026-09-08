@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCardQrTarget,
   buildShareDescription,
+  buildShareOgImage,
+  buildShareOgImageAlt,
   buildShareOgImageUrl,
   buildShareRedirectTarget,
   buildShareTitle,
@@ -111,5 +113,43 @@ describe('buildShareOgImageUrl', () => {
     expect(
       buildShareOgImageUrl({ ...base, locale: 'ja', imageKey: null, fingerprint: null }),
     ).toContain('locale=ja')
+  })
+})
+
+describe('buildShareOgImageAlt', () => {
+  const vars = { pointName: '须贺神社', bangumiTitle: '你的名字。' }
+
+  it('三语 alt 都拼进点位名与作品名', () => {
+    expect(buildShareOgImageAlt({ locale: 'zh', ...vars })).toBe('《你的名字。》须贺神社分享卡片')
+    expect(buildShareOgImageAlt({ locale: 'ja', ...vars })).toBe('『你的名字。』须贺神社のシェアカード')
+    expect(
+      buildShareOgImageAlt({ locale: 'en', pointName: 'Suga Shrine', bangumiTitle: 'Your Name' }),
+    ).toBe('Suga Shrine - Your Name share card')
+  })
+
+  it('点位名或作品名缺失时仍有可读 alt', () => {
+    expect(buildShareOgImageAlt({ locale: 'zh', pointName: '', bangumiTitle: '你的名字。' }))
+      .toBe('《你的名字。》圣地巡礼分享卡片')
+    expect(buildShareOgImageAlt({ locale: 'zh', pointName: '须贺神社', bangumiTitle: '' }))
+      .toBe('须贺神社分享卡片')
+    expect(buildShareOgImageAlt({ locale: 'en', pointName: '', bangumiTitle: '' }))
+      .toBe('SeichiGo share card')
+  })
+})
+
+describe('buildShareOgImage', () => {
+  it('尺寸按 layout 取 SHARE_CARD_SIZES，类型固定 image/jpeg', () => {
+    expect(
+      buildShareOgImage({ url: 'https://seichigo.com/api/share/card/p?layout=landscape', layout: 'landscape', alt: 'a' }),
+    ).toEqual({
+      url: 'https://seichigo.com/api/share/card/p?layout=landscape',
+      width: 1200,
+      height: 630,
+      type: 'image/jpeg',
+      alt: 'a',
+    })
+    expect(
+      buildShareOgImage({ url: 'u', layout: 'portrait', alt: 'b' }),
+    ).toMatchObject({ width: 1080, height: 1440, type: 'image/jpeg', alt: 'b' })
   })
 })
