@@ -4,7 +4,7 @@ import {
   buildWarmDetail,
   collectPointCoords,
   matchPointId,
-  normalizeCoverImageUrl,
+  normalizeCoverImageUrlAsync,
   prefetchImageUrl,
   warmPointImages,
 } from './media'
@@ -211,7 +211,7 @@ export function useAnitabiSelection(ctx: any) {
         if (cached) {
           detailRef.current = cached
           setDetail(cached)
-          const cachedCover = normalizeCoverImageUrl(cached.card.cover)
+          const cachedCover = await normalizeCoverImageUrlAsync(cached.card.cover)
           if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
           warmPointImages(cached.points)
           flushPointLayerSoon()
@@ -239,7 +239,7 @@ export function useAnitabiSelection(ctx: any) {
         if (activeBangumiIdRef.current !== id) return
         detailRef.current = json
         setDetail(json)
-        const nextCover = normalizeCoverImageUrl(json.card.cover)
+        const nextCover = await normalizeCoverImageUrlAsync(json.card.cover)
         if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
         warmPointImages(json.points)
         flushPointLayerSoon()

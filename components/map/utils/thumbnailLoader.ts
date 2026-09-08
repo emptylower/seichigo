@@ -1,7 +1,7 @@
 import type { GlobalPointFeatureProperties } from '@/components/map/types'
 import { normalizePointThumbnailUrl } from '@/components/map/utils/normalizePointThumbnailUrl'
 import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
-import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import { getMapDisplayImageCandidatesAsync } from '@/lib/anitabi/imageProxy'
 
 export interface MapLike {
   addImage(id: string, data: unknown): void
@@ -137,10 +137,23 @@ export class ThumbnailLoader {
       const now = Date.now()
       let visibleIndex = 0
 
-      for (const feature of uniqueFeatures) {
+      // R2 直出候选的 mirror key 是异步计算的（内部有 memo 缓存），
+      // 并行解析后保持与同步版一致的候选顺序
+      const candidateLists = await Promise.all(
+        uniqueFeatures.map((feature) =>
+          getMapDisplayImageCandidatesAsync(String(feature.imageUrl || '').trim(), { kind: 'point-thumbnail' }),
+        ),
+      )
+      if (abortController.signal.aborted) {
+        snapshot = new Set(this.lru.keys())
+        return
+      }
+
+      for (let featureIndex = 0; featureIndex < uniqueFeatures.length; featureIndex += 1) {
+        const feature = uniqueFeatures[featureIndex]!
         const url = normalizePointThumbnailUrl(feature.imageUrl)
         if (!url) continue
-        const urls = getMapDisplayImageCandidates(String(feature.imageUrl || '').trim(), { kind: 'point-thumbnail' })
+        const urls = candidateLists[featureIndex] ?? []
         const resolvedUrls = urls.length > 0 ? urls : [url]
 
         const imageId = `thumb-${feature.pointId}`

@@ -1,4 +1,4 @@
-import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import { getMapDisplayImageCandidatesAsync } from '@/lib/anitabi/imageProxy'
 import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
 
 export interface MapLike {
@@ -117,7 +117,8 @@ export class CoverAvatarLoader {
         if (!this.isAllowedCoverHost(rawCover)) continue
 
         const imageId = `cover-${candidate.bangumiId}`
-        const candidateUrls = getMapDisplayImageCandidates(rawCover, { kind: 'cover' })
+        // R2 直出候选（mirror key 异步计算，内部 memo 缓存，重复视口零开销）
+        const candidateUrls = await getMapDisplayImageCandidatesAsync(rawCover, { kind: 'cover' })
         if (candidateUrls.length === 0) continue
         const tracked = visibleIndex < this.firstViewTrackedLimit
         visibleIndex += 1
@@ -162,6 +163,15 @@ export class CoverAvatarLoader {
   }
 
   private async loadBatch(items: Array<{ imageId: string; urls: string[]; tracked: boolean }>, signal: AbortSignal): Promise<void> {
+    // 候选收集阶段已有 await（R2 mirror key 异步解析），中止可能落在 loading.add
+    // 之后、worker 循环之前——此时逐项 try/finally 不会执行，必须在这里清掉
+    // loading 标记，否则该 imageId 会被永久跳过
+    if (signal.aborted) {
+      for (const item of items) {
+        this.loading.delete(item.imageId)
+      }
+      return
+    }
     let index = 0
 
     const worker = async (): Promise<void> => {

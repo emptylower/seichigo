@@ -12,7 +12,7 @@ import {
   markFirstViewRequestStart,
 } from './firstView'
 import { resolveMapImageDiagSurface } from './mapImageSessionManager'
-import { withPromiseTimeout, createRequestSignalWithTimeout, yieldToMainThread, normalizeCoverImageUrl, normalizePointImageUrl, prefetchImageUrl, buildWarmDetail, getImageWarmupConcurrency } from './media'
+import { withPromiseTimeout, createRequestSignalWithTimeout, yieldToMainThread, normalizeCoverImageUrlAsync, normalizePointImageUrl, prefetchImageUrl, buildWarmDetail, getImageWarmupConcurrency } from './media'
 import {
   COMPLETE_MODE_SPRITE_BUDGET_MS,
   MAP_PRELOAD_V2_ENABLED,
@@ -505,21 +505,19 @@ export function useAnitabiWarmup(ctx: any) {
       const firstViewCards = currentTabCards.slice(0, firstViewTrackedCount)
       const currentTabOverflow = currentTabCards.slice(firstViewTrackedCount, 40)
 
-      for (const card of firstViewCards) {
-        pushBlockingImage(
-          normalizeCoverImageUrl(card.cover),
-          queueCovers,
-          createFirstViewSlotKey('cover', card.id),
-        )
+      // R2 直出首档候选异步解析（内部 memo 缓存），按原顺序推入阻塞队列
+      const firstViewCoverSrcs = await Promise.all(firstViewCards.map((card: any) => normalizeCoverImageUrlAsync(card.cover)))
+      for (let index = 0; index < firstViewCards.length; index += 1) {
+        pushBlockingImage(firstViewCoverSrcs[index], queueCovers, createFirstViewSlotKey('cover', firstViewCards[index]!.id))
       }
-      for (const card of currentTabOverflow) {
-        pushBlockingImage(normalizeCoverImageUrl(card.cover), queueCovers)
+      for (const src of await Promise.all(currentTabOverflow.map((card: any) => normalizeCoverImageUrlAsync(card.cover)))) {
+        pushBlockingImage(src, queueCovers)
       }
-      for (const tabKey of preferredTabs) {
-        const rows = manifest.tabs[tabKey] || []
-        for (const card of rows.slice(0, 28)) {
-          pushBlockingImage(normalizeCoverImageUrl(card.cover), queueCovers)
-        }
+      if (signal?.aborted || !isActiveRun()) return
+      const tabCoverSrcs = await Promise.all(preferredTabs.map(async (tabKey) =>
+        Promise.all((manifest.tabs[tabKey] || []).slice(0, 28).map((card: any) => normalizeCoverImageUrlAsync(card.cover)))))
+      for (const srcs of tabCoverSrcs) {
+        for (const src of srcs) pushBlockingImage(src, queueCovers)
       }
       warmupMetricRef.current.first_view_warmup_cover_count = firstViewCards.length
 
@@ -700,8 +698,8 @@ export function useAnitabiWarmup(ctx: any) {
     const backgroundStartedAt = performance.now()
     const backgroundImages = new Set<string>()
     for (const rows of Object.values(tabCardsRef.current) as Array<AnitabiBangumiCard[] | undefined>) {
-      for (const card of rows || []) {
-        const cover = normalizeCoverImageUrl((card as any).cover)
+      const coverSrcs = await Promise.all((rows || []).map((card) => normalizeCoverImageUrlAsync((card as any).cover)))
+      for (const cover of coverSrcs) {
         if (cover) backgroundImages.add(cover)
       }
     }

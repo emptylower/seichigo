@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
+import {
+  getMapDisplayImageCandidates,
+  isMapImageR2PublicBaseConfigured,
+  resolveMirrorPublicUrl,
+} from '@/lib/anitabi/imageProxy'
 import {
   clearMapImageHostDegraded,
   DEGRADED_HOST_TIMEOUT_MS,
@@ -161,6 +165,10 @@ export default function ResilientMapImage({
   const candidateQueueRef = useRef<string[]>(
     buildCandidateQueue(raw, kind, hostPolicyScope, fallbackSrc),
   )
+  // R2 直出 URL 的 mirror key 计算是异步的：开启公共域时先挡住首个请求，
+  // 解析完成（或确认无 mirror 候选）后再放行，保证第一个真正发出的请求是 R2 直出。
+  // 开关为空时初始即 ready，行为与历史版本一致。
+  const [mirrorReady, setMirrorReady] = useState(() => !isMapImageR2PublicBaseConfigured())
   const rawChanged = lastRawRef.current !== raw
   diagnosticRequestStartRef.current = onDiagnosticRequestStart
   diagnosticRequestTerminalRef.current = onDiagnosticRequestTerminal
@@ -178,6 +186,27 @@ export default function ResilientMapImage({
     setRequestSrc('')
     candidateQueueRef.current = buildCandidateQueue(raw, kind, hostPolicyScope, fallbackSrc)
     lastRawRef.current = raw
+
+    if (!isMapImageR2PublicBaseConfigured()) {
+      setMirrorReady(true)
+      return
+    }
+    setMirrorReady(false)
+    let cancelled = false
+    void resolveMirrorPublicUrl(raw, { kind })
+      .then((mirrorUrl) => {
+        if (cancelled) return
+        if (mirrorUrl && candidateQueueRef.current[0] !== mirrorUrl) {
+          candidateQueueRef.current = [mirrorUrl, ...candidateQueueRef.current]
+        }
+        setMirrorReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) setMirrorReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [hostPolicyScope, kind, raw, fallbackSrc])
 
   const candidates = candidateQueueRef.current
@@ -292,6 +321,17 @@ export default function ResilientMapImage({
     if (rawChanged) {
       return
     }
+    // mirror key 解析期间不发起首个请求（R2 直出必须是第一个真正发出的请求）；
+    // 若上一帧已按同步候选梯抢先发出了请求（raw 快速切换的过渡帧），先中止清空
+    if (!mirrorReady) {
+      finishActiveRequest({
+        terminalState: 'aborted',
+        chainTerminal: true,
+        outcome: 'mirror_pending',
+      })
+      setRequestSrc('')
+      return
+    }
     if (!resolvedSrc || failed) {
       finishActiveRequest({
         terminalState: 'aborted',
@@ -381,6 +421,7 @@ export default function ResilientMapImage({
     diagnosticsEnabled,
     failed,
     gateOpen,
+    mirrorReady,
     persistedCandidate,
     persistedCandidateIndex,
     rawChanged,

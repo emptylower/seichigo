@@ -1,4 +1,5 @@
-import { appendMapImageDiagnosticParams } from '@/lib/anitabi/imageProxy'
+import { appendMapImageDiagnosticParams, readMapImageR2PublicBase } from '@/lib/anitabi/imageProxy'
+import { isMapImageProxyUrl } from '@/components/map/utils/mapImageHostPolicy'
 
 export type MapImageDiagSurface = 'map' | 'nearby'
 export type MapImageDiagOwner = 'warmup' | 'viewport-loader' | 'dom-image'
@@ -10,6 +11,7 @@ export type MapImageDiagSlotType =
 export type MapImageDiagTerminalState = 'succeeded' | 'failed' | 'aborted' | 'superseded'
 export type MapImageDiagDisplayOutcome = 'visible' | 'fallback'
 export type MapImageDiagEscalationReason = 'failed' | 'fallback' | 'slow'
+export type MapImageDiagCandidateKind = 'r2' | 'proxy' | 'direct'
 
 export type MapImageDiagRequestHandle = {
   sessionId: string
@@ -46,6 +48,7 @@ export type MapImageDiagBufferedEvent = {
   terminal_state?: MapImageDiagTerminalState
   display_outcome?: MapImageDiagDisplayOutcome
   outcome?: string
+  candidate_kind?: MapImageDiagCandidateKind
   target_host_bucket?: string
   evidence: Record<string, unknown>
 }
@@ -128,6 +131,27 @@ function toTargetHostBucket(rawUrl: string | null | undefined): string | undefin
   } catch {
     return undefined
   }
+}
+
+/**
+ * 候选档类型（R2 公共域直出 / 站内代理 / 直连投递），由候选 URL 的 host 与
+ * 路径判定；解析失败时不上报该字段。
+ */
+function classifyMapImageCandidateKind(rawUrl: string | null | undefined): MapImageDiagCandidateKind | undefined {
+  const value = String(rawUrl || '').trim()
+  if (!value) return undefined
+  const r2Base = readMapImageR2PublicBase()
+  if (r2Base) {
+    try {
+      const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://seichigo.com'
+      const r2Origin = new URL(r2Base, baseOrigin).origin
+      if (new URL(value, baseOrigin).origin === r2Origin) return 'r2'
+    } catch {
+      return undefined
+    }
+  }
+  if (isMapImageProxyUrl(value)) return 'proxy'
+  return 'direct'
 }
 
 function buildEvidence(extra?: Record<string, unknown>): Record<string, unknown> {
@@ -327,6 +351,7 @@ export class MapImageSessionManager {
       candidate_index: handle.candidateIndex,
       candidate_count: handle.candidateCount,
       requested_candidate_url: handle.requestUrl,
+      candidate_kind: classifyMapImageCandidateKind(handle.requestUrl),
       target_host_bucket: toTargetHostBucket(handle.requestUrl),
       evidence: buildEvidence(input.evidence),
     })
@@ -493,6 +518,7 @@ export class MapImageSessionManager {
       terminal_state: input.terminalState,
       display_outcome: input.displayOutcome,
       outcome: input.outcome,
+      candidate_kind: classifyMapImageCandidateKind(input.finalUrl || record.requestUrl),
       target_host_bucket: toTargetHostBucket(input.finalUrl || record.requestUrl),
       evidence: buildEvidence(input.evidence),
     })

@@ -35,6 +35,11 @@
     "MAP_IMAGE_SESSION_OUTCOME_V2_ENABLED": "1",
     "NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED": "1",
     "NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED": "1",
+    // 2026-09-08 地图点位图 R2 直出：镜像桶（seichigo-anitabi-images）的公共
+    // 自定义域，Cloudflare CDN 直接从 R2 出图、不经 Worker。客户端候选梯把
+    // 该域的 mirror/v1/<host>/<hash>/<ext> 直出 URL 排在代理之前；置空即整体
+    // 回滚到纯代理行为
+    "NEXT_PUBLIC_MAP_IMAGE_R2_PUBLIC_BASE": "https://img.seichigo.com",
     // 2026-09-06 §0.3：规划 run 队列投递开关。已部署版本为 "1"；预览版本用
     // --var PLAN_AGENT_QUEUE_ENABLED=0 覆盖（队列消费者与自引用绑定只对已
     // 部署版本生效，预览跑不了消费者，路由会回落 SSE 内联路径）
