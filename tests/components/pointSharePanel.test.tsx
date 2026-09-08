@@ -203,14 +203,19 @@ describe('添加实拍', () => {
     ).toBeInTheDocument()
   })
 
-  it('上传失败时提示且不改卡片 URL', async () => {
-    uploadSharePhotoMock.mockResolvedValue(null)
+  it.each([
+    [401, 'share.toastSessionExpired'],
+    [429, 'share.toastTooManyUploads'],
+    [500, 'share.toastFailed'],
+  ] as const)('上传失败按状态码分流提示（%i）', async (status, key) => {
+    uploadSharePhotoMock.mockResolvedValue({ ok: false, status })
     const { container } = render(<PointSharePanel {...PROPS} />)
     const input = await waitPhotoEntry(container)
     fireEvent.change(input, {
       target: { files: [new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })] },
     })
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh')))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(t(key, 'zh')))
+    // 卡片 URL 不带 photo 参数
     expect(screen.getByAltText(t('share.panelTitle', 'zh'))).toHaveAttribute(
       'src',
       '/api/share/card/101%3Asuga?locale=zh&layout=portrait',

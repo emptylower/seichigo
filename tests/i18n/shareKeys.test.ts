@@ -68,8 +68,8 @@ describe('share i18n keys', () => {
   const V2_1_KEYS = ['cardQrTitle', 'cardQrSub', 'cardTagline']
   // 2026-09-08 服务端渲染改造：未登录时「添加实拍」的需登录态
   const OG_SERVER_RENDER_KEYS = ['addPhotoLoginRequired']
-  // 2026-09-09 Track B 评审修复：实拍已落库，前端「移除」只是本次卡片不用它
-  const PHOTO_UNUSE_KEYS = ['photoUnuse']
+  // 2026-09-09 Track B 评审修复：实拍「不在卡片中使用」语义 + 上传失败按状态码分流的提示
+  const REVIEW_0909_KEYS = ['photoUnuse', 'toastSessionExpired', 'toastTooManyUploads']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
     for (const key of [
@@ -78,7 +78,7 @@ describe('share i18n keys', () => {
       ...CAPTION_EDITOR_KEYS,
       ...V2_1_KEYS,
       ...OG_SERVER_RENDER_KEYS,
-      ...PHOTO_UNUSE_KEYS,
+      ...REVIEW_0909_KEYS,
     ]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }

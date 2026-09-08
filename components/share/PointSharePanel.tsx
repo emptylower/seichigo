@@ -265,7 +265,18 @@ export default function PointSharePanel({
     try {
       // 先把实拍传上去拿 R2 key，再用带 photo 参数的卡片 URL 刷新预览
       const result = await uploadSharePhoto(code, next)
-      if (!result?.photoKey) {
+      if (!result.ok) {
+        // 401 登录过期 / 429 当日限流各有专属提示，其余走通用失败
+        showToast(
+          result.status === 401
+            ? 'share.toastSessionExpired'
+            : result.status === 429
+              ? 'share.toastTooManyUploads'
+              : 'share.toastFailed',
+        )
+        return
+      }
+      if (!result.photoKey) {
         showToast('share.toastFailed')
         return
       }

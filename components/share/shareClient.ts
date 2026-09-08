@@ -37,23 +37,26 @@ export type SharePhotoUploadResponse = Omit<ShareUploadResponse, 'imageUrl'> & {
   photoKey?: string | null
 }
 
+/** 上传结果：成功带 photoKey；失败带 HTTP 状态码（status 0 = 网络层失败），面板按状态码分流提示 */
+export type SharePhotoUploadResult = SharePhotoUploadResponse | { ok: false; status: number }
+
 /**
  * 只补传实拍：卡片自 2026-09-08 起由服务端渲染，前端不再生成也不再上传 card。
- * 失败（未登录 401、限流 429、无绑定 503）都只返回 null——加实拍是锦上添花，
- * 失败了继续用不带实拍的服务端卡片。
+ * 失败返回 { ok:false, status }（401 未登录 / 429 当日限流 / 其它通用失败）。
+ * 加实拍是锦上添花，失败了继续用不带实拍的服务端卡片。
  */
 export async function uploadSharePhoto(
   code: string,
   photo: File,
-): Promise<SharePhotoUploadResponse | null> {
+): Promise<SharePhotoUploadResult> {
   try {
     const form = new FormData()
     form.set('photo', photo)
     const res = await fetch(`/api/share/links/${code}/upload`, { method: 'POST', body: form })
-    if (!res.ok) return null
+    if (!res.ok) return { ok: false, status: res.status }
     return (await res.json()) as SharePhotoUploadResponse
   } catch {
-    return null
+    return { ok: false, status: 0 }
   }
 }
 

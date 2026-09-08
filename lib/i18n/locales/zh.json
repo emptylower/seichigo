@@ -759,6 +759,8 @@
     "toastFailed": "操作失败，请重试",
     "toastPhotoTooLarge": "图片超过 5MB，换一张小一点的吧",
     "toastPhotoUnsupported": "这种图片格式不支持，请换 JPEG、PNG 或 WebP",
+    "toastSessionExpired": "登录状态已过期，请重新登录后再上传",
+    "toastTooManyUploads": "今日上传次数已达上限，请明天再试",
     "shareTo": "分享到…",
     "more": "更多",
     "toastImageCopiedPasteInPost": "图片已复制，在推文里粘贴",

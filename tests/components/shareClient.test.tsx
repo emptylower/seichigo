@@ -117,7 +117,8 @@ describe('uploadSharePhoto', () => {
     vi.stubGlobal('fetch', fetchMock)
     const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
     const out = await uploadSharePhoto('AbC12xYz', file)
-    expect(out?.photoKey).toBe('checkin/u1/p1.jpg')
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.photoKey).toBe('checkin/u1/p1.jpg')
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/share/links/AbC12xYz/upload')
     expect(init.method).toBe('POST')
@@ -126,12 +127,23 @@ describe('uploadSharePhoto', () => {
     expect(form.get('card')).toBeNull()
   })
 
-  it('401 / 429 / 503 都返回 null', async () => {
+  it('非 2xx 返回 { ok:false, status }，面板按状态码分流提示', async () => {
     for (const status of [401, 429, 503]) {
       vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status })))
       const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
-      expect(await uploadSharePhoto('AbC12xYz', file), String(status)).toBeNull()
+      expect(await uploadSharePhoto('AbC12xYz', file), String(status)).toEqual({ ok: false, status })
     }
+  })
+
+  it('网络层失败返回 { ok:false, status:0 }', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline')
+      }),
+    )
+    const file = new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })
+    await expect(uploadSharePhoto('AbC12xYz', file)).resolves.toEqual({ ok: false, status: 0 })
   })
 })
 

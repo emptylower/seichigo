@@ -759,6 +759,8 @@
     "toastFailed": "Something went wrong. Please try again.",
     "toastPhotoTooLarge": "Photo is over 5 MB. Please pick a smaller one.",
     "toastPhotoUnsupported": "This image format isn't supported. Please use JPEG, PNG, or WebP.",
+    "toastSessionExpired": "Your sign-in has expired. Please sign in again and retry.",
+    "toastTooManyUploads": "Daily upload limit reached. Please try again tomorrow.",
     "shareTo": "Share to…",
     "more": "More",
     "toastImageCopiedPasteInPost": "Image copied — paste it into your post",
