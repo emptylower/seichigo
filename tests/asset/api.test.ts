@@ -100,7 +100,7 @@ describe('asset api', () => {
     const stored = await repo.findById(json.id)
     expect(stored).not.toBeNull()
     expect(stored?.contentType).toBe('image/png')
-    expect(Array.from(stored?.bytes ?? [])).toEqual(Array.from(bytes))
+    expect(Array.from((await repo.findBytesById(json.id)) ?? [])).toEqual(Array.from(bytes))
   })
 
   it('uploads image with custom owner resolver', async () => {

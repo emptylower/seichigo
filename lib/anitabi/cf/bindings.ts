@@ -40,6 +40,23 @@ export type CfBindingsEnv = {
   EMAIL?: SendEmailBinding
   MAP_IMAGE_CACHE?: R2MirrorBucket
   IMAGES?: ImagesBinding
+  /**
+   * 2026-09-08 图片资产迁 R2：用户上传图片的原图/变体桶（seichigo-assets）。
+   * 结构子集对齐 worker-configuration.d.ts 的 R2Bucket（lib 代码不能直接引用
+   * 全局类型——worker-configuration.d.ts 不在任何 tsconfig include 里）。
+   */
+  ASSET_STORE?: {
+    get(key: string): Promise<{
+      body: ReadableStream<Uint8Array>
+      size: number
+      httpMetadata?: { contentType?: string }
+    } | null>
+    put(
+      key: string,
+      value: ReadableStream<Uint8Array> | ArrayBuffer | ArrayBufferView,
+      options?: { httpMetadata?: { contentType?: string } },
+    ): Promise<unknown>
+  }
   NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
   NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
   /**

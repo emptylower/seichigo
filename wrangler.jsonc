@@ -58,6 +58,12 @@
       "binding": "MAP_IMAGE_CACHE",
       "bucket_name": "seichigo-anitabi-images"
     },
+    // 2026-09-08 图片资产迁 R2：用户上传的图片原图（originals/<id>）与变体
+    //（variants/<id>/w<width>-q<quality>.webp）都存这个桶，根治 /assets 内存超限
+    {
+      "binding": "ASSET_STORE",
+      "bucket_name": "seichigo-assets"
+    },
     {
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
       "bucket_name": "seichigo-next-inc-cache"
