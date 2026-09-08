@@ -351,20 +351,48 @@ describe('GET /api/share/card/[pointId]', () => {
     expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(true)
   })
 
-  it('Browser Run 失败 → 302 到动画截图公共域，短缓存，不写卡片缓存', async () => {
+  it('Browser Run 失败 → 同源代理镜像图字节，短缓存，不跨域 302，不写卡片缓存', async () => {
     const { store, objects } = makeStore()
     const res = await createGetCardHandler(
       makeDeps({ getStore: () => store, renderCard: async () => null }),
     )(get(CARD_URL, '1.2.3.4'), params())
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('https://img.seichigo.com/mirror/v1/x/y.jpg')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.headers.get('content-type')).toBe('image/jpeg')
     expect(res.headers.get('cache-control')).toBe('public, max-age=60')
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([1, 2, 3])
     expect(objects.has('og-cards/101:suga__zh__landscape.webp')).toBe(false)
+  })
+
+  it('镜像 404 时用 R2 静态兜底图', async () => {
+    const { store } = makeStore({
+      'og-cards/_fallback-landscape.webp': new Uint8Array([5, 5, 5]),
+    })
+    const res = await createGetCardHandler(
+      makeDeps({ getStore: () => store, renderCard: async () => null, fetchImage: async () => null }),
+    )(get(CARD_URL, '1.2.3.4'), params())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/webp')
+    expect(res.headers.get('cache-control')).toBe('public, max-age=60')
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([5, 5, 5])
   })
 
   it('连动画截图也没有 → 302 到 /opengraph-image', async () => {
     const res = await createGetCardHandler(
       makeDeps({ renderCard: async () => null, resolveAnimeImageUrl: async () => null }),
+    )(get(CARD_URL, '1.2.3.4'), params())
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('https://seichigo.com/opengraph-image')
+  })
+
+  it('镜像与静态兜底图都没有 → 302 到 /opengraph-image', async () => {
+    const { store } = makeStore()
+    const res = await createGetCardHandler(
+      makeDeps({
+        getStore: () => store,
+        renderCard: async () => null,
+        fetchImage: async () => null,
+      }),
     )(get(CARD_URL, '1.2.3.4'), params())
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('https://seichigo.com/opengraph-image')
@@ -407,7 +435,7 @@ describe('GET /api/share/card/[pointId]', () => {
     ).toBe(200)
   })
 
-  it('日预算耗尽 → 走兜底且不渲染', async () => {
+  it('日预算耗尽 → 走同源兜底且不渲染', async () => {
     const { store } = makeStore({
       'og-cards/_budget/2026-09-08.json': new TextEncoder().encode(
         JSON.stringify({ count: DAILY_RENDER_BUDGET }),
@@ -418,7 +446,8 @@ describe('GET /api/share/card/[pointId]', () => {
       get(CARD_URL, '1.2.3.4'),
       params(),
     )
-    expect(res.status).toBe(302)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('location')).toBeNull()
     expect(renderCard).not.toHaveBeenCalled()
   })
 

@@ -238,14 +238,53 @@ function redirect(location: string): Response {
   })
 }
 
+/** 静态兜底图 key：由站长侧预先上传到 ASSET_STORE，代码只读不写 */
+function staticFallbackKey(layout: ShareCardLayout): string {
+  return `og-cards/_fallback-${layout}.webp`
+}
+
+function proxyImageResponse(bytes: BodyInit, contentType: string): Response {
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      'content-type': contentType,
+      'cache-control': FALLBACK_CACHE,
+      'x-content-type-options': 'nosniff',
+    },
+  })
+}
+
 /**
- * 兜底：Browser Run 报错/超时/预算耗尽 → 302 到该点位的动画截图 R2 公共域 URL；
- * 都没有 → 302 到站点默认 OG。
+ * 兜底全部同源（跨域 302 会被前端 fetch 直接抛错，各平台还可能缓存到 404）：
+ * 1. 服务端抓该点位动画截图镜像 URL 的字节直接转发（fetchImage 自带超时与大小上限）；
+ * 2. 抓不到 → 读 R2 静态兜底图 `og-cards/_fallback-<layout>.webp`；
+ * 3. 再没有 → 302 到站点默认 OG。
  */
-async function fallbackResponse(deps: CardDeps, pointId: string, locale: SupportedLocale): Promise<Response> {
+async function fallbackResponse(
+  deps: CardDeps,
+  pointId: string,
+  locale: SupportedLocale,
+  layout: ShareCardLayout,
+): Promise<Response> {
   const context = await loadPointContext(deps, pointId, locale).catch(() => null)
-  const mirror = context?.image ? await deps.resolveAnimeImageUrl(context.image) : null
-  return redirect(mirror || `${deps.origin}/opengraph-image`)
+  if (context?.image) {
+    const mirror = await deps.resolveAnimeImageUrl(context.image).catch(() => null)
+    if (mirror) {
+      const image = await deps.fetchImage(mirror).catch(() => null)
+      if (image) return proxyImageResponse(image.bytes, image.contentType || 'image/jpeg')
+    }
+  }
+  const store = deps.getStore()
+  if (store) {
+    const fallback = await store.get(staticFallbackKey(layout)).catch(() => null)
+    if (fallback) {
+      return proxyImageResponse(
+        await readAllBytes(fallback.body),
+        fallback.contentType || 'image/webp',
+      )
+    }
+  }
+  return redirect(`${deps.origin}/opengraph-image`)
 }
 
 export function createGetCardHandler(deps: CardDeps) {
@@ -303,6 +342,6 @@ export function createGetCardHandler(deps: CardDeps) {
     if (outcome.status === 'not_found') {
       return NextResponse.json({ error: '点位不存在' }, { status: 404 })
     }
-    return fallbackResponse(deps, pointId, locale)
+    return fallbackResponse(deps, pointId, locale, layout)
   }
 }
