@@ -2,7 +2,8 @@
 
 import { ArrowRight, LocateFixed, Navigation } from 'lucide-react'
 import type { PointPreview, PointRecord, RouteBookStatus } from '../types'
-import { RoutePreviewMap } from '@/components/route/RoutePreviewMap'
+// 走 Lazy 包装：MapLibre 只进客户端包，服务端渲染路径不引入（详见 RoutePreviewMapLazy 注释）
+import { RoutePreviewMap } from '@/components/route/RoutePreviewMapLazy'
 
 interface PlannerMapStageProps {
   status: RouteBookStatus
