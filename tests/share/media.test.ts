@@ -23,6 +23,11 @@ function makeStore() {
         size: found.bytes.byteLength,
       }
     },
+    async head(key) {
+      const found = objects.get(key)
+      if (!found) return null
+      return { size: found.bytes.byteLength, contentType: found.contentType }
+    },
     async delete(key) {
       objects.delete(key)
     },

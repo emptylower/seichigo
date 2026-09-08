@@ -4,6 +4,10 @@ import type { PointContextRow } from '@/lib/share/pointContextRepo'
 
 const ROW: PointContextRow = {
   pointId: '101:budo',
+  bangumiId: 101,
+  ep: '3',
+  scene: '1194',
+  image: 'https://image.anitabi.cn/points/101/budo.jpg',
   name: '『摇曳露营△ SEASON 3』葡萄牛奶',
   localizedName: null,
   mark: '武州屋出品',

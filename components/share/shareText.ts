@@ -65,11 +65,20 @@ export function buildLineShareUrl(url: string, text: string): string {
 
 /**
  * 分享卡片文件名：点位名只保留各国文字/数字/_/-，其余折叠成单个 -，截 40 字符。
- * 下载与系统分享共用，避免裸点位名里的空白/符号在部分系统上变成非法文件名。
+ * 扩展名按内容类型映射——服务端卡片是 WebP，兜底 302 到的动画截图可能是 JPEG。
  */
-export function buildCardFilename(name: string): string {
+const CARD_IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+}
+
+export function buildCardFilename(name: string, contentType = 'image/jpeg'): string {
   const slug = String(name || '').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40)
-  return `seichigo-${slug || 'card'}.jpg`
+  const type = String(contentType || '').split(';')[0]!.trim().toLowerCase()
+  const ext = CARD_IMAGE_EXTENSIONS[type] ?? 'jpg'
+  return `seichigo-${slug || 'card'}.${ext}`
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   SHARE_CARD_SIZES,
   SHARE_CHANNELS,
   SHARE_CHANNEL_UTM_MEDIUM,
+  buildCardImagePath,
   isInJapan,
   isShareChannel,
   isShareCardLayout,
@@ -69,5 +70,28 @@ describe('isInJapan', () => {
 
   it('檀香山在轮廓外', () => {
     expect(isInJapan(21.3069, -157.8583)).toBe(false)
+  })
+})
+
+describe('buildCardImagePath', () => {
+  it('拼出带 locale/layout 的卡片路径', () => {
+    expect(buildCardImagePath('101:suga', 'zh', 'landscape')).toBe(
+      '/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+    )
+  })
+
+  it('pointId 里的冒号进 URL 要编码', () => {
+    expect(buildCardImagePath('101:suga', 'ja', 'portrait')).toContain('/101%3Asuga?')
+  })
+
+  it('带实拍 key 时追加 photo 参数', () => {
+    expect(buildCardImagePath('101:suga', 'en', 'portrait', 'checkin/u1/101:suga.jpg')).toBe(
+      '/api/share/card/101%3Asuga?locale=en&layout=portrait&photo=checkin%2Fu1%2F101%3Asuga.jpg',
+    )
+  })
+
+  it('photo 传空串或 null 时不出现 photo 参数', () => {
+    expect(buildCardImagePath('p1', 'zh', 'landscape', '')).not.toContain('photo')
+    expect(buildCardImagePath('p1', 'zh', 'landscape', null)).not.toContain('photo')
   })
 })

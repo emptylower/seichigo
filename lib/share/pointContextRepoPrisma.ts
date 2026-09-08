@@ -18,8 +18,12 @@ export class PrismaPointContextRepo implements PointContextRepo {
       where: { id: pointId },
       select: {
         id: true,
+        bangumiId: true,
         name: true,
         mark: true,
+        ep: true,
+        s: true,
+        image: true,
         geoLat: true,
         geoLng: true,
         // AnitabiPoint 没有 note 列，说明来自 AnitabiPointI18n.note（同 readDetail.ts:78-82）
@@ -60,6 +64,10 @@ export class PrismaPointContextRepo implements PointContextRepo {
 
     return {
       pointId: row.id,
+      bangumiId: row.bangumiId,
+      ep: normalize(row.ep),
+      scene: normalize(row.s),
+      image: normalize(row.image),
       name: row.name,
       localizedName: normalize(row.i18n[0]?.name),
       mark: normalize(row.mark),

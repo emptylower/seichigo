@@ -1,5 +1,9 @@
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { SHARE_CHANNEL_UTM_MEDIUM, isShareChannel } from '@/lib/share/types'
+import {
+  SHARE_CHANNEL_UTM_MEDIUM,
+  buildCardImagePath,
+  isShareChannel,
+} from '@/lib/share/types'
 
 export function buildShareTitle(input: {
   locale: SupportedLocale
@@ -63,4 +67,47 @@ export function buildShareRedirectTarget(input: {
   params.set('utm_medium', isShareChannel(input.channel) ? SHARE_CHANNEL_UTM_MEDIUM[input.channel] : 'unknown')
   params.set('utm_campaign', 'point_card')
   return `${prefix}/map?${params.toString()}`
+}
+
+/**
+ * 二维码目标：稳定的点位深链，不是短链。
+ * 短链每产生一个新短码就是一次卡片缓存未命中；改成深链之后卡片才是
+ * (pointId, locale, layout, photo?) 的函数，可长期缓存。
+ * 渠道归因不受影响——扫码本来就固定记 image（见 SHARE_CHANNEL_UTM_MEDIUM.save）。
+ */
+export function buildCardQrTarget(input: {
+  origin: string
+  locale: SupportedLocale
+  bangumiId: number
+  pointId: string
+}): string {
+  const prefix = input.locale === 'zh' ? '' : `/${input.locale}`
+  const params = new URLSearchParams()
+  params.set('b', String(input.bangumiId))
+  params.set('p', input.pointId)
+  params.set('utm_source', 'share')
+  params.set('utm_medium', 'image')
+  params.set('utm_campaign', 'point_card')
+  return `${input.origin}${prefix}/map?${params.toString()}`
+}
+
+/**
+ * 短链页的 OG 图选路：
+ * - 该链接有 imageKey（登录用户上传过带实拍的卡）→ 维持现状指向 /api/share/img/<code>，
+ *   靠 ?v=<指纹> 让换图后的 URL 变化，绕开爬虫侧旧缓存
+ * - 否则 → 指向服务端卡片路由的横版；匿名分享从此也有完整卡片预览
+ */
+export function buildShareOgImageUrl(input: {
+  origin: string
+  code: string
+  pointId: string
+  locale: SupportedLocale
+  imageKey: string | null
+  fingerprint: string | null
+}): string {
+  if (input.imageKey) {
+    const version = input.fingerprint ? `?v=${input.fingerprint}` : ''
+    return `${input.origin}/api/share/img/${input.code}${version}`
+  }
+  return `${input.origin}${buildCardImagePath(input.pointId, input.locale, 'landscape')}`
 }

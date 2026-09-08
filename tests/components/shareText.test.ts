@@ -98,6 +98,23 @@ describe('buildCardFilename', () => {
   it('名字部分截断到 40 字符', () => {
     expect(buildCardFilename('あ'.repeat(50))).toBe(`seichigo-${'あ'.repeat(40)}.jpg`)
   })
+
+  it('扩展名按内容类型映射：webp/jpeg/png/svg 各归各位', () => {
+    expect(buildCardFilename('须贺神社', 'image/webp')).toBe('seichigo-须贺神社.webp')
+    expect(buildCardFilename('须贺神社', 'image/jpeg')).toBe('seichigo-须贺神社.jpg')
+    expect(buildCardFilename('须贺神社', 'image/png')).toBe('seichigo-须贺神社.png')
+    expect(buildCardFilename('须贺神社', 'image/svg+xml')).toBe('seichigo-须贺神社.svg')
+  })
+
+  it('contentType 带参数时先剥掉参数再映射', () => {
+    expect(buildCardFilename('须贺神社', 'image/webp; charset=binary')).toBe('seichigo-须贺神社.webp')
+    expect(buildCardFilename('须贺神社', 'IMAGE/PNG')).toBe('seichigo-须贺神社.png')
+  })
+
+  it('未知类型回落 .jpg', () => {
+    expect(buildCardFilename('须贺神社', 'image/avif')).toBe('seichigo-须贺神社.jpg')
+    expect(buildCardFilename('须贺神社', '')).toBe('seichigo-须贺神社.jpg')
+  })
 })
 
 describe('toHashtag', () => {

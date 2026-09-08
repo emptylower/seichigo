@@ -58,13 +58,34 @@ export type CreateShareLinkResponse = {
 
 export type ShareUploadResponse = {
   ok: true
-  /** 卡片公开读取地址 /api/share/img/<code> */
-  imageUrl: string
+  /** 卡片公开读取地址 /api/share/img/<code>；这次没传 card 时为 null */
+  imageUrl: string | null
   /** 写进 UserPointState.photoUrl 的地址；没传 photo 时为 null */
   photoUrl: string | null
+  /** 实拍的 R2 key，前端拿它拼带 photo 参数的卡片 URL；没传 photo 时为 null */
+  photoKey: string | null
 }
 
 export type ShareErrorResponse = { error: string }
+
+/**
+ * 服务端卡片图的相对路径（Track A 与 Track B 的唯一共享契约）。
+ * pointId 可能含冒号（`101:station`），进 URL 必须编码；photo 传的是
+ * `checkin/<userId>/<pointId>.jpg` 形状的 R2 key，空值时整个参数不出现。
+ */
+export function buildCardImagePath(
+  pointId: string,
+  locale: SupportedLocale,
+  layout: ShareCardLayout,
+  photoKey?: string | null,
+): string {
+  const params = new URLSearchParams()
+  params.set('locale', locale)
+  params.set('layout', layout)
+  const photo = String(photoKey || '').trim()
+  if (photo) params.set('photo', photo)
+  return `/api/share/card/${encodeURIComponent(pointId)}?${params.toString()}`
+}
 
 export function isShareCardLayout(value: unknown): value is ShareCardLayout {
   return value === 'portrait' || value === 'landscape'

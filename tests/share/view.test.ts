@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildShareDescription, buildShareRedirectTarget, buildShareTitle } from '@/lib/share/view'
+import {
+  buildCardQrTarget,
+  buildShareDescription,
+  buildShareOgImageUrl,
+  buildShareRedirectTarget,
+  buildShareTitle,
+} from '@/lib/share/view'
 
 describe('buildShareTitle', () => {
   it('三语标题', () => {
@@ -53,5 +59,57 @@ describe('buildShareRedirectTarget', () => {
     expect(
       buildShareRedirectTarget({ locale: 'zh', bangumiId: 101, pointId: 'p1', channel: null }),
     ).toBe('/map?b=101&p=p1&utm_source=share&utm_medium=unknown&utm_campaign=point_card')
+  })
+})
+
+describe('buildCardQrTarget', () => {
+  const base = { origin: 'https://seichigo.com', bangumiId: 101, pointId: '101:suga' }
+
+  it('zh 无语言前缀，utm_medium 固定 image', () => {
+    expect(buildCardQrTarget({ ...base, locale: 'zh' })).toBe(
+      'https://seichigo.com/map?b=101&p=101%3Asuga&utm_source=share&utm_medium=image&utm_campaign=point_card',
+    )
+  })
+
+  it('en / ja 带语言前缀', () => {
+    expect(buildCardQrTarget({ ...base, locale: 'en' })).toContain('https://seichigo.com/en/map?')
+    expect(buildCardQrTarget({ ...base, locale: 'ja' })).toContain('https://seichigo.com/ja/map?')
+  })
+
+  it('不含短链路径：卡片可长期缓存的前提', () => {
+    expect(buildCardQrTarget({ ...base, locale: 'zh' })).not.toContain('/s/')
+  })
+})
+
+describe('buildShareOgImageUrl', () => {
+  const base = {
+    origin: 'https://seichigo.com',
+    code: 'AbC12xYz',
+    pointId: '101:suga',
+    locale: 'zh' as const,
+  }
+
+  it('有 imageKey 时维持现状指向 /api/share/img/<code>，并带指纹', () => {
+    expect(
+      buildShareOgImageUrl({ ...base, imageKey: 'share/AbC12xYz-deadbeef.webp', fingerprint: 'deadbeef' }),
+    ).toBe('https://seichigo.com/api/share/img/AbC12xYz?v=deadbeef')
+  })
+
+  it('旧格式（无指纹）不带 ?v=', () => {
+    expect(buildShareOgImageUrl({ ...base, imageKey: 'share/AbC12xYz.jpg', fingerprint: null })).toBe(
+      'https://seichigo.com/api/share/img/AbC12xYz',
+    )
+  })
+
+  it('没有 imageKey 时指向卡片路由的横版', () => {
+    expect(buildShareOgImageUrl({ ...base, imageKey: null, fingerprint: null })).toBe(
+      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+    )
+  })
+
+  it('匿名链的 locale 跟着短链走', () => {
+    expect(
+      buildShareOgImageUrl({ ...base, locale: 'ja', imageKey: null, fingerprint: null }),
+    ).toContain('locale=ja')
   })
 })

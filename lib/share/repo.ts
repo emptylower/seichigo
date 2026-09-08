@@ -48,10 +48,13 @@ export interface ShareLinkRepo {
   countByIpHashSince(ipHash: string, since: Date): Promise<number>
   /** 配额按次数算：sum(uploadCount) where userId 且 updatedAt 在窗口内 */
   countUploadsByUserSince(userId: string, since: Date): Promise<number>
-  /** 回填 imageKey/userId 并原子自增 uploadCount、刷新 updatedAt */
+  /**
+   * 回填 imageKey/userId 并原子自增 uploadCount、刷新 updatedAt。
+   * imageKey 传 null 表示这次只传了实拍：不动 imageKey，只计配额。
+   */
   markUploaded(
     code: string,
-    input: { imageKey: string; userId: string },
+    input: { imageKey: string | null; userId: string },
   ): Promise<ShareLinkRecord | null>
   incrementClicks(code: string): Promise<void>
 }

@@ -19,11 +19,6 @@ vi.mock('@/lib/anitabi/share', () => ({
   resolveMapShareSnapshot: (...args: any[]) => resolveMapShareSnapshotMock(...args),
 }))
 
-const resolveMirrorPublicUrlMock = vi.fn()
-vi.mock('@/lib/anitabi/imageProxy', () => ({
-  resolveMirrorPublicUrl: (...args: any[]) => resolveMirrorPublicUrlMock(...args),
-}))
-
 const SNAPSHOT = {
   bangumiId: 101,
   bangumiTitle: '你的名字。',
@@ -55,7 +50,6 @@ async function seed(code: string, imageKey: string | null) {
 describe('/s/[code] generateMetadata', () => {
   beforeEach(() => {
     resolveMapShareSnapshotMock.mockReset()
-    resolveMirrorPublicUrlMock.mockReset()
     resolveMapShareSnapshotMock.mockResolvedValue(SNAPSHOT)
   })
 
@@ -70,7 +64,6 @@ describe('/s/[code] generateMetadata', () => {
     expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/AAAAAAAA'])
     expect(meta.title).toEqual({ absolute: '须贺神社｜《你的名字。》圣地巡礼 | SeichiGo' })
     expect(meta.robots).toEqual({ index: false, follow: true })
-    expect(resolveMirrorPublicUrlMock).not.toHaveBeenCalled()
   })
 
   it('带指纹的新格式 imageKey 会给 OG 图追加 ?v=<指纹>', async () => {
@@ -84,27 +77,29 @@ describe('/s/[code] generateMetadata', () => {
     expect(meta.twitter?.images).toEqual(['https://seichigo.com/api/share/img/EEEEEEEE?v=ab12cd34'])
   })
 
-  it('没有 imageKey 时退回点位动画截图的 R2 公共域 URL', async () => {
+  it('没有 imageKey 时指向服务端卡片路由的横版（匿名分享也有卡片预览）', async () => {
     await seed('BBBBBBBB', null)
-    resolveMirrorPublicUrlMock.mockResolvedValue('https://img.seichigo.com/mirror/v1/x/y/jpg')
     const { generateMetadata } = await import('@/app/s/[code]/page')
     const meta = await generateMetadata({
       params: Promise.resolve({ code: 'BBBBBBBB' }),
       searchParams: Promise.resolve({}),
     })
-    expect(resolveMirrorPublicUrlMock).toHaveBeenCalledWith(SNAPSHOT.pointImage, { kind: 'point' })
-    expect(meta.openGraph?.images).toEqual(['https://img.seichigo.com/mirror/v1/x/y/jpg'])
+    // 动画截图兜底已收进卡片路由内部（失败时同源代理/302），短链页不再调 resolveMirrorPublicUrl
+    expect(meta.openGraph?.images).toEqual([
+      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+    ])
   })
 
-  it('R2 也算不出时退回站点默认 OG', async () => {
+  it('卡片路由的兜底由路由自身负责，短链页不再退回站点默认 OG', async () => {
     await seed('CCCCCCCC', null)
-    resolveMirrorPublicUrlMock.mockResolvedValue(null)
     const { generateMetadata } = await import('@/app/s/[code]/page')
     const meta = await generateMetadata({
       params: Promise.resolve({ code: 'CCCCCCCC' }),
       searchParams: Promise.resolve({}),
     })
-    expect(meta.openGraph?.images).toEqual(['https://seichigo.com/opengraph-image'])
+    expect(meta.openGraph?.images).toEqual([
+      'https://seichigo.com/api/share/card/101%3Asuga?locale=zh&layout=landscape',
+    ])
   })
 
   it('短码不存在时只给 noindex 标题', async () => {
