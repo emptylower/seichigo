@@ -736,7 +736,7 @@
     "removePhoto": "Remove photo",
     "photoHint": "Add your own shot and the card becomes a side-by-side comparison",
     "captionLabel": "Caption",
-    "captionTemplate": "{anime} anime pilgrimage: {point}, {city} {url} #animepilgrimage #{anime}",
+    "captionTemplate": "{anime} anime pilgrimage: {point}, {address} {url} #animepilgrimage #{anime}",
     "redditTitle": "{point} - {anime}",
     "systemShare": "Share",
     "copyImage": "Copy image",

@@ -4,23 +4,30 @@ import type { ShareChannel } from '@/lib/share/types'
 export type ShareCaptionVars = {
   anime: string
   point: string
-  city: string
+  /** 城市级地址（都道府县 + 市区町村），没有就传空串 */
+  address: string
   url: string
 }
 
 /**
- * 填模板。城市为空时，把包住 {city} 的中/英标点（全角括号、逗号+空格）一并吃掉，
- * 免得出现「须贺神社（）」或「Suga Shrine,  https://…」。
+ * 填模板。地址为空时，把包住 {address} 的中/英标点（中点、全角括号、逗号+空格）一并吃掉，
+ * 免得出现「须贺神社 ·  https://…」或「Suga Shrine,  https://…」。
  * `#{anime}` 是话题标签：作品名先过 toHashtag 净化，再替换普通 `{anime}`。
  */
 export function buildShareCaption(template: string, vars: ShareCaptionVars): string {
-  const city = String(vars.city || '').trim()
+  const address = String(vars.address || '').trim()
   const anime = String(vars.anime || '').trim()
   const animeTag = toHashtag(anime)
   let out = String(template || '')
-  out = city
-    ? out.replace(/\{city\}/g, city)
-    : out.replace(/（\{city\}）/g, ' ').replace(/,\s*\{city\}/g, '').replace(/\{city\}/g, '')
+  out = address
+    ? out.replace(/\{address\}/g, address)
+    : out
+        // 地址为空时把包住它的中点、全角括号、逗号+空格一并吃掉，
+        // 免得出现「葡萄牛奶 · https://…」或「Budo Milk,  https://…」
+        .replace(/\s*·\s*\{address\}/g, '')
+        .replace(/（\{address\}）/g, ' ')
+        .replace(/,\s*\{address\}/g, '')
+        .replace(/\{address\}/g, '')
   out = out
     .replace(/#\{anime\}/g, animeTag ? `#${animeTag}` : '')
     .replace(/\{anime\}/g, anime)

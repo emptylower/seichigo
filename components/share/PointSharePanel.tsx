@@ -175,10 +175,10 @@ export default function PointSharePanel({
       buildShareCaption(t('share.captionTemplate', locale), {
         anime: animeTitle,
         point: pointName,
-        city: cityName,
+        address: '',
         url: shareUrl ? withShareChannel(shareUrl, channel) : '',
       }),
-    [locale, animeTitle, pointName, cityName, shareUrl],
+    [locale, animeTitle, pointName, shareUrl],
   )
 
   const copyCaption = captionFor('copy')

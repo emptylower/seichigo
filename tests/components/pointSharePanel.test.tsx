@@ -117,11 +117,13 @@ describe('PointSharePanel 短链与平台按钮', () => {
     expect(globalThis.localStorage.getItem('seichigo.share.layout')).toBe('landscape')
   })
 
-  it('文案预填含作品、地名、城市与短链', async () => {
+  it('文案预填含作品、点位名与短链；没有地址时不留悬空的 ·', async () => {
     render(<PointSharePanel {...PROPS} />)
-    await waitFor(() => expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
-      '《你的名字。》圣地巡礼｜须贺神社（东京）https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
-    ))
+    await waitFor(() =>
+      expect(screen.getByLabelText(t('share.captionLabel', 'zh'))).toHaveValue(
+        '《你的名字。》圣地巡礼｜须贺神社 https://seichigo.com/s/AbC12xYz?c=copy #圣地巡礼 #你的名字。',
+      ),
+    )
   })
 
   it('未登录时不发上传请求', async () => {

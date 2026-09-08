@@ -46,9 +46,10 @@ describe('share i18n keys', () => {
 
   it.each(LOCALES)('%s 的文案模板四个占位符齐全', (_locale, dict) => {
     const template = at(dict, 'share.captionTemplate') as string
-    for (const token of ['{anime}', '{point}', '{city}', '{url}']) {
+    for (const token of ['{anime}', '{point}', '{address}', '{url}']) {
       expect(template.includes(token), `${token} in ${template}`).toBe(true)
     }
+    expect(template.includes('{city}'), `v1 的 {city} 应已下线：${template}`).toBe(false)
   })
 
   // 2026-09-08 Track B 评审修复新增的键，逐个登记防漏翻

@@ -736,7 +736,7 @@
     "removePhoto": "移除实拍",
     "photoHint": "加上你自己拍的照片，卡片会变成左右对比",
     "captionLabel": "分享文案",
-    "captionTemplate": "《{anime}》圣地巡礼｜{point}（{city}）{url} #圣地巡礼 #{anime}",
+    "captionTemplate": "《{anime}》圣地巡礼｜{point} · {address} {url} #圣地巡礼 #{anime}",
     "redditTitle": "{point}｜{anime}",
     "systemShare": "系统分享",
     "copyImage": "复制图片",
