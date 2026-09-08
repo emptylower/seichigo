@@ -26,7 +26,8 @@ export const metadata: Metadata = {
   },
 }
 
-export const revalidate = 120
+// 2026-09-08 首页数据变化慢，缩短再生成频率以减少过期瞬间的访客等待
+export const revalidate = 1800
 export const dynamic = 'force-static'
 
 export default async function EnglishHomePage() {
