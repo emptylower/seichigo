@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
-import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+import { getMapDisplayImageCandidates } from '@/lib/anitabi/imageProxy'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { SHARE_CARD_MAX_BYTES, type ShareCardLayout } from '@/lib/share/types'
 import {
@@ -98,17 +98,27 @@ export default function PointShareCard({
       canvas.width = layout.canvas.width
       canvas.height = layout.canvas.height
 
-      const safeAnimeUrl = input.animeImage
-        ? toCanvasSafeImageUrl(input.animeImage, `${input.pointName}-share-card`)
-        : ''
       const qrDataUrl = await QRCode.toDataURL(input.shareUrl, {
         margin: 1,
         width: layout.qr.size,
         color: { dark: '#111827', light: '#ffffff' },
       })
 
+      // 动画截图走与地图一致的候选梯（同源代理优先）：anitabi 投递域不带 CORS 头，
+      // crossOrigin='anonymous' 直连必失败，逐个候选降级
+      const candidates = input.animeImage
+        ? getMapDisplayImageCandidates(input.animeImage, { kind: 'point' })
+        : []
+      const loadAnime = async (): Promise<HTMLImageElement | null> => {
+        for (const candidate of candidates) {
+          const img = await loadImage(candidate, 'anonymous').catch(() => null)
+          if (img) return img
+        }
+        return null
+      }
+
       const [animeImg, qrImg, logoImg] = await Promise.all([
-        safeAnimeUrl ? loadImage(safeAnimeUrl, 'anonymous').catch(() => null) : Promise.resolve(null),
+        loadAnime(),
         loadImage(qrDataUrl).catch(() => null),
         loadImage('/brand/web-logo.png').catch(() => null),
       ])

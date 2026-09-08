@@ -6,8 +6,9 @@ vi.mock('qrcode', () => ({
   default: { toDataURL: vi.fn(async () => 'data:image/png;base64,qr') },
 }))
 
+const candidatesMock = vi.fn<(src: string, options?: { kind?: string }) => string[]>()
 vi.mock('@/lib/anitabi/imageProxy', () => ({
-  toCanvasSafeImageUrl: (src: string) => src,
+  getMapDisplayImageCandidates: (...args: any[]) => candidatesMock(...args),
 }))
 
 const blobSizes: number[] = []
@@ -50,6 +51,8 @@ beforeEach(() => {
   blobSizes.length = 0
   failingSrcs.clear()
   drawImageSpy.mockClear()
+  candidatesMock.mockReset()
+  candidatesMock.mockImplementation((src: string) => [src])
   stubCanvas()
   // 让 new Image() 的 onload 立刻触发；failingSrcs 里的 src 走 onerror
   Object.defineProperty(globalThis.Image.prototype, 'src', {
@@ -129,5 +132,18 @@ describe('PointShareCard', () => {
       (call) => call[7] === 1080 && (call[8] === 1000 || call[8] === 500),
     )
     expect(mainDraw?.[8]).toBe(1000)
+  })
+
+  it('动画截图走同源代理候选梯：第一候选失败时用第二候选', async () => {
+    candidatesMock.mockReturnValue(['https://img.example/fail.jpg', 'https://img.example/ok.jpg'])
+    failingSrcs.add('https://img.example/fail.jpg')
+    const onRendered = vi.fn()
+    render(<PointShareCard input={INPUT} onRendered={onRendered} onError={vi.fn()} />)
+    await waitFor(() => expect(onRendered).toHaveBeenCalled())
+    expect(candidatesMock).toHaveBeenCalledWith(INPUT.animeImage, { kind: 'point' })
+    const mainDraw = drawImageSpy.mock.calls.find((call) => call[7] === 1080 && call[8] === 1000)
+    expect((mainDraw?.[0] as { __loadedSrc?: string } | undefined)?.__loadedSrc).toBe(
+      'https://img.example/ok.jpg',
+    )
   })
 })
