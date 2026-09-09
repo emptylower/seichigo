@@ -219,7 +219,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
         console.error('[degraded:post-detail.anime-label]', { locale: 'ja', slug, id }, error)
         return null
       })
-      return { id, label: meta?.name || id }
+      return { id, label: meta?.name_ja || meta?.name || id }
     })
   )
 
@@ -288,7 +288,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
   const breadcrumbItemsForJsonLd = [
     { name: 'ホーム', url: `${siteOrigin}/ja` },
     { name: 'アニメ', url: `${siteOrigin}/ja/anime` },
-    ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
+    ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/ja/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, url: canonicalUrl },
   ]
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd(breadcrumbItemsForJsonLd)
@@ -296,7 +296,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
   const breadcrumbItems = [
     { name: 'ホーム', href: '/ja' },
     { name: 'アニメ', href: '/ja/anime' },
-    ...(primaryAnime ? [{ name: primaryAnime.label, href: `/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
+    ...(primaryAnime ? [{ name: primaryAnime.label, href: `/ja/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, href: `/ja/posts/${encodeSlugForPath(canonicalSlug)}` },
   ]
 

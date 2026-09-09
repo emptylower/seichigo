@@ -141,7 +141,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: 'Home', url: `${siteOrigin}/en` },
     { name: 'Anime', url: `${siteOrigin}/en/anime` },
-    { name: display.name, url: canonicalUrl },
+    { name: display.name_en ?? display.name, url: canonicalUrl },
   ])
 
   const heroCoverRaw = display.cover || posts.find((p) => p.cover)?.cover || null
@@ -159,7 +159,7 @@ export default async function AnimeEnPage({ params }: { params: Promise<{ id: st
           items={[
             { name: 'Home', href: '/en' },
             { name: 'Anime', href: '/en/anime' },
-            { name: display.name, href: `/en/anime/${encodeAnimeIdForPath(canonicalId)}` },
+            { name: display.name_en ?? display.name, href: `/en/anime/${encodeAnimeIdForPath(canonicalId)}` },
           ]}
         />
 
