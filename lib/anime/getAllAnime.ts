@@ -148,6 +148,31 @@ export async function getAnimeById(id: string, options?: GetAllAnimeOptions): Pr
           summary_en: found.summary_en ?? fromJson?.summary_en ?? undefined,
         }
       }
+
+      const aliasMatches = await prisma.anime.findMany({ where: { alias: { has: id } } })
+      if (aliasMatches.length > 1) {
+        console.warn('[anime.by-id-alias-multiple]', {
+          id,
+          matchedIds: aliasMatches.map((row) => String(row.id)),
+        })
+      }
+      const aliasRow = aliasMatches[0]
+      if (aliasRow) {
+        if (aliasRow.hidden && !options?.includeHidden) return null
+        return {
+          id: String(aliasRow.id),
+          name: String(aliasRow.name || aliasRow.id),
+          alias: Array.isArray(aliasRow.alias) ? aliasRow.alias : [],
+          year: typeof aliasRow.year === 'number' ? aliasRow.year : undefined,
+          summary: aliasRow.summary ?? undefined,
+          cover: aliasRow.cover ?? undefined,
+          hidden: aliasRow.hidden ?? false,
+          name_ja: aliasRow.name_ja ?? undefined,
+          name_en: aliasRow.name_en ?? undefined,
+          summary_ja: aliasRow.summary_ja ?? undefined,
+          summary_en: aliasRow.summary_en ?? undefined,
+        }
+      }
     } catch (error) {
       console.error('[degraded:anime.by-id]', { id }, error)
       // ignore
