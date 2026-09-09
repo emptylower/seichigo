@@ -33,7 +33,7 @@ describe('media normalizePointImageUrl / normalizeCoverImageUrl delivery host', 
   it('normalizes anitabi covers onto the same display url used for rendering', async () => {
     const { normalizeCoverImageUrl } = await import('@/features/map/anitabi/media')
     expect(normalizeCoverImageUrl('https://image.anitabi.cn/bangumi/290980.jpg')).toBe(
-      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160',
     )
   })
 
