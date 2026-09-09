@@ -11,6 +11,7 @@ import {
   buildShareOgImage,
   buildShareOgImageAlt,
   buildShareOgImageUrl,
+  buildShareRedirectFallbackText,
   buildShareRedirectTarget,
   buildShareTitle,
 } from '@/lib/share/view'
@@ -138,8 +139,8 @@ export default async function ShareRedirectPage({ params, searchParams }: PagePa
 
   return (
     <>
-      {/* 爬虫读完 OG 再跳；不能用 next/navigation 的 redirect */}
-      <meta httpEquiv="refresh" content={`0;url=${absolute}`} />
+      {/* 爬虫不执行 JS，会留在本页读卡片；meta refresh 会让抓取器跳去地图页
+          改用地图页的 og:image，禁用。真实用户由脚本瞬时跳转 */}
       <script
         dangerouslySetInnerHTML={{
           // `</script>` 若混进 URL 会提前闭合标签，先转义 < 再进 JSON 字符串
@@ -147,9 +148,9 @@ export default async function ShareRedirectPage({ params, searchParams }: PagePa
         }}
       />
       <main style={{ padding: '48px 24px', fontFamily: 'system-ui, sans-serif', textAlign: 'center' }}>
-        <p style={{ color: '#4b5563', fontSize: 14 }}>正在跳转到 SeichiGo 地图…</p>
+        {/* 禁用 JS 的兜底链接；文案按 locale 三语收在 lib/share/view.ts */}
         <a href={absolute} style={{ color: '#db2777', fontSize: 14 }}>
-          {absolute}
+          {buildShareRedirectFallbackText({ locale: link.locale })}
         </a>
       </main>
     </>
