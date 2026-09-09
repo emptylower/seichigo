@@ -11,10 +11,16 @@
  * - TTL：由被缓存响应的 `Cache-Control: s-maxage=300` 决定，过期自动消失，
  *   保留「点位数据最多 5 分钟 stale」的既有语义，不做永久缓存；
  * - put 一律经 `ctx.waitUntil` 后台执行（本仓库 open-next.config.ts 对队列
- *   投递踩过同样的坑：不进 waitUntil 的后台任务会被 isolate 提前回收）；
- * - 无 `caches`（next dev / vitest / Node）时整体退化为直通，行为与旧版一致。
+ *   投递踩过同样的坑：不进 waitUntil 的后台任务会被 isolate 提前回收）。
+ *   waitUntil 宿主优先取调用方注入，缺省从 `getCfBindings()?.ctx` 解析
+ *   （与 open-next.config.ts 的 `getCloudflareContext().ctx` 同源），且必须
+ *   以方法形式在宿主上调用——裸取方法引用再调用在 Workers 上会抛
+ *   "Illegal invocation"（lib/share/background.ts 2026-09-08 实测同款坑）；
+ * - 无 `caches`（next dev / vitest / Node）时整体退化为直通，行为与旧版一致；
+ *   无 waitUntil 宿主时 put 退化为浮动 promise（同样直通）。
  */
 import { NextResponse } from 'next/server'
+import { getCfBindings, type CfBindingsCtx } from '@/lib/anitabi/cf/bindings'
 
 const KEY_ORIGIN = 'https://preload-edge-cache.anitabi.seichigo.internal'
 
@@ -26,12 +32,24 @@ export type PreloadCacheStore = {
 export type PreloadEdgeCacheOptions = {
   /** 显式传入缓存存储（测试替身）；undefined 时运行时解析 caches.default。 */
   store?: PreloadCacheStore | null
-  waitUntil?: (promise: Promise<unknown>) => void
+  /**
+   * waitUntil 的宿主对象（ExecutionContext 的结构子集）。必须整对象传入、
+   * 由本模块以 `host.waitUntil(...)` 方法形式调用——裸取方法引用脱离 this
+   * 在 Workers 上会抛 "Illegal invocation"。undefined 时运行时从
+   * `getCfBindings()?.ctx` 解析（getCloudflareContext 同源）；显式 null 表示
+   * 关闭（put 退化为浮动 promise，测试/回滚用）。
+   */
+  ctx?: CfBindingsCtx | null
 }
 
 function resolveRuntimeCacheStore(): PreloadCacheStore | null {
   const cachesRef = (globalThis as { caches?: { default?: PreloadCacheStore } }).caches
   return cachesRef?.default ?? null
+}
+
+/** 运行时解析 waitUntil 宿主：当前请求的 Cloudflare context（与 getCloudflareContext 同源）。 */
+function resolveRuntimeWaitUntilHost(): CfBindingsCtx | null {
+  return getCfBindings()?.ctx ?? null
 }
 
 /** 缓存 key 与请求 URL 解耦：locale 已归一，index 已 clamp，无用户态输入。 */
@@ -52,7 +70,7 @@ function scheduleCachePut(
   store: PreloadCacheStore,
   key: Request,
   response: Response,
-  waitUntil: ((promise: Promise<unknown>) => void) | undefined,
+  host: CfBindingsCtx | null,
 ): void {
   const write = store
     .put(key, response.clone())
@@ -61,8 +79,12 @@ function scheduleCachePut(
         `[preload-edge-cache] put failed for ${key.url}: ${err instanceof Error ? err.message : String(err)}`,
       )
     })
-  if (waitUntil) {
-    waitUntil(write)
+  // 方法形式调用（this = host）：裸调用会抛 "Illegal invocation"；
+  // 无宿主（next dev / vitest / Node）时退化为浮动 promise（直通旧行为）。
+  // 方法形式调用（this = host）：裸调用会抛 "Illegal invocation"；
+  // 无宿主（next dev / vitest / Node）时退化为浮动 promise（直通旧行为）。
+  if (host && typeof host.waitUntil === 'function') {
+    host.waitUntil(write)
   }
 }
 
@@ -76,6 +98,7 @@ export async function serveFromPreloadEdgeCache(
   compute: () => Promise<Response>,
 ): Promise<Response> {
   const store = options.store !== undefined ? options.store : resolveRuntimeCacheStore()
+  const waitHost = options.ctx !== undefined ? options.ctx : resolveRuntimeWaitUntilHost()
   if (!store) {
     return compute()
   }
@@ -94,7 +117,7 @@ export async function serveFromPreloadEdgeCache(
   const response = await compute()
   if (response.status === 200) {
     try {
-      scheduleCachePut(store, key, response, options.waitUntil)
+      scheduleCachePut(store, key, response, waitHost)
     } catch {
       // put 调度失败不影响响应
     }

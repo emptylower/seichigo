@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnitabiApiDeps } from '@/lib/anitabi/api'
 import { createHandlers as createManifestHandlers } from '@/lib/anitabi/handlers/preloadManifest'
 import { createHandlers as createChunkHandlers } from '@/lib/anitabi/handlers/preloadChunks'
@@ -13,6 +13,51 @@ vi.mock('@/lib/anitabi/read', () => ({
   getPreloadManifest: mocks.getPreloadManifest,
   listPreloadChunk: mocks.listPreloadChunk,
 }))
+
+// ---- Cloudflare context 全局槽管理 ----
+// getCfBindings()（getCloudflareContext 的同源实现）从 globalThis 上的这个
+// symbol 槽读当前请求的 env/ctx。测试直接操作真实槽位而不是 mock 模块，
+// 保证「生产从运行时解析 waitUntil 宿主」这条默认路径被真实覆盖。
+
+const CF_CONTEXT_SLOT = Symbol.for('__cloudflare-context__')
+type GlobalWithCfSlot = Record<symbol, unknown>
+
+let cfSlotBackup: unknown
+let hadCfSlot: boolean
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  const g = globalThis as GlobalWithCfSlot
+  hadCfSlot = CF_CONTEXT_SLOT in g
+  cfSlotBackup = g[CF_CONTEXT_SLOT]
+  delete g[CF_CONTEXT_SLOT]
+})
+
+afterEach(() => {
+  const g = globalThis as GlobalWithCfSlot
+  if (hadCfSlot) g[CF_CONTEXT_SLOT] = cfSlotBackup
+  else delete g[CF_CONTEXT_SLOT]
+})
+
+/**
+ * 严格宿主替身：waitUntil 不以宿主对象为 this 调用就抛 "Illegal invocation"。
+ * 用来证明调用方是方法形式调用（ctx.waitUntil(...)）而非裸方法引用——
+ * Workers 的 ExecutionContext.prototype.waitUntil 正是这种 this 校验语义。
+ */
+type StrictWaitUntilHost = { waitUntil(promise: Promise<unknown>): void }
+
+function createStrictWaitUntilHost(): { host: StrictWaitUntilHost; calls: Promise<unknown>[] } {
+  const calls: Promise<unknown>[] = []
+  const host: StrictWaitUntilHost = {
+    waitUntil(promise) {
+      if (this !== host) {
+        throw new TypeError('Illegal invocation: waitUntil 必须以宿主对象为 this 调用')
+      }
+      calls.push(promise)
+    },
+  }
+  return { host, calls }
+}
 
 function createDeps(overrides: Partial<AnitabiApiDeps> = {}): AnitabiApiDeps {
   return {
@@ -48,10 +93,6 @@ function createMemoryCacheStore(): PreloadCacheStore & {
 }
 
 describe('anitabi preload handlers', () => {
-  beforeEach(() => {
-    vi.resetAllMocks()
-  })
-
   it('manifest handler returns preload manifest with cache headers', async () => {
     mocks.getPreloadManifest.mockResolvedValue({
       datasetVersion: 'v1',
@@ -133,8 +174,8 @@ describe('anitabi preload handlers', () => {
   it('cache write goes through ctx.waitUntil and is keyed by locale + index', async () => {
     mocks.listPreloadChunk.mockResolvedValue({ datasetVersion: 'v1', index: 2, items: [] })
     const store = createMemoryCacheStore()
-    const waitUntil = vi.fn()
-    const deps = createDeps({ preloadEdgeCache: store, ctx: { waitUntil } })
+    const { host, calls } = createStrictWaitUntilHost()
+    const deps = createDeps({ preloadEdgeCache: store, ctx: host })
 
     await createChunkHandlers(deps).GET(
       new Request('http://localhost/api/anitabi/preload/chunks/2?locale=zh'),
@@ -145,7 +186,7 @@ describe('anitabi preload handlers', () => {
     const [keyRequest] = store.putSpy.mock.calls[0] as unknown as [Request]
     expect(keyRequest.url).toContain('/chunks/2')
     expect(keyRequest.url).toContain('locale=zh')
-    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(calls).toHaveLength(1)
 
     // 不同 locale / 不同 index 不共享缓存条目
     await createChunkHandlers(deps).GET(
@@ -207,5 +248,85 @@ describe('anitabi preload handlers', () => {
     ).rejects.toThrow('db down')
 
     expect(store.putSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('preload edge cache waitUntil 接线（Illegal invocation 防护）', () => {
+  it('严格替身自证：裸提取调用抛错、方法调用不抛（证明替身能抓住 this 绑定缺陷）', () => {
+    const { host } = createStrictWaitUntilHost()
+
+    const bare = host.waitUntil
+    expect(() => bare(Promise.resolve())).toThrow(/Illegal invocation/)
+    expect(() => host.waitUntil(Promise.resolve())).not.toThrow()
+  })
+
+  it('缓存写入以宿主方法形式调用 waitUntil，不触发 Illegal invocation', async () => {
+    mocks.listPreloadChunk.mockResolvedValue({ datasetVersion: 'v1', index: 5, items: [] })
+    const store = createMemoryCacheStore()
+    const { host, calls } = createStrictWaitUntilHost()
+    const deps = createDeps({ preloadEdgeCache: store, ctx: host })
+
+    const res = await createChunkHandlers(deps).GET(
+      new Request('http://localhost/api/anitabi/preload/chunks/5?locale=zh'),
+      { index: '5' },
+    )
+
+    expect(res.headers.get('x-preload-edge-cache')).toBe('miss')
+    // 替身会在 this !== 宿主 时抛错——收到 promise 即证明是方法形式调用
+    expect(calls).toHaveLength(1)
+    await calls[0] // put promise 完成不抛
+
+    const hit = await createChunkHandlers(deps).GET(
+      new Request('http://localhost/api/anitabi/preload/chunks/5?locale=zh'),
+      { index: '5' },
+    )
+    expect(hit.headers.get('x-preload-edge-cache')).toBe('hit')
+  })
+
+  it('默认路径：不注入 deps.ctx 也能从运行时 Cloudflare context 拿到 waitUntil', async () => {
+    mocks.getPreloadManifest.mockResolvedValue({
+      datasetVersion: 'v3',
+      modifiedMs: 7,
+      chunkSize: 200,
+      chunkCount: 0,
+      tabs: { nearby: [], latest: [], recent: [], hot: [] },
+    })
+    const store = createMemoryCacheStore()
+    const { host, calls } = createStrictWaitUntilHost()
+    // 模拟 OpenNext worker 入口把当前请求的 ExecutionContext 挂到全局槽
+    // （getCfBindings 的真实数据源，与 getCloudflareContext() 同源）
+    ;(globalThis as GlobalWithCfSlot)[CF_CONTEXT_SLOT] = { ctx: host }
+
+    // 注意：deps 不带 ctx——生产默认路径，route/handler 都没人填 deps.ctx
+    const deps = createDeps({ preloadEdgeCache: store })
+    const res = await createManifestHandlers(deps).GET(
+      new Request('http://localhost/api/anitabi/preload/manifest?locale=zh'),
+    )
+
+    expect(res.headers.get('x-preload-edge-cache')).toBe('miss')
+    // this 校验替身未抛错 + 收到 promise：默认路径拿到了受保护的 waitUntil
+    expect(calls).toHaveLength(1)
+  })
+
+  it('取不到 Cloudflare context 时不抛错，退化为直通（浮动 put 仍写缓存）', async () => {
+    mocks.listPreloadChunk.mockResolvedValue({ datasetVersion: 'v1', index: 7, items: [] })
+    const store = createMemoryCacheStore()
+    const deps = createDeps({ preloadEdgeCache: store }) // 无 ctx，全局槽已清
+
+    const handlers = createChunkHandlers(deps)
+    const first = await handlers.GET(
+      new Request('http://localhost/api/anitabi/preload/chunks/7?locale=zh'),
+      { index: '7' },
+    )
+    expect(first.headers.get('x-preload-edge-cache')).toBe('miss')
+
+    // 浮动 put 最终落库：微任务排空后第二次请求命中
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const second = await handlers.GET(
+      new Request('http://localhost/api/anitabi/preload/chunks/7?locale=zh'),
+      { index: '7' },
+    )
+    expect(second.headers.get('x-preload-edge-cache')).toBe('hit')
+    expect(mocks.listPreloadChunk).toHaveBeenCalledTimes(1)
   })
 })

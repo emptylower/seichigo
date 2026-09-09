@@ -14,7 +14,8 @@ export function createHandlers(deps: AnitabiApiDeps) {
         buildPreloadCacheKey('/sprite', 'shared'),
         {
           store: deps.preloadEdgeCache,
-          waitUntil: deps.ctx?.waitUntil,
+          // 整对象传递，由 preloadEdgeCache 以方法形式调用（防 Illegal invocation）
+          ctx: deps.ctx,
         },
         async () => {
           const bucket = deps.env?.MAP_IMAGE_CACHE
