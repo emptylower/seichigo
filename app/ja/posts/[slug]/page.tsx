@@ -219,7 +219,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
         console.error('[degraded:post-detail.anime-label]', { locale: 'ja', slug, id }, error)
         return null
       })
-      return { id, label: meta?.name || id }
+      return { id, label: meta?.name_ja || meta?.name || id }
     })
   )
 

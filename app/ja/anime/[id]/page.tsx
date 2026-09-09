@@ -153,7 +153,7 @@ export default async function AnimeJaPage({ params }: { params: Promise<{ id: st
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: 'ホーム', url: `${siteOrigin}/ja` },
     { name: '作品', url: `${siteOrigin}/ja/anime` },
-    { name: display.name, url: canonicalUrl },
+    { name: display.name_ja ?? display.name, url: canonicalUrl },
   ])
 
   // Cover Strategy: Anime Cover > First Post Cover > Gradient
@@ -176,7 +176,7 @@ export default async function AnimeJaPage({ params }: { params: Promise<{ id: st
           items={[
             { name: 'ホーム', href: '/ja' },
             { name: '作品', href: '/ja/anime' },
-            { name: display.name, href: `/ja/anime/${encodeAnimeIdForPath(canonicalId)}` },
+            { name: display.name_ja ?? display.name, href: `/ja/anime/${encodeAnimeIdForPath(canonicalId)}` },
           ]}
         />
 
