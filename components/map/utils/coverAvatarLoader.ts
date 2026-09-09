@@ -1,5 +1,10 @@
 import { getMapDisplayImageCandidatesAsync } from '@/lib/anitabi/imageProxy'
 import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
+import {
+  createCoverSpriteSource,
+  type CoverSpriteSource,
+  type CoverSpriteTile,
+} from '@/components/map/utils/coverSpriteSource'
 
 export interface MapLike {
   addImage(id: string, data: unknown, options?: { pixelRatio?: number }): void
@@ -19,6 +24,13 @@ export interface CoverAvatarLoaderOptions {
   firstViewTrackedLimit?: number
   directRequestTimeoutMs?: number
   proxyRequestTimeoutMs?: number
+  /**
+   * 2026-09-10 任务 3：服务端预生成封面 sprite。命中的番剧直接本地切片
+   * addImage（零网络请求）；未命中/不可用的番剧回落到原候选梯逐张加载。
+   * 默认开启（sprite 未生成时 404 自动回落，删除 R2 atlas 即为停用开关）；
+   * 显式传 null 可完全关闭（测试/回滚）。
+   */
+  spriteSource?: CoverSpriteSource | null
   onTrackedRequestStart?: (input: {
     slotKey: string
     requestedCandidateUrl: string
@@ -58,6 +70,7 @@ export class CoverAvatarLoader {
   private readonly firstViewTrackedLimit: number
   private readonly directRequestTimeoutMs?: number
   private readonly proxyRequestTimeoutMs?: number
+  private readonly spriteSource?: CoverSpriteSource | null
   private readonly onTrackedRequestStart?: CoverAvatarLoaderOptions['onTrackedRequestStart']
   private readonly onTrackedRequestTerminal?: CoverAvatarLoaderOptions['onTrackedRequestTerminal']
   private readonly lru = new Map<string, number>()
@@ -75,6 +88,9 @@ export class CoverAvatarLoader {
     this.firstViewTrackedLimit = Math.max(0, options.firstViewTrackedLimit ?? 0)
     this.directRequestTimeoutMs = options.directRequestTimeoutMs
     this.proxyRequestTimeoutMs = options.proxyRequestTimeoutMs
+    this.spriteSource = options.spriteSource === undefined
+      ? createCoverSpriteSource()
+      : options.spriteSource
     this.onTrackedRequestStart = options.onTrackedRequestStart
     this.onTrackedRequestTerminal = options.onTrackedRequestTerminal
   }
@@ -107,6 +123,27 @@ export class CoverAvatarLoader {
       const candidateLimit = Math.max(1, this.maxLoaded)
       let visibleIndex = 0
 
+      // sprite 快路径：命中的番剧全部本地切片，不进候选梯（网络请求 118 → 1–2 的关键）。
+      // 拉不到（未生成/404/解析失败）时 loadTiles 返回空 Map，全员回落旧路径。
+      let spriteTiles = new Map<number, CoverSpriteTile>()
+      if (this.spriteSource) {
+        try {
+          spriteTiles = await this.spriteSource.loadTiles(
+            candidates
+              .slice(0, candidateLimit)
+              .map((candidate) => candidate.bangumiId)
+              .filter((bangumiId) => Number.isFinite(bangumiId)),
+            abortController.signal,
+          )
+        } catch {
+          spriteTiles = new Map()
+        }
+        if (abortController.signal.aborted) {
+          snapshot = new Set(this.lru.keys())
+          return
+        }
+      }
+
       for (const candidate of candidates) {
         if (seen.size >= candidateLimit) break
         if (!Number.isFinite(candidate.bangumiId) || seen.has(candidate.bangumiId)) continue
@@ -117,6 +154,23 @@ export class CoverAvatarLoader {
         if (!this.isAllowedCoverHost(rawCover)) continue
 
         const imageId = `cover-${candidate.bangumiId}`
+        const spriteTile = spriteTiles.get(candidate.bangumiId)
+        if (spriteTile) {
+          const spriteStillOnMap = typeof this.map.hasImage === 'function'
+            ? this.map.hasImage(imageId)
+            : true
+          if (this.lru.has(imageId) && spriteStillOnMap) {
+            this.lru.set(imageId, ++this.accessCounter)
+            continue
+          }
+          if (this.lru.has(imageId) && !spriteStillOnMap) {
+            this.lru.delete(imageId)
+          }
+          this.map.addImage(imageId, spriteTile, { pixelRatio: 1 })
+          this.lru.set(imageId, ++this.accessCounter)
+          this.failedAt.delete(imageId)
+          continue
+        }
         // R2 直出候选（mirror key 异步计算，内部 memo 缓存，重复视口零开销）
         const candidateUrls = await getMapDisplayImageCandidatesAsync(rawCover, { kind: 'cover' })
         if (candidateUrls.length === 0) continue

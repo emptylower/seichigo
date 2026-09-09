@@ -1,7 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CoverAvatarLoader } from '@/components/map/utils/coverAvatarLoader'
+import type { CoverSpriteSource, CoverSpriteTile } from '@/components/map/utils/coverSpriteSource'
 import { resetDegradedMapImageHostsForTest } from '@/components/map/utils/mapImageHostPolicy'
 import { resetMapImageRequestSchedulerForTest } from '@/features/map/anitabi/mapImageRequestScheduler'
+
+function fakeTile(): CoverSpriteTile {
+  return { width: 72, height: 72, data: new Uint8ClampedArray(72 * 72 * 4) } as CoverSpriteTile
+}
+
+function stubSpriteSource(tilesByBangumiId: Record<number, CoverSpriteTile | null>): CoverSpriteSource {
+  return {
+    async loadTiles(bangumiIds) {
+      const tiles = new Map<number, CoverSpriteTile>()
+      for (const bangumiId of bangumiIds) {
+        const tile = tilesByBangumiId[bangumiId]
+        if (tile) tiles.set(bangumiId, tile)
+      }
+      return tiles
+    },
+  }
+}
 
 describe('CoverAvatarLoader', () => {
   beforeEach(() => {
@@ -238,5 +256,95 @@ describe('CoverAvatarLoader', () => {
 
     expect(map.loadImage).toHaveBeenCalledTimes(2)
     expect(map.loadImage.mock.calls[1]?.[0]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160&_retry=1')
+  })
+
+  it('serves sprite-covered bangumis from tiles without any network request', async () => {
+    const map = {
+      addImage: vi.fn(),
+      removeImage: vi.fn(),
+      hasImage: vi.fn(() => false),
+      loadImage: vi.fn(async () => ({ data: { width: 16, height: 16 } })),
+    }
+    const tile = fakeTile()
+    const loader = new CoverAvatarLoader({
+      map,
+      maxLoaded: 16,
+      spriteSource: stubSpriteSource({ 290980: tile, 405785: tile }),
+    })
+
+    const loaded = await loader.updateViewport([
+      { bangumiId: 290980, coverUrl: 'https://www.anitabi.cn/bangumi/290980.jpg' },
+      { bangumiId: 405785, coverUrl: 'https://image.anitabi.cn/bangumi/405785.jpg' },
+    ])
+
+    expect(map.loadImage).not.toHaveBeenCalled()
+    expect(map.addImage).toHaveBeenCalledTimes(2)
+    expect(map.addImage).toHaveBeenNthCalledWith(1, 'cover-290980', tile, { pixelRatio: 1 })
+    expect(map.addImage).toHaveBeenNthCalledWith(2, 'cover-405785', tile, { pixelRatio: 1 })
+    expect(loaded.has('cover-290980')).toBe(true)
+    expect(loaded.has('cover-405785')).toBe(true)
+  })
+
+  it('falls back to the candidate ladder for bangumis missing from the sprite', async () => {
+    const map = {
+      addImage: vi.fn(),
+      removeImage: vi.fn(),
+      hasImage: vi.fn(() => false),
+      loadImage: vi.fn(async (_url: string) => ({ data: { width: 16, height: 16 } })),
+    }
+    const tile = fakeTile()
+    const loader = new CoverAvatarLoader({
+      map,
+      maxLoaded: 16,
+      spriteSource: stubSpriteSource({ 290980: tile, 999999: null }),
+    })
+
+    const loaded = await loader.updateViewport([
+      { bangumiId: 290980, coverUrl: 'https://www.anitabi.cn/bangumi/290980.jpg' },
+      { bangumiId: 513345, coverUrl: 'https://lain.bgm.tv/pic/cover/l/b8/0d/513345_jv4wM.jpg' },
+    ])
+
+    // sprite 命中：本地切片；未命中：走候选梯（bgm → 代理首档）
+    expect(map.addImage).toHaveBeenCalledWith('cover-290980', tile, { pixelRatio: 1 })
+    expect(map.loadImage).toHaveBeenCalledTimes(1)
+    expect(map.loadImage.mock.calls[0]?.[0]).toContain('/api/anitabi/image-render')
+    expect(loaded.has('cover-513345')).toBe(true)
+  })
+
+  it('keeps the legacy path untouched when the sprite source is explicitly disabled', async () => {
+    const map = {
+      addImage: vi.fn(),
+      removeImage: vi.fn(),
+      hasImage: vi.fn(() => false),
+      loadImage: vi.fn(async (_url: string) => ({ data: { width: 16, height: 16 } })),
+    }
+    const loader = new CoverAvatarLoader({ map, maxLoaded: 16, spriteSource: null })
+
+    await loader.updateViewport([{ bangumiId: 290980, coverUrl: 'https://www.anitabi.cn/bangumi/290980.jpg' }])
+
+    expect(map.loadImage).toHaveBeenCalledTimes(1)
+    expect(map.addImage).toHaveBeenCalledWith('cover-290980', expect.anything())
+  })
+
+  it('treats a throwing sprite source as a full fallback', async () => {
+    const map = {
+      addImage: vi.fn(),
+      removeImage: vi.fn(),
+      hasImage: vi.fn(() => false),
+      loadImage: vi.fn(async () => ({ data: { width: 16, height: 16 } })),
+    }
+    const loader = new CoverAvatarLoader({
+      map,
+      maxLoaded: 16,
+      spriteSource: {
+        loadTiles: async () => {
+          throw new Error('sprite exploded')
+        },
+      },
+    })
+
+    await loader.updateViewport([{ bangumiId: 290980, coverUrl: 'https://www.anitabi.cn/bangumi/290980.jpg' }])
+
+    expect(map.loadImage).toHaveBeenCalledTimes(1)
   })
 })
