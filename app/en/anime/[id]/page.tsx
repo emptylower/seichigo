@@ -12,17 +12,9 @@ import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
+import { fullyDecodeURIComponent } from '@/lib/url/decode'
 
 export const revalidate = 120
-
-function safeDecodeURIComponent(input: string): string {
-  if (!/%[0-9a-fA-F]{2}/.test(input)) return input
-  try {
-    return decodeURIComponent(input)
-  } catch {
-    return input
-  }
-}
 
 function encodeAnimeIdForPath(id: string): string {
   return encodeURIComponent(id)
@@ -52,12 +44,13 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
-  const requestedId = safeDecodeURIComponent(String(id || '')).trim()
+  const rawId = String(id || '')
+  const requestedId = fullyDecodeURIComponent(rawId).trim()
   const anime = await getAnimeById(requestedId).catch((error) => {
     console.error('[degraded:anime-detail.by-id]', { locale: 'en', id: requestedId }, error)
     return null
   })
-  const canonicalId = anime?.id || requestedId || String(id || '')
+  const canonicalId = anime?.id || requestedId || rawId
   const posts = await getPostsByAnimeId(canonicalId, 'en')
 
   if (!anime && posts.length === 0) {
@@ -105,15 +98,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function AnimeEnPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const requestedId = safeDecodeURIComponent(String(id || '')).trim()
+  const rawId = String(id || '')
+  const requestedId = fullyDecodeURIComponent(rawId).trim()
   const anime = await getAnimeById(requestedId).catch((error) => {
     console.error('[degraded:anime-detail.by-id]', { locale: 'en', id: requestedId }, error)
     return null
   })
-  const canonicalId = anime?.id || requestedId || String(id || '')
+  const canonicalId = anime?.id || requestedId || rawId
 
-  if (requestedId && canonicalId && requestedId !== canonicalId) {
-    permanentRedirect(`/en/anime/${encodeAnimeIdForPath(canonicalId)}`)
+  const canonicalPathId = encodeAnimeIdForPath(canonicalId)
+  if (rawId && rawId !== canonicalPathId) {
+    permanentRedirect(`/en/anime/${canonicalPathId}`)
   }
 
   const posts = await getPostsByAnimeId(canonicalId, 'en')
