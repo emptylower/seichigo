@@ -23,8 +23,6 @@ import {
   withShareChannel,
 } from '@/components/share/shareText'
 import {
-  blobToFile,
-  canShareFiles,
   copyImage,
   copyText,
   createShareLink,
@@ -217,15 +215,9 @@ export default function PointSharePanel({
       ? `${captionSummarySource.slice(0, CAPTION_COLLAPSED_MAX)}…`
       : captionSummarySource
 
-  // 手机/桌面只看 navigator.canShare({ files })，不看 UA。卡片 blob 改成按需取之后
-  // 没有现成文件可探；canShare 只校验结构不看内容，用 1 字节 JPEG 桩探测即可
-  const mobilePath = useMemo(() => {
-    try {
-      return canShareFiles([new File([new Uint8Array([0xff])], 'probe.jpg', { type: 'image/jpeg' })])
-    } catch {
-      return false
-    }
-  }, [])
+  // 手机/桌面只看系统分享是否可用（Web Share API），不看 UA；
+  // 不再用 1 字节 JPEG 桩探 canShare({files})——系统分享只发链接，文件能力无关紧要
+  const mobilePath = useMemo(() => typeof globalThis.navigator?.share === 'function', [])
 
   const goSignIn = () => {
     const back = typeof window !== 'undefined' ? window.location.href : '/'
@@ -292,21 +284,16 @@ export default function PointSharePanel({
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  // 系统分享只发链接：预览图由服务端 OG 卡片提供，附带文件会让微信/QQ 出现两张图
   const shareToSystem = async (channel: ShareChannel) => {
     if (!shareUrl || busy) return
     setBusy(true)
     try {
-      const blob = await getCardBlob()
-      if (!blob) {
-        showToast('share.toastFailed')
-        return
-      }
       const result = await shareViaSystem({
-        files: [blobToFile(blob, buildCardFilename(displayName, blob.type))],
+        title: displayName,
         text: captionFor(channel),
         url: withShareChannel(shareUrl, channel),
       })
-      if (result === 'text') showToast('share.toastShareFilesUnsupported')
       if (result === 'failed') showToast('share.toastFailed')
     } finally {
       setBusy(false)
