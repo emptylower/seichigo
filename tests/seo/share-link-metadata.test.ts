@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryShareLinkRepo } from '@/lib/share/repoMemory'
+import { buildShareRedirectTarget } from '@/lib/share/view'
 
 const repo = new MemoryShareLinkRepo(() => new Date('2026-09-08T12:00:00Z'))
 
@@ -179,7 +180,7 @@ describe('/s/[code] generateMetadata', () => {
     expect(meta.openGraph).toBeUndefined()
   })
 
-  it('页面体渲染 meta refresh + replace 脚本并调度点击计数', async () => {
+  it('页面体无 meta refresh，跳转只靠 replace 脚本并调度点击计数', async () => {
     await seed('FFFFFFFF', null)
     const { default: SharePage } = await import('@/app/s/[code]/page')
     const tree = await SharePage({
@@ -187,11 +188,38 @@ describe('/s/[code] generateMetadata', () => {
       searchParams: Promise.resolve({ c: 'x' }),
     })
     const serialized = JSON.stringify(tree)
-    expect(serialized).toContain('httpEquiv')
-    expect(serialized).toContain('window.location.replace')
-    expect(serialized).toContain('https://seichigo.com/map')
+    // Telegram 等抓取器会跟随 meta refresh 改用地图页的 og:image，必须整段删掉
+    expect(serialized).not.toContain('httpEquiv')
+    expect(serialized).not.toContain('refresh')
+    const target = buildShareRedirectTarget({ locale: 'zh', bangumiId: 101, pointId: '101:suga', channel: 'x' })
+    const absolute = `https://seichigo.com${target}`
+    // __html 经外层 JSON.stringify 后引号转义，按序列化形态比对脚本全文
+    const scriptHtml = `window.location.replace(${JSON.stringify(absolute)});`
+    expect(serialized).toContain(JSON.stringify(scriptHtml).slice(1, -1))
+    // 禁用 JS 的兜底：<a> 指向同一目标
+    expect(serialized).toContain(`"href":"${absolute}"`)
     // fire-and-forget 计数，稍等一拍后生效
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect((await repo.findByCode('FFFFFFFF'))?.clicks).toBe(1)
+  })
+
+  it('禁用 JS 的兜底链接文案按 locale 三语', async () => {
+    await seed('MMMMMMMM', null, 'zh')
+    await seed('NNNNNNNN', null, 'ja')
+    await seed('OOOOOOOO', null, 'en')
+    const { default: SharePage } = await import('@/app/s/[code]/page')
+
+    const zh = JSON.stringify(
+      await SharePage({ params: Promise.resolve({ code: 'MMMMMMMM' }), searchParams: Promise.resolve({}) }),
+    )
+    const ja = JSON.stringify(
+      await SharePage({ params: Promise.resolve({ code: 'NNNNNNNN' }), searchParams: Promise.resolve({}) }),
+    )
+    const en = JSON.stringify(
+      await SharePage({ params: Promise.resolve({ code: 'OOOOOOOO' }), searchParams: Promise.resolve({}) }),
+    )
+    expect(zh).toContain('正在前往地图，若未自动跳转请点此')
+    expect(ja).toContain('地図へ移動しています。移動しない場合はこちら')
+    expect(en).toContain("Opening the map. Tap here if it doesn't redirect.")
   })
 })

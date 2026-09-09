@@ -72,6 +72,16 @@ export function buildShareRedirectTarget(input: {
 }
 
 /**
+ * 短链页禁用 JS 用户的兜底链接文案：按 locale 三语。
+ * 与 OG 文案同策略收在这里，不加 i18n key。
+ */
+export function buildShareRedirectFallbackText(input: { locale: SupportedLocale }): string {
+  if (input.locale === 'en') return "Opening the map. Tap here if it doesn't redirect."
+  if (input.locale === 'ja') return '地図へ移動しています。移動しない場合はこちら'
+  return '正在前往地图，若未自动跳转请点此'
+}
+
+/**
  * 二维码目标：稳定的点位深链，不是短链。
  * 短链每产生一个新短码就是一次卡片缓存未命中；改成深链之后卡片才是
  * (pointId, locale, layout, photo?) 的函数，可长期缓存。

@@ -5,6 +5,7 @@ import {
   buildShareOgImage,
   buildShareOgImageAlt,
   buildShareOgImageUrl,
+  buildShareRedirectFallbackText,
   buildShareRedirectTarget,
   buildShareTitle,
 } from '@/lib/share/view'
@@ -61,6 +62,14 @@ describe('buildShareRedirectTarget', () => {
     expect(
       buildShareRedirectTarget({ locale: 'zh', bangumiId: 101, pointId: 'p1', channel: null }),
     ).toBe('/map?b=101&p=p1&utm_source=share&utm_medium=unknown&utm_campaign=point_card')
+  })
+})
+
+describe('buildShareRedirectFallbackText', () => {
+  it('三语兜底文案', () => {
+    expect(buildShareRedirectFallbackText({ locale: 'zh' })).toBe('正在前往地图，若未自动跳转请点此')
+    expect(buildShareRedirectFallbackText({ locale: 'ja' })).toBe('地図へ移動しています。移動しない場合はこちら')
+    expect(buildShareRedirectFallbackText({ locale: 'en' })).toBe("Opening the map. Tap here if it doesn't redirect.")
   })
 })
 
