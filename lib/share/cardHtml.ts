@@ -71,7 +71,7 @@ export const CARD_METRICS: Readonly<Record<ShareCardLayout, CardMetrics>> = {
     addressSize: 34,
     addressGap: 12,
     noteSize: 32,
-    noteLines: 2,
+    noteLines: 5,
     capsuleRadius: 24,
     capsulePadV: 24,
     capsulePadH: 28,
@@ -108,7 +108,7 @@ export const CARD_METRICS: Readonly<Record<ShareCardLayout, CardMetrics>> = {
     addressSize: 24,
     addressGap: 10,
     noteSize: 22,
-    noteLines: 2,
+    noteLines: 8,
     capsuleRadius: 16,
     capsulePadV: 14,
     capsulePadH: 16,
@@ -317,7 +317,7 @@ function textRows(input: CardHtmlInput, metrics: CardMetrics): string {
     )
   }
   const note = String(input.note || '').trim()
-  if (note) rows.push(`<div class="row note clamp2">${escapeHtml(note)}</div>`)
+  if (note) rows.push(`<div class="row note clamp${metrics.noteLines}">${escapeHtml(note)}</div>`)
   return rows.join('')
 }
 
@@ -354,10 +354,11 @@ body{width:${metrics.width}px;height:${metrics.height}px;background:#ffffff;font
 .visual .shot{width:100%;height:100%;object-fit:cover;display:block}
 .visual.compare .shot{${isPortrait ? 'height:50%' : 'width:50%'}}
 .column{flex:1;min-width:0;display:flex;flex-direction:column;padding:${metrics.columnTop}px ${metrics.columnRight}px ${metrics.columnBottom}px ${metrics.columnLeft}px}
+.text{min-height:0;overflow:hidden}
 .spacer{flex:1;min-height:${metrics.capsuleTopGap}px}
-.clamp1,.clamp2{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.clamp1,.clamp${metrics.noteLines}{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
 .clamp1{-webkit-line-clamp:1;max-height:1.3em}
-.clamp2{-webkit-line-clamp:2;max-height:2.7em}
+.clamp${metrics.noteLines}{-webkit-line-clamp:${metrics.noteLines};max-height:${(metrics.noteLines * 1.35).toFixed(2)}em}
 .row{word-break:break-word}
 .row.name{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;-webkit-line-clamp:${metrics.nameLines};max-height:${(metrics.nameLines * 1.25).toFixed(2)}em;font-size:${metrics.nameSize}px;line-height:1.25;font-weight:700;color:${COLORS.name};margin-bottom:${metrics.nameGap}px}
 .row.anime{font-size:${metrics.animeSize}px;line-height:1.3;font-weight:600;color:${COLORS.anime};margin-bottom:${metrics.animeGap}px}
