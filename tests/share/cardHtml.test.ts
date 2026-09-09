@@ -6,6 +6,7 @@ import {
   escapeHtml,
   formatSceneTime,
   type CardHtmlInput,
+  type CardMetrics,
 } from '@/lib/share/cardHtml'
 import { SHARE_CARD_SIZES } from '@/lib/share/types'
 
@@ -208,5 +209,58 @@ describe('buildCardHtml', () => {
   it('scene 传原始秒数，mm:ss 在 cardHtml 内部格式化', () => {
     const html = buildCardHtml({ ...BASE, scene: '1194' })
     expect(html).toContain('19:54')
+  })
+})
+
+describe('卡片说明行几何', () => {
+  /** 胶囊高度：上下内边距 + 三列（轮廓 / 二维码 / 中间文字列）取最高；中间列行高按 CSS 的 1.2 */
+  function capsuleHeight(m: CardMetrics): number {
+    const middle =
+      m.titleSize * 1.2 + (m.coordSize * 1.2 + m.titleGap) + (m.subSize * 1.2 + m.subGap)
+    return m.capsulePadV * 2 + Math.max(m.outlineSize, m.qrSize, middle)
+  }
+
+  /** 说明取满 noteLines 行时右列整栈的高度：行高统一按 fontSize * 1.35 保守计，行间距用 metrics 的 gap 常量 */
+  function columnStackHeight(m: CardMetrics): number {
+    const rows =
+      m.nameLines * m.nameSize * 1.35 +
+      m.nameGap +
+      m.animeSize * 1.35 +
+      m.animeGap +
+      m.addressSize * 1.35 +
+      m.addressGap +
+      m.noteLines * m.noteSize * 1.35
+    return (
+      m.columnTop +
+      rows +
+      m.capsuleTopGap +
+      capsuleHeight(m) +
+      m.footerGap +
+      m.footerSize +
+      m.columnBottom
+    )
+  }
+
+  it('两种版式取满 noteLines 行仍不超过画布高度', () => {
+    for (const layout of ['portrait', 'landscape'] as const) {
+      const m = CARD_METRICS[layout]
+      expect(columnStackHeight(m), layout).toBeLessThanOrEqual(m.height)
+    }
+  })
+
+  it('noteLines 下限：横版 >= 6、竖版 >= 4，防止被误改回 2', () => {
+    expect(CARD_METRICS.landscape.noteLines).toBeGreaterThanOrEqual(6)
+    expect(CARD_METRICS.portrait.noteLines).toBeGreaterThanOrEqual(4)
+  })
+
+  it('说明行的 class 与 clamp CSS 由 metrics.noteLines 生成', () => {
+    for (const layout of ['portrait', 'landscape'] as const) {
+      const m = CARD_METRICS[layout]
+      const html = buildCardHtml({ ...BASE, layout })
+      expect(html, layout).toContain(`class="row note clamp${m.noteLines}"`)
+      expect(html, layout).toContain(
+        `.clamp${m.noteLines}{-webkit-line-clamp:${m.noteLines};max-height:${(m.noteLines * 1.35).toFixed(2)}em}`,
+      )
+    }
   })
 })
