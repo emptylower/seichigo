@@ -5,7 +5,7 @@ import {
 } from '@/lib/anitabi/imageMirrorVariants'
 
 describe('enumerateBangumiCoverVariants', () => {
-  it('returns cover-l and cover-m variants for anitabi covers', () => {
+  it('returns cover-l, cover-m, and cover-h160 variants for anitabi covers', () => {
     expect(
       enumerateBangumiCoverVariants('https://image.anitabi.cn/bangumi/123/cover.jpg'),
     ).toEqual([
@@ -16,6 +16,10 @@ describe('enumerateBangumiCoverVariants', () => {
       {
         label: 'cover-m',
         url: 'https://image.anitabi.cn/bangumi/123/cover.jpg',
+      },
+      {
+        label: 'cover-h160',
+        url: 'https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h160',
       },
     ])
   })
@@ -65,6 +69,10 @@ describe('enumerateBangumiCoverVariants', () => {
       {
         label: 'cover-m',
         url: 'https://image.anitabi.cn/bangumi/123/cover.jpg',
+      },
+      {
+        label: 'cover-h160',
+        url: 'https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h160',
       },
     ])
   })

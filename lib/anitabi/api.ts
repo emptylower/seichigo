@@ -1,6 +1,7 @@
 import type { Session } from 'next-auth'
 import { prisma } from '@/lib/db/prisma'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import type { PreloadCacheStore } from '@/lib/anitabi/preloadEdgeCache'
 
 export type AnitabiApiDeps = {
   prisma: typeof prisma
@@ -17,6 +18,11 @@ export type AnitabiApiDeps = {
   ctx?: {
     waitUntil?: (promise: Promise<unknown>) => void
   }
+  /**
+   * 2026-09-10 任务 2：preload 端点的边缘缓存存储（Cloudflare Cache API）。
+   * undefined → 运行时解析 caches.default；显式 null → 关闭（测试/回滚）。
+   */
+  preloadEdgeCache?: PreloadCacheStore | null
 }
 
 let cached: AnitabiApiDeps | null = null

@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import { createHandlers } from '@/lib/anitabi/handlers/preloadManifest'
 
 function routeError(err: unknown) {
@@ -19,7 +20,12 @@ function routeError(err: unknown) {
 export async function GET(req: Request) {
   try {
     const deps = await getAnitabiApiDeps()
-    return createHandlers(deps).GET(req)
+    // 边缘缓存 put 需要 ctx.waitUntil（无绑定的 next dev / vitest 里为 undefined，退化为直通）
+    const bindings = getCfBindings()
+    return createHandlers({
+      ...deps,
+      ...(bindings?.ctx ? { ctx: bindings.ctx as typeof deps.ctx } : {}),
+    }).GET(req)
   } catch (err) {
     console.error('[api/anitabi/preload/manifest] GET failed', err)
     return routeError(err)

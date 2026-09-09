@@ -324,7 +324,7 @@ function guessMirrorMimeType(url: URL): string {
 /**
  * 与镜像入库枚举（lib/anitabi/imageMirrorVariants.ts）保持同一套变体口径：
  * - anitabi 点位图：point/point-preview → w640q80；point-thumbnail → h160
- * - anitabi /bangumi/ 封面（cover kind）：去掉 w/h/q，plan 保留（l 或无 → cover-l/cover-m）
+ * - anitabi /bangumi/ 封面（cover kind）：强制 plan=h160（cover-h160 变体）
  * - bgm.tv 封面（cover 路径 /pic/cover/l|m/）：canonical 内部会把 /l/ 降为 /m/
  * 其余（default kind、非镜像域）返回 null，不生成 R2 候选。
  */
@@ -354,10 +354,13 @@ function buildMirrorVariantUrl(url: URL, kind: MapDisplayImageKind): URL | null 
       return null
     }
     if (kind === 'cover' && normalizedPathname.startsWith('/bangumi/')) {
+      // 与展示变体（normalizeAnitabiDisplayVariant）同步：cover kind 一律取
+      // cover-h160 镜像变体，R2 未灌入时由候选梯回落直连 img-tc?plan=h160。
       const variant = new URL(url.toString())
       variant.searchParams.delete('w')
       variant.searchParams.delete('h')
       variant.searchParams.delete('q')
+      variant.searchParams.set('plan', 'h160')
       return variant
     }
     return null

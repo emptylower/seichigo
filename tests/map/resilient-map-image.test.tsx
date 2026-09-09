@@ -327,11 +327,11 @@ describe('ResilientMapImage', () => {
     )
 
     const img = await screen.findByAltText('bangumi') as HTMLImageElement
-    expect(img.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
+    expect(img.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160')
 
     fireEvent.error(img)
     const directRetryCandidate = await screen.findByAltText('bangumi') as HTMLImageElement
-    expect(directRetryCandidate.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1')
+    expect(directRetryCandidate.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160&_retry=1')
 
     fireEvent.error(directRetryCandidate)
     const proxyFallbackCandidate = await screen.findByAltText('bangumi') as HTMLImageElement
@@ -462,7 +462,7 @@ describe('ResilientMapImage', () => {
 
       expect(requestStart).toHaveBeenCalledTimes(1)
       const initial = screen.getByAltText('degraded-cover') as HTMLImageElement
-      expect(initial.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg')
+      expect(initial.src).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160')
 
       fireEvent.error(initial)
 
@@ -471,7 +471,7 @@ describe('ResilientMapImage', () => {
       expect(requestStart).toHaveBeenCalledTimes(2)
       expect(requestStart.mock.calls[1]?.[0]).toMatchObject({
         candidateIndex: 1,
-        requestedCandidateUrl: 'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
+        requestedCandidateUrl: 'https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160&_retry=1',
       })
 
       await advanceTimers(1999)
