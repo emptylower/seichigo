@@ -116,9 +116,9 @@ describe('buildCardHtml', () => {
   it('断行交给浏览器：点位名与说明用 -webkit-line-clamp', () => {
     const html = buildCardHtml(BASE)
     expect(html).toContain('-webkit-line-clamp:1')
-    expect(html).toContain('-webkit-line-clamp:2')
+    expect(html).toContain(`-webkit-line-clamp:${CARD_METRICS.landscape.noteLines}`)
     const portrait = buildCardHtml({ ...BASE, layout: 'portrait' })
-    expect(portrait).toContain('-webkit-line-clamp:2')
+    expect(portrait).toContain(`-webkit-line-clamp:${CARD_METRICS.portrait.noteLines}`)
   })
 
   it('line-clamp 失效时靠 max-height 保险，不会顶出画布被静默裁掉', () => {
@@ -126,7 +126,9 @@ describe('buildCardHtml', () => {
     // landscape：nameLines=1 → 1.25em
     expect(html).toContain('max-height:1.25em')
     expect(html).toContain('max-height:1.3em')
-    expect(html).toContain('max-height:2.7em')
+    expect(html).toContain(
+      `max-height:${(CARD_METRICS.landscape.noteLines * 1.35).toFixed(2)}em`,
+    )
     const portrait = buildCardHtml({ ...BASE, layout: 'portrait' })
     // portrait：nameLines=2 → 2.50em
     expect(portrait).toContain('max-height:2.50em')
