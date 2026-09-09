@@ -104,6 +104,15 @@ async function readyPanel(props = PROPS) {
   )
 }
 
+/** 手机路径没有 X 按钮，等「分享到…」主按钮就绪 */
+async function readyMobilePanel(props = PROPS) {
+  render(<PointSharePanel {...props} />)
+  fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: t('share.shareTo', 'zh') })).not.toBeDisabled(),
+  )
+}
+
 async function openCaptionEditor() {
   const collapsed = await screen.findByRole('button', { name: t('share.captionLabel', 'zh') })
   fireEvent.click(collapsed)
@@ -417,7 +426,7 @@ describe('PointSharePanel 手机路径', () => {
   })
 
   it('显示「分享到…」主按钮，走系统面板且渠道是 sys、不带文件', async () => {
-    await readyPanel()
+    await readyMobilePanel()
     const primary = screen.getByRole('button', { name: t('share.shareTo', 'zh') })
     fireEvent.click(primary)
     await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
@@ -426,45 +435,52 @@ describe('PointSharePanel 手机路径', () => {
     expect(shareViaSystemMock.mock.calls[0]![0]).not.toHaveProperty('files')
   })
 
-  it.each([
-    ['share.platformX', 'x'],
-    ['share.platformReddit', 'rd'],
-    ['share.platformLine', 'ln'],
-    ['share.platformXiaohongshu', 'xhs'],
-    ['share.platformWechat', 'wx'],
-  ] as const)('%s 也走系统面板，渠道 %s', async (labelKey, channel) => {
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t(labelKey, 'zh') }))
-    await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
-    expect(shareViaSystemMock.mock.calls[0]![0].url).toBe(
-      `https://seichigo.com/s/AbC12xYz?c=${channel}`,
-    )
-    expect(String(shareViaSystemMock.mock.calls[0]![0].text)).toContain(`?c=${channel}`)
+  it('动作区只有「分享到…」与「保存图片」，五个平台按钮不再渲染', async () => {
+    await readyMobilePanel()
+    expect(screen.getByRole('button', { name: t('share.shareTo', 'zh') })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
+    // 这五个在系统分享可用时都只是再开一次同一个系统面板，属于重复入口
+    for (const key of [
+      'share.platformX',
+      'share.platformReddit',
+      'share.platformLine',
+      'share.platformXiaohongshu',
+      'share.platformWechat',
+    ] as const) {
+      expect(screen.queryByRole('button', { name: t(key, 'zh') }), key).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: t(key, 'zh') }), key).not.toBeInTheDocument()
+    }
+  })
+
+  it('「保存图片」拿到 blob 并触发下载', async () => {
+    await readyMobilePanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.saveImage', 'zh') }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    expect(fetchCardBlobMock).toHaveBeenCalledTimes(1)
+    expect(downloadBlobMock.mock.calls[0]![1]).toMatch(/^seichigo-须贺神社\./)
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastSaved', 'zh'))
   })
 
   it('系统面板分享失败时提示失败', async () => {
     shareViaSystemMock.mockResolvedValue('failed')
-    await readyPanel()
+    await readyMobilePanel()
     fireEvent.click(screen.getByRole('button', { name: t('share.shareTo', 'zh') }))
     expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh'))
   })
 
-  it('五个目的地一行排开，字号缩到 text-xs', async () => {
-    await readyPanel()
+  it('目的地网格不再按五平台排成五列', async () => {
+    await readyMobilePanel()
     const grid = screen.getByTestId('share-destinations')
-    expect(grid.className).toContain('grid-cols-5')
-    expect(grid.className).not.toContain('grid-cols-3')
-    const x = screen.getByRole('button', { name: t('share.platformX', 'zh') })
-    expect(x.className).toContain('text-xs')
-    expect(x.className).not.toContain('text-sm')
+    expect(grid.className).not.toContain('grid-cols-5')
   })
 
-  it('「更多」里是保存图片与复制文案，没有复制图片', async () => {
-    await readyPanel()
+  it('「更多」里只有复制文案：保存图片已在动作区，复制图片在此路径下无意义', async () => {
+    await readyMobilePanel()
     fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
-    expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('share.copyText', 'zh') })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: t('share.copyImage', 'zh') })).not.toBeInTheDocument()
+    // 动作区那个 saveImage 之外，「更多」里不再重复出现
+    expect(screen.getAllByRole('button', { name: t('share.saveImage', 'zh') })).toHaveLength(1)
   })
 })
 

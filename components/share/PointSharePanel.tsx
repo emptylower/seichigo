@@ -58,15 +58,6 @@ const BUTTON_BASE =
 /** 上传端点只收 JPEG（lib/share/handlers/upload.ts，其余类型 415）；PNG/WebP/HEIC 一律先转码再传 */
 const UPLOADABLE_PHOTO_TYPES = new Set(['image/jpeg'])
 
-/** 手机路径下五个目的地都走系统面板，只有渠道参数不同 */
-const MOBILE_DESTINATIONS: ReadonlyArray<{ channel: ShareChannel; labelKey: string }> = [
-  { channel: 'x', labelKey: 'share.platformX' },
-  { channel: 'rd', labelKey: 'share.platformReddit' },
-  { channel: 'ln', labelKey: 'share.platformLine' },
-  { channel: 'xhs', labelKey: 'share.platformXiaohongshu' },
-  { channel: 'wx', labelKey: 'share.platformWechat' },
-]
-
 const CAPTION_COLLAPSED_MAX = 40
 
 export default function PointSharePanel({
@@ -285,14 +276,14 @@ export default function PointSharePanel({
   }
 
   // 系统分享只发链接：预览图由服务端 OG 卡片提供，附带文件会让微信/QQ 出现两张图
-  const shareToSystem = async (channel: ShareChannel) => {
+  const handleSystemShare = async () => {
     if (!shareUrl || busy) return
     setBusy(true)
     try {
       const result = await shareViaSystem({
         title: displayName,
-        text: captionFor(channel),
-        url: withShareChannel(shareUrl, channel),
+        text: captionFor('sys'),
+        url: withShareChannel(shareUrl, 'sys'),
       })
       if (result === 'failed') showToast('share.toastFailed')
     } finally {
@@ -577,7 +568,7 @@ export default function PointSharePanel({
           <button
             type="button"
             disabled={!ready}
-            onClick={() => shareToSystem('sys')}
+            onClick={handleSystemShare}
             className={`${BUTTON_BASE} text-sm w-full bg-gray-900 text-white`}
           >
             <Share2 className="h-4 w-4" />
@@ -595,20 +586,20 @@ export default function PointSharePanel({
         ) : (
         <div
           data-testid="share-destinations"
-          className={`grid gap-2 ${mobilePath ? 'grid-cols-5' : 'grid-cols-3'}`}
+          className={mobilePath ? '' : 'grid grid-cols-3 gap-2'}
         >
           {mobilePath ? (
-            MOBILE_DESTINATIONS.map((destination) => (
-              <button
-                key={destination.channel}
-                type="button"
-                disabled={!ready}
-                onClick={() => shareToSystem(destination.channel)}
-                className={`${BUTTON_BASE} w-full bg-gray-100 px-1.5 text-xs text-gray-800`}
-              >
-                {t(destination.labelKey, locale)}
-              </button>
-            ))
+            // 系统分享可用时，X/Reddit/LINE/小红书/微信 都只是再开一次同一个系统面板，
+            // 属于重复入口不再渲染；动作区只留「保存图片」这个次按钮
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={handleSave}
+              className={`${BUTTON_BASE} text-sm w-full bg-gray-100 text-gray-800`}
+            >
+              <Download className="h-4 w-4" />
+              {t('share.saveImage', locale)}
+            </button>
           ) : (
             <>
               <button
@@ -688,17 +679,8 @@ export default function PointSharePanel({
           </button>
           {moreOpen ? (
             <div className="mt-2 flex flex-wrap gap-2">
-              {mobilePath ? (
-                <button
-                  type="button"
-                  disabled={!ready}
-                  onClick={handleSave}
-                  className={`${BUTTON_BASE} text-sm bg-gray-100 text-gray-800`}
-                >
-                  <Download className="h-4 w-4" />
-                  {t('share.saveImage', locale)}
-                </button>
-              ) : (
+              {mobilePath ? null : (
+                // 系统分享路径下复制图片无意义（保存图片已在动作区），只留复制文案
                 <button
                   type="button"
                   disabled={!ready}

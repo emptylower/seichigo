@@ -342,7 +342,7 @@ describe('目的地与文案（回归）', () => {
     expect(screen.getByText(t('share.saveImage', 'zh'))).toBeInTheDocument()
   })
 
-  it('手机路径走系统面板并带渠道参数', async () => {
+  it('手机路径只有「分享到…」主按钮，走系统面板且渠道是 sys', async () => {
     // 系统分享可用的判定是 navigator.share 存在
     Object.defineProperty(globalThis.navigator, 'share', {
       value: vi.fn(async () => undefined),
@@ -351,8 +351,10 @@ describe('目的地与文案（回归）', () => {
     render(<PointSharePanel {...PROPS} />)
     fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
     await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
-    fireEvent.click(screen.getByText(t('share.platformXiaohongshu', 'zh')))
+    // 五个平台按钮在系统分享可用时是重复入口，不再渲染
+    expect(screen.queryByText(t('share.platformXiaohongshu', 'zh'))).toBeNull()
+    fireEvent.click(screen.getByText(t('share.shareTo', 'zh')))
     await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalled())
-    expect(shareViaSystemMock.mock.calls[0][0].url).toBe('https://seichigo.com/s/AbC12xYz?c=xhs')
+    expect(shareViaSystemMock.mock.calls[0][0].url).toBe('https://seichigo.com/s/AbC12xYz?c=sys')
   })
 })
