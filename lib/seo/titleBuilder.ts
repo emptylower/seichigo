@@ -55,7 +55,7 @@ export function buildAnimeSeoTitle(
         .map((p) => p.city)
         .filter((c): c is string => c != null && c.trim() !== '')
     )
-  ).slice(0, 2)
+  ).slice(0, 3)
 
   // Build title based on locale
   let title: string
