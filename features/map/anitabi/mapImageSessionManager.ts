@@ -583,8 +583,18 @@ export class MapImageSessionManager {
     this.flushTimer = null
   }
 
+  // 诊断配置可能迟到（底图 load 之后才拉取）：fullCapture 迟到开启时升级当前会话，
+  // 保证已缓冲的锚点/请求事件不因配置迟到而丢失。
+  private refreshForceCaptureUpgrade(): void {
+    if (!this.sampled && this.getForceCapture?.()) {
+      this.sampled = true
+    }
+  }
+
   private isFlushEligible(): boolean {
-    return this.sessionId != null && (this.sampled || this.escalationReason != null)
+    if (this.sessionId == null) return false
+    this.refreshForceCaptureUpgrade()
+    return this.sampled || this.escalationReason != null
   }
 
   private closeActiveRequestsForTeardown(): void {

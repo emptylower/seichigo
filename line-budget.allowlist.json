@@ -7,8 +7,8 @@
     "app/(authed)/submit/_components/ArticleComposerClient.tsx": 773,
     "lib/anitabi/handlers/imageServe.ts": 813,
     "features/map/anitabi/shared.ts": 776,
-    "features/map/anitabi/useAnitabiMapController.ts": 883,
-    "features/map/anitabi/useAnitabiWarmup.ts": 774,
+    "features/map/anitabi/useAnitabiMapController.ts": 869,
+    "features/map/anitabi/useAnitabiWarmup.ts": 772,
     "features/map/anitabi/useMapInteractionActions.tsx": 788,
     "features/map/anitabi/useCompleteMode.ts": 891
   }

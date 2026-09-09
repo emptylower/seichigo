@@ -155,6 +155,34 @@ describe('MapImageSessionManager', () => {
     expect(transport).toHaveBeenCalledTimes(1)
   })
 
+  it('upgrades an unsampled session when force capture config arrives late, keeping buffered anchors', async () => {
+    let forceCapture = false
+    const transport = vi.fn(async (_payload: { events?: unknown[] }, _reason?: 'batch' | 'teardown') => undefined)
+    const manager = new MapImageSessionManager({
+      random: () => 0.99,
+      getSessionSeed: () => 'seed-session',
+      getForceCapture: () => forceCapture,
+      transport,
+    })
+
+    // 配置未到时按默认（随机采样）先跑：未采样的会话只缓冲不上报
+    manager.recordAnchor('map', 'map_shell_ready')
+    expect(manager.readSessionState().sampled).toBe(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    await Promise.resolve()
+    expect(transport).toHaveBeenCalledTimes(0)
+
+    // 配置迟到开启 fullCapture：会话被升级，已缓冲的锚点不丢
+    forceCapture = true
+    manager.recordAnchor('map', 'bootstrap_ready')
+    expect(manager.readSessionState().sampled).toBe(true)
+    await vi.advanceTimersByTimeAsync(2000)
+    await Promise.resolve()
+    expect(transport).toHaveBeenCalledTimes(1)
+    const payload = transport.mock.calls.at(0)?.[0]
+    expect(payload?.events).toHaveLength(2)
+  })
+
   it('forces capture when explicit diagnostic mode is enabled', () => {
     const manager = new MapImageSessionManager({
       random: () => 0.99,

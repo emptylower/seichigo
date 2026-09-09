@@ -20,6 +20,7 @@ import { usePointAndRangeLayers } from './usePointAndRangeLayers'
 import { useWarmupProgressState } from './useWarmupProgressState'
 import { MapImageSessionManager, resolveMapImageDiagSurface } from './mapImageSessionManager'
 import { createMapImageDiagManager, type ImagePreviewState } from './mapImageDiagManagerFactory'
+import { useMapImageDiagConfigSync } from './useMapImageDiagConfigSync'
 import { beginFirstViewSession, markFirstViewAnchor } from './firstView'
 import {
   L,
@@ -249,25 +250,7 @@ export function useAnitabiMapController(
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    const syncCaptureConfig = () => {
-      void fetch('/api/map-image-diagnostics/config', { method: 'GET' })
-        .then((res) => res.json().catch(() => ({})))
-        .then((data) => {
-          if (cancelled) return
-          forceCaptureConfigRef.current = Boolean((data as any)?.config?.fullCaptureEnabled)
-        })
-        .catch(() => null)
-    }
-
-    syncCaptureConfig()
-    const intervalId = window.setInterval(syncCaptureConfig, 30_000)
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [])
+  useMapImageDiagConfigSync({ forceCaptureConfigRef })
 
   useEffect(() => {
     if (!mapReady || firstViewMapShellReadyMarkedRef.current) return
@@ -442,6 +425,49 @@ export function useAnitabiMapController(
     warmupMetricRef,
   })
 
+  // 底图构造必须排在 selection / warmup / bootstrap 等会发起网络请求的 effect 之前：
+  // React 按 hook 调用次序执行 effect，useMapStyleFailover 里的 new maplibregl.Map()
+  // 应当是 JS 就绪后第一件发起网络请求的事（style/瓦片优先于数据与预取）。
+  useMapStyleFailover({
+    applyMapStyleRef,
+    clearActiveBangumiSelectionRef,
+    completeCoverCandidatesRef,
+    completeCoverFeatureCollectionRef,
+    coverAvatarLoaderRef,
+    currentStyleModeRef,
+    detailRef,
+    focusGeo,
+    focusTimerRef,
+    isDesktopRef,
+    loadedCoverIdsRef,
+    mapInitWaitersRef,
+    mapModeRef,
+    mapRef,
+    mapRootRef,
+    meStateRef,
+    openBangumiRef,
+    parsed,
+    schedulePointLayerFallbackFlush,
+    scheduleRangeOverlayFallbackFlush,
+    selectedPointIdRef,
+    setDetailCardMode,
+    setMapReady,
+    setMapViewMode,
+    setMapZoom,
+    setMobilePointPopupOpen,
+    setSelectedPointId,
+    styleAttemptRef,
+    styleErrorBurstRef,
+    styleFailoverTimerRef,
+    styleMode,
+    styleProviderIndexRef,
+    syncCompleteModeRef,
+    syncPointLayerRef,
+    syncRangeOverlayRef,
+    syncUrlRef,
+    userMarkerRef,
+  })
+
   const { openBangumi, clearActiveBangumiSelection, handleCardPointerEnter, handleCardPointerLeave, syncUrl } = useAnitabiSelection({
     activeBangumiIdRef,
     cacheStoreRef,
@@ -599,46 +625,6 @@ export function useAnitabiMapController(
     warmupRunTokenRef,
     warmupTaskProgressRef,
     warmPointIndexByBangumiIdRef,
-  })
-
-  useMapStyleFailover({
-    applyMapStyleRef,
-    clearActiveBangumiSelectionRef,
-    completeCoverCandidatesRef,
-    completeCoverFeatureCollectionRef,
-    coverAvatarLoaderRef,
-    currentStyleModeRef,
-    detailRef,
-    focusGeo,
-    focusTimerRef,
-    isDesktopRef,
-    loadedCoverIdsRef,
-    mapInitWaitersRef,
-    mapModeRef,
-    mapRef,
-    mapRootRef,
-    meStateRef,
-    openBangumiRef,
-    parsed,
-    schedulePointLayerFallbackFlush,
-    scheduleRangeOverlayFallbackFlush,
-    selectedPointIdRef,
-    setDetailCardMode,
-    setMapReady,
-    setMapViewMode,
-    setMapZoom,
-    setMobilePointPopupOpen,
-    setSelectedPointId,
-    styleAttemptRef,
-    styleErrorBurstRef,
-    styleFailoverTimerRef,
-    styleMode,
-    styleProviderIndexRef,
-    syncCompleteModeRef,
-    syncPointLayerRef,
-    syncRangeOverlayRef,
-    syncUrlRef,
-    userMarkerRef,
   })
 
   useEffect(() => {
