@@ -47,16 +47,19 @@ function useRequestContext(requestId: string | undefined) {
 function seedRequestClient(requestId: string, ageMs: number): FakeRequestClient {
   const client = new FakeRequestClient()
   const stale = Date.now() - ageMs
+  // lib/db/prisma 的 declare global 把 prismaByRequestId 定型为
+  // Map<string, RequestScopedClientEntry>；测试替身结构兼容但名义类型不同，
+  // 用双重断言保持运行时行为不变。
   testGlobal.prismaByRequestId = new Map<string, SeededEntry>([
     [requestId, { client, createdAt: stale, lastUsedAt: stale, activeTransactions: 0 }],
-  ])
+  ]) as unknown as typeof testGlobal.prismaByRequestId
   return client
 }
 
 function seededEntry(requestId: string): SeededEntry {
   const entry = testGlobal.prismaByRequestId?.get(requestId)
   if (!entry) throw new Error(`no seeded entry for ${requestId}`)
-  return entry as SeededEntry
+  return entry as unknown as SeededEntry
 }
 
 async function loadPrismaProxy() {
@@ -98,7 +101,12 @@ describe('Request-scoped Prisma client lifecycle', () => {
     const stale = seedRequestClient('req-old', 60_000)
 
     useRequestContext('req-old')
-    const gated = Promise.withResolvers<string>()
+    // tsconfig lib 停在 ES2022（无 Promise.withResolvers 类型），手写等价 gate。
+    let gatedResolve!: (value: string) => void
+    const gatedPromise = new Promise<string>((resolve) => {
+      gatedResolve = resolve
+    })
+    const gated = { promise: gatedPromise, resolve: gatedResolve }
     const open = prisma.$transaction(async () => gated.promise)
     // Long-running conversation turn: the transaction outlives the TTL.
     seededEntry('req-old').lastUsedAt = Date.now() - 60_000

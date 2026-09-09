@@ -229,7 +229,7 @@ describe('fetchPointContext', () => {
 
 describe('shareViaSystem', () => {
   it('只发链接不带文件：传给 navigator.share 的参数键集合是 title/text/url', async () => {
-    const share = vi.fn(async () => undefined)
+    const share = vi.fn(async (_data: { title?: string; text?: string; url?: string }) => undefined)
     Object.defineProperty(globalThis.navigator, 'share', {
       value: share,
       configurable: true,
