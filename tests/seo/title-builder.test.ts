@@ -16,14 +16,59 @@ describe('buildAnimeSeoTitle', () => {
       { city: '下北泽' },
       { city: '江之岛' },
       { city: '下北泽' }, // duplicate
-      { city: '镰仓' }, // third city, should be ignored
+      { city: '镰仓' }, // third city, now included (limit raised to 3)
     ]
 
     const result = buildAnimeSeoTitle(anime, posts, 'zh')
 
     expect(result).toEqual({
-      absolute: '孤独摇滚 圣地巡礼攻略｜下北泽·江之岛',
+      absolute: '孤独摇滚 圣地巡礼攻略｜下北泽·江之岛·镰仓',
     })
+  })
+
+  it('keeps all three cities for ZH when the title stays within 30 chars', () => {
+    const anime = { name: '你的名字', name_en: 'Your Name', name_ja: '君の名は。' }
+    const posts = [{ city: '东京' }, { city: '岐阜' }, { city: '长野' }]
+
+    const result = buildAnimeSeoTitle(anime, posts, 'zh')
+
+    expect(result.absolute).toBe('你的名字 圣地巡礼攻略｜东京·岐阜·长野')
+  })
+
+  it('keeps all three cities for JA when the title stays within 30 chars', () => {
+    const anime = { name: '你的名字', name_en: 'Your Name', name_ja: '君の名は。' }
+    const posts = [{ city: '東京' }, { city: '岐阜' }, { city: '長野' }]
+
+    const result = buildAnimeSeoTitle(anime, posts, 'ja')
+
+    expect(result.absolute).toBe('君の名は。 聖地巡礼ガイド｜東京·岐阜·長野')
+  })
+
+  it('keeps all three cities for EN when the title stays within 60 chars', () => {
+    const anime = { name: '轻音少女', name_en: 'K-On', name_ja: 'けいおん' }
+    const posts = [{ city: 'Tokyo' }, { city: 'Gifu' }, { city: 'Nagano' }]
+
+    const result = buildAnimeSeoTitle(anime, posts, 'en')
+
+    expect(result.absolute).toBe('K-On Anime Pilgrimage Guide | Tokyo, Gifu, Nagano')
+  })
+
+  it('drops the city suffix for ZH when three long cities exceed 30 chars', () => {
+    const anime = { name: '凉宫春日的忧郁', name_en: 'Haruhi', name_ja: '涼宮ハルヒの憂鬱' }
+    const posts = [{ city: '东京都涩谷区' }, { city: '岐阜县飞驒古川' }, { city: '长野县诹访郡' }]
+
+    const result = buildAnimeSeoTitle(anime, posts, 'zh')
+
+    expect(result.absolute).toBe('凉宫春日的忧郁 圣地巡礼攻略')
+  })
+
+  it('drops the city suffix for JA when three long cities exceed 30 chars', () => {
+    const anime = { name: '凉宫春日的忧郁', name_en: 'Haruhi', name_ja: '涼宮ハルヒの憂鬱' }
+    const posts = [{ city: '東京都渋谷区' }, { city: '岐阜県飛騨古川' }, { city: '長野県諏訪郡' }]
+
+    const result = buildAnimeSeoTitle(anime, posts, 'ja')
+
+    expect(result.absolute).toBe('涼宮ハルヒの憂鬱 聖地巡礼ガイド')
   })
 
   it('builds normal EN anime title with cities', () => {
