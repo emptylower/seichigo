@@ -287,7 +287,7 @@ export default async function PostEnPage({ params }: { params: Promise<{ slug: s
   const breadcrumbItemsForJsonLd = [
     { name: 'Home', url: `${siteOrigin}/en` },
     { name: 'Anime', url: `${siteOrigin}/en/anime` },
-    ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
+    ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/en/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, url: canonicalUrl },
   ]
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd(breadcrumbItemsForJsonLd)
@@ -295,7 +295,7 @@ export default async function PostEnPage({ params }: { params: Promise<{ slug: s
   const breadcrumbItems = [
     { name: 'Home', href: '/en' },
     { name: 'Anime', href: '/en/anime' },
-    ...(primaryAnime ? [{ name: primaryAnime.label, href: `/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
+    ...(primaryAnime ? [{ name: primaryAnime.label, href: `/en/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, href: `/en/posts/${encodeSlugForPath(canonicalSlug)}` },
   ]
 
