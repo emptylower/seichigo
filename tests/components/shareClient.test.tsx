@@ -7,6 +7,7 @@ import {
   openBlankWindow,
   openOrNavigate,
   readPreferredLayout,
+  shareViaSystem,
   transcodeToJpeg,
   uploadSharePhoto,
   writePreferredLayout,
@@ -18,6 +19,8 @@ beforeEach(() => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   globalThis.localStorage.clear()
+  // 各用例自行决定系统分享是否可用，跑完删掉避免漏到下一个用例
+  delete (globalThis.navigator as { share?: unknown }).share
 })
 
 afterEach(() => {
@@ -221,6 +224,39 @@ describe('fetchPointContext', () => {
   it('网络异常返回 null', async () => {
     fetchMock.mockRejectedValue(new Error('offline'))
     await expect(fetchPointContext('101:budo', 'zh')).resolves.toBeNull()
+  })
+})
+
+describe('shareViaSystem', () => {
+  it('只发链接不带文件：传给 navigator.share 的参数键集合是 title/text/url', async () => {
+    const share = vi.fn(async () => undefined)
+    Object.defineProperty(globalThis.navigator, 'share', {
+      value: share,
+      configurable: true,
+    })
+    const result = await shareViaSystem({
+      title: '须贺神社',
+      text: '《你的名字。》圣地巡礼',
+      url: 'https://seichigo.com/s/AbC12xYz?c=sys',
+    })
+    expect(result).toBe('shared')
+    expect(share).toHaveBeenCalledTimes(1)
+    // 附带 files 会让微信/QQ 把图插成照片、又把链接展开成同一张卡的预览，出现两张图
+    expect(Object.keys(share.mock.calls[0]![0] as object).sort()).toEqual(['text', 'title', 'url'])
+  })
+
+  it('系统分享不可用时返回 failed', async () => {
+    await expect(shareViaSystem({ text: 't', url: 'u' })).resolves.toBe('failed')
+  })
+
+  it('用户取消或分享抛错时返回 failed', async () => {
+    Object.defineProperty(globalThis.navigator, 'share', {
+      value: vi.fn(async () => {
+        throw new Error('AbortError')
+      }),
+      configurable: true,
+    })
+    await expect(shareViaSystem({ text: 't', url: 'u' })).resolves.toBe('failed')
   })
 })
 

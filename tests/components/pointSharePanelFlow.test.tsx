@@ -15,7 +15,6 @@ const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
 const fetchPointContextMock = vi.fn()
-const canShareFilesMock = vi.fn()
 const shareViaSystemMock = vi.fn()
 const copyTextMock = vi.fn()
 const openBlankWindowMock = vi.fn()
@@ -33,7 +32,6 @@ vi.mock('@/components/share/shareClient', async () => {
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
     fetchPointContext: (...args: any[]) => fetchPointContextMock(...args),
-    canShareFiles: (...args: any[]) => canShareFilesMock(...args),
     shareViaSystem: (...args: any[]) => shareViaSystemMock(...args),
     copyText: (...args: any[]) => copyTextMock(...args),
     openBlankWindow: (...args: any[]) => openBlankWindowMock(...args),
@@ -69,13 +67,14 @@ const DEFAULT_CONTEXT = {
 beforeEach(() => {
   vi.clearAllMocks()
   globalThis.localStorage?.clear()
+  // 手机/桌面路径看 navigator.share 是否存在：默认删掉走桌面，手机用例自行补桩
+  delete (globalThis.navigator as { share?: unknown }).share
   useSessionMock.mockReturnValue({ data: { user: { name: 'u' } }, status: 'authenticated' })
   createShareLinkMock.mockResolvedValue({ code: 'AbC12xYz', url: 'https://seichigo.com/s/AbC12xYz' })
-  // 卡片动作（保存/复制/系统分享）按需取 blob，桩成立即成功的 WebP
+  // 卡片动作（保存/复制）按需取 blob，桩成立即成功的 WebP
   fetchCardBlobMock.mockResolvedValue(new Blob(['card'], { type: 'image/webp' }))
   fetchPointContextMock.mockResolvedValue(DEFAULT_CONTEXT)
-  canShareFilesMock.mockReturnValue(false) // 默认桌面路径
-  shareViaSystemMock.mockResolvedValue('files')
+  shareViaSystemMock.mockResolvedValue('shared')
   copyTextMock.mockResolvedValue(true)
   copyImageMock.mockResolvedValue(true)
   transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
@@ -84,6 +83,14 @@ beforeEach(() => {
   ;(globalThis.URL as any).createObjectURL ??= vi.fn(() => 'blob:preview')
   ;(globalThis.URL as any).revokeObjectURL ??= vi.fn()
 })
+
+/** 让面板走系统分享路径：navigator.share 存在即视为可用 */
+function enableSystemShare() {
+  Object.defineProperty(globalThis.navigator, 'share', {
+    value: vi.fn(async () => undefined),
+    configurable: true,
+  })
+}
 
 /**
  * 渲染并等到「就绪」：预览 <img> fire load + 短链落定后 X 按钮才可点。
@@ -94,6 +101,15 @@ async function readyPanel(props = PROPS) {
   fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: t('share.platformX', 'zh') })).not.toBeDisabled(),
+  )
+}
+
+/** 手机路径没有 X 按钮，等「分享到…」主按钮就绪 */
+async function readyMobilePanel(props = PROPS) {
+  render(<PointSharePanel {...props} />)
+  fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: t('share.shareTo', 'zh') })).not.toBeDisabled(),
   )
 }
 
@@ -406,59 +422,65 @@ describe('PointSharePanel 桌面路径', () => {
 
 describe('PointSharePanel 手机路径', () => {
   beforeEach(() => {
-    canShareFilesMock.mockReturnValue(true)
+    enableSystemShare()
   })
 
-  it('显示「分享到…」主按钮，走系统面板且渠道是 sys', async () => {
-    await readyPanel()
+  it('显示「分享到…」主按钮，走系统面板且渠道是 sys、不带文件', async () => {
+    await readyMobilePanel()
     const primary = screen.getByRole('button', { name: t('share.shareTo', 'zh') })
     fireEvent.click(primary)
     await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
     expect(shareViaSystemMock.mock.calls[0]![0].url).toBe('https://seichigo.com/s/AbC12xYz?c=sys')
-    expect(shareViaSystemMock.mock.calls[0]![0].files).toHaveLength(1)
+    // 系统分享只发链接：预览图由服务端 OG 卡片提供，附文件会让微信/QQ 出现两张图
+    expect(shareViaSystemMock.mock.calls[0]![0]).not.toHaveProperty('files')
   })
 
-  it.each([
-    ['share.platformX', 'x'],
-    ['share.platformReddit', 'rd'],
-    ['share.platformLine', 'ln'],
-    ['share.platformXiaohongshu', 'xhs'],
-    ['share.platformWechat', 'wx'],
-  ] as const)('%s 也走系统面板，渠道 %s', async (labelKey, channel) => {
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t(labelKey, 'zh') }))
-    await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalledTimes(1))
-    expect(shareViaSystemMock.mock.calls[0]![0].url).toBe(
-      `https://seichigo.com/s/AbC12xYz?c=${channel}`,
-    )
-    expect(String(shareViaSystemMock.mock.calls[0]![0].text)).toContain(`?c=${channel}`)
-  })
-
-  it('系统面板吃不下图片时提示手动发布', async () => {
-    shareViaSystemMock.mockResolvedValue('text')
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t('share.shareTo', 'zh') }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      t('share.toastShareFilesUnsupported', 'zh'),
-    )
-  })
-
-  it('五个目的地一行排开，字号缩到 text-xs', async () => {
-    await readyPanel()
-    const grid = screen.getByTestId('share-destinations')
-    expect(grid.className).toContain('grid-cols-5')
-    expect(grid.className).not.toContain('grid-cols-3')
-    const x = screen.getByRole('button', { name: t('share.platformX', 'zh') })
-    expect(x.className).toContain('text-xs')
-    expect(x.className).not.toContain('text-sm')
-  })
-
-  it('「更多」里是保存图片与复制文案，没有复制图片', async () => {
-    await readyPanel()
-    fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
+  it('动作区只有「分享到…」与「保存图片」，五个平台按钮不再渲染', async () => {
+    await readyMobilePanel()
+    expect(screen.getByRole('button', { name: t('share.shareTo', 'zh') })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('share.saveImage', 'zh') })).toBeInTheDocument()
+    // 这五个在系统分享可用时都只是再开一次同一个系统面板，属于重复入口
+    for (const key of [
+      'share.platformX',
+      'share.platformReddit',
+      'share.platformLine',
+      'share.platformXiaohongshu',
+      'share.platformWechat',
+    ] as const) {
+      expect(screen.queryByRole('button', { name: t(key, 'zh') }), key).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: t(key, 'zh') }), key).not.toBeInTheDocument()
+    }
+  })
+
+  it('「保存图片」拿到 blob 并触发下载', async () => {
+    await readyMobilePanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.saveImage', 'zh') }))
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1))
+    expect(fetchCardBlobMock).toHaveBeenCalledTimes(1)
+    expect(downloadBlobMock.mock.calls[0]![1]).toMatch(/^seichigo-须贺神社\./)
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastSaved', 'zh'))
+  })
+
+  it('系统面板分享失败时提示失败', async () => {
+    shareViaSystemMock.mockResolvedValue('failed')
+    await readyMobilePanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.shareTo', 'zh') }))
+    expect(await screen.findByRole('status')).toHaveTextContent(t('share.toastFailed', 'zh'))
+  })
+
+  it('目的地网格不再按五平台排成五列', async () => {
+    await readyMobilePanel()
+    const grid = screen.getByTestId('share-destinations')
+    expect(grid.className).not.toContain('grid-cols-5')
+  })
+
+  it('「更多」里只有复制文案：保存图片已在动作区，复制图片在此路径下无意义', async () => {
+    await readyMobilePanel()
+    fireEvent.click(screen.getByRole('button', { name: t('share.more', 'zh') }))
     expect(screen.getByRole('button', { name: t('share.copyText', 'zh') })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: t('share.copyImage', 'zh') })).not.toBeInTheDocument()
+    // 动作区那个 saveImage 之外，「更多」里不再重复出现
+    expect(screen.getAllByRole('button', { name: t('share.saveImage', 'zh') })).toHaveLength(1)
   })
 })
 

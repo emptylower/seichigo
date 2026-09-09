@@ -10,7 +10,6 @@ const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
 const fetchPointContextMock = vi.fn()
-const canShareFilesMock = vi.fn()
 const shareViaSystemMock = vi.fn()
 const copyTextMock = vi.fn()
 const openBlankWindowMock = vi.fn()
@@ -28,7 +27,6 @@ vi.mock('@/components/share/shareClient', async () => {
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
     fetchPointContext: (...args: any[]) => fetchPointContextMock(...args),
-    canShareFiles: (...args: any[]) => canShareFilesMock(...args),
     shareViaSystem: (...args: any[]) => shareViaSystemMock(...args),
     copyText: (...args: any[]) => copyTextMock(...args),
     openBlankWindow: (...args: any[]) => openBlankWindowMock(...args),
@@ -73,10 +71,10 @@ beforeEach(() => {
     displayName: '须贺神社',
     animeTitle: '你的名字。',
   })
-  canShareFilesMock.mockReset()
-  canShareFilesMock.mockReturnValue(false) // 默认桌面路径
+  // 手机/桌面路径看 navigator.share 是否存在：这个文件只跑桌面路径，确保 share 不在
+  delete (globalThis.navigator as { share?: unknown }).share
   shareViaSystemMock.mockReset()
-  shareViaSystemMock.mockResolvedValue('files')
+  shareViaSystemMock.mockResolvedValue('shared')
   copyTextMock.mockReset()
   copyTextMock.mockResolvedValue(true)
   copyImageMock.mockResolvedValue(true)

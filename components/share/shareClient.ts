@@ -94,31 +94,22 @@ export function writePreferredLayout(layout: ShareCardLayout): void {
   }
 }
 
-export function canShareFiles(files: File[]): boolean {
-  const nav = globalThis.navigator as Navigator & { canShare?: (data: ShareData) => boolean }
-  if (typeof nav?.share !== 'function') return false
-  if (typeof nav.canShare !== 'function') return false
-  try {
-    return nav.canShare({ files })
-  } catch {
-    return false
-  }
-}
-
+/**
+ * 系统分享只发链接（title/text/url），不附带图片文件：
+ * 链接的预览图由服务端 OG 卡片提供；若同时传 files，微信/QQ 会把文件插成一张照片，
+ * 又把链接展开成带同一张卡图的预览卡，粘贴出来就是两张图。
+ * 返回 'shared' | 'failed'（用户取消也算 failed，由调用方提示）。
+ */
 export async function shareViaSystem(input: {
-  files: File[]
+  title?: string
   text: string
   url: string
-}): Promise<'files' | 'text' | 'failed'> {
+}): Promise<'shared' | 'failed'> {
   const nav = globalThis.navigator
   if (typeof nav?.share !== 'function') return 'failed'
   try {
-    if (canShareFiles(input.files)) {
-      await nav.share({ files: input.files, text: input.text, url: input.url })
-      return 'files'
-    }
-    await nav.share({ text: input.text, url: input.url })
-    return 'text'
+    await nav.share({ title: input.title, text: input.text, url: input.url })
+    return 'shared'
   } catch {
     return 'failed'
   }
@@ -180,10 +171,6 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.removeChild(anchor)
   // 立刻 revoke 会让部分浏览器下载空文件，延后一拍
   setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-export function blobToFile(blob: Blob, filename: string): File {
-  return new File([blob], filename, { type: blob.type || 'image/jpeg' })
 }
 
 /**

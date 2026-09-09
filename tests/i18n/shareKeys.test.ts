@@ -70,6 +70,9 @@ describe('share i18n keys', () => {
   const OG_SERVER_RENDER_KEYS = ['addPhotoLoginRequired']
   // 2026-09-09 Track B 评审修复：实拍「不在卡片中使用」语义 + 上传失败按状态码分流的提示
   const REVIEW_0909_KEYS = ['photoUnuse', 'toastSessionExpired', 'toastTooManyUploads']
+  // 2026-09-09 分享动作精简：系统分享只发链接不附文件，这个提示不再触发；
+  // key 保留不删（服务端卡片等仍在用其它 share.* 键），登记防漏翻
+  const SIMPLIFY_0909_KEYS = ['toastShareFilesUnsupported']
 
   it.each(LOCALES)('%s 含有评审修复新增的键', (_locale, dict) => {
     for (const key of [
@@ -79,6 +82,7 @@ describe('share i18n keys', () => {
       ...V2_1_KEYS,
       ...OG_SERVER_RENDER_KEYS,
       ...REVIEW_0909_KEYS,
+      ...SIMPLIFY_0909_KEYS,
     ]) {
       expect(at(dict, `share.${key}`), `share.${key}`).toBeTruthy()
     }

@@ -10,7 +10,6 @@ const transcodeToJpegMock = vi.fn()
 const copyImageMock = vi.fn()
 const downloadBlobMock = vi.fn()
 const fetchPointContextMock = vi.fn()
-const canShareFilesMock = vi.fn()
 const shareViaSystemMock = vi.fn()
 const copyTextMock = vi.fn()
 const openBlankWindowMock = vi.fn()
@@ -28,7 +27,6 @@ vi.mock('@/components/share/shareClient', async () => {
     copyImage: (...args: any[]) => copyImageMock(...args),
     downloadBlob: (...args: any[]) => downloadBlobMock(...args),
     fetchPointContext: (...args: any[]) => fetchPointContextMock(...args),
-    canShareFiles: (...args: any[]) => canShareFilesMock(...args),
     shareViaSystem: (...args: any[]) => shareViaSystemMock(...args),
     copyText: (...args: any[]) => copyTextMock(...args),
     openBlankWindow: (...args: any[]) => openBlankWindowMock(...args),
@@ -70,7 +68,9 @@ beforeEach(() => {
     displayName: '须贺神社',
     animeTitle: '你的名字。',
   })
-  canShareFilesMock.mockReturnValue(false)
+  // 手机/桌面路径看 navigator.share 是否存在：默认删掉走桌面，手机用例自行补桩
+  delete (globalThis.navigator as { share?: unknown }).share
+  shareViaSystemMock.mockResolvedValue('shared')
   transcodeToJpegMock.mockResolvedValue(new Blob([new Uint8Array(1)], { type: 'image/jpeg' }))
   ;(globalThis.URL as any).createObjectURL ??= vi.fn(() => 'blob:preview')
   ;(globalThis.URL as any).revokeObjectURL ??= vi.fn()
@@ -342,14 +342,19 @@ describe('目的地与文案（回归）', () => {
     expect(screen.getByText(t('share.saveImage', 'zh'))).toBeInTheDocument()
   })
 
-  it('手机路径走系统面板并带渠道参数', async () => {
-    canShareFilesMock.mockReturnValue(true)
-    shareViaSystemMock.mockResolvedValue('files')
+  it('手机路径只有「分享到…」主按钮，走系统面板且渠道是 sys', async () => {
+    // 系统分享可用的判定是 navigator.share 存在
+    Object.defineProperty(globalThis.navigator, 'share', {
+      value: vi.fn(async () => undefined),
+      configurable: true,
+    })
     render(<PointSharePanel {...PROPS} />)
     fireEvent.load(await screen.findByAltText(t('share.panelTitle', 'zh')))
     await waitFor(() => expect(screen.getByTestId('share-destinations')).toBeInTheDocument())
-    fireEvent.click(screen.getByText(t('share.platformXiaohongshu', 'zh')))
+    // 五个平台按钮在系统分享可用时是重复入口，不再渲染
+    expect(screen.queryByText(t('share.platformXiaohongshu', 'zh'))).toBeNull()
+    fireEvent.click(screen.getByText(t('share.shareTo', 'zh')))
     await waitFor(() => expect(shareViaSystemMock).toHaveBeenCalled())
-    expect(shareViaSystemMock.mock.calls[0][0].url).toBe('https://seichigo.com/s/AbC12xYz?c=xhs')
+    expect(shareViaSystemMock.mock.calls[0][0].url).toBe('https://seichigo.com/s/AbC12xYz?c=sys')
   })
 })
