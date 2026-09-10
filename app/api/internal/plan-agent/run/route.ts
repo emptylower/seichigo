@@ -94,22 +94,19 @@ export async function POST(req: Request) {
   )
 
   const deps = await getTripPlanApiDeps()
-  const plan = await deps.repo.getPlan(body.planId)
-  if (!plan) {
-    return NextResponse.json({ skipped: 'stale_token' })
-  }
-
-  // 拿回持有权（POST 投递时写入的 token 仍有效才续）：被停止/被接管/已结束
-  // 都会在这里失败——直接跳过，绝不重复执行同一回合
-  const renewed = await deps.repo.renewAgentRun(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
-  if (!renewed) {
+  // 拿回持有权（POST 投递时写入的 token 仍有效才续）并顺带取回归属用户
+  // （CUT-1：单次往返替代原先的整棵 getPlan + renewAgentRun）。计划不存
+  // 在、被停止、被接管、已结束都会在这里命中 0 行——直接跳过，绝不重复
+  // 执行同一回合
+  const owner = await deps.repo.renewAgentRunOwner(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
+  if (!owner) {
     return NextResponse.json({ skipped: 'stale_token' })
   }
 
   // 计费：按计划归属用户的档位装配能力表（队列消息不带 userId）。
   // G3：getAccount 失败必须 fail-closed 回落免费档，绝不能放开全部能力
   const billingAccount = await getBillingService()
-    .getAccount(plan.userId)
+    .getAccount(owner.userId)
     .catch((err) => {
       console.error('[api/internal/plan-agent/run] getAccount failed, falling back to free entitlements', err)
       return null

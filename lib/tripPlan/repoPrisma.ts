@@ -154,6 +154,12 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     return row ? toPlanWithDays(row) : null
   }
 
+  /** CUT-8：单字段投影，一次往返；null = 计划不存在 */
+  async getPlanTitle(planId: string): Promise<string | null> {
+    const row = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { title: true } })
+    return row?.title ?? null
+  }
+
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
     const row = await prisma.tripPlan.update({
       where: { id },
@@ -306,6 +312,21 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       data: { agentBusyUntil: new Date(Date.now() + ttlMs) },
     })
     return renewed.count > 0
+  }
+
+  /**
+   * CUT-1（2026-09-10）：renewAgentRun 的带返回版——单条 UPDATE ... WHERE
+   * id AND agentRunToken ... RETURNING userId（P0-B 实测 WHERE 保得住
+   * token），内部路由用一个往返同时完成存在性检查、token 栅栏与归属用户
+   * 读取，省掉前置的整棵 getPlan。0 行命中统一返回 null。
+   */
+  async renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
+    const rows = await prisma.tripPlan.updateManyAndReturn({
+      where: { id: planId, agentRunToken: token },
+      data: { agentBusyUntil: new Date(Date.now() + ttlMs) },
+      select: { userId: true },
+    })
+    return rows[0] ?? null
   }
 
   async stopAgentRun(planId: string): Promise<boolean> {

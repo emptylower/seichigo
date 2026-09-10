@@ -26,8 +26,11 @@ export async function maybeSetGeneratedTitle(deps: TitleSideChannelDeps, userMes
   try {
     const title = await deps.createTitle(userMessage)
     if (!title) return
-    const plan = await deps.repo.getPlan(deps.planId)
-    if (!plan || plan.title !== DEFAULT_PLAN_TITLE) return
+    // CUT-8：只取 title 的单字段投影，不再拉整棵 PLAN_INCLUDE（原先多条
+    // 串行 SQL、20+ KB，在 pool=1 下与主 loop 抢唯一连接）。null 唯一对应
+    // "计划不存在"，与原先的 !plan 同判定；空串由第二个条件挡掉。
+    const title0 = await deps.repo.getPlanTitle(deps.planId)
+    if (title0 === null || title0 !== DEFAULT_PLAN_TITLE) return
     await deps.repo.updateMeta(deps.planId, { title })
     deps.onTitleUpdated?.()
   } catch {

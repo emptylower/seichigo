@@ -95,6 +95,11 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return plan ? { ...structuredClone(plan), ...this.agentFields(id) } : null
   }
 
+  /** CUT-8：与 Prisma 投影同语义——null = 计划不存在，空串原样返回 */
+  async getPlanTitle(planId: string): Promise<string | null> {
+    return this.plans.get(planId)?.title ?? null
+  }
+
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
     const plan = this.plans.get(id)
     if (!plan) throw new Error(`plan not found: ${id}`)
@@ -215,6 +220,15 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     if (!entry || entry.token !== token) return false
     entry.until = new Date(Date.now() + ttlMs)
     return true
+  }
+
+  /** CUT-1：与 renewAgentRun 逐字相同的 where/data 语义；命中才写并返回归属用户 */
+  async renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
+    const entry = this.agentBusy.get(planId)
+    if (!entry || entry.token !== token) return null
+    entry.until = new Date(Date.now() + ttlMs)
+    const plan = this.plans.get(planId)
+    return plan ? { userId: plan.userId } : null
   }
 
   /**

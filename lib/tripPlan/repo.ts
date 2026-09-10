@@ -172,6 +172,12 @@ export interface TripPlanRepo {
   createPlan(input: { userId: string; title: string }): Promise<TripPlan>
   listPlans(userId: string): Promise<TripPlan[]>
   getPlan(id: string): Promise<TripPlanWithDays | null>
+  /**
+   * 只取 title 的轻量投影（2026-09-10 CUT-8）：标题侧信道原先为读一个
+   * title 拉整棵 PLAN_INCLUDE（多条串行 SQL、20+ KB），在 pool=1 下与
+   * 主 loop 抢唯一连接。null 唯一对应"计划不存在"；空串原样返回。
+   */
+  getPlanTitle(planId: string): Promise<string | null>
   updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan>
   replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays>
   countPlansCreatedSince(userId: string, since: Date): Promise<number>
@@ -210,6 +216,8 @@ export interface TripPlanRepo {
    * run 最长 3 分钟自动释放。返回是否续租成功。
    */
   renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean>
+  /** 续租并返回计划归属用户。token 不符与计划不存在都返回 null（同一语义）。 */
+  renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null>
   /**
    * 第十一轮 A3（§0）：用户显式停止正在运行的 run。条件清空 busy/token
    * （仍是当前持有者才动），并在 TripPlanRunLive 行写停止标记

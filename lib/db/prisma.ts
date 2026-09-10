@@ -176,9 +176,25 @@ function getRequestScopedClientEntry(): RequestScopedClientEntry | null {
   return entry
 }
 
+// P0-A 探针（2026-09-10 前奏提速）：确认每次查询实际落在哪条 client 路径。
+// 每个模块实例（= isolate）每条路径只打一次——request-scoped client 每个
+// 请求都在创建，逐次打会淹掉 wrangler tail。
+let loggedRequestScopedProbe = false
+let loggedGlobalPoolProbe = false
+
 function resolvePrismaClient(): { client: PrismaClient; entry: RequestScopedClientEntry | null } {
   const entry = getRequestScopedClientEntry()
-  if (entry) return { client: entry.client, entry }
+  if (entry) {
+    if (!loggedRequestScopedProbe) {
+      loggedRequestScopedProbe = true
+      console.log('[db/scope] request-scoped max=1')
+    }
+    return { client: entry.client, entry }
+  }
+  if (!loggedGlobalPoolProbe) {
+    loggedGlobalPoolProbe = true
+    console.log('[db/scope] global-pool max=5')
+  }
   return { client: getGlobalPrismaClient(), entry: null }
 }
 
