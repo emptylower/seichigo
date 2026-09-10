@@ -1,6 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "seichigo",
+  // 2026-09-10：关闭 workers.dev 路由与预览子域。此前 seichigo.<子域>.workers.dev
+  //   会完整对外提供生产站内容（robots 允许抓取），对 SEO 是重复内容暴露面；
+  //   已同步用 API 关闭，这里写死避免下次 wrangler 部署把它重新打开。
+  //   预览 URL 对带 Durable Objects 的 Worker 本就不会生成，留着只是多一个暴露面。
+  "workers_dev": false,
+  "preview_urls": false,
   // 2026-09-06 §0.1：自定义入口——OpenNext handler 变成 worker/entry.ts 的
   // 一个导出（三个 DO 类原样再导出），并挂上规划 run 的队列消费者
   "main": "worker/entry.ts",

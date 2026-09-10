@@ -33,6 +33,7 @@ import type {
 } from './shared'
 import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
 import { toMapDisplayImageUrl, toMapDisplayImageUrlAsync } from '@/lib/anitabi/imageProxy'
+import { buildInlineMapTilerStreetStyle } from './basemapStyle'
 
 function parseUrlState(): UrlState {
   if (typeof window === 'undefined') {
@@ -454,11 +455,19 @@ function buildMapStyleCandidate(provider: MapStyleProvider, mode: MapStyleMode):
 
   if (provider === 'maptiler') {
     if (!MAPTILER_KEY) return null
-    const styleId = mode === 'satellite' ? 'hybrid' : 'streets-v2'
+    if (mode === 'satellite') {
+      return {
+        provider,
+        label: 'MapTiler',
+        style: `https://api.maptiler.com/maps/hybrid/style.json?key=${encodeURIComponent(MAPTILER_KEY)}`,
+      }
+    }
+    // street 模式使用内联精简样式：省掉 style.json / tiles.json 两次串行 RTT，
+    // JS 就绪即可直接请求瓦片；图层只保留 land / water / road / boundary / place-label。
     return {
       provider,
       label: 'MapTiler',
-      style: `https://api.maptiler.com/maps/${styleId}/style.json?key=${encodeURIComponent(MAPTILER_KEY)}`,
+      style: buildInlineMapTilerStreetStyle(MAPTILER_KEY),
     }
   }
 

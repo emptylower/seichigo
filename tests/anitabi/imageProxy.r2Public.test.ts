@@ -116,6 +116,22 @@ describe('getMapDisplayImageCandidatesAsync R2 public base', () => {
     expect(candidates.slice(1)).toEqual(getMapDisplayImageCandidates(raw, { kind: 'cover' }))
   })
 
+  it('flag on: anitabi bangumi cover resolves the cover-h160 mirror key and direct h160 fallback', async () => {
+    process.env[R2_BASE_FLAG] = R2_BASE
+    const raw = 'https://image.anitabi.cn/bangumi/290980.jpg'
+    // 与镜像入库的 cover-h160 变体同一 canonical —— R2 未灌入时回落直连 img-tc?plan=h160
+    const canonical = 'https://image.anitabi.cn/bangumi/290980.jpg?plan=h160'
+    const hash = await sha256Hex24(canonical)
+
+    const candidates = await getMapDisplayImageCandidatesAsync(raw, { kind: 'cover' })
+
+    expect(candidates[0]).toBe(`${R2_BASE}/mirror/v1/image.anitabi.cn/${hash}/.jpg`)
+    expect(candidates[1]).toBe('https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160')
+    expect(decodeProxyTarget(candidates[candidates.length - 1]!)).toBe(
+      'https://image.anitabi.cn/bangumi/290980.jpg?plan=h160',
+    )
+  })
+
   it('flag on: .png point images map to a .png mirror key', async () => {
     process.env[R2_BASE_FLAG] = R2_BASE
     const raw = 'https://image.anitabi.cn/points/1/p.png'

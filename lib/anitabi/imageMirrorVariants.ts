@@ -85,8 +85,15 @@ export function enumerateBangumiCoverVariants(rawUrl: string | null | undefined)
         normalizeCoverParams(candidate)
         candidate.searchParams.delete('plan')
       })
+      // 2026-09-10：地图圆头像是封面图的最大消费场景，新增 h160 变体镜像
+      // （8.6KB vs 原图最大 1.9MB）。只能是新增 key —— cover-l/cover-m 的
+      // canonical 计算保持逐字节不变，8.5 万存量对象零漂移。
+      const h160 = buildCanonicalVariant(parsed, 'cover-h160', (candidate) => {
+        normalizeCoverParams(candidate)
+        candidate.searchParams.set('plan', 'h160')
+      })
 
-      return large && medium ? [large, medium] : []
+      return large && medium && h160 ? [large, medium, h160] : []
     }
 
     if (!isBangumiHost(parsed.hostname)) {
