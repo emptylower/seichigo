@@ -15,6 +15,7 @@ import type {
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
   TripPlanRunSnapshotMeta,
+  TripPlanStageInputs,
   TripPlanWithDays,
 } from './repo'
 import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
@@ -98,6 +99,18 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   /** CUT-8：与 Prisma 投影同语义——null = 计划不存在，空串原样返回 */
   async getPlanTitle(planId: string): Promise<string | null> {
     return this.plans.get(planId)?.title ?? null
+  }
+
+  /** CUT-3：hasPointItem 谓词与 stageInputsOfPlan 逐字相同（非 null 且非空串） */
+  async getStageInputs(planId: string): Promise<TripPlanStageInputs | null> {
+    const plan = this.plans.get(planId)
+    if (!plan) return null
+    return {
+      bangumiIds: plan.bangumiIds,
+      startDate: plan.startDate,
+      dayCount: plan.dayCount,
+      hasPointItem: plan.days.some((day) => day.items.some((item) => item.pointId)),
+    }
   }
 
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
@@ -263,6 +276,14 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   }
 
   async updateStage(planId: string, stage: string): Promise<void> {
+    const plan = this.plans.get(planId)
+    if (!plan) return
+    plan.stage = stage
+  }
+
+  /** CUT-6：与 Prisma 的条件 updateMany 同语义——token 不匹配影响 0 行 */
+  async updateStageIfActive(planId: string, token: string, stage: string): Promise<void> {
+    if (!this.isCurrentHolder(planId, token)) return
     const plan = this.plans.get(planId)
     if (!plan) return
     plan.stage = stage

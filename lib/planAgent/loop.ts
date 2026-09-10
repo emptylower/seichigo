@@ -273,21 +273,37 @@ export async function runPlanAgent(
   }
 
   // M4 阶段推断：从持久化证据（计划结构 + 最近 daymap 的 quality + 消息历史）
-  // 推断当前阶段并注入本轮消息；TripPlan.stage 只是缓存，写失败可忽略
+  // 推断当前阶段并注入本轮消息。CUT-3：改用 getStageInputs 轻量投影（单条
+  // SQL 的 EXISTS 子查询），不再为推断拉整棵 PLAN_INCLUDE；TripPlan.stage 只
+  // 是缓存。CUT-6：缓存回写不再阻塞关键路径——推断完只记待写值，等首次
+  // 模型请求确实发出后再后台派发（见 afterModelRequestIssued）
   emitStartup('checkProgress')
   let stage: PlanStage = 'works'
   let stageContext = ''
-  const plan = await deps.repo.getPlan(deps.planId)
-  if (plan) {
+  let pendingStageWrite: PlanStage | null = null
+  const stageInputs = await deps.repo.getStageInputs(deps.planId)
+  if (stageInputs) {
     const lastDaymap = [...stageHistory].reverse().find((m) => m.kind === 'daymap')
     const quality = lastDaymap ? parseDaymapPayload(lastDaymap.content)?.quality ?? null : null
-    stage = derivePlanStage({ plan, messages: stageHistory, quality })
+    stage = derivePlanStage({ plan: stageInputs, messages: stageHistory, quality })
     stageContext = buildStageContext(stage, quality)
-    try {
-      await deps.repo.updateStage(deps.planId, stage)
-    } catch {
-      // 阶段缓存写失败不影响本轮对话
-    }
+    pendingStageWrite = stage
+  }
+
+  // CUT-6：阶段缓存写推后到首次模型请求发出之后释放。pool=1 下更早发起仍会
+  // FIFO 占住唯一连接；挂在请求 resolve 之后则首次模型调用抛错（网络错误/
+  // RunFencedError/abort）时完全不写——今天是无条件写，那是新增丢弃路径。
+  // 已知取舍：run 在首个模型回合前被硬杀 → 本轮不写 stage（原注释接受的，
+  // 下一轮 run 会重新推断并回写）。写必须带 token 栅栏：推后之后"执行时仍
+  // 持有"不再恒真，无栅栏会把接管 run 已写的 stage 覆写回旧值
+  const afterModelRequestIssued = () => {
+    const s = pendingStageWrite
+    pendingStageWrite = null
+    if (!s) return
+    const write = deps.runToken
+      ? () => deps.repo.updateStageIfActive(deps.planId, deps.runToken!, s)
+      : () => deps.repo.updateStage(deps.planId, s) // 无 token（单测/旧调用）走无栅栏写
+    ;(deps.runInBackground ?? runInBackground)(() => write().catch(() => undefined))
   }
 
   // system 消息恒为原始提示词（保住前缀缓存）；阶段上下文拼进内存中最新
@@ -444,7 +460,9 @@ export async function runPlanAgent(
       // C 部分埋点：首次模型请求发出的时刻（幂等只记第一次——空回合重试与
       // 多轮工具循环都不覆盖），与首个 delta 配对算出真实模型 TTFT
       runTiming?.markModelRequestSent()
-      response = await deps.createMessage(
+      // CUT-6：拿到 promise 之后、await 之前派发阶段缓存写——保证首次模型
+      // 调用抛错时这次写也已经发起（与今天无条件写的语义一致）
+      const modelCall = deps.createMessage(
         { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
           (delta) => {
             // B 部分埋点：首个模型 delta（reasoning 或 content）到达的时刻
@@ -455,6 +473,8 @@ export async function runPlanAgent(
             }
           },
         )
+      afterModelRequestIssued()
+      response = await modelCall
       } catch (err) {
         runCost.recordModelCall(null)
         throw err

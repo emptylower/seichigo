@@ -17,6 +17,7 @@ import type {
   TripPlanRunLogRecord,
   TripPlanRunSnapshotMeta,
   TripPlanStatus,
+  TripPlanStageInputs,
   TripPlanWithDays,
 } from './repo'
 import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
@@ -158,6 +159,27 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
   async getPlanTitle(planId: string): Promise<string | null> {
     const row = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { title: true } })
     return row?.title ?? null
+  }
+
+  /**
+   * CUT-3：阶段推断的轻量投影——过滤型 relation count 连同 notIn 一起仍只发
+   * 1 条 SQL（EXISTS 子查询，开发库实测）。必须带 where 过滤而非裸
+   * `_count: { days: true }`：裸计数只回答"有几天"，全是外部地点
+   * （pointId=null）的计划会被从 points 误判成 enrich/deliver；必须写
+   * `{ not: null, notIn: [''] }`——JS 侧真值判断是"非 null 且非空串"。
+   */
+  async getStageInputs(planId: string): Promise<TripPlanStageInputs | null> {
+    const row = await prisma.tripPlan.findUnique({
+      where: { id: planId },
+      select: {
+        bangumiIds: true,
+        startDate: true,
+        dayCount: true,
+        _count: { select: { days: { where: { items: { some: { pointId: { not: null, notIn: [''] } } } } } } },
+      },
+    })
+    if (!row) return null
+    return { bangumiIds: row.bangumiIds, startDate: row.startDate, dayCount: row.dayCount, hasPointItem: row._count.days > 0 }
   }
 
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
@@ -374,6 +396,11 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
 
   async updateStage(planId: string, stage: string): Promise<void> {
     await prisma.tripPlan.updateMany({ where: { id: planId }, data: { stage } })
+  }
+
+  /** CUT-6：token 已不是当前持有者时影响 0 行（语义同 endAgentRun 的条件 updateMany） */
+  async updateStageIfActive(planId: string, token: string, stage: string): Promise<void> {
+    await prisma.tripPlan.updateMany({ where: { id: planId, agentRunToken: token }, data: { stage } })
   }
 
   async appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord> {
