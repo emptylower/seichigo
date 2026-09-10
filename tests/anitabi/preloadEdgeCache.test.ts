@@ -13,8 +13,9 @@ import {
  */
 
 const BROWSER_CC = preloadCacheResponseHeaders()['Cache-Control']
-// 存储 TTL 契约：fresh(300s) + stale(24h) = 86700s，见实现内注释
-const STORAGE_CC = 'public, max-age=86700'
+// 存储 TTL 契约：fresh(300s) + stale(24h) = 86700s，写在 cloudflare-cdn-cache-control
+// （优先级高于 cache-control，条目寿命由它决定），见实现内注释
+const STORAGE_EDGE_CC = 'public, max-age=86700'
 const FRESH_MS = 300_000
 const STALE_WINDOW_MS = 24 * 60 * 60_000
 
@@ -22,6 +23,14 @@ function browserJsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'content-type': 'application/json', 'cache-control': BROWSER_CC },
+  })
+}
+
+/** 生产口径 compute：preload 端点响应自带完整头集（含 cf 专用头 max-age=300）。 */
+function preloadComputeResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'content-type': 'application/json', ...preloadCacheResponseHeaders() },
   })
 }
 
@@ -34,9 +43,10 @@ function storedJsonResponse(
     status: 200,
     headers: {
       'content-type': 'application/json',
-      'cache-control': STORAGE_CC,
+      // cache-control 写入时未被篡改，保持浏览器口径原值
+      'cache-control': browserCc,
+      'cloudflare-cdn-cache-control': STORAGE_EDGE_CC,
       'x-preload-cached-at': String(cachedAtMs),
-      'x-preload-browser-cc': browserCc,
     },
   })
 }
@@ -100,10 +110,10 @@ describe('preload edge cache stale-while-revalidate', () => {
     expect(compute).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
     expect(store.putSpy).not.toHaveBeenCalled()
-    // 浏览器侧口径：存储 TTL 与私有头都不泄漏
+    // 浏览器侧口径：存储私有头与存储用边缘 TTL 头都不泄漏
     expect(res.headers.get('cache-control')).toBe(BROWSER_CC)
     expect(res.headers.get('x-preload-cached-at')).toBeNull()
-    expect(res.headers.get('x-preload-browser-cc')).toBeNull()
+    expect(res.headers.get('cloudflare-cdn-cache-control')).toBeNull()
   })
 
   it('stale 窗口内：立即返回旧内容且标 stale，经宿主 waitUntil 调度一次后台 revalidate', async () => {
@@ -196,28 +206,58 @@ describe('preload edge cache stale-while-revalidate', () => {
     expect(compute).toHaveBeenCalledTimes(1)
   })
 
-  it('存储条目带长 TTL 与 cached-at，浏览器响应不含存储口径', async () => {
+  it('存储条目把长 TTL 写进 cloudflare-cdn-cache-control，cache-control 保持浏览器口径（2026-09-10 根因回归）', async () => {
     const store = createMemoryCacheStore()
     const key = buildPreloadCacheKey('/chunks/3', 'zh')
     const { host } = createStrictWaitUntilHost()
-    const compute = vi.fn(async () => browserJsonResponse({ v: 'first' }))
+    // 生产口径 compute：响应自带 cloudflare-cdn-cache-control: max-age=300
+    const compute = vi.fn(async () => preloadComputeResponse({ v: 'first' }))
 
     const res = await serveFromPreloadEdgeCache(key, { store, ctx: host }, compute)
 
     expect(res.headers.get('x-preload-edge-cache')).toBe('miss')
+    // 返回给调用方：cache-control 仍是浏览器口径，不含存储长 TTL
     expect(res.headers.get('cache-control')).toBe(BROWSER_CC)
+    expect(res.headers.get('cache-control')).not.toContain('86700')
     expect(res.headers.get('x-preload-cached-at')).toBeNull()
 
     expect(store.putSpy).toHaveBeenCalledTimes(1)
     const [keyRequest, stored] = store.putSpy.mock.calls[0] as unknown as [Request, Response]
     expect(keyRequest.url).toBe(key.url)
-    // 存储 TTL = fresh + stale（86700s），且记录了写入时刻与浏览器 CC 原值
-    expect(stored.headers.get('cache-control')).toBe(STORAGE_CC)
+    // 钉死根因：写入缓存的响应上，条目寿命 = fresh+stale（86700s）且必须写在
+    // 优先级最高的 cloudflare-cdn-cache-control 上——旧实现只改 cache-control，
+    // 被 compute 自带的专用头 max-age=300 压掉，300s 后条目被边缘逐出、stale 永远 miss
+    expect(stored.headers.get('cloudflare-cdn-cache-control')).toBe(STORAGE_EDGE_CC)
+    expect(stored.headers.get('cache-control')).toBe(BROWSER_CC)
     expect(Number(stored.headers.get('x-preload-cached-at'))).toBeGreaterThan(0)
-    expect(stored.headers.get('x-preload-browser-cc')).toBe(BROWSER_CC)
+    expect(stored.headers.get('x-preload-browser-cc')).toBeNull()
   })
 
-  it('命中/过期返回时按写入时的浏览器 Cache-Control 原值还原（sprite immutable 场景）', async () => {
+  it('spriteSheet 类 immutable 响应：存储侧边缘 TTL 仍写 fresh+stale，cache-control 保持 immutable 不被篡改', async () => {
+    const store = createMemoryCacheStore()
+    const key = buildPreloadCacheKey('/sprite/sheet', 'v1')
+    const immutableCc = 'public, max-age=31536000, immutable'
+    const { host } = createStrictWaitUntilHost()
+    const compute = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ sheet: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'cache-control': immutableCc },
+        }),
+    )
+
+    const res = await serveFromPreloadEdgeCache(key, { store, ctx: host }, compute)
+
+    expect(res.headers.get('x-preload-edge-cache')).toBe('miss')
+    expect(res.headers.get('cache-control')).toBe(immutableCc)
+
+    expect(store.putSpy).toHaveBeenCalledTimes(1)
+    const [, stored] = store.putSpy.mock.calls[0] as unknown as [Request, Response]
+    expect(stored.headers.get('cloudflare-cdn-cache-control')).toBe(STORAGE_EDGE_CC)
+    expect(stored.headers.get('cache-control')).toBe(immutableCc)
+  })
+
+  it('stale 返回的 cache-control 就是写入时的浏览器口径原值（sprite immutable 场景，无需还原）', async () => {
     const store = createMemoryCacheStore()
     const key = buildPreloadCacheKey('/sprite/sheet', 'v1')
     const immutableCc = 'public, max-age=31536000, immutable'
@@ -229,7 +269,7 @@ describe('preload edge cache stale-while-revalidate', () => {
     expect(res.headers.get('x-preload-edge-cache')).toBe('stale')
     expect(res.headers.get('cache-control')).toBe(immutableCc)
     expect(res.headers.get('cache-control')).not.toContain('86700')
-    expect(res.headers.get('x-preload-browser-cc')).toBeNull()
+    expect(res.headers.get('cloudflare-cdn-cache-control')).toBeNull()
   })
 
   it('无 waitUntil 宿主时 stale 仍立即返回，revalidate 以浮动 promise 落库', async () => {

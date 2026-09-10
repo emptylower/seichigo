@@ -15,10 +15,12 @@
  *   新鲜（≤ FRESH_TTL）→ `hit` 直返；过期但在 stale 窗口内 → `stale` 立即返回
  *   旧内容并经 `ctx.waitUntil` 后台 revalidate 回写（访客不等待）；超出 stale
  *   窗口或无缓存/旧格式条目 → `miss` 正常 compute；
- * - 存储 TTL 与浏览器 TTL 分离：cache.put 的条目寿命由写入响应的 Cache-Control
- *   决定，存储条目带 `max-age=FRESH+STALE`（短了 stale 窗口没过完条目就先被边缘
- *   逐出，SWR 失效）。回给浏览器的响应按写入时记录的原 Cache-Control 还原
- *   （preload 是 s-maxage=300，spriteSheet 是 immutable 1y），绝不泄漏长存储 TTL；
+ * - 存储 TTL 与浏览器 TTL 分离：cache.put 的条目寿命由写入响应的
+ *   `cloudflare-cdn-cache-control` 决定——该 CF 专用头优先级最高、压过
+ *   cache-control（2026-09-10 生产实测：只改 cache-control 被 compute 响应自带
+ *   的专用头 max-age=300 压掉，300s 后条目被边缘逐出，stale 分支永远 miss）。因此
+ *   存储条目在专用头上写 `max-age=FRESH+STALE`，`cache-control` 保持浏览器口径
+ *   原值（preload 是 s-maxage=300，spriteSheet 是 immutable 1y），直返无需还原；
  * - 后台 revalidate 防并发风暴：模块级 in-flight Map，同一 key 同时只有一个在飞；
  * - put / revalidate 一律经 `ctx.waitUntil` 后台执行（本仓库 open-next.config.ts
  *   对队列投递踩过同样的坑：不进 waitUntil 的后台任务会被 isolate 提前回收）。
@@ -39,8 +41,9 @@ const KEY_ORIGIN = 'https://preload-edge-cache.anitabi.seichigo.internal'
 // stale 窗口 24h：点位数据变化很慢（镜像 cron 5 分钟增量同步），落后一个 fresh
 //   周期完全可接受；把「过期即 miss 重算 3-4s」变成「秒回旧值 + 后台刷新」，
 //   冷 colo 上的绝大多数访客由此受益。
-// 存储 TTL = fresh + stale：caches.default 的条目寿命由写入响应的 Cache-Control
-//   决定，必须 ≥ fresh+stale，否则 stale 窗口未过完条目先被边缘逐出，SWR 失效。
+// 存储 TTL = fresh + stale：条目寿命由写入响应的 cloudflare-cdn-cache-control
+//   决定（优先级最高的 CF 专用头），必须 ≥ fresh+stale，否则 stale 窗口未过完
+//   条目先被边缘逐出，SWR 失效。
 const FRESH_TTL_SECONDS = 300
 const STALE_WINDOW_SECONDS = 24 * 60 * 60
 const STORAGE_TTL_SECONDS = FRESH_TTL_SECONDS + STALE_WINDOW_SECONDS
@@ -49,8 +52,12 @@ const STALE_WINDOW_MS = STALE_WINDOW_SECONDS * 1000
 
 /** 存储条目私有头：写入时刻（epoch ms），读取时判定新鲜度。 */
 const CACHED_AT_HEADER = 'x-preload-cached-at'
-/** 存储条目私有头：写入时 compute 响应面向浏览器的 Cache-Control 原值。 */
-const BROWSER_CC_HEADER = 'x-preload-browser-cc'
+/**
+ * 存储条目的边缘寿命头：cloudflare-cdn-cache-control 的优先级高于 cache-control
+ * （Workers 缓存头优先级，https://developers.cloudflare.com/workers/cache/configuration/），
+ * 条目实际寿命由它决定，写入 fresh+stale 长 TTL；Cloudflare 返回客户端前会剥掉它。
+ */
+const EDGE_TTL_HEADER = 'cloudflare-cdn-cache-control'
 
 export type PreloadCacheStore = {
   match(request: Request): Promise<Response | undefined>
@@ -96,33 +103,30 @@ function withDiagnosticHeader(response: Response, value: 'hit' | 'stale' | 'miss
 
 /**
  * 把 compute 响应转成存储条目（消耗传入响应的 body）：
- * - 存储侧 Cache-Control 换成 fresh+stale 的长 TTL（cache.put 按它定条目寿命）；
- * - 浏览器侧 Cache-Control 原值存进私有头，命中/过期返回时还原；
+ * - 存储 TTL 写进 `cloudflare-cdn-cache-control`（fresh+stale）：条目寿命由它
+ *   决定，且优先级高于 cache-control——只改 cache-control 会被 compute 响应自带
+ *   的专用头 max-age=300 压掉，300s 后条目被边缘逐出、stale 形同虚设
+ *   （2026-09-10 生产实测踩坑）；
+ * - `cache-control` 保持浏览器口径原值不动（preload s-maxage=300 / spriteSheet
+ *   immutable 1y），命中/过期直返，无需任何还原逻辑；
  * - `x-preload-cached-at` 记写入时刻，读取时判定 hit/stale/miss。
  */
 function toStorageResponse(source: Response, cachedAtMs: number): Response {
   const stored = new Response(source.body, source)
-  const browserCc = source.headers.get('cache-control')
-  if (browserCc) stored.headers.set(BROWSER_CC_HEADER, browserCc)
-  stored.headers.set('cache-control', `public, max-age=${STORAGE_TTL_SECONDS}`)
+  stored.headers.set(EDGE_TTL_HEADER, `public, max-age=${STORAGE_TTL_SECONDS}`)
   stored.headers.set(CACHED_AT_HEADER, String(cachedAtMs))
   return stored
 }
 
 /**
- * 缓存条目 → 浏览器响应：还原写入时的 Cache-Control（preload s-maxage=300 /
- * spriteSheet immutable 1y），剥掉两个存储私有头，绝不让长存储 TTL 泄漏给浏览器。
+ * 缓存条目 → 浏览器响应：`cache-control` 写入时未被篡改、原样直返（preload
+ * s-maxage=300 / spriteSheet immutable 1y）；剥掉存储私有头（cached-at 与存储用
+ * 边缘 TTL 头），绝不让长存储 TTL 泄漏给调用方（正确性不依赖 CF 剥头行为）。
  */
 function toBrowserResponse(cached: Response, state: 'hit' | 'stale'): Response {
-  const browserCc = cached.headers.get(BROWSER_CC_HEADER)
   const rebuilt = new Response(cached.body, cached)
-  rebuilt.headers.set(
-    'cache-control',
-    // 兜底用 preload 的浏览器口径：宁可短也不泄漏存储 TTL
-    browserCc ?? preloadCacheResponseHeaders()['Cache-Control'],
-  )
   rebuilt.headers.delete(CACHED_AT_HEADER)
-  rebuilt.headers.delete(BROWSER_CC_HEADER)
+  rebuilt.headers.delete(EDGE_TTL_HEADER)
   rebuilt.headers.set('x-preload-edge-cache', state)
   return rebuilt
 }
@@ -244,7 +248,8 @@ export function preloadCacheResponseHeaders(): Record<string, string> {
     'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
     // Cloudflare 边缘的 s-maxage 会禁用 stale-while-revalidate（RFC 9111 §4.2.4）；
     // 若将来开启 Workers Caching，专用头里用 max-age 表达边缘 TTL 以保留 SWR。
-    // 该头仅 Cloudflare 消费，浏览器忽略。
+    // 该头仅 Cloudflare 消费，浏览器忽略；进 caches.default 存储时会被
+    // toStorageResponse 覆盖为 fresh+stale 长 TTL（专用头优先级压过 cache-control）。
     'cloudflare-cdn-cache-control': 'public, max-age=300, stale-while-revalidate=1800',
     // Next 对所有 app 路由无条件 append `vary: rsc, next-router-state-tree, …`；
     // 显式声明一个稳定的 Vary 可覆盖它（见任务 2 验收：vary 必须去除）。
