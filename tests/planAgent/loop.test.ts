@@ -647,8 +647,10 @@ describe('runPlanAgent', () => {
         () => {},
       )
 
-      expect(collected).toHaveLength(1)
-      expect(order).toEqual(['appendRunLog', 'waitUntil'])
+      // 第一次 waitUntil 是 CUT-6 阶段缓存写（首模型请求后）；第二次才是补齐续跑
+      expect(order).toEqual(['waitUntil', 'appendRunLog', 'waitUntil'])
+      expect(collected).toHaveLength(2)
+      expect((await repo.getPlan(plan.id))?.stage).toBe('works')
     } finally {
       delete globalWithCf[CF]
       vi.useRealTimers()
@@ -668,20 +670,24 @@ describe('runPlanAgent', () => {
       const takeover = await repo.beginAgentRun({ planId: plan.id, userId: 'u1', since: new Date(0), limit: 100, busyTtlMs: 60_000, content: { role: 'user', content: 'newer' } })
       if (takeover.status !== 'ok') throw new Error('unreachable')
 
-      await runPlanAgent(
-        {
-          createMessage: vi.fn(async () => assistantMessage({ content: '来晚了' })),
-          repo,
-          planId: plan.id,
-          toolDeps: { planId: plan.id, repo, points: finder },
-          userMessagePersisted: true,
-          runToken: stale.token,
-        },
-        'hi',
-        () => {},
-      )
+    await runPlanAgent(
+      {
+        createMessage: vi.fn(async () => assistantMessage({ content: '来晚了' })),
+        repo,
+        planId: plan.id,
+        toolDeps: { planId: plan.id, repo, points: finder },
+        userMessagePersisted: true,
+        runToken: stale.token,
+      },
+      'hi',
+      () => {},
+    )
 
-      expect(waitUntil).not.toHaveBeenCalled()
+    // 接管的 run 不派发补齐续跑；唯一的 waitUntil 是 CUT-6 阶段缓存写
+    // （若派发的是续跑任务，await 会挂 61s 超时）；旧 token 被栅栏拦成 0 行
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    await waitUntil.mock.calls[0]![0]
+    expect((await repo.getPlan(plan.id))?.stage).toBeNull()
     } finally {
       delete globalWithCf[CF]
     }
@@ -704,7 +710,10 @@ describe('runPlanAgent', () => {
       () => {},
     )
 
-    expect(runInBackground).not.toHaveBeenCalled()
+    // 门控未过 → 无补齐续跑；唯一派发是 CUT-6 缓存写（写下 stage='works'）
+    expect(runInBackground).toHaveBeenCalledTimes(1)
+    await runInBackground.mock.calls[0]![0]()
+    expect((await repo.getPlan(plan.id))?.stage).toBe('works')
     expect((await repo.getPlan(plan.id))?.days).toHaveLength(0) // 保存本身也被拒绝
   })
 
@@ -732,9 +741,10 @@ describe('runPlanAgent', () => {
       () => {},
     )
 
-    expect(runInBackground).not.toHaveBeenCalled()
-    // 恰好两次 getPlan：阶段推断 + save_plan_days 工具内部读取（无 runToken 时
-    // toolDeps.repo 也走 deps.repo 代理）；续跑若派发会多出第三次往返
-    expect(getPlan).toHaveBeenCalledTimes(2)
+    // 唯一派发是 CUT-6 缓存写；无补齐续跑（否则 getPlan 多出续跑读取往返）
+    expect(runInBackground).toHaveBeenCalledTimes(1)
+    await runInBackground.mock.calls[0]![0]()
+    expect((await repo.getPlan(plan.id))?.stage).toBe('works')
+    expect(getPlan).toHaveBeenCalledTimes(1) // save 工具内部读取（阶段推断已走 getStageInputs）
   })
 })

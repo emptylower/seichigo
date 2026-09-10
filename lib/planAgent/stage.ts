@@ -1,6 +1,6 @@
 import type { PlanQualityReport } from './gates'
 import type { EnrichReport } from './enrich/types'
-import type { TripPlanMessage, TripPlanWithDays } from '@/lib/tripPlan/repo'
+import type { TripPlanMessage, TripPlanStageInputs, TripPlanWithDays } from '@/lib/tripPlan/repo'
 
 /**
  * 阶段由持久化证据推断（设计 §3），不存"当前阶段"作为唯一真值：断线、空回合、
@@ -47,22 +47,38 @@ const GATE_LABELS: Record<string, string> = {
   estimate_ratio: '估算门',
 }
 
+/**
+ * 推断只读计划的 bangumiIds/startDate/dayCount/点位存在性（CUT-3 起收窄为
+ * TripPlanStageInputs 轻量投影，loop 用单条 SQL 的 getStageInputs 取数），
+ * 绝不读 item.point——将来给本函数加任何"多读一个字段"的需求都必须先在
+ * 投影与 stageInputsOfPlan 里补齐，不许结构性放宽类型。
+ */
 export function derivePlanStage(input: {
-  plan: TripPlanWithDays
+  plan: TripPlanStageInputs
   messages: TripPlanMessage[]
   quality: PlanQualityReport | null
 }): PlanStage {
   const { plan, messages, quality } = input
   if (!plan.bangumiIds.length) return 'works'
   if (!plan.startDate || plan.dayCount <= 1) return 'dates'
-  const hasPointItem = plan.days.some((day) => day.items.some((item) => item.pointId))
-  if (!plan.days.length || !hasPointItem) return 'points'
+  // days 为空时 [].some() 恒 false：!hasPointItem ≡ 旧版的 !plan.days.length || !hasPointItem
+  if (!plan.hasPointItem) return 'points'
   if (quality && !quality.passed) return 'enrich'
   const lastDaymapIndex = findLastIndex(messages, (m) => m.kind === 'daymap')
   // 有 days 却从未交付过 daymap（历史遗留数据）：回到补齐阶段重走门控
   if (lastDaymapIndex < 0) return 'enrich'
   const humanAfterDaymap = messages.slice(lastDaymapIndex + 1).some((m) => m.kind === 'human')
   return humanAfterDaymap ? 'revise' : 'deliver'
+}
+
+/** 持有完整 plan 的调用方（测试等）用它构造 stage 输入；repoMemory.getStageInputs 的谓词与这里逐字相同 */
+export function stageInputsOfPlan(plan: TripPlanWithDays): TripPlanStageInputs {
+  return {
+    bangumiIds: plan.bangumiIds,
+    startDate: plan.startDate,
+    dayCount: plan.dayCount,
+    hasPointItem: plan.days.some((day) => day.items.some((item) => item.pointId)),
+  }
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
