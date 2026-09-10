@@ -70,7 +70,9 @@ describe('runPlanAgent 运行实况（第七轮 A1）', () => {
     expect(upsert).toHaveBeenCalled()
     const lastPatch = upsert.mock.calls.at(-1)![1]
     expect(lastPatch.runToken).toBe(begin.token)
-    expect(lastPatch.reasoningReplace).toContain('先想想去哪。')
+    // 首帧优化：启动阶段的 status 强制 flush 已消耗 firstFlush（reasoning 为空），
+    // 首个 reasoning 补丁因此走 reasoningAppend（追加到本 run 的空行上，内容等价）
+    expect(lastPatch.reasoningReplace ?? lastPatch.reasoningAppend).toContain('先想想去哪。')
     expect(clear).toHaveBeenCalledWith(plan.id)
     expect(await repo.getRunLive(plan.id)).toBeNull()
   })

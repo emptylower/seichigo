@@ -28,6 +28,10 @@ export type ServerTextDict = {
     askOpinion: string
     askGeneric: string
     processing: string
+    /** 2026-09-10 首帧优化：run 启动阶段真实发生的三步（读取历史 → 核对进度 → 组织思路） */
+    readHistory: string
+    checkProgress: string
+    organize: string
   }
   summary: {
     work: (query: string) => string
@@ -97,6 +101,9 @@ const ZH: ServerTextDict = {
     askOpinion: '正在征求你的意见',
     askGeneric: '正在向用户发起提问',
     processing: '正在处理…',
+    readHistory: '正在读取对话历史',
+    checkProgress: '正在核对行程进度',
+    organize: '正在组织思路',
   },
   summary: {
     work: (query) => `作品「${query}」`,
@@ -166,6 +173,9 @@ const EN: ServerTextDict = {
     askOpinion: 'Asking for your opinion',
     askGeneric: 'Asking you a question',
     processing: 'Working…',
+    readHistory: 'Reading conversation history',
+    checkProgress: 'Checking itinerary progress',
+    organize: 'Organizing thoughts',
   },
   summary: {
     work: (query) => `Work "${query}"`,
@@ -237,6 +247,9 @@ const JA: ServerTextDict = {
     askOpinion: 'あなたの意見を確認中',
     askGeneric: 'あなたに質問中',
     processing: '処理中…',
+    readHistory: '会話履歴を読み込み中',
+    checkProgress: '行程の進捗を確認中',
+    organize: '思考を整理中',
   },
   summary: {
     work: (query) => `作品「${query}」`,

@@ -22,7 +22,8 @@ import { summarizeToolArgs, summarizeToolResult, toolStatusPhrase } from './stat
 import { serverText } from './serverText'
 import { createRunLiveWriter, type RunLiveWriter } from './runLive'
 import { createEventCoalescer } from './eventCoalescer'
-import { createLeaseWatcher, isUserStoppedAbort, RUN_STOP_MARKER } from './stop'
+import { createLeaseWatcher, isUserStoppedAbort, stopEvidencePresent, stoppedLogExists } from './stop'
+import { createStartupStatusEmitter } from './startupStatus'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
 import { createRunCostTracker, type RunCostDeps } from './runCost'
@@ -248,6 +249,43 @@ export async function runPlanAgent(
   // §0.6：本 run 的服务端固定文案语言（status/summary/netError/askUserNote）
   const locale = deps.locale ?? 'zh'
 
+  // 第七轮 A1：运行实况旁路写库（刷新恢复用）。只在持有 runToken 时启用；
+  // emit 把事件同时发给 SSE 与 writer（节流落库），不改变既有事件行为。
+  // 2026-09-10 首帧优化：构造上移到函数体最前——listMessages/getPlan/首次
+  // 模型调用之前的启动步骤也要发 status 实况，晚于此创建没人接收
+  const runLiveWriter: RunLiveWriter | null = deps.runToken
+    ? createRunLiveWriter({ repo: deps.repo, planId: deps.planId, runToken: deps.runToken })
+    : null
+  // 第九轮 A4：事件计数素材——run 结束打一条 summary 日志；被平台硬杀时
+  // 这条不会出现（finally 都跑不到），可作为日志侧证据
+  let emittedEvents = 0
+  let reasoningChars = 0
+  const forwardEvent = (event: PlanAgentEvent) => {
+    emittedEvents += 1
+    if (event.type === 'reasoning') reasoningChars += event.delta.length
+    onEvent(event)
+    runLiveWriter?.onEvent(event)
+  }
+  // 第九轮 A2：emit 经事件合并器——reasoning/text 增量按时间/字数阈值合并
+  // 成单条事件再下发（SSE 与实况 writer 都在合并器之后接收）；每 token 一条
+  // SSE 事件是长 run 的 CPU 大头。done/error 前强制 flush 保证内容完整
+  const eventCoalescer = createEventCoalescer(forwardEvent)
+  const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
+
+  // 2026-09-10 首帧优化：启动阶段在真实步骤上发 status 实况（见
+  // startupStatus.ts）。先确认仍持有 busy 位——被接管（队列滞留后启动）的
+  // run 不发也不落库，旧 token 落笔会覆盖新 run 的实况行（runLive M2 语义）
+  let holdsRun = true
+  if (deps.runToken) {
+    try {
+      holdsRun = !(await deps.repo.isAgentRunStopped(deps.planId, deps.runToken))
+    } catch {
+      // 读失败不拦启动：后续栅栏/续租仍会正确拦截被接管的 run
+    }
+  }
+  const emitStartup = createStartupStatusEmitter(emit, locale, holdsRun)
+
+  emitStartup('readHistory')
   const history = await deps.repo.listMessages(deps.planId)
 
   const userParam: ChatMessageParam = { role: 'user', content: userMessage }
@@ -260,6 +298,7 @@ export async function runPlanAgent(
 
   // M4 阶段推断：从持久化证据（计划结构 + 最近 daymap 的 quality + 消息历史）
   // 推断当前阶段并注入本轮消息；TripPlan.stage 只是缓存，写失败可忽略
+  emitStartup('checkProgress')
   let stage: PlanStage = 'works'
   let stageContext = ''
   const plan = await deps.repo.getPlan(deps.planId)
@@ -326,27 +365,6 @@ export async function runPlanAgent(
   // 直接用裸 repo
   const runRepo = deps.runToken ? withFencing(deps.repo, deps.runToken) : deps.repo
 
-  // 第七轮 A1：运行实况旁路写库（刷新恢复用）。只在持有 runToken 时启用；
-  // emit 把事件同时发给 SSE 与 writer（节流落库），不改变既有事件行为
-  const runLiveWriter: RunLiveWriter | null = deps.runToken
-    ? createRunLiveWriter({ repo: deps.repo, planId: deps.planId, runToken: deps.runToken })
-    : null
-  // 第九轮 A4：事件计数素材——run 结束打一条 summary 日志；被平台硬杀时
-  // 这条不会出现（finally 都跑不到），可作为日志侧证据
-  let emittedEvents = 0
-  let reasoningChars = 0
-  const forwardEvent = (event: PlanAgentEvent) => {
-    emittedEvents += 1
-    if (event.type === 'reasoning') reasoningChars += event.delta.length
-    onEvent(event)
-    runLiveWriter?.onEvent(event)
-  }
-  // 第九轮 A2：emit 经事件合并器——reasoning/text 增量按时间/字数阈值合并
-  // 成单条事件再下发（SSE 与实况 writer 都在合并器之后接收）；每 token 一条
-  // SSE 事件是长 run 的 CPU 大头。done/error 前强制 flush 保证内容完整
-  const eventCoalescer = createEventCoalescer(forwardEvent)
-  const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
-
   const enrichBudget = deps.toolDeps.enrichBudget ?? createEnrichBudget()
   if (deps.entitlements) {
     enrichBudget.places.max = deps.entitlements.placesMax
@@ -399,35 +417,9 @@ export async function runPlanAgent(
   // §0 model_info：每回合只在第一次模型调用结束后发一次
   let modelInfoEmitted = false
   let reasoningSeen = false
-  // 停止证据检查（§0 + H2）：token 已不匹配的栅栏/abort 是否因"用户停止"而
-  // 起。两份证据任一成立即可：实况行停止标记（loop 收尾前、GET 5 分钟保鲜
-  // 内），或同 token 的持久 stopped 运行日志（stopAgentRun 落笔，不会被
-  // GET 回收——标记行被并发清掉时 loop 仍能正确归类）
-  const stopEvidencePresent = async (): Promise<boolean> => {
-    if (!deps.runToken) return false
-    try {
-      const row = await deps.repo.getRunLive(deps.planId)
-      if (row?.runToken === deps.runToken && row.statusText === RUN_STOP_MARKER) return true
-    } catch {
-      // 读实况失败继续查日志
-    }
-    try {
-      const logs = await deps.repo.listRunLogs(deps.planId)
-      return logs.some((log) => log.stage === 'stopped' && log.runToken === deps.runToken)
-    } catch {
-      return false
-    }
-  }
-  // H2：stopAgentRun 是否已为本次停止写过持久日志（loop 收尾据此去重）
-  const stoppedLogExists = async (): Promise<boolean> => {
-    if (!deps.runToken) return false
-    try {
-      const logs = await deps.repo.listRunLogs(deps.planId)
-      return logs.some((log) => log.stage === 'stopped' && log.runToken === deps.runToken)
-    } catch {
-      return false
-    }
-  }
+  // 首帧优化：首次模型调用前的最后一条启动实况——接下来是 DeepSeek 的
+  // TTFT 黑屏期（1–3 秒），有这句真实状态挂着才不像卡死
+  emitStartup('organize')
   try {
     // 强制 ask_user 协议守卫（M3 修订）：只要本轮响应里没有 ask_user 调用，
     // 正文又像"向用户提问"（含"解释文字 + 其它工具调用"的组合），整条响应
@@ -635,7 +627,7 @@ export async function runPlanAgent(
       // 清了 token、留下标记行/持久日志），也可能是 busy 过期被新请求接管
       // （保持既有静默收尾语义）。按停止证据区分归属：证据在 → stopped 收尾；
       // 否则 fenced
-      if (await stopEvidencePresent()) {
+      if (await stopEvidencePresent(deps.repo, deps.planId, deps.runToken ?? null)) {
         stopped = true
       } else {
         // 已被新请求接管，静默结束——不是真正的错误，new 请求会接手对话，
@@ -672,7 +664,7 @@ export async function runPlanAgent(
     // 第八轮 A1：客户端断开的 run 写 stage=interrupted（其余字段照常），
     // GET 据此向前端暴露「上次被打断、可自动续跑」
     if (!fenced) {
-      const stoppedLogWritten = stopped && (await stoppedLogExists())
+      const stoppedLogWritten = stopped && (await stoppedLogExists(deps.repo, deps.planId, deps.runToken ?? null))
       if (stoppedLogWritten) {
         await runCost.writeStoppedLogUsage(deps.repo, deps.planId, deps.runToken ?? null)
       } else {

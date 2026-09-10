@@ -3,6 +3,7 @@ import type OpenAI from 'openai'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
+import { startupStatusPhrase } from '@/lib/planAgent/startupStatus'
 import type { PointFinder } from '@/lib/planAgent/points'
 
 const finder: PointFinder = {
@@ -126,8 +127,15 @@ describe('runPlanAgent telemetry events', () => {
       (e) => events.push(e),
     )
 
-    const statuses = events.filter((e) => e.type === 'status')
-    expect(statuses).toEqual([{ type: 'status', phase: '正在获取点位列表' }])
+    const statuses = events.filter((e) => e.type === 'status') as Extract<PlanAgentEvent, { type: 'status' }>[]
+    // 2026-09-10 首帧优化：启动阶段会先发三条真实步骤的 status 实况；剔除
+    // 它们之后，工具执行仍只发自己那一条短语（原有断言强度不变）
+    const startupPhrases = (['readHistory', 'checkProgress', 'organize'] as const).map((p) =>
+      startupStatusPhrase(p, 'zh'),
+    )
+    expect(statuses.filter((s) => !startupPhrases.includes(s.phase))).toEqual([
+      { type: 'status', phase: '正在获取点位列表' },
+    ])
 
     const toolCallEvents = events.filter((e) => e.type === 'tool_call')
     expect(toolCallEvents).toHaveLength(2)
