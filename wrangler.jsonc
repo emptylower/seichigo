@@ -62,7 +62,10 @@
     // 这是唯一的停售开关：Creem 故障或发现扣款异常时改回 "0" 重新部署即可
     // 一分钟内关闭入口（前端会弹 CheckoutUnavailableDialog），无需回滚代码。
     // 预览用 --var BILLING_CHECKOUT_ENABLED=0 覆盖
-    "BILLING_CHECKOUT_ENABLED": "1"
+    "BILLING_CHECKOUT_ENABLED": "1",
+    // 2026-09-10 Hyperdrive 端点选择：pooled / direct / off（见上方 hyperdrive
+    // 段注释）。切换端点或回滚只改这一个字符串，不用改代码
+    "HYPERDRIVE_ENDPOINT": "pooled"
   },
   "r2_buckets": [
     {
@@ -79,6 +82,16 @@
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
       "bucket_name": "seichigo-next-inc-cache"
     }
+  ],
+  // 2026-09-10 Hyperdrive：边缘维护到 Neon 的连接池，消除每 isolate 的
+  // TCP+TLS+auth 建连成本（实测东京 colo 每次建连占 ~0.6s/往返的大头）。
+  // 两个配置都在 API 侧禁用了查询缓存——写入不失效缓存，run-token 栅栏、
+  // 计费余量、session 必须读到最新值；禁缓存不影响连接池化收益。
+  // HYPERDRIVE_ENDPOINT（vars）选端点：pooled=Neon pooler（生产现用），
+  // direct=Neon 直连（对比实验），off=回滚开关（走 process.env.DATABASE_URL）。
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "54ccf978d8124d4abf2471693f47d226" },
+    { "binding": "HYPERDRIVE_DIRECT", "id": "093adf75486249509fda61afc1af6614" }
   ],
   "d1_databases": [
     {

@@ -65,6 +65,14 @@ export type CfBindingsEnv = {
    * vitest）走现有 SSE 内联路径。
    */
   PLAN_AGENT_QUEUE?: { send(body: unknown): Promise<void> }
+  /**
+   * 2026-09-10 Hyperdrive：边缘连接池到 Neon（配置侧已禁查询缓存，保
+   * run-token 栅栏/计费/session 读最新值）。结构子集对齐
+   * worker-configuration.d.ts 的 Hyperdrive——lib 代码只用 connectionString，
+   * 不直接引用全局类型（worker-configuration.d.ts 不在任何 tsconfig include 里）。
+   */
+  HYPERDRIVE?: { connectionString: string }
+  HYPERDRIVE_DIRECT?: { connectionString: string }
 }
 
 export type CfBindingsCtx = {
