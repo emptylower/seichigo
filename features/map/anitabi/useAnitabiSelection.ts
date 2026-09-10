@@ -10,6 +10,7 @@ import {
 } from './media'
 import { pickFocusCluster } from './geo'
 import { bangumiDetailCache, cachePut } from './shared'
+import { runAfterBasemapFirstLoad } from './basemapFirstLoadGate'
 
 let prefetchAbort: AbortController | null = null
 
@@ -191,7 +192,8 @@ export function useAnitabiSelection(ctx: any) {
         detailRef.current = warmDetail
         setDetail(warmDetail)
         if (warmDetail.points.length > 0) {
-          warmPointImages(warmDetail.points)
+          // 点位图预取让位底图：load 前不抢网络
+          runAfterBasemapFirstLoad(() => warmPointImages(warmDetail.points))
           focusByDetail(warmDetail, pointId)
         }
         flushPointLayerSoon()
@@ -212,8 +214,10 @@ export function useAnitabiSelection(ctx: any) {
           detailRef.current = cached
           setDetail(cached)
           const cachedCover = await normalizeCoverImageUrlAsync(cached.card.cover)
-          if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
-          warmPointImages(cached.points)
+          runAfterBasemapFirstLoad(() => {
+            if (cachedCover) void prefetchImageUrl(cachedCover).catch(() => null)
+            warmPointImages(cached.points)
+          })
           flushPointLayerSoon()
           focusByDetail(cached, pointId)
           syncCompleteModeRef.current()
@@ -240,8 +244,10 @@ export function useAnitabiSelection(ctx: any) {
         detailRef.current = json
         setDetail(json)
         const nextCover = await normalizeCoverImageUrlAsync(json.card.cover)
-        if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
-        warmPointImages(json.points)
+        runAfterBasemapFirstLoad(() => {
+          if (nextCover) void prefetchImageUrl(nextCover).catch(() => null)
+          warmPointImages(json.points)
+        })
         flushPointLayerSoon()
         focusByDetail(json, pointId)
         syncCompleteModeRef.current()

@@ -124,6 +124,7 @@ export default function AnitabiMapLayout(props: any) {
     locateUser,
     locateHint,
     warmupProgress,
+    warmupAllTasksReady,
     completeModeLoading,
   } = props
 
@@ -133,9 +134,14 @@ export default function AnitabiMapLayout(props: any) {
     { key: 'recent' as const, label: label.recent },
     { key: 'hot' as const, label: label.hot },
   ]
+  // warmupProgress.percent 是「地图可用」可见口径（底图 + 卡片，见 useAnitabiMapController）：
+  // 卡片只跟 map+cards 的完成度，details/images 后台预热不再让卡片停留。
   const warmupReady = warmupProgress.percent >= 100
   const warmupActive = warmupProgress.phase === 'loading' && !warmupReady
-  const iconPreppingActive = completeModeLoading && !warmupActive
+  // iconPrepping 的互斥沿用旧的内部口径（四任务全部完成前 warmup 视为仍在进行），
+  // 保证 complete 模式图标准备提示的出现时机与之前一致。
+  const warmupInternalActive = warmupProgress.phase === 'loading' && !warmupAllTasksReady
+  const iconPreppingActive = completeModeLoading && !warmupInternalActive
   const mergedLoadingVisible = warmupActive || iconPreppingActive
   const mergedLoadingPercent = iconPreppingActive ? 99 : warmupProgress.percent
   const mergedLoadingTitle = iconPreppingActive ? label.preloadIconsTitle : warmupProgress.title
@@ -452,6 +458,7 @@ export default function AnitabiMapLayout(props: any) {
     />
   ) : null
 
+  // 阻塞式预热遮罩已废弃：warmupOverlay 始终为 null，不要接回（进度反馈只走 mapLoadingIndicator 卡片）。
   return (
     <MapShell
       warmupOverlay={null}

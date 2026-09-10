@@ -172,6 +172,17 @@ describe('advanceBootstrap', () => {
             r2Key: await computeMirrorKey('https://image.anitabi.cn/bangumi/1/cover.jpg', 'image/jpeg'),
             status: 'pending',
           },
+          {
+            sourceType: 'bangumi-cover',
+            sourceId: '1',
+            variant: 'cover-h160',
+            canonicalUrl: 'https://image.anitabi.cn/bangumi/1/cover.jpg?plan=h160',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/bangumi/1/cover.jpg?plan=h160',
+              'image/jpeg',
+            ),
+            status: 'pending',
+          },
         ],
         skipDuplicates: true,
       })
@@ -232,6 +243,17 @@ describe('advanceBootstrap', () => {
             variant: 'cover-m',
             canonicalUrl: 'https://image.anitabi.cn/bangumi/2/cover.jpg',
             r2Key: await computeMirrorKey('https://image.anitabi.cn/bangumi/2/cover.jpg', 'image/jpeg'),
+            status: 'pending',
+          },
+          {
+            sourceType: 'bangumi-cover',
+            sourceId: '2',
+            variant: 'cover-h160',
+            canonicalUrl: 'https://image.anitabi.cn/bangumi/2/cover.jpg?plan=h160',
+            r2Key: await computeMirrorKey(
+              'https://image.anitabi.cn/bangumi/2/cover.jpg?plan=h160',
+              'image/jpeg',
+            ),
             status: 'pending',
           },
         ],

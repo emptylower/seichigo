@@ -267,8 +267,8 @@ describe('cronDelta', () => {
           ],
         })
 
-      // A2/E4 新口径：点位图 2 个变体（h160、w640q80），bangumi 封面 2 个 → 共 4
-      await expect(cronDelta(prisma, { sourceBatchSize: 25 })).resolves.toEqual({ enqueued: 4 })
+      // A2/E4 新口径：点位图 2 个变体（h160、w640q80），bangumi 封面 3 个（含 cover-h160）→ 共 5
+      await expect(cronDelta(prisma, { sourceBatchSize: 25 })).resolves.toEqual({ enqueued: 5 })
 
       expect(findUnique).toHaveBeenCalledWith({
         where: {
@@ -296,7 +296,7 @@ describe('cronDelta', () => {
         take: 25,
         select: { id: true, image: true, updatedAt: true },
       })
-      expect(create).toHaveBeenCalledTimes(4)
+      expect(create).toHaveBeenCalledTimes(5)
       expect(updateMany).not.toHaveBeenCalled()
       expect(create).toHaveBeenNthCalledWith(1, {
         data: {
@@ -311,7 +311,7 @@ describe('cronDelta', () => {
           status: 'pending',
         },
       })
-      expect(create).toHaveBeenNthCalledWith(4, {
+      expect(create).toHaveBeenNthCalledWith(5, {
         data: {
           sourceType: 'point-image',
           sourceId: 'pn1',
@@ -411,7 +411,7 @@ describe('cronDelta', () => {
         points: [],
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 4 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 6 })
 
       expect(upsert).toHaveBeenCalledWith({
         where: {
@@ -515,7 +515,7 @@ describe('cronDelta', () => {
         mirrorStates,
       })
 
-      await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 3 })
+      await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 4 })
 
       expect(stateStore.get(buildStateKey('bangumi-cover', '999', 'cover-l'))).toEqual({
         sourceType: 'bangumi-cover',
@@ -626,6 +626,7 @@ describe('cronDelta', () => {
       const variants: Array<{ label: string; url: string }> = [
         { label: 'cover-l', url: 'https://image.anitabi.cn/bangumi/777/cover.jpg?plan=l' },
         { label: 'cover-m', url: 'https://image.anitabi.cn/bangumi/777/cover.jpg' },
+        { label: 'cover-h160', url: 'https://image.anitabi.cn/bangumi/777/cover.jpg?plan=h160' },
       ]
 
       const mirrorStates: ExistingMirrorState[] = await Promise.all(
@@ -662,7 +663,7 @@ describe('cronDelta', () => {
       // The unchanged-URL branch must skip both updateMany paths.
       await expect(cronDelta(prisma)).resolves.toEqual({ enqueued: 0 })
 
-      expect(create).toHaveBeenCalledTimes(2)
+      expect(create).toHaveBeenCalledTimes(3)
       expect(updateMany).not.toHaveBeenCalled()
 
       for (const state of mirrorStates) {
@@ -741,19 +742,19 @@ describe('cronDelta', () => {
         ],
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 8 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 2, pointLastId: 'b' }),
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 8 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 10 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 4, pointLastId: 'd' }),
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 4 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 2 })).resolves.toEqual({ enqueued: 5 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 5, pointLastId: 'e' }),
@@ -860,7 +861,7 @@ describe('cronDelta', () => {
         points: pointRows,
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 2 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 3 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 1 }),
@@ -872,7 +873,7 @@ describe('cronDelta', () => {
         updatedAt: sharedUpdatedAt,
       })
 
-      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 4 })
+      await expect(cronDelta(prisma, { sourceBatchSize: 1 })).resolves.toEqual({ enqueued: 5 })
       expect(readCursorRow()).toEqual({
         mirroredAt: sharedUpdatedAt,
         canonicalUrl: JSON.stringify({ bangumiLastId: 2, pointLastId: 'pt-1' }),

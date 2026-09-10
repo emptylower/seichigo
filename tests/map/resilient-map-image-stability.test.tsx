@@ -132,7 +132,7 @@ describe('ResilientMapImage（2026-09 稳定性回归）', () => {
 
       await flushMicrotasks()
       expect((screen.getByAltText('timeout-cover') as HTMLImageElement).src).toBe(
-        'https://img-tc.anitabi.cn/bangumi/290980.jpg',
+        'https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160',
       )
 
       // 直连 4s 超时 → 第二档；再 4s → 代理档；代理 6s → 代理 retry 档，全程不应记断路器
@@ -167,7 +167,7 @@ describe('ResilientMapImage（2026-09 稳定性回归）', () => {
     )
 
     const firstDirect = await screen.findByAltText('error-cover') as HTMLImageElement
-    expect(firstDirect.src).toBe('https://img-tc.anitabi.cn/bangumi/405785.jpg')
+    expect(firstDirect.src).toBe('https://img-tc.anitabi.cn/bangumi/405785.jpg?plan=h160')
     fireEvent.error(firstDirect)
 
     const firstRetry = await screen.findByAltText('error-cover') as HTMLImageElement
@@ -189,7 +189,7 @@ describe('ResilientMapImage（2026-09 稳定性回归）', () => {
       />,
     )
     const secondDirect = await screen.findByAltText('error-cover') as HTMLImageElement
-    expect(secondDirect.src).toBe('https://img-tc.anitabi.cn/bangumi/405785.jpg')
+    expect(secondDirect.src).toBe('https://img-tc.anitabi.cn/bangumi/405785.jpg?plan=h160')
     fireEvent.error(secondDirect)
 
     expect(resolveHostState('img-tc.anitabi.cn', 'cover', Date.now())).toBe('degraded')
@@ -219,7 +219,7 @@ describe('ResilientMapImage（2026-09 稳定性回归）', () => {
       await flushMicrotasks()
       // 前两个候选（blocked）被跳过，最后一档直连 retry 仍正常发出请求渲染 img
       const img = screen.getByAltText('blocked-cover') as HTMLImageElement
-      expect(img.src).toBe('https://img-tc.anitabi.cn/bangumi/513345.jpg?_retry=1')
+      expect(img.src).toBe('https://img-tc.anitabi.cn/bangumi/513345.jpg?plan=h160&_retry=1')
 
       // 降级预算 2s：预算内不超时、不秒失败
       await advanceTimers(1999)

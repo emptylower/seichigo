@@ -42,7 +42,6 @@ export function useAnitabiBootstrapData(ctx: any) {
     cacheStoreReady,
     resetWarmupTaskProgress,
     updateWarmupProgress,
-    setWarmupUiBlocking,
     warmupBlockingUiRef,
     warmupAbortRef,
     warmupRunTokenRef,
@@ -240,7 +239,6 @@ export function useAnitabiBootstrapData(ctx: any) {
   useEffect(() => {
     if (!cacheStoreReady) return
     if (!MAP_PRELOAD_V2_ENABLED) {
-      setWarmupUiBlocking(false)
       loadBootstrap().catch(() => null)
       return
     }
@@ -279,14 +277,12 @@ export function useAnitabiBootstrapData(ctx: any) {
         resetWarmupTaskProgress()
         updateWarmupProgress({ phase: 'idle', percent: 0, detail: '' })
         warmupBlockingUiRef.current = false
-        setWarmupUiBlocking(false)
       })
     })().catch(() => null)
     return () => {
       warmupRunTokenRef.current += 1
       ac.abort()
       warmupBlockingUiRef.current = false
-      setWarmupUiBlocking(false)
       if (warmupAbortRef.current === ac) warmupAbortRef.current = null
     }
   }, [
@@ -299,7 +295,6 @@ export function useAnitabiBootstrapData(ctx: any) {
     setCards,
     setCardsLoadError,
     setLoading,
-    setWarmupUiBlocking,
     updateWarmupProgress,
     warmupAbortRef,
     warmupAllTabsData,

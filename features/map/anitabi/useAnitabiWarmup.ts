@@ -12,6 +12,7 @@ import {
   markFirstViewRequestStart,
 } from './firstView'
 import { resolveMapImageDiagSurface } from './mapImageSessionManager'
+import { waitForBasemapFirstLoad } from './basemapFirstLoadGate'
 import { withPromiseTimeout, createRequestSignalWithTimeout, yieldToMainThread, normalizeCoverImageUrlAsync, normalizePointImageUrl, prefetchImageUrl, buildWarmDetail, getImageWarmupConcurrency } from './media'
 import {
   COMPLETE_MODE_SPRITE_BUDGET_MS,
@@ -48,7 +49,6 @@ export function useAnitabiWarmup(ctx: any) {
     tab,
     warmupRunTokenRef,
     warmupBlockingUiRef,
-    setWarmupUiBlocking,
     warmupMetricRef,
     mapImageDiagManagerRef,
     updateWarmupProgress,
@@ -336,7 +336,6 @@ export function useAnitabiWarmup(ctx: any) {
 
     const startedAt = performance.now()
     warmupBlockingUiRef.current = !background
-    setWarmupUiBlocking(!background)
     setCardsLoadError(null)
     warmupMetricRef.current.warmup_run_token = runToken
     warmupMetricRef.current.warmup_session_started_at = Date.now()
@@ -482,6 +481,8 @@ export function useAnitabiWarmup(ctx: any) {
 
     warmupMetricRef.current.promise_images_state = 1
     const imagesWarmupPromise = (async () => {
+      // 图片预取让位底图：等首次 load 再启动（超时回落不阻塞），中止检查沿用下方既有逻辑
+      await waitForBasemapFirstLoad(WARMUP_MAP_READY_TIMEOUT_MS)
       const manifest = await manifestPromise
       if (signal?.aborted || !isActiveRun()) return
 
@@ -676,7 +677,6 @@ export function useAnitabiWarmup(ctx: any) {
       if (isActiveRun()) {
         warmupMetricRef.current.warmup_aborted = 1
         warmupBlockingUiRef.current = false
-        setWarmupUiBlocking(false)
         updateProgressSafe({ phase: 'idle', percent: 0, detail: '' })
       }
       return
@@ -685,7 +685,6 @@ export function useAnitabiWarmup(ctx: any) {
     completeTasksSafe()
     updateProgressSafe({ phase: 'done', percent: 100, detail: label.preloadDone })
     warmupBlockingUiRef.current = false
-    setWarmupUiBlocking(false)
     warmupMetricRef.current.warmup_aborted = 0
     warmupMetricRef.current.unlock_ms = Math.round(performance.now() - startedAt)
     window.setTimeout(() => {
@@ -742,11 +741,8 @@ export function useAnitabiWarmup(ctx: any) {
     fetchPreloadChunkByIndex,
     fetchPreloadManifest,
     hydrateTabCardsFromManifest,
-    label.preloadCards,
-    label.preloadDetails,
-    label.preloadDone,
-    label.preloadImages,
-    label.preloadMapPreparing,
+    label.preloadCards, label.preloadDetails, label.preloadDone,
+    label.preloadImages, label.preloadMapPreparing,
     preloadMapBaseLayer,
     resetWarmupTaskProgress,
     setBootstrap,
@@ -754,7 +750,6 @@ export function useAnitabiWarmup(ctx: any) {
     setLoading,
     setTabCardsVersion,
     setWarmPointDataVersion,
-    setWarmupUiBlocking,
     tabCardsRef,
     updateWarmupProgress,
     updateWarmupTask,
