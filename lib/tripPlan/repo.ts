@@ -65,6 +65,21 @@ export type TripPlan = {
 
 export type TripPlanWithDays = TripPlan & { days: TripPlanDay[] }
 
+/**
+ * 阶段推断的轻量投影（2026-09-10 CUT-3）：derivePlanStage 对计划的全部读取
+ * 就是这四个字段——不读 stage/title/status/userId/preferences/updatedAt，不读
+ * day 的任何列，更不读 item.point。hasPointItem 必须由仓储层自带"存在任一
+ * items[].pointId 为真值（非 null 且非空串）的条目"谓词，不许结构性放宽成
+ * 传一棵截断的 days 树——否则类型检查照过、stage 静默变错。
+ */
+export type TripPlanStageInputs = {
+  bangumiIds: number[]
+  startDate: Date | null
+  dayCount: number
+  /** 是否存在任一 items[].pointId 为真值（非 null 且非空串）的条目 */
+  hasPointItem: boolean
+}
+
 export type TripPlanItemInput = {
   type: TripPlanItemType
   pointId?: string | null
@@ -172,6 +187,19 @@ export interface TripPlanRepo {
   createPlan(input: { userId: string; title: string }): Promise<TripPlan>
   listPlans(userId: string): Promise<TripPlan[]>
   getPlan(id: string): Promise<TripPlanWithDays | null>
+  /**
+   * 只取 title 的轻量投影（2026-09-10 CUT-8）：标题侧信道原先为读一个
+   * title 拉整棵 PLAN_INCLUDE（多条串行 SQL、20+ KB），在 pool=1 下与
+   * 主 loop 抢唯一连接。null 唯一对应"计划不存在"；空串原样返回。
+   */
+  getPlanTitle(planId: string): Promise<string | null>
+  /**
+   * CUT-3：阶段推断专用轻量投影——单条 SQL（过滤型 relation count 走 EXISTS
+   * 子查询），替代原先为推断阶段拉整棵 PLAN_INCLUDE（5 条串行 SQL、23 KB，
+   * 其中第 4/5 条完全是为了 item.point，而 derivePlanStage 根本不读它）。
+   * null 唯一对应"计划不存在"。getPlan 保留不动，新方法是并存不是替换。
+   */
+  getStageInputs(planId: string): Promise<TripPlanStageInputs | null>
   updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan>
   replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays>
   countPlansCreatedSince(userId: string, since: Date): Promise<number>
@@ -210,6 +238,8 @@ export interface TripPlanRepo {
    * run 最长 3 分钟自动释放。返回是否续租成功。
    */
   renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean>
+  /** 续租并返回计划归属用户。token 不符与计划不存在都返回 null（同一语义）。 */
+  renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null>
   /**
    * 第十一轮 A3（§0）：用户显式停止正在运行的 run。条件清空 busy/token
    * （仍是当前持有者才动），并在 TripPlanRunLive 行写停止标记
@@ -281,6 +311,14 @@ export interface TripPlanRepo {
    * derivePlanStage 的证据推断为准（不一致时下一次 run 会改回来）。
    */
   updateStage(planId: string, stage: string): Promise<void>
+  /**
+   * CUT-6（2026-09-10）：带 run-token 栅栏的阶段缓存写。写时机从"推断完立即
+   * await"推后到"首次模型请求发出之后"再后台派发，推后之后"执行时仍持有
+   * busy 位"不再恒真——沿用无栅栏 updateStage 会把接管 run 已写下的 stage
+   * 覆写回旧值（凭空触发 plan_updated + 客户端全量 refetch，且缓存一直错到
+   * 下一次 run）。token 已不是当前持有者时影响 0 行，语义同 endAgentRun。
+   */
+  updateStageIfActive(planId: string, token: string, stage: string): Promise<void>
   /** M4 运行日志：追加一条 run 记录（loop 在 finally 里调用，失败不冒泡由调用方兜底） */
   appendRunLog(entry: TripPlanRunLogEntry): Promise<TripPlanRunLogRecord>
   /**

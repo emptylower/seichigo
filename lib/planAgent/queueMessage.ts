@@ -12,6 +12,12 @@
  */
 type QueueSupportedLocale = 'zh' | 'en' | 'ja'
 
+/**
+ * 与 lib/billing/tiers 的 Tier 同构的字面量联合：为满足"零 import"约束
+ * 在此重复声明；两处口径变更时必须同步（free/standard/pro）。
+ */
+type QueueTier = 'free' | 'standard' | 'pro'
+
 export type PlanAgentQueueMessage = {
   v: 1
   planId: string
@@ -21,6 +27,12 @@ export type PlanAgentQueueMessage = {
   message: string | null
   resume: boolean
   enqueuedAt: string
+  /**
+   * 授权本次 run 的档位快照——POST 时刻 getAccount 得到的**有效 tier**
+   * （已含 F2 降档），**不是消费时刻的档位**。缺失或无法识别时，消费者
+   * 必须回落到 getAccount 三读，绝不能回落 free。
+   */
+  tier?: QueueTier
 }
 
 const LOCALES: readonly string[] = ['zh', 'en', 'ja']

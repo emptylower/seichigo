@@ -17,12 +17,26 @@ vi.mock('@/lib/planAgent/execute', () => ({
   AGENT_BUSY_TTL_MS: 90 * 1000,
 }))
 
+// CUT-1：计费装配改由 owner.userId 推出——mock 掉 billing 服务才能断言
+// getAccount 收到的 userId。默认 getAccount → null（触发 free 兜底路径）。
+vi.mock('@/lib/billing/serverDeps', () => ({
+  getBillingService: vi.fn(() => ({
+    getAccount: vi.fn(async () => null),
+  })),
+}))
+
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
+import { getBillingService } from '@/lib/billing/serverDeps'
 import { executePlanAgentRun } from '@/lib/planAgent/execute'
 import { POST } from '@/app/api/internal/plan-agent/run/route'
 
 function makeDeps(repo: MemoryTripPlanRepo): TripPlanHandlerDeps {
   return { repo, getSession: vi.fn().mockResolvedValue({ user: { id: 'u1' } }) }
+}
+
+/** billing 服务 mock 默认实现：getAccount → null（路由走 free 兜底） */
+function freeFallbackBilling() {
+  return { getAccount: vi.fn(async () => null) } as unknown as ReturnType<typeof getBillingService>
 }
 
 function internalRequest(body: unknown, secret = 'test-secret') {
@@ -52,6 +66,7 @@ describe('内部执行路由 /api/internal/plan-agent/run（Task A3）', () => {
   beforeEach(() => {
     vi.mocked(getTripPlanApiDeps).mockReset()
     vi.mocked(executePlanAgentRun).mockClear()
+    vi.mocked(getBillingService).mockReset().mockImplementation(freeFallbackBilling)
     vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 'test-secret')
   })
 
@@ -85,6 +100,16 @@ describe('内部执行路由 /api/internal/plan-agent/run（Task A3）', () => {
     vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
 
     const res = await internalRequest(queueMessage({ planId: plan.id, runToken: 'stale' }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ skipped: 'stale_token' })
+    expect(vi.mocked(executePlanAgentRun)).not.toHaveBeenCalled()
+  })
+
+  it('计划不存在 → 与 token 不符完全相同的响应体与 status（CUT-1：两分支统一由 0 行命中产生）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+
+    const res = await internalRequest(queueMessage({ planId: 'plan-missing', runToken: 'whatever' }))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ skipped: 'stale_token' })
     expect(vi.mocked(executePlanAgentRun)).not.toHaveBeenCalled()
@@ -141,5 +166,52 @@ describe('内部执行路由 /api/internal/plan-agent/run（Task A3）', () => {
     const input = vi.mocked(executePlanAgentRun).mock.calls[0][0]
     expect(input.message).toBe('')
     expect(input.resume).toBe(true)
+  })
+
+  it('正常路径：billing 由 owner.userId 推出（getAccount 收到计划归属用户，entitlements 原样透传）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'owner-u7', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'owner-u7',
+      content: null,
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error('unreachable')
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const getAccount = vi.fn(async () => ({ entitlements: { marker: 'ent-pro' }, runCapMicros: 424_242 }))
+    vi.mocked(getBillingService).mockImplementation(
+      () => ({ getAccount }) as unknown as ReturnType<typeof getBillingService>,
+    )
+
+    const res = await internalRequest(queueMessage({ planId: plan.id, runToken: begin.token }))
+    await res.text()
+
+    expect(getAccount).toHaveBeenCalledWith('owner-u7')
+    const input = vi.mocked(executePlanAgentRun).mock.calls[0][0]
+    expect(input.billing).toEqual({ entitlements: { marker: 'ent-pro' }, runCapMicros: 424_242 })
+  })
+
+  it('MemoryTripPlanRepo.renewAgentRunOwner 与 renewAgentRun 语义逐字对齐：token 不符时不写 agentBusyUntil', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'owner-u9', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'owner-u9',
+      content: null,
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 1_000,
+    })
+    if (begin.status !== 'ok') throw new Error('unreachable')
+    const before = (await repo.getPlan(plan.id))!.agentBusyUntil!.getTime()
+
+    expect(await repo.renewAgentRunOwner(plan.id, 'wrong-token', 60_000)).toBeNull()
+    expect((await repo.getPlan(plan.id))!.agentBusyUntil!.getTime()).toBe(before)
+
+    expect(await repo.renewAgentRunOwner(plan.id, begin.token, 60_000)).toEqual({ userId: 'owner-u9' })
+    expect((await repo.getPlan(plan.id))!.agentBusyUntil!.getTime()).toBeGreaterThan(before)
   })
 })

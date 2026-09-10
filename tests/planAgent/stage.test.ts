@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStageContext, derivePlanStage, type PlanStage } from '@/lib/planAgent/stage'
+import { buildStageContext, derivePlanStage, stageInputsOfPlan, type PlanStage } from '@/lib/planAgent/stage'
 import type { PlanQualityReport } from '@/lib/planAgent/gates'
 import type { EnrichReport } from '@/lib/planAgent/enrich/types'
 import type { TripPlanMessage, TripPlanWithDays } from '@/lib/tripPlan/repo'
@@ -76,7 +76,7 @@ const failedQuality: PlanQualityReport = {
 
 function stageOf(input: { plan?: TripPlanWithDays; messages?: TripPlanMessage[]; quality?: PlanQualityReport | null }): PlanStage {
   return derivePlanStage({
-    plan: input.plan ?? makePlan(),
+    plan: stageInputsOfPlan(input.plan ?? makePlan()),
     messages: input.messages ?? [msg('human', 'm1'), daymapMsg('d1', passedQuality)],
     quality: input.quality ?? null,
   })

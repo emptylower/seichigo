@@ -15,6 +15,7 @@ import type {
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
   TripPlanRunSnapshotMeta,
+  TripPlanStageInputs,
   TripPlanWithDays,
 } from './repo'
 import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
@@ -93,6 +94,23 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   async getPlan(id: string): Promise<TripPlanWithDays | null> {
     const plan = this.plans.get(id)
     return plan ? { ...structuredClone(plan), ...this.agentFields(id) } : null
+  }
+
+  /** CUT-8：与 Prisma 投影同语义——null = 计划不存在，空串原样返回 */
+  async getPlanTitle(planId: string): Promise<string | null> {
+    return this.plans.get(planId)?.title ?? null
+  }
+
+  /** CUT-3：hasPointItem 谓词与 stageInputsOfPlan 逐字相同（非 null 且非空串） */
+  async getStageInputs(planId: string): Promise<TripPlanStageInputs | null> {
+    const plan = this.plans.get(planId)
+    if (!plan) return null
+    return {
+      bangumiIds: plan.bangumiIds,
+      startDate: plan.startDate,
+      dayCount: plan.dayCount,
+      hasPointItem: plan.days.some((day) => day.items.some((item) => item.pointId)),
+    }
   }
 
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {
@@ -217,6 +235,15 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return true
   }
 
+  /** CUT-1：与 renewAgentRun 逐字相同的 where/data 语义；命中才写并返回归属用户 */
+  async renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
+    const entry = this.agentBusy.get(planId)
+    if (!entry || entry.token !== token) return null
+    entry.until = new Date(Date.now() + ttlMs)
+    const plan = this.plans.get(planId)
+    return plan ? { userId: plan.userId } : null
+  }
+
   /**
    * 第十一轮 A3（H2 修订）：与 Prisma 实现同语义——条件清空 + 持久 stopped
    * 日志 + 实况行停止标记。日志是 inferInterrupted/canResume 真正读的持久
@@ -249,6 +276,14 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   }
 
   async updateStage(planId: string, stage: string): Promise<void> {
+    const plan = this.plans.get(planId)
+    if (!plan) return
+    plan.stage = stage
+  }
+
+  /** CUT-6：与 Prisma 的条件 updateMany 同语义——token 不匹配影响 0 行 */
+  async updateStageIfActive(planId: string, token: string, stage: string): Promise<void> {
+    if (!this.isCurrentHolder(planId, token)) return
     const plan = this.plans.get(planId)
     if (!plan) return
     plan.stage = stage
