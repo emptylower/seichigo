@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 // `workerd` condition. Keep this conditional entry: the Node loader crashes in
 // Workers, while Node cannot consume the Worker loader's module shape.
 import { PrismaClient } from '@seichigo/prisma-client-runtime'
+import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -52,11 +53,47 @@ type PrismaClientOptions = {
   queryTimeoutMillis?: number
 }
 
+type ConnectionStringSource = 'hyperdrive-pooled' | 'hyperdrive-direct' | 'env-fallback'
+
+/**
+ * Pick the Postgres connection string for a new client.
+ *
+ * Hyperdrive binding (when reachable in the current context) per
+ * `HYPERDRIVE_ENDPOINT` (`pooled` default / `direct` / `off`), else
+ * `process.env.DATABASE_URL`. The env fallback is a hard requirement, not
+ * an escape hatch: Next prerendering and local `next start` run in Node
+ * with no Worker bindings, so a missing binding must stay silent.
+ */
+function resolveConnectionString(): { source: ConnectionStringSource; connectionString: string } {
+  const endpoint = process.env.HYPERDRIVE_ENDPOINT
+
+  if (endpoint === 'direct') {
+    const direct = getCfBindings()?.env?.HYPERDRIVE_DIRECT?.connectionString
+    if (direct) return { source: 'hyperdrive-direct', connectionString: direct }
+  }
+  if (endpoint !== 'off') {
+    const pooled = getCfBindings()?.env?.HYPERDRIVE?.connectionString
+    if (pooled) return { source: 'hyperdrive-pooled', connectionString: pooled }
+  }
+
+  return { source: 'env-fallback', connectionString: process.env.DATABASE_URL ?? '' }
+}
+
+// One log line per source per process — request-scoped clients are created
+// constantly, and the log is the only way to confirm post-deploy that the
+// binding actually took effect instead of silently running on the fallback.
+const loggedConnectionStringSources = new Set<ConnectionStringSource>()
+
 function createPrismaClient(options?: PrismaClientOptions) {
-  const connectionString = process.env.DATABASE_URL
+  const { source, connectionString } = resolveConnectionString()
 
   if (!connectionString) {
     throw new Error('DATABASE_URL is not set')
+  }
+
+  if (!loggedConnectionStringSources.has(source)) {
+    loggedConnectionStringSources.add(source)
+    console.log(`[db] connection string source: ${source}`)
   }
 
   // Cloudflare Workers cannot run Prisma's Rust query engine. Use the JS engine with
