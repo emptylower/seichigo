@@ -12,6 +12,8 @@ const CONTEXT_MAX = 10_000_000
 const MAX_OUTPUT_MIN = 256
 const MAX_OUTPUT_MAX = 1_000_000
 const API_KEY_MAX = 500
+/** P1：单桶价格上限（微美元/百万 token，$100/M）——防手滑多打几个零把计价撑爆 */
+const PRICE_PER_M_MAX = 100_000_000
 
 /** IPv4 私网/回环/链路本地/CGNAT 判定（前两个八位组即可判定）。 */
 function isPrivateIpv4(a: number, b: number): boolean {
@@ -146,6 +148,23 @@ export function validateName(raw: unknown): string {
   return name
 }
 
+/**
+ * P1：价格字段透传校验。undefined/null = 未填（null 视为显式清除，剥掉）；
+ * 填了就必须是非负有限数且不超上限。允许只填部分字段（计价层把缺任一个的
+ * 配置整体视为未配置回落价格表，这里不做完整性强校验）。
+ */
+function validatePriceField(item: Record<string, unknown>, key: string, name: string): number | undefined {
+  const raw = item[key]
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) {
+    throw new InputError(`模型 ${name} 的 ${key} 必须是非负数字`)
+  }
+  if (raw > PRICE_PER_M_MAX) {
+    throw new InputError(`模型 ${name} 的 ${key} 不能超过 ${PRICE_PER_M_MAX}`)
+  }
+  return raw
+}
+
 export function validateModels(raw: unknown): LlmModelConfig[] {
   if (!Array.isArray(raw)) throw new InputError('models 必须是数组')
   if (raw.length < 1) throw new InputError('至少配置一个模型')
@@ -182,7 +201,26 @@ export function validateModels(raw: unknown): LlmModelConfig[] {
       throw new InputError(`模型 ${name} 的最大输出必须是 ${MAX_OUTPUT_MIN}–${MAX_OUTPUT_MAX} 的整数`)
     }
 
-    out.push({ name, contextLength, ...(maxOutputTokens != null ? { maxOutputTokens } : {}) })
+    // P1：价格字段（可选）透传
+    const priceItem = item as Record<string, unknown>
+    const inputMissPerM = validatePriceField(priceItem, 'inputMissPerM', name)
+    const inputCacheHitPerM = validatePriceField(priceItem, 'inputCacheHitPerM', name)
+    const outputPerM = validatePriceField(priceItem, 'outputPerM', name)
+    const price =
+      inputMissPerM !== undefined || inputCacheHitPerM !== undefined || outputPerM !== undefined
+        ? {
+            ...(inputMissPerM !== undefined ? { inputMissPerM } : {}),
+            ...(inputCacheHitPerM !== undefined ? { inputCacheHitPerM } : {}),
+            ...(outputPerM !== undefined ? { outputPerM } : {}),
+          }
+        : undefined
+
+    out.push({
+      name,
+      contextLength,
+      ...(maxOutputTokens != null ? { maxOutputTokens } : {}),
+      ...(price !== undefined ? { ...price } : {}),
+    })
   }
   return out
 }

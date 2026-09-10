@@ -8,6 +8,14 @@ export type LlmModelConfig = {
   name: string
   contextLength: number
   maxOutputTokens?: number | null
+  /**
+   * P1 价格覆盖（微美元/百万 token，peak 牌价，offPeak 由计价层减半推导）。
+   * 三个字段齐全才算配置（缺任一个视为未配置，回落 lib/billing 价格表）；
+   * null = 显式未设置。存在 LlmProvider.models 这个 Json 列里，无需迁移。
+   */
+  inputMissPerM?: number | null
+  inputCacheHitPerM?: number | null
+  outputPerM?: number | null
 }
 
 export type LlmProviderView = {

@@ -1,4 +1,4 @@
-import type { LlmClient, LlmProtocol } from './types'
+import type { LlmClient, LlmModelConfig, LlmProtocol } from './types'
 import { createLlmClient } from './client'
 import { decryptSecret } from './secretBox'
 import type { LlmProviderRepo, LlmProviderRow } from './repo'
@@ -12,6 +12,8 @@ export type ResolvedLlm = {
   providerId: string
   providerName: string
   protocol: LlmProtocol
+  /** P1：该供应商的模型配置（含可选价格字段）——runCost 计价优先从这里读价，随缓存一起失效 */
+  models: LlmModelConfig[]
 }
 
 export type ResolveDeps = {
@@ -143,9 +145,23 @@ export async function resolveLlmForScope(
     providerId: row.id,
     providerName: row.name,
     protocol: row.protocol === 'anthropic' ? 'anthropic' : 'openai',
+    models: row.models.map((m) => ({ ...m })),
   }
   cache.set(scope, { at: now(), value })
   return value
+}
+
+/**
+ * P1 计价用：同步窥视缓存里 scope 的接管供应商（不触发 DB 读、不刷新 TTL）。
+ * createChatCompletion 每次模型调用前都会 await resolveLlmForScope 刷新缓存，
+ * 因此 runCost 在拿到模型返回后窥视，读到的一定是刚解析的同一份供应商配置
+ * （含价格字段）。缓存未预热/已过期 → null（调用方回落价格表）。
+ */
+export function peekLlmForScope(scope: LlmScope, repo?: LlmProviderRepo): ResolvedLlm | null {
+  const cache = repo ? cacheFor(repo) : defaultCache
+  const hit = cache.get(scope)
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value
+  return null
 }
 
 /** 仅供测试：重置进程级状态（默认 repo 缓存 / 表缺失告警）。 */
