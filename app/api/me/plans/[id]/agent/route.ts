@@ -222,6 +222,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           message: resume ? null : message,
           resume,
           enqueuedAt: new Date().toISOString(),
+          tier: account.entitlements.tier,
         })
         // A 部分（改动 3）：runToken 已拿到、无顺序依赖，预扣挪到 send 与
         // 返回 202 之后经 waitUntil 入账；拿不到 ctx 回落同步 await

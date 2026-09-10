@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { getBillingService } from '@/lib/billing/serverDeps'
 import { runCapMicros } from '@/lib/billing/budget'
-import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
+import { TIER_ENTITLEMENTS, type Tier } from '@/lib/billing/tiers'
 import { AGENT_BUSY_TTL_MS, executePlanAgentRun } from '@/lib/planAgent/execute'
 import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
 import {
@@ -20,6 +20,15 @@ const HEARTBEAT_INTERVAL_MS = 15_000
 
 /** §0.5 软截止：队列消费者单次调用 15 分钟硬上限，留 2 分钟给收尾与心跳 */
 const SOFT_DEADLINE_MS = 13 * 60_000
+
+/** CUT-2：tier 透传认识的档位集合；与 lib/billing/tiers 的 TIERS 同步维护 */
+const QUEUE_TIERS = new Set(['free', 'standard', 'pro'])
+
+/**
+ * CUT-2：tier 快照的最大陈旧窗口。真实上界是队列深度而非投递延迟
+ * （max_concurrency=10，超过 10 个计划并发时消息排分钟级），超龄回落 getAccount。
+ */
+const TIER_PASSTHROUGH_MAX_AGE_MS = 120_000
 
 function secretsMatch(a: string, b: string): boolean {
   const aBytes = new TextEncoder().encode(a)
@@ -103,17 +112,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ skipped: 'stale_token' })
   }
 
+  // 计费（CUT-2）：队列消息带 POST 时刻的有效档位快照（已含 F2 降档，
+  // 与内联 SSE 路径同一口径）——新鲜且认识时直接查表装配，省掉 getAccount
+  // 的 3 条串行 SQL。tier 缺失 / 不认识 / 超龄 / 开关置 '0' 时一律回落
+  // getAccount 三读，绝不回落 free：付费用户静默降档无报错无日志。
+  // PLAN_AGENT_TIER_PASSTHROUGH 置 '0' 是整体回滚开关。
+  const enqueuedAge = Date.now() - Date.parse(body.enqueuedAt)
+  const passthroughTier =
+    process.env.PLAN_AGENT_TIER_PASSTHROUGH !== '0' &&
+    typeof body.tier === 'string' &&
+    QUEUE_TIERS.has(body.tier) &&
+    Number.isFinite(enqueuedAge) &&
+    enqueuedAge >= 0 &&
+    enqueuedAge <= TIER_PASSTHROUGH_MAX_AGE_MS
+      ? (body.tier as Tier)
+      : null
+
   // 计费：按计划归属用户的档位装配能力表（队列消息不带 userId）。
   // G3：getAccount 失败必须 fail-closed 回落免费档，绝不能放开全部能力
-  const billingAccount = await getBillingService()
-    .getAccount(owner.userId)
-    .catch((err) => {
-      console.error('[api/internal/plan-agent/run] getAccount failed, falling back to free entitlements', err)
-      return null
-    })
-  const billing = billingAccount
-    ? { entitlements: billingAccount.entitlements, runCapMicros: billingAccount.runCapMicros }
-    : { entitlements: TIER_ENTITLEMENTS.free, runCapMicros: runCapMicros('free') }
+  const billingAccount = passthroughTier
+    ? null
+    : await getBillingService()
+        .getAccount(owner.userId)
+        .catch((err) => {
+          console.error('[api/internal/plan-agent/run] getAccount failed, falling back to free entitlements', err)
+          return null
+        })
+  const billing = passthroughTier
+    ? { entitlements: TIER_ENTITLEMENTS[passthroughTier], runCapMicros: runCapMicros(passthroughTier) }
+    : billingAccount
+      ? { entitlements: billingAccount.entitlements, runCapMicros: billingAccount.runCapMicros }
+      : { entitlements: TIER_ENTITLEMENTS.free, runCapMicros: runCapMicros('free') }
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
