@@ -2,8 +2,11 @@ import type { Prisma } from '@prisma/client'
 import type { EnrichBudget } from './enrich/types'
 import type { PlanAgentChatMessage } from './loop'
 import { describePlanAgentModel } from './api'
-import { llmUsageOf, type LlmUsage, addUsage } from '@/lib/llm/usage'
-import { EMPTY_GOOGLE_CALLS, summarizeRunCost, type RunCostSummary } from '@/lib/billing/cost'
+import { llmUsageOf, type LlmUsage, addUsage, EMPTY_USAGE } from '@/lib/llm/usage'
+import { EMPTY_GOOGLE_CALLS, summarizeRunCost, type PricingWindowCounts, type RunCostSummary } from '@/lib/billing/cost'
+import { pricingWindowOf, priceModelCall } from '@/lib/billing/priceResolver'
+import { peekLlmForScope } from '@/lib/llm/registry'
+import type { LlmModelConfig } from '@/lib/llm/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
 /** 计量/结算相关的 deps 切片（设计 §6.2/G8），从 PlanAgentDeps 切出随本文件维护 */
@@ -37,6 +40,10 @@ export type RunCostTracker = {
    * F4：每次模型调用记账。response=null 表示调用抛错——同样计一次
    * modelCalls 并置 usageMissing（成本口径不能只统计成功返回的调用）；
    * 正常返回但没挂 usage 的调用同样置 usageMissing。
+   *
+   * P2：计价点在这里——每次调用用**当时的时刻**定价并累加成本（一个 run
+   * 最长可跨 13 分钟，可能跨过 04:00/10:00 UTC 的时段边界，run 结束才统一
+   * 计价会把跨界前后的调用按同一个价算）。token 仍照常累加供 run log 展示。
    */
   recordModelCall(response: PlanAgentChatMessage | null): void
   /**
@@ -64,13 +71,27 @@ export function createRunCostTracker(input: {
   runCapMicros?: number
   maxIterations: number
   withTitle: boolean
+  /** P2：可注入时钟（毫秒，时段计价用）；不注入用 Date.now。测试必须注入假时钟驱动时段逻辑。 */
+  now?: () => number
+  /**
+   * P1：当前接管供应商的模型配置（价格覆盖来源）。缺省同步窥视 registry
+   * 缓存——createChatCompletion 调用前必先 resolveLlmForScope 刷新缓存，
+   * 拿到返回再窥视不会落空；env 路径（无接管）为 null，回落价格表。
+   */
+  getProviderModels?: () => readonly LlmModelConfig[] | null
 }): RunCostTracker {
   // 计量层（设计 §7）：按模型累加 usage；缺 usage 的调用记 usageMissing
+  const now = input.now ?? (() => Date.now())
+  const getProviderModels = input.getProviderModels ?? (() => peekLlmForScope('agent')?.models ?? null)
   const usageByModel = new Map<string, LlmUsage>()
   let modelCalls = 0
   let usageMissing = false
   let capReached = false
   let iterationLimit = input.maxIterations
+  // P2：逐次调用计价的累计模型成本 + 时段调用分布；P1：兜底计价模型去重收集
+  let modelCostMicros = 0
+  const pricingWindows: PricingWindowCounts = { peak: 0, offPeak: 0 }
+  const fallbackModels = new Set<string>()
 
   const buildSummary = (final: boolean): RunCostSummary =>
     summarizeRunCost({
@@ -79,25 +100,31 @@ export function createRunCostTracker(input: {
       modelCalls,
       usageMissing: final ? usageMissing || modelCalls === 0 : usageMissing,
       withTitle: input.withTitle,
+      modelCostMicros,
+      pricingWindows: { ...pricingWindows },
+      priceFallbackModels: [...fallbackModels],
     })
 
   return {
     recordModelCall(response) {
       modelCalls += 1
+      // 一次调用只读一次时钟，计价时段与 pricingWindows 计数保证同源
+      const at = new Date(now())
+      pricingWindows[pricingWindowOf(at)] += 1
       if (!response) {
         usageMissing = true
         return
       }
       const callUsage = llmUsageOf(response)
-      if (callUsage) {
-        const modelName = describePlanAgentModel(response).model
-        usageByModel.set(
-          modelName,
-          addUsage(usageByModel.get(modelName) ?? { inputMiss: 0, inputCacheHit: 0, output: 0, reasoning: 0 }, callUsage),
-        )
-      } else {
+      if (!callUsage) {
         usageMissing = true
+        return
       }
+      const modelName = describePlanAgentModel(response).model
+      usageByModel.set(modelName, addUsage(usageByModel.get(modelName) ?? EMPTY_USAGE, callUsage))
+      const pricing = priceModelCall(modelName, callUsage, at, getProviderModels())
+      if (pricing.source === 'default') fallbackModels.add(modelName)
+      modelCostMicros += pricing.micros
     },
     checkCap(iteration) {
       if (input.runCapMicros === undefined || capReached) return { capReached, iterationLimit }
