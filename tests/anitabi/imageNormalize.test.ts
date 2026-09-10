@@ -32,7 +32,7 @@ describe('isAnitabiPointImagePath', () => {
 })
 
 describe('normalizeAnitabiDisplayVariant', () => {
-  function apply(rawUrl: string, kind: 'point' | 'point-preview' | 'point-thumbnail') {
+  function apply(rawUrl: string, kind: 'point' | 'point-preview' | 'point-thumbnail' | 'cover') {
     const url = new URL(rawUrl)
     normalizeAnitabiDisplayVariant(url, kind)
     return url.toString()
@@ -96,6 +96,43 @@ describe('normalizeAnitabiDisplayVariant', () => {
     )
     expect(apply('https://image.anitabi.cn/user/0/a.jpg', 'point')).toBe(
       'https://image.anitabi.cn/user/0/a.jpg',
+    )
+  })
+
+  it('downgrades anitabi bangumi covers to plan=h160 for cover displays (2026-09-10 lane A)', () => {
+    // 原图（761KB）→ h160 变体（8.6KB）；地图圆头像不再下原图。
+    expect(apply('https://image.anitabi.cn/bangumi/328609.jpg', 'cover')).toBe(
+      'https://image.anitabi.cn/bangumi/328609.jpg?plan=h160',
+    )
+    expect(apply('https://www.anitabi.cn/images/bangumi/290980.jpg', 'cover')).toBe(
+      'https://image.anitabi.cn/bangumi/290980.jpg?plan=h160',
+    )
+  })
+
+  it('forces plan=h160 over stale plans and resize params for cover displays', () => {
+    expect(apply('https://image.anitabi.cn/bangumi/328609.jpg?plan=l', 'cover')).toBe(
+      'https://image.anitabi.cn/bangumi/328609.jpg?plan=h160',
+    )
+    expect(apply('https://image.anitabi.cn/bangumi/328609.jpg?w=999&h=111&q=10', 'cover')).toBe(
+      'https://image.anitabi.cn/bangumi/328609.jpg?plan=h160',
+    )
+  })
+
+  it('keeps non-bangumi anitabi paths untouched for cover displays', () => {
+    expect(apply('https://image.anitabi.cn/user/0/a.jpg', 'cover')).toBe(
+      'https://image.anitabi.cn/user/0/a.jpg',
+    )
+    expect(apply('https://image.anitabi.cn/ptheme/anitabi/full/sprite.webp', 'cover')).toBe(
+      'https://image.anitabi.cn/ptheme/anitabi/full/sprite.webp',
+    )
+  })
+
+  it('keeps point kinds untouched on bangumi cover paths', () => {
+    expect(apply('https://image.anitabi.cn/bangumi/328609.jpg', 'point')).toBe(
+      'https://image.anitabi.cn/bangumi/328609.jpg',
+    )
+    expect(apply('https://image.anitabi.cn/bangumi/328609.jpg', 'point-thumbnail')).toBe(
+      'https://image.anitabi.cn/bangumi/328609.jpg?plan=h160',
     )
   })
 })
@@ -191,6 +228,24 @@ describe('anitabi image normalization', () => {
 
   it('rejects empty inputs for mirror canonicalization', () => {
     expect(() => computeCanonicalImageUrl('   ')).toThrow('invalid_image_url')
+  })
+
+  it('locks legacy canonical outputs byte-for-byte (mirror key zero drift)', () => {
+    // 2026-09-10 lane A 引入 cover-h160 变体：新增 key 只能是新增，
+    // 以下既有输入（cover-l/cover-m/点位变体）的 canonical 必须逐字节不变，
+    // 否则 8.5 万存量 R2 对象 key 全部漂移。
+    const pinned: Array<[string, string]> = [
+      ['https://anitabi.cn/images/bangumi/123/cover.jpg?plan=l', 'https://image.anitabi.cn/bangumi/123/cover.jpg?plan=l'],
+      ['https://image.anitabi.cn/bangumi/123/cover.jpg', 'https://image.anitabi.cn/bangumi/123/cover.jpg'],
+      ['https://img-tc.anitabi.cn/bangumi/123/cover.jpg', 'https://image.anitabi.cn/bangumi/123/cover.jpg'],
+      ['https://www.anitabi.cn/images/bangumi/123/cover.jpg?plan=h160&w=999', 'https://image.anitabi.cn/bangumi/123/cover.jpg?plan=h160&w=999'],
+      ['https://image.anitabi.cn/points/1/photo.jpg?w=640&q=80', 'https://image.anitabi.cn/points/1/photo.jpg?q=80&w=640'],
+      ['https://image.anitabi.cn/points/1/photo.jpg?plan=h160', 'https://image.anitabi.cn/points/1/photo.jpg?plan=h160'],
+      ['https://lain.bgm.tv/pic/cover/l/b8/0d/513345_jv4wM.jpg', 'https://lain.bgm.tv/pic/cover/m/b8/0d/513345_jv4wM.jpg'],
+    ]
+    for (const [input, expected] of pinned) {
+      expect(computeCanonicalImageUrl(input)).toBe(expected)
+    }
   })
 })
 

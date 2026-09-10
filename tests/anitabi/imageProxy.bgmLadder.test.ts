@@ -55,16 +55,17 @@ describe('getMapDisplayImageCandidates bgm cover ladder', () => {
     ])
   })
 
-  it('keeps direct-safe anitabi covers on the direct-first ladder, direct pointing at the delivery host', () => {
+  it('keeps direct-safe anitabi covers on the direct-first ladder with the h160 plan variant', () => {
     process.env[BGM_FALLBACK_FLAG] = '1'
 
     expect(
       getMapDisplayImageCandidates('https://www.anitabi.cn/bangumi/290980.jpg', { kind: 'cover' }),
     ).toEqual([
-      // direct 一档已切到 EdgeOne 投递 host；proxy 一档保留 canonical host，由服务端再解析。
-      'https://img-tc.anitabi.cn/bangumi/290980.jpg',
-      'https://img-tc.anitabi.cn/bangumi/290980.jpg?_retry=1',
-      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Fimage.anitabi.cn%252Fbangumi%252F290980.jpg',
+      // direct 一档已切到 EdgeOne 投递 host（?plan= 仅 img-tc 支持）并带 h160 变体；
+      // proxy 一档保留 canonical host，由服务端再解析。
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160',
+      'https://img-tc.anitabi.cn/bangumi/290980.jpg?plan=h160&_retry=1',
+      'https://seichigo.com/api/anitabi/image-render?url=https%253A%252F%252Fimage.anitabi.cn%252Fbangumi%252F290980.jpg%253Fplan%253Dh160',
     ])
   })
 

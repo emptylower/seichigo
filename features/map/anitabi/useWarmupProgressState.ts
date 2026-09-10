@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { WARMUP_TASK_WEIGHTS } from './shared'
+import { WARMUP_TASK_WEIGHTS, computeWeightedWarmupPercent } from './shared'
 import type { WarmupProgress, WarmupTaskKey, WarmupTaskProgress } from './shared'
 
 export function useWarmupProgressState(ctx: any) {
@@ -23,22 +23,12 @@ export function useWarmupProgressState(ctx: any) {
     }))
   }, [label.preloadTitle, setWarmupProgress, warmupRunTokenRef])
 
-  const computeWarmupPercent = useCallback((tasks: WarmupTaskProgress): number => {
-    let weightedSum = 0
-    let totalWeight = 0
-    let allDone = true
-    for (const key of Object.keys(tasks) as WarmupTaskKey[]) {
-      const weight = WARMUP_TASK_WEIGHTS[key]
-      const taskPercent = Math.max(0, Math.min(100, tasks[key].percent))
-      if (taskPercent < 100) allDone = false
-      weightedSum += taskPercent * weight
-      totalWeight += weight
-    }
-    if (!totalWeight) return 0
-    const raw = weightedSum / totalWeight
-    if (allDone) return 100
-    return Math.max(0, Math.min(99, Math.floor(raw)))
-  }, [])
+  // 内部口径：四任务加权聚合，仅用于 warmupMetricRef 记录与上报（对外可见进度的
+  // map+cards 口径在 useAnitabiMapController 里用 WARMUP_VISIBLE_TASK_WEIGHTS 另行派生）。
+  const computeWarmupPercent = useCallback(
+    (tasks: WarmupTaskProgress): number => computeWeightedWarmupPercent(tasks, WARMUP_TASK_WEIGHTS),
+    [],
+  )
 
   const resetWarmupTaskProgress = useCallback(() => {
     setWarmupTaskProgress({
@@ -72,6 +62,8 @@ export function useWarmupProgressState(ctx: any) {
         },
       }
       const combinedPercent = computeWarmupPercent(merged)
+      // 内部指标口径不变：四任务的细粒度文本（含点位分块/图片预热）照常记录，
+      // 供服务端与日志排查。
       warmupMetricRef.current.last_progress_at = Date.now()
       warmupMetricRef.current.last_progress_key = key
       warmupMetricRef.current.last_progress_percent = combinedPercent
@@ -82,7 +74,9 @@ export function useWarmupProgressState(ctx: any) {
           : prevWarmup.phase,
         percent: combinedPercent,
         title: label.preloadTitle,
-        detail: next.detail ?? prevWarmup.detail,
+        // 卡片说明文字只由 map/cards 两个「地图可用」任务驱动；details/images
+        // 在后台预热，其 detail 文本不再进入可见卡片（内部指标见上方）。
+        detail: key === 'map' || key === 'cards' ? (next.detail ?? prevWarmup.detail) : prevWarmup.detail,
       }))
       return merged
     })

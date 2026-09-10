@@ -49,14 +49,24 @@ function seedRequestClient(requestId: string, ageMs: number): FakeRequestClient 
   const stale = Date.now() - ageMs
   testGlobal.prismaByRequestId = new Map<string, SeededEntry>([
     [requestId, { client, createdAt: stale, lastUsedAt: stale, activeTransactions: 0 }],
-  ])
+  ]) as unknown as TestGlobal['prismaByRequestId']
   return client
 }
 
 function seededEntry(requestId: string): SeededEntry {
   const entry = testGlobal.prismaByRequestId?.get(requestId)
   if (!entry) throw new Error(`no seeded entry for ${requestId}`)
-  return entry as SeededEntry
+  return entry as unknown as SeededEntry
+}
+
+function withResolvers<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 async function loadPrismaProxy() {
@@ -98,7 +108,7 @@ describe('Request-scoped Prisma client lifecycle', () => {
     const stale = seedRequestClient('req-old', 60_000)
 
     useRequestContext('req-old')
-    const gated = Promise.withResolvers<string>()
+    const gated = withResolvers<string>()
     const open = prisma.$transaction(async () => gated.promise)
     // Long-running conversation turn: the transaction outlives the TTL.
     seededEntry('req-old').lastUsedAt = Date.now() - 60_000

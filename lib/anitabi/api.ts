@@ -1,6 +1,8 @@
 import type { Session } from 'next-auth'
 import { prisma } from '@/lib/db/prisma'
+import type { CfBindingsCtx } from '@/lib/anitabi/cf/bindings'
 import type { R2MirrorBucket } from '@/lib/anitabi/r2Mirror'
+import type { PreloadCacheStore } from '@/lib/anitabi/preloadEdgeCache'
 
 export type AnitabiApiDeps = {
   prisma: typeof prisma
@@ -14,9 +16,18 @@ export type AnitabiApiDeps = {
     NEXT_PUBLIC_MAP_IMAGE_R2_READ_ENABLED?: string
     NEXT_PUBLIC_MAP_IMAGE_R2_WRITE_ENABLED?: string
   }
-  ctx?: {
-    waitUntil?: (promise: Promise<unknown>) => void
-  }
+  /**
+   * waitUntil 宿主注入缝（route 透传或测试替身）。生产默认路径不依赖它：
+   * 未注入时 preloadEdgeCache 自行从 getCfBindings()?.ctx 解析。
+   * 必须整对象传递、以方法形式调用——裸方法引用在 Workers 上抛
+   * "Illegal invocation"。
+   */
+  ctx?: CfBindingsCtx
+  /**
+   * 2026-09-10 任务 2：preload 端点的边缘缓存存储（Cloudflare Cache API）。
+   * undefined → 运行时解析 caches.default；显式 null → 关闭（测试/回滚）。
+   */
+  preloadEdgeCache?: PreloadCacheStore | null
 }
 
 let cached: AnitabiApiDeps | null = null

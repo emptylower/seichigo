@@ -46,6 +46,13 @@ const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   details: 35,
   images: 20,
 }
+// 用户可见进度只统计「地图可用」所需任务：底图 + 卡片列表。
+// details/images 照常在后台预热，并继续计入内部四任务指标（WARMUP_TASK_WEIGHTS），
+// 但不再拖住 /map 左上角的进度卡片。
+const WARMUP_VISIBLE_TASK_WEIGHTS: Partial<Record<WarmupTaskKey, number>> = {
+  map: 20,
+  cards: 30,
+}
 const MAP_PRELOAD_V2_ENABLED = String(process.env.NEXT_PUBLIC_MAP_PRELOAD_V2 || '1').trim() !== '0'
 const MAP_VECTOR_ENABLED = String(process.env.NEXT_PUBLIC_MAP_VECTOR || '1').trim() !== '0'
 const MAPTILER_KEY = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
@@ -85,6 +92,28 @@ function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
     details: { percent: 0, detail: '' },
     images: { percent: 0, detail: '' },
   }
+}
+
+// 按权重聚合任务进度：仅统计 weights 中权重 > 0 的任务；
+// 被统计任务全部达到 100 时返回 100，否则向下取整并钳制在 0–99。
+function computeWeightedWarmupPercent(
+  tasks: WarmupTaskProgress,
+  weights: Partial<Record<WarmupTaskKey, number>>,
+): number {
+  let weightedSum = 0
+  let totalWeight = 0
+  let allDone = true
+  for (const key of Object.keys(weights) as WarmupTaskKey[]) {
+    const weight = weights[key] || 0
+    if (weight <= 0) continue
+    const taskPercent = Math.max(0, Math.min(100, tasks[key].percent))
+    if (taskPercent < 100) allDone = false
+    weightedSum += taskPercent * weight
+    totalWeight += weight
+  }
+  if (!totalWeight) return 0
+  if (allDone) return 100
+  return Math.max(0, Math.min(99, Math.floor(weightedSum / totalWeight)))
 }
 
 type WarmupProgress = {
@@ -439,15 +468,15 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: '正在加载更多作品…',
     loadedAll: '已加载全部作品',
     loadMoreFailed: '加载更多失败，请重试',
-    preloadTitle: '正在预加载地图数据',
+    preloadTitle: '地图加载中',
     preloadMap: '地图底图',
-    preloadMapPreparing: '初始化地图底图',
-    preloadMapTiles: '等待地图底图可用',
-    preloadMapDone: '地图底图就绪',
-    preloadCards: '四板块卡片',
+    preloadMapPreparing: '正在准备地图',
+    preloadMapTiles: '正在加载地图画面',
+    preloadMapDone: '地图就绪',
+    preloadCards: '载入作品列表',
     preloadDetails: '点位分块',
     preloadImages: '图片预热',
-    preloadDone: '预加载完成',
+    preloadDone: '加载完成',
     preloadWait: '地图数据加载中，请耐心等待…',
     preloadIconsTitle: '正在处理地图图标',
     preloadIconsDetail: '图标渲染中，请稍候…',
@@ -549,15 +578,15 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: 'Loading more titles…',
     loadedAll: 'All titles loaded',
     loadMoreFailed: 'Failed to load more titles',
-    preloadTitle: 'Preloading map data',
+    preloadTitle: 'Loading map',
     preloadMap: 'Map Base Layer',
-    preloadMapPreparing: 'Preparing map base',
-    preloadMapTiles: 'Waiting for base map',
-    preloadMapDone: 'Map base ready',
-    preloadCards: 'Four Tab Cards',
+    preloadMapPreparing: 'Preparing map',
+    preloadMapTiles: 'Waiting for map to load',
+    preloadMapDone: 'Map ready',
+    preloadCards: 'Loading titles',
     preloadDetails: 'Point Chunks',
     preloadImages: 'Image Warmup',
-    preloadDone: 'Preload complete',
+    preloadDone: 'Loading complete',
     preloadWait: 'Map data is loading, please wait…',
     preloadIconsTitle: 'Preparing map icons',
     preloadIconsDetail: 'Rendering marker icons, please wait…',
@@ -659,15 +688,15 @@ const L: Record<SupportedLocale, Record<string, string>> = {
     loadingMore: '作品をさらに読み込み中…',
     loadedAll: 'すべての作品を読み込みました',
     loadMoreFailed: '追加読み込みに失敗しました',
-    preloadTitle: '地図データを事前読み込み中',
+    preloadTitle: '地図を読み込み中',
     preloadMap: '地図ベース',
-    preloadMapPreparing: '地図ベースを初期化',
-    preloadMapTiles: '地図ベースの準備待ち',
-    preloadMapDone: '地図ベース準備完了',
-    preloadCards: '4タブ作品カード',
+    preloadMapPreparing: '地図を準備中',
+    preloadMapTiles: '地図の読み込みを待機中',
+    preloadMapDone: '地図の準備完了',
+    preloadCards: '作品リストを読み込み中',
     preloadDetails: 'スポット分割データ',
     preloadImages: '画像ウォームアップ',
-    preloadDone: '事前読み込み完了',
+    preloadDone: '読み込み完了',
     preloadWait: '地図データを読み込み中です。しばらくお待ちください…',
     preloadIconsTitle: '地図アイコンを準備中',
     preloadIconsDetail: 'マーカーアイコンを描画中です…',
@@ -754,7 +783,8 @@ export {
   PRELOAD_IMAGE_BLOCKING_MAX, PRELOAD_IMAGE_BACKGROUND_MAX, PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY, PRELOAD_IMAGE_BACKGROUND_CONCURRENCY,
   WARMUP_IMAGE_TIMEOUT_MS, WARMUP_PRELOAD_FETCH_TIMEOUT_MS, WARMUP_ACTIVE_DETAIL_IMAGE_MAX, WARMUP_MAP_WAIT_TIMEOUT_MS, WARMUP_MAP_READY_TIMEOUT_MS,
   WARMUP_WATCHDOG_INTERVAL_MS, WARMUP_STALL_WARN_MS, COMPLETE_MODE_SPRITE_MAX_BANGUMI, COMPLETE_MODE_SPRITE_BUDGET_MS,
-  COMPLETE_MODE_COVER_CANDIDATES_MAX, COMPLETE_MODE_COVER_MAX_LOADED, WARMUP_TASK_WEIGHTS, MAP_PRELOAD_V2_ENABLED, MAP_VECTOR_ENABLED,
+  COMPLETE_MODE_COVER_CANDIDATES_MAX, COMPLETE_MODE_COVER_MAX_LOADED, WARMUP_TASK_WEIGHTS, WARMUP_VISIBLE_TASK_WEIGHTS,
+  computeWeightedWarmupPercent, MAP_PRELOAD_V2_ENABLED, MAP_VECTOR_ENABLED,
   MAPTILER_KEY, MAPBOX_TOKEN, STADIA_KEY, MAP_STYLE_PROVIDER_ORDER, MAP_STYLE_FAILOVER_TIMEOUT_MS, MAP_TILE_FADE_DURATION_MS,
   MAP_TILE_CACHE_ZOOM_LEVELS, MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM, MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS,
   MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD, MAP_STYLE_MISSING_IMAGE_FALLBACK_MAX, shouldSkipMissingStyleImageFallback, createEmptyWarmupTaskProgress,

@@ -10,6 +10,7 @@ import {
   removeLabelLayer,
 } from '@/components/map/CompleteModeLayers'
 import { buildFallbackRasterStyle, getMapStyleCandidates, matchPointId, resolvePanoramaEmbed } from './media'
+import { markBasemapFirstLoaded } from './basemapFirstLoadGate'
 import {
   MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM,
   MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD,
@@ -297,6 +298,8 @@ export function useMapStyleFailover(ctx: any) {
     map.on('error', onMapError)
     map.on('styleimagemissing', onMapStyleImageMissing)
     map.once('load', () => {
+      // 底图首次就绪：放行被门闩排队的图片预取 / 诊断配置拉取
+      markBasemapFirstLoaded()
       setMapReady(true)
       resizeMap()
       flushLayers()

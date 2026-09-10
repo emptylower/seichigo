@@ -95,6 +95,17 @@ export function isAnitabiPointImagePath(pathname: string): boolean {
   return normalized.startsWith('/points/') || ANITABI_USER_POINT_PATH_PATTERN.test(normalized)
 }
 
+/**
+ * 判定 pathname 是否是 anitabi 番剧封面路径（/bangumi/<id>.jpg）。
+ * 展示变体（本文件）与镜像变体枚举（imageMirrorVariants）共用此口径。
+ */
+export function isAnitabiBangumiCoverPath(pathname: string): boolean {
+  const normalized = pathname.startsWith('/images/')
+    ? pathname.slice('/images'.length)
+    : pathname
+  return normalized.startsWith('/bangumi/')
+}
+
 function normalizeAnitabiMirrorUrl(url: URL): void {
   if (!isAnitabiHost(url.hostname)) return
 
@@ -181,6 +192,18 @@ function applyPointThumbnailVariant(url: URL): void {
   url.searchParams.delete('q')
 }
 
+/**
+ * anitabi /bangumi/ 封面降到 h160 变体（强制覆盖既有 plan，如 plan=l）。
+ * ?plan= 仅 img-tc.anitabi.cn 支持（image.anitabi.cn 对带 plan 的请求 403），
+ * 实际投递 host 由 resolveAnitabiDeliveryUrl 在候选生成时统一切换。
+ */
+function applyBangumiCoverH160Variant(url: URL): void {
+  url.searchParams.set('plan', 'h160')
+  url.searchParams.delete('w')
+  url.searchParams.delete('h')
+  url.searchParams.delete('q')
+}
+
 export function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKind): void {
   if (!isAnitabiHost(url.hostname)) return
 
@@ -208,9 +231,14 @@ export function normalizeAnitabiDisplayVariant(url: URL, kind: MapDisplayImageKi
     return
   }
 
-  // 非点位路径（bangumi 封面等）保持原有处理：只有 point-thumbnail 补 h160。
+  // 非点位路径：point-thumbnail 补 h160；cover 仅对 /bangumi/ 封面降到 h160 变体
+  // （2026-09-10 实测原图最大 1.9MB，地图圆头像超采 88–150 倍）。
+  // 其余非点位路径与 kind 组合保持原有行为（不加 plan）。
   if (kind === 'point-thumbnail') {
     applyPointThumbnailVariant(url)
+  }
+  if (kind === 'cover' && isAnitabiBangumiCoverPath(url.pathname)) {
+    applyBangumiCoverH160Variant(url)
   }
 }
 
