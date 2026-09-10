@@ -6,7 +6,12 @@ import { runCapMicros } from '@/lib/billing/budget'
 import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
 import { AGENT_BUSY_TTL_MS, executePlanAgentRun } from '@/lib/planAgent/execute'
 import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
-import { queueLatencyMsOf } from '@/lib/planAgent/runTimings'
+import {
+  parseConsumerBatchStamp,
+  queueDispatchMsOf,
+  queueLatencyMsOf,
+  selfRefHopMsOf,
+} from '@/lib/planAgent/runTimings'
 
 export const runtime = 'nodejs'
 
@@ -55,16 +60,36 @@ export async function POST(req: Request) {
 
   // B 部分埋点（2026-09-10）：入口实测队列投递延迟（CF Queue 投递 + 消费者
   // isolate 冷启动）。先打一条结构化日志让 wrangler tail 实时可见，run 结束
-  // 再随 modelUsage.timings 落库；enqueuedAt 不可解析时只省略差值不炸
+  // 再随 modelUsage.timings 落库；enqueuedAt 不可解析时只省略差值不炸。
+  //
+  // C 部分埋点（2026-09-10 第二批）：拆开队列段——消费者在 fetch 前打的
+  // 时刻 + invocation 序号（seq=1 → 冷 isolate，时间戳测不出的那个维度）。
+  // 旧版消费者的在途消息没有这两个头：consumerBatchAt / consumerSeq /
+  // queueDispatchMs / selfRefHopMs 四个字段整体省略，绝不写 0/NaN。
+  // queueLatencyMs 保留不动（= queueDispatchMs + selfRefHopMs，对比历史）。
   const consumerEnteredMs = Date.now()
   const consumerEnteredAt = new Date(consumerEnteredMs).toISOString()
   const queueLatencyMs = queueLatencyMsOf(body.enqueuedAt, consumerEnteredMs)
+  const stamp = parseConsumerBatchStamp(
+    req.headers.get('x-plan-agent-consumer-at'),
+    req.headers.get('x-plan-agent-consumer-seq'),
+  )
+  const queueDispatchMs = stamp ? queueDispatchMsOf(body.enqueuedAt, stamp.consumerBatchMs) : undefined
+  const selfRefHopMs = stamp ? selfRefHopMsOf(stamp.consumerBatchAt, consumerEnteredMs) : undefined
   console.log(
     `[planAgent/timing] ${JSON.stringify({
       planId: body.planId,
       enqueuedAt: body.enqueuedAt,
       consumerEnteredAt,
       ...(queueLatencyMs === undefined ? {} : { queueLatencyMs }),
+      ...(stamp
+        ? {
+            consumerBatchAt: stamp.consumerBatchAt,
+            consumerSeq: stamp.consumerSeq,
+            ...(queueDispatchMs === undefined ? {} : { queueDispatchMs }),
+            ...(selfRefHopMs === undefined ? {} : { selfRefHopMs }),
+          }
+        : {}),
     })}`,
   )
 
@@ -119,7 +144,11 @@ export async function POST(req: Request) {
           busyTtlMs: AGENT_BUSY_TTL_MS,
           deadlineAt: Date.now() + SOFT_DEADLINE_MS,
           billing,
-          timing: { enqueuedAt: body.enqueuedAt, consumerEnteredAt },
+          timing: {
+            enqueuedAt: body.enqueuedAt,
+            consumerEnteredAt,
+            ...(stamp ? { consumerBatchAt: stamp.consumerBatchAt, consumerSeq: stamp.consumerSeq } : {}),
+          },
         })
       } catch (err) {
         console.error('[api/internal/plan-agent/run] executePlanAgentRun failed', err)

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { readFile } from 'node:fs/promises'
 import { consumePlanAgentBatch, type PlanAgentWorkerEnv } from '@/worker/planAgentConsumer'
 import type { PlanAgentMessageBatch } from '@/worker/planAgentConsumer'
 
@@ -93,5 +94,44 @@ describe('consumePlanAgentBatch（Task A5）', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
     for (const ack of acks) expect(ack).toHaveBeenCalledTimes(1)
     error.mockRestore()
+  })
+})
+
+describe('C 部分埋点：消费者时刻头与 invocation 序号', () => {
+  const headerOf = (fetchImpl: ReturnType<typeof makeFetch>, call: number, name: string): string =>
+    ((fetchImpl.mock.calls[call] as [string, RequestInit])[1]!.headers as Record<string, string>)[name]
+
+  it('fetch 前打的时刻头可解析为 epoch ms，序号头随 batch 递增（同模块内）', async () => {
+    const fetchImpl = makeFetch()
+    const env = makeEnv(fetchImpl)
+    await consumePlanAgentBatch(makeBatch([queueMessage()]).batch, env)
+    await consumePlanAgentBatch(makeBatch([queueMessage()]).batch, env)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    const firstAt = Number(headerOf(fetchImpl, 0, 'x-plan-agent-consumer-at'))
+    const secondAt = Number(headerOf(fetchImpl, 1, 'x-plan-agent-consumer-at'))
+    expect(Number.isInteger(firstAt)).toBe(true)
+    expect(firstAt).toBeGreaterThan(0)
+    expect(Number.isInteger(secondAt)).toBe(true)
+    const firstSeq = Number(headerOf(fetchImpl, 0, 'x-plan-agent-consumer-seq'))
+    const secondSeq = Number(headerOf(fetchImpl, 1, 'x-plan-agent-consumer-seq'))
+    expect(Number.isInteger(firstSeq)).toBe(true)
+    expect(secondSeq).toBe(firstSeq + 1)
+  })
+
+  it('全新模块的首次 invocation 序号为 1（冷 isolate 标记）', async () => {
+    vi.resetModules()
+    const { consumePlanAgentBatch: freshConsume } = await import('@/worker/planAgentConsumer')
+    const fetchImpl = makeFetch()
+    const env = makeEnv(fetchImpl)
+    await freshConsume(makeBatch([queueMessage()]).batch, env)
+    expect(headerOf(fetchImpl, 0, 'x-plan-agent-consumer-seq')).toBe('1')
+  })
+
+  it('源文件只 import queueMessage.ts（worker 入口不打包 Prisma/Next 应用代码）', async () => {
+    const source = await readFile(new URL('../../worker/planAgentConsumer.ts', import.meta.url), 'utf8')
+    const imports = source.match(/^import\b.*$/gm) ?? []
+    expect(imports).toHaveLength(1)
+    expect(imports[0]).toContain("from '../lib/planAgent/queueMessage'")
   })
 })

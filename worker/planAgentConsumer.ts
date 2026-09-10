@@ -46,6 +46,14 @@ export type PlanAgentExportedHandler<Env> = {
 
 const INTERNAL_RUN_URL = 'https://seichigo.com/api/internal/plan-agent/run'
 
+/**
+ * C 部分埋点（2026-09-10）：invocation 序号。workerd 的 Date.now() 在无
+ * I/O 期间是冻结的（security-model：只返回最近一次 I/O 的时刻），时间戳
+ * 测不出 isolate 冷启动；seq === 1 表示本次 invocation 跑过全局作用域
+ * （冷 isolate），内部路由据此把 timing 样本切冷/热两组。
+ */
+let INVOCATION_SEQ = 0
+
 /** 读响应体到底：内部路由用心跳流保持连接，消费者必须等它自然结束 */
 async function drainBody(res: globalThis.Response): Promise<void> {
   const body = res.body
@@ -68,16 +76,23 @@ async function drainBody(res: globalThis.Response): Promise<void> {
  * 路径，避免同一回合跑两遍。
  */
 export async function consumePlanAgentBatch(batch: PlanAgentMessageBatch, env: PlanAgentWorkerEnv): Promise<void> {
+  const consumerSeq = ++INVOCATION_SEQ
   for (const message of batch.messages) {
     try {
       if (!isPlanAgentQueueMessage(message.body)) {
         console.error('[worker/planAgentConsumer] 非法队列消息，已丢弃', message.body)
       } else {
+        // C 部分埋点：fetch 前打时刻（epoch ms）与 invocation 序号，经请求头
+        // 交给内部路由拆队列段（纯派发 vs 服务绑定跳）。只加时间戳与请求头，
+        // 不引入任何新依赖（本文件仍只 import queueMessage.ts）。
+        const consumerBatchAt = Date.now()
         const res = await env.WORKER_SELF_REFERENCE.fetch(INTERNAL_RUN_URL, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
             'x-plan-agent-secret': env.PLAN_AGENT_INTERNAL_SECRET,
+            'x-plan-agent-consumer-at': String(consumerBatchAt),
+            'x-plan-agent-consumer-seq': String(consumerSeq),
           },
           body: JSON.stringify(message.body),
         })
