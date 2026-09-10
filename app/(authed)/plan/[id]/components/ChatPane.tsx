@@ -10,6 +10,7 @@ import { AskAnswerChip, AskCard, type AskAnswer } from './AskCard'
 import { DayCards, DaymapCard } from './DayCards'
 import { MarkdownBubble } from './MarkdownBubble'
 import { ThinkingChain, type ThinkingTurn } from './ThinkingChain'
+import type { WatchConnectionState } from '../hooks/useAgentWatchStream'
 import type { AgentPostBody, ChatEntry, ModelNotice } from '../lib/chatState'
 
 // busy 为 true 但首帧遥测尚未到达时的兜底（startedAt 不影响进行中态展示）
@@ -43,6 +44,8 @@ export function ChatPane(props: {
   /** run 被打断后、续跑流尚未吐出遥测前的兜底短语 */
   interrupted: boolean
   modelNotice: ModelNotice | null
+  /** C2 观察流连接健康度（透传给进行中思维链的 pill）；缺省按 live 显示 */
+  watchConnState?: WatchConnectionState
   onComposeDraft: (text: string) => void
   onAnswerAsk: (ask: AskUserPayload, answer: AskAnswer) => void
   onRetry: (retry: AgentPostBody) => void
@@ -203,6 +206,7 @@ export function ChatPane(props: {
           expanded={props.activeExpanded}
           onToggle={props.onToggleActiveThinking}
           followScroll
+          connectionState={props.watchConnState}
           locale={locale}
         />
       ) : null}
