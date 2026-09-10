@@ -8,8 +8,53 @@
  * 3. 模型流式期间由这里的租约看守定期轮询，发现被停止就 abort 模型请求。
  */
 
+import { RUN_STOP_MARKER } from '@/lib/tripPlan/repo'
+import type { TripPlanRepo } from '@/lib/tripPlan/repo'
+
 /** 停止标记（L5：权威定义在 lib/tripPlan/repo.ts，这里 re-export 供 agent 层使用） */
-export { RUN_STOP_MARKER } from '@/lib/tripPlan/repo'
+export { RUN_STOP_MARKER }
+
+/** 停止证据读取所需的最小 repo 面（2026-09-10 自 loop.ts 抽出的两个助手） */
+export type StopEvidenceRepo = Pick<TripPlanRepo, 'getRunLive' | 'listRunLogs'>
+
+/**
+ * 停止证据检查（§0 + H2，自 loop.ts 抽出）：token 已不匹配的栅栏/abort
+ * 是否因"用户停止"而起。两份证据任一成立即可：实况行停止标记（loop 收尾
+ * 前、GET 5 分钟保鲜内），或同 token 的持久 stopped 运行日志（stopAgentRun
+ * 落笔，不会被 GET 回收——标记行被并发清掉时 loop 仍能正确归类）。
+ */
+export async function stopEvidencePresent(
+  repo: StopEvidenceRepo,
+  planId: string,
+  runToken: string | null,
+): Promise<boolean> {
+  if (!runToken) return false
+  try {
+    const row = await repo.getRunLive(planId)
+    if (row?.runToken === runToken && row.statusText === RUN_STOP_MARKER) return true
+  } catch {
+    // 读实况失败继续查日志
+  }
+  try {
+    return (await repo.listRunLogs(planId)).some((log) => log.stage === 'stopped' && log.runToken === runToken)
+  } catch {
+    return false
+  }
+}
+
+/** H2：stopAgentRun 是否已为本次停止写过持久日志（loop 收尾据此去重） */
+export async function stoppedLogExists(
+  repo: StopEvidenceRepo,
+  planId: string,
+  runToken: string | null,
+): Promise<boolean> {
+  if (!runToken) return false
+  try {
+    return (await repo.listRunLogs(planId)).some((log) => log.stage === 'stopped' && log.runToken === runToken)
+  } catch {
+    return false
+  }
+}
 
 /** 看守 abort 模型请求用的 reason（与 client_disconnected 同一模式） */
 export function userStoppedAbort(): DOMException {
