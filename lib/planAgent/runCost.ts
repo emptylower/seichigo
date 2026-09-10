@@ -5,6 +5,7 @@ import { describePlanAgentModel } from './api'
 import { llmUsageOf, type LlmUsage, addUsage, EMPTY_USAGE } from '@/lib/llm/usage'
 import { EMPTY_GOOGLE_CALLS, summarizeRunCost, type PricingWindowCounts, type RunCostSummary } from '@/lib/billing/cost'
 import { pricingWindowOf, priceModelCall } from '@/lib/billing/priceResolver'
+import type { RunTimings } from './runTimings'
 import { peekLlmForScope } from '@/lib/llm/registry'
 import type { LlmModelConfig } from '@/lib/llm/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
@@ -18,6 +19,13 @@ export type RunCostDeps = {
   /** 补齐续跑的额外 Google 成本回调（G8：route 注入 billing.chargeExtra） */
   onExtraCost?: (micros: number) => Promise<void>
 }
+
+/**
+ * summarizeRunCost 的输出 + B 部分埋点（2026-09-10）的 timings 顶层键。
+ * timings 整体可选；既有字段（tokens/models/calls/costMicros/usageMissing/
+ * priceTableVersion/priceFallbackModels/pricingWindows）语义一个不变。
+ */
+export type RunCostSummaryWithTimings = RunCostSummary & { timings?: RunTimings }
 
 /**
  * 单次上限触发后注入的系统状态文案。G7：这条 user 消息必须排在
@@ -57,9 +65,9 @@ export type RunCostTracker = {
    * 计费结算（设计 §6.2）：回调一次 onRunCost（吞错只 warn，绝不拖垮 run 收尾），
    * 返回与 appendRunLog 落库复用的同一份 summary，避免算两遍。
    */
-  settle(onRunCost: RunCostDeps['onRunCost']): Promise<RunCostSummary>
+  settle(onRunCost: RunCostDeps['onRunCost']): Promise<RunCostSummaryWithTimings>
   /** 最终口径：一次模型调用都没有的 run 同样标 usageMissing（与 appendRunLog 一致） */
-  summary(): RunCostSummary
+  summary(): RunCostSummaryWithTimings
   /** H2/F2：用户停止且已有持久 stopped 日志时，把成本写进那条日志（不重复 append） */
   writeStoppedLogUsage(repo: TripPlanRepo, planId: string, runToken: string | null): Promise<void>
   readonly modelCalls: number
@@ -79,6 +87,11 @@ export function createRunCostTracker(input: {
    * 拿到返回再窥视不会落空；env 路径（无接管）为 null，回落价格表。
    */
   getProviderModels?: () => readonly LlmModelConfig[] | null
+  /**
+   * B 部分埋点（2026-09-10）：timings 快照函数（loop 注入）。buildSummary 时
+   * 调用，返回 undefined 时整体省略 timings 键，既有字段不受影响。
+   */
+  getTimings?: () => RunTimings | undefined
 }): RunCostTracker {
   // 计量层（设计 §7）：按模型累加 usage；缺 usage 的调用记 usageMissing
   const now = input.now ?? (() => Date.now())
@@ -93,8 +106,8 @@ export function createRunCostTracker(input: {
   const pricingWindows: PricingWindowCounts = { peak: 0, offPeak: 0 }
   const fallbackModels = new Set<string>()
 
-  const buildSummary = (final: boolean): RunCostSummary =>
-    summarizeRunCost({
+  const buildSummary = (final: boolean): RunCostSummaryWithTimings => {
+    const summary = summarizeRunCost({
       usageByModel,
       calls: input.enrichBudget.calls ?? { ...EMPTY_GOOGLE_CALLS },
       modelCalls,
@@ -104,6 +117,9 @@ export function createRunCostTracker(input: {
       pricingWindows: { ...pricingWindows },
       priceFallbackModels: [...fallbackModels],
     })
+    const timings = input.getTimings?.()
+    return timings ? { ...summary, timings } : summary
+  }
 
   return {
     recordModelCall(response) {
