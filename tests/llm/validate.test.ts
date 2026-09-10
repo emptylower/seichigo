@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMemoryLlmProviderRepo } from '@/lib/llm/repoMemory'
 import { createHandlers, type LlmAdminApiDeps } from '@/lib/llm/handlers/adminProviders'
-import { InputError, isPrivateHost, normalizeEndpointUrl, validateEndpointUrl } from '@/lib/llm/handlers/validate'
+import { InputError, isPrivateHost, normalizeEndpointUrl, validateEndpointUrl, validateModels } from '@/lib/llm/handlers/validate'
 
 beforeEach(() => {
   process.env.LLM_PROVIDER_SECRET = 'validate-test-secret'
@@ -176,6 +176,33 @@ describe('normalizeEndpointUrl（第七轮 A4：基地址 → 完整请求 URL�
     )
     expect(() => normalizeEndpointUrl('openai', '')).toThrow(InputError)
     expect(() => normalizeEndpointUrl('openai', 'not-a-url')).toThrow(InputError)
+  })
+})
+
+describe('validateModels 价格字段透传（P1）', () => {
+  it('合法价格字段原样保留入库；null 视为显式未填被剥掉；不填不受影响', () => {
+    const models = validateModels([
+      { name: 'm', contextLength: 128000, inputMissPerM: 300_000, inputCacheHitPerM: 6_000, outputPerM: 1_200_000 },
+      { name: 'n', contextLength: 128000, inputMissPerM: null },
+      { name: 'o', contextLength: 64000, maxOutputTokens: 8192 },
+    ])
+    expect(models[0]).toEqual({
+      name: 'm',
+      contextLength: 128000,
+      inputMissPerM: 300_000,
+      inputCacheHitPerM: 6_000,
+      outputPerM: 1_200_000,
+    })
+    expect(models[1]).toEqual({ name: 'n', contextLength: 128000 })
+    expect(models[2]).toEqual({ name: 'o', contextLength: 64000, maxOutputTokens: 8192 })
+  })
+
+  it('负数 / 非有限数 / 超上限的价格拒绝（400）', () => {
+    for (const bad of [-1, Number.POSITIVE_INFINITY, Number.NaN, 'x', 1e12]) {
+      expect(() => validateModels([{ name: 'm', contextLength: 128000, outputPerM: bad }])).toThrow(InputError)
+      expect(() => validateModels([{ name: 'm', contextLength: 128000, inputMissPerM: bad }])).toThrow(InputError)
+      expect(() => validateModels([{ name: 'm', contextLength: 128000, inputCacheHitPerM: bad }])).toThrow(InputError)
+    }
   })
 })
 

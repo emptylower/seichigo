@@ -4,6 +4,7 @@ import { createMemoryLlmProviderRepo } from '@/lib/llm/repoMemory'
 import {
   __resetLlmRegistryForTests,
   invalidateLlmRegistry,
+  peekLlmForScope,
   resolveLlmForScope,
 } from '@/lib/llm/registry'
 
@@ -156,5 +157,26 @@ describe('resolveLlmForScope', () => {
     const repo = await seedTakeover({ apiKeyCiphertext: 'v1.AAAA.AAAA.AAAA' })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(await resolveLlmForScope('agent', { repo })).toBeNull()
+  })
+
+  it('P1：ResolvedLlm 携带 models（含价格字段）；peekLlmForScope 同步窥视缓存，invalidate 后立即失效', async () => {
+    const repo = await seedTakeover({
+      models: [
+        { name: 'model-a', contextLength: 128000, inputMissPerM: 100_000, inputCacheHitPerM: 1_000, outputPerM: 500_000 },
+        { name: 'model-b', contextLength: 64000 },
+      ],
+    })
+    // 未解析（或缓存为空）→ null，绝不触发 DB 读
+    expect(peekLlmForScope('agent', repo)).toBeNull()
+    const resolved = await resolveLlmForScope('agent', { repo })
+    expect(resolved!.models).toEqual([
+      { name: 'model-a', contextLength: 128000, inputMissPerM: 100_000, inputCacheHitPerM: 1_000, outputPerM: 500_000 },
+      { name: 'model-b', contextLength: 64000 },
+    ])
+    // 同步窥视拿到同一份缓存值
+    expect(peekLlmForScope('agent', repo)).toBe(resolved)
+    // 管理面板写入后 invalidateLlmRegistry（adminProviders 各写路径都会调用）→ 价格变更立即生效
+    invalidateLlmRegistry()
+    expect(peekLlmForScope('agent', repo)).toBeNull()
   })
 })
