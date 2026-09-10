@@ -1,10 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { AnitabiBangumiCard } from '@/lib/anitabi/types'
-import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
-import { resolveAnitabiDeliveryUrl } from '@/lib/anitabi/imageNormalize'
-import { isValidTheme } from '@/components/map/types'
 import { createGlobalFeatureCollection } from '@/components/map/utils/globalFeatureCollection'
-import { cutSpriteSheet } from '@/components/map/utils/spriteRenderer'
 import { CoverAvatarLoader } from '@/components/map/utils/coverAvatarLoader'
 import {
   COMPLETE_BANGUMI_COVERS_LAYER_ID,
@@ -27,7 +23,16 @@ import {
 } from '@/components/map/CompleteModeLayers'
 import { ThumbnailLoader } from '@/components/map/utils/thumbnailLoader'
 import { computeWindowExcerpt } from './windowExcerpt'
-import { yieldToMainThread } from './media'
+import {
+  buildViewportSignature,
+  createSpriteImageLoader,
+  readMapViewportBounds,
+  readMapViewportCenter,
+  runSpriteBuild,
+  selectSpriteCandidates,
+  topUpSpritesForViewport,
+  type SpriteBangumiInput,
+} from './completeModeSprites'
 import {
   getFirstViewTrackedSlotCount,
 } from './firstView'
@@ -94,8 +99,35 @@ export function useCompleteMode(ctx: any) {
   const coverDemandInFlightSignatureRef = useRef<string | null>(null)
   const pointDemandSignatureRef = useRef<string | null>(null)
   const pointDemandInFlightSignatureRef = useRef<string | null>(null)
+  const spriteBangumiListRef = useRef<SpriteBangumiInput[]>([])
+  const loadedSpriteBangumiIdsRef = useRef<Set<number>>(new Set())
+  const spriteViewportSignatureRef = useRef<string | null>(null)
+  const spriteTopUpInFlightRef = useRef(false)
+  const spriteTopUpAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    // 视口变化后为「新进入视口」的番剧补精灵表（预算按本次补齐计，见 completeModeSprites.ts）。
+    const runSpriteTopUp = (map: any) => {
+      if (mapModeRef.current !== 'complete') return
+      if (completeSpriteBuildVersionRef.current < 0) return
+      const fc = completeFeatureCollectionRef.current
+      if (!fc) return
+      topUpSpritesForViewport({
+        map,
+        bangumiList: spriteBangumiListRef.current,
+        features: fc.features,
+        processedBangumiIds: loadedSpriteBangumiIdsRef.current,
+        spriteImageIds: spriteImageIdsRef.current,
+        viewportSignatureRef: spriteViewportSignatureRef,
+        inFlightRef: spriteTopUpInFlightRef,
+        abortRef: spriteTopUpAbortRef,
+        metrics: warmupMetricRef.current,
+        maxBangumi: COMPLETE_MODE_SPRITE_MAX_BANGUMI,
+        budgetMs: COMPLETE_MODE_SPRITE_BUDGET_MS,
+        onSpritesAdded: () => syncCompleteModeRef.current(),
+      })
+    }
+
     const flushCompleteMode = () => {
       const map = mapRef.current
       if (!map || !map.isStyleLoaded()) return false
@@ -465,6 +497,7 @@ export function useCompleteMode(ctx: any) {
           }
         }
 
+        runSpriteTopUp(map)
         map.triggerRepaint()
         return true
       } catch {
@@ -477,6 +510,8 @@ export function useCompleteMode(ctx: any) {
     completeCoverCandidatesRef,
     completeCoverFeatureCollectionRef,
     completeFeatureCollectionRef,
+    completeSpriteBuildVersionRef,
+    warmupMetricRef,
     completeImageBuildZoom,
     completeImageShowZoom,
     completePointImageLoaderRef,
@@ -726,84 +761,45 @@ export function useCompleteMode(ctx: any) {
         return
       }
 
-      const imageLoader = (url: string) => {
-        return new Promise<HTMLImageElement>((resolve, reject) => {
-          if (controller.signal.aborted) {
-            reject(new Error('Aborted'))
-            return
-          }
-          const img = new Image()
-          img.crossOrigin = 'anonymous'
-          img.onload = () => resolve(img)
-          img.onerror = () => reject(new Error(`Failed to load: ${url}`))
-          // www.anitabi.cn 已 NXDOMAIN；相对路径先落到 canonical host，再解析为当前可用投递 host。
-          const absoluteUrl = url.startsWith('/')
-            ? resolveAnitabiDeliveryUrl(`https://image.anitabi.cn${url}`).toString()
-            : url
-          img.src = toCanvasSafeImageUrl(absoluteUrl)
-
-          controller.signal.addEventListener('abort', () => {
-            img.src = ''
-            reject(new Error('Aborted'))
-          }, { once: true })
-        })
-      }
-
-      const newSpriteIds = new Set<string>()
-      const spriteCandidates = bangumiDataList
-        .filter((bangumi) => isValidTheme(bangumi.theme))
-        .sort((a, b) => b.points.length - a.points.length)
-        .slice(0, COMPLETE_MODE_SPRITE_MAX_BANGUMI)
-      const spriteDeadline = performance.now() + COMPLETE_MODE_SPRITE_BUDGET_MS
-      warmupMetricRef.current.complete_sprite_cut_total = spriteCandidates.length
+      // 视口驱动的候选选择 + 下载前的字节预算判定（见 completeModeSprites.ts）。
+      spriteBangumiListRef.current = bangumiDataList
+      loadedSpriteBangumiIdsRef.current = new Set()
+      const spriteBounds = readMapViewportBounds(map)
+      const selection = selectSpriteCandidates({
+        bangumiList: bangumiDataList,
+        bounds: spriteBounds,
+        center: readMapViewportCenter(map),
+        maxBangumi: COMPLETE_MODE_SPRITE_MAX_BANGUMI,
+      })
+      warmupMetricRef.current.complete_sprite_cut_total = selection.candidates.length
       warmupMetricRef.current.complete_sprite_cut_done = 0
       warmupMetricRef.current.complete_sprite_cut_budget_hit = 0
+      warmupMetricRef.current.complete_sprite_byte_budget_hit = selection.byteBudgetHit
+      warmupMetricRef.current.complete_sprite_oversize_skipped = selection.oversizeSkipped
+      warmupMetricRef.current.complete_sprite_estimated_bytes = selection.estimatedBytes
 
-      for (let idx = 0; idx < spriteCandidates.length; idx += 1) {
-        const bangumi = spriteCandidates[idx]!
-        if (controller.signal.aborted) return
-
-        if (performance.now() > spriteDeadline) {
+      const spriteResult = await runSpriteBuild({
+        map,
+        candidates: selection.candidates,
+        features: fc.features,
+        signal: controller.signal,
+        imageLoader: createSpriteImageLoader(controller.signal),
+        deadline: performance.now() + COMPLETE_MODE_SPRITE_BUDGET_MS,
+        onProgress: (doneCount: number) => {
+          warmupMetricRef.current.complete_sprite_cut_done = doneCount
+        },
+        onTimeBudgetHit: () => {
           warmupMetricRef.current.complete_sprite_cut_budget_hit = 1
-          break
-        }
-
-        try {
-          const sprites = await cutSpriteSheet(
-            bangumi.bangumiId,
-            bangumi.theme as AnitabiTheme,
-            bangumi.points.map((p) => ({ id: p.id })),
-            bangumi.color,
-            imageLoader,
-          )
-          if (controller.signal.aborted) return
-
-          for (const [imageId, sprite] of sprites.entries()) {
-            if (controller.signal.aborted) return
-            if (!map.hasImage(imageId)) {
-              map.addImage(imageId, sprite.imageData, { pixelRatio: 2 })
-            }
-            newSpriteIds.add(imageId)
-          }
-
-          for (const feature of fc.features) {
-            const spriteKey = `sprite-${bangumi.bangumiId}-${feature.properties.pointId}`
-            if (sprites.has(spriteKey)) {
-              feature.properties.icon = spriteKey
-            }
-          }
-        } catch {
-          // Sprite loading failed for this bangumi; feature falls back to dots.
-        }
-        warmupMetricRef.current.complete_sprite_cut_done = idx + 1
-        if ((idx + 1) % 2 === 0) {
-          await yieldToMainThread(controller.signal)
-        }
-      }
+        },
+      })
 
       if (controller.signal.aborted) return
 
-      spriteImageIdsRef.current = newSpriteIds
+      for (const bangumiId of spriteResult.processedBangumiIds) {
+        loadedSpriteBangumiIdsRef.current.add(bangumiId)
+      }
+      spriteImageIdsRef.current = spriteResult.spriteImageIds
+      spriteViewportSignatureRef.current = buildViewportSignature(spriteBounds)
       syncCompleteModeRef.current()
       completeSpriteBuildVersionRef.current = warmPointDataVersion
     }
@@ -845,6 +841,7 @@ export function useCompleteMode(ctx: any) {
   useEffect(() => () => {
     completeAbortRef.current?.abort()
     completeAbortRef.current = null
+    spriteTopUpAbortRef.current?.abort()
 
     const map = mapRef.current
     if (map && map.isStyleLoaded()) {

@@ -10,6 +10,6 @@
     "features/map/anitabi/useAnitabiMapController.ts": 881,
     "features/map/anitabi/useAnitabiWarmup.ts": 767,
     "features/map/anitabi/useMapInteractionActions.tsx": 788,
-    "features/map/anitabi/useCompleteMode.ts": 891
+    "features/map/anitabi/useCompleteMode.ts": 888
   }
 }
