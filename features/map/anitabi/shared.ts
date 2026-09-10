@@ -46,6 +46,13 @@ const WARMUP_TASK_WEIGHTS: Record<WarmupTaskKey, number> = {
   details: 35,
   images: 20,
 }
+// 用户可见进度只统计「地图可用」所需任务：底图 + 卡片列表。
+// details/images 照常在后台预热，并继续计入内部四任务指标（WARMUP_TASK_WEIGHTS），
+// 但不再拖住 /map 左上角的进度卡片。
+const WARMUP_VISIBLE_TASK_WEIGHTS: Partial<Record<WarmupTaskKey, number>> = {
+  map: 20,
+  cards: 30,
+}
 const MAP_PRELOAD_V2_ENABLED = String(process.env.NEXT_PUBLIC_MAP_PRELOAD_V2 || '1').trim() !== '0'
 const MAP_VECTOR_ENABLED = String(process.env.NEXT_PUBLIC_MAP_VECTOR || '1').trim() !== '0'
 const MAPTILER_KEY = String(process.env.NEXT_PUBLIC_MAPTILER_KEY || '').trim()
@@ -85,6 +92,28 @@ function createEmptyWarmupTaskProgress(): WarmupTaskProgress {
     details: { percent: 0, detail: '' },
     images: { percent: 0, detail: '' },
   }
+}
+
+// 按权重聚合任务进度：仅统计 weights 中权重 > 0 的任务；
+// 被统计任务全部达到 100 时返回 100，否则向下取整并钳制在 0–99。
+function computeWeightedWarmupPercent(
+  tasks: WarmupTaskProgress,
+  weights: Partial<Record<WarmupTaskKey, number>>,
+): number {
+  let weightedSum = 0
+  let totalWeight = 0
+  let allDone = true
+  for (const key of Object.keys(weights) as WarmupTaskKey[]) {
+    const weight = weights[key] || 0
+    if (weight <= 0) continue
+    const taskPercent = Math.max(0, Math.min(100, tasks[key].percent))
+    if (taskPercent < 100) allDone = false
+    weightedSum += taskPercent * weight
+    totalWeight += weight
+  }
+  if (!totalWeight) return 0
+  if (allDone) return 100
+  return Math.max(0, Math.min(99, Math.floor(weightedSum / totalWeight)))
 }
 
 type WarmupProgress = {
@@ -754,7 +783,8 @@ export {
   PRELOAD_IMAGE_BLOCKING_MAX, PRELOAD_IMAGE_BACKGROUND_MAX, PRELOAD_IMAGE_BLOCKING_BASE_CONCURRENCY, PRELOAD_IMAGE_BACKGROUND_CONCURRENCY,
   WARMUP_IMAGE_TIMEOUT_MS, WARMUP_PRELOAD_FETCH_TIMEOUT_MS, WARMUP_ACTIVE_DETAIL_IMAGE_MAX, WARMUP_MAP_WAIT_TIMEOUT_MS, WARMUP_MAP_READY_TIMEOUT_MS,
   WARMUP_WATCHDOG_INTERVAL_MS, WARMUP_STALL_WARN_MS, COMPLETE_MODE_SPRITE_MAX_BANGUMI, COMPLETE_MODE_SPRITE_BUDGET_MS,
-  COMPLETE_MODE_COVER_CANDIDATES_MAX, COMPLETE_MODE_COVER_MAX_LOADED, WARMUP_TASK_WEIGHTS, MAP_PRELOAD_V2_ENABLED, MAP_VECTOR_ENABLED,
+  COMPLETE_MODE_COVER_CANDIDATES_MAX, COMPLETE_MODE_COVER_MAX_LOADED, WARMUP_TASK_WEIGHTS, WARMUP_VISIBLE_TASK_WEIGHTS,
+  computeWeightedWarmupPercent, MAP_PRELOAD_V2_ENABLED, MAP_VECTOR_ENABLED,
   MAPTILER_KEY, MAPBOX_TOKEN, STADIA_KEY, MAP_STYLE_PROVIDER_ORDER, MAP_STYLE_FAILOVER_TIMEOUT_MS, MAP_TILE_FADE_DURATION_MS,
   MAP_TILE_CACHE_ZOOM_LEVELS, MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM, MAP_STYLE_FAILOVER_ERROR_BURST_WINDOW_MS,
   MAP_STYLE_FAILOVER_ERROR_BURST_THRESHOLD, MAP_STYLE_MISSING_IMAGE_FALLBACK_MAX, shouldSkipMissingStyleImageFallback, createEmptyWarmupTaskProgress,

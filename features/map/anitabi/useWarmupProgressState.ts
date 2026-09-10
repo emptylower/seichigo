@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { WARMUP_TASK_WEIGHTS } from './shared'
+import { WARMUP_TASK_WEIGHTS, computeWeightedWarmupPercent } from './shared'
 import type { WarmupProgress, WarmupTaskKey, WarmupTaskProgress } from './shared'
 
 export function useWarmupProgressState(ctx: any) {
@@ -23,22 +23,12 @@ export function useWarmupProgressState(ctx: any) {
     }))
   }, [label.preloadTitle, setWarmupProgress, warmupRunTokenRef])
 
-  const computeWarmupPercent = useCallback((tasks: WarmupTaskProgress): number => {
-    let weightedSum = 0
-    let totalWeight = 0
-    let allDone = true
-    for (const key of Object.keys(tasks) as WarmupTaskKey[]) {
-      const weight = WARMUP_TASK_WEIGHTS[key]
-      const taskPercent = Math.max(0, Math.min(100, tasks[key].percent))
-      if (taskPercent < 100) allDone = false
-      weightedSum += taskPercent * weight
-      totalWeight += weight
-    }
-    if (!totalWeight) return 0
-    const raw = weightedSum / totalWeight
-    if (allDone) return 100
-    return Math.max(0, Math.min(99, Math.floor(raw)))
-  }, [])
+  // 内部口径：四任务加权聚合，仅用于 warmupMetricRef 记录与上报（对外可见进度的
+  // map+cards 口径在 useAnitabiMapController 里用 WARMUP_VISIBLE_TASK_WEIGHTS 另行派生）。
+  const computeWarmupPercent = useCallback(
+    (tasks: WarmupTaskProgress): number => computeWeightedWarmupPercent(tasks, WARMUP_TASK_WEIGHTS),
+    [],
+  )
 
   const resetWarmupTaskProgress = useCallback(() => {
     setWarmupTaskProgress({

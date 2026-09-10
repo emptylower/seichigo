@@ -49,7 +49,6 @@ export function useAnitabiWarmup(ctx: any) {
     tab,
     warmupRunTokenRef,
     warmupBlockingUiRef,
-    setWarmupUiBlocking,
     warmupMetricRef,
     mapImageDiagManagerRef,
     updateWarmupProgress,
@@ -337,7 +336,6 @@ export function useAnitabiWarmup(ctx: any) {
 
     const startedAt = performance.now()
     warmupBlockingUiRef.current = !background
-    setWarmupUiBlocking(!background)
     setCardsLoadError(null)
     warmupMetricRef.current.warmup_run_token = runToken
     warmupMetricRef.current.warmup_session_started_at = Date.now()
@@ -679,7 +677,6 @@ export function useAnitabiWarmup(ctx: any) {
       if (isActiveRun()) {
         warmupMetricRef.current.warmup_aborted = 1
         warmupBlockingUiRef.current = false
-        setWarmupUiBlocking(false)
         updateProgressSafe({ phase: 'idle', percent: 0, detail: '' })
       }
       return
@@ -688,7 +685,6 @@ export function useAnitabiWarmup(ctx: any) {
     completeTasksSafe()
     updateProgressSafe({ phase: 'done', percent: 100, detail: label.preloadDone })
     warmupBlockingUiRef.current = false
-    setWarmupUiBlocking(false)
     warmupMetricRef.current.warmup_aborted = 0
     warmupMetricRef.current.unlock_ms = Math.round(performance.now() - startedAt)
     window.setTimeout(() => {
@@ -754,7 +750,6 @@ export function useAnitabiWarmup(ctx: any) {
     setLoading,
     setTabCardsVersion,
     setWarmPointDataVersion,
-    setWarmupUiBlocking,
     tabCardsRef,
     updateWarmupProgress,
     updateWarmupTask,

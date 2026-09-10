@@ -24,6 +24,8 @@ import { useMapImageDiagConfigSync } from './useMapImageDiagConfigSync'
 import { beginFirstViewSession, markFirstViewAnchor } from './firstView'
 import {
   L,
+  WARMUP_VISIBLE_TASK_WEIGHTS,
+  computeWeightedWarmupPercent,
   createEmptyWarmupTaskProgress,
   getApiErrorMessage,
   getRouteBookIdFromCreateResponse,
@@ -204,7 +206,6 @@ export function useAnitabiMapController(
     detail: '',
   })
   const [warmupTaskProgress, setWarmupTaskProgress] = useState<WarmupTaskProgress>(() => createEmptyWarmupTaskProgress())
-  const [warmupUiBlocking, setWarmupUiBlocking] = useState(false)
   const [cacheStoreReady, setCacheStoreReady] = useState(false)
   const [tabCardsVersion, setTabCardsVersion] = useState(0)
   const [warmPointDataVersion, setWarmPointDataVersion] = useState(0)
@@ -564,7 +565,6 @@ export function useAnitabiMapController(
     setTabCardsVersion,
     setWarmPointDataVersion,
     setWarmupProgress,
-    setWarmupUiBlocking,
     tab,
     tabCardsRef,
     updateWarmupProgress,
@@ -608,7 +608,6 @@ export function useAnitabiMapController(
     setSearchResult,
     setTab,
     setTabCardsVersion,
-    setWarmupUiBlocking,
     loadBootstrapFallbackRef,
     loadMeRef,
     ssrBootstrapUsedRef,
@@ -632,7 +631,6 @@ export function useAnitabiMapController(
     if (warmupProgress.percent < 100) return
     const timer = window.setTimeout(() => {
       warmupBlockingUiRef.current = false
-      setWarmupUiBlocking(false)
       setWarmupProgress((prev) => {
         if (prev.phase !== 'loading' || prev.percent < 100) return prev
         return { ...prev, phase: 'done', percent: 100, detail: prev.detail || label.preloadDone }
@@ -735,6 +733,20 @@ export function useAnitabiMapController(
     selectedPointId,
     mapImageDiagManagerRef,
   })
+
+  // 对外可见进度与内部四任务口径拆分：
+  // warmupProgress 状态本身保持四任务内部模型（阶段机、看门狗、warmupMetricRef、
+  // bootstrap 门控全部沿用旧口径，时间与顺序不变）；只有传给布局的进度卡片
+  // 把 percent 换成「底图 + 卡片」可见口径——details/images 在后台继续预热，
+  // 但不再拖住 /map 左上角的进度卡片。
+  const warmupVisiblePercent = computeWeightedWarmupPercent(warmupTaskProgress, WARMUP_VISIBLE_TASK_WEIGHTS)
+  const warmupVisibleProgress = useMemo(
+    () => (warmupVisiblePercent === warmupProgress.percent
+      ? warmupProgress
+      : { ...warmupProgress, percent: warmupVisiblePercent }),
+    [warmupProgress, warmupVisiblePercent],
+  )
+  const warmupAllTasksReady = warmupProgress.percent >= 100
 
   return {
     addPointToPointPool,
@@ -860,8 +872,8 @@ export function useAnitabiMapController(
     tab,
     totalRouteDistance,
     viewFilter,
-    warmupProgress,
-    warmupUiBlocking,
+    warmupAllTasksReady,
+    warmupProgress: warmupVisibleProgress,
     windowExcerptBangumis,
     windowExcerptPoints,
     workDetailExpanded,
