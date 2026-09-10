@@ -60,6 +60,8 @@ import { executePlanAgentRun } from '@/lib/planAgent/execute'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import * as billingServerDeps from '@/lib/billing/serverDeps'
 import { runCapMicros } from '@/lib/billing/budget'
+import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
+import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
 import { POST } from '@/app/api/me/plans/[id]/agent/route'
 import { POST as POSTInternalRun } from '@/app/api/internal/plan-agent/run/route'
 
@@ -121,6 +123,7 @@ describe('agent route 队列投递（Task A3）', () => {
       message: 'plan a trip',
       resume: false,
       enqueuedAt: expect.any(String),
+      tier: 'standard',
     })
     // human 消息已落库、busy 为 true（run 交给队列消费者）
     expect((await repo.listMessages(plan.id)).map((m) => m.kind)).toEqual(['human'])
@@ -151,6 +154,7 @@ describe('agent route 队列投递（Task A3）', () => {
       message: null,
       resume: true,
       enqueuedAt: expect.any(String),
+      tier: 'standard',
     })
     // resume 不追加 human 消息
     expect((await repo.listMessages(plan.id))).toHaveLength(1)
@@ -287,6 +291,212 @@ describe('internal run route 计费装配（G3 fail-closed）', () => {
     } finally {
       errorLog.mockRestore()
     }
+  })
+})
+
+describe('isPlanAgentQueueMessage 对 tier 字段容错（CUT-2）', () => {
+  const base = {
+    v: 1,
+    planId: 'p1',
+    runToken: 'tok',
+    locale: 'zh',
+    message: 'hi',
+    resume: false,
+    enqueuedAt: new Date('2026-09-10T00:00:00Z').toISOString(),
+  }
+
+  // 滚动部署窗口内在途消息不带 tier；将来加第 4 档时旧消费者会收到不认识的
+  // tier。校验器若因此拒信 → 内部路由 400 → 消费者无条件 ack() 销毁消息，
+  // human 消息已落库 + busy 占 90s，用户只能靠 TTL 过期找回——绝不能拒。
+  it.each([
+    ['undefined（旧版在途消息）', undefined],
+    ['team（未来档位滚动窗口）', 'team'],
+    ['null', null],
+    ['123', 123],
+    ['Pro（大小写不符）', 'Pro'],
+  ])('tier=%s 不导致校验失败', (_label, tier) => {
+    expect(isPlanAgentQueueMessage({ ...base, tier })).toBe(true)
+  })
+})
+
+describe('internal run route tier 透传（CUT-2）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.mocked(executePlanAgentRun).mockClear()
+    __resetBillingService()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    __resetBillingService()
+  })
+
+  async function setupAgentRun(): Promise<{ planId: string; runToken: string }> {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error(`beginAgentRun status: ${begin.status}`)
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    return { planId: plan.id, runToken: begin.token }
+  }
+
+  async function postInternalRun(body: Record<string, unknown>): Promise<void> {
+    const res = await POSTInternalRun(
+      new Request('http://localhost/api/internal/plan-agent/run', {
+        method: 'POST',
+        headers: { 'x-plan-agent-secret': 's3cret' },
+        body: JSON.stringify(body),
+      }),
+    )
+    await res.text()
+  }
+
+  function billingOfCall(): { entitlements: typeof TIER_ENTITLEMENTS.free; runCapMicros: number } {
+    const arg = vi.mocked(executePlanAgentRun).mock.calls[0]![0] as {
+      billing?: { entitlements: typeof TIER_ENTITLEMENTS.free; runCapMicros: number }
+    }
+    if (!arg.billing) throw new Error('executePlanAgentRun called without billing')
+    return arg.billing
+  }
+
+  it("tier='pro' 且 enqueuedAt 新鲜 → getAccount 一次都不调，按 pro 能力表装配", async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    const { planId, runToken } = await setupAgentRun()
+    const getAccount = vi.fn(async () => {
+      throw new Error('passthrough must skip getAccount')
+    })
+    __setBillingService({ getAccount })
+
+    await postInternalRun({
+      v: 1,
+      planId,
+      runToken,
+      locale: 'zh',
+      message: 'hi',
+      resume: false,
+      enqueuedAt: new Date().toISOString(),
+      tier: 'pro',
+    })
+
+    expect(getAccount).not.toHaveBeenCalled()
+    expect(vi.mocked(executePlanAgentRun)).toHaveBeenCalledTimes(1)
+    const billing = billingOfCall()
+    expect(billing.entitlements).toEqual(TIER_ENTITLEMENTS.pro)
+    expect(billing.runCapMicros).toBe(runCapMicros('pro'))
+  })
+
+  it('tier 缺失 → 走 getAccount 三读，装配其返回值（绝不落 free）', async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    const { planId, runToken } = await setupAgentRun()
+    const getAccount = vi.fn(async () => ({
+      userId: 'u1',
+      entitlements: TIER_ENTITLEMENTS.pro,
+      runCapMicros: runCapMicros('pro'),
+    }))
+    __setBillingService({ getAccount })
+
+    await postInternalRun({
+      v: 1,
+      planId,
+      runToken,
+      locale: 'zh',
+      message: 'hi',
+      resume: false,
+      enqueuedAt: new Date().toISOString(),
+    })
+
+    expect(getAccount).toHaveBeenCalledTimes(1)
+    expect(getAccount).toHaveBeenCalledWith('u1')
+    const billing = billingOfCall()
+    expect(billing.entitlements).toEqual(TIER_ENTITLEMENTS.pro)
+    expect(billing.runCapMicros).toBe(runCapMicros('pro'))
+  })
+
+  it("tier='team'（不认识）→ 同缺失一样走 getAccount", async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    const { planId, runToken } = await setupAgentRun()
+    const getAccount = vi.fn(async () => ({
+      userId: 'u1',
+      entitlements: TIER_ENTITLEMENTS.pro,
+      runCapMicros: runCapMicros('pro'),
+    }))
+    __setBillingService({ getAccount })
+
+    await postInternalRun({
+      v: 1,
+      planId,
+      runToken,
+      locale: 'zh',
+      message: 'hi',
+      resume: false,
+      enqueuedAt: new Date().toISOString(),
+      tier: 'team',
+    })
+
+    expect(getAccount).toHaveBeenCalledTimes(1)
+    const billing = billingOfCall()
+    expect(billing.entitlements).toEqual(TIER_ENTITLEMENTS.pro)
+    expect(billing.runCapMicros).toBe(runCapMicros('pro'))
+  })
+
+  it('enqueuedAt 超过 TIER_PASSTHROUGH_MAX_AGE_MS → 走 getAccount', async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    const { planId, runToken } = await setupAgentRun()
+    const getAccount = vi.fn(async () => ({
+      userId: 'u1',
+      entitlements: TIER_ENTITLEMENTS.pro,
+      runCapMicros: runCapMicros('pro'),
+    }))
+    __setBillingService({ getAccount })
+
+    await postInternalRun({
+      v: 1,
+      planId,
+      runToken,
+      locale: 'zh',
+      message: 'hi',
+      resume: false,
+      enqueuedAt: new Date(Date.now() - 130_000).toISOString(),
+      tier: 'pro',
+    })
+
+    expect(getAccount).toHaveBeenCalledTimes(1)
+    const billing = billingOfCall()
+    expect(billing.entitlements).toEqual(TIER_ENTITLEMENTS.pro)
+  })
+
+  it("PLAN_AGENT_TIER_PASSTHROUGH='0'（回滚开关）→ 走 getAccount", async () => {
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 's3cret')
+    vi.stubEnv('PLAN_AGENT_TIER_PASSTHROUGH', '0')
+    const { planId, runToken } = await setupAgentRun()
+    const getAccount = vi.fn(async () => ({
+      userId: 'u1',
+      entitlements: TIER_ENTITLEMENTS.pro,
+      runCapMicros: runCapMicros('pro'),
+    }))
+    __setBillingService({ getAccount })
+
+    await postInternalRun({
+      v: 1,
+      planId,
+      runToken,
+      locale: 'zh',
+      message: 'hi',
+      resume: false,
+      enqueuedAt: new Date().toISOString(),
+      tier: 'pro',
+    })
+
+    expect(getAccount).toHaveBeenCalledTimes(1)
+    const billing = billingOfCall()
+    expect(billing.entitlements).toEqual(TIER_ENTITLEMENTS.pro)
   })
 })
 
