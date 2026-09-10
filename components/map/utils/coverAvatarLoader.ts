@@ -1,7 +1,6 @@
 import { getMapDisplayImageCandidatesAsync } from '@/lib/anitabi/imageProxy'
 import { loadMapImageWithCandidates } from '@/components/map/utils/loadMapImageWithCandidates'
 import {
-  createCoverSpriteSource,
   type CoverSpriteSource,
   type CoverSpriteTile,
 } from '@/components/map/utils/coverSpriteSource'
@@ -27,8 +26,9 @@ export interface CoverAvatarLoaderOptions {
   /**
    * 2026-09-10 任务 3：服务端预生成封面 sprite。命中的番剧直接本地切片
    * addImage（零网络请求）；未命中/不可用的番剧回落到原候选梯逐张加载。
-   * 默认开启（sprite 未生成时 404 自动回落，删除 R2 atlas 即为停用开关）；
-   * 显式传 null 可完全关闭（测试/回滚）。
+   *
+   * 2026-09-10 起**默认关闭**（见构造函数处的盈亏测算注释）；代码与测试保留，
+   * 显式注入 CoverSpriteSource 实例即可重新启用；显式传 null 与默认行为一致。
    */
   spriteSource?: CoverSpriteSource | null
   onTrackedRequestStart?: (input: {
@@ -88,8 +88,29 @@ export class CoverAvatarLoader {
     this.firstViewTrackedLimit = Math.max(0, options.firstViewTrackedLimit ?? 0)
     this.directRequestTimeoutMs = options.directRequestTimeoutMs
     this.proxyRequestTimeoutMs = options.proxyRequestTimeoutMs
+    /**
+     * 2026-09-10：sprite 快路径**默认关闭**（代码与测试保留，未删除）。
+     *
+     * 关闭原因——实测推翻了收益前提。coverSpriteSource 的命中路径是
+     * 「一次 atlas 请求 + 一次 sheet 请求」，整张 sheet 无条件下载、没有分片：
+     *
+     *   1520 图标 / 39×39 网格 / sheet 2,697,698 B (2.63MB) + atlas 24,262 B
+     *
+     * 盈亏平衡点：2,697,698 ÷ 8,806（单张 h160 封面字节，任务 1 之后）≈ 306。
+     * 即一次会话需用到 306 个以上**不同**番剧封面，灌表才比逐张划算。
+     * 实测用量（生产瀑布）：普通模式 22 张、complete 模式约 118 张——
+     *
+     *   | 场景                | 逐张 h160 | sprite sheet          |
+     *   |---------------------|-----------|-----------------------|
+     *   | 普通模式（22 张）    | 190 KB    | 2.63 MB（14× 差）      |
+     *   | complete（118 张）   | 1.01 MB   | 2.63 MB（2.6× 差）     |
+     *
+     * **重新启用的前提：先做分片**（按 viewport/zoom 只下需要的那批图标），
+     * 否则整表灌入反而拉低性能。启用方式：构造时显式传
+     * `spriteSource: createCoverSpriteSource()`。
+     */
     this.spriteSource = options.spriteSource === undefined
-      ? createCoverSpriteSource()
+      ? null
       : options.spriteSource
     this.onTrackedRequestStart = options.onTrackedRequestStart
     this.onTrackedRequestTerminal = options.onTrackedRequestTerminal

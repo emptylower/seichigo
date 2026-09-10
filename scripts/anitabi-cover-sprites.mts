@@ -8,6 +8,11 @@
  * webp + atlas JSON → 落盘 out-dir。--upload 时按「先 sheet 后 atlas」顺序经
  * wrangler r2 object put 灌入 seichigo-anitabi-images 桶（atlas 是指针，永远
  * 最后写）。默认连 .env 的开发库；生产生成由 ops 用 .env.local 环境运行。
+ *
+ * ⚠ 2026-09-10：该表当前**不在生产启用**（CoverAvatarLoader 默认关闭
+ * spriteSource——实测整表 2.63MB 无分片，盈亏平衡点 ≈306 个不同封面，
+ * 普通/complete 模式用量都远低于此，灌表是净负优化）。重新灌桶/启用前
+ * 必须先确认分片方案（按 viewport/zoom 只下需要的图标），否则只会退化。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
