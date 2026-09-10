@@ -39,7 +39,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const userId = session?.user?.id
   if (!userId) return NextResponse.json({ error: errors.notSignedIn }, { status: 401 })
 
-  const plan = await deps.repo.getPlan(id)
+  // A 部分（改动 2）：计划归属读与计费账户读互不依赖（一个查 plan 归属、
+  // 一个查计费账户），串行两次 DB 往返改为 Promise.all 重叠执行。账户读的
+  // 失败包进 outcome、推迟到原 getAccount 位置才暴露——404/403/400 与
+  // stop/resume 各拒绝路径本来就不碰计费，语义与先后顺序不变
+  const billing = getBillingService()
+  const [plan, accountOutcome] = await Promise.all([
+    deps.repo.getPlan(id),
+    billing.getAccount(userId).then(
+      (account) => ({ ok: true as const, account }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
+  ])
   if (!plan) return NextResponse.json({ error: errors.planNotFound }, { status: 404 })
   if (plan.userId !== userId) return NextResponse.json({ error: errors.forbidden }, { status: 403 })
 
@@ -95,15 +106,34 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  // 预算层（设计 §6.2）：先退孤儿预扣（它不依赖 account，只需 userId；管理员
-  // 也可安全调用，管理员没有 reserve），再读账户做只读预检 → 抢 busy 位 →
-  // 无条件预扣（force）。预检拦住的请求不落库人类消息；预检通过后并发挤过
-  // 的极少数请求允许余量短暂为负。
+  // 预算层（设计 §6.2）：孤儿预扣清扫 → 账户只读预检 → 抢 busy 位 → 无条件
+  // 预扣（force）。预检拦住的请求不落库人类消息；预检通过后并发挤过的极少数
+  // 请求允许余量短暂为负。
   // G1：阈值用 STALE_RESERVE_AFTER_MS（软截止 13 分钟 + 两倍 TTL）——真实
-  // run 靠续租可跑 13 分钟，比这更短的窗口会把在跑的 run 当孤儿退掉
-  const billing = getBillingService()
-  await billing.refundStaleReserves(userId, new Date(Date.now() - STALE_RESERVE_AFTER_MS)).catch(() => undefined)
-  const account = await billing.getAccount(userId)
+  // run 靠续租可跑 13 分钟，比这更短的窗口会把在跑的 run 当孤儿退掉。
+  // A 部分共用件：非关键路径任务挂 CF ExecutionContext 的 waitUntil 在响应
+  // 之后执行（必须以 cfCtx.waitUntil(...) 宿主方法形式调用，裸方法引用会
+  // Illegal invocation）；拿不到 context（next dev / vitest / 节点运行时）
+  // 回落同步 await——静默丢弃会让孤儿预扣永远不退（改动 1）、run 预扣漏账
+  // （改动 3）
+  const cfCtx = getCfBindings()?.ctx
+  const runAfterResponse = (task: Promise<void>): Promise<void> => {
+    if (cfCtx?.waitUntil) {
+      cfCtx.waitUntil(task)
+      return Promise.resolve()
+    }
+    return task
+  }
+  // A 部分（改动 1）：孤儿预扣清扫清的是**别的 run** 留下的孤儿，与本次请求
+  // 的正确性无关——挪出关键路径（砍一次串行往返），经 waitUntil 在响应后执行
+  const staleSweep = billing
+    .refundStaleReserves(userId, new Date(Date.now() - STALE_RESERVE_AFTER_MS))
+    .catch(() => undefined)
+  await runAfterResponse(staleSweep)
+  // getAccount 已在开头并行发起（改动 2）；错误在此（原 getAccount 位置）
+  // 暴露，保持旧行为：走到计费层的请求遇到读库失败 → 未捕获 → 500
+  if (!accountOutcome.ok) throw accountOutcome.error
+  const account = accountOutcome.account
   if (!account) return NextResponse.json({ error: errors.serverError }, { status: 500 })
   if (!billing.canStartRun(account)) {
     return NextResponse.json(
@@ -145,10 +175,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const runToken = begin.token
 
-  // 抢到 busy 位后无条件预扣（runRef = runToken，执行体结算时配对）
-  await billing.reserveRun({ account, planId: id, runRef: runToken, force: true }).catch((err) => {
-    console.warn('[planAgent/billing] reserve failed (run continues, will be settled without reserve)', err)
-  })
+  // 抢到 busy 位后无条件预扣（runRef = runToken，执行体结算时配对）。预扣失败
+  // 本就被吞掉继续跑（结算侧 G1 有漏扣兜底），成败不影响要不要投队列——202
+  // 路径下不阻塞响应（改动 3，见 queue.send 之后），内联 SSE 路径仍同步预扣
+  const reserveRun = (): Promise<void> =>
+    billing
+      .reserveRun({ account, planId: id, runRef: runToken, force: true })
+      .then(() => undefined)
+      .catch((err) => {
+        console.warn('[planAgent/billing] reserve failed (run continues, will be settled without reserve)', err)
+      })
   const billingInput = { entitlements: account.entitlements, runCapMicros: account.runCapMicros }
 
   // 结构化回答 → 元信息直写补丁（纯函数，提前算好）。date_range 的
@@ -187,12 +223,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           resume,
           enqueuedAt: new Date().toISOString(),
         })
+        // A 部分（改动 3）：runToken 已拿到、无顺序依赖，预扣挪到 send 与
+        // 返回 202 之后经 waitUntil 入账；拿不到 ctx 回落同步 await
+        await runAfterResponse(reserveRun())
         return NextResponse.json({ queued: true, runToken }, { status: 202 })
       } catch (err) {
         console.warn('[planAgent/queue] send failed, falling back to inline SSE', err)
       }
     }
   }
+
+  // 内联 SSE 路径（队列不可用 / 投递或直写失败回落）：run 在本请求内执行，
+  // 保持原有同步预扣——run 开烧之前预扣已落账
+  await reserveRun()
 
   const encoder = new TextEncoder()
   const abort = new AbortController()
