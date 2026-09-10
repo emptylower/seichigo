@@ -37,9 +37,10 @@ describe('ThinkingChain', () => {
     expect(screen.getByText('规划师思考中…')).toBeTruthy()
   })
 
-  it('expanded: renders reasoning text and tool call timeline', () => {
+  it('expanded: renders reasoning text and tool call timeline', async () => {
     render(<ThinkingChain thinking={baseTurn} active expanded onToggle={() => {}} />)
-    expect(screen.getByText('先把点位按区域分组。')).toBeTruthy()
+    // active 轮的 reasoning 经打字机播放缓冲逐帧出现（rAF 推进），等它放到全长
+    expect(await screen.findByText('先把点位按区域分组。')).toBeTruthy()
     expect(screen.getByText('作品 id 115908')).toBeTruthy()
     expect(screen.getByText('找到 47 个点位')).toBeTruthy()
     expect(screen.getByText('738ms')).toBeTruthy()
