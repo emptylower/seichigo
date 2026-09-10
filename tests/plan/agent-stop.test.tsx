@@ -81,6 +81,8 @@ describe('B1 停止本轮规划（§0 stop 契约）', () => {
     let runs = 0
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
+      // 观察流与 POST 并行开（§0.6 阶段三）：挂起即可，本组断言只看 POST 主流
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) {
         if ('stop' in bodyOf(init)) {
           return new Response(JSON.stringify({ ok: true, stopped: true }), {
@@ -164,6 +166,8 @@ describe('M5 「已停止」定格进历史思维链', () => {
     const sse = makeSse()
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
+      // 观察流与 POST 并行开（§0.6 阶段三）：挂起即可，本组断言只看 POST 主流
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) {
         if ('stop' in bodyOf(init)) {
           return new Response(JSON.stringify({ ok: true, stopped: true }), {

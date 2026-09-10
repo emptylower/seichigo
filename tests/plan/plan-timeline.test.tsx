@@ -331,6 +331,8 @@ describe('PlanPlanner 断线恢复与运行状态', () => {
     let resolveFirstPoll: ((res: Response) => void) | null = null
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input)
+      // 观察流与 POST 并行开（§0.6 阶段三）：挂起，不消费本测试的一次性断流
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) {
         agentCalled = true
         return new Response(brokenStream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
@@ -498,6 +500,7 @@ describe('PlanPlanner 重试与空消息守卫', () => {
   it('答复轮（带 answerTo）出错后出现“重试”按钮，重试原样回发同样的 answerTo/answerValue', async () => {
     const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
       const url = String(input)
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) return sseErrorResponse('boom')
       return new Response(JSON.stringify({ plan: makePlan([]) }), { status: 200 })
     })
@@ -536,10 +539,14 @@ describe('PlanPlanner 重试与空消息守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: /重试/ }))
 
     await waitFor(() => {
-      const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+      const agentCalls = fetchMock.mock.calls.filter(
+        ([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream'),
+      )
       expect(agentCalls).toHaveLength(2)
     })
-    const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+    const agentCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream'),
+    )
     const firstBody = JSON.parse(String(agentCalls[0]![1]?.body)) as Record<string, unknown>
     const retryBody = JSON.parse(String(agentCalls[1]![1]?.body)) as Record<string, unknown>
     // 重试原样重发完整请求体
