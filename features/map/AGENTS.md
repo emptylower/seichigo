@@ -48,3 +48,4 @@ features/map/
 - Data flow: Bootstrap → Warmup → Selection → DerivedState → Render.
 - `QuickPilgrimageMode` (in `components/quickPilgrimage/`) consumes data from this module's state.
 - Warmup progress has two calibers (since 2026-09): internal `warmupProgress`/`warmupMetricRef` keep the 4-task weighted model (map/cards/details/images, `WARMUP_TASK_WEIGHTS`); the visible progress card is derived in `useAnitabiMapController` via `WARMUP_VISIBLE_TASK_WEIGHTS` (map+cards only). details/images prefetch continues in background — do not feed them back into the visible card.
+- Visible card copy is gated at the source (since 2026-09-10): `useWarmupProgressState.updateWarmupTask` only lets map/cards write the visible `warmupProgress.detail`; details/images fine-grained text (e.g. 点位分块/图片预热) still lands in `warmupMetricRef.last_progress_detail` for server/log diagnostics only.

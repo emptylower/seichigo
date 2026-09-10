@@ -12,6 +12,7 @@ let computeWeightedWarmupPercent: typeof import('@/features/map/anitabi/shared')
 let WARMUP_TASK_WEIGHTS: typeof import('@/features/map/anitabi/shared').WARMUP_TASK_WEIGHTS
 let WARMUP_VISIBLE_TASK_WEIGHTS: typeof import('@/features/map/anitabi/shared').WARMUP_VISIBLE_TASK_WEIGHTS
 let createEmptyWarmupTaskProgress: typeof import('@/features/map/anitabi/shared').createEmptyWarmupTaskProgress
+let L: typeof import('@/features/map/anitabi/shared').L
 let useWarmupProgressState: typeof import('@/features/map/anitabi/useWarmupProgressState').useWarmupProgressState
 let MapLoadingProgress: typeof import('@/components/map/MapLoadingProgress').default
 
@@ -27,6 +28,7 @@ beforeAll(async () => {
   WARMUP_TASK_WEIGHTS = shared.WARMUP_TASK_WEIGHTS
   WARMUP_VISIBLE_TASK_WEIGHTS = shared.WARMUP_VISIBLE_TASK_WEIGHTS
   createEmptyWarmupTaskProgress = shared.createEmptyWarmupTaskProgress
+  L = shared.L
   ;({ useWarmupProgressState } = await import('@/features/map/anitabi/useWarmupProgressState'))
   MapLoadingProgress = (await import('@/components/map/MapLoadingProgress')).default
 })
@@ -247,6 +249,78 @@ describe('可见进度与内部四任务指标拆分', () => {
     expect(result.current.warmupTaskProgress.details.percent).toBe(100)
     expect(result.current.warmupTaskProgress.images.percent).toBe(100)
     expect(result.current.warmupVisibleProgress.percent).toBe(100)
+  })
+})
+
+describe('卡片说明文字来源（只由 map/cards 驱动）', () => {
+  it('details/images 推进时卡片可见 detail 不变，内部指标仍记录细粒度文本', () => {
+    const { result } = renderHook(() => useWarmupHarness())
+
+    act(() => {
+      result.current.updateWarmupProgress({ phase: 'loading', percent: 0, detail: '正在准备地图' })
+    })
+    act(() => {
+      result.current.updateWarmupTask('map', { percent: 45, detail: '正在准备地图' })
+      result.current.updateWarmupTask('cards', { percent: 25, detail: '载入作品列表 (1/4)' })
+    })
+    expect(result.current.warmupProgress.detail).toBe('载入作品列表 (1/4)')
+    expect(result.current.warmupVisibleProgress.detail).toBe('载入作品列表 (1/4)')
+
+    act(() => {
+      result.current.updateWarmupTask('details', { percent: 50, detail: '点位分块 (3/6) · 9865' })
+    })
+    // 卡片文本停留在 map/cards 最后一次的说明，不出现后台任务黑话
+    expect(result.current.warmupVisibleProgress.detail).toBe('载入作品列表 (1/4)')
+    expect(result.current.warmupVisibleProgress.detail).not.toContain('点位分块')
+    // 内部口径不削弱：细粒度文本照常进 warmupMetricRef
+    expect(result.current.warmupMetricRef.current.last_progress_key).toBe('details')
+    expect(result.current.warmupMetricRef.current.last_progress_detail).toBe('点位分块 (3/6) · 9865')
+
+    act(() => {
+      result.current.updateWarmupTask('images', { percent: 30, detail: '图片预热 (36/120)' })
+    })
+    expect(result.current.warmupVisibleProgress.detail).toBe('载入作品列表 (1/4)')
+    expect(result.current.warmupVisibleProgress.detail).not.toContain('图片预热')
+    expect(result.current.warmupMetricRef.current.last_progress_key).toBe('images')
+    expect(result.current.warmupMetricRef.current.last_progress_detail).toBe('图片预热 (36/120)')
+  })
+
+  it('map/cards 推进时卡片文本随之更新', () => {
+    const { result } = renderHook(() => useWarmupHarness())
+
+    act(() => {
+      result.current.updateWarmupTask('map', { percent: 2, detail: '正在准备地图' })
+    })
+    expect(result.current.warmupVisibleProgress.detail).toBe('正在准备地图')
+
+    act(() => {
+      result.current.updateWarmupTask('map', { percent: 78, detail: '正在加载地图画面' })
+    })
+    expect(result.current.warmupVisibleProgress.detail).toBe('正在加载地图画面')
+
+    act(() => {
+      result.current.updateWarmupTask('cards', { percent: 100, detail: '载入作品列表 (4/4)' })
+    })
+    expect(result.current.warmupVisibleProgress.detail).toBe('载入作品列表 (4/4)')
+  })
+})
+
+describe('三语 preload 文案', () => {
+  it('zh/en/ja 的 label 集合 key 完全一致', () => {
+    const zhKeys = Object.keys(L.zh).sort()
+    expect(Object.keys(L.en).sort()).toEqual(zhKeys)
+    expect(Object.keys(L.ja).sort()).toEqual(zhKeys)
+  })
+
+  it('面向用户的 preload 文案不含内部黑话（内部 key 保留）', () => {
+    for (const locale of ['zh', 'en', 'ja'] as const) {
+      const l = L[locale]
+      expect(l.preloadTitle).not.toMatch(/预加载|preload|事前読み込み/i)
+      expect(l.preloadCards).not.toMatch(/四板块|Four Tab|4タブ/)
+      // 内部指标文本 key 不删：details/images 仍用于 warmupMetricRef 细粒度记录
+      expect(l.preloadDetails.length).toBeGreaterThan(0)
+      expect(l.preloadImages.length).toBeGreaterThan(0)
+    }
   })
 })
 

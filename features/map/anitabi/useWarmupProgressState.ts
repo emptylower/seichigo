@@ -62,6 +62,8 @@ export function useWarmupProgressState(ctx: any) {
         },
       }
       const combinedPercent = computeWarmupPercent(merged)
+      // 内部指标口径不变：四任务的细粒度文本（含点位分块/图片预热）照常记录，
+      // 供服务端与日志排查。
       warmupMetricRef.current.last_progress_at = Date.now()
       warmupMetricRef.current.last_progress_key = key
       warmupMetricRef.current.last_progress_percent = combinedPercent
@@ -72,7 +74,9 @@ export function useWarmupProgressState(ctx: any) {
           : prevWarmup.phase,
         percent: combinedPercent,
         title: label.preloadTitle,
-        detail: next.detail ?? prevWarmup.detail,
+        // 卡片说明文字只由 map/cards 两个「地图可用」任务驱动；details/images
+        // 在后台预热，其 detail 文本不再进入可见卡片（内部指标见上方）。
+        detail: key === 'map' || key === 'cards' ? (next.detail ?? prevWarmup.detail) : prevWarmup.detail,
       }))
       return merged
     })
