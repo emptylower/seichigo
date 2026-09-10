@@ -25,7 +25,7 @@ import { usePlanImagePrewarm } from './hooks/usePlanImagePrewarm'
 import { useAgentStop } from './hooks/useAgentStop'
 import { usePendingDraft } from './hooks/usePendingDraft'
 import { usePlanRunSync } from './hooks/usePlanRunSync'
-import { useAgentWatchStream } from './hooks/useAgentWatchStream'
+import { useAgentWatchStream, type WatchConnectionState } from './hooks/useAgentWatchStream'
 import {
   attachThinkingToLast,
   autoResumeStorageKey,
@@ -64,6 +64,8 @@ export function PlanPlanner(props: {
   // 本月用量耗尽（/agent 返回 402）：输入禁用 + 提示条，直到下次刷新拿到真实状态
   const [budgetExhausted, setBudgetExhausted] = useState<{ message: string; upgradeAvailable: boolean } | null>(null)
   const [activeThinking, setActiveThinking] = useState<ThinkingTurn | null>(null)
+  // C2 观察流连接健康度：degraded 时进行中思维链 pill 换「连接不稳，重试中」
+  const [watchConnState, setWatchConnState] = useState<WatchConnectionState>('live')
   // §0 model_info：当前模型不公开思考过程时的头部灰字提示（reasoning=true 时为 null）
   const [modelNotice, setModelNotice] = useState<ModelNotice | null>(null)
   // 展开哪条历史思维链：`m${idx}`（消息定格）——纯 UI 状态，不参与跟随滚动
@@ -125,6 +127,7 @@ export function PlanPlanner(props: {
     },
     // done.stopped：不再依赖 useAgentStop 的 5 秒兜底，直接按「已停止」定格
     onStopped: (turn) => freezeStoppedTurn(turn),
+    onConnectionState: setWatchConnState,
   })
 
   function handleScroll() {
@@ -216,6 +219,16 @@ export function PlanPlanner(props: {
       return hasThinkingContent(frozen) ? frozen : undefined
     }
 
+    // 观察流与 POST 并行开（§0.6 阶段三）：POST 内部有多次串行数据库往返，先把
+    // 观察流以 awaitStart 开出去（run 未启动时服务端宽限等待），把投递耗时从首字
+    // 延迟里拿掉。await=1 只出现在本次 open 的第一次连接（见 useAgentWatchStream）
+    watch.open({ awaitStart: true })
+    // 只有「202 已投递」这一条路径让观察流活到 done；内联 SSE 回落与所有错误
+    // 路径（含 fetch 抛错）都必须关掉它——否则页面挂着一条永远等不到 run 的流
+    let watchKeepsRunning = false
+    const closeWatchUnlessQueued = () => {
+      if (!watchKeepsRunning) watch.close()
+    }
     try {
       const res = await fetch(`/api/me/plans/${props.planId}/agent`, {
         method: 'POST',
@@ -228,13 +241,15 @@ export function PlanPlanner(props: {
       if (res.status === 202) {
         const queued = (await res.json().catch(() => null)) as { queued?: boolean } | null
         if (queued?.queued === true) {
+          watchKeepsRunning = true
           runSync.clearInterrupted()
-          watch.open()
           return
         }
       }
       const contentType = res.headers.get('content-type') ?? ''
       if (!res.ok || !res.body || !contentType.includes('text/event-stream')) {
+        // 观察流等不到 run 了：先关掉，再走既有错误分支
+        closeWatchUnlessQueued()
         const errBody = (await res.json().catch(() => null)) as
           | { error?: string; reason?: string; code?: string; upgradeAvailable?: boolean }
           | null
@@ -262,6 +277,8 @@ export function PlanPlanner(props: {
         return
       }
 
+      // 队列不可用时的内联 SSE 回落：必须先关观察流再读本流——两条路径不能同时写同一份状态
+      closeWatchUnlessQueued()
       // 新 run 的流已开始：旧的中断标记随之失效（续跑/新回合都会覆盖它）
       runSync.clearInterrupted()
 
@@ -358,6 +375,8 @@ export function PlanPlanner(props: {
         return
       }
     } finally {
+      // fetch 抛错（含用户点停止的 abort）等未显式关闭的路径在此兜底
+      closeWatchUnlessQueued()
       // 进入恢复轮询或观察流模式时，由它们负责收尾（busy/banner/thinking）
       if (!runSync.isPolling() && !watch.isOpen()) {
         setBusy(false)
@@ -461,6 +480,7 @@ export function PlanPlanner(props: {
             onToggleActiveThinking={() => setActiveCollapsed(activeAutoExpanded)}
             interrupted={interrupted != null}
             modelNotice={modelNotice}
+            watchConnState={watchConnState}
             onComposeDraft={composeDraft}
             onAnswerAsk={(ask, answer: AskAnswer) =>
               void postAndStream({ message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue })

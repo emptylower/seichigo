@@ -54,9 +54,10 @@ export type AgentWatchEvent =
       seq: number
       /**
        * `finished`=run 已结束（收尾）；`rotate`=连接到 15 min 上限但 run 仍在跑
-       * （只换连接，不收尾）。缺省按 `finished` 处理，兼容不带该字段的旧事件。
+       * （只换连接，不收尾）；`not_started`=`await=1` 宽限 10 秒超时 run 仍未启动
+       * （不收尾，转恢复轮询）。缺省按 `finished` 处理，兼容不带该字段的旧事件。
        */
-      reason?: 'finished' | 'rotate'
+      reason?: 'finished' | 'rotate' | 'not_started'
       /** run 因用户点「停止」而结束（缺省 false）：收尾前把本轮思维链以「已停止」定格 */
       stopped?: boolean
       interrupted?: InterruptedInfo | null

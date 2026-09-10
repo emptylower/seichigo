@@ -16,9 +16,16 @@ import type { PlanRunSync } from './usePlanRunSync'
 /** 断线退避序列（§0.6.3）：依次等这些毫秒重连；全部用尽仍失败则退回 3 秒轮询 */
 export const WATCH_RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 5_000] as const
 
+/** C2 观察流连接健康度：live=读帧正常；degraded=静默重试中（已连续失败 ≥2 次） */
+export type WatchConnectionState = 'live' | 'degraded'
+
 export type AgentWatchStream = {
-  /** 队列化 run 已投递（202）或刷新后发现服务端仍在跑：开始观察 */
-  open: () => void
+  /**
+   * 队列化 run 已投递（202）或刷新后发现服务端仍在跑：开始观察。
+   * `awaitStart: true` 时本次 open 的第一次连接带 `await=1`（run 未启动时服务端
+   * 宽限等待，供与 POST 并行开流）；收到 seq>0 帧或 done 后失效，重连不再带。
+   */
+  open: (opts?: { awaitStart?: boolean }) => void
   /** 主动停止观察（done 收尾、卸载、退回轮询） */
   close: () => void
   /** 观察流模式中（open() 到 done/close 之间）——ui.tsx 用它判断该不该清 busy */
@@ -45,6 +52,11 @@ export function useAgentWatchStream(input: {
    * ui.tsx 以「已停止」定格（与 POST 流的 `stopped` 事件同一段逻辑）。
    */
   onStopped: (turn: ThinkingTurn | null) => void
+  /**
+   * C2 连接健康度变化（仅在 live↔degraded 跳变时触发）：连续失败 2 次报
+   * degraded（已静默 1.5s+），成功读到帧报 live。rotate 轮换不算故障，不报。
+   */
+  onConnectionState?: (state: WatchConnectionState) => void
 }): AgentWatchStream {
   const ref = useRef(input)
   ref.current = input
@@ -60,6 +72,17 @@ export function useAgentWatchStream(input: {
   const lastLiveTurnRef = useRef<ThinkingTurn | null>(null)
   // 本次连接以 done.reason='rotate' 结束：run 仍在跑，只换连接（不计入退避）
   const rotateRef = useRef(false)
+  // 本次 open 尚未确认 run 启动：连接 URL 带 await=1 让服务端宽限等待；收到
+  // seq>0 帧或 done 即清除——否则 run 结束后重连会白等 10 秒宽限才收幕
+  const awaitPendingRef = useRef(false)
+  // C2 最近一次上报的连接健康度：只在跳变时触发回调，避免每帧都调
+  const connStateRef = useRef<WatchConnectionState>('live')
+
+  function reportConnState(state: WatchConnectionState) {
+    if (connStateRef.current === state) return
+    connStateRef.current = state
+    ref.current.onConnectionState?.(state)
+  }
 
   function clearTimer() {
     if (timerRef.current == null) return
@@ -77,6 +100,8 @@ export function useAgentWatchStream(input: {
 
   function handleEvent(event: AgentWatchEvent) {
     if (typeof event.seq === 'number') lastSeqRef.current = Math.max(lastSeqRef.current, event.seq)
+    // 收到 seq>0 的帧说明 run 已确实启动、服务端已过宽限：后续重连不再带 await=1
+    if (typeof event.seq === 'number' && event.seq > 0) awaitPendingRef.current = false
     switch (event.type) {
       case 'live': {
         // 快照重建进行中的思维链（与恢复轮询同一个映射，跨事件不重排工具行）；
@@ -99,9 +124,21 @@ export function useAgentWatchStream(input: {
         window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
         break
       case 'done': {
+        // done 一到，awaitStart 宽限即告终结（无论结果），后续重连不再带 await=1
+        awaitPendingRef.current = false
+        const reason = event.reason ?? 'finished'
         // 连接到 15 min 上限而 run 仍在跑：只换连接，不收尾（busy 保持）
-        if ((event.reason ?? 'finished') === 'rotate') {
+        if (reason === 'rotate') {
           rotateRef.current = true
+          break
+        }
+        // await=1 宽限 10 秒超时 run 仍未启动（投递失败/消费者未接上）：run 可能
+        // 晚一点才来——不清 busy、不按 finished 收尾，交给既有的 3 秒恢复轮询兜底；
+        // 观察流已等不到东西，直接关掉（close 后本轮不会再重连）
+        if (reason === 'not_started') {
+          const enterRunRecovery = ref.current.runSync.enterRunRecovery
+          close()
+          enterRunRecovery('reconnecting')
           break
         }
         const info = event.interrupted ?? null
@@ -128,6 +165,8 @@ export function useAgentWatchStream(input: {
   function scheduleReconnect() {
     const delay = WATCH_RECONNECT_DELAYS_MS[failuresRef.current]
     failuresRef.current += 1
+    // C2：连续失败 2 次（已静默 500+1000ms 以上）就向 UI 亮明「连接不稳」
+    if (failuresRef.current >= 2) reportConnState('degraded')
     if (delay == null) {
       // 退避次数用尽：观察流大概率不可用（路由缺失/代理掐流），交给恢复轮询兜底
       const enterRunRecovery = ref.current.runSync.enterRunRecovery
@@ -149,7 +188,8 @@ export function useAgentWatchStream(input: {
     const controller = new AbortController()
     abortRef.current = controller
     try {
-      const res = await fetch(`/api/me/plans/${ref.current.planId}/agent/stream?after=${lastSeqRef.current}`, {
+      const awaitParam = awaitPendingRef.current ? '&await=1' : ''
+      const res = await fetch(`/api/me/plans/${ref.current.planId}/agent/stream?after=${lastSeqRef.current}${awaitParam}`, {
         signal: controller.signal,
       })
       const contentType = res.headers.get('content-type') ?? ''
@@ -159,6 +199,7 @@ export function useAgentWatchStream(input: {
       for await (const frame of createSseFrameReader(res.body)) {
         // 连上并读到内容即视为一次健康连接：退避计数归零
         failuresRef.current = 0
+        reportConnState('live')
         handleEvent(frame as AgentWatchEvent)
         if (!runningRef.current || rotateRef.current) break
       }
@@ -186,12 +227,15 @@ export function useAgentWatchStream(input: {
     scheduleReconnect()
   }
 
-  function open() {
+  function open(opts?: { awaitStart?: boolean }) {
     if (runningRef.current) return
     runningRef.current = true
+    awaitPendingRef.current = opts?.awaitStart === true
     failuresRef.current = 0
     lastSeqRef.current = 0
     lastLiveTurnRef.current = null
+    // C2：新一轮观察从 live 起步（上一轮若停在 degraded，这里跳变回报一次）
+    reportConnState('live')
     clearTimer()
     void connect()
   }

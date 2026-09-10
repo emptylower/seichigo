@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import {
   useAgentWatchStream,
   WATCH_RECONNECT_DELAYS_MS,
+  type WatchConnectionState,
 } from '@/app/(authed)/plan/[id]/hooks/useAgentWatchStream'
 import { PLANS_CHANGED_EVENT } from '@/app/(authed)/plan/[id]/components/PlanSidebar'
 import type { PlanRunSync } from '@/app/(authed)/plan/[id]/hooks/usePlanRunSync'
@@ -41,6 +42,7 @@ function setup() {
   const setActiveThinking = vi.fn<(update: React.SetStateAction<ThinkingTurn | null>) => void>()
   const onDone = vi.fn()
   const onStopped = vi.fn<(turn: ThinkingTurn | null) => void>()
+  const onConnectionState = vi.fn<(state: WatchConnectionState) => void>()
   const runSync: PlanRunSync = {
     refreshPlan: vi.fn(async () => {}),
     enterRunRecovery: vi.fn(),
@@ -61,9 +63,21 @@ function setup() {
       runSync,
       onDone,
       onStopped,
+      onConnectionState,
     }),
   )
-  return { ...rendered, setChat, setBusy, setSyncBanner, setInterrupted, setActiveThinking, onDone, onStopped, runSync }
+  return {
+    ...rendered,
+    setChat,
+    setBusy,
+    setSyncBanner,
+    setInterrupted,
+    setActiveThinking,
+    onDone,
+    onStopped,
+    onConnectionState,
+    runSync,
+  }
 }
 
 function watchUrls(fetchMock: ReturnType<typeof vi.fn>): string[] {
@@ -338,5 +352,185 @@ describe('useAgentWatchStream（§0.6 只读观察流）', () => {
     })
     expect(watchUrls(fetchMock)).toHaveLength(1)
     unmount()
+  })
+})
+
+describe('useAgentWatchStream 连接健康度上报（C2 onConnectionState）', () => {
+  it('连续失败 2 次报 degraded（只在跳变时触发一次）', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // 每次都不是 event-stream：连接建立即失败
+    const fetchMock = vi.fn(async () => new Response('nope', { status: 502 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, onConnectionState } = setup()
+    act(() => result.current.open())
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+    // 第 1 次失败处理完（退避计时器已挂）：还没到 degraded 门槛
+    await act(async () => {})
+    expect(onConnectionState).not.toHaveBeenCalled()
+
+    // 500ms 退避后第 2 次连接再失败：已静默 1.5s+，报 degraded
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[0]!)
+    })
+    await waitFor(() => expect(onConnectionState).toHaveBeenCalledWith('degraded'))
+    expect(onConnectionState).toHaveBeenCalledTimes(1)
+
+    // 第 3 次失败：保持 degraded，不重复上报
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[1]!)
+    })
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(3))
+    await act(async () => {})
+    expect(onConnectionState).toHaveBeenCalledTimes(1)
+  })
+
+  it('degraded 后成功读到帧报 live', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const good = makeWatchStream()
+    let calls = 0
+    const fetchMock = vi.fn(async () => {
+      calls += 1
+      // 前两次连接都失败，第三次接上正常流
+      return calls <= 2 ? new Response('nope', { status: 502 }) : good.response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, onConnectionState } = setup()
+    act(() => result.current.open())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[0]!)
+    })
+    await waitFor(() => expect(onConnectionState).toHaveBeenCalledWith('degraded'))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[1]!)
+    })
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(3))
+    act(() => good.push({ type: 'live', seq: 1, reasoning: '恢复' }))
+
+    await waitFor(() => expect(onConnectionState).toHaveBeenCalledWith('live'))
+    expect(onConnectionState).toHaveBeenCalledTimes(2)
+    expect(onConnectionState.mock.calls.map(([s]) => s)).toEqual(['degraded', 'live'])
+  })
+
+  it("done reason='rotate' 的连接轮换不是故障：不报 degraded", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const first = makeWatchStream()
+    const second = makeWatchStream()
+    let calls = 0
+    const fetchMock = vi.fn(async () => {
+      calls += 1
+      return calls === 1 ? first.response : second.response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, onConnectionState } = setup()
+    act(() => result.current.open())
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+
+    act(() => {
+      first.push({ type: 'live', seq: 6, reasoning: '仍在跑' })
+      first.push({ type: 'done', seq: 7, reason: 'rotate', stopped: false, interrupted: null })
+    })
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(2))
+    expect(result.current.isOpen()).toBe(true)
+    // 初始即 live，轮换不触发任何上报
+    expect(onConnectionState).not.toHaveBeenCalled()
+  })
+})
+
+describe('useAgentWatchStream awaitStart（§0.6 阶段三：与 POST 并行开流）', () => {
+  it('await=1 只在本次 open 的第一次连接带；收到 seq>0 帧后重连不再带', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const streams = [makeWatchStream(), makeWatchStream(), makeWatchStream()]
+    let calls = 0
+    const fetchMock = vi.fn(async () => streams[Math.min(calls++, streams.length - 1)]!.response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, setActiveThinking } = setup()
+    act(() => result.current.open({ awaitStart: true }))
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+    expect(watchUrls(fetchMock)[0]).toBe('/api/me/plans/plan-1/agent/stream?after=0&await=1')
+
+    // 宽限期内只有心跳/ready（seq=0）：run 尚未确认启动，断线重连仍带 await=1
+    act(() => {
+      streams[0]!.push({ type: 'ready', seq: 0 })
+      streams[0]!.fail()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[0]!)
+    })
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(2))
+    expect(watchUrls(fetchMock)[1]).toBe('/api/me/plans/plan-1/agent/stream?after=0&await=1')
+
+    // 收到 seq>0 的帧：run 已确实启动、服务端已过宽限——之后的重连不再带 await=1
+    act(() => streams[1]!.push({ type: 'live', seq: 4, reasoning: '已启动' }))
+    await waitFor(() => expect(setActiveThinking).toHaveBeenCalled())
+    act(() => streams[1]!.fail())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCH_RECONNECT_DELAYS_MS[0]!)
+    })
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(3))
+    expect(watchUrls(fetchMock)[2]).toBe('/api/me/plans/plan-1/agent/stream?after=4')
+  })
+
+  it('done（含 rotate）一到 await=1 即失效：轮换重连不再带', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const first = makeWatchStream()
+    const second = makeWatchStream()
+    let calls = 0
+    const fetchMock = vi.fn(async () => (++calls === 1 ? first.response : second.response))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = setup()
+    act(() => result.current.open({ awaitStart: true }))
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+    expect(watchUrls(fetchMock)[0]).toContain('&await=1')
+
+    // 连接轮换：done 一到说明 run 显然已启动过，await=1 随本次 open 的宽限一并终结
+    act(() => first.push({ type: 'done', seq: 9, reason: 'rotate', stopped: false, interrupted: null }))
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(2))
+    expect(watchUrls(fetchMock)[1]).toBe('/api/me/plans/plan-1/agent/stream?after=9')
+    expect(result.current.isOpen()).toBe(true)
+  })
+
+  it('不带 awaitStart 的 open()：连接 URL 不含 await=1', async () => {
+    const watch = makeWatchStream()
+    const fetchMock = vi.fn(async () => watch.response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = setup()
+    act(() => result.current.open())
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+    expect(watchUrls(fetchMock)[0]).toBe('/api/me/plans/plan-1/agent/stream?after=0')
+  })
+
+  it("done reason='not_started'：不清 busy 不按 finished 收尾，关流并转恢复轮询", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const watch = makeWatchStream()
+    const fetchMock = vi.fn(async () => watch.response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result, setBusy, setActiveThinking, setSyncBanner, onDone, onStopped, runSync } = setup()
+    act(() => result.current.open({ awaitStart: true }))
+    await waitFor(() => expect(watchUrls(fetchMock)).toHaveLength(1))
+
+    act(() => watch.push({ type: 'done', seq: 0, reason: 'not_started', stopped: false, interrupted: null }))
+
+    // 宽限超时 run 未启动：收尾交给 3 秒恢复轮询（run 可能晚一点才来）
+    await waitFor(() => expect(runSync.enterRunRecovery).toHaveBeenCalledWith('reconnecting'))
+    // 不按 finished 收尾：busy/思维链/横幅都不动，不触发自动续跑回调
+    expect(setBusy).not.toHaveBeenCalledWith(false)
+    expect(setActiveThinking).not.toHaveBeenCalledWith(null)
+    expect(setSyncBanner).not.toHaveBeenCalledWith(null)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(onStopped).not.toHaveBeenCalled()
+    // 观察流已关闭且不再重连
+    expect(result.current.isOpen()).toBe(false)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(watchUrls(fetchMock)).toHaveLength(1)
   })
 })

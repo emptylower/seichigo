@@ -68,6 +68,8 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
   it('挂载发现 interrupted 非空：自动 POST {resume:true}（不追加用户消息）并显示自动继续横幅', async () => {
     const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
       const url = String(input)
+      // 观察流与 POST 并行开（§0.6 阶段三）：同样挂起（run 进行中）
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) {
         // resume 回合挂起：便于观察横幅与请求体（run 进行中）
         return await new Promise<Response>(() => {})
@@ -88,7 +90,9 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
     await waitFor(() =>
       expect(screen.getByText(/上次规划被打断（页面刷新或网络中断），正在自动继续/)).toBeTruthy(),
     )
-    const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+    const agentCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream'),
+    )
     expect(agentCalls).toHaveLength(1)
     expect(JSON.parse(String(agentCalls[0]![1]?.body))).toEqual({ resume: true })
     // resume 不追加 human 消息：聊天流里仍只有一条用户气泡
@@ -98,6 +102,7 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
   it('resume 返回 nothing_to_resume：只提示「上次对话已完成」，不再重试', async () => {
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input)
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) {
         return new Response(JSON.stringify({ ok: false, reason: 'nothing_to_resume' }), {
           status: 200,
@@ -120,13 +125,16 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
     await waitFor(() => expect(screen.getByText('上次对话已完成')).toBeTruthy())
     // 自动继续横幅被结果提示替换，且不会再次发起 /agent 请求
     await waitFor(() => expect(screen.queryByText(/正在自动继续/)).toBeNull())
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))).toHaveLength(1)
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream')),
+    ).toHaveLength(1)
   })
 
   it('本会话已自动续跑过（sessionStorage 已记录）：不重复 POST，改由用户手动点「继续」', async () => {
     window.sessionStorage.setItem('planAutoResume:plan-1', 'plan-1:3')
     const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
       const url = String(input)
+      if (url.includes('/agent/stream')) return await new Promise<Response>(() => {})
       if (url.includes('/agent')) return sseResponse([{ type: 'done' }])
       return new Response(JSON.stringify(INTERRUPTED_GET), { status: 200 })
     })
@@ -148,7 +156,9 @@ describe('PlanPlanner 断线自动续跑（§0 interrupted/resume 契约）', ()
     // 用户手动点击后才发起 resume 回合
     fireEvent.click(screen.getByRole('button', { name: '继续' }))
     await waitFor(() => {
-      const agentCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/agent'))
+      const agentCalls = fetchMock.mock.calls.filter(
+        ([url]) => String(url).includes('/agent') && !String(url).includes('/agent/stream'),
+      )
       expect(agentCalls).toHaveLength(1)
       expect(JSON.parse(String(agentCalls[0]![1]?.body))).toEqual({ resume: true })
     })

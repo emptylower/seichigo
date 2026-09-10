@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BookOpen,
   CalendarCheck,
@@ -19,7 +19,9 @@ import {
 } from 'lucide-react'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { planText, planTextFor } from '../lib/planText'
+import { planText, planTextFor, type PlanTextFn } from '../lib/planText'
+import { useSmoothText } from '../hooks/useSmoothText'
+import type { WatchConnectionState } from '../hooks/useAgentWatchStream'
 
 /** 单个工具调用的展示条目（与 SSE tool_call 事件同形；恢复轮询的 live 快照可带 error 态） */
 export type ToolCallEntry = {
@@ -110,7 +112,40 @@ function formatDuration(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`
 }
 
-function ToolCallRow({ call }: { call: ToolCallEntry }) {
+/** 任务 B：同一帧快照到达的多条工具行按此间隔逐条出现（仅进行中的回合） */
+const TOOL_ROW_STAGGER_MS = 80
+
+/**
+ * 每秒 tick 的已用秒数（C1/C3 共用）：重渲染局部化在使用它的小组件里，
+ * 不把 now 提升到 ThinkingChain 顶层 state 上拖整棵树每秒重渲染。
+ */
+function useElapsedSeconds(since: number): number {
+  const [seconds, setSeconds] = useState(() => Math.max(0, Math.floor((Date.now() - since) / 1000)))
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSeconds(Math.max(0, Math.floor((Date.now() - since) / 1000)))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [since])
+  return seconds
+}
+
+/**
+ * C1 active pill 上的「· 已用 12s」：本地计时，不依赖网络——网断了它照样走，
+ * 正好把「模型慢」和「画面冻结」区分开。
+ */
+function ElapsedTick({ startedAt, tx }: { startedAt: number; tx: PlanTextFn }) {
+  const seconds = useElapsedSeconds(startedAt)
+  return <span className="shrink-0 text-brand-400">· {tx('thinking.elapsedLive', { seconds })}</span>
+}
+
+/** C3 工具行 running 态的本地已用秒数；服务端 durationMs 到达后仍以服务端值为准 */
+function RunningElapsed({ since }: { since: number }) {
+  const seconds = useElapsedSeconds(since)
+  return <span className="shrink-0 text-gray-400">{seconds}s</span>
+}
+
+function ToolCallRow({ call, runningSince }: { call: ToolCallEntry; runningSince?: number }) {
   const Icon = TOOL_ICONS[call.name] ?? Wrench
   return (
     <div className="flex items-start gap-2 py-1.5">
@@ -126,7 +161,9 @@ function ToolCallRow({ call }: { call: ToolCallEntry }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 text-xs">
           <span className="font-medium text-gray-700">{call.argsSummary || call.name}</span>
-          {typeof call.durationMs === 'number' ? (
+          {call.status === 'running' && typeof runningSince === 'number' ? (
+            <RunningElapsed since={runningSince} />
+          ) : typeof call.durationMs === 'number' ? (
             <span className="shrink-0 text-gray-400">{formatDuration(call.durationMs)}</span>
           ) : null}
         </div>
@@ -137,32 +174,59 @@ function ToolCallRow({ call }: { call: ToolCallEntry }) {
 }
 
 /** 展开态时间线：reasoning 流 + 工具调用列表（进行中/历史回看复用） */
-function ThinkingTimeline({ thinking, followScroll }: { thinking: ThinkingTurn; followScroll?: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const reasoningRef = useRef<HTMLDivElement>(null)
-
-  // 流式生成中内容自动滚动跟随到最新（仅思维链内部小容器，与页面整体滚动策略无关）
+function ThinkingTimeline({
+  thinking,
+  active,
+  followScroll,
+  shownCount,
+  firstSeenAt,
+}: {
+  thinking: ThinkingTurn
+  /** active=false 的历史回看：reasoning 直接全量显示，不看打字机重放 */
+  active: boolean
+  followScroll?: boolean
+  /** 已揭示的工具行数（ThinkingChain 持有，跨展开/收起保持） */
+  shownCount: number
+  /** 每条工具行首见时刻（ThinkingChain 持有，跨展开/收起保持） */
+  firstSeenAt: Map<string, number>
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const followScrollRef = useRef(followScroll)
   useEffect(() => {
-    if (!followScroll) return
-    const container = containerRef.current
-    if (container) container.scrollTop = container.scrollHeight
-    const reasoning = reasoningRef.current
-    if (reasoning) reasoning.scrollTop = reasoning.scrollHeight
-  }, [followScroll, thinking.reasoning, thinking.toolCalls])
+    followScrollRef.current = followScroll
+  }, [followScroll])
 
+  // 自动滚动跟随：和打字机走同一个 rAF tick（文字与滚动同步移动）；只在用户
+  // 已经贴近底部时才跟随，用户手动上滚看历史时不把他拽回去
+  const followBottom = useCallback(() => {
+    if (!followScrollRef.current) return
+    const el = scrollRef.current
+    if (!el) return
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [])
+
+  // 打字机播放缓冲：渲染节奏与 500ms 全量快照的到达节奏解耦
+  const renderedReasoning = useSmoothText(thinking.reasoning, { done: !active, onFrame: followBottom })
+
+  // 任务 B 错开插入：只对进行中的回合把同帧到达的多条工具行按 ~80ms 逐条放出；
+  // 历史回看挂载即全量。slice 只影响「新行出现时机」——已显示行渲染的仍是
+  // thinking.toolCalls 里的最新对象，running→done 同 id 更新立即生效，不被队列延迟。
+  // shownCount 与 firstSeenAt 由 ThinkingChain 层持有并传入：本组件随 expanded
+  // 卸载/重挂，状态不能在本地，否则收起再展开会重放错开动画、running 计时归零
+  const visibleCalls = active ? thinking.toolCalls.slice(0, shownCount) : thinking.toolCalls
+
+  // 单一滚动容器（收敛原先内外两层互相打架的 overflow）；reasoning 区常驻 +
+  // 约两行高的 min-h 占位，避免框子凭空长出来的首帧布局跳动
   return (
-    <div ref={containerRef} className="max-h-[50dvh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3">
-      {thinking.reasoning.trim() ? (
-        <div
-          ref={reasoningRef}
-          className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs italic leading-relaxed text-gray-500"
-        >
-          {thinking.reasoning}
-        </div>
-      ) : null}
+    <div ref={scrollRef} className="max-h-[50dvh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3">
+      <div className="min-h-10 whitespace-pre-wrap text-xs italic leading-relaxed text-gray-500">
+        {renderedReasoning}
+      </div>
       <div className="divide-y divide-gray-50">
-        {thinking.toolCalls.map((call) => (
-          <ToolCallRow key={call.id} call={call} />
+        {visibleCalls.map((call) => (
+          <ToolCallRow key={call.id} call={call} runningSince={active ? firstSeenAt.get(call.id) : undefined} />
         ))}
       </div>
     </div>
@@ -188,14 +252,70 @@ export function ThinkingChain(props: {
    * 刷新恢复（live 快照）路径没有该信息，此时传 null 即不显示。
    */
   modelNotice?: { providerName: string; model: string } | null
+  /** C2 观察流连接状态：degraded 时 pill 换成「连接不稳，重试中」并压暗 spinner */
+  connectionState?: WatchConnectionState
   locale?: SupportedLocale
 }) {
   const { thinking, active, expanded, onToggle } = props
   const tx = planTextFor(props.locale ?? 'zh')
-  const timeline = expanded ? <ThinkingTimeline thinking={thinking} followScroll={props.followScroll} /> : null
+  const degraded = props.connectionState === 'degraded'
+
+  // 任务 B 错开揭示进度 + C3 首见时刻：ThinkingChain 不随展开/收起卸载（只有
+  // timeline 是条件渲染），状态放在这一层才能跨展开保持——收起再展开时已揭示的
+  // 行立即全量显示，running 行的已用时长连续，不重放 80ms 错开动画
+  const [shownCount, setShownCount] = useState(() => (active ? 0 : thinking.toolCalls.length))
+  const firstSeenAtRef = useRef(new Map<string, number>())
+
+  // 新回合开始时重置揭示进度与首见时刻，否则上一轮的揭示进度会漏到新一轮。
+  // 回合更替的判定：active false→true（新回合开始）、active true→false（回合结束）、
+  // 或 inactive 状态下 startedAt 变化（历史回合被替换）都算新回合；唯独 active
+  // 持续为 true 时的 startedAt 漂移不算——恢复轮询的 live 快照会为同一进行中的
+  // 回合带入新的 startedAt，此时揭示进度与 running 计时必须连续。
+  // render 期派生重置（React 推荐模式）：子树尚未渲染，不会闪出一帧旧进度
+  const [mark, setMark] = useState({ startedAt: thinking.startedAt, active })
+  if (mark.startedAt !== thinking.startedAt || mark.active !== active) {
+    const driftWhileActive = mark.active && active
+    setMark({ startedAt: thinking.startedAt, active })
+    if (!driftWhileActive) {
+      setShownCount(active ? 0 : thinking.toolCalls.length)
+      firstSeenAtRef.current = new Map()
+    }
+  }
+
+  // 80ms 步进器：只对进行中的回合把同帧到达的多条工具行逐条放出；active=false
+  // 立即全量。卸载/下一轮推进时清掉未执行的 timeout
+  useEffect(() => {
+    if (!active) {
+      setShownCount(thinking.toolCalls.length)
+      return
+    }
+    if (shownCount >= thinking.toolCalls.length) return
+    const timer = window.setTimeout(() => {
+      setShownCount((cur) => Math.min(cur + 1, thinking.toolCalls.length))
+    }, TOOL_ROW_STAGGER_MS)
+    return () => window.clearTimeout(timer)
+  }, [active, thinking.toolCalls.length, shownCount])
+
+  // C3：每条工具行首次进入本时间线数据的本地时刻（ref 记录，幂等），running 行计时用
+  for (const call of thinking.toolCalls) {
+    if (!firstSeenAtRef.current.has(call.id)) firstSeenAtRef.current.set(call.id, Date.now())
+  }
+
+  const timeline = expanded ? (
+    <ThinkingTimeline
+      thinking={thinking}
+      active={active}
+      followScroll={props.followScroll}
+      shownCount={shownCount}
+      firstSeenAt={firstSeenAtRef.current}
+    />
+  ) : null
 
   if (active) {
-    const phrase = thinking.statusPhrase ?? props.idlePhrase ?? tx('thinking.thinking')
+    // 宁可告诉用户网络在抖，也别让他盯着一个假装在转的 spinner
+    const phrase = degraded
+      ? tx('thinking.reconnecting')
+      : thinking.statusPhrase ?? props.idlePhrase ?? tx('thinking.thinking')
     return (
       <div className="space-y-2">
         <button
@@ -204,10 +324,11 @@ export function ThinkingChain(props: {
           aria-expanded={expanded}
           className="relative flex items-center gap-2 overflow-hidden rounded-full border border-brand-100 bg-brand-50/60 px-3 py-1.5 text-xs text-brand-700"
         >
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          <Loader2 className={`h-3.5 w-3.5 shrink-0 animate-spin ${degraded ? 'opacity-40' : ''}`} />
           <span key={phrase} className="plan-phrase-in">
             {phrase}
           </span>
+          {thinking.startedAt > 0 ? <ElapsedTick startedAt={thinking.startedAt} tx={tx} /> : null}
           <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           <span aria-hidden="true" className="plan-shimmer pointer-events-none absolute inset-0" />
         </button>
