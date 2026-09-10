@@ -11,6 +11,7 @@ import { RESUME_NOTE } from './resume'
 import { RunFencedError } from './runFence'
 import { getPlanAgentServerDeps } from './serverDeps'
 import { maybeSetGeneratedTitle } from './title'
+import type { RunTimingSeed } from './runTimings'
 
 /**
  * busy 位 TTL（第九轮 L1）：90 秒——硬杀（isolate 直接被杀、finally 不执行）后
@@ -35,6 +36,12 @@ export type ExecutePlanAgentRunInput = {
   deadlineAt?: number
   /** 计费（设计 §5/§6）：档位能力表与单次上限；缺省（内部测试）不限档位、不设上限 */
   billing?: { entitlements: Entitlements; runCapMicros: number }
+  /**
+   * B 部分埋点（2026-09-10）：启动链路分段计时的种子。队列路径由内部路由在
+   * 入口注入（含 enqueuedAt）；SSE 内联路径缺省——在此记 consumerEnteredAt，
+   * timings 省略 queueLatencyMs/enqueuedAt（不经队列，无投递延迟可测）。
+   */
+  timing?: RunTimingSeed
 }
 
 /**
@@ -45,6 +52,9 @@ export type ExecutePlanAgentRunInput = {
  */
 export async function executePlanAgentRun(input: ExecutePlanAgentRunInput): Promise<void> {
   const { repo, planId, runToken, locale, message, resume, signal, onEvent, busyTtlMs } = input
+
+  // B 部分埋点：SSE 内联路径（route 不传 timing）在执行体入口补记消费时刻
+  const timingSeed: RunTimingSeed = input.timing ?? { consumerEnteredAt: new Date().toISOString() }
 
   // 第九轮 L1：租约续租（token 匹配才续，被接管后自动失效）。循环在每次
   // 模型调用前与每次工具执行前调用，save_plan_days 内部还会再续两次；被
@@ -74,6 +84,8 @@ export async function executePlanAgentRun(input: ExecutePlanAgentRunInput): Prom
           runToken,
           // §0.6：服务端固定文案（思维链短语/网络错误/补齐标签）的站点语言
           locale,
+          // B 部分埋点：分段计时种子（SSE 兜底在上方构造）
+          timingSeed,
           // 第十一轮 A3（§0）：模型流式期间的停止检查（租约看守定期
           // 轮询，发现 token 已被 stopAgentRun 清掉就 abort 模型请求）
           isStopped: () => repo.isAgentRunStopped(planId, runToken),

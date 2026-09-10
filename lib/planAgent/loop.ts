@@ -27,6 +27,8 @@ import { createStartupStatusEmitter } from './startupStatus'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
 import { createRunCostTracker, type RunCostDeps } from './runCost'
+import { createRunTimingCollector, type RunTimingSeed } from './runTimings'
+import { withFencing } from './loopFencing'
 import { forbiddenToolsOf, tierPromptNote, type Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
@@ -132,6 +134,14 @@ export type PlanAgentDeps = {
    */
   locale?: SupportedLocale
   /**
+   * 2026-09-10 B 部分埋点：启动链路分段计时的种子（executePlanAgentRun 注入；
+   * 队列路径含 enqueuedAt，SSE 内联路径只有 consumerEnteredAt）。缺省整体
+   * 不记 timings（不涉并发的旧测试直调不受影响）。
+   */
+  timingSeed?: RunTimingSeed
+  /** B 部分埋点：可注入时钟（毫秒）；缺省 Date.now。测试注入假时钟驱动分段 */
+  now?: () => number
+  /**
    * 2026-09-06 §0.5 软截止时间（epoch ms）：队列消费者单次调用有 15 分钟
    * 硬上限，内部路由传入 start + 13 min。循环每次迭代开头检查，到点即按
    * 客户端断开同一收尾（interrupted=true：写 stage=interrupted 日志、清实况
@@ -142,47 +152,6 @@ export type PlanAgentDeps = {
   /** 档位能力表（设计 §5）：过滤工具、附注提示词、初始化补齐预算上限；缺省全开 */
   entitlements?: Entitlements
 } & RunCostDeps
-
-/**
- * 把 repo 的写方法（appendMessage/replaceDays/updateMeta）替换成 token 校验
- * 过的原子版本；校验失败时抛 RunFencedError 而不是静默返回，因为调用点
- * 分散在循环主体和 tools.ts 的工具执行器里，抛异常是唯一能统一从任意调用
- * 深度冒泡回循环顶层的方式。其余方法原样透传（绑定回 target 以保证内部
- * this 正确，与 lib/db/prisma.ts 的 Proxy 用法一致）。
- */
-function withFencing(repo: TripPlanRepo, token: string): TripPlanRepo {
-  const fenced: Pick<TripPlanRepo, 'appendMessage' | 'replaceDays' | 'updateMeta' | 'replaceDaysWithDaymap'> = {
-    async appendMessage(planId, kind, content) {
-      const result = await repo.appendMessageIfActive(planId, token, kind, content)
-      if (!result) throw new RunFencedError()
-      return result
-    },
-    async replaceDays(planId, days) {
-      const result = await repo.replaceDaysIfActive(planId, token, days)
-      if (!result) throw new RunFencedError()
-      return result
-    },
-    async updateMeta(planId, patch) {
-      const result = await repo.updateMetaIfActive(planId, token, patch)
-      if (!result) throw new RunFencedError()
-      return result
-    },
-    async replaceDaysWithDaymap(planId, days, buildDaymapContent) {
-      // "替换天数 + 追加 daymap"在 repo 侧已是同一原子窗口；栅栏在窗口外
-      // 拦截时两写都不发生，不会出现"天数换了、交付物消息丢了"的半截态
-      const result = await repo.replaceDaysWithDaymapIfActive(planId, token, days, buildDaymapContent)
-      if (!result) throw new RunFencedError()
-      return result
-    },
-  }
-  return new Proxy(repo, {
-    get(target, prop, receiver) {
-      if (prop in fenced) return fenced[prop as keyof typeof fenced]
-      const value = Reflect.get(target, prop, receiver)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
-}
 
 const DEFAULT_MAX_ITERATIONS = 12
 
@@ -249,6 +218,11 @@ export async function runPlanAgent(
   // §0.6：本 run 的服务端固定文案语言（status/summary/netError/askUserNote）
   const locale = deps.locale ?? 'zh'
 
+  // B 部分埋点（2026-09-10）：启动链路分段计时（runTimings.ts）——loopStarted
+  // 在此记，首条 status / 首模型 delta 分别挂在 forwardEvent 与 onDelta 上
+  const runTiming = deps.timingSeed ? createRunTimingCollector(deps.timingSeed, deps.now) : undefined
+  runTiming?.markLoopStarted()
+
   // 第七轮 A1：运行实况旁路写库（刷新恢复用）。只在持有 runToken 时启用；
   // emit 把事件同时发给 SSE 与 writer（节流落库），不改变既有事件行为。
   // 2026-09-10 首帧优化：构造上移到函数体最前——listMessages/getPlan/首次
@@ -263,6 +237,8 @@ export async function runPlanAgent(
   const forwardEvent = (event: PlanAgentEvent) => {
     emittedEvents += 1
     if (event.type === 'reasoning') reasoningChars += event.delta.length
+    // B 部分埋点：首条 status（含 startupStatus 发出的首条）经过这里
+    if (event.type === 'status') runTiming?.markStatus()
     onEvent(event)
     runLiveWriter?.onEvent(event)
   }
@@ -370,7 +346,14 @@ export async function runPlanAgent(
     enrichBudget.places.max = deps.entitlements.placesMax
     enrichBudget.directions.max = deps.entitlements.directionsMax
   }
-  const runCost = createRunCostTracker({ enrichBudget, runCapMicros: deps.runCapMicros, maxIterations, withTitle: Boolean(userMessage) })
+  const runCost = createRunCostTracker({
+    enrichBudget,
+    runCapMicros: deps.runCapMicros,
+    maxIterations,
+    withTitle: Boolean(userMessage),
+    // B 部分埋点：summary 快照带上 timings（写进 modelUsage 顶层键）
+    ...(runTiming ? { getTimings: runTiming.snapshot } : {}),
+  })
   const forbiddenTools = deps.entitlements ? forbiddenToolsOf(deps.entitlements) : new Set<string>()
   // ChatCompletionTool 是联合类型（function 工具 + 自定义工具），只有带
   // function 的成员才有可禁用的名字；自定义工具原样保留
@@ -461,6 +444,8 @@ export async function runPlanAgent(
       response = await deps.createMessage(
         { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
           (delta) => {
+            // B 部分埋点：首个模型 delta（reasoning 或 content）到达的时刻
+            runTiming?.markModelByte()
             if (delta.reasoning) {
               reasoningSeen = true
               emit({ type: 'reasoning', delta: delta.reasoning })

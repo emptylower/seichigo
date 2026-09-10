@@ -289,3 +289,211 @@ describe('internal run route 计费装配（G3 fail-closed）', () => {
     }
   })
 })
+
+describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不阻塞 202）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.mocked(runPlanAgent).mockClear()
+    vi.mocked(executePlanAgentRun).mockClear()
+    vi.mocked(getCfBindings).mockReset()
+    vi.mocked(getCfBindings).mockReturnValue(null)
+    __resetBillingService()
+  })
+
+  afterEach(() => {
+    vi.mocked(getCfBindings).mockReturnValue(null)
+    vi.unstubAllEnvs()
+    __resetBillingService()
+  })
+
+  /** route 只透传 entitlements/runCapMicros、402 分支读 tier/periodEnd——最小形状即可 */
+  function makeAccount(overrides: { balanceMicros?: number } = {}) {
+    return {
+      userId: 'u1',
+      tier: 'free',
+      entitlements: { tier: 'free' },
+      isAdmin: false,
+      periodStart: new Date('2026-09-01T00:00:00Z'),
+      periodEnd: new Date('2026-09-20T00:00:00Z'),
+      budgetMicros: 1_000_000,
+      balanceMicros: 1_000_000,
+      remainingPercent: 100,
+      runCapMicros: 500,
+      ...overrides,
+    }
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  it('有 CF context：清扫与预扣都经 waitUntil、不阻塞 202；预扣在 send 之后以 runToken 入账', async () => {
+    vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const account = makeAccount()
+    const refund = deferred<void>()
+    const refundStaleReserves = vi.fn(() => refund.promise)
+    const reserve = deferred<void>()
+    const reserveRun = vi.fn(() => reserve.promise)
+    __setBillingService({
+      refundStaleReserves,
+      getAccount: vi.fn(async () => account),
+      canStartRun: () => true,
+      reserveRun,
+    })
+    let reserveCallsWhenSendFinished = -1
+    const send = vi.fn(async () => {
+      reserveCallsWhenSendFinished = reserveRun.mock.calls.length
+    })
+    const waitUntil = vi.fn()
+    vi.mocked(getCfBindings).mockReturnValue({
+      env: { PLAN_AGENT_QUEUE: { send } },
+      ctx: { waitUntil },
+    } as ReturnType<typeof getCfBindings>)
+
+    // 两个 deferred 都 pending：202 仍立即返回（清扫与预扣都没阻塞响应）
+    const res = await agentRequest(plan.id, { message: 'hi' })
+    expect(res.status).toBe(202)
+    const body = (await res.json()) as { runToken: string }
+
+    expect(refundStaleReserves).toHaveBeenCalledWith('u1', expect.any(Date))
+    // 预扣发生在投递之后（send 完成时还没发起），且已以 runRef=runToken 发起
+    expect(reserveCallsWhenSendFinished).toBe(0)
+    expect(reserveRun).toHaveBeenCalledTimes(1)
+    expect(reserveRun).toHaveBeenCalledWith({ account, planId: plan.id, runRef: body.runToken, force: true })
+    // 清扫与预扣两个任务都交给了 waitUntil（响应后由 runtime 兜底执行）
+    expect(waitUntil).toHaveBeenCalledTimes(2)
+    refund.resolve()
+    reserve.resolve()
+    await Promise.all(waitUntil.mock.calls.map((call) => call[0]))
+  })
+
+  it('拿不到 CF context：清扫与预扣逐个回落同步 await——resolve 之前 POST 不返回（不静默丢弃）', async () => {
+    vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const account = makeAccount()
+    const refund = deferred<void>()
+    const refundStaleReserves = vi.fn(() => refund.promise)
+    const reserve = deferred<void>()
+    const reserveRun = vi.fn(() => reserve.promise)
+    __setBillingService({
+      refundStaleReserves,
+      getAccount: vi.fn(async () => account),
+      canStartRun: () => true,
+      reserveRun,
+    })
+    const send = vi.fn(async () => undefined)
+    // 有队列绑定但没有 ctx.waitUntil（next dev / vitest 的典型形状）
+    vi.mocked(getCfBindings).mockReturnValue({
+      env: { PLAN_AGENT_QUEUE: { send } },
+    } as ReturnType<typeof getCfBindings>)
+
+    let settled = false
+    const resPromise = agentRequest(plan.id, { message: 'hi' }).then((r) => {
+      settled = true
+      return r
+    })
+    // 清扫未 resolve：POST 卡在同步 await 上，不返回
+    await vi.waitFor(() => expect(refundStaleReserves).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBe(false)
+    refund.resolve()
+    // 预扣同样被同步 await
+    await vi.waitFor(() => expect(reserveRun).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBe(false)
+    reserve.resolve()
+
+    const res = await resPromise
+    expect(res.status).toBe(202)
+    const body = (await res.json()) as { runToken: string }
+    expect(reserveRun).toHaveBeenCalledWith({ account, planId: plan.id, runRef: body.runToken, force: true })
+  })
+
+  it('getPlan/getAccount 并行后拒绝优先级不变：getAccount 抛错时 404/403 仍按归属判定而非 500', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const otherPlan = await repo.createPlan({ userId: 'someone-else', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    __setBillingService({
+      refundStaleReserves: vi.fn(async () => {}),
+      getAccount: vi.fn(async () => {
+        throw new Error('db down')
+      }),
+      canStartRun: () => true,
+      reserveRun: vi.fn(async () => ({ ok: true })),
+    })
+
+    const notFound = await agentRequest('no-such-plan', { message: 'hi' })
+    expect(notFound.status).toBe(404)
+    const forbidden = await agentRequest(otherPlan.id, { message: 'hi' })
+    expect(forbidden.status).toBe(403)
+  })
+
+  it('402 预检语义不变且仍在 beginAgentRun 之前：拒绝时不落人类消息、不置 busy、不预扣', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const account = makeAccount({ balanceMicros: 0 })
+    const reserveRun = vi.fn(async () => ({ ok: true as const }))
+    __setBillingService({
+      refundStaleReserves: vi.fn(async () => {}),
+      getAccount: vi.fn(async () => account),
+      canStartRun: () => false,
+      reserveRun,
+    })
+
+    const res = await agentRequest(plan.id, { message: 'hi' })
+    expect(res.status).toBe(402)
+    const body = (await res.json()) as { code: string; resetsAt: string; upgradeAvailable: boolean }
+    expect(body.code).toBe('budget_exhausted')
+    expect(body.resetsAt).toBe(account.periodEnd.toISOString())
+    expect(body.upgradeAvailable).toBe(true)
+    // 预检在 beginAgentRun 之前：超额请求不落库人类消息、不抢 busy、不预扣
+    expect(await repo.listMessages(plan.id)).toHaveLength(0)
+    expect(await repo.isAgentBusy(plan.id)).toBe(false)
+    expect(reserveRun).not.toHaveBeenCalled()
+  })
+
+  it('send 抛错回落内联 SSE：预扣仍同步发生（run 开烧前落账）、busy 照常释放', async () => {
+    vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const account = makeAccount()
+    const reserveRun = vi.fn(async () => ({ ok: true as const }))
+    __setBillingService({
+      refundStaleReserves: vi.fn(async () => {}),
+      getAccount: vi.fn(async () => account),
+      canStartRun: () => true,
+      reserveRun,
+    })
+    const send = vi.fn(async () => {
+      throw new Error('queue unavailable')
+    })
+    vi.mocked(getCfBindings).mockReturnValue({
+      env: { PLAN_AGENT_QUEUE: { send } },
+    } as ReturnType<typeof getCfBindings>)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const res = await agentRequest(plan.id, { message: 'hi' })
+      expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
+      await res.text() // 排空 SSE，让 stream.start() 与 finally 释放跑完
+      expect(reserveRun).toHaveBeenCalledTimes(1)
+      expect(reserveRun).toHaveBeenCalledWith(
+        expect.objectContaining({ planId: plan.id, runRef: expect.any(String), force: true }),
+      )
+      expect(await repo.isAgentBusy(plan.id)).toBe(false)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
