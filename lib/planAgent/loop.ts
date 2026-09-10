@@ -441,6 +441,9 @@ export async function runPlanAgent(
       let response: PlanAgentChatMessage
       try {
       // A4 补充：历史里的非法工具参数/额外字段在发送前清洗（不改内存与落库原文）
+      // C 部分埋点：首次模型请求发出的时刻（幂等只记第一次——空回合重试与
+      // 多轮工具循环都不覆盖），与首个 delta 配对算出真实模型 TTFT
+      runTiming?.markModelRequestSent()
       response = await deps.createMessage(
         { messages: sanitizeHistoryForModel(messages), tools: modelTools, signal: modelAbort.signal },
           (delta) => {
