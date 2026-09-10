@@ -129,8 +129,18 @@ export function createRunLiveWriter(deps: RunLiveWriterDeps): RunLiveWriter {
         pendingChars += event.delta.length
         dirty = true
       } else if (event.type === 'status') {
+        // 2026-09-10 首帧优化：status 变化强制 flush，不受时间/字数阈值约束。
+        // writer 创建时 lastFlushAt=now、status 又不贡献 pendingChars——不强制
+        // 的话启动首条 status 会被「elapsed≈0 且 pendingChars=0」的节流条件
+        // 吞掉，躺到 2–4 秒后首条 reasoning delta 才被顺带写出。status 变化
+        // 频率很低（一个 run 十几次），强制 flush 不给数据库压力
+        const statusChanged = event.phase !== statusText
         statusText = event.phase
         dirty = true
+        if (statusChanged) {
+          queueFlush()
+          return
+        }
       } else if (event.type === 'tool_call') {
         toolCalls.set(event.id, {
           name: event.name,

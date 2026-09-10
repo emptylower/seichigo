@@ -207,6 +207,27 @@ describe('createRunLiveWriter（节流与收尾）', () => {
     expect(clear).toHaveBeenCalledWith(planId)
   })
 
+  it('2026-09-10 首帧优化：status 变化立即强制 flush——首条 status 不被「elapsed≈0 且 pendingChars=0」的节流条件吞掉', async () => {
+    const { repo, planId } = await makePlan()
+    const upsert = vi.spyOn(repo, 'upsertRunLive')
+    // 时间/字数阈值都拉满：不强制 flush 的话这条 status 要等 60 秒才可能落库
+    const writer = createRunLiveWriter({ repo, planId, runToken: 'run-1', flushIntervalMs: 60_000, flushChars: 100_000 })
+    writer.onEvent({ type: 'status', phase: '正在读取对话历史' })
+    await settle() // 强制 flush 排队后需等 chain 步落定
+    expect(upsert).toHaveBeenCalledTimes(1)
+    expect(upsert.mock.calls[0]![1]).toMatchObject({ runToken: 'run-1', statusText: '正在读取对话历史' })
+    // 短语变化再次强制 flush（核对进度 → 组织思路）
+    writer.onEvent({ type: 'status', phase: '正在组织思路' })
+    await settle()
+    expect(upsert).toHaveBeenCalledTimes(2)
+    expect(upsert.mock.calls[1]![1]).toMatchObject({ statusText: '正在组织思路' })
+    // 同短语重复发不强制刷（仍受时间/字数节流约束）
+    writer.onEvent({ type: 'status', phase: '正在组织思路' })
+    await settle()
+    expect(upsert).toHaveBeenCalledTimes(2)
+    await writer.finish()
+  })
+
   it('写库失败只 warn 不抛出：upsertRunLive reject 时 finish 仍正常完成并 clear', async () => {
     const { repo, planId } = await makePlan()
     vi.spyOn(repo, 'upsertRunLive').mockRejectedValue(new Error('db down'))
