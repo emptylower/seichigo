@@ -2,6 +2,9 @@ import { prisma } from '@/lib/db/prisma'
 import { PrismaUsageLedger } from '@/lib/billing/ledgerPrisma'
 import { RESERVE_MICROS } from '@/lib/billing/priceTable'
 import type { BillingAccount } from '@/lib/billing/service'
+import type { Prisma } from '@prisma/client'
+import type { BeginAgentRunInput, BeginAgentRunResult, TripPlanRepo } from '@/lib/tripPlan/repo'
+import { PrismaTripPlanRepo } from '@/lib/tripPlan/repoPrisma'
 import { AGENT_BUSY_TTL_MS } from './execute'
 
 /**
@@ -18,6 +21,15 @@ import { AGENT_BUSY_TTL_MS } from './execute'
  */
 export interface RunAdmission {
   /**
+   * P2-A（2026-09-11）不变量 2 的合并实现：begin 与预扣同一事务——token 在此
+   * 生成，"仍是本 run、未 claim、未过期"天然成立；管理员不记账；成功返回
+   * begin 的结果（含 token）。quota_exceeded / busy 原样透传，不记账。
+   * 预扣经 beginAgentRun 的 inTx 钩子落账：事务内、抢到 busy 位并落库
+   * human 消息之后、提交之前；钩子抛错（账本故障）整体回滚——busy 位
+   * 未占、human 消息未落库、无账目。POST 关键路径由此省掉整个第二事务。
+   */
+  beginAndReserve(input: BeginAgentRunInput & { account: BillingAccount }): Promise<BeginAgentRunResult>
+  /**
    * 不变量 2：预扣成功先于派发。同一事务内：
    *  1) 用户锁；
    *  2) TripPlan 条件更新 `id AND agentRunToken=token AND agentRunStartedAt
@@ -31,6 +43,10 @@ export interface RunAdmission {
    * 当前 POST 语义是 force（余量预检已在 canStartRun 做过，抢到 busy 位后
    * 无条件预扣、允许余量短暂为负），所以这个分支**今天不会触发**，仅为
    * 将来非 force 准入保留在类型里。
+   *
+   * P2-A：POST 已改走 beginAndReserve（预扣并入 begin 事务，token 不可能
+   * 在同一事务里失效）；本方法保留给仍需"独立事务里按既有 token 补预扣"
+   * 的调用方，当前生产路径无调用者（deprecated，不删）。
    */
   reserveForDispatch(input: {
     account: BillingAccount
@@ -54,6 +70,31 @@ export interface RunAdmission {
 }
 
 export class PrismaRunAdmission implements RunAdmission {
+  /** P2-A：beginAndReserve 复用仓储的 beginAgentRun（事务/锁序归它管） */
+  constructor(private readonly repo: TripPlanRepo = new PrismaTripPlanRepo()) {}
+
+  async beginAndReserve(input: BeginAgentRunInput & { account: BillingAccount }): Promise<BeginAgentRunResult> {
+    const { account, ...beginInput } = input
+    return this.repo.beginAgentRun({
+      ...beginInput,
+      // inTx 落点：begin 事务内、抢到 busy 位并落库 human 消息之后、提交之前。
+      // 锁顺序不变（事务开头已是用户 advisory lock → TripPlan 行）；token 在
+      // 此生成，"仍是本 run、未 claim、未过期"天然成立，无需二次核验。
+      inTx: async (tx, ctx) => {
+        // 管理员豁免（service.reserveRun 同款）：不记账直接放行
+        if (account.isAdmin) return
+        await new PrismaUsageLedger(tx as Prisma.TransactionClient).append({
+          userId: account.userId,
+          planId: beginInput.planId,
+          runRef: ctx.token,
+          kind: 'reserve',
+          deltaMicros: -RESERVE_MICROS[account.tier],
+          periodStart: account.periodStart,
+        })
+      },
+    })
+  }
+
   async reserveForDispatch(input: {
     account: BillingAccount
     planId: string

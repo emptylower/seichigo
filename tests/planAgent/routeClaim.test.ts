@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import type { TripPlanHandlerDeps } from '@/lib/tripPlan/handlers/plans'
+import type { BeginAgentRunInput } from '@/lib/tripPlan/repo'
 
 /**
  * P0-A（2026-09-11）不变量 3：内联 SSE 路径的一次性领取——claim 失败
@@ -22,9 +23,16 @@ vi.mock('@/lib/billing/serverDeps', () => ({
 }))
 
 // P0-B：预扣改走 admission（同步、先于派发）——permissive stub 即可，
-// 本文件只断言 claim loser 没有执行副作用
+// 本文件只断言 claim loser 没有执行副作用。
+// P2-A：起步改走 beginAndReserve——permissive 版委托 deps.repo 真实 begin
 vi.mock('@/lib/planAgent/runAdmission', () => ({
   getRunAdmission: () => ({
+    beginAndReserve: vi.fn(async (input: BeginAgentRunInput & { account?: unknown }) => {
+      const { getTripPlanApiDeps } = await import('@/lib/tripPlan/api')
+      const deps = await getTripPlanApiDeps()
+      const { account: _account, ...begin } = input
+      return deps.repo.beginAgentRun(begin)
+    }),
     reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
     revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
   }),

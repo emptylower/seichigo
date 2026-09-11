@@ -2,6 +2,7 @@ import { Prisma as PrismaRuntime } from '@seichigo/prisma-client-runtime'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import type {
+  BeginAgentRunInput,
   BeginAgentRunResult,
   ReplaceDaysWithDaymapResult,
   TripPlan,
@@ -155,6 +156,12 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     return row ? toPlanWithDays(row) : null
   }
 
+  /** P2-A：POST /agent 准入用的最小投影（1 条 SQL）；null = 计划不存在 */
+  async getPlanAdmission(planId: string): Promise<{ userId: string; agentBusyUntil: Date | null } | null> {
+    const row = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { userId: true, agentBusyUntil: true } })
+    return row ? { userId: row.userId, agentBusyUntil: row.agentBusyUntil } : null
+  }
+
   /** CUT-8：单字段投影，一次往返；null = 计划不存在 */
   async getPlanTitle(planId: string): Promise<string | null> {
     const row = await prisma.tripPlan.findUnique({ where: { id: planId }, select: { title: true } })
@@ -270,14 +277,7 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     })
   }
 
-  async beginAgentRun(input: {
-    planId: string
-    userId: string
-    content: Prisma.JsonValue | null
-    since: Date
-    limit: number
-    busyTtlMs: number
-  }): Promise<BeginAgentRunResult> {
+  async beginAgentRun(input: BeginAgentRunInput): Promise<BeginAgentRunResult> {
     return prisma.$transaction(async (tx): Promise<BeginAgentRunResult> => {
       // 同一用户的配额检查串行化：READ COMMITTED 下 insert+count 彼此不可见，
       // 并发请求会同时通过检查，必须用事务级 advisory lock 排队。
@@ -300,21 +300,23 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       })
       if (claimed.count === 0) return { status: 'busy' }
       // content=null（第八轮 resume 回合）：不追加 human 消息，历史原样
-      if (input.content === null) return { status: 'ok', token, message: null }
-      const row = await tx.tripPlanMessage.create({
-        data: { planId: input.planId, kind: 'human', content: input.content as Prisma.InputJsonValue },
-      })
-      return {
-        status: 'ok',
-        token,
-        message: {
+      let message: TripPlanMessage | null = null
+      if (input.content !== null) {
+        const row = await tx.tripPlanMessage.create({
+          data: { planId: input.planId, kind: 'human', content: input.content as Prisma.InputJsonValue },
+        })
+        message = {
           id: row.id,
           planId: row.planId,
           kind: row.kind as TripPlanMessageKind,
           content: row.content,
           createdAt: row.createdAt,
-        },
+        }
       }
+      // P2-A：inTx 钩子——事务内、busy 位 + human 消息落库之后、提交之前；
+      // 抛错整个事务回滚（busy 位与消息都不会留下）。tx 原样传入（TransactionClient）
+      if (input.inTx) await input.inTx(tx, { token })
+      return { status: 'ok', token, message }
       // maxWait 放宽到 10s：并发请求在 advisory lock 上排队属预期，
       // 排到队尾的应拿到干净的 429/409，而不是事务启动超时的 500
     }, { maxWait: 10_000, timeout: 15_000 })

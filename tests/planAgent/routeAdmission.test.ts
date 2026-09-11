@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { MemoryUsageLedger } from '@/lib/billing/ledgerMemory'
 import type { TripPlanHandlerDeps } from '@/lib/tripPlan/handlers/plans'
+import type { BeginAgentRunInput } from '@/lib/tripPlan/repo'
 import { RESERVE_MICROS } from '@/lib/billing/priceTable'
 import { createMemoryRunAdmission } from '@/lib/planAgent/runAdmissionMemory'
 
@@ -31,9 +32,17 @@ vi.mock('@/lib/anitabi/cf/bindings', () => ({
   getCfBindings: vi.fn((): null => null),
 }))
 
-// 路由只消费 getRunAdmission；可控 holder 让单测注入 Memory 版或 stub
+// 路由只消费 getRunAdmission；可控 holder 让单测注入 Memory 版或 stub。
+// P2-A：准入起步改走 beginAndReserve——permissive 版委托给本测试注入的
+// deps.repo 真实 beginAgentRun（busy 位/human 消息照常，不记账）
 vi.mock('@/lib/planAgent/runAdmission', () => {
   const permissive = {
+    beginAndReserve: vi.fn(async (input: BeginAgentRunInput & { account?: unknown }) => {
+      const { getTripPlanApiDeps } = await import('@/lib/tripPlan/api')
+      const deps = await getTripPlanApiDeps()
+      const { account: _account, ...begin } = input
+      return deps.repo.beginAgentRun(begin)
+    }),
     reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
     revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
   }
@@ -144,7 +153,10 @@ describe('agent route 准入层（P0-B）', () => {
     expect(await res.json()).toEqual({ ok: true, stopped: false })
   })
 
-  it('reserveForDispatch token_gone → 409，不投队列、不进内联、不 endAgentRun 别人的 run', async () => {
+  // P2-A：token 与预扣改在 beginAndReserve 的同一事务里生成/落账，
+  // "token 在派发前失效（token_gone）"不再可能，原 409 用例随之删除；
+  // 准入拒绝路径改以 busy 分支覆盖（不投队列、不进内联、不 endAgentRun）
+  it('beginAndReserve busy → 409，不投队列、不进内联、不 endAgentRun 别人的 run', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
@@ -159,7 +171,8 @@ describe('agent route 准入层（P0-B）', () => {
     } as ReturnType<typeof getCfBindings>)
     vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
     __setRunAdmission({
-      reserveForDispatch: vi.fn(async () => ({ ok: false as const, reason: 'token_gone' as const })),
+      beginAndReserve: vi.fn(async () => ({ status: 'busy' as const })),
+      reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
       revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
     })
     const endSpy = vi.spyOn(repo, 'endAgentRun')
@@ -170,6 +183,33 @@ describe('agent route 准入层（P0-B）', () => {
     expect(send).not.toHaveBeenCalled()
     expect(vi.mocked(executePlanAgentRun)).not.toHaveBeenCalled()
     expect(endSpy).not.toHaveBeenCalled()
+    // busy 拒绝路径无任何落库副作用
+    expect(await repo.isAgentBusy(plan.id)).toBe(false)
+    expect(await repo.listMessages(plan.id)).toHaveLength(0)
+  })
+
+  it('P2-A：归属读走 getPlanAdmission（1 条 SQL），POST 里不再调用 getPlan', async () => {
+    vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    vi.mocked(getBillingService).mockReturnValue({
+      getAccount: vi.fn(async () => makeAccount()),
+      refundStaleReserves: vi.fn(async () => {}),
+      canStartRun: () => true,
+    } as unknown as ReturnType<typeof getBillingService>)
+    const send = vi.fn(async () => undefined)
+    vi.mocked(getCfBindings).mockReturnValue({
+      env: { PLAN_AGENT_QUEUE: { send } },
+    } as ReturnType<typeof getCfBindings>)
+    const getPlanSpy = vi.spyOn(repo, 'getPlan')
+    const getPlanAdmissionSpy = vi.spyOn(repo, 'getPlanAdmission')
+
+    const res = await agentRequest(plan.id, { message: 'hi' })
+    expect(res.status).toBe(202)
+    expect(getPlanSpy).not.toHaveBeenCalled()
+    expect(getPlanAdmissionSpy).toHaveBeenCalledTimes(1)
+    expect(getPlanAdmissionSpy).toHaveBeenCalledWith(plan.id)
   })
 
   it('上一轮 token 过期未 claim（有 open reserve）→ 本次 POST 先 revoke+refund 再 begin，202 且新 run 已预扣', async () => {

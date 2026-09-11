@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import type { TripPlanHandlerDeps } from '@/lib/tripPlan/handlers/plans'
+import type { BeginAgentRunInput } from '@/lib/tripPlan/repo'
 
 /**
  * Task A3（§0.3）：POST /api/me/plans/:id/agent 在有 PLAN_AGENT_QUEUE 绑定时
@@ -54,10 +55,15 @@ vi.mock('@/lib/anitabi/cf/bindings', () => ({
   getCfBindings: vi.fn((): null => null),
 }))
 
-// P0-B（2026-09-11）：预扣改走 admission——同步、幂等、先于任何派发。
-// holder 注入 Memory 版做真账本断言；缺省 permissive stub（不触 Prisma）
+// P0-B：预扣改走 admission（同步、幂等、先于任何派发）；holder 注入 Memory 版
+// 做真账本断言。P2-A：起步改走 beginAndReserve——permissive 版委托 deps.repo
+// 真实 beginAgentRun（busy 位/human 消息照常，不记账）
 vi.mock('@/lib/planAgent/runAdmission', () => {
   const permissive = {
+    beginAndReserve: vi.fn(async (input: BeginAgentRunInput & { account?: unknown }) => {
+      const { account: _account, ...begin } = input
+      return (await (await import('@/lib/tripPlan/api')).getTripPlanApiDeps()).repo.beginAgentRun(begin)
+    }),
     reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
     revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
   }
@@ -89,14 +95,8 @@ import { POST } from '@/app/api/me/plans/[id]/agent/route'
 import { POST as POSTInternalRun } from '@/app/api/internal/plan-agent/run/route'
 
 // vi.mock 工厂里的测试辅助导出不在真实模块类型上，经断言取用
-const { __setBillingService, __resetBillingService } = billingServerDeps as unknown as {
-  __setBillingService: (next: unknown) => void
-  __resetBillingService: () => void
-}
-const { __setRunAdmission, __resetRunAdmission } = admissionModule as unknown as {
-  __setRunAdmission: (next: unknown) => void
-  __resetRunAdmission: () => void
-}
+const { __setBillingService, __resetBillingService } = billingServerDeps as unknown as Record<string, (n?: unknown) => void>
+const { __setRunAdmission, __resetRunAdmission } = admissionModule as unknown as Record<string, (n?: unknown) => void>
 
 function makeDeps(repo: MemoryTripPlanRepo): TripPlanHandlerDeps {
   return { repo, getSession: vi.fn().mockResolvedValue({ user: { id: 'u1' } }) }
