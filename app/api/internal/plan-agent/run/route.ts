@@ -77,8 +77,15 @@ export async function POST(req: Request) {
   // queueDispatchMs / selfRefHopMs 四个字段整体省略，绝不写 0/NaN。
   // queueLatencyMs 保留不动（= queueDispatchMs + selfRefHopMs，对比历史）。
   // P1-A 埋点：派发信道（'do' = DO alarm 派发器发的头；缺省按 'queue' 兼容
-  // ——队列消费者未改发同名头时的兼容值）
-  const transport: 'queue' | 'do' = req.headers.get('x-plan-agent-transport') === 'do' ? 'do' : 'queue'
+  // ——队列消费者未改发同名头时的兼容值）。P1_1：DO alarm 本 isolate 直调
+  // OpenNext handler 时再带 x-plan-agent-local: 1 → 'do-local'（A/B 对比
+  // selfRefHopMs：本地路径下该值 = 本 isolate 初始化成本）
+  const transport: 'queue' | 'do' | 'do-local' =
+    req.headers.get('x-plan-agent-local') === '1'
+      ? 'do-local'
+      : req.headers.get('x-plan-agent-transport') === 'do'
+        ? 'do'
+        : 'queue'
   const consumerEnteredMs = Date.now()
   const consumerEnteredAt = new Date(consumerEnteredMs).toISOString()
   const queueLatencyMs = queueLatencyMsOf(body.enqueuedAt, consumerEnteredMs)
