@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
-import { createPlanByIdHandlers } from '@/lib/tripPlan/handlers/planById'
+import { createPlanByIdHandlers, readPlanRunState } from '@/lib/tripPlan/handlers/planById'
 import type { TripPlanHandlerDeps } from '@/lib/tripPlan/handlers/plans'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
 
@@ -354,6 +354,69 @@ describe('planById GET live / chatRevision', () => {
       }
       expect(body.interrupted).not.toBeNull()
       expect(body.interrupted!.reason).toBe('missing_run_log')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ---- P0-C：恢复推断识别"当前 run 身份"（F3/F5/F6：停止→resume→派发丢失）----
+
+  it('P0-C：停止后 resume 派发丢失（unclaimed、TTL 过期）→ interrupted.reason=unclaimed、stopped=false；busy 期间仍 null', async () => {
+    vi.useFakeTimers({ now: new Date('2026-09-10T00:00:00.000Z') })
+    try {
+      const deps = makeDeps()
+      const plan = await deps.repo.createPlan({ userId: 'u1', title: 't' })
+      const handlers = createPlanByIdHandlers(deps)
+      await deps.repo.appendMessage(plan.id, 'human', { role: 'user', content: '安排一天' })
+      await deps.repo.appendMessage(plan.id, 'assistant', { role: 'assistant', content: '安排好了。' })
+
+      // 第一轮：begin token A 后用户停止（写下 token A 的 stopped 日志、busy 清空）
+      const first = await deps.repo.beginAgentRun({
+        planId: plan.id,
+        userId: 'u1',
+        content: null,
+        since: new Date(0),
+        limit: 10,
+        busyTtlMs: 60_000,
+      })
+      if (first.status !== 'ok') throw new Error('unreachable')
+      await deps.repo.stopAgentRun(plan.id)
+
+      // 用户手动 resume：begin 新 token B（不追加 human）；派发丢失、无人领取
+      const second = await deps.repo.beginAgentRun({
+        planId: plan.id,
+        userId: 'u1',
+        content: null,
+        since: new Date(0),
+        limit: 10,
+        busyTtlMs: 60_000,
+      })
+      if (second.status !== 'ok') throw new Error('unreachable')
+
+      // TTL 未过（busy 中）：interrupted 仍为 null（不变）
+      const during = await readPlanRunState(deps, plan.id)
+      expect(during!.agentBusy).toBe(true)
+      expect(during!.interrupted).toBeNull()
+
+      // TTL 过后：旧 stopped 日志（token A）不再遮蔽新尝试 → unclaimed；
+      // stopped 标志随 token 不同判 false
+      vi.setSystemTime(new Date('2026-09-10T00:05:00.000Z'))
+      const after = await readPlanRunState(deps, plan.id)
+      expect(after!.agentBusy).toBe(false)
+      expect(after!.stopped).toBe(false)
+      expect(after!.interrupted).not.toBeNull()
+      expect(after!.interrupted!.reason).toBe('unclaimed')
+      expect(after!.interrupted!.turnIndex).toBe(2)
+      // at = 过期的 busyUntil（00:01:00，这次尝试事实上的死亡时刻）
+      expect(after!.interrupted!.at).toBe(new Date('2026-09-10T00:01:00.000Z').toISOString())
+
+      // GET 响应同样暴露 unclaimed（前端自动续跑只看 interrupted 是否非空）
+      const body = (await (await handlers.GET(plan.id)).json()) as {
+        agentBusy: boolean
+        interrupted: { reason: string } | null
+      }
+      expect(body.agentBusy).toBe(false)
+      expect(body.interrupted!.reason).toBe('unclaimed')
     } finally {
       vi.useRealTimers()
     }

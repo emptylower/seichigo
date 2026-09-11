@@ -11,11 +11,11 @@ import type { TripPlanMessage, TripPlanRunLogRecord } from '@/lib/tripPlan/repo'
 export const RESUME_NOTE =
   '上一回合因连接中断被打断，请基于已保存的消息与行程继续，不要重复已经完成的工具调用；已落库的工具结果都在历史消息里，直接基于它们继续，不要重新查询同样的路线或餐厅。如果行程已保存完整，直接给出总结。若上次中断没有任何收尾，说明是平台终止，请优先把已完成的工具结果落库（save_plan_days），再继续未完成部分。'
 
-/** 第八轮 F1：中断推断的依据（前端可忽略，供排查与测试断言） */
-export type InterruptedReason = 'run_log' | 'missing_run_log' | 'dangling'
+/** 第八轮 F1：中断推断的依据（前端可忽略，供排查与测试断言）；P0-C 新增 unclaimed */
+export type InterruptedReason = 'unclaimed' | 'run_log' | 'missing_run_log' | 'dangling'
 
 export type InterruptedInference = {
-  /** 最后一条消息的 createdAt */
+  /** 最后一条消息的 createdAt（unclaimed 时为过期的 busyUntil） */
   at: Date
   /** 该被打断回合的序号 = (最后一条运行日志的 turnIndex ?? 0) + 1 */
   turnIndex: number
@@ -23,14 +23,28 @@ export type InterruptedInference = {
 }
 
 /**
+ * P0-C（2026-09-11）：恢复推断的"当前 run 身份"输入——计划行上的
+ * agentRunToken / agentBusyUntil / agentRunStartedAt（getAgentRunState 的返回）。
+ * 缺省（旧调用方）或为 null（无当前 run）时推断行为与之前逐字相同。
+ */
+export type CurrentRunState = { token: string; busyUntil: Date | null; startedAt: Date | null } | null
+
+/**
  * 第十一轮 A3（§0）：最后一条运行日志是用户停止（stage='stopped'）且写于
  * 最后一条 human 消息之后——该回合是"用户主动停笔"，不是被打断：
  * inferInterrupted 对此返回 null（前端不自动续跑），canResume 仍返回 true
  * （用户手动 { resume: true } 可续）。
  */
-function stopIsFinalTail(messages: TripPlanMessage[], runLogs: TripPlanRunLogRecord[]): boolean {
+function stopIsFinalTail(
+  messages: TripPlanMessage[],
+  runLogs: TripPlanRunLogRecord[],
+  current?: CurrentRunState,
+): boolean {
   const lastLog = runLogs.length ? runLogs[runLogs.length - 1]! : null
   if (!lastLog || lastLog.stage !== 'stopped') return false
+  // P0-C：stopped 日志属于旧 token——停止之后又 beginAgentRun 了新尝试（resume
+  // 回合不追加 human，单看消息时间会把新尝试遮蔽成"主动停笔"）→ 不算最终停笔
+  if (current && current.token !== lastLog.runToken) return false
   const lastHuman = [...messages].reverse().find((m) => m.kind === 'human') ?? null
   if (!lastHuman) return true
   return lastLog.createdAt.getTime() > lastHuman.createdAt.getTime()
@@ -51,15 +65,32 @@ function stopIsFinalTail(messages: TripPlanMessage[], runLogs: TripPlanRunLogRec
  *    前端在每次挂载时对等待回答的计划自动续跑；硬杀在 ask 收尾前的形态由
  *    第 2 条捕获。
  * A3 修订：stage='stopped' 的尾部日志（晚于最后 human）不是打断，直接 null。
+ * P0-C 修订：该规则只在"没有更新的尝试"时成立——stopped 日志属于旧 token
+ * （current.token 不同）则继续往下推断；另增第 0 条 unclaimed（见下）。
  */
 export function inferInterrupted(
   messages: TripPlanMessage[],
   runLogs: TripPlanRunLogRecord[],
+  current?: CurrentRunState,
 ): InterruptedInference | null {
-  if (stopIsFinalTail(messages, runLogs)) return null
+  if (stopIsFinalTail(messages, runLogs, current)) return null
   const lastMessage = messages.length ? messages[messages.length - 1]! : null
   if (!lastMessage) return null
   const lastLog = runLogs.length ? runLogs[runLogs.length - 1]! : null
+
+  // P0-C 第 0 条 unclaimed：当前 token 的尝试从未被任何执行者领取（派发丢失
+  // ——DO 与队列都失败）——startedAt 仍空、busy TTL 已过、且没有任何该 token
+  // 的运行日志。这是关于当前 token 的直接证据，优先于下面三条从历史推断的
+  // 规则；at 取 busyUntil（这次尝试事实上的死亡时刻）
+  if (
+    current &&
+    current.startedAt === null &&
+    current.busyUntil !== null &&
+    current.busyUntil.getTime() < Date.now() &&
+    !runLogs.some((log) => log.runToken === current.token)
+  ) {
+    return { at: current.busyUntil, turnIndex: (lastLog?.turnIndex ?? 0) + 1, reason: 'unclaimed' }
+  }
 
   let reason: InterruptedReason | null = null
   if (lastLog?.stage === 'interrupted') {
@@ -93,8 +124,12 @@ export function inferInterrupted(
  * 已保存完整则直接总结」，不会重复动作）；尾部 assistant 纯文本且有正常
  * 日志 → 自然收尾，nothing_to_resume。
  */
-export function canResume(messages: TripPlanMessage[], runLogs: TripPlanRunLogRecord[]): boolean {
-  if (inferInterrupted(messages, runLogs)) return true
+export function canResume(
+  messages: TripPlanMessage[],
+  runLogs: TripPlanRunLogRecord[],
+  current?: CurrentRunState,
+): boolean {
+  if (inferInterrupted(messages, runLogs, current)) return true
   // A3（§0）：用户停止的回合不算"被打断"（不自动续跑），但手动 resume 允许
-  return stopIsFinalTail(messages, runLogs)
+  return stopIsFinalTail(messages, runLogs, current)
 }

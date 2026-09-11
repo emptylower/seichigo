@@ -105,10 +105,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // 第八轮 §0 / F2：对话已自然收尾时无事可续——HTTP 200 告知前端而不是起一个
   // 空 run。canResume 与 GET 的 interrupted 推断共享同一套状态规则（F1 三条），
   // 因此这里要把 listRunLogs 一并传入：尾部 assistant 纯文本但该回合无运行
-  // 日志（硬杀）仍可续，有正常日志才是真正的 nothing_to_resume
+  // 日志（硬杀）仍可续，有正常日志才是真正的 nothing_to_resume。
+  // P0-C：再带上当前 run 身份（getAgentRunState）——旧 token 的 stopped 尾
+  // 日志不遮蔽新尝试，派发丢失（unclaimed）的回合也可续
   if (resume) {
-    const [messages, runLogs] = await Promise.all([deps.repo.listMessages(id), deps.repo.listRunLogs(id)])
-    if (!canResume(messages, runLogs)) {
+    const [messages, runLogs, current] = await Promise.all([
+      deps.repo.listMessages(id),
+      deps.repo.listRunLogs(id),
+      deps.repo.getAgentRunState(id),
+    ])
+    if (!canResume(messages, runLogs, current)) {
       return NextResponse.json({ ok: false, reason: 'nothing_to_resume' })
     }
   }
