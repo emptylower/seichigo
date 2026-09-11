@@ -131,8 +131,17 @@ function useElapsedSeconds(since: number): number {
 }
 
 /**
+ * 本轮 run 的计时锚点：有 startedAt 就用它（发起回合时同步写入，≈ 点击时刻），
+ * 还没拿到遥测（恢复路径的占位 turn，startedAt=0）则以首次可见的本地时刻为准。
+ */
+function runAnchor(turn: ThinkingTurn): number {
+  return turn.startedAt > 0 ? turn.startedAt : Date.now()
+}
+
+/**
  * C1 active pill 上的「· 已用 12s」：本地计时，不依赖网络——网断了它照样走，
- * 正好把「模型慢」和「画面冻结」区分开。
+ * 正好把「模型慢」和「画面冻结」区分开。startedAt 由 ThinkingChain 传入本轮
+ * run 的锚点（runStartedAtRef），不是每帧快照自带的 thinking.startedAt。
  */
 function ElapsedTick({ startedAt, tx }: { startedAt: number; tx: PlanTextFn }) {
   const seconds = useElapsedSeconds(startedAt)
@@ -265,6 +274,12 @@ export function ThinkingChain(props: {
   // 行立即全量显示，running 行的已用时长连续，不重放 80ms 错开动画
   const [shownCount, setShownCount] = useState(() => (active ? 0 : thinking.toolCalls.length))
   const firstSeenAtRef = useRef(new Map<string, number>())
+  // C1 pill 计时锚点：本轮 run 首次可见的本地时刻，跨 startedAt 漂移保持不变。
+  // 生产（队列化）路径下观察流每次 open 后的首帧 live 快照、以及内联 SSE 回落
+  // 里每段 text 之间的 freezeTurn，都会给进行中的回合换一个新的 startedAt——
+  // 若 ElapsedTick 直接吃 thinking.startedAt，「已用」会在状态短句切换的那一帧
+  // 从 5s 回退到 1s。锚点只在回合更替（见下方 mark 判定）时重置。
+  const runStartedAtRef = useRef(runAnchor(thinking))
 
   // 新回合开始时重置揭示进度与首见时刻，否则上一轮的揭示进度会漏到新一轮。
   // 回合更替的判定：active false→true（新回合开始）、active true→false（回合结束）、
@@ -279,6 +294,7 @@ export function ThinkingChain(props: {
     if (!driftWhileActive) {
       setShownCount(active ? 0 : thinking.toolCalls.length)
       firstSeenAtRef.current = new Map()
+      runStartedAtRef.current = runAnchor(thinking)
     }
   }
 
@@ -328,7 +344,7 @@ export function ThinkingChain(props: {
           <span key={phrase} className="plan-phrase-in">
             {phrase}
           </span>
-          {thinking.startedAt > 0 ? <ElapsedTick startedAt={thinking.startedAt} tx={tx} /> : null}
+          {thinking.startedAt > 0 ? <ElapsedTick startedAt={runStartedAtRef.current} tx={tx} /> : null}
           <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           <span aria-hidden="true" className="plan-shimmer pointer-events-none absolute inset-0" />
         </button>
