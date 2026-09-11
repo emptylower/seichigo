@@ -112,6 +112,18 @@ function getModuleInstanceId(): string {
   return moduleInstanceId
 }
 
+/**
+ * 诊断探针用（2026-09-11 do-probe）：本模块实例第一次进入 handler 的时刻。
+ * 同样不能在模块作用域取——workerd 在全局作用域里 Date.now() 返回 0。
+ * /ping 的 moduleAgeMs = now − firstTouchAt：≈0 表示这次调用落在全新模块
+ *（冷 isolate / 新模块求值）上，明显大于 0 表示模块被复用。
+ */
+let firstTouchAt: number | null = null
+function markFirstTouch(): number {
+  if (firstTouchAt === null) firstTouchAt = Date.now()
+  return firstTouchAt
+}
+
 export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
   private readonly doStorage: PlanRunDispatcherStorage
   private readonly doEnv: PlanRunDispatcherEnv
@@ -134,6 +146,21 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
   async fetch(request: globalThis.Request): Promise<globalThis.Response> {
     // P2-B 埋点补充：DO fetch 入口时刻（第一条语句）——经 x-plan-agent-do-entered-at 交出
     const doEnteredAt = Date.now()
+    markFirstTouch()
+    // 诊断探针（GET /ping，仅由 /api/internal/plan-agent/do-probe 调用）：
+    // 只读一次 state 计时，不写 storage、不设 alarm，派发路径完全不受影响。
+    if (request.method === 'GET' && new URL(request.url).pathname === '/ping') {
+      const stateReadAt = Date.now()
+      await this.doStorage.get('state')
+      const stateReadMs = Date.now() - stateReadAt
+      return globalThis.Response.json({
+        pong: true,
+        moduleId: getModuleInstanceId(),
+        doInstanceId: this.instanceId,
+        stateReadMs,
+        moduleAgeMs: Date.now() - markFirstTouch(),
+      })
+    }
     let body: unknown = undefined
     try {
       body = await request.json()
