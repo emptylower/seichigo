@@ -80,6 +80,19 @@ export type TripPlanStageInputs = {
   hasPointItem: boolean
 }
 
+/**
+ * P2-B（2026-09-11）：loop 启动前奏的一次性读取——busy 位归属 + 阶段推断
+ * 输入 + 全量历史，供 getStartupRead 单次往返返回。字段语义与三段旧读
+ * （isAgentRunStopped / listMessages / getStageInputs）一一对应。
+ */
+export type TripPlanStartupRead = {
+  /** 计划当前 agentRunToken（null = 无 run） */
+  agentRunToken: string | null
+  stageInputs: TripPlanStageInputs
+  /** 全量消息，createdAt 升序（与 listMessages 同口径、同类型） */
+  messages: TripPlanMessage[]
+}
+
 export type TripPlanItemInput = {
   type: TripPlanItemType
   pointId?: string | null
@@ -202,6 +215,14 @@ export interface TripPlanRepo {
    * null 唯一对应"计划不存在"。getPlan 保留不动，新方法是并存不是替换。
    */
   getStageInputs(planId: string): Promise<TripPlanStageInputs | null>
+  /**
+   * P2-B：loop 启动前奏一次性读取：busy 位归属 + 阶段推断输入 + 全量历史。
+   * 计划不存在返回 null。必须是 **1 条 SQL / 1 次往返**（Prisma 实现用原生
+   * SQL 聚合，替代前奏原先 isAgentRunStopped + listMessages + getStageInputs
+   * 的 3 次串行往返——pool=1 下每次往返 ~0.164s）。三个旧方法保留不动
+   * （别处仍在用）。
+   */
+  getStartupRead(planId: string): Promise<TripPlanStartupRead | null>
   updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan>
   replaceDays(id: string, days: TripPlanDayInput[]): Promise<TripPlanWithDays>
   countPlansCreatedSince(userId: string, since: Date): Promise<number>

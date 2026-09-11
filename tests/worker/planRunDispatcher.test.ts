@@ -27,6 +27,9 @@ import {
   type PlanRunDispatcherStorage,
 } from '@/worker/planRunDispatcher'
 
+/** 本测试文件模块求值时刻：被测模块的 MODULE_EVAL_AT（import 期求值）必然 ≤ 它 */
+const TEST_LOADED_AT = Date.now()
+
 function queueMessage(overrides: Record<string, unknown> = {}) {
   return {
     v: 1,
@@ -94,7 +97,7 @@ function dispatchRequest(body: unknown) {
 }
 
 describe('PlanRunDispatcher fetch（接纳协议）', () => {
-  it('首次合法投递 → 持久接纳（payload + state）、setAlarm(≈now)、{accepted:true}', async () => {
+  it('首次合法投递 → 持久接纳（payload + state）、setAlarm(≈now)、{accepted:true}；state 带 doEnteredAt 与 setAlarm 后的 acceptedDoneAt', async () => {
     const { map, setAlarm, storage } = makeStorage()
     const { dispatcher } = makeDispatcher({ storage })
     const msg = queueMessage()
@@ -105,7 +108,17 @@ describe('PlanRunDispatcher fetch（接纳协议）', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ accepted: true })
     expect(map.get('payload')).toEqual(msg)
-    expect(map.get('state')).toEqual({ acceptedAt: expect.any(Number), attempts: 0 })
+    const state = map.get('state') as { acceptedAt: number; attempts: number; doEnteredAt: number; acceptedDoneAt: number }
+    expect(state).toEqual({
+      acceptedAt: expect.any(Number),
+      attempts: 0,
+      doEnteredAt: expect.any(Number),
+      acceptedDoneAt: expect.any(Number),
+    })
+    // P2-B 补充：doEnteredAt（fetch 入口）≤ acceptedAt（写盘）≤ acceptedDoneAt（setAlarm 成功后）
+    expect(state.doEnteredAt).toBeLessThanOrEqual(state.acceptedAt)
+    expect(state.acceptedAt).toBeLessThanOrEqual(state.acceptedDoneAt)
+    expect(state.acceptedDoneAt).toBeGreaterThanOrEqual(before)
     expect(setAlarm).toHaveBeenCalledTimes(1)
     const scheduledAt = setAlarm.mock.calls[0]![0] as number
     expect(scheduledAt).toBeGreaterThanOrEqual(before)
@@ -258,9 +271,10 @@ describe('PlanRunDispatcher alarm（派发分类）', () => {
     }
   })
 
-  it('内部路由请求头：transport=do、secret、consumer-at/seq（epoch ms / 整数）', async () => {
+  it('内部路由请求头：transport=do、secret、consumer-at/seq（epoch ms / 整数）、P2-B 派发段八个埋点头', async () => {
     const fetchImpl = makeFetch()
-    const { dispatcher } = seeded({ fetchImpl })
+    const made = makeStorage()
+    const { dispatcher } = makeDispatcher({ storage: made.storage, fetchImpl })
     const msg = queueMessage()
 
     await dispatcher.fetch(dispatchRequest(msg))
@@ -276,6 +290,35 @@ describe('PlanRunDispatcher alarm（派发分类）', () => {
     expect(Number.isInteger(Number(headers['x-plan-agent-consumer-at']))).toBe(true)
     expect(Number.isInteger(Number(headers['x-plan-agent-consumer-seq']))).toBe(true)
     expect(JSON.parse(init.body as string)).toEqual(msg)
+
+    // P2-B 补充：入口/接纳完成/alarm/前奏/身份，数值关系正确
+    const state = made.map.get('state') as {
+      acceptedAt: number
+      attempts: number
+      doEnteredAt: number
+      acceptedDoneAt: number
+    }
+    expect(headers['x-plan-agent-do-entered-at']).toBe(String(state.doEnteredAt))
+    // do-accepted-at 承载 setAlarm 之后的接纳完成戳（不是 acceptedAt）
+    expect(headers['x-plan-agent-do-accepted-at']).toBe(String(state.acceptedDoneAt))
+    const alarmAt = Number(headers['x-plan-agent-alarm-at'])
+    expect(Number.isFinite(alarmAt)).toBe(true)
+    expect(alarmAt).toBeGreaterThanOrEqual(state.acceptedDoneAt)
+    // alarm 前奏 ≥ 0（alarm 入口 → handler 调用前，含三次存储 IO）
+    const preludeMs = Number(headers['x-plan-agent-alarm-prelude-ms'])
+    expect(Number.isFinite(preludeMs)).toBe(true)
+    expect(preludeMs).toBeGreaterThanOrEqual(0)
+    const isolateAgeMs = Number(headers['x-plan-agent-isolate-age-ms'])
+    expect(Number.isFinite(isolateAgeMs)).toBe(true)
+    // isolate 年龄反推的模块求值时刻必然不晚于测试文件求值时刻（import 先于用例）
+    expect(alarmAt - isolateAgeMs).toBeLessThanOrEqual(TEST_LOADED_AT)
+    expect(alarmAt - isolateAgeMs).toBeGreaterThan(0)
+    expect(headers['x-plan-agent-alarm-attempt']).toBe('1')
+    // 模块实例 id 与 DO 对象实例 id 分开（workerd 模块求值一次、DO 对象每次构造）
+    expect(headers['x-plan-agent-module-id']).toMatch(/^[0-9a-f]{8}$/)
+    expect(headers['x-plan-agent-do-instance-id']).toMatch(/^[0-9a-f]{8}$/)
+    expect(headers['x-plan-agent-do-instance-id']).toBe(dispatcher.instanceId)
+    expect(headers['x-plan-agent-module-id']).not.toBe(headers['x-plan-agent-do-instance-id'])
   })
 })
 
@@ -317,7 +360,8 @@ describe('PlanRunDispatcher alarm 本地路径（P1_1：PLAN_AGENT_DO_LOCAL=1）
     const { handler, calls } = makeLocalHandler()
     registerPlanRunLocalHandler(handler)
     const fetchImpl = makeFetch()
-    const { dispatcher, env } = makeDispatcher({ fetchImpl, env: { PLAN_AGENT_DO_LOCAL: '1' } })
+    const made = makeStorage()
+    const { dispatcher, env } = makeDispatcher({ storage: made.storage, fetchImpl, env: { PLAN_AGENT_DO_LOCAL: '1' } })
     const msg = queueMessage()
 
     await dispatcher.fetch(dispatchRequest(msg))
@@ -334,6 +378,25 @@ describe('PlanRunDispatcher alarm 本地路径（P1_1：PLAN_AGENT_DO_LOCAL=1）
     expect(call.request.headers.get('x-plan-agent-local')).toBe('1')
     expect(Number.isInteger(Number(call.request.headers.get('x-plan-agent-consumer-at')))).toBe(true)
     expect(Number.isInteger(Number(call.request.headers.get('x-plan-agent-consumer-seq')))).toBe(true)
+    // P2-B 补充：本地直调路径同样带 DO 派发段八个埋点头
+    const state = made.map.get('state') as {
+      acceptedAt: number
+      attempts: number
+      doEnteredAt: number
+      acceptedDoneAt: number
+    }
+    expect(call.request.headers.get('x-plan-agent-do-entered-at')).toBe(String(state.doEnteredAt))
+    expect(call.request.headers.get('x-plan-agent-do-accepted-at')).toBe(String(state.acceptedDoneAt))
+    const alarmAt = Number(call.request.headers.get('x-plan-agent-alarm-at'))
+    expect(Number.isFinite(alarmAt)).toBe(true)
+    expect(alarmAt).toBeGreaterThanOrEqual(state.acceptedDoneAt)
+    expect(Number(call.request.headers.get('x-plan-agent-alarm-prelude-ms'))).toBeGreaterThanOrEqual(0)
+    const isolateAgeMs = Number(call.request.headers.get('x-plan-agent-isolate-age-ms'))
+    expect(Number.isFinite(isolateAgeMs)).toBe(true)
+    expect(alarmAt - isolateAgeMs).toBeLessThanOrEqual(TEST_LOADED_AT)
+    expect(call.request.headers.get('x-plan-agent-alarm-attempt')).toBe('1')
+    expect(call.request.headers.get('x-plan-agent-module-id')).toMatch(/^[0-9a-f]{8}$/)
+    expect(call.request.headers.get('x-plan-agent-do-instance-id')).toBe(dispatcher.instanceId)
     // env 传原始完整对象（同一引用），不重建子集
     expect(call.env).toBe(env)
     expect(await new Response(call.request.body).text()).toBe(JSON.stringify(msg))

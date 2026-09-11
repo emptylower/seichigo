@@ -182,15 +182,17 @@ async function runFirstTurn(name: keyof typeof scenarioTails): Promise<{
   expect(rows.length).toBeGreaterThanOrEqual(34) // 「约 36 条」的健全性检查
   for (const row of rows) await repo.appendMessage(plan.id, row.kind, row.content)
 
-  // 捕获 loop 首次读取的持久化历史（sanitize 的输入只能来自它）
+  // 捕获 loop 首次读取的持久化历史（sanitize 的输入只能来自它）。
+  // P2-B：前奏不再调 listMessages，改读 getStartupRead（单次往返），
+  // 在 Proxy 上捕获同一次读取的 messages
   let listMessagesRaw: TripPlanMessage[] | null = null
   const observedRepo: TripPlanRepo = new Proxy(repo, {
     get(target, prop, receiver) {
-      if (prop === 'listMessages') {
+      if (prop === 'getStartupRead') {
         return async (planId: string) => {
-          const out = await target.listMessages(planId)
-          if (!listMessagesRaw) listMessagesRaw = out
-          return out
+          const read = await target.getStartupRead(planId)
+          if (!listMessagesRaw && read) listMessagesRaw = read.messages
+          return read
         }
       }
       const value = Reflect.get(target, prop, receiver)

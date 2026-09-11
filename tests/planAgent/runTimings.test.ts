@@ -4,6 +4,7 @@ import { createRunCostTracker } from '@/lib/planAgent/runCost'
 import {
   createRunTimingCollector,
   parseConsumerBatchStamp,
+  parseDispatchSegmentStamp,
   queueLatencyMsOf,
 } from '@/lib/planAgent/runTimings'
 import { createEnrichBudget } from '@/lib/planAgent/enrich/types'
@@ -156,6 +157,190 @@ describe('队列段拆分（C 部分：消费者戳）', () => {
     expect(parseConsumerBatchStamp(String(T0), '1.5')).toBeUndefined()
     const stamp = parseConsumerBatchStamp(String(T0 + 123), '3')
     expect(stamp).toEqual({ consumerBatchMs: T0 + 123, consumerBatchAt: iso(T0 + 123), consumerSeq: 3 })
+  })
+})
+
+describe('DO 派发段拆分（P2-B：DO 埋点头，Astra 评审后口径）', () => {
+  const DO_KEYS = [
+    'doIngressMs',
+    'doAcceptMs',
+    'acceptToAlarmMs',
+    'alarmPreludeMs',
+    'alarmToEntryMs',
+    'moduleId',
+    'doInstanceId',
+    'isolateAgeMs',
+    'alarmAttempt',
+  ] as const
+
+  /** 八个头全在的合法输入（doEntered=T0−9500 / acceptedDone=T0−9000 / alarm=T0−3000 / entered=T0） */
+  function fullHeaders(overrides: Partial<Record<string, string | null>> = {}) {
+    return {
+      doEnteredAt: String(T0 - 9_500),
+      doAcceptedAt: String(T0 - 9_000),
+      alarmAt: String(T0 - 3_000),
+      alarmPreludeMs: '5',
+      isolateAgeMs: '720',
+      alarmAttempt: '1',
+      moduleId: 'abcd1234',
+      doInstanceId: 'efgh5678',
+      ...overrides,
+    }
+  }
+
+  it('parseDispatchSegmentStamp：必需头缺失/空串/垃圾 → undefined；do-accepted-at 可单独缺省（旧 state）', () => {
+    expect(parseDispatchSegmentStamp(fullHeaders({ doEnteredAt: null }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ alarmAt: null }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ alarmPreludeMs: null }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ moduleId: null }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ doInstanceId: ' ' }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ alarmAttempt: '1.5' }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ isolateAgeMs: 'abc' }))).toBeUndefined()
+    expect(parseDispatchSegmentStamp(fullHeaders({ alarmAt: 'x' }))).toBeUndefined()
+    // 例外：acceptedDoneAt 是滚动部署新字段——仅它缺省时其余照常解析
+    expect(parseDispatchSegmentStamp(fullHeaders({ doAcceptedAt: null }))).toEqual({
+      doEnteredMs: T0 - 9_500,
+      alarmMs: T0 - 3_000,
+      alarmPreludeMs: 5,
+      isolateAgeMs: 720,
+      alarmAttempt: 1,
+      moduleId: 'abcd1234',
+      doInstanceId: 'efgh5678',
+    })
+    expect(parseDispatchSegmentStamp(fullHeaders())).toEqual({
+      doEnteredMs: T0 - 9_500,
+      acceptedDoneMs: T0 - 9_000,
+      alarmMs: T0 - 3_000,
+      alarmPreludeMs: 5,
+      isolateAgeMs: 720,
+      alarmAttempt: 1,
+      moduleId: 'abcd1234',
+      doInstanceId: 'efgh5678',
+    })
+  })
+
+  it('种子齐全：五段 + 身份字段正确，五段之和 === consumerEntered − dispatched', () => {
+    const collector = createRunTimingCollector(
+      {
+        enqueuedAt: iso(T0 - 12_000),
+        consumerBatchAt: iso(T0 - 2_000),
+        consumerSeq: 1,
+        dispatchedAt: iso(T0 - 10_000),
+        doEnteredAt: iso(T0 - 9_500),
+        acceptedDoneAt: iso(T0 - 9_000),
+        alarmAt: iso(T0 - 3_000),
+        alarmPreludeMs: 5,
+        isolateAgeMs: 720,
+        alarmAttempt: 1,
+        moduleId: 'abcd1234',
+        doInstanceId: 'efgh5678',
+        consumerEnteredAt: iso(T0),
+      },
+      () => T0,
+    )
+    collector.markLoopStarted()
+
+    const t = collector.snapshot()
+    expect(t).toBeDefined()
+    expect(t?.doIngressMs).toBe(500)
+    expect(t?.doAcceptMs).toBe(500)
+    expect(t?.acceptToAlarmMs).toBe(6_000)
+    expect(t?.alarmPreludeMs).toBe(5)
+    expect(t?.alarmToEntryMs).toBe(T0 - (T0 - 3_000 + 5))
+    expect(t?.moduleId).toBe('abcd1234')
+    expect(t?.doInstanceId).toBe('efgh5678')
+    expect(t?.isolateAgeMs).toBe(720)
+    expect(t?.alarmAttempt).toBe(1)
+    // 五段守恒：=== 内部路由入口 − POST 派发（≈ 既有 queueDispatchMs 的口径）
+    expect(
+      (t?.doIngressMs ?? NaN) +
+        (t?.doAcceptMs ?? NaN) +
+        (t?.acceptToAlarmMs ?? NaN) +
+        (t?.alarmPreludeMs ?? NaN) +
+        (t?.alarmToEntryMs ?? NaN),
+    ).toBe(10_000)
+  })
+
+  it('缺 DO 头（queue 消费者旧路径）：九个字段整体省略，不写 0/NaN', () => {
+    const collector = createRunTimingCollector(
+      { enqueuedAt: iso(T0 - 15_000), consumerBatchAt: iso(T0 - 8_000), consumerSeq: 2, consumerEnteredAt: iso(T0) },
+      () => T0,
+    )
+    collector.markLoopStarted()
+    const t = collector.snapshot()
+    expect(t).toBeDefined()
+    for (const key of DO_KEYS) expect(key in (t ?? {})).toBe(false)
+    // 既有字段不受影响
+    expect(t?.queueDispatchMs).toBe(7_000)
+  })
+
+  it('acceptedDoneAt 缺省（旧 state 在途）：doAcceptMs/acceptToAlarmMs 省略，其余字段照常', () => {
+    const collector = createRunTimingCollector(
+      {
+        dispatchedAt: iso(T0 - 10_000),
+        doEnteredAt: iso(T0 - 9_500),
+        alarmAt: iso(T0 - 3_000),
+        alarmPreludeMs: 5,
+        isolateAgeMs: 720,
+        alarmAttempt: 2,
+        moduleId: 'abcd1234',
+        doInstanceId: 'efgh5678',
+        consumerEnteredAt: iso(T0),
+      },
+      () => T0,
+    )
+    collector.markLoopStarted()
+    const t = collector.snapshot()
+    expect(t?.doIngressMs).toBe(500)
+    expect(t?.alarmPreludeMs).toBe(5)
+    expect(t?.alarmToEntryMs).toBe(2_995)
+    expect(t?.isolateAgeMs).toBe(720)
+    expect(t?.alarmAttempt).toBe(2)
+    expect('doAcceptMs' in (t ?? {})).toBe(false)
+    expect('acceptToAlarmMs' in (t ?? {})).toBe(false)
+  })
+
+  it('dispatchedAt 缺省：doIngressMs 省略（其余 DO 字段照常）；alarmPreludeMs 缺省时 alarmToEntryMs 省略', () => {
+    const noDispatched = createRunTimingCollector(
+      {
+        doEnteredAt: iso(T0 - 9_500),
+        acceptedDoneAt: iso(T0 - 9_000),
+        alarmAt: iso(T0 - 3_000),
+        alarmPreludeMs: 5,
+        isolateAgeMs: 720,
+        alarmAttempt: 1,
+        moduleId: 'abcd1234',
+        doInstanceId: 'efgh5678',
+        consumerEnteredAt: iso(T0),
+      },
+      () => T0,
+    )
+    noDispatched.markLoopStarted()
+    const t1 = noDispatched.snapshot()
+    expect('doIngressMs' in (t1 ?? {})).toBe(false)
+    expect(t1?.doAcceptMs).toBe(500)
+    expect(t1?.acceptToAlarmMs).toBe(6_000)
+    expect(t1?.alarmToEntryMs).toBe(2_995)
+
+    const noPrelude = createRunTimingCollector(
+      {
+        dispatchedAt: iso(T0 - 10_000),
+        doEnteredAt: iso(T0 - 9_500),
+        acceptedDoneAt: iso(T0 - 9_000),
+        alarmAt: iso(T0 - 3_000),
+        isolateAgeMs: 720,
+        alarmAttempt: 1,
+        moduleId: 'abcd1234',
+        doInstanceId: 'efgh5678',
+        consumerEnteredAt: iso(T0),
+      },
+      () => T0,
+    )
+    noPrelude.markLoopStarted()
+    const t2 = noPrelude.snapshot()
+    expect('alarmPreludeMs' in (t2 ?? {})).toBe(false)
+    expect('alarmToEntryMs' in (t2 ?? {})).toBe(false)
+    expect(t2?.acceptToAlarmMs).toBe(6_000)
   })
 })
 

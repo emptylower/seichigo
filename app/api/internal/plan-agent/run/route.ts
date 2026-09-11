@@ -7,7 +7,12 @@ import { TIER_ENTITLEMENTS, type Tier } from '@/lib/billing/tiers'
 import { AGENT_BUSY_TTL_MS, executePlanAgentRun } from '@/lib/planAgent/execute'
 import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
 import {
+  acceptToAlarmMsOf,
+  alarmToEntryMsOf,
+  doAcceptMsOf,
+  doIngressMsOf,
   parseConsumerBatchStamp,
+  parseDispatchSegmentStamp,
   queueDispatchMsOf,
   queueLatencyMsOf,
   selfRefHopMsOf,
@@ -95,6 +100,37 @@ export async function POST(req: Request) {
   )
   const queueDispatchMs = stamp ? queueDispatchMsOf(body.enqueuedAt, stamp.consumerBatchMs) : undefined
   const selfRefHopMs = stamp ? selfRefHopMsOf(stamp.consumerBatchAt, consumerEnteredMs) : undefined
+  // P2-B 埋点（2026-09-11，Astra 评审后修订）：DO 派发段拆分——
+  // planRunDispatcher 随请求带的八个头，与 x-plan-agent-consumer-at 同样
+  // 宽容：缺失/非法整体忽略（例外：do-accepted-at 承载的 acceptedDoneAt
+  // 是滚动部署新字段，仅它可单独缺省），绝不写 0/NaN。五段之和 ===
+  // consumerEnteredAt − dispatchedAt（≈ queueDispatchMs 的口径；
+  // queueDispatchMs 本身不动，历史数据可比）。注意 dispatchedAt（POST 里
+  // 取，软截止也在用）≠ 消息体 enqueuedAt。moduleId/doInstanceId 区分
+  // "对象重建但模块没重建"与"模块全新"；isolateAgeMs 是"每次 alarm 都在
+  // 全新 isolate 上跑"假设的直接证据。
+  const dispatchStamp = parseDispatchSegmentStamp({
+    doEnteredAt: req.headers.get('x-plan-agent-do-entered-at'),
+    doAcceptedAt: req.headers.get('x-plan-agent-do-accepted-at'),
+    alarmAt: req.headers.get('x-plan-agent-alarm-at'),
+    alarmPreludeMs: req.headers.get('x-plan-agent-alarm-prelude-ms'),
+    isolateAgeMs: req.headers.get('x-plan-agent-isolate-age-ms'),
+    alarmAttempt: req.headers.get('x-plan-agent-alarm-attempt'),
+    moduleId: req.headers.get('x-plan-agent-module-id'),
+    doInstanceId: req.headers.get('x-plan-agent-do-instance-id'),
+  })
+  const doIngressMs = dispatchStamp ? doIngressMsOf(body.dispatchedAt, dispatchStamp.doEnteredMs) : undefined
+  const doAcceptMs =
+    dispatchStamp && dispatchStamp.acceptedDoneMs !== undefined
+      ? doAcceptMsOf(dispatchStamp.doEnteredMs, dispatchStamp.acceptedDoneMs)
+      : undefined
+  const acceptToAlarmMs =
+    dispatchStamp && dispatchStamp.acceptedDoneMs !== undefined
+      ? acceptToAlarmMsOf(dispatchStamp.acceptedDoneMs, dispatchStamp.alarmMs)
+      : undefined
+  const alarmToEntryMs = dispatchStamp
+    ? alarmToEntryMsOf(dispatchStamp.alarmMs, dispatchStamp.alarmPreludeMs, consumerEnteredMs)
+    : undefined
   console.log(
     `[planAgent/timing] ${JSON.stringify({
       planId: body.planId,
@@ -108,6 +144,24 @@ export async function POST(req: Request) {
             consumerSeq: stamp.consumerSeq,
             ...(queueDispatchMs === undefined ? {} : { queueDispatchMs }),
             ...(selfRefHopMs === undefined ? {} : { selfRefHopMs }),
+          }
+        : {}),
+      ...(dispatchStamp
+        ? {
+            doEnteredAt: new Date(dispatchStamp.doEnteredMs).toISOString(),
+            ...(dispatchStamp.acceptedDoneMs !== undefined
+              ? { acceptedDoneAt: new Date(dispatchStamp.acceptedDoneMs).toISOString() }
+              : {}),
+            alarmAt: new Date(dispatchStamp.alarmMs).toISOString(),
+            alarmPreludeMs: dispatchStamp.alarmPreludeMs,
+            isolateAgeMs: dispatchStamp.isolateAgeMs,
+            alarmAttempt: dispatchStamp.alarmAttempt,
+            moduleId: dispatchStamp.moduleId,
+            doInstanceId: dispatchStamp.doInstanceId,
+            ...(doIngressMs === undefined ? {} : { doIngressMs }),
+            ...(doAcceptMs === undefined ? {} : { doAcceptMs }),
+            ...(acceptToAlarmMs === undefined ? {} : { acceptToAlarmMs }),
+            ...(alarmToEntryMs === undefined ? {} : { alarmToEntryMs }),
           }
         : {}),
     })}`,
@@ -222,6 +276,21 @@ export async function POST(req: Request) {
             enqueuedAt: body.enqueuedAt,
             consumerEnteredAt,
             ...(stamp ? { consumerBatchAt: stamp.consumerBatchAt, consumerSeq: stamp.consumerSeq } : {}),
+            ...(dispatchStamp
+              ? {
+                  ...(body.dispatchedAt ? { dispatchedAt: body.dispatchedAt } : {}),
+                  doEnteredAt: new Date(dispatchStamp.doEnteredMs).toISOString(),
+                  ...(dispatchStamp.acceptedDoneMs !== undefined
+                    ? { acceptedDoneAt: new Date(dispatchStamp.acceptedDoneMs).toISOString() }
+                    : {}),
+                  alarmAt: new Date(dispatchStamp.alarmMs).toISOString(),
+                  alarmPreludeMs: dispatchStamp.alarmPreludeMs,
+                  isolateAgeMs: dispatchStamp.isolateAgeMs,
+                  alarmAttempt: dispatchStamp.alarmAttempt,
+                  moduleId: dispatchStamp.moduleId,
+                  doInstanceId: dispatchStamp.doInstanceId,
+                }
+              : {}),
           },
         })
       } catch (err) {

@@ -62,6 +62,17 @@ export type PlanRunDispatcherCtx = {
 type DispatcherState = {
   acceptedAt: number
   attempts: number
+  /**
+   * P2-B 埋点补充：DO fetch 入口时刻（第一条语句）。滚动部署期间在途的
+   * 旧 state 没有该字段——alarm 读到 undefined 时对应头/字段整体省略。
+   */
+  doEnteredAt?: number
+  /**
+   * P2-B 埋点补充：接纳**完成**时刻——setAlarm 成功之后才取（此刻 alarm
+   * 才真正可调度；acceptedAt 是接纳开始的写盘时刻，两者之间隔着 setAlarm）。
+   * 旧 state 同样缺省，头部省略。
+   */
+  acceptedDoneAt?: number
 }
 
 const INTERNAL_RUN_URL = 'https://seichigo.com/api/internal/plan-agent/run'
@@ -79,14 +90,33 @@ const LOCAL_TASKS_SETTLE_CAP_MS = 240_000
  */
 let INVOCATION_SEQ = 0
 
+/**
+ * P2-B 埋点（2026-09-11）：模块求值时刻。workerd 在纯 CPU 段冻结
+ * Date.now()，这个值要等到 I/O 之后才推进——alarm 里 `Date.now() −
+ * MODULE_EVAL_AT` 即 isolate 年龄（6/6 次 consumerSeq=1 疑似每次 alarm 都
+ * 在全新 isolate 上跑、模块求值 ≈ 0.7s，用数据证实，为预分配 token 预热
+ * DO 的下一刀提供依据）。经 x-plan-agent-isolate-age-ms 头交给内部路由。
+ */
+const MODULE_EVAL_AT = Date.now()
+
+/**
+ * P2-B 埋点补充（Astra 评审）：worker 模块实例 id（模块求值时生成一次）。
+ * 与 DO 对象实例 id（构造函数里的 this.instanceId）分开——"对象重建但
+ * 模块没重建"与"模块全新"在 consumerSeq=1 上分不出来，靠这对 id 区分。
+ */
+const MODULE_INSTANCE_ID = crypto.randomUUID().slice(0, 8)
+
 export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
   private readonly doStorage: PlanRunDispatcherStorage
   private readonly doEnv: PlanRunDispatcherEnv
+  /** P2-B 埋点补充：DO 对象实例 id——区分"对象重建但模块没重建"与"模块全新"（consumerSeq 分不出来） */
+  readonly instanceId: string
 
   constructor(ctx: PlanRunDispatcherCtx, env: PlanRunDispatcherEnv) {
     super(ctx, env)
     this.doStorage = ctx.storage
     this.doEnv = env
+    this.instanceId = crypto.randomUUID().slice(0, 8)
   }
 
   /**
@@ -96,6 +126,8 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
    * alarm。
    */
   async fetch(request: globalThis.Request): Promise<globalThis.Response> {
+    // P2-B 埋点补充：DO fetch 入口时刻（第一条语句）——经 x-plan-agent-do-entered-at 交出
+    const doEnteredAt = Date.now()
     let body: unknown = undefined
     try {
       body = await request.json()
@@ -110,9 +142,14 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
       return globalThis.Response.json({ accepted: true, duplicate: true })
     }
     try {
+      const acceptedAt = Date.now()
       await this.doStorage.put('payload', body)
-      await this.doStorage.put('state', { acceptedAt: Date.now(), attempts: 0 })
+      await this.doStorage.put('state', { acceptedAt, attempts: 0, doEnteredAt })
       await this.doStorage.setAlarm(Date.now())
+      // P2-B 埋点补充（Astra 评审）：接纳**完成**戳打在 setAlarm 成功之后
+      // ——此刻 alarm 才真正可调度；追加写回 state（旧部署在途的 state 没
+      // 有该字段，alarm 读到 undefined 时对应头省略）
+      await this.doStorage.put('state', { acceptedAt, attempts: 0, doEnteredAt, acceptedDoneAt: Date.now() })
     } catch (err) {
       // 协议承诺"rejected ⇒ 未持久接纳"：put 之后任何一步抛错都要先回收
       await this.doStorage.delete('payload').catch(() => undefined)
@@ -156,6 +193,24 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
     }
     const handler = wantLocal ? localHandler : null
 
+    // P2-B 派发段埋点（零行为；补充版）：两条派发分支都带同一组头——
+    // POST 派发 → DO fetch 入口（doEnteredAt）→ 接纳完成（acceptedDoneAt，
+    // setAlarm 成功后）→ alarm 触发（alarmStartedAt）→ handler 调用前
+    // （+alarmPreludeMs，含 get payload/state + put state 三次存储 IO）→
+    // 内部路由入口（consumer-at）。模块/对象实例 id 分开带，区分"对象重建
+    // 但模块没重建"与"模块全新"。内部路由对缺失/非法头一律宽容忽略。
+    const alarmPreludeMs = Date.now() - alarmStartedAt
+    const dispatchTimingHeaders: Record<string, string> = {
+      ...(state.doEnteredAt !== undefined ? { 'x-plan-agent-do-entered-at': String(state.doEnteredAt) } : {}),
+      ...(state.acceptedDoneAt !== undefined ? { 'x-plan-agent-do-accepted-at': String(state.acceptedDoneAt) } : {}),
+      'x-plan-agent-alarm-at': String(alarmStartedAt),
+      'x-plan-agent-isolate-age-ms': String(alarmStartedAt - MODULE_EVAL_AT),
+      'x-plan-agent-alarm-attempt': String(attempts),
+      'x-plan-agent-alarm-prelude-ms': String(alarmPreludeMs),
+      'x-plan-agent-module-id': MODULE_INSTANCE_ID,
+      'x-plan-agent-do-instance-id': this.instanceId,
+    }
+
     try {
       let res: globalThis.Response
       let localTasks: Promise<unknown>[] | null = null
@@ -184,6 +239,7 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
               'x-plan-agent-local': '1',
               'x-plan-agent-consumer-at': String(Date.now()),
               'x-plan-agent-consumer-seq': String(++INVOCATION_SEQ),
+              ...dispatchTimingHeaders,
             },
             body: JSON.stringify(payload),
           }),
@@ -199,6 +255,7 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
             'x-plan-agent-transport': 'do',
             'x-plan-agent-consumer-at': String(Date.now()),
             'x-plan-agent-consumer-seq': String(++INVOCATION_SEQ),
+            ...dispatchTimingHeaders,
           },
           body: JSON.stringify(payload),
         })

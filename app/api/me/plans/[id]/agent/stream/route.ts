@@ -10,6 +10,15 @@ export const runtime = 'nodejs'
 
 /** §0.6：快照轮询间隔——与实况行落库节奏（0.6.2 的 500 ms）对齐 */
 const POLL_INTERVAL_MS = 500
+/**
+ * P2-B（2026-09-11）首帧加速：run 刚忙起来、还没推出过任何 reasoning 非空
+ * 的 live 帧之前的 warmup 轮询间隔——把"首条 reasoning 落库 → 观察流推帧"
+ * 的平均等待从 250ms 砍到 100ms。上限 LIVE_WARMUP_MAX_MS 兜底：工具型长
+ * run 可能十几秒都不产 reasoning，不能让它永远 200ms 轮询打快照读。
+ */
+const LIVE_WARMUP_POLL_MS = 200
+/** warmup 阶段的最长时限：超过后即使仍无 reasoning 也回到 500ms 轮询 */
+const LIVE_WARMUP_MAX_MS = 15_000
 /** §0.6：单连接最长 15 分钟，到时发 done 关闭（客户端仍 busy 会自动重连） */
 const MAX_CONNECTION_MS = 15 * 60_000
 /**
@@ -66,6 +75,9 @@ function chatSignatureOf(chat: ChatEntryView[]): { length: number; lastKey: stri
  *   整体替换、把用户刚发的话从屏幕上抹掉）；busy 变 true 后按 after 规则
  *   正式开始；超时发 done{ reason:'not_started' }（新 reason，现有客户端
  *   不发 await=1 故收不到）。不带 await=1 时行为与旧版逐字一致。
+ * - P2-B（2026-09-11）首帧加速：本连接已见 busy 且尚未推出过 reasoning
+ *   非空的 live 帧时，15s 窗口内用 LIVE_WARMUP_POLL_MS=200ms 快轮询（见
+ *   常量注释），首条 reasoning 平均等待减半；推出即回到 500ms。
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
@@ -128,6 +140,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       let baseline = false
       // 任务三：await=1 的宽限等待状态——runSeenBusy 置位前不收幕、不推帧
       let runSeenBusy = !awaitRunStart
+      // P2-B：runSeenBusy 置位时刻（warmup 窗口从这起算；非 await 连接在
+      // startedAt 就已 busy）
+      let runSeenBusyAt = runSeenBusy ? startedAt : null
+      // P2-B：本连接是否推出过 reasoning 非空的 live 帧（含 freshOpen 首帧）
+      // ——推过即代表订阅方已进入真实思考流，warmup 结束
+      let pushedReasoningLive = false
+      /** P2-B：live 帧统一出口——reasoning 非空时关掉 warmup 窗口 */
+      const sendLive = (live: NonNullable<TripPlanRunSnapshotMeta['live']>) => {
+        send({
+          type: 'live',
+          seq: seq++,
+          reasoning: live.reasoning,
+          statusText: live.statusText,
+          toolCalls: Array.isArray(live.toolCalls) ? live.toolCalls : [],
+          updatedAt: live.updatedAt.toISOString(),
+        })
+        if (live.reasoning.length > 0) pushedReasoningLive = true
+      }
       let lastHeartbeatAt = startedAt
       let lastLiveAt: number | null = null
       let lastChatRevision: number | null = null
@@ -158,11 +188,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           continue
         }
         runSeenBusy = true
+        if (runSeenBusyAt === null) runSeenBusyAt = Date.now()
         if (!baseline) {
           // 首个快照建立基线；chat 基线取可见视图签名——GET 给客户端的就是
           // 这份视图，之后只有可见对话真正变化才值得推 chat
           baseline = true
           lastLiveAt = snap.live?.updatedAt.getTime() ?? null
+          // P2-B 评审修正 4：after>0 重连时基线是静默的（不推 live 帧），
+          // 若基线快照的实况行已经有非空 reasoning，warmup 就永远等不到
+          // 「推出 reasoning 帧」这件事——白白 200ms 轮询满 15s。基线已带
+          // reasoning 即视为已进入真实思考流：客户端上一条连接早就拿到了它。
+          if ((snap.live?.reasoning.length ?? 0) > 0) pushedReasoningLive = true
           const chatView = toChatView(await deps.repo.listMessages(id))
           lastChatSignature = chatSignatureOf(chatView)
           lastChatRevision = chatRevisionOf(snap)
@@ -171,29 +207,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
             // 任务一：全新打开（after=0）时客户端手上没有任何 live/chat 快照
             // ——当前 live（如有）与 chat 就是首帧，不静默吞掉；重复推送对
             // 客户端的 liveToThinkingTurn / mergeServerChat 是幂等的
-            if (snap.live) {
-              send({
-                type: 'live',
-                seq: seq++,
-                reasoning: snap.live.reasoning,
-                statusText: snap.live.statusText,
-                toolCalls: Array.isArray(snap.live.toolCalls) ? snap.live.toolCalls : [],
-                updatedAt: snap.live.updatedAt.toISOString(),
-              })
-            }
+            if (snap.live) sendLive(snap.live)
             send({ type: 'chat', seq: seq++, chatRevision: lastChatRevision, chat: chatView })
           }
         } else {
           if (snap.live && snap.live.updatedAt.getTime() !== lastLiveAt) {
             lastLiveAt = snap.live.updatedAt.getTime()
-            send({
-              type: 'live',
-              seq: seq++,
-              reasoning: snap.live.reasoning,
-              statusText: snap.live.statusText,
-              toolCalls: Array.isArray(snap.live.toolCalls) ? snap.live.toolCalls : [],
-              updatedAt: snap.live.updatedAt.toISOString(),
-            })
+            sendLive(snap.live)
           }
           const revision = chatRevisionOf(snap)
           if (revision !== lastChatRevision) {
@@ -234,7 +254,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           send({ type: 'done', seq: seq++, reason: 'rotate', stopped: false, interrupted: null })
           break
         }
-        await sleep(POLL_INTERVAL_MS)
+        // P2-B warmup：本连接已见 busy、尚未推出过 reasoning 非空的 live 帧、
+        // 且距 runSeenBusy 不足 15s → 200ms 快轮询，否则照常 500ms
+        const warmup =
+          runSeenBusyAt !== null &&
+          !pushedReasoningLive &&
+          Date.now() - runSeenBusyAt < LIVE_WARMUP_MAX_MS
+        await sleep(warmup ? LIVE_WARMUP_POLL_MS : POLL_INTERVAL_MS)
       }
       closed = true
       try {
