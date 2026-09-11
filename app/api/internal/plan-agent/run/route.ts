@@ -169,6 +169,9 @@ export async function POST(req: Request) {
           onEvent: () => undefined,
           busyTtlMs: AGENT_BUSY_TTL_MS,
           deadlineAt: Date.now() + SOFT_DEADLINE_MS,
+          // CUT-7（2026-09-11 D 部分）：runLive 启动 flush 压缩后移，独立开关
+          // 默认关，专门观察"刷新恢复"场景的窗口再置 1
+          deferStartupRunLive: process.env.PLAN_AGENT_STARTUP_RUNLIVE_DEFER === '1',
           billing,
           timing: {
             enqueuedAt: body.enqueuedAt,
