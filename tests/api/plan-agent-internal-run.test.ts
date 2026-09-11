@@ -147,6 +147,31 @@ describe('内部执行路由 /api/internal/plan-agent/run（Task A3）', () => {
     expect(input.deadlineAt).toBeLessThanOrEqual(Date.now() + 13 * 60_000)
   })
 
+  it('P0-A 不变量 1：同 token 两次 POST——第一次跑执行器，第二次 { skipped: "stale_token" } 且不再跑（Queue at-least-once 重投）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: '帮我排一天' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error('unreachable')
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+
+    const first = await internalRequest(queueMessage({ planId: plan.id, runToken: begin.token }))
+    await first.text()
+    expect(vi.mocked(executePlanAgentRun)).toHaveBeenCalledTimes(1)
+
+    // 重投的同一条消息：token 仍有效，但已被第一个消费者领取——不再执行
+    const second = await internalRequest(queueMessage({ planId: plan.id, runToken: begin.token }))
+    expect(second.status).toBe(200)
+    expect(await second.json()).toEqual({ skipped: 'stale_token' })
+    expect(vi.mocked(executePlanAgentRun)).toHaveBeenCalledTimes(1)
+  })
+
   it('续跑轮消息（message=null、resume=true）→ 传给执行器 message="" resume=true', async () => {
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })

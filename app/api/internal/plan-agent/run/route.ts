@@ -41,8 +41,8 @@ function secretsMatch(a: string, b: string): boolean {
  * 队列消费者的内部执行入口（§0.1/0.2）：worker/planAgentConsumer 经
  * WORKER_SELF_REFERENCE 回调本路由，把规划 run 从浏览器连接里解耦出来。
  * - 密钥常量时间校验：未配置 → 503（部署配置错误必须可见），不匹配 → 401；
- * - stale token（已被接管/已结束/token 不符）→ { skipped: 'stale_token' }，
- *   不跑——避免同一回合跑两遍；
+ * - stale token（已被接管/已结束/token 不符/同 token 已被领取过）→
+ *   { skipped: 'stale_token' }，不跑——避免同一回合跑两遍；
  * - 响应为 text/plain 流：每 15 s 一行 heartbeat，run 结束写 done 关闭。
  */
 export async function POST(req: Request) {
@@ -103,11 +103,11 @@ export async function POST(req: Request) {
   )
 
   const deps = await getTripPlanApiDeps()
-  // 拿回持有权（POST 投递时写入的 token 仍有效才续）并顺带取回归属用户
-  // （CUT-1：单次往返替代原先的整棵 getPlan + renewAgentRun）。计划不存
-  // 在、被停止、被接管、已结束都会在这里命中 0 行——直接跳过，绝不重复
-  // 执行同一回合
-  const owner = await deps.repo.renewAgentRunOwner(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
+  // 一次性执行领取（P0-A）：token 匹配且尚未启动（agentRunStartedAt 为空）才
+  // 放行并原子写 startedAt。计划不存在、被停止、被接管、已结束、或同 token
+  // 已被别的消费者领取过（Queue at-least-once 重投）都会在这里命中 0 行——
+  // 直接跳过，绝不重复执行同一回合
+  const owner = await deps.repo.claimAgentRun(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
   if (!owner) {
     return NextResponse.json({ skipped: 'stale_token' })
   }

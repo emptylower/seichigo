@@ -36,7 +36,7 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   private messages: TripPlanMessage[] = []
   private runLogs: TripPlanRunLogRecord[] = []
   private runLive = new Map<string, TripPlanRunLiveRecord>()
-  private agentBusy = new Map<string, { until: Date; token: string }>()
+  private agentBusy = new Map<string, { until: Date; token: string; startedAt: Date | null }>()
   private points: Map<string, TripPlanPointLite>
   private seq = 0
 
@@ -214,7 +214,8 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     const existing = this.agentBusy.get(input.planId)
     if (existing && existing.until.getTime() > Date.now()) return { status: 'busy' }
     const token = this.nextId('run')
-    this.agentBusy.set(input.planId, { until: new Date(Date.now() + input.busyTtlMs), token })
+    // startedAt 随新 token 重置（与 Prisma beginAgentRun 的 data 一致）
+    this.agentBusy.set(input.planId, { until: new Date(Date.now() + input.busyTtlMs), token, startedAt: null })
     // content=null（resume 回合）：不追加 human 消息，历史原样
     if (input.content === null) return { status: 'ok', message: null, token }
     const message = await this.appendMessage(input.planId, 'human', input.content)
@@ -235,13 +236,43 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return true
   }
 
-  /** CUT-1：与 renewAgentRun 逐字相同的 where/data 语义；命中才写并返回归属用户 */
+  /**
+   * CUT-1：与 renewAgentRun 逐字相同的 where/data 语义；命中才写并返回归属用户。
+   * P0-A（2026-09-11）：内部执行入口已改走 claimAgentRun（还要求尚未启动），
+   * 本方法保留但内部路由不再用它。
+   */
   async renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
     const entry = this.agentBusy.get(planId)
     if (!entry || entry.token !== token) return null
     entry.until = new Date(Date.now() + ttlMs)
     const plan = this.plans.get(planId)
     return plan ? { userId: plan.userId } : null
+  }
+
+  /**
+   * P0-A（2026-09-11）联合方案 v1 不变量 1：一次性执行领取——token 匹配且
+   * 尚未启动才成功，原子写 startedAt=now 并续租。已 started 返回 null 且
+   * 不写（busyUntil 不动）。与 Prisma 的单条条件 UPDATE 同语义（单线程
+   * 事件循环上检查与写入之间无 await，无插队窗口）。
+   */
+  async claimAgentRun(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
+    const entry = this.agentBusy.get(planId)
+    if (!entry || entry.token !== token) return null
+    if (entry.startedAt !== null) return null
+    const now = new Date()
+    entry.startedAt = now
+    entry.until = new Date(now.getTime() + ttlMs)
+    const plan = this.plans.get(planId)
+    return plan ? { userId: plan.userId } : null
+  }
+
+  /** P0-A：服务端专用的租约状态读取（token 绝不进领域类型/view）；无 token 返回 null */
+  async getAgentRunState(
+    planId: string,
+  ): Promise<{ token: string; busyUntil: Date | null; startedAt: Date | null } | null> {
+    const entry = this.agentBusy.get(planId)
+    if (!entry) return null
+    return { token: entry.token, busyUntil: entry.until, startedAt: entry.startedAt }
   }
 
   /**

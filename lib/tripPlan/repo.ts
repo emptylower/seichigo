@@ -238,8 +238,25 @@ export interface TripPlanRepo {
    * run 最长 3 分钟自动释放。返回是否续租成功。
    */
   renewAgentRun(planId: string, token: string, ttlMs: number): Promise<boolean>
-  /** 续租并返回计划归属用户。token 不符与计划不存在都返回 null（同一语义）。 */
+  /**
+   * 续租并返回计划归属用户。token 不符与计划不存在都返回 null（同一语义）。
+   * P0-A（2026-09-11）：内部执行路由已改用 claimAgentRun（一次性领取），
+   * 本方法保留给仍需"纯续租 + 取归属"的调用方，不再承担执行入口栅栏。
+   */
   renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null>
+  /**
+   * 一次性执行领取：token 匹配且尚未启动才成功——原子写 agentRunStartedAt=now
+   * 并续租，返回归属用户。token 失效、或同 token 已被别的执行者领取，都返回
+   * null（调用方一律 skipped）。联合方案 v1 不变量 1：一个 token 至多领取成功
+   * 一次（Cloudflare Queue at-least-once 下两个消费者拿同一条消息，只有第一个
+   * 能通过这里，第二个绝不再跑模型）。
+   */
+  claimAgentRun(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null>
+  /**
+   * 当前 run 租约状态（服务端专用：恢复推断与撤销；不进领域类型 TripPlan、
+   * 不进 view——token 绝不能泄露给客户端）。无 token 时返回 null。
+   */
+  getAgentRunState(planId: string): Promise<{ token: string; busyUntil: Date | null; startedAt: Date | null } | null>
   /**
    * 第十一轮 A3（§0）：用户显式停止正在运行的 run。条件清空 busy/token
    * （仍是当前持有者才动），并在 TripPlanRunLive 行写停止标记

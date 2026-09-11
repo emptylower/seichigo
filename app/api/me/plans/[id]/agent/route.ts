@@ -236,6 +236,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   // 内联 SSE 路径（队列不可用 / 投递或直写失败回落）：run 在本请求内执行，
   // 保持原有同步预扣——run 开烧之前预扣已落账
+  // P0-A 一次性领取：同 token 已被别的执行者领取（队列重投后回落内联等场景）
+  // 时这里失败——loser 没有执行副作用，不进下面那个无条件 endAgentRun 的
+  // finally（不变量 3），按已排队语义返回 202
+  const owner = await deps.repo.claimAgentRun(id, runToken, AGENT_BUSY_TTL_MS)
+  if (!owner) {
+    return NextResponse.json({ queued: true, runToken }, { status: 202 })
+  }
+
   await reserveRun()
 
   const encoder = new TextEncoder()
