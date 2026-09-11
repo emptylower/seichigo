@@ -168,6 +168,27 @@ describe('PlanRunDispatcher fetch（接纳协议）', () => {
       error.mockRestore()
     }
   })
+
+  it('GET /ping → pong 诊断响应；只读一次 state，不写 payload/state、不设 alarm', async () => {
+    const { map, setAlarm, storage } = makeStorage()
+    const get = vi.spyOn(storage, 'get')
+    const { dispatcher } = makeDispatcher({ storage })
+
+    const res = await dispatcher.fetch(new Request('https://do/ping', { method: 'GET' }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      pong: true,
+      moduleId: expect.any(String),
+      doInstanceId: expect.any(String),
+      stateReadMs: expect.any(Number),
+      moduleAgeMs: expect.any(Number),
+    })
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(get).toHaveBeenCalledWith('state')
+    expect(map.size).toBe(0)
+    expect(setAlarm).not.toHaveBeenCalled()
+  })
 })
 
 describe('PlanRunDispatcher alarm（派发分类）', () => {
