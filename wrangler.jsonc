@@ -60,7 +60,7 @@
     "PLAN_AGENT_DISPATCH": "do",
     // P1-A canary 白名单（逗号分隔 userId）——空 = 没有人走 DO；灰度开 DO
     // 时填测试账号 id，出问题改回 "queue" 一分钟内全量回滚
-    "PLAN_AGENT_DO_CANARY_USER_IDS": "cmj7c8x410001122xs3gc7jth",
+    "PLAN_AGENT_DO_CANARY_USER_IDS": "cmj7c8x410001122xs3gc7jth,cmj7c4saf0000t9eyj7lzsskr",
     // 2026-09-06 Creem 订阅（设计 §6）；2026-09-08 填入生产模式 product id
     // （$9.90/月，recurring，tax_mode=exclusive——结账时按用户所在地另加税）。
     // 预览环境仍可用 --var 覆盖为测试模式（CREEM_API_BASE=
