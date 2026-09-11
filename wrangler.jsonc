@@ -57,10 +57,10 @@
     // 2026-09-11 P1-A：规划 run 派发信道选择——queue（现役默认，行为与
     // Phase 0 完全一致）/ do（POST 路由改投 PLAN_RUN_DISPATCHER DO alarm，
     // 亚秒级派发替代队列的 2.8–7.3s）。切换只改这一个字符串，不用改代码
-    "PLAN_AGENT_DISPATCH": "queue",
+    "PLAN_AGENT_DISPATCH": "do",
     // P1-A canary 白名单（逗号分隔 userId）——空 = 没有人走 DO；灰度开 DO
     // 时填测试账号 id，出问题改回 "queue" 一分钟内全量回滚
-    "PLAN_AGENT_DO_CANARY_USER_IDS": "",
+    "PLAN_AGENT_DO_CANARY_USER_IDS": "cmj7c8x410001122xs3gc7jth",
     // 2026-09-06 Creem 订阅（设计 §6）；2026-09-08 填入生产模式 product id
     // （$9.90/月，recurring，tax_mode=exclusive——结账时按用户所在地另加税）。
     // 预览环境仍可用 --var 覆盖为测试模式（CREEM_API_BASE=
