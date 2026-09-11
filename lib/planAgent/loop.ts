@@ -6,8 +6,7 @@ import { RunFencedError } from './runFence'
 import { AskUserSignal, type AskUserPayload } from './askUser'
 import { agentErrorMessage } from './netErrors'
 import { runInBackground } from './serverDeps'
-import { parseDaymapPayload, type DaymapMessagePayload } from '@/lib/tripPlan/view'
-import { buildStageContext, derivePlanStage, type PlanStage } from './stage'
+import type { DaymapMessagePayload } from '@/lib/tripPlan/view'
 import { createEnrichBudget, type EnrichReport } from './enrich/types'
 import type { PlanQualityReport } from './gates'
 import { planNeedsContinuation, runEnrichContinuation } from './enrichContinuation'
@@ -23,12 +22,12 @@ import { serverText } from './serverText'
 import { createRunLiveWriter, type RunLiveWriter } from './runLive'
 import { createEventCoalescer } from './eventCoalescer'
 import { createLeaseWatcher, isUserStoppedAbort, stopEvidencePresent, stoppedLogExists } from './stop'
-import { createStartupStatusEmitter } from './startupStatus'
 import { describePlanAgentModel } from './api'
 import { sanitizeHistoryForModel } from './historySanitize'
 import { createRunCostTracker, type RunCostDeps } from './runCost'
 import { createRunTimingCollector, type RunTimingSeed } from './runTimings'
 import { withFencing } from './loopFencing'
+import { runStartupPrelude, sanitizeChatHistory } from './loopPrelude'
 import { forbiddenToolsOf, tierPromptNote, type Entitlements } from '@/lib/billing/tiers'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanRepo } from '@/lib/tripPlan/repo'
@@ -151,6 +150,14 @@ export type PlanAgentDeps = {
   deadlineAt?: number
   /** 档位能力表（设计 §5）：过滤工具、附注提示词、初始化补齐预算上限；缺省全开 */
   entitlements?: Entitlements
+  /**
+   * CUT-7（2026-09-11 D 部分）：true 时 runLiveWriter 以 holdStartupFlush
+   * 构造——启动段三条 status 只更新内存，等首轮 renewLease 之后的释放点
+   * （afterModelRequestIssued）合并成一次落库。仅内部路由（队列路径）在
+   * PLAN_AGENT_STARTUP_RUNLIVE_DEFER=1 时经 execute 传入；缺省（内联 SSE
+   * 路径 / 测试）行为逐字不变。
+   */
+  deferStartupRunLive?: boolean
 } & RunCostDeps
 
 const DEFAULT_MAX_ITERATIONS = 12
@@ -179,34 +186,9 @@ function isClientDisconnected(signal: AbortSignal | undefined): boolean {
   )
 }
 
-/**
- * 修复损坏的历史再回放：带 tool_calls 的 assistant 消息必须紧跟全部对应的
- * tool 回执，否则 OpenAI 协议回放会被拒。崩溃或历史并发交错会留下悬空
- * tool_calls / 孤儿 tool 回执——不清理的话该计划的后续对话会永久报错。
- */
-export function sanitizeChatHistory(history: ChatMessageParam[]): ChatMessageParam[] {
-  const out: ChatMessageParam[] = []
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i]
-    if (msg.role === 'tool') continue // 走到这的 tool 都是孤儿（配对的在下面整组消费）
-    const toolCalls = msg.role === 'assistant' && 'tool_calls' in msg ? msg.tool_calls ?? [] : []
-    if (msg.role === 'assistant' && toolCalls.length) {
-      const pending = new Set(toolCalls.map((c) => c.id))
-      const replies: ChatMessageParam[] = []
-      let j = i + 1
-      while (j < history.length && history[j].role === 'tool') {
-        const reply = history[j] as Extract<ChatMessageParam, { role: 'tool' }>
-        if (pending.delete(reply.tool_call_id)) replies.push(reply)
-        j++
-      }
-      if (pending.size === 0) out.push(msg, ...replies)
-      i = j - 1
-      continue
-    }
-    out.push(msg)
-  }
-  return out
-}
+// sanitizeChatHistory 已抽到 loopPrelude.ts（D 部分零行为搬移）；re-export
+// 保住既有从 loop 导入它的测试与调用方
+export { sanitizeChatHistory } from './loopPrelude'
 
 export async function runPlanAgent(
   deps: PlanAgentDeps,
@@ -228,7 +210,13 @@ export async function runPlanAgent(
   // 2026-09-10 首帧优化：构造上移到函数体最前——listMessages/getPlan/首次
   // 模型调用之前的启动步骤也要发 status 实况，晚于此创建没人接收
   const runLiveWriter: RunLiveWriter | null = deps.runToken
-    ? createRunLiveWriter({ repo: deps.repo, planId: deps.planId, runToken: deps.runToken })
+    ? createRunLiveWriter({
+        repo: deps.repo,
+        planId: deps.planId,
+        runToken: deps.runToken,
+        // CUT-7：启动 flush 压缩后移开关（默认关）；释放见 afterModelRequestIssued
+        holdStartupFlush: deps.deferStartupRunLive === true,
+      })
     : null
   // 第九轮 A4：事件计数素材——run 结束打一条 summary 日志；被平台硬杀时
   // 这条不会出现（finally 都跑不到），可作为日志侧证据
@@ -248,47 +236,20 @@ export async function runPlanAgent(
   const eventCoalescer = createEventCoalescer(forwardEvent)
   const emit = (event: PlanAgentEvent) => eventCoalescer.emit(event)
 
-  // 2026-09-10 首帧优化：启动阶段在真实步骤上发 status 实况（见
-  // startupStatus.ts）。先确认仍持有 busy 位——被接管（队列滞留后启动）的
-  // run 不发也不落库，旧 token 落笔会覆盖新 run 的实况行（runLive M2 语义）
-  let holdsRun = true
-  if (deps.runToken) {
-    try {
-      holdsRun = !(await deps.repo.isAgentRunStopped(deps.planId, deps.runToken))
-    } catch {
-      // 读失败不拦启动：后续栅栏/续租仍会正确拦截被接管的 run
-    }
-  }
-  const emitStartup = createStartupStatusEmitter(emit, locale, holdsRun)
-
-  emitStartup('readHistory')
-  const history = await deps.repo.listMessages(deps.planId)
-
-  const userParam: ChatMessageParam = { role: 'user', content: userMessage }
-  // 阶段推断需要包含"本轮这条 human 消息"的完整历史（revise 判定依赖它）
-  let stageHistory = history
-  if (!deps.userMessagePersisted) {
-    const appended = await deps.repo.appendMessage(deps.planId, 'human', userParam as unknown as Prisma.JsonValue)
-    stageHistory = [...history, appended]
-  }
-
-  // M4 阶段推断：从持久化证据（计划结构 + 最近 daymap 的 quality + 消息历史）
-  // 推断当前阶段并注入本轮消息。CUT-3：改用 getStageInputs 轻量投影（单条
-  // SQL 的 EXISTS 子查询），不再为推断拉整棵 PLAN_INCLUDE；TripPlan.stage 只
-  // 是缓存。CUT-6：缓存回写不再阻塞关键路径——推断完只记待写值，等首次
-  // 模型请求确实发出后再后台派发（见 afterModelRequestIssued）
-  emitStartup('checkProgress')
-  let stage: PlanStage = 'works'
-  let stageContext = ''
-  let pendingStageWrite: PlanStage | null = null
-  const stageInputs = await deps.repo.getStageInputs(deps.planId)
-  if (stageInputs) {
-    const lastDaymap = [...stageHistory].reverse().find((m) => m.kind === 'daymap')
-    const quality = lastDaymap ? parseDaymapPayload(lastDaymap.content)?.quality ?? null : null
-    stage = derivePlanStage({ plan: stageInputs, messages: stageHistory, quality })
-    stageContext = buildStageContext(stage, quality)
-    pendingStageWrite = stage
-  }
+  // 2026-09-11 D 部分：启动段前奏（首帧优化 status + busy 位闸门 + 历史读取/
+  // 追加 + M4 阶段推断 + CUT-3/CUT-6 待写值）整段零行为抽到 loopPrelude.ts。
+  // CUT-6：pendingStageWrite 稍后由 afterModelRequestIssued 清空并派发
+  const prelude = await runStartupPrelude({
+    repo: deps.repo,
+    planId: deps.planId,
+    runToken: deps.runToken,
+    userMessage,
+    userMessagePersisted: deps.userMessagePersisted,
+    emit,
+    locale,
+  })
+  const { stageHistory, stage, stageContext, emitStartup } = prelude
+  let pendingStageWrite = prelude.pendingStageWrite
 
   // CUT-6：阶段缓存写推后到首次模型请求发出之后释放。pool=1 下更早发起仍会
   // FIFO 占住唯一连接；挂在请求 resolve 之后则首次模型调用抛错（网络错误/
@@ -297,6 +258,13 @@ export async function runPlanAgent(
   // 下一轮 run 会重新推断并回写）。写必须带 token 栅栏：推后之后"执行时仍
   // 持有"不再恒真，无栅栏会把接管 run 已写的 stage 覆写回旧值
   const afterModelRequestIssued = () => {
+    // CUT-7 释放点：⚠️ 必须保持在首轮 renewLease（模型调用前续租）之后——
+    // 被接管/被停止的 run 在 renewLease 就抛 RunFencedError，永远走不到这里，
+    // 一条实况也不落库；而旧实现的 flush#3 排在 renewLease 之前，反而可能
+    // 以旧 token 落笔覆盖新 run 的实况行。后人若为再省 100ms 把释放点前移，
+    // 会静默退回那个坏状态（startupStatus.test 的调用顺序用例锁死）。开关
+    // 关闭 / 内联 SSE 路径时 writer 未持有，这里是严格 no-op
+    runLiveWriter?.releaseStartupFlush()
     const s = pendingStageWrite
     pendingStageWrite = null
     if (!s) return

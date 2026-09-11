@@ -42,6 +42,12 @@ export type ExecutePlanAgentRunInput = {
    * timings 省略 queueLatencyMs/enqueuedAt（不经队列，无投递延迟可测）。
    */
   timing?: RunTimingSeed
+  /**
+   * CUT-7（2026-09-11 D 部分）：队列路径的 runLive 启动 flush 压缩后移开关
+   * （内部路由读 PLAN_AGENT_STARTUP_RUNLIVE_DEFER === '1' 后传入，默认关）。
+   * 内联 SSE 路径不传，实况写库行为逐字不变。
+   */
+  deferStartupRunLive?: boolean
 }
 
 /**
@@ -86,6 +92,8 @@ export async function executePlanAgentRun(input: ExecutePlanAgentRunInput): Prom
           locale,
           // B 部分埋点：分段计时种子（SSE 兜底在上方构造）
           timingSeed,
+          // CUT-7：runLive 启动 flush 压缩后移（默认关；内联 SSE 路径不传）
+          ...(input.deferStartupRunLive ? { deferStartupRunLive: true } : {}),
           // 第十一轮 A3（§0）：模型流式期间的停止检查（租约看守定期
           // 轮询，发现 token 已被 stopAgentRun 清掉就 abort 模型请求）
           isStopped: () => repo.isAgentRunStopped(planId, runToken),

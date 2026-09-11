@@ -25,11 +25,29 @@ export type RunLiveWriterDeps = {
   runToken: string
   flushIntervalMs?: number
   flushChars?: number
+  /**
+   * CUT-7（2026-09-11 D 部分）：true 时启动段（releaseStartupFlush 之前）的
+   * status 变化只更新内存（statusText + dirty），不排 flush——三条启动
+   * status 在释放点合并成一次落库，省 pool=1 下启动段的排队往返。默认关
+   * （内联 SSE 路径不传，行为逐字不变）。已知用户可见变化：释放前
+   * TripPlanRunLive 行根本不存在，刷新页面的观察者首帧可能没有 live 载荷
+   * ——由前端已有的「规划师思考中…」占位兜住。
+   */
+  holdStartupFlush?: boolean
 }
 
 export type RunLiveWriter = {
   /** 旁路接收 loop 事件（只消费 reasoning / status / tool_call，其余忽略） */
   onEvent(event: PlanAgentEvent): void
+  /**
+   * CUT-7：解除启动段 flush 压缩（holdStartupFlush）；持有期间积累过变更
+   * （dirty）则补排一次 flush。⚠️ 未持有时严格 no-op——释放点
+   * （loop 的 afterModelRequestIssued）在开关关闭 / 内联 SSE 路径也会被
+   * 无条件调用，不是 no-op 就会凭空多一次 upsertRunLive。释放点必须保持
+   * 在首轮 renewLease 之后：被接管/被停止的 run 在 renewLease 就抛
+   * RunFencedError，永远走不到释放点，一条实况也不落库。
+   */
+  releaseStartupFlush(): void
   /**
    * 强制 flush 最后一份实况并 clearRunLive；flush/clear 缺省 true。
    * 被接管的 run 传 `{ flush: false, clear: false }`：丢弃未刷新的增量、
@@ -63,6 +81,8 @@ export function createRunLiveWriter(deps: RunLiveWriterDeps): RunLiveWriter {
   let dirty = false
   let flushQueued = false
   let finished = false
+  // CUT-7：启动段 flush 压缩持有位——true 期间 status 变化只更新内存
+  let startupHeld = deps.holdStartupFlush === true
   // M2：fenced 收尾（flush:false）置位——排队中的 flush 到点也不再落库
   let cancelled = false
   // 第九轮 A3：追加语义口径——sentChars 是缓冲里已落库的字符数；首次 flush
@@ -138,6 +158,10 @@ export function createRunLiveWriter(deps: RunLiveWriterDeps): RunLiveWriter {
         statusText = event.phase
         dirty = true
         if (statusChanged) {
+          // CUT-7：持有期只更新内存（上面两行已做），不排 flush——启动段
+          // 三条 status 在释放点（首轮 renewLease 之后的
+          // afterModelRequestIssued）合并成一次落库
+          if (startupHeld) return
           queueFlush()
           return
         }
@@ -154,6 +178,13 @@ export function createRunLiveWriter(deps: RunLiveWriterDeps): RunLiveWriter {
       if (pendingChars >= flushChars || Date.now() - lastFlushAt >= flushIntervalMs) {
         queueFlush()
       }
+    },
+
+    releaseStartupFlush() {
+      // ⚠️ 未持有时严格 no-op（语义见接口注释）；内联 SSE 路径也会调它
+      if (!startupHeld) return
+      startupHeld = false
+      if (dirty) queueFlush()
     },
 
     async finish(options = {}) {
