@@ -104,7 +104,13 @@ const MODULE_EVAL_AT = Date.now()
  * 与 DO 对象实例 id（构造函数里的 this.instanceId）分开——"对象重建但
  * 模块没重建"与"模块全新"在 consumerSeq=1 上分不出来，靠这对 id 区分。
  */
-const MODULE_INSTANCE_ID = crypto.randomUUID().slice(0, 8)
+// ⚠️ 不能在模块作用域调 crypto.randomUUID()——workerd 禁止全局作用域生成随机值
+//（部署校验 error 10021）。首次用到时（handler 内）才生成，之后整个模块生命周期不变。
+let moduleInstanceId: string | null = null
+function getModuleInstanceId(): string {
+  if (moduleInstanceId === null) moduleInstanceId = crypto.randomUUID().slice(0, 8)
+  return moduleInstanceId
+}
 
 export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
   private readonly doStorage: PlanRunDispatcherStorage
@@ -207,7 +213,7 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
       'x-plan-agent-isolate-age-ms': String(alarmStartedAt - MODULE_EVAL_AT),
       'x-plan-agent-alarm-attempt': String(attempts),
       'x-plan-agent-alarm-prelude-ms': String(alarmPreludeMs),
-      'x-plan-agent-module-id': MODULE_INSTANCE_ID,
+      'x-plan-agent-module-id': getModuleInstanceId(),
       'x-plan-agent-do-instance-id': this.instanceId,
     }
 
