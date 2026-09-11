@@ -64,7 +64,7 @@
     // 2026-09-11 P1_1：受控实验，仅在 DO canary 白名单基础上再开——置 "1"
     // 时 DO alarm 本 isolate 直调 OpenNext handler（省掉自引用绑定打到冷
     // Next isolate 的一跳），收益靠 A/B 实测（selfRefHopMs 对比），不预设
-    "PLAN_AGENT_DO_LOCAL": "0",
+    "PLAN_AGENT_DO_LOCAL": "1",
     // 2026-09-06 Creem 订阅（设计 §6）；2026-09-08 填入生产模式 product id
     // （$9.90/月，recurring，tax_mode=exclusive——结账时按用户所在地另加税）。
     // 预览环境仍可用 --var 覆盖为测试模式（CREEM_API_BASE=
