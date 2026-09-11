@@ -18,12 +18,33 @@ import type { PlanAgentFetcher } from './planAgentConsumer'
  * 本文件与 planAgentConsumer 同策略：不 import 任何 @/ 应用代码（仅
  * queueMessage 纯类型模块 + worker/ 内共用件），避免把 Prisma/Next 再打包
  * 一遍进 worker 入口。
+ *
+ * Phase 1.1（2026-09-11 P1_1 受控实验，默认关）：PLAN_AGENT_DO_LOCAL=1 时
+ * alarm 改为本 isolate 直调 worker/entry.ts 注册进来的 OpenNext 默认
+ * handler——省掉 WORKER_SELF_REFERENCE 服务绑定打到冷 Next isolate 的那一跳
+ *（canary 实测 0.55–1.09s）。注入点在模块求值期（DO alarm 可能在从未跑过
+ * HTTP fetch 的 isolate 上启动），dispatcher 只保存 handler 本身，不捕获
+ * env/ctx；本地路径同样不 import .open-next/**（handler 由 entry 注入）。
  */
 
-/** 与 PlanAgentWorkerEnv 一致的结构子集（DO 派发不需要队列绑定） */
+/** 与 PlanAgentWorkerEnv 一致的结构（DO 派发不需要队列绑定）。本地路径把原始完整 env 原样传给 OpenNext handler（R2/D1/Hyperdrive 等绑定缺一不可），故带字符串索引签名 */
 export type PlanRunDispatcherEnv = {
   WORKER_SELF_REFERENCE: PlanAgentFetcher
   PLAN_AGENT_INTERNAL_SECRET: string
+  /** P1_1 受控实验开关：'1' 时 alarm 本 isolate 直调 OpenNext handler */
+  PLAN_AGENT_DO_LOCAL?: string
+} & Record<string, unknown>
+
+/** OpenNext 生成的默认 handler 的形状（.open-next/worker.js 的 default export，由 entry 注入——dispatcher 不能 import .open-next/**） */
+export type OpenNextFetchHandler = {
+  fetch(request: globalThis.Request, env: unknown, ctx: unknown): Promise<globalThis.Response>
+}
+
+let localHandler: OpenNextFetchHandler | null = null
+
+/** 由 worker/entry.ts 在模块求值时注册（不在 HTTP fetch 内——DO alarm 可能在从未跑过 HTTP 的 isolate 上启动）。只保存 handler，不捕获任何 env/ctx。 */
+export function registerPlanRunLocalHandler(h: OpenNextFetchHandler): void {
+  localHandler = h
 }
 
 /** DurableObjectStorage 的结构子集（项目未装 workers-types，就地声明） */
@@ -44,6 +65,12 @@ type DispatcherState = {
 }
 
 const INTERNAL_RUN_URL = 'https://seichigo.com/api/internal/plan-agent/run'
+
+/** DO alarm 单次调用的 wall-clock 硬上限（与内部路由 13 分钟软截止配套的约定值） */
+const ALARM_WALL_MS = 15 * 60_000
+
+/** 本地路径后台任务（ctx 适配器收集的 waitUntil）收束上限 */
+const LOCAL_TASKS_SETTLE_CAP_MS = 240_000
 
 /**
  * 与消费者同义（C 部分埋点）：invocation 序号。workerd 的 Date.now() 在无
@@ -105,8 +132,15 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
    *   指数退避重试 alarm（claim 一次性领取保证重试只会 winner 或 skipped）；
    *   attempts ≥ 3 → console.error + 删 payload。
    * payload 绝不在 fetch 之前删除。
+   *
+   * P1_1：PLAN_AGENT_DO_LOCAL=1 且 entry 已注册 handler 时，"回调内部路由"
+   * 换成本 isolate 直调 OpenNext handler（请求头/分类完全相同，另带
+   * x-plan-agent-local: 1），并在 drain 之后、删 payload 之前收束 handler
+   * 经 ctx 适配器挂起的后台任务；开关开但未注册（entry 改动未生效）→
+   * console.error 后走原自引用路径，payload 语义不变。
    */
   async alarm(): Promise<void> {
+    const alarmStartedAt = Date.now()
     const payload = await this.doStorage.get<PlanAgentQueueMessage>('payload')
     if (payload === undefined) return
     const state =
@@ -114,18 +148,61 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
     const attempts = state.attempts + 1
     await this.doStorage.put('state', { ...state, attempts })
 
+    const wantLocal = this.doEnv.PLAN_AGENT_DO_LOCAL === '1'
+    if (wantLocal && localHandler === null) {
+      console.error(
+        '[worker/planRunDispatcher] PLAN_AGENT_DO_LOCAL=1 but no handler registered, falling back to self-reference',
+      )
+    }
+    const handler = wantLocal ? localHandler : null
+
     try {
-      const res = await this.doEnv.WORKER_SELF_REFERENCE.fetch(INTERNAL_RUN_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-plan-agent-secret': this.doEnv.PLAN_AGENT_INTERNAL_SECRET,
-          'x-plan-agent-transport': 'do',
-          'x-plan-agent-consumer-at': String(Date.now()),
-          'x-plan-agent-consumer-seq': String(++INVOCATION_SEQ),
-        },
-        body: JSON.stringify(payload),
-      })
+      let res: globalThis.Response
+      let localTasks: Promise<unknown>[] | null = null
+      if (handler !== null) {
+        // ctx 用每次 alarm 独立的适配器：DO state（DurableObjectState）的
+        // waitUntil 官方定义为无效，不能直接传 this.ctx，也不展开宿主对象
+        const tasks: Promise<unknown>[] = []
+        localTasks = tasks
+        const ctxAdapter = {
+          waitUntil(p: Promise<unknown>) {
+            tasks.push(Promise.resolve(p).catch(() => undefined))
+          },
+          passThroughOnException() {},
+          props: {},
+        }
+        // env 传原始完整对象（this.doEnv，不重建子集——OpenNext handler 需要
+        // 全部绑定）。consumer-at 在调用前一刻打：本地路径下 selfRefHopMs 的
+        // 语义就变成本 isolate 的初始化成本，可与旧路径对比
+        res = await handler.fetch(
+          new Request(INTERNAL_RUN_URL, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-plan-agent-secret': this.doEnv.PLAN_AGENT_INTERNAL_SECRET,
+              'x-plan-agent-transport': 'do',
+              'x-plan-agent-local': '1',
+              'x-plan-agent-consumer-at': String(Date.now()),
+              'x-plan-agent-consumer-seq': String(++INVOCATION_SEQ),
+            },
+            body: JSON.stringify(payload),
+          }),
+          this.doEnv,
+          ctxAdapter,
+        )
+      } else {
+        res = await this.doEnv.WORKER_SELF_REFERENCE.fetch(INTERNAL_RUN_URL, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-plan-agent-secret': this.doEnv.PLAN_AGENT_INTERNAL_SECRET,
+            'x-plan-agent-transport': 'do',
+            'x-plan-agent-consumer-at': String(Date.now()),
+            'x-plan-agent-consumer-seq': String(++INVOCATION_SEQ),
+          },
+          body: JSON.stringify(payload),
+        })
+      }
       if (res.status === 400 || res.status === 401 || res.status === 503) {
         console.error('[worker/planRunDispatcher] permanent failure, dropping run', {
           status: res.status,
@@ -136,6 +213,7 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
       }
       if (res.status === 200) {
         await drainBody(res)
+        if (localTasks !== null) await this.awaitLocalBackgroundTasks(localTasks, alarmStartedAt)
         await this.doStorage.delete('payload')
         return
       }
@@ -148,6 +226,44 @@ export class PlanRunDispatcher extends DurableObject<PlanRunDispatcherEnv> {
         err,
       })
       await this.doStorage.delete('payload')
+    }
+  }
+
+  /**
+   * 收束本地调用挂起的后台任务（ctx 适配器收集的 waitUntil promises）：
+   * drain 之后、删 payload 之前逐批 allSettled（等待期间新加入的任务下一批
+   * 再等）。总上限 min(alarm 剩余 wall − 30s 缓冲, 240s)；到上限只 console.warn
+   * 记录未完成数量、不抛、照常删 payload——服务绑定旧路径里这些任务在响应
+   * 结束 30s 后就被平台直接砍掉，本设计只会更好，但不承诺全部完成。
+   */
+  private async awaitLocalBackgroundTasks(
+    tasks: Promise<unknown>[],
+    alarmStartedAt: number,
+  ): Promise<void> {
+    const budgetMs = Math.min(
+      ALARM_WALL_MS - (Date.now() - alarmStartedAt) - 30_000,
+      LOCAL_TASKS_SETTLE_CAP_MS,
+    )
+    const deadline = Date.now() + Math.max(budgetMs, 0)
+    let drained = 0
+    while (tasks.length > drained) {
+      const batch = tasks.slice(drained)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timedOut = await Promise.race([
+        Promise.allSettled(batch).then(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(true), Math.max(deadline - Date.now(), 0))
+        }),
+      ])
+      if (timer !== undefined) clearTimeout(timer)
+      if (timedOut) {
+        console.warn(
+          '[worker/planRunDispatcher] local background tasks not settled before deadline',
+          { pending: tasks.length - drained },
+        )
+        return
+      }
+      drained += batch.length
     }
   }
 }

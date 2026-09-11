@@ -3,6 +3,7 @@ import handler from '../.open-next/worker.js'
 // @ts-expect-error 同上
 export { DOQueueHandler, DOShardedTagCache, BucketCachePurge } from '../.open-next/worker.js'
 import { consumePlanAgentBatch, type PlanAgentExportedHandler, type PlanAgentWorkerEnv } from './planAgentConsumer'
+import { registerPlanRunLocalHandler } from './planRunDispatcher'
 import { stripNextRouterVaryFromResponse } from './preloadVaryStrip'
 
 /**
@@ -15,7 +16,14 @@ import { stripNextRouterVaryFromResponse } from './preloadVaryStrip'
  *
  * 2026-09-11 P1-A：再导出 per-run 派发器 DO（PLAN_RUN_DISPATCHER binding，
  * 默认关，白名单 canary；见 planRunDispatcher.ts）。
+ *
+ * 2026-09-11 P1_1：把上面的 OpenNext 默认 handler 注册给派发器 DO（模块
+ * 求值期，不是 HTTP fetch 内——DO alarm 可能在从未跑过 HTTP 的 isolate 上
+ * 启动）。PLAN_AGENT_DO_LOCAL=1（默认关）时 alarm 本 isolate 直调它，省掉
+ * 自引用绑定打到冷 Next isolate 的一跳。只传 handler 本身，不捕获 env/ctx。
  */
+registerPlanRunLocalHandler(handler)
+
 export { PlanRunDispatcher } from './planRunDispatcher'
 export default {
   fetch: (request: globalThis.Request, env: PlanAgentWorkerEnv, ctx: unknown) =>

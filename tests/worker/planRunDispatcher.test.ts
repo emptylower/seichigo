@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFile } from 'node:fs/promises'
 
 /**
@@ -20,6 +20,8 @@ vi.mock('cloudflare:workers', () => {
 
 import {
   PlanRunDispatcher,
+  registerPlanRunLocalHandler,
+  type OpenNextFetchHandler,
   type PlanRunDispatcherCtx,
   type PlanRunDispatcherEnv,
   type PlanRunDispatcherStorage,
@@ -65,11 +67,18 @@ function makeFetch(impl?: (input: string, init?: RequestInit) => Promise<Respons
   )
 }
 
-function makeDispatcher(options: { storage?: PlanRunDispatcherStorage; fetchImpl?: FetchImpl } = {}) {
+function makeDispatcher(
+  options: {
+    storage?: PlanRunDispatcherStorage
+    fetchImpl?: FetchImpl
+    env?: Record<string, unknown>
+  } = {},
+) {
   const fetchImpl = options.fetchImpl ?? makeFetch()
   const env: PlanRunDispatcherEnv = {
     WORKER_SELF_REFERENCE: { fetch: fetchImpl },
     PLAN_AGENT_INTERNAL_SECRET: 'secret-x',
+    ...(options.env ?? {}),
   }
   const ctx: PlanRunDispatcherCtx = { storage: options.storage ?? makeStorage().storage }
   const dispatcher = new PlanRunDispatcher(ctx, env)
@@ -270,16 +279,233 @@ describe('PlanRunDispatcher alarm（派发分类）', () => {
   })
 })
 
+describe('PlanRunDispatcher alarm 本地路径（P1_1：PLAN_AGENT_DO_LOCAL=1）', () => {
+  type LocalCall = { request: Request; env: unknown; ctx: unknown }
+
+  function makeLocalHandler(impl?: (call: LocalCall) => Promise<Response>) {
+    const calls: LocalCall[] = []
+    const handler: OpenNextFetchHandler = {
+      async fetch(request, env, ctx) {
+        calls.push({ request, env, ctx })
+        return impl ? impl({ request, env, ctx }) : new Response('done\n', { status: 200 })
+      },
+    }
+    return { handler, calls }
+  }
+
+  function localSeeded(options: { fetchImpl?: FetchImpl } = {}) {
+    const made = makeStorage()
+    const { dispatcher, env } = makeDispatcher({
+      storage: made.storage,
+      fetchImpl: options.fetchImpl,
+      env: { PLAN_AGENT_DO_LOCAL: '1' },
+    })
+    return { ...made, dispatcher, env }
+  }
+
+  async function flushMicrotasks(rounds = 20): Promise<void> {
+    for (let i = 0; i < rounds; i++) await Promise.resolve()
+  }
+
+  // localHandler 是模块级单例：每个用例先复位（测试专用，生产只有 entry 注册
+  // 一个入口），需要 handler 的用例自行注册
+  beforeEach(() => {
+    registerPlanRunLocalHandler(null as unknown as OpenNextFetchHandler)
+  })
+
+  it('注册 + 开关 1 → alarm 直调 handler 而非 WORKER_SELF_REFERENCE；env 为同一对象引用；头含 x-plan-agent-local 与全部既有头', async () => {
+    const { handler, calls } = makeLocalHandler()
+    registerPlanRunLocalHandler(handler)
+    const fetchImpl = makeFetch()
+    const { dispatcher, env } = makeDispatcher({ fetchImpl, env: { PLAN_AGENT_DO_LOCAL: '1' } })
+    const msg = queueMessage()
+
+    await dispatcher.fetch(dispatchRequest(msg))
+    await dispatcher.alarm()
+
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(calls.length).toBe(1)
+    const call = calls[0]!
+    expect(call.request.url).toBe('https://seichigo.com/api/internal/plan-agent/run')
+    expect(call.request.method).toBe('POST')
+    expect(call.request.headers.get('content-type')).toBe('application/json')
+    expect(call.request.headers.get('x-plan-agent-secret')).toBe('secret-x')
+    expect(call.request.headers.get('x-plan-agent-transport')).toBe('do')
+    expect(call.request.headers.get('x-plan-agent-local')).toBe('1')
+    expect(Number.isInteger(Number(call.request.headers.get('x-plan-agent-consumer-at')))).toBe(true)
+    expect(Number.isInteger(Number(call.request.headers.get('x-plan-agent-consumer-seq')))).toBe(true)
+    // env 传原始完整对象（同一引用），不重建子集
+    expect(call.env).toBe(env)
+    expect(await new Response(call.request.body).text()).toBe(JSON.stringify(msg))
+  })
+
+  it('未注册 + 开关 1 → console.error 一次并回落自引用路径（payload 语义不变）', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchImpl = makeFetch()
+    const { map, dispatcher } = localSeeded({ fetchImpl })
+    try {
+      await dispatcher.fetch(dispatchRequest(queueMessage()))
+      await dispatcher.alarm()
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      expect(error).toHaveBeenCalledTimes(1)
+      expect(error.mock.calls[0]![0]).toBe(
+        '[worker/planRunDispatcher] PLAN_AGENT_DO_LOCAL=1 but no handler registered, falling back to self-reference',
+      )
+      expect(map.has('payload')).toBe(false)
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('开关 0 → 自引用路径，注册过的 handler 不被调', async () => {
+    const { handler, calls } = makeLocalHandler()
+    registerPlanRunLocalHandler(handler)
+    const fetchImpl = makeFetch()
+    const { dispatcher } = makeDispatcher({ fetchImpl, env: { PLAN_AGENT_DO_LOCAL: '0' } })
+
+    await dispatcher.fetch(dispatchRequest(queueMessage()))
+    await dispatcher.alarm()
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(calls.length).toBe(0)
+  })
+
+  it('ctx 适配器：waitUntil(p1)、p1 settle 后再 waitUntil(p2) → 两者都 settle 后才删 payload', async () => {
+    const events: string[] = []
+    let releaseP2: (() => void) | undefined
+    const p2 = new Promise<void>((resolve) => {
+      releaseP2 = () => {
+        events.push('p2-released')
+        resolve()
+      }
+    })
+    const { handler } = makeLocalHandler(async ({ ctx }) => {
+      const c = ctx as { waitUntil(p: Promise<unknown>): void }
+      c.waitUntil(Promise.resolve())
+      void Promise.resolve().then(() => {
+        c.waitUntil(p2)
+      })
+      return new Response('done\n', { status: 200 })
+    })
+    registerPlanRunLocalHandler(handler)
+    const made = makeStorage()
+    const rawDelete = made.storage.delete
+    made.storage.delete = async (key: string) => {
+      const result = await rawDelete(key)
+      events.push(`deleted:${key}`)
+      return result
+    }
+    const { dispatcher } = makeDispatcher({ storage: made.storage, env: { PLAN_AGENT_DO_LOCAL: '1' } })
+
+    await dispatcher.fetch(dispatchRequest(queueMessage()))
+    const alarmP = dispatcher.alarm()
+    await flushMicrotasks()
+
+    // p2 挂起：收束未完成，删 payload 未发生
+    expect(events).toEqual([])
+    expect(made.map.has('payload')).toBe(true)
+
+    releaseP2!()
+    await alarmP
+
+    expect(events).toEqual(['p2-released', 'deleted:payload'])
+    expect(made.map.has('payload')).toBe(false)
+  })
+
+  it('永不 resolve 的后台任务 + 假定时器 → 到收束上限后 warn 未完成数并仍删 payload（不抛）', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { handler } = makeLocalHandler(async ({ ctx }) => {
+        const c = ctx as { waitUntil(p: Promise<unknown>): void }
+        c.waitUntil(new Promise<void>(() => {}))
+        return new Response('done\n', { status: 200 })
+      })
+      registerPlanRunLocalHandler(handler)
+      const { map, dispatcher } = localSeeded()
+
+      await dispatcher.fetch(dispatchRequest(queueMessage()))
+      const alarmP = dispatcher.alarm()
+      await flushMicrotasks()
+      await vi.advanceTimersByTimeAsync(240_000)
+      await alarmP
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]![0]).toBe(
+        '[worker/planRunDispatcher] local background tasks not settled before deadline',
+      )
+      expect(warn.mock.calls[0]![1]).toEqual({ pending: 1 })
+      expect(map.has('payload')).toBe(false)
+    } finally {
+      warn.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([400, 401, 503])('本地 handler 返回 %s → 永久故障：删 payload 不重试（不抛）', async (status) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { handler, calls } = makeLocalHandler(async () => new Response('nope', { status }))
+    registerPlanRunLocalHandler(handler)
+    const { map, dispatcher } = localSeeded()
+    try {
+      await dispatcher.fetch(dispatchRequest(queueMessage()))
+      await dispatcher.alarm()
+
+      expect(calls.length).toBe(1)
+      expect(map.has('payload')).toBe(false)
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('本地 handler 返回 5xx → attempts<3 rethrow 且 payload 保留', async () => {
+    const { handler } = makeLocalHandler(async () => new Response('boom', { status: 502 }))
+    registerPlanRunLocalHandler(handler)
+    const { map, dispatcher } = localSeeded()
+    const msg = queueMessage()
+
+    await dispatcher.fetch(dispatchRequest(msg))
+    await expect(dispatcher.alarm()).rejects.toThrow('internal run responded 502')
+
+    expect(map.get('payload')).toEqual(msg)
+    expect((map.get('state') as { attempts: number }).attempts).toBe(1)
+  })
+
+  it('本地 handler 抛错 → attempts<3 rethrow 且 payload 保留', async () => {
+    const { handler } = makeLocalHandler(async () => {
+      throw new Error('local handler blew up')
+    })
+    registerPlanRunLocalHandler(handler)
+    const { map, dispatcher } = localSeeded()
+
+    await dispatcher.fetch(dispatchRequest(queueMessage()))
+    await expect(dispatcher.alarm()).rejects.toThrow('local handler blew up')
+
+    expect(map.has('payload')).toBe(true)
+  })
+})
+
 describe('worker 入口打包边界', () => {
-  it('源文件不 import 任何 @/ 应用代码（仅 queueMessage / cloudflare:workers / worker 内共用件）', async () => {
+  it('源文件不 import 任何 @/ 应用代码与 .open-next（仅 queueMessage / cloudflare:workers / worker 内共用件）', async () => {
     const source = await readFile(new URL('../../worker/planRunDispatcher.ts', import.meta.url), 'utf8')
     const imports = source.match(/^import\b.*$/gm) ?? []
     expect(imports.length).toBeGreaterThan(0)
     for (const line of imports) {
       expect(line.includes(" from '@/")).toBe(false)
-      expect(line.includes(' from "@/')).toBe(false)
+      expect(line.includes(' from="@/')).toBe(false)
+      expect(line.includes('.open-next')).toBe(false)
     }
     expect(imports.some((line) => line.includes("from '../lib/planAgent/queueMessage'"))).toBe(true)
     expect(imports.some((line) => line.includes("from 'cloudflare:workers'"))).toBe(true)
+  })
+
+  it('entry.ts 在模块顶层注册 local handler（P1_1 注入点），且不 import @/ 应用代码', async () => {
+    const source = await readFile(new URL('../../worker/entry.ts', import.meta.url), 'utf8')
+    expect(source.includes('registerPlanRunLocalHandler(handler)')).toBe(true)
+    for (const line of source.match(/^import\b.*$/gm) ?? []) {
+      expect(line.includes(" from '@/")).toBe(false)
+      expect(line.includes(' from="@/')).toBe(false)
+    }
   })
 })

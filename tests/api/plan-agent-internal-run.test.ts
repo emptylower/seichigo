@@ -398,6 +398,19 @@ describe('transport 埋点（P1-A：DO 派发器发 x-plan-agent-transport 头�
     }
   })
 
+  it("x-plan-agent-local: 1（P1_1 DO 本 isolate 直调）→ transport='do-local'", async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await postWithHeaders({ 'x-plan-agent-transport': 'do', 'x-plan-agent-local': '1' })
+      expect(timingOfCall().transport).toBe('do-local')
+      const line = timingLogLine(log)
+      expect(line).toBeDefined()
+      expect(JSON.parse(line!.slice('[planAgent/timing] '.length)).transport).toBe('do-local')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it("缺省头 → transport='queue'（队列消费者未改发同名头时的兼容值）", async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
