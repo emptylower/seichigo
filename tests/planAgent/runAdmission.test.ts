@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { MemoryUsageLedger } from '@/lib/billing/ledgerMemory'
 import { createMemoryRunAdmission } from '@/lib/planAgent/runAdmissionMemory'
@@ -127,6 +127,119 @@ describe('reserveForDispatch（不变量 2）', () => {
     })
     expect(res).toEqual({ ok: true, idempotent: false })
     expect(await ledger.balance('u1', PERIOD_START)).toBe(-RESERVE_MICROS.free)
+  })
+})
+
+describe('beginAndReserve（P2-A：begin 与预扣同一事务）', () => {
+  async function freshSetup() {
+    const repo = new MemoryTripPlanRepo()
+    const ledger = new MemoryUsageLedger()
+    const admission = createMemoryRunAdmission({ repo, ledger })
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    return { repo, ledger, admission, planId: plan.id }
+  }
+
+  it('成功 → ok 且恰一条 reserve（runRef=token、金额按 tier），busy 已占、human 已落库', async () => {
+    const { repo, ledger, admission, planId } = await freshSetup()
+    const res = await admission.beginAndReserve({
+      planId,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+      account: makeAccount({ tier: 'standard' }),
+    })
+    if (res.status !== 'ok') throw new Error(`beginAndReserve status: ${res.status}`)
+    const rows = await ledger.findByRunRef(res.token)
+    expect(rows.filter((r) => r.kind === 'reserve')).toHaveLength(1)
+    expect(rows[0]!.runRef).toBe(res.token)
+    expect(rows[0]!.deltaMicros).toBe(-RESERVE_MICROS.standard)
+    expect(rows[0]!.planId).toBe(planId)
+    expect(await repo.getAgentRunState(planId)).toMatchObject({ token: res.token, startedAt: null })
+    expect((await repo.listMessages(planId)).map((m) => m.kind)).toEqual(['human'])
+  })
+
+  it('quota_exceeded → 原样透传，不记账、不占 busy、不落 human', async () => {
+    const { repo, ledger, admission, planId } = await freshSetup()
+    const res = await admission.beginAndReserve({
+      planId,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 0,
+      busyTtlMs: 60_000,
+      account: makeAccount(),
+    })
+    expect(res).toEqual({ status: 'quota_exceeded' })
+    expect(await ledger.hasEntries('u1', PERIOD_START)).toBe(false)
+    expect(await repo.isAgentBusy(planId)).toBe(false)
+    expect(await repo.listMessages(planId)).toHaveLength(0)
+  })
+
+  it('busy → 原样透传，不记账、不追加消息（inTx 不被调用）', async () => {
+    const { repo, ledger, admission, planId } = await freshSetup()
+    const first = await repo.beginAgentRun({
+      planId,
+      userId: 'u1',
+      content: null,
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (first.status !== 'ok') throw new Error('unreachable')
+    const res = await admission.beginAndReserve({
+      planId,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+      account: makeAccount(),
+    })
+    expect(res).toEqual({ status: 'busy' })
+    expect(await ledger.hasEntries('u1', PERIOD_START)).toBe(false)
+    expect(await repo.listMessages(planId)).toHaveLength(0)
+    expect((await repo.getAgentRunState(planId))?.token).toBe(first.token)
+  })
+
+  it('inTx 抛错（账本故障）→ 整体回滚：busy 位未被占、human 消息未落库、无账目', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const ledger = new MemoryUsageLedger()
+    vi.spyOn(ledger, 'append').mockRejectedValue(new Error('ledger down'))
+    const failing = createMemoryRunAdmission({ repo, ledger })
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    await expect(
+      failing.beginAndReserve({
+        planId: plan.id,
+        userId: 'u1',
+        content: { role: 'user', content: 'hi' },
+        since: new Date(0),
+        limit: 10,
+        busyTtlMs: 60_000,
+        account: makeAccount(),
+      }),
+    ).rejects.toThrow('ledger down')
+    expect(await repo.isAgentBusy(plan.id)).toBe(false)
+    expect(await repo.getAgentRunState(plan.id)).toBeNull()
+    expect(await repo.listMessages(plan.id)).toHaveLength(0)
+    expect(await ledger.hasEntries('u1', PERIOD_START)).toBe(false)
+  })
+
+  it('管理员 → ok 不记账（沿用 service.reserveRun 豁免）', async () => {
+    const { repo, ledger, admission, planId } = await freshSetup()
+    const res = await admission.beginAndReserve({
+      planId,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+      account: makeAccount({ isAdmin: true }),
+    })
+    expect(res.status).toBe('ok')
+    expect(await ledger.hasEntries('u1', PERIOD_START)).toBe(false)
+    expect((await repo.listMessages(planId)).map((m) => m.kind)).toEqual(['human'])
   })
 })
 

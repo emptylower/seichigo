@@ -44,10 +44,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // A 部分（改动 2）：计划归属读与计费账户读互不依赖（一个查 plan 归属、
   // 一个查计费账户），串行两次 DB 往返改为 Promise.all 重叠执行。账户读的
   // 失败包进 outcome、推迟到原 getAccount 位置才暴露——404/403/400 与
-  // stop/resume 各拒绝路径本来就不碰计费，语义与先后顺序不变
+  // stop/resume 各拒绝路径本来就不碰计费，语义与先后顺序不变。
+  // P2-A：POST 对 plan 的全部消费只有 userId（403 判定）与 agentBusyUntil
+  // （撤销预判），归属读改走 1 条 SQL 的最小投影 getPlanAdmission（原先
+  // getPlan 的 PLAN_INCLUDE 要 5 条）
   const billing = getBillingService()
   const [plan, accountOutcome] = await Promise.all([
-    deps.repo.getPlan(id),
+    deps.repo.getPlanAdmission(id),
     billing.getAccount(userId).then(
       (account) => ({ ok: true as const, account }),
       (error: unknown) => ({ ok: false as const, error }),
@@ -132,8 +135,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  // 预算层（设计 §6.2）：孤儿预扣清扫 → 账户只读预检 → 抢 busy 位 → 同步
-  // 预扣（P0-B：预扣先于派发，见 beginAgentRun 之后的 reserveForDispatch）。
+  // 预算层（设计 §6.2）：孤儿预扣清扫 → 账户只读预检 → 抢 busy 位 + 同步
+  // 预扣（P2-A：预扣并入 beginAndReserve 的 begin 事务，先于任何派发）。
   // 预检拦住的请求不落库人类消息；预检通过后并发挤过的极少数请求允许余量
   // 短暂为负。
   // G1：阈值用 STALE_RESERVE_AFTER_MS（软截止 13 分钟 + 两倍 TTL）——真实
@@ -179,7 +182,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // 排查与模型直接读到结构化真值；OpenAI 协议对 user 消息的未知字段是宽容的。
   // 第八轮 A3：resume 回合 content=null——不追加 human 消息（配额仍按已落库
   // human 数计算，resume 不新增消息却要烧模型调用，不能绕过当日额度闸门）。
-  const begin = await deps.repo.beginAgentRun({
+  // P2-A（不变量 2 合并实现）：预扣并入 begin 事务——admission.beginAndReserve
+  // 经 inTx 钩子在"抢到 busy 位 + human 消息落库之后、提交之前"入账 reserve，
+  // 省掉整个第二事务（reserveForDispatch 的 ~6 次往返）；token 在同一事务里
+  // 生成，token_gone 不可能发生。quota_exceeded / busy 原样透传，不记账
+  const begin = await getRunAdmission().beginAndReserve({
     planId: id,
     userId,
     content: resume
@@ -192,6 +199,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     since: startOfToday(),
     limit: DAILY_MESSAGE_LIMIT,
     busyTtlMs: AGENT_BUSY_TTL_MS,
+    account,
   })
   if (begin.status === 'quota_exceeded') {
     return NextResponse.json({ error: errors.agentQuotaExhausted }, { status: 429 })
@@ -201,24 +209,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const runToken = begin.token
 
-  // P0-B（不变量 2）：预扣同步完成、先于任何派发。同一事务内核验 token
-  // 仍是本 run、未被领取、租约未过期，再按 runRef 幂等入账 reserve（旧的
-  // runAfterResponse(reserveRun()) 异步预扣已删除——派发毫秒级后 run 可能
-  // 在预扣落账前结束，settle 配不上对就会漏记成本）。token_gone → 不派发、
-  // 不进内联、绝不 endAgentRun 别人的 run
-  const adm = await getRunAdmission().reserveForDispatch({
-    account,
-    planId: id,
-    runToken,
-    busyTtlMs: AGENT_BUSY_TTL_MS,
-  })
-  if (!adm.ok) {
-    console.warn('[planAgent/admission] reserveForDispatch rejected (token gone)', { planId: id })
-    return NextResponse.json({ error: errors.planBusy }, { status: 409 })
-  }
-
-  // P0-B（§4）：首次派发时刻——成功预扣后、首次派发前取一次；内联降级
-  // 原样携带（消费者按同一时刻起算软截止），不刷新
+  // P1-A（§4）：首次派发时刻——预扣已随 begin 同事务落账，这里在 begin 成功
+  // 之后、首次派发前取一次；内联降级原样携带（消费者按同一时刻起算软截止），
+  // 不刷新
   const dispatchedAt = new Date().toISOString()
   const billingInput = { entitlements: account.entitlements, runCapMicros: account.runCapMicros }
 

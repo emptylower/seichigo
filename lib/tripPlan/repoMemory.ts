@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import type {
+  BeginAgentRunInput,
   BeginAgentRunResult,
   ReplaceDaysWithDaymapResult,
   TripPlan,
@@ -94,6 +95,13 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
   async getPlan(id: string): Promise<TripPlanWithDays | null> {
     const plan = this.plans.get(id)
     return plan ? { ...structuredClone(plan), ...this.agentFields(id) } : null
+  }
+
+  /** P2-A：与 Prisma 投影同语义——null = 计划不存在；busy 派生自 agentBusy 表 */
+  async getPlanAdmission(planId: string): Promise<{ userId: string; agentBusyUntil: Date | null } | null> {
+    const plan = this.plans.get(planId)
+    if (!plan) return null
+    return { userId: plan.userId, agentBusyUntil: this.agentFields(planId).agentBusyUntil }
   }
 
   /** CUT-8：与 Prisma 投影同语义——null = 计划不存在，空串原样返回 */
@@ -201,24 +209,31 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
     return this.messages.filter((m) => planIds.has(m.planId) && m.kind === 'human' && m.createdAt >= since).length
   }
 
-  async beginAgentRun(input: {
-    planId: string
-    userId: string
-    content: Prisma.JsonValue | null
-    since: Date
-    limit: number
-    busyTtlMs: number
-  }): Promise<BeginAgentRunResult> {
+  async beginAgentRun(input: BeginAgentRunInput): Promise<BeginAgentRunResult> {
     const used = await this.countHumanMessagesSince(input.userId, input.since)
     if (used >= input.limit) return { status: 'quota_exceeded' }
-    const existing = this.agentBusy.get(input.planId)
-    if (existing && existing.until.getTime() > Date.now()) return { status: 'busy' }
+    const prior = this.agentBusy.get(input.planId)
+    if (prior && prior.until.getTime() > Date.now()) return { status: 'busy' }
     const token = this.nextId('run')
     // startedAt 随新 token 重置（与 Prisma beginAgentRun 的 data 一致）
     this.agentBusy.set(input.planId, { until: new Date(Date.now() + input.busyTtlMs), token, startedAt: null })
-    // content=null（resume 回合）：不追加 human 消息，历史原样
-    if (input.content === null) return { status: 'ok', message: null, token }
-    const message = await this.appendMessage(input.planId, 'human', input.content)
+    // P2-A：inTx 在同一同步段里调用（内存版无真事务）；抛错按 Prisma 事务
+    // 回滚同语义撤销——busy 位恢复原状、已落库的 human 消息移除
+    let message: TripPlanMessage | null = null
+    try {
+      // content=null（resume 回合）：不追加 human 消息，历史原样
+      if (input.content !== null) message = await this.appendMessage(input.planId, 'human', input.content)
+      if (input.inTx) await input.inTx(undefined, { token })
+    } catch (err) {
+      if (prior) this.agentBusy.set(input.planId, prior)
+      else this.agentBusy.delete(input.planId)
+      if (message) {
+        const removedId = message.id
+        const idx = this.messages.findIndex((m) => m.id === removedId)
+        if (idx >= 0) this.messages.splice(idx, 1)
+      }
+      throw err
+    }
     return { status: 'ok', message, token }
   }
 

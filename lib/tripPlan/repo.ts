@@ -187,6 +187,8 @@ export interface TripPlanRepo {
   createPlan(input: { userId: string; title: string }): Promise<TripPlan>
   listPlans(userId: string): Promise<TripPlan[]>
   getPlan(id: string): Promise<TripPlanWithDays | null>
+  /** POST /agent 准入用的最小投影（1 条 SQL）：归属 + 租约到期。计划不存在返回 null。 */
+  getPlanAdmission(planId: string): Promise<{ userId: string; agentBusyUntil: Date | null } | null>
   /**
    * 只取 title 的轻量投影（2026-09-10 CUT-8）：标题侧信道原先为读一个
    * title 拉整棵 PLAN_INCLUDE（多条串行 SQL、20+ KB），在 pool=1 下与
@@ -213,15 +215,11 @@ export interface TripPlanRepo {
    * busy 位带 TTL（busyTtlMs），进程崩溃未清锁时到期自动可接管。
    * content 传 null（第八轮 resume 回合）时只抢 busy 位不追加 human 消息；
    * 配额检查仍按已落库 human 数计算。
+   * P2-A（2026-09-11）：可选 inTx 钩子在事务内、抢到 busy 位并落库 human
+   * 消息之后、提交之前调用，抛错整体回滚（quota_exceeded / busy 分支不调用
+   * 它）——预扣并入 begin 事务的合并点，见 BeginAgentRunTx。
    */
-  beginAgentRun(input: {
-    planId: string
-    userId: string
-    content: Prisma.JsonValue | null
-    since: Date
-    limit: number
-    busyTtlMs: number
-  }): Promise<BeginAgentRunResult>
+  beginAgentRun(input: BeginAgentRunInput): Promise<BeginAgentRunResult>
   /**
    * 运行结束（含失败）时清除 busy 位；必须放在 finally 里，并传入
    * beginAgentRun 返回的 token。释放前校验 token 匹配当前持有者——否则
@@ -408,6 +406,26 @@ export function composePlanRevision(plan: {
 }
 
 export type ReplaceDaysWithDaymapResult = { plan: TripPlanWithDays; message: TripPlanMessage }
+
+/**
+ * P2-A（2026-09-11）：begin 事务内钩子——在事务内、抢到 busy 位并落库
+ * human 消息之后、提交之前调用；抛错则整个事务回滚（quota_exceeded /
+ * busy 分支不会走到这里）。tx 即所在事务的 client（Prisma 实现把
+ * TransactionClient 原样传入；Memory 实现传 undefined，在同一同步段里
+ * 调用），ctx.token 是本次 run 刚生成的 token（预扣按它入账 runRef）。
+ */
+export type BeginAgentRunTx = (tx: unknown, ctx: { token: string }) => Promise<void>
+
+export type BeginAgentRunInput = {
+  planId: string
+  userId: string
+  content: Prisma.JsonValue | null
+  since: Date
+  limit: number
+  busyTtlMs: number
+  /** P2-A：见 BeginAgentRunTx */
+  inTx?: BeginAgentRunTx
+}
 
 export type BeginAgentRunResult =
   | { status: 'ok'; message: TripPlanMessage | null; token: string }
