@@ -112,6 +112,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ skipped: 'stale_token' })
   }
 
+  // P0-B（§4）：软截止从**派发时刻**（POST 的 dispatchedAt）起算；旧消息
+  // 缺字段沿用入口起算。queueMessage 校验器已保证 dispatchedAt 存在时必是
+  // 可解析时间戳
+  const deadlineAt = body.dispatchedAt
+    ? Date.parse(body.dispatchedAt) + SOFT_DEADLINE_MS
+    : Date.now() + SOFT_DEADLINE_MS
+
+  // P0-B：已在派发时刻就过期的消息（死信重放等）不烧模型——领取成功后
+  // 直接收尾：释放 busy、写 interrupted 运行日志、全额退回预扣
+  // （settleRun hadModelOutput:false = 退 reserve；管理员/无预扣时 no-op）
+  if (deadlineAt <= Date.now()) {
+    await deps.repo.endAgentRun(body.planId, body.runToken).catch(() => undefined)
+    try {
+      const logs = await deps.repo.listRunLogs(body.planId)
+      const turnIndex = (logs.at(-1)?.turnIndex ?? 0) + 1
+      await deps.repo.appendRunLog({
+        planId: body.planId,
+        runToken: body.runToken,
+        turnIndex,
+        stage: 'interrupted',
+        durationMs: 0,
+      })
+    } catch (err) {
+      console.warn('[api/internal/plan-agent/run] expired dispatch 写 interrupted 日志失败', err)
+    }
+    await getBillingService()
+      .settleRun({ runRef: body.runToken, actualMicros: 0, hadModelOutput: false })
+      .catch((err: unknown) => {
+        console.warn('[api/internal/plan-agent/run] expired dispatch 退款失败', err)
+      })
+    return NextResponse.json({ skipped: 'expired' })
+  }
+
   // 计费（CUT-2）：队列消息带 POST 时刻的有效档位快照（已含 F2 降档，
   // 与内联 SSE 路径同一口径）——新鲜且认识时直接查表装配，省掉 getAccount
   // 的 3 条串行 SQL。tier 缺失 / 不认识 / 超龄 / 开关置 '0' 时一律回落
@@ -168,7 +201,7 @@ export async function POST(req: Request) {
           signal: req.signal,
           onEvent: () => undefined,
           busyTtlMs: AGENT_BUSY_TTL_MS,
-          deadlineAt: Date.now() + SOFT_DEADLINE_MS,
+          deadlineAt,
           // CUT-7（2026-09-11 D 部分）：runLive 启动 flush 压缩后移，独立开关
           // 默认关，专门观察"刷新恢复"场景的窗口再置 1
           deferStartupRunLive: process.env.PLAN_AGENT_STARTUP_RUNLIVE_DEFER === '1',

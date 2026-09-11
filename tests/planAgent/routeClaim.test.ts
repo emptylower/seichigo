@@ -21,6 +21,15 @@ vi.mock('@/lib/billing/serverDeps', () => ({
   getBillingService: vi.fn(),
 }))
 
+// P0-B：预扣改走 admission（同步、先于派发）——permissive stub 即可，
+// 本文件只断言 claim loser 没有执行副作用
+vi.mock('@/lib/planAgent/runAdmission', () => ({
+  getRunAdmission: () => ({
+    reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
+    revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
+  }),
+}))
+
 vi.mock('@/lib/anitabi/cf/bindings', () => ({
   getCfBindings: vi.fn((): null => null),
 }))

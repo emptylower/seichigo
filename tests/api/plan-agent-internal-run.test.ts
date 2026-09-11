@@ -28,6 +28,7 @@ vi.mock('@/lib/billing/serverDeps', () => ({
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { getBillingService } from '@/lib/billing/serverDeps'
 import { executePlanAgentRun } from '@/lib/planAgent/execute'
+import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
 import { POST } from '@/app/api/internal/plan-agent/run/route'
 
 function makeDeps(repo: MemoryTripPlanRepo): TripPlanHandlerDeps {
@@ -238,5 +239,104 @@ describe('内部执行路由 /api/internal/plan-agent/run（Task A3）', () => {
 
     expect(await repo.renewAgentRunOwner(plan.id, begin.token, 60_000)).toEqual({ userId: 'owner-u9' })
     expect((await repo.getPlan(plan.id))!.agentBusyUntil!.getTime()).toBeGreaterThan(before)
+  })
+})
+
+describe('内部路由软截止从 dispatchedAt 起算（P0-B §4）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.mocked(executePlanAgentRun).mockClear()
+    vi.mocked(getBillingService).mockReset().mockImplementation(freeFallbackBilling)
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 'test-secret')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  async function setupRun(): Promise<{ repo: MemoryTripPlanRepo; planId: string; runToken: string }> {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error(`beginAgentRun status: ${begin.status}`)
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    return { repo, planId: plan.id, runToken: begin.token }
+  }
+
+  it('dispatchedAt 已过期 → { skipped:"expired" }：不跑执行器、释放 busy、写 interrupted 日志、全额退回预扣', async () => {
+    const { repo, planId, runToken } = await setupRun()
+    const settleRun = vi.fn(async () => {})
+    vi.mocked(getBillingService).mockImplementation(
+      () => ({ getAccount: vi.fn(async () => null), settleRun }) as unknown as ReturnType<typeof getBillingService>,
+    )
+
+    const res = await internalRequest(
+      queueMessage({
+        planId,
+        runToken,
+        // 派发时刻在软截止之前早已过去（死信重放）
+        dispatchedAt: new Date(Date.now() - 14 * 60_000).toISOString(),
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ skipped: 'expired' })
+
+    expect(vi.mocked(executePlanAgentRun)).not.toHaveBeenCalled()
+    // busy/token 已释放；留下持久 interrupted 证据（canResume 据此可续跑）
+    expect(await repo.getAgentRunState(planId)).toBeNull()
+    const logs = await repo.listRunLogs(planId)
+    expect(logs.at(-1)).toMatchObject({ runToken, stage: 'interrupted' })
+    // 退款 = settleRun(hadModelOutput:false) 全额退 reserve
+    expect(settleRun).toHaveBeenCalledWith({ runRef: runToken, actualMicros: 0, hadModelOutput: false })
+  })
+
+  it('dispatchedAt 非法字符串 → 400，不触碰执行器（参与软截止计算的字段必须拒）', async () => {
+    const { planId, runToken } = await setupRun()
+
+    const res = await internalRequest(queueMessage({ planId, runToken, dispatchedAt: 'not-a-date' }))
+    expect(res.status).toBe(400)
+    expect(vi.mocked(executePlanAgentRun)).not.toHaveBeenCalled()
+  })
+
+  it('dispatchedAt 新鲜 → 正常执行，deadlineAt = parse(dispatchedAt) + 13 分钟', async () => {
+    const { planId, runToken } = await setupRun()
+    const dispatchedAt = new Date(Date.now() - 5_000).toISOString()
+
+    const res = await internalRequest(queueMessage({ planId, runToken, dispatchedAt }))
+    await res.text()
+    expect(vi.mocked(executePlanAgentRun)).toHaveBeenCalledTimes(1)
+    const input = vi.mocked(executePlanAgentRun).mock.calls[0][0]
+    expect(input.deadlineAt).toBe(Date.parse(dispatchedAt) + 13 * 60_000)
+  })
+})
+
+describe('isPlanAgentQueueMessage 对 dispatchedAt 校验（P0-B）', () => {
+  const base = {
+    v: 1,
+    planId: 'p1',
+    runToken: 'tok',
+    locale: 'zh',
+    message: 'hi',
+    resume: false,
+    enqueuedAt: new Date('2026-09-10T00:00:00Z').toISOString(),
+  }
+
+  // 与 tier 的"完全不校验"不同：dispatchedAt 参与软截止计算，非法值会把
+  // deadline 算错 → 必须拒；缺省放行（在途旧消息沿用入口起算）
+  it.each([
+    ['undefined（旧版在途消息）放行', undefined, true],
+    ['合法 ISO 时间戳放行', new Date('2026-09-11T00:00:00Z').toISOString(), true],
+    ['null 拒绝', null, false],
+    ['数字拒绝', 123, false],
+    ['无法解析的字符串拒绝', 'not-a-date', false],
+  ])('dispatchedAt=%s', (_label, dispatchedAt, expected) => {
+    expect(isPlanAgentQueueMessage({ ...base, dispatchedAt })).toBe(expected)
   })
 })
