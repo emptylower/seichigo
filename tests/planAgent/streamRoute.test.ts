@@ -243,3 +243,142 @@ describe('观察流首帧与宽限（2026-09-10 首帧优化）', () => {
     await pump
   })
 })
+
+describe('观察流 warmup 轮询（P2-B 首帧加速）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('busy 后尚未推出 reasoning 非空的 live 帧 → 200ms 快轮询（500ms 时不会有第二次读）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await beginBusy(repo, plan.id)
+    // 实况行存在但 reasoning 为空串——首帧 live 不解锁 warmup
+    await repo.upsertRunLive(plan.id, { runToken: begin.token, reasoningReplace: '', statusText: '启动中' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const snapshotSpy = vi.spyOn(repo, 'getRunSnapshotMeta')
+
+    const res = await streamRequest(plan.id, '?after=0')
+    const { events, pump } = createPump(res)
+    await vi.advanceTimersByTimeAsync(0)
+    // 首帧：ready → live（reasoning=''，不关 warmup）→ chat
+    expect(events.map((e) => e.type)).toEqual(['ready', 'live', 'chat'])
+    const readsAfterFirst = snapshotSpy.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(snapshotSpy.mock.calls.length).toBeGreaterThan(readsAfterFirst)
+
+    await repo.endAgentRun(plan.id, begin.token)
+    await vi.advanceTimersByTimeAsync(500)
+    await pump
+  })
+
+  it('推出 reasoning 非空的 live 帧后 → 回到 500ms（200ms 内不再读）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await beginBusy(repo, plan.id)
+    await repo.upsertRunLive(plan.id, { runToken: begin.token, reasoningReplace: '正在思考' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const snapshotSpy = vi.spyOn(repo, 'getRunSnapshotMeta')
+
+    const res = await streamRequest(plan.id, '?after=0')
+    const { events, pump } = createPump(res)
+    await vi.advanceTimersByTimeAsync(0)
+    // 首帧 live 的 reasoning 非空 → warmup 结束
+    expect(events.map((e) => e.type)).toEqual(['ready', 'live', 'chat'])
+    const readsAfterFirst = snapshotSpy.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(snapshotSpy.mock.calls.length).toBe(readsAfterFirst)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(snapshotSpy.mock.calls.length).toBeGreaterThan(readsAfterFirst)
+
+    await repo.endAgentRun(plan.id, begin.token)
+    await vi.advanceTimersByTimeAsync(500)
+    await pump
+  })
+
+  it('评审修正 4：after>0 重连且基线实况已有 reasoning → 不进 warmup（直接 500ms，不白轮询 15s）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await beginBusy(repo, plan.id)
+    // 上一条连接已经把这段 reasoning 推给客户端了；重连的基线是静默的
+    await repo.upsertRunLive(plan.id, { runToken: begin.token, reasoningReplace: '正在思考' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const snapshotSpy = vi.spyOn(repo, 'getRunSnapshotMeta')
+
+    const res = await streamRequest(plan.id, '?after=5')
+    const { events, pump } = createPump(res)
+    await vi.advanceTimersByTimeAsync(0)
+    // 基线静默：一帧 live 都没推出去，但 warmup 已被基线上的 reasoning 关掉
+    expect(events).toEqual([{ type: 'ready', seq: 0 }])
+    const readsAfterFirst = snapshotSpy.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(snapshotSpy.mock.calls.length).toBe(readsAfterFirst)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(snapshotSpy.mock.calls.length).toBeGreaterThan(readsAfterFirst)
+
+    await repo.endAgentRun(plan.id, begin.token)
+    await vi.advanceTimersByTimeAsync(500)
+    await pump
+  })
+
+  it('评审修正 4 反面：after>0 重连但基线实况 reasoning 为空 → 仍进 warmup（200ms）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await beginBusy(repo, plan.id)
+    await repo.upsertRunLive(plan.id, { runToken: begin.token, reasoningReplace: '', statusText: '正在读取对话历史' })
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const snapshotSpy = vi.spyOn(repo, 'getRunSnapshotMeta')
+
+    const res = await streamRequest(plan.id, '?after=5')
+    const { pump } = createPump(res)
+    await vi.advanceTimersByTimeAsync(0)
+    const readsAfterFirst = snapshotSpy.mock.calls.length
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(snapshotSpy.mock.calls.length).toBeGreaterThan(readsAfterFirst)
+
+    await repo.endAgentRun(plan.id, begin.token)
+    await vi.advanceTimersByTimeAsync(500)
+    await pump
+  })
+
+  it('超过 15s 仍未推出 reasoning → 回到 500ms（工具型长 run 不会永远 200ms 轮询）', async () => {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: '帮我排一天' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error('unreachable')
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const snapshotSpy = vi.spyOn(repo, 'getRunSnapshotMeta')
+
+    const res = await streamRequest(plan.id, '?after=0')
+    const { pump } = createPump(res)
+    // warmup 窗口 15s：200ms 轮询；随后回到 500ms
+    await vi.advanceTimersByTimeAsync(15_000)
+    const readsAtCap = snapshotSpy.mock.calls.length
+    expect(readsAtCap).toBeGreaterThan(30)
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(snapshotSpy.mock.calls.length).toBe(readsAtCap)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(snapshotSpy.mock.calls.length).toBeGreaterThan(readsAtCap)
+
+    await repo.endAgentRun(plan.id, begin.token)
+    await vi.advanceTimersByTimeAsync(500)
+    await pump
+  })
+})

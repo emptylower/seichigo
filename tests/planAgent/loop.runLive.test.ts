@@ -71,8 +71,22 @@ describe('runPlanAgent 运行实况（第七轮 A1）', () => {
     const lastPatch = upsert.mock.calls.at(-1)![1]
     expect(lastPatch.runToken).toBe(begin.token)
     // 首帧优化：启动阶段的 status 强制 flush 已消耗 firstFlush（reasoning 为空），
-    // 首个 reasoning 补丁因此走 reasoningAppend（追加到本 run 的空行上，内容等价）
-    expect(lastPatch.reasoningReplace ?? lastPatch.reasoningAppend).toContain('先想想去哪。')
+    // 首个 reasoning 补丁因此走 reasoningAppend（追加到本 run 的空行上，内容等价）。
+    // 评审修正 5：不能只断言"某个补丁里有这段 reasoning"——那连补丁顺序错乱、
+    // 增量被后续 replace 截掉都测不出来。按 repo 侧的 replace/append 语义顺序
+    // 重放所有补丁，还原实况行最终会持有的 reasoning，再锁死它落在最后一个
+    // 携带 reasoning 的补丁里（收尾 flush 可能是无增量的空补丁，故取"最后一个
+    // 带 reasoning 的"而不是"最后一次 upsert"）
+    const reasoningPatches = upsert.mock.calls
+      .map(([, patch]) => patch.reasoningReplace ?? patch.reasoningAppend ?? '')
+      .filter((text) => text.length > 0)
+    let assembled = ''
+    for (const [, patch] of upsert.mock.calls) {
+      if (patch.reasoningReplace !== undefined) assembled = patch.reasoningReplace
+      else if (patch.reasoningAppend !== undefined) assembled += patch.reasoningAppend
+    }
+    expect(assembled).toContain('先想想去哪。')
+    expect(reasoningPatches.at(-1)).toContain('先想想去哪。')
     expect(clear).toHaveBeenCalledWith(plan.id)
     expect(await repo.getRunLive(plan.id)).toBeNull()
   })

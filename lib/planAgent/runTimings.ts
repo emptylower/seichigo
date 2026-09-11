@@ -23,6 +23,20 @@
  * SSE 兜底）记录；loopStartedAt 在 runPlanAgent 开头；firstStatusAt 挂在
  * forwardEvent（startupStatus 的首条 status 也走它）；firstModelByteAt 挂在
  * 模型 onDelta 回调。
+ *
+ * P2-B 增补（2026-09-11 Phase 2-B，Astra 评审后修订）：DO 派发段拆分——
+ * queueDispatchMs 里的 `POST 派发 → 消费者 fetch` 混合段由 DO 派发器经
+ * 请求头交来：doIngressMs（POST 派发 → DO fetch 入口）+ doAcceptMs（入口
+ * → setAlarm 成功的接纳完成）+ acceptToAlarmMs（接纳完成 → alarm 触发）+
+ * alarmPreludeMs（alarm 入口 → handler 调用前，含三次存储 IO）+
+ * alarmToEntryMs（handler 调用前 → 内部路由入口）。五段之和 ===
+ * consumerEnteredAt − dispatchedAt（≈ queueDispatchMs 口径）。另带 moduleId
+ * / doInstanceId（模块实例与 DO 对象实例分开——"对象重建但模块没重建"与
+ * "模块全新"在 consumerSeq=1 上分不出来）、isolateAgeMs（alarm 时刻 − DO
+ * isolate 模块求值时刻——6/6 次 consumerSeq=1 疑似每次 alarm 都在全新
+ * isolate 上跑，需要数据证实）与 alarmAttempt（本次 alarm 的尝试序号）。
+ * 头缺失/非法时对应字段省略，绝不写 0/NaN。queueDispatchMs 本身保留不动
+ * （历史数据可比）。
  */
 
 export type RunTimings = {
@@ -60,6 +74,24 @@ export type RunTimings = {
   realModelTtftMs?: number
   /** firstModelByteAt - consumerEnteredAt */
   toFirstModelByteMs?: number
+  /** P2-B：doEnteredAt − dispatchedAt（POST 派发 → DO fetch 入口）。注意 dispatchedAt（POST 里取，软截止也在用）与消息体 enqueuedAt 不是同一个戳 */
+  doIngressMs?: number
+  /** P2-B：acceptedDoneAt − doEnteredAt（DO 入口 → setAlarm 成功的接纳完成）；旧 state 缺 acceptedDoneAt 时省略 */
+  doAcceptMs?: number
+  /** P2-B：alarmAt − acceptedDoneAt（接纳完成 → alarm 触发）；同上缺戳时省略 */
+  acceptToAlarmMs?: number
+  /** P2-B：alarm 入口 → handler 调用前（含 get payload/state + put state 三次存储 IO） */
+  alarmPreludeMs?: number
+  /** P2-B：consumerEnteredAt − (alarmAt + alarmPreludeMs)（handler 调用前 → 内部路由入口；do-local 就是 handler.fetch 的路由开销） */
+  alarmToEntryMs?: number
+  /** P2-B：DO worker 模块实例 id（模块求值时生成一次；区分模块重建与对象重建） */
+  moduleId?: string
+  /** P2-B：DO 对象实例 id（构造函数生成） */
+  doInstanceId?: string
+  /** P2-B：DO isolate 年龄（alarm 时刻 − 模块求值时刻）；冷 isolate 判据 */
+  isolateAgeMs?: number
+  /** P2-B：本次 alarm 的尝试序号（从 1 起） */
+  alarmAttempt?: number
 }
 
 /** 收集器种子：时刻由上游（内部路由 / executePlanAgentRun）记录后注入 */
@@ -75,6 +107,21 @@ export type RunTimingSeed = {
   /** 消费者戳（fetch 前时刻 + invocation 序号）：内部路由解析请求头后注入；缺省整体省略 */
   consumerBatchAt?: string
   consumerSeq?: number
+  /**
+   * P2-B：DO 派发段戳——内部路由解析 x-plan-agent-do-* / x-plan-agent-alarm-*
+   * 等八个头后注入；缺省整体省略。dispatchedAt 来自队列消息本体（POST 派发
+   * 时刻，P0-B 已有字段，≠ enqueuedAt），供 doIngressMs 计算。
+   */
+  dispatchedAt?: string
+  doEnteredAt?: string
+  /** 接纳完成戳（setAlarm 成功后）；旧部署在途 state 缺省 → 对应差值省略 */
+  acceptedDoneAt?: string
+  alarmAt?: string
+  alarmPreludeMs?: number
+  isolateAgeMs?: number
+  alarmAttempt?: number
+  moduleId?: string
+  doInstanceId?: string
 }
 
 /**
@@ -130,6 +177,121 @@ export function parseConsumerBatchStamp(
   const consumerSeq = Number(seqRaw)
   if (!Number.isFinite(consumerBatchMs) || !Number.isInteger(consumerSeq)) return undefined
   return { consumerBatchMs, consumerBatchAt: new Date(consumerBatchMs).toISOString(), consumerSeq }
+}
+
+export type DispatchSegmentStamp = {
+  /** DO fetch 入口时刻（epoch ms，x-plan-agent-do-entered-at） */
+  doEnteredMs: number
+  /** 接纳完成时刻（epoch ms，setAlarm 成功后取；旧 state 缺该字段时 undefined） */
+  acceptedDoneMs?: number
+  /** alarm 触发时刻（epoch ms，x-plan-agent-alarm-at） */
+  alarmMs: number
+  /** alarm 入口 → handler 调用前（ms，含三次存储 IO） */
+  alarmPreludeMs: number
+  /** DO isolate 年龄（ms：alarm 时刻 − 模块求值时刻） */
+  isolateAgeMs: number
+  /** 本次 alarm 的尝试序号（从 1 起） */
+  alarmAttempt: number
+  /** worker 模块实例 id */
+  moduleId: string
+  /** DO 对象实例 id */
+  doInstanceId: string
+}
+
+/**
+ * P2-B：解析 DO 派发器随内部路由请求带来的八个埋点头（与
+ * parseConsumerBatchStamp 同样宽容：任一**必需**头缺失、为空或不可解析 →
+ * undefined，调用方据此整体省略——绝不写 0/NaN）。例外是
+ * x-plan-agent-do-accepted-at：它承载的 acceptedDoneAt 是滚动部署后才有的
+ * state 新字段，在途旧 state 没有它 → 仅该值缺省（acceptedDoneMs:
+ * undefined），其余字段照常解析。
+ */
+export function parseDispatchSegmentStamp(headers: {
+  doEnteredAt: string | null
+  doAcceptedAt: string | null
+  alarmAt: string | null
+  alarmPreludeMs: string | null
+  isolateAgeMs: string | null
+  alarmAttempt: string | null
+  moduleId: string | null
+  doInstanceId: string | null
+}): DispatchSegmentStamp | undefined {
+  const num = (raw: string | null): number | undefined => {
+    if (raw === null) return undefined
+    const trimmed = raw.trim()
+    if (trimmed === '') return undefined
+    const value = Number(trimmed)
+    return Number.isFinite(value) ? value : undefined
+  }
+  const ident = (raw: string | null): string | undefined => {
+    if (raw === null) return undefined
+    const trimmed = raw.trim()
+    return trimmed === '' ? undefined : trimmed
+  }
+  const doEnteredMs = num(headers.doEnteredAt)
+  const alarmMs = num(headers.alarmAt)
+  const alarmPreludeMs = num(headers.alarmPreludeMs)
+  const isolateAgeMs = num(headers.isolateAgeMs)
+  const alarmAttempt = num(headers.alarmAttempt)
+  const moduleId = ident(headers.moduleId)
+  const doInstanceId = ident(headers.doInstanceId)
+  if (
+    doEnteredMs === undefined ||
+    alarmMs === undefined ||
+    alarmPreludeMs === undefined ||
+    isolateAgeMs === undefined ||
+    alarmAttempt === undefined ||
+    !Number.isInteger(alarmAttempt) ||
+    moduleId === undefined ||
+    doInstanceId === undefined
+  ) {
+    return undefined
+  }
+  const acceptedDoneMs = num(headers.doAcceptedAt)
+  return {
+    doEnteredMs,
+    ...(acceptedDoneMs !== undefined ? { acceptedDoneMs } : {}),
+    alarmMs,
+    alarmPreludeMs,
+    isolateAgeMs,
+    alarmAttempt,
+    moduleId,
+    doInstanceId,
+  }
+}
+
+/** P2-B：POST 派发 → DO fetch 入口（毫秒）；dispatchedAt 缺省/不可解析时返回 undefined */
+export function doIngressMsOf(dispatchedAt: string | undefined, doEnteredMs: number): number | undefined {
+  if (!dispatchedAt) return undefined
+  const dispatchedMs = Date.parse(dispatchedAt)
+  if (!Number.isFinite(dispatchedMs) || !Number.isFinite(doEnteredMs)) return undefined
+  return doEnteredMs - dispatchedMs
+}
+
+/** P2-B：DO 入口 → 接纳完成（setAlarm 成功后，毫秒）；任一不可解析时返回 undefined */
+export function doAcceptMsOf(doEnteredMs: number, acceptedDoneMs: number): number | undefined {
+  if (!Number.isFinite(doEnteredMs) || !Number.isFinite(acceptedDoneMs)) return undefined
+  return acceptedDoneMs - doEnteredMs
+}
+
+/** P2-B：接纳完成 → alarm 触发（毫秒）；任一不可解析时返回 undefined */
+export function acceptToAlarmMsOf(acceptedDoneMs: number, alarmMs: number): number | undefined {
+  if (!Number.isFinite(acceptedDoneMs) || !Number.isFinite(alarmMs)) return undefined
+  return alarmMs - acceptedDoneMs
+}
+
+/**
+ * P2-B：handler 调用前（alarmAt + alarmPreludeMs）→ 内部路由入口（毫秒）。
+ * alarmPreludeMs 缺省/不可解析时返回 undefined（没有前奏戳就算不出这一段）。
+ */
+export function alarmToEntryMsOf(
+  alarmMs: number,
+  alarmPreludeMs: number | undefined,
+  consumerEnteredMs: number,
+): number | undefined {
+  if (alarmPreludeMs === undefined || !Number.isFinite(alarmPreludeMs)) return undefined
+  if (!Number.isFinite(alarmMs) || !Number.isFinite(consumerEnteredMs)) return undefined
+  return consumerEnteredMs - (alarmMs + alarmPreludeMs)
 }
 
 export type RunTimingCollector = {
@@ -193,6 +355,38 @@ export function createRunTimingCollector(
         if (queueDispatchMs !== undefined) timings.queueDispatchMs = queueDispatchMs
         const selfRefHopMs = selfRefHopMsOf(seed.consumerBatchAt, consumerEnteredMs)
         if (selfRefHopMs !== undefined) timings.selfRefHopMs = selfRefHopMs
+      }
+      // P2-B：DO 派发段拆分（种子由内部路由解析 DO 埋点头后注入；此处按
+      // 可解析性兜底，缺戳时对应字段省略——绝不写 0/NaN）
+      if (seed.moduleId) timings.moduleId = seed.moduleId
+      if (seed.doInstanceId) timings.doInstanceId = seed.doInstanceId
+      if (seed.alarmPreludeMs !== undefined && Number.isFinite(seed.alarmPreludeMs)) {
+        timings.alarmPreludeMs = seed.alarmPreludeMs
+      }
+      if (seed.isolateAgeMs !== undefined && Number.isFinite(seed.isolateAgeMs)) {
+        timings.isolateAgeMs = seed.isolateAgeMs
+      }
+      if (seed.alarmAttempt !== undefined && Number.isInteger(seed.alarmAttempt)) {
+        timings.alarmAttempt = seed.alarmAttempt
+      }
+      const doEnteredMs = seed.doEnteredAt === undefined ? NaN : Date.parse(seed.doEnteredAt)
+      const alarmMs = seed.alarmAt === undefined ? NaN : Date.parse(seed.alarmAt)
+      const acceptedDoneMs = seed.acceptedDoneAt === undefined ? undefined : Date.parse(seed.acceptedDoneAt)
+      if (seed.doEnteredAt && Number.isFinite(doEnteredMs)) {
+        const doIngressMs = doIngressMsOf(seed.dispatchedAt, doEnteredMs)
+        if (doIngressMs !== undefined) timings.doIngressMs = doIngressMs
+        if (acceptedDoneMs !== undefined && Number.isFinite(acceptedDoneMs)) {
+          const doAcceptMs = doAcceptMsOf(doEnteredMs, acceptedDoneMs)
+          if (doAcceptMs !== undefined) timings.doAcceptMs = doAcceptMs
+          if (Number.isFinite(alarmMs)) {
+            const acceptToAlarmMs = acceptToAlarmMsOf(acceptedDoneMs, alarmMs)
+            if (acceptToAlarmMs !== undefined) timings.acceptToAlarmMs = acceptToAlarmMs
+          }
+        }
+      }
+      if (seed.alarmAt && Number.isFinite(alarmMs)) {
+        const alarmToEntryMs = alarmToEntryMsOf(alarmMs, seed.alarmPreludeMs, consumerEnteredMs)
+        if (alarmToEntryMs !== undefined) timings.alarmToEntryMs = alarmToEntryMs
       }
       if (firstStatusMs !== undefined) {
         timings.firstStatusAt = toIso(firstStatusMs)

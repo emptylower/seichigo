@@ -17,6 +17,7 @@ import type {
   TripPlanRunLogRecord,
   TripPlanRunSnapshotMeta,
   TripPlanStageInputs,
+  TripPlanStartupRead,
   TripPlanWithDays,
 } from './repo'
 import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
@@ -118,6 +119,22 @@ export class MemoryTripPlanRepo implements TripPlanRepo {
       startDate: plan.startDate,
       dayCount: plan.dayCount,
       hasPointItem: plan.days.some((day) => day.items.some((item) => item.pointId)),
+    }
+  }
+
+  /** P2-B：与 Prisma 单条 SQL 同语义——busy 位（agentBusy 表派生）+ 阶段输入 + 全量消息一次返回；null = 计划不存在 */
+  async getStartupRead(planId: string): Promise<TripPlanStartupRead | null> {
+    const plan = this.plans.get(planId)
+    if (!plan) return null
+    return {
+      agentRunToken: this.agentFields(planId).agentRunToken,
+      stageInputs: {
+        bangumiIds: plan.bangumiIds,
+        startDate: plan.startDate,
+        dayCount: plan.dayCount,
+        hasPointItem: plan.days.some((day) => day.items.some((item) => item.pointId)),
+      },
+      messages: this.messages.filter((m) => m.planId === planId),
     }
   }
 

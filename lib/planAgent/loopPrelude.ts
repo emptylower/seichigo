@@ -55,11 +55,12 @@ export type StartupPreludeResult = {
 }
 
 /**
- * run 启动段前奏：busy 位持有确认（首帧优化的 holdsRun 闸门）→ 读取历史 →
+ * run 启动段前奏：单次读取（busy 位归属 + 历史 + 阶段推断输入）→
  * （必要时）追加本轮 human 消息 → M4 阶段推断。
  *
- * 2026-09-11 D 部分：从 loop.ts 原样搬出——逻辑零改动，仅把 loop 闭包里的
- * deps/emit/locale 换成显式参数（不做模块级状态）。
+ * 2026-09-11 D 部分：从 loop.ts 原样搬出，把 loop 闭包里的 deps/emit/locale
+ * 换成显式参数（不做模块级状态）。P2-B（同日）：前奏三读合并为一次
+ * getStartupRead（1 条 SQL），语义差异见函数内注释（仅吞错一处）。
  */
 export async function runStartupPrelude(deps: {
   repo: TripPlanRepo
@@ -70,21 +71,32 @@ export async function runStartupPrelude(deps: {
   emit: (event: PlanAgentEvent) => void
   locale: SupportedLocale
 }): Promise<StartupPreludeResult> {
-  // 2026-09-10 首帧优化：启动阶段在真实步骤上发 status 实况（见
-  // startupStatus.ts）。先确认仍持有 busy 位——被接管（队列滞留后启动）的
+  // P2-B（2026-09-11）：前奏三读（isAgentRunStopped + listMessages +
+  // getStageInputs，3 次串行 DB 往返 ≈ 0.5s）合并为一次 getStartupRead
+  // （1 条 SQL）。语义差异仅一处：旧 isAgentRunStopped 读失败时吞错、
+  // holdsRun=true；新单读失败直接抛——与旧 listMessages 的抛错一致（历史
+  // 读失败本来就是致命的）。read=null（计划已删）与旧行为对齐：history=[]、
+  // stageInputs=null、holdsRun=false（token 不匹配）。
+  const read = await deps.repo.getStartupRead(deps.planId)
+  // 2026-09-10 首帧优化：先确认仍持有 busy 位——被接管（队列滞留后启动）的
   // run 不发也不落库，旧 token 落笔会覆盖新 run 的实况行（runLive M2 语义）
-  let holdsRun = true
-  if (deps.runToken) {
-    try {
-      holdsRun = !(await deps.repo.isAgentRunStopped(deps.planId, deps.runToken))
-    } catch {
-      // 读失败不拦启动：后续栅栏/续租仍会正确拦截被接管的 run
-    }
-  }
+  const holdsRun = deps.runToken ? read !== null && read.agentRunToken === deps.runToken : true
   const emitStartup = createStartupStatusEmitter(deps.emit, deps.locale, holdsRun)
 
+  // 两条启动 status 的相对顺序与发射点保持：readHistory →（必要时追加本轮
+  // human 消息）→ checkProgress → 推断。
   emitStartup('readHistory')
-  const history = await deps.repo.listMessages(deps.planId)
+  // 评审修正 3（2026-09-11）：这一拍微任务是必需的，不是装饰。runLive writer
+  // 的 queueFlush 用 flushQueued 去重——同一微任务里紧跟着发出的
+  // checkProgress 会被并进同一次 upsert（statusText 取最新一条），实况行上
+  // 「正在读取对话历史」永远不落库，刷新恢复的客户端就看不到这一步。
+  // P2-B 之前两条 status 之间天然隔着 listMessages 的 DB 往返；三读合一后
+  // 读没法再挪到两条之间——holdsRun 闸门必须先拿到 agentRunToken 才能决定
+  // 发不发（被接管的旧 run 一条 status 也不许发、不许落库，见上面的注释），
+  // 所以读只能在前，这里自己让出一拍把排队的 flush 交出去。代价是一个微任务
+  // （不是 setTimeout），换回 readHistory / checkProgress 两次独立落库。
+  await Promise.resolve()
+  const history = read?.messages ?? []
 
   const userParam: ChatMessageParam = { role: 'user', content: deps.userMessage }
   // 阶段推断需要包含"本轮这条 human 消息"的完整历史（revise 判定依赖它）
@@ -103,7 +115,7 @@ export async function runStartupPrelude(deps: {
   let stage: PlanStage = 'works'
   let stageContext = ''
   let pendingStageWrite: PlanStage | null = null
-  const stageInputs = await deps.repo.getStageInputs(deps.planId)
+  const stageInputs = read?.stageInputs ?? null
   if (stageInputs) {
     const lastDaymap = [...stageHistory].reverse().find((m) => m.kind === 'daymap')
     const quality = lastDaymap ? parseDaymapPayload(lastDaymap.content)?.quality ?? null : null

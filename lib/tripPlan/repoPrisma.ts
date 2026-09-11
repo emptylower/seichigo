@@ -17,11 +17,13 @@ import type {
   TripPlanRunLogEntry,
   TripPlanRunLogRecord,
   TripPlanRunSnapshotMeta,
+  TripPlanStartupRead,
   TripPlanStatus,
   TripPlanStageInputs,
   TripPlanWithDays,
 } from './repo'
 import { clampRunLiveReasoning, composePlanRevision, RUN_STOP_MARKER } from './repo'
+import { fetchStartupRead } from './repoPrismaStartupRead'
 
 const POINT_SELECT = {
   select: {
@@ -187,6 +189,15 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
     })
     if (!row) return null
     return { bangumiIds: row.bangumiIds, startDate: row.startDate, dayCount: row.dayCount, hasPointItem: row._count.days > 0 }
+  }
+
+  /**
+   * P2-B：前奏一次性读取（1 条 SQL / 1 次往返）——SQL 与行映射在
+   * repoPrismaStartupRead.ts（守 750 行预算）。hasPointItem 谓词与
+   * getStageInputs 一致、消息排序与 listMessages 一致，语义见该文件注释。
+   */
+  async getStartupRead(planId: string): Promise<TripPlanStartupRead | null> {
+    return fetchStartupRead(planId)
   }
 
   async updateMeta(id: string, patch: TripPlanMetaUpdate): Promise<TripPlan> {

@@ -146,7 +146,9 @@ describe('runPlanAgent 启动实况 status（首帧优化）', () => {
       () => {},
     )
 
-    // runLive 的强制 flush：首条启动 status 在首条 reasoning 之前就已落库
+    // runLive 的强制 flush：首条启动 status 在首条 reasoning 之前就已落库。
+    // 评审修正 3：readHistory 必须自己落一次库（被 checkProgress 合并掉的话，
+    // 刷新恢复的客户端看不到「正在读取对话历史」）
     const firstPatch = upsert.mock.calls[0]![1]
     expect(firstPatch.statusText).toBe(startupStatusPhrase('readHistory', 'zh'))
   })
@@ -263,8 +265,16 @@ describe('CUT-7 deferStartupRunLive：启动段 flush 压缩后移', () => {
     )
 
     // 三条 status 各自强制 flush；afterModelRequestIssued 里的无条件
-    // releaseStartupFlush() 未持有 → no-op，不产生第四次 upsert
+    // releaseStartupFlush() 未持有 → no-op，不产生第四次 upsert。
+    // 评审修正 3 的回归闸门：P2-B 三读合一后两条启动 status 之间没了 DB 往返，
+    // 一度被 writer 合并成 2 次、且首次落的是 checkProgress——readHistory 永不
+    // 落库，刷新恢复的客户端看不到「正在读取对话历史」。loopPrelude 让出一拍
+    // 微任务把排队的 flush 交出去后，首次落库重新是 readHistory。
+    // （checkProgress 仍会并进 organize 那次：writer 的 chain 是串行的，首个
+    // upsert 在途期间排队的 status 只会合并成一次，而前奏之后到 organize 之间
+    // 也不再有 IO——这是三读合一的固有结果，不是本修正要解决的问题。）
     expect(upsert).toHaveBeenCalledTimes(3)
     expect(upsert.mock.calls[0]![1].statusText).toBe(startupStatusPhrase('readHistory', 'zh'))
+    expect(upsert.mock.calls.at(-1)![1].statusText).toBe(startupStatusPhrase('organize', 'zh'))
   })
 })
