@@ -1,6 +1,7 @@
 // 相对路径导入：wrangler 打包 worker 入口时走 esbuild 自身的模块解析，
 // 不认 Next 的路径别名（@/* 只在 Next / Vitest 侧生效）
 import { isPlanAgentQueueMessage, type PlanAgentQueueMessage } from '../lib/planAgent/queueMessage'
+import { drainBody } from './drainResponse'
 
 /**
  * 2026-09-06 §0.1：规划 run 的队列消费者。
@@ -53,21 +54,6 @@ const INTERNAL_RUN_URL = 'https://seichigo.com/api/internal/plan-agent/run'
  * （冷 isolate），内部路由据此把 timing 样本切冷/热两组。
  */
 let INVOCATION_SEQ = 0
-
-/** 读响应体到底：内部路由用心跳流保持连接，消费者必须等它自然结束 */
-async function drainBody(res: globalThis.Response): Promise<void> {
-  const body = res.body
-  if (!body) return
-  const reader = body.getReader()
-  try {
-    while (true) {
-      const { done } = await reader.read()
-      if (done) return
-    }
-  } finally {
-    reader.releaseLock()
-  }
-}
 
 /**
  * 每条消息：校验 body → 经 WORKER_SELF_REFERENCE POST 内部路由 → 读响应体

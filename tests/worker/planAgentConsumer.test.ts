@@ -128,10 +128,12 @@ describe('C 部分埋点：消费者时刻头与 invocation 序号', () => {
     expect(headerOf(fetchImpl, 0, 'x-plan-agent-consumer-seq')).toBe('1')
   })
 
-  it('源文件只 import queueMessage.ts（worker 入口不打包 Prisma/Next 应用代码）', async () => {
+  it('源文件只 import queueMessage 与 worker 内共用件（worker 入口不打包 Prisma/Next 应用代码）', async () => {
     const source = await readFile(new URL('../../worker/planAgentConsumer.ts', import.meta.url), 'utf8')
     const imports = source.match(/^import\b.*$/gm) ?? []
-    expect(imports).toHaveLength(1)
-    expect(imports[0]).toContain("from '../lib/planAgent/queueMessage'")
+    expect(imports).toHaveLength(2)
+    expect(imports.some((line) => line.includes("from '../lib/planAgent/queueMessage'"))).toBe(true)
+    // Phase 1-A：drainBody 抽到 worker/ 内共用（planRunDispatcher 同用）
+    expect(imports.some((line) => line.includes("from './drainResponse'"))).toBe(true)
   })
 })

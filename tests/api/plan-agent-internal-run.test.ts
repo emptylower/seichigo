@@ -340,3 +340,74 @@ describe('isPlanAgentQueueMessage 对 dispatchedAt 校验（P0-B）', () => {
     expect(isPlanAgentQueueMessage({ ...base, dispatchedAt })).toBe(expected)
   })
 })
+
+describe('transport 埋点（P1-A：DO 派发器发 x-plan-agent-transport 头）', () => {
+  beforeEach(() => {
+    vi.mocked(getTripPlanApiDeps).mockReset()
+    vi.mocked(executePlanAgentRun).mockClear()
+    vi.mocked(getBillingService).mockReset().mockImplementation(freeFallbackBilling)
+    vi.stubEnv('PLAN_AGENT_INTERNAL_SECRET', 'test-secret')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  async function postWithHeaders(headers: Record<string, string>): Promise<void> {
+    const repo = new MemoryTripPlanRepo()
+    const plan = await repo.createPlan({ userId: 'u1', title: 't' })
+    const begin = await repo.beginAgentRun({
+      planId: plan.id,
+      userId: 'u1',
+      content: { role: 'user', content: 'hi' },
+      since: new Date(0),
+      limit: 10,
+      busyTtlMs: 60_000,
+    })
+    if (begin.status !== 'ok') throw new Error(`beginAgentRun status: ${begin.status}`)
+    vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
+    const res = await POST(
+      new Request('http://localhost/api/internal/plan-agent/run', {
+        method: 'POST',
+        headers: { 'x-plan-agent-secret': 'test-secret', ...headers },
+        body: JSON.stringify(queueMessage({ planId: plan.id, runToken: begin.token })),
+      }),
+    )
+    await res.text()
+  }
+
+  function timingOfCall(): { transport?: string } {
+    const input = vi.mocked(executePlanAgentRun).mock.calls.at(-1)![0] as { timing?: { transport?: string } }
+    return input.timing ?? {}
+  }
+
+  function timingLogLine(log: ReturnType<typeof vi.spyOn>): string | undefined {
+    return log.mock.calls.map((call) => String(call[0])).find((text) => text.startsWith('[planAgent/timing]'))
+  }
+
+  it("x-plan-agent-transport: do → timing seed 与 [planAgent/timing] 日志行 transport='do'", async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await postWithHeaders({ 'x-plan-agent-transport': 'do' })
+      expect(timingOfCall().transport).toBe('do')
+      const line = timingLogLine(log)
+      expect(line).toBeDefined()
+      expect(JSON.parse(line!.slice('[planAgent/timing] '.length)).transport).toBe('do')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it("缺省头 → transport='queue'（队列消费者未改发同名头时的兼容值）", async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await postWithHeaders({})
+      expect(timingOfCall().transport).toBe('queue')
+      const line = timingLogLine(log)
+      expect(line).toBeDefined()
+      expect(JSON.parse(line!.slice('[planAgent/timing] '.length)).transport).toBe('queue')
+    } finally {
+      log.mockRestore()
+    }
+  })
+})

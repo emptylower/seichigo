@@ -11,6 +11,7 @@ import { formatResetDate, serverText } from '@/lib/planAgent/serverText'
 import { getBillingService } from '@/lib/billing/serverDeps'
 import { STALE_RESERVE_AFTER_MS } from '@/lib/billing/service'
 import { getRunAdmission } from '@/lib/planAgent/runAdmission'
+import { dispatchRun, shouldDispatchViaDo } from '@/lib/planAgent/dispatch'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 
 export const runtime = 'nodejs'
@@ -226,17 +227,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // "日期已确定"，不必再从自由文本里猜、也不必重复调 update_plan_meta。
   const answerMetaPatch = planMetaFromAnswer(answerTo, answerValue)
 
-  // Task A3（§0.3）：PLAN_AGENT_QUEUE_ENABLED=1（wrangler.jsonc vars；预览
-  // 版本会用 --var 覆盖成 0——队列消费者与自引用绑定只对已部署版本生效，
-  // 预览跑不了消费者）且有队列绑定时投递队列并 202——run 在 Cloudflare
-  // Queue 消费者里跑，与浏览器连接彻底解耦（断流/切后台/刷新都不再杀 run）。
-  // answerMetaPatch 直写必须在投递前完成（SSE start() 里的直写与
-  // plan_updated 事件都不会发生；观察流会按 plan.updatedAt 推 plan_updated）。
-  // 任何一步失败都回落到下方现有 SSE 内联路径（不额外 endAgentRun，SSE
-  // 路径的 finally 会释放）。
-  const queue =
-    process.env.PLAN_AGENT_QUEUE_ENABLED === '1' ? getCfBindings()?.env?.PLAN_AGENT_QUEUE : undefined
-  if (queue) {
+  // P1-A（联合方案 §3）：transport 选择集中到 dispatchRun——DO alarm（
+  // PLAN_AGENT_DISPATCH='do' + canary 白名单）或 Cloudflare Queue（现役默认，
+  // 行为与 Phase 0 一致）。answerMetaPatch 直写必须在派发之前（DO/队列路径
+  // 都没有 SSE start()，直写与 plan_updated 事件不会发生；观察流按
+  // plan.updatedAt 推 plan_updated）。直写失败或没有任何可用 transport 时
+  // 回落到下方现有 SSE 内联路径（不额外 endAgentRun，SSE 路径的 finally
+  // 会释放）。
+  const cfEnv = getCfBindings()?.env
+  const hasTransport =
+    shouldDispatchViaDo(cfEnv, userId) ||
+    (process.env.PLAN_AGENT_QUEUE_ENABLED === '1' && Boolean(cfEnv?.PLAN_AGENT_QUEUE))
+  if (hasTransport) {
     let directWriteOk = true
     if (answerMetaPatch) {
       try {
@@ -247,8 +249,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       }
     }
     if (directWriteOk) {
-      try {
-        await queue.send({
+      const outcome = await dispatchRun({
+        env: cfEnv,
+        message: {
           v: 1,
           planId: id,
           runToken,
@@ -258,12 +261,25 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           enqueuedAt: new Date().toISOString(),
           dispatchedAt,
           tier: account.entitlements.tier,
-        })
-        // P0-B：预扣已在上方同步完成，202 之前账本里必有 reserve（或管理员豁免）
-        return NextResponse.json({ queued: true, runToken }, { status: 202 })
-      } catch (err) {
-        console.warn('[planAgent/queue] send failed, falling back to inline SSE', err)
+        },
+        userId,
+      })
+      if (outcome.transport !== 'none') {
+        // P0-B：预扣已在上方同步完成，202 之前账本里必有 reserve（或管理员豁免）。
+        // do/unknown 也返回 202：unknown 表示 DO 可能已持久接纳，绝不改投
+        // 队列（双通道竞态），claim 一次性领取保证 alarm 重试只会 winner 或
+        // skipped
+        return NextResponse.json(
+          {
+            queued: true,
+            runToken,
+            dispatchState: outcome.transport === 'do' ? outcome.state : 'accepted',
+            transport: outcome.transport,
+          },
+          { status: 202 },
+        )
       }
+      // none（队列 send 抛错等）→ 落到下方内联 SSE
     }
   }
 
@@ -313,6 +329,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           onEvent: send,
           busyTtlMs: AGENT_BUSY_TTL_MS,
           billing: billingInput,
+          // P1-A 埋点：内联路径 transport='inline'（时刻与执行体入口兜底同位）
+          timing: { consumerEnteredAt: new Date().toISOString(), transport: 'inline' },
         })
       } catch (err) {
         // 循环 try 块之外的异常（历史读取/直写补丁等）与瞬时网络错误统一经

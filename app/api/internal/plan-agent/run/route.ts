@@ -76,6 +76,9 @@ export async function POST(req: Request) {
   // 旧版消费者的在途消息没有这两个头：consumerBatchAt / consumerSeq /
   // queueDispatchMs / selfRefHopMs 四个字段整体省略，绝不写 0/NaN。
   // queueLatencyMs 保留不动（= queueDispatchMs + selfRefHopMs，对比历史）。
+  // P1-A 埋点：派发信道（'do' = DO alarm 派发器发的头；缺省按 'queue' 兼容
+  // ——队列消费者未改发同名头时的兼容值）
+  const transport: 'queue' | 'do' = req.headers.get('x-plan-agent-transport') === 'do' ? 'do' : 'queue'
   const consumerEnteredMs = Date.now()
   const consumerEnteredAt = new Date(consumerEnteredMs).toISOString()
   const queueLatencyMs = queueLatencyMsOf(body.enqueuedAt, consumerEnteredMs)
@@ -88,6 +91,7 @@ export async function POST(req: Request) {
   console.log(
     `[planAgent/timing] ${JSON.stringify({
       planId: body.planId,
+      transport,
       enqueuedAt: body.enqueuedAt,
       consumerEnteredAt,
       ...(queueLatencyMs === undefined ? {} : { queueLatencyMs }),
@@ -207,6 +211,7 @@ export async function POST(req: Request) {
           deferStartupRunLive: process.env.PLAN_AGENT_STARTUP_RUNLIVE_DEFER === '1',
           billing,
           timing: {
+            transport,
             enqueuedAt: body.enqueuedAt,
             consumerEnteredAt,
             ...(stamp ? { consumerBatchAt: stamp.consumerBatchAt, consumerSeq: stamp.consumerSeq } : {}),

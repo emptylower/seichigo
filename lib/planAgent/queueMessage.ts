@@ -41,6 +41,11 @@ export type PlanAgentQueueMessage = {
    * （滚动部署窗口内在途消息没有这个字段，沿用入口起算）。
    */
   dispatchedAt?: string
+  /**
+   * P1-A（2026-09-11）：派发信道标记（队列消息带 'queue'）。与 tier 同策略：
+   * 可选、完全不校验——消费端按字段容错，旧消息缺省放行。
+   */
+  transport?: 'queue' | 'do'
 }
 
 const LOCALES: readonly string[] = ['zh', 'en', 'ja']
