@@ -37,6 +37,15 @@ type Db = Prisma.TransactionClient | typeof prisma
 export class PrismaUsageLedger implements UsageLedgerRepo {
   private db: Db = prisma
 
+  /**
+   * P0-B（2026-09-11）：允许注入事务 client——runAdmission 在自己的
+   * $transaction（用户 advisory lock + TripPlan 条件更新）里复用同一套账本
+   * 读写，而不是嵌套另开事务的 service 方法。
+   */
+  constructor(db?: Db) {
+    if (db) this.db = db
+  }
+
   async balance(userId: string, periodStart: Date): Promise<number> {
     const agg = await this.db.usageLedger.aggregate({ where: { userId, periodStart }, _sum: { deltaMicros: true } })
     return Number(agg._sum.deltaMicros ?? 0n)

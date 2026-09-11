@@ -33,6 +33,14 @@ export type PlanAgentQueueMessage = {
    * 必须回落到 getAccount 三读，绝不能回落 free。
    */
   tier?: QueueTier
+  /**
+   * P0-B（2026-09-11）：首次派发时刻（POST 成功同步预扣后、投递/内联启动
+   * 前取一次）。消费者用它把软截止从派发而非入口起算。校验策略与 tier
+   * 的"完全不校验"不同：dispatchedAt 参与软截止计算，存在但非法（非
+   * 字符串 / Date.parse 为 NaN）会把 deadline 算错，必须拒；缺省放行
+   * （滚动部署窗口内在途消息没有这个字段，沿用入口起算）。
+   */
+  dispatchedAt?: string
 }
 
 const LOCALES: readonly string[] = ['zh', 'en', 'ja']
@@ -55,6 +63,10 @@ export function isPlanAgentQueueMessage(value: unknown): value is PlanAgentQueue
     (msg.message === null || typeof msg.message === 'string') &&
     typeof msg.resume === 'boolean' &&
     typeof msg.enqueuedAt === 'string' &&
-    msg.enqueuedAt.length > 0
+    msg.enqueuedAt.length > 0 &&
+    // dispatchedAt：缺省放行（在途旧消息）；存在则必须是可解析的时间戳
+    // （参与软截止计算，见类型注释）
+    (msg.dispatchedAt === undefined ||
+      (typeof msg.dispatchedAt === 'string' && Number.isFinite(Date.parse(msg.dispatchedAt))))
   )
 }

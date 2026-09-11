@@ -3,7 +3,7 @@ import type OpenAI from 'openai'
 import { MemoryTripPlanRepo } from '@/lib/tripPlan/repoMemory'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import type { PlanAgentEvent } from '@/lib/planAgent/loop'
-import { canResume, RESUME_NOTE } from '@/lib/planAgent/resume'
+import { canResume, inferInterrupted, RESUME_NOTE, type CurrentRunState } from '@/lib/planAgent/resume'
 import type { TripPlanMessage, TripPlanRunLogRecord } from '@/lib/tripPlan/repo'
 import type { PointFinder } from '@/lib/planAgent/points'
 
@@ -34,11 +34,16 @@ function message(kind: TripPlanMessage['kind'], content: unknown, at: Date = new
   }
 }
 
-function runLog(stage: string, turnIndex: number, at: Date = new Date()): TripPlanRunLogRecord {
+function runLog(
+  stage: string,
+  turnIndex: number,
+  at: Date = new Date(),
+  runToken: string | null = null,
+): TripPlanRunLogRecord {
   return {
     id: `log-${Math.random()}`,
     planId: 'p1',
-    runToken: null,
+    runToken,
     turnIndex,
     stage,
     enrichReport: null,
@@ -148,6 +153,59 @@ describe('canResume（第八轮 §0 / F2）', () => {
         [runLog('works', 1, t2)],
       ),
     ).toBe(false)
+  })
+})
+
+describe('P0-C：恢复推断识别"当前 run 身份"', () => {
+  const t0 = new Date('2026-09-10T02:00:00.000Z')
+  const t1 = new Date('2026-09-10T02:00:01.000Z')
+  const t2 = new Date('2026-09-10T02:00:02.000Z')
+  // 用户主动停止后的现场：human 之后模型已产出 tool_calls，stop 收尾写下
+  // token A 的 stopped 日志；此后手动 resume 又 begin 了 token B（不追加 human）
+  const toolCallsTail = [
+    message('human', { role: 'user', content: '安排一天' }, t0),
+    message('assistant', { role: 'assistant', content: null, tool_calls: TOOL_CALLS }, t1),
+  ]
+  const plainTail = [
+    message('human', { role: 'user', content: '安排一天' }, t0),
+    message('assistant', { role: 'assistant', content: '安排好了。' }, t1),
+  ]
+  const stoppedLogA = () => runLog('stopped', 1, t2, 'run-a')
+
+  it('F3：current.token 与 stopped 尾日志相同 → 仍是主动停笔（今天的行为）', () => {
+    const current: CurrentRunState = { token: 'run-a', startedAt: null, busyUntil: new Date(Date.now() - 1_000) }
+    expect(inferInterrupted(toolCallsTail, [stoppedLogA()], current)).toBeNull()
+    expect(canResume(toolCallsTail, [stoppedLogA()], current)).toBe(true)
+  })
+
+  it('F5/F6：current.token 不同 + 从未被领取（startedAt=null、busy 过期、无该 token 日志）→ reason=unclaimed', () => {
+    const busyUntil = new Date(Date.now() - 60_000)
+    const current: CurrentRunState = { token: 'run-b', startedAt: null, busyUntil }
+    const inferred = inferInterrupted(toolCallsTail, [stoppedLogA()], current)
+    expect(inferred).not.toBeNull()
+    expect(inferred!.reason).toBe('unclaimed')
+    // at = busyUntil（这次尝试事实上的死亡时刻）；turnIndex 沿用 (最后日志 turnIndex ?? 0)+1
+    expect(inferred!.at.getTime()).toBe(busyUntil.getTime())
+    expect(inferred!.turnIndex).toBe(2)
+    expect(canResume(toolCallsTail, [stoppedLogA()], current)).toBe(true)
+  })
+
+  it('F5：current.token 不同但已被领取（startedAt 非空）→ 走既有规则（回归快照：tool_calls 尾 → dangling；纯文本尾 → null）', () => {
+    const current: CurrentRunState = { token: 'run-b', startedAt: new Date(), busyUntil: new Date(Date.now() - 60_000) }
+    expect(inferInterrupted(toolCallsTail, [stoppedLogA()], current)).toMatchObject({ reason: 'dangling', turnIndex: 2 })
+    expect(inferInterrupted(plainTail, [stoppedLogA()], current)).toBeNull()
+  })
+
+  it('F5：unclaimed 但 busy TTL 未过 → 不报 unclaimed（不会被误报可恢复）', () => {
+    const current: CurrentRunState = { token: 'run-b', startedAt: null, busyUntil: new Date(Date.now() + 60_000) }
+    expect(inferInterrupted(plainTail, [stoppedLogA()], current)).toBeNull()
+  })
+
+  it('current 缺省 / 为 null（无当前 run）→ 与既有行为逐字相同（stopped 尾日志仍是主动停笔）', () => {
+    expect(inferInterrupted(toolCallsTail, [stoppedLogA()])).toBeNull()
+    expect(inferInterrupted(toolCallsTail, [stoppedLogA()], null)).toBeNull()
+    expect(inferInterrupted(toolCallsTail, [stoppedLogA()], undefined)).toBeNull()
+    expect(canResume(toolCallsTail, [stoppedLogA()])).toBe(true)
   })
 })
 

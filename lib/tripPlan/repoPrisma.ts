@@ -289,13 +289,14 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       if (used >= input.limit) return { status: 'quota_exceeded' }
       const now = new Date()
       const token = crypto.randomUUID()
-      // 条件更新原子抢占 busy 位：抢不到（未过期）说明该计划已有 agent 在跑
+      // 条件更新原子抢占 busy 位：抢不到（未过期）说明该计划已有 agent 在跑；
+      // 新 token 必然重置 startedAt（不变量 1：每个 token 的领取机会从零开始）
       const claimed = await tx.tripPlan.updateMany({
         where: {
           id: input.planId,
           OR: [{ agentBusyUntil: null }, { agentBusyUntil: { lt: now } }],
         },
-        data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs), agentRunToken: token },
+        data: { agentBusyUntil: new Date(now.getTime() + input.busyTtlMs), agentRunToken: token, agentRunStartedAt: null },
       })
       if (claimed.count === 0) return { status: 'busy' }
       // content=null（第八轮 resume 回合）：不追加 human 消息，历史原样
@@ -339,8 +340,8 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
   /**
    * CUT-1（2026-09-10）：renewAgentRun 的带返回版——单条 UPDATE ... WHERE
    * id AND agentRunToken ... RETURNING userId（P0-B 实测 WHERE 保得住
-   * token），内部路由用一个往返同时完成存在性检查、token 栅栏与归属用户
-   * 读取，省掉前置的整棵 getPlan。0 行命中统一返回 null。
+   * token）。P0-A（2026-09-11）：内部执行入口已改走 claimAgentRun（还要求
+   * 尚未启动），本方法保留但内部路由不再用它。
    */
   async renewAgentRunOwner(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
     const rows = await prisma.tripPlan.updateManyAndReturn({
@@ -349,6 +350,34 @@ export class PrismaTripPlanRepo implements TripPlanRepo {
       select: { userId: true },
     })
     return rows[0] ?? null
+  }
+
+  /**
+   * P0-A（2026-09-11）联合方案 v1 不变量 1：一次性执行领取。单条原子
+   * UPDATE ... WHERE id AND agentRunToken AND agentRunStartedAt IS NULL
+   * ... RETURNING userId——token 失效、已被停止/接管、或同 token 已被别的
+   * 执行者领取（Queue at-least-once 重投）都命中 0 行，返回 null。
+   */
+  async claimAgentRun(planId: string, token: string, ttlMs: number): Promise<{ userId: string } | null> {
+    const now = new Date()
+    const rows = await prisma.tripPlan.updateManyAndReturn({
+      where: { id: planId, agentRunToken: token, agentRunStartedAt: null },
+      data: { agentRunStartedAt: now, agentBusyUntil: new Date(now.getTime() + ttlMs) },
+      select: { userId: true },
+    })
+    return rows[0] ?? null
+  }
+
+  /** P0-A：服务端专用的租约状态读取（token 绝不进领域类型/view）；无 token 返回 null */
+  async getAgentRunState(
+    planId: string,
+  ): Promise<{ token: string; busyUntil: Date | null; startedAt: Date | null } | null> {
+    const row = await prisma.tripPlan.findUnique({
+      where: { id: planId },
+      select: { agentRunToken: true, agentBusyUntil: true, agentRunStartedAt: true },
+    })
+    if (!row || row.agentRunToken === null) return null
+    return { token: row.agentRunToken, busyUntil: row.agentBusyUntil, startedAt: row.agentRunStartedAt }
   }
 
   async stopAgentRun(planId: string): Promise<boolean> {

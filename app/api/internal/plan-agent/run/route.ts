@@ -41,8 +41,8 @@ function secretsMatch(a: string, b: string): boolean {
  * 队列消费者的内部执行入口（§0.1/0.2）：worker/planAgentConsumer 经
  * WORKER_SELF_REFERENCE 回调本路由，把规划 run 从浏览器连接里解耦出来。
  * - 密钥常量时间校验：未配置 → 503（部署配置错误必须可见），不匹配 → 401；
- * - stale token（已被接管/已结束/token 不符）→ { skipped: 'stale_token' }，
- *   不跑——避免同一回合跑两遍；
+ * - stale token（已被接管/已结束/token 不符/同 token 已被领取过）→
+ *   { skipped: 'stale_token' }，不跑——避免同一回合跑两遍；
  * - 响应为 text/plain 流：每 15 s 一行 heartbeat，run 结束写 done 关闭。
  */
 export async function POST(req: Request) {
@@ -103,13 +103,46 @@ export async function POST(req: Request) {
   )
 
   const deps = await getTripPlanApiDeps()
-  // 拿回持有权（POST 投递时写入的 token 仍有效才续）并顺带取回归属用户
-  // （CUT-1：单次往返替代原先的整棵 getPlan + renewAgentRun）。计划不存
-  // 在、被停止、被接管、已结束都会在这里命中 0 行——直接跳过，绝不重复
-  // 执行同一回合
-  const owner = await deps.repo.renewAgentRunOwner(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
+  // 一次性执行领取（P0-A）：token 匹配且尚未启动（agentRunStartedAt 为空）才
+  // 放行并原子写 startedAt。计划不存在、被停止、被接管、已结束、或同 token
+  // 已被别的消费者领取过（Queue at-least-once 重投）都会在这里命中 0 行——
+  // 直接跳过，绝不重复执行同一回合
+  const owner = await deps.repo.claimAgentRun(body.planId, body.runToken, AGENT_BUSY_TTL_MS)
   if (!owner) {
     return NextResponse.json({ skipped: 'stale_token' })
+  }
+
+  // P0-B（§4）：软截止从**派发时刻**（POST 的 dispatchedAt）起算；旧消息
+  // 缺字段沿用入口起算。queueMessage 校验器已保证 dispatchedAt 存在时必是
+  // 可解析时间戳
+  const deadlineAt = body.dispatchedAt
+    ? Date.parse(body.dispatchedAt) + SOFT_DEADLINE_MS
+    : Date.now() + SOFT_DEADLINE_MS
+
+  // P0-B：已在派发时刻就过期的消息（死信重放等）不烧模型——领取成功后
+  // 直接收尾：释放 busy、写 interrupted 运行日志、全额退回预扣
+  // （settleRun hadModelOutput:false = 退 reserve；管理员/无预扣时 no-op）
+  if (deadlineAt <= Date.now()) {
+    await deps.repo.endAgentRun(body.planId, body.runToken).catch(() => undefined)
+    try {
+      const logs = await deps.repo.listRunLogs(body.planId)
+      const turnIndex = (logs.at(-1)?.turnIndex ?? 0) + 1
+      await deps.repo.appendRunLog({
+        planId: body.planId,
+        runToken: body.runToken,
+        turnIndex,
+        stage: 'interrupted',
+        durationMs: 0,
+      })
+    } catch (err) {
+      console.warn('[api/internal/plan-agent/run] expired dispatch 写 interrupted 日志失败', err)
+    }
+    await getBillingService()
+      .settleRun({ runRef: body.runToken, actualMicros: 0, hadModelOutput: false })
+      .catch((err: unknown) => {
+        console.warn('[api/internal/plan-agent/run] expired dispatch 退款失败', err)
+      })
+    return NextResponse.json({ skipped: 'expired' })
   }
 
   // 计费（CUT-2）：队列消息带 POST 时刻的有效档位快照（已含 F2 降档，
@@ -168,7 +201,7 @@ export async function POST(req: Request) {
           signal: req.signal,
           onEvent: () => undefined,
           busyTtlMs: AGENT_BUSY_TTL_MS,
-          deadlineAt: Date.now() + SOFT_DEADLINE_MS,
+          deadlineAt,
           // CUT-7（2026-09-11 D 部分）：runLive 启动 flush 压缩后移，独立开关
           // 默认关，专门观察"刷新恢复"场景的窗口再置 1
           deferStartupRunLive: process.env.PLAN_AGENT_STARTUP_RUNLIVE_DEFER === '1',

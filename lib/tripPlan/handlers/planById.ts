@@ -20,8 +20,8 @@ export type PlanRunState = {
     toolCalls: unknown
     updatedAt: string
   } | null
-  /** agentBusy=false 时从持久化状态推断的「上一次 run 被打断」（F1 三条），供前端自动续跑 */
-  interrupted: { at: string; turnIndex: number; reason: 'run_log' | 'missing_run_log' | 'dangling' } | null
+  /** agentBusy=false 时从持久化状态推断的「上一次 run 被打断」（F1 三条 + P0-C unclaimed），供前端自动续跑 */
+  interrupted: { at: string; turnIndex: number; reason: 'unclaimed' | 'run_log' | 'missing_run_log' | 'dangling' } | null
   /** §0.6 done 事件用：agentBusy=false 时最新一条运行日志 stage==='stopped'（无日志为 false）——上一次 run 是用户主动停止 */
   stopped: boolean
 }
@@ -64,8 +64,12 @@ export async function readPlanRunState(
     const messages = preloaded?.messages ?? (await deps.repo.listMessages(planId))
     const runLogs = await deps.repo.listRunLogs(planId)
     const lastLog = runLogs.length ? runLogs[runLogs.length - 1]! : null
-    stopped = lastLog?.stage === 'stopped'
-    const inferred = inferInterrupted(messages, runLogs)
+    // P0-C：恢复推断带上"当前 run 身份"（getAgentRunState，多 1 次往返、只在
+    // 非 busy 时）——旧 token 的 stopped 尾日志不再遮蔽新尝试的中断推断；
+    // stopped 标志同规则：最新 stopped 日志不属于当前 token → false
+    const current = await deps.repo.getAgentRunState(planId)
+    stopped = lastLog !== null && lastLog.stage === 'stopped' && (!current || lastLog.runToken === current.token)
+    const inferred = inferInterrupted(messages, runLogs, current)
     if (inferred) {
       interrupted = {
         at: inferred.at.toISOString(),

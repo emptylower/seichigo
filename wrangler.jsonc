@@ -50,6 +50,10 @@
     // --var PLAN_AGENT_QUEUE_ENABLED=0 覆盖（队列消费者与自引用绑定只对已
     // 部署版本生效，预览跑不了消费者，路由会回落 SSE 内联路径）
     "PLAN_AGENT_QUEUE_ENABLED": "1",
+    // 2026-09-11 P0-B：新 run 启动暂停开关——置 "1" 拒绝新消息与 resume
+    // （迁移排空 / 明确过载），stop、GET、观察流不受影响。注意 vars 变更
+    // 需重新部署生效，不是即时控制面
+    "PLAN_AGENT_STARTS_PAUSED": "0",
     // 2026-09-06 Creem 订阅（设计 §6）；2026-09-08 填入生产模式 product id
     // （$9.90/月，recurring，tax_mode=exclusive——结账时按用户所在地另加税）。
     // 预览环境仍可用 --var 覆盖为测试模式（CREEM_API_BASE=

@@ -54,11 +54,34 @@ vi.mock('@/lib/anitabi/cf/bindings', () => ({
   getCfBindings: vi.fn((): null => null),
 }))
 
+// P0-B（2026-09-11）：预扣改走 admission——同步、幂等、先于任何派发。
+// holder 注入 Memory 版做真账本断言；缺省 permissive stub（不触 Prisma）
+vi.mock('@/lib/planAgent/runAdmission', () => {
+  const permissive = {
+    reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
+    revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
+  }
+  const holder: { current: unknown } = { current: null }
+  return {
+    getRunAdmission: () => holder.current ?? permissive,
+    __setRunAdmission: (next: unknown) => {
+      holder.current = next
+    },
+    __resetRunAdmission: () => {
+      holder.current = null
+    },
+  }
+})
+
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import { executePlanAgentRun } from '@/lib/planAgent/execute'
 import { getCfBindings } from '@/lib/anitabi/cf/bindings'
 import * as billingServerDeps from '@/lib/billing/serverDeps'
+import * as admissionModule from '@/lib/planAgent/runAdmission'
+import { createMemoryRunAdmission } from '@/lib/planAgent/runAdmissionMemory'
+import { MemoryUsageLedger } from '@/lib/billing/ledgerMemory'
+import { RESERVE_MICROS } from '@/lib/billing/priceTable'
 import { runCapMicros } from '@/lib/billing/budget'
 import { TIER_ENTITLEMENTS } from '@/lib/billing/tiers'
 import { isPlanAgentQueueMessage } from '@/lib/planAgent/queueMessage'
@@ -69,6 +92,10 @@ import { POST as POSTInternalRun } from '@/app/api/internal/plan-agent/run/route
 const { __setBillingService, __resetBillingService } = billingServerDeps as unknown as {
   __setBillingService: (next: unknown) => void
   __resetBillingService: () => void
+}
+const { __setRunAdmission, __resetRunAdmission } = admissionModule as unknown as {
+  __setRunAdmission: (next: unknown) => void
+  __resetRunAdmission: () => void
 }
 
 function makeDeps(repo: MemoryTripPlanRepo): TripPlanHandlerDeps {
@@ -93,14 +120,16 @@ describe('agent route 队列投递（Task A3）', () => {
     vi.mocked(getCfBindings).mockReset()
     vi.mocked(getCfBindings).mockReturnValue(null)
     __resetBillingService()
+    __resetRunAdmission()
   })
 
   afterEach(() => {
     vi.mocked(getCfBindings).mockReturnValue(null)
     vi.unstubAllEnvs()
+    __resetRunAdmission()
   })
 
-  it('有队列绑定 → 202 { queued, runToken }，send 收到完整消息体，human 已落库且 busy', async () => {
+  it('有队列绑定 → 202 { queued, runToken }，send 收到完整消息体（含 dispatchedAt），human 已落库且 busy', async () => {
     vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
@@ -123,6 +152,8 @@ describe('agent route 队列投递（Task A3）', () => {
       message: 'plan a trip',
       resume: false,
       enqueuedAt: expect.any(String),
+      // P0-B：成功预扣后、首次派发前取的派发时刻（软截止起算点）
+      dispatchedAt: expect.any(String),
       tier: 'standard',
     })
     // human 消息已落库、busy 为 true（run 交给队列消费者）
@@ -154,6 +185,7 @@ describe('agent route 队列投递（Task A3）', () => {
       message: null,
       resume: true,
       enqueuedAt: expect.any(String),
+      dispatchedAt: expect.any(String),
       tier: 'standard',
     })
     // resume 不追加 human 消息
@@ -500,7 +532,7 @@ describe('internal run route tier 透传（CUT-2）', () => {
   })
 })
 
-describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不阻塞 202）', () => {
+describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / P0-B 同步预扣）', () => {
   beforeEach(() => {
     vi.mocked(getTripPlanApiDeps).mockReset()
     vi.mocked(runPlanAgent).mockClear()
@@ -508,12 +540,14 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
     vi.mocked(getCfBindings).mockReset()
     vi.mocked(getCfBindings).mockReturnValue(null)
     __resetBillingService()
+    __resetRunAdmission()
   })
 
   afterEach(() => {
     vi.mocked(getCfBindings).mockReturnValue(null)
     vi.unstubAllEnvs()
     __resetBillingService()
+    __resetRunAdmission()
   })
 
   /** route 只透传 entitlements/runCapMicros、402 分支读 tier/periodEnd——最小形状即可 */
@@ -541,25 +575,27 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
     return { promise, resolve }
   }
 
-  it('有 CF context：清扫与预扣都经 waitUntil、不阻塞 202；预扣在 send 之后以 runToken 入账', async () => {
+  it('有 CF context：预扣同步先于 send、202 前账本已有 reserve；清扫经 waitUntil 不阻塞响应', async () => {
     vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
     const account = makeAccount()
+    const ledger = new MemoryUsageLedger()
+    __setRunAdmission(createMemoryRunAdmission({ repo, ledger }))
     const refund = deferred<void>()
     const refundStaleReserves = vi.fn(() => refund.promise)
-    const reserve = deferred<void>()
-    const reserveRun = vi.fn(() => reserve.promise)
+    const reserveRun = vi.fn(async () => ({ ok: true as const }))
     __setBillingService({
       refundStaleReserves,
       getAccount: vi.fn(async () => account),
       canStartRun: () => true,
       reserveRun,
     })
-    let reserveCallsWhenSendFinished = -1
-    const send = vi.fn(async () => {
-      reserveCallsWhenSendFinished = reserveRun.mock.calls.length
+    // 不变量 2：send 开跑那一刻，本 run 的 reserve 必须已经落账
+    let reserveAtSend: unknown = 'unset'
+    const send = vi.fn(async (msg: { runToken: string }) => {
+      reserveAtSend = await ledger.findOpenReserve(msg.runToken)
     })
     const waitUntil = vi.fn()
     vi.mocked(getCfBindings).mockReturnValue({
@@ -567,38 +603,38 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
       ctx: { waitUntil },
     } as ReturnType<typeof getCfBindings>)
 
-    // 两个 deferred 都 pending：202 仍立即返回（清扫与预扣都没阻塞响应）
+    // 清扫 deferred 仍 pending：202 照常立即返回（只有清扫挂 waitUntil）
     const res = await agentRequest(plan.id, { message: 'hi' })
     expect(res.status).toBe(202)
     const body = (await res.json()) as { runToken: string }
 
     expect(refundStaleReserves).toHaveBeenCalledWith('u1', expect.any(Date))
-    // 预扣发生在投递之后（send 完成时还没发起），且已以 runRef=runToken 发起
-    expect(reserveCallsWhenSendFinished).toBe(0)
-    expect(reserveRun).toHaveBeenCalledTimes(1)
-    expect(reserveRun).toHaveBeenCalledWith({ account, planId: plan.id, runRef: body.runToken, force: true })
-    // 清扫与预扣两个任务都交给了 waitUntil（响应后由 runtime 兜底执行）
-    expect(waitUntil).toHaveBeenCalledTimes(2)
+    // 预扣先于派发，且不再经 waitUntil（旧 reserveRun 异步入账已删除）
+    expect(reserveAtSend).not.toBeNull()
+    expect(reserveRun).not.toHaveBeenCalled()
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    // 202 返回时账本里已有本 run 的 reserve（金额 = RESERVE_MICROS[tier]）
+    const rows = await ledger.findByRunRef(body.runToken)
+    expect(rows.filter((r) => r.kind === 'reserve')).toHaveLength(1)
+    expect(rows[0]!.deltaMicros).toBe(-RESERVE_MICROS.free)
     refund.resolve()
-    reserve.resolve()
     await Promise.all(waitUntil.mock.calls.map((call) => call[0]))
   })
 
-  it('拿不到 CF context：清扫与预扣逐个回落同步 await——resolve 之前 POST 不返回（不静默丢弃）', async () => {
+  it('拿不到 CF context：清扫回落同步 await（不静默丢弃）；预扣照常先于 202 落账', async () => {
     vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
     const account = makeAccount()
+    const ledger = new MemoryUsageLedger()
+    __setRunAdmission(createMemoryRunAdmission({ repo, ledger }))
     const refund = deferred<void>()
     const refundStaleReserves = vi.fn(() => refund.promise)
-    const reserve = deferred<void>()
-    const reserveRun = vi.fn(() => reserve.promise)
     __setBillingService({
       refundStaleReserves,
       getAccount: vi.fn(async () => account),
       canStartRun: () => true,
-      reserveRun,
     })
     const send = vi.fn(async () => undefined)
     // 有队列绑定但没有 ctx.waitUntil（next dev / vitest 的典型形状）
@@ -616,16 +652,11 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
     await new Promise((r) => setTimeout(r, 10))
     expect(settled).toBe(false)
     refund.resolve()
-    // 预扣同样被同步 await
-    await vi.waitFor(() => expect(reserveRun).toHaveBeenCalled())
-    await new Promise((r) => setTimeout(r, 10))
-    expect(settled).toBe(false)
-    reserve.resolve()
 
     const res = await resPromise
     expect(res.status).toBe(202)
     const body = (await res.json()) as { runToken: string }
-    expect(reserveRun).toHaveBeenCalledWith({ account, planId: plan.id, runRef: body.runToken, force: true })
+    expect(await ledger.findOpenReserve(body.runToken)).not.toBeNull()
   })
 
   it('getPlan/getAccount 并行后拒绝优先级不变：getAccount 抛错时 404/403 仍按归属判定而非 500', async () => {
@@ -672,20 +703,20 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
     expect(reserveRun).not.toHaveBeenCalled()
   })
 
-  it('send 抛错回落内联 SSE：预扣仍同步发生（run 开烧前落账）、busy 照常释放', async () => {
+  it('send 抛错回落内联 SSE：预扣已在降级之前同步落账（run 开烧前已入账）、busy 照常释放', async () => {
     vi.stubEnv('PLAN_AGENT_QUEUE_ENABLED', '1')
     const repo = new MemoryTripPlanRepo()
     const plan = await repo.createPlan({ userId: 'u1', title: 't' })
     vi.mocked(getTripPlanApiDeps).mockResolvedValue(makeDeps(repo))
     const account = makeAccount()
-    const reserveRun = vi.fn(async () => ({ ok: true as const }))
+    const ledger = new MemoryUsageLedger()
+    __setRunAdmission(createMemoryRunAdmission({ repo, ledger }))
     __setBillingService({
       refundStaleReserves: vi.fn(async () => {}),
       getAccount: vi.fn(async () => account),
       canStartRun: () => true,
-      reserveRun,
     })
-    const send = vi.fn(async () => {
+    const send = vi.fn(async (_msg: { runToken: string }) => {
       throw new Error('queue unavailable')
     })
     vi.mocked(getCfBindings).mockReturnValue({
@@ -697,10 +728,10 @@ describe('A 部分：POST 关键路径瘦身（waitUntil / 并行读 / 预扣不
       const res = await agentRequest(plan.id, { message: 'hi' })
       expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
       await res.text() // 排空 SSE，让 stream.start() 与 finally 释放跑完
-      expect(reserveRun).toHaveBeenCalledTimes(1)
-      expect(reserveRun).toHaveBeenCalledWith(
-        expect.objectContaining({ planId: plan.id, runRef: expect.any(String), force: true }),
-      )
+      // 预扣发生在降级之前：send 载荷里的 runToken 已有一条 open reserve
+      const runToken = send.mock.calls[0]![0].runToken
+      expect(await ledger.findOpenReserve(runToken)).not.toBeNull()
+      expect((await ledger.findByRunRef(runToken)).filter((r) => r.kind === 'reserve')).toHaveLength(1)
       expect(await repo.isAgentBusy(plan.id)).toBe(false)
     } finally {
       warn.mockRestore()

@@ -36,6 +36,14 @@ vi.mock('@/lib/billing/serverDeps', async () => {
   return { getBillingService: () => billing }
 })
 
+// P0-B：预扣改走 admission（同步、先于派发）——permissive stub 即可
+vi.mock('@/lib/planAgent/runAdmission', () => ({
+  getRunAdmission: () => ({
+    reserveForDispatch: vi.fn(async () => ({ ok: true as const, idempotent: false })),
+    revokeExpiredUnclaimed: vi.fn(async () => ({ revoked: false, refunded: false })),
+  }),
+}))
+
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { runPlanAgent } from '@/lib/planAgent/loop'
 import { POST } from '@/app/api/me/plans/[id]/agent/route'
