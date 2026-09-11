@@ -106,8 +106,9 @@ export function PlanPlanner(props: {
     setInterrupted,
     setActiveThinking,
     onIdle: () => maybeAutoResume(),
-    // 刷新后发现服务端仍在跑：观察流接管进度，轮询只在观察流连不上时兜底
-    onRunInProgress: () => watch.open(),
+    // 刷新后发现服务端仍在跑：观察流接管进度，轮询只在观察流连不上时兜底；
+    // runStartedAt = 服务端已知的 run 起点，让「已用 Ns」接着真实起点走
+    onRunInProgress: ({ runStartedAt }) => watch.open({ runStartedAt }),
   })
 
   // §0.6 只读观察流：run 在队列里跑时的进度来源（done 事件负责收尾）

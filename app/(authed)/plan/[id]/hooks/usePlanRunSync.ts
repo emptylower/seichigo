@@ -46,8 +46,10 @@ export function usePlanRunSync(input: {
   /**
    * 挂载核对发现服务端仍在跑时的接管者（§0.6.3：改为打开只读观察流，
    * 轮询只作兜底）。未提供时退回原有的 3 秒恢复轮询。
+   * `runStartedAt`：核对那一刻服务端给出的 run 启动时刻（GET 的 `runStartedAt`，
+   * 源自 TripPlan.agentRunStartedAt），交给观察流当「已用 Ns」的锚点；取不到为 null。
    */
-  onRunInProgress?: () => void
+  onRunInProgress?: (info: { runStartedAt: number | null }) => void
 }): PlanRunSync {
   const ref = useRef(input)
   ref.current = input
@@ -62,6 +64,8 @@ export function usePlanRunSync(input: {
   // 跳过 chat/live 同步（plan 元数据幂等，照常更新）
   const localChatEpochRef = useRef(0)
   const pollingActiveRef = useRef(false)
+  // 最近一次核对/轮询反解出的 run 起点锚（服务端最后一条消息时刻），观察流接管时传给它
+  const lastRunStartRef = useRef<number | null>(null)
 
   async function refreshPlan() {
     const res = await fetch(`/api/me/plans/${planId}`)
@@ -82,6 +86,8 @@ export function usePlanRunSync(input: {
       chat?: ChatEntryView[]
       agentBusy?: boolean
       chatRevision?: number
+      /** §0 本 run 的启动时刻 ISO（busy 且已被领取时才有）：刷新恢复的「已用 Ns」锚点 */
+      runStartedAt?: string | null
       live?: PlanRunLive | null
       interrupted?: { at?: unknown; turnIndex?: unknown } | null
     }
@@ -95,6 +101,11 @@ export function usePlanRunSync(input: {
     }
     if (body.plan) ref.current.setPlan(body.plan)
     const agentBusy = body.agentBusy === true
+    // 刷新/跨页恢复时的计时锚点：本页没有在途回合，改用服务端记下的 run 启动
+    // 时刻（claimAgentRun 领取时原子写入，比点击晚约 1 s——见 planById 注释）
+    const parsedRunStart = typeof body.runStartedAt === 'string' ? Date.parse(body.runStartedAt) : NaN
+    const runStartedAt = Number.isFinite(parsedRunStart) ? parsedRunStart : null
+    lastRunStartRef.current = agentBusy ? runStartedAt : null
     const stale = epochAtStart !== localChatEpochRef.current
     if (!stale) {
       // §0：仅在「最后一条运行日志是中断且其后没有新 run」时下发该标记；新 run 开始后被覆盖为 null
@@ -111,7 +122,7 @@ export function usePlanRunSync(input: {
     if (agentBusy && !stale) {
       const live = body.live
       if (live && (typeof live.reasoning === 'string' || Array.isArray(live.toolCalls))) {
-        ref.current.setActiveThinking((prev) => liveToThinkingTurn(live, prev))
+        ref.current.setActiveThinking((prev) => liveToThinkingTurn(live, prev, runStartedAt))
       } else {
         ref.current.setActiveThinking(null)
       }
@@ -171,7 +182,7 @@ export function usePlanRunSync(input: {
         if (takeOver) {
           ref.current.setSyncBanner('in-progress')
           ref.current.setBusy(true)
-          takeOver()
+          takeOver({ runStartedAt: lastRunStartRef.current })
         } else {
           enterRunRecovery('in-progress')
         }
