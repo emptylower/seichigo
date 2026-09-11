@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { ThinkingChain, type ThinkingTurn } from '@/app/(authed)/plan/[id]/components/ThinkingChain'
+import { liveToThinkingTurn } from '@/app/(authed)/plan/[id]/lib/chatState'
 
 function turn(over: Partial<ThinkingTurn> = {}): ThinkingTurn {
   // reasoning 置空：避开打字机 rAF，专注 pill 上的「已用」计时
@@ -105,5 +106,59 @@ describe('ThinkingChain active pill「已用 Ns」锚定在本轮 run 起点', (
       />,
     )
     expect(elapsedText()).toContain('已用 4s')
+  })
+})
+
+/** 刷新恢复时观察流/轮询推来的实况快照（本页没有在途回合，prev 为空） */
+const LIVE_SNAPSHOT = { reasoning: '', statusText: '正在组织思路', toolCalls: [] }
+
+describe('刷新恢复：「已用 Ns」锚定在服务端的 run 启动时刻', () => {
+  it('run 已跑 6 秒时刷新：首帧 live 快照直接显示 ≈6s，而不是从 0 重来', () => {
+    // GET /api/me/plans/:id 的 runStartedAt（TripPlan.agentRunStartedAt）解析后的毫秒
+    const runStartedAt = Date.now() - 6_000
+    const recovered = liveToThinkingTurn(LIVE_SNAPSHOT, null, runStartedAt)
+    expect(recovered.startedAt).toBe(runStartedAt)
+
+    render(<ThinkingChain thinking={recovered} active expanded={false} onToggle={() => {}} />)
+    expect(elapsedText()).toContain('已用 6s')
+
+    act(() => void vi.advanceTimersByTime(1000))
+    expect(elapsedText()).toContain('已用 7s')
+  })
+
+  it('服务端没给锚点（未 busy / run 尚未被领取 / 解析失败）：退回本地此刻', () => {
+    const now = Date.now()
+    expect(liveToThinkingTurn(LIVE_SNAPSHOT, null, null).startedAt).toBe(now)
+    expect(liveToThinkingTurn(LIVE_SNAPSHOT, null, undefined).startedAt).toBe(now)
+    expect(liveToThinkingTurn(LIVE_SNAPSHOT, null, Number.NaN).startedAt).toBe(now)
+
+    render(<ThinkingChain thinking={liveToThinkingTurn(LIVE_SNAPSHOT, null, null)} active expanded={false} onToggle={() => {}} />)
+    expect(elapsedText()).toContain('已用 0s')
+  })
+
+  it('服务端时刻超前本地（时钟偏斜）：钳到 0 而不是负数', () => {
+    const recovered = liveToThinkingTurn(LIVE_SNAPSHOT, null, Date.now() + 30_000)
+    expect(recovered.startedAt).toBe(Date.now())
+
+    render(<ThinkingChain thinking={recovered} active expanded={false} onToggle={() => {}} />)
+    expect(elapsedText()).toContain('已用 0s')
+
+    act(() => void vi.advanceTimersByTime(2000))
+    expect(elapsedText()).toContain('已用 2s')
+  })
+
+  it('本页发起的新回合不受影响：仍以点击时刻（prev.startedAt）为准', () => {
+    const clickedAt = Date.now()
+    act(() => void vi.advanceTimersByTime(1200))
+    // 本页已有在途回合（prev 非空）：即便传了服务端锚点也不改写，计时连续
+    const next = liveToThinkingTurn(
+      LIVE_SNAPSHOT,
+      { reasoning: '', statusPhrase: null, toolCalls: [], startedAt: clickedAt },
+      Date.now() - 90_000,
+    )
+    expect(next.startedAt).toBe(clickedAt)
+
+    render(<ThinkingChain thinking={next} active expanded={false} onToggle={() => {}} />)
+    expect(elapsedText()).toContain('已用 1s')
   })
 })

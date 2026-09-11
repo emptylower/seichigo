@@ -24,8 +24,10 @@ export type AgentWatchStream = {
    * 队列化 run 已投递（202）或刷新后发现服务端仍在跑：开始观察。
    * `awaitStart: true` 时本次 open 的第一次连接带 `await=1`（run 未启动时服务端
    * 宽限等待，供与 POST 并行开流）；收到 seq>0 帧或 done 后失效，重连不再带。
+   * `runStartedAt`：刷新恢复时服务端已知的 run 起点，作首帧 live 快照的「已用」
+   * 计时锚点（本页发起的新回合不传，仍以点击时刻起算）。
    */
-  open: (opts?: { awaitStart?: boolean }) => void
+  open: (opts?: { awaitStart?: boolean; runStartedAt?: number | null }) => void
   /** 主动停止观察（done 收尾、卸载、退回轮询） */
   close: () => void
   /** 观察流模式中（open() 到 done/close 之间）——ui.tsx 用它判断该不该清 busy */
@@ -70,6 +72,8 @@ export function useAgentWatchStream(input: {
   const failuresRef = useRef(0)
   // 观察流推来的最后一帧实况：done.stopped 时用它定格「已停止」的思维链
   const lastLiveTurnRef = useRef<ThinkingTurn | null>(null)
+  // 本次 open 的 run 起点锚（刷新恢复时由 usePlanRunSync 传入）：只用于首帧 live 快照
+  const runStartedAtRef = useRef<number | null>(null)
   // 本次连接以 done.reason='rotate' 结束：run 仍在跑，只换连接（不计入退避）
   const rotateRef = useRef(false)
   // 本次 open 尚未确认 run 启动：连接 URL 带 await=1 让服务端宽限等待；收到
@@ -106,7 +110,7 @@ export function useAgentWatchStream(input: {
       case 'live': {
         // 快照重建进行中的思维链（与恢复轮询同一个映射，跨事件不重排工具行）；
         // 自己留一份，done.stopped 时要拿它定格
-        const turn = liveToThinkingTurn(event, lastLiveTurnRef.current)
+        const turn = liveToThinkingTurn(event, lastLiveTurnRef.current, runStartedAtRef.current)
         lastLiveTurnRef.current = turn
         ref.current.setActiveThinking(turn)
         break
@@ -227,10 +231,11 @@ export function useAgentWatchStream(input: {
     scheduleReconnect()
   }
 
-  function open(opts?: { awaitStart?: boolean }) {
+  function open(opts?: { awaitStart?: boolean; runStartedAt?: number | null }) {
     if (runningRef.current) return
     runningRef.current = true
     awaitPendingRef.current = opts?.awaitStart === true
+    runStartedAtRef.current = opts?.runStartedAt ?? null
     failuresRef.current = 0
     lastSeqRef.current = 0
     lastLiveTurnRef.current = null

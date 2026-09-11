@@ -68,8 +68,17 @@ export function autoResumeStorageKey(planId: string): string {
   return `planAutoResume:${planId}`
 }
 
-/** 把恢复轮询拿到的 live 快照映射成与流式一致的 ThinkingTurn（id 按序稳定，跨轮询不重排） */
-export function liveToThinkingTurn(live: PlanRunLive, prev: ThinkingTurn | null): ThinkingTurn {
+/**
+ * 把恢复轮询拿到的 live 快照映射成与流式一致的 ThinkingTurn（id 按序稳定，跨轮询不重排）。
+ * `runStartedAt`：本页没有在途回合（prev 为空）时的计时锚点，传服务端已知的 run 启动
+ * 时刻（GET 的 `runStartedAt`，源自 TripPlan.agentRunStartedAt）——刷新后「已用 Ns」
+ * 才能接着真实起点走而不是从 0 重来。
+ */
+export function liveToThinkingTurn(
+  live: PlanRunLive,
+  prev: ThinkingTurn | null,
+  runStartedAt?: number | null,
+): ThinkingTurn {
   const toolCalls: ToolCallEntry[] = (Array.isArray(live.toolCalls) ? live.toolCalls : []).map((call, index) => ({
     id: `live-${index}-${call.name ?? 'tool'}`,
     name: call.name ?? 'tool',
@@ -80,8 +89,18 @@ export function liveToThinkingTurn(live: PlanRunLive, prev: ThinkingTurn | null)
     reasoning: typeof live.reasoning === 'string' ? live.reasoning : '',
     statusPhrase: typeof live.statusText === 'string' && live.statusText ? live.statusText : null,
     toolCalls,
-    startedAt: prev?.startedAt ?? Date.now(),
+    startedAt: prev?.startedAt ?? anchorStartedAt(runStartedAt),
   }
+}
+
+/**
+ * 计时锚点：有服务端起点就用它，否则以本地此刻为准。
+ * 时钟偏斜（服务端时刻晚于本地）时钳到此刻，已用秒数为 0 而不是负数。
+ */
+function anchorStartedAt(runStartedAt: number | null | undefined): number {
+  const now = Date.now()
+  if (typeof runStartedAt !== 'number' || !Number.isFinite(runStartedAt) || runStartedAt <= 0) return now
+  return Math.min(runStartedAt, now)
 }
 
 function sameChatEntry(local: ChatEntry, server: ChatEntryView): boolean {

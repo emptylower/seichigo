@@ -96,6 +96,29 @@ describe('planById GET live / chatRevision', () => {
     expect(body.live).toBeUndefined()
   })
 
+  it('runStartedAt = 本 run 被领取的时刻（agentRunStartedAt）；未领取/已结束时为 null', async () => {
+    const deps = makeDeps()
+    const plan = await deps.repo.createPlan({ userId: 'u1', title: 't' })
+    const handlers = createPlanByIdHandlers(deps)
+    const begin = await beginRun(deps.repo, plan.id)
+
+    // 已投递但消费者尚未 claim：还没有启动时刻，前端退回本地此刻
+    const queued = (await (await handlers.GET(plan.id)).json()) as { agentBusy: boolean; runStartedAt: string | null }
+    expect(queued.agentBusy).toBe(true)
+    expect(queued.runStartedAt).toBeNull()
+
+    const claimedAt = Date.now()
+    await deps.repo.claimAgentRun(plan.id, begin.token, 10 * 60 * 1000)
+    const running = (await (await handlers.GET(plan.id)).json()) as { runStartedAt: string | null }
+    expect(typeof running.runStartedAt).toBe('string')
+    expect(Math.abs(Date.parse(running.runStartedAt!) - claimedAt)).toBeLessThan(5_000)
+
+    await deps.repo.endAgentRun(plan.id, begin.token)
+    const after = (await (await handlers.GET(plan.id)).json()) as { agentBusy: boolean; runStartedAt: string | null }
+    expect(after.agentBusy).toBe(false)
+    expect(after.runStartedAt).toBeNull()
+  })
+
   it('chatRevision = 最后一条消息的 createdAt 毫秒，随新消息变化；空对话为 0', async () => {
     const deps = makeDeps()
     const plan = await deps.repo.createPlan({ userId: 'u1', title: 't' })

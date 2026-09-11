@@ -20,6 +20,13 @@ export type PlanRunState = {
     toolCalls: unknown
     updatedAt: string
   } | null
+  /**
+   * busy 且 token 仍是当前持有者时，本 run 的启动时刻 ISO（TripPlan.agentRunStartedAt，
+   * claimAgentRun 领取时原子写入）；否则 null。前端刷新恢复后拿它当「已用 Ns」的
+   * 计时锚点——它是「消费者领取」的时刻（用户点击后约 1–1.5 s），秒数会比点击
+   * 起算略小 ~1 s，可接受，远好过每次刷新都从 0 重来。
+   */
+  runStartedAt: string | null
   /** agentBusy=false 时从持久化状态推断的「上一次 run 被打断」（F1 三条 + P0-C unclaimed），供前端自动续跑 */
   interrupted: { at: string; turnIndex: number; reason: 'unclaimed' | 'run_log' | 'missing_run_log' | 'dangling' } | null
   /** §0.6 done 事件用：agentBusy=false 时最新一条运行日志 stage==='stopped'（无日志为 false）——上一次 run 是用户主动停止 */
@@ -43,7 +50,11 @@ export async function readPlanRunState(
   // 第七轮 A1：busy 时附带运行实况；行上的 runToken 必须仍是当前持有者
   // （过期 run 的残留行不算数），否则视为没有实况。L5：runToken 只用于
   // 服务端匹配，不再回传——前端不依赖它
+  // P0-A 的 run 身份（token + 领取时刻）：busy 分支拿 startedAt 当前端「已用」的
+  // 计时锚点，非 busy 分支拿它做恢复推断——整个调用只读一次
+  const current = await deps.repo.getAgentRunState(planId)
   let live: PlanRunState['live'] = null
+  let runStartedAt: string | null = null
   if (agentBusy) {
     const row = await deps.repo.getRunLive(planId)
     if (row && row.runToken === plan.agentRunToken) {
@@ -53,6 +64,11 @@ export async function readPlanRunState(
         toolCalls: Array.isArray(row.toolCalls) ? row.toolCalls : [],
         updatedAt: row.updatedAt.toISOString(),
       }
+    }
+    // 与 live 同一条口径：token 必须仍是当前持有者，过期 run 的残留不算数；
+    // 尚未被消费者领取（agentRunStartedAt 为空）时保持 null，前端退回本地时刻
+    if (current && current.token === plan.agentRunToken && current.startedAt) {
+      runStartedAt = current.startedAt.toISOString()
     }
   }
   // 第八轮 §0/A2 + F1：上一次 run 是否被打断——从持久化状态推断（共享
@@ -64,10 +80,9 @@ export async function readPlanRunState(
     const messages = preloaded?.messages ?? (await deps.repo.listMessages(planId))
     const runLogs = await deps.repo.listRunLogs(planId)
     const lastLog = runLogs.length ? runLogs[runLogs.length - 1]! : null
-    // P0-C：恢复推断带上"当前 run 身份"（getAgentRunState，多 1 次往返、只在
-    // 非 busy 时）——旧 token 的 stopped 尾日志不再遮蔽新尝试的中断推断；
-    // stopped 标志同规则：最新 stopped 日志不属于当前 token → false
-    const current = await deps.repo.getAgentRunState(planId)
+    // P0-C：恢复推断带上"当前 run 身份"（上面已取的 getAgentRunState）——旧
+    // token 的 stopped 尾日志不再遮蔽新尝试的中断推断；stopped 标志同规则：
+    // 最新 stopped 日志不属于当前 token → false
     stopped = lastLog !== null && lastLog.stage === 'stopped' && (!current || lastLog.runToken === current.token)
     const inferred = inferInterrupted(messages, runLogs, current)
     if (inferred) {
@@ -78,7 +93,7 @@ export async function readPlanRunState(
       }
     }
   }
-  return { agentBusy, live, interrupted, stopped }
+  return { agentBusy, live, runStartedAt, interrupted, stopped }
 }
 
 export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
@@ -137,6 +152,8 @@ export function createPlanByIdHandlers(deps: TripPlanHandlerDeps) {
         agentBusy: runState?.agentBusy ?? false,
         chatRevision,
         interrupted: runState?.interrupted ?? null,
+        // 刷新恢复时的「已用 Ns」计时锚点（非 busy / 未领取时为 null）
+        runStartedAt: runState?.runStartedAt ?? null,
         ...(runState?.live ? { live: runState.live } : {}),
       })
     },
