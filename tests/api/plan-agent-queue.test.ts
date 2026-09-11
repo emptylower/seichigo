@@ -141,7 +141,13 @@ describe('agent route 队列投递（Task A3）', () => {
 
     const res = await agentRequest(plan.id, { message: 'plan a trip' })
     expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ queued: true, runToken: expect.any(String) })
+    expect(await res.json()).toEqual({
+      queued: true,
+      runToken: expect.any(String),
+      // P1-A：dispatchRun 三分类结果随 202 返回（transport 集中决策）
+      dispatchState: 'accepted',
+      transport: 'queue',
+    })
 
     expect(send).toHaveBeenCalledTimes(1)
     expect(send).toHaveBeenCalledWith({
@@ -155,6 +161,8 @@ describe('agent route 队列投递（Task A3）', () => {
       // P0-B：成功预扣后、首次派发前取的派发时刻（软截止起算点）
       dispatchedAt: expect.any(String),
       tier: 'standard',
+      // P1-A：队列消息带信道标记
+      transport: 'queue',
     })
     // human 消息已落库、busy 为 true（run 交给队列消费者）
     expect((await repo.listMessages(plan.id)).map((m) => m.kind)).toEqual(['human'])
@@ -187,6 +195,7 @@ describe('agent route 队列投递（Task A3）', () => {
       enqueuedAt: expect.any(String),
       dispatchedAt: expect.any(String),
       tier: 'standard',
+      transport: 'queue',
     })
     // resume 不追加 human 消息
     expect((await repo.listMessages(plan.id))).toHaveLength(1)

@@ -26,6 +26,8 @@
  */
 
 export type RunTimings = {
+  /** 派发信道（P1-A 埋点）：queue / do / inline；随 modelUsage.timings 落库 */
+  transport?: 'queue' | 'do' | 'inline'
   /** 队列消息的入队时刻（ISO）；SSE 内联路径没有 */
   enqueuedAt?: string
   /** 消费入口时刻（ISO）：内部路由在入口记录，SSE 路径由 executePlanAgentRun 记 */
@@ -62,6 +64,8 @@ export type RunTimings = {
 
 /** 收集器种子：时刻由上游（内部路由 / executePlanAgentRun）记录后注入 */
 export type RunTimingSeed = {
+  /** 派发信道标记（P1-A）：内部路由读 x-plan-agent-transport 头注入；内联路径 'inline'；缺省省略 */
+  transport?: 'queue' | 'do' | 'inline'
   enqueuedAt?: string
   consumerEnteredAt: string
   /** 消费者戳（fetch 前时刻 + invocation 序号）：内部路由解析请求头后注入；缺省整体省略 */
@@ -171,6 +175,7 @@ export function createRunTimingCollector(
         loopStartedAt: toIso(loopStartedMs),
         loopStartMs: loopStartedMs - consumerEnteredMs,
       }
+      if (seed.transport) timings.transport = seed.transport
       if (seed.enqueuedAt) timings.enqueuedAt = seed.enqueuedAt
       const queueLatencyMs = queueLatencyMsOf(seed.enqueuedAt, consumerEnteredMs)
       if (queueLatencyMs !== undefined) timings.queueLatencyMs = queueLatencyMs

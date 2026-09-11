@@ -66,6 +66,16 @@ export type CfBindingsEnv = {
    */
   PLAN_AGENT_QUEUE?: { send(body: unknown): Promise<void> }
   /**
+   * 2026-09-11 P1-A：per-run 派发器 DO（DurableObjectNamespace 的结构子集，
+   * 对齐 worker-configuration.d.ts——lib 代码不直接引用全局生成类型，同上）。
+   * PLAN_AGENT_DISPATCH='do' 且 userId 在 PLAN_AGENT_DO_CANARY_USER_IDS 白名单
+   * 时，POST 路由改投 DO alarm 派发（lib/planAgent/dispatch.ts）。
+   */
+  PLAN_RUN_DISPATCHER?: {
+    idFromName(name: string): unknown
+    get(id: unknown): { fetch(input: string, init?: RequestInit): Promise<Response> }
+  }
+  /**
    * 2026-09-10 Hyperdrive：边缘连接池到 Neon（配置侧已禁查询缓存，保
    * run-token 栅栏/计费/session 读最新值）。结构子集对齐
    * worker-configuration.d.ts 的 Hyperdrive——lib 代码只用 connectionString，
