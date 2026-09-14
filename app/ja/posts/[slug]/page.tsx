@@ -8,6 +8,7 @@ import { buildPostFallbackTitle } from '@/lib/seo/titleBuilder'
 import { buildFAQPageJsonLd } from '@/lib/seo/faqJsonLd'
 import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { t } from '@/lib/i18n'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import PostMeta from '@/components/blog/PostMeta'
 import CommentSection from '@/components/comments/CommentSection'
@@ -287,7 +288,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
   const primaryAnime = anime[0] || null
   const breadcrumbItemsForJsonLd = [
     { name: 'ホーム', url: `${siteOrigin}/ja` },
-    { name: 'アニメ', url: `${siteOrigin}/ja/anime` },
+    { name: t('footer.anime', 'ja'), url: `${siteOrigin}/ja/anime` },
     ...(primaryAnime ? [{ name: primaryAnime.label, url: `${siteOrigin}/ja/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, url: canonicalUrl },
   ]
@@ -295,7 +296,7 @@ export default async function PostJaPage({ params }: { params: Promise<{ slug: s
 
   const breadcrumbItems = [
     { name: 'ホーム', href: '/ja' },
-    { name: 'アニメ', href: '/ja/anime' },
+    { name: t('footer.anime', 'ja'), href: '/ja/anime' },
     ...(primaryAnime ? [{ name: primaryAnime.label, href: `/ja/anime/${encodeAnimeIdForPath(primaryAnime.id)}` }] : []),
     { name: seoTitle, href: `/ja/posts/${encodeSlugForPath(canonicalSlug)}` },
   ]

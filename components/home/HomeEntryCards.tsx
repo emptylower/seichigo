@@ -13,7 +13,7 @@ function formatStat(count: number, label: string, locale: SiteLocale): string {
 }
 
 /**
- * 三个入口：AI 规划（主）、地图探索、巡礼攻略。数字来自库里的真实计数
+ * 三个入口：AI 规划（主）、巡礼地图、巡礼攻略。数字来自库里的真实计数
  * （A 部分 getHomeStats）；stats 缺失时只隐藏数字，入口本身照常可用。
  *
  * 第十三轮起它不再自成一段，而是由 `HomeHero` 渲染在首屏底部当收尾行，

@@ -30,11 +30,13 @@ export default function Footer({ locale = 'zh' }: Props) {
     {
       title: t('footer.product', locale),
       links: [
+        { label: t('footer.map', locale), href: '/map' },
         { label: t('footer.posts', locale), href: '/posts' },
-        { label: t('footer.anime', locale), href: '/anime' },
+        { label: t('footer.plan', locale), href: '/plan/start' },
         { label: t('footer.city', locale), href: '/city' },
-        { label: t('footer.resources', locale), href: '/resources' },
         { label: t('footer.pricing', locale), href: '/pricing' },
+        { label: t('footer.anime', locale), href: '/anime' },
+        { label: t('footer.resources', locale), href: '/resources' },
       ],
     },
     {

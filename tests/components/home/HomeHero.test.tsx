@@ -187,8 +187,8 @@ describe('HomeHero', () => {
 
   it('传入 stats 时首屏底部收尾出现三个入口链接', () => {
     renderHero('zh')
-    expect(screen.getByRole('link', { name: /AI 行程规划/ })).toHaveAttribute('href', '/plan/start')
-    expect(screen.getByRole('link', { name: /地图探索/ })).toHaveAttribute('href', '/map')
+    expect(screen.getByRole('link', { name: /AI 规划/ })).toHaveAttribute('href', '/plan/start')
+    expect(screen.getByRole('link', { name: /巡礼地图/ })).toHaveAttribute('href', '/map')
     expect(screen.getByRole('link', { name: /巡礼攻略/ })).toHaveAttribute('href', '/posts')
     expect(screen.getByText('128,456 个巡礼点位')).toBeInTheDocument()
   })

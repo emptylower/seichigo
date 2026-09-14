@@ -77,9 +77,9 @@ export default function HeaderMobileDrawer({ locale, labels }: Props) {
 
   const navItems = useMemo(
     () => [
-      { href: prefixPath('/plan', locale), label: t('header.plan', locale), icon: CalendarRange },
       { href: prefixPath('/map', locale), label: t('header.map', locale), icon: MapPinned },
       { href: prefixPath('/posts', locale), label: t('header.posts', locale), icon: Home },
+      { href: prefixPath('/plan/start', locale), label: t('header.plan', locale), icon: CalendarRange },
       { href: prefixPath('/city', locale), label: t('header.city', locale), icon: BookOpen },
       { href: prefixPath('/pricing', locale), label: t('header.pricing', locale), icon: Sparkles },
     ],

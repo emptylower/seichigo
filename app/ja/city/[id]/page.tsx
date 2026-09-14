@@ -9,6 +9,7 @@ import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { t } from '@/lib/i18n'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -143,7 +144,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
 
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: 'ホーム', url: `${siteOrigin}/ja` },
-    { name: '都市', url: `${siteOrigin}/ja/city` },
+    { name: t('header.city', 'ja'), url: `${siteOrigin}/ja/city` },
     { name: city.name_ja || city.name_en || city.name_zh, url: canonicalUrl },
   ])
 
@@ -169,7 +170,7 @@ export default async function CityJaPage({ params }: { params: Promise<{ id: str
         <Breadcrumbs
           items={[
             { name: 'ホーム', href: '/ja' },
-            { name: '都市', href: '/ja/city' },
+            { name: t('header.city', 'ja'), href: '/ja/city' },
             { name: city.name_ja || city.name_en || city.name_zh, href: `/ja/city/${encodeURIComponent(city.slug)}` },
           ]}
         />

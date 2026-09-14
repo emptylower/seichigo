@@ -9,6 +9,7 @@ import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { t } from '@/lib/i18n'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -146,7 +147,7 @@ export default async function CityEnPage({ params }: { params: Promise<{ id: str
 
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: 'Home', url: `${siteOrigin}/en` },
-    { name: 'Cities', url: `${siteOrigin}/en/city` },
+    { name: t('header.city', 'en'), url: `${siteOrigin}/en/city` },
     { name: city.name_en || city.name_zh, url: canonicalUrl },
   ])
 
@@ -172,7 +173,7 @@ export default async function CityEnPage({ params }: { params: Promise<{ id: str
         <Breadcrumbs
           items={[
             { name: 'Home', href: '/en' },
-            { name: 'Cities', href: '/en/city' },
+            { name: t('header.city', 'en'), href: '/en/city' },
             { name: city.name_en || city.name_zh, href: `/en/city/${encodeURIComponent(city.slug)}` },
           ]}
         />
