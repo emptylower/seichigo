@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Home, Menu } from 'lucide-react'
+import { Home } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { createSseFrameReader } from '@/lib/sseFrames'
 import { notifyUsageChanged, useUsage } from '@/hooks/useUsage'
+import { PlanShell } from '@/components/plan/PlanShell'
 import { planTextFor } from './lib/planText'
 import type { ChatEntryView, TripPlanView } from '@/lib/tripPlan/view'
 import { parseDaymapPayload } from '@/lib/tripPlan/view'
@@ -13,7 +14,7 @@ import type { AskUserPayload } from '@/lib/planAgent/askUser'
 import type { AskAnswer } from './components/AskCard'
 import { ChatPane } from './components/ChatPane'
 import { PlanComposer } from './components/PlanComposer'
-import { PLANS_CHANGED_EVENT, PlanSidebar, type PlanSidebarPlan } from './components/PlanSidebar'
+import { PLANS_CHANGED_EVENT, type PlanSidebarPlan } from './components/PlanSidebar'
 import {
   applyThinkingEvent,
   hasThinkingContent,
@@ -53,8 +54,6 @@ export function PlanPlanner(props: {
   const [chat, setChat] = useState<ChatEntry[]>(props.initialChat)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  // 移动端会话列表抽屉（桌面常驻侧栏不涉及）
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   // 断线恢复/跨标签页恢复：reconnecting=本页读流中断；in-progress=挂载时发现服务端仍在跑
   const [syncBanner, setSyncBanner] = useState<'reconnecting' | 'in-progress' | null>(null)
   // 断线续跑：服务端标记上一次 run 被打断；轮询/挂载核对读取后经 maybeAutoResume 消费
@@ -424,92 +423,77 @@ export function PlanPlanner(props: {
   }
 
   return (
-    <div data-layout-wide="true" data-layout-immersive="true" className="flex h-dvh">
-      {/* 左侧会话列表：桌面常驻侧栏，移动端标题行菜单按钮开抽屉 */}
-      <PlanSidebar
-        plans={props.plans}
-        currentPlanId={props.planId}
-        mobileOpen={mobileNavOpen}
-        onCloseMobile={() => setMobileNavOpen(false)}
-        usage={usage}
-        locale={locale}
-      />
-
-      {/* 对话列：标题行（sticky top）+ 消息流 + 悬浮输入胶囊（sticky bottom）
-          共用一个滚动容器；保留 data-layout-wide/-immersive 隐藏站点 header/footer */}
-      <div ref={scrollRef} onScroll={handleScroll} className="relative min-w-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full flex-col">
-          {/* 标题行：白底 + 底边框（沉浸布局下不再是透明毛玻璃） */}
-          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white">
-            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-3">
-              <button
-                type="button"
-                aria-label={tx('sidebar.openList')}
-                onClick={() => setMobileNavOpen(true)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-600 transition hover:bg-pink-50 hover:text-brand-600 lg:hidden"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-              <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">{plan.title}</h1>
-              <Link
-                href="/"
-                aria-label={tx('common.backHome')}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-pink-50 hover:text-brand-600"
-              >
-                <Home className="h-4 w-4" />
-              </Link>
+    <PlanShell plans={props.plans} currentPlanId={props.planId} usage={usage} locale={locale}>
+      {({ mobileMenuButton }) => (
+        // 对话列：标题行（sticky top）+ 消息流 + 悬浮输入胶囊（sticky bottom）
+        // 共用一个滚动容器；外壳（PlanShell）带 data-layout-wide/-immersive 隐藏站点 header/footer
+        <div ref={scrollRef} onScroll={handleScroll} className="relative min-w-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-full flex-col">
+            {/* 标题行：白底 + 底边框（沉浸布局下不再是透明毛玻璃） */}
+            <div className="sticky top-0 z-10 border-b border-gray-100 bg-white">
+              <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-3">
+                {mobileMenuButton}
+                <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">{plan.title}</h1>
+                <Link
+                  href="/"
+                  aria-label={tx('common.backHome')}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-pink-50 hover:text-brand-600"
+                >
+                  <Home className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
+
+            <ChatPane
+              planId={props.planId}
+              chat={chat}
+              days={plan.days}
+              busy={busy}
+              syncBanner={syncBanner}
+              stopped={agentStop.stopped}
+              onResumeAfterStop={() => {
+                agentStop.clearStopped()
+                void postResume()
+              }}
+              resumeBanner={resumeBanner}
+              onResume={() => void postResume()}
+              expandedThinking={expandedThinking}
+              onToggleHistoryThinking={(key) => setExpandedThinking((cur) => (cur === key ? null : key))}
+              activeThinking={activeThinking}
+              activeExpanded={activeAutoExpanded}
+              onToggleActiveThinking={() => setActiveCollapsed(activeAutoExpanded)}
+              interrupted={interrupted != null}
+              modelNotice={modelNotice}
+              watchConnState={watchConnState}
+              onComposeDraft={composeDraft}
+              onAnswerAsk={(ask, answer: AskAnswer) =>
+                void postAndStream({ message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue })
+              }
+              onRetry={(retry) => {
+                // 续跑轮的重试不带 message，走同一个 resume 入口
+                if ('resume' in retry) void postResume()
+                else void postAndStream(retry)
+              }}
+              chatEndRef={chatEndRef}
+              tierHints={usage?.hints ?? null}
+              locale={locale}
+            />
+
+            <PlanComposer
+              value={input}
+              onChange={setInput}
+              onSend={() => void send()}
+              busy={busy}
+              answering={pendingAsk != null}
+              stopRequested={agentStop.stopRequested}
+              onStop={() => void agentStop.requestStop()}
+              budgetNotice={budgetExhausted}
+              textareaRef={textareaRef}
+              locale={locale}
+            />
           </div>
-
-          <ChatPane
-            planId={props.planId}
-            chat={chat}
-            days={plan.days}
-            busy={busy}
-            syncBanner={syncBanner}
-            stopped={agentStop.stopped}
-            onResumeAfterStop={() => {
-              agentStop.clearStopped()
-              void postResume()
-            }}
-            resumeBanner={resumeBanner}
-            onResume={() => void postResume()}
-            expandedThinking={expandedThinking}
-            onToggleHistoryThinking={(key) => setExpandedThinking((cur) => (cur === key ? null : key))}
-            activeThinking={activeThinking}
-            activeExpanded={activeAutoExpanded}
-            onToggleActiveThinking={() => setActiveCollapsed(activeAutoExpanded)}
-            interrupted={interrupted != null}
-            modelNotice={modelNotice}
-            watchConnState={watchConnState}
-            onComposeDraft={composeDraft}
-            onAnswerAsk={(ask, answer: AskAnswer) =>
-              void postAndStream({ message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue })
-            }
-            onRetry={(retry) => {
-              // 续跑轮的重试不带 message，走同一个 resume 入口
-              if ('resume' in retry) void postResume()
-              else void postAndStream(retry)
-            }}
-            chatEndRef={chatEndRef}
-            tierHints={usage?.hints ?? null}
-            locale={locale}
-          />
-
-          <PlanComposer
-            value={input}
-            onChange={setInput}
-            onSend={() => void send()}
-            busy={busy}
-            answering={pendingAsk != null}
-            stopRequested={agentStop.stopRequested}
-            onStop={() => void agentStop.requestStop()}
-            budgetNotice={budgetExhausted}
-            textareaRef={textareaRef}
-            locale={locale}
-          />
         </div>
-      </div>
-    </div>
+      )}
+    </PlanShell>
   )
 }

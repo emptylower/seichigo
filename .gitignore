@@ -44,3 +44,4 @@ scratch/
 # 本地 AI 工具目录（与 .claude/skills/ 同类）
 .codex/
 .agents/
+.superpowers/
