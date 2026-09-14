@@ -1,6 +1,8 @@
 # Sitelinks 争取方案：导航一致性与 AI 规划公开入口（设计）
 
-日期：2026-09-14　状态：待 Astra 评审　范围：方案 A + 品牌规则
+日期：2026-09-14　状态：已被联合方案取代　范围：方案 A + 品牌规则
+
+> 2026-09-14 与 Astra（Codex）两轮评审后，实施以 `docs/superpowers/plans/2026-09-14-sitelinks-joint-plan.md` 为准。本稿中被否决或修改的条目：日文「聖地マップ / 聖地の都市」改为「巡礼マップ / 都市ガイド」；`(authed)` 整组 noindex 改为 `/plan`、`/plan/[id]` 两页各自 noindex；根布局默认 title 不改；新英日页面不再自行套壳；中文入口移入独立路由组 `(plan-start)`；首页 CTA 直接生成本地化路径，root `?locale=` 只做 307 兼容；sitemap 另补三语 `/posts`；`sameAs` 只删错误项。本稿保留作为需求背景。
 
 ## 背景与目标
 
