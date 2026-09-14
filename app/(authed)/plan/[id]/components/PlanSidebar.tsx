@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Building2, CircleUser, FileText, Loader2, Map as MapIcon, Plus, X } from 'lucide-react'
+import { Building2, CircleUser, FileText, Map as MapIcon, Plus, X } from 'lucide-react'
 import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
 import type { UsageView } from '@/hooks/useUsage'
 import { UsageMeter } from '@/components/billing/UsageMeter'
+import { prefixPath } from '@/components/layout/prefixPath'
+import { t } from '@/lib/i18n'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { planText, planTextFor } from '../lib/planText'
@@ -61,7 +63,10 @@ function SiteNavSection({ locale }: { locale: SupportedLocale }) {
   const tx = planTextFor(locale)
   return (
     <div className="border-b border-pink-100/80 px-3 pb-3 pt-4">
-      <Link href="/" className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/70">
+      <Link
+        href={prefixPath('/', locale)}
+        className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/70"
+      >
         <Image
           src="/brand/app-logo-64.png?v=2"
           alt="SeichiGo"
@@ -76,7 +81,7 @@ function SiteNavSection({ locale }: { locale: SupportedLocale }) {
         {SITE_NAV_ITEMS.map(({ href, key, Icon }) => (
           <Link
             key={key}
-            href={href}
+            href={prefixPath(href, locale)}
             className="flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-xs text-gray-600 transition hover:bg-white hover:text-brand-600"
           >
             <Icon className="h-4 w-4" />
@@ -92,23 +97,32 @@ function SiteNavSection({ locale }: { locale: SupportedLocale }) {
  * 传统 AI Chat 布局的左侧会话列表：桌面（lg+）常驻 260px 侧栏，移动端由
  * 对话列标题行的菜单按钮以抽屉形式打开。任何已创建的对话都立刻出现在
  * 列表里——props 初始化挂载，PLANS_CHANGED_EVENT 触发重新拉取。
+ * 「新对话」是普通链接，去当前语言的 /plan/start（发第一句才创建计划）；
+ * variant='start' 时该项呈选中态。guest=true 时列表/用量区换成登录引导。
  */
 export function PlanSidebar(props: {
   plans: PlanSidebarPlan[]
-  currentPlanId: string
+  /** 当前对话 id；起始页（variant='start'）没有当前对话，传 null */
+  currentPlanId: string | null
   mobileOpen: boolean
   onCloseMobile: () => void
   /** 本月 agent 用量（设计 §4）：null 时整块不渲染（接口缺席/未登录/网络失败） */
   usage?: UsageView | null
   locale?: SupportedLocale
+  /** start=起始页（「新对话」选中态）；plan=对话页（默认） */
+  variant?: 'start' | 'plan'
+  /** 游客态：不渲染计划列表与用量区，改渲染登录引导 */
+  guest?: boolean
+  /** 游客点登录按钮时回调（由页面打开 LoginModal） */
+  onRequireLogin?: () => void
 }) {
   const locale = props.locale ?? 'zh'
   const tx = planTextFor(locale)
   const router = useRouter()
   const [plans, setPlans] = useState(props.plans)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
   const usage = props.usage ?? null
+  const isStart = props.variant === 'start'
+  const guest = props.guest === true
 
   // 跳转/SSR 刷新后 props 变化时同步
   useEffect(() => {
@@ -133,23 +147,6 @@ export function PlanSidebar(props: {
     return () => window.removeEventListener(PLANS_CHANGED_EVENT, onChanged)
   }, [])
 
-  async function createPlan() {
-    if (creating) return
-    setCreating(true)
-    setCreateError(null)
-    try {
-      const res = await fetch('/api/me/plans', { method: 'POST', body: JSON.stringify({}) })
-      const body = (await res.json().catch(() => null)) as { plan?: { id: string }; error?: string } | null
-      if (!res.ok || !body?.plan) {
-        setCreateError(body?.error ?? tx('sidebar.createFailed'))
-        return
-      }
-      router.push(`/plan/${body.plan.id}`)
-    } finally {
-      setCreating(false)
-    }
-  }
-
   function handleSelect(id: string) {
     router.push(`/plan/${id}`)
     props.onCloseMobile()
@@ -161,44 +158,65 @@ export function PlanSidebar(props: {
     <>
       <SiteNavSection locale={locale} />
       <div className="px-3 pb-2 pt-3">
-        <button
-          type="button"
-          onClick={() => void createPlan()}
-          disabled={creating}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-600 transition hover:bg-brand-50 disabled:opacity-60"
+        {/* 「新对话」不再就地建计划：跳到当前语言的 /plan/start，发第一句才创建 */}
+        <Link
+          href={prefixPath('/plan/start', locale)}
+          aria-current={isStart ? 'page' : undefined}
+          onClick={props.onCloseMobile}
+          className={`flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+            isStart
+              ? 'border-brand-300 bg-brand-50 text-brand-700 shadow-sm'
+              : 'border-brand-200 bg-white text-brand-600 hover:bg-brand-50'
+          }`}
         >
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          <Plus className="h-4 w-4" />
           {tx('sidebar.newChat')}
-        </button>
-        {createError ? <p className="mt-1.5 px-1 text-xs text-red-500">{createError}</p> : null}
+        </Link>
       </div>
-      <nav aria-label={tx('sidebar.listLabel')} className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-        {sorted.map((p) => {
-          const active = p.id === props.currentPlanId
-          return (
-            <button
-              key={p.id}
-              type="button"
-              aria-current={active ? 'page' : undefined}
-              onClick={() => handleSelect(p.id)}
-              className={`block w-full rounded-xl px-3 py-2.5 text-left transition ${
-                active ? 'bg-white shadow-sm ring-1 ring-brand-100' : 'hover:bg-white/70'
-              }`}
-            >
-              <span className={`block truncate text-sm ${active ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                {displayTitle(p.title, locale)}
-              </span>
-              <PlanListDayLabel updatedAt={p.updatedAt} locale={locale} />
-            </button>
-          )
-        })}
-        {sorted.length === 0 ? <p className="px-3 py-2 text-xs text-gray-400">{tx('sidebar.empty')}</p> : null}
-      </nav>
-      {usage ? (
-        <div className="border-t border-pink-100/80 p-3">
-          <UsageMeter usage={usage} size="compact" locale={locale} />
+      {guest ? (
+        <div className="flex-1 space-y-3 px-3 pb-4 pt-1">
+          <p className="rounded-xl bg-white/70 px-3 py-2.5 text-xs leading-relaxed text-gray-500">
+            {t('pages.planStart.guestSidebarHint', locale)}
+          </p>
+          <button
+            type="button"
+            onClick={props.onRequireLogin}
+            className="flex w-full items-center justify-center rounded-xl border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-600 transition hover:bg-brand-50"
+          >
+            {t('pages.planStart.guestSidebarLogin', locale)}
+          </button>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <nav aria-label={tx('sidebar.listLabel')} className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
+            {sorted.map((p) => {
+              const active = p.id === props.currentPlanId
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => handleSelect(p.id)}
+                  className={`block w-full rounded-xl px-3 py-2.5 text-left transition ${
+                    active ? 'bg-white shadow-sm ring-1 ring-brand-100' : 'hover:bg-white/70'
+                  }`}
+                >
+                  <span className={`block truncate text-sm ${active ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                    {displayTitle(p.title, locale)}
+                  </span>
+                  <PlanListDayLabel updatedAt={p.updatedAt} locale={locale} />
+                </button>
+              )
+            })}
+            {sorted.length === 0 ? <p className="px-3 py-2 text-xs text-gray-400">{tx('sidebar.empty')}</p> : null}
+          </nav>
+          {usage ? (
+            <div className="border-t border-pink-100/80 p-3">
+              <UsageMeter usage={usage} size="compact" locale={locale} />
+            </div>
+          ) : null}
+        </>
+      )}
     </>
   )
 

@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react'
 
 const getSessionMock = vi.fn()
 const redirectMock = vi.fn()
+const listPlansMock = vi.fn()
 
 vi.mock('@/lib/auth/session', () => ({
   getServerAuthSession: () => getSessionMock(),
@@ -17,9 +18,18 @@ vi.mock('next/navigation', () => ({
   },
 }))
 
+// 登录用户要查最近计划列表：repo 换成间谍（游客不应触发）
+vi.mock('@/lib/tripPlan/api', () => ({
+  getTripPlanApiDeps: vi.fn(async () => ({
+    repo: { listPlans: listPlansMock },
+    getSession: getSessionMock,
+  })),
+}))
+
 /** 客户端组件有独立用例（plan-start.test.tsx）；这里只看服务器传了什么 */
-vi.mock('@/app/(plan-start)/plan/start/ui', () => ({
+vi.mock('@/components/plan/PlanStartView', () => ({
   default: (props: {
+    plans: Array<{ id: string; title: string; updatedAt: string }>
     initialDraft: string
     signedIn: boolean
     locale: string
@@ -28,6 +38,7 @@ vi.mock('@/app/(plan-start)/plan/start/ui', () => ({
     <div data-testid="plan-start-client" data-locale={props.locale} data-sync-cookie={String(props.syncLocaleCookie)}>
       <span data-testid="initial-draft">{props.initialDraft}</span>
       <span data-testid="signed-in">{String(props.signedIn)}</span>
+      <span data-testid="plans-json">{JSON.stringify(props.plans)}</span>
     </div>
   ),
 }))
@@ -130,19 +141,22 @@ describe('起始页服务器路由（§3.3 URL 协议表）', () => {
   })
 })
 
-describe('PlanStartPageContent（共享服务器内容：会话、密码检查、500 截断）', () => {
+describe('PlanStartPageContent（共享服务器内容：会话、密码检查、500 截断、最近计划列表）', () => {
   beforeEach(() => {
     getSessionMock.mockReset().mockResolvedValue(null)
     redirectMock.mockReset()
+    listPlansMock.mockReset()
   })
 
-  it('游客可进：渲染客户端，语言来自路径绑定且同步 cookie，signedIn=false', async () => {
+  it('游客可进：渲染客户端，语言来自路径绑定且同步 cookie，signedIn=false，plans=[] 且不查 repo', async () => {
     render(await PlanStartPageContent({ locale: 'zh', draft: '' }))
 
     expect(redirectMock).not.toHaveBeenCalled()
     expect(screen.getByTestId('plan-start-client')).toHaveAttribute('data-locale', 'zh')
     expect(screen.getByTestId('plan-start-client')).toHaveAttribute('data-sync-cookie', 'true')
     expect(screen.getByTestId('signed-in')).toHaveTextContent('false')
+    expect(screen.getByTestId('plans-json')).toHaveTextContent('[]')
+    expect(listPlansMock).not.toHaveBeenCalled()
   })
 
   it('draft 传客户端前截断到 500', async () => {
@@ -150,11 +164,20 @@ describe('PlanStartPageContent（共享服务器内容：会话、密码检查�
     expect(screen.getByTestId('initial-draft')).toHaveTextContent('あ'.repeat(500))
   })
 
-  it('登录态如实传递 signedIn', async () => {
+  it('登录态如实传递 signedIn，并把 listPlans 映射成 {id,title,updatedAt:ISO}', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'u1' } })
+    listPlansMock.mockResolvedValue([
+      { id: 'p1', title: '京都三日', updatedAt: new Date('2026-09-01T03:00:00.000Z') },
+      { id: 'p2', title: '未命名巡礼计划', updatedAt: new Date('2026-08-30T12:00:00.000Z') },
+    ])
     render(await PlanStartPageContent({ locale: 'en', draft: 'x' }))
     expect(screen.getByTestId('signed-in')).toHaveTextContent('true')
     expect(screen.getByTestId('plan-start-client')).toHaveAttribute('data-locale', 'en')
+    expect(listPlansMock).toHaveBeenCalledWith('u1')
+    expect(JSON.parse(screen.getByTestId('plans-json').textContent ?? '[]')).toEqual([
+      { id: 'p1', title: '京都三日', updatedAt: '2026-09-01T03:00:00.000Z' },
+      { id: 'p2', title: '未命名巡礼计划', updatedAt: '2026-08-30T12:00:00.000Z' },
+    ])
   })
 
   it('needsPasswordSetup → /auth/set-password', async () => {

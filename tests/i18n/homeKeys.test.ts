@@ -116,3 +116,21 @@ describe('flatten', () => {
     expect(flatten({ a: { b: 'x', c: { d: 'y' } }, e: ['z'], f: 1 })).toEqual({ 'a.b': 'x', 'a.c.d': 'y' })
   })
 })
+
+/** flatten 忽略数组，pages.planStart.suggestions 的数组对齐单独断言 */
+describe('pages.planStart.suggestions（数组词条三语对齐）', () => {
+  const suggestionsOf = (dict: Dict) => at(dict, 'pages.planStart.suggestions')
+
+  it('三语都是四条建议，每项都是 emoji + text', () => {
+    for (const [, dict] of LOCALES) {
+      const list = suggestionsOf(dict)
+      expect(Array.isArray(list)).toBe(true)
+      expect(list).toHaveLength(4)
+      for (const item of list as Array<Record<string, unknown>>) {
+        expect(Object.keys(item).sort()).toEqual(['emoji', 'text'])
+        expect(String(item.emoji ?? '').trim()).not.toBe('')
+        expect(String(item.text ?? '').trim()).not.toBe('')
+      }
+    }
+  })
+})

@@ -14,6 +14,10 @@ const TEXTAREA_MAX_HEIGHT_PX = 144 // ≈ 6 行（text-sm 20px 行高 + 上下 p
  * 无整幅白块），胶囊本体圆角 + 描边 + 阴影；textarea 变高时只有胶囊变高。
  * 待回答的结构化提问在场时（answering=true）换一套 placeholder：直发内容
  * 会作为该 ask 的自定义回答回传。
+ *
+ * variant：'floating'（默认，对话页）= sticky 底 + 渐变背景 + 内容限宽；
+ * 'inline'（起始页）= 无 sticky/渐变、不限宽（由页面控制宽度与对齐），
+ * 胶囊本体、按钮与预算提示完全相同。
  */
 export function PlanComposer(props: {
   value: string
@@ -29,6 +33,8 @@ export function PlanComposer(props: {
   /** 「交给规划师调整」预填后需要聚焦——由 ui.tsx 持有 ref */
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>
   locale?: SupportedLocale
+  /** 布局变体：floating=对话页悬浮渐变底（默认）；inline=起始页内嵌 */
+  variant?: 'floating' | 'inline'
 }) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null)
   const textareaRef = props.textareaRef ?? fallbackRef
@@ -36,6 +42,7 @@ export function PlanComposer(props: {
   const tx = planTextFor(props.locale ?? 'zh')
   const budgetNotice = props.budgetNotice ?? null
   const blocked = budgetNotice !== null
+  const inline = props.variant === 'inline'
 
   // textarea 自适应高度（≤6 行，超出内部滚动）
   useEffect(() => {
@@ -46,8 +53,12 @@ export function PlanComposer(props: {
   }, [value, textareaRef])
 
   return (
-    <div className="sticky bottom-0 bg-gradient-to-t from-[#fff7fb] via-[#fff7fb]/80 to-transparent">
-      <div className="mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+    <div
+      className={
+        inline ? undefined : 'sticky bottom-0 bg-gradient-to-t from-[#fff7fb] via-[#fff7fb]/80 to-transparent'
+      }
+    >
+      <div className={inline ? undefined : 'mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2'}>
         {budgetNotice ? (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <span>{budgetNotice.message}</span>

@@ -378,10 +378,15 @@
       "metaTitle": "AI Planner | Anime Pilgrimage Itineraries",
       "metaDescription": "Enter your anime, destinations and travel dates to plan daily pilgrimage routes and transport suggestions. Sign in to generate and refine your itinerary.",
       "intro": "Enter your anime, destinations and travel dates to plan daily pilgrimage routes and transport suggestions. Sign in to generate and refine your itinerary.",
-      "backHome": "Back to site",
-      "greeting": "Tell me the anime you have watched, the cities you want to visit and how many days you have — I will build a pilgrimage itinerary you can navigate.",
-      "placeholder": "e.g. 8 days in Tokyo over Christmas, chasing Weathering With You and Your Name",
-      "send": "Send",
+      "headline": "Where are we going this time?",
+      "guestSidebarHint": "Sign in to see your recent plans here",
+      "guestSidebarLogin": "Sign in",
+      "suggestions": [
+        { "emoji": "⛩", "text": "5 days in Tokyo, visiting every Your Name filming spot" },
+        { "emoji": "🎺", "text": "Two days in Kyoto and Uji for a Sound! Euphonium pilgrimage" },
+        { "emoji": "🏕", "text": "A 3-day Yamanashi road trip, following Laid-Back Camp around the Fuji Five Lakes" },
+        { "emoji": "🎲", "text": "I only have one weekend — pick a route from Tokyo for me" }
+      ],
       "errorCreate": "Could not create the plan. Please try again.",
       "errorNetwork": "Network error. Please try again."
     },
@@ -404,7 +409,6 @@
         "navPosts": "Articles",
         "navCity": "Cities",
         "navMe": "Me",
-        "createFailed": "Could not create",
         "listLabel": "Pilgrimage plan chats",
         "empty": "No chats yet",
         "openList": "Open chat list",

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
-import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
+import { prefixPath } from '@/components/layout/prefixPath'
+import { getLocale } from '@/lib/i18n/getLocale'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,18 +10,10 @@ export const metadata: Metadata = {
 }
 
 /**
- * /plan 不再有独立的会话列表页：直接跳到最新更新的对话；一个对话都没有时
- * 先创建一个默认标题的计划再跳过去——任何已创建的对话都会立刻出现在侧栏。
+ * /plan 不再有独立的会话列表页，也不再创建默认计划：无论是否登录，一律 307
+ * 到当前语言的 /plan/start 新对话首页（发第一句才创建计划）。
+ * DEFAULT_PLAN_TITLE 与 POST /api/me/plans 创建接口保留（起始页仍在用）。
  */
 export default async function PlanIndexPage() {
-  const deps = await getTripPlanApiDeps()
-  const session = await deps.getSession()
-  if (!session?.user?.id) redirect('/auth/signin?callbackUrl=/plan')
-
-  const plans = await deps.repo.listPlans(session.user.id) // updatedAt 倒序
-  const latest = plans[0]
-  if (latest) redirect(`/plan/${latest.id}`)
-
-  const created = await deps.repo.createPlan({ userId: session.user.id, title: DEFAULT_PLAN_TITLE })
-  redirect(`/plan/${created.id}`)
+  redirect(prefixPath('/plan/start', await getLocale()))
 }

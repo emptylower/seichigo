@@ -10,11 +10,7 @@ vi.mock('next/navigation', () => ({
 
 // PlanSidebar 站点区用 next/link（app router 上下文在 jsdom 不存在），替换为普通 a
 vi.mock('next/link', () => ({
-  default: (props: { href: string; 'aria-label'?: string; children: React.ReactNode; className?: string }) => (
-    <a href={props.href} aria-label={props['aria-label']} className={props.className}>
-      {props.children}
-    </a>
-  ),
+  default: (props: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode }) => <a {...props} />,
 }))
 
 import { PLANS_CHANGED_EVENT, PlanSidebar, type PlanSidebarPlan } from '@/app/(authed)/plan/[id]/components/PlanSidebar'
@@ -75,25 +71,51 @@ describe('PlanSidebar 会话列表', () => {
     expect(html).not.toMatch(/\d+月\d+日/)
   })
 
-  it('点击“新建对话”调用 POST /api/me/plans 并跳转到新对话', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ plan: { id: 'p-created' } }), {
-            status: 201,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-      ),
-    )
+  it('「新对话」是指向本地化 /plan/start 的链接，不再发创建请求', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     render(<PlanSidebar plans={[]} currentPlanId="p-x" mobileOpen={false} onCloseMobile={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /新建对话/ }))
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/plan/p-created'))
-    const calls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
-    expect(
-      calls.some(([url, init]) => String(url) === '/api/me/plans' && (init as RequestInit | undefined)?.method === 'POST'),
-    ).toBe(true)
+    const newChat = screen.getByRole('link', { name: /新建对话/ })
+    expect(newChat.getAttribute('href')).toBe('/plan/start')
+    expect(newChat.getAttribute('aria-current')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(pushMock).not.toHaveBeenCalled()
+  })
+
+  it('variant="start"：「新对话」呈选中态，currentPlanId 允许为 null', () => {
+    render(<PlanSidebar plans={[]} currentPlanId={null} variant="start" mobileOpen={false} onCloseMobile={() => {}} />)
+    expect(screen.getByRole('link', { name: /新建对话/ }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('en/ja：「新对话」链接到对应语言的 /plan/start', () => {
+    const { unmount } = render(
+      <PlanSidebar plans={[]} currentPlanId={null} variant="start" mobileOpen={false} onCloseMobile={() => {}} locale="en" />,
+    )
+    expect(screen.getByRole('link', { name: /New chat/ }).getAttribute('href')).toBe('/en/plan/start')
+    unmount()
+    render(<PlanSidebar plans={[]} currentPlanId={null} variant="start" mobileOpen={false} onCloseMobile={() => {}} locale="ja" />)
+    expect(screen.getByRole('link', { name: /新しいチャット/ }).getAttribute('href')).toBe('/ja/plan/start')
+  })
+
+  it('guest：不渲染计划列表与用量区，显示登录引导并回调 onRequireLogin', () => {
+    const onRequireLogin = vi.fn()
+    render(
+      <PlanSidebar
+        plans={[plan({ id: 'p1', title: ' Kyoto' })]}
+        currentPlanId={null}
+        variant="start"
+        guest
+        onRequireLogin={onRequireLogin}
+        mobileOpen={false}
+        onCloseMobile={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('登录后这里会显示你的最近对话')).toBeTruthy()
+    expect(screen.queryByLabelText('巡礼计划会话列表')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '登录' }))
+    expect(onRequireLogin).toHaveBeenCalledTimes(1)
   })
 
   it('顶部站点区：Logo 链接回首页，含 地图/文章/城市/我的 紧凑导航，再下面是“新建对话”', () => {
@@ -106,8 +128,8 @@ describe('PlanSidebar 会话列表', () => {
     expect(screen.getByRole('link', { name: /文章/ }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('link', { name: /城市/ }).getAttribute('href')).toBe('/city')
     expect(screen.getByRole('link', { name: /我的/ }).getAttribute('href')).toBe('/me')
-    // 新建对话入口仍在
-    expect(screen.getByRole('button', { name: /新建对话/ })).toBeTruthy()
+    // 新建对话入口仍在（现在是链接）
+    expect(screen.getByRole('link', { name: /新建对话/ })).toBeTruthy()
   })
 
   it('移动端抽屉同样包含站点导航', () => {
