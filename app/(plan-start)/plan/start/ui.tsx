@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Home, Loader2, SendHorizontal } from 'lucide-react'
 import LoginModal from '@/components/auth/LoginModal'
 import type { SiteLocale } from '@/components/layout/SiteShell'
+import { prefixPath } from '@/components/layout/prefixPath'
 import { t } from '@/lib/i18n'
 import { PENDING_DRAFT_KEY } from '@/app/(authed)/plan/[id]/hooks/usePendingDraft'
 
@@ -31,14 +32,14 @@ export default function PlanStartClient({
 }: {
   initialDraft: string
   signedIn: boolean
-  /** 低-6：首页跳过来时带的 `?locale=`（zh 不带，缺省即中文） */
+  /** 语言由入口路径绑定：/plan/start=zh、/en/plan/start=en、/ja/plan/start=ja */
   locale?: SiteLocale
-  /** ?locale= 显式给出时为 true：挂载后写一次 NEXT_LOCALE cookie */
+  /** 三个入口都传 true：挂载后写一次 NEXT_LOCALE cookie */
   syncLocaleCookie?: boolean
 }) {
   const router = useRouter()
-  // 首页带 `?locale=` 跳进来时把语言落到 cookie：创建后跳转的 /plan/<id>
-  // （非前缀路由）才能继续用同一种语言渲染
+  // 把路径语言落到 cookie：创建后跳转的 /plan/<id>（无前缀路由）才能继续用
+  // 同一种语言渲染
   useEffect(() => {
     if (!syncLocaleCookie) return
     try {
@@ -105,7 +106,7 @@ export default function PlanStartClient({
         <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-3">
           <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">{t('pages.planStart.title', locale)}</h1>
           <Link
-            href="/"
+            href={prefixPath('/', locale)}
             aria-label={t('pages.planStart.backHome', locale)}
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-pink-50 hover:text-brand-600"
           >
@@ -118,6 +119,10 @@ export default function PlanStartClient({
         <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-pink-50 px-4 py-3 text-sm leading-relaxed text-gray-700">
           {t('pages.planStart.greeting', locale)}
         </div>
+
+        <p className="max-w-[85%] text-xs leading-relaxed text-gray-500">
+          {t('pages.planStart.intro', locale)}
+        </p>
 
         <div className="flex flex-wrap gap-2">
           {examples.map((example) => (

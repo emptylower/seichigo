@@ -187,8 +187,8 @@ describe('HomeHero', () => {
 
   it('传入 stats 时首屏底部收尾出现三个入口链接', () => {
     renderHero('zh')
-    expect(screen.getByRole('link', { name: /AI 行程规划/ })).toHaveAttribute('href', '/plan/start')
-    expect(screen.getByRole('link', { name: /地图探索/ })).toHaveAttribute('href', '/map')
+    expect(screen.getByRole('link', { name: /AI 规划/ })).toHaveAttribute('href', '/plan/start')
+    expect(screen.getByRole('link', { name: /巡礼地图/ })).toHaveAttribute('href', '/map')
     expect(screen.getByRole('link', { name: /巡礼攻略/ })).toHaveAttribute('href', '/posts')
     expect(screen.getByText('128,456 个巡礼点位')).toBeInTheDocument()
   })
@@ -207,12 +207,12 @@ describe('HomeHero', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 
-  it('提交后带 draft 跳到非本地化的 /plan/start（低-6：ja 带 locale）', () => {
+  it('提交后直接进日文路径 /ja/plan/start?draft=（不再带 locale 参数）', () => {
     renderHero('ja')
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '東京 5 日間' } })
     fireEvent.click(screen.getByRole('button', { name: 'プランを作る' }))
 
-    expect(pushMock).toHaveBeenCalledWith(`/plan/start?draft=${encodeURIComponent('東京 5 日間')}&locale=ja`)
+    expect(pushMock).toHaveBeenCalledWith(`/ja/plan/start?draft=${encodeURIComponent('東京 5 日間')}`)
   })
 
   it('中-2：输入法组词中的回车不提交', () => {

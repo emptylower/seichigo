@@ -227,13 +227,13 @@ describe('HomeShowcasePlan（第三屏重做）', () => {
     expect(screen.getByText('大阪一日')).toBeInTheDocument()
   })
 
-  it('en：标题 accent、CTA 带 ?locale=en，交通小行英文化', () => {
+  it('en：标题 accent、CTA 直达 /en/plan/start，交通小行英文化', () => {
     render(<HomeShowcasePlan locale="en" showcase={showcaseFixture()} />)
 
     expect(screen.getByText('carefully planned')).toHaveClass('text-brand-600')
     expect(screen.getByRole('link', { name: /Plan mine with the planner/ })).toHaveAttribute(
       'href',
-      '/plan/start?locale=en',
+      '/en/plan/start',
     )
     expect(screen.getByText('Walk 8 min · 0.6 km')).toBeInTheDocument()
     expect(screen.getByText('3 days · Tokyo · Kyoto · Osaka')).toBeInTheDocument()

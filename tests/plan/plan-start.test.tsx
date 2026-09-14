@@ -18,8 +18,8 @@ vi.mock('@/components/auth/LoginModal', () => ({
     ) : null,
 }))
 
-import PlanStartClient from '@/app/(authed)/plan/start/ui'
-import { parseStartLocale } from '@/app/(authed)/plan/start/locale'
+import PlanStartClient from '@/app/(plan-start)/plan/start/ui'
+import { parseStartLocale } from '@/app/(plan-start)/plan/start/locale'
 import { PENDING_DRAFT_KEY } from '@/app/(authed)/plan/[id]/hooks/usePendingDraft'
 
 const DRAFT = '圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》，顺便逛秋叶原'
@@ -40,21 +40,32 @@ describe('规划师起始页（游客可进，发送时才登录）', () => {
     window.sessionStorage.clear()
   })
 
-  it('预填 draft，并给出规划师欢迎气泡与示例 chip', () => {
+  it('预填 draft，并给出规划师欢迎气泡、说明与示例 chip', () => {
     render(<PlanStartClient initialDraft={DRAFT} signedIn={false} />)
 
     expect(screen.getByRole('textbox')).toHaveValue(DRAFT)
+    expect(screen.getByRole('heading', { name: 'AI 规划' })).toBeInTheDocument()
+    expect(
+      screen.getByText('输入作品、目的地和天数，规划每天的巡礼路线与交通建议。登录后可生成并继续调整行程。'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '回到网站' })).toHaveAttribute('href', '/')
     expect(screen.getAllByRole('button', { name: /巡礼/ }).length).toBeGreaterThanOrEqual(3)
   })
 
-  it('低-6：locale=ja 时整页取日文文案（首页跳过来时带 ?locale=）', () => {
+  it('ja：整页取日文文案，返回首页链接是 /ja', () => {
     render(<PlanStartClient initialDraft="" signedIn locale="ja" />)
 
-    expect(screen.getByRole('heading', { name: 'プランを作る' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'サイトに戻る' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'AIプランナー' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'サイトに戻る' })).toHaveAttribute('href', '/ja')
     expect(screen.getByRole('button', { name: '送信' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '週末 2 日間、鎌倉で『SLAM DUNK』を巡礼' })).toBeInTheDocument()
+  })
+
+  it('en：返回首页链接是 /en', () => {
+    render(<PlanStartClient initialDraft="" signedIn locale="en" />)
+
+    expect(screen.getByRole('heading', { name: 'AI Planner' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to site' })).toHaveAttribute('href', '/en')
   })
 
   it('游客发送 → 弹登录；不建计划', () => {
@@ -159,7 +170,7 @@ describe('规划师起始页（游客可进，发送时才登录）', () => {
   })
 })
 
-describe('syncLocaleCookie：显式 ?locale= 时把语言落到 NEXT_LOCALE cookie', () => {
+describe('syncLocaleCookie：三个入口都把路径语言落到 NEXT_LOCALE cookie', () => {
   beforeEach(() => {
     // jsdom 的 document.cookie 不能整体清空，逐个过期即可
     for (const pair of document.cookie.split(';')) {
@@ -173,14 +184,14 @@ describe('syncLocaleCookie：显式 ?locale= 时把语言落到 NEXT_LOCALE cook
     expect(document.cookie).toContain('NEXT_LOCALE=ja')
   })
 
-  it('不传时不写 cookie（站点解析出来的语言不该被起始页固化）', () => {
+  it('不传时不写 cookie（prop 关闭时不固化语言）', () => {
     render(<PlanStartClient initialDraft="" signedIn locale="ja" />)
     expect(document.cookie).not.toContain('NEXT_LOCALE')
   })
 })
 
-describe('parseStartLocale（?locale= 只认三种语言）', () => {
-  it('认识 en/ja，其余返回 null 由页面回落 getLocale', () => {
+describe('parseStartLocale（旧 ?locale= 协议：只认三种语言）', () => {
+  it('认识 en/ja/zh，其余返回 null 由中文页面留在中文', () => {
     expect(parseStartLocale('en')).toBe('en')
     expect(parseStartLocale('ja')).toBe('ja')
     expect(parseStartLocale(['ja', 'en'])).toBe('ja')

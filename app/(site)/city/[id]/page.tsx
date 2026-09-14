@@ -9,6 +9,7 @@ import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { t } from '@/lib/i18n'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
 import Link from 'next/link'
@@ -154,7 +155,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
 
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: '首页', url: `${siteOrigin}/` },
-    { name: '城市', url: `${siteOrigin}/city` },
+    { name: t('header.city', 'zh'), url: `${siteOrigin}/city` },
     { name: city.name_zh, url: canonicalUrl },
   ])
 
@@ -190,7 +191,7 @@ export default async function CityPage({ params }: { params: Promise<{ id: strin
         <Breadcrumbs
           items={[
             { name: '首页', href: '/' },
-            { name: '城市', href: '/city' },
+            { name: t('header.city', 'zh'), href: '/city' },
             { name: city.name_zh, href: `/city/${encodeURIComponent(city.slug)}` },
           ]}
         />

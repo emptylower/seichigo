@@ -14,26 +14,26 @@ vi.mock('next-auth/react', () => ({
 }))
 
 describe('攻略入口指向 /posts 索引页', () => {
-  it('桌面页眉的「热门攻略」指向 /en/posts', () => {
+  it('桌面页眉的「Pilgrimage Guides」指向 /en/posts', () => {
     const { container } = render(<HeaderPublic locale="en" />)
 
-    const link = Array.from(container.querySelectorAll('nav a')).find((a) => a.textContent === 'Top Guides')
+    const link = Array.from(container.querySelectorAll('nav a')).find((a) => a.textContent === 'Pilgrimage Guides')
     expect(link).toHaveAttribute('href', '/en/posts')
   })
 
-  it('移动端抽屉的「热门攻略」指向 /en/posts', async () => {
+  it('移动端抽屉的「Pilgrimage Guides」指向 /en/posts', async () => {
     render(<HeaderPublic locale="en" />)
 
     fireEvent.click(screen.getByTestId('header-mobile-menu-trigger'))
 
-    const links = await screen.findAllByRole('link', { name: /Top Guides/ })
+    const links = await screen.findAllByRole('link', { name: /Pilgrimage Guides/ })
     expect(links.some((a) => a.getAttribute('href') === '/en/posts')).toBe(true)
   })
 
   it('页脚的攻略入口指向 /posts', () => {
     const { container } = render(<Footer locale="zh" />)
 
-    const link = Array.from(container.querySelectorAll('a')).find((a) => a.textContent === '文章')
+    const link = Array.from(container.querySelectorAll('a')).find((a) => a.textContent === '巡礼攻略')
     expect(link).toHaveAttribute('href', '/posts')
   })
 })

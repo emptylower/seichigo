@@ -36,10 +36,7 @@ export function buildOrganizationJsonLd(): JsonLdObject {
     url: origin,
     // Keep as URL string for broad validator compatibility.
     logo: `${origin}/brand/icons/icon-512.png?v=2`,
-    sameAs: [
-      'https://x.com/xixingshu',
-      'https://github.com/seichigo',
-    ],
+    sameAs: ['https://x.com/xixingshu'],
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'customer support',

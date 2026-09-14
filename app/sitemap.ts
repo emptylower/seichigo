@@ -55,6 +55,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/en/map`, lastModified: now, changeFrequency: 'daily', priority: 0.5, alternates: { languages: { zh: `${base}/map`, en: `${base}/en/map`, ja: `${base}/ja/map` } } },
     { url: `${base}/ja/map`, lastModified: now, changeFrequency: 'daily', priority: 0.5, alternates: { languages: { zh: `${base}/map`, en: `${base}/en/map`, ja: `${base}/ja/map` } } },
 
+    { url: `${base}/posts`, alternates: { languages: { zh: `${base}/posts`, en: `${base}/en/posts`, ja: `${base}/ja/posts`, 'x-default': `${base}/posts` } } },
+    { url: `${base}/en/posts`, alternates: { languages: { zh: `${base}/posts`, en: `${base}/en/posts`, ja: `${base}/ja/posts`, 'x-default': `${base}/posts` } } },
+    { url: `${base}/ja/posts`, alternates: { languages: { zh: `${base}/posts`, en: `${base}/en/posts`, ja: `${base}/ja/posts`, 'x-default': `${base}/posts` } } },
+
+    { url: `${base}/plan/start`, alternates: { languages: { zh: `${base}/plan/start`, en: `${base}/en/plan/start`, ja: `${base}/ja/plan/start`, 'x-default': `${base}/plan/start` } } },
+    { url: `${base}/en/plan/start`, alternates: { languages: { zh: `${base}/plan/start`, en: `${base}/en/plan/start`, ja: `${base}/ja/plan/start`, 'x-default': `${base}/plan/start` } } },
+    { url: `${base}/ja/plan/start`, alternates: { languages: { zh: `${base}/plan/start`, en: `${base}/en/plan/start`, ja: `${base}/ja/plan/start`, 'x-default': `${base}/plan/start` } } },
+
     { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.3, alternates: { languages: { zh: `${base}/about`, en: `${base}/en/about`, ja: `${base}/ja/about` } } },
     { url: `${base}/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.3, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },
     { url: `${base}/en/help`, lastModified: now, changeFrequency: 'monthly', priority: 0.2, alternates: { languages: { zh: `${base}/help`, en: `${base}/en/help`, ja: `${base}/ja/help` } } },

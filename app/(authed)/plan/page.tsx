@@ -1,8 +1,13 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { DEFAULT_PLAN_TITLE } from '@/lib/tripPlan/repo'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+}
 
 /**
  * /plan 不再有独立的会话列表页：直接跳到最新更新的对话；一个对话都没有时

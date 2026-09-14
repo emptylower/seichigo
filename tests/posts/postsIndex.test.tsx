@@ -39,7 +39,7 @@ describe('PostsIndexTemplate', () => {
 
   it('英文与日文标题走 i18n 而不是写死中文', () => {
     const { unmount } = render(<PostsIndexTemplate locale="en" items={[]} />)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Pilgrimage guides')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Pilgrimage Guides')
     unmount()
 
     render(<PostsIndexTemplate locale="ja" items={[]} />)

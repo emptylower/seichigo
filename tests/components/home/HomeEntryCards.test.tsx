@@ -8,10 +8,10 @@ describe('HomeEntryCards', () => {
   it('三张入口卡指向规划师 / 地图 / 攻略（/plan 不加语言前缀）', () => {
     render(<HomeEntryCards locale="en" stats={statsFixture} />)
 
-    // 低-6：起始页是三语共用的非本地化路由，语言靠 query 带过去
-    expect(screen.getByRole('link', { name: /AI trip planner/ })).toHaveAttribute('href', '/plan/start?locale=en')
-    expect(screen.getByRole('link', { name: /Explore the map/ })).toHaveAttribute('href', '/en/map')
-    expect(screen.getByRole('link', { name: /Pilgrimage guides/ })).toHaveAttribute('href', '/en/posts')
+    // 起始页是三语本地化路由：AI 规划卡直接指向目标语言路径（不带 query）
+    expect(screen.getByRole('link', { name: /AI Planner/ })).toHaveAttribute('href', '/en/plan/start')
+    expect(screen.getByRole('link', { name: /Pilgrimage Map/ })).toHaveAttribute('href', '/en/map')
+    expect(screen.getByRole('link', { name: /Pilgrimage Guides/ })).toHaveAttribute('href', '/en/posts')
     // 次级入口：/pricing 现在三语都有镜像页，走 prefixPath
     expect(screen.getByRole('link', { name: 'See pricing' })).toHaveAttribute('href', '/en/pricing')
   })
@@ -42,7 +42,7 @@ describe('HomeEntryCards', () => {
   it('缺 stats（A 部分尚未落盘）时只隐藏数字，不影响入口', () => {
     render(<HomeEntryCards locale="zh" />)
 
-    expect(screen.getByRole('link', { name: /AI 行程规划/ })).toHaveAttribute('href', '/plan/start')
+    expect(screen.getByRole('link', { name: /AI 规划/ })).toHaveAttribute('href', '/plan/start')
     expect(screen.queryByText(/个巡礼点位/)).toBeNull()
   })
 })

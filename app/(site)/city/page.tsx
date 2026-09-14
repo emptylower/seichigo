@@ -1,24 +1,25 @@
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildZhAlternates } from '@/lib/seo/alternates'
+import { t } from '@/lib/i18n'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: '动漫圣地城市导览｜按目的地查找巡礼路线',
+  title: '巡礼城市｜按目的地查找动漫圣地巡礼路线',
   description:
     '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
   alternates: buildZhAlternates({ path: '/city' }),
   openGraph: {
     type: 'website',
     url: '/city',
-    title: '动漫圣地｜城市导览',
+    title: '巡礼城市｜按目的地查找动漫圣地巡礼路线',
     description:
       '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '动漫圣地｜城市导览',
+    title: '巡礼城市｜按目的地查找动漫圣地巡礼路线',
     description:
       '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
     images: ['/twitter-image'],
@@ -40,7 +41,7 @@ export default async function CityIndexPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">城市</h1>
+      <h1 className="text-2xl font-bold">{t('header.city', 'zh')}</h1>
       <div className="mt-2 text-sm text-gray-600">按目的地聚合路线与点位清单，优先围绕长尾词（地区/线路/地图）。</div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

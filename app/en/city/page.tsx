@@ -1,24 +1,25 @@
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildEnAlternates } from '@/lib/seo/alternates'
+import { t } from '@/lib/i18n'
 import CityCard from '@/components/city/CityCard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Anime Pilgrimage Cities | Japan Travel by Destination',
+  title: 'Pilgrimage Cities | Anime Travel by Destination in Japan',
   description:
     'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
   alternates: buildEnAlternates({ zhPath: '/city' }),
   openGraph: {
     type: 'website',
     url: '/en/city',
-    title: 'Anime Pilgrimage Cities',
+    title: 'Pilgrimage Cities | Anime Travel by Destination in Japan',
     description:
       'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
     images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Anime Pilgrimage Cities',
+    title: 'Pilgrimage Cities | Anime Travel by Destination in Japan',
     description:
       'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
     images: ['/twitter-image'],
@@ -40,7 +41,7 @@ export default async function CityIndexEnPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Cities</h1>
+      <h1 className="text-2xl font-bold">{t('header.city', 'en')}</h1>
       <div className="mt-2 text-sm text-gray-600">City hubs for discovery. Content is currently mostly in Chinese.</div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
