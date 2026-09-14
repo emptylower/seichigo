@@ -372,7 +372,10 @@
       "faqA5": "Yes. Once an itinerary is generated, tell the planner right on the plan page what to change — swap a spot, reorder, add or drop days — and it adjusts the existing plan. You can also save it and come back to keep editing anytime."
     },
     "planStart": {
-      "title": "Start planning",
+      "title": "AI Planner",
+      "metaTitle": "AI Planner | Anime Pilgrimage Itineraries",
+      "metaDescription": "Enter your anime, destinations and travel dates to plan daily pilgrimage routes and transport suggestions. Sign in to generate and refine your itinerary.",
+      "intro": "Enter your anime, destinations and travel dates to plan daily pilgrimage routes and transport suggestions. Sign in to generate and refine your itinerary.",
       "backHome": "Back to site",
       "greeting": "Tell me the anime you have watched, the cities you want to visit and how many days you have — I will build a pilgrimage itinerary you can navigate.",
       "placeholder": "e.g. 8 days in Tokyo over Christmas, chasing Weathering With You and Your Name",

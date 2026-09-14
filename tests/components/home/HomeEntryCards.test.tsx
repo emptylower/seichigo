@@ -8,8 +8,8 @@ describe('HomeEntryCards', () => {
   it('三张入口卡指向规划师 / 地图 / 攻略（/plan 不加语言前缀）', () => {
     render(<HomeEntryCards locale="en" stats={statsFixture} />)
 
-    // 低-6：起始页是三语共用的非本地化路由，语言靠 query 带过去
-    expect(screen.getByRole('link', { name: /AI trip planner/ })).toHaveAttribute('href', '/plan/start?locale=en')
+    // 起始页是三语本地化路由：AI 规划卡直接指向目标语言路径（不带 query）
+    expect(screen.getByRole('link', { name: /AI trip planner/ })).toHaveAttribute('href', '/en/plan/start')
     expect(screen.getByRole('link', { name: /Explore the map/ })).toHaveAttribute('href', '/en/map')
     expect(screen.getByRole('link', { name: /Pilgrimage guides/ })).toHaveAttribute('href', '/en/posts')
     // 次级入口：/pricing 现在三语都有镜像页，走 prefixPath

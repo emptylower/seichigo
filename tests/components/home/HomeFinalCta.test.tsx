@@ -38,13 +38,13 @@ describe('HomeFinalCta（收尾行动区）', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
-  it('en locale 跳转带 locale query', () => {
+  it('en locale 跳转直接进英文路径', () => {
     render(<HomeFinalCta locale="en" stats={statsFixture} />)
 
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: 'Kamakura weekend' } })
     fireEvent.submit(input.closest('form')!)
-    expect(push).toHaveBeenCalledWith('/plan/start?draft=Kamakura%20weekend&locale=en')
+    expect(push).toHaveBeenCalledWith('/en/plan/start?draft=Kamakura%20weekend')
   })
 
   it('底部统计行：points 取整 + 真实 works，两侧各一枝月桂枝', () => {
