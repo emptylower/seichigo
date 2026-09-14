@@ -48,4 +48,107 @@
 
 ## 验收输出
 
-（待补：本地 workerd 与生产 curl 的原始输出）
+### 本地 workerd（opennextjs-cloudflare preview，2026-09-14，构建自 dc085d65）
+
+```text
+### B. 旧协议 307（不跟随）
+HTTP/1.1 307 Temporary Redirect
+Location: /ja/plan/start?draft=%E6%9D%B1%E4%BA%AC%205%20%E6%97%A5%E9%96%93%20%26%20%E4%BA%AC%E9%83%BD
+HTTP/1.1 307 Temporary Redirect
+Location: /en/plan/start?draft=a%26b
+HTTP/1.1 200 OK
+HTTP/1.1 200 OK
+### C. 私有页
+HTTP/1.1 307 Temporary Redirect
+Location: /auth/signin?callbackUrl=/plan
+### E. sitemap
+   1 <loc>https://seichigo.com/en/plan/start</loc>
+   1 <loc>https://seichigo.com/en/posts</loc>
+   1 <loc>https://seichigo.com/ja/plan/start</loc>
+   1 <loc>https://seichigo.com/ja/posts</loc>
+   1 <loc>https://seichigo.com/plan/start</loc>
+   1 <loc>https://seichigo.com/posts</loc>
+### G. JSON-LD sameAs
+"sameAs":["https://x.com/xixingshu"]
+### A. 三个干净入口
+-- /plan/start
+  title      : AI 规划｜动漫圣地巡礼行程助手 | SeichiGo
+  canonical  : https://seichigo.com/plan/start
+  hreflang   : zh=https://seichigo.com/plan/start | en=https://seichigo.com/en/plan/start | ja=https://seichigo.com/ja/plan/start | x-default=https://seichigo.com/plan/start
+  robots     : index, follow
+  h1         : 1 | AI 规划
+  shells     : 1 header / 1 main / 1 footer
+  nav        : 巡礼地图→/map | 巡礼攻略→/posts | AI 规划→/plan/start | 巡礼城市→/city | 套餐→/pricing
+  intro      : 输入作品、目的地和天数，规划每天的巡礼路线与交通建议。登录后可生成并继续调整行程。
+-- /en/plan/start
+  title      : AI Planner | Anime Pilgrimage Itineraries | SeichiGo
+  canonical  : https://seichigo.com/en/plan/start
+  hreflang   : zh=https://seichigo.com/plan/start | en=https://seichigo.com/en/plan/start | ja=https://seichigo.com/ja/plan/start | x-default=https://seichigo.com/plan/start
+  robots     : index, follow
+  h1         : 1 | AI Planner
+  shells     : 1 header / 1 main / 1 footer
+  nav        : Pilgrimage Map→/en/map | Pilgrimage Guides→/en/posts | AI Planner→/en/plan/start | Pilgrimage Cities→/en/city | Pricing→/en/pricing
+  intro      : Enter your anime, destinations and travel dates to plan dail
+-- /ja/plan/start
+  title      : AIプランナー｜アニメ聖地巡礼の旅行プラン | SeichiGo
+  canonical  : https://seichigo.com/ja/plan/start
+  hreflang   : zh=https://seichigo.com/plan/start | en=https://seichigo.com/en/plan/start | ja=https://seichigo.com/ja/plan/start | x-default=https://seichigo.com/plan/start
+  robots     : index, follow
+  h1         : 1 | AIプランナー
+  shells     : 1 header / 1 main / 1 footer
+  nav        : 巡礼マップ→/ja/map | 巡礼ガイド→/ja/posts | AIプランナー→/ja/plan/start | 都市ガイド→/ja/city | プラン→/ja/pricing
+  intro      : 作品・行き先・日数を入力して、日ごとの巡礼ルートと交通の提案をまとめます。ログイン後にプランを作成・調整できます。
+### D. 栏目页与页头/页脚
+-- /
+  title      : SeichiGo | 动漫圣地巡礼攻略 · AI 规划 + 全球巡礼点位地图
+  h1         : 1 | 动漫圣地巡礼行程，AI 规划师帮你排好
+  shells     : 1 header / 1 main / 1 footer
+  nav        : 巡礼地图→/map | 巡礼攻略→/posts | AI 规划→/plan/start | 巡礼城市→/city | 套餐→/pricing
+  footer     : SeichiGo→/ | 巡礼地图→/map | 巡礼攻略→/posts | AI 规划→/plan/start | 巡礼城市→/city | 套餐→/pricing | 作品→/anime | 资源→/resources | 圣地巡礼礼仪→/resources/pilgrimage-etiquette
+-- /en
+  title      : SeichiGo | Anime Pilgrimage Guides · AI Planner + Global Location Map
+  h1         : 1 | Anime pilgrimage itineraries, planned by
+  shells     : 1 header / 1 main / 1 footer
+  nav        : Pilgrimage Map→/en/map | Pilgrimage Guides→/en/posts | AI Planner→/en/plan/start | Pilgrimage Cities→/en/city | Pricing→/en/pricing
+  footer     : SeichiGo→/en | Pilgrimage Map→/en/map | Pilgrimage Guides→/en/posts | AI Planner→/en/plan/start | Pilgrimage Cities→/en/city | Pricing→/en/pricing | Anime→/en/anime | Resources→/en/resources | Pilgrimage Etiquette→/en/resources/pilgrimage-etiquette
+-- /ja
+  title      : SeichiGo | アニメ聖地巡礼ガイド · AIプランナー + 世界の聖地マップ
+  h1         : 1 | アニメ聖地巡礼の旅程を、AIプランナーが組み立てる
+  shells     : 1 header / 1 main / 1 footer
+  nav        : 巡礼マップ→/ja/map | 巡礼ガイド→/ja/posts | AIプランナー→/ja/plan/start | 都市ガイド→/ja/city | プラン→/ja/pricing
+  footer     : SeichiGo→/ja | 巡礼マップ→/ja/map | 巡礼ガイド→/ja/posts | AIプランナー→/ja/plan/start | 都市ガイド→/ja/city | プラン→/ja/pricing | 作品→/ja/anime | リソース→/ja/resources | 聖地巡礼マナー→/ja/resources/pilgrimage-etiquette
+-- /map
+  title      : 巡礼地图｜动画巡礼地标与截图 | SeichiGo
+  h1         : 1 | 巡礼地图
+-- /ja/map
+  title      : 巡礼マップ | SeichiGo
+  h1         : 1 | 巡礼マップ
+-- /en/map
+  title      : Pilgrimage Map | SeichiGo
+  h1         : 1 | Pilgrimage Map
+-- /city
+  title      : 巡礼城市｜按目的地查找动漫圣地巡礼路线 | SeichiGo
+  h1         : 1 | 巡礼城市
+-- /en/city
+  title      : Pilgrimage Cities | Anime Travel by Destination in Japan | SeichiGo
+  h1         : 1 | Pilgrimage Cities
+-- /ja/city
+  title      : 都市ガイド｜アニメ聖地巡礼の目的地を探す | SeichiGo
+  h1         : 1 | 都市ガイド
+-- /posts
+  title      : 巡礼攻略｜动漫圣地巡礼路线与攻略全集 | SeichiGo
+  h1         : 1 | 巡礼攻略
+-- /en/posts
+  title      : Pilgrimage Guides | Anime Pilgrimage Routes and Walkthroughs | SeichiGo
+  h1         : 1 | Pilgrimage Guides
+-- /ja/posts
+  title      : 巡礼ガイド｜アニメ聖地巡礼ルートまとめ | SeichiGo
+  h1         : 1 | 巡礼ガイド
+### H. 带 draft 的 200 页 canonical
+  title      : AIプランナー｜アニメ聖地巡礼の旅行プラン | SeichiGo
+  canonical  : https://seichigo.com/ja/plan/start
+```
+
+### 生产 curl
+
+（待补）
