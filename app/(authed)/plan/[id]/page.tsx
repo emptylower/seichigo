@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { getTripPlanApiDeps } from '@/lib/tripPlan/api'
 import { getLocale } from '@/lib/i18n/getLocale'
@@ -5,6 +6,10 @@ import { toChatView, toPlanView } from '@/lib/tripPlan/view'
 import { PlanPlanner } from './ui'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+}
 
 export default async function PlanDetailPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params

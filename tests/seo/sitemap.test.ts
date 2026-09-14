@@ -29,6 +29,29 @@ vi.mock('@/lib/seo/site', () => ({
 
 import sitemap, { revalidate } from '@/app/sitemap'
 
+const base = 'https://seichigo.test'
+
+const newStaticEntries = [
+  `${base}/plan/start`,
+  `${base}/en/plan/start`,
+  `${base}/ja/plan/start`,
+  `${base}/posts`,
+  `${base}/en/posts`,
+  `${base}/ja/posts`,
+] as const
+
+function languageGroupFor(path: string) {
+  const zhUrl = `${base}${path}`
+  const enUrl = `${base}/en${path}`
+  const jaUrl = `${base}/ja${path}`
+  return {
+    zh: zhUrl,
+    en: enUrl,
+    ja: jaUrl,
+    'x-default': zhUrl,
+  }
+}
+
 describe('sitemap strict data sources', () => {
   const originalDatabaseUrl = process.env.DATABASE_URL
 
@@ -78,5 +101,63 @@ describe('sitemap strict data sources', () => {
 
     await expect(sitemap()).resolves.toEqual(expect.any(Array))
     expect(mocks.listCitiesForIndex).not.toHaveBeenCalled()
+  })
+
+  it('includes each new public entry URL exactly once', async () => {
+    const urls = (await sitemap()).map((item) => item.url)
+
+    for (const url of newStaticEntries) {
+      expect(urls.filter((u) => u === url)).toHaveLength(1)
+    }
+  })
+
+  it('serves the new public entry URLs without query parameters', async () => {
+    const urls = (await sitemap()).map((item) => item.url)
+
+    for (const url of newStaticEntries) {
+      expect(urls.find((u) => u === url)).toBeDefined()
+    }
+    expect(urls.some((u) => u.includes('?'))).toBe(false)
+  })
+
+  it('declares trilingual alternates with x-default for the new public entries', async () => {
+    const items = await sitemap()
+    const groups: Record<string, string> = {
+      [`${base}/plan/start`]: '/plan/start',
+      [`${base}/en/plan/start`]: '/plan/start',
+      [`${base}/ja/plan/start`]: '/plan/start',
+      [`${base}/posts`]: '/posts',
+      [`${base}/en/posts`]: '/posts',
+      [`${base}/ja/posts`]: '/posts',
+    }
+
+    for (const [url, path] of Object.entries(groups)) {
+      const entry = items.find((item) => item.url === url)
+      expect(entry, `missing sitemap entry for ${url}`).toBeDefined()
+      expect(entry?.alternates?.languages).toEqual(languageGroupFor(path))
+    }
+  })
+
+  it('omits lastModified and priority on the new public entries', async () => {
+    const items = await sitemap()
+
+    for (const url of newStaticEntries) {
+      const entry = items.find((item) => item.url === url)
+      expect(entry, `missing sitemap entry for ${url}`).toBeDefined()
+      expect(entry?.lastModified).toBeUndefined()
+      expect(entry?.priority).toBeUndefined()
+    }
+  })
+
+  it('never lists the private plan index or plan detail URLs', async () => {
+    const urls = (await sitemap()).map((item) => item.url)
+
+    expect(urls).not.toContain(`${base}/plan`)
+    expect(urls).not.toContain(`${base}/en/plan`)
+    expect(urls).not.toContain(`${base}/ja/plan`)
+
+    const isPlanRoute = (u: string, prefix: string) => u === prefix || u.startsWith(`${prefix}/`)
+    const planUrls = urls.filter((u) => isPlanRoute(u, `${base}/plan`) || isPlanRoute(u, `${base}/en/plan`) || isPlanRoute(u, `${base}/ja/plan`))
+    expect(new Set(planUrls)).toEqual(new Set([`${base}/plan/start`, `${base}/en/plan/start`, `${base}/ja/plan/start`]))
   })
 })
