@@ -63,7 +63,7 @@ describe('public post page AI-assisted notice', () => {
   })
 
   it('does not render the notice for a DB article without the seo-spoke tag', async () => {
-    const slug = '你的名字-your-name-seichigo-tokyo-shinjuku'
+    const slug = '你的名字-fixture-tokyo'
     getPublicPostBySlugMock.mockResolvedValueOnce({
       source: 'db',
       article: {

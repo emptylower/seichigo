@@ -1,5 +1,6 @@
 import { getSnapshotPostFrontmatters } from '@/lib/mdx/publicSnapshot'
 import { getPublicPostBySlug } from '@/lib/posts/getPublicPostBySlug'
+import { resolveLegacyPostSlug } from '@/lib/posts/legacySlugs'
 import { getDbArticleForPublicNotice } from '@/lib/posts/getDbArticleForPublicNotice'
 import { getAnimeById } from '@/lib/anime/getAllAnime'
 import { extractSeichiRouteEmbedsFromTipTapJson } from '@/lib/route/extract'
@@ -71,6 +72,8 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
+  const legacyTarget = resolveLegacyPostSlug(slug)
+  if (legacyTarget) permanentRedirect(`/posts/${encodeSlugForPath(legacyTarget)}`)
   const override = await resolvePublicOverrideForPost(slug, 'zh')
   if (override?.action === 'hide') {
     return { title: '文章已下架', robots: { index: false, follow: false } }
@@ -147,6 +150,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const legacyTarget = resolveLegacyPostSlug(slug)
+  if (legacyTarget) permanentRedirect(`/posts/${encodeSlugForPath(legacyTarget)}`)
   const override = await resolvePublicOverrideForPost(slug, 'zh')
   if (override?.action === 'hide') {
     return notFound()
