@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Home } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { track } from '@/lib/analytics/track'
 import { createSseFrameReader } from '@/lib/sseFrames'
 import { notifyUsageChanged, useUsage } from '@/hooks/useUsage'
 import { PlanShell } from '@/components/plan/PlanShell'
@@ -88,10 +89,20 @@ export function PlanPlanner(props: {
   // 「交给规划师调整」：预填输入框并聚焦（不自动发送）
   const composeDraft = (text: string) => { setInput(text); textareaRef.current?.focus() }
 
+  // 本轮 run 是否已上报过 plan_generated：观察流重连、内联流与观察流并存时都不重复计
+  const planGeneratedRef = useRef(false)
+  // plan 的最新快照：reportPlanGenerated 在异步收尾回调里执行，闭包里的 plan 可能是
+  // 发起请求前的旧值——统一从 ref 读（F2）
+  const planRef = useRef(plan)
+  planRef.current = plan
+  // 本轮 run 是否出过行程产出信号（daymap/plan_updated 帧、轮询窗口内 plan 规模变化）：
+  // 纯追问轮（ask+done 无产出）不计 plan_generated（F5）
+  const runHadOutputRef = useRef(false)
+
   // `/plan/start` 交接过来的第一条消息：空计划自动发出，已有对话只预填
   usePendingDraft({
     hasMessages: props.initialChat.length > 0,
-    onAutoSend: (text) => (busy ? false : (void postAndStream({ message: text }), true)),
+    onAutoSend: (text) => (busy ? false : (void postAndStream({ message: text }, { fromStartPage: true }), true)),
     onPrefill: composeDraft,
   })
 
@@ -104,7 +115,15 @@ export function PlanPlanner(props: {
     setSyncBanner,
     setInterrupted,
     setActiveThinking,
-    onIdle: () => maybeAutoResume(),
+    onIdle: async ({ fromRecovery, hadPlanOutput }) => {
+      // 轮询窗口内 plan 规模变化也算产出信号（F5 轮询路径）
+      if (hadPlanOutput) runHadOutputRef.current = true
+      // F4：恢复轮询收尾同样要判「正常跑完」——被停止/被打断的不计
+      if (fromRecovery && !agentStop.wasStopped() && !runSync.readInterrupted()) {
+        reportPlanGenerated()
+      }
+      await maybeAutoResume()
+    },
     // 刷新后发现服务端仍在跑：观察流接管进度，轮询只在观察流连不上时兜底；
     // runStartedAt = 服务端已知的 run 起点，让「已用 Ns」接着真实起点走
     onRunInProgress: ({ runStartedAt }) => watch.open({ runStartedAt }),
@@ -119,15 +138,21 @@ export function PlanPlanner(props: {
     setInterrupted,
     setActiveThinking,
     runSync,
-    onDone: () => {
+    onDone: ({ stopped, interrupted: wasInterrupted }) => {
       setResumeBanner((cur) => (cur === 'resuming' ? null : cur))
       // 队列化 run 的收尾同样刷新用量（POST 流的 done 分支在 streamAgentRequest 里）
       notifyUsageChanged()
+      // 只有跑完整的一轮才算「出了结果」：用户点停止与被打断的 run 都不计
+      if (!stopped && !wasInterrupted) reportPlanGenerated()
       void maybeAutoResume()
     },
     // done.stopped：不再依赖 useAgentStop 的 5 秒兜底，直接按「已停止」定格
     onStopped: (turn) => freezeStoppedTurn(turn),
     onConnectionState: setWatchConnState,
+    // 观察流路径的产出信号（F5）：plan_updated 事件 / chat 快照里带 daymap
+    onPlanOutput: () => {
+      runHadOutputRef.current = true
+    },
   })
 
   function handleScroll() {
@@ -156,6 +181,34 @@ export function PlanPlanner(props: {
     const frozen = { ...(turn ?? newThinkingTurn()), statusPhrase: stoppedPhrase(locale), endedAt: Date.now() }
     runSync.bumpChatEpoch()
     setChat((prev) => attachThinkingToLast(prev, frozen, { appendIfNone: true }))
+  }
+
+  /**
+   * 一次 run 正常收尾：上报 plan_generated（同一 run 只发一次）。
+   * 规模参数读 planRef 的最新快照；plan_updated 触发的 refresh 可能仍在途，
+   * 等它 settle 并让 React 渲染落地后再读；拿不到（纯问答轮、还没出图）就不传。
+   * 纯追问轮（本轮无行程产出信号）不上报（F5）。
+   */
+  function reportPlanGenerated() {
+    if (planGeneratedRef.current) return
+    planGeneratedRef.current = true
+    if (!runHadOutputRef.current) return
+    const fire = () => {
+      const snapshot = planRef.current
+      const pointsCount = snapshot.days.reduce((sum, day) => sum + day.items.filter((item) => item.point != null).length, 0)
+      track('plan_generated', {
+        days: snapshot.days.length || undefined,
+        points_count: pointsCount || undefined,
+      })
+    }
+    // 不阻塞 onDone 的 UI 收尾时序：埋点延迟到在途 refresh 落地后的下一个 tick 再发
+    // refresh 失败（断网等）也照发，只是读到的可能是旧快照；不能留下未处理的 rejection
+    void runSync
+      .refreshPlanSettled()
+      .catch(() => {})
+      .then(() => {
+        window.setTimeout(fire, 0)
+      })
   }
 
   /** 本地流式追加入口：每次追加推进纪元，让在途轮询响应识别自己已过期 */
@@ -201,6 +254,12 @@ export function PlanPlanner(props: {
    */
   async function streamAgentRequest(body: AgentPostBody) {
     setBusy(true)
+    // 新一轮开始：上一轮的 plan_generated 去重标记失效
+    planGeneratedRef.current = false
+    // 新一轮开始：产出信号同步清零（F5）
+    runHadOutputRef.current = false
+    // 本轮内联流里出过 error 帧：随后的 done 不算正常产出
+    let sawStreamError = false
     const signal = agentStop.beginRun()
     setModelNotice(null)
     // 发起新回合（含续跑）时强制跟随到底部（常规 chat 行为）
@@ -312,6 +371,8 @@ export function PlanPlanner(props: {
               // 解析器；按 revisionId 去重，客户端重连/事件重放不会重复插入
               const parsed = parseDaymapPayload(event)
               if (!parsed) break
+              // F5 产出信号：本轮 run 交付过行程
+              runHadOutputRef.current = true
               runSync.bumpChatEpoch()
               setChat((prev) =>
                 prev.some((entry) => entry.daymap?.revisionId === parsed.revisionId)
@@ -321,12 +382,15 @@ export function PlanPlanner(props: {
               break
             }
             case 'plan_updated':
+              // F5 产出信号：行程/元数据被服务端改写
+              runHadOutputRef.current = true
               await runSync.refreshPlan()
               // 标题生成等元数据变化 → 侧栏会话列表重新拉取
               window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
               break
             case 'error': {
               const thinking = freezeTurn()
+              sawStreamError = true
               // 偶发网络/运行时错误：附重试入口，用户不必手打重发（答复/续跑轮同样可重试）
               appendLocalChat({
                 role: 'assistant',
@@ -344,6 +408,9 @@ export function PlanPlanner(props: {
               if (hasThinkingContent(frozen)) setChat((prev) => attachThinkingToLast(prev, frozen))
               // 一轮跑完，用量已变：让侧栏/账户页的用量表重新拉取
               notifyUsageChanged()
+              // 内联 SSE 回落路径的正常收尾（队列路径在 watch.onDone 里）：
+              // 出过 error 帧、用户点过停止的都不算产出
+              if (!sawStreamError && !agentStop.wasStopped()) reportPlanGenerated()
               break
             }
             case 'stopped': {
@@ -386,7 +453,10 @@ export function PlanPlanner(props: {
     }
   }
 
-  async function postAndStream(body: { message: string; answerTo?: string; answerValue?: unknown }) {
+  async function postAndStream(
+    body: { message: string; answerTo?: string; answerValue?: unknown },
+    options?: { fromStartPage?: boolean; kind?: 'new' | 'answer' | 'retry' },
+  ) {
     // 任何路径都不得向 /agent 发送空 message（服务端 400"消息不能为空"）：
     // 本地追加提示并直接返回，不发请求
     if (!body.message.trim()) {
@@ -394,6 +464,10 @@ export function PlanPlanner(props: {
       return
     }
     if (busy) return
+    // plan_start 只计「用户在输入框发起的新一轮」（kind='new'）：
+    // 追问回答（answer）与错误重试（retry）都不算新发起；
+    // 起始页交接过来的第一条消息在 /plan/start 已上报过，这里不重复计
+    if (!options?.fromStartPage && options?.kind === 'new') track('plan_start', { entry: 'plan_page' })
     appendLocalChat({ role: 'user', text: body.message })
     await streamAgentRequest(body)
   }
@@ -416,10 +490,11 @@ export function PlanPlanner(props: {
     if (!message || busy) return
     setInput('')
     if (pendingAsk) {
-      await postAndStream({ message, answerTo: pendingAsk.askId, answerValue: { custom: message } })
+      // 回答 ask 卡片是同一轮的延续，不是新发起的规划请求（F3 不计 plan_start）
+      await postAndStream({ message, answerTo: pendingAsk.askId, answerValue: { custom: message } }, { kind: 'answer' })
       return
     }
-    await postAndStream({ message })
+    await postAndStream({ message }, { kind: 'new' })
   }
 
   return (
@@ -467,12 +542,17 @@ export function PlanPlanner(props: {
               watchConnState={watchConnState}
               onComposeDraft={composeDraft}
               onAnswerAsk={(ask, answer: AskAnswer) =>
-                void postAndStream({ message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue })
+                // 结构化提问的回答：同一轮延续（F3 不计 plan_start）
+                void postAndStream(
+                  { message: answer.readableText, answerTo: ask.askId, answerValue: answer.answerValue },
+                  { kind: 'answer' },
+                )
               }
               onRetry={(retry) => {
                 // 续跑轮的重试不带 message，走同一个 resume 入口
                 if ('resume' in retry) void postResume()
-                else void postAndStream(retry)
+                // 错误重试：不算新发起的规划请求（F3 不计 plan_start）
+                else void postAndStream(retry, { kind: 'retry' })
               }}
               chatEndRef={chatEndRef}
               tierHints={usage?.hints ?? null}

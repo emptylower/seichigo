@@ -6,6 +6,7 @@ import { getMedia, getSchedule } from './itemPayload'
 import { MediaAttribution } from './ItemThumbnail'
 import { buildPointNavigationUrl } from '../lib/navigationLinks'
 import { planTextFor } from '../lib/planText'
+import { track } from '@/lib/analytics/track'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 
@@ -103,11 +104,23 @@ export function DayPointCard(props: {
             {tx('map.showItem')}
           </button>
         ) : null}
-        <a href={buildPointNavigationUrl({ lat, lng })} target="_blank" rel="noreferrer" className={ACTION_CLASS}>
+        <a
+          href={buildPointNavigationUrl({ lat, lng })}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => track('outbound_navigation', { surface: 'plan', provider: 'google', kind: 'directions' })}
+          className={ACTION_CLASS}
+        >
           <Navigation className="h-3 w-3" />
           {tx('map.navigate')}
         </a>
-        <a href={buildStreetViewUrl({ lat, lng })} target="_blank" rel="noreferrer" className={ACTION_CLASS}>
+        <a
+          href={buildStreetViewUrl({ lat, lng })}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => track('outbound_navigation', { surface: 'plan', provider: 'google', kind: 'streetview' })}
+          className={ACTION_CLASS}
+        >
           <ExternalLink className="h-3 w-3" />
           {tx('map.streetView')}
         </a>

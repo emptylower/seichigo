@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
+import { track } from '@/lib/analytics/track'
 
 type SignInResult = {
   error?: string
@@ -107,6 +108,9 @@ export default function SignUpClient() {
       return
     }
 
+    // 只有走注册页成功的才算 sign_up（同一套验证码流程对新老用户无差别，
+    // 登录页/弹窗一律记 login）
+    track('sign_up', { method: 'email_code' })
     window.location.href = res.url || callbackUrl
   }
 

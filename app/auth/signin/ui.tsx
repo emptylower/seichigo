@@ -6,6 +6,7 @@ import { useState } from 'react'
 import Button from '@/components/shared/Button'
 import Image from 'next/image'
 import { useEmailCodeLogin } from '@/components/auth/useEmailCodeLogin'
+import { track } from '@/lib/analytics/track'
 
 type SignInResult = {
   error?: string
@@ -38,7 +39,9 @@ export default function SignInClient() {
     e.preventDefault()
     setPasswordError(null)
     const result = await login.verifyCode()
-    if (result.ok) window.location.href = result.url
+    if (!result.ok) return
+    track('login', { method: 'email_code' })
+    window.location.href = result.url
   }
 
   async function onPasswordSubmit(e: React.FormEvent) {
@@ -72,6 +75,7 @@ export default function SignInClient() {
       setPasswordError('邮箱或密码不正确，或该账号未开通账密登录')
       return
     }
+    track('login', { method: 'credentials' })
     window.location.href = res.url || callbackUrl
   }
 

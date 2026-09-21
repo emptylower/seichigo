@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
+import { track } from '@/lib/analytics/track'
 
 type ShareLocale = 'zh' | 'en' | 'ja'
 
@@ -97,6 +98,7 @@ export default function ArticleShareButtons({ url, title, locale, className, tag
           text: instagramText,
           url: normalizedUrl,
         })
+        track('share', { method: 'native', content_type: 'article' })
         setStatusText(labels.shared)
         return
       }
@@ -107,6 +109,7 @@ export default function ArticleShareButtons({ url, title, locale, className, tag
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareText)
+        track('share', { method: 'copy', content_type: 'article' })
         setStatusText(labels.copied)
       } else {
         setStatusText(labels.instagramManual)

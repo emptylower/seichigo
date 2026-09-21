@@ -45,6 +45,7 @@ function setup() {
   const onConnectionState = vi.fn<(state: WatchConnectionState) => void>()
   const runSync: PlanRunSync = {
     refreshPlan: vi.fn(async () => {}),
+    refreshPlanSettled: () => Promise.resolve(),
     enterRunRecovery: vi.fn(),
     bumpChatEpoch: vi.fn(),
     clearInterrupted: vi.fn(),

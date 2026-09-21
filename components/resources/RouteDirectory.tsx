@@ -6,6 +6,7 @@ import { renderRouteMapSvg } from '@/lib/route/render'
 import type { SeichiRouteSpotV1 } from '@/lib/route/schema'
 import { getGoogleStaticMapApiKey, resolveSpotLatLng } from '@/lib/resources/aggregateRoutes'
 import CopyLinkButton from '@/components/resources/CopyLinkButton'
+import OutboundNavLink from '@/components/resources/OutboundNavLink'
 import RouteCardActions from '@/components/resources/RouteCardActions'
 import ResourcesDeepLinkRuntime from '@/components/resources/ResourcesDeepLinkRuntime'
 import { prefixPath } from '@/components/layout/prefixPath'
@@ -214,9 +215,9 @@ function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: Sup
                       <td>{s.animeScene || '—'}</td>
                       <td>
                         {nav ? (
-                          <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
+                          <OutboundNavLink href={nav} kind="place" className="text-sm text-brand-600 hover:text-brand-700">
                             {t('route.table.open', locale)}
-                          </a>
+                          </OutboundNavLink>
                         ) : (
                           '—'
                         )}
@@ -266,9 +267,9 @@ function RouteCard({ route, locale }: { route: ResourceRoutePreview; locale: Sup
 
                   <div className="mt-2">
                     {nav ? (
-                      <a href={nav} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-700">
+                      <OutboundNavLink href={nav} kind="place" className="text-sm text-brand-600 hover:text-brand-700">
                         {t('route.table.open', locale)}
-                      </a>
+                      </OutboundNavLink>
                     ) : (
                       <span className="text-sm text-slate-400">—</span>
                     )}

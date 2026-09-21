@@ -37,6 +37,7 @@ import {
   uploadSharePhoto,
   writePreferredLayout,
 } from '@/components/share/shareClient'
+import { track } from '@/lib/analytics/track'
 
 export type PointSharePanelProps = {
   pointId: string
@@ -286,6 +287,7 @@ export default function PointSharePanel({
         url: withShareChannel(shareUrl, 'sys'),
       })
       if (result === 'failed') showToast('share.toastFailed')
+      else track('share', { method: 'native', content_type: 'point' })
     } finally {
       setBusy(false)
     }
@@ -338,6 +340,7 @@ export default function PointSharePanel({
         return
       }
       if (await copyImage(blob)) {
+        track('share', { method: 'copy', content_type: 'point' })
         showToast('share.toastImageCopied')
         return
       }
@@ -352,7 +355,9 @@ export default function PointSharePanel({
     if (busy) return
     setBusy(true)
     try {
-      showToast((await copyText(captionFor('copy'))) ? 'share.toastCopied' : 'share.toastFailed')
+      const copied = await copyText(captionFor('copy'))
+      if (copied) track('share', { method: 'copy', content_type: 'point' })
+      showToast(copied ? 'share.toastCopied' : 'share.toastFailed')
     } finally {
       setBusy(false)
     }

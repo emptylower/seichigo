@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import AttributionLink, { buildAnitabiBangumiHref, resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { AnitabiBangumiDTO, AnitabiPointDTO } from '@/lib/anitabi/types'
 import { toMapDisplayImageUrl } from '@/lib/anitabi/imageProxy'
+import { track } from '@/lib/analytics/track'
 import { L } from './shared'
 
 type DetailPointItem = {
@@ -158,7 +159,13 @@ export default function DetailPanel(props: DetailPanelProps) {
 
           <div className="grid grid-cols-2 gap-2">
             {geoHref ? (
-              <a className="inline-flex w-full items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700" href={geoHref} target="_blank" rel="noreferrer">
+              <a
+                className="inline-flex w-full items-center justify-center rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-slate-700"
+                href={geoHref}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => track('outbound_navigation', { surface: 'map', provider: 'google', kind: 'place' })}
+              >
                 {label.openInGoogle}
               </a>
             ) : null}

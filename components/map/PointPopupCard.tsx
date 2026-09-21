@@ -5,6 +5,7 @@ import { ExternalLink, Layers3, MapPinned, X } from 'lucide-react'
 import type { AnitabiPointDTO } from '@/lib/anitabi/types'
 import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import ResilientMapImage from '@/components/map/ResilientMapImage'
+import { track } from '@/lib/analytics/track'
 
 export type PointPopupAnchor = {
   x: number
@@ -214,6 +215,7 @@ export function PointPopupCard({
                   href={googleHref}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() => track('outbound_navigation', { surface: 'map', provider: 'google', kind: 'place' })}
                   className="inline-flex min-w-[90px] flex-1 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-900 px-3 py-2 text-[11px] font-medium text-white no-underline hover:bg-slate-700"
                 >
                   <MapPinned className="h-3.5 w-3.5" aria-hidden="true" />

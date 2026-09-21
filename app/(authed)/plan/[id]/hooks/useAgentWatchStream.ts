@@ -47,8 +47,12 @@ export function useAgentWatchStream(input: {
   setInterrupted: Dispatch<SetStateAction<InterruptedInfo | null>>
   setActiveThinking: Dispatch<SetStateAction<ThinkingTurn | null>>
   runSync: PlanRunSync
-  /** done 收尾后：清续跑横幅 + 自动续跑入口（与轮询收尾同一个回调） */
-  onDone: () => void
+  /**
+   * done 收尾后：清续跑横幅 + 自动续跑入口（与轮询收尾同一个回调）。
+   * `stopped`/`interrupted` 让调用方区分「正常跑完」与「被停止/被打断」——
+   * 埋点只把正常跑完的那一次算作产出。
+   */
+  onDone: (result: { stopped: boolean; interrupted: boolean }) => void
   /**
    * run 因用户点「停止」而结束（`done.stopped`）：把观察流最后一帧实况交给
    * ui.tsx 以「已停止」定格（与 POST 流的 `stopped` 事件同一段逻辑）。
@@ -59,6 +63,11 @@ export function useAgentWatchStream(input: {
    * degraded（已静默 1.5s+），成功读到帧报 live。rotate 轮换不算故障，不报。
    */
   onConnectionState?: (state: WatchConnectionState) => void
+  /**
+   * 本轮 run 出现行程产出信号（plan_updated 事件、chat 快照里带 daymap 条目）：
+   * 埋点只在产出过的 run 收尾时计 plan_generated，纯追问轮不计。
+   */
+  onPlanOutput?: () => void
 }): AgentWatchStream {
   const ref = useRef(input)
   ref.current = input
@@ -118,11 +127,15 @@ export function useAgentWatchStream(input: {
       case 'chat': {
         // 服务端全量对话视图：按 revision 幂等，重放不会写坏本地
         const serverChat = Array.isArray(event.chat) ? event.chat : []
+        // 快照里出现 daymap 条目 = 本轮 run 交付过行程（F5 产出信号）
+        if (serverChat.some((entry) => entry.daymap != null)) ref.current.onPlanOutput?.()
         ref.current.runSync.bumpChatEpoch()
         ref.current.setChat((prev) => mergeServerChat(prev, serverChat))
         break
       }
       case 'plan_updated':
+        // 行程/元数据被服务端改写（F5 产出信号）
+        ref.current.onPlanOutput?.()
         void ref.current.runSync.refreshPlan()
         // 标题生成等元数据变化 → 侧栏会话列表重新拉取
         window.dispatchEvent(new Event(PLANS_CHANGED_EVENT))
@@ -157,7 +170,7 @@ export function useAgentWatchStream(input: {
           ref.current.runSync.noteInterrupted(info)
           ref.current.setInterrupted(info)
         }
-        ref.current.onDone()
+        ref.current.onDone({ stopped: event.stopped === true, interrupted: info != null })
         break
       }
       case 'ready':

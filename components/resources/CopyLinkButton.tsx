@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { t } from '@/lib/i18n'
+import { track } from '@/lib/analytics/track'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 type Props = {
@@ -27,6 +28,7 @@ export default function CopyLinkButton({ path, label, locale, className, navSurf
     if (!url) return
     try {
       await navigator.clipboard.writeText(url)
+      track('share', { method: 'copy', content_type: 'resource' })
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
     } catch {

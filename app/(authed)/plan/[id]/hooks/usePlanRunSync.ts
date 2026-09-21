@@ -14,6 +14,8 @@ import type { ThinkingTurn } from '../components/ThinkingChain'
 export type PlanRunSync = {
   /** plan_updated 事件后重新拉一次计划元数据/行程 */
   refreshPlan: () => Promise<void>
+  /** 最近一次 refreshPlan 的 Promise（没有在途刷新时返回已解决的 Promise）：埋点等它落地再读 plan 快照 */
+  refreshPlanSettled: () => Promise<void>
   /** 进入断线/跨页恢复轮询（busy 保持 true，由轮询循环收尾） */
   enterRunRecovery: (mode: 'reconnecting' | 'in-progress') => void
   /** 本地流式纪元 +1：让在途轮询响应识别自己已过期 */
@@ -41,8 +43,11 @@ export function usePlanRunSync(input: {
   setSyncBanner: Dispatch<SetStateAction<'reconnecting' | 'in-progress' | null>>
   setInterrupted: Dispatch<SetStateAction<InterruptedInfo | null>>
   setActiveThinking: Dispatch<SetStateAction<ThinkingTurn | null>>
-  /** 轮询/挂载核对到 idle 后：上一次 run 被打断则自动续跑 */
-  onIdle: () => Promise<void>
+  /** 轮询/挂载核对到 idle 后：上一次 run 被打断则自动续跑。
+   *  `fromRecovery` 区分「真的跑完恢复轮询」与「挂载核对本身就是 idle」——
+   *  埋点只对前者补 plan_generated；`hadPlanOutput` 表示轮询窗口内
+   *  行程天数/点位数发生变化（纯追问轮不算产出）。 */
+  onIdle: (result: { fromRecovery: boolean; hadPlanOutput: boolean }) => Promise<void>
   /**
    * 挂载核对发现服务端仍在跑时的接管者（§0.6.3：改为打开只读观察流，
    * 轮询只作兜底）。未提供时退回原有的 3 秒恢复轮询。
@@ -66,12 +71,37 @@ export function usePlanRunSync(input: {
   const pollingActiveRef = useRef(false)
   // 最近一次核对/轮询反解出的 run 起点锚（服务端最后一条消息时刻），观察流接管时传给它
   const lastRunStartRef = useRef<number | null>(null)
+  // 最近一次 refreshPlan 的在途 Promise：plan_updated 后到 done 之间埋点要读最新 plan，
+  // 得先等它 settle（拿不到快照也要发事件，只是不带规模参数）
+  const pendingRefreshRef = useRef<Promise<void> | null>(null)
+  // 最近一次写回的 plan 规模签名（天数:有坐标点位数）：轮询窗口内签名变化 = 出过行程产出
+  const lastPlanSignatureRef = useRef<string | null>(null)
+  // 本次恢复轮询起步时的 plan 签名：轮询收尾时与最新签名对比得出 hadPlanOutput
+  const recoveryStartSignatureRef = useRef<string | null>(null)
+
+  /** plan 规模签名：天数 + 有坐标点位数。只用于「是否变化」的判断，不上报原始值 */
+  function planSignature(plan: TripPlanView): string {
+    const points = plan.days.reduce((sum, day) => sum + day.items.filter((item) => item.point != null).length, 0)
+    return `${plan.days.length}:${points}`
+  }
+
+  function notePlan(plan: TripPlanView) {
+    ref.current.setPlan(plan)
+    lastPlanSignatureRef.current = planSignature(plan)
+  }
 
   async function refreshPlan() {
-    const res = await fetch(`/api/me/plans/${planId}`)
-    if (!res.ok) return
-    const body = (await res.json()) as { plan?: TripPlanView }
-    if (body.plan) ref.current.setPlan(body.plan)
+    const pending = (async () => {
+      const res = await fetch(`/api/me/plans/${planId}`)
+      if (!res.ok) return
+      const body = (await res.json()) as { plan?: TripPlanView }
+      if (body.plan) notePlan(body.plan)
+    })()
+    const tracked = pending.finally(() => {
+      if (pendingRefreshRef.current === tracked) pendingRefreshRef.current = null
+    })
+    pendingRefreshRef.current = tracked
+    return tracked
   }
 
   /**
@@ -99,7 +129,7 @@ export function usePlanRunSync(input: {
     } catch {
       return 'error'
     }
-    if (body.plan) ref.current.setPlan(body.plan)
+    if (body.plan) notePlan(body.plan)
     const agentBusy = body.agentBusy === true
     // 刷新/跨页恢复时的计时锚点：本页没有在途回合，改用服务端记下的 run 启动
     // 时刻（claimAgentRun 领取时原子写入，比点击晚约 1 s——见 planById 注释）
@@ -148,6 +178,8 @@ export function usePlanRunSync(input: {
   function startAgentRunPolling() {
     if (pollingActiveRef.current) return
     pollingActiveRef.current = true
+    // 轮询窗口的产出基线：收尾时签名变了 = 这轮跑出了行程（纯追问轮不算）
+    recoveryStartSignatureRef.current = lastPlanSignatureRef.current
     void (async () => {
       while (pollingActiveRef.current) {
         const state = await pollAgentRunOnce()
@@ -158,8 +190,12 @@ export function usePlanRunSync(input: {
       ref.current.setSyncBanner(null)
       ref.current.setBusy(false)
       ref.current.setActiveThinking(null)
+      const hadPlanOutput =
+        recoveryStartSignatureRef.current != null &&
+        lastPlanSignatureRef.current != null &&
+        recoveryStartSignatureRef.current !== lastPlanSignatureRef.current
       // 轮询到 idle 后发现 run 是被打断的 → 自动续跑（或降级为手动继续）
-      await ref.current.onIdle()
+      await ref.current.onIdle({ fromRecovery: true, hadPlanOutput })
     })()
   }
 
@@ -188,7 +224,7 @@ export function usePlanRunSync(input: {
         }
         return
       }
-      if (state === 'idle') await ref.current.onIdle()
+      if (state === 'idle') await ref.current.onIdle({ fromRecovery: false, hadPlanOutput: false })
     })()
     return () => {
       cancelled = true
@@ -207,6 +243,7 @@ export function usePlanRunSync(input: {
 
   return {
     refreshPlan,
+    refreshPlanSettled: () => pendingRefreshRef.current ?? Promise.resolve(),
     enterRunRecovery,
     bumpChatEpoch: () => {
       localChatEpochRef.current += 1

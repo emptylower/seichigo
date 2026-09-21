@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Upload, Download, Share2, X, RotateCcw, Loader2 } from 'lucide-react'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
+import { track } from '@/lib/analytics/track'
 
 export interface ComparisonImageGeneratorProps {
   animeImage: string
@@ -243,6 +244,7 @@ export default function ComparisonImageGenerator({
           title: '圣地巡礼对比图',
           text: `我在 SeichiGo 制作了《${animeTitle}》的对比图！`
         })
+        track('share', { method: 'native', content_type: 'comparison' })
       } else {
         handleDownload()
       }

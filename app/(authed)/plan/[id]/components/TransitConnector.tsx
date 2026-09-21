@@ -5,6 +5,7 @@ import { Bus, Car, ChevronDown, Footprints, type LucideIcon } from 'lucide-react
 import type { TripPlanItemView } from '@/lib/tripPlan/view'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { TierHint } from '@/components/billing/TierHint'
+import { track } from '@/lib/analytics/track'
 import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { formatTransportText, getTransport, type TransportLeg, type TransportPayload } from './itemPayload'
 
@@ -276,6 +277,7 @@ export function TransitConnector(props: {
               href={mapsUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => track('outbound_navigation', { surface: 'plan', provider: 'google', kind: 'directions' })}
               className="inline-block text-[11px] text-brand-500 underline decoration-brand-200 underline-offset-2"
             >
               {tx('transit.openInGoogleMaps')}

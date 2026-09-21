@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { track } from '@/lib/analytics/track'
 import type { AnitabiBangumiDTO } from '@/lib/anitabi/types'
 import {
   buildWarmDetail,
@@ -13,6 +14,19 @@ import { bangumiDetailCache, cachePut } from './shared'
 import { runAfterBasemapFirstLoad } from './basemapFirstLoadGate'
 
 let prefetchAbort: AbortController | null = null
+
+/** map_point_open 的打开入口；首屏按 URL 参数恢复出来的选中另记 'url' */
+export type PointOpenSource = 'marker' | 'list' | 'overlay' | 'unknown'
+
+let nextPointOpenSource: PointOpenSource | null = null
+
+/**
+ * 标记下一次选中点位是从哪个入口来的：各入口在改 selectedPointId 之前调一下，
+ * 下面的埋点 effect 取走即复位。没人标记过就是 URL 恢复出来的。
+ */
+export function notePointOpenSource(source: PointOpenSource) {
+  nextPointOpenSource = source
+}
 
 export function useAnitabiSelection(ctx: any) {
   const {
@@ -123,6 +137,34 @@ export function useAnitabiSelection(ctx: any) {
   useEffect(() => {
     detailRef.current = detail
   }, [detail, detailRef])
+
+  // 埋点已上报过的选中值：只有「真的变了」才发，URL 同步回写与渲染抖动都不重复计
+  const reportedBangumiIdRef = useRef<number | null>(null)
+  const reportedPointIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (selectedBangumiId == null) {
+      // 清空选中后再选回同一部作品仍算一次新的选中
+      reportedBangumiIdRef.current = null
+      return
+    }
+    if (selectedBangumiId === reportedBangumiIdRef.current) return
+    reportedBangumiIdRef.current = selectedBangumiId
+    track('map_anime_select', { bangumi_id: selectedBangumiId })
+  }, [selectedBangumiId])
+
+  useEffect(() => {
+    const source = nextPointOpenSource
+    nextPointOpenSource = null
+    if (!selectedPointId) {
+      // 关掉点位详情后再点回同一个点位仍算一次新的打开
+      reportedPointIdRef.current = null
+      return
+    }
+    if (selectedPointId === reportedPointIdRef.current) return
+    reportedPointIdRef.current = selectedPointId
+    track('map_point_open', { bangumi_id: selectedBangumiId ?? undefined, source: source ?? 'url' })
+  }, [selectedBangumiId, selectedPointId])
 
   const openBangumi = useCallback(
     async (id: number, pointId?: string | null, options?: { keepMobilePointPopup?: boolean }) => {

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import CopyLinkButton from '@/components/resources/CopyLinkButton'
 import { t } from '@/lib/i18n'
+import { track } from '@/lib/analytics/track'
 import type { SupportedLocale } from '@/lib/i18n/types'
 
 type Props = {
@@ -42,6 +43,14 @@ export default function RouteCardActions({
           target="_blank"
           rel="noopener noreferrer"
           data-nav-surface={navSurface}
+          onClick={() =>
+            track('outbound_navigation', {
+              surface: 'resource',
+              provider: 'google',
+              // primaryHref 可能是整条路线的导航，也可能退化成第一个点位
+              kind: primaryHref.includes('/maps/dir') ? 'directions' : 'place',
+            })
+          }
           className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-brand-500 px-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-600 whitespace-nowrap"
         >
           {t('resources.actions.openMap', locale)}
