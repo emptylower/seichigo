@@ -79,12 +79,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           crossOrigin="anonymous"
         />
         <Script async src="https://www.googletagmanager.com/gtag/js?id=G-F7E894BEWR" strategy="lazyOnload" />
-        <Script id="google-analytics" strategy="lazyOnload">
+        {/* 只在生产域名 config：开发/预览环境连 page_view 都不发，GA 里不再有
+            localhost 与预览域名的污染（自定义事件的同款守卫见 lib/analytics/track.ts）。
+            改 afterInteractive：纯内联无网络开销，但要尽早跑——track() 看到
+            __seichigoGaConfigured 已置位就跳过自己补 config，两边只发一次。 */}
+        <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
 
-gtag('config', 'G-F7E894BEWR');`}
+if (location.hostname === 'seichigo.com' || location.hostname.endsWith('.seichigo.com')) {
+  if (window.__seichigoGaConfigured !== true) {
+    gtag('js', new Date());
+    gtag('config', 'G-F7E894BEWR');
+    window.__seichigoGaConfigured = true;
+  }
+}`}
         </Script>
         <Providers>
           {children}

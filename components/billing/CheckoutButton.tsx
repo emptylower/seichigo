@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { t } from '@/lib/i18n'
+import { track } from '@/lib/analytics/track'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { prefixPath } from '@/components/layout/prefixPath'
 import { useBillingPlan } from './useBillingPlan'
@@ -46,6 +47,8 @@ export function CheckoutButton(props: {
 
   async function start(): Promise<void> {
     setStatus('loading')
+    // 结账意向：本按钮只开通标准档，调接口前先记一次（401/403 等被拦的也算意向）
+    track('begin_checkout', { tier: 'standard' })
     try {
       const res = await fetch('/api/me/billing/checkout', {
         method: 'POST',

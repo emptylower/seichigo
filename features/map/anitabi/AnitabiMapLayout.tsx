@@ -11,6 +11,7 @@ import ExplorerPanelContent from './ExplorerPanelContent'
 import MapDialogs from './MapDialogs'
 import MapShell from './MapShell'
 import { geoLink, isValidGeoPair } from './media'
+import { notePointOpenSource } from './useAnitabiSelection'
 
 export default function AnitabiMapLayout(props: any) {
   const {
@@ -208,6 +209,7 @@ export default function AnitabiMapLayout(props: any) {
       }}
       onSelectPoint={(point: any) => {
         setDetailCardMode('point')
+        notePointOpenSource('list')
         setSelectedPointId(point.id)
         if (!isDesktopRef.current) setMobilePointPopupOpen(false)
         if (mapViewMode === 'panorama') return
@@ -263,6 +265,8 @@ export default function AnitabiMapLayout(props: any) {
         openBangumi(id).catch(() => null)
       }}
       onOpenPoint={(bangumiId, pointId) => {
+        // 探索面板点位行点击：先标 list 入口再打开，否则埋点 source 会被错记成 'url'
+        notePointOpenSource('list')
         openBangumi(bangumiId, pointId).catch(() => null)
       }}
       onHoverCardEnter={handleCardPointerEnter}
@@ -325,6 +329,7 @@ export default function AnitabiMapLayout(props: any) {
             openBangumi(bangumiId).catch(() => null)
           }}
           onPointClick={(bangumiId, pointId) => {
+            notePointOpenSource('overlay')
             openBangumi(bangumiId, pointId).catch(() => null)
           }}
         />
@@ -453,6 +458,7 @@ export default function AnitabiMapLayout(props: any) {
       points={windowExcerptPoints}
       activePointId={props.selectedPointId}
       onPointClick={(bangumiId, pointId) => {
+        notePointOpenSource('overlay')
         openBangumi(bangumiId, pointId, { keepMobilePointPopup: true }).catch(() => null)
       }}
     />

@@ -1,4 +1,5 @@
 import type { AggregatedSpot, LinkAsset } from '@/lib/linkAsset/types'
+import OutboundNavLink from '@/components/resources/OutboundNavLink'
 
 type Props = {
   asset: LinkAsset
@@ -32,14 +33,13 @@ export default function MapAssetView({ spots }: Props) {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-gray-900">地图入口</div>
           {primaryHref ? (
-            <a
+            <OutboundNavLink
               href={primaryHref}
-              target="_blank"
-              rel="noopener noreferrer"
+              kind="place"
               className="inline-flex items-center justify-center rounded-md bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
             >
               在 Google Maps 打开
-            </a>
+            </OutboundNavLink>
           ) : null}
         </div>
         <div className="mt-2 text-sm text-gray-700">优先用点位列表做导航入口；后续可以把路线分段链接、按城市/作品过滤补齐。</div>
@@ -75,9 +75,9 @@ export default function MapAssetView({ spots }: Props) {
                       </div>
                     </div>
                     {href ? (
-                      <a href={href} target="_blank" rel="noopener noreferrer" className="shrink-0 text-sm text-brand-600 hover:text-brand-700">
+                      <OutboundNavLink href={href} kind="place" className="shrink-0 text-sm text-brand-600 hover:text-brand-700">
                         打开
-                      </a>
+                      </OutboundNavLink>
                     ) : null}
                   </div>
                   {s.photoTip ? <div className="mt-2 text-sm text-gray-700">机位：{s.photoTip}</div> : null}

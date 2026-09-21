@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import LoginModal from '@/components/auth/LoginModal'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import { t, tArray } from '@/lib/i18n'
+import { track } from '@/lib/analytics/track'
 import { notifyUsageChanged, useUsage } from '@/hooks/useUsage'
 import { PlanShell } from '@/components/plan/PlanShell'
 import { PlanComposer } from '@/app/(authed)/plan/[id]/components/PlanComposer'
@@ -69,6 +70,8 @@ export default function PlanStartView({
   // 中-1：登录态是本地 state——弹窗里登录成功后就是登录态了，
   // 服务端传来的初值只是首帧起点，不能让第二次发送又弹一遍窗
   const [authed, setAuthed] = useState(signedIn)
+  // 这次要发的内容是不是点建议行来的（埋点 suggestion 参数）；用户手打改动后复位
+  const suggestionUsedRef = useRef(false)
 
   async function createPlanAndGo() {
     const message = text.trim()
@@ -89,6 +92,9 @@ export default function PlanStartView({
         setBusy(false)
         return
       }
+      // 起始页的「提交一次规划请求」只在计划真的建出来后计：
+      // 429/网络错等失败路径不算发起（F8）；计划页自动发出那一下不再重复计
+      track('plan_start', { entry: 'start_page', suggestion: suggestionUsedRef.current })
       // 交接第一条消息：计划页挂载后按 usePendingDraft 自动发出
       try {
         window.sessionStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ text: message, createdAt: Date.now() }))
@@ -107,6 +113,7 @@ export default function PlanStartView({
   function handleSend() {
     if (!text.trim() || busy) return
     if (!authed) {
+      track('plan_login_required', { entry: 'start_page' })
       setLoginIntent('send')
       setLoginOpen(true)
       return
@@ -116,6 +123,7 @@ export default function PlanStartView({
 
   /** 建议行：填入输入框并聚焦、光标移到末尾——不发送；再点另一行则替换 */
   function applySuggestion(next: string) {
+    suggestionUsedRef.current = true
     setText(next)
     // 等受控值落到 DOM 后再聚焦定位（受控组件在渲染后才更新 value）
     requestAnimationFrame(() => {
@@ -164,7 +172,11 @@ export default function PlanStartView({
                 <div className="mt-5">
                   <PlanComposer
                     value={text}
-                    onChange={setText}
+                    onChange={(next) => {
+                      // 手打改动后就不算建议行发起的了
+                      suggestionUsedRef.current = false
+                      setText(next)
+                    }}
                     onSend={handleSend}
                     busy={busy}
                     answering={false}

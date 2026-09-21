@@ -10,6 +10,7 @@ import {
   removeLabelLayer,
 } from '@/components/map/CompleteModeLayers'
 import { buildFallbackRasterStyle, getMapStyleCandidates, matchPointId, resolvePanoramaEmbed } from './media'
+import { notePointOpenSource } from './useAnitabiSelection'
 import { markBasemapFirstLoaded } from './basemapFirstLoadGate'
 import {
   MAP_KEEP_PENDING_TILE_REQUESTS_DURING_ZOOM,
@@ -184,6 +185,9 @@ export function useMapStyleFailover(ctx: any) {
       if (mapModeRef.current === 'complete') {
         const completeTarget = readCompleteTargetFromRendered(event)
         if (completeTarget) {
+          // 全量模式点 marker 也是 marker 入口：openBangumi 内部会 setSelectedPointId，
+          // 早退分支前必须先标 source，否则埋点被错记成 'url'
+          if (completeTarget.pointId) notePointOpenSource('marker')
           openBangumiRef.current?.(
             completeTarget.bangumiId,
             completeTarget.pointId,
@@ -200,6 +204,7 @@ export function useMapStyleFailover(ctx: any) {
       if (!pointId) return
       const prevPointId = selectedPointIdRef.current
       setDetailCardMode('point')
+      notePointOpenSource('marker')
       setSelectedPointId(pointId)
       if (!isDesktopRef.current) {
         setMobilePointPopupOpen(true)

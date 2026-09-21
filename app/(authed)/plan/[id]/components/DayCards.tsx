@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { List, Loader2, Map as MapIcon, MessageSquarePlus, Navigation } from 'lucide-react'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
+import { track } from '@/lib/analytics/track'
 import { TierHint } from '@/components/billing/TierHint'
 import { DaysLimitHint } from '@/components/billing/DaysLimitHint'
 import type { TierHints } from '@/hooks/useUsage'
@@ -33,6 +34,10 @@ import type { DaymapMessagePayload, TripPlanDayView, TripPlanItemView } from '@/
 
 /** 静态展示：当前天前 6 张缩略图 eager，其余 lazy（第二屏首帧直接出图） */
 const EAGER_IMAGE_COUNT = 6
+
+/** 单点与整日导航外链共用的埋点（只记一次点击，链接照常 target=_blank 打开） */
+const trackGoogleDirections = () =>
+  track('outbound_navigation', { surface: 'plan', provider: 'google', kind: 'directions' })
 
 const TYPE_LABEL_KEYS: Record<string, string> = {
   point: 'day.typePoint',
@@ -269,7 +274,10 @@ function TimelineCardRow(props: {
               rel="noopener"
               aria-label={tx('day.navigateAria', { title: item.title })}
               title={tx('day.navigateHere')}
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                trackGoogleDirections()
+              }}
               className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600"
             >
               <Navigation className="h-3.5 w-3.5" />
@@ -561,6 +569,7 @@ export function DayCards(props: {
                 href={dayNavUrls[0]}
                 target="_blank"
                 rel="noopener"
+                onClick={trackGoogleDirections}
                 className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-600"
               >
                 <Navigation className="h-3 w-3" />
@@ -579,6 +588,7 @@ export function DayCards(props: {
                       href={url}
                       target="_blank"
                       rel="noopener"
+                      onClick={trackGoogleDirections}
                       className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-brand-600"
                     >
                       {tx('day.segment', { index: index + 1 })}

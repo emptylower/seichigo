@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { PANORAMA_TRIGGER_ZOOM } from './shared'
 import { isValidGeoPair, resolvePanoramaEmbed } from './media'
+import { notePointOpenSource } from './useAnitabiSelection'
 
 export function usePanoramaController(ctx: any) {
   const {
@@ -139,6 +140,8 @@ export function usePanoramaController(ctx: any) {
       const targetPointId = nearestPointId || firstAvailablePointId
       if (!targetPointId) return
       setDetailCardMode('point')
+      // 进全景时自动选中最近点位：不是用户直接点的哪一个入口，归 unknown
+      notePointOpenSource('unknown')
       setSelectedPointId(targetPointId)
       return
     }

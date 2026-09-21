@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import { useEmailCodeLogin } from '@/components/auth/useEmailCodeLogin'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import { t } from '@/lib/i18n'
+import { track } from '@/lib/analytics/track'
 
 const inputClass =
   'w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm placeholder:text-gray-400 focus:border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-100'
@@ -64,7 +65,9 @@ export default function LoginModal({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     const result = await login.verifyCode()
-    if (result.ok) onSuccess()
+    if (!result.ok) return
+    track('login', { method: 'email_code' })
+    onSuccess()
   }
 
   return (

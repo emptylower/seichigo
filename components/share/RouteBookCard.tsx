@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 import { getAnitabiAttributionLabel } from '@/components/anitabi/AttributionLink'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildGoogleStaticMapUrl } from '@/lib/route/google'
+import { track } from '@/lib/analytics/track'
 import { toCanvasSafeImageUrl } from '@/lib/anitabi/imageProxy'
 
 export interface RouteBookCardProps {
@@ -263,6 +264,7 @@ export default function RouteBookCard({
     const text = `我完成了《${animeTitle}》x ${cityName} 的圣地巡礼! ${totalPoints} 个点位全部打卡 ${shareUrl}`
     try {
       await navigator.clipboard.writeText(text)
+      track('share', { method: 'copy', content_type: 'route' })
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 2000)
     } catch (err) {
@@ -282,6 +284,7 @@ export default function RouteBookCard({
           title: '圣地巡礼战报',
           text: `我完成了《${animeTitle}》x ${cityName} 的圣地巡礼! ${totalPoints} 个点位全部打卡`
         })
+        track('share', { method: 'native', content_type: 'route' })
       } else {
         handleDownload()
       }
