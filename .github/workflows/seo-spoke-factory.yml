@@ -83,7 +83,7 @@ jobs:
       - name: Create Pull Request
         id: cpr
         if: ${{ inputs.mode == 'generate' }}
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.SEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           branch: codex/seo-spoke-${{ github.run_id }}
