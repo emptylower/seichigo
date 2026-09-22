@@ -27,7 +27,7 @@ export function useTypewriterPlaceholder(examples: string[], options: Typewriter
     let index = 0
     let pos = 0
     let erasing = false
-    let timer: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout> | undefined
 
     const tick = () => {
       const current = list[index % list.length]!
@@ -53,8 +53,18 @@ export function useTypewriterPlaceholder(examples: string[], options: Typewriter
       }
     }
 
-    timer = setTimeout(tick, typeMs)
-    return () => clearTimeout(timer)
+    const onVisibilityChange = () => {
+      clearTimeout(timer)
+      if (!document.hidden) timer = setTimeout(tick, typeMs)
+    }
+
+    // 后台页保留当前位置并停掉计时器，恢复可见后再继续，不额外触发 React 更新。
+    onVisibilityChange()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [joined, enabled, typeMs, holdMs, eraseMs])
 
   return enabled ? text : ''

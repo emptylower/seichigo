@@ -1,10 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 const pushMock = vi.hoisted(() => vi.fn())
+const backgroundRenderMock = vi.hoisted(() => vi.fn())
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
 }))
+vi.mock('@/components/home/HomeHeroBackground', async (importOriginal) => {
+  const { default: Background } = await importOriginal<typeof import('@/components/home/HomeHeroBackground')>()
+  return {
+    default: function TrackedBackground() {
+      backgroundRenderMock()
+      return <Background />
+    },
+  }
+})
 
 import HomeHero from '@/components/home/HomeHero'
 import { heroDemoItems } from '@/components/home/heroData'
@@ -26,9 +37,23 @@ function renderHero(locale: 'zh' | 'en' | 'ja' = 'zh') {
 describe('HomeHero', () => {
   beforeEach(() => {
     pushMock.mockReset()
+    backgroundRenderMock.mockClear()
     setPrefersReducedMotion(false)
   })
   afterEach(() => clearMatchMediaStub())
+
+  it('SSR 保留手机地图的唯一高优先级预载，背景预载均带媒体条件', () => {
+    const demo = heroDemoFixture()
+    const html = renderToStaticMarkup(<HomeHero locale="zh" demo={demo} />)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const mapPreloads = doc.querySelectorAll(`link[rel="preload"][href="${demo.map!.src}"]`)
+
+    expect(mapPreloads).toHaveLength(1)
+    expect(mapPreloads[0]!.getAttribute('fetchpriority')).toBe('high')
+    const backgrounds = [...doc.querySelectorAll('link[rel="preload"][href*="hero-bg-"]')]
+    expect(backgrounds).toHaveLength(2)
+    expect(backgrounds.every((link) => Boolean(link.getAttribute('media')))).toBe(true)
+  })
 
   it('SEO：H1 三语都含「圣地巡礼」关键词', () => {
     const zh = renderHero('zh')
@@ -78,6 +103,28 @@ describe('HomeHero', () => {
     expect(screen.getByRole('textbox').getAttribute('placeholder')).toBe(
       '圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》',
     )
+  })
+
+  it('逐字占位、聚焦和输入更新不会重渲染静态首屏背景', () => {
+    vi.useFakeTimers()
+    try {
+      renderHero('zh')
+      const initialRenders = backgroundRenderMock.mock.calls.length
+      expect(initialRenders).toBeGreaterThan(0)
+
+      act(() => void vi.advanceTimersByTime(45 * 3))
+      const input = screen.getByRole('textbox')
+      expect(input.getAttribute('placeholder')).toHaveLength(3)
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: '京都 3 天' } })
+      fireEvent.blur(input)
+      fireEvent.click(screen.getByRole('button', { name: '周末两天在镰仓，巡礼《灌篮高手》' }))
+
+      expect(input).toHaveValue('周末两天在镰仓，巡礼《灌篮高手》')
+      expect(backgroundRenderMock).toHaveBeenCalledTimes(initialRenders)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('插画背景与路线层铺在首屏最底下，点阵与光斑已经不在了', () => {

@@ -48,9 +48,16 @@ export function assetCoverSrc(src: string, opts: AssetCoverOptions): string {
 
 /**
  * srcSet 候选串：`"…?w=320&q=75 320w, …?w=640&q=75 640w"`。
+ * 每个候选覆盖原有 w，确保 URL 与宽度描述一致；已有 q 和其它参数仍保留。
  * 非 `/assets/` URL（走不了缩放路由）返回 `undefined`，调用方不要输出 srcSet 属性。
  */
 export function assetCoverSrcSet(src: string, widths: number[], quality?: number): string | undefined {
-  if (!parseAssetUrl(src)) return undefined
-  return widths.map((width) => `${assetCoverSrc(src, { width, quality })} ${width}w`).join(', ')
+  const parsed = parseAssetUrl(src)
+  if (!parsed) return undefined
+  const { url, hasAbsolute } = parsed
+  return widths.map((width) => {
+    url.searchParams.set('w', String(width))
+    if (!url.searchParams.has('q')) url.searchParams.set('q', String(quality ?? DEFAULT_QUALITY))
+    return `${hasAbsolute ? url.toString() : `${url.pathname}${url.search}`} ${width}w`
+  }).join(', ')
 }

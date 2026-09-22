@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import HomeHeroBackground from '@/components/home/HomeHeroBackground'
 
@@ -8,6 +9,20 @@ function srcSetOf(el: Element): string | null {
 }
 
 describe('HomeHeroBackground（首屏插画背景）', () => {
+  it('SSR 仅预载各断点首选的 AVIF，并将格式和媒体条件保留到 head', () => {
+    const html = renderToStaticMarkup(<html><head /><body><HomeHeroBackground /></body></html>)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const preloads = [...doc.head.querySelectorAll('link[rel="preload"][as="image"]')]
+
+    expect(preloads.map((link) => [
+      link.getAttribute('href'), link.getAttribute('type'), link.getAttribute('media'), link.getAttribute('fetchpriority'),
+    ])).toEqual([
+      ['/images/home/hero-bg-landscape.avif', 'image/avif', '(min-width: 1024px)', 'high'],
+      ['/images/home/hero-bg-portrait.avif', 'image/avif', '(width < 1024px)', 'high'],
+    ])
+    expect(doc.body.querySelector('link[rel="preload"]')).toBeNull()
+  })
+
   it('<picture> 两组 source：lg 以上横版、以下竖版，各 avif + webp（avif 排在 webp 前）', () => {
     const { container } = render(<HomeHeroBackground />)
     const sources = [...container.querySelectorAll('source')]

@@ -4,6 +4,7 @@ const PORTRAIT = '/images/home/hero-bg-portrait'
 
 /** 桌面视口（`lg`）用横版 1672×941，以下用竖版 941×1672 */
 const DESKTOP_MEDIA = '(min-width: 1024px)'
+const MOBILE_MEDIA = '(width < 1024px)'
 
 /**
  * 花瓣：位置、大小、动画名与时长全部写死——首屏背景是 SSR 直出的，
@@ -28,7 +29,7 @@ const PETALS = [
  *    `prefers-reduced-motion` 与断点一律交给 CSS media query，不用 hook；
  * 3. 只用 `transform` / `opacity` 动，不用 `filter: blur`（移动端合成代价太高）。
  *
- * `<img>` 是首屏唯一的 LCP 候选：`eager` + `fetchpriority=high` 直出，
+ * 背景图是桌面首屏主要的 LCP 候选（移动端主要是手机演示地图）：`eager` + `fetchpriority=high` 直出，
  * 桌面对齐右中（富士山与晴空塔在画面右侧），移动端对齐下中（樱花与城市在下半张）。
  */
 export default function HomeHeroBackground() {
@@ -38,6 +39,9 @@ export default function HomeHeroBackground() {
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 select-none overflow-hidden"
     >
+      {/* 只预载 picture 首选的 AVIF：type 跳过不支持的浏览器，media 避免横竖版同时下载。 */}
+      <link rel="preload" as="image" href={`${LANDSCAPE}.avif`} type="image/avif" media={DESKTOP_MEDIA} fetchPriority="high" />
+      <link rel="preload" as="image" href={`${PORTRAIT}.avif`} type="image/avif" media={MOBILE_MEDIA} fetchPriority="high" />
       <style>{`
         /* 移动端：自上而下压白，标题与输入框落在最白的一段上 */
         .seichigo-hero-bg-side {

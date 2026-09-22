@@ -78,7 +78,7 @@ function PlanTitle({ locale }: { locale: SiteLocale }) {
 }
 
 /** 条目卡左侧缩略图；无图用浅灰占位块。Google 照片署名是使用条款的一部分，不能省 */
-function ItemThumb({ item, eager }: { item: TripPlanItemView; eager: boolean }) {
+function ItemThumb({ item }: { item: TripPlanItemView }) {
   const { src, attribution } = showcaseItemImage(item)
   if (!src) return <span className="h-16 w-16 shrink-0 rounded-xl bg-gray-100" aria-hidden="true" />
   return (
@@ -89,7 +89,7 @@ function ItemThumb({ item, eager }: { item: TripPlanItemView; eager: boolean }) 
         alt=""
         width={64}
         height={64}
-        loading={eager ? 'eager' : 'lazy'}
+        loading="lazy"
         decoding="async"
         className="h-full w-full object-cover"
       />
@@ -164,9 +164,9 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
         </p>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* 左栏：行程概览 */}
-        <div className="self-start rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.12)]">
+        <div className="min-w-0 self-start rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.12)]">
           <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <Route className="h-4 w-4 text-brand-600" aria-hidden="true" />
             {t('pages.home.v2.planOverview', locale)}
@@ -217,7 +217,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
         </div>
 
         {/* 右栏：逐天 */}
-        <div ref={rotation.containerRef} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-lg lg:p-6">
+        <div ref={rotation.containerRef} className="min-w-0 rounded-3xl border border-gray-200 bg-white p-5 shadow-lg lg:p-6">
           <div className="flex items-start gap-3">
             {/* 标签区独立横向滚动（隐藏滚动条），「查看完整行程」固定在行右侧不被挤压 */}
             <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -297,7 +297,7 @@ export default function HomeShowcasePlan({ locale, showcase }: { locale: SiteLoc
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3">
-                      <ItemThumb item={item} eager={index < 4} />
+                      <ItemThumb item={item} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-gray-900">{item.title}</p>
                         {item.note ? <p className="mt-0.5 truncate text-xs text-gray-500">{item.note}</p> : null}

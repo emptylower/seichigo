@@ -105,7 +105,9 @@ export default function HomeMapDatabase({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={image.src}
-            srcSet={`${image.src2x} 2x`}
+            srcSet={`${image.src} ${image.width}w, ${image.src2x} ${image.width * 2}w`}
+            // 小屏 object-cover 按 h-72 放大后裁切，选图宽度必须计入被裁掉的部分。
+            sizes={`(min-width: 1184px) 1152px, (min-width: 768px) calc(100vw - 2rem), ${Math.ceil((288 * image.width) / image.height)}px`}
             width={image.width}
             height={image.height}
             loading="lazy"

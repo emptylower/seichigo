@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import HomeShowcasePlan from '@/components/home/HomeShowcasePlan'
 import type { HomeShowcase } from '@/lib/home/types'
 import type { TripPlanItemView, TripPlanDayView } from '@/lib/tripPlan/view'
@@ -103,6 +104,18 @@ describe('HomeShowcasePlan（第三屏重做）', () => {
   })
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('SSR 的第三屏缩略图全部 lazy，React 不再将前四项提升为首屏预载', () => {
+    const showcase = showcaseFixture()
+    showcase.days[0]!.items[0]!.payload = { media: { displayUrl: '/images/showcase/first.jpg' } }
+    const html = renderToStaticMarkup(<HomeShowcasePlan locale="zh" showcase={showcase} />)
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const images = [...doc.querySelectorAll('img')]
+
+    expect(images.length).toBeGreaterThan(1)
+    expect(images.every((image) => image.getAttribute('loading') === 'lazy')).toBe(true)
+    expect(doc.querySelector('link[rel="preload"][as="image"]')).toBeNull()
   })
 
   it('顶部：粉色小字 + 带 accent 的两行大标题 + 副标题', () => {

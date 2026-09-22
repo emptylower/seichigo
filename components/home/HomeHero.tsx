@@ -1,21 +1,15 @@
-'use client'
-
-import { useState } from 'react'
 import { preload } from 'react-dom'
-import { useRouter } from 'next/navigation'
-import { ArrowRight, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import type { HomeStats } from '@/lib/home/types'
 import HeroLaurel from './HeroLaurel'
 import HomeEntryCards from './HomeEntryCards'
 import HomeHeroBackground from './HomeHeroBackground'
+import HomeHeroComposer from './HomeHeroComposer'
 import HomeHeroPhone from './HomeHeroPhone'
 import HomeHeroRoute from './HomeHeroRoute'
 import HomeWorksTicker from './HomeWorksTicker'
 import type { HomeHeroDemoLike } from './heroDemoShape'
-import { planStartHref } from './planStartHref'
-import { useTypewriterPlaceholder } from './HomeHeroTypewriter'
-import { usePrefersReducedMotion } from './usePrefersReducedMotion'
 import { t } from '@/lib/i18n'
 
 /** 副标题里的点位数取整到万位（en 取整到千位加 k），不要精确数字压住这句话 */
@@ -77,35 +71,14 @@ export default function HomeHero({
   demo?: HomeHeroDemoLike
   stats?: HomeStats
 }) {
-  const router = useRouter()
-  const reduced = usePrefersReducedMotion()
-  const [text, setText] = useState('')
-  const [focused, setFocused] = useState(false)
-
-  // LCP 预载（写法同 HomeShowcasePlan）：移动端首屏两张关键图——竖版背景插画与
-  // 手机演示里的静态地图。桌面已达标，且 preload 无法按 media 区分横竖，只预载竖版。
-  // 与 HomeHeroBackground 的 PORTRAIT 基名保持一致。
-  preload('/images/home/hero-bg-portrait.avif', { as: 'image', fetchPriority: 'high' })
+  // 手机演示地图是移动端 LCP 候选；背景插画由 HomeHeroBackground 按断点预载。
   if (demo?.map) preload(demo.map.src, { as: 'image', fetchPriority: 'high' })
 
-  const submitLabel = t('pages.home.v2.composerSubmit', locale)
-  const staticPlaceholder = t('pages.home.v2.composerPlaceholder', locale)
   const examples = [
     t('pages.home.v2.composerExample1', locale),
     t('pages.home.v2.composerExample2', locale),
     t('pages.home.v2.composerExample3', locale),
   ]
-
-  // 用户一聚焦或输入就停下打字机，交回静态占位；reduced-motion 下直接显示第一条
-  const typed = useTypewriterPlaceholder(examples, { enabled: !reduced && !focused && !text })
-  const placeholder = reduced ? examples[0]! : typed || staticPlaceholder
-
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    const draft = text.trim()
-    if (!draft) return
-    router.push(planStartHref(locale, draft))
-  }
 
   return (
     <section className="relative flex flex-col overflow-hidden pt-8 lg:min-h-[calc(100svh-var(--site-header-h))]">
@@ -123,46 +96,12 @@ export default function HomeHero({
           <HeroTitle locale={locale} />
           <p className="max-w-2xl text-sm leading-relaxed text-gray-600">{heroSubtitle(locale, points)}</p>
 
-          <form
-            aria-label={submitLabel}
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-lg focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200 sm:flex-row sm:items-center"
-          >
-            <input
-              type="text"
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              // 中-2：输入法组词期间的回车是「上屏」，不能让它触发表单提交
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault()
-              }}
-              placeholder={placeholder}
-              className="w-full flex-1 rounded-xl px-3 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
-            >
-              {submitLabel}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </form>
-
-          {/* 移动端优先：chip 横向滚动，不换行挤压输入框 */}
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
-            {examples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => setText(example)}
-                className="shrink-0 rounded-full border border-white/70 bg-white/70 px-3 py-1.5 text-xs text-gray-600 backdrop-blur-sm transition-colors hover:border-brand-300 hover:bg-white hover:text-brand-600"
-              >
-                {example}
-              </button>
-            ))}
-          </div>
+          <HomeHeroComposer
+            locale={locale}
+            submitLabel={t('pages.home.v2.composerSubmit', locale)}
+            staticPlaceholder={t('pages.home.v2.composerPlaceholder', locale)}
+            examples={examples}
+          />
 
           <HomeWorksTicker names={works} label={t('pages.home.v2.heroWorksLabel', locale)} />
         </div>

@@ -11,6 +11,10 @@ import { t } from '@/lib/i18n'
 const MAX_ANIME_CARDS = 8
 const MAX_CITY_CARDS = 12
 
+// max-w-5xl + px-4；lg 两栏 gap-10，每栏四列 gap-4；sm 单栏四列，其余两列。
+const COVER_SIZES = '(min-width: 1024px) 107px, (min-width: 640px) calc(25vw - 20px), calc(50vw - 24px)'
+const COVER_WIDTHS = [128, 160, 240, 320, 640, 960]
+
 /** 大标题「热门作品 & 热门城市」：& 是唯一的品牌色片段（模板里的 {amp} 占位） */
 function BrowseHeading({ locale }: { locale: SiteLocale }) {
   const [before = '', after = ''] = t('pages.home.v2.browseHeading', locale).split('{amp}')
@@ -46,8 +50,8 @@ function AnimePosterCard({ item, locale }: { item: HomePopularAnimeItem; locale:
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={assetCoverSrc(item.cover, { width: 640 })}
-            srcSet={assetCoverSrcSet(item.cover, [320, 640, 960])}
-            sizes="(min-width:1024px) 120px, 45vw"
+            srcSet={assetCoverSrcSet(item.cover, COVER_WIDTHS)}
+            sizes={COVER_SIZES}
             alt={name}
             loading="lazy"
             decoding="async"
@@ -71,8 +75,8 @@ function CityCoverCard({ item, locale }: { item: HomePopularCityItem; locale: Si
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={assetCoverSrc(item.city.cover, { width: 640 })}
-            srcSet={assetCoverSrcSet(item.city.cover, [320, 640, 960])}
-            sizes="(min-width:1024px) 120px, 45vw"
+            srcSet={assetCoverSrcSet(item.city.cover, COVER_WIDTHS)}
+            sizes={COVER_SIZES}
             alt={name}
             loading="lazy"
             decoding="async"

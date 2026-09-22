@@ -9,12 +9,13 @@ import { heroDemoFixture, mapWorldFixture, statsFixture } from './fixtures'
  * 渲染结果完全由 world（home-map-world.json 契约）+ stats + demo 决定，同步可断言。
  */
 describe('HomeMapDatabase（静态世界地图）', () => {
-  it('渲染预渲染 <img>：srcSet 含 2x、width/height 写死（防 CLS）、lazy + async、alt 空且 aria-hidden', () => {
+  it('世界地图按实际宽度选 1x/2x 资源，sizes 计入小屏 object-cover 裁切，保持 lazy 与固定宽高', () => {
     const { container } = render(<HomeMapDatabase locale="zh" world={mapWorldFixture()} stats={statsFixture} />)
 
     const img = container.querySelector('img[src="/images/home/map-world.webp"]')!
     expect(img).not.toBeNull()
-    expect(img.getAttribute('srcSet')).toContain('/images/home/map-world@2x.webp 2x')
+    expect(img.getAttribute('srcSet')).toBe('/images/home/map-world.webp 1208w, /images/home/map-world@2x.webp 2416w')
+    expect(img.getAttribute('sizes')).toBe('(min-width: 1184px) 1152px, (min-width: 768px) calc(100vw - 2rem), 789px')
     expect(img.getAttribute('width')).toBe('1208')
     expect(img.getAttribute('height')).toBe('441')
     expect(img.getAttribute('loading')).toBe('lazy')

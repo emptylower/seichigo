@@ -14,7 +14,10 @@ function typed(): string {
 
 describe('useTypewriterPlaceholder', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
 
   it('按 typeMs 一字一字推进第一条示例', () => {
     render(<Probe examples={['abcd', 'xy']} />)
@@ -56,5 +59,41 @@ describe('useTypewriterPlaceholder', () => {
     render(<Probe examples={[]} />)
     act(() => void vi.advanceTimersByTime(10_000))
     expect(typed()).toBe('')
+  })
+
+  it('切到后台后停止计时，回到前台从当前位置继续，卸载时清理计时器', () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const view = render(<Probe examples={['abcd']} />)
+    act(() => void vi.advanceTimersByTime(45 * 2))
+    expect(typed()).toBe('ab')
+
+    hidden.mockReturnValue(true)
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => void vi.advanceTimersByTime(10_000))
+    expect(typed()).toBe('ab')
+
+    hidden.mockReturnValue(false)
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    act(() => void vi.advanceTimersByTime(45))
+    expect(typed()).toBe('abc')
+
+    view.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('后台挂载时先不启动，前台显示后才开始打字', () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    render(<Probe examples={['abcd']} />)
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => void vi.advanceTimersByTime(10_000))
+    expect(typed()).toBe('')
+
+    hidden.mockReturnValue(false)
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    act(() => void vi.advanceTimersByTime(45))
+    expect(typed()).toBe('a')
   })
 })

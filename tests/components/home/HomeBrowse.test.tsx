@@ -63,11 +63,23 @@ describe('HomeBrowse（第五屏：热门作品 & 热门城市）', () => {
     const img = document.querySelector('img')!
     expect(img.getAttribute('src')).toBe('/assets/a1.jpg?w=640&q=75')
     expect(img.getAttribute('srcset')).toBe(
-      '/assets/a1.jpg?w=320&q=75 320w, /assets/a1.jpg?w=640&q=75 640w, /assets/a1.jpg?w=960&q=75 960w',
+      '/assets/a1.jpg?w=128&q=75 128w, /assets/a1.jpg?w=160&q=75 160w, /assets/a1.jpg?w=240&q=75 240w, /assets/a1.jpg?w=320&q=75 320w, /assets/a1.jpg?w=640&q=75 640w, /assets/a1.jpg?w=960&q=75 960w',
     )
-    expect(img.getAttribute('sizes')).toBe('(min-width:1024px) 120px, 45vw')
+    expect(img.getAttribute('sizes')).toBe('(min-width: 1024px) 107px, (min-width: 640px) calc(25vw - 20px), calc(50vw - 24px)')
     expect(img.getAttribute('loading')).toBe('lazy')
     expect(img.getAttribute('alt')).toBe('有封面')
+  })
+
+  it('城市封面复用同一组小尺寸候选与四列断点，原有 w 不锁死 srcSet', () => {
+    const cities = popularCitiesFixture(1)
+    cities[0]!.city.cover = '/assets/city?w=640&q=80'
+    const { container } = render(<HomeBrowse locale="zh" anime={[]} cities={cities} />)
+    const img = container.querySelector('img')!
+
+    expect(img.getAttribute('srcset')).toContain('/assets/city?w=128&q=80 128w')
+    expect(img.getAttribute('srcset')).toContain('/assets/city?w=960&q=80 960w')
+    expect(img.getAttribute('sizes')).toContain('(min-width: 640px) calc(25vw - 20px)')
+    expect(img.getAttribute('loading')).toBe('lazy')
   })
 
   it('栏目标题与「全部作品 / 全部城市」入口', () => {

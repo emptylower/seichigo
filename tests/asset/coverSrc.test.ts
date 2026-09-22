@@ -50,6 +50,19 @@ describe('assetCoverSrcSet', () => {
     )
   })
 
+  it('已有 w 按候选宽度覆盖，保留原有 q 和其它参数（单张 src 的 w 仍保留）', () => {
+    expect(assetCoverSrcSet('/assets/abc?w=800&q=90&foo=bar', [128, 320], 60)).toBe(
+      '/assets/abc?w=128&q=90&foo=bar 128w, /assets/abc?w=320&q=90&foo=bar 320w',
+    )
+    expect(assetCoverSrc('/assets/abc?w=800&q=90', { width: 128 })).toBe('/assets/abc?w=800&q=90')
+  })
+
+  it('绝对站内 URL 的候选也按各自宽度下发', () => {
+    expect(assetCoverSrcSet('https://seichigo.com/assets/abc?w=640', [128, 240])).toBe(
+      'https://seichigo.com/assets/abc?w=128&q=75 128w, https://seichigo.com/assets/abc?w=240&q=75 240w',
+    )
+  })
+
   it('非 /assets/ URL 返回 undefined（调用方不输出 srcSet 属性）', () => {
     expect(assetCoverSrcSet('https://img.example.com/x.jpg', [320, 640])).toBeUndefined()
     expect(assetCoverSrcSet('/images/home/hero.webp', [320, 640])).toBeUndefined()
