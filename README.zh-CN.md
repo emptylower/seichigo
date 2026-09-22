@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://seichigo.com">
-    <img src="public/brand/web-logo-256.png" alt="SeichiGo 圣地 GO" width="96" height="96" />
+    <img src="docs/images/readme/seichigo-banner.png" alt="SeichiGo 圣地 GO 品牌横幅" width="960" />
   </a>
   <h1>SeichiGo 圣地 GO — 动漫圣地巡礼地图与 AI 行程规划</h1>
   <p>找到喜欢的动画中的真实地点，规划行程，跟着地图出发，留下自己的巡礼记录。</p>

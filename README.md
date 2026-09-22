@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://seichigo.com/en">
-    <img src="public/brand/web-logo-256.png" alt="SeichiGo" width="96" height="96" />
+    <img src="docs/images/readme/seichigo-banner.png" alt="SeichiGo brand banner" width="960" />
   </a>
   <h1>SeichiGo — Anime Pilgrimage Map &amp; AI Itinerary Planner</h1>
   <p>Find the real places behind your favorite anime. Plan the trip, follow the map, and keep a record of your pilgrimage.</p>

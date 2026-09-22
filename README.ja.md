@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://seichigo.com/ja">
-    <img src="public/brand/web-logo-256.png" alt="SeichiGo" width="96" height="96" />
+    <img src="docs/images/readme/seichigo-banner.png" alt="SeichiGo ブランドバナー" width="960" />
   </a>
   <h1>SeichiGo — アニメ聖地巡礼マップと AI 旅行プランナー</h1>
   <p>好きなアニメの風景を見つけ、旅を計画し、地図を片手に訪れる。自分だけの巡礼記録を残そう。</p>
