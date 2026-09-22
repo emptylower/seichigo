@@ -1,301 +1,218 @@
 <div align="center">
-  <a href="https://seichigo.com">
-    <img src="public/brand/web-logo-256.png" alt="SeichiGo" width="128" height="128" />
+  <a href="https://seichigo.com/en">
+    <img src="public/brand/web-logo-256.png" alt="SeichiGo" width="96" height="96" />
   </a>
-
-  <h1>SeichiGo · 圣地 GO</h1>
-
+  <h1>SeichiGo — Anime Pilgrimage Map &amp; AI Itinerary Planner</h1>
+  <p>Find the real places behind your favorite anime. Plan the trip, follow the map, and keep a record of your pilgrimage.</p>
+  <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a></p>
   <p>
-    <strong>An anime-pilgrimage content platform. Read deep guides, see exact spots on a map, take the route with you.</strong>
-  </p>
-  <p>
-    <strong>面向动漫圣地巡礼的内容平台 —— 读深度图文攻略，在地图上看准点位，把线路带走。</strong>
-  </p>
-
-  <p>
-    <a href="https://seichigo.com"><img alt="Live" src="https://img.shields.io/badge/live-seichigo.com-ec4899?style=flat-square" /></a>
-    <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue?style=flat-square" /></a>
-    <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=nextdotjs" />
-    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.6-3178c6?style=flat-square&logo=typescript&logoColor=white" />
-    <img alt="Prisma" src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma&logoColor=white" />
-    <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" />
-    <img alt="MapLibre" src="https://img.shields.io/badge/MapLibre-GL-396cb2?style=flat-square&logo=maplibre&logoColor=white" />
-  </p>
-
-  <p>
-    <a href="#features--特性"><strong>Features</strong></a> ·
-    <a href="#quick-start--快速开始"><strong>Quick start</strong></a> ·
-    <a href="docs/architecture.md"><strong>Architecture</strong></a> ·
-    <a href="docs/deployment.md"><strong>Deployment</strong></a> ·
-    <a href="docs/api.md"><strong>API</strong></a> ·
-    <a href="docs/roadmap.md"><strong>Roadmap</strong></a> ·
-    <a href="CONTRIBUTING.md"><strong>Contribute</strong></a>
+    <a href="https://seichigo.com/en">Visit SeichiGo</a> ·
+    <a href="https://seichigo.com/en/plan/start">Plan with AI</a> ·
+    <a href="https://seichigo.com/en/map">Explore the map</a>
   </p>
 </div>
 
----
+![SeichiGo homepage introducing anime pilgrimage, AI trip planning, and the locations map](docs/images/readme/overview.png)
 
-<p align="center">
-  <a href="#english">English</a> · <a href="#中文">中文</a>
-</p>
+## From an anime scene to a real journey
 
----
+**SeichiGo** is an anime pilgrimage website with an **anime locations map**, an **AI itinerary planner**, and travel guides in English, Simplified Chinese, and Japanese. Anime pilgrimage, also known as **seichi junrei** (聖地巡礼), means visiting the real-world places connected to a favorite anime.
 
-## English
+Start with a series you love, a city you are visiting, or a few days you have available. Discover locations on the map, ask AI to arrange a trip, and organize the places you want to visit in My Maps. On the road, use navigation, scene images, and check-ins to follow your route.
 
-### Why SeichiGo?
+| What you want to do | Where to start |
+| --- | --- |
+| Turn an idea into a day-by-day trip | [AI itinerary planner](https://seichigo.com/en/plan/start) |
+| Find anime locations and explore nearby spots | [Anime pilgrimage map](https://seichigo.com/en/map) |
+| Research a particular series | [Anime directory](https://seichigo.com/en/anime) |
+| Find pilgrimage guides for a destination | [City guides](https://seichigo.com/en/city) |
+| Understand account features and planning limits | [Plans and pricing](https://seichigo.com/en/pricing) |
 
-Anime pilgrimage — visiting the real-world places that appear in your
-favorite shows — is hard to plan well. The information is scattered across
-fansites, Twitter threads, and dead blog posts. SeichiGo collects the best
-routes into a single, well-crafted reading experience: deep guides per work,
-exact point-of-interest data backed by [Anitabi](https://anitabi.cn), and a
-map you can hand off to Google Maps in one tap.
+## AI itinerary planner for anime pilgrimage
 
-> "Help anime fans imagine — and plan — their first pilgrimage with
-> long-form writing, gentle visual design, and a useful list of places."
-> — from the original product brief
+The planner connects a conversation to a saved itinerary. Tell it what you would like to see, then review the places, daily schedule, and map together.
 
-### Features / 特性
+![English AI planner start page with a trip request composer](docs/images/readme/ai-planner.png)
 
-| | |
-|---|---|
-| ✦ Long-form pilgrimage articles | MDX-driven posts (`content/zh/posts/*.mdx`) with `<SpotList />` components, OG images, and JSON-LD. |
-| ✦ Map by Anitabi | MapLibre GL with clustering, viewport warmup, per-host policy, and an R2-backed durable image mirror. |
-| ✦ In-app navigation | Travel-mode picker (walking / transit / driving) via the official Google Maps Embed API. |
-| ✦ Authoring center | `/submit` — TipTap rich-text editor with floating toolbar, autosave, draft/withdraw, and revision flow. |
-| ✦ Admin moderation | `/admin/review` for article queue, translation batches, route books, and an ops dashboard. |
-| ✦ Multilingual | Locale-aware routing for `zh` / `en` / `ja`, with a Gemini-powered translation queue and glossary builder. |
-| ✦ SEO-first | Sitemap, robots, dynamic OG, JSON-LD spoke factory, SEO audit script, SerpAPI-driven rank tracker. |
-| ✦ Comments by Giscus | GitHub-Discussions-backed, zero database load. |
-| ✦ Code-first / AI-friendly | Everything from migrations to cron lives in the repo; modules ship with scoped `AGENTS.md` knowledge bases. |
-| ✦ Observability | Sentry server/edge, Cloudflare Workers observability, internal map-image diagnostics dashboard. |
+### Describe the trip in your own words
 
-### Live demo / 在线体验
+Enter the anime, destinations, number of days, dates, starting point, or pace you have in mind. The planner can ask follow-up questions and offer choices when it needs to clarify the trip. Date selection, illustrated anime choices, and questions about pace and transport help narrow it down. You can select multiple works when a question supports multiple answers.
 
-<https://seichigo.com>
+For example:
 
-### Quick start / 快速开始
+> Plan a three-day anime pilgrimage around Tokyo and Kamakura. I like *Bocchi the Rock!* and *Slam Dunk*. I will use public transport and would like a relaxed pace.
+
+This is an example request, not a pre-generated itinerary. The result depends on available location data, your answers, and your account's planning features.
+
+### Review a practical, day-by-day itinerary
+
+- **Daily cards and a timeline:** review the order of visits, time slots, reasons for each stop, travel segments, and meal breaks.
+- **Location context:** view point images and related anime information where available; external attractions, accommodation, and meal breaks can also appear in the itinerary.
+- **A map for each day:** inspect the day's stops and route, expand the map, and open a marker to jump back to its itinerary entry.
+- **Navigation from the plan:** open Google Maps for a single stop or the day's route. Long routes are split into navigation segments when needed.
+- **Street View links:** preview a location through Google Maps where coverage is available.
+- **Transport details:** eligible plans can look up routes and show journey information; estimated segments are marked as estimates.
+
+![Public itinerary example on the SeichiGo homepage, showing a trip overview and daily timeline](docs/images/readme/ai-itinerary.png)
+
+*Historical itinerary example displayed on the public homepage, captured on September 22, 2026. Current plan limits are listed below.*
+
+### Refine, return, and save useful locations
+
+Continue the conversation to change the pace, swap a destination, or adjust the schedule. Planning progress is visible as the response arrives, and you can stop a running request. Saved plans appear in the plan list so you can reopen a trip, review chat history, and inspect read-only itinerary snapshots. The interface also supports reconnecting after a refresh or interrupted planning session.
+
+Send supported **SeichiGo location points** from an itinerary to **My Maps** to continue organizing your pilgrimage. External places, restaurants, and accommodation entries are not imported into My Maps.
+
+### Current access and plan limits
+
+AI planning requires sign-in. The current public plans differ in both itinerary length and the travel information they can retrieve:
+
+| Capability | Free | Standard |
+| --- | --- | --- |
+| Maximum itinerary length | 3 days | 7 days |
+| Transport planning | Reference estimates | Real route lookup when available; estimates may be used as a fallback |
+| Restaurant recommendations | Not included; meal breaks can still be scheduled | Included where matching places are available |
+| Continued use | Subject to account usage allowance | Subject to account usage allowance |
+
+See the [live pricing page](https://seichigo.com/en/pricing) for current pricing, allowances, and availability. Route lookup is not a guarantee of timetable accuracy or coverage; check the linked navigation service before departure.
+
+## Anime locations map: discover, inspect, and visit
+
+The [interactive map](https://seichigo.com/en/map) connects anime titles to real-world locations, with point data and scene references sourced from [Anitabi](https://anitabi.cn).
+
+![Anime locations map with a works list and geographic markers in the English interface](docs/images/readme/map-explorer.png)
+
+### Search and discover
+
+- Search by **city, anime title, or location name**, then jump to the matching work or point.
+- Browse **Latest Updates**, **Recent Releases**, **Trending**, and **Nearby Works**.
+- Filter by city or try **Random Anime** to discover a different series.
+- Use **Locate Me** and nearby discovery after granting browser location permission.
+- Move between the work list, a work's details, and its individual locations; collapse the panel for more map space.
+
+### Choose how you explore
+
+- Switch between **Street** and **Satellite** basemaps.
+- Switch between **Complete** and **Simple** display modes for a richer overview or a lighter map.
+- Within a work, switch between **All Spots** and **My Markers** to focus on your own locations.
+- Zoom from clustered markers and work overviews into individual locations and image markers.
+- Filter personal markers by **Want to go**, **Planning**, or **Checked in**.
+- Share the current map view, or open a work or point link to return directly to its map context.
+
+### Inspect each location before visiting
+
+A point's detail panel brings together its name, associated work, coordinates, and available scene imagery. Depending on the source data, it also shows an episode or scene timestamp, notes, source attribution, and distance when your location is available. Open an image preview to compare the scene, and download the original image when one is available.
+
+![Anime location detail panel with scene imagery and point actions](docs/images/readme/map-point.png)
+
+From the point panel, you can:
+
+- Open **Google Maps navigation** for the selected destination.
+- Enter an in-page **panorama** when that point has supported imagery; availability depends on the location and provider.
+- See personal progress as **Want to go**, **Planning**, or **Checked in**, based on your saved point pool, route books, and check-ins.
+- Add a point to **My Maps** for a later trip.
+- Share the work or location with a direct link or a location card.
+
+### Quick Pilgrimage and check-ins
+
+**Quick Pilgrimage** starts from a selected anime work and turns its locations into an on-the-go view. Follow the current stop, use in-page navigation, and track your progress. Skip a stop, check in and move to the next one, or restart navigation when needed. You can also hand off to Google Maps and return to continue the pilgrimage.
+
+Location-dependent guidance needs browser location permission, and check-ins require sign-in. You can optionally add a photo when checking in. A session sharing card summarizes visited points and estimated distances between them; it is not a recorded GPS track.
+
+### My Maps and route books
+
+My Maps brings your saved locations and route books together:
+
+- Collect points from different anime in a personal point pool.
+- Create, rename, or delete your own route books, and drag saved points into a route.
+- Drag stops into your preferred visiting order, move points out of a route, or delete unwanted candidates. The ordering area supports up to 25 points.
+- Review the route on a map and choose **public transport + walking** or **driving** in the navigation interface.
+- Check in along a route and undo a check-in if you made a mistake.
+- Use a planned route as the basis for navigation and pilgrimage progress.
+
+This makes it possible to research by anime first, then organize the trip around the actual places you will visit.
+
+### Share a place, not just a screenshot
+
+Create a point sharing card in landscape or portrait format, edit its accompanying text, and copy or save the card and text using the available sharing actions, including system sharing where supported. After signing in, add your own photo for a scene-versus-reality comparison. Shared location pages help another traveler identify the anime and destination, then continue to the map or navigation.
+
+![Location sharing panel with a downloadable anime pilgrimage card](docs/images/readme/map-share.png)
+
+*All README images are actual browser captures of SeichiGo's English interface, taken on September 22, 2026. The itinerary image is the public homepage example described above. Screens and availability may change.*
+
+## Guides, destinations, and community contributions
+
+Use the [anime directory](https://seichigo.com/en/anime) to research a work or the [city directory](https://seichigo.com/en/city) to plan around a destination. Articles bring scene context, point lists, and route descriptions together so the map has a story behind it.
+
+The website supports **English, Simplified Chinese, and Japanese**. Available articles and translated content may differ by language. Contributors can write through the site's authoring flow, save drafts, and submit guides or revisions for review.
+
+## A simple way to start
+
+1. Open the [map](https://seichigo.com/en/map) and search for a favorite anime or destination.
+2. Inspect the scene images and save the locations you want to visit.
+3. Sign in and ask the [AI planner](https://seichigo.com/en/plan/start) for an itinerary that fits your trip.
+4. Review the daily stops, refine the plan, and organize supported locations in My Maps.
+5. Use navigation on the day, check in, and share a place you enjoyed.
+
+## Run SeichiGo locally
+
+This repository contains the web application. For development, use Node.js, npm, and a PostgreSQL database.
 
 ```bash
 git clone https://github.com/emptylower/seichigo.git
 cd seichigo
 npm install
-cp .env.example .env.local        # fill in required vars
-cp .env.local .env                # Prisma CLI reads .env
+cp .env.example .env.local
+# Fill in the database and authentication settings before continuing.
+cp .env.local .env
 npm run db:generate
 npm run db:migrate:dev
 npm run dev
 ```
 
-The site runs at <http://localhost:3000>. Sign in via `/auth/signin`
-using an email listed in `ADMIN_EMAILS` (default password `112233`,
-overridable with `ADMIN_DEFAULT_PASSWORD`); first login forces password
-change.
+Open [localhost:3000](http://localhost:3000). The Prisma CLI reads `.env`; Next.js also loads `.env.local`. Keep their database settings consistent and point migrations at your development database.
 
-For a local Postgres, see [`CONTRIBUTING.md`](CONTRIBUTING.md#dev-environment).
+Configure `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEXTAUTH_URL`, and `NEXTAUTH_SECRET` first. Email, map providers, and AI services require their respective configuration to exercise those features locally. See [`.env.example`](.env.example), the [contribution guide](CONTRIBUTING.md#dev-environment), and [deployment documentation](docs/deployment.md) for setup details.
 
-### Required env vars
+### Technology
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | Postgres connection (pooled, e.g. Neon `-pooler.` host) |
-| `DATABASE_URL_UNPOOLED` | Direct URL for Prisma migrations |
-| `NEXTAUTH_URL`, `NEXTAUTH_SECRET` | NextAuth basics |
-| `ADMIN_EMAILS` | Comma-separated admin allowlist |
-| Cloudflare `EMAIL` binding + `EMAIL_FROM` | OTP delivery (or SMTP fallback outside Workers) |
-| `NEXT_PUBLIC_GISCUS_*` | Comment widget config |
-| `ANITABI_CRON_SECRET` | Auth for Anitabi cron endpoints |
-| `SENTRY_*` | Optional, error reporting |
-| Cloudflare bindings (`EMAIL`, `MAP_IMAGE_CACHE`, `IMAGES`, `ASSETS`) | Set via `wrangler.jsonc` for Workers deploy |
+| Layer | Technologies |
+| --- | --- |
+| Application | Next.js App Router, React, TypeScript |
+| Interface | Tailwind CSS, Radix UI, TipTap |
+| Maps | MapLibre GL, Supercluster, Google Maps integrations |
+| Data and authentication | PostgreSQL, Prisma, NextAuth |
+| Content | MDX and reviewed rich-text articles |
+| Hosting and media | OpenNext on Cloudflare Workers, R2, Cloudflare Images |
+| Quality and monitoring | Vitest, Playwright, Sentry |
 
-Full list and tuning guidance: [`docs/deployment.md`](docs/deployment.md).
+API routes delegate domain behavior to handlers and repositories. See the [architecture guide](docs/architecture.md) for the code layout and module boundaries.
 
-### Tech stack
-
-- **App:** Next.js 15 App Router, React 19, strict TypeScript
-- **Styling:** Tailwind CSS (`colors.brand` pink scale), Radix primitives, shadcn-flavored UI
-- **Data:** Prisma 6 + Postgres (Neon / Supabase / Vercel Postgres)
-- **Auth:** NextAuth v4 (Email OTP + admin credentials)
-- **Editor:** TipTap 3 with custom extensions and a hard sanitizer gate
-- **Map:** MapLibre GL + Supercluster, R2 image mirror, Cloudflare Images binding
-- **Content:** MDX (`content/<lang>/posts/*.mdx`), `next-mdx-remote`
-- **Testing:** Vitest (node + jsdom projects), Playwright for e2e
-- **Deploy:** OpenNext on Cloudflare Workers (primary), Vercel-compatible build path
-- **Observability:** Sentry, Cloudflare observability, internal map-image diag
-
-### Architecture at a glance
-
-```text
-app/api/<domain>/route.ts        # thin transport — auth, status, error mapping
-  └── lib/<domain>/api.ts        # cached get*ApiDeps()
-        └── lib/<domain>/handlers/*.ts   # business logic
-              └── lib/<domain>/repo*.ts   # Prisma + in-memory doubles for tests
-```
-
-15 domain factories, 79 handler files, repository pattern with memory doubles.
-The map is a single mega-hook orchestrator (`features/map/`) passing scoped
-state to specialized rendering hooks; see
-[`docs/architecture.md`](docs/architecture.md) for the full diagram.
-
-### Repository layout
-
-```text
-seichigo/
-├── app/                  # App Router pages + API route wrappers
-├── features/             # Heavy client modules (map mega-hook lives here)
-├── components/           # Shared UI (editor, map presentation, etc.)
-├── lib/                  # 34 domain modules (handlers, repos, workflows)
-├── content/              # Locale MDX content (zh / en / ja)
-├── prisma/               # Schema + migrations
-├── scripts/              # SEO / i18n / Anitabi tooling
-├── tests/                # Vitest suites (node + jsdom split)
-├── workers/              # Cloudflare worker entry points (R2 mirror cron, ...)
-├── docs/                 # Architecture, deployment, API, roadmap, runbooks
-└── AGENTS.md             # Top-level project knowledge base
-```
-
-### Deployment
-
-Primary target is **Cloudflare Workers** via OpenNext:
+### Useful commands
 
 ```bash
-npm run cf:build      # CLOUDFLARE_DEPLOY=1 opennextjs-cloudflare build + Prisma WASM
-npm run cf:preview    # local Workers preview
-npm run cf:deploy     # build + opennextjs-cloudflare deploy
+npm run dev             # Development server
+npm test                # Line-budget check and Vitest suites
+npm run typecheck       # Application and test TypeScript checks
+npm run test:e2e        # Playwright end-to-end tests
+npm run cf:build        # Build for Cloudflare Workers
 ```
 
-Bindings live in `wrangler.jsonc`: R2 bucket `seichigo-anitabi-images`,
-Cloudflare Images binding, static assets, and observability flags.
+### Documentation
 
-Vercel-compatible build path is also supported; daily Anitabi delta, daily
-translation pass, and ops daily cron are declared in `vercel.json`.
+- [Architecture](docs/architecture.md) and [API reference](docs/api.md)
+- [Deployment](docs/deployment.md) and [operations runbooks](docs/runbooks/)
+- [Roadmap](docs/roadmap.md) and [changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md), and [security policy](SECURITY.md)
 
-See [`docs/deployment.md`](docs/deployment.md) for the full runbook,
-including the predeploy guard, deploy ledger, and the four-skill repo
-governance suite.
+## Data, contributions, and licensing
 
-### Scripts
+Map locations and anime scene references draw on [Anitabi](https://anitabi.cn). Maps, panoramas, navigation, and place information may use third-party providers. Source attributions and the respective providers' terms continue to apply; data and imagery availability vary by location.
 
-```bash
-npm run dev                     # local dev
-npm run build                   # next build (with Prisma migrate locally)
-npm test                        # line-budget + vitest
-npm run typecheck               # app + tests
-npm run seo:audit -- --base-url https://seichigo.com
-npm run anitabi:sync            # manual Anitabi delta sync
-npm run i18n:coverage           # i18n key coverage report
-npm run glossary:build          # translation glossary build
-```
+Contributions to code, translations, guides, and location corrections are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), use the [content submission template](.github/ISSUE_TEMPLATE/content_submission.yml), or submit a guide through the website. Report security issues through [SECURITY.md](SECURITY.md).
 
-### Contributing / 贡献
-
-Pull requests welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
-nearest `AGENTS.md`. For new pilgrimage routes or content corrections,
-use the in-app `/submit` flow or the
-[content submission issue template](.github/ISSUE_TEMPLATE/content_submission.yml).
-
-By contributing you agree your changes are released under
-the [PolyForm Noncommercial 1.0.0](LICENSE) license.
-
-### Security
-
-Please **do not** open public issues for security vulnerabilities.
-See [`SECURITY.md`](SECURITY.md) for the responsible-disclosure flow.
-
-### License
-
-Source code is released under
-**[PolyForm Noncommercial 1.0.0](LICENSE)**. Personal use, research,
-charitable/educational use, and non-commercial hobby projects are
-permitted. **Commercial use requires a separate license** — please
-contact the maintainer.
-
-Content under `content/**` (articles, route descriptions, photos) may be
-covered by separate per-article licenses noted in each file's frontmatter.
-When in doubt, ask before redistributing.
+The source code is licensed under **[PolyForm Noncommercial 1.0.0](LICENSE)**. Commercial use requires separate permission. Articles, anime screenshots, photographs, and third-party data may have separate rights or licenses; the repository's code license does not grant rights to those materials. Check source and per-article notices before reuse.
 
 ---
 
-## 中文
-
-### 我们在做什么
-
-动漫圣地巡礼 —— 去你爱的作品取景的现实地点 —— 一直没人好好做：信息散落
-在 fansite、推特串和早已无人维护的旧博客。SeichiGo 把这些线路收拢成一份
-精心打磨的阅读体验：单作品的深度图文 + 由
-[Anitabi](https://anitabi.cn) 提供的精确点位 + 一键交给 Google Maps。
-
-### 关键特性
-
-- **长文 + MDX 内容系统**：每篇对应单作品/单线路，结构化的 `<SpotList />` 组件
-- **Anitabi 地图**：MapLibre + 聚类 + 视口预热 + 按域名调度 + R2 持久镜像
-- **站内导航选择器**：通过 Google Maps Embed API 在站内切换步行/交通/驾车
-- **作者中心 `/submit`**：TipTap 富文本（飞书风格浮动工具条 + 段首块菜单），自动保存，提交/撤回
-- **管理后台 `/admin`**：审稿、翻译批处理、路线本、运营仪表盘
-- **多语言**：中/英/日 区域路由，Gemini 翻译队列与术语表
-- **SEO 完备**：sitemap、robots、动态 OG、JSON-LD 辐射工厂、审计脚本、SerpAPI 排名追踪
-- **Giscus 评论**：基于 GitHub Discussions，无 DB 负担
-- **代码即配置**：从迁移到 cron 都在仓库里，模块附带 `AGENTS.md` 知识库
-- **可观测**：Sentry、Cloudflare 观测、内部地图图像诊断面板
-
-### 在线体验
-
-<https://seichigo.com>
-
-### 快速开始
-
-```bash
-git clone https://github.com/emptylower/seichigo.git
-cd seichigo
-npm install
-cp .env.example .env.local        # 填入必填变量
-cp .env.local .env                # Prisma CLI 默认读 .env
-npm run db:generate
-npm run db:migrate:dev
-npm run dev
-```
-
-打开 <http://localhost:3000>。在 `/auth/signin` 用 `ADMIN_EMAILS` 中的邮箱
-登录（默认密码 `112233`，可用 `ADMIN_DEFAULT_PASSWORD` 覆盖），首次登录会
-强制改密。
-
-完整环境变量、部署细节见 [`docs/deployment.md`](docs/deployment.md)。
-
-### 技术栈
-
-- **前端**：Next.js 15 App Router、React 19、严格 TypeScript
-- **样式**：Tailwind（`colors.brand` 粉色系）、Radix、shadcn 风组件
-- **数据**：Prisma 6 + Postgres（Neon / Supabase / Vercel Postgres）
-- **认证**：NextAuth v4（Email OTP + 管理员密码）
-- **编辑器**：TipTap 3 + 严格 sanitizer
-- **地图**：MapLibre GL + Supercluster + R2 镜像 + Cloudflare Images
-- **内容**：MDX (`content/<lang>/posts/*.mdx`) + `next-mdx-remote`
-- **测试**：Vitest（node + jsdom 两套）+ Playwright e2e
-- **部署**：OpenNext on Cloudflare Workers（主线），保留 Vercel 兼容路径
-- **观测**：Sentry + Cloudflare 观测 + 内部诊断
-
-### 文档导航
-
-- [架构总览 / Architecture](docs/architecture.md)
-- [部署手册 / Deployment](docs/deployment.md)
-- [API 索引 / API](docs/api.md)
-- [路线图 / Roadmap](docs/roadmap.md)
-- [运行手册 / Runbooks](docs/runbooks/)
-- [贡献指南 / Contributing](CONTRIBUTING.md)
-- [行为准则 / Code of Conduct](CODE_OF_CONDUCT.md)
-- [安全策略 / Security](SECURITY.md)
-- [更新日志 / Changelog](CHANGELOG.md)
-
-### 内容与版权
-
-- 源代码：**[PolyForm Noncommercial 1.0.0](LICENSE)**。允许个人、研究、
-  教育、非营利与业余使用；**商业使用需另行授权**，请邮件联系维护者。
-- 内容（`content/**`）：可能逐篇适用不同 license，详见各文件 frontmatter。
-
----
-
-<div align="center">
-  Made with ☕ and a lot of 路面电車 timetables. <br/>
-  Maintained by <a href="https://github.com/emptylower">@emptylower</a>.
-</div>
+[Explore SeichiGo](https://seichigo.com/en) · [Plan an anime pilgrimage](https://seichigo.com/en/plan/start) · [Browse anime locations](https://seichigo.com/en/map)

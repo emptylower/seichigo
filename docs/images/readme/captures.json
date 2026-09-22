@@ -1,0 +1,61 @@
+{
+  "captured_on": "2026-09-22",
+  "method": "Live production website screenshots captured through Tabbit browser automation. Cropped to relevant UI. Browser extension overlays were hidden during map captures; site content was not changed.",
+  "rights": "Third-party map and anime image credits remain with their respective sources; these product screenshots do not relicense the depicted material.",
+  "images": [
+    {
+      "file": "overview.png",
+      "source_url": "https://seichigo.com/en",
+      "description": "Public homepage hero",
+      "width": 1044,
+      "height": 840,
+      "bytes": 546396,
+      "sha256": "58a5e81a0c86fa30e073a62bddac5465d74f2c88c869716de89886073e0fc73b"
+    },
+    {
+      "file": "ai-planner.png",
+      "source_url": "https://seichigo.com/en/plan/start",
+      "description": "Planner composer, cropped to exclude account history",
+      "width": 800,
+      "height": 400,
+      "bytes": 64456,
+      "sha256": "4d623aae4b5787e991ed6a731a9678f4e8b77c9593dcc0b54e5ad84abc7ba586"
+    },
+    {
+      "file": "ai-itinerary.png",
+      "source_url": "https://seichigo.com/en#home-plan",
+      "description": "Public homepage itinerary demonstration; not a newly generated itinerary",
+      "width": 992,
+      "height": 1133,
+      "bytes": 309531,
+      "sha256": "9141d7b4d0b06f3d0d02a72293526d0942f52527f3867bc1c11981797a2244f0"
+    },
+    {
+      "file": "map-explorer.png",
+      "source_url": "https://seichigo.com/en/map",
+      "description": "Trending works and map around Tokyo",
+      "width": 1440,
+      "height": 916,
+      "bytes": 996257,
+      "sha256": "1ce2601907e2de090ec8343fe45e44ae88361d29ad23d67923bebc12988fefb0"
+    },
+    {
+      "file": "map-point.png",
+      "source_url": "https://seichigo.com/en/map?b=160209&p=160209%3A3ik9kj0a",
+      "description": "Your Name: Suga Shrine Otoko-zaka point details",
+      "width": 1440,
+      "height": 916,
+      "bytes": 810733,
+      "sha256": "80f6fc40dda72ca480a3964f3efd08831b40b7627e4227e5e14659171a9d1cc8"
+    },
+    {
+      "file": "map-share.png",
+      "source_url": "https://seichigo.com/en/map?b=160209&p=160209%3A3ik9kj0a",
+      "description": "Public point sharing card preview",
+      "width": 448,
+      "height": 605,
+      "bytes": 130191,
+      "sha256": "80ac8a647e97aee6aa633c67f0f557a6224fa3721194eac10693e23f33f65439"
+    }
+  ]
+}
