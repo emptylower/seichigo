@@ -3,14 +3,20 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SetPasswordClient from './ui'
 import type { Metadata } from 'next'
+import { t } from '@/lib/i18n'
+import { getAuthLocale } from '../getAuthLocale'
 
-export const metadata: Metadata = {
-  title: '设置密码',
-  description: '为你的账号设置密码，便于后续登录。',
-  alternates: { canonical: '/auth/set-password' },
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getAuthLocale()
+  return {
+    title: t('auth.setPassword.title', locale),
+    description: t('auth.setPassword.description', locale),
+    alternates: { canonical: '/auth/set-password' },
+  }
 }
 
 export default async function SetPasswordPage() {
+  const locale = await getAuthLocale()
   const session = await getServerAuthSession()
   if (!session?.user?.id || !session.user.email) {
     redirect('/auth/signin?callbackUrl=%2Fauth%2Fset-password')
@@ -24,5 +30,5 @@ export default async function SetPasswordPage() {
     redirect('/')
   }
 
-  return <SetPasswordClient email={session.user.email} />
+  return <SetPasswordClient email={session.user.email} locale={locale} />
 }

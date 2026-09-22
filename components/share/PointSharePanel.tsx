@@ -621,8 +621,8 @@ export default function PointSharePanel({
                     ? buildRedditSubmitUrl(
                         withShareChannel(shareUrl, 'rd'),
                         t('share.redditTitle', locale)
-                          .replace('{point}', displayName)
-                          .replace('{anime}', cardAnimeTitle),
+                          .replace('{point}', () => displayName)
+                          .replace('{anime}', () => cardAnimeTitle),
                       )
                     : undefined
                 }

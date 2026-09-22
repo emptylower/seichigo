@@ -30,7 +30,7 @@ export default function LoginModal({
   /** 低-6：起始页从 `?locale=` 读到什么就传什么（默认中文） */
   locale?: SiteLocale
 }) {
-  const login = useEmailCodeLogin()
+  const login = useEmailCodeLogin({ locale })
   const dialogRef = useRef<HTMLDivElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
 

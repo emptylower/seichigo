@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { signIn } from 'next-auth/react'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 type SignInResult = {
   error?: string
@@ -22,8 +24,9 @@ export type VerifyCodeResult = { ok: true; url: string } | { ok: false }
  * 只负责请求与状态，不做跳转——登录页跳 callbackUrl，弹窗则回调 onSuccess
  * 留在原页面继续原来的动作。
  */
-export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
+export function useEmailCodeLogin(options: { callbackUrl?: string; locale?: SupportedLocale } = {}) {
   const callbackUrl = options.callbackUrl ?? '/'
+  const locale = options.locale ?? 'zh'
 
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -40,10 +43,10 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
 
   const canSendCode = cooldown <= 0 && loading !== 'email-send'
   const sendLabel = useMemo(() => {
-    if (loading === 'email-send') return '发送中…'
-    if (cooldown > 0) return `重新发送（${cooldown}s）`
-    return '发送验证码'
-  }, [cooldown, loading])
+    if (loading === 'email-send') return t('auth.signin.sending', locale)
+    if (cooldown > 0) return t('auth.signin.resend', locale).replace('{seconds}', String(cooldown))
+    return t('auth.signin.sendCode', locale)
+  }, [cooldown, loading, locale])
 
   async function requestCode(): Promise<void> {
     setError(null)
@@ -51,7 +54,7 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
 
     const cleanedEmail = email.trim()
     if (!cleanedEmail) {
-      setError('请填写邮箱')
+      setError(t('auth.signin.emailRequired', locale))
       return
     }
 
@@ -59,13 +62,13 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
     const res = await fetch('/api/auth/request-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanedEmail }),
+      body: JSON.stringify({ email: cleanedEmail, locale }),
     })
     setLoading(null)
 
     const j = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setError(j?.error || '发送失败，请稍后重试')
+      setError(j?.error || t('auth.signin.sendFailed', locale))
       if (res.status === 429 && typeof j?.retryAfterSeconds === 'number') {
         setCooldown(Math.max(1, Math.min(60, Math.floor(j.retryAfterSeconds))))
       }
@@ -74,7 +77,7 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
 
     const seconds = typeof j?.cooldownSeconds === 'number' ? Math.floor(j.cooldownSeconds) : 60
     setCooldown(Math.max(1, Math.min(60, seconds)))
-    setHint('验证码已发送，请查收邮件。')
+    setHint(t('auth.signin.codeSent', locale))
   }
 
   /** 校验验证码；成功时返回登录后应去的 url（调用方决定跳转与否） */
@@ -85,11 +88,11 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
     const cleanedEmail = email.trim()
     const cleanedCode = code.trim()
     if (!cleanedEmail) {
-      setError('请填写邮箱')
+      setError(t('auth.signin.emailRequired', locale))
       return { ok: false }
     }
     if (!cleanedCode) {
-      setError('请填写验证码')
+      setError(t('auth.signin.codeRequired', locale))
       return { ok: false }
     }
 
@@ -103,11 +106,11 @@ export function useEmailCodeLogin(options: { callbackUrl?: string } = {}) {
     setLoading(null)
 
     if (!res) {
-      setError('登录失败，请稍后重试')
+      setError(t('auth.signin.signInFailed', locale))
       return { ok: false }
     }
     if (res.error) {
-      setError('验证码不正确或已过期')
+      setError(t('auth.signin.invalidCode', locale))
       return { ok: false }
     }
     return { ok: true, url: res.url || callbackUrl }

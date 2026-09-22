@@ -66,8 +66,8 @@ export default async function Header({ locale = 'zh' }: Props) {
             </details>
           ) : (
             <div className="flex items-center gap-2">
-              <Link href="/auth/signin" className="text-gray-700 hover:text-brand-600">{t('header.signin', locale)}</Link>
-              <Link href="/auth/signup" className="btn-primary">{t('header.signup', locale)}</Link>
+              <Link href={prefixPath('/auth/signin', locale)} className="text-gray-700 hover:text-brand-600">{t('header.signin', locale)}</Link>
+              <Link href={prefixPath('/auth/signup', locale)} className="btn-primary">{t('header.signup', locale)}</Link>
             </div>
           )}
         </nav>

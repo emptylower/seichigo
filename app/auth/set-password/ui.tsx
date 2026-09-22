@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Button from '@/components/shared/Button'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
-export default function SetPasswordClient({ email }: { email: string }) {
+export default function SetPasswordClient({ email, locale }: { email: string; locale: SupportedLocale }) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,25 +21,34 @@ export default function SetPasswordClient({ email }: { email: string }) {
     setError(null)
 
     if (newPassword.length < 6) {
-      setError('密码至少 6 位')
+      setError(t('auth.setPassword.passwordTooShort', locale))
       return
     }
     if (newPassword !== confirmPassword) {
-      setError('两次输入的密码不一致')
+      setError(t('auth.setPassword.passwordMismatch', locale))
       return
     }
 
     setLoading(true)
-    const res = await fetch('/api/auth/set-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newPassword }),
-    })
-    setLoading(false)
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
-      setError(j.error || '设置失败')
+    try {
+      const res = await fetch('/api/auth/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      })
+      if (!res.ok) {
+        const errorKey = res.status === 401 ? 'unauthenticated'
+          : res.status === 404 ? 'userNotFound'
+          : res.status === 400 ? 'invalidRequest'
+          : 'setFailed'
+        setError(t(`auth.setPassword.${errorKey}`, locale))
+        return
+      }
+    } catch {
+      setError(t('auth.setPassword.setFailed', locale))
       return
+    } finally {
+      setLoading(false)
     }
 
     window.location.href = '/'
@@ -52,20 +63,20 @@ export default function SetPasswordClient({ email }: { email: string }) {
           </div>
           <div className="min-w-0">
             <div className="font-display text-2xl font-bold leading-tight">SeichiGo</div>
-            <div className="text-sm text-gray-600">为账号设置一个密码</div>
+            <div className="text-sm text-gray-600">{t('auth.setPassword.subtitle', locale)}</div>
           </div>
         </div>
 
         <div className="mt-8 rounded-2xl border border-pink-100 bg-white/80 p-6 shadow-sm backdrop-blur">
-          <h1 className="text-xl font-bold">设置密码</h1>
+          <h1 className="text-xl font-bold">{t('auth.setPassword.title', locale)}</h1>
           <p className="mt-2 text-sm text-gray-600">
-            你的账号 <span className="font-medium text-gray-900">{email}</span> 目前还没有密码。设置后可使用“账号密码”方式登录。
+            {t('auth.setPassword.accountPrefix', locale)}<span className="font-medium text-gray-900">{email}</span>{t('auth.setPassword.accountSuffix', locale)}
           </p>
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="new-password" className={labelClass}>
-                新密码
+                {t('auth.setPassword.newPassword', locale)}
               </label>
               <input
                 id="new-password"
@@ -79,7 +90,7 @@ export default function SetPasswordClient({ email }: { email: string }) {
             </div>
             <div>
               <label htmlFor="confirm-password" className={labelClass}>
-                确认密码
+                {t('auth.setPassword.confirmPassword', locale)}
               </label>
               <input
                 id="confirm-password"
@@ -95,7 +106,7 @@ export default function SetPasswordClient({ email }: { email: string }) {
             {error ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
 
             <Button type="submit" disabled={loading} className="w-full">
-              {loading ? '提交中…' : '设置并继续'}
+              {loading ? t('auth.setPassword.submitting', locale) : t('auth.setPassword.submit', locale)}
             </Button>
           </form>
         </div>

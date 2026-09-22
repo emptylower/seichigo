@@ -7,6 +7,7 @@ vi.mock('next-auth/react', () => ({
 }))
 
 import LoginModal from '@/components/auth/LoginModal'
+import { t } from '@/lib/i18n'
 
 describe('LoginModal（游客发第一条消息时的登录弹窗）', () => {
   const fetchMock = vi.fn()
@@ -33,16 +34,16 @@ describe('LoginModal（游客发第一条消息时的登录弹窗）', () => {
     const onSuccess = vi.fn()
     render(<LoginModal open onClose={() => {}} onSuccess={onSuccess} />)
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    fireEvent.change(screen.getByLabelText(t('auth.modal.email', 'zh')), { target: { value: 'user@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: t('auth.signin.sendCode', 'zh') }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/auth/request-code')
-    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({ email: 'user@example.com' })
-    expect(await screen.findByText('验证码已发送，请查收邮件。')).toBeInTheDocument()
+    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({ email: 'user@example.com', locale: 'zh' })
+    expect(await screen.findByText(t('auth.signin.codeSent', 'zh'))).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('验证码'), { target: { value: '123456' } })
-    fireEvent.click(screen.getByRole('button', { name: '登录' }))
+    fireEvent.change(screen.getByLabelText(t('auth.modal.code', 'zh')), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: t('auth.modal.submit', 'zh') }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
     expect(signInMock).toHaveBeenCalledWith('email-code', {
@@ -52,35 +53,49 @@ describe('LoginModal（游客发第一条消息时的登录弹窗）', () => {
     })
   })
 
+  it.each(['en', 'ja'] as const)('发码与提示跟随 %s，成功仍在弹窗回调', async (locale) => {
+    const onSuccess = vi.fn()
+    render(<LoginModal open locale={locale} onClose={() => {}} onSuccess={onSuccess} />)
+    fireEvent.change(screen.getByLabelText(t('auth.modal.email', locale)), { target: { value: 'user@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: t('auth.signin.sendCode', locale) }))
+    expect(await screen.findByText(t('auth.signin.codeSent', locale))).toBeInTheDocument()
+    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({ email: 'user@example.com', locale })
+    expect(screen.getByRole('button', { name: t('auth.signin.resend', locale).replace('{seconds}', '60') })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(t('auth.modal.code', locale)), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: t('auth.modal.submit', locale) }))
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(signInMock).toHaveBeenCalledWith('email-code', { email: 'user@example.com', code: '123456', redirect: false })
+  })
+
   it('验证码错误时留在弹窗并提示，不回调 onSuccess', async () => {
     signInMock.mockResolvedValue({ error: 'CredentialsSignin' })
     const onSuccess = vi.fn()
     render(<LoginModal open onClose={() => {}} onSuccess={onSuccess} />)
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
-    fireEvent.change(screen.getByLabelText('验证码'), { target: { value: '000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '登录' }))
+    fireEvent.change(screen.getByLabelText(t('auth.modal.email', 'zh')), { target: { value: 'user@example.com' } })
+    fireEvent.change(screen.getByLabelText(t('auth.modal.code', 'zh')), { target: { value: '000000' } })
+    fireEvent.click(screen.getByRole('button', { name: t('auth.modal.submit', 'zh') }))
 
-    expect(await screen.findByText('验证码不正确或已过期')).toBeInTheDocument()
+    expect(await screen.findByText(t('auth.signin.invalidCode', 'zh'))).toBeInTheDocument()
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it('低-6：locale 决定弹窗文案（默认 zh）', () => {
     const en = render(<LoginModal open locale="en" onClose={() => {}} onSuccess={() => {}} />)
-    expect(screen.getByRole('dialog', { name: 'Sign in to start planning' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: t('auth.modal.title', 'en') })).toBeInTheDocument()
+    expect(screen.getByLabelText(t('auth.modal.email', 'en'))).toBeInTheDocument()
     en.unmount()
 
     render(<LoginModal open onClose={() => {}} onSuccess={() => {}} />)
-    expect(screen.getByRole('dialog', { name: '登录后开始规划' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: t('auth.modal.title', 'zh') })).toBeInTheDocument()
   })
 
   it('中-7：打开即把焦点送进邮箱框，并有 aria-modal / aria-labelledby', () => {
     render(<LoginModal open onClose={() => {}} onSuccess={() => {}} />)
 
-    const dialog = screen.getByRole('dialog', { name: '登录后开始规划' })
+    const dialog = screen.getByRole('dialog', { name: t('auth.modal.title', 'zh') })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
-    expect(document.activeElement).toBe(screen.getByLabelText('邮箱'))
+    expect(document.activeElement).toBe(screen.getByLabelText(t('auth.modal.email', 'zh')))
   })
 
   it('中-7：Esc 关闭', () => {
@@ -121,7 +136,7 @@ describe('LoginModal（游客发第一条消息时的登录弹窗）', () => {
     const onClose = vi.fn()
     render(<LoginModal open onClose={onClose} onSuccess={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    fireEvent.click(screen.getByRole('button', { name: t('auth.modal.close', 'zh') }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

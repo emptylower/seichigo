@@ -363,6 +363,15 @@ describe('PointSharePanel 桌面路径', () => {
     expect(reddit.href).toContain(encodeURIComponent(expected))
   })
 
+  it.each(['$&', "$'", '$`', '$$'])('Reddit 标题保留点位与作品名中的 %s 原文', async (token) => {
+    const displayName = `地点${token}`
+    const animeTitle = `作品${token}`
+    fetchPointContextMock.mockResolvedValue({ ...DEFAULT_CONTEXT, displayName, animeTitle })
+    await readyPanel()
+    const reddit = screen.getByRole('link', { name: t('share.platformReddit', 'zh') }) as HTMLAnchorElement
+    expect(new URL(reddit.href).searchParams.get('title')).toBe(`${displayName}｜${animeTitle}`)
+  })
+
   it('小红书：一次点击 = 下载图片 + 复制文案 + 提示打开小红书', async () => {
     await readyPanel()
     fireEvent.click(screen.getByRole('button', { name: t('share.platformXiaohongshu', 'zh') }))

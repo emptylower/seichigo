@@ -66,13 +66,13 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   const anonStackControls = (
     <div className="grid gap-2">
       <Link
-        href="/auth/signin"
+        href={prefixPath('/auth/signin', locale)}
         prefetch={false}
         className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-brand-100 hover:bg-brand-50/40 hover:text-brand-700"
       >
         {labels.signin}
       </Link>
-      <Link href="/auth/signup" prefetch={false} className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600">
+      <Link href={prefixPath('/auth/signup', locale)} prefetch={false} className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600">
         {labels.signup}
       </Link>
     </div>
@@ -80,10 +80,10 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
 
   const anonDrawerControls = (
     <div className="grid gap-1">
-      <Link href="/auth/signin" prefetch={false} className={drawerItemClass}>
+      <Link href={prefixPath('/auth/signin', locale)} prefetch={false} className={drawerItemClass}>
         <span>{labels.signin}</span>
       </Link>
-      <Link href="/auth/signup" prefetch={false} className="flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-[15px] font-semibold text-white transition hover:bg-brand-600">
+      <Link href={prefixPath('/auth/signup', locale)} prefetch={false} className="flex h-11 items-center justify-center rounded-lg bg-brand-500 px-3 text-[15px] font-semibold text-white transition hover:bg-brand-600">
         {labels.signup}
       </Link>
     </div>
@@ -96,8 +96,8 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
   if (!loaded) {
     return layout === 'inline' ? (
       <div className="flex items-center gap-2">
-        <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-        <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
+        <Link href={prefixPath('/auth/signin', locale)} prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+        <Link href={prefixPath('/auth/signup', locale)} prefetch={false} className="btn-primary">{labels.signup}</Link>
       </div>
     ) : anonControls
   }
@@ -251,8 +251,8 @@ export default function HeaderAuthControls({ locale, layout = 'inline', labels }
       ) : null}
       {showAnon ? (
         <div className="flex items-center gap-2">
-          <Link href="/auth/signin" prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
-          <Link href="/auth/signup" prefetch={false} className="btn-primary">{labels.signup}</Link>
+          <Link href={prefixPath('/auth/signin', locale)} prefetch={false} className="text-gray-700 hover:text-brand-600">{labels.signin}</Link>
+          <Link href={prefixPath('/auth/signup', locale)} prefetch={false} className="btn-primary">{labels.signup}</Link>
         </div>
       ) : null}
     </>

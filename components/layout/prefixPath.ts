@@ -2,8 +2,8 @@ import type { SiteLocale } from './SiteShell'
 
 const NON_LOCALIZED_PREFIXES = ['/auth', '/submit', '/admin', '/me', '/plan', '/api', '/assets']
 
-/** `/plan/start` 是 `/plan` 前缀里唯一本地化的例外：公开起始页有三语路径 */
-const LOCALIZED_EXACT_PATHS = ['/plan/start']
+/** 登录、注册、设置密码与规划起始页是非本地化前缀中的三语路径例外 */
+const LOCALIZED_EXACT_PATHS = ['/plan/start', '/auth/signin', '/auth/signup', '/auth/set-password']
 
 function isNonLocalizedPath(path: string): boolean {
   return NON_LOCALIZED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))

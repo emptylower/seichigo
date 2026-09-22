@@ -1,4 +1,6 @@
 import React from 'react'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
@@ -27,40 +29,51 @@ describe('auth/signup ui', () => {
   })
 
   it('renders signup form and link to signin', () => {
-    render(<SignUpClient />)
+    render(<SignUpClient locale="zh" />)
 
-    expect(screen.getByRole('heading', { name: '注册' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: t('auth.signup.title', 'zh') })).toBeInTheDocument()
 
-    const form = screen.getByRole('form', { name: '注册表单' })
-    expect(within(form).getByLabelText('邮箱')).toBeInTheDocument()
-    expect(within(form).getByLabelText('验证码')).toBeInTheDocument()
+    const form = screen.getByRole('form', { name: t('auth.signup.form', 'zh') })
+    expect(within(form).getByLabelText(t('auth.signup.email', 'zh'))).toBeInTheDocument()
+    expect(within(form).getByLabelText(t('auth.signup.code', 'zh'))).toBeInTheDocument()
 
-    expect(within(form).getByRole('button', { name: '发送验证码' })).toBeInTheDocument()
-    expect(within(form).getByRole('button', { name: '注册并继续' })).toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: t('auth.signup.sendCode', 'zh') })).toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: t('auth.signup.submit', 'zh') })).toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: '去登录' })).toHaveAttribute('href', '/auth/signin')
+    expect(screen.getByRole('link', { name: t('auth.signup.signin', 'zh') })).toHaveAttribute('href', '/auth/signin')
   })
 
   it('requests email otp code via /api/auth/request-code', async () => {
-    render(<SignUpClient />)
+    render(<SignUpClient locale="zh" />)
 
-    const form = screen.getByRole('form', { name: '注册表单' })
-    fireEvent.change(within(form).getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
-    fireEvent.click(within(form).getByRole('button', { name: '发送验证码' }))
+    const form = screen.getByRole('form', { name: t('auth.signup.form', 'zh') })
+    fireEvent.change(within(form).getByLabelText(t('auth.signup.email', 'zh')), { target: { value: 'user@example.com' } })
+    fireEvent.click(within(form).getByRole('button', { name: t('auth.signup.sendCode', 'zh') }))
 
     expect(fetchMock).toHaveBeenCalled()
     const [url, init] = fetchMock.mock.calls[0] as any[]
     expect(url).toBe('/api/auth/request-code')
     expect(init?.method).toBe('POST')
-    expect(JSON.parse(init?.body)).toEqual({ email: 'user@example.com' })
+    expect(JSON.parse(init?.body)).toEqual({ email: 'user@example.com', locale: 'zh' })
   })
 
-  it('verifies email otp via NextAuth email-code credentials provider with callbackUrl /auth/set-password', async () => {
-    render(<SignUpClient />)
+  it.each<SupportedLocale>(['en', 'ja'])('sends the %s locale and localizes the signin link', (locale) => {
+    render(<SignUpClient locale={locale} />)
+    expect(screen.getByRole('heading', { name: t('auth.signup.title', locale) })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('auth.signup.signin', locale) })).toHaveAttribute('href', `/${locale}/auth/signin`)
 
-    const form = screen.getByRole('form', { name: '注册表单' })
-    fireEvent.change(within(form).getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
-    fireEvent.change(within(form).getByLabelText('验证码'), { target: { value: '123456' } })
+    const form = screen.getByRole('form', { name: t('auth.signup.form', locale) })
+    fireEvent.change(within(form).getByLabelText(t('auth.signup.email', locale)), { target: { value: 'user@example.com' } })
+    fireEvent.click(within(form).getByRole('button', { name: t('auth.signup.sendCode', locale) }))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ email: 'user@example.com', locale })
+  })
+
+  it.each<SupportedLocale>(['zh', 'en', 'ja'])('preserves the %s locale in the set-password callback', async (locale) => {
+    render(<SignUpClient locale={locale} />)
+
+    const form = screen.getByRole('form', { name: t('auth.signup.form', locale) })
+    fireEvent.change(within(form).getByLabelText(t('auth.signup.email', locale)), { target: { value: 'user@example.com' } })
+    fireEvent.change(within(form).getByLabelText(t('auth.signup.code', locale)), { target: { value: '123456' } })
     fireEvent.submit(form)
 
     expect(signInMock).toHaveBeenCalledWith(
@@ -69,7 +82,7 @@ describe('auth/signup ui', () => {
         email: 'user@example.com',
         code: '123456',
         redirect: false,
-        callbackUrl: '/auth/set-password',
+        callbackUrl: locale === 'zh' ? '/auth/set-password' : `/${locale}/auth/set-password`,
       })
     )
   })
