@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = process.cwd()
 const HOME_DIR = path.join(ROOT, 'components/home')
-const EXTENSIONS = ['.ts', '.tsx']
+const EXTENSIONS = ['.ts', '.tsx', '.css']
 
 /**
  * 把一个源文件里的**静态** import（`import x from 'm'` / `import 'm'` /
@@ -52,18 +52,25 @@ function resolveSpecifier(specifier: string, fromFile: string): string | null {
   return null
 }
 
-/** 从 components/home/** 出发，递归展开源码里的静态 import 图 */
+/** 从首页组件及全局样式出发，递归展开静态 import 图。 */
 function collectExternalSpecifiers(): { specifiers: Set<string>; visited: Set<string> } {
-  const queue = readdirSync(HOME_DIR)
-    .filter((name) => EXTENSIONS.includes(path.extname(name)))
-    .map((name) => path.join(HOME_DIR, name))
+  const queue = [
+    path.join(ROOT, 'styles/globals.css'),
+    ...readdirSync(HOME_DIR)
+      .filter((name) => EXTENSIONS.includes(path.extname(name)))
+      .map((name) => path.join(HOME_DIR, name)),
+  ]
   const visited = new Set<string>()
   const specifiers = new Set<string>()
   while (queue.length) {
     const file = queue.pop()!
     if (visited.has(file)) continue
     visited.add(file)
-    for (const specifier of staticImportSpecifiers(readFileSync(file, 'utf8'))) {
+    const source = readFileSync(file, 'utf8')
+    const imports = path.extname(file) === '.css'
+      ? [...source.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]/g)].map((match) => match[1]!)
+      : staticImportSpecifiers(source)
+    for (const specifier of imports) {
       const resolved = resolveSpecifier(specifier, file)
       if (resolved) queue.push(resolved)
       else specifiers.add(specifier)
@@ -77,11 +84,12 @@ function collectExternalSpecifiers(): { specifiers: Set<string>; visited: Set<st
  * 展示计划的 DayMap 走 `next/dynamic`——两条路径都不能出现在静态 import 图里，
  * 否则 ~200 KB 的地图库会被打进首页首屏 chunk。
  */
-describe('components/home 静态 import 图', () => {
+describe('首页静态 import 图（含全局样式）', () => {
   const { specifiers, visited } = collectExternalSpecifiers()
 
   it('确实展开到了多份源码（守住这条断言本身有效）', () => {
     expect(visited.size).toBeGreaterThan(10)
+    expect(visited.has(path.join(ROOT, 'styles/globals.css'))).toBe(true)
   })
 
   it('不静态引入 maplibre-gl（含其 CSS）', () => {

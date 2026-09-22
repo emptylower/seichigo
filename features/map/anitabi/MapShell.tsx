@@ -72,7 +72,9 @@ export default function MapShell(props: MapShellProps) {
           <div className="absolute inset-0">
             <div
               ref={mapRootRef}
-              className={`absolute inset-0 ${isMapView ? '' : 'hidden'}`}
+              // MapLibre 的按需样式可能后加载；内联定位防止其 relative 覆盖地图撑满容器。
+              style={{ position: 'absolute' }}
+              className={`inset-0 ${isMapView ? '' : 'hidden'}`}
             />
             {mapLoadingIndicator}
             {mapModeToggle}
