@@ -166,7 +166,9 @@
   },
   "assets": {
     "binding": "ASSETS",
-    "directory": ".open-next/assets"
+    "directory": ".open-next/assets",
+    // 关掉 .html 自动去扩展名的 307：搜索引擎的站点验证文件（public/*.html）要按原路径直出
+    "html_handling": "none"
   },
   "observability": {
     "enabled": true,
