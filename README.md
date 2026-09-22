@@ -12,7 +12,7 @@
   </p>
 </div>
 
-![SeichiGo homepage introducing anime pilgrimage, AI trip planning, and the locations map](docs/images/readme/overview.png)
+![SeichiGo homepage introducing anime pilgrimage, AI trip planning, and the locations map](docs/images/readme/en/overview.png)
 
 ## From an anime scene to a real journey
 
@@ -32,7 +32,7 @@ Start with a series you love, a city you are visiting, or a few days you have av
 
 The planner connects a conversation to a saved itinerary. Tell it what you would like to see, then review the places, daily schedule, and map together.
 
-![English AI planner start page with a trip request composer](docs/images/readme/ai-planner.png)
+![English AI planner start page with a trip request composer](docs/images/readme/en/ai-planner.png)
 
 ### Describe the trip in your own words
 
@@ -53,9 +53,9 @@ This is an example request, not a pre-generated itinerary. The result depends on
 - **Street View links:** preview a location through Google Maps where coverage is available.
 - **Transport details:** eligible plans can look up routes and show journey information; estimated segments are marked as estimates.
 
-![Public itinerary example on the SeichiGo homepage, showing a trip overview and daily timeline](docs/images/readme/ai-itinerary.png)
+![Public itinerary example on the SeichiGo homepage, showing a trip overview and daily timeline](docs/images/readme/en/ai-itinerary.png)
 
-*Historical itinerary example displayed on the public homepage, captured on September 22, 2026. Current plan limits are listed below.*
+*Historical homepage itinerary example with English text, captured from the localized development build on September 22, 2026. Current plan limits are listed below.*
 
 ### Refine, return, and save useful locations
 
@@ -80,7 +80,7 @@ See the [live pricing page](https://seichigo.com/en/pricing) for current pricing
 
 The [interactive map](https://seichigo.com/en/map) connects anime titles to real-world locations, with point data and scene references sourced from [Anitabi](https://anitabi.cn).
 
-![Anime locations map with a works list and geographic markers in the English interface](docs/images/readme/map-explorer.png)
+![Anime locations map with a works list and geographic markers in the English interface](docs/images/readme/en/map-explorer.png)
 
 ### Search and discover
 
@@ -103,7 +103,7 @@ The [interactive map](https://seichigo.com/en/map) connects anime titles to real
 
 A point's detail panel brings together its name, associated work, coordinates, and available scene imagery. Depending on the source data, it also shows an episode or scene timestamp, notes, source attribution, and distance when your location is available. Open an image preview to compare the scene, and download the original image when one is available.
 
-![Anime location detail panel with scene imagery and point actions](docs/images/readme/map-point.png)
+![Anime location detail panel with scene imagery and point actions](docs/images/readme/en/map-point.png)
 
 From the point panel, you can:
 
@@ -136,9 +136,9 @@ This makes it possible to research by anime first, then organize the trip around
 
 Create a point sharing card in landscape or portrait format, edit its accompanying text, and copy or save the card and text using the available sharing actions, including system sharing where supported. After signing in, add your own photo for a scene-versus-reality comparison. Shared location pages help another traveler identify the anime and destination, then continue to the map or navigation.
 
-![Location sharing panel with a downloadable anime pilgrimage card](docs/images/readme/map-share.png)
+![Location sharing panel with a downloadable anime pilgrimage card](docs/images/readme/en/map-share.png)
 
-*All README images are actual browser captures of SeichiGo's English interface, taken on September 22, 2026. The itinerary image is the public homepage example described above. Screens and availability may change.*
+*Product screenshots show the English interface, captured on September 22, 2026. Homepage images use the localized development build; planner and map images use the live website. The itinerary is the historical example described above. Source credits remain in their original language. Screens and availability may change.*
 
 ## Guides, destinations, and community contributions
 
