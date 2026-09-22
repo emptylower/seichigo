@@ -142,7 +142,7 @@ jobs:
 
       - name: Post-merge acceptance check
         if: ${{ inputs.mode == 'generate' && steps.cpr.outputs.pull-request-number }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
           SUMMARY_PATH: ${{ env.SUMMARY_PATH }}
