@@ -397,6 +397,20 @@ describe('getHomePortalData', () => {
     expect(data.heroDemo).toEqual(heroDemoFixture)
   })
 
+  it.each(['en', 'ja'] as const)('localizes the published showcase before delivering %s page data', async (locale) => {
+    const data = await getHomePortalData(locale, {
+      ...generatedDeps,
+      getAllPublicPosts: async () => [],
+      getAllAnime: async () => [],
+      getCityCountsByLocale: async () => ({ cities: [], counts: {} }),
+      readHomeShowcase: async () => readHomeShowcaseFile(),
+    })
+    expect(data.showcase.title).toContain(locale === 'en' ? '8 Days in Tokyo' : '東京8日間')
+    expect(data.showcase.days[7]!.items[0]!.title).toBe(locale === 'en'
+      ? 'Morning: Check out and last-minute shopping'
+      : '午前：チェックアウト・最後の買い物')
+  })
+
   it('yields mapWorld null when the source is missing while the rest of the portal stays intact', async () => {
     const data = await getHomePortalData('en', {
       ...generatedDeps,

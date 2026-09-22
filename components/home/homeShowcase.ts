@@ -19,7 +19,9 @@ export function showcaseShortTitle(title: string): string {
 
 /** point 条目标题的格式是「作品名・点位名」：取「・」之前的部分作为作品名，取不到（无分隔符/前段为空）返回 null */
 export function showcaseWorkName(title: string): string | null {
-  const idx = title.indexOf('・')
+  // Localized work names can themselves contain 「・」, e.g. ぼっち・ざ・ろっく！.
+  const explicitSeparator = title.indexOf(' ・ ')
+  const idx = explicitSeparator >= 0 ? explicitSeparator : title.indexOf('・')
   if (idx <= 0) return null
   return title.slice(0, idx).trim() || null
 }
@@ -94,13 +96,13 @@ export function showcasePointCount(days: TripPlanDayView[]): number {
   return count
 }
 
-/** 住宿：标题去重后取第一条；标题自带的「住宿：」前缀剥掉，避免与行首标签重复 */
+/** 住宿：标题去重后取第一条，去掉各语言的类型前缀，避免与行首标签重复。 */
 export function showcaseLodging(days: TripPlanDayView[]): string | null {
   const seen = new Set<string>()
   for (const day of days) {
     for (const item of day.items) {
       if (item.type !== 'lodging') continue
-      const name = item.title.replace(/^住宿[:：]\s*/, '').trim()
+      const name = item.title.replace(/^(?:住宿|宿泊|Stay)[:：]\s*/i, '').trim()
       if (!name || seen.has(name)) continue
       seen.add(name)
       return name

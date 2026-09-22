@@ -14,6 +14,7 @@ import {
   type HomeHeroDemoLike,
 } from './heroDemoShape'
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
+import { transitModeLabel } from './homeShowcase'
 import { t } from '@/lib/i18n'
 
 /** 一步 700ms，共 4 步；t0 是挂载那一刻（chip1 已亮），跑完停住不循环 */
@@ -37,6 +38,17 @@ const STATUS_TIME = '09:41'
 
 /** 演示里固定显示 Day 1，与来源计划的实际天序无关（§0） */
 const DEMO_DAY_LABEL = 1
+
+/** Translate the generated duration label without changing its source minutes. */
+function transitLabel(transit: { mode: string; label: string }, locale: SiteLocale): string {
+  if (locale === 'zh') return transit.label
+  const minutes = /^(?:步行|公交|自驾|骑行|出租车)(?:\s*·\s*约)?\s*(\d+)\s*分钟$/.exec(transit.label)?.[1]
+  if (!minutes) return transit.label
+  if (transit.mode === 'walk' && transit.label.includes('约')) {
+    return t('pages.home.v2.heroDemoWalkTotal', locale).replace('{minutes}', minutes)
+  }
+  return `${transitModeLabel(transit.mode, locale)} ${t('pages.home.v2.planMinutes', locale).replace('{n}', minutes)}`
+}
 
 function round(value: number): number {
   return Math.round(value * 100) / 100
@@ -315,7 +327,7 @@ export default function HomeHeroPhone({ locale, demo }: { locale: SiteLocale; de
                     }`}
                   >
                     <Footprints className="h-2.5 w-2.5" />
-                    {transit.label}
+                    {transitLabel(transit, locale)}
                   </span>
                 ) : null}
               </li>

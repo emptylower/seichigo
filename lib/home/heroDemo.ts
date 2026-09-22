@@ -9,7 +9,7 @@ import { isGoogleProxyImageUrl } from './showcase'
  * 第十四轮升级：items 带 lat/lng；transit 变为相邻点位间的一段数组；
  * 可选 map（Playwright 截的静态地图 + CSS 像素 markers）。
  * 本地化标题：items 带 titles（zh/en/ja），条目标题按站点语言显示；
- * title 保留为 zh 值（旧消费者兼容），day.summary 与 transit[].label 不本地化。
+ * title 保留为 zh 值（旧消费者兼容）；摘要在首页服务端本地化，交通标签由 UI 格式化。
  */
 export type HomeHeroDemoItemTitles = {
   zh: string
@@ -102,15 +102,19 @@ function heroDemoTime(item: TripPlanItemView, pickedIndex: number): string {
   return HERO_DEMO_DEFAULT_TIMES[Math.min(pickedIndex, HERO_DEMO_DEFAULT_TIMES.length - 1)]!
 }
 
-/**
- * 多语言条目标题：zh = 条目标题（现值，多为「作品・地名」中文混排）；
- * ja = 库里点位原始名 point.name（通常为日文，如「須賀神社男坂上」）；
- * en = 点位英文名字段——AnitabiPoint 目前没有该字段，回退同 ja
- * （日文地名对英文读者比中文更可认）。point.name 为空时 ja/en 回退条目标题。
- */
+const HERO_POINT_ENGLISH_NAMES: Readonly<Record<string, string>> = {
+  須賀神社男坂上: 'Suga Shrine Steps',
+  信濃町歩道橋: 'Shinanomachi Footbridge',
+  四谷見附橋: 'Yotsuya Mitsuke Bridge',
+}
+
+/** Prefer the point's English name, then reviewed source-name translations for this demo. */
 function heroDemoTitles(item: TripPlanItemView): HomeHeroDemoItemTitles {
   const originalName = item.point?.name.trim() || item.title
-  return { zh: item.title, en: originalName, ja: originalName }
+  const translatedName = Object.hasOwn(HERO_POINT_ENGLISH_NAMES, originalName)
+    ? HERO_POINT_ENGLISH_NAMES[originalName]
+    : undefined
+  return { zh: item.title, en: item.point?.nameEn?.trim() || translatedName || originalName, ja: originalName }
 }
 
 async function resolveHeroDemoImage(

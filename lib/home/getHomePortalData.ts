@@ -9,6 +9,7 @@ import {
 import { getHomeStats } from '@/lib/home/getHomeStats'
 import { orderGuides } from '@/lib/home/guidesOrder'
 import { readHomeHeroDemoFile, readHomeMapClustersFile, readHomeMapWorldFile, readHomeShowcaseFile } from '@/lib/home/generatedHomeFiles'
+import { localizeHomeShowcase, localizeShowcaseText } from '@/lib/home/showcaseLocale'
 import { getLocalizedDisplayName, normalizeDisplayNameKey } from '@/lib/i18n/displayName'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { getAllPublicPostsForHome } from '@/lib/posts/getAllPublicPosts'
@@ -325,7 +326,7 @@ export async function getHomePortalData(
   const animeList = unwrapHomeResult(animeResult)
   const cityData = unwrapHomeResult(cityResult)
   const stats = unwrapHomeResult(statsResult)
-  const showcase = unwrapHomeResult(showcaseResult)
+  const showcase = localizeHomeShowcase(unwrapHomeResult(showcaseResult), locale)
   const mapClusters = unwrapHomeResult(mapClustersResult)
   const heroDemo = unwrapHomeResult(heroDemoResult)
 
@@ -356,7 +357,11 @@ export async function getHomePortalData(
     stats,
     showcase,
     mapClusters,
-    heroDemo,
+    heroDemo: {
+      ...heroDemo,
+      planTitle: localizeShowcaseText(heroDemo.planTitle, locale),
+      day: { ...heroDemo.day, summary: localizeShowcaseText(heroDemo.day.summary, locale) },
+    },
     mapWorld,
     guides: buildGuides(localizedPosts),
   }

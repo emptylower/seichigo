@@ -388,7 +388,7 @@ describe('pickHeroDemo（选取规则，第十四轮 §0）', () => {
     expect(picked!.items[2]).toMatchObject({ lat: 35.6961, lng: 139.7995 })
   })
 
-  it('builds localized titles: zh from the item title, ja/en from the point original name', async () => {
+  it('builds localized titles with reviewed English names for the published demo points', async () => {
     const day = makeDay([
       makePointItem({ id: 'a', title: '你的名字・须贺神社男坂', pointName: '須賀神社男坂上' }),
       makePointItem({ id: 'b', title: '你的名字・信浓町步道桥', pointName: '信濃町歩道橋' }),
@@ -397,8 +397,8 @@ describe('pickHeroDemo（选取规则，第十四轮 §0）', () => {
     const picked = await pickHeroDemo([day], async () => '/x.jpg', { anime: '你的名字' })
 
     expect(picked!.items.map((item) => item.titles)).toEqual([
-      { zh: '你的名字・须贺神社男坂', en: '須賀神社男坂上', ja: '須賀神社男坂上' },
-      { zh: '你的名字・信浓町步道桥', en: '信濃町歩道橋', ja: '信濃町歩道橋' },
+      { zh: '你的名字・须贺神社男坂', en: 'Suga Shrine Steps', ja: '須賀神社男坂上' },
+      { zh: '你的名字・信浓町步道桥', en: 'Shinanomachi Footbridge', ja: '信濃町歩道橋' },
     ])
     // title 保留为 zh 值
     expect(picked!.items.map((item) => item.title)).toEqual(['你的名字・须贺神社男坂', '你的名字・信浓町步道桥'])
