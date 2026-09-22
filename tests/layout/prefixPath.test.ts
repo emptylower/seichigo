@@ -2,6 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { prefixPath } from '@/components/layout/prefixPath'
 
 describe('prefixPath', () => {
+  it.each(['signin', 'signup', 'set-password'])('认证页 %s 支持三语，callbackUrl 与 hash 原样保留', (page) => {
+    const path = `/auth/${page}?callbackUrl=%2Fja%2Fmap%3Fx%3D1#form`
+    expect(prefixPath(path, 'zh')).toBe(path)
+    expect(prefixPath(path, 'en')).toBe(`/en${path}`)
+    expect(prefixPath(path, 'ja')).toBe(`/ja${path}`)
+    expect(prefixPath(`/en${path}`, 'ja')).toBe(`/ja${path}`)
+    expect(prefixPath(`/ja${path}`, 'zh')).toBe(path)
+  })
+
+  it('其他认证路径仍不加语言前缀', () => {
+    expect(prefixPath('/auth/change-password', 'en')).toBe('/auth/change-password')
+    expect(prefixPath('/auth/signin/child', 'ja')).toBe('/auth/signin/child')
+    expect(prefixPath('/auth/signup-extra', 'en')).toBe('/auth/signup-extra')
+  })
+
   it('does not localize /plan for any locale', () => {
     expect(prefixPath('/plan', 'zh')).toBe('/plan')
     expect(prefixPath('/plan', 'en')).toBe('/plan')

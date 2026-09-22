@@ -6,6 +6,9 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '@/components/shared/Button'
 import { track } from '@/lib/analytics/track'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { prefixPath } from '@/components/layout/prefixPath'
 
 type SignInResult = {
   error?: string
@@ -14,8 +17,8 @@ type SignInResult = {
   url?: string | null
 }
 
-export default function SignUpClient() {
-  const callbackUrl = '/auth/set-password'
+export default function SignUpClient({ locale }: { locale: SupportedLocale }) {
+  const callbackUrl = prefixPath('/auth/set-password', locale)
 
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -35,10 +38,10 @@ export default function SignUpClient() {
 
   const canSendCode = cooldown <= 0 && loading !== 'email-send'
   const sendLabel = useMemo(() => {
-    if (loading === 'email-send') return '发送中…'
-    if (cooldown > 0) return `重新发送（${cooldown}s）`
-    return '发送验证码'
-  }, [cooldown, loading])
+    if (loading === 'email-send') return t('auth.signup.sending', locale)
+    if (cooldown > 0) return t('auth.signup.resend', locale).replace('{seconds}', String(cooldown))
+    return t('auth.signup.sendCode', locale)
+  }, [cooldown, loading, locale])
 
   async function requestCode(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -47,7 +50,7 @@ export default function SignUpClient() {
 
     const cleanedEmail = email.trim()
     if (!cleanedEmail) {
-      setEmailError('请填写邮箱')
+      setEmailError(t('auth.signup.emailRequired', locale))
       return
     }
 
@@ -55,13 +58,13 @@ export default function SignUpClient() {
     const res = await fetch('/api/auth/request-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanedEmail }),
+      body: JSON.stringify({ email: cleanedEmail, locale }),
     })
     setLoading(null)
 
     const j = await res.json().catch(() => ({}))
     if (!res.ok) {
-      const msg = j?.error || '发送失败，请稍后重试'
+      const msg = j?.error || t('auth.signup.sendFailed', locale)
       setEmailError(msg)
       if (res.status === 429 && typeof j?.retryAfterSeconds === 'number') {
         setCooldown(Math.max(1, Math.min(60, Math.floor(j.retryAfterSeconds))))
@@ -71,7 +74,7 @@ export default function SignUpClient() {
 
     const seconds = typeof j?.cooldownSeconds === 'number' ? Math.floor(j.cooldownSeconds) : 60
     setCooldown(Math.max(1, Math.min(60, seconds)))
-    setEmailHint('验证码已发送，请查收邮件。')
+    setEmailHint(t('auth.signup.codeSent', locale))
   }
 
   async function verifyCode(e: React.FormEvent) {
@@ -82,11 +85,11 @@ export default function SignUpClient() {
     const cleanedEmail = email.trim()
     const cleanedCode = code.trim()
     if (!cleanedEmail) {
-      setEmailError('请填写邮箱')
+      setEmailError(t('auth.signup.emailRequired', locale))
       return
     }
     if (!cleanedCode) {
-      setEmailError('请填写验证码')
+      setEmailError(t('auth.signup.codeRequired', locale))
       return
     }
 
@@ -100,11 +103,11 @@ export default function SignUpClient() {
     setLoading(null)
 
     if (!res) {
-      setEmailError('注册失败，请稍后重试')
+      setEmailError(t('auth.signup.signupFailed', locale))
       return
     }
     if (res.error) {
-      setEmailError('验证码不正确或已过期')
+      setEmailError(t('auth.signup.invalidCode', locale))
       return
     }
 
@@ -127,17 +130,17 @@ export default function SignUpClient() {
           </div>
           <div className="min-w-0">
             <div className="font-display text-2xl font-bold leading-tight">SeichiGo</div>
-            <div className="text-sm text-gray-600">注册后开始创作与巡礼</div>
+            <div className="text-sm text-gray-600">{t('auth.signup.subtitle', locale)}</div>
           </div>
         </div>
 
         <div className="mt-8 rounded-2xl border border-pink-100 bg-white/80 p-5 shadow-sm backdrop-blur sm:p-6">
-          <h1 className="text-xl font-bold">注册</h1>
+          <h1 className="text-xl font-bold">{t('auth.signup.title', locale)}</h1>
 
-          <form aria-label="注册表单" onSubmit={verifyCode} className="mt-6 space-y-4">
+          <form aria-label={t('auth.signup.form', locale)} onSubmit={verifyCode} className="mt-6 space-y-4">
             <div>
               <label htmlFor="signup-email" className={labelClass}>
-                邮箱
+                {t('auth.signup.email', locale)}
               </label>
               <div className="mt-1 flex flex-col gap-2 sm:flex-row">
                 <input
@@ -157,14 +160,14 @@ export default function SignUpClient() {
 
             <div>
               <label htmlFor="signup-code" className={labelClass}>
-                验证码
+                {t('auth.signup.code', locale)}
               </label>
               <input
                 id="signup-code"
                 className={`${inputClass} mt-1`}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="6 位验证码"
+                placeholder={t('auth.signup.codePlaceholder', locale)}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
@@ -175,14 +178,14 @@ export default function SignUpClient() {
             {emailError ? <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{emailError}</div> : null}
 
             <Button type="submit" disabled={loading === 'email-verify'} className="h-11 w-full">
-              {loading === 'email-verify' ? '验证中…' : '注册并继续'}
+              {loading === 'email-verify' ? t('auth.signup.verifying', locale) : t('auth.signup.submit', locale)}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-500">
-            已有账号？{' '}
-            <Link href="/auth/signin" className="text-brand-600 hover:underline">
-              去登录
+            {t('auth.signup.hasAccount', locale)}{' '}
+            <Link href={prefixPath('/auth/signin', locale)} className="text-brand-600 hover:underline">
+              {t('auth.signup.signin', locale)}
             </Link>
           </div>
         </div>

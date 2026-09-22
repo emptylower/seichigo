@@ -13,6 +13,18 @@ import {
 } from '@/components/share/shareText'
 
 describe('buildShareCaption', () => {
+  it.each(['$&', "$'", '$`', '$$'])('占位符保留文案变量中的 %s 原文', (token) => {
+    const vars = {
+      anime: `作品${token}`,
+      point: `地点${token}`,
+      address: `城市${token}`,
+      url: `https://seichigo.com/s/${token}`,
+    }
+    expect(buildShareCaption('{anime} {point} {address} {url} #{anime}', vars)).toBe(
+      `${vars.anime} ${vars.point} ${vars.address} ${vars.url} #作品${token.replace("'", '')}`,
+    )
+  })
+
   it('填充四个占位符', () => {
     expect(
       buildShareCaption('《{anime}》圣地巡礼｜{point} · {address} {url} #圣地巡礼 #{anime}', {

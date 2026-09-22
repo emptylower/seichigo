@@ -20,7 +20,7 @@ export function buildShareCaption(template: string, vars: ShareCaptionVars): str
   const animeTag = toHashtag(anime)
   let out = String(template || '')
   out = address
-    ? out.replace(/\{address\}/g, address)
+    ? out.replace(/\{address\}/g, () => address)
     : out
         // 地址为空时把包住它的中点、逗号+空格一并吃掉，
         // 免得出现「葡萄牛奶 · https://…」或「Budo Milk,  https://…」
@@ -28,10 +28,10 @@ export function buildShareCaption(template: string, vars: ShareCaptionVars): str
         .replace(/,\s*\{address\}/g, '')
         .replace(/\{address\}/g, '')
   out = out
-    .replace(/#\{anime\}/g, animeTag ? `#${animeTag}` : '')
-    .replace(/\{anime\}/g, anime)
-    .replace(/\{point\}/g, String(vars.point || '').trim())
-    .replace(/\{url\}/g, String(vars.url || '').trim())
+    .replace(/#\{anime\}/g, () => animeTag ? `#${animeTag}` : '')
+    .replace(/\{anime\}/g, () => anime)
+    .replace(/\{point\}/g, () => String(vars.point || '').trim())
+    .replace(/\{url\}/g, () => String(vars.url || '').trim())
   return out.replace(/[ \t]{2,}/g, ' ').trim()
 }
 

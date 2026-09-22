@@ -38,6 +38,19 @@ describe('HeaderAuthControls', () => {
     useSessionMock.mockReset()
   })
 
+  describe.each(['loading', 'unauthenticated'])('%s 时的语言链接', (status) => {
+    it.each(['inline', 'stack', 'drawer'] as const)('%s 布局跟随 locale', (layout) => {
+      useSessionMock.mockReturnValue({ data: null, status })
+      for (const locale of ['zh', 'en', 'ja'] as const) {
+        const view = render(<HeaderAuthControls locale={locale} labels={labels} layout={layout} />)
+        const prefix = locale === 'zh' ? '' : `/${locale}`
+        expect(screen.getByRole('link', { name: labels.signin })).toHaveAttribute('href', `${prefix}/auth/signin`)
+        expect(screen.getByRole('link', { name: labels.signup })).toHaveAttribute('href', `${prefix}/auth/signup`)
+        view.unmount()
+      }
+    })
+  })
+
   it('renders anonymous controls while session is loading', () => {
     useSessionMock.mockReturnValue({
       data: null,
