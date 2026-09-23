@@ -1,5 +1,6 @@
 import type { Session } from 'next-auth'
 import type { PlaceIntro } from '@/lib/googlePlaces/details'
+import type { LegResolver } from '@/lib/routeBook/legs'
 import type { RouteBookRepo, TravelMode } from '@/lib/routeBook/repo'
 import type { PointPoolRepo } from '@/lib/pointPool/repo'
 
@@ -21,6 +22,8 @@ export type RouteBookApiDeps = {
   readDayGeometryBySig?: (dayId: string, sig: string) => Promise<{ type: 'LineString'; coordinates: [number, number][] } | null>
   /** A3：谷歌点位介绍（Place Details + 缓存）；缺省/上游无结果返回 null */
   placeIntro?: (googlePlaceId: string, lang: 'zh-CN' | 'en' | 'ja') => Promise<PlaceIntro | null>
+  /** B2 A2：段级 Google 步行/驾车解析（含 RouteLegCache 缓存）；缺省走 heuristic */
+  legResolver?: LegResolver
 }
 
 let cached: RouteBookApiDeps | null = null
@@ -35,6 +38,7 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
     { prisma },
     { resolveDayGeometry, readDayGeometryBySig },
     { createPlaceIntroLookup },
+    { createGoogleLegResolver },
   ] = await Promise.all([
     import('@/lib/routeBook/repoPrisma'),
     import('@/lib/pointPool/repoPrisma'),
@@ -42,6 +46,7 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
     import('@/lib/db/prisma'),
     import('@/lib/routeBook/dayGeometry'),
     import('@/lib/routeBook/placeIntro'),
+    import('@/lib/routeBook/legResolverGoogle'),
   ])
 
   cached = {
@@ -65,6 +70,7 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
     fetchDayGeometry: resolveDayGeometry,
     readDayGeometryBySig,
     placeIntro: createPlaceIntroLookup(),
+    legResolver: createGoogleLegResolver(),
   }
 
   return cached

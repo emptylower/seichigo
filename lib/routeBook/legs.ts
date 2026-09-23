@@ -155,38 +155,36 @@ function agentDistance(transport: AgentTransport): number {
   return Math.round(km * 1000)
 }
 
-/** 相邻停靠两两成段：agent 数据优先，其次 resolver（B2 接 Google），失败按直线估算 */
+/** 相邻停靠两两成段：agent 数据优先，其次 resolver（B2 接 Google），失败按直线估算。
+ *  非段间互不依赖，resolver 调用并发发出（handler 侧的池负责并发上限与截止）。 */
 export async function resolveDayLegs(
   stops: LegStop[],
   agentLegs: Map<string, Prisma.JsonValue>,
   defaultMode: TravelMode,
   resolver: LegResolver
 ): Promise<Leg[]> {
-  const legs: Leg[] = []
+  const pairs = stops.slice(0, -1).map((from, index) => {
+    const to = stops[index + 1]!
+    return { from, to, transport: agentLegs.get(to.id) ?? null, mode: to.legMode ?? defaultMode }
+  })
 
-  for (let i = 0; i + 1 < stops.length; i++) {
-    const from = stops[i]!
-    const to = stops[i + 1]!
+  return Promise.all(
+    pairs.map(async ({ from, to, transport, mode }) => {
+      if (transport) {
+        return { ...agentLeg(readTransportShape(transport)), fromId: from.id, toId: to.id }
+      }
 
-    const transport = agentLegs.get(to.id)
-    if (transport) {
-      legs.push({ ...agentLeg(readTransportShape(transport)), fromId: from.id, toId: to.id })
-      continue
-    }
+      const resolved = await resolver(from, to, mode)
+      if (resolved) {
+        return { ...resolved, fromId: from.id, toId: to.id, mode }
+      }
 
-    const mode = to.legMode ?? defaultMode
-    const resolved = await resolver(from, to, mode)
-    if (resolved) {
-      legs.push({ ...resolved, fromId: from.id, toId: to.id, mode })
-      continue
-    }
-
-    if (mode === 'driving') {
-      legs.push({ ...heuristicDrivingLeg(from, to), fromId: from.id, toId: to.id, mode })
-    } else {
+      if (mode === 'driving') {
+        return { ...heuristicDrivingLeg(from, to), fromId: from.id, toId: to.id, mode }
+      }
       // walking / transit 都用直线推算，mode 以估算结果为准（≤1.5km 步行，否则公交）
       const core = computeHeuristicTransitCore(from, to)
-      legs.push({
+      const leg: Leg = {
         mode: core.mode === 'walk' ? 'walking' : 'transit',
         durationSec: core.durationMin * 60,
         distanceM: Math.round(core.distanceKm * 1000),
@@ -194,11 +192,10 @@ export async function resolveDayLegs(
         source: 'heuristic',
         fromId: from.id,
         toId: to.id,
-      })
-    }
-  }
-
-  return legs
+      }
+      return leg
+    })
+  )
 }
 
 function readTransportShape(value: Prisma.JsonValue): AgentTransport {
