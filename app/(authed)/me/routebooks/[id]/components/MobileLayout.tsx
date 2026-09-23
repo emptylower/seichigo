@@ -125,7 +125,12 @@ export function MobileLayout({
   )
   const hasDates = days.some((day) => Boolean(day.date))
 
-  // 切回地图 tab：地图一直挂着（hidden 切换），可见后通知 MapLibre 重算尺寸
+  // 外部选中了某天（如从未安排视图点「开始」→ 选天 sheet）：退出未安排视图，胶囊/列表/地图/dock 一致
+  useEffect(() => {
+    if (selectedDayId !== null) setUnassignedView(false)
+  }, [selectedDayId])
+
+  // 切回地图 tab：地图一直挂着且保持真实尺寸，可见后仍通知 MapLibre 重算尺寸（保险）
   useEffect(() => {
     if (tab !== 'map') return
     const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
@@ -201,81 +206,87 @@ export function MobileLayout({
           })}
         </div>
 
-        {/* 两个视图都保持挂载（切 tab 不重建地图），非活动的 hidden */}
-        <div className={tab === 'map' ? '' : 'hidden'} data-testid="mobile-map-view">
-          {mapStage}
-        </div>
+        {/* 两个视图都保持挂载（切 tab 不重建地图）。非活动的地图不能 display:none（0×0 时
+            fitBounds 无效，切过来会停在初始缩放），改为保持真实尺寸、不可见、不接收交互 */}
+        <div className="relative">
+          <div
+            className={tab === 'map' ? '' : 'invisible pointer-events-none absolute inset-x-0 top-0 -z-10'}
+            data-testid="mobile-map-view"
+          >
+            {mapStage}
+          </div>
 
-        <div className={tab === 'plan' ? '' : 'hidden'} data-testid="mobile-plan-view">
-          {unassignedView ? (
-            <MobilePlanView
-              mode="unassigned"
-              detail={detail}
-              days={days}
-              items={unassignedItems}
-              getPointPreview={trip.getPointPreview}
-              onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
-              onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
-              onMoveItem={onMoveItem}
-              onOpenItemDetail={onOpenItemDetail}
-              onEditNote={onEditNote}
-              locale={locale}
-            />
-          ) : selectedDay ? (
-            <div className="space-y-3">
-              <div className="px-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-base font-semibold text-slate-900">
-                    {dayLabel(selectedDay, selectedDay.dayIndex, locale)}
-                  </span>
-                  {selectedDay.title ? <span className="truncate text-xs text-slate-400">{selectedDay.title}</span> : null}
-                </div>
-              </div>
-              <DaySummaryBar
-                day={selectedDay}
-                items={dayItems}
-                places={detail.places}
-                lodgings={detail.lodgings}
-                legs={currentLegs}
-                getPointPreview={trip.getPointPreview}
-                onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
-                onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
-                weather={weatherForDay(weatherByDate, selectedDay)}
-                locale={locale}
-              />
+          <div className={tab === 'plan' ? '' : 'hidden'} data-testid="mobile-plan-view">
+            {unassignedView ? (
               <MobilePlanView
-                mode="day"
+                mode="unassigned"
                 detail={detail}
                 days={days}
-                day={selectedDay}
-                items={dayItems}
+                items={unassignedItems}
                 getPointPreview={trip.getPointPreview}
-                legs={currentLegs}
-                legsFailed={Boolean(legsFailedByDay[selectedDay.id])}
-                onRetryLegs={() => onRetryLegs(selectedDay.id)}
                 onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
                 onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
                 onMoveItem={onMoveItem}
                 onOpenItemDetail={onOpenItemDetail}
                 onEditNote={onEditNote}
-                onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
                 locale={locale}
               />
-            </div>
-          ) : (
-            <MobilePlanView
-              mode="all"
-              detail={detail}
-              days={days}
-              items={[]}
-              getPointPreview={trip.getPointPreview}
-              onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
-              onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
-              onMoveItem={onMoveItem}
-              onEnterDay={handleSelectDay}
-              locale={locale}
-            />
-          )}
+            ) : selectedDay ? (
+              <div className="space-y-3">
+                <div className="px-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-base font-semibold text-slate-900">
+                      {dayLabel(selectedDay, selectedDay.dayIndex, locale)}
+                    </span>
+                    {selectedDay.title ? <span className="truncate text-xs text-slate-400">{selectedDay.title}</span> : null}
+                  </div>
+                </div>
+                <DaySummaryBar
+                  day={selectedDay}
+                  items={dayItems}
+                  places={detail.places}
+                  lodgings={detail.lodgings}
+                  legs={currentLegs}
+                  getPointPreview={trip.getPointPreview}
+                  onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+                  onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
+                  weather={weatherForDay(weatherByDate, selectedDay)}
+                  locale={locale}
+                />
+                <MobilePlanView
+                  mode="day"
+                  detail={detail}
+                  days={days}
+                  day={selectedDay}
+                  items={dayItems}
+                  getPointPreview={trip.getPointPreview}
+                  legs={currentLegs}
+                  legsFailed={Boolean(legsFailedByDay[selectedDay.id])}
+                  onRetryLegs={() => onRetryLegs(selectedDay.id)}
+                  onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+                  onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
+                  onMoveItem={onMoveItem}
+                  onOpenItemDetail={onOpenItemDetail}
+                  onEditNote={onEditNote}
+                  onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
+                  locale={locale}
+                />
+              </div>
+            ) : (
+              <MobilePlanView
+                mode="all"
+                detail={detail}
+                days={days}
+                items={[]}
+                getPointPreview={trip.getPointPreview}
+                onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+                onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
+                onMoveItem={onMoveItem}
+                onEnterDay={handleSelectDay}
+                locale={locale}
+              />
+            )}
+          </div>
         </div>
       </section>
 

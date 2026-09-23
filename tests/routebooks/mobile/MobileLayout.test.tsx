@@ -1,5 +1,5 @@
 import { beforeAll, describe, it, expect, vi } from 'vitest'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MobileLayout } from '@/app/(authed)/me/routebooks/[id]/components/MobileLayout'
 import { useTripDnd } from '@/app/(authed)/me/routebooks/[id]/hooks/useTripDnd'
@@ -109,16 +109,42 @@ function makeDialogs() {
   }
 }
 
+/**
+ * 地图替身：模拟 RoutePreviewMap 挂载后按数据取景。容器祖先有 display:none（hidden）时
+ * 尺寸为 0×0、fitBounds 无效——此时不记录取景；数据（selectedDayId）变化时重新取景。
+ */
+function FitProbeMap({ dayKey, fits }: { dayKey: string; fits: string[] }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    let node: HTMLElement | null = ref.current
+    while (node) {
+      if (node.classList.contains('hidden')) return
+      node = node.parentElement
+    }
+    fits.push(dayKey)
+  }, [dayKey, fits])
+  return (
+    <div ref={ref} data-testid="map-stage">
+      {dayKey}
+    </div>
+  )
+}
+
 function Harness({
   trip,
   dialogs,
   initialDayId = 'day1',
   detailCard = null,
+  fits = [],
+  pickDayOnStart = null,
 }: {
   trip: ReturnType<typeof makeTrip>
   dialogs: ReturnType<typeof makeDialogs>
   initialDayId?: string | null
   detailCard?: React.ReactNode
+  fits?: string[]
+  /** 模拟 ui.tsx 的选天 sheet：点「开始」弹 sheet 后选中这一天 */
+  pickDayOnStart?: string | null
 }) {
   // 与 ui.tsx 相同：selectedDayId 在上层，移动端胶囊用非切换的 setSelectedDayId
   const [selectedDayId, setSelectedDayId] = useState<string | null>(initialDayId)
@@ -138,7 +164,7 @@ function Harness({
       selectedDayId={selectedDayId}
       onSelectDay={(dayId) => setSelectedDayId(dayId)}
       onShowAll={() => setSelectedDayId(null)}
-      mapStage={<div data-testid="map-stage">{selectedDayId ?? 'all'}</div>}
+      mapStage={<FitProbeMap dayKey={selectedDayId ?? 'all'} fits={fits} />}
       detailCard={detailCard}
       poolItems={POOL}
       dragOverlay={null}
@@ -149,9 +175,11 @@ function Harness({
       trip={trip as unknown as ReturnType<typeof useTripData>}
       dialogs={dialogs as unknown as DialogsHostApi}
       canStart
-      startLabel="开始 Day 1"
-      needsDayPick={false}
-      onOpenDayPicker={() => {}}
+      startLabel={selectedDay ? `开始 Day ${selectedDay.dayIndex}` : '开始导航'}
+      needsDayPick={selectedDay === null}
+      onOpenDayPicker={() => {
+        if (pickDayOnStart) setSelectedDayId(pickDayOnStart)
+      }}
       onStartImmersive={() => {}}
       onOpenItemDetail={() => {}}
       onMoveItem={() => {}}
@@ -214,12 +242,16 @@ describe('MobileLayout「未安排」视图状态（B3 修复 F2）', () => {
 })
 
 describe('MobileLayout 视图与抽屉（B3 修复 F4/F6/F8）', () => {
-  it('切换 计划/地图 不卸载地图（非活动视图 hidden）', () => {
+  it('切换 计划/地图 不卸载地图；非活动地图保持尺寸但不可见、不接收交互（不用 display:none）', () => {
     setup()
     const stage = screen.getByTestId('map-stage')
-    expect(screen.getByTestId('mobile-map-view').className).toContain('hidden')
+    const mapView = screen.getByTestId('mobile-map-view')
+    expect(mapView.className).not.toMatch(/(^|\s)hidden(\s|$)/)
+    expect(mapView.className).toContain('invisible')
+    expect(mapView.className).toContain('pointer-events-none')
+    expect(mapView.className).toContain('absolute')
     fireEvent.click(screen.getByRole('button', { name: '地图' }))
-    expect(screen.getByTestId('mobile-map-view').className).not.toContain('hidden')
+    expect(screen.getByTestId('mobile-map-view').className).not.toContain('invisible')
     expect(screen.getByTestId('mobile-plan-view').className).toContain('hidden')
     fireEvent.click(screen.getByRole('button', { name: '计划' }))
     expect(screen.getByTestId('map-stage')).toBe(stage)
@@ -252,5 +284,52 @@ describe('MobileLayout 视图与抽屉（B3 修复 F4/F6/F8）', () => {
     fireEvent.click(screen.getByRole('button', { name: '当天住宿' }))
     fireEvent.click(screen.getByRole('button', { name: '添加住宿' }))
     expect(dialogs.openLodgingEditor).toHaveBeenCalledWith({ presetDayIndex: 1 })
+  })
+})
+
+describe('MobileLayout 地图首次显示取景（G1）', () => {
+  it('默认在计划 tab：地图已在可测尺寸的容器里取景，首次切到地图 tab 时视野已就位，切天会重新取景', () => {
+    const fits: string[] = []
+    const resize = vi.fn()
+    window.addEventListener('resize', resize)
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0)
+      return 1
+    })
+    setup({ fits })
+    expect(fits).toEqual(['day1'])
+    fireEvent.click(screen.getByRole('button', { name: '地图' }))
+    expect(fits).toEqual(['day1'])
+    expect(resize).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('tab', { name: 'Day 2' }))
+    expect(fits).toEqual(['day1', 'day2'])
+    window.removeEventListener('resize', resize)
+    rafSpy.mockRestore()
+  })
+
+  it('在计划 tab 切天时（地图不可见）也会取景', () => {
+    const fits: string[] = []
+    setup({ fits })
+    fireEvent.click(screen.getByRole('tab', { name: 'Day 2' }))
+    expect(fits).toEqual(['day1', 'day2'])
+  })
+})
+
+describe('MobileLayout 未安排视图与外部选天同步（G4）', () => {
+  it('未安排视图点「开始」→ 选天 → 胶囊/列表/地图/按钮文案一致切到该天', () => {
+    setup({ pickDayOnStart: 'day2' })
+    fireEvent.click(screen.getByRole('tab', { name: /未安排/ }))
+    expect(screen.getByTestId('map-stage').textContent).toBe('all')
+    expect(screen.queryByRole('button', { name: '当天住宿' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /开始导航/ }))
+
+    expect(screen.getByRole('tab', { name: 'Day 2' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: /未安排/ }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByTestId('map-stage').textContent).toBe('day2')
+    // 计划区回到当天视图（天摘要栏在），dock 开始按钮是「开始 Day 2」且导航可用
+    expect(screen.getByRole('button', { name: '当天住宿' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /开始 Day 2/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '打开导航' })).not.toBeDisabled()
   })
 })
