@@ -211,6 +211,55 @@ describe('buildExportInput 住宿区间合并', () => {
     ])
   })
 
+  it('换酒店日两家酒店同天出现：前一区间 to 截到换酒店日', async () => {
+    const deps = makeDeps()
+    const plan = await seededPlan(deps.repo, [
+      { dayIndex: 1, items: [HOTEL('h1', '酒店A')] },
+      { dayIndex: 2, items: [HOTEL('h1', '酒店A')] },
+      // 换酒店日：A 退房 + B 入住都出现在 day 3
+      { dayIndex: 3, items: [HOTEL('h1', '酒店A'), HOTEL('h2', '酒店B')] },
+      { dayIndex: 4, items: [{ type: 'point', pointId: 'pt-a', title: 'A' }] },
+    ])
+
+    const { input, counts } = buildExportInput(plan)
+    expect(input.lodgings).toEqual([
+      { placeTempId: expect.any(String), fromDayIndex: 1, toDayIndex: 3 },
+      { placeTempId: expect.any(String), fromDayIndex: 3, toDayIndex: 4 },
+    ])
+    expect(counts.lodgings).toBe(2)
+    expect(counts.degradedToNote).toBe(0)
+  })
+
+  it('同天起住的冲突住宿降级为 note 并计数', async () => {
+    const deps = makeDeps()
+    const plan = await seededPlan(deps.repo, [
+      { dayIndex: 1, items: [HOTEL('h1', '酒店A'), HOTEL('h3', '酒店C')] },
+      { dayIndex: 2, items: [HOTEL('h1', '酒店A')] },
+    ])
+
+    const { input, counts } = buildExportInput(plan)
+    expect(input.lodgings).toEqual([{ placeTempId: expect.any(String), fromDayIndex: 1, toDayIndex: 2 }])
+    const degraded = input.items.find((item) => item.kind === 'note')
+    expect(degraded).toMatchObject({ dayIndex: 1, title: '酒店C', note: '住宿日期与已有住宿重叠，未导入住宿区间' })
+    expect(counts.degradedToNote).toBe(1)
+  })
+
+  it('dayIndex 断档时补空天，days 覆盖 1..dayCount', async () => {
+    const deps = makeDeps()
+    const plan = await seededPlan(deps.repo, [
+      { dayIndex: 1, summary: '第一天', items: [{ type: 'point', pointId: 'pt-a', title: 'A' }] },
+      { dayIndex: 3, items: [{ type: 'point', pointId: 'pt-b', title: 'B' }] },
+    ])
+
+    const { input, counts } = buildExportInput(plan)
+    expect(input.dayCount).toBe(3)
+    expect(input.days.map((day) => day.dayIndex)).toEqual([1, 2, 3])
+    expect(input.days[0]).toMatchObject({ title: '第一天' })
+    expect(input.days[1]).toMatchObject({ title: null, date: null })
+    expect(counts.days).toBe(3)
+    expect(input.items.map((item) => item.dayIndex).sort()).toEqual([1, 3])
+  })
+
   it('非法住宿载荷降级 note', async () => {
     const deps = makeDeps()
     const plan = await seededPlan(deps.repo, [

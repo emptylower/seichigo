@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { validateExternalPlacePayload } from '@/lib/googlePlaces/places'
+import { assertLodgingNoOverlap } from '@/lib/routeBook/rules'
 import type { TripPlanWithDays } from '@/lib/tripPlan/repo'
 import type {
   ExportDay,
@@ -74,11 +75,16 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
   const maxDayIndex = days.reduce((max, day) => Math.max(max, day.dayIndex), 1)
   const dayCount = Math.max(1, maxDayIndex)
 
-  const exportDays: ExportDay[] = days.map((day) => ({
-    dayIndex: day.dayIndex,
-    date: day.date,
-    title: day.summary ? day.summary.slice(0, 60) : null,
-  }))
+  // days 覆盖 1..dayCount：dayIndex 断档时补空天，保证 RouteBookDay 连续
+  const dayByIndex = new Map(days.map((day) => [day.dayIndex, day]))
+  const exportDays: ExportDay[] = Array.from({ length: dayCount }, (_, offset) => {
+    const day = dayByIndex.get(offset + 1)
+    return {
+      dayIndex: offset + 1,
+      date: day?.date ?? null,
+      title: day?.summary ? day.summary.slice(0, 60) : null,
+    }
+  })
 
   const places: ExportPlace[] = []
   const items: ExportItem[] = []
@@ -236,12 +242,13 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
   }
 
   // 合并住宿：同一 placeId 的连续天（dayIndex 相邻）合并为一个区间
+  const candidates: ExportLodging[] = []
   for (const occurrence of lodgingOccurrences.values()) {
     const sorted = [...occurrence.dayIndexes].sort((a, b) => a - b)
     let chunkStart = sorted[0]!
     let previous = sorted[0]!
     const flush = (from: number, to: number) => {
-      lodgings.push({ placeTempId: occurrence.tempId, fromDayIndex: from, toDayIndex: to })
+      candidates.push({ placeTempId: occurrence.tempId, fromDayIndex: from, toDayIndex: to })
     }
 
     for (const dayIndex of sorted.slice(1)) {
@@ -252,6 +259,40 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
       previous = dayIndex
     }
     flush(chunkStart, Math.min(previous + 1, dayCount))
+  }
+
+  // 换酒店日：把已保留区间的 to 截到后来者的入住日（背靠背）；仍冲突的后者降级为 note
+  const degradeLodgingToNote = (candidate: ExportLodging) => {
+    const place = places.find((entry) => entry.tempId === candidate.placeTempId)
+    const dayItems = items.filter((item) => item.dayIndex === candidate.fromDayIndex)
+    const sortOrder = dayItems.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1
+    items.push({
+      id: randomUUID(),
+      dayIndex: candidate.fromDayIndex,
+      sortOrder,
+      kind: 'note',
+      title: place?.title ?? '住宿',
+      note: '住宿日期与已有住宿重叠，未导入住宿区间',
+    })
+    degradedToNote += 1
+  }
+
+  candidates.sort((a, b) => a.fromDayIndex - b.fromDayIndex || a.toDayIndex - b.toDayIndex)
+  for (const candidate of candidates) {
+    for (const keptLodging of lodgings) {
+      if (keptLodging.fromDayIndex < candidate.fromDayIndex && keptLodging.toDayIndex > candidate.fromDayIndex) {
+        keptLodging.toDayIndex = candidate.fromDayIndex
+      }
+    }
+    try {
+      assertLodgingNoOverlap(
+        lodgings.map((lodging) => ({ id: lodging.placeTempId, ...lodging })),
+        { id: candidate.placeTempId, ...candidate }
+      )
+      lodgings.push(candidate)
+    } catch {
+      degradeLodgingToNote(candidate)
+    }
   }
 
   const input: RouteBookExportCreateInput = {
@@ -273,7 +314,7 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
   return {
     input,
     counts: {
-      days: days.length,
+      days: exportDays.length,
       points: items.filter((item) => item.kind === 'point').length,
       places: places.length,
       notes: items.filter((item) => item.kind === 'note').length,
