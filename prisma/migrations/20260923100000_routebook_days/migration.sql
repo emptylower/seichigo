@@ -119,8 +119,10 @@ ALTER TABLE "public"."RouteBookLodging" ADD CONSTRAINT "RouteBookLodging_placeId
 
 -- ===== 数据搬运（手写，追加在生成的 DDL 之后）=====
 -- 1) startDate 回填（metadata.startDate 可解析时）
-UPDATE "RouteBook" SET "startDate" = ("metadata"->>'startDate')::timestamp
-WHERE "metadata" ? 'startDate' AND ("metadata"->>'startDate') ~ '^\d{4}-\d{2}-\d{2}$';
+UPDATE "RouteBook" SET "startDate" = left(("metadata"->>'startDate'), 10)::date
+WHERE "metadata" ? 'startDate'
+  AND jsonb_typeof("metadata"->'startDate') = 'string'
+  AND ("metadata"->>'startDate') ~ '^\d{4}-\d{2}-\d{2}';
 
 -- 2) 旧导出写过 zone='Day N' 的本：dayCount = max(N)
 UPDATE "RouteBook" rb SET "dayCount" = GREATEST(1, sub.maxn)
