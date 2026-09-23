@@ -95,6 +95,9 @@ export function useItemMutations({
       const serverDayItems = Array.isArray(result.data.items) ? result.data.items : null
       const bookUpdatedAt =
         typeof result.data.bookUpdatedAt === 'string' ? result.data.bookUpdatedAt : created.bookUpdatedAt
+      // 服务端对同天同点位幂等：返回的是本地已有的条目（快速重复加入同一点）→ 不是新建，不入撤销栈，
+      // 否则连续撤销两次会对同一条目 DELETE 两次（冒烟 01:14:43 的 400）
+      const alreadyPresent = detailRef.current?.items.some((row) => row.id === item.id) ?? false
       setDetail((cur) => {
         if (!cur) return cur
         const updatedAt = bookUpdatedAt ?? cur.updatedAt
@@ -114,6 +117,7 @@ export function useItemMutations({
         refreshPointPoolSilently(refreshPointPool)
       }
       const createdId = item.id
+      if (alreadyPresent) return createdId
       pushUndo({
         label: tr('routebook.detail.undoAddItem', localeRef.current),
         revert: async () => {
