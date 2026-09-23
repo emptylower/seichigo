@@ -39,6 +39,16 @@ function daySignature(detail: RouteBookDetail, dayId: string): string {
   return `${day?.defaultTravelMode ?? 'transit'}|${itemsSig}|${lodgingSig}|${placeSig}`
 }
 
+/** FNV-1a 32 位哈希 → 8 位 hex；把长顺序签名压成 ≤64 字符的不透明 key 给服务端缓存用 */
+export function legsSigHash(input: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
 export type DayLegsState = {
   legsByDay: Record<string, DayLegsResult>
   /** 签名变了、新响应未回：旧数据仅供占位，地图应画本地虚线 */
@@ -67,13 +77,16 @@ export function useDayLegs(
     return daySignature(detail, selectedDayId)
   }, [detail, selectedDayId])
 
+  // 服务端缓存 key（A2）：命中时跳过 Mapbox；只对服务端暴露哈希，签名本体含条目顺序/交通方式/住宿锚点
+  const serverSig = useMemo(() => (signature ? legsSigHash(signature) : null), [signature])
+
   const retryDay = useCallback((dayId: string) => {
     setFailedDayIds((prev) => (prev[dayId] ? { ...prev, [dayId]: false } : prev))
     setRetryNonce((n) => n + 1)
   }, [])
 
   useEffect(() => {
-    if (!enabled || !selectedDayId || !signature) return
+    if (!enabled || !selectedDayId || !signature || !serverSig) return
     const dayId = selectedDayId
     const cacheKey = `${dayId}|${signature}`
 
@@ -100,9 +113,10 @@ export function useDayLegs(
       controllers.push(controller)
       const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
       try {
-        const res = await fetch(`/api/me/routebooks/${routeBookId}/days/${dayId}/legs`, {
-          signal: controller.signal,
-        })
+        const res = await fetch(
+          `/api/me/routebooks/${routeBookId}/days/${dayId}/legs?sig=${encodeURIComponent(serverSig)}`,
+          { signal: controller.signal }
+        )
         const data = (await res.json().catch(() => null)) as
           | {
               ok?: boolean
@@ -153,7 +167,7 @@ export function useDayLegs(
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       for (const controller of controllers) controller.abort()
     }
-  }, [enabled, routeBookId, selectedDayId, signature, retryNonce])
+  }, [enabled, routeBookId, selectedDayId, signature, serverSig, retryNonce])
 
   return { legsByDay, staleDayIds, failedDayIds, retryDay }
 }
