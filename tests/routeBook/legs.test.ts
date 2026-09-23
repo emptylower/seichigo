@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from 'next-auth'
 import type { Prisma } from '@prisma/client'
 import { buildDayStops, resolveDayLegs, LODGING_END_STOP_ID, LODGING_START_STOP_ID, type LegResolver, type LegStop } from '@/lib/routeBook/legs'
@@ -516,7 +516,7 @@ describe('legs handler B2 A2（Google 段池）', () => {
     })
     const { bookId, dayId } = await seedTwoPointDay(repo)
 
-    const res = await createLegHandlers(deps, undefined, { rateLimitMax: 1000 }).GET(new Request('http://localhost/x'), {
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
       params: Promise.resolve({ id: bookId, dayId }),
     })
     expect(res.status).toBe(200)
@@ -533,7 +533,7 @@ describe('legs handler B2 A2（Google 段池）', () => {
     const { repo, deps } = makeLegDeps({ legResolver: resolver })
     const { bookId, dayId } = await seedTwoPointDay(repo)
 
-    const res = await createLegHandlers(deps, undefined, { rateLimitMax: 1000 }).GET(new Request('http://localhost/x'), {
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
       params: Promise.resolve({ id: bookId, dayId }),
     })
     expect(res.status).toBe(200)
@@ -548,7 +548,7 @@ describe('legs handler B2 A2（Google 段池）', () => {
     const { repo, deps } = makeLegDeps({ legResolver: async () => GOOGLE_LEG })
     const { bookId, dayId } = await seedTwoPointDay(repo)
 
-    const res = await createLegHandlers(deps, undefined, { rateLimitMax: 1000 }).GET(new Request('http://localhost/x'), {
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
       params: Promise.resolve({ id: bookId, dayId }),
     })
     const body = (await res.json()) as { legs: Array<{ source: string }> }
@@ -567,7 +567,7 @@ describe('legs handler B2 A2（Google 段池）', () => {
     const { repo, deps } = makeLegDeps({ legResolver })
     const { bookId, dayId } = await seedPlaceDay(repo, 6) // 6 站 → 5 段
 
-    const promise = createLegHandlers(deps, undefined, { rateLimitMax: 1000 }).GET(new Request('http://localhost/x'), {
+    const promise = createLegHandlers(deps).GET(new Request('http://localhost/x'), {
       params: Promise.resolve({ id: bookId, dayId }),
     })
     await flushMicrotasks()
@@ -592,7 +592,7 @@ describe('legs handler B2 A2（Google 段池）', () => {
       const { repo, deps } = makeLegDeps({ legResolver: never })
       const { bookId, dayId } = await seedTwoPointDay(repo)
 
-      const promise = createLegHandlers(deps, undefined, { rateLimitMax: 1000 }).GET(new Request('http://localhost/x'), {
+      const promise = createLegHandlers(deps).GET(new Request('http://localhost/x'), {
         params: Promise.resolve({ id: bookId, dayId }),
       })
       await flushMicrotasks()
@@ -606,23 +606,95 @@ describe('legs handler B2 A2（Google 段池）', () => {
       vi.useRealTimers()
     }
   })
+})
 
-  it('每用户每分钟 10 次限流，超出 429', async () => {
-    const { deps } = makeLegDeps({
-      getSession: async () => ({ user: { id: 'u-legs-rate' } } as Session),
+describe('legs handler 限流降级（B2 修复 A1）', () => {
+  const GOOGLE_LEG = { durationSec: 421, distanceM: 812, polyline: [[35.0, 135.0]] as [number, number][], source: 'google' as const }
+
+  beforeEach(() => {
+    legCacheBatches.clear()
+  })
+
+  /** 两个点位 + 第二点显式 legMode=walking → 段按 walking 计算，会计入 Google 限流 */
+  async function seedWalkingDay(repo: InMemoryRouteBookRepo, userId: string): Promise<{ bookId: string; dayId: string }> {
+    const book = await repo.create(userId, '本', 'draft')
+    const dayRow = (await repo.getById(book.id, userId))!.days[0]!
+    await repo.createItem(book.id, userId, { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
+    const second = await repo.createItem(book.id, userId, { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
+    await repo.updateItem(book.id, userId, second.item.id, { legMode: 'walking' })
+    return { bookId: book.id, dayId: dayRow.id }
+  }
+
+  it('超过 10 次/分钟：返回 200 + degraded，该次不调 resolver，source 无 google', async () => {
+    const resolverCalls: number[] = []
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-degrade' } } as Session),
+      legResolver: async () => {
+        resolverCalls.push(1)
+        return GOOGLE_LEG
+      },
     })
-    const book = await deps.repo.create('u-legs-rate', '本', 'draft')
-    const dayRow = (await deps.repo.getById(book.id, 'u-legs-rate'))!.days[0]!
-
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-degrade')
     const handlers = createLegHandlers(deps)
-    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: book.id, dayId: dayRow.id }) })
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
 
     for (let i = 0; i < 10; i++) {
       const res = await get()
       expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string }
+      expect(body.degraded).toBeUndefined()
     }
+    expect(resolverCalls).toHaveLength(10)
+
     const limited = await get()
-    expect(limited.status).toBe(429)
-    expect(await limited.json()).toEqual({ error: '请求过于频繁，请稍后再试' })
+    expect(limited.status).toBe(200)
+    const body = (await limited.json()) as { degraded?: string; legs: Array<{ source: string }> }
+    expect(body.degraded).toBe('rate_limited')
+    expect(body.legs).toHaveLength(1)
+    expect(body.legs[0]).toMatchObject({ source: 'heuristic' })
+    expect(resolverCalls).toHaveLength(10)
+  })
+
+  it('纯缓存命中不计数：超过 10 次也不降级，且不调 resolver', async () => {
+    const raw = googleLegCacheRawKey('walking', COORDS.nearA, COORDS.nearB)
+    legCacheBatches.set(routeLegCacheKey(raw), { durationSec: 321, distanceM: 654, polyline: null, source: 'google' })
+    const resolver = vi.fn(async () => GOOGLE_LEG) as unknown as LegResolver
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-cache' } } as Session),
+      legResolver: resolver,
+    })
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-cache')
+    const handlers = createLegHandlers(deps)
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
+
+    for (let i = 0; i < 12; i++) {
+      const res = await get()
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string; legs: Array<{ source: string; durationSec: number }> }
+      expect(body.degraded).toBeUndefined()
+      expect(body.legs[0]).toMatchObject({ source: 'google', durationSec: 321 })
+    }
+    expect(resolver).not.toHaveBeenCalled()
+  })
+
+  it('无 walking/driving 段的请求不计数：transit 段再多请求也不降级', async () => {
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-transit' } } as Session),
+    })
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-transit')
+    // 去掉显式 legMode，回到默认 transit 段
+    const dayItems = (await repo.getDayContext(bookId, 'u-a1-transit', dayId))!.items
+    for (const it of dayItems) {
+      if (it.legMode) await repo.updateItem(bookId, 'u-a1-transit', it.id, { legMode: null })
+    }
+    const handlers = createLegHandlers(deps)
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
+
+    for (let i = 0; i < 12; i++) {
+      const res = await get()
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string }
+      expect(body.degraded).toBeUndefined()
+    }
   })
 })

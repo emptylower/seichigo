@@ -20,12 +20,19 @@ type ResolvedLeg = Omit<Leg, 'fromId' | 'toId' | 'mode'>
 
 export type LegPoolOptions = { concurrency?: number; deadlineMs?: number }
 
+/** 池句柄：resolve 供 resolveDayLegs 调用；isCached 供 handler 判断
+ *  「该 raw key 是否已批量读命中」（限流只计真正会外呼的段）。 */
+export type LegPool = {
+  resolve: LegResolver
+  isCached: (raw: string) => boolean
+}
+
 export async function createLegPoolResolver(
   resolver: LegResolver,
   stops: LegStop[],
   defaultMode: TravelMode,
   opts?: LegPoolOptions
-): Promise<LegResolver> {
+): Promise<LegPool> {
   const concurrency = opts?.concurrency ?? LEG_POOL_CONCURRENCY
   const deadlineMs = opts?.deadlineMs ?? LEG_POOL_DEADLINE_MS
 
@@ -73,35 +80,38 @@ export async function createLegPoolResolver(
     if (next) next()
   }
 
-  return (from, to, mode) => {
-    const raw = googleLegCacheRawKey(mode, from, to)
-    const existing = memo.get(raw)
-    if (existing) return existing
+  return {
+    resolve: (from, to, mode) => {
+      const raw = googleLegCacheRawKey(mode, from, to)
+      const existing = memo.get(raw)
+      if (existing) return existing
 
-    const cachedHit = cachedByRaw.get(raw)
-    const task: Promise<ResolvedLeg | null> = cachedHit
-      ? Promise.resolve(cachedHit)
-      : (async () => {
-          await acquireSlot()
-          let timer: ReturnType<typeof setTimeout> | undefined
-          try {
-            const remaining = deadlineMs - (Date.now() - startAt)
-            if (remaining <= 0) return null
-            const timeout = new Promise<null>((resolveNull) => {
-              timer = setTimeout(() => resolveNull(null), remaining)
-            })
+      const cachedHit = cachedByRaw.get(raw)
+      const task: Promise<ResolvedLeg | null> = cachedHit
+        ? Promise.resolve(cachedHit)
+        : (async () => {
+            await acquireSlot()
+            let timer: ReturnType<typeof setTimeout> | undefined
             try {
-              return await Promise.race([resolver(from, to, mode), timeout])
-            } catch {
-              return null
+              const remaining = deadlineMs - (Date.now() - startAt)
+              if (remaining <= 0) return null
+              const timeout = new Promise<null>((resolveNull) => {
+                timer = setTimeout(() => resolveNull(null), remaining)
+              })
+              try {
+                return await Promise.race([resolver(from, to, mode), timeout])
+              } catch {
+                return null
+              }
+            } finally {
+              if (timer !== undefined) clearTimeout(timer)
+              releaseSlot()
             }
-          } finally {
-            if (timer !== undefined) clearTimeout(timer)
-            releaseSlot()
-          }
-        })()
+          })()
 
-    memo.set(raw, task)
-    return task
+      memo.set(raw, task)
+      return task
+    },
+    isCached: (raw) => cachedByRaw.has(raw),
   }
 }

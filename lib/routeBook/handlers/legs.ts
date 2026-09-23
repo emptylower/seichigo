@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
 import type { RouteBookApiDeps } from '@/lib/routeBook/api'
-import { buildDayStops, resolveDayLegs, type LegResolver } from '@/lib/routeBook/legs'
+import { buildDayStops, computeLegPairs, resolveDayLegs, type LegResolver } from '@/lib/routeBook/legs'
 import { createLegPoolResolver } from '@/lib/routeBook/legPool'
+import { googleLegCacheRawKey } from '@/lib/routeBook/legResolverGoogle'
 import { routeBookErrorResponse } from './errors'
 
 // ---------------------------------------------------------------------------
 // GET /api/me/routebooks/[id]/days/[dayId]/legs — 段序列 + 交通估算。
 // B2 A2：resolver 默认取 deps.legResolver（Prisma 工厂注入 Google 实现），
 // 经 createLegPoolResolver 包一层：批量缓存读 + 并发 4 + 整体 8 秒截止，
-// 超时/失败的段降级 heuristic。每用户每分钟 10 次。
+// 超时/失败的段降级 heuristic。
+// B2 修复 A1：限流不再 429——只有真正会触发 Google 外呼的请求（存在
+// walking/driving 段且缓存未全中）才计数，超过每用户 10 次/分钟后该次
+// 返回 200 + degraded:'rate_limited'，只读缓存 + heuristic，不调 Google。
 // ---------------------------------------------------------------------------
 
 type RateEntry = { count: number; windowStart: number }
@@ -30,6 +34,19 @@ function checkRateLimit(userId: string, max: number): boolean {
 
 const nullResolver: LegResolver = async () => null
 
+/** 该次请求是否存在会外呼 Google 的段（walking/driving、非 agent 接管、缓存未命中） */
+function wouldCallGoogle(
+  pairs: ReturnType<typeof computeLegPairs>,
+  pool: { isCached: (raw: string) => boolean }
+): boolean {
+  return pairs.some(
+    (pair) =>
+      pair.transport === null &&
+      (pair.mode === 'walking' || pair.mode === 'driving') &&
+      !pool.isCached(googleLegCacheRawKey(pair.mode, pair.from, pair.to))
+  )
+}
+
 export function createLegHandlers(
   deps: RouteBookApiDeps,
   resolver?: LegResolver,
@@ -40,10 +57,6 @@ export function createLegHandlers(
       const session = await deps.getSession()
       const userId = session?.user?.id
       if (!userId) return NextResponse.json({ error: '请先登录' }, { status: 401 })
-
-      if (!checkRateLimit(userId, opts?.rateLimitMax ?? RATE_MAX)) {
-        return NextResponse.json({ error: '请求过于频繁，请稍后再试' }, { status: 429 })
-      }
 
       const { id: routeBookId, dayId } = await ctx.params
       if (!dayId) return NextResponse.json({ error: '缺少 dayId' }, { status: 400 })
@@ -68,7 +81,21 @@ export function createLegHandlers(
         const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, items, places, lodgings, pointCoords)
 
         const baseResolver = resolver ?? deps.legResolver ?? null
-        const legResolver = baseResolver ? await createLegPoolResolver(baseResolver, stops, day.defaultTravelMode) : nullResolver
+        // 池的上游经间接引用包装：限流降级时可以换成 nullResolver（只读缓存 + heuristic）
+        let upstream: LegResolver | null = baseResolver
+        const pool = baseResolver
+          ? await createLegPoolResolver((from, to, mode) => upstream!(from, to, mode), stops, day.defaultTravelMode)
+          : null
+        const legResolver: LegResolver = pool ? pool.resolve : nullResolver
+
+        // B2 修复 A1：只有会外呼 Google 的请求才计数；超限降级为缓存 + heuristic
+        let degraded: 'rate_limited' | undefined
+        if (pool && wouldCallGoogle(computeLegPairs(stops, agentLegs, day.defaultTravelMode), pool)) {
+          if (!checkRateLimit(userId, opts?.rateLimitMax ?? RATE_MAX)) {
+            upstream = nullResolver
+            degraded = 'rate_limited'
+          }
+        }
 
         const sigCache = sig ? { dayId, sig } : undefined
         const [legs, dayGeometry] = await Promise.all([
@@ -85,7 +112,7 @@ export function createLegHandlers(
         ])
 
         return NextResponse.json(
-          { ok: true, stops, legs, staleTransitItemIds, dayGeometry },
+          { ok: true, stops, legs, staleTransitItemIds, dayGeometry, ...(degraded ? { degraded } : {}) },
           { headers: { 'Cache-Control': 'private, max-age=0' } }
         )
       } catch (err) {
