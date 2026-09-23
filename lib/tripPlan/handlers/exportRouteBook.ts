@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
-import type { RouteBookStatus } from '@/lib/routeBook/repo'
-import type { RouteBookExportPointInput, RouteBookExportStore } from '@/lib/routeBook/exportStore'
+import type { RouteBookExportStore } from '@/lib/routeBook/exportStore'
+import { buildExportInput } from '@/lib/tripPlan/exportMapping'
 import type { TripPlanHandlerDeps } from './plans'
 
 export type ExportRouteBookHandlerDeps = TripPlanHandlerDeps & {
   routeBookStore: RouteBookExportStore
 }
-
-const EXPORTED_ROUTE_BOOK_STATUS: RouteBookStatus = 'draft'
 
 export function createExportRouteBookHandler(deps: ExportRouteBookHandlerDeps) {
   return {
@@ -24,29 +22,19 @@ export function createExportRouteBookHandler(deps: ExportRouteBookHandlerDeps) {
         return NextResponse.json({ ok: true, routeBookId: existing.id, created: false })
       }
 
-      const points: RouteBookExportPointInput[] = []
-      for (const day of [...plan.days].sort((a, b) => a.dayIndex - b.dayIndex)) {
-        for (const item of [...day.items].sort((a, b) => a.sortOrder - b.sortOrder)) {
-          if (item.type !== 'point') continue
-          if (!item.pointId) continue
-          points.push({ pointId: item.pointId, zone: `Day ${day.dayIndex}`, sortOrder: points.length })
-        }
-      }
-      if (!points.length) {
-        return NextResponse.json({ error: '计划还没有可导出的点位' }, { status: 400 })
+      const { input, counts } = buildExportInput(plan)
+      if (input.items.length === 0 && input.lodgings.length === 0) {
+        return NextResponse.json({ error: '计划还没有可导出的条目' }, { status: 400 })
       }
 
-      const created = await deps.routeBookStore.createWithPoints({
+      const created = await deps.routeBookStore.createFromPlan({
+        ...input,
         userId,
-        title: plan.title,
-        status: EXPORTED_ROUTE_BOOK_STATUS,
-        metadata: {
-          sourcePlanId: planId,
-          startDate: plan.startDate ? plan.startDate.toISOString() : null,
-        },
-        points,
       })
-      return NextResponse.json({ ok: true, routeBookId: created.id, created: true }, { status: 201 })
+      return NextResponse.json(
+        { ok: true, routeBookId: created.id, created: true, counts },
+        { status: 201 }
+      )
     },
   }
 }
