@@ -997,7 +997,8 @@
       "undoReorder": "调整顺序",
       "undoOptimize": "优化顺序",
       "legsFailed": "路线加载失败",
-      "staleConflict": "行程已在别处修改"
+      "staleConflict": "行程已在别处修改",
+      "undoCleared": "撤销历史已清空"
     },
     "sidebar": {
       "undo": "撤销",
@@ -1095,7 +1096,8 @@
       "addPlaceToDay": "加入选中天",
       "editPlace": "编辑自定义点",
       "deletePlace": "删除自定义点",
-      "placesEmpty": "右键地图空白处，或点上方按钮新建"
+      "placesEmpty": "右键地图空白处，或点上方按钮新建",
+      "deletePlaceConfirm": "删除「{title}」将同时删除 {items} 条条目与 {lodgings} 段住宿，确定删除吗？"
     },
     "selector": {
       "choose": "选择地图",

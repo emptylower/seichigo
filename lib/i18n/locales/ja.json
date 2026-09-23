@@ -997,7 +997,8 @@
       "undoReorder": "順序を調整",
       "undoOptimize": "順序を最適化",
       "legsFailed": "ルートの読み込みに失敗しました",
-      "staleConflict": "別の場所で変更されました"
+      "staleConflict": "別の場所で変更されました",
+      "undoCleared": "取り消し履歴をクリアしました"
     },
     "sidebar": {
       "undo": "取り消し",
@@ -1095,7 +1096,8 @@
       "addPlaceToDay": "選択した日に追加",
       "editPlace": "カスタム地点を編集",
       "deletePlace": "カスタム地点を削除",
-      "placesEmpty": "地図を右クリックするか、上のボタンから新規作成"
+      "placesEmpty": "地図を右クリックするか、上のボタンから新規作成",
+      "deletePlaceConfirm": "「{title}」を削除しますか？{items} 件の項目と {lodgings} 件の宿泊も一緒に削除されます。"
     },
     "selector": {
       "choose": "マップを選択",

@@ -16,6 +16,10 @@ export type MutationDeps = {
   setDetail: SetDetail
   handleFailure: (result: ApiFail, prev: RouteBookDetail | null, fallback: string) => void
   pushUndo: (entry: UndoEntry) => void
+  /** 级联删除（自定义点）后清空撤销环：环里可能躺着指向已删条目的记录 */
+  clearUndo?: () => void
+  /** 撤销环当前条数（决定是否 toast 提示「撤销历史已清空」） */
+  getUndoCount?: () => number
   refreshPointPool: () => Promise<void>
   showToast: (message: string) => void
   load: () => Promise<void>

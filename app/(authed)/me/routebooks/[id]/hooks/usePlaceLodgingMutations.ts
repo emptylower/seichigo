@@ -13,6 +13,9 @@ export function usePlaceLodgingMutations({
   detailRef,
   setDetail,
   handleFailure,
+  clearUndo,
+  getUndoCount,
+  showToast,
   locale = 'zh',
 }: MutationDeps) {
   const { api, applyBookUpdatedAt, localeRef } = useMutationBase({ setDetail, locale })
@@ -82,9 +85,15 @@ export function usePlaceLodgingMutations({
         return false
       }
       applyBookUpdatedAt(result.data.bookUpdatedAt)
+      // 级联删了条目/住宿：撤销环里指向它们的记录一并作废，清空并提示
+      const hadUndo = (getUndoCount?.() ?? 0) > 0
+      clearUndo?.()
+      if (hadUndo) {
+        showToast(tr('routebook.detail.undoCleared', localeRef.current))
+      }
       return true
     },
-    [api, applyBookUpdatedAt, detailRef, handleFailure, id, localeRef, setDetail]
+    [api, applyBookUpdatedAt, clearUndo, detailRef, getUndoCount, handleFailure, id, localeRef, setDetail, showToast]
   )
 
   const createLodging = useCallback(

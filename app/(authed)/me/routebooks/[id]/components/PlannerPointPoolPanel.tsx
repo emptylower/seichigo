@@ -384,6 +384,20 @@ export function PlannerPointPoolPanel({
     onReorder(selectedDayId, [...dayIds, itemId])
   }
 
+  // 删除自定义点前确认：文案列出将级联删除的条目数与住宿段数（从本地 detail 算）
+  const confirmDeletePlace = (placeId: string) => {
+    const place = detail.places.find((row) => row.id === placeId)
+    const itemCount = detail.items.filter((row) => row.placeId === placeId).length
+    const lodgingCount = detail.lodgings.filter((row) => row.placeId === placeId).length
+    const message = tr('routebook.pool.deletePlaceConfirm', locale, {
+      title: place?.title ?? '',
+      items: itemCount,
+      lodgings: lodgingCount,
+    })
+    if (!window.confirm(message)) return
+    onDeletePlace?.(placeId)
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
       <div className="space-y-3 rounded-[28px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(252,244,247,0.92))] p-4 shadow-[0_18px_36px_-30px_rgba(225,29,72,0.3)] ring-1 ring-pink-100/60">
@@ -481,7 +495,7 @@ export function PlannerPointPoolPanel({
                       selectedDayId ? () => onAddItem(selectedDayId, { kind: 'place', placeId: place.id }) : undefined
                     }
                     onEdit={onEditPlace ? () => onEditPlace(place.id) : undefined}
-                    onDelete={onDeletePlace ? () => onDeletePlace(place.id) : undefined}
+                    onDelete={onDeletePlace ? () => confirmDeletePlace(place.id) : undefined}
                   />
                 ))}
               </div>

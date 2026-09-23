@@ -997,7 +997,8 @@
       "undoReorder": "Reorder",
       "undoOptimize": "Optimize order",
       "legsFailed": "Route failed to load",
-      "staleConflict": "This trip was edited elsewhere"
+      "staleConflict": "This trip was edited elsewhere",
+      "undoCleared": "Undo history cleared"
     },
     "sidebar": {
       "undo": "Undo",
@@ -1095,7 +1096,8 @@
       "addPlaceToDay": "Add to selected day",
       "editPlace": "Edit custom place",
       "deletePlace": "Delete custom place",
-      "placesEmpty": "Right-click the map, or use the button above"
+      "placesEmpty": "Right-click the map, or use the button above",
+      "deletePlaceConfirm": "Delete \"{title}\"? This will also remove {items} item(s) and {lodgings} lodging(s)."
     },
     "selector": {
       "choose": "Choose a map",

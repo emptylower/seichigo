@@ -89,6 +89,9 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const undoRing = useUndoRing()
   // useUndoRing 每次渲染返回新对象，load 只能依赖稳定的 clear（useCallback 空依赖）
   const clearUndo = undoRing.clear
+  const undoCountRef = useRef(0)
+  undoCountRef.current = undoRing.undoCount
+  const getUndoCount = useCallback(() => undoCountRef.current, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -182,6 +185,8 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     setDetail,
     handleFailure,
     pushUndo: undoRing.push,
+    clearUndo,
+    getUndoCount,
     refreshPointPool,
     showToast,
     load,
