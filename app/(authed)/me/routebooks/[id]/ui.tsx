@@ -65,6 +65,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     updatePlace: trip.updatePlace,
     createLodging: trip.createLodging,
     updateLodging: trip.updateLodging,
+    deleteLodging: trip.deleteLodging,
     addItem: trip.addItem,
     updateItem: trip.updateItem,
     insertDay: trip.insertDay,

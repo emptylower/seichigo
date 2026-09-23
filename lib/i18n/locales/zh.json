@@ -1188,7 +1188,9 @@
       "submit": "保存住宿",
       "badgeCheckIn": "入住",
       "badgeCheckOut": "退房",
-      "badgeStaying": "续住"
+      "badgeStaying": "续住",
+      "delete": "删除住宿",
+      "deleteConfirm": "确定删除这段住宿吗？"
     },
     "dayDetail": {
       "lodgingTitle": "当天住宿",

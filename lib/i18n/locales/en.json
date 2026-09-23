@@ -1188,7 +1188,9 @@
       "submit": "Save lodging",
       "badgeCheckIn": "Check-in",
       "badgeCheckOut": "Check-out",
-      "badgeStaying": "Staying"
+      "badgeStaying": "Staying",
+      "delete": "Delete lodging",
+      "deleteConfirm": "Delete this lodging stay?"
     },
     "dayDetail": {
       "lodgingTitle": "Lodging for the day",

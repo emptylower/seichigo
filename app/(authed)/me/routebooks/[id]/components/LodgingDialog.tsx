@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BedDouble, Loader2, Plus, X } from 'lucide-react'
+import { BedDouble, Loader2, Plus, Trash2, X } from 'lucide-react'
 import type { LodgingRecord, RouteBookDetail } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { LodgingInput } from '../hooks/tripDataTypes'
@@ -18,6 +18,8 @@ type Props = {
   /** DayBlock「添加住宿」：预选入住日 */
   presetDayIndex?: number | null
   onSubmit: (input: LodgingInput) => Promise<boolean | void> | boolean | void
+  /** 编辑模式：删除这段住宿（带确认，成功后由父层关弹窗） */
+  onDelete?: () => Promise<boolean | void> | boolean | void
   /** 没有 lodging 自定义点时跳去新建（由 DialogsHost 编排） */
   onRequestNewPlace: () => void
   onClose: () => void
@@ -32,6 +34,7 @@ export function LodgingDialog({
   presetPlaceId = null,
   presetDayIndex = null,
   onSubmit,
+  onDelete,
   onRequestNewPlace,
   onClose,
   locale = 'zh',
@@ -43,6 +46,7 @@ export function LodgingDialog({
   const [checkOut, setCheckOut] = useState('')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const lodgingPlaces = detail.places.filter((row) => row.kind === 'lodging')
   const days = [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex)
@@ -57,6 +61,7 @@ export function LodgingDialog({
     setCheckOut(lodging?.checkOut ?? '')
     setNote(lodging?.note ?? '')
     setSubmitting(false)
+    setDeleting(false)
     // lodgingPlaces 在打开瞬间已确定；后续 detail 变化不重置表单
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lodging, presetPlaceId, presetDayIndex])
@@ -66,7 +71,7 @@ export function LodgingDialog({
   const valid = placeId !== '' && fromDayIndex >= 1 && toDayIndex >= fromDayIndex
 
   const handleSubmit = async () => {
-    if (!valid || submitting) return
+    if (!valid || submitting || deleting) return
     setSubmitting(true)
     const outcome = await onSubmit({
       placeId,
@@ -78,6 +83,14 @@ export function LodgingDialog({
     })
     setSubmitting(false)
     if (outcome !== false) onClose()
+  }
+
+  const handleDelete = async () => {
+    if (!onDelete || submitting || deleting) return
+    if (!window.confirm(tr('routebook.lodging.deleteConfirm', locale))) return
+    setDeleting(true)
+    await onDelete()
+    setDeleting(false)
   }
 
   return (
@@ -212,7 +225,7 @@ export function LodgingDialog({
               </button>
               <button
                 type="button"
-                disabled={!valid || submitting}
+                disabled={!valid || submitting || deleting}
                 className="inline-flex min-h-12 flex-[2] items-center justify-center gap-2 rounded-[20px] bg-brand-500 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                 onClick={() => void handleSubmit()}
               >
@@ -220,6 +233,18 @@ export function LodgingDialog({
                 {tr('routebook.lodging.submit', locale)}
               </button>
             </div>
+
+            {lodging && onDelete ? (
+              <button
+                type="button"
+                disabled={submitting || deleting}
+                className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-[20px] border border-rose-200 bg-white text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void handleDelete()}
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {tr('routebook.lodging.delete', locale)}
+              </button>
+            ) : null}
           </div>
         )}
       </div>

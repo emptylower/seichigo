@@ -43,6 +43,7 @@ export function useDialogsHost({
   updatePlace,
   createLodging,
   updateLodging,
+  deleteLodging,
   addItem,
   updateItem,
   insertDay,
@@ -55,6 +56,7 @@ export function useDialogsHost({
   updatePlace: (placeId: string, input: Partial<PlaceInput>) => Promise<boolean>
   createLodging: (input: LodgingInput) => Promise<string | null>
   updateLodging: (lodgingId: string, input: Partial<LodgingInput>) => Promise<boolean>
+  deleteLodging: (lodgingId: string) => Promise<boolean>
   addItem: (dayId: string | null, input: CreateItemInput) => Promise<string | null>
   updateItem: (itemId: string, data: UpdateItemInput) => Promise<boolean>
   insertDay: (afterDayIndex: number) => Promise<string | null>
@@ -64,6 +66,8 @@ export function useDialogsHost({
 }): DialogsHostApi {
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const returnPlaceIdRef = useRef<string | null>(null)
+  /** 从住宿弹窗跳去新建住宿点时，记住当时的预选入住日，回来不丢 */
+  const returnPresetDayIndexRef = useRef<number | null>(null)
 
   const close = useCallback(() => setDialog(null), [])
 
@@ -95,12 +99,14 @@ export function useDialogsHost({
   }, [])
 
   // 住宿 → 新建住宿点 → 回到住宿：PlaceEditorDialog 提交成功后会调 onClose，
-  // 这里借 onClose 把新建的 placeId 带回住宿弹窗（直接取消则正常关闭）
+  // 这里借 onClose 把新建的 placeId 与当时的预选入住日带回住宿弹窗（直接取消则正常关闭）
   const closePlaceDialog = useCallback(() => {
     const presetPlaceId = returnPlaceIdRef.current
+    const presetDayIndex = returnPresetDayIndexRef.current
     returnPlaceIdRef.current = null
+    returnPresetDayIndexRef.current = null
     if (presetPlaceId) {
-      setDialog({ type: 'lodging', lodgingId: null, presetDayIndex: null, presetPlaceId })
+      setDialog({ type: 'lodging', lodgingId: null, presetDayIndex, presetPlaceId })
     } else {
       setDialog(null)
     }
@@ -187,8 +193,18 @@ export function useDialogsHost({
         presetDayIndex={dialog.presetDayIndex}
         locale={locale}
         onClose={close}
-        onRequestNewPlace={() =>
+        onRequestNewPlace={() => {
+          returnPresetDayIndexRef.current = dialog.presetDayIndex
           setDialog({ type: 'place', placeId: null, presetKind: 'lodging', initialCoords: null, returnToLodging: true })
+        }}
+        onDelete={
+          lodging
+            ? async () => {
+                const ok = await deleteLodging(lodging.id)
+                if (ok) close()
+                return ok
+              }
+            : undefined
         }
         onSubmit={async (input) => {
           if (lodging) return updateLodging(lodging.id, input)
@@ -196,7 +212,7 @@ export function useDialogsHost({
         }}
       />
     )
-  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging, addItem, updateItem, insertDay, deleteDay, reorderDays])
+  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging, deleteLodging, addItem, updateItem, insertDay, deleteDay, reorderDays])
 
   return { host, openPlaceEditor, openLodgingEditor, openNoteEditor, openDayOrder }
 }

@@ -1188,7 +1188,9 @@
       "submit": "宿泊を保存",
       "badgeCheckIn": "チェックイン",
       "badgeCheckOut": "チェックアウト",
-      "badgeStaying": "連泊"
+      "badgeStaying": "連泊",
+      "delete": "宿泊を削除",
+      "deleteConfirm": "この宿泊を削除しますか？"
     },
     "dayDetail": {
       "lodgingTitle": "当日の宿泊",
