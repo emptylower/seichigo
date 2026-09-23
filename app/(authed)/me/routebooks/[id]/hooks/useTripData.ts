@@ -34,6 +34,8 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  /** 409 stale：顶部提示条「行程已在别处修改」+ 手动刷新（不再自动 reload） */
+  const [staleNotice, setStaleNotice] = useState(false)
 
   const detailRef = useRef<RouteBookDetail | null>(null)
   detailRef.current = detail
@@ -91,6 +93,7 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setStaleNotice(false)
     setCheckedInPointIds(new Set())
     setPointPoolItems([])
     clearUndo()
@@ -143,14 +146,15 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     (result: ApiFail, prev: RouteBookDetail | null, fallback: string) => {
       if (prev) setDetail(prev)
       if (result.reason === 'stale') {
-        showToast(tr('routebook.detail.staleRefreshed', locale))
-        void load()
+        setStaleNotice(true)
         return
       }
       showToast(result.error || fallback)
     },
-    [load, showToast, locale]
+    [showToast]
   )
+
+  const dismissStale = useCallback(() => setStaleNotice(false), [])
 
   // ---------------------------------------------------------------------------
   // 预览 / 写操作
@@ -271,6 +275,8 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     toast,
     showToast,
     reload,
+    staleNotice,
+    dismissStale,
 
     pointPoolItems,
     getPointPreview,

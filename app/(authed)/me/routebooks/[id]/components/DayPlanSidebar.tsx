@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, Plus, Undo2 } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, ListOrdered, Plus, Undo2 } from 'lucide-react'
 import type {
   DayLegsResult,
   PointPreview,
@@ -36,6 +36,8 @@ type DayPlanSidebarProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   onInsertDay: (afterDayIndex: number) => void
   onDeleteDay: (dayId: string) => void
+  /** B2：工具栏「调整天顺序」打开 DayOrderDialog（插入/删除/排序都在弹窗里） */
+  onOpenDayOrder?: () => void
   /** B4：点时间线条目（point/place）打开详情卡 */
   onOpenItemDetail?: (itemId: string) => void
   /** B2：住宿徽标编辑 / 「添加住宿」 */
@@ -93,6 +95,7 @@ export function DayPlanSidebar({
   onUpdateDay,
   onInsertDay,
   onDeleteDay,
+  onOpenDayOrder,
   onOpenItemDetail,
   onAddLodging,
   onEditLodging,
@@ -190,14 +193,26 @@ export function DayPlanSidebar({
           </button>
         ) : null}
         <span className="flex-1" />
-        <button
-          type="button"
-          className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
-          onClick={() => onInsertDay(lastDayIndex)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {tr('routebook.sidebar.addDay', locale)}
-        </button>
+        {onOpenDayOrder ? (
+          <button
+            type="button"
+            title={tr('routebook.dayOrder.hint', locale)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+            onClick={onOpenDayOrder}
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+            {tr('routebook.dayOrder.button', locale)}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+            onClick={() => onInsertDay(lastDayIndex)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {tr('routebook.sidebar.addDay', locale)}
+          </button>
+        )}
       </div>
 
       <div className="seichi-soft-scrollbar min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">

@@ -996,7 +996,8 @@
       "undoDeleteItem": "删除条目",
       "undoReorder": "调整顺序",
       "undoOptimize": "优化顺序",
-      "legsFailed": "路线加载失败"
+      "legsFailed": "路线加载失败",
+      "staleConflict": "行程已在别处修改"
     },
     "sidebar": {
       "undo": "撤销",
@@ -1221,6 +1222,15 @@
         "sky": "天蓝",
         "violet": "紫色"
       }
+    },
+    "dayOrder": {
+      "button": "调整天顺序",
+      "title": "调整天顺序",
+      "hint": "拖动排序，点「+」在这天下方插入新的一天；只有空天可以删除",
+      "insertBelow": "在下方插入一天",
+      "deleteDay": "删除这一天",
+      "deleteBlocked": "只有空天可以删除（最后一天不可删）",
+      "submit": "保存顺序"
     }
   }
 }

@@ -996,7 +996,8 @@
       "undoDeleteItem": "Delete item",
       "undoReorder": "Reorder",
       "undoOptimize": "Optimize order",
-      "legsFailed": "Route failed to load"
+      "legsFailed": "Route failed to load",
+      "staleConflict": "This trip was edited elsewhere"
     },
     "sidebar": {
       "undo": "Undo",
@@ -1221,6 +1222,15 @@
         "sky": "Sky",
         "violet": "Violet"
       }
+    },
+    "dayOrder": {
+      "button": "Reorder days",
+      "title": "Reorder days",
+      "hint": "Drag to reorder, tap “+” to insert a day below; only empty days can be deleted",
+      "insertBelow": "Insert a day below",
+      "deleteDay": "Delete this day",
+      "deleteBlocked": "Only empty days can be deleted (and the last day cannot)",
+      "submit": "Save order"
     }
   }
 }

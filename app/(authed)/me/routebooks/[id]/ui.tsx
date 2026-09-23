@@ -67,6 +67,9 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     updateLodging: trip.updateLodging,
     addItem: trip.addItem,
     updateItem: trip.updateItem,
+    insertDay: trip.insertDay,
+    deleteDay: trip.deleteDay,
+    reorderDays: trip.reorderDays,
     locale,
   })
   const dnd = useTripDnd({
@@ -305,6 +308,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
       onInsertDay={(after) => void trip.insertDay(after)}
       onDeleteDay={(dayId) => void trip.deleteDay(dayId)}
+      onOpenDayOrder={dialogs.openDayOrder}
       onOpenItemDetail={handleOpenItemDetail}
       onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
       onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
@@ -432,6 +436,28 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       </nav>
 
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        {trip.staleNotice ? (
+          <div className="flex items-center justify-between gap-3 rounded-[24px] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-800 shadow-sm">
+            <span>{tr('routebook.detail.staleConflict', locale)}</span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                className="inline-flex min-h-8 items-center rounded-xl bg-amber-600 px-3 text-xs font-semibold text-white transition hover:bg-amber-700"
+                onClick={() => void trip.reload()}
+              >
+                {tr('routebook.common.reload', locale)}
+              </button>
+              <button
+                type="button"
+                aria-label={tr('routebook.detail.closeBanner', locale)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-amber-600 transition hover:bg-amber-100"
+                onClick={trip.dismissStale}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </span>
+          </div>
+        ) : null}
         {importSummary ? (
           <div className="flex items-center justify-between gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800 shadow-sm">
             <span>{importSummary}</span>

@@ -996,7 +996,8 @@
       "undoDeleteItem": "項目を削除",
       "undoReorder": "順序を調整",
       "undoOptimize": "順序を最適化",
-      "legsFailed": "ルートの読み込みに失敗しました"
+      "legsFailed": "ルートの読み込みに失敗しました",
+      "staleConflict": "別の場所で変更されました"
     },
     "sidebar": {
       "undo": "取り消し",
@@ -1221,6 +1222,15 @@
         "sky": "空色",
         "violet": "紫"
       }
+    },
+    "dayOrder": {
+      "button": "日の順序を調整",
+      "title": "日の順序を調整",
+      "hint": "ドラッグで並べ替え、「+」でこの日の下に新しい日を挿入。空の日のみ削除できます",
+      "insertBelow": "下に日を挿入",
+      "deleteDay": "この日を削除",
+      "deleteBlocked": "空の日のみ削除できます（最後の1日は削除不可）",
+      "submit": "順序を保存"
     }
   }
 }
