@@ -97,7 +97,11 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     if (!detail || !selectedDay) return null
     const nextDay = days.find((day) => day.dayIndex > selectedDay.dayIndex)
     if (!nextDay) return null
-    const first = sequenceForImmersive(detail.items, nextDay.id)[0]
+    // 「明天从 X 开始」的 X = 下一天第一个有坐标的条目名（无坐标条目导航无意义）
+    const first = sequenceForImmersive(detail.items, nextDay.id).find((item) => {
+      if (item.kind === 'place') return detail.places.some((place) => place.id === item.placeId)
+      return Boolean(item.pointId && trip.getPointPreview(item.pointId).geo)
+    })
     if (!first) return null
     if (first.kind === 'place') {
       return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
