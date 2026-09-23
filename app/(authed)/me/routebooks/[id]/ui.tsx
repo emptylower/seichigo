@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useTripData } from './hooks/useTripData'
 import { useTripDnd } from './hooks/useTripDnd'
 import { useDayLegs } from './hooks/useDayLegs'
-import { dayLabel, sequenceForImmersive } from './utils'
+import { dayLabel, nextDayFirstStopTitle, sequenceForImmersive } from './utils'
 import {
   DetailNav,
   NoticeBanners,
@@ -93,21 +93,10 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     [detail, selectedDayId]
   )
 
-  const nextDayFirstTitle = useMemo(() => {
-    if (!detail || !selectedDay) return null
-    const nextDay = days.find((day) => day.dayIndex > selectedDay.dayIndex)
-    if (!nextDay) return null
-    // 「明天从 X 开始」的 X = 下一天第一个有坐标的条目名（无坐标条目导航无意义）
-    const first = sequenceForImmersive(detail.items, nextDay.id).find((item) => {
-      if (item.kind === 'place') return detail.places.some((place) => place.id === item.placeId)
-      return Boolean(item.pointId && trip.getPointPreview(item.pointId).geo)
-    })
-    if (!first) return null
-    if (first.kind === 'place') {
-      return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
-    }
-    return first.pointId ? trip.getPointPreview(first.pointId).title : first.title ?? null
-  }, [detail, days, selectedDay, trip])
+  const nextDayFirstTitle = useMemo(
+    () => (detail && selectedDay ? nextDayFirstStopTitle(detail, selectedDay, trip.getPointPreview) : null),
+    [detail, selectedDay, trip.getPointPreview]
+  )
 
   const routeBookSelectorItems = useMemo(() => {
     if (!detail) return trip.routeBooks

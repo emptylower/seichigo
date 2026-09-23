@@ -82,6 +82,8 @@ export function RouteBookImmersiveMode({
   const [isExiting, setIsExiting] = useState(false)
   const [userLocation, setUserLocation] = useState<UserLocation>(null)
   const [travelMode, setTravelMode] = useState<GoogleMapsTravelMode>('walking')
+  // 已经过的站（打卡成功 / 到达 · 下一站 / 跳过）：从剩余站剔除，避免 place 站（无打卡）被 clamp 回来卡住
+  const [passedIds, setPassedIds] = useState<Set<string>>(() => new Set())
 
   const stops = useMemo<StopView[]>(() => {
     return sequence.map((item) => {
@@ -109,8 +111,11 @@ export function RouteBookImmersiveMode({
   }, [getPointPreview, places, sequence, locale])
 
   const remainingStops = useMemo(() => {
-    return stops.filter((stop) => !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)))
-  }, [checkedInPointIds, stops])
+    return stops.filter(
+      (stop) =>
+        !passedIds.has(stop.item.id) && !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId))
+    )
+  }, [checkedInPointIds, passedIds, stops])
 
   const totalStops = stops.length
   const checkedCount = stops.filter((stop) => stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)).length
@@ -144,8 +149,9 @@ export function RouteBookImmersiveMode({
       setStep('summary')
       return
     }
+    // 越过最后一个剩余站 = 今天走完，不再 clamp 回前面的站
     if (currentIndex >= remainingStops.length) {
-      setCurrentIndex(remainingStops.length - 1)
+      setStep('summary')
     }
   }, [currentIndex, remainingStops.length, step])
 
@@ -163,12 +169,22 @@ export function RouteBookImmersiveMode({
     window.setTimeout(onClose, 240)
   }
 
+  const markPassed = (itemId: string) => {
+    setPassedIds((prev) => {
+      if (prev.has(itemId)) return prev
+      const next = new Set(prev)
+      next.add(itemId)
+      return next
+    })
+  }
+
+  // 到达 · 下一站 / 跳过：当前站记为已过；剔除后同一 currentIndex 即下一站，剔空后 effect 进 summary
   const handleSkip = () => {
-    if (currentIndex < remainingStops.length - 1) {
-      setCurrentIndex((prev) => prev + 1)
+    if (!currentStop) {
+      setStep('summary')
       return
     }
-    setStep('summary')
+    markPassed(currentStop.item.id)
   }
 
   const handleUndoCheckIn = async () => {
@@ -179,6 +195,13 @@ export function RouteBookImmersiveMode({
       setUndoState('error')
       return
     }
+    // 撤销打卡：该站重新回到剩余站
+    const restoredIds = stops.filter((stop) => stop.checkInPointId === lastCheckedPointId).map((stop) => stop.item.id)
+    setPassedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of restoredIds) next.delete(id)
+      return next
+    })
     setPendingRestorePointId(lastCheckedPointId)
     setLastCheckedPointId(null)
     setUndoState('idle')
@@ -466,6 +489,7 @@ export function RouteBookImmersiveMode({
             setUndoState('idle')
             setCheckInTargetPointId(null)
             if (currentStop?.checkInPointId === checkedPointId) {
+              markPassed(currentStop.item.id)
               setNavigatingById((prev) => {
                 const next = { ...prev }
                 delete next[currentStop.item.id]

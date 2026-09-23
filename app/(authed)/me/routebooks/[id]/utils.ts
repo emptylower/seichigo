@@ -1,4 +1,4 @@
-import type { DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail, NavMode } from './types'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail, NavMode } from './types'
 import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
@@ -63,19 +63,24 @@ export function applyReorderLocal(
 }
 
 /** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
-export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
-  const base = `Day ${index}`
-  if (!day.date) return base
+/** 「M/D 周X」日期片段（dayLabel 的日期部分；无日期或非法返回 null） */
+export function dayDateLabel(day: Pick<DayRecord, 'date'>, locale: SupportedLocale = 'zh'): string | null {
+  if (!day.date) return null
   const parsed = new Date(day.date)
-  if (Number.isNaN(parsed.getTime())) return base
+  if (Number.isNaN(parsed.getTime())) return null
   const intl = toIntlLocale(locale)
   const weekday = new Intl.DateTimeFormat(intl, { weekday: 'short', timeZone: 'UTC' }).format(parsed)
   if (locale === 'en') {
-    const md = new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)
-    return `${base} · ${md}, ${weekday}`
+    return `${new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)}, ${weekday}`
   }
   const md = `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`
-  return locale === 'ja' ? `${base} · ${md}(${weekday})` : `${base} · ${md} ${weekday}`
+  return locale === 'ja' ? `${md}(${weekday})` : `${md} ${weekday}`
+}
+
+export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
+  const base = `Day ${index}`
+  const date = dayDateLabel(day, locale)
+  return date ? `${base} · ${date}` : base
 }
 
 export function itemDisplayTitle(
@@ -94,6 +99,17 @@ export function itemDisplayTitle(
   return item.title || tr(item.kind === 'transit' ? 'routebook.common.transitFallback' : 'routebook.common.noteFallback', locale)
 }
 
+/** point/place 条目是否有坐标（place 以所属自定义点存在为准，point 以预览 geo 为准） */
+export function itemHasCoords(
+  item: ItemRecord,
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): boolean {
+  if (item.kind === 'place') return places.some((place) => place.id === item.placeId)
+  if (item.kind === 'point') return Boolean(item.pointId && getPointPreview(item.pointId)?.geo)
+  return false
+}
+
 /** 单天模式地图徽标 / 时间线序号：只数有坐标的 point/place，按 sortOrder 编 1..N */
 export function computeVisitOrder(
   dayItems: ItemRecord[],
@@ -105,15 +121,68 @@ export function computeVisitOrder(
   let n = 0
   for (const item of sorted) {
     if (item.kind !== 'point' && item.kind !== 'place') continue
-    const hasCoord =
-      item.kind === 'place'
-        ? places.some((place) => place.id === item.placeId)
-        : Boolean(item.pointId && getPointPreview(item.pointId).geo)
-    if (!hasCoord) continue
+    if (!itemHasCoords(item, places, getPointPreview)) continue
     n += 1
     map.set(item.id, n)
   }
   return map
+}
+
+/** 每站预估停留分钟（天统计「约 X 小时」用） */
+export const STOP_MINUTES_ESTIMATE = 40
+
+/** 天统计：站数（point/place）、有坐标站数、预计小时（段时长 + 每站停留） */
+export function dayStats(
+  items: ItemRecord[],
+  legs: DayLegsResult | undefined,
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): { stopCount: number; coordCount: number; totalHours: number } {
+  const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
+  const coordCount = visitable.filter((item) => itemHasCoords(item, places, getPointPreview)).length
+  const legMinutes = (legs?.legs ?? []).reduce((sum, leg) => sum + leg.durationSec / 60, 0)
+  const totalHours = (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60
+  return { stopCount: visitable.length, coordCount, totalHours }
+}
+
+/** 当天「打开导航」Google 链接：legs 站点 ≥2 才有；驾车以外一律公交 */
+export function dayNavUrl(day: Pick<DayRecord, 'defaultTravelMode'>, legs: DayLegsResult | undefined): string | null {
+  if (!legs || legs.stops.length < 2) return null
+  const stops = legs.stops.map((stop) => `${stop.lat},${stop.lng}`)
+  return buildGoogleDirectionsUrl(stops, day.defaultTravelMode === 'driving' ? 'driving' : 'transit')
+}
+
+/** 优化可用性：可移动点 = 有坐标、非锚（locked && timeStart）的 point/place */
+export function movableCount(
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): number {
+  return items.filter((item) => {
+    if (item.kind !== 'point' && item.kind !== 'place') return false
+    if (item.locked && item.timeStart) return false
+    return itemHasCoords(item, places, getPointPreview)
+  }).length
+}
+
+/** 「明天从 X 开始」的 X：下一天第一个有坐标的条目名（无坐标条目导航无意义）；没有下一天或无可导航条目返回 null */
+export function nextDayFirstStopTitle(
+  detail: Pick<RouteBookDetail, 'days' | 'items' | 'places'>,
+  selectedDay: Pick<DayRecord, 'dayIndex'>,
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo' | 'title'>
+): string | null {
+  const nextDay = [...detail.days]
+    .sort((a, b) => a.dayIndex - b.dayIndex)
+    .find((day) => day.dayIndex > selectedDay.dayIndex)
+  if (!nextDay) return null
+  const first = sequenceForImmersive(detail.items, nextDay.id).find((item) =>
+    itemHasCoords(item, detail.places, getPointPreview)
+  )
+  if (!first) return null
+  if (first.kind === 'place') {
+    return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
+  }
+  return first.pointId ? getPointPreview(first.pointId).title : first.title ?? null
 }
 
 /** 沉浸模式序列：当天 point/place 条目按 sortOrder */
