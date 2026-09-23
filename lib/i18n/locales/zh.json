@@ -1199,6 +1199,7 @@
     },
     "note": {
       "add": "备注",
+      "edit": "编辑备注",
       "dialogTitle": "添加备注",
       "titleLabel": "标题",
       "titlePlaceholder": "例：集合地点、取票提醒…",
@@ -1207,6 +1208,7 @@
       "colorLabel": "颜色",
       "timeLabel": "时间（可选）",
       "submit": "添加备注",
+      "submitEdit": "保存备注",
       "icon": {
         "info": "信息",
         "clock": "时间",

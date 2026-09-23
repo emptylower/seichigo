@@ -26,13 +26,18 @@ type LodgingDialogState = {
   presetPlaceId: string | null
 }
 
-type DialogState = PlaceDialogState | LodgingDialogState | { type: 'note'; dayId: string } | { type: 'dayOrder' }
+type DialogState =
+  | PlaceDialogState
+  | LodgingDialogState
+  | { type: 'note'; dayId: string | null; itemId?: string }
+  | { type: 'dayOrder' }
 
 export type DialogsHostApi = {
   host: ReactNode
   openPlaceEditor: (opts?: { placeId?: string; presetKind?: PlaceKind; initialCoords?: { lat: number; lng: number } }) => void
   openLodgingEditor: (opts?: { lodgingId?: string; presetDayIndex?: number; presetPlaceId?: string }) => void
-  openNoteEditor: (dayId: string) => void
+  /** 新建备注：传 dayId；编辑备注：再传 itemId（dayId 仅用于标题栏展示） */
+  openNoteEditor: (dayId: string | null, itemId?: string) => void
   openDayOrder: () => void
 }
 
@@ -90,8 +95,8 @@ export function useDialogsHost({
     })
   }, [])
 
-  const openNoteEditor = useCallback<DialogsHostApi['openNoteEditor']>((dayId) => {
-    setDialog({ type: 'note', dayId })
+  const openNoteEditor = useCallback<DialogsHostApi['openNoteEditor']>((dayId, itemId) => {
+    setDialog({ type: 'note', dayId, itemId })
   }, [])
 
   const openDayOrder = useCallback<DialogsHostApi['openDayOrder']>(() => {
@@ -137,14 +142,30 @@ export function useDialogsHost({
     }
 
     if (dialog.type === 'note') {
-      const day = detail.days.find((row) => row.id === dialog.dayId) ?? null
+      const day = dialog.dayId ? detail.days.find((row) => row.id === dialog.dayId) ?? null : null
+      const editingItem = dialog.itemId
+        ? (detail.items.find((row) => row.id === dialog.itemId && row.kind === 'note') ?? null)
+        : null
+      if (dialog.itemId && !editingItem) return null
       return (
         <NoteEditorDialog
           open
+          item={editingItem}
           dayLabelText={day ? dayLabel(day, day.dayIndex, locale) : undefined}
           locale={locale}
           onClose={close}
           onSubmit={async (input) => {
+            // 编辑模式：一条 PATCH 更新标题/详情/图标/颜色/时间
+            if (editingItem) {
+              return updateItem(editingItem.id, {
+                title: input.title,
+                note: input.note,
+                icon: input.icon,
+                color: input.color,
+                timeStart: input.timeStart,
+              })
+            }
+            if (!dialog.dayId) return false
             // createItemSchema 不收 icon/color：先建条目再 PATCH 图标与颜色
             const newId = await addItem(dialog.dayId, {
               kind: 'note',

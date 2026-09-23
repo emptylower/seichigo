@@ -1199,6 +1199,7 @@
     },
     "note": {
       "add": "Note",
+      "edit": "Edit note",
       "dialogTitle": "Add note",
       "titleLabel": "Title",
       "titlePlaceholder": "e.g. meeting point, ticket reminder…",
@@ -1207,6 +1208,7 @@
       "colorLabel": "Color",
       "timeLabel": "Time (optional)",
       "submit": "Add note",
+      "submitEdit": "Save note",
       "icon": {
         "info": "Info",
         "clock": "Time",

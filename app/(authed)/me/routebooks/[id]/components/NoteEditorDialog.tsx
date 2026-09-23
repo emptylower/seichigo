@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import type { ItemRecord } from '../types'
 import { tr } from '../../i18n'
 
 export type NoteIcon = 'info' | 'clock' | 'train' | 'utensils' | 'ticket' | 'camera' | 'shopping-bag' | 'alert' | 'star' | 'bookmark'
@@ -54,6 +55,8 @@ const NOTE_COLORS: { key: NoteColor; swatch: string }[] = [
 
 type Props = {
   open: boolean
+  /** 传入则为编辑模式（预填并走更新提交） */
+  item?: ItemRecord | null
   /** 标题栏显示目标天（如「Day 2」） */
   dayLabelText?: string
   onSubmit: (input: NoteEditorSubmit) => Promise<boolean | void> | boolean | void
@@ -61,8 +64,16 @@ type Props = {
   locale?: SupportedLocale
 }
 
+function asNoteIcon(value: string | null | undefined): NoteIcon {
+  return NOTE_ICONS.find((row) => row.key === value)?.key ?? 'info'
+}
+
+function asNoteColor(value: string | null | undefined): NoteColor {
+  return NOTE_COLORS.find((row) => row.key === value)?.key ?? 'gray'
+}
+
 /** 备注条目编辑：标题、详情、图标、颜色、可选时间 */
-export function NoteEditorDialog({ open, dayLabelText, onSubmit, onClose, locale = 'zh' }: Props) {
+export function NoteEditorDialog({ open, item = null, dayLabelText, onSubmit, onClose, locale = 'zh' }: Props) {
   const [title, setTitle] = useState('')
   const [note, setNote] = useState('')
   const [icon, setIcon] = useState<NoteIcon>('info')
@@ -72,13 +83,13 @@ export function NoteEditorDialog({ open, dayLabelText, onSubmit, onClose, locale
 
   useEffect(() => {
     if (!open) return
-    setTitle('')
-    setNote('')
-    setIcon('info')
-    setColor('gray')
-    setTimeStart('')
+    setTitle(item?.title ?? '')
+    setNote(item?.note ?? '')
+    setIcon(asNoteIcon(item?.icon))
+    setColor(asNoteColor(item?.color))
+    setTimeStart(item?.timeStart ?? '')
     setSubmitting(false)
-  }, [open])
+  }, [open, item])
 
   if (!open) return null
 
@@ -110,7 +121,7 @@ export function NoteEditorDialog({ open, dayLabelText, onSubmit, onClose, locale
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
             <StickyNote className="h-4 w-4 text-brand-500" />
-            {tr('routebook.note.dialogTitle', locale)}
+            {item ? tr('routebook.note.edit', locale) : tr('routebook.note.dialogTitle', locale)}
             {dayLabelText ? <span className="text-xs font-normal text-slate-400">{dayLabelText}</span> : null}
           </h3>
           <button
@@ -202,7 +213,7 @@ export function NoteEditorDialog({ open, dayLabelText, onSubmit, onClose, locale
             onClick={() => void handleSubmit()}
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {tr('routebook.note.submit', locale)}
+            {item ? tr('routebook.note.submitEdit', locale) : tr('routebook.note.submit', locale)}
           </button>
         </div>
       </div>

@@ -40,6 +40,8 @@ type DayBlockProps = {
   onEditLodging?: (lodgingId: string) => void
   /** B2：「+ 备注」打开备注编辑弹窗 */
   onAddNote?: (dayId: string) => void
+  /** B2 修复：note 卡片「编辑」入口 */
+  onEditNote?: (itemId: string) => void
   expanded: boolean
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
@@ -72,6 +74,7 @@ export function DayBlock({
   onAddLodging,
   onEditLodging,
   onAddNote,
+  onEditNote,
   expanded,
   onToggleExpanded,
   dropBlocked = false,
@@ -256,6 +259,7 @@ export function DayBlock({
                   onUpdate={(data) => onUpdateItem(item.id, data)}
                   onDelete={() => onDeleteItem(item.id)}
                   onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
+                  onEditNote={item.kind === 'note' && onEditNote ? () => onEditNote(item.id) : undefined}
                   onOpenDetail={
                     (item.kind === 'point' || item.kind === 'place') && onOpenItemDetail
                       ? () => onOpenItemDetail(item.id)

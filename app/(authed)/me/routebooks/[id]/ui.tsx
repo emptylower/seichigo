@@ -247,6 +247,13 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     void trip.reorder(targetDayId, [...orderedIds, itemId])
   }
 
+  const handleEditNote = (itemId: string) => {
+    if (!detail) return
+    const item = detail.items.find((row) => row.id === itemId)
+    if (!item || item.kind !== 'note') return
+    dialogs.openNoteEditor(item.dayId, item.id)
+  }
+
   const dragOverlay = useMemo(() => {
     if (!dnd.activeDragId || !detail) return null
     const itemId =
@@ -314,6 +321,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
       onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
       onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
+      onEditNote={handleEditNote}
       limitBlockedDayId={dnd.limitBlockedDayId}
       legsFailedByDay={failedDayIds}
       onRetryLegs={retryDay}
@@ -594,6 +602,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
                     onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
                     onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
                     onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
+                    onEditNote={handleEditNote}
                     expanded
                     onToggleExpanded={() => {}}
                     legsFailed={Boolean(failedDayIds[selectedDay.id])}

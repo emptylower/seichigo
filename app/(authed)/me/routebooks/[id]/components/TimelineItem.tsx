@@ -13,6 +13,7 @@ import {
   Lock,
   LockOpen,
   MapPin,
+  Pencil,
   ShoppingBag,
   Star,
   Ticket,
@@ -83,6 +84,8 @@ type TimelineItemProps = {
   onMoveItem: (targetDayId: string | null) => void
   /** B4：point/place 条目点击正文打开详情卡（不影响拖拽与右侧操作按钮） */
   onOpenDetail?: () => void
+  /** B2 修复：note 卡片的「编辑」入口（打开备注编辑弹窗） */
+  onEditNote?: () => void
   /** B1.2：当天游览顺序（有坐标的 point/place 才有），与地图徽标一致 */
   seq?: number
   locale?: SupportedLocale
@@ -98,6 +101,7 @@ export function TimelineItem({
   onDelete,
   onMoveItem,
   onOpenDetail,
+  onEditNote,
   seq,
   locale = 'zh',
 }: TimelineItemProps) {
@@ -301,6 +305,18 @@ export function TimelineItem({
             {tr('routebook.common.unassigned', locale)}
           </option>
         </select>
+        {item.kind === 'note' && onEditNote ? (
+          <button
+            type="button"
+            aria-label={tr('routebook.note.edit', locale)}
+            title={tr('routebook.note.edit', locale)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            onClick={onEditNote}
+            {...DRAG_SAFE_CONTROL_PROPS}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label={tr('routebook.common.delete', locale)}

@@ -45,6 +45,8 @@ type DayPlanSidebarProps = {
   onEditLodging?: (lodgingId: string) => void
   /** B2：「+ 备注」 */
   onAddNote?: (dayId: string) => void
+  /** B2 修复：note 卡片「编辑」入口 */
+  onEditNote?: (itemId: string) => void
   /** 拖拽悬停超限置灰的天（useTripDnd.limitBlockedDayId） */
   limitBlockedDayId?: string | null
   /** B1.2：每天 legs 加载失败标记 + 手动重试 */
@@ -100,6 +102,7 @@ export function DayPlanSidebar({
   onAddLodging,
   onEditLodging,
   onAddNote,
+  onEditNote,
   limitBlockedDayId = null,
   legsFailedByDay,
   onRetryLegs,
@@ -239,6 +242,7 @@ export function DayPlanSidebar({
             onAddLodging={onAddLodging}
             onEditLodging={onEditLodging}
             onAddNote={onAddNote}
+            onEditNote={onEditNote}
             expanded={isExpanded(day.id)}
             onToggleExpanded={() => toggleDay(day.id)}
             dropBlocked={limitBlockedDayId === day.id}
@@ -256,6 +260,7 @@ export function DayPlanSidebar({
           onUpdateItem={onUpdateItem}
           onDeleteItem={onDeleteItem}
           onMoveItem={handleMoveItem}
+          onEditNote={onEditNote}
           locale={locale}
         />
       </div>
