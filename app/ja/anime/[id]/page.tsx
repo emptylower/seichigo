@@ -6,6 +6,7 @@ import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { localizeCityNames } from '@/lib/city/db'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -98,13 +99,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/ja${path}`,
-      images: [`${path}/opengraph-image`],
+      images: [pageCardImage('anime', canonicalId, 'ja', displayName)],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
-      images: [`${path}/opengraph-image`],
+      images: [pageCardImage('anime', canonicalId, 'ja', displayName)],
     },
   }
 }

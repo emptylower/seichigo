@@ -4,6 +4,7 @@ import Script from 'next/script'
 import HtmlLangSync from '@/components/i18n/HtmlLangSync'
 import TranslateGuard from '@/components/layout/TranslateGuard'
 import { getSiteUrl } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { buildOrganizationJsonLd } from '@/lib/seo/globalJsonLd'
 import Providers from '@/components/providers/Providers'
 import PlaceJsonLd from '@/lib/seo/placeJsonLd'
@@ -48,9 +49,11 @@ export const metadata: Metadata = {
   openGraph: {
     siteName: 'SeichiGo',
     type: 'website',
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo — 动漫圣地巡礼攻略')],
   },
   twitter: {
     card: 'summary_large_image',
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo — 动漫圣地巡礼攻略')],
   },
   other: {
     'google-adsense-account': 'ca-pub-5922869290769433',

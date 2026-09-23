@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import PostsIndexTemplate from '@/components/posts/PostsIndexTemplate'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
@@ -13,8 +14,8 @@ export function generateMetadata(): Metadata {
     title: TITLE,
     description: DESCRIPTION,
     alternates: buildEnAlternates({ zhPath: '/posts' }),
-    openGraph: { type: 'website', url: '/en/posts', title: TITLE, description: DESCRIPTION, images: ['/opengraph-image'] },
-    twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: ['/twitter-image'] },
+    openGraph: { type: 'website', url: '/en/posts', title: TITLE, description: DESCRIPTION, images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')] },
+    twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')] },
   }
 }
 

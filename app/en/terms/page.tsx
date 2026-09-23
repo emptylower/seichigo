@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import LegalDocument from '@/components/legal/LegalDocument'
 import { getLegalDocument } from '@/lib/legal/content'
@@ -14,13 +15,13 @@ export const metadata: Metadata = {
     url: '/en/terms',
     title: 'Terms of Service | SeichiGo',
     description: 'Read SeichiGo Terms of Service covering account usage, user content, moderation, and liability limitations.',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Terms of Service | SeichiGo',
     description: 'Read SeichiGo Terms of Service covering account usage, user content, moderation, and liability limitations.',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
 }
 

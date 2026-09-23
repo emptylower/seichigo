@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import { t } from '@/lib/i18n'
@@ -15,14 +16,14 @@ export const metadata: Metadata = {
     title: '都市ガイド｜アニメ聖地巡礼の目的地を探す',
     description:
       'アニメ聖地巡礼の都市別ガイド：東京・京都などの旅行プランに役立つスポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に計画。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '都市ガイド｜アニメ聖地巡礼の目的地を探す',
     description:
       'アニメ聖地巡礼の都市別ガイド：東京・京都などの旅行プランに役立つスポットリスト、ルート概要、マップナビゲーションリンクを含む都市ページで効率的に計画。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
 }
 

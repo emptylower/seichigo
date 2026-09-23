@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
@@ -16,14 +17,14 @@ export const metadata: Metadata = {
     title: '动漫圣地巡礼｜作品索引',
     description:
       '按动画作品浏览已发布的圣地巡礼路线与文章：汇总每部作品的取景地清单、机位建议与路线导航入口，适合用来快速挑选目的地并开始规划行程。提供按作品查找日本动漫取景地的完整攻略，涵盖圣地巡礼路线、地图导航与机位图鉴。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '动漫圣地巡礼｜作品索引',
     description:
       '按动画作品浏览已发布的圣地巡礼路线与文章：汇总每部作品的取景地清单、机位建议与路线导航入口，适合用来快速挑选目的地并开始规划行程。提供按作品查找日本动漫取景地的完整攻略，涵盖圣地巡礼路线、地图导航与机位图鉴。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
 }
 export const revalidate = 120

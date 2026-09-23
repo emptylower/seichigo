@@ -73,8 +73,8 @@ export async function cardCacheKey(
   return `${base}__${(await sha256Hex(photoKey)).slice(0, 12)}.jpg`
 }
 
-/** Worker 里没有 Buffer 保证，按 8KB 分块走 btoa */
-function bytesToBase64(bytes: Uint8Array): string {
+/** Worker 里没有 Buffer 保证，按 8KB 分块走 btoa（lib/og 的页面卡片同样复用） */
+export function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
   const chunk = 0x2000
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -86,7 +86,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 /** data URI 的 contentType 白名单：来自上游响应头与 R2 元数据，不能直接进 HTML 属性 */
 const IMAGE_CONTENT_TYPE_PATTERN = /^image\/[a-z0-9.+-]{1,32}$/
 
-function toDataUri(bytes: Uint8Array, contentType: string): string {
+/** base64 → data URI（lib/og 的页面卡片同样复用；contentType 走白名单回落） */
+export function toDataUri(bytes: Uint8Array, contentType: string): string {
   const raw = String(contentType || '').trim().toLowerCase()
   const type = IMAGE_CONTENT_TYPE_PATTERN.test(raw) ? raw : 'image/jpeg'
   return `data:${type};base64,${bytesToBase64(bytes)}`

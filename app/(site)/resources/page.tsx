@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getResourceRouteGroups } from '@/lib/resources/aggregateRoutes'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildZhAlternates } from '@/lib/seo/alternates'
@@ -15,14 +16,14 @@ export const metadata: Metadata = {
     title: '巡礼资源',
     description:
       '按作品汇总站内文章的路线地图与点位清单，支持引用整条路线或单个点位，适合作为外链落地入口。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '巡礼资源',
     description:
       '按作品汇总站内文章的路线地图与点位清单，支持引用整条路线或单个点位，适合作为外链落地入口。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
 }
 

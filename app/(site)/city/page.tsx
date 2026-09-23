@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildZhAlternates } from '@/lib/seo/alternates'
 import { t } from '@/lib/i18n'
@@ -15,14 +16,14 @@ export const metadata: Metadata = {
     title: '巡礼城市｜按目的地查找动漫圣地巡礼路线',
     description:
       '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '巡礼城市｜按目的地查找动漫圣地巡礼路线',
     description:
       '东京、京都等日本城市的动漫圣地巡礼路线聚合，按城市聚合已发布的圣地巡礼路线与文章：快速查看东京、京都等目的地的取景点位清单、路线建议与地图导航入口，适合做行程规划与落地执行。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
 }
 

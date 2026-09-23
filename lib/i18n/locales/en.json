@@ -847,5 +847,14 @@
     "toastImageCopiedPasteInPost": "Image copied — paste it into your post",
     "toastImageDownloadedDragIntoPost": "Image downloaded — drag it into your post",
     "toastSavedAndCopiedOpenApp": "Image saved and caption copied — open {app} and paste"
+  },
+  "og": {
+    "kindPost": "Article",
+    "kindAnime": "Anime",
+    "kindCity": "City",
+    "kindSite": "SeichiGo",
+    "tagline": "50,000+ anime spots · AI pilgrimage itineraries",
+    "siteTitle": "Anime Pilgrimage Guides",
+    "siteSubtitle": "Routes · Navigation · Photo Tips"
   }
 }

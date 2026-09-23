@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getCityCountsByLocale } from '@/lib/city/getCityCountsByLocale'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import { t } from '@/lib/i18n'
@@ -15,14 +16,14 @@ export const metadata: Metadata = {
     title: 'Pilgrimage Cities | Anime Travel by Destination in Japan',
     description:
       'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Pilgrimage Cities | Anime Travel by Destination in Japan',
     description:
       'Explore anime pilgrimage routes by Japan travel destination: city pages with filming locations, route summaries, and map navigation links to plan your anime tourism trip efficiently.',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
 }
 

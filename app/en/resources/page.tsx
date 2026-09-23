@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getResourceRouteGroups } from '@/lib/resources/aggregateRoutes'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import RouteDirectory from '@/components/resources/RouteDirectory'
@@ -14,14 +15,14 @@ export const metadata: Metadata = {
     title: 'Resources',
     description:
       'Grouped route maps extracted from published posts. Each route and spot is linkable for referencing and sharing.',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Resources',
     description:
       'Grouped route maps extracted from published posts. Each route and spot is linkable for referencing and sharing.',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
 }
 

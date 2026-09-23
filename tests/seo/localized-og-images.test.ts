@@ -24,18 +24,24 @@ vi.mock('@/lib/publicOverride/service', () => ({
   resolvePublicOverrideForPost: async () => null,
 }))
 
-describe('ja/en 文章页 OG 图指向 zh 的专属路由', () => {
+describe('ja/en 文章页 OG 图指向 /api/og/post/<slug>/<locale>.jpg', () => {
   it('ja', async () => {
     const { generateMetadata } = await import('@/app/ja/posts/[slug]/page')
     const meta = await generateMetadata({ params: Promise.resolve({ slug: 'btr-shimo' }) })
-    expect(meta.openGraph?.images).toEqual(['/posts/btr-shimo/opengraph-image'])
-    expect(meta.twitter?.images).toEqual(['/posts/btr-shimo/twitter-image'])
+    const ogImage = (meta.openGraph?.images as { url: string }[])[0]!
+    expect(ogImage.url).toContain('/api/og/post/')
+    expect(ogImage.url).toMatch(/\/api\/og\/post\/btr-shimo\/ja\.jpg$/)
+    const twitterImage = (meta.twitter?.images as { url: string }[])[0]!
+    expect(twitterImage.url).toMatch(/\/api\/og\/post\/btr-shimo\/ja\.jpg$/)
   })
 
   it('en', async () => {
     const { generateMetadata } = await import('@/app/en/posts/[slug]/page')
     const meta = await generateMetadata({ params: Promise.resolve({ slug: 'btr-shimo' }) })
-    expect(meta.openGraph?.images).toEqual(['/posts/btr-shimo/opengraph-image'])
-    expect(meta.twitter?.images).toEqual(['/posts/btr-shimo/twitter-image'])
+    const ogImage = (meta.openGraph?.images as { url: string }[])[0]!
+    expect(ogImage.url).toContain('/api/og/post/')
+    expect(ogImage.url).toMatch(/\/api\/og\/post\/btr-shimo\/en\.jpg$/)
+    const twitterImage = (meta.twitter?.images as { url: string }[])[0]!
+    expect(twitterImage.url).toMatch(/\/api\/og\/post\/btr-shimo\/en\.jpg$/)
   })
 })

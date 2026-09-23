@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { buildZhAlternates } from '@/lib/seo/alternates'
@@ -15,14 +16,14 @@ export const metadata: Metadata = {
     title: '关于 SeichiGo',
     description:
       'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略：包含可导航的点位清单、交通与机位建议，并强调尊重当地居民与可持续的巡礼文化。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '关于 SeichiGo',
     description:
       'SeichiGo 专注提供“单作品 × 单条线路”的圣地巡礼深度图文攻略：包含可导航的点位清单、交通与机位建议，并强调尊重当地居民与可持续的巡礼文化。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
   },
 }
 

@@ -5,6 +5,7 @@ import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { localizeCityNames } from '@/lib/city/db'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -85,13 +86,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/en${path}`,
-      images: [`${path}/opengraph-image`],
+      images: [pageCardImage('anime', canonicalId, 'en', displayName)],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
-      images: [`${path}/opengraph-image`],
+      images: [pageCardImage('anime', canonicalId, 'en', displayName)],
     },
   }
 }

@@ -9,6 +9,7 @@ import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { t } from '@/lib/i18n'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -96,13 +97,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/ja/city/${encodeURIComponent(city.slug)}`,
-      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
+      images: [pageCardImage('city', city.slug, 'ja', displayCity)],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
-      images: [`/city/${encodeURIComponent(city.slug)}/opengraph-image`],
+      images: [pageCardImage('city', city.slug, 'ja', displayCity)],
     },
   }
 }

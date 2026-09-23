@@ -5,6 +5,7 @@ import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { getSiteOrigin } from '@/lib/seo/site'
 import { buildAnimeSeoTitle } from '@/lib/seo/titleBuilder'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { buildAnimeWorkJsonLd } from '@/lib/seo/tvSeriesJsonLd'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -95,11 +96,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/anime/${encodeAnimeIdForPath(canonicalId)}`,
+      images: [pageCardImage('anime', canonicalId, 'zh', displayName)],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
+      images: [pageCardImage('anime', canonicalId, 'zh', displayName)],
     },
   }
 }
