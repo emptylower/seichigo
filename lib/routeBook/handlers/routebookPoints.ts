@@ -1,166 +1,76 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { RouteBookApiDeps } from '@/lib/routeBook/api'
-import { SortedZoneLimitError, type RouteBookZone } from '@/lib/routeBook/repo'
+import { routeBookErrorResponse } from './errors'
 
-const zoneSchema = z.enum(['unsorted', 'sorted'])
-
-const addBodySchema = z.object({
-  pointId: z.string().min(1),
-  zone: zoneSchema.optional(),
-})
-
-const deleteBodySchema = z.object({
-  pointId: z.string().min(1),
-})
-
-const reorderBodySchema = z.object({
-  pointIds: z.array(z.string().min(1)),
-})
-
-const moveBodySchema = z.object({
-  pointId: z.string().min(1),
-  zone: zoneSchema,
-})
-
-function getErrorMessage(err: unknown): string {
-  return String((err as { message?: unknown } | null)?.message || '')
-}
-
-function parseZone(raw: string | undefined): RouteBookZone {
-  const parsed = zoneSchema.safeParse(raw)
-  return parsed.success ? parsed.data : 'unsorted'
-}
+/**
+ * 兼容壳：公共巡礼地图（features/map/anitabi/useMapInteractionActions）在调这个接口。
+ * - POST { pointId } → 加入未安排区 + 点位池移除
+ * - DELETE { pointId } → 删本行程本里该点位的全部条目 + 无其它引用时回点位池
+ * - 其它 op（reorder/move）→ 410
+ */
+const pointIdSchema = z.object({ pointId: z.string().min(1) })
 
 export function createHandlers(deps: RouteBookApiDeps) {
   return {
     async POST(req: Request, ctx: { params?: Promise<{ id: string }> }) {
       const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
-      }
+      const userId = session?.user?.id
+      if (!userId) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
       const { id: routeBookId } = (await ctx.params) || {}
-      if (!routeBookId) {
-        return NextResponse.json({ error: '缺少 id' }, { status: 400 })
-      }
+      if (!routeBookId) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
 
       const body = await req.json().catch(() => null)
-      const parsed = addBodySchema.safeParse(body)
+      const parsed = pointIdSchema.safeParse(body)
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
-      const zone = parseZone(parsed.data.zone)
-
       try {
-        const created = await deps.repo.addPoint(routeBookId, session.user.id, parsed.data.pointId, zone)
-        await deps.pointPoolRepo.delete(session.user.id, parsed.data.pointId)
-        return NextResponse.json({ ok: true, item: created })
+        const item = await deps.repo.createItem(routeBookId, userId, { dayId: null, kind: 'point', pointId: parsed.data.pointId })
+        await deps.pointPoolRepo.delete(userId, parsed.data.pointId)
+        return NextResponse.json({ ok: true, item })
       } catch (err) {
-        if (err instanceof SortedZoneLimitError) {
-          return NextResponse.json({ error: `已排序点位已达上限（${err.limit}）` }, { status: 400 })
-        }
-        const msg = getErrorMessage(err)
-        if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
-        }
-        throw err
+        return routeBookErrorResponse(err)
       }
     },
 
     async DELETE(req: Request, ctx: { params?: Promise<{ id: string }> }) {
       const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
-      }
+      const userId = session?.user?.id
+      if (!userId) return NextResponse.json({ error: '请先登录' }, { status: 401 })
 
       const { id: routeBookId } = (await ctx.params) || {}
-      if (!routeBookId) {
-        return NextResponse.json({ error: '缺少 id' }, { status: 400 })
-      }
+      if (!routeBookId) return NextResponse.json({ error: '缺少 id' }, { status: 400 })
 
       const body = await req.json().catch(() => null)
-      const parsed = deleteBodySchema.safeParse(body)
+      const parsed = pointIdSchema.safeParse(body)
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
       }
 
       try {
-        const ok = await deps.repo.removePoint(routeBookId, session.user.id, parsed.data.pointId)
-        if (!ok) {
-          return NextResponse.json({ error: '点位不存在' }, { status: 404 })
+        const detail = await deps.repo.getById(routeBookId, userId)
+        if (!detail) return NextResponse.json({ error: '行程不存在' }, { status: 404 })
+
+        const matches = detail.items.filter((item) => item.kind === 'point' && item.pointId === parsed.data.pointId)
+        for (const item of matches) {
+          await deps.repo.deleteItem(routeBookId, userId, item.id)
         }
 
-        const remainsInAnyRouteBook = await deps.repo.isPointInAnyRouteBook(session.user.id, parsed.data.pointId)
-        if (!remainsInAnyRouteBook) {
-          await deps.pointPoolRepo.upsert(session.user.id, parsed.data.pointId)
+        const remains = await deps.repo.isPointInAnyRouteBook(userId, parsed.data.pointId)
+        if (!remains) {
+          await deps.pointPoolRepo.upsert(userId, parsed.data.pointId)
         }
-
         return NextResponse.json({ ok: true })
       } catch (err) {
-        const msg = getErrorMessage(err)
-        if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
-        }
-        throw err
+        return routeBookErrorResponse(err)
       }
     },
 
-    async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
-      const session = await deps.getSession()
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: '请先登录' }, { status: 401 })
-      }
-
-      const { id: routeBookId } = (await ctx.params) || {}
-      if (!routeBookId) {
-        return NextResponse.json({ error: '缺少 id' }, { status: 400 })
-      }
-
-      const body = await req.json().catch(() => null)
-      if (!body || typeof body !== 'object') {
-        return NextResponse.json({ error: '参数错误' }, { status: 400 })
-      }
-
-      const record = body as Record<string, unknown>
-      const op = typeof record.op === 'string' ? record.op : ''
-
-      try {
-        if (op === 'move' || ('pointId' in record && 'zone' in record)) {
-          const parsed = moveBodySchema.safeParse(record)
-          if (!parsed.success) {
-            return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
-          }
-
-          const updated = await deps.repo.movePointToZone(routeBookId, session.user.id, parsed.data.pointId, parsed.data.zone)
-          if (!updated) {
-            return NextResponse.json({ error: '点位不存在' }, { status: 404 })
-          }
-          return NextResponse.json({ ok: true, item: updated })
-        }
-
-        if (op === 'reorder' || 'pointIds' in record) {
-          const parsed = reorderBodySchema.safeParse(record)
-          if (!parsed.success) {
-            return NextResponse.json({ error: parsed.error.issues[0]?.message || '参数错误' }, { status: 400 })
-          }
-
-          const items = await deps.repo.reorderPoints(routeBookId, session.user.id, parsed.data.pointIds)
-          return NextResponse.json({ ok: true, items })
-        }
-
-        return NextResponse.json({ error: '参数错误' }, { status: 400 })
-      } catch (err) {
-        if (err instanceof SortedZoneLimitError) {
-          return NextResponse.json({ error: `已排序点位已达上限（${err.limit}）` }, { status: 400 })
-        }
-        const msg = getErrorMessage(err)
-        if (msg.includes('RouteBook not found')) {
-          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
-        }
-        throw err
-      }
+    async PATCH(_req: Request, _ctx: { params?: Promise<{ id: string }> }) {
+      return NextResponse.json({ error: '接口已升级，请刷新页面' }, { status: 410 })
     },
   }
 }

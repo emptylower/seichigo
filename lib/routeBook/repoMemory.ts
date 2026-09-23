@@ -463,7 +463,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
 
     const movedIn = orderedItemIds
       .map((id) => byId.get(id))
-      .filter((item): item is RouteBookItem => Boolean(item) && !targetIds.has(item.id))
+      .filter((item): item is RouteBookItem => item !== undefined && !targetIds.has(item.id))
     if (movedIn.length > 0 && dayId !== null) {
       assertDayLimit(countVisitable(targetItems) + countVisitable(movedIn))
     }

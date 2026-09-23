@@ -18,8 +18,8 @@ describe('resolveUserPointStates', () => {
     const userId = 'u1'
 
     const routeBook = await routeBookRepo.create(userId, '我的路书', 'draft')
-    await routeBookRepo.addPoint(routeBook.id, userId, 'p1', 'sorted')
-    await routeBookRepo.addPoint(routeBook.id, userId, 'p2', 'unsorted')
+    await routeBookRepo.createItem(routeBook.id, userId, { dayId: null, kind: 'point', pointId: 'p1' })
+    await routeBookRepo.createItem(routeBook.id, userId, { dayId: null, kind: 'point', pointId: 'p2' })
 
     await pointPoolRepo.upsert(userId, 'p1')
     await pointPoolRepo.upsert(userId, 'p3')

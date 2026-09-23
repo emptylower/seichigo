@@ -165,15 +165,17 @@ export async function reorderItemsTx(
 
   const movedIn = orderedItemIds
     .map((id) => byId.get(id))
-    .filter((item): item is RouteBookItem => Boolean(item) && !targetIds.has(item.id))
+    .filter((item): item is RouteBookItem => item !== undefined && !targetIds.has(item.id))
   if (movedIn.length > 0 && dayId !== null) {
     assertDayLimit(countVisitable(targetItems) + countVisitable(movedIn))
   }
 
   const affectedSourceDays = new Set(movedIn.map((item) => item.dayId))
   for (let index = 0; index < orderedItemIds.length; index++) {
+    const orderedId = orderedItemIds[index]
+    if (!orderedId) continue
     await tx.routeBookItem.update({
-      where: { id: orderedItemIds[index] },
+      where: { id: orderedId },
       data: { dayId, sortOrder: index },
     })
   }
@@ -207,8 +209,10 @@ export async function replaceDayOrderTx(
   }
 
   for (let index = 0; index < orderedItemIds.length; index++) {
+    const orderedId = orderedItemIds[index]
+    if (!orderedId) continue
     await tx.routeBookItem.update({
-      where: { id: orderedItemIds[index] },
+      where: { id: orderedId },
       data: { sortOrder: index },
     })
   }
