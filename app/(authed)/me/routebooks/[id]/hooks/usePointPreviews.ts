@@ -6,6 +6,16 @@ import { PREVIEW_FETCH_IDLE_TIMEOUT, PREVIEW_POINT_BATCH_SIZE } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildFallbackPreview, buildPointLookupCandidates, isGeoPair, parseBangumiId, parsePointKey } from '../utils'
 import { tr } from '../../i18n'
+import { toMapDisplayImageUrlAsync } from '@/lib/anitabi/imageProxy'
+
+/** 点位原图 → 浏览器可加载的展示 URL：R2 公共域（已配置时）优先，否则同源代理；解析失败退回原图 */
+export async function resolvePointDisplayImage(raw: string): Promise<string> {
+  try {
+    return (await toMapDisplayImageUrlAsync(raw, { kind: 'point-preview' })) || raw
+  } catch {
+    return raw
+  }
+}
 
 /** 点位预览缓存：分批（28 个/批）+ requestIdleCallback 空闲拉取 bangumi 数据 */
 export function usePointPreviews(allPointIds: string[], locale: SupportedLocale = 'zh') {
@@ -92,10 +102,12 @@ export function usePointPreviews(allPointIds: string[], locale: SupportedLocale 
                 .map((candidate) => pointMap.get(candidate))
                 .find((entry) => Boolean(entry))
               const key = parsePointKey(pointId)
+              const rawImage = matched?.image || null
               loadedPreviews[pointId] = {
                 title: matched?.title || `${tr('routebook.common.pointFallback', locale)} ${key}`,
                 subtitle,
-                image: matched?.image || null,
+                image: rawImage ? await resolvePointDisplayImage(rawImage) : null,
+                imageSource: rawImage,
                 geo: matched?.geo || null,
               }
             }

@@ -92,7 +92,10 @@ export type PointPoolItem = {
 export type PointPreview = {
   title: string
   subtitle: string
+  /** 浏览器展示用 URL（R2 公共域 → 同源代理，与 /map 同一套解析；不再直连 image.anitabi.cn，会被 ORB 拦） */
   image: string | null
+  /** 接口返回的原始 anitabi 图片 URL：署名链接用 */
+  imageSource?: string | null
   geo: [number, number] | null
 }
 

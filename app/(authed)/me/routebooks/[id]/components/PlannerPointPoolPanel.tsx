@@ -197,7 +197,7 @@ function EntryCard({
         </div>
         {preview.image ? (
           <div className="mt-2">
-            <AttributionLink href={resolveAnitabiAttributionHref(preview.image)} className="text-[11px] text-slate-500" />
+            <AttributionLink href={resolveAnitabiAttributionHref(preview.imageSource, preview.image)} className="text-[11px] text-slate-500" />
           </div>
         ) : null}
       </button>

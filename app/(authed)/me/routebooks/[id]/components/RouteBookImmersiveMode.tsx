@@ -38,6 +38,8 @@ type StopView = {
   title: string
   subtitle: string
   image: string | null
+  /** 原始 anitabi 图片 URL（署名链接用） */
+  imageSource?: string | null
   geo: [number, number] | null
   /** 打卡只对 kind=point 可用 */
   checkInPointId: string | null
@@ -106,6 +108,7 @@ export function RouteBookImmersiveMode({
         title: preview?.title ?? item.title ?? tr('routebook.common.pointFallback', locale),
         subtitle: preview?.subtitle ?? '',
         image: preview?.image ?? null,
+        imageSource: preview?.imageSource ?? null,
         geo: preview?.geo ?? null,
         checkInPointId: item.pointId,
       }
@@ -269,7 +272,7 @@ export function RouteBookImmersiveMode({
                 {firstStop?.image ? (
                   <div className="mt-2">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(firstStop.image)}
+                      href={resolveAnitabiAttributionHref(firstStop.imageSource, firstStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -402,7 +405,7 @@ export function RouteBookImmersiveMode({
                 {currentStop.image ? (
                   <div className="mt-3 mx-auto w-full max-w-3xl">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(currentStop.image)}
+                      href={resolveAnitabiAttributionHref(currentStop.imageSource, currentStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -493,7 +496,10 @@ export function RouteBookImmersiveMode({
           pointId={checkInTargetPointId}
           pointName={getPointPreview(checkInTargetPointId)?.title || checkInTargetPointId}
           referenceImageUrl={resolveAnitabiAssetUrl(getPointPreview(checkInTargetPointId)?.image || null)}
-          attributionHref={resolveAnitabiAttributionHref(getPointPreview(checkInTargetPointId)?.image || null)}
+          attributionHref={resolveAnitabiAttributionHref(
+            getPointPreview(checkInTargetPointId)?.imageSource,
+            getPointPreview(checkInTargetPointId)?.image
+          )}
           pointGeo={(() => {
             const geo = getPointPreview(checkInTargetPointId)?.geo
             if (!geo) return null
