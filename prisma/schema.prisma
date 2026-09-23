@@ -747,6 +747,7 @@ model AnitabiPoint {
   userPointStates UserPointState[]
   userPointPools  UserPointPool[]
   routeBookPoints RouteBookPoint[]
+  routeBookItems  RouteBookItem[]
   tripPlanItems   TripPlanItem[]
 
   @@index([bangumiId, updatedAt])
@@ -875,10 +876,16 @@ model RouteBook {
   title     String
   status    String
   metadata  Json?
+  startDate DateTime?
+  dayCount  Int              @default(1)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   points    RouteBookPoint[]
+  days      RouteBookDay[]
+  items     RouteBookItem[]
+  places    RouteBookPlace[]
+  lodgings  RouteBookLodging[]
 
   @@index([userId])
   @@index([status])
@@ -897,6 +904,86 @@ model RouteBookPoint {
   @@index([routeBookId])
   @@index([pointId])
   @@index([zone])
+}
+
+model RouteBookDay {
+  id                String          @id @default(cuid())
+  routeBookId       String
+  dayIndex          Int
+  date              DateTime?
+  title             String?
+  defaultTravelMode String          @default("transit")
+  routeBook         RouteBook       @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  items             RouteBookItem[]
+
+  @@unique([routeBookId, dayIndex])
+}
+
+model RouteBookItem {
+  id          String           @id @default(cuid())
+  routeBookId String
+  dayId       String?
+  sortOrder   Int
+  kind        String
+  pointId     String?
+  placeId     String?
+  title       String?
+  note        String?
+  timeStart   String?
+  timeEnd     String?
+  locked      Boolean          @default(false)
+  icon        String?
+  color       String?
+  legMode     String?
+  payload     Json?
+  createdAt   DateTime         @default(now())
+  routeBook   RouteBook        @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  day         RouteBookDay?    @relation(fields: [dayId], references: [id], onDelete: SetNull)
+  point       AnitabiPoint?    @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  place       RouteBookPlace?  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([routeBookId, dayId])
+  @@index([pointId])
+}
+
+model RouteBookPlace {
+  id          String             @id @default(cuid())
+  routeBookId String
+  kind        String
+  title       String
+  address     String?
+  lat         Float
+  lng         Float
+  note        String?
+  createdAt   DateTime           @default(now())
+  routeBook   RouteBook          @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  items       RouteBookItem[]
+  lodgings    RouteBookLodging[]
+
+  @@index([routeBookId])
+}
+
+model RouteBookLodging {
+  id           String         @id @default(cuid())
+  routeBookId  String
+  placeId      String
+  fromDayIndex Int
+  toDayIndex   Int
+  checkIn      String?
+  checkOut     String?
+  note         String?
+  routeBook    RouteBook      @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  place        RouteBookPlace @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([routeBookId])
+}
+
+model RouteLegCache {
+  key       String   @id
+  payload   Json
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model AnitabiBangumiI18n {
