@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { DaySummaryBar } from '@/app/(authed)/me/routebooks/[id]/components/mobile/DaySummaryBar'
 import {
   dayDateLabel,
   dayLabel,
@@ -211,5 +213,45 @@ describe('地址搜索 near（T2）', () => {
     expect(isInJapan(37.56, 122.5)).toBe(false)
     expect(isInJapan(51.5, -0.12)).toBe(false)
     expect(isInJapan(Number.NaN, 135)).toBe(false)
+  })
+})
+
+describe('远距离段不计入小时数（T3）', () => {
+  const items = [
+    makeItem({ id: 'a', pointId: 'p:shrine', sortOrder: 0 }),
+    makeItem({ id: 'c', kind: 'place', placeId: 'place-1', sortOrder: 1 }),
+  ]
+  function leg(fromId: string, toId: string, durationSec: number, distanceM: number) {
+    return { fromId, toId, mode: 'transit' as const, durationSec, distanceM, polyline: null, source: 'heuristic' as const }
+  }
+  // 住宿在新宿、当天点位在宇治：首段约 500 km（估算 ~20 小时），中间段 15 分钟
+  const legs: DayLegsResult = {
+    stops: [],
+    legs: [leg('lodging:start', 'a', 20 * 3600, 500_000), leg('a', 'c', 15 * 60, 1_200)],
+    staleTransitItemIds: [],
+  }
+
+  it('dayStats：超过 6 小时的段标 farLeg 且不计入 totalHours', () => {
+    const stats = dayStats(items, legs, [PLACE], getPointPreview)
+    expect(stats.farLeg).toBe(true)
+    // 2 站 × 40 分钟 + 15 分钟 = 95 分钟
+    expect(stats.totalHours).toBeCloseTo(95 / 60)
+    const near = dayStats(items, { ...legs, legs: [legs.legs[1]!] }, [PLACE], getPointPreview)
+    expect(near.farLeg).toBe(false)
+  })
+
+  it('DaySummaryBar 摘要显示「约 X 小时 · 含远距离段」', () => {
+    render(
+      <DaySummaryBar
+        day={DAYS[1]!}
+        items={items}
+        places={[PLACE]}
+        lodgings={[]}
+        legs={legs}
+        getPointPreview={getPointPreview}
+        locale="zh"
+      />
+    )
+    expect(screen.getByText(/2 站 · 约 1\.6 小时 · 含远距离段/)).toBeTruthy()
   })
 })

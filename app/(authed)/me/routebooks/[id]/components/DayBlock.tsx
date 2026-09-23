@@ -173,6 +173,7 @@ export function DayBlock({
           <div className="mt-0.5 text-[11px] text-slate-400">
             {tr('routebook.common.stopCount', locale, { n: stats.stopCount })}
             {stats.stopCount > 0 ? tr('routebook.sidebar.dayStatsHours', locale, { h: stats.totalHours.toFixed(1) }) : ''}
+            {stats.stopCount > 0 && stats.farLeg ? tr('routebook.day.farLeg', locale) : ''}
           </div>
           {lodgingBadges.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">

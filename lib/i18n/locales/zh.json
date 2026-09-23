@@ -1255,6 +1255,9 @@
       "save": "保存",
       "clear": "清除日期"
     },
+    "day": {
+      "farLeg": " · 含远距离段"
+    },
     "export": {
       "button": "导出",
       "menuLabel": "导出行程",

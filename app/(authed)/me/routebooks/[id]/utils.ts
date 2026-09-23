@@ -163,18 +163,29 @@ export function computeVisitOrder(
 /** 每站预估停留分钟（天统计「约 X 小时」用） */
 export const STOP_MINUTES_ESTIMATE = 40
 
-/** 天统计：站数（point/place）、有坐标站数、预计小时（段时长 + 每站停留） */
+/** 单段超过这个时长（秒）视为远距离段（如住宿在新宿、当天点位在宇治），不计入「约 X 小时」 */
+export const FAR_LEG_SECONDS = 6 * 3600
+
+/**
+ * 天统计：站数（point/place）、有坐标站数、预计小时（段时长 + 每站停留）。
+ * 超过 FAR_LEG_SECONDS 的段不计入小时数，改为 farLeg: true，由摘要追加「含远距离段」。
+ */
 export function dayStats(
   items: ItemRecord[],
   legs: DayLegsResult | undefined,
   places: PlaceRecord[],
   getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
-): { stopCount: number; coordCount: number; totalHours: number } {
+): { stopCount: number; coordCount: number; totalHours: number; farLeg: boolean } {
   const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
   const coordCount = visitable.filter((item) => itemHasCoords(item, places, getPointPreview)).length
-  const legMinutes = (legs?.legs ?? []).reduce((sum, leg) => sum + leg.durationSec / 60, 0)
+  let farLeg = false
+  let legMinutes = 0
+  for (const leg of legs?.legs ?? []) {
+    if (leg.durationSec > FAR_LEG_SECONDS) farLeg = true
+    else legMinutes += leg.durationSec / 60
+  }
   const totalHours = (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60
-  return { stopCount: visitable.length, coordCount, totalHours }
+  return { stopCount: visitable.length, coordCount, totalHours, farLeg }
 }
 
 /**

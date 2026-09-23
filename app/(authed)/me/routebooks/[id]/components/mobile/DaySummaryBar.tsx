@@ -51,7 +51,7 @@ export function DaySummaryBar({
     .map((row) => places.find((place) => place.id === row.placeId)?.title)
     .filter((title): title is string => Boolean(title))
 
-  const { stopCount, totalHours } = useMemo(
+  const { stopCount, totalHours, farLeg } = useMemo(
     () => dayStats(items, legs, places, getPointPreview),
     [getPointPreview, items, legs, places]
   )
@@ -63,7 +63,7 @@ export function DaySummaryBar({
   summaryParts.push(
     `${tr('routebook.common.stopCount', locale, { n: stopCount })}${
       stopCount > 0 ? tr('routebook.sidebar.dayStatsHours', locale, { h: totalHours.toFixed(1) }) : ''
-    }`
+    }${stopCount > 0 && farLeg ? tr('routebook.day.farLeg', locale) : ''}`
   )
 
   return (

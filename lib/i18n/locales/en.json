@@ -1255,6 +1255,9 @@
       "save": "Save",
       "clear": "Clear dates"
     },
+    "day": {
+      "farLeg": " · incl. long-distance leg"
+    },
     "export": {
       "button": "Export",
       "menuLabel": "Export trip",
