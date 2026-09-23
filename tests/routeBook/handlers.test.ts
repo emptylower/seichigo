@@ -362,14 +362,18 @@ describe('routebook optimize handler', () => {
       return ((await res.json()) as { item: { id: string } }).item.id
     }
 
-    // p4 是最远点；把它排在最前（锁定），优化不能动它
-    const farLocked = await mk(day1.id, { kind: 'point', pointId: 'p4', title: '远点', timeStart: '09:00', locked: true })
-    const note = await mk(day1.id, { kind: 'note', title: '备注' })
-    // 无坐标点（pointCoords 假实现不含 p5）
-    const noCoords = await mk(day1.id, { kind: 'point', pointId: 'p5', title: '无坐标' })
+    // p1/p2/p3 可自由排；p4 是最远点，作为时间锚（locked + timeStart）放在下标 2
     const p1 = await mk(day1.id, { kind: 'point', pointId: 'p1' })
     const p2 = await mk(day1.id, { kind: 'point', pointId: 'p2' })
+    const anchor = await mk(day1.id, { kind: 'point', pointId: 'p4', title: '锚点' })
     const p3 = await mk(day1.id, { kind: 'point', pointId: 'p3' })
+
+    // createItemSchema 不接收 locked，必须走 PATCH 设置时间锚
+    const patchAnchor = await itemHandlers.PATCH(
+      req('/x', 'PATCH', { timeStart: '12:00', locked: true }),
+      ctx({ id: detail.id, itemId: anchor })
+    )
+    expect(patchAnchor.status).toBe(200)
 
     const res = await optimizeHandlers.POST(req('/x', 'POST'), ctx({ id: detail.id, dayId: day1.id }))
     expect(res.status).toBe(200)
@@ -378,18 +382,82 @@ describe('routebook optimize handler', () => {
       after: string[]
       distanceBeforeM: number
       distanceAfterM: number
+      bookUpdatedAt: string
     }
-    expect(body.before).toEqual([farLocked, note, noCoords, p1, p2, p3])
-    // 固定项（锁定/无坐标/note）保持原下标 0/1/2
-    expect(body.after[0]).toBe(farLocked)
-    expect(body.after[1]).toBe(note)
-    expect(body.after[2]).toBe(noCoords)
-    expect(body.after.slice(3).sort()).toEqual([p1, p2, p3].sort())
+    expect(body.before).toEqual([p1, p2, anchor, p3])
+    // 时间锚保持原下标 2
+    expect(body.after[2]).toBe(anchor)
+    expect([body.after[0], body.after[1], body.after[3]].sort()).toEqual([p1, p2, p3].sort())
     expect(body.distanceAfterM).toBeLessThanOrEqual(body.distanceBeforeM)
+    expect(typeof body.bookUpdatedAt).toBe('string')
 
     // 写回：仓储里的顺序与 after 一致
     const after = await deps.repo.getById(detail.id, 'u1')
     const dayOrder = after!.items.filter((item) => item.dayId === day1.id).sort((a, b) => a.sortOrder - b.sortOrder)
     expect(dayOrder.map((item) => item.id)).toEqual(body.after)
+  })
+})
+
+describe('写接口契约（bookUpdatedAt / items）', () => {
+  it('POST /items 响应带目标天完整条目与 bookUpdatedAt；连续两次 POST 不 409', async () => {
+    const { deps } = makeDeps()
+    const detail = await setupBook(deps)
+    const day1 = detail.days[0]!
+    const handlers = createItemHandlers(deps)
+
+    const first = await handlers.POST(req('/x', 'POST', { dayId: day1.id, kind: 'point', pointId: 'p1' }), ctx({ id: detail.id }))
+    expect(first.status).toBe(200)
+    const firstBody = (await first.json()) as { item: { id: string }; items: { id: string; dayId: string | null; sortOrder: number }[]; bookUpdatedAt: string }
+    expect(firstBody.items.filter((i) => i.dayId === day1.id).map((i) => i.id)).toEqual([firstBody.item.id])
+    expect(firstBody.items.every((i) => i.dayId === null || i.dayId === day1.id)).toBe(true)
+    expect(new Date(firstBody.bookUpdatedAt).getTime()).not.toBeNaN()
+
+    // 第二次写入不带乐观锁也不冲突
+    const second = await handlers.POST(req('/x', 'POST', { dayId: day1.id, kind: 'point', pointId: 'p2' }), ctx({ id: detail.id }))
+    expect(second.status).toBe(200)
+    const secondBody = (await second.json()) as typeof firstBody
+    expect(secondBody.items.filter((i) => i.dayId === day1.id).map((i) => i.id)).toHaveLength(2)
+    expect(secondBody.items.filter((i) => i.dayId === day1.id).map((i) => i.sortOrder)).toEqual([0, 1])
+  })
+
+  it('DELETE item 后 PATCH title 不带 updatedAt 不 409', async () => {
+    const { deps } = makeDeps()
+    const detail = await setupBook(deps)
+    const day1 = detail.days[0]!
+    const itemHandlers = createItemHandlers(deps)
+    const bookHandlers = createRouteBookHandlers(deps)
+
+    const created = await itemHandlers.POST(req('/x', 'POST', { dayId: day1.id, kind: 'point', pointId: 'p1' }), ctx({ id: detail.id }))
+    const itemId = ((await created.json()) as { item: { id: string } }).item.id
+
+    const removed = await itemHandlers.DELETE(req('/x', 'DELETE'), ctx({ id: detail.id, itemId }))
+    expect(removed.status).toBe(200)
+    expect(typeof ((await removed.json()) as { bookUpdatedAt: string }).bookUpdatedAt).toBe('string')
+
+    const patched = await bookHandlers.PATCH(req('/x', 'PATCH', { title: '改名' }), ctx({ id: detail.id }))
+    expect(patched.status).toBe(200)
+    const patchedBody = (await patched.json()) as { routeBook: { title: string }; bookUpdatedAt: string }
+    expect(patchedBody.routeBook.title).toBe('改名')
+    expect(new Date(patchedBody.bookUpdatedAt).getTime()).not.toBeNaN()
+  })
+
+  it('reorder 响应带整本条目与 bookUpdatedAt，不接收 updatedAt 字段', async () => {
+    const { deps } = makeDeps()
+    const detail = await setupBook(deps)
+    const day1 = detail.days[0]!
+    const handlers = createItemHandlers(deps)
+
+    const a = ((await (await handlers.POST(req('/x', 'POST', { dayId: day1.id, kind: 'point', pointId: 'p1' }), ctx({ id: detail.id }))).json()) as { item: { id: string } }).item.id
+    const b = ((await (await handlers.POST(req('/x', 'POST', { dayId: day1.id, kind: 'point', pointId: 'p2' }), ctx({ id: detail.id }))).json()) as { item: { id: string } }).item.id
+
+    // 带上过期的 updatedAt 也不影响：schema 已不接收该字段，服务端不做 stale 判断
+    const res = await handlers.REORDER(
+      req('/x', 'POST', { dayId: day1.id, orderedItemIds: [b, a], updatedAt: new Date(0).toISOString() }),
+      ctx({ id: detail.id })
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { items: { id: string; dayId: string | null }[]; bookUpdatedAt: string }
+    expect(body.items.filter((i) => i.dayId === day1.id).map((i) => i.id)).toEqual([b, a])
+    expect(new Date(body.bookUpdatedAt).getTime()).not.toBeNaN()
   })
 })

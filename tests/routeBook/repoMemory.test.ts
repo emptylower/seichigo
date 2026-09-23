@@ -106,8 +106,9 @@ describe('InMemoryRouteBookRepo', () => {
     await repo.createLodging(book.id, 'u1', { placeId: stay.id, fromDayIndex: 2, toDayIndex: 3 })
 
     const reordered = await repo.reorderDays(book.id, 'u1', [dc!.id, da!.id, db!.id])
-    expect(reordered.map((d) => d.id)).toEqual([dc!.id, da!.id, db!.id])
-    expect(reordered.map((d) => d.date?.toISOString().slice(0, 10))).toEqual(['2026-10-01', '2026-10-02', '2026-10-03'])
+    expect(reordered.days.map((d) => d.id)).toEqual([dc!.id, da!.id, db!.id])
+    expect(reordered.days.map((d) => d.date?.toISOString().slice(0, 10))).toEqual(['2026-10-01', '2026-10-02', '2026-10-03'])
+    expect(reordered.bookUpdatedAt.getTime()).toBe((await repo.getById(book.id, 'u1'))!.updatedAt.getTime())
 
     const after = await repo.getById(book.id, 'u1')
     expect(after!.lodgings).toHaveLength(1)
@@ -124,9 +125,9 @@ describe('InMemoryRouteBookRepo', () => {
     const day1 = detail.days[0]!
     const day2 = detail.days[1]!
 
-    const a = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })
-    const b = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p2' })
-    const c = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p3' })
+    const a = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })).item
+    const b = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p2' })).item
+    const c = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p3' })).item
 
     let res = await repo.reorderItems(book.id, 'u1', day1.id, [c.id, a.id, b.id])
     let items = res.items.filter((i) => i.dayId === day1.id)
@@ -140,7 +141,7 @@ describe('InMemoryRouteBookRepo', () => {
     expect(res.items.filter((i) => i.dayId === day1.id).map((i) => i.sortOrder)).toEqual([0, 1])
 
     // 未安排 → 天
-    const u = await repo.createItem(book.id, 'u1', { dayId: null, kind: 'note', title: '未安排备注' })
+    const u = (await repo.createItem(book.id, 'u1', { dayId: null, kind: 'note', title: '未安排备注' })).item
     res = await repo.reorderItems(book.id, 'u1', day1.id, [a.id, u.id, b.id])
     expect(res.items.find((i) => i.id === u.id)?.dayId).toBe(day1.id)
 
@@ -175,8 +176,8 @@ describe('InMemoryRouteBookRepo', () => {
     const book = await repo.create('u1', '本', 'draft')
     const day = (await repo.getById(book.id, 'u1'))!.days[0]!
 
-    const early = await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p1', title: '早' })
-    const late = await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p2', title: '晚' })
+    const early = (await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p1', title: '早' })).item
+    const late = (await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p2', title: '晚' })).item
     await repo.updateItem(book.id, 'u1', early.id, { timeStart: '09:00' })
     await repo.updateItem(book.id, 'u1', late.id, { timeStart: '10:00' })
 
@@ -207,19 +208,34 @@ describe('InMemoryRouteBookRepo', () => {
     const { repo } = makeRepo(['p1', 'p2'])
     const book = await repo.create('u1', '本', 'draft')
     const day = (await repo.getById(book.id, 'u1'))!.days[0]!
-    const a = await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p1' })
-    const b = await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p2' })
+    const a = (await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p1' })).item
+    const b = (await repo.createItem(book.id, 'u1', { dayId: day.id, kind: 'point', pointId: 'p2' })).item
 
     await expectRuleError(repo.reorderItems(book.id, 'u1', day.id, [a.id]), 'invalid', '列表与当前条目不一致')
     await expectRuleError(repo.reorderItems(book.id, 'u1', day.id, [a.id, b.id, 'id-不存在']), 'invalid')
     await expectRuleError(repo.reorderItems(book.id, 'u1', day.id, [a.id, a.id, b.id]), 'invalid')
 
     const other = await repo.create('u1', '另一本', 'draft')
-    const foreign = await repo.createItem(other.id, 'u1', { dayId: null, kind: 'note', title: '别家的' })
+    const foreign = (await repo.createItem(other.id, 'u1', { dayId: null, kind: 'note', title: '别家的' })).item
     await expectRuleError(repo.reorderItems(book.id, 'u1', day.id, [a.id, b.id, foreign.id]), 'invalid')
 
-    // 跨本 dayId 的 createItem 也拒绝
+    // 跨本 dayId / 不存在 dayId 的 createItem 也拒绝
     await expectRuleError(repo.createItem(book.id, 'u1', { dayId: 'id-别家天', kind: 'point', pointId: 'p1' }), 'invalid')
+  })
+
+  it('reorderItems 目标 dayId 必须归属本行程本：外本/不存在 → invalid', async () => {
+    const { repo } = makeRepo(['p1'])
+    const book = await repo.create('u1', '本', 'draft')
+    const day = (await repo.getById(book.id, 'u1'))!.days[0]!
+    const a = (await repo.createItem(book.id, 'u1', { dayId: null, kind: 'point', pointId: 'p1' })).item
+
+    await expectRuleError(repo.reorderItems(book.id, 'u1', 'id-不存在', [a.id]), 'invalid', '目标天不存在')
+
+    const other = await repo.create('u1', '另一本', 'draft')
+    const otherDay = (await repo.getById(other.id, 'u1'))!.days[0]!
+    await expectRuleError(repo.reorderItems(book.id, 'u1', otherDay.id, [a.id]), 'invalid', '目标天不存在')
+    // 失败后条目未被动过
+    expect(((await repo.getById(book.id, 'u1'))!.items.find((i) => i.id === a.id))?.dayId).toBeNull()
   })
 
   it('transit 条目附着 prevItemId，prev 离开当天则删除', async () => {
@@ -229,14 +245,14 @@ describe('InMemoryRouteBookRepo', () => {
     await repo.insertDay(book.id, 'u1', 1)
     const day2 = ((await repo.getById(book.id, 'u1'))!.days.find((d) => d.dayIndex === 2))!
 
-    const p1 = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1', title: 'P1' })
-    const p2 = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p2', title: 'P2' })
-    const transit = await repo.createItem(book.id, 'u1', {
+    const p1 = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1', title: 'P1' })).item
+    const p2 = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p2', title: 'P2' })).item
+    const transit = (await repo.createItem(book.id, 'u1', {
       dayId: day1.id,
       kind: 'transit',
       title: 'P1→P2 步行',
       payload: { transitBetween: { prevItemId: p1.id, nextItemId: p2.id } },
-    })
+    })).item
 
     // 用户把 transit 拖到队首，normalize 仍把它送回 p1 后面
     await repo.reorderItems(book.id, 'u1', day1.id, [transit.id, p2.id, p1.id])
@@ -258,15 +274,16 @@ describe('InMemoryRouteBookRepo', () => {
     const day1 = detail.days[0]!
     const day2 = detail.days[1]!
 
-    const first = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })
+    const first = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })).item
     const again = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })
-    expect(again.id).toBe(first.id)
+    expect(again.item.id).toBe(first.id)
+    expect(again.items.filter((i) => i.dayId === day1.id).map((i) => i.id)).toContain(first.id)
 
-    const second = await repo.createItem(book.id, 'u1', { dayId: day2.id, kind: 'point', pointId: 'p1' })
+    const second = (await repo.createItem(book.id, 'u1', { dayId: day2.id, kind: 'point', pointId: 'p1' })).item
     expect(second.id).not.toBe(first.id)
 
     // index 插入到 0
-    const inserted = await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'note', title: '插队', index: 0 })
+    const inserted = (await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'note', title: '插队', index: 0 })).item
     const day1Items = (await repo.getById(book.id, 'u1'))!.items.filter((i) => i.dayId === day1.id)
     expect(day1Items.map((i) => i.id)).toEqual([inserted.id, first.id])
   })
@@ -281,7 +298,7 @@ describe('InMemoryRouteBookRepo', () => {
     await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })
     await repo.createLodging(book.id, 'u1', { placeId: place.id, fromDayIndex: 1, toDayIndex: 2 })
 
-    expect(await repo.deletePlace(book.id, 'u1', place.id)).toBe(true)
+    expect((await repo.deletePlace(book.id, 'u1', place.id))?.bookUpdatedAt).toBeInstanceOf(Date)
     const detail = await repo.getById(book.id, 'u1')
     expect(detail!.places).toHaveLength(0)
     expect(detail!.lodgings).toHaveLength(0)
@@ -354,17 +371,18 @@ describe('InMemoryRouteBookRepo', () => {
     const book = await repo.create('u1', '本', 'draft')
     const before = (await repo.getById(book.id, 'u1'))!.updatedAt
 
-    const item = await repo.createItem(book.id, 'u1', { dayId: null, kind: 'point', pointId: 'p1' })
-    expect(item.bookUpdatedAt.getTime()).toBeGreaterThan(before.getTime())
+    const created = await repo.createItem(book.id, 'u1', { dayId: null, kind: 'point', pointId: 'p1' })
+    expect(created.bookUpdatedAt.getTime()).toBeGreaterThan(before.getTime())
 
     const day = await repo.insertDay(book.id, 'u1', 0)
     const afterInsert = (await repo.getById(book.id, 'u1'))!.updatedAt
     expect(day.bookUpdatedAt.getTime()).toBe(afterInsert.getTime())
 
-    const res = await repo.reorderItems(book.id, 'u1', null, [item.id], afterInsert)
-    expect(res.updatedAt.getTime()).toBe((await repo.getById(book.id, 'u1'))!.updatedAt.getTime())
+    const res = await repo.reorderItems(book.id, 'u1', null, [created.item.id])
+    expect(res.bookUpdatedAt.getTime()).toBe((await repo.getById(book.id, 'u1'))!.updatedAt.getTime())
 
-    // reorderItems 带过期 expectedUpdatedAt → stale
-    await expectRuleError(repo.reorderItems(book.id, 'u1', null, [item.id], afterInsert), 'stale')
+    // 连续写不带乐观锁也不冲突（stale 只属于 PATCH /）
+    const again = await repo.reorderItems(book.id, 'u1', null, [created.item.id])
+    expect(again.bookUpdatedAt.getTime()).toBeGreaterThanOrEqual(res.bookUpdatedAt.getTime())
   })
 })

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { RouteBookApiDeps } from '@/lib/routeBook/api'
-import { assertAnchorOrder } from '@/lib/routeBook/rules'
+import { assertAnchorOrder, isAnchor } from '@/lib/routeBook/rules'
 import { resolveDayAnchors } from '@/lib/routeBook/anchors'
 import { optimizeDay, routeDistanceM, type LatLng, type OptimizePoint } from '@/lib/routeBook/optimize'
 import { routeBookErrorResponse } from './errors'
@@ -39,7 +39,7 @@ export function createOptimizeHandlers(deps: RouteBookApiDeps) {
         const anchors = resolveDayAnchors(day.dayIndex, detail.lodgings, detail.places)
         const points: OptimizePoint[] = dayItems.map((item) => {
           const coords = coordsOf(item)
-          const fixed = item.kind === 'note' || item.kind === 'transit' || coords === null
+          const fixed = isAnchor(item) || item.kind === 'note' || item.kind === 'transit' || coords === null
           return { id: item.id, lat: coords?.lat ?? Number.NaN, lng: coords?.lng ?? Number.NaN, fixed }
         })
 
@@ -76,7 +76,7 @@ export function createOptimizeHandlers(deps: RouteBookApiDeps) {
           distanceBeforeM: Math.round(distanceBeforeM),
           distanceAfterM: Math.round(distanceAfterM),
           items: result.items,
-          updatedAt: result.updatedAt,
+          bookUpdatedAt: result.bookUpdatedAt.toISOString(),
         })
       } catch (err) {
         return routeBookErrorResponse(err)

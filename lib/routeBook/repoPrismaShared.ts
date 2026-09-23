@@ -84,26 +84,52 @@ export async function requireBookTx(tx: Tx, routeBookId: string, userId: string)
   return book
 }
 
+function isPrismaRejected(err: unknown, code: string): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === code
+}
+
+/**
+ * 事务开头锁定行程本行并推进 updatedAt：UPDATE 行锁串行化后续写，
+ * userId 不匹配 → P2025 → not_found。无乐观锁语义的写事务都用它开场。
+ */
+export async function lockBookTx(tx: Tx, routeBookId: string, userId: string, now: Date): Promise<PrismaRouteBook> {
+  try {
+    return await tx.routeBook.update({ where: { id: routeBookId, userId }, data: { updatedAt: now } })
+  } catch (err) {
+    if (isPrismaRejected(err, 'P2025')) throw new RouteBookRuleError('not_found', '行程不存在')
+    throw err
+  }
+}
+
 export function assertStale(book: PrismaRouteBook, expectedUpdatedAt?: Date): void {
   if (expectedUpdatedAt && expectedUpdatedAt.getTime() !== book.updatedAt.getTime()) {
     throw new RouteBookRuleError('stale', '行程已在别处修改，请刷新')
   }
 }
 
-/** 乐观锁推进 updatedAt：expected 缺省用事务内读到的当前值，count === 0 → stale */
+/**
+ * 推进 updatedAt：只有显式传 expected 时才做乐观锁判断（updateMany + count===0 → stale）；
+ * 没传时行已由 lockBookTx 在事务开头锁定并推进过时间戳，这里只补写附加字段。
+ */
 export async function touchTx(
   tx: Tx,
   routeBookId: string,
   userId: string,
   now: Date,
   data: Prisma.RouteBookUpdateInput = {},
-  expected: Date
+  expected?: Date
 ): Promise<Date> {
-  const res = await tx.routeBook.updateMany({
-    where: { id: routeBookId, userId, updatedAt: expected },
-    data: { ...data, updatedAt: now },
-  })
-  if (res.count === 0) throw new RouteBookRuleError('stale', '行程已在别处修改，请刷新')
+  if (expected) {
+    const res = await tx.routeBook.updateMany({
+      where: { id: routeBookId, userId, updatedAt: expected },
+      data: { ...data, updatedAt: now },
+    })
+    if (res.count === 0) throw new RouteBookRuleError('stale', '行程已在别处修改，请刷新')
+    return now
+  }
+  if (Object.keys(data).length > 0) {
+    await tx.routeBook.updateMany({ where: { id: routeBookId, userId }, data: { ...data, updatedAt: now } })
+  }
   return now
 }
 

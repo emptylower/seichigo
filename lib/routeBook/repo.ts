@@ -159,6 +159,12 @@ export class RouteBookRuleError extends Error {
 }
 
 export type WithBookUpdatedAt<T> = T & { bookUpdatedAt: Date }
+/** 删除类写操作的回执：目标存在时返回推进后的时间戳 */
+export type WriteReceipt = { bookUpdatedAt: Date }
+/** POST /items：新条目 + 目标天（或未安排区）写入后的完整条目列表 */
+export type ItemCreateResult = { item: RouteBookItem; items: RouteBookItem[]; bookUpdatedAt: Date }
+export type DayReorderResult = { days: RouteBookDay[]; bookUpdatedAt: Date }
+export type ItemListResult = { items: RouteBookItem[]; bookUpdatedAt: Date }
 
 export interface RouteBookRepo {
   /** 自动建 Day 1..dayCount */
@@ -182,32 +188,26 @@ export interface RouteBookRepo {
     data: { title?: string | null; defaultTravelMode?: TravelMode }
   ): Promise<WithBookUpdatedAt<RouteBookDay> | null>
   /** 非空抛 day_not_empty；最后一天不允许删（invalid） */
-  deleteDay(routeBookId: string, userId: string, dayId: string): Promise<boolean>
-  reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<RouteBookDay[]>
+  deleteDay(routeBookId: string, userId: string, dayId: string): Promise<WriteReceipt | null>
+  reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<DayReorderResult>
 
-  createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<WithBookUpdatedAt<RouteBookItem>>
+  createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<ItemCreateResult>
   updateItem(
     routeBookId: string,
     userId: string,
     itemId: string,
     data: ItemUpdateInput
   ): Promise<WithBookUpdatedAt<RouteBookItem> | null>
-  deleteItem(routeBookId: string, userId: string, itemId: string): Promise<boolean>
-  /** 返回全部 items；expectedUpdatedAt 不匹配抛 stale */
-  reorderItems(
-    routeBookId: string,
-    userId: string,
-    dayId: string | null,
-    orderedItemIds: string[],
-    expectedUpdatedAt?: Date
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }>
+  deleteItem(routeBookId: string, userId: string, itemId: string): Promise<WriteReceipt | null>
+  /** 返回全部 items；dayId 必须归属本行程本，否则 invalid */
+  reorderItems(routeBookId: string, userId: string, dayId: string | null, orderedItemIds: string[]): Promise<ItemListResult>
   /** optimize 写回用，不做锚校验（optimize 自己保证） */
   replaceDayOrder(
     routeBookId: string,
     userId: string,
     dayId: string,
     orderedItemIds: string[]
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }>
+  ): Promise<ItemListResult>
 
   createPlace(routeBookId: string, userId: string, input: PlaceInput): Promise<WithBookUpdatedAt<RouteBookPlace>>
   updatePlace(
@@ -217,7 +217,7 @@ export interface RouteBookRepo {
     input: Partial<PlaceInput>
   ): Promise<WithBookUpdatedAt<RouteBookPlace> | null>
   /** 级联删 items/lodgings */
-  deletePlace(routeBookId: string, userId: string, placeId: string): Promise<boolean>
+  deletePlace(routeBookId: string, userId: string, placeId: string): Promise<WriteReceipt | null>
 
   createLodging(routeBookId: string, userId: string, input: LodgingInput): Promise<WithBookUpdatedAt<RouteBookLodging>>
   updateLodging(
@@ -226,7 +226,7 @@ export interface RouteBookRepo {
     lodgingId: string,
     input: Partial<LodgingInput>
   ): Promise<WithBookUpdatedAt<RouteBookLodging> | null>
-  deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<boolean>
+  deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<WriteReceipt | null>
 
   /** 查 items kind=point */
   isPointInAnyRouteBook(userId: string, pointId: string): Promise<boolean>

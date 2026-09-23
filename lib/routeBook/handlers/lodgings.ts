@@ -20,7 +20,7 @@ export function createLodgingHandlers(deps: RouteBookApiDeps) {
 
       try {
         const lodging = await deps.repo.createLodging(routeBookId, userId, parsed.data)
-        return NextResponse.json({ ok: true, lodging })
+        return NextResponse.json({ ok: true, lodging, bookUpdatedAt: lodging.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -44,7 +44,7 @@ export function createLodgingHandlers(deps: RouteBookApiDeps) {
       try {
         const lodging = await deps.repo.updateLodging(routeBookId, userId, lodgingId, parsed.data)
         if (!lodging) return NextResponse.json({ error: '住宿不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true, lodging })
+        return NextResponse.json({ ok: true, lodging, bookUpdatedAt: lodging.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -62,7 +62,7 @@ export function createLodgingHandlers(deps: RouteBookApiDeps) {
       try {
         const deleted = await deps.repo.deleteLodging(routeBookId, userId, lodgingId)
         if (!deleted) return NextResponse.json({ error: '住宿不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true })
+        return NextResponse.json({ ok: true, bookUpdatedAt: deleted.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }

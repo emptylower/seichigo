@@ -12,8 +12,11 @@ import {
   shiftLodgingForInsert,
 } from './rules'
 import type {
+  DayReorderResult,
   ItemCreateInput,
+  ItemCreateResult,
   ItemKind,
+  ItemListResult,
   ItemUpdateInput,
   LodgingInput,
   PlaceInput,
@@ -30,6 +33,7 @@ import type {
   RouteBookStatus,
   RouteBookUpdateInput,
   TravelMode,
+  WriteReceipt,
   WithBookUpdatedAt,
 } from './repo'
 
@@ -224,6 +228,12 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       .map((b) => ({ ...b, firstPointImage: null }))
   }
 
+  private requireDay(routeBookId: string, dayId: string): RouteBookDay {
+    const day = this.daysById.get(dayId)
+    if (!day || day.routeBookId !== routeBookId) throw new RouteBookRuleError('invalid', '目标天不存在')
+    return day
+  }
+
   async insertDay(routeBookId: string, userId: string, afterDayIndex: number): Promise<WithBookUpdatedAt<RouteBookDay>> {
     const book = this.requireBook(routeBookId, userId)
     if (afterDayIndex < 0 || afterDayIndex > book.dayCount) {
@@ -274,10 +284,10 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     return { ...day, bookUpdatedAt }
   }
 
-  async deleteDay(routeBookId: string, userId: string, dayId: string): Promise<boolean> {
+  async deleteDay(routeBookId: string, userId: string, dayId: string): Promise<WriteReceipt | null> {
     const book = this.requireBook(routeBookId, userId)
     const day = this.daysById.get(dayId)
-    if (!day || day.routeBookId !== routeBookId) return false
+    if (!day || day.routeBookId !== routeBookId) return null
 
     if (book.dayCount <= 1) {
       throw new RouteBookRuleError('invalid', '至少要保留一天')
@@ -302,11 +312,11 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     }
     book.dayCount -= 1
     this.recomputeDayDates(book)
-    this.touch(book)
-    return true
+    const bookUpdatedAt = this.touch(book)
+    return { bookUpdatedAt }
   }
 
-  async reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<RouteBookDay[]> {
+  async reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<DayReorderResult> {
     const book = this.requireBook(routeBookId, userId)
     const days = this.bookDays(routeBookId)
     const currentIds = new Set(days.map((day) => day.id))
@@ -320,25 +330,25 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       if (day) day.dayIndex = index + 1
     })
     this.recomputeDayDates(book)
-    this.touch(book)
-    return this.bookDays(routeBookId)
+    const bookUpdatedAt = this.touch(book)
+    return { days: this.bookDays(routeBookId), bookUpdatedAt }
   }
 
-  async createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<WithBookUpdatedAt<RouteBookItem>> {
+  async createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<ItemCreateResult> {
     const book = this.requireBook(routeBookId, userId)
 
     if (input.dayId !== null) {
-      const day = this.daysById.get(input.dayId)
-      if (!day || day.routeBookId !== routeBookId) {
-        throw new RouteBookRuleError('invalid', '目标天不存在')
-      }
+      this.requireDay(routeBookId, input.dayId)
     }
 
     this.assertItemShape(routeBookId, input)
 
     if (input.kind === 'point') {
-      const existing = this.dayItems(routeBookId, input.dayId).find((item) => item.kind === 'point' && item.pointId === input.pointId)
-      if (existing) return { ...existing, bookUpdatedAt: book.updatedAt }
+      const group = this.dayItems(routeBookId, input.dayId)
+      const existing = group.find((item) => item.kind === 'point' && item.pointId === input.pointId)
+      if (existing) {
+        return { item: { ...existing }, items: group, bookUpdatedAt: book.updatedAt }
+      }
     }
 
     const group = this.dayItems(routeBookId, input.dayId)
@@ -347,8 +357,9 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     }
 
     const insertAt = Math.min(Math.max(input.index ?? group.length, 0), group.length)
+    const itemId = this.idFactory()
     const item: RouteBookItem = {
-      id: this.idFactory(),
+      id: itemId,
       routeBookId,
       dayId: input.dayId,
       sortOrder: insertAt,
@@ -375,8 +386,9 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     this.itemsById.set(item.id, item)
     this.rewriteDayOrder(routeBookId, input.dayId)
     const bookUpdatedAt = this.touch(book)
-    const stored = this.itemsById.get(item.id) ?? item
-    return { ...stored, bookUpdatedAt }
+    const items = this.dayItems(routeBookId, input.dayId)
+    const stored = items.find((row) => row.id === itemId) ?? item
+    return { item: stored, items, bookUpdatedAt }
   }
 
   private assertItemShape(routeBookId: string, input: ItemCreateInput): void {
@@ -404,43 +416,48 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     const item = this.itemsById.get(itemId)
     if (!item || item.routeBookId !== routeBookId) return null
 
-    if (data.title !== undefined) item.title = data.title
-    if (data.note !== undefined) item.note = data.note
-    if (data.timeStart !== undefined) item.timeStart = data.timeStart
-    if (data.timeEnd !== undefined) item.timeEnd = data.timeEnd
-    if (data.locked !== undefined) item.locked = data.locked
-    if (data.icon !== undefined) item.icon = data.icon
-    if (data.color !== undefined) item.color = data.color
-    if (data.legMode !== undefined) item.legMode = data.legMode
+    // 先在副本上校验，通过后再写回（与 Prisma 事务回滚行为一致）
+    const candidate: RouteBookItem = { ...item }
+    if (data.title !== undefined) candidate.title = data.title
+    if (data.note !== undefined) candidate.note = data.note
+    if (data.timeStart !== undefined) candidate.timeStart = data.timeStart
+    if (data.timeEnd !== undefined) candidate.timeEnd = data.timeEnd
+    if (data.locked !== undefined) candidate.locked = data.locked
+    if (data.icon !== undefined) candidate.icon = data.icon
+    if (data.color !== undefined) candidate.color = data.color
+    if (data.legMode !== undefined) candidate.legMode = data.legMode
 
     if (data.timeStart !== undefined || data.locked !== undefined) {
-      assertAnchorOrder(this.dayItems(routeBookId, item.dayId))
+      assertAnchorOrder(this.dayItems(routeBookId, item.dayId).map((row) => (row.id === itemId ? candidate : row)))
     }
 
+    this.itemsById.set(itemId, candidate)
     const bookUpdatedAt = this.touch(book)
-    return { ...item, bookUpdatedAt }
+    return { ...candidate, bookUpdatedAt }
   }
 
-  async deleteItem(routeBookId: string, userId: string, itemId: string): Promise<boolean> {
+  async deleteItem(routeBookId: string, userId: string, itemId: string): Promise<WriteReceipt | null> {
     const book = this.requireBook(routeBookId, userId)
     const item = this.itemsById.get(itemId)
-    if (!item || item.routeBookId !== routeBookId) return false
+    if (!item || item.routeBookId !== routeBookId) return null
 
     this.itemsById.delete(itemId)
     this.rewriteDayOrder(routeBookId, item.dayId)
-    this.touch(book)
-    return true
+    const bookUpdatedAt = this.touch(book)
+    return { bookUpdatedAt }
   }
 
   async reorderItems(
     routeBookId: string,
     userId: string,
     dayId: string | null,
-    orderedItemIds: string[],
-    expectedUpdatedAt?: Date
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
+    orderedItemIds: string[]
+  ): Promise<ItemListResult> {
     const book = this.requireBook(routeBookId, userId)
-    this.assertStale(book, expectedUpdatedAt)
+
+    if (dayId !== null) {
+      this.requireDay(routeBookId, dayId)
+    }
 
     const bookItems = this.listBookItems(routeBookId)
     const byId = new Map(bookItems.map((item) => [item.id, item]))
@@ -469,21 +486,29 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     }
 
     const affectedSourceDays = new Set(movedIn.map((item) => item.dayId))
-    orderedItemIds.forEach((id, index) => {
-      const item = byId.get(id)
-      if (!item) return
-      this.itemsById.set(id, { ...item, dayId, sortOrder: index })
-    })
+    // 先在副本上改并校验，失败整体还原（与 Prisma 事务回滚行为一致）
+    const snapshot = new Map(this.itemsById)
+    try {
+      orderedItemIds.forEach((id, index) => {
+        const item = byId.get(id)
+        if (!item) return
+        this.itemsById.set(id, { ...item, dayId, sortOrder: index })
+      })
 
-    this.rewriteDayOrder(routeBookId, dayId)
-    for (const sourceDayId of affectedSourceDays) {
-      this.rewriteDayOrder(routeBookId, sourceDayId)
+      this.rewriteDayOrder(routeBookId, dayId)
+      for (const sourceDayId of affectedSourceDays) {
+        this.rewriteDayOrder(routeBookId, sourceDayId)
+      }
+
+      assertAnchorOrder(this.dayItems(routeBookId, dayId))
+    } catch (err) {
+      this.itemsById.clear()
+      for (const [id, item] of snapshot) this.itemsById.set(id, item)
+      throw err
     }
 
-    assertAnchorOrder(this.dayItems(routeBookId, dayId))
-
-    const updatedAt = this.touch(book)
-    return { items: this.listBookItems(routeBookId), updatedAt }
+    const bookUpdatedAt = this.touch(book)
+    return { items: this.listBookItems(routeBookId), bookUpdatedAt }
   }
 
   async replaceDayOrder(
@@ -491,7 +516,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     userId: string,
     dayId: string,
     orderedItemIds: string[]
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
+  ): Promise<ItemListResult> {
     const book = this.requireBook(routeBookId, userId)
 
     const dayItems = this.dayItems(routeBookId, dayId)
@@ -507,8 +532,8 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     })
     this.rewriteDayOrder(routeBookId, dayId)
 
-    const updatedAt = this.touch(book)
-    return { items: this.listBookItems(routeBookId), updatedAt }
+    const bookUpdatedAt = this.touch(book)
+    return { items: this.listBookItems(routeBookId), bookUpdatedAt }
   }
 
   async createPlace(routeBookId: string, userId: string, input: PlaceInput): Promise<WithBookUpdatedAt<RouteBookPlace>> {
@@ -555,10 +580,10 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     return { ...place, bookUpdatedAt }
   }
 
-  async deletePlace(routeBookId: string, userId: string, placeId: string): Promise<boolean> {
+  async deletePlace(routeBookId: string, userId: string, placeId: string): Promise<WriteReceipt | null> {
     const book = this.requireBook(routeBookId, userId)
     const place = this.placesById.get(placeId)
-    if (!place || place.routeBookId !== routeBookId) return false
+    if (!place || place.routeBookId !== routeBookId) return null
 
     const affectedDays = new Set<string | null>()
     for (const item of Array.from(this.itemsById.values())) {
@@ -574,8 +599,8 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     }
     this.placesById.delete(placeId)
     for (const dayId of affectedDays) this.rewriteDayOrder(routeBookId, dayId)
-    this.touch(book)
-    return true
+    const bookUpdatedAt = this.touch(book)
+    return { bookUpdatedAt }
   }
 
   async createLodging(routeBookId: string, userId: string, input: LodgingInput): Promise<WithBookUpdatedAt<RouteBookLodging>> {
@@ -649,14 +674,14 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     return { ...lodging, bookUpdatedAt }
   }
 
-  async deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<boolean> {
+  async deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<WriteReceipt | null> {
     const book = this.requireBook(routeBookId, userId)
     const lodging = this.lodgingsById.get(lodgingId)
-    if (!lodging || lodging.routeBookId !== routeBookId) return false
+    if (!lodging || lodging.routeBookId !== routeBookId) return null
 
     this.lodgingsById.delete(lodgingId)
-    this.touch(book)
-    return true
+    const bookUpdatedAt = this.touch(book)
+    return { bookUpdatedAt }
   }
 
   async isPointInAnyRouteBook(userId: string, pointId: string): Promise<boolean> {

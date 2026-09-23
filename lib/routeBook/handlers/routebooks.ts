@@ -164,7 +164,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
           return NextResponse.json({ error: '未找到地图' }, { status: 404 })
         }
 
-        return NextResponse.json({ ok: true, routeBook: updated, item: updated })
+        return NextResponse.json({ ok: true, routeBook: updated, item: updated, bookUpdatedAt: updated.updatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }

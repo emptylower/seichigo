@@ -3,7 +3,10 @@ import { prisma } from '@/lib/db/prisma'
 import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { DAY_COUNT_MAX, RouteBookRuleError, computeDayDate } from './rules'
 import type {
+  DayReorderResult,
   ItemCreateInput,
+  ItemCreateResult,
+  ItemListResult,
   ItemUpdateInput,
   LodgingInput,
   PlaceInput,
@@ -20,6 +23,7 @@ import type {
   RouteBookPlace,
   RouteBookLodging,
   TravelMode,
+  WriteReceipt,
   WithBookUpdatedAt,
 } from './repo'
 import { assertStale, toBook, toDay, toItem, toLodging, toPlace } from './repoPrismaShared'
@@ -37,7 +41,6 @@ import {
   updateLodgingTx,
   deleteLodgingTx,
 } from './repoPrismaItems'
-
 const TX_OPTIONS = { maxWait: 10_000, timeout: 15_000 }
 
 function toJsonSet(value: RouteBookUpdateInput['metadata']): Prisma.RouteBookUpdateInput['metadata'] {
@@ -179,22 +182,16 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
       },
       orderBy: { updatedAt: 'desc' },
       include: {
-        days: {
-          orderBy: { dayIndex: 'asc' },
+        items: {
+          where: { kind: 'point' },
+          orderBy: [{ day: { dayIndex: 'asc' } }, { sortOrder: 'asc' }],
           take: 1,
-          select: {
-            items: {
-              where: { kind: 'point' },
-              orderBy: { sortOrder: 'asc' },
-              take: 1,
-              select: { point: { select: { image: true } } },
-            },
-          },
+          select: { point: { select: { image: true } } },
         },
       },
     })
     return list.map((item) => {
-      const rawImage = item.days[0]?.items[0]?.point?.image ?? null
+      const rawImage = item.items[0]?.point?.image ?? null
       const firstPointImage = rawImage ? resolveAnitabiAssetUrl(rawImage) : null
       return { ...toBook(item), firstPointImage }
     })
@@ -213,15 +210,15 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     return prisma.$transaction((tx) => updateDayTx(tx, routeBookId, userId, dayId, data, this.now()), TX_OPTIONS)
   }
 
-  async deleteDay(routeBookId: string, userId: string, dayId: string): Promise<boolean> {
+  async deleteDay(routeBookId: string, userId: string, dayId: string): Promise<WriteReceipt | null> {
     return prisma.$transaction((tx) => deleteDayTx(tx, routeBookId, userId, dayId, this.now()), TX_OPTIONS)
   }
 
-  async reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<RouteBookDay[]> {
+  async reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<DayReorderResult> {
     return prisma.$transaction((tx) => reorderDaysTx(tx, routeBookId, userId, orderedDayIds, this.now()), TX_OPTIONS)
   }
 
-  async createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<WithBookUpdatedAt<RouteBookItem>> {
+  async createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<ItemCreateResult> {
     return prisma.$transaction((tx) => createItemTx(tx, routeBookId, userId, input, this.now()), TX_OPTIONS)
   }
 
@@ -234,7 +231,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     return prisma.$transaction((tx) => updateItemTx(tx, routeBookId, userId, itemId, data, this.now()), TX_OPTIONS)
   }
 
-  async deleteItem(routeBookId: string, userId: string, itemId: string): Promise<boolean> {
+  async deleteItem(routeBookId: string, userId: string, itemId: string): Promise<WriteReceipt | null> {
     return prisma.$transaction((tx) => deleteItemTx(tx, routeBookId, userId, itemId, this.now()), TX_OPTIONS)
   }
 
@@ -242,10 +239,9 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     routeBookId: string,
     userId: string,
     dayId: string | null,
-    orderedItemIds: string[],
-    expectedUpdatedAt?: Date
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
-    return prisma.$transaction((tx) => reorderItemsTx(tx, routeBookId, userId, dayId, orderedItemIds, expectedUpdatedAt, this.now()), TX_OPTIONS)
+    orderedItemIds: string[]
+  ): Promise<ItemListResult> {
+    return prisma.$transaction((tx) => reorderItemsTx(tx, routeBookId, userId, dayId, orderedItemIds, this.now()), TX_OPTIONS)
   }
 
   async replaceDayOrder(
@@ -253,7 +249,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     userId: string,
     dayId: string,
     orderedItemIds: string[]
-  ): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
+  ): Promise<ItemListResult> {
     return prisma.$transaction((tx) => replaceDayOrderTx(tx, routeBookId, userId, dayId, orderedItemIds, this.now()), TX_OPTIONS)
   }
 
@@ -270,7 +266,8 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     return prisma.$transaction((tx) => updatePlaceTx(tx, routeBookId, userId, placeId, input, this.now()), TX_OPTIONS)
   }
 
-  async deletePlace(routeBookId: string, userId: string, placeId: string): Promise<boolean> {
+  /** 级联删 items/lodgings */
+  async deletePlace(routeBookId: string, userId: string, placeId: string): Promise<WriteReceipt | null> {
     return prisma.$transaction((tx) => deletePlaceTx(tx, routeBookId, userId, placeId, this.now()), TX_OPTIONS)
   }
 
@@ -287,7 +284,7 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     return prisma.$transaction((tx) => updateLodgingTx(tx, routeBookId, userId, lodgingId, input, this.now()), TX_OPTIONS)
   }
 
-  async deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<boolean> {
+  async deleteLodging(routeBookId: string, userId: string, lodgingId: string): Promise<WriteReceipt | null> {
     return prisma.$transaction((tx) => deleteLodgingTx(tx, routeBookId, userId, lodgingId, this.now()), TX_OPTIONS)
   }
 

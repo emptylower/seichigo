@@ -28,7 +28,7 @@ export function createHandlers(deps: RouteBookApiDeps) {
       }
 
       try {
-        const item = await deps.repo.createItem(routeBookId, userId, { dayId: null, kind: 'point', pointId: parsed.data.pointId })
+        const { item } = await deps.repo.createItem(routeBookId, userId, { dayId: null, kind: 'point', pointId: parsed.data.pointId })
         await deps.pointPoolRepo.delete(userId, parsed.data.pointId)
         return NextResponse.json({ ok: true, item })
       } catch (err) {

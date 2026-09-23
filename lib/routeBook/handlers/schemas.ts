@@ -18,7 +18,6 @@ export const createItemSchema = z
     note: z.string().max(2000).optional(),
     timeStart: hhmm.optional(),
     index: z.number().int().min(0).optional(),
-    payload: z.unknown().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.kind === 'point' && !v.pointId) ctx.addIssue({ code: 'custom', message: '点位条目缺少 pointId' })
@@ -39,11 +38,10 @@ export const updateItemSchema = z
   })
   .refine((v) => !(v.timeStart && v.timeEnd) || v.timeEnd >= v.timeStart, { message: '结束时间不能早于开始时间' })
 
-// 未安排区不限数量，上限只是防滥用
+// 未安排区不限数量，上限只是防滥用；乐观锁 updatedAt 只由 PATCH / 携带（契约 5）
 export const reorderItemsSchema = z.object({
   dayId: z.string().min(1).nullable(),
   orderedItemIds: z.array(z.string().min(1)).max(500),
-  updatedAt: z.string().datetime().optional(),
 })
 
 export const insertDaySchema = z.object({ afterDayIndex: z.number().int().min(0).max(DAY_COUNT_MAX) })

@@ -59,12 +59,11 @@ vi.mock('@/lib/db/prisma', () => {
 
 import { prisma } from '@/lib/db/prisma'
 import { PrismaRouteBookRepo } from '@/lib/routeBook/repoPrisma'
-import { RouteBookRuleError } from '@/lib/routeBook/repo'
 
 const mocked = prisma as unknown as {
   $transaction: Mock
   __txForTest: {
-    routeBook: { findFirst: Mock; updateMany: Mock }
+    routeBook: { findFirst: Mock; update: Mock; updateMany: Mock }
     routeBookDay: { findFirst: Mock }
     routeBookItem: { findMany: Mock; update: Mock; create: Mock }
     anitabiPoint: { findUnique: Mock }
@@ -114,21 +113,26 @@ beforeEach(() => {
   mocked.__txForTest.routeBook.findFirst.mockResolvedValue(BOOK_ROW)
 })
 
-describe('PrismaRouteBookRepo.reorderItems 乐观锁', () => {
-  it('touch 用 updateMany 按当前 updatedAt 条件推进，count>0 才提交', async () => {
-    mocked.__txForTest.routeBookItem.findMany.mockResolvedValue([
-      itemRow({ id: 'a', sortOrder: 0 }),
-      itemRow({ id: 'b', sortOrder: 1 }),
-    ])
+describe('PrismaRouteBookRepo.reorderItems 先锁行再写入', () => {
+  it('事务开头用 routeBook.update 锁行推进 updatedAt；只更新 dayId/sortOrder 变化的行', async () => {
+    mocked.__txForTest.routeBookDay.findFirst.mockResolvedValue({ id: 'd1', routeBookId: 'rb-1' })
+    mocked.__txForTest.routeBookItem.findMany.mockImplementation(async (arg: unknown) => {
+      const where = (arg as { where?: { dayId?: string | null } }).where
+      if (where?.dayId === null) return []
+      return [
+        itemRow({ id: 'a', sortOrder: 0 }),
+        itemRow({ id: 'b', sortOrder: 1 }),
+      ]
+    })
 
     const repo = new PrismaRouteBookRepo({ now: () => new Date('2026-09-23T09:00:00.000Z') })
-    const res = await repo.reorderItems('rb-1', 'u1', 'd1', ['b', 'a'], UPDATED_AT)
+    const res = await repo.reorderItems('rb-1', 'u1', 'd1', ['b', 'a'])
 
-    expect(mocked.__txForTest.routeBook.updateMany).toHaveBeenCalledWith({
-      where: { id: 'rb-1', userId: 'u1', updatedAt: UPDATED_AT },
+    expect(mocked.__txForTest.routeBook.update).toHaveBeenCalledWith({
+      where: { id: 'rb-1', userId: 'u1' },
       data: { updatedAt: new Date('2026-09-23T09:00:00.000Z') },
     })
-    expect(res.updatedAt).toEqual(new Date('2026-09-23T09:00:00.000Z'))
+    expect(res.bookUpdatedAt).toEqual(new Date('2026-09-23T09:00:00.000Z'))
 
     // 新顺序写回：b→0、a→1
     const updateArgs = mocked.__txForTest.routeBookItem.update.mock.calls.map((call) => call[0])
@@ -136,23 +140,36 @@ describe('PrismaRouteBookRepo.reorderItems 乐观锁', () => {
     expect(updateArgs).toContainEqual({ where: { id: 'a' }, data: { dayId: 'd1', sortOrder: 1 } })
   })
 
-  it('expectedUpdatedAt 不匹配 → stale，不做任何写入', async () => {
-    const repo = new PrismaRouteBookRepo()
-    await expect(repo.reorderItems('rb-1', 'u1', 'd1', ['a'], new Date(0))).rejects.toMatchObject({
-      reason: 'stale',
+  it('顺序未变的行不重写（写放大收敛）', async () => {
+    mocked.__txForTest.routeBookDay.findFirst.mockResolvedValue({ id: 'd1', routeBookId: 'rb-1' })
+    mocked.__txForTest.routeBookItem.findMany.mockImplementation(async (arg: unknown) => {
+      const where = (arg as { where?: { dayId?: string | null } }).where
+      if (where?.dayId === null) return []
+      return [itemRow({ id: 'a', sortOrder: 0 })]
     })
-    expect(mocked.__txForTest.routeBook.updateMany).not.toHaveBeenCalled()
+
+    const repo = new PrismaRouteBookRepo()
+    await repo.reorderItems('rb-1', 'u1', 'd1', ['a'])
     expect(mocked.__txForTest.routeBookItem.update).not.toHaveBeenCalled()
   })
 
-  it('updateMany count===0（并发覆盖）→ stale', async () => {
-    mocked.__txForTest.routeBookItem.findMany.mockResolvedValue([itemRow({ id: 'a' })])
-    mocked.__txForTest.routeBook.updateMany.mockResolvedValue({ count: 0 })
+  it('锁行时 userId 不匹配（P2025）→ not_found', async () => {
+    mocked.__txForTest.routeBook.update.mockRejectedValueOnce(Object.assign(new Error('record not found'), { code: 'P2025' }))
 
     const repo = new PrismaRouteBookRepo()
-    const promise = repo.reorderItems('rb-1', 'u1', 'd1', ['a'])
-    await expect(promise).rejects.toBeInstanceOf(RouteBookRuleError)
-    await expect(promise).rejects.toMatchObject({ reason: 'stale' })
+    await expect(repo.reorderItems('rb-1', 'u2', 'd1', ['a'])).rejects.toMatchObject({ reason: 'not_found' })
+    expect(mocked.__txForTest.routeBookItem.update).not.toHaveBeenCalled()
+  })
+
+  it('目标 dayId 不属于本行程本 → invalid，不做任何条目写入', async () => {
+    mocked.__txForTest.routeBookDay.findFirst.mockResolvedValue(null)
+
+    const repo = new PrismaRouteBookRepo()
+    await expect(repo.reorderItems('rb-1', 'u1', '别家的天', ['a'])).rejects.toMatchObject({
+      reason: 'invalid',
+      message: '目标天不存在',
+    })
+    expect(mocked.__txForTest.routeBookItem.update).not.toHaveBeenCalled()
   })
 })
 

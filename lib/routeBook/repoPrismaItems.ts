@@ -1,18 +1,26 @@
 import { DAY_COUNT_MAX, PLACE_LIMIT, RouteBookRuleError, assertAnchorOrder, assertDayLimit, assertLodgingNoOverlap } from './rules'
 import type {
   ItemCreateInput,
+  ItemCreateResult,
+  ItemListResult,
   ItemUpdateInput,
   LodgingInput,
   PlaceInput,
   RouteBookItem,
   RouteBookLodging,
   RouteBookPlace,
+  WriteReceipt,
   WithBookUpdatedAt,
 } from './repo'
-import { loadBookItemsTx, loadDayItemsTx, requireBookTx, rewriteDayOrderTx, toLodging, toPlace, toItem, touchTx, type Tx } from './repoPrismaShared'
+import { loadBookItemsTx, loadDayItemsTx, lockBookTx, rewriteDayOrderTx, toLodging, toPlace, toItem, touchTx, type Tx } from './repoPrismaShared'
 
 function countVisitable(items: Pick<RouteBookItem, 'kind'>[]): number {
   return items.filter((item) => item.kind === 'point' || item.kind === 'place').length
+}
+
+async function requireDayTx(tx: Tx, routeBookId: string, dayId: string): Promise<void> {
+  const day = await tx.routeBookDay.findFirst({ where: { id: dayId, routeBookId } })
+  if (!day) throw new RouteBookRuleError('invalid', '目标天不存在')
 }
 
 async function assertItemShapeTx(tx: Tx, routeBookId: string, input: ItemCreateInput): Promise<void> {
@@ -37,12 +45,11 @@ export async function createItemTx(
   userId: string,
   input: ItemCreateInput,
   now: Date
-): Promise<WithBookUpdatedAt<RouteBookItem>> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+): Promise<ItemCreateResult> {
+  await lockBookTx(tx, routeBookId, userId, now)
 
   if (input.dayId !== null) {
-    const day = await tx.routeBookDay.findFirst({ where: { id: input.dayId, routeBookId } })
-    if (!day) throw new RouteBookRuleError('invalid', '目标天不存在')
+    await requireDayTx(tx, routeBookId, input.dayId)
   }
 
   await assertItemShapeTx(tx, routeBookId, input)
@@ -51,7 +58,9 @@ export async function createItemTx(
     const existing = await tx.routeBookItem.findFirst({
       where: { routeBookId, dayId: input.dayId, kind: 'point', pointId: input.pointId },
     })
-    if (existing) return { ...toItem(existing), bookUpdatedAt: book.updatedAt }
+    if (existing) {
+      return { item: toItem(existing), items: await loadDayItemsTx(tx, routeBookId, input.dayId), bookUpdatedAt: now }
+    }
   }
 
   const group = await loadDayItemsTx(tx, routeBookId, input.dayId)
@@ -80,8 +89,9 @@ export async function createItemTx(
   })
 
   await rewriteDayOrderTx(tx, routeBookId, input.dayId)
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
-  return { ...toItem(created), bookUpdatedAt: now }
+  const items = await loadDayItemsTx(tx, routeBookId, input.dayId)
+  const item = items.find((row) => row.id === created.id) ?? toItem(created)
+  return { item, items, bookUpdatedAt: now }
 }
 
 export async function updateItemTx(
@@ -92,7 +102,7 @@ export async function updateItemTx(
   data: ItemUpdateInput,
   now: Date
 ): Promise<WithBookUpdatedAt<RouteBookItem> | null> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookItem.findFirst({ where: { id: itemId, routeBookId } })
   if (!existing) return null
 
@@ -115,19 +125,17 @@ export async function updateItemTx(
     assertAnchorOrder(dayItems)
   }
 
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toItem(updated), bookUpdatedAt: now }
 }
 
-export async function deleteItemTx(tx: Tx, routeBookId: string, userId: string, itemId: string, now: Date): Promise<boolean> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+export async function deleteItemTx(tx: Tx, routeBookId: string, userId: string, itemId: string, now: Date): Promise<WriteReceipt | null> {
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookItem.findFirst({ where: { id: itemId, routeBookId } })
-  if (!existing) return false
+  if (!existing) return null
 
   await tx.routeBookItem.delete({ where: { id: itemId } })
   await rewriteDayOrderTx(tx, routeBookId, existing.dayId)
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
-  return true
+  return { bookUpdatedAt: now }
 }
 
 export async function reorderItemsTx(
@@ -136,12 +144,12 @@ export async function reorderItemsTx(
   userId: string,
   dayId: string | null,
   orderedItemIds: string[],
-  expectedUpdatedAt: Date | undefined,
   now: Date
-): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
-  const book = await requireBookTx(tx, routeBookId, userId)
-  if (expectedUpdatedAt && expectedUpdatedAt.getTime() !== book.updatedAt.getTime()) {
-    throw new RouteBookRuleError('stale', '行程已在别处修改，请刷新')
+): Promise<ItemListResult> {
+  await lockBookTx(tx, routeBookId, userId, now)
+
+  if (dayId !== null) {
+    await requireDayTx(tx, routeBookId, dayId)
   }
 
   const bookItems = await loadBookItemsTx(tx, routeBookId)
@@ -174,6 +182,8 @@ export async function reorderItemsTx(
   for (let index = 0; index < orderedItemIds.length; index++) {
     const orderedId = orderedItemIds[index]
     if (!orderedId) continue
+    const previous = byId.get(orderedId)
+    if (!previous || (previous.dayId === dayId && previous.sortOrder === index)) continue
     await tx.routeBookItem.update({
       where: { id: orderedId },
       data: { dayId, sortOrder: index },
@@ -187,9 +197,8 @@ export async function reorderItemsTx(
 
   assertAnchorOrder(await loadDayItemsTx(tx, routeBookId, dayId))
 
-  const updatedAt = await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   const items = await loadBookItemsTx(tx, routeBookId)
-  return { items, updatedAt }
+  return { items, bookUpdatedAt: now }
 }
 
 export async function replaceDayOrderTx(
@@ -199,8 +208,8 @@ export async function replaceDayOrderTx(
   dayId: string,
   orderedItemIds: string[],
   now: Date
-): Promise<{ items: RouteBookItem[]; updatedAt: Date }> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+): Promise<ItemListResult> {
+  await lockBookTx(tx, routeBookId, userId, now)
   const dayItems = await loadDayItemsTx(tx, routeBookId, dayId)
   const dayIds = new Set(dayItems.map((item) => item.id))
   const orderedSet = new Set(orderedItemIds)
@@ -208,9 +217,12 @@ export async function replaceDayOrderTx(
     throw new RouteBookRuleError('invalid', '列表与当前条目不一致，请刷新')
   }
 
+  const previousById = new Map(dayItems.map((item) => [item.id, item]))
   for (let index = 0; index < orderedItemIds.length; index++) {
     const orderedId = orderedItemIds[index]
     if (!orderedId) continue
+    const previous = previousById.get(orderedId)
+    if (!previous || previous.sortOrder === index) continue
     await tx.routeBookItem.update({
       where: { id: orderedId },
       data: { sortOrder: index },
@@ -218,13 +230,12 @@ export async function replaceDayOrderTx(
   }
   await rewriteDayOrderTx(tx, routeBookId, dayId)
 
-  const updatedAt = await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   const items = await loadBookItemsTx(tx, routeBookId)
-  return { items, updatedAt }
+  return { items, bookUpdatedAt: now }
 }
 
 export async function createPlaceTx(tx: Tx, routeBookId: string, userId: string, input: PlaceInput, now: Date): Promise<WithBookUpdatedAt<RouteBookPlace>> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   const count = await tx.routeBookPlace.count({ where: { routeBookId } })
   if (count >= PLACE_LIMIT) {
     throw new RouteBookRuleError('place_limit', `自定义点最多 ${PLACE_LIMIT} 个`)
@@ -241,7 +252,6 @@ export async function createPlaceTx(tx: Tx, routeBookId: string, userId: string,
       note: input.note ?? null,
     },
   })
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toPlace(created), bookUpdatedAt: now }
 }
 
@@ -253,7 +263,7 @@ export async function updatePlaceTx(
   input: Partial<PlaceInput>,
   now: Date
 ): Promise<WithBookUpdatedAt<RouteBookPlace> | null> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookPlace.findFirst({ where: { id: placeId, routeBookId } })
   if (!existing) return null
 
@@ -268,14 +278,13 @@ export async function updatePlaceTx(
       ...(input.note !== undefined ? { note: input.note } : {}),
     },
   })
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toPlace(updated), bookUpdatedAt: now }
 }
 
-export async function deletePlaceTx(tx: Tx, routeBookId: string, userId: string, placeId: string, now: Date): Promise<boolean> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+export async function deletePlaceTx(tx: Tx, routeBookId: string, userId: string, placeId: string, now: Date): Promise<WriteReceipt | null> {
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookPlace.findFirst({ where: { id: placeId, routeBookId } })
-  if (!existing) return false
+  if (!existing) return null
 
   const affectedItems = await tx.routeBookItem.findMany({
     where: { routeBookId, placeId },
@@ -289,8 +298,7 @@ export async function deletePlaceTx(tx: Tx, routeBookId: string, userId: string,
   for (const dayId of affectedDays) {
     await rewriteDayOrderTx(tx, routeBookId, dayId)
   }
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
-  return true
+  return { bookUpdatedAt: now }
 }
 
 async function assertLodgingShapeTx(tx: Tx, routeBookId: string, input: Partial<LodgingInput> & { placeId?: string }): Promise<void> {
@@ -311,7 +319,7 @@ async function assertLodgingShapeTx(tx: Tx, routeBookId: string, input: Partial<
 }
 
 export async function createLodgingTx(tx: Tx, routeBookId: string, userId: string, input: LodgingInput, now: Date): Promise<WithBookUpdatedAt<RouteBookLodging>> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   await assertLodgingShapeTx(tx, routeBookId, input)
 
   const created = await tx.routeBookLodging.create({
@@ -331,7 +339,6 @@ export async function createLodgingTx(tx: Tx, routeBookId: string, userId: strin
     toLodging(created)
   )
 
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toLodging(created), bookUpdatedAt: now }
 }
 
@@ -343,7 +350,7 @@ export async function updateLodgingTx(
   input: Partial<LodgingInput>,
   now: Date
 ): Promise<WithBookUpdatedAt<RouteBookLodging> | null> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookLodging.findFirst({ where: { id: lodgingId, routeBookId } })
   if (!existing) return null
 
@@ -374,16 +381,14 @@ export async function updateLodgingTx(
       note: candidate.note,
     },
   })
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toLodging(updated), bookUpdatedAt: now }
 }
 
-export async function deleteLodgingTx(tx: Tx, routeBookId: string, userId: string, lodgingId: string, now: Date): Promise<boolean> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+export async function deleteLodgingTx(tx: Tx, routeBookId: string, userId: string, lodgingId: string, now: Date): Promise<WriteReceipt | null> {
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookLodging.findFirst({ where: { id: lodgingId, routeBookId } })
-  if (!existing) return false
+  if (!existing) return null
 
   await tx.routeBookLodging.delete({ where: { id: lodgingId } })
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
-  return true
+  return { bookUpdatedAt: now }
 }

@@ -20,7 +20,7 @@ export function createPlaceHandlers(deps: RouteBookApiDeps) {
 
       try {
         const place = await deps.repo.createPlace(routeBookId, userId, parsed.data)
-        return NextResponse.json({ ok: true, place })
+        return NextResponse.json({ ok: true, place, bookUpdatedAt: place.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -44,7 +44,7 @@ export function createPlaceHandlers(deps: RouteBookApiDeps) {
       try {
         const place = await deps.repo.updatePlace(routeBookId, userId, placeId, parsed.data)
         if (!place) return NextResponse.json({ error: '自定义点不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true, place })
+        return NextResponse.json({ ok: true, place, bookUpdatedAt: place.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -62,7 +62,7 @@ export function createPlaceHandlers(deps: RouteBookApiDeps) {
       try {
         const deleted = await deps.repo.deletePlace(routeBookId, userId, placeId)
         if (!deleted) return NextResponse.json({ error: '自定义点不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true })
+        return NextResponse.json({ ok: true, bookUpdatedAt: deleted.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }

@@ -1,9 +1,9 @@
 import { RouteBookRuleError, computeDayDate, shiftLodgingForDelete, shiftLodgingForInsert } from './rules'
-import type { RouteBookDay, TravelMode, WithBookUpdatedAt } from './repo'
-import { requireBookTx, toDay, touchTx, type Tx } from './repoPrismaShared'
+import type { DayReorderResult, RouteBookDay, TravelMode, WriteReceipt, WithBookUpdatedAt } from './repo'
+import { lockBookTx, toDay, touchTx, type Tx } from './repoPrismaShared'
 
 export async function insertDayTx(tx: Tx, routeBookId: string, userId: string, afterDayIndex: number, now: Date): Promise<WithBookUpdatedAt<RouteBookDay>> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  const book = await lockBookTx(tx, routeBookId, userId, now)
   if (afterDayIndex < 0 || afterDayIndex > book.dayCount) {
     throw new RouteBookRuleError('invalid', '插入位置无效')
   }
@@ -40,7 +40,7 @@ export async function insertDayTx(tx: Tx, routeBookId: string, userId: string, a
       date: computeDayDate(book.startDate, afterDayIndex + 1),
     },
   })
-  await touchTx(tx, routeBookId, userId, now, { dayCount: book.dayCount + 1 }, book.updatedAt)
+  await touchTx(tx, routeBookId, userId, now, { dayCount: book.dayCount + 1 })
   return { ...toDay(created), bookUpdatedAt: now }
 }
 
@@ -52,7 +52,7 @@ export async function updateDayTx(
   data: { title?: string | null; defaultTravelMode?: TravelMode },
   now: Date
 ): Promise<WithBookUpdatedAt<RouteBookDay> | null> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+  await lockBookTx(tx, routeBookId, userId, now)
   const existing = await tx.routeBookDay.findFirst({ where: { id: dayId, routeBookId } })
   if (!existing) return null
 
@@ -63,14 +63,13 @@ export async function updateDayTx(
       ...(data.defaultTravelMode !== undefined ? { defaultTravelMode: data.defaultTravelMode } : {}),
     },
   })
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   return { ...toDay(updated), bookUpdatedAt: now }
 }
 
-export async function deleteDayTx(tx: Tx, routeBookId: string, userId: string, dayId: string, now: Date): Promise<boolean> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+export async function deleteDayTx(tx: Tx, routeBookId: string, userId: string, dayId: string, now: Date): Promise<WriteReceipt | null> {
+  const book = await lockBookTx(tx, routeBookId, userId, now)
   const day = await tx.routeBookDay.findFirst({ where: { id: dayId, routeBookId } })
-  if (!day) return false
+  if (!day) return null
 
   if (book.dayCount <= 1) {
     throw new RouteBookRuleError('invalid', '至少要保留一天')
@@ -106,12 +105,12 @@ export async function deleteDayTx(tx: Tx, routeBookId: string, userId: string, d
     }
   }
 
-  await touchTx(tx, routeBookId, userId, now, { dayCount: book.dayCount - 1 }, book.updatedAt)
-  return true
+  await touchTx(tx, routeBookId, userId, now, { dayCount: book.dayCount - 1 })
+  return { bookUpdatedAt: now }
 }
 
-export async function reorderDaysTx(tx: Tx, routeBookId: string, userId: string, orderedDayIds: string[], now: Date): Promise<RouteBookDay[]> {
-  const book = await requireBookTx(tx, routeBookId, userId)
+export async function reorderDaysTx(tx: Tx, routeBookId: string, userId: string, orderedDayIds: string[], now: Date): Promise<DayReorderResult> {
+  const book = await lockBookTx(tx, routeBookId, userId, now)
   const days = await tx.routeBookDay.findMany({ where: { routeBookId } })
   const currentIds = new Set(days.map((day) => day.id))
   const orderedSet = new Set(orderedDayIds)
@@ -129,7 +128,6 @@ export async function reorderDaysTx(tx: Tx, routeBookId: string, userId: string,
     )
   )
 
-  await touchTx(tx, routeBookId, userId, now, {}, book.updatedAt)
   const out = await tx.routeBookDay.findMany({ where: { routeBookId }, orderBy: { dayIndex: 'asc' } })
-  return out.map(toDay)
+  return { days: out.map(toDay), bookUpdatedAt: now }
 }

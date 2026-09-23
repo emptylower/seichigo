@@ -20,7 +20,7 @@ export function createDayHandlers(deps: RouteBookApiDeps) {
 
       try {
         const day = await deps.repo.insertDay(routeBookId, userId, parsed.data.afterDayIndex)
-        return NextResponse.json({ ok: true, day })
+        return NextResponse.json({ ok: true, day, bookUpdatedAt: day.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -40,8 +40,8 @@ export function createDayHandlers(deps: RouteBookApiDeps) {
       }
 
       try {
-        const days = await deps.repo.reorderDays(routeBookId, userId, parsed.data.orderedDayIds)
-        return NextResponse.json({ ok: true, days })
+        const result = await deps.repo.reorderDays(routeBookId, userId, parsed.data.orderedDayIds)
+        return NextResponse.json({ ok: true, days: result.days, bookUpdatedAt: result.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -65,7 +65,7 @@ export function createDayHandlers(deps: RouteBookApiDeps) {
       try {
         const day = await deps.repo.updateDay(routeBookId, userId, dayId, parsed.data)
         if (!day) return NextResponse.json({ error: '天不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true, day })
+        return NextResponse.json({ ok: true, day, bookUpdatedAt: day.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -83,7 +83,7 @@ export function createDayHandlers(deps: RouteBookApiDeps) {
       try {
         const deleted = await deps.repo.deleteDay(routeBookId, userId, dayId)
         if (!deleted) return NextResponse.json({ error: '天不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true })
+        return NextResponse.json({ ok: true, bookUpdatedAt: deleted.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }

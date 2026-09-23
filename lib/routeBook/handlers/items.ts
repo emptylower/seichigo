@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { RouteBookApiDeps } from '@/lib/routeBook/api'
-import type { Prisma } from '@prisma/client'
 import { routeBookErrorResponse } from './errors'
 import { createItemSchema, reorderItemsSchema, updateItemSchema } from './schemas'
 
@@ -8,7 +7,7 @@ type ItemRouteCtx = { params: Promise<{ id: string; itemId?: string }> }
 
 export function createItemHandlers(deps: RouteBookApiDeps) {
   return {
-    /** POST /api/me/routebooks/[id]/items */
+    /** POST /api/me/routebooks/[id]/items — 响应带目标天完整条目（契约 2） */
     async POST(req: Request, ctx: ItemRouteCtx) {
       const session = await deps.getSession()
       const userId = session?.user?.id
@@ -31,18 +30,22 @@ export function createItemHandlers(deps: RouteBookApiDeps) {
           note: parsed.data.note,
           timeStart: parsed.data.timeStart,
           index: parsed.data.index,
-          payload: (parsed.data.payload as Prisma.JsonValue | undefined) ?? undefined,
         })
         if (parsed.data.kind === 'point' && parsed.data.pointId) {
           await deps.pointPoolRepo.delete(userId, parsed.data.pointId)
         }
-        return NextResponse.json({ ok: true, item: created })
+        return NextResponse.json({
+          ok: true,
+          item: created.item,
+          items: created.items,
+          bookUpdatedAt: created.bookUpdatedAt.toISOString(),
+        })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
     },
 
-    /** POST /api/me/routebooks/[id]/items/reorder */
+    /** POST /api/me/routebooks/[id]/items/reorder — 返回整本全部条目（契约 3） */
     async REORDER(req: Request, ctx: { params: Promise<{ id: string }> }) {
       const session = await deps.getSession()
       const userId = session?.user?.id
@@ -56,14 +59,8 @@ export function createItemHandlers(deps: RouteBookApiDeps) {
       }
 
       try {
-        const result = await deps.repo.reorderItems(
-          routeBookId,
-          userId,
-          parsed.data.dayId,
-          parsed.data.orderedItemIds,
-          parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : undefined
-        )
-        return NextResponse.json({ ok: true, items: result.items, updatedAt: result.updatedAt })
+        const result = await deps.repo.reorderItems(routeBookId, userId, parsed.data.dayId, parsed.data.orderedItemIds)
+        return NextResponse.json({ ok: true, items: result.items, bookUpdatedAt: result.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -87,7 +84,7 @@ export function createItemHandlers(deps: RouteBookApiDeps) {
       try {
         const updated = await deps.repo.updateItem(routeBookId, userId, itemId, parsed.data)
         if (!updated) return NextResponse.json({ error: '条目不存在' }, { status: 404 })
-        return NextResponse.json({ ok: true, item: updated })
+        return NextResponse.json({ ok: true, item: updated, bookUpdatedAt: updated.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
@@ -117,7 +114,7 @@ export function createItemHandlers(deps: RouteBookApiDeps) {
             await deps.pointPoolRepo.upsert(userId, item.pointId)
           }
         }
-        return NextResponse.json({ ok: true })
+        return NextResponse.json({ ok: true, bookUpdatedAt: deleted.bookUpdatedAt.toISOString() })
       } catch (err) {
         return routeBookErrorResponse(err)
       }
