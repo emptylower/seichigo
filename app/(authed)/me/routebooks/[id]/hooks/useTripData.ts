@@ -14,6 +14,7 @@ import { tr } from '../../i18n'
 import { usePointPreviews } from './usePointPreviews'
 import { useUndoRing } from './useUndoRing'
 import { useTripMutations } from './useTripMutations'
+import type { SetDetail } from './useMutationBase'
 
 export type {
   CreateItemInput,
@@ -24,7 +25,7 @@ export type {
 } from './tripDataTypes'
 
 export function useTripData(id: string, locale: SupportedLocale = 'zh') {
-  const [detail, setDetail] = useState<RouteBookDetail | null>(null)
+  const [detail, setDetailState] = useState<RouteBookDetail | null>(null)
   const [routeBooks, setRouteBooks] = useState<RouteBookSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +40,16 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
 
   const detailRef = useRef<RouteBookDetail | null>(null)
   detailRef.current = detail
+  /**
+   * 写 state 的同时同步写 detailRef：写操作链式调用（如 addItem → updateItem）时，
+   * 下一步读 detailRef 必须看到上一步的结果，而不是等重渲染后才更新的旧快照；
+   * 否则下一步的乐观 setDetail({...prev}) 会用旧快照把服务端替换覆盖回去（冒烟 #11 残留 temp id）
+   */
+  const setDetail = useCallback<SetDetail>((value) => {
+    const next = typeof value === 'function' ? value(detailRef.current) : value
+    detailRef.current = next
+    setDetailState(next)
+  }, [])
   const toastTimerRef = useRef<number | null>(null)
 
   const showToast = useCallback((message: string) => {
