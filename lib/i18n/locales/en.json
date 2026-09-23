@@ -1187,6 +1187,37 @@
       "lodgingTitle": "Lodging for the day",
       "collapse": "Collapse",
       "expand": "Expand"
+    },
+    "note": {
+      "add": "Note",
+      "dialogTitle": "Add note",
+      "titleLabel": "Title",
+      "titlePlaceholder": "e.g. meeting point, ticket reminder…",
+      "detailLabel": "Details (optional)",
+      "iconLabel": "Icon",
+      "colorLabel": "Color",
+      "timeLabel": "Time (optional)",
+      "submit": "Add note",
+      "icon": {
+        "info": "Info",
+        "clock": "Time",
+        "train": "Train",
+        "utensils": "Food",
+        "ticket": "Ticket",
+        "camera": "Photo",
+        "shopping-bag": "Shopping",
+        "alert": "Alert",
+        "star": "Star",
+        "bookmark": "Bookmark"
+      },
+      "color": {
+        "gray": "Gray",
+        "pink": "Pink",
+        "amber": "Amber",
+        "green": "Green",
+        "sky": "Sky",
+        "violet": "Violet"
+      }
     }
   }
 }

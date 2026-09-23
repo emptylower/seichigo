@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles } from 'lucide-react'
+import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles, StickyNote } from 'lucide-react'
 import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildGoogleDirectionsUrl, computeVisitOrder, dayLabel, itemDragId } from '../utils'
@@ -38,6 +38,8 @@ type DayBlockProps = {
   lodgings?: LodgingRecord[]
   onAddLodging?: (dayIndex: number) => void
   onEditLodging?: (lodgingId: string) => void
+  /** B2：「+ 备注」打开备注编辑弹窗 */
+  onAddNote?: (dayId: string) => void
   expanded: boolean
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
@@ -69,6 +71,7 @@ export function DayBlock({
   lodgings = [],
   onAddLodging,
   onEditLodging,
+  onAddNote,
   expanded,
   onToggleExpanded,
   dropBlocked = false,
@@ -262,6 +265,17 @@ export function DayBlock({
               </div>
             ) : null}
           </SortableContext>
+
+          {onAddNote ? (
+            <button
+              type="button"
+              className="mt-1 inline-flex min-h-8 items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-slate-500 transition hover:bg-pink-100/60 hover:text-slate-700"
+              onClick={() => onAddNote(day.id)}
+            >
+              <StickyNote className="h-3.5 w-3.5 text-brand-400" />
+              {tr('routebook.note.add', locale)}
+            </button>
+          ) : null}
 
           {showToolbar ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl border border-pink-100/70 bg-pink-50/40 px-2 py-1.5">

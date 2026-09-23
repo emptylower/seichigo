@@ -1187,6 +1187,37 @@
       "lodgingTitle": "当天住宿",
       "collapse": "收起",
       "expand": "展开"
+    },
+    "note": {
+      "add": "备注",
+      "dialogTitle": "添加备注",
+      "titleLabel": "标题",
+      "titlePlaceholder": "例：集合地点、取票提醒…",
+      "detailLabel": "详情（可选）",
+      "iconLabel": "图标",
+      "colorLabel": "颜色",
+      "timeLabel": "时间（可选）",
+      "submit": "添加备注",
+      "icon": {
+        "info": "信息",
+        "clock": "时间",
+        "train": "电车",
+        "utensils": "餐饮",
+        "ticket": "票券",
+        "camera": "拍照",
+        "shopping-bag": "购物",
+        "alert": "注意",
+        "star": "收藏",
+        "bookmark": "书签"
+      },
+      "color": {
+        "gray": "灰色",
+        "pink": "粉色",
+        "amber": "琥珀",
+        "green": "绿色",
+        "sky": "天蓝",
+        "violet": "紫色"
+      }
     }
   }
 }

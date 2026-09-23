@@ -65,6 +65,8 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     updatePlace: trip.updatePlace,
     createLodging: trip.createLodging,
     updateLodging: trip.updateLodging,
+    addItem: trip.addItem,
+    updateItem: trip.updateItem,
     locale,
   })
   const dnd = useTripDnd({
@@ -306,6 +308,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onOpenItemDetail={handleOpenItemDetail}
       onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
       onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+      onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
       limitBlockedDayId={dnd.limitBlockedDayId}
       legsFailedByDay={failedDayIds}
       onRetryLegs={retryDay}
@@ -563,6 +566,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
                     lodgings={detail.lodgings}
                     onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
                     onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+                    onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
                     expanded
                     onToggleExpanded={() => {}}
                     legsFailed={Boolean(failedDayIds[selectedDay.id])}

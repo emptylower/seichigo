@@ -1187,6 +1187,37 @@
       "lodgingTitle": "当日の宿泊",
       "collapse": "折りたたむ",
       "expand": "展開"
+    },
+    "note": {
+      "add": "メモ",
+      "dialogTitle": "メモを追加",
+      "titleLabel": "タイトル",
+      "titlePlaceholder": "例：集合場所・チケット受取…",
+      "detailLabel": "詳細（任意）",
+      "iconLabel": "アイコン",
+      "colorLabel": "色",
+      "timeLabel": "時刻（任意）",
+      "submit": "メモを追加",
+      "icon": {
+        "info": "情報",
+        "clock": "時刻",
+        "train": "電車",
+        "utensils": "食事",
+        "ticket": "チケット",
+        "camera": "撮影",
+        "shopping-bag": "買い物",
+        "alert": "注意",
+        "star": "お気に入り",
+        "bookmark": "ブックマーク"
+      },
+      "color": {
+        "gray": "グレー",
+        "pink": "ピンク",
+        "amber": "アンバー",
+        "green": "緑",
+        "sky": "空色",
+        "violet": "紫"
+      }
     }
   }
 }

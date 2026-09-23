@@ -3,9 +3,11 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { PlaceKind, RouteBookDetail } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { LodgingInput, PlaceInput } from '../hooks/tripDataTypes'
+import type { CreateItemInput, LodgingInput, PlaceInput, UpdateItemInput } from '../hooks/tripDataTypes'
+import { dayLabel } from '../utils'
 import { PlaceEditorDialog } from './PlaceEditorDialog'
 import { LodgingDialog } from './LodgingDialog'
+import { NoteEditorDialog } from './NoteEditorDialog'
 
 type PlaceDialogState = {
   type: 'place'
@@ -23,12 +25,13 @@ type LodgingDialogState = {
   presetPlaceId: string | null
 }
 
-type DialogState = PlaceDialogState | LodgingDialogState
+type DialogState = PlaceDialogState | LodgingDialogState | { type: 'note'; dayId: string }
 
 export type DialogsHostApi = {
   host: ReactNode
   openPlaceEditor: (opts?: { placeId?: string; presetKind?: PlaceKind; initialCoords?: { lat: number; lng: number } }) => void
   openLodgingEditor: (opts?: { lodgingId?: string; presetDayIndex?: number; presetPlaceId?: string }) => void
+  openNoteEditor: (dayId: string) => void
 }
 
 /** 弹窗编排：自定义点 / 住宿（备注、天顺序在各自批次里挂进来） */
@@ -38,6 +41,8 @@ export function useDialogsHost({
   updatePlace,
   createLodging,
   updateLodging,
+  addItem,
+  updateItem,
   locale = 'zh',
 }: {
   detail: RouteBookDetail | null
@@ -45,6 +50,8 @@ export function useDialogsHost({
   updatePlace: (placeId: string, input: Partial<PlaceInput>) => Promise<boolean>
   createLodging: (input: LodgingInput) => Promise<string | null>
   updateLodging: (lodgingId: string, input: Partial<LodgingInput>) => Promise<boolean>
+  addItem: (dayId: string | null, input: CreateItemInput) => Promise<string | null>
+  updateItem: (itemId: string, data: UpdateItemInput) => Promise<boolean>
   locale?: SupportedLocale
 }): DialogsHostApi {
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -69,6 +76,10 @@ export function useDialogsHost({
       presetDayIndex: opts?.presetDayIndex ?? null,
       presetPlaceId: opts?.presetPlaceId ?? null,
     })
+  }, [])
+
+  const openNoteEditor = useCallback<DialogsHostApi['openNoteEditor']>((dayId) => {
+    setDialog({ type: 'note', dayId })
   }, [])
 
   // 住宿 → 新建住宿点 → 回到住宿：PlaceEditorDialog 提交成功后会调 onClose，
@@ -107,6 +118,32 @@ export function useDialogsHost({
       )
     }
 
+    if (dialog.type === 'note') {
+      const day = detail.days.find((row) => row.id === dialog.dayId) ?? null
+      return (
+        <NoteEditorDialog
+          open
+          dayLabelText={day ? dayLabel(day, day.dayIndex, locale) : undefined}
+          locale={locale}
+          onClose={close}
+          onSubmit={async (input) => {
+            // createItemSchema 不收 icon/color：先建条目再 PATCH 图标与颜色
+            const newId = await addItem(dialog.dayId, {
+              kind: 'note',
+              title: input.title,
+              note: input.note ?? undefined,
+              timeStart: input.timeStart ?? undefined,
+            })
+            if (!newId) return false
+            if (input.icon !== 'info' || input.color !== 'gray') {
+              return updateItem(newId, { icon: input.icon, color: input.color })
+            }
+            return true
+          }}
+        />
+      )
+    }
+
     const lodging = dialog.lodgingId ? detail.lodgings.find((row) => row.id === dialog.lodgingId) ?? null : null
     if (dialog.lodgingId && !lodging) return null
     return (
@@ -127,7 +164,7 @@ export function useDialogsHost({
         }}
       />
     )
-  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging])
+  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging, addItem, updateItem])
 
-  return { host, openPlaceEditor, openLodgingEditor }
+  return { host, openPlaceEditor, openLodgingEditor, openNoteEditor }
 }
