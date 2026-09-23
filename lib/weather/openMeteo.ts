@@ -1,7 +1,9 @@
 /**
  * Open-Meteo 每日天气预报（免 key）。
  * - 时区固定 Asia/Tokyo（行程本主要面向日本巡礼）。
- * - 预报窗口 16 天：日期裁剪到「今天 .. 今天+15」（东京当地日）；窗口外交集返回 []。
+ * - 请求固定 `forecast_days=16`（不带 start_date/end_date——Open-Meteo 以 UTC 日期校验
+ *   日期窗口，JST 0–9 点时东京今天 = UTC 明天，带日期会整段 400），再在本地按
+ *   `[from,to]` 与「今天 .. 今天+15」（东京当地日）过滤。
  * - 任何失败（网络/解析/非 2xx）返回 []，由调用方按「无天气」降级。
  */
 
@@ -11,6 +13,7 @@ export type FetchDailyForecastDeps = { now?: () => Date; fetchImpl?: typeof fetc
 
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast'
 const TIMEZONE = 'Asia/Tokyo'
+const FORECAST_DAYS = 16
 const FORECAST_WINDOW_DAYS = 15 // 今天 + 15 = 16 天
 const TIMEOUT_MS = 8000
 
@@ -35,8 +38,10 @@ function addDays(dateStr: string, days: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
 
-function numArray(v: unknown): number[] {
-  return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)) : []
+/** 保持索引对齐：非有限数值映射为 undefined（过滤会错位到别的日期） */
+function numArray(v: unknown): (number | undefined)[] {
+  if (!Array.isArray(v)) return []
+  return v.map((x) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined))
 }
 
 function strArray(v: unknown): string[] {
@@ -60,7 +65,7 @@ export async function fetchDailyForecast(
   const url =
     `${FORECAST_BASE}?latitude=${lat}&longitude=${lng}` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min` +
-    `&timezone=${encodeURIComponent(TIMEZONE)}&start_date=${start}&end_date=${end}`
+    `&timezone=${encodeURIComponent(TIMEZONE)}&forecast_days=${FORECAST_DAYS}`
 
   try {
     const fetchImpl = deps.fetchImpl ?? fetch
@@ -76,12 +81,14 @@ export async function fetchDailyForecast(
     const tMin = numArray(daily.temperature_2m_min)
     const days: WeatherDay[] = []
     for (let i = 0; i < time.length; i++) {
+      const date = time[i]!
+      if (date < start || date > end) continue
       const code = codes[i]
       const max = tMax[i]
       const min = tMin[i]
       if (code === undefined || max === undefined || min === undefined) continue
       days.push({
-        date: time[i]!,
+        date,
         tMax: Math.round(max * 10) / 10,
         tMin: Math.round(min * 10) / 10,
         code,

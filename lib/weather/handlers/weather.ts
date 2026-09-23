@@ -14,8 +14,9 @@ export type WeatherApiDeps = {
 }
 
 const querySchema = z.object({
-  lat: z.coerce.number().min(-90).max(90),
-  lng: z.coerce.number().min(-180).max(180),
+  /** 缺失参数不能被 z.coerce.number() 变成 0（'' → 0 会绕过范围校验） */
+  lat: z.string().min(1).pipe(z.coerce.number().min(-90).max(90)),
+  lng: z.string().min(1).pipe(z.coerce.number().min(-180).max(180)),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为 YYYY-MM-DD'),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为 YYYY-MM-DD'),
 })
@@ -53,8 +54,8 @@ export function createWeatherHandlers(deps: WeatherApiDeps) {
 
       const url = new URL(req.url)
       const parsed = querySchema.safeParse({
-        lat: url.searchParams.get('lat') ?? '',
-        lng: url.searchParams.get('lng') ?? '',
+        lat: url.searchParams.get('lat') ?? undefined,
+        lng: url.searchParams.get('lng') ?? undefined,
         from: url.searchParams.get('from') ?? '',
         to: url.searchParams.get('to') ?? '',
       })
