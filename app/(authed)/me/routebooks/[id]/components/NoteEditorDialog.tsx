@@ -140,6 +140,7 @@ export function NoteEditorDialog({ open, item = null, dayLabelText, onSubmit, on
             <input
               type="text"
               value={title}
+              maxLength={120}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={tr('routebook.note.titlePlaceholder', locale)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
@@ -152,6 +153,7 @@ export function NoteEditorDialog({ open, item = null, dayLabelText, onSubmit, on
               value={note}
               onChange={(event) => setNote(event.target.value)}
               rows={2}
+              maxLength={2000}
               className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
             />
           </label>

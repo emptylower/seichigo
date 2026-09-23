@@ -394,6 +394,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onCreatePlace={() => dialogs.openPlaceEditor()}
       onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
       onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
+      onNeedDay={() => trip.showToast(tr('routebook.pool.pickDayFirst', locale))}
       compact={isMobile}
       enableDrag={!isMobile}
       locale={locale}

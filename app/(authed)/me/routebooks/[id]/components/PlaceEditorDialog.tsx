@@ -15,7 +15,7 @@ export type PlaceEditorSubmit = {
   note: string | null
 }
 
-type GeocodeResult = { title: string; address: string; lat: number; lng: number }
+type GeocodeResult = { title: string; address: string | null; lat: number; lng: number }
 
 const PLACE_KINDS: PlaceKind[] = ['lodging', 'station', 'restaurant', 'other']
 
@@ -196,6 +196,7 @@ export function PlaceEditorDialog({
             <input
               type="text"
               value={title}
+              maxLength={120}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={tr('routebook.place.titlePlaceholder', locale)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
@@ -210,6 +211,7 @@ export function PlaceEditorDialog({
                 <input
                   type="text"
                   value={address}
+                  maxLength={300}
                   onChange={(event) => {
                     setAddress(event.target.value)
                     setQuery(event.target.value)
@@ -274,6 +276,7 @@ export function PlaceEditorDialog({
               onChange={(event) => setNote(event.target.value)}
               placeholder={tr('routebook.place.notePlaceholder', locale)}
               rows={2}
+              maxLength={2000}
               className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
             />
           </label>

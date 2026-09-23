@@ -235,6 +235,7 @@ function PlaceRow({
 }: {
   place: PlaceRecord
   selectedDayId: string | null
+  /** 没选天时也会传入：点击由上层提示「先选一天」 */
   onAddToDay?: () => void
   onEdit?: () => void
   onDelete?: () => void
@@ -259,8 +260,7 @@ function PlaceRow({
           type="button"
           aria-label={tr('routebook.pool.addPlaceToDay', locale)}
           title={selectedDayId ? tr('routebook.pool.moveToSelectedDayHint', locale) : tr('routebook.pool.pickDayFirst', locale)}
-          disabled={!selectedDayId}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-brand-500 hover:text-white"
           onClick={onAddToDay}
         >
           <Plus className="h-4 w-4" />
@@ -290,7 +290,8 @@ function PlaceRow({
   )
 }
 
-export function PlannerPointPoolDragOverlay({ preview, locale = 'zh' }: { preview: PointPreview; locale?: SupportedLocale }) {return (
+export function PlannerPointPoolDragOverlay({ preview, locale = 'zh' }: { preview: PointPreview; locale?: SupportedLocale }) {
+  return (
     <article className="flex w-64 items-center gap-3 rounded-[24px] border border-brand-200 bg-white p-3 shadow-lg">
       <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-[18px] bg-slate-100">
         {preview.image ? (
@@ -319,6 +320,8 @@ type PlannerPointPoolPanelProps = {
   onCreatePlace?: () => void
   onEditPlace?: (placeId: string) => void
   onDeletePlace?: (placeId: string) => void
+  /** 未选中天时点「加入选中天」：由上层 toast 提示 */
+  onNeedDay?: () => void
   compact?: boolean
   enableDrag?: boolean
   locale?: SupportedLocale
@@ -336,6 +339,7 @@ export function PlannerPointPoolPanel({
   onCreatePlace,
   onEditPlace,
   onDeletePlace,
+  onNeedDay,
   compact = false,
   enableDrag = false,
   locale = 'zh',
@@ -491,9 +495,13 @@ export function PlannerPointPoolPanel({
                     place={place}
                     selectedDayId={selectedDayId}
                     locale={locale}
-                    onAddToDay={
-                      selectedDayId ? () => onAddItem(selectedDayId, { kind: 'place', placeId: place.id }) : undefined
-                    }
+                    onAddToDay={() => {
+                      if (!selectedDayId) {
+                        onNeedDay?.()
+                        return
+                      }
+                      onAddItem(selectedDayId, { kind: 'place', placeId: place.id })
+                    }}
                     onEdit={onEditPlace ? () => onEditPlace(place.id) : undefined}
                     onDelete={onDeletePlace ? () => confirmDeletePlace(place.id) : undefined}
                   />
