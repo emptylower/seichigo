@@ -62,3 +62,6 @@ A1 实测热路径仍 ~950ms：`getDayContext`（~490ms）→ `pointCoords`（~2
 2. **缓存读与库查并行**：`GET /days/[dayId]/legs?sig=<客户端计算的顺序签名>`——`sig` 是客户端对「该天条目 id 顺序 + 当天默认方式 + 住宿 placeId」算的短哈希（任意稳定字符串，服务端只当不透明 key 用，最长 64 字符，缺省则退回现在的流程）。handler 在发起库查询的**同时**用 `dayroute-sig|<dayId>|<sig>` 读 `RouteLegCache`；命中则直接用缓存的 `dayGeometry`（跳过 Mapbox）。库查回来后正常算 legs；Mapbox 结果写入时同时写两个 key（原坐标 key 与 sig key）。sig 与实际数据不一致的风险由客户端保证（sig 变即换 key），服务端不校验。
 3. 目标：热路径（缓存命中）≈ 1 次 Neon 往返 + 极小开销；用与 A1 相同的临时脚本测三个数字（getDayContext 含坐标、并行缓存读、总耗时）写进汇报，脚本用完删。
 4. 测试：`tests/routeBook/handlers.test.ts` 加「带 sig 命中缓存时不调 Mapbox」「不带 sig 走原流程」；`repoMemory.test.ts` 的 `getDayContext` 断言含 `pointCoords`。
+
+### B5 前端接线 `?sig=`（A2 之后追加，B1–B4 提交后单独执行）
+`hooks/useDayLegs.ts` 已经为每天算了一个顺序签名（用于缓存/失效）。把它作为 `?sig=<signature>` 追加到 `GET /api/me/routebooks/[id]/days/[dayId]/legs` 的请求 URL 上（`encodeURIComponent`，≤64 字符——若现有签名更长，用一个简单稳定的 32 位哈希如 FNV-1a 转 hex）。签名输入必须至少包含：该天有坐标条目的 id 顺序、`day.defaultTravelMode`、覆盖该天的住宿 `placeId`（首尾锚点变了几何就变）。服务端对 sig 只当不透明 key（见 A2），命中时跳过 Mapbox。jsdom 测试：`tests/routebooks/useDayLegs.test.tsx` 断言请求 URL 含 `sig=` 且同一顺序两次签名相同、顺序变化签名不同。
