@@ -5,11 +5,12 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles } from 'lucide-react'
 import type { DayLegsResult, DayRecord, ItemRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
-import { TRAVEL_MODE_LABEL } from '../types'
-import { buildGoogleDirectionsUrl, dayLabel, itemDragId } from '../utils'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { buildGoogleDirectionsUrl, computeVisitOrder, dayLabel, itemDragId } from '../utils'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
 import { LegConnector } from './LegConnector'
+import { tr } from '../../i18n'
 
 const STOP_MINUTES_ESTIMATE = 40
 
@@ -36,6 +37,10 @@ type DayBlockProps = {
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
   dropBlocked?: boolean
+  /** B1.2：该天 legs 两次加载失败：连接行显示「加载失败 · 重试」 */
+  legsFailed?: boolean
+  onRetryLegs?: () => void
+  locale?: SupportedLocale
 }
 
 export function DayBlock({
@@ -59,6 +64,9 @@ export function DayBlock({
   expanded,
   onToggleExpanded,
   dropBlocked = false,
+  legsFailed = false,
+  onRetryLegs,
+  locale = 'zh',
 }: DayBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${day.id}` })
 
@@ -69,6 +77,12 @@ export function DayBlock({
   }, [legs])
 
   const staleIds = useMemo(() => new Set(legs?.staleTransitItemIds ?? []), [legs])
+
+  // 时间线条目序号 = 单天模式地图徽标（有坐标的 point/place 按 sortOrder 编 1..N）
+  const visitOrder = useMemo(
+    () => computeVisitOrder(items, places, getPointPreview),
+    [items, places, getPointPreview]
+  )
 
   const stats = useMemo(() => {
     const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
@@ -92,14 +106,14 @@ export function DayBlock({
   return (
     <section
       ref={setNodeRef}
-      aria-label={dayLabel(day, day.dayIndex)}
+      aria-label={dayLabel(day, day.dayIndex, locale)}
       className={`rounded-[24px] border transition ${
         selected ? 'border-brand-200 bg-white shadow-[0_20px_36px_-30px_rgba(225,29,72,0.4)]' : 'border-pink-100/80 bg-white/80'
       } ${isOver ? 'ring-2 ring-brand-300/70' : ''} ${dropBlocked ? 'opacity-50 saturate-50' : ''}`}
     >
       {dropBlocked ? (
         <div className="mx-2 mt-2 rounded-xl bg-slate-100 px-3 py-1.5 text-center text-[11px] font-medium text-slate-500">
-          这一天最多 25 个点
+          {tr('routebook.sidebar.dayLimit', locale)}
         </div>
       ) : null}
       <div
@@ -113,7 +127,7 @@ export function DayBlock({
       >
         <button
           type="button"
-          aria-label={expanded ? '折叠这一天' : '展开这一天'}
+          aria-label={expanded ? tr('routebook.sidebar.collapseDay', locale) : tr('routebook.sidebar.expandDay', locale)}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           onClick={(event) => {
             event.stopPropagation()
@@ -127,22 +141,37 @@ export function DayBlock({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-slate-900">{dayLabel(day, day.dayIndex)}</span>
+            <span className="text-sm font-semibold text-slate-900">{dayLabel(day, day.dayIndex, locale)}</span>
             {day.title ? <span className="truncate text-xs text-slate-400">{day.title}</span> : null}
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            {stats.stopCount} 站{stats.stopCount > 0 ? ` · 约 ${stats.totalHours.toFixed(1)} 小时` : ''}
+            {tr('routebook.common.stopCount', locale, { n: stats.stopCount })}
+            {stats.stopCount > 0 ? tr('routebook.sidebar.dayStatsHours', locale, { h: stats.totalHours.toFixed(1) }) : ''}
           </div>
         </div>
       </div>
 
       {expanded ? (
         <div className="space-y-1.5 px-2 pb-2">
+          {legsFailed ? (
+            <div className="flex items-stretch gap-3 py-0.5 pl-5">
+              <div className="flex w-5 justify-center">
+                <span className="w-px bg-rose-200" />
+              </div>
+              <button
+                type="button"
+                className="my-1 inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition hover:bg-rose-100"
+                onClick={onRetryLegs}
+              >
+                {tr('routebook.detail.legsFailed', locale)} · {tr('routebook.common.retry', locale)}
+              </button>
+            </div>
+          ) : null}
           <SortableContext items={items.map((item) => itemDragId(item.id))} strategy={verticalListSortingStrategy}>
             {items.map((item) => (
               <div key={item.id}>
                 {legByToId.has(item.id) ? (
-                  <LegConnector leg={legByToId.get(item.id) ?? null} routeVisible={routeVisible} />
+                  <LegConnector leg={legByToId.get(item.id) ?? null} routeVisible={routeVisible} locale={locale} />
                 ) : null}
                 <TimelineItem
                   item={item}
@@ -150,6 +179,7 @@ export function DayBlock({
                   places={places}
                   days={days}
                   staleTransit={staleIds.has(item.id)}
+                  seq={visitOrder.get(item.id)}
                   onUpdate={(data) => onUpdateItem(item.id, data)}
                   onDelete={() => onDeleteItem(item.id)}
                   onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
@@ -158,12 +188,13 @@ export function DayBlock({
                       ? () => onOpenItemDetail(item.id)
                       : undefined
                   }
+                  locale={locale}
                 />
               </div>
             ))}
             {items.length === 0 ? (
               <div className="rounded-xl border border-dashed border-pink-200 bg-pink-50/40 px-4 py-5 text-center text-xs text-slate-400">
-                把点位拖到这里，或从点位池添加
+                {tr('routebook.sidebar.dropHint', locale)}
               </div>
             ) : null}
           </SortableContext>
@@ -177,7 +208,7 @@ export function DayBlock({
                 }`}
                 onClick={onToggleRoute}
               >
-                路线{routeVisible ? '开' : '关'}
+                {routeVisible ? tr('routebook.sidebar.routeOn', locale) : tr('routebook.sidebar.routeOff', locale)}
               </button>
               <button
                 type="button"
@@ -185,7 +216,7 @@ export function DayBlock({
                 onClick={onOptimize}
               >
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" />
-                优化
+                {tr('routebook.sidebar.optimize', locale)}
               </button>
               {navUrl ? (
                 <a
@@ -195,7 +226,7 @@ export function DayBlock({
                   className="inline-flex min-h-8 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-medium text-slate-600 no-underline transition hover:bg-pink-100/60"
                 >
                   <Navigation className="h-3.5 w-3.5 text-brand-500" />
-                  打开导航
+                  {tr('routebook.sidebar.openNav', locale)}
                 </a>
               ) : null}
               <span className="mx-1 h-4 w-px bg-pink-200/70" />
@@ -208,7 +239,7 @@ export function DayBlock({
                   }`}
                   onClick={() => onUpdateDay(day.id, { defaultTravelMode: mode })}
                 >
-                  {TRAVEL_MODE_LABEL[mode]}
+                  {tr(`routebook.travelMode.${mode}`, locale)}
                 </button>
               ))}
             </div>

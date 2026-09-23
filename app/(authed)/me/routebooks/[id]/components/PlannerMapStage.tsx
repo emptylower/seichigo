@@ -6,15 +6,20 @@ import { useDraggable, type DraggableSyntheticListeners } from '@dnd-kit/core'
 // 走 Lazy 包装：MapLibre 只进客户端包，服务端渲染路径不引入（详见 RoutePreviewMapLazy 注释）
 import { RoutePreviewMap } from '@/components/route/RoutePreviewMapLazy'
 import type { MarkerVariant } from '@/components/route/routePreviewMarkers'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayLegsResult, ItemRecord, PlaceKind, PointPreview, RouteBookDetail } from '../types'
-import { dayLabel, markerDragId } from '../utils'
+import { computeVisitOrder, dayLabel, markerDragId } from '../utils'
 import { useRouteGeometry } from '../hooks/useRouteGeometry'
+import { tr } from '../../i18n'
 
 type PlannerMapStageProps = {
   detail: RouteBookDetail
   selectedDayId: string | null
   getPointPreview: (pointId: string) => PointPreview
   legsByDay: Record<string, DayLegsResult>
+  /** 选中天的 legs 正在重拉 / 两次失败：画本地直连虚线代替服务端数据 */
+  legsStale?: boolean
+  legsFailed?: boolean
   routeVisible: boolean
   compact?: boolean
   startLabel: string
@@ -26,6 +31,7 @@ type PlannerMapStageProps = {
   onPointSelect?: (itemId: string) => void
   /** B4：地图左下角（移动端底部抽屉）点位详情卡，由 ui.tsx 组装 */
   detailCard?: React.ReactNode
+  locale?: SupportedLocale
 }
 
 type MapPoint = { id: string; lat: number; lng: number; label: string; title?: string }
@@ -69,6 +75,8 @@ export function PlannerMapStage({
   selectedDayId,
   getPointPreview,
   legsByDay,
+  legsStale = false,
+  legsFailed = false,
   routeVisible,
   compact = false,
   startLabel,
@@ -77,6 +85,7 @@ export function PlannerMapStage({
   activePointId = null,
   onPointSelect,
   detailCard,
+  locale = 'zh',
 }: PlannerMapStageProps) {
   const proxyListenersRef = useRef(new Map<string, DraggableSyntheticListeners | undefined>())
   const proxyNodesRef = useRef(new Map<string, HTMLElement | null>())
@@ -91,8 +100,31 @@ export function PlannerMapStage({
   )
 
   const selectedDay = detail.days.find((day) => day.id === selectedDayId) ?? null
+  // stale / 失败期间不给服务端数据，useRouteGeometry 会用本地直连虚线占位
+  const dayLegs =
+    selectedDayId && !legsStale && !legsFailed ? legsByDay[selectedDayId] : undefined
+
+  // 本地直连虚线的站点顺序：该天有坐标的 point/place 按 sortOrder（不等服务端）
+  const fallbackStops = useMemo(() => {
+    if (selectedDayId === null) return []
+    const dayItems = detail.items.filter((item) => item.dayId === selectedDayId)
+    const order = computeVisitOrder(dayItems, detail.places, getPointPreview)
+    return dayItems
+      .filter((item) => order.has(item.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((item) => {
+        if (item.kind === 'place' && item.placeId) {
+          const place = detail.places.find((row) => row.id === item.placeId)
+          return place ? { lat: place.lat, lng: place.lng } : null
+        }
+        const geo = item.pointId ? getPointPreview(item.pointId).geo : null
+        return geo ? { lat: geo[0], lng: geo[1] } : null
+      })
+      .filter((stop): stop is { lat: number; lng: number } => stop !== null)
+  }, [detail, getPointPreview, selectedDayId])
+
   // 全部模式（selectedDayId=null）：不画路线；单天模式：dayGeometry 实线优先，legs 分段兜底
-  const { dayGeometry, legs } = useRouteGeometry(selectedDayId ? legsByDay[selectedDayId] : undefined, routeVisible)
+  const { dayGeometry, legs } = useRouteGeometry(dayLegs, routeVisible, fallbackStops)
 
   const { mapPoints, markerVariants, markerImages } = useMemo(() => {
     const dayIndexById = new Map(detail.days.map((day) => [day.id, day.dayIndex]))
@@ -106,7 +138,21 @@ export function PlannerMapStage({
       dayIndexesByPointId.set(item.pointId, list)
     }
 
+    // 单天模式：徽标 = 该天内游览顺序（只数有坐标的 point/place），与时间线序号一致
+    const visitOrder =
+      selectedDayId === null
+        ? null
+        : computeVisitOrder(
+            detail.items.filter((item) => item.dayId === selectedDayId),
+            detail.places,
+            getPointPreview
+          )
+
     const badgeFor = (item: ItemRecord): string => {
+      if (visitOrder) {
+        const order = visitOrder.get(item.id)
+        return order !== undefined ? String(order) : '·'
+      }
       if (item.kind === 'point' && item.pointId) {
         const indexes = [...new Set(dayIndexesByPointId.get(item.pointId) ?? [])].sort((a, b) => a - b)
         if (indexes.length) return indexes.join('·')
@@ -180,8 +226,8 @@ export function PlannerMapStage({
 
   const dayCount = detail.days.length
   const headerSubtitle = selectedDay
-    ? `${dayLabel(selectedDay, selectedDay.dayIndex)} · 共 ${dayCount} 天`
-    : `全部 ${dayCount} 天`
+    ? `${dayLabel(selectedDay, selectedDay.dayIndex, locale)} · ${tr('routebook.map.subtitleDayCount', locale, { n: dayCount })}`
+    : tr('routebook.map.subtitleAll', locale, { n: dayCount })
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white/95 p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.38)]">
@@ -191,12 +237,16 @@ export function PlannerMapStage({
             <Navigation className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">路线预览</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{tr('routebook.map.title', locale)}</h2>
             <p className="text-xs text-slate-500">{headerSubtitle}</p>
           </div>
         </div>
         <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-semibold text-brand-600">
-          {selectedDayId === null ? '全部' : routeVisible ? '路线开' : '路线关'}
+          {selectedDayId === null
+            ? tr('routebook.map.badgeAll', locale)
+            : routeVisible
+              ? tr('routebook.map.routeOn', locale)
+              : tr('routebook.map.routeOff', locale)}
         </span>
       </div>
 
@@ -219,9 +269,9 @@ export function PlannerMapStage({
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-white text-brand-500 shadow-sm">
               <Navigation className="h-6 w-6" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-900">路线预览会出现在这里</h3>
+            <h3 className="mt-4 text-base font-semibold text-slate-900">{tr('routebook.map.emptyTitle', locale)}</h3>
             <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-              先从点位池把候选圣地加入某一天，系统会实时更新地图。
+              {tr('routebook.map.emptyBody', locale)}
             </p>
           </div>
         )}

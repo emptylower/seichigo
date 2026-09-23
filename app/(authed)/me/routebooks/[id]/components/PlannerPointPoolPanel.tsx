@@ -6,8 +6,10 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
 import type { PointPoolItem, PointPreview, RouteBookDetail } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { poolDragId } from '../utils'
 import type { CreateItemInput } from '../hooks/useTripData'
+import { tr } from '../../i18n'
 
 type PoolEntry = {
   key: string
@@ -22,10 +24,10 @@ type PoolEntry = {
 
 type Chip = 'all' | 'unassigned' | 'scheduled'
 
-const CHIP_LABEL: Record<Chip, string> = {
-  all: '全部',
-  unassigned: '未安排',
-  scheduled: '已安排',
+const CHIP_LABEL_KEY: Record<Chip, string> = {
+  all: 'routebook.pool.chipAll',
+  unassigned: 'routebook.pool.chipUnassigned',
+  scheduled: 'routebook.pool.chipScheduled',
 }
 
 function buildEntries(detail: RouteBookDetail, pointPoolItems: PointPoolItem[]): PoolEntry[] {
@@ -88,6 +90,7 @@ function EntryCard({
   onFocus,
   onRemoveFromPool,
   manageMode,
+  locale,
 }: {
   entry: PoolEntry
   preview: PointPreview
@@ -98,6 +101,7 @@ function EntryCard({
   onFocus: () => void
   onRemoveFromPool: () => void
   manageMode: boolean
+  locale: SupportedLocale
 }) {
   const scheduled = entry.scheduledDayIndexes.length > 0
   const alreadyOnSelectedDay = selectedDayIndex !== null && entry.scheduledDayIndexes.includes(selectedDayIndex)
@@ -107,7 +111,7 @@ function EntryCard({
       return (
         <button
           type="button"
-          aria-label="从点位池删除"
+          aria-label={tr('routebook.pool.removeFromPool', locale)}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
           onClick={onRemoveFromPool}
         >
@@ -119,7 +123,7 @@ function EntryCard({
       return (
         <button
           type="button"
-          aria-label="加入行程"
+          aria-label={tr('routebook.pool.addToRoute', locale)}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/85 text-slate-700 transition hover:bg-brand-500 hover:text-white"
           onClick={onAdd}
         >
@@ -131,9 +135,9 @@ function EntryCard({
       return (
         <button
           type="button"
-          aria-label="移到选中天"
+          aria-label={tr('routebook.pool.moveToSelectedDay', locale)}
           disabled={selectedDayIndex === null}
-          title={selectedDayIndex === null ? '先在左侧选中一天' : '移到选中天末尾'}
+          title={selectedDayIndex === null ? tr('routebook.pool.pickDayFirst', locale) : tr('routebook.pool.moveToSelectedDayHint', locale)}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/85 text-slate-700 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           onClick={onMoveToSelectedDay}
         >
@@ -144,9 +148,9 @@ function EntryCard({
     return (
       <button
         type="button"
-        aria-label="再加一天"
+        aria-label={tr('routebook.pool.addAnotherDay', locale)}
         disabled={selectedDayIndex === null || alreadyOnSelectedDay}
-        title={alreadyOnSelectedDay ? '已在选中天' : '再安排到选中天'}
+        title={alreadyOnSelectedDay ? tr('routebook.pool.alreadyOnDay', locale) : tr('routebook.pool.addAnotherDayHint', locale)}
         className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/85 text-slate-700 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         onClick={onAddAnotherDay}
       >
@@ -162,7 +166,7 @@ function EntryCard({
           <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-100 via-white to-cyan-100 text-[11px] font-medium text-slate-500">
-            暂无图
+            {tr('routebook.common.noImage', locale)}
           </div>
         )}
       </div>
@@ -179,15 +183,15 @@ function EntryCard({
           </span>
           {scheduled ? (
             <span className="inline-flex rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-600">
-              Day {entry.scheduledDayIndexes.join('·')}
+              {tr('routebook.pool.dayBadge', locale, { days: entry.scheduledDayIndexes.join('·') })}
             </span>
           ) : entry.unassignedItemId ? (
             <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-600">
-              未安排
+              {tr('routebook.pool.unassignedBadge', locale)}
             </span>
           ) : (
             <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-600">
-              池内
+              {tr('routebook.pool.inPoolBadge', locale)}
             </span>
           )}
         </div>
@@ -220,7 +224,7 @@ function DraggablePoolEntry(props: Parameters<typeof EntryCard>[0] & { dragId: s
   )
 }
 
-export function PlannerPointPoolDragOverlay({ preview }: { preview: PointPreview }) {
+export function PlannerPointPoolDragOverlay({ preview, locale = 'zh' }: { preview: PointPreview; locale?: SupportedLocale }) {
   return (
     <article className="flex w-64 items-center gap-3 rounded-[24px] border border-brand-200 bg-white p-3 shadow-lg">
       <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-[18px] bg-slate-100">
@@ -228,7 +232,7 @@ export function PlannerPointPoolDragOverlay({ preview }: { preview: PointPreview
           <img src={preview.image} alt={preview.title} className="h-full w-full object-cover object-center" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-100 via-white to-cyan-100 text-[11px] font-medium text-slate-500">
-            暂无图
+            {tr('routebook.common.noImage', locale)}
           </div>
         )}
       </div>
@@ -248,6 +252,7 @@ type PlannerPointPoolPanelProps = {
   onRemoveFromPool: (pointId: string) => void
   compact?: boolean
   enableDrag?: boolean
+  locale?: SupportedLocale
 }
 
 export function PlannerPointPoolPanel({
@@ -261,10 +266,11 @@ export function PlannerPointPoolPanel({
   onRemoveFromPool,
   compact = false,
   enableDrag = false,
+  locale = 'zh',
 }: PlannerPointPoolPanelProps) {
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState<Chip>('all')
-  const [workFilter, setWorkFilter] = useState('全部')
+  const [workFilter, setWorkFilter] = useState('')
   const [manageMode, setManageMode] = useState(false)
 
   const entries = useMemo(() => buildEntries(detail, pointPoolItems), [detail, pointPoolItems])
@@ -273,10 +279,13 @@ export function PlannerPointPoolPanel({
     [detail.days, selectedDayId]
   )
 
+  const workAllLabel = tr('routebook.pool.workAll', locale)
+  const effectiveWorkFilter = workFilter || workAllLabel
+
   const workOptions = useMemo(() => {
     const values = Array.from(new Set(entries.map((entry) => getPointPreview(entry.pointId).subtitle).filter(Boolean)))
-    return ['全部', ...values]
-  }, [entries, getPointPreview])
+    return [workAllLabel, ...values]
+  }, [entries, getPointPreview, workAllLabel])
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -284,7 +293,7 @@ export function PlannerPointPoolPanel({
       if (chip === 'unassigned' && !(entry.poolItemId || entry.unassignedItemId)) return false
       if (chip === 'scheduled' && entry.scheduledDayIndexes.length === 0) return false
       const preview = getPointPreview(entry.pointId)
-      if (workFilter !== '全部' && preview.subtitle !== workFilter) return false
+      if (effectiveWorkFilter !== workAllLabel && preview.subtitle !== effectiveWorkFilter) return false
       if (!normalized) return true
       return (
         preview.title.toLowerCase().includes(normalized) ||
@@ -292,7 +301,7 @@ export function PlannerPointPoolPanel({
         entry.pointId.toLowerCase().includes(normalized)
       )
     })
-  }, [chip, entries, getPointPreview, query, workFilter])
+  }, [chip, entries, getPointPreview, query, effectiveWorkFilter, workAllLabel])
 
   const moveUnassignedToSelectedDay = (itemId: string) => {
     if (!selectedDayId) return
@@ -311,9 +320,11 @@ export function PlannerPointPoolPanel({
             <Sparkles className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-slate-900">点位池</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{tr('routebook.pool.title', locale)}</h2>
             <p className="mt-0.5 text-xs leading-5 text-slate-500">
-              {entries.length} 个候选点位{selectedDayIndex !== null ? `，「+」加入 Day ${selectedDayIndex}` : ''}
+              {selectedDayIndex !== null
+                ? tr('routebook.pool.countWithDay', locale, { n: entries.length, day: selectedDayIndex })
+                : tr('routebook.pool.count', locale, { n: entries.length })}
             </p>
           </div>
           <button
@@ -323,7 +334,7 @@ export function PlannerPointPoolPanel({
               manageMode ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-200/80' : 'bg-white text-slate-700 ring-1 ring-slate-200/80 hover:bg-slate-50'
             }`}
           >
-            {manageMode ? '完成管理' : '管理'}
+            {manageMode ? tr('routebook.pool.manageDone', locale) : tr('routebook.pool.manage', locale)}
           </button>
         </div>
 
@@ -337,7 +348,7 @@ export function PlannerPointPoolPanel({
               }`}
               onClick={() => setChip(key)}
             >
-              {CHIP_LABEL[key]}
+              {tr(CHIP_LABEL_KEY[key], locale)}
             </button>
           ))}
         </div>
@@ -349,13 +360,13 @@ export function PlannerPointPoolPanel({
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索点位、作品或 pointId"
+              placeholder={tr('routebook.pool.searchPlaceholder', locale)}
               className="w-full rounded-[20px] border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
             />
           </label>
           <select
-            aria-label="按作品筛选"
-            value={workFilter}
+            aria-label={tr('routebook.pool.workFilterLabel', locale)}
+            value={effectiveWorkFilter}
             className="h-10 max-w-[9rem] rounded-[20px] border border-slate-200 bg-slate-50 px-2.5 text-xs text-slate-700 outline-none transition focus:border-brand-300 focus:bg-white"
             onChange={(event) => setWorkFilter(event.target.value)}
           >
@@ -380,6 +391,7 @@ export function PlannerPointPoolPanel({
                   preview={preview}
                   selectedDayIndex={selectedDayIndex}
                   manageMode={manageMode}
+                  locale={locale}
                   onAdd={() => onAddItem(selectedDayId ?? null, { kind: 'point', pointId: entry.pointId })}
                   onMoveToSelectedDay={() => entry.unassignedItemId && moveUnassignedToSelectedDay(entry.unassignedItemId)}
                   onAddAnotherDay={() => selectedDayId && onAddItem(selectedDayId, { kind: 'point', pointId: entry.pointId })}
@@ -397,19 +409,19 @@ export function PlannerPointPoolPanel({
           <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-[28px] border border-dashed border-pink-200 bg-pink-50/30 px-6 text-center">
             <Search className="h-6 w-6 text-slate-300" />
             <p className="mt-3 text-sm font-medium text-slate-700">
-              {entries.length === 0 ? '点位池还是空的' : '没有找到匹配的点位'}
+              {entries.length === 0 ? tr('routebook.pool.emptyTitle', locale) : tr('routebook.pool.emptyNoMatch', locale)}
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               {entries.length === 0 ? (
                 <>
-                  去
+                  {tr('routebook.pool.emptyPre', locale)}
                   <a href="/anitabi" className="mx-1 font-semibold text-brand-600 hover:underline">
-                    圣地地图
+                    {tr('routebook.pool.emptyLink', locale)}
                   </a>
-                  收藏想去的圣地，再回来整理行程。
+                  {tr('routebook.pool.emptyPost', locale)}
                 </>
               ) : (
-                '换个作品或搜索关键词试试。'
+                tr('routebook.pool.noMatchHint', locale)
               )}
             </p>
           </div>

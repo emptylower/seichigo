@@ -3,6 +3,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/db/prisma'
 import SettingsForm from '@/components/me/SettingsForm.client'
 import MeSectionShell from '@/components/me/MeSectionShell'
+import { getLocale } from '@/lib/i18n/getLocale'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,7 @@ export const metadata = {
 }
 
 export default async function SettingsPage() {
+  const locale = await getLocale()
   let session: Awaited<ReturnType<typeof getServerAuthSession>>
   try {
     session = await getServerAuthSession()
@@ -30,6 +32,7 @@ export default async function SettingsPage() {
 
     return (
       <MeSectionShell
+        locale={locale}
         activeTab="settings"
         title="个人信息"
         description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"
@@ -82,6 +85,7 @@ export default async function SettingsPage() {
 
     return (
       <MeSectionShell
+        locale={locale}
         activeTab="settings"
         title="个人信息"
         description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"
@@ -99,6 +103,7 @@ export default async function SettingsPage() {
 
   return (
     <MeSectionShell
+        locale={locale}
       activeTab="settings"
       title="个人信息"
       description="编辑你的公开资料与社交账号，保存后会同步到站点头像与昵称展示。"

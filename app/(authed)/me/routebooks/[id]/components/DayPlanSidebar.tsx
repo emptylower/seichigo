@@ -8,10 +8,12 @@ import type {
   RouteBookDetail,
   TravelMode,
 } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { groupItemsByDay } from '../utils'
 import type { CreateItemInput, UpdateItemInput } from '../hooks/useTripData'
 import { DayBlock } from './DayBlock'
 import { UnassignedBlock } from './UnassignedBlock'
+import { tr } from '../../i18n'
 
 type DayPlanSidebarProps = {
   detail: RouteBookDetail
@@ -38,6 +40,10 @@ type DayPlanSidebarProps = {
   onOpenItemDetail?: (itemId: string) => void
   /** 拖拽悬停超限置灰的天（useTripDnd.limitBlockedDayId） */
   limitBlockedDayId?: string | null
+  /** B1.2：每天 legs 加载失败标记 + 手动重试 */
+  legsFailedByDay?: Record<string, boolean>
+  onRetryLegs?: (dayId: string) => void
+  locale?: SupportedLocale
 }
 
 function readExpandedMap(routeBookId: string): Record<string, boolean> {
@@ -84,6 +90,9 @@ export function DayPlanSidebar({
   onDeleteDay,
   onOpenItemDetail,
   limitBlockedDayId = null,
+  legsFailedByDay,
+  onRetryLegs,
+  locale = 'zh',
 }: DayPlanSidebarProps) {
   const days = useMemo(() => [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex), [detail.days])
   const { byDay, unassigned } = useMemo(
@@ -145,31 +154,31 @@ export function DayPlanSidebar({
         <button
           type="button"
           disabled={!undoLabel}
-          title={undoLabel ? `撤销：${undoLabel}` : '没有可撤销的操作'}
+          title={undoLabel ? tr('routebook.sidebar.undoWith', locale, { label: undoLabel }) : tr('routebook.sidebar.undoEmpty', locale)}
           className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-40"
           onClick={onUndo}
         >
           <Undo2 className="h-3.5 w-3.5" />
-          撤销
+          {tr('routebook.sidebar.undo', locale)}
         </button>
         <button
           type="button"
-          title={allExpanded ? '全部折叠' : '全部展开'}
+          title={allExpanded ? tr('routebook.sidebar.collapseAll', locale) : tr('routebook.sidebar.expandAll', locale)}
           className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-pink-50"
           onClick={() => setAll(!allExpanded)}
         >
           {allExpanded ? <ChevronsDownUp className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
-          {allExpanded ? '折叠' : '展开'}
+          {allExpanded ? tr('routebook.sidebar.collapse', locale) : tr('routebook.sidebar.expand', locale)}
         </button>
         {selectedDayId !== null ? (
           <button
             type="button"
-            title="显示全部天的点位"
+            title={tr('routebook.sidebar.showAllHint', locale)}
             className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-50 px-2.5 text-xs font-semibold text-brand-600 shadow-sm transition hover:bg-brand-100"
             onClick={onShowAll}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
-            显示全部
+            {tr('routebook.sidebar.showAll', locale)}
           </button>
         ) : null}
         <span className="flex-1" />
@@ -179,7 +188,7 @@ export function DayPlanSidebar({
           onClick={() => onInsertDay(lastDayIndex)}
         >
           <Plus className="h-3.5 w-3.5" />
-          添加一天
+          {tr('routebook.sidebar.addDay', locale)}
         </button>
       </div>
 
@@ -207,6 +216,9 @@ export function DayPlanSidebar({
             expanded={isExpanded(day.id)}
             onToggleExpanded={() => toggleDay(day.id)}
             dropBlocked={limitBlockedDayId === day.id}
+            legsFailed={Boolean(legsFailedByDay?.[day.id])}
+            onRetryLegs={onRetryLegs ? () => onRetryLegs(day.id) : undefined}
+            locale={locale}
           />
         ))}
 
@@ -218,6 +230,7 @@ export function DayPlanSidebar({
           onUpdateItem={onUpdateItem}
           onDeleteItem={onDeleteItem}
           onMoveItem={handleMoveItem}
+          locale={locale}
         />
       </div>
     </section>

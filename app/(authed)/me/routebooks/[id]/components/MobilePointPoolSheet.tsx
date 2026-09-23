@@ -3,7 +3,9 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { Search, PlusCircle, X } from 'lucide-react'
 import type { PointPoolItem, PointPreview } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { PointPoolCard } from './PointCard'
+import { tr } from '../../i18n'
 
 interface MobilePointPoolSheetProps {
   pointPoolItems: PointPoolItem[]
@@ -14,6 +16,7 @@ interface MobilePointPoolSheetProps {
   onClose: () => void
   /** 例如「Day 2」；为空表示加到未安排 */
   selectedDayLabel?: string | null
+  locale?: SupportedLocale
 }
 
 /**
@@ -28,6 +31,7 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
   isOpen,
   onClose,
   selectedDayLabel = null,
+  locale = 'zh',
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -87,11 +91,11 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
               <PlusCircle size={18} />
             </div>
             <h2 className="text-lg font-bold text-slate-900">
-              全局想去池 ({pointPoolItems.length})
+              {tr('routebook.pool.sheetTitle', locale, { n: pointPoolItems.length })}
             </h2>
             {selectedDayLabel ? (
               <span className="ml-auto rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
-                加到 {selectedDayLabel}
+                {tr('routebook.pool.addToDay', locale, { label: selectedDayLabel })}
               </span>
             ) : null}
           </div>
@@ -99,24 +103,24 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
           {isEmpty ? (
             <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 p-8 text-center">
               <p className="text-sm text-slate-500">
-                想去池为空。去
+                {tr('routebook.pool.sheetEmptyPre', locale)}
                 <a href="/anitabi" className="mx-1 font-medium text-brand-600 hover:underline">
-                  圣地地图
+                  {tr('routebook.pool.emptyLink', locale)}
                 </a>
-                点击“想去”来收集点位。
+                {tr('routebook.pool.sheetEmptyPost', locale)}
               </p>
             </div>
           ) : (
             <>
               {/* Search Box */}
               <div className="relative group">
-                <Search 
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors" 
-                  size={16} 
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors"
+                  size={16}
                 />
                 <input
                   type="text"
-                  placeholder="搜索点位名称或副标题..."
+                  placeholder={tr('routebook.pool.sheetSearchPlaceholder', locale)}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none ring-brand-100 transition-all focus:border-brand-400 focus:bg-white focus:ring-4"
@@ -135,12 +139,13 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
                         item={item}
                         preview={preview}
                         onAdd={() => onAddToRoute(item.pointId)}
+                        locale={locale}
                       />
                     )
                   })
                 ) : (
                   <div className="py-12 text-center text-sm text-slate-400">
-                    没有找到匹配的点位
+                    {tr('routebook.pool.emptyNoMatch', locale)}
                   </div>
                 )}
               </div>

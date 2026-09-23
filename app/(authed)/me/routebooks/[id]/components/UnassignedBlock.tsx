@@ -5,9 +5,11 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Inbox } from 'lucide-react'
 import type { DayRecord, ItemRecord, PlaceRecord, PointPreview } from '../types'
 import { UNASSIGNED_DROP_ID } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { itemDragId } from '../utils'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
+import { tr } from '../../i18n'
 
 type UnassignedBlockProps = {
   items: ItemRecord[]
@@ -17,6 +19,7 @@ type UnassignedBlockProps = {
   onUpdateItem: (itemId: string, data: UpdateItemInput) => void
   onDeleteItem: (itemId: string) => void
   onMoveItem: (itemId: string, targetDayId: string | null) => void
+  locale?: SupportedLocale
 }
 
 export function UnassignedBlock({
@@ -27,13 +30,14 @@ export function UnassignedBlock({
   onUpdateItem,
   onDeleteItem,
   onMoveItem,
+  locale = 'zh',
 }: UnassignedBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: UNASSIGNED_DROP_ID })
 
   return (
     <section
       ref={setNodeRef}
-      aria-label="未安排"
+      aria-label={tr('routebook.common.unassigned', locale)}
       className={`rounded-[24px] border border-dashed border-slate-200 bg-white/60 px-2 py-2.5 transition ${
         isOver ? 'ring-2 ring-brand-300/70' : ''
       }`}
@@ -43,8 +47,8 @@ export function UnassignedBlock({
           <Inbox className="h-4 w-4" />
         </span>
         <div>
-          <div className="text-sm font-semibold text-slate-700">未安排</div>
-          <div className="text-[11px] text-slate-400">{items.length} 条待分配</div>
+          <div className="text-sm font-semibold text-slate-700">{tr('routebook.common.unassigned', locale)}</div>
+          <div className="text-[11px] text-slate-400">{tr('routebook.sidebar.unassignedCount', locale, { n: items.length })}</div>
         </div>
       </div>
 
@@ -61,10 +65,11 @@ export function UnassignedBlock({
               onUpdate={(data) => onUpdateItem(item.id, data)}
               onDelete={() => onDeleteItem(item.id)}
               onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
+              locale={locale}
             />
           ))}
           {items.length === 0 ? (
-            <div className="rounded-xl px-4 py-4 text-center text-xs text-slate-400">暂时没有待安排的条目</div>
+            <div className="rounded-xl px-4 py-4 text-center text-xs text-slate-400">{tr('routebook.sidebar.unassignedEmpty', locale)}</div>
           ) : null}
         </div>
       </SortableContext>

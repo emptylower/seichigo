@@ -2,6 +2,7 @@ import { getServerAuthSession } from '@/lib/auth/session'
 import FavoritesClient from './ui'
 import type { Metadata } from 'next'
 import MeSectionShell from '@/components/me/MeSectionShell'
+import { getLocale } from '@/lib/i18n/getLocale'
 
 export const metadata: Metadata = {
   title: '我的收藏',
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 export default async function FavoritesPage() {
+  const locale = await getLocale()
   let session: any = null
   try {
     if (process.env.DATABASE_URL) {
@@ -23,6 +25,7 @@ export default async function FavoritesPage() {
   if (!session?.user?.id) {
     return (
       <MeSectionShell
+        locale={locale}
         activeTab="favorites"
         title="我的收藏"
         description="集中管理你收藏过的文章，方便继续阅读与路线规划。"
@@ -39,6 +42,7 @@ export default async function FavoritesPage() {
 
   return (
     <MeSectionShell
+        locale={locale}
       activeTab="favorites"
       title="我的收藏"
       description="集中管理你收藏过的文章，方便继续阅读与路线规划。"

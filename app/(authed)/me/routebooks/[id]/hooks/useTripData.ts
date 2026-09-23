@@ -9,6 +9,8 @@ import type {
   RouteBookSummary,
 } from '../types'
 import { apiFetch, JSON_HEADERS, type ApiFail } from './tripDataApi'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { tr } from '../../i18n'
 import { usePointPreviews } from './usePointPreviews'
 import { useUndoRing } from './useUndoRing'
 import { useTripMutations } from './useTripMutations'
@@ -21,7 +23,7 @@ export type {
   UpdateItemInput,
 } from './tripDataTypes'
 
-export function useTripData(id: string) {
+export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const [detail, setDetail] = useState<RouteBookDetail | null>(null)
   const [routeBooks, setRouteBooks] = useState<RouteBookSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,13 +99,13 @@ export function useTripData(id: string) {
       const rbRes = await fetch(`/api/me/routebooks/${id}`)
       const rbData = (await rbRes.json().catch(() => ({}))) as DetailResponse
       if (!rbRes.ok || 'error' in rbData) {
-        setError(('error' in rbData && rbData.error) || '加载失败')
+        setError(('error' in rbData && rbData.error) || tr('routebook.common.loadFailed', locale))
         setLoading(false)
         return
       }
       const found = rbData.routeBook || rbData.item || null
       if (!found || !Array.isArray(found.days) || !Array.isArray(found.items)) {
-        setError('地图数据异常，请刷新重试')
+        setError(tr('routebook.detail.dataCorrupted', locale))
         setLoading(false)
         return
       }
@@ -128,10 +130,10 @@ export function useTripData(id: string) {
         }
       }
     } catch {
-      setError('加载失败')
+      setError(tr('routebook.common.loadFailed', locale))
       setLoading(false)
     }
-  }, [id, loadRouteBooks, parsePointPoolItems, clearUndo])
+  }, [id, locale, loadRouteBooks, parsePointPoolItems, clearUndo])
 
   useEffect(() => {
     void load()
@@ -141,13 +143,13 @@ export function useTripData(id: string) {
     (result: ApiFail, prev: RouteBookDetail | null, fallback: string) => {
       if (prev) setDetail(prev)
       if (result.reason === 'stale') {
-        showToast('行程已在别处修改，已刷新')
+        showToast(tr('routebook.detail.staleRefreshed', locale))
         void load()
         return
       }
       showToast(result.error || fallback)
     },
-    [load, showToast]
+    [load, showToast, locale]
   )
 
   // ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ export function useTripData(id: string) {
     return Array.from(new Set(pointIds))
   }, [detail, pointPoolItems])
 
-  const { getPointPreview, resetPreviews } = usePointPreviews(allPointIds)
+  const { getPointPreview, resetPreviews } = usePointPreviews(allPointIds, locale)
 
   // 整份重载时清空预览缓存（load 内部不直接调，避免循环依赖）
   const reload = useCallback(async () => {
@@ -179,6 +181,7 @@ export function useTripData(id: string) {
     refreshPointPool,
     showToast,
     load,
+    locale,
   })
   const { patchBook } = mutations
 
@@ -204,13 +207,13 @@ export function useTripData(id: string) {
         body: JSON.stringify({ pointId }),
       })
       if (!res.ok) {
-        showToast('从点位池删除失败')
+        showToast(tr('routebook.detail.removeFromPoolFailed', locale))
         return false
       }
       setPointPoolItems((prev) => prev.filter((item) => item.pointId !== pointId))
       return true
     },
-    [showToast]
+    [showToast, locale]
   )
 
   const markPointCheckedIn = useCallback(

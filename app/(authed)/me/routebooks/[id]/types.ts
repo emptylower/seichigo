@@ -137,12 +137,6 @@ export const DAY_ITEM_LIMIT = 25
 export const PREVIEW_POINT_BATCH_SIZE = 28
 export const PREVIEW_FETCH_IDLE_TIMEOUT = 1200
 
-export const STATUS_LABEL: Record<RouteBookStatus, string> = {
-  draft: '草稿',
-  in_progress: '进行中',
-  completed: '已完成',
-}
-
 export const STATUS_STYLE: Record<RouteBookStatus, string> = {
   draft: 'bg-white/75 text-slate-700',
   in_progress: 'bg-sky-500/85 text-white',
@@ -155,20 +149,9 @@ export const STATUS_ACTION_CLASS: Record<RouteBookStatus, string> = {
   completed: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
 }
 
-export const NAV_MODE_LABEL: Record<NavMode, string> = {
-  transit: '公交 + 步行',
-  driving: '驾车',
-}
-
 export const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
   transit: 'transit',
   driving: 'driving',
-}
-
-export const TRAVEL_MODE_LABEL: Record<TravelMode, string> = {
-  transit: '公共交通',
-  walking: '步行',
-  driving: '驾车',
 }
 
 export const DRAG_SAFE_CONTROL_PROPS = {

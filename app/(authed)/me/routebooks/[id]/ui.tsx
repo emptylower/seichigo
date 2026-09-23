@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronRight, Navigation, Pencil, Plus, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
+import { tr } from '../i18n'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useTripData } from './hooks/useTripData'
 import { useTripDnd } from './hooks/useTripDnd'
@@ -71,16 +72,6 @@ function parseImportCounts(raw: string | null): ImportCounts | null {
   }
 }
 
-/** 与 middleware/resolveRequestLocale 同序：路径前缀（/en、/ja）优先，再读 NEXT_LOCALE cookie */
-function readClientLocale(): SupportedLocale {
-  if (typeof window === 'undefined') return 'zh'
-  const pathname = window.location.pathname
-  if (pathname === '/en' || pathname.startsWith('/en/')) return 'en'
-  if (pathname === '/ja' || pathname.startsWith('/ja/')) return 'ja'
-  const match = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=(zh|en|ja)(?:;|$)/)
-  return (match?.[1] as SupportedLocale | undefined) ?? 'zh'
-}
-
 /** 详情接口的 lang 参数（与 lib/googlePlaces/details.ts 的 PlaceIntroLang 对齐） */
 function placeIntroLang(locale: SupportedLocale): 'zh-CN' | 'en' | 'ja' {
   return locale === 'en' ? 'en' : locale === 'ja' ? 'ja' : 'zh-CN'
@@ -106,14 +97,16 @@ function ItemDragOverlayCard({
   item,
   preview,
   places,
+  locale,
 }: {
   item: ItemRecord
   preview: PointPreview | null
   places: PlaceRecord[]
+  locale: SupportedLocale
 }) {
   return (
     <div className="w-64 rounded-2xl border border-brand-200 bg-white p-3 shadow-[0_24px_36px_-24px_rgba(225,29,72,0.5)]">
-      <div className="truncate text-sm font-semibold text-slate-900">{itemDisplayTitle(item, preview, places)}</div>
+      <div className="truncate text-sm font-semibold text-slate-900">{itemDisplayTitle(item, preview, places, locale)}</div>
       {item.timeStart ? (
         <div className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
           {item.timeStart}
@@ -123,7 +116,7 @@ function ItemDragOverlayCard({
   )
 }
 
-export default function RouteBookDetailClient({ id }: { id: string }) {
+export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: string; locale?: SupportedLocale }) {
   const isMobile = useIsMobile()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -142,19 +135,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   useEffect(() => {
     const counts = parseImportCounts(searchParams.get('imported'))
     if (!counts) return
-    setImportSummary(formatImportSummary(counts, readClientLocale()))
+    setImportSummary(formatImportSummary(counts, locale))
     router.replace(`/me/routebooks/${id}`, { scroll: false })
-  }, [id, router, searchParams])
+  }, [id, locale, router, searchParams])
 
-  const trip = useTripData(id)
+  const trip = useTripData(id, locale)
   const detail = trip.detail
-  const { legsByDay } = useDayLegs(id, detail, selectedDayId, routeVisible)
+  const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible)
   const dnd = useTripDnd({
     items: detail?.items ?? [],
     pointPoolItems: trip.pointPoolItems,
     reorder: trip.reorder,
     addItem: trip.addItem,
-    onLimitBlocked: () => trip.showToast('这一天最多 25 个点'),
+    onLimitBlocked: () => trip.showToast(tr('routebook.detail.dayLimitToast', locale)),
   })
 
   // 初始进入为「全部」模式：selectedDayId 保持 null，由用户点击某天进入单天视图。
@@ -224,7 +217,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       : immersiveSequence.length > 0
     : false
 
-  const startLabel = selectedDay ? `开始 Day ${selectedDay.dayIndex}` : '开始导航'
+  const startLabel = selectedDay
+    ? tr('routebook.detail.startDay', locale, { n: selectedDay.dayIndex })
+    : tr('routebook.detail.startNav', locale)
 
   const beginImmersive = async () => {
     if (!detail) return
@@ -259,7 +254,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     }
     if (!immersiveSequence.length) {
       pendingStartRef.current = false
-      trip.showToast('这一天还没有站点')
+      trip.showToast(tr('routebook.detail.emptyDayToast', locale))
       return
     }
     pendingStartRef.current = false
@@ -333,6 +328,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           item={item}
           preview={item.pointId ? trip.getPointPreview(item.pointId) : null}
           places={detail.places}
+          locale={locale}
         />
       )
     }
@@ -340,10 +336,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     if (poolId) {
       const poolItem = trip.pointPoolItems.find((row) => row.id === poolId)
       if (!poolItem) return null
-      return <PlannerPointPoolDragOverlay preview={trip.getPointPreview(poolItem.pointId)} />
+      return <PlannerPointPoolDragOverlay preview={trip.getPointPreview(poolItem.pointId)} locale={locale} />
     }
     return null
-  }, [dnd.activeDragId, detail, trip])
+  }, [dnd.activeDragId, detail, trip, locale])
 
   if (trip.loading) return <RouteBookDetailSkeleton />
   if (trip.error) {
@@ -351,7 +347,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       <div className="space-y-4">
         <div className="rounded-2xl bg-rose-50 p-4 text-rose-700">{trip.error}</div>
         <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">
-          返回地图列表
+          {tr('routebook.detail.backToList', locale)}
         </a>
       </div>
     )
@@ -384,6 +380,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       onDeleteDay={(dayId) => void trip.deleteDay(dayId)}
       onOpenItemDetail={handleOpenItemDetail}
       limitBlockedDayId={dnd.limitBlockedDayId}
+      legsFailedByDay={failedDayIds}
+      onRetryLegs={retryDay}
+      locale={locale}
     />
   )
 
@@ -394,7 +393,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       preview={selectedItem.pointId ? trip.getPointPreview(selectedItem.pointId) : null}
       place={selectedItem.placeId ? detail.places.find((row) => row.id === selectedItem.placeId) ?? null : null}
       days={days}
-      lang={placeIntroLang(readClientLocale())}
+      lang={placeIntroLang(locale)}
+      locale={locale}
       compact={isMobile}
       onClose={handleCloseItemDetail}
       onDelete={() => {
@@ -414,6 +414,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       selectedDayId={selectedDayId}
       getPointPreview={trip.getPointPreview}
       legsByDay={legsByDay}
+      legsStale={selectedDayId ? Boolean(staleDayIds[selectedDayId]) : false}
+      legsFailed={selectedDayId ? Boolean(failedDayIds[selectedDayId]) : false}
       routeVisible={routeVisible}
       compact={isMobile}
       startLabel={startLabel}
@@ -422,6 +424,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       activePointId={focusItemId}
       onPointSelect={handleSelectItem}
       detailCard={detailCard}
+      locale={locale}
     />
   )
 
@@ -437,18 +440,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       onRemoveFromPool={(pointId) => void trip.removeFromPool(pointId)}
       compact={isMobile}
       enableDrag={!isMobile}
+      locale={locale}
     />
   )
 
   return (
     <div data-layout-wide="true" className="min-h-[70dvh] bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
       <nav
-        aria-label="面包屑"
+        aria-label={tr('routebook.detail.breadcrumbAria', locale)}
         className="border-b border-pink-100/70 bg-white/70 px-4 py-2.5 backdrop-blur-md sm:px-6"
       >
         <div className="mx-auto flex max-w-[1920px] items-center gap-1.5 text-sm text-slate-500">
           <Link href="/me/routebooks" prefetch={false} className="font-medium text-slate-600 no-underline transition hover:text-brand-600">
-            我的地图
+            {tr('routebook.detail.breadcrumbHome', locale)}
           </Link>
           <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
           {trip.editingTitle ? (
@@ -464,7 +468,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                   trip.setEditingTitle(false)
                 }
               }}
-              aria-label="行程标题"
+              aria-label={tr('routebook.detail.renameLabel', locale)}
               className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-2 py-1 text-sm font-semibold text-slate-900 outline-none focus:border-brand-400 sm:max-w-md"
             />
           ) : (
@@ -474,7 +478,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                 trip.setTitleDraft(detail.title)
                 trip.setEditingTitle(true)
               }}
-              title="点击改名"
+              title={tr('routebook.detail.renameHint', locale)}
               className="group inline-flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left font-semibold text-slate-900 transition hover:bg-pink-50"
             >
               <span className="truncate">《{detail.title}》</span>
@@ -490,7 +494,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             <span>{importSummary}</span>
             <button
               type="button"
-              aria-label="关闭提示"
+              aria-label={tr('routebook.detail.closeBanner', locale)}
               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-100"
               onClick={() => setImportSummary(null)}
             >
@@ -503,13 +507,14 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             routeBookTitle={detail.title}
             sequence={immersiveSequence}
             places={detail.places}
-            dayLabel={dayLabel(selectedDay, selectedDay.dayIndex)}
+            dayLabel={dayLabel(selectedDay, selectedDay.dayIndex, locale)}
             nextDayFirstTitle={nextDayFirstTitle}
             checkedInPointIds={trip.checkedInPointIds}
             getPointPreview={trip.getPointPreview}
             onCheckInSuccess={trip.markPointCheckedIn}
             onUndoCheckIn={trip.unmarkPointCheckedIn}
             onClose={() => setShowImmersive(false)}
+            locale={locale}
           />
         ) : null}
 
@@ -528,7 +533,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
             <section className="grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)_420px] lg:min-h-[calc(100dvh-9.5rem)]">
               <div className="flex min-h-0 flex-col gap-4 lg:h-[calc(100dvh-9.5rem)]">
-                <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} />
+                <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} locale={locale} />
                 <div className="min-h-0 flex-1">{sidebar}</div>
               </div>
               <div className="min-h-0 lg:h-[calc(100dvh-9.5rem)]">{mapStage}</div>
@@ -537,7 +542,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           </DndContext>
         ) : (
           <section className="space-y-4">
-            <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} />
+            <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} locale={locale} />
 
             <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
@@ -549,7 +554,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                 }`}
                 onClick={() => setSelectedDayId(null)}
               >
-                全部
+                {tr('routebook.detail.tabAll', locale)}
               </button>
               {days.map((day) => {
                 const active = day.id === selectedDayId
@@ -562,7 +567,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     }`}
                     onClick={() => handleSelectDay(day.id)}
                   >
-                    {dayLabel(day, day.dayIndex)}
+                    {dayLabel(day, day.dayIndex, locale)}
                   </button>
                 )
               })}
@@ -570,8 +575,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
             <div className="inline-flex w-full rounded-[26px] bg-pink-50/80 p-1">
               {([
-                ['route', selectedDay ? `路线 · Day ${selectedDay.dayIndex}` : '路线'],
-                ['pool', '点位池'],
+                ['route', selectedDay
+                  ? tr('routebook.detail.tabRouteDay', locale, { n: selectedDay.dayIndex })
+                  : tr('routebook.detail.tabRoute', locale)],
+                ['pool', tr('routebook.detail.tabPool', locale)],
               ] as const).map(([key, label]) => {
                 const active = mobileTab === key
                 return (
@@ -615,6 +622,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     onOpenItemDetail={handleOpenItemDetail}
                     expanded
                     onToggleExpanded={() => {}}
+                    legsFailed={Boolean(failedDayIds[selectedDay.id])}
+                    onRetryLegs={() => retryDay(selectedDay.id)}
+                    locale={locale}
                   />
                 ) : null}
                 <button
@@ -623,7 +633,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                   onClick={() => setPoolSheetOpen(true)}
                 >
                   <Plus className="h-4 w-4" />
-                  从点位池添加
+                  {tr('routebook.detail.addFromPool', locale)}
                 </button>
               </div>
             ) : (
@@ -656,6 +666,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           isOpen={poolSheetOpen}
           onClose={() => setPoolSheetOpen(false)}
           selectedDayLabel={selectedDay ? `Day ${selectedDay.dayIndex}` : null}
+          locale={locale}
         />
 
         <StartDayPickerSheet
@@ -664,6 +675,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           items={detail.items}
           onPick={handlePickStartDay}
           onClose={() => setStartDayPickerOpen(false)}
+          locale={locale}
         />
 
         {trip.toast ? (

@@ -8,7 +8,9 @@ import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { NavModeToggle } from '@/components/navigation/NavModeToggle'
 import { EMBED_API_KEY, resolveEmbedNavUrl, travelModeLabel } from '@/lib/route/embedNavigation'
 import type { GoogleMapsTravelMode } from '@/lib/route/google'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import type { ItemRecord, PlaceRecord, PointPreview } from '../types'
+import { tr } from '../../i18n'
 
 type Props = {
   routeBookTitle: string
@@ -23,6 +25,7 @@ type Props = {
   onCheckInSuccess: (pointId: string) => void
   onUndoCheckIn: (pointId: string) => Promise<boolean>
   onClose: () => void
+  locale?: SupportedLocale
 }
 
 type UserLocation = { lat: number; lng: number } | null
@@ -67,6 +70,7 @@ export function RouteBookImmersiveMode({
   onCheckInSuccess,
   onUndoCheckIn,
   onClose,
+  locale = 'zh',
 }: Props) {
   const [step, setStep] = useState<'intro' | 'cards' | 'summary'>('intro')
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -85,8 +89,8 @@ export function RouteBookImmersiveMode({
         const place = places.find((row) => row.id === item.placeId)
         return {
           item,
-          title: place?.title ?? item.title ?? '地点',
-          subtitle: place?.address ?? '自定义地点',
+          title: place?.title ?? item.title ?? tr('routebook.common.placeFallback', locale),
+          subtitle: place?.address ?? tr('routebook.immersive.customPlaceLabel', locale),
           image: null,
           geo: place ? [place.lat, place.lng] : null,
           checkInPointId: null,
@@ -95,14 +99,14 @@ export function RouteBookImmersiveMode({
       const preview = item.pointId ? getPointPreview(item.pointId) : null
       return {
         item,
-        title: preview?.title ?? item.title ?? '点位',
+        title: preview?.title ?? item.title ?? tr('routebook.common.pointFallback', locale),
         subtitle: preview?.subtitle ?? '',
         image: preview?.image ?? null,
         geo: preview?.geo ?? null,
         checkInPointId: item.pointId,
       }
     })
-  }, [getPointPreview, places, sequence])
+  }, [getPointPreview, places, sequence, locale])
 
   const remainingStops = useMemo(() => {
     return stops.filter((stop) => !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)))
@@ -203,15 +207,15 @@ export function RouteBookImmersiveMode({
       <div className="relative flex-1 flex flex-col items-center p-6 pb-12">
         {step === 'intro' ? (
           <div className="flex h-full w-full max-w-md flex-col items-center justify-center text-center">
-            <h1 className="select-none text-3xl font-black tracking-tight text-white">开始 {dayLabel}</h1>
+            <h1 className="select-none text-3xl font-black tracking-tight text-white">{tr('routebook.immersive.startDay', locale, { day: dayLabel })}</h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-400">
-              将按这一天的顺序逐站导航与打卡。
+              {tr('routebook.immersive.introBody', locale)}
             </p>
             <div className="mt-7 flex gap-6 text-xs text-slate-400">
-              <div className="flex items-center gap-1.5"><MapPin size={12} />总计 {totalStops} 站</div>
-              <div className="flex items-center gap-1.5"><CheckCircle2 size={12} />已打卡 {checkedCount}</div>
+              <div className="flex items-center gap-1.5"><MapPin size={12} />{tr('routebook.immersive.totalStops', locale, { n: totalStops })}</div>
+              <div className="flex items-center gap-1.5"><CheckCircle2 size={12} />{tr('routebook.immersive.checkedInCount', locale, { n: checkedCount })}</div>
             </div>
-            <div className="mt-4 text-xs text-slate-500">待巡礼 {remainingStops.length} 站</div>
+            <div className="mt-4 text-xs text-slate-500">{tr('routebook.immersive.remainingStops', locale, { n: remainingStops.length })}</div>
             <div className="mt-8 w-full max-w-sm overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/70 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.72)]">
               <div className="aspect-[16/9] w-full bg-slate-900">
                 {firstStop?.image ? (
@@ -222,14 +226,16 @@ export function RouteBookImmersiveMode({
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-500">
-                    {firstStop ? `${firstStop.title} 暂无参考图` : '这一天还没有站点'}
+                    {firstStop
+                      ? tr('routebook.immersive.noReferenceImage', locale, { title: firstStop.title })
+                      : tr('routebook.detail.emptyDayToast', locale)}
                   </div>
                 )}
               </div>
               <div className="border-t border-white/10 px-4 py-3 text-left">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-300">First Stop</div>
-                <div className="mt-2 line-clamp-1 text-sm font-semibold text-white">{firstStop?.title || '准备开始巡礼'}</div>
-                <div className="mt-1 line-clamp-1 text-xs text-slate-400">{firstStop?.subtitle || '从第一站进入沉浸式导航'}</div>
+                <div className="mt-2 line-clamp-1 text-sm font-semibold text-white">{firstStop?.title || tr('routebook.immersive.prepareStart', locale)}</div>
+                <div className="mt-1 line-clamp-1 text-xs text-slate-400">{firstStop?.subtitle || tr('routebook.immersive.enterFromFirst', locale)}</div>
                 {firstStop?.image ? (
                   <div className="mt-2">
                     <AttributionLink
@@ -245,7 +251,7 @@ export function RouteBookImmersiveMode({
               onClick={() => (remainingStops.length > 0 ? setStep('cards') : setStep('summary'))}
               className="mt-8 inline-flex items-center gap-2 rounded-full bg-brand-500 px-9 py-4 font-bold text-white shadow-[0_0_40px_rgba(236,72,153,0.3)] transition hover:scale-105 hover:bg-brand-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/70"
             >
-              进入导航
+              {tr('routebook.immersive.enterNav', locale)}
               <ChevronRight size={18} />
             </button>
           </div>
@@ -264,7 +270,7 @@ export function RouteBookImmersiveMode({
               <div className="text-right">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</div>
                 <div className="text-sm font-mono font-bold text-slate-200">{currentOrdinal} / {totalStops}</div>
-                <div className="mt-1 text-[11px] text-slate-500">剩余 {remainingStops.length} · 已打卡 {checkedCount}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{tr('routebook.immersive.remainingChecked', locale, { remaining: remainingStops.length, checked: checkedCount })}</div>
               </div>
             </div>
 
@@ -275,7 +281,7 @@ export function RouteBookImmersiveMode({
                 <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
                   {currentNavigationUrl ? (
                     <iframe
-                      title="站内导航画面"
+                      title={tr('routebook.immersive.navFrameTitle', locale)}
                       src={currentNavigationUrl}
                       className="h-full w-full border-0 bg-slate-900"
                       loading="lazy"
@@ -285,21 +291,21 @@ export function RouteBookImmersiveMode({
                   ) : (
                     <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-400">
                       {EMBED_API_KEY
-                        ? '当前站点缺少坐标，无法生成导航预览。'
-                        : '未配置 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY，导航预览不可用。'}
+                        ? tr('routebook.immersive.missingCoords', locale)
+                        : tr('routebook.immersive.missingApiKey', locale)}
                     </div>
                   )}
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">站内导航</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{tr('routebook.immersive.onSiteNav', locale)}</div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300">
                     <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                      <div className="text-slate-400">距离</div>
+                      <div className="text-slate-400">{tr('routebook.immersive.distance', locale)}</div>
                       <div className="mt-1 font-semibold text-white">{formatDistance(currentDistance)}</div>
                     </div>
                     <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                      <div className="text-slate-400">出行方式</div>
+                      <div className="text-slate-400">{tr('routebook.immersive.mode', locale)}</div>
                       <div className="mt-1 text-white">{travelModeLabel(travelMode)}</div>
                     </div>
                   </div>
@@ -313,7 +319,7 @@ export function RouteBookImmersiveMode({
                       className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
                     >
                       <CheckCircle2 size={18} />
-                      导航完成并打卡
+                      {tr('routebook.immersive.navDoneCheckIn', locale)}
                     </button>
                   ) : (
                     <button
@@ -322,7 +328,7 @@ export function RouteBookImmersiveMode({
                       className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
                     >
                       <CheckCircle2 size={18} />
-                      已到这一站
+                      {tr('routebook.immersive.arrived', locale)}
                     </button>
                   )}
                   <button
@@ -331,7 +337,7 @@ export function RouteBookImmersiveMode({
                     className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                   >
                     <X size={18} />
-                    退出导航
+                    {tr('routebook.immersive.exitNav', locale)}
                   </button>
                 </div>
               </>
@@ -346,7 +352,9 @@ export function RouteBookImmersiveMode({
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
-                      {currentStop.item.kind === 'place' ? `自定义地点 · ${currentStop.title}` : '暂无参考图'}
+                      {currentStop.item.kind === 'place'
+                        ? tr('routebook.immersive.customPlace', locale, { title: currentStop.title })
+                        : tr('routebook.immersive.noImage', locale)}
                     </div>
                   )}
                 </div>
@@ -366,7 +374,7 @@ export function RouteBookImmersiveMode({
                     className="flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 font-bold text-white hover:bg-brand-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/70"
                   >
                     <Navigation size={18} />
-                    导航
+                    {tr('routebook.immersive.navigate', locale)}
                   </button>
                   <button
                     type="button"
@@ -378,7 +386,7 @@ export function RouteBookImmersiveMode({
                     }`}
                   >
                     {isFinalPlaceStop ? <CheckCircle2 size={18} /> : <SkipForward size={18} />}
-                    {isFinalPlaceStop ? '完成今天' : '跳过'}
+                    {isFinalPlaceStop ? tr('routebook.immersive.finishToday', locale) : tr('routebook.immersive.skip', locale)}
                   </button>
                 </div>
               </>
@@ -388,18 +396,20 @@ export function RouteBookImmersiveMode({
 
         {step === 'summary' ? (
           <div className="flex h-full w-full max-w-md flex-col items-center justify-center text-center">
-            <h2 className="select-none text-3xl font-black tracking-tight text-white">{dayLabel} 完成</h2>
+            <h2 className="select-none text-3xl font-black tracking-tight text-white">{tr('routebook.immersive.dayDone', locale, { day: dayLabel })}</h2>
             <p className="mt-3 text-sm text-slate-400">
-              {nextDayFirstTitle ? `明天从 ${nextDayFirstTitle} 开始` : '你已完成这一天可巡礼的站点。'}
+              {nextDayFirstTitle
+                ? tr('routebook.immersive.tomorrowStart', locale, { title: nextDayFirstTitle })
+                : tr('routebook.immersive.allDone', locale)}
             </p>
             <div className="mt-7 grid w-full grid-cols-2 gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
               <div>
                 <div className="text-3xl font-black">{checkedCount}</div>
-                <div className="mt-1 text-[11px] text-slate-500">已打卡</div>
+                <div className="mt-1 text-[11px] text-slate-500">{tr('routebook.immersive.checkedLabel', locale)}</div>
               </div>
               <div>
                 <div className="text-3xl font-black text-brand-400">{totalStops}</div>
-                <div className="mt-1 text-[11px] text-slate-500">总站点</div>
+                <div className="mt-1 text-[11px] text-slate-500">{tr('routebook.immersive.totalLabel', locale)}</div>
               </div>
             </div>
             <button
@@ -407,7 +417,7 @@ export function RouteBookImmersiveMode({
               onClick={handleClose}
               className="mt-8 rounded-full bg-white px-10 py-4 font-bold text-slate-950 transition hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
-              返回行程
+              {tr('routebook.immersive.backToTrip', locale)}
             </button>
           </div>
         ) : null}
@@ -417,7 +427,7 @@ export function RouteBookImmersiveMode({
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">Checked In</div>
               <div className="mt-1 line-clamp-1 text-sm font-semibold text-white">{lastCheckedPreview?.title || lastCheckedPointId}</div>
-              <div className="mt-1 text-xs text-slate-400">误操作可以撤销，点位会回到当前导航队列。</div>
+              <div className="mt-1 text-xs text-slate-400">{tr('routebook.immersive.undoHint', locale)}</div>
             </div>
             <button
               type="button"
@@ -425,14 +435,14 @@ export function RouteBookImmersiveMode({
               className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/60 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={undoState === 'pending'}
             >
-              {undoState === 'pending' ? '恢复中…' : '撤销打卡'}
+              {undoState === 'pending' ? tr('routebook.immersive.undoing', locale) : tr('routebook.immersive.undoCheckIn', locale)}
             </button>
           </div>
         ) : null}
 
         {undoState === 'error' ? (
           <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 -translate-x-1/2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-medium text-rose-200 backdrop-blur-sm">
-            撤销失败，请稍后重试。
+            {tr('routebook.immersive.undoFailed', locale)}
           </div>
         ) : null}
       </div>
@@ -448,7 +458,7 @@ export function RouteBookImmersiveMode({
             if (!geo) return null
             return { lat: geo[0], lng: geo[1] }
           })()}
-          submitLabel="打卡并下一站"
+          submitLabel={tr('routebook.immersive.checkInNext', locale)}
           onSuccess={() => {
             const checkedPointId = checkInTargetPointId
             onCheckInSuccess(checkedPointId)

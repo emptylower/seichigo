@@ -2,9 +2,11 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { PointPoolItem, PointPreview } from '../types'
 import { DRAG_SAFE_CONTROL_PROPS } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { pickPointGradient, poolDragId } from '../utils'
+import { tr } from '../../i18n'
 
-export function PointThumb({ preview, seed }: { preview: PointPreview; seed: string }) {
+export function PointThumb({ preview, seed, locale = 'zh' }: { preview: PointPreview; seed: string; locale?: SupportedLocale }) {
   const gradient = pickPointGradient(seed)
 
   if (preview.image) {
@@ -22,7 +24,7 @@ export function PointThumb({ preview, seed }: { preview: PointPreview; seed: str
   return (
     <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient}`}>
       <div className="rounded-md bg-black/35 px-3 py-1.5 text-xs font-semibold text-white">
-        暂无截图
+        {tr('routebook.card.noScreenshot', locale)}
       </div>
     </div>
   )
@@ -34,12 +36,14 @@ export function PointPoolCard({
   onAdd,
   sortable,
   isDragging,
+  locale = 'zh',
 }: {
   item: PointPoolItem
   preview: PointPreview
   onAdd: () => void
   sortable?: boolean
   isDragging?: boolean
+  locale?: SupportedLocale
 }) {
   return (
     <article
@@ -49,10 +53,10 @@ export function PointPoolCard({
     >
       <div className="flex min-w-0 items-stretch">
         <div className="relative h-28 w-36 shrink-0 overflow-hidden border-r border-slate-100 sm:h-32 sm:w-44">
-          <PointThumb preview={preview} seed={item.pointId} />
+          <PointThumb preview={preview} seed={item.pointId} locale={locale} />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(2,6,23,0.68)_10%,rgba(2,6,23,0.08)_58%,rgba(255,255,255,0)_100%)]" />
           <div className="absolute left-2 top-2 inline-flex rounded-full border border-white/55 bg-white/85 px-2 py-0.5 text-[10px] font-semibold text-slate-700 backdrop-blur-sm">
-            全局想去
+            {tr('routebook.pool.globalBadge', locale)}
           </div>
         </div>
 
@@ -61,7 +65,7 @@ export function PointPoolCard({
             <h3 className="line-clamp-1 text-sm font-semibold text-slate-900 sm:text-base">{preview.title}</h3>
             {sortable ? (
               <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                拖入路线
+                {tr('routebook.pool.dragIntoRoute', locale)}
               </span>
             ) : null}
           </div>
@@ -73,7 +77,7 @@ export function PointPoolCard({
             onClick={onAdd}
             {...DRAG_SAFE_CONTROL_PROPS}
           >
-            加入当前地图
+            {tr('routebook.pool.addToMap', locale)}
           </button>
         </div>
       </div>
@@ -85,10 +89,12 @@ export function DraggablePointPoolCard({
   item,
   preview,
   onAdd,
+  locale = 'zh',
 }: {
   item: PointPoolItem
   preview: PointPreview
   onAdd: () => void
+  locale?: SupportedLocale
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: poolDragId(item.id),
@@ -107,6 +113,7 @@ export function DraggablePointPoolCard({
         onAdd={onAdd}
         sortable
         isDragging={isDragging}
+        locale={locale}
       />
     </div>
   )

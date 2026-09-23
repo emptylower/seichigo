@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BangumiResponse, PointPreview } from '../types'
 import { PREVIEW_FETCH_IDLE_TIMEOUT, PREVIEW_POINT_BATCH_SIZE } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildFallbackPreview, buildPointLookupCandidates, isGeoPair, parseBangumiId, parsePointKey } from '../utils'
+import { tr } from '../../i18n'
 
 /** 点位预览缓存：分批（28 个/批）+ requestIdleCallback 空闲拉取 bangumi 数据 */
-export function usePointPreviews(allPointIds: string[]) {
+export function usePointPreviews(allPointIds: string[], locale: SupportedLocale = 'zh') {
   const [pointPreviewById, setPointPreviewById] = useState<Record<string, PointPreview>>({})
 
   const resetPreviews = useCallback(() => {
@@ -31,7 +33,7 @@ export function usePointPreviews(allPointIds: string[]) {
     for (const pointId of previewFetchPointIds) {
       const bangumiId = parseBangumiId(pointId)
       if (!bangumiId) {
-        fallbackPreviews[pointId] = buildFallbackPreview(pointId)
+        fallbackPreviews[pointId] = buildFallbackPreview(pointId, locale)
         continue
       }
       const list = grouped.get(bangumiId) ?? []
@@ -83,7 +85,7 @@ export function usePointPreviews(allPointIds: string[]) {
             const subtitle =
               (typeof data.card?.titleZh === 'string' && data.card.titleZh.trim()) ||
               (typeof data.card?.title === 'string' && data.card.title.trim()) ||
-              `作品 #${bangumiId}`
+              tr('routebook.common.bangumiWork', locale, { id: bangumiId })
 
             for (const pointId of ids) {
               const matched = buildPointLookupCandidates(pointId)
@@ -91,7 +93,7 @@ export function usePointPreviews(allPointIds: string[]) {
                 .find((entry) => Boolean(entry))
               const key = parsePointKey(pointId)
               loadedPreviews[pointId] = {
-                title: matched?.title || `点位 ${key}`,
+                title: matched?.title || `${tr('routebook.common.pointFallback', locale)} ${key}`,
                 subtitle,
                 image: matched?.image || null,
                 geo: matched?.geo || null,
@@ -99,7 +101,7 @@ export function usePointPreviews(allPointIds: string[]) {
             }
           } catch {
             for (const pointId of ids) {
-              loadedPreviews[pointId] = buildFallbackPreview(pointId)
+              loadedPreviews[pointId] = buildFallbackPreview(pointId, locale)
             }
           }
         })
@@ -110,7 +112,7 @@ export function usePointPreviews(allPointIds: string[]) {
       setPointPreviewById((prev) => {
         const next = { ...prev }
         for (const pointId of previewFetchPointIds) {
-          next[pointId] = loadedPreviews[pointId] || next[pointId] || buildFallbackPreview(pointId)
+          next[pointId] = loadedPreviews[pointId] || next[pointId] || buildFallbackPreview(pointId, locale)
         }
         return next
       })
@@ -133,11 +135,11 @@ export function usePointPreviews(allPointIds: string[]) {
         win.cancelIdleCallback(idleId)
       }
     }
-  }, [previewFetchPointIds])
+  }, [previewFetchPointIds, locale])
 
   const getPointPreview = useCallback(
-    (pointId: string) => pointPreviewById[pointId] || buildFallbackPreview(pointId),
-    [pointPreviewById]
+    (pointId: string) => pointPreviewById[pointId] || buildFallbackPreview(pointId, locale),
+    [pointPreviewById, locale]
   )
 
   return { getPointPreview, resetPreviews }

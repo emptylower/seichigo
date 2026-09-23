@@ -1,5 +1,8 @@
 import type { DayRecord, ItemRecord, PlaceRecord, PointPreview, NavMode } from './types'
 import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { toIntlLocale } from '@/lib/i18n/intlLocale'
+import { tr } from '../i18n'
 
 export function groupItemsByDay(
   items: ItemRecord[],
@@ -59,30 +62,58 @@ export function applyReorderLocal(
   return next
 }
 
-const WEEKDAY_LABEL = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const
-
-/** `Day N`，有日期时追加 ` · M/D 周X`（按 UTC 读，存的就是 UTC 00:00） */
-export function dayLabel(day: Pick<DayRecord, 'date'>, index: number): string {
+/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
+export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
   const base = `Day ${index}`
   if (!day.date) return base
   const parsed = new Date(day.date)
   if (Number.isNaN(parsed.getTime())) return base
-  return `${base} · ${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()} ${WEEKDAY_LABEL[parsed.getUTCDay()]}`
+  const intl = toIntlLocale(locale)
+  const weekday = new Intl.DateTimeFormat(intl, { weekday: 'short', timeZone: 'UTC' }).format(parsed)
+  if (locale === 'en') {
+    const md = new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)
+    return `${base} · ${md}, ${weekday}`
+  }
+  const md = `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`
+  return locale === 'ja' ? `${base} · ${md}(${weekday})` : `${base} · ${md} ${weekday}`
 }
 
 export function itemDisplayTitle(
   item: Pick<ItemRecord, 'kind' | 'title' | 'placeId'>,
   preview: PointPreview | null | undefined,
-  places: Pick<PlaceRecord, 'id' | 'title'>[]
+  places: Pick<PlaceRecord, 'id' | 'title'>[],
+  locale: SupportedLocale = 'zh'
 ): string {
   if (item.kind === 'point') {
-    return preview?.title || item.title || '点位'
+    return preview?.title || item.title || tr('routebook.common.pointFallback', locale)
   }
   if (item.kind === 'place') {
     const place = places.find((row) => row.id === item.placeId)
-    return place?.title || item.title || '地点'
+    return place?.title || item.title || tr('routebook.common.placeFallback', locale)
   }
-  return item.title || (item.kind === 'transit' ? '交通' : '备注')
+  return item.title || tr(item.kind === 'transit' ? 'routebook.common.transitFallback' : 'routebook.common.noteFallback', locale)
+}
+
+/** 单天模式地图徽标 / 时间线序号：只数有坐标的 point/place，按 sortOrder 编 1..N */
+export function computeVisitOrder(
+  dayItems: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => PointPreview
+): Map<string, number> {
+  const map = new Map<string, number>()
+  const sorted = [...dayItems].sort((a, b) => a.sortOrder - b.sortOrder)
+  let n = 0
+  for (const item of sorted) {
+    if (item.kind !== 'point' && item.kind !== 'place') continue
+    const hasCoord =
+      item.kind === 'place'
+        ? places.some((place) => place.id === item.placeId)
+        : Boolean(item.pointId && getPointPreview(item.pointId).geo)
+    if (!hasCoord) continue
+    n += 1
+    map.set(item.id, n)
+  }
+  return map
 }
 
 /** 沉浸模式序列：当天 point/place 条目按 sortOrder */
@@ -110,10 +141,10 @@ export function pickTodayDayId(days: DayRecord[], now: Date): string | null {
   return sorted[0]!.id
 }
 
-export function formatDate(value: string): string {
+export function formatDate(value: string, locale: SupportedLocale = 'zh'): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '最近更新'
-  return parsed.toLocaleDateString('zh-CN')
+  if (Number.isNaN(parsed.getTime())) return tr('routebook.common.recentlyUpdated', locale)
+  return parsed.toLocaleDateString(toIntlLocale(locale))
 }
 
 export function parseBangumiId(pointId: string): number | null {
@@ -157,10 +188,13 @@ export function pickPointGradient(seed: string): string {
   return POINT_FALLBACK_GRADIENTS[value % POINT_FALLBACK_GRADIENTS.length]
 }
 
-export function buildFallbackPreview(pointId: string): PointPreview {
+export function buildFallbackPreview(pointId: string, locale: SupportedLocale = 'zh'): PointPreview {
+  const bangumiId = parseBangumiId(pointId)
   return {
-    title: `点位 ${parsePointKey(pointId)}`,
-    subtitle: `番剧 #${parseBangumiId(pointId) || '未知'}`,
+    title: tr('routebook.common.pointFallback', locale) + ` ${parsePointKey(pointId)}`,
+    subtitle: bangumiId
+      ? tr('routebook.common.bangumiWork', locale, { id: bangumiId })
+      : tr('routebook.common.bangumiWork', locale, { id: tr('routebook.common.unknown', locale) }),
     image: null,
     geo: null,
   }

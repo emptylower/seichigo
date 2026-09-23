@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, type MutableRefObject } from 'react'
+import { useCallback, useRef, type MutableRefObject } from 'react'
 import type {
   DayRecord,
   ItemRecord,
@@ -13,6 +13,8 @@ import type {
 import { applyReorderLocal } from '../utils'
 import { apiFetch, JSON_HEADERS, sortedDayIds, stripBookUpdatedAt, type ApiFail } from './tripDataApi'
 import type { UndoEntry } from './useUndoRing'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { tr } from '../../i18n'
 import type {
   CreateItemInput,
   LodgingInput,
@@ -32,6 +34,7 @@ type MutationDeps = {
   refreshPointPool: () => Promise<void>
   showToast: (message: string) => void
   load: () => Promise<void>
+  locale?: SupportedLocale
 }
 
 /** 所有写操作：乐观更新 + 失败回滚 + 撤销环入栈（reorder/addItem/deleteItem/optimizeDay） */
@@ -44,7 +47,14 @@ export function useTripMutations({
   refreshPointPool,
   showToast,
   load,
+  locale = 'zh',
 }: MutationDeps) {
+  const localeRef = useRef(locale)
+  localeRef.current = locale
+  const api = useCallback(
+    <T,>(url: string, init?: RequestInit) => apiFetch<T>(url, init, localeRef.current),
+    []
+  )
   // 契约：所有写接口响应带顶层 bookUpdatedAt；仅 patchBook 携带 updatedAt 乐观锁
   const applyBookUpdatedAt = useCallback(
     (value: unknown) => {
@@ -65,7 +75,7 @@ export function useTripMutations({
         startDate: input.startDate !== undefined ? input.startDate : prev.startDate,
         dayCount: input.dayCount ?? prev.dayCount,
       })
-      const result = await apiFetch<{ routeBook?: Partial<RouteBookDetail>; bookUpdatedAt?: string }>(
+      const result = await api<{ routeBook?: Partial<RouteBookDetail>; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}`,
         {
           method: 'PATCH',
@@ -74,7 +84,7 @@ export function useTripMutations({
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '保存失败')
+        handleFailure(result, prev, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
       if (input.startDate !== undefined || input.dayCount !== undefined) {
@@ -109,14 +119,14 @@ export function useTripMutations({
       const prev = detailRef.current
       if (!prev) return false
       setDetail({ ...prev, items: prev.items.filter((row) => row.id !== itemId) })
-      const result = await apiFetch<{ ok?: boolean; bookUpdatedAt?: string }>(
+      const result = await api<{ ok?: boolean; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/items/${itemId}`,
         {
           method: 'DELETE',
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '删除失败')
+        handleFailure(result, prev, tr('routebook.detail.deleteFailed', localeRef.current))
         return false
       }
       applyBookUpdatedAt(result.data.bookUpdatedAt)
@@ -159,7 +169,7 @@ export function useTripMutations({
       )
       setDetail({ ...prev, items: [...optimistic, tempItem] })
 
-      const result = await apiFetch<{
+      const result = await api<{
         item?: ItemRecord & { bookUpdatedAt?: string }
         items?: ItemRecord[]
         bookUpdatedAt?: string
@@ -169,7 +179,7 @@ export function useTripMutations({
         body: JSON.stringify({ dayId, ...input, index }),
       })
       if (!result.ok || !result.data.item) {
-        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: '添加失败' }, prev, '添加失败')
+        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: tr('routebook.detail.addFailed', localeRef.current) }, prev, tr('routebook.detail.addFailed', localeRef.current))
         return null
       }
 
@@ -199,7 +209,7 @@ export function useTripMutations({
       }
       const createdId = item.id
       pushUndo({
-        label: '添加条目',
+        label: tr('routebook.detail.undoAddItem', localeRef.current),
         revert: async () => {
           await deleteItemInner(createdId)
         },
@@ -225,12 +235,12 @@ export function useTripMutations({
       })
       setDetail({ ...prev, items: optimistic })
 
-      const result = await apiFetch<{ item?: ItemRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ item?: ItemRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/items/${itemId}`,
         { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(data) }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '保存失败')
+        handleFailure(result, prev, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
       const updated = result.data.item
@@ -259,7 +269,7 @@ export function useTripMutations({
     async (target: ItemRecord): Promise<void> => {
       // createItemSchema 只接收部分字段（payload 由服务端管，不传）；
       // locked/timeEnd/icon/color/legMode 建后补 PATCH 还原，避免撤销丢字段
-      const result = await apiFetch<{
+      const result = await api<{
         item?: ItemRecord & { bookUpdatedAt?: string }
         items?: ItemRecord[]
         bookUpdatedAt?: string
@@ -278,7 +288,7 @@ export function useTripMutations({
         }),
       })
       if (!result.ok || !result.data.item) {
-        showToast(result.ok === false ? result.error : '恢复失败')
+        showToast(result.ok === false ? result.error : tr('routebook.detail.restoreFailed', localeRef.current))
         return
       }
       const created = result.data.item
@@ -293,7 +303,7 @@ export function useTripMutations({
       if (target.color) patch.color = target.color
       if (target.legMode) patch.legMode = target.legMode
       if (Object.keys(patch).length > 0) {
-        const patchResult = await apiFetch<{ item?: ItemRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+        const patchResult = await api<{ item?: ItemRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
           `/api/me/routebooks/${id}/items/${item.id}`,
           { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch) }
         )
@@ -329,7 +339,7 @@ export function useTripMutations({
       const ok = await deleteItemInner(itemId)
       if (ok && target) {
         pushUndo({
-          label: '删除条目',
+          label: tr('routebook.detail.undoDeleteItem', localeRef.current),
           revert: async () => {
             await recreateItem(target)
           },
@@ -347,7 +357,7 @@ export function useTripMutations({
       const prev = detailRef.current
       if (!prev) return { ok: false, items: null }
       setDetail({ ...prev, items: applyReorderLocal(prev.items, targetDayId, orderedItemIds) })
-      const result = await apiFetch<{ items?: ItemRecord[]; bookUpdatedAt?: string; updatedAt?: string }>(
+      const result = await api<{ items?: ItemRecord[]; bookUpdatedAt?: string; updatedAt?: string }>(
         `/api/me/routebooks/${id}/items/reorder`,
         {
           method: 'POST',
@@ -356,7 +366,7 @@ export function useTripMutations({
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '排序失败')
+        handleFailure(result, prev, tr('routebook.detail.reorderFailed', localeRef.current))
         return { ok: false, items: null }
       }
       const data = result.data
@@ -401,7 +411,7 @@ export function useTripMutations({
         const serverIds = res.items ? new Set(res.items.map((row) => row.id)) : null
         const alive = (ids: string[]) => (serverIds ? ids.filter((itemId) => serverIds.has(itemId)) : ids)
         pushUndo({
-          label: '调整顺序',
+          label: tr('routebook.detail.undoReorder', localeRef.current),
           revert: async () => {
             // 跨天移动：先把移入条目拉回源天，再恢复目标天内部顺序
             for (const [dayId, ids] of prevSources) {
@@ -421,7 +431,7 @@ export function useTripMutations({
       const prev = detailRef.current
       if (!prev) return false
       const beforeIds = sortedDayIds(prev.items, dayId)
-      const result = await apiFetch<{
+      const result = await api<{
         items?: ItemRecord[]
         bookUpdatedAt?: string
         updatedAt?: string
@@ -429,7 +439,7 @@ export function useTripMutations({
         distanceAfterM?: number
       }>(`/api/me/routebooks/${id}/days/${dayId}/optimize`, { method: 'POST' })
       if (!result.ok) {
-        handleFailure(result, null, '优化失败')
+        handleFailure(result, null, tr('routebook.detail.optimizeFailed', localeRef.current))
         return false
       }
       const data = result.data
@@ -449,7 +459,7 @@ export function useTripMutations({
           : cur
       )
       pushUndo({
-        label: '优化顺序',
+        label: tr('routebook.detail.undoOptimize', localeRef.current),
         revert: async () => {
           await reorderInner(dayId, beforeIds)
         },
@@ -458,7 +468,7 @@ export function useTripMutations({
         typeof data.distanceBeforeM === 'number' && typeof data.distanceAfterM === 'number'
           ? Math.max(0, Math.round((data.distanceBeforeM - data.distanceAfterM) / 100) / 10)
           : 0
-      showToast(saved > 0 ? `已按最短路线重排，少走约 ${saved} 公里` : '已按最短路线重排这一天')
+      showToast(saved > 0 ? tr('routebook.detail.optimizeSaved', locale, { km: saved }) : tr('routebook.detail.optimizeDone', localeRef.current))
       return true
     },
     [detailRef, handleFailure, id, pushUndo, reorderInner, setDetail, showToast]
@@ -466,12 +476,12 @@ export function useTripMutations({
 
   const insertDay = useCallback(
     async (afterDayIndex: number): Promise<boolean> => {
-      const result = await apiFetch<{ day?: DayRecord & { bookUpdatedAt?: string } }>(
+      const result = await api<{ day?: DayRecord & { bookUpdatedAt?: string } }>(
         `/api/me/routebooks/${id}/days`,
         { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ afterDayIndex }) }
       )
       if (!result.ok) {
-        handleFailure(result, null, '添加失败')
+        handleFailure(result, null, tr('routebook.detail.addFailed', localeRef.current))
         return false
       }
       await load()
@@ -488,12 +498,12 @@ export function useTripMutations({
         ...prev,
         days: prev.days.map((row) => (row.id === dayId ? { ...row, ...data } : row)),
       })
-      const result = await apiFetch<{ day?: DayRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ day?: DayRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/days/${dayId}`,
         { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(data) }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '保存失败')
+        handleFailure(result, prev, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
       applyBookUpdatedAt(
@@ -506,11 +516,11 @@ export function useTripMutations({
 
   const deleteDay = useCallback(
     async (dayId: string): Promise<boolean> => {
-      const result = await apiFetch<{ ok?: boolean }>(`/api/me/routebooks/${id}/days/${dayId}`, {
+      const result = await api<{ ok?: boolean }>(`/api/me/routebooks/${id}/days/${dayId}`, {
         method: 'DELETE',
       })
       if (!result.ok) {
-        handleFailure(result, null, '删除失败')
+        handleFailure(result, null, tr('routebook.detail.deleteFailed', localeRef.current))
         return false
       }
       await load()
@@ -531,7 +541,7 @@ export function useTripMutations({
         })
         .filter((row): row is DayRecord => row !== null)
       setDetail({ ...prev, days: optimistic })
-      const result = await apiFetch<{ days?: DayRecord[]; bookUpdatedAt?: string }>(
+      const result = await api<{ days?: DayRecord[]; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/days/reorder`,
         {
           method: 'POST',
@@ -540,7 +550,7 @@ export function useTripMutations({
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '排序失败')
+        handleFailure(result, prev, tr('routebook.detail.reorderFailed', localeRef.current))
         return false
       }
       const serverDays = Array.isArray(result.data.days) ? result.data.days : null
@@ -561,12 +571,12 @@ export function useTripMutations({
 
   const createPlace = useCallback(
     async (input: PlaceInput): Promise<string | null> => {
-      const result = await apiFetch<{ place?: PlaceRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ place?: PlaceRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/places`,
         { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }
       )
       if (!result.ok || !result.data.place) {
-        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: '添加失败' }, null, '添加失败')
+        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: tr('routebook.detail.addFailed', localeRef.current) }, null, tr('routebook.detail.addFailed', localeRef.current))
         return null
       }
       const place = stripBookUpdatedAt(result.data.place)
@@ -581,12 +591,12 @@ export function useTripMutations({
 
   const updatePlace = useCallback(
     async (placeId: string, input: Partial<PlaceInput>): Promise<boolean> => {
-      const result = await apiFetch<{ place?: PlaceRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ place?: PlaceRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/places/${placeId}`,
         { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(input) }
       )
       if (!result.ok) {
-        handleFailure(result, null, '保存失败')
+        handleFailure(result, null, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
       const place = result.data.place ? stripBookUpdatedAt(result.data.place) : null
@@ -613,14 +623,14 @@ export function useTripMutations({
         items: prev.items.filter((row) => row.placeId !== placeId),
         lodgings: prev.lodgings.filter((row) => row.placeId !== placeId),
       })
-      const result = await apiFetch<{ ok?: boolean; bookUpdatedAt?: string }>(
+      const result = await api<{ ok?: boolean; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/places/${placeId}`,
         {
           method: 'DELETE',
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '删除失败')
+        handleFailure(result, prev, tr('routebook.detail.deleteFailed', localeRef.current))
         return false
       }
       applyBookUpdatedAt(result.data.bookUpdatedAt)
@@ -631,12 +641,12 @@ export function useTripMutations({
 
   const createLodging = useCallback(
     async (input: LodgingInput): Promise<string | null> => {
-      const result = await apiFetch<{ lodging?: LodgingRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ lodging?: LodgingRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/lodgings`,
         { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }
       )
       if (!result.ok || !result.data.lodging) {
-        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: '添加失败' }, null, '添加失败')
+        handleFailure(result.ok === false ? result : { ok: false, status: 500, error: tr('routebook.detail.addFailed', localeRef.current) }, null, tr('routebook.detail.addFailed', localeRef.current))
         return null
       }
       const lodging = stripBookUpdatedAt(result.data.lodging)
@@ -651,12 +661,12 @@ export function useTripMutations({
 
   const updateLodging = useCallback(
     async (lodgingId: string, input: Partial<LodgingInput>): Promise<boolean> => {
-      const result = await apiFetch<{ lodging?: LodgingRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
+      const result = await api<{ lodging?: LodgingRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/lodgings/${lodgingId}`,
         { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(input) }
       )
       if (!result.ok) {
-        handleFailure(result, null, '保存失败')
+        handleFailure(result, null, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
       const lodging = result.data.lodging ? stripBookUpdatedAt(result.data.lodging) : null
@@ -678,14 +688,14 @@ export function useTripMutations({
       const prev = detailRef.current
       if (!prev) return false
       setDetail({ ...prev, lodgings: prev.lodgings.filter((row) => row.id !== lodgingId) })
-      const result = await apiFetch<{ ok?: boolean; bookUpdatedAt?: string }>(
+      const result = await api<{ ok?: boolean; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/lodgings/${lodgingId}`,
         {
           method: 'DELETE',
         }
       )
       if (!result.ok) {
-        handleFailure(result, prev, '删除失败')
+        handleFailure(result, prev, tr('routebook.detail.deleteFailed', localeRef.current))
         return false
       }
       applyBookUpdatedAt(result.data.bookUpdatedAt)
