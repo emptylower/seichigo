@@ -97,7 +97,12 @@ export function LegConnector({
             className="fixed inset-0 z-20 cursor-default"
             onClick={() => setMenuOpen(false)}
           />
-          <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-40 rounded-2xl border border-pink-100 bg-white py-1 shadow-lg">
+          <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-44 rounded-2xl border border-pink-100 bg-white py-1 shadow-lg">
+            {agent ? (
+              <div className="border-b border-pink-50 px-3 py-1.5 text-[10px] leading-4 text-slate-400">
+                {tr('routebook.leg.overrideAgent', locale)}
+              </div>
+            ) : null}
             {menuItems.map(({ mode, label, Icon: MenuIcon }) => {
               const active = itemLegMode === mode
               return (

@@ -48,4 +48,19 @@ describe('LegConnector', () => {
     render(<LegConnector leg={makeLeg()} routeVisible locale="zh" />)
     expect(screen.getByRole('button', { name: '修改本段交通方式' })).toBeDisabled()
   })
+
+  it('agent 段菜单顶部提示「将覆盖 AI 查询结果」，其它来源不提示', () => {
+    const { rerender } = render(
+      <LegConnector leg={makeLeg({ source: 'agent' })} routeVisible onChangeLegMode={() => {}} locale="zh" />
+    )
+    // 契约：agent 段菜单可用（服务端允许 legMode 覆盖）
+    const trigger = screen.getByRole('button', { name: '修改本段交通方式' })
+    expect(trigger).not.toBeDisabled()
+    fireEvent.click(trigger)
+    expect(screen.getByText('将覆盖 AI 查询结果')).toBeTruthy()
+
+    rerender(<LegConnector leg={makeLeg({ source: 'google' })} routeVisible onChangeLegMode={() => {}} locale="zh" />)
+    fireEvent.click(screen.getByRole('button', { name: '修改本段交通方式' }))
+    expect(screen.queryByText('将覆盖 AI 查询结果')).toBeNull()
+  })
 })

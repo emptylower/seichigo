@@ -1042,7 +1042,8 @@
       "estimated": "Estimate",
       "useDayDefault": "Use day default",
       "agentChecked": "AI checked",
-      "changeMode": "Change travel mode for this leg"
+      "changeMode": "Change travel mode for this leg",
+      "overrideAgent": "This overrides the AI result"
     },
     "map": {
       "title": "Route Preview",
