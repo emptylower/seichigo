@@ -199,6 +199,29 @@ describe('buildDayStops transit 接管与失效', () => {
     expect(staleTransitItemIds).toEqual([])
   })
 
+  it('A3：目标停靠点显式设置 legMode → agent 段不被采用，transit 条目进 stale', () => {
+    const items = [
+      item({ id: 'i-a', pointId: 'p-near-a', sortOrder: 0 }),
+      item({
+        id: 'i-t',
+        kind: 'transit',
+        title: '公交',
+        sortOrder: 1,
+        payload: {
+          transitBetween: { prevItemId: 'i-a', nextItemId: 'i-b' },
+          transport: { mode: 'transit', durationMin: 20, distanceKm: 5 },
+        },
+      }),
+      item({ id: 'i-b', pointId: 'p-near-b', sortOrder: 2, legMode: 'walking' }),
+    ]
+
+    const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, items, [], [], POINT_COORDS)
+    expect(stops.map((s) => s.id)).toEqual(['i-a', 'i-b'])
+    expect(stops[1]).toMatchObject({ id: 'i-b', legMode: 'walking' })
+    expect(agentLegs.size).toBe(0)
+    expect(staleTransitItemIds).toEqual(['i-t'])
+  })
+
   it('无坐标点位不进停靠序列，也不参与 transit 邻居判定', () => {
     const items = [
       item({ id: 'i-ghost', pointId: 'p-unknown', sortOrder: 0 }),
@@ -269,6 +292,43 @@ describe('resolveDayLegs', () => {
     const [transit] = await resolveDayLegs(farStops, new Map(), 'walking', async () => null)
     expect(transit).toMatchObject({ mode: 'transit', source: 'heuristic' })
     expect(transit!.durationSec).toBeGreaterThanOrEqual(10 * 60)
+  })
+
+  it('A2：显式 legMode 不被启发式改写——远距 walking 保持 walking（按 4.5km/h 估算）', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'c', ...COORDS.farC, legMode: 'walking' },
+    ]
+    const modes: string[] = []
+    const legs = await resolveDayLegs(stops, new Map(), 'transit', async (_from, _to, mode) => {
+      modes.push(mode)
+      return null
+    })
+    expect(modes).toEqual(['walking'])
+    // nearA→farC 约 6.3km：步行估算 ≈ 84 分钟；若被启发式改写成 transit 只有约 27 分钟
+    expect(legs[0]).toMatchObject({ mode: 'walking', source: 'heuristic', toId: 'c' })
+    expect(legs[0]!.durationSec).toBeGreaterThan(60 * 60)
+  })
+
+  it('A2：显式 legMode transit 近距也保持 transit（25km/h + 12 分钟换乘）', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'b', ...COORDS.nearB, legMode: 'transit' },
+    ]
+    const legs = await resolveDayLegs(stops, new Map(), 'walking', async () => null)
+    expect(legs[0]).toMatchObject({ mode: 'transit', source: 'heuristic', toId: 'b' })
+    expect(legs[0]!.durationSec).toBeGreaterThanOrEqual(12 * 60)
+  })
+
+  it('A3：显式 legMode 覆盖 agent 数据——agentLegs 有该段也不用', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'b', ...COORDS.nearB, legMode: 'walking' },
+    ]
+    const agentLegs = new Map([['b', { mode: 'transit', durationMin: 20, distanceKm: 5 }]])
+    const legs = await resolveDayLegs(stops, agentLegs, 'transit', async () => null)
+    expect(legs[0]).toMatchObject({ mode: 'walking', source: 'heuristic', toId: 'b' })
+    expect(legs[0]!.durationSec).toBeLessThan(20 * 60)
   })
 })
 
