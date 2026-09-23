@@ -97,32 +97,89 @@ describe('buildDayTargets', () => {
     expect(approxDistanceM({ lat: fromLat, lng: fromLng }, SHANGHAI_STOPS[0]!)).toBeGreaterThan(300)
     expect(approxDistanceM({ lat: fromLat, lng: fromLng }, SHANGHAI_STOPS[0]!)).toBeLessThan(900)
 
-    // 途经点参数：vialons/vialats/vianames 与 GCJ-02 一致
-    const vialon = Number((android.get('vialons') ?? '').split(',')[0])
-    const vialat = Number((android.get('vialats') ?? '').split(',')[0])
+    // 途经点参数：vialons/vialats/vianames 竖线分隔，与 GCJ-02 一致；带 vian 数量与起点 slat/slon/sname
+    const vialon = Number((android.get('vialons') ?? '').split('|')[0])
+    const vialat = Number((android.get('vialats') ?? '').split('|')[0])
     expect(approxDistanceM({ lat: vialat, lng: vialon }, SHANGHAI_STOPS[1]!)).toBeGreaterThan(300)
     expect(approxDistanceM({ lat: vialat, lng: vialon }, SHANGHAI_STOPS[1]!)).toBeLessThan(900)
+    expect(android.get('vian')).toBe('1')
     expect(decodeParam(android.get('vianames') ?? '')).toBe('东方明珠')
+
+    // 起点：slat/slon/sname 取 stops[0] 的 GCJ 坐标与名称，否则高德从当前位置出发、第一站丢失
+    const slat = Number(android.get('slat'))
+    const slon = Number(android.get('slon'))
+    expect(approxDistanceM({ lat: slat, lng: slon }, SHANGHAI_STOPS[0]!)).toBeGreaterThan(300)
+    expect(approxDistanceM({ lat: slat, lng: slon }, SHANGHAI_STOPS[0]!)).toBeLessThan(900)
+    expect(decodeParam(android.get('sname') ?? '')).toBe('人民广场')
+    const ios = parseAmapUri(amap.appUrls!.ios)
+    expect(ios.get('slat')).not.toBeNull()
+    expect(ios.get('slon')).not.toBeNull()
+    expect(decodeParam(ios.get('sname') ?? '')).toBe('人民广场')
   })
 
-  it('高德 t 参数按 mode 映射：driving→0 / walking→3 / transit→4；网页 type 同步', () => {
+  it('高德 t 参数按 mode 映射：driving→0 / transit→1 / walking→2；网页 type 同步', () => {
     const driving = buildDayTargets(SHANGHAI_STOPS, 'driving')[2]!
+    const transit = buildDayTargets(SHANGHAI_STOPS, 'transit')[2]!
     const walking = buildDayTargets(SHANGHAI_STOPS, 'walking')[2]!
     expect(parseAmapUri(driving.appUrls!.android).get('t')).toBe('0')
-    expect(parseAmapUri(walking.appUrls!.ios).get('t')).toBe('3')
+    expect(parseAmapUri(transit.appUrls!.ios).get('t')).toBe('1')
+    expect(parseAmapUri(walking.appUrls!.android).get('t')).toBe('2')
     expect(parseAmapUri(walking.url).get('type')).toBe('walk')
+    expect(parseAmapUri(driving.url).get('type')).toBe('car')
+    expect(parseAmapUri(transit.url).get('type')).toBe('bus')
   })
 
-  it('名称含逗号时高德列表参数以全角逗号替代，中文正确编码', () => {
+  it('多途经点：vialons/vialats/vianames 以竖线分隔、vian 为数量、顺序保持', () => {
+    const stops: NavStop[] = [
+      { lat: 31.2304, lng: 121.4737, name: '人民广场' },
+      { lat: 31.2397, lng: 121.4995, name: '东方明珠' },
+      { lat: 31.2299, lng: 121.4753, name: '豫园' },
+      { lat: 31.2459, lng: 121.4649, name: '静安寺' },
+    ]
+    const amap = buildDayTargets(stops, 'driving')[2]!
+    const android = parseAmapUri(amap.appUrls!.android)
+    expect((android.get('vialons') ?? '').split('|')).toHaveLength(2)
+    expect((android.get('vialats') ?? '').split('|')).toHaveLength(2)
+    expect(android.get('vian')).toBe('2')
+    expect(decodeParam(android.get('vianames') ?? '')).toBe('东方明珠|豫园')
+    const ios = parseAmapUri(amap.appUrls!.ios)
+    expect(decodeParam(ios.get('vianames') ?? '')).toBe('东方明珠|豫园')
+    expect(ios.get('vian')).toBe('2')
+  })
+
+  it('名称含竖线时高德列表参数以全角竖线替代；逗号无需处理', () => {
     const stops: NavStop[] = [
       { lat: 31.2304, lng: 121.4737, name: 'A,B' },
-      { lat: 31.2397, lng: 121.4995, name: '豫园,城隍庙' },
+      { lat: 31.2397, lng: 121.4995, name: '豫园|城隍庙' },
       { lat: 31.2459, lng: 121.4649, name: '静安寺' },
     ]
     const amap = buildDayTargets(stops, 'transit')[2]!
     const android = parseAmapUri(amap.appUrls!.android)
-    expect(decodeParam(android.get('vianames') ?? '')).toBe('豫园，城隍庙')
-    expect(decodeParam(parseAmapUri(amap.url).get('via[0][name]') ?? '')).toBe('豫园，城隍庙')
+    expect(decodeParam(android.get('vianames') ?? '')).toBe('豫园｜城隍庙')
+    expect(decodeParam(android.get('sname') ?? '')).toBe('A,B')
+    expect(decodeParam(parseAmapUri(amap.url).get('via[0][name]') ?? '')).toBe('豫园｜城隍庙')
+  })
+
+  it('途经点超过 16 个：截断为 16 并标记 note=viaTruncated；恰好不超时不标记', () => {
+    const tooMany: NavStop[] = Array.from({ length: 20 }, (_, i) => ({
+      lat: 35 + i * 0.001,
+      lng: 139 + i * 0.001,
+      name: `S${i + 1}`,
+    }))
+    const amap = buildDayTargets(tooMany, 'driving')[2]!
+    expect(amap.note).toBe('viaTruncated')
+    const android = parseAmapUri(amap.appUrls!.android)
+    expect((android.get('vialons') ?? '').split('|')).toHaveLength(16)
+    expect(android.get('vian')).toBe('16')
+    const webViaCount = [...parseAmapUri(amap.url).keys()].filter((k) => /^via\[\d+\]\[lnglat\]$/.test(k)).length
+    expect(webViaCount).toBe(16)
+
+    const exact: NavStop[] = Array.from({ length: 18 }, (_, i) => ({
+      lat: 35 + i * 0.001,
+      lng: 139 + i * 0.001,
+      name: `S${i + 1}`,
+    }))
+    expect(buildDayTargets(exact, 'driving')[2]!.note).toBeUndefined()
   })
 
   it('Google waypoints 超 9 个分块：url 为首段，urls 含全部首尾相接的分段', () => {

@@ -16,7 +16,7 @@ export type NavTarget = {
   provider: NavProvider
   url: string
   appUrl?: string
-  note?: 'endpointsOnly'
+  note?: 'endpointsOnly' | 'viaTruncated'
   /** Google 整天 waypoints 超 9 个时分块：url 为首段，urls 为完整分段（可依次打开） */
   urls?: string[]
   /** 高德 app 深链按平台二选一；由 orderTargets 依 ctx 解析进 appUrl（解析后移除本字段） */
@@ -45,9 +45,9 @@ function formatLngLat({ lng, lat }: Coords): string {
   return `${lng.toFixed(6)},${lat.toFixed(6)}`
 }
 
-/** 名称里的 ASCII 逗号会破坏 vianames 逗号分隔列表，替换为全角逗号 */
+/** 名称里的 ASCII 竖线会破坏 vianames 竖线分隔列表，替换为全角竖线（逗号无需处理） */
 function sanitizeListName(name: string): string {
-  return name.replace(/,/g, '，')
+  return name.replace(/\|/g, '｜')
 }
 
 const GOOGLE_TRAVELMODE: Record<NavMode, string> = {
@@ -68,11 +68,11 @@ const AMAP_WEB_TYPE: Record<NavMode, string> = {
   driving: 'car',
 }
 
-/** 高德 URI API 的 t 参数：0 驾车（速度优先）/ 3 步行 / 4 公交 */
+/** 高德 URI API 的 t 参数：0 驾车、1 公交、2 步行（3=骑行、4=火车不用） */
 const AMAP_T: Record<NavMode, number> = {
   driving: 0,
-  walking: 3,
-  transit: 4,
+  transit: 1,
+  walking: 2,
 }
 
 // ---------------------------------------------------------------------------
@@ -164,12 +164,17 @@ function buildAmapSingleUrl(stop: NavStop): string {
   ])
 }
 
-/** Android：amapuri://route/plan/；途经点 ≤16 个（vialons/vialats/vianames 逗号分隔） */
+/** Android：amapuri://route/plan/；途经点 ≤16 个（vialons/vialats/vianames 竖线分隔 + vian 数量）。
+ *  必须带 slat/slon/sname（stops[0] 的 GCJ 坐标与名称），否则高德从当前位置出发、第一站丢失 */
 function buildAmapAndroidUrl(stops: AmapStop[], mode: NavMode): string {
   const via = stops.slice(1, -1).slice(0, AMAP_VIA_MAX)
+  const origin = stops[0]!
   const dest = stops[stops.length - 1]!
   const parts = [
     'amapuri://route/plan/?sourceApplication=seichigo',
+    `slat=${origin.gcj.lat.toFixed(6)}`,
+    `slon=${origin.gcj.lng.toFixed(6)}`,
+    `sname=${encodeURIComponent(sanitizeListName(origin.name))}`,
     `dlat=${dest.gcj.lat.toFixed(6)}`,
     `dlon=${dest.gcj.lng.toFixed(6)}`,
     `dname=${encodeURIComponent(sanitizeListName(dest.name))}`,
@@ -177,19 +182,24 @@ function buildAmapAndroidUrl(stops: AmapStop[], mode: NavMode): string {
     `t=${AMAP_T[mode]}`,
   ]
   if (via.length > 0) {
-    parts.push(`vialons=${via.map((s) => s.gcj.lng.toFixed(6)).join(',')}`)
-    parts.push(`vialats=${via.map((s) => s.gcj.lat.toFixed(6)).join(',')}`)
-    parts.push(`vianames=${encodeURIComponent(via.map((s) => sanitizeListName(s.name)).join(','))}`)
+    parts.push(`vialons=${via.map((s) => s.gcj.lng.toFixed(6)).join('|')}`)
+    parts.push(`vialats=${via.map((s) => s.gcj.lat.toFixed(6)).join('|')}`)
+    parts.push(`vianames=${encodeURIComponent(via.map((s) => sanitizeListName(s.name)).join('|'))}`)
+    parts.push(`vian=${via.length}`)
   }
   return amapQuery(parts)
 }
 
-/** iOS：iosamap://path；途经点参数同 Android */
+/** iOS：iosamap://path；途经点参数同 Android（含起点 slat/slon/sname） */
 function buildAmapIosUrl(stops: AmapStop[], mode: NavMode): string {
   const via = stops.slice(1, -1).slice(0, AMAP_VIA_MAX)
+  const origin = stops[0]!
   const dest = stops[stops.length - 1]!
   const parts = [
     'iosamap://path?sourceApplication=seichigo',
+    `slat=${origin.gcj.lat.toFixed(6)}`,
+    `slon=${origin.gcj.lng.toFixed(6)}`,
+    `sname=${encodeURIComponent(sanitizeListName(origin.name))}`,
     `dlat=${dest.gcj.lat.toFixed(6)}`,
     `dlon=${dest.gcj.lng.toFixed(6)}`,
     `dname=${encodeURIComponent(sanitizeListName(dest.name))}`,
@@ -197,9 +207,10 @@ function buildAmapIosUrl(stops: AmapStop[], mode: NavMode): string {
     `t=${AMAP_T[mode]}`,
   ]
   if (via.length > 0) {
-    parts.push(`vialons=${via.map((s) => s.gcj.lng.toFixed(6)).join(',')}`)
-    parts.push(`vialats=${via.map((s) => s.gcj.lat.toFixed(6)).join(',')}`)
-    parts.push(`vianames=${encodeURIComponent(via.map((s) => sanitizeListName(s.name)).join(','))}`)
+    parts.push(`vialons=${via.map((s) => s.gcj.lng.toFixed(6)).join('|')}`)
+    parts.push(`vialats=${via.map((s) => s.gcj.lat.toFixed(6)).join('|')}`)
+    parts.push(`vianames=${encodeURIComponent(via.map((s) => sanitizeListName(s.name)).join('|'))}`)
+    parts.push(`vian=${via.length}`)
   }
   return amapQuery(parts)
 }
@@ -269,6 +280,7 @@ export function buildDayTargets(
   }
 
   const amapStops = toAmapStops(stops)
+  const viaTruncated = stops.length - 2 > AMAP_VIA_MAX
 
   return [
     { provider: 'google', url: googleUrls[0]!, ...(googleUrls.length > 1 ? { urls: googleUrls } : {}) },
@@ -276,6 +288,7 @@ export function buildDayTargets(
     {
       provider: 'amap',
       url: buildAmapWebUrl(amapStops, mode),
+      ...(viaTruncated ? { note: 'viaTruncated' as const } : {}),
       appUrls: {
         android: buildAmapAndroidUrl(amapStops, mode),
         ios: buildAmapIosUrl(amapStops, mode),
