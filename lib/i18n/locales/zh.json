@@ -1117,7 +1117,7 @@
       "distance": "距离",
       "mode": "出行方式",
       "navDoneCheckIn": "导航完成并打卡",
-      "arrived": "已到这一站",
+      "arrived": "到达 · 下一站",
       "exitNav": "退出导航",
       "customPlace": "自定义地点 · {title}",
       "noImage": "暂无参考图",
@@ -1126,7 +1126,7 @@
       "skip": "跳过",
       "dayDone": "{day} 完成",
       "tomorrowStart": "明天从 {title} 开始",
-      "allDone": "你已完成这一天可巡礼的站点。",
+      "allDone": "全部完成",
       "checkedLabel": "已打卡",
       "totalLabel": "总站点",
       "backToTrip": "返回行程",
@@ -1214,6 +1214,22 @@
       "deleteDay": "删除这一天",
       "deleteBlocked": "只有空天可以删除（最后一天不可删）",
       "submit": "保存顺序"
+    },
+    "mobile": {
+      "tabPlan": "计划",
+      "tabMap": "地图",
+      "allDays": "全部天数",
+      "dockPool": "点位池",
+      "dockOptimize": "优化",
+      "dockNav": "打开导航",
+      "navSheetTitle": "打开导航",
+      "navGoogle": "Google Maps",
+      "remove": "移除",
+      "optimizeNeedDay": "先选择一天",
+      "optimizeNeedPoints": "至少 2 个可移动点才能优化",
+      "emptyDay": "这一天还没有条目，从点位池添加吧",
+      "viewDay": "查看这一天",
+      "noLodging": "这一天还没有住宿安排"
     }
   }
 }

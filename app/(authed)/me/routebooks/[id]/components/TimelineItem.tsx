@@ -88,6 +88,10 @@ type TimelineItemProps = {
   onEditNote?: () => void
   /** B1.2：当天游览顺序（有坐标的 point/place 才有），与地图徽标一致 */
   seq?: number
+  /** B3 移动端：整卡长按拖拽（隐藏小手柄，listeners 贴到根节点，配合 TouchSensor delay:200） */
+  mobileDrag?: boolean
+  /** B3 移动端不提供锁定（timeStart 固定保留） */
+  hideLockButton?: boolean
   locale?: SupportedLocale
 }
 
@@ -103,6 +107,8 @@ export function TimelineItem({
   onOpenDetail,
   onEditNote,
   seq,
+  mobileDrag = false,
+  hideLockButton = false,
   locale = 'zh',
 }: TimelineItemProps) {
   const [editingTime, setEditingTime] = useState(false)
@@ -196,8 +202,9 @@ export function TimelineItem({
           ? 'border-transparent bg-slate-50/60'
           : 'border-pink-100/80 bg-white shadow-[0_10px_22px_-20px_rgba(15,23,42,0.4)]'
       } ${isDragging ? 'z-10 border-brand-300 ring-2 ring-brand-200/70' : ''}`}
+      {...(mobileDrag && item.kind !== 'transit' ? listeners : {})}
     >
-      {item.kind !== 'transit' ? (
+      {item.kind !== 'transit' && !mobileDrag ? (
         <button
           type="button"
           aria-label={tr('routebook.timeline.dragSort', locale)}
@@ -269,18 +276,20 @@ export function TimelineItem({
             <Clock className="h-4 w-4" />
           </button>
         )}
-        <button
-          type="button"
-          aria-label={item.locked ? tr('routebook.timeline.unlock', locale) : tr('routebook.timeline.lock', locale)}
-          title={item.locked ? tr('routebook.timeline.unlockHint', locale) : tr('routebook.timeline.lockHint', locale)}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-slate-100 ${
-            item.locked ? 'text-brand-500' : 'text-slate-400 hover:text-slate-600'
-          }`}
-          onClick={() => onUpdate({ locked: !item.locked })}
-          {...DRAG_SAFE_CONTROL_PROPS}
-        >
-          {item.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-        </button>
+        {hideLockButton ? null : (
+          <button
+            type="button"
+            aria-label={item.locked ? tr('routebook.timeline.unlock', locale) : tr('routebook.timeline.lock', locale)}
+            title={item.locked ? tr('routebook.timeline.unlockHint', locale) : tr('routebook.timeline.lockHint', locale)}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-slate-100 ${
+              item.locked ? 'text-brand-500' : 'text-slate-400 hover:text-slate-600'
+            }`}
+            onClick={() => onUpdate({ locked: !item.locked })}
+            {...DRAG_SAFE_CONTROL_PROPS}
+          >
+            {item.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          </button>
+        )}
         <select
           aria-label={tr('routebook.common.moveTo', locale)}
           title={tr('routebook.common.moveTo', locale)}

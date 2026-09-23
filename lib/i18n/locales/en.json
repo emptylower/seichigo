@@ -1117,7 +1117,7 @@
       "distance": "Distance",
       "mode": "Travel mode",
       "navDoneCheckIn": "Arrived — check in",
-      "arrived": "I'm here",
+      "arrived": "Arrived · Next stop",
       "exitNav": "Exit navigation",
       "customPlace": "Custom place · {title}",
       "noImage": "No reference image",
@@ -1126,7 +1126,7 @@
       "skip": "Skip",
       "dayDone": "{day} complete",
       "tomorrowStart": "Tomorrow starts at {title}",
-      "allDone": "You've finished every visitable stop today.",
+      "allDone": "All done",
       "checkedLabel": "Checked in",
       "totalLabel": "Total stops",
       "backToTrip": "Back to trip",
@@ -1214,6 +1214,22 @@
       "deleteDay": "Delete this day",
       "deleteBlocked": "Only empty days can be deleted (and the last day cannot)",
       "submit": "Save order"
+    },
+    "mobile": {
+      "tabPlan": "Plan",
+      "tabMap": "Map",
+      "allDays": "All days",
+      "dockPool": "Points",
+      "dockOptimize": "Optimize",
+      "dockNav": "Navigate",
+      "navSheetTitle": "Open navigation",
+      "navGoogle": "Google Maps",
+      "remove": "Remove",
+      "optimizeNeedDay": "Pick a day first",
+      "optimizeNeedPoints": "Needs at least 2 movable stops",
+      "emptyDay": "Nothing here yet — add stops from the point pool",
+      "viewDay": "View this day",
+      "noLodging": "No lodging planned for this day"
     }
   }
 }

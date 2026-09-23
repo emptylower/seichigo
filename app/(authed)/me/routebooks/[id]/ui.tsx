@@ -50,7 +50,8 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
 
   const trip = useTripData(id, locale)
   const detail = trip.detail
-  const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible)
+  // 移动端连接行始终显示（无路线开关），legs 常拉
+  const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible || isMobile)
   const dialogs = useDialogsHost({
     detail,
     createPlace: trip.createPlace,
@@ -348,18 +349,37 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
         ) : (
           <MobileLayout
             header={nodes.header}
+            detail={detail}
             days={days}
             selectedDay={selectedDay}
             selectedDayId={selectedDayId}
             onSelectDay={handleSelectDay}
             onShowAll={() => setSelectedDayId(null)}
             mapStage={nodes.mapStage}
-            dayBlock={nodes.mobileDayBlock}
-            poolPanel={nodes.poolPanel}
-            onOpenPoolSheet={() => setPoolSheetOpen(true)}
+            dragOverlay={
+              <PlannerDragOverlay
+                activeDragId={dnd.activeDragId}
+                detail={detail}
+                pointPoolItems={trip.pointPoolItems}
+                getPointPreview={trip.getPointPreview}
+                locale={locale}
+              />
+            }
+            dnd={dnd}
+            legsByDay={legsByDay}
+            legsFailedByDay={failedDayIds}
+            onRetryLegs={retryDay}
+            trip={trip}
+            dialogs={dialogs}
             canStart={canStart}
             startLabel={startLabel}
+            needsDayPick={isDateless || !selectedDay}
+            onOpenDayPicker={() => setStartDayPickerOpen(true)}
             onStartImmersive={() => void handleStartImmersive()}
+            onOpenPoolSheet={() => setPoolSheetOpen(true)}
+            onOpenItemDetail={handleOpenItemDetail}
+            onMoveItem={handleMoveItem}
+            onEditNote={handleEditNote}
             locale={locale}
           />
         )}

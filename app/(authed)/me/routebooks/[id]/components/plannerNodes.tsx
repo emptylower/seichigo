@@ -12,7 +12,6 @@ import { DayDetailCard } from './DayDetailCard'
 import { PlannerMapStage } from './PlannerMapStage'
 import { PlannerPointPoolPanel } from './PlannerPointPoolPanel'
 import { DayPlanSidebar } from './DayPlanSidebar'
-import { DayBlock } from './DayBlock'
 import { PointDetailCard } from './PointDetailCard'
 import { tr } from '../../i18n'
 
@@ -54,8 +53,6 @@ export type PlannerNodes = {
   sidebar: ReactNode
   mapStage: ReactNode
   poolPanel: ReactNode
-  /** 移动端路线 tab 内选中天的完整 DayBlock */
-  mobileDayBlock: ReactNode
 }
 
 /** 桌面/移动端共享的面板节点拼装（纯函数，非 hook——调用点在 guards 之后） */
@@ -197,39 +194,5 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
     />
   )
 
-  const mobileDayBlock = selectedDay ? (
-    <DayBlock
-      routeBookId={detail.id}
-      day={selectedDay}
-      items={detail.items
-        .filter((row) => row.dayId === selectedDay.id)
-        .sort((a, b) => a.sortOrder - b.sortOrder)}
-      places={detail.places}
-      days={days}
-      selected
-      onSelect={() => {}}
-      getPointPreview={trip.getPointPreview}
-      legs={legsByDay[selectedDay.id]}
-      routeVisible={routeVisible}
-      onToggleRoute={onToggleRoute}
-      onOptimize={() => void trip.optimizeDay(selectedDay.id)}
-      onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
-      onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
-      onMoveItem={onMoveItem}
-      onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
-      onOpenItemDetail={onOpenItemDetail}
-      lodgings={detail.lodgings}
-      onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
-      onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
-      onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
-      onEditNote={onEditNote}
-      expanded
-      onToggleExpanded={() => {}}
-      legsFailed={Boolean(legsFailedByDay[selectedDay.id])}
-      onRetryLegs={() => onRetryLegs(selectedDay.id)}
-      locale={locale}
-    />
-  ) : null
-
-  return { header, sidebar, mapStage, poolPanel, mobileDayBlock }
+  return { header, sidebar, mapStage, poolPanel }
 }

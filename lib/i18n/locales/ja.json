@@ -1117,7 +1117,7 @@
       "distance": "距離",
       "mode": "移動手段",
       "navDoneCheckIn": "到着してチェックイン",
-      "arrived": "このスポットに到着",
+      "arrived": "到着 · 次の駅へ",
       "exitNav": "ナビを終了",
       "customPlace": "カスタム地点 · {title}",
       "noImage": "参考画像なし",
@@ -1126,7 +1126,7 @@
       "skip": "スキップ",
       "dayDone": "{day} 完了",
       "tomorrowStart": "明日は {title} から",
-      "allDone": "今日巡れるスポットをすべて完了しました。",
+      "allDone": "すべて完了",
       "checkedLabel": "チェックイン済み",
       "totalLabel": "総スポット数",
       "backToTrip": "旅程に戻る",
@@ -1214,6 +1214,22 @@
       "deleteDay": "この日を削除",
       "deleteBlocked": "空の日のみ削除できます（最後の1日は削除不可）",
       "submit": "順序を保存"
+    },
+    "mobile": {
+      "tabPlan": "計画",
+      "tabMap": "地図",
+      "allDays": "すべての日",
+      "dockPool": "ポイント",
+      "dockOptimize": "最適化",
+      "dockNav": "ナビを開く",
+      "navSheetTitle": "ナビを開く",
+      "navGoogle": "Google Maps",
+      "remove": "削除",
+      "optimizeNeedDay": "先に日を選んでください",
+      "optimizeNeedPoints": "移動できる地点が 2 つ以上必要です",
+      "emptyDay": "この日にはまだ項目がありません。ポイントから追加しましょう",
+      "viewDay": "この日を見る",
+      "noLodging": "この日の宿泊はまだありません"
     }
   }
 }
