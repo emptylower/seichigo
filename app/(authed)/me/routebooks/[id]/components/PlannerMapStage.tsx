@@ -20,6 +20,8 @@ type PlannerMapStageProps = {
   startLabel: string
   startDisabled?: boolean
   onStartImmersive: () => void
+  /** 右栏「已安排」点击聚焦的条目 id（marker 高亮 + easeTo） */
+  activePointId?: string | null
 }
 
 type MapPoint = { id: string; lat: number; lng: number; label: string; title?: string }
@@ -50,6 +52,7 @@ export function PlannerMapStage({
   startLabel,
   startDisabled = false,
   onStartImmersive,
+  activePointId = null,
 }: PlannerMapStageProps) {
   const proxyListenersRef = useRef(new Map<string, DraggableSyntheticListeners | undefined>())
   const registerProxy = useCallback((itemId: string, listeners: DraggableSyntheticListeners | undefined) => {
@@ -148,6 +151,7 @@ export function PlannerMapStage({
             legs={legs}
             markerVariants={markerVariants}
             onMarkerPointerDown={handleMarkerPointerDown}
+            activePointId={activePointId}
             className="absolute inset-0 h-full w-full"
             compact={compact}
           />

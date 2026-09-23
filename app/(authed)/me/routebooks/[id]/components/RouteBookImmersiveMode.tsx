@@ -8,11 +8,16 @@ import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { NavModeToggle } from '@/components/navigation/NavModeToggle'
 import { EMBED_API_KEY, resolveEmbedNavUrl, travelModeLabel } from '@/lib/route/embedNavigation'
 import type { GoogleMapsTravelMode } from '@/lib/route/google'
-import type { PointPreview, PointRecord } from '../types'
+import type { ItemRecord, PlaceRecord, PointPreview } from '../types'
 
 type Props = {
   routeBookTitle: string
-  sorted: PointRecord[]
+  /** 当天 point/place 条目按序（sequenceForImmersive） */
+  sequence: ItemRecord[]
+  places: PlaceRecord[]
+  dayLabel: string
+  /** 有下一天时给「明天从 X 开始」 */
+  nextDayFirstTitle?: string | null
   checkedInPointIds: Set<string>
   getPointPreview: (pointId: string) => PointPreview | null
   onCheckInSuccess: (pointId: string) => void
@@ -22,6 +27,16 @@ type Props = {
 
 type UserLocation = { lat: number; lng: number } | null
 type UndoState = 'idle' | 'pending' | 'error'
+
+type StopView = {
+  item: ItemRecord
+  title: string
+  subtitle: string
+  image: string | null
+  geo: [number, number] | null
+  /** 打卡只对 kind=point 可用 */
+  checkInPointId: string | null
+}
 
 function getDistanceMeters(from: UserLocation, to: [number, number] | null): number | null {
   if (!from || !to) return null
@@ -41,18 +56,12 @@ function formatDistance(distance: number | null): string {
   return `${Math.round(distance)} m`
 }
 
-function buildNavigationEmbedUrl(
-  to: [number, number] | null,
-  userLocation: UserLocation,
-  mode: GoogleMapsTravelMode
-): string | null {
-  if (!to) return null
-  return resolveEmbedNavUrl({ lat: to[0], lng: to[1] }, userLocation, mode)
-}
-
 export function RouteBookImmersiveMode({
   routeBookTitle,
-  sorted,
+  sequence,
+  places,
+  dayLabel,
+  nextDayFirstTitle = null,
   checkedInPointIds,
   getPointPreview,
   onCheckInSuccess,
@@ -61,7 +70,7 @@ export function RouteBookImmersiveMode({
 }: Props) {
   const [step, setStep] = useState<'intro' | 'cards' | 'summary'>('intro')
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [navigatingByPointId, setNavigatingByPointId] = useState<Record<string, boolean>>({})
+  const [navigatingById, setNavigatingById] = useState<Record<string, boolean>>({})
   const [checkInTargetPointId, setCheckInTargetPointId] = useState<string | null>(null)
   const [lastCheckedPointId, setLastCheckedPointId] = useState<string | null>(null)
   const [pendingRestorePointId, setPendingRestorePointId] = useState<string | null>(null)
@@ -70,19 +79,45 @@ export function RouteBookImmersiveMode({
   const [userLocation, setUserLocation] = useState<UserLocation>(null)
   const [travelMode, setTravelMode] = useState<GoogleMapsTravelMode>('walking')
 
-  const remainingPoints = useMemo(() => {
-    return sorted.filter((point) => !checkedInPointIds.has(point.pointId))
-  }, [checkedInPointIds, sorted])
+  const stops = useMemo<StopView[]>(() => {
+    return sequence.map((item) => {
+      if (item.kind === 'place') {
+        const place = places.find((row) => row.id === item.placeId)
+        return {
+          item,
+          title: place?.title ?? item.title ?? '地点',
+          subtitle: place?.address ?? '自定义地点',
+          image: null,
+          geo: place ? [place.lat, place.lng] : null,
+          checkInPointId: null,
+        }
+      }
+      const preview = item.pointId ? getPointPreview(item.pointId) : null
+      return {
+        item,
+        title: preview?.title ?? item.title ?? '点位',
+        subtitle: preview?.subtitle ?? '',
+        image: preview?.image ?? null,
+        geo: preview?.geo ?? null,
+        checkInPointId: item.pointId,
+      }
+    })
+  }, [getPointPreview, places, sequence])
 
-  const totalPoints = sorted.length
-  const checkedCount = totalPoints - remainingPoints.length
-  const currentPoint = remainingPoints[currentIndex] || null
-  const currentPreview = currentPoint ? getPointPreview(currentPoint.pointId) : null
-  const firstPreview = sorted[0] ? getPointPreview(sorted[0].pointId) : null
-  const currentGeo = currentPreview?.geo || null
+  const remainingStops = useMemo(() => {
+    return stops.filter((stop) => !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)))
+  }, [checkedInPointIds, stops])
+
+  const totalStops = stops.length
+  const checkedCount = stops.filter((stop) => stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)).length
+  const currentStop = remainingStops[currentIndex] || null
+  const firstStop = stops[0] || null
+  const currentGeo = currentStop?.geo || null
   const currentDistance = getDistanceMeters(userLocation, currentGeo)
-  const currentNavigationUrl = buildNavigationEmbedUrl(currentGeo, userLocation, travelMode)
-  const currentOrdinal = currentPoint ? Math.max(1, sorted.findIndex((point) => point.pointId === currentPoint.pointId) + 1) : checkedCount
+  const currentNavigationUrl = currentGeo
+    ? resolveEmbedNavUrl({ lat: currentGeo[0], lng: currentGeo[1] }, userLocation, travelMode)
+    : null
+  const currentOrdinal = currentStop ? Math.max(1, stops.findIndex((stop) => stop.item.id === currentStop.item.id) + 1) : checkedCount
   const lastCheckedPreview = lastCheckedPointId ? getPointPreview(lastCheckedPointId) : null
 
   useEffect(() => {
@@ -98,23 +133,23 @@ export function RouteBookImmersiveMode({
 
   useEffect(() => {
     if (step !== 'cards') return
-    if (remainingPoints.length === 0) {
+    if (remainingStops.length === 0) {
       setStep('summary')
       return
     }
-    if (currentIndex >= remainingPoints.length) {
-      setCurrentIndex(remainingPoints.length - 1)
+    if (currentIndex >= remainingStops.length) {
+      setCurrentIndex(remainingStops.length - 1)
     }
-  }, [currentIndex, remainingPoints.length, step])
+  }, [currentIndex, remainingStops.length, step])
 
   useEffect(() => {
     if (!pendingRestorePointId) return
-    const restoredIndex = remainingPoints.findIndex((point) => point.pointId === pendingRestorePointId)
+    const restoredIndex = remainingStops.findIndex((stop) => stop.checkInPointId === pendingRestorePointId)
     if (restoredIndex < 0) return
     setStep('cards')
     setCurrentIndex(restoredIndex)
     setPendingRestorePointId(null)
-  }, [pendingRestorePointId, remainingPoints])
+  }, [pendingRestorePointId, remainingStops])
 
   const handleClose = () => {
     setIsExiting(true)
@@ -122,7 +157,7 @@ export function RouteBookImmersiveMode({
   }
 
   const handleSkip = () => {
-    if (currentIndex < remainingPoints.length - 1) {
+    if (currentIndex < remainingStops.length - 1) {
       setCurrentIndex((prev) => prev + 1)
       return
     }
@@ -151,7 +186,7 @@ export function RouteBookImmersiveMode({
       <div className="relative z-10 flex select-none items-center justify-between px-6 py-4">
         <div>
           <h2 className="line-clamp-1 text-sm font-bold tracking-tight text-white">{routeBookTitle}</h2>
-          <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Immersive Pilgrimage</p>
+          <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">{dayLabel} · Immersive Pilgrimage</p>
         </div>
         <button
           type="button"
@@ -165,35 +200,37 @@ export function RouteBookImmersiveMode({
       <div className="relative flex-1 flex flex-col items-center p-6 pb-12">
         {step === 'intro' ? (
           <div className="flex h-full w-full max-w-md flex-col items-center justify-center text-center">
-            <h1 className="select-none text-3xl font-black tracking-tight text-white">开始巡礼</h1>
+            <h1 className="select-none text-3xl font-black tracking-tight text-white">开始 {dayLabel}</h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-400">
-              将按你当前的路线排序逐点导航与打卡。
+              将按这一天的顺序逐站导航与打卡。
             </p>
             <div className="mt-7 flex gap-6 text-xs text-slate-400">
-              <div className="flex items-center gap-1.5"><MapPin size={12} />总计 {totalPoints} 个点位</div>
+              <div className="flex items-center gap-1.5"><MapPin size={12} />总计 {totalStops} 站</div>
               <div className="flex items-center gap-1.5"><CheckCircle2 size={12} />已打卡 {checkedCount}</div>
             </div>
-            <div className="mt-4 text-xs text-slate-500">待巡礼 {remainingPoints.length} 个</div>
+            <div className="mt-4 text-xs text-slate-500">待巡礼 {remainingStops.length} 站</div>
             <div className="mt-8 w-full max-w-sm overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/70 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.72)]">
               <div className="aspect-[16/9] w-full bg-slate-900">
-                {firstPreview?.image ? (
+                {firstStop?.image ? (
                   <img
-                    src={resolveAnitabiAssetUrl(firstPreview.image) || ''}
-                    alt={firstPreview.title || routeBookTitle}
+                    src={resolveAnitabiAssetUrl(firstStop.image) || ''}
+                    alt={firstStop.title || routeBookTitle}
                     className="h-full w-full object-cover object-center"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-500">首个点位暂无参考图</div>
+                  <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-500">
+                    {firstStop ? `${firstStop.title} 暂无参考图` : '这一天还没有站点'}
+                  </div>
                 )}
               </div>
               <div className="border-t border-white/10 px-4 py-3 text-left">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-brand-300">First Stop</div>
-                <div className="mt-2 line-clamp-1 text-sm font-semibold text-white">{firstPreview?.title || '准备开始巡礼'}</div>
-                <div className="mt-1 line-clamp-1 text-xs text-slate-400">{firstPreview?.subtitle || '从第一站进入沉浸式导航'}</div>
-                {firstPreview?.image ? (
+                <div className="mt-2 line-clamp-1 text-sm font-semibold text-white">{firstStop?.title || '准备开始巡礼'}</div>
+                <div className="mt-1 line-clamp-1 text-xs text-slate-400">{firstStop?.subtitle || '从第一站进入沉浸式导航'}</div>
+                {firstStop?.image ? (
                   <div className="mt-2">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(firstPreview.image)}
+                      href={resolveAnitabiAttributionHref(firstStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -202,7 +239,7 @@ export function RouteBookImmersiveMode({
             </div>
             <button
               type="button"
-              onClick={() => (remainingPoints.length > 0 ? setStep('cards') : setStep('summary'))}
+              onClick={() => (remainingStops.length > 0 ? setStep('cards') : setStep('summary'))}
               className="mt-8 inline-flex items-center gap-2 rounded-full bg-brand-500 px-9 py-4 font-bold text-white shadow-[0_0_40px_rgba(236,72,153,0.3)] transition hover:scale-105 hover:bg-brand-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/70"
             >
               进入导航
@@ -211,24 +248,24 @@ export function RouteBookImmersiveMode({
           </div>
         ) : null}
 
-        {step === 'cards' && currentPoint && currentPreview ? (
+        {step === 'cards' && currentStop ? (
           <div className="mx-auto flex h-full w-full max-w-5xl flex-col">
             <div className="mb-4 flex select-none items-end justify-between px-1">
               <div className="space-y-1">
                 <span className="inline-block rounded-md border border-brand-500/20 bg-brand-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-400">
-                  Point
+                  {currentStop.item.kind === 'place' ? 'Place' : 'Point'}
                 </span>
-                <h3 className="line-clamp-1 text-xl font-bold text-white">{currentPreview.title}</h3>
-                <p className="line-clamp-1 text-xs text-slate-400">{currentPreview.subtitle}</p>
+                <h3 className="line-clamp-1 text-xl font-bold text-white">{currentStop.title}</h3>
+                <p className="line-clamp-1 text-xs text-slate-400">{currentStop.subtitle}</p>
               </div>
               <div className="text-right">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Progress</div>
-                <div className="text-sm font-mono font-bold text-slate-200">{currentOrdinal} / {totalPoints}</div>
-                <div className="mt-1 text-[11px] text-slate-500">剩余 {remainingPoints.length} · 已打卡 {checkedCount}</div>
+                <div className="text-sm font-mono font-bold text-slate-200">{currentOrdinal} / {totalStops}</div>
+                <div className="mt-1 text-[11px] text-slate-500">剩余 {remainingStops.length} · 已打卡 {checkedCount}</div>
               </div>
             </div>
 
-            {navigatingByPointId[currentPoint.pointId] ? (
+            {navigatingById[currentStop.item.id] ? (
               <>
                 <NavModeToggle value={travelMode} onChange={setTravelMode} className="mb-3 self-start" />
 
@@ -245,7 +282,7 @@ export function RouteBookImmersiveMode({
                   ) : (
                     <div className="flex h-full items-center justify-center px-5 text-center text-sm text-slate-400">
                       {EMBED_API_KEY
-                        ? '当前点位缺少坐标，无法生成导航预览。'
+                        ? '当前站点缺少坐标，无法生成导航预览。'
                         : '未配置 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY，导航预览不可用。'}
                     </div>
                   )}
@@ -266,17 +303,28 @@ export function RouteBookImmersiveMode({
                 </div>
 
                 <div className="mt-4 grid w-full grid-cols-2 gap-3">
+                  {currentStop.checkInPointId ? (
+                    <button
+                      type="button"
+                      onClick={() => setCheckInTargetPointId(currentStop.checkInPointId)}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
+                    >
+                      <CheckCircle2 size={18} />
+                      导航完成并打卡
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSkip}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
+                    >
+                      <CheckCircle2 size={18} />
+                      已到这一站
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setCheckInTargetPointId(currentPoint.pointId)}
-                    className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 font-bold text-white hover:bg-emerald-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
-                  >
-                    <CheckCircle2 size={18} />
-                    导航完成并打卡
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNavigatingByPointId((prev) => ({ ...prev, [currentPoint.pointId]: false }))}
+                    onClick={() => setNavigatingById((prev) => ({ ...prev, [currentStop.item.id]: false }))}
                     className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                   >
                     <X size={18} />
@@ -287,20 +335,22 @@ export function RouteBookImmersiveMode({
             ) : (
               <>
                 <div className="group relative mx-auto w-full max-w-3xl aspect-video overflow-hidden rounded-3xl bg-slate-900 shadow-2xl ring-1 ring-white/10">
-                  {currentPreview.image ? (
+                  {currentStop.image ? (
                     <img
-                      src={resolveAnitabiAssetUrl(currentPreview.image) || ''}
-                      alt={currentPreview.title}
+                      src={resolveAnitabiAssetUrl(currentStop.image) || ''}
+                      alt={currentStop.title}
                       className="h-full w-full object-cover object-center"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-slate-500">暂无参考图</div>
+                    <div className="flex h-full items-center justify-center px-6 text-center text-slate-500">
+                      {currentStop.item.kind === 'place' ? `自定义地点 · ${currentStop.title}` : '暂无参考图'}
+                    </div>
                   )}
                 </div>
-                {currentPreview.image ? (
+                {currentStop.image ? (
                   <div className="mt-3 mx-auto w-full max-w-3xl">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(currentPreview.image)}
+                      href={resolveAnitabiAttributionHref(currentStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -309,7 +359,7 @@ export function RouteBookImmersiveMode({
                 <div className="mt-5 mx-auto w-full max-w-3xl grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setNavigatingByPointId((prev) => ({ ...prev, [currentPoint.pointId]: true }))}
+                    onClick={() => setNavigatingById((prev) => ({ ...prev, [currentStop.item.id]: true }))}
                     className="flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 font-bold text-white hover:bg-brand-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300/70"
                   >
                     <Navigation size={18} />
@@ -331,16 +381,18 @@ export function RouteBookImmersiveMode({
 
         {step === 'summary' ? (
           <div className="flex h-full w-full max-w-md flex-col items-center justify-center text-center">
-            <h2 className="select-none text-3xl font-black tracking-tight text-white">巡礼暂告一段落</h2>
-            <p className="mt-3 text-sm text-slate-400">你已完成当前路线中的可巡礼点位。</p>
+            <h2 className="select-none text-3xl font-black tracking-tight text-white">{dayLabel} 完成</h2>
+            <p className="mt-3 text-sm text-slate-400">
+              {nextDayFirstTitle ? `明天从 ${nextDayFirstTitle} 开始` : '你已完成这一天可巡礼的站点。'}
+            </p>
             <div className="mt-7 grid w-full grid-cols-2 gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
               <div>
                 <div className="text-3xl font-black">{checkedCount}</div>
                 <div className="mt-1 text-[11px] text-slate-500">已打卡</div>
               </div>
               <div>
-                <div className="text-3xl font-black text-brand-400">{totalPoints}</div>
-                <div className="mt-1 text-[11px] text-slate-500">总点位</div>
+                <div className="text-3xl font-black text-brand-400">{totalStops}</div>
+                <div className="mt-1 text-[11px] text-slate-500">总站点</div>
               </div>
             </div>
             <button
@@ -348,7 +400,7 @@ export function RouteBookImmersiveMode({
               onClick={handleClose}
               className="mt-8 rounded-full bg-white px-10 py-4 font-bold text-slate-950 transition hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             >
-              返回地图
+              返回行程
             </button>
           </div>
         ) : null}
@@ -396,10 +448,10 @@ export function RouteBookImmersiveMode({
             setLastCheckedPointId(checkedPointId)
             setUndoState('idle')
             setCheckInTargetPointId(null)
-            if (currentPoint?.pointId === checkedPointId) {
-              setNavigatingByPointId((prev) => {
+            if (currentStop?.checkInPointId === checkedPointId) {
+              setNavigatingById((prev) => {
                 const next = { ...prev }
-                delete next[checkedPointId]
+                delete next[currentStop.item.id]
                 return next
               })
             }

@@ -8,9 +8,12 @@ import { PointPoolCard } from './PointCard'
 interface MobilePointPoolSheetProps {
   pointPoolItems: PointPoolItem[]
   getPointPreview: (pointId: string) => PointPreview | null
+  /** 「+」加到当前选中天 */
   onAddToRoute: (pointId: string) => void
   isOpen: boolean
   onClose: () => void
+  /** 例如「Day 2」；为空表示加到未安排 */
+  selectedDayLabel?: string | null
 }
 
 /**
@@ -24,6 +27,7 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
   onAddToRoute,
   isOpen,
   onClose,
+  selectedDayLabel = null,
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -85,6 +89,11 @@ export const MobilePointPoolSheet: React.FC<MobilePointPoolSheetProps> = ({
             <h2 className="text-lg font-bold text-slate-900">
               全局想去池 ({pointPoolItems.length})
             </h2>
+            {selectedDayLabel ? (
+              <span className="ml-auto rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-600">
+                加到 {selectedDayLabel}
+              </span>
+            ) : null}
           </div>
 
           {isEmpty ? (
