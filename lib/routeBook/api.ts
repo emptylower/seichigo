@@ -11,6 +11,8 @@ export type RouteBookApiDeps = {
   now: () => Date
   /** 批量取 AnitabiPoint 坐标（null 坐标不进 Map）；optimize 用（legs 已并入 getDayContext） */
   pointCoords: (pointIds: string[]) => Promise<Map<string, { lat: number; lng: number }>>
+  /** B4：导出用点位名（nameZh ?? name）；缺省时导出退化为条目 title */
+  pointNames?: (pointIds: string[]) => Promise<Map<string, string>>
   /** A1：整天真实道路几何（Mapbox + RouteLegCache）；缺省/失败返回 null。
    *  A2：sigCache 透传客户端顺序签名，Mapbox/坐标缓存命中后同时回填 sig key */
   fetchDayGeometry?: (
@@ -65,6 +67,16 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
         if (row.geoLat == null || row.geoLng == null) continue
         map.set(row.id, { lat: row.geoLat, lng: row.geoLng })
       }
+      return map
+    },
+    pointNames: async (pointIds) => {
+      if (pointIds.length === 0) return new Map()
+      const rows = await prisma.anitabiPoint.findMany({
+        where: { id: { in: pointIds } },
+        select: { id: true, name: true, nameZh: true },
+      })
+      const map = new Map<string, string>()
+      for (const row of rows) map.set(row.id, row.nameZh ?? row.name)
       return map
     },
     fetchDayGeometry: resolveDayGeometry,
