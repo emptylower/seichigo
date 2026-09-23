@@ -83,11 +83,12 @@ export function buildDayStops(
 
     if (item.kind === 'transit') {
       const between = readTransitBetween(item.payload)
-      const transport = readTransport(item.payload)
-      if (!between || !transport) {
+      if (!between) {
         staleTransitItemIds.push(item.id)
         return
       }
+      const transport = readTransport(item.payload)
+      if (!transport) return
       const prevId = nearestStopId(stopIndexes, stopIdByIndex, index, 'prev')
       const nextId = nearestStopId(stopIndexes, stopIdByIndex, index, 'next')
       if (prevId === between.prevItemId && nextId === between.nextItemId) {

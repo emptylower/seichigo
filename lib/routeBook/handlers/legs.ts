@@ -20,10 +20,11 @@ export function createLegHandlers(deps: RouteBookApiDeps, resolver: LegResolver 
         const day = detail.days.find((row) => row.id === dayId)
         if (!day) return NextResponse.json({ error: '天不存在' }, { status: 404 })
 
-        const pointIds = detail.items
+        const dayItemPointIds = detail.items
+          .filter((item) => item.dayId === dayId)
           .map((item) => item.pointId)
           .filter((pointId): pointId is string => Boolean(pointId))
-        const pointCoords = await deps.pointCoords(pointIds)
+        const pointCoords = await deps.pointCoords(dayItemPointIds)
 
         const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, detail.items, detail.places, detail.lodgings, pointCoords)
         const legs = await resolveDayLegs(stops, agentLegs, day.defaultTravelMode, resolver)

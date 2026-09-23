@@ -129,6 +129,25 @@ describe('buildDayStops transit 接管与失效', () => {
     expect(staleTransitItemIds).toEqual(['i-t'])
   })
 
+  it('无 payload.transport 的 transit 静默跳过（按普通段算），不进 stale', () => {
+    const items = [
+      item({ id: 'i-a', pointId: 'p-near-a', sortOrder: 0 }),
+      item({
+        id: 'i-t',
+        kind: 'transit',
+        title: '手工交通',
+        sortOrder: 1,
+        payload: { transitBetween: { prevItemId: 'i-a', nextItemId: 'i-b' } },
+      }),
+      item({ id: 'i-b', pointId: 'p-near-b', sortOrder: 2 }),
+    ]
+
+    const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, items, [], [], POINT_COORDS)
+    expect(stops.map((s) => s.id)).toEqual(['i-a', 'i-b'])
+    expect(agentLegs.size).toBe(0)
+    expect(staleTransitItemIds).toEqual([])
+  })
+
   it('无坐标点位不进停靠序列，也不参与 transit 邻居判定', () => {
     const items = [
       item({ id: 'i-ghost', pointId: 'p-unknown', sortOrder: 0 }),
@@ -223,7 +242,7 @@ describe('legs handler', () => {
 
     const book = await repo.create('u1', '本', 'draft')
     const dayRow = (await repo.getById(book.id, 'u1'))!.days[0]!
-    const a = await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
+    const a = (await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })).item
     await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
     await repo.createItem(book.id, 'u1', {
       dayId: dayRow.id,
