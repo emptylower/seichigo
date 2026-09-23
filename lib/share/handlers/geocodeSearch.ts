@@ -5,8 +5,8 @@ import { fetchGeocodeSearchResults, type GeocodeSearchInput, type GeocodeSearchR
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
-// GET /api/geocode/search?q=<text>&lang=<zh|en|ja>&near=<lat,lng> — 正向地址
-// 搜索（B2 A1）。登录用户；每用户每分钟 30 次（内存计数）；
+// GET /api/geocode/search?q=<text>&lang=<zh|en|ja>&near=<lat,lng>&country=<jp[,kr]>
+// — 正向地址搜索（B2 A1）。country 最多 3 个两位代码；有 near 时结果按距离排序。登录用户；每用户每分钟 30 次（内存计数）；
 // 无 key 或上游失败 → { ok: true, results: [] }。
 // ---------------------------------------------------------------------------
 
@@ -40,6 +40,7 @@ function checkRateLimit(userId: string): boolean {
 const querySchema = z.object({
   q: z.string().trim().min(1, '搜索词不能为空').max(120, '搜索词最长 120 字'),
   near: z.string().trim().optional(),
+  country: z.string().trim().optional(),
 })
 
 function parseLang(raw: string | null): SupportedLocale | null {
@@ -61,6 +62,16 @@ function parseNear(raw: string | undefined): { lat: number; lng: number } | null
   return { lat, lng }
 }
 
+const COUNTRY_RE = /^[a-z]{2}(?:,[a-z]{2}){0,2}$/
+
+/** undefined = 未传；null = 格式非法；否则去重后的小写代码列表 */
+function parseCountry(raw: string | undefined): string[] | null | undefined {
+  if (raw === undefined || raw === '') return undefined
+  const value = raw.toLowerCase()
+  if (!COUNTRY_RE.test(value)) return null
+  return Array.from(new Set(value.split(',')))
+}
+
 export function createGeocodeSearchHandlers(deps: GeocodeSearchHandlerDeps) {
   return {
     async GET(req: Request) {
@@ -76,6 +87,7 @@ export function createGeocodeSearchHandlers(deps: GeocodeSearchHandlerDeps) {
       const parsed = querySchema.safeParse({
         q: url.searchParams.get('q') ?? '',
         near: url.searchParams.get('near') ?? undefined,
+        country: url.searchParams.get('country') ?? undefined,
       })
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error.issues[0]?.message ?? '参数错误' }, { status: 400 })
@@ -87,10 +99,16 @@ export function createGeocodeSearchHandlers(deps: GeocodeSearchHandlerDeps) {
       const near = parseNear(parsed.data.near)
       if (near === null) return NextResponse.json({ error: 'near 格式应为 lat,lng' }, { status: 400 })
 
+      const country = parseCountry(parsed.data.country)
+      if (country === null) {
+        return NextResponse.json({ error: 'country 格式应为 1–3 个两位国家代码，逗号分隔（如 jp）' }, { status: 400 })
+      }
+
       const results = await (deps.fetchResults ?? fetchGeocodeSearchResults)({
         q: parsed.data.q,
         lang,
         ...(near ? { near } : {}),
+        ...(country ? { country } : {}),
       })
       return NextResponse.json({ ok: true, results })
     },

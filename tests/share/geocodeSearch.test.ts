@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from 'next-auth'
-import { fetchGeocodeSearchResults, parseGeocodeSearchResults } from '@/lib/share/geocodeSearch'
+import { fetchGeocodeSearchResults, parseGeocodeSearchResults, sortGeocodeResultsByDistance } from '@/lib/share/geocodeSearch'
 import { createGeocodeSearchHandlers } from '@/lib/share/handlers/geocodeSearch'
 
 /** 手工构造的 MapTiler 正向搜索响应（language=zh），不发真实请求 */
@@ -82,6 +82,24 @@ describe('parseGeocodeSearchResults', () => {
     expect(parseGeocodeSearchResults(payload, 'zh')).toEqual([{ title: '只有地名', address: null, lat: 35.7, lng: 139.5 }])
   })
 
+  it('countryCode 取 properties.country_code，其次 context 的 country 条目；都没有则不带', () => {
+    const payload = {
+      features: [
+        { text: '京都駅', place_name: '京都駅, 京都市, 日本', center: [135.7588, 34.9858], properties: { country_code: 'JP' } },
+        {
+          text: '京都里',
+          place_name: '京都里, 板橋郡, 江原道, 朝鲜',
+          center: [127.000087, 38.767866],
+          context: [{ id: 'region.1', text: '江原道' }, { id: 'country.2', text: '朝鲜', country_code: 'kp' }],
+        },
+        { text: '无国家', place_name: '无国家, 某处', center: [139.5, 35.7] },
+      ],
+    }
+    const results = parseGeocodeSearchResults(payload, 'zh')
+    expect(results.map((row) => row.countryCode)).toEqual(['jp', 'kp', undefined])
+    expect('countryCode' in results[2]!).toBe(false)
+  })
+
   it('空响应 / 非对象 / features 非数组都返回空数组', () => {
     expect(parseGeocodeSearchResults(null, 'zh')).toEqual([])
     expect(parseGeocodeSearchResults('nope', 'zh')).toEqual([])
@@ -118,6 +136,27 @@ describe('fetchGeocodeSearchResults', () => {
     expect(url).toBe(
       'https://api.maptiler.com/geocoding/%E5%90%89%E5%8D%9C%E5%8A%9B%20%E7%BE%8E%E6%9C%AF%E9%A6%86.json?key=mt-key&language=ja&limit=5&proximity=139.56%2C35.7',
     )
+  })
+
+  it('country 参数逗号拼接进 URL；有 near 时结果按距离升序（服务端排序）', async () => {
+    const payload = {
+      features: [
+        { text: '京都里', place_name: '京都里, 板橋郡, 江原道, 朝鲜', center: [127.000087, 38.767866] },
+        { text: '京都駅', place_name: '京都駅, 京都市, 日本', center: [135.7588, 34.9858] },
+        { text: '東京駅', place_name: '東京駅, 千代田区, 日本', center: [139.7671, 35.6812] },
+      ],
+    }
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify(payload), { status: 200 }))
+    const results = await fetchGeocodeSearchResults({
+      q: '京都駅',
+      lang: 'zh',
+      near: { lat: 34.88, lng: 135.8 },
+      country: ['jp', 'kr'],
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const url = String(fetchImpl.mock.calls[0]![0])
+    expect(url).toContain('&country=jp%2Ckr')
+    expect(results.map((row) => row.title)).toEqual(['京都駅', '東京駅', '京都里'])
   })
 
   it('没有 near 时不带 proximity 参数', async () => {
@@ -162,6 +201,19 @@ describe('fetchGeocodeSearchResults', () => {
   })
 })
 
+describe('sortGeocodeResultsByDistance', () => {
+  const rows = [
+    { title: '远', address: null, lat: 38.77, lng: 127.0 },
+    { title: '近', address: null, lat: 34.99, lng: 135.76 },
+    { title: '近（同距）', address: null, lat: 34.99, lng: 135.76 },
+  ]
+
+  it('无 near 原样返回；有 near 按距离升序且同距保持原顺序', () => {
+    expect(sortGeocodeResultsByDistance(rows, null)).toBe(rows)
+    expect(sortGeocodeResultsByDistance(rows, { lat: 34.88, lng: 135.8 }).map((row) => row.title)).toEqual(['近', '近（同距）', '远'])
+  })
+})
+
 describe('geocodeSearch handler', () => {
   function makeHandlers(overrides?: { session?: Session | null }) {
     return createGeocodeSearchHandlers({
@@ -199,6 +251,30 @@ describe('geocodeSearch handler', () => {
     const badNear = await handlers.GET(new Request('http://localhost/api/geocode/search?q=x&near=abc'))
     expect(badNear.status).toBe(400)
     expect(await badNear.json()).toEqual({ error: 'near 格式应为 lat,lng' })
+  })
+
+  it('country：合法值小写去重透传给上游；格式非法（超过 3 个 / 非两位字母）400', async () => {
+    const seen: Array<string[] | null | undefined> = []
+    const handlers = createGeocodeSearchHandlers({
+      getSession: async () => ({ user: { id: 'u-country' } }) as Session,
+      fetchResults: async (input) => {
+        seen.push(input.country)
+        return []
+      },
+    })
+    const ok = await handlers.GET(new Request('http://localhost/api/geocode/search?q=x&country=JP,kr,jp'))
+    expect(ok.status).toBe(200)
+    expect(seen[0]).toEqual(['jp', 'kr'])
+
+    const none = await handlers.GET(new Request('http://localhost/api/geocode/search?q=x'))
+    expect(none.status).toBe(200)
+    expect(seen[1]).toBeUndefined()
+
+    for (const bad of ['jp,kr,cn,tw', 'jpn', 'j1', 'jp,']) {
+      const res = await handlers.GET(new Request(`http://localhost/api/geocode/search?q=x&country=${encodeURIComponent(bad)}`))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'country 格式应为 1–3 个两位国家代码，逗号分隔（如 jp）' })
+    }
   })
 
   it('合法请求 200 透传结果；空结果 ok:true + results: []', async () => {
