@@ -60,6 +60,7 @@ export function toPlace(record: PrismaRouteBookPlace): RouteBookPlace {
     address: record.address,
     lat: record.lat,
     lng: record.lng,
+    googlePlaceId: record.googlePlaceId,
     note: record.note,
     createdAt: record.createdAt,
   }

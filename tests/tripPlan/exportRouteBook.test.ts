@@ -117,7 +117,7 @@ describe('buildExportInput 六种条目映射', () => {
     expect(input.days[1]).toMatchObject({ dayIndex: 2, title: null })
 
     expect(input.places).toHaveLength(1)
-    expect(input.places[0]).toMatchObject({ kind: 'restaurant', title: '宇治食堂', address: '宇治市...', lat: 35.01, lng: 135.8 })
+    expect(input.places[0]).toMatchObject({ kind: 'restaurant', title: '宇治食堂', address: '宇治市...', lat: 35.01, lng: 135.8, googlePlaceId: 'gp-1' })
 
     const day1 = input.items.filter((item) => item.dayIndex === 1)
     expect(day1.map((item) => item.kind)).toEqual(['point', 'point', 'place', 'note', 'note'])
@@ -295,6 +295,8 @@ describe('exportRouteBook handler 落库', () => {
     expect(book.days.map((day) => day.dayIndex)).toEqual([1, 2])
     expect(book.items.map((item) => item.pointId)).toEqual(['pt-a', 'pt-b'])
     expect(book.lodgings).toEqual([{ placeTempId: expect.any(String), fromDayIndex: 1, toDayIndex: 2 }])
+    expect(book.places).toHaveLength(1)
+    expect(book.places[0]).toMatchObject({ title: '酒店', googlePlaceId: 'h1' })
   })
 
   it('带 startDate 的计划导入后行程本 startDate 保留', async () => {

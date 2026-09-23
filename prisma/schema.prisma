@@ -947,18 +947,19 @@ model RouteBookItem {
 }
 
 model RouteBookPlace {
-  id          String             @id @default(cuid())
-  routeBookId String
-  kind        String
-  title       String
-  address     String?
-  lat         Float
-  lng         Float
-  note        String?
-  createdAt   DateTime           @default(now())
-  routeBook   RouteBook          @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
-  items       RouteBookItem[]
-  lodgings    RouteBookLodging[]
+  id            String             @id @default(cuid())
+  routeBookId   String
+  kind          String
+  title         String
+  address       String?
+  lat           Float
+  lng           Float
+  googlePlaceId String?
+  note          String?
+  createdAt     DateTime           @default(now())
+  routeBook     RouteBook          @relation(fields: [routeBookId], references: [id], onDelete: Cascade)
+  items         RouteBookItem[]
+  lodgings      RouteBookLodging[]
 
   @@index([routeBookId])
 }

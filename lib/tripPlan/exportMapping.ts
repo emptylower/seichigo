@@ -44,6 +44,19 @@ function extractPlace(payload: Prisma.JsonValue | null): ExtractedPlace | null {
   }
 }
 
+/** placeId 即谷歌地点 id：写进 RouteBookPlace.googlePlaceId 供点位介绍接口使用 */
+function toExportPlace(tempId: string, kind: 'restaurant' | 'other' | 'lodging', place: ExtractedPlace): ExportPlace {
+  return {
+    tempId,
+    kind,
+    title: place.name,
+    address: place.address,
+    lat: place.lat,
+    lng: place.lng,
+    googlePlaceId: place.placeId,
+  }
+}
+
 function readSchedule(payload: Prisma.JsonValue | null): { start?: unknown; end?: unknown; confidence?: unknown } | null {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
   const schedule = (payload as Record<string, unknown>).schedule
@@ -139,14 +152,7 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
         const place = extractPlace(item.payload)
         if (place) {
           const tempId = randomUUID()
-          places.push({
-            tempId,
-            kind: item.type === 'meal' ? 'restaurant' : 'other',
-            title: place.name,
-            address: place.address,
-            lat: place.lat,
-            lng: place.lng,
-          })
+          places.push(toExportPlace(tempId, item.type === 'meal' ? 'restaurant' : 'other', place))
           planned.push({
             exportItem: {
               id: randomUUID(),
@@ -174,7 +180,7 @@ export function buildExportInput(plan: TripPlanWithDays): BuildExportResult {
           if (existing) existing.dayIndexes.push(day.dayIndex)
           else {
             const tempId = randomUUID()
-            places.push({ tempId, kind: 'lodging', title: place.name, address: place.address, lat: place.lat, lng: place.lng })
+            places.push(toExportPlace(tempId, 'lodging', place))
             lodgingOccurrences.set(place.placeId, { tempId, dayIndexes: [day.dayIndex] })
           }
         } else {

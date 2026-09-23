@@ -57,6 +57,7 @@ export const placeSchema = z.object({
   address: z.string().max(300).nullable().optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
+  googlePlaceId: z.string().max(200).nullable().optional(),
   note: z.string().max(2000).nullable().optional(),
 })
 

@@ -63,6 +63,8 @@ export type RouteBookPlace = {
   address: string | null
   lat: number
   lng: number
+  /** 关联的谷歌地点 id（plan agent 外部地点），供点位介绍接口使用 */
+  googlePlaceId?: string | null
   note: string | null
   createdAt: Date
 }
@@ -136,6 +138,7 @@ export type PlaceInput = {
   address?: string | null
   lat: number
   lng: number
+  googlePlaceId?: string | null
   note?: string | null
 }
 

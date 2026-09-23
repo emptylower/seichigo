@@ -249,6 +249,7 @@ export async function createPlaceTx(tx: Tx, routeBookId: string, userId: string,
       address: input.address ?? null,
       lat: input.lat,
       lng: input.lng,
+      googlePlaceId: input.googlePlaceId ?? null,
       note: input.note ?? null,
     },
   })
@@ -275,6 +276,7 @@ export async function updatePlaceTx(
       ...(input.address !== undefined ? { address: input.address } : {}),
       ...(input.lat !== undefined ? { lat: input.lat } : {}),
       ...(input.lng !== undefined ? { lng: input.lng } : {}),
+      ...(input.googlePlaceId !== undefined ? { googlePlaceId: input.googlePlaceId } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
     },
   })

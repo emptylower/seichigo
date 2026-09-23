@@ -2,7 +2,16 @@ import type { Prisma } from '@prisma/client'
 import type { ItemKind, PlaceKind, RouteBookStatus } from './repo'
 
 export type ExportDay = { dayIndex: number; date: Date | null; title: string | null }
-export type ExportPlace = { tempId: string; kind: PlaceKind; title: string; address: string | null; lat: number; lng: number }
+export type ExportPlace = {
+  tempId: string
+  kind: PlaceKind
+  title: string
+  address: string | null
+  lat: number
+  lng: number
+  /** plan agent 外部地点的谷歌 placeId（缺省为 null） */
+  googlePlaceId?: string | null
+}
 /** id 由映射层用 crypto.randomUUID() 预生成，transit 的 payload.transitBetween 才能引用相邻条目 */
 export type ExportItem = {
   id: string

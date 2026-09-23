@@ -551,6 +551,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       address: input.address ?? null,
       lat: input.lat,
       lng: input.lng,
+      googlePlaceId: input.googlePlaceId ?? null,
       note: input.note ?? null,
       createdAt: this.now(),
     }
@@ -574,6 +575,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     if (input.address !== undefined) place.address = input.address
     if (input.lat !== undefined) place.lat = input.lat
     if (input.lng !== undefined) place.lng = input.lng
+    if (input.googlePlaceId !== undefined) place.googlePlaceId = input.googlePlaceId
     if (input.note !== undefined) place.note = input.note
 
     const bookUpdatedAt = this.touch(book)

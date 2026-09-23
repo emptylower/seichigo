@@ -54,6 +54,7 @@ export class PrismaRouteBookExportStore implements RouteBookExportStore {
             address: place.address,
             lat: place.lat,
             lng: place.lng,
+            googlePlaceId: place.googlePlaceId ?? null,
           })),
         })
       }
