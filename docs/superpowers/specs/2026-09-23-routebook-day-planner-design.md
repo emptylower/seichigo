@@ -2,6 +2,8 @@
 
 日期：2026-09-23　状态：已确认，待实施　范围：路线本域 + /plan 导出桥接 + 路线本 UI（桌面与移动）
 
+> **2026-09-23 评审修订**（Opus 审查后，实施以 `docs/superpowers/plans/2026-09-23-routebook-day-planner.md` 为准）：① 时间锚定义改为 `locked && timeStart`，仅有 `timeStart` 不约束；agent 导入只对 `payload.schedule.confidence==='explicit'` 上锁，用户在 UI 手动设时间时同时上锁。② 每天 25 条只统计 point/place，未安排区不限。③ `/api/me/routebooks/[id]/points` 保留为兼容壳（公共巡礼地图在调）。④ 住宿区间 `toDayIndex` 为退房日，重叠按夜晚 `[from, to-1]` 判断，导入时 `to = 末晚 + 1`（封顶 dayCount）；换酒店日 start/end 来自两个不同区间。⑤ 交通条目靠 `payload.transitBetween{prevItemId,nextItemId}` 附着于前一站，错位即失效。⑥ 日本境内 `transit` 不调 Google Directions（无公交数据），只有 walking/driving 走 Google。⑦ 右栏「已安排」= 本行程本 `dayId≠null` 的点位条目，「未安排」= 点位池 + `dayId=null` 条目。⑧ 同一点位同天去重、跨天允许。⑨ `routeGeometry.ts` v1 不动。⑩ 迁移把旧导出的 `zone='Day N'` 行迁到对应天。
+
 ## 背景
 
 - 「我的地图」（`/me/routebooks`）现在是一条平铺的点位链：`RouteBookPoint.zone` 只有 `sorted` / `unsorted`，没有「天」，没有时间，没有酒店、餐厅、备注这类非圣地条目。
