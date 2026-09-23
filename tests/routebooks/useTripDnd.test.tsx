@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import type { DragEndEvent } from '@dnd-kit/core'
-import { useTripDnd } from '@/app/(authed)/me/routebooks/[id]/hooks/useTripDnd'
+import type { DragEndEvent, PointerSensorOptions } from '@dnd-kit/core'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { MousePointerSensor, useTripDnd } from '@/app/(authed)/me/routebooks/[id]/hooks/useTripDnd'
 import type { ItemKind, ItemRecord, PointPoolItem } from '@/app/(authed)/me/routebooks/[id]/types'
 
 function makeItem(id: string, dayId: string | null, sortOrder: number, kind: ItemKind = 'point'): ItemRecord {
@@ -145,5 +146,32 @@ describe('useTripDnd onDragEnd 参数解析', () => {
       'day1',
       [...full.slice(1).map((row) => row.id), 'f0']
     )
+  })
+})
+
+describe('MousePointerSensor（B3 触屏修复）', () => {
+  function activate(pointerType: string): boolean {
+    const handler = MousePointerSensor.activators[0]!.handler
+    const nativeEvent = { pointerType, isPrimary: true, button: 0 }
+    const onActivation = vi.fn()
+    return handler({ nativeEvent } as unknown as ReactPointerEvent, { onActivation } as PointerSensorOptions)
+  }
+
+  it('touch 的 pointerdown 不激活鼠标传感器（交给 TouchSensor 长按）', () => {
+    expect(activate('touch')).toBe(false)
+  })
+
+  it('mouse / pen 的主键 pointerdown 正常激活', () => {
+    expect(activate('mouse')).toBe(true)
+    expect(activate('pen')).toBe(true)
+  })
+
+  it('hook 同时注册鼠标、触屏（长按）与键盘传感器', () => {
+    const { view } = setup([])
+    const sensors = view.result.current.sensors
+    expect(sensors.map((row) => row.sensor)).toContain(MousePointerSensor)
+    expect(sensors.find((row) => row.sensor !== MousePointerSensor && 'activationConstraint' in row.options)?.options).toMatchObject({
+      activationConstraint: { delay: 200, tolerance: 8 },
+    })
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   KeyboardSensor,
   PointerSensor,
@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type PointerSensorOptions,
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { ItemRecord, PointPoolItem } from '../types'
@@ -29,6 +30,20 @@ type UseTripDndOptions = {
   addItem: AddItemFn
   /** 目标天 point/place 已满（25 条上限）时提示；未安排区不限 */
   onLimitBlocked?: (dayId: string) => void
+}
+
+/** 只响应鼠标/笔的 PointerSensor：触屏的 pointerdown 交给 TouchSensor（长按 200ms），
+ *  否则 PointerSensor 会先于 TouchSensor 激活，长按失效且任何 6px 移动都会变成拖拽、与滚动打架 */
+export class MousePointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: (event: ReactPointerEvent, options: PointerSensorOptions): boolean => {
+        if (event.nativeEvent.pointerType === 'touch') return false
+        return PointerSensor.activators[0]?.handler(event, options) ?? false
+      },
+    },
+  ]
 }
 
 function dayItemIds(items: ItemRecord[], dayId: string | null): string[] {
@@ -66,7 +81,7 @@ export function useTripDnd({ items, pointPoolItems, reorder, addItem, onLimitBlo
   const [limitBlockedDayId, setLimitBlockedDayId] = useState<string | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MousePointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )

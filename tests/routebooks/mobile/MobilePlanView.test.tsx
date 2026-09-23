@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MobilePlanView } from '@/app/(authed)/me/routebooks/[id]/components/mobile/MobilePlanView'
 import type { DayRecord, ItemRecord, RouteBookDetail } from '@/app/(authed)/me/routebooks/[id]/types'
@@ -173,5 +173,75 @@ describe('MobilePlanView 未安排模式', () => {
     expect(screen.getByRole('button', { name: '未安排' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Day 1' }))
     expect(props.onMoveItem).toHaveBeenCalledWith('item-9', 'day1')
+  })
+})
+
+describe('MobilePlanView 长按与左滑（B3 修复）', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('按住超过 200ms 再横移：视为长按拖拽，不展开左滑操作', () => {
+    vi.useFakeTimers()
+    const { container } = renderView()
+    const card = screen.getByText('Uji Bridge')
+    const base = { pointerType: 'touch', pointerId: 5, isPrimary: true }
+    fireEvent(card, pointerEvent('pointerdown', { ...base, clientX: 300, clientY: 100 }))
+    vi.advanceTimersByTime(250)
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 200, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 140, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointerup', { ...base, clientX: 140, clientY: 101 }))
+    const wrapper = container.querySelectorAll('[data-testid="swipeable-item"]')[0] as HTMLElement
+    expect(wrapper.getAttribute('data-open')).toBe('false')
+  })
+
+  it('200ms 内横移：判定为左滑并展开', () => {
+    vi.useFakeTimers()
+    const { container } = renderView()
+    const card = screen.getByText('Uji Bridge')
+    const base = { pointerType: 'touch', pointerId: 6, isPrimary: true }
+    fireEvent(card, pointerEvent('pointerdown', { ...base, clientX: 300, clientY: 100 }))
+    vi.advanceTimersByTime(50)
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 220, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 150, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointerup', { ...base, clientX: 150, clientY: 101 }))
+    const wrapper = container.querySelectorAll('[data-testid="swipeable-item"]')[0] as HTMLElement
+    expect(wrapper.getAttribute('data-open')).toBe('true')
+  })
+
+  it('内容层声明 touch-action: pan-y；拖动中关闭过渡动画', () => {
+    const { container } = renderView()
+    const content = container.querySelector('[data-testid="swipeable-content"]') as HTMLElement
+    expect(content.style.touchAction).toBe('pan-y')
+    expect(content.className).toContain('transition-transform')
+    const base = { pointerType: 'touch', pointerId: 7, isPrimary: true }
+    fireEvent(content, pointerEvent('pointerdown', { ...base, clientX: 300, clientY: 100 }))
+    fireEvent(content, pointerEvent('pointermove', { ...base, clientX: 250, clientY: 100 }))
+    expect(content.className).not.toContain('transition-transform')
+  })
+
+  it('同一时间只允许一行展开；展开后可反向滑回收起', () => {
+    const { container } = renderView()
+    const wrappers = container.querySelectorAll('[data-testid="swipeable-item"]')
+    swipeLeft('Uji Bridge')
+    expect(wrappers[0]!.getAttribute('data-open')).toBe('true')
+    swipeLeft('Uji Shrine')
+    expect(wrappers[0]!.getAttribute('data-open')).toBe('false')
+    expect(wrappers[1]!.getAttribute('data-open')).toBe('true')
+
+    // 反向滑回（+140px）：展开行收起（没有遮罩拦截 pointer 事件）
+    const card = screen.getByText('Uji Shrine')
+    const base = { pointerType: 'touch', pointerId: 8, isPrimary: true }
+    fireEvent(card, pointerEvent('pointerdown', { ...base, clientX: 100, clientY: 100 }))
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 180, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointermove', { ...base, clientX: 240, clientY: 101 }))
+    fireEvent(card, pointerEvent('pointerup', { ...base, clientX: 240, clientY: 101 }))
+    expect(wrappers[1]!.getAttribute('data-open')).toBe('false')
+  })
+
+  it('移动端条目不渲染悬停操作条', () => {
+    renderView()
+    expect(screen.queryByRole('button', { name: '设时间' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: '移到…' })).toBeNull()
   })
 })

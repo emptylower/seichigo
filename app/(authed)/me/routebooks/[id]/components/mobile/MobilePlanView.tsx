@@ -107,11 +107,14 @@ function MoveToSheet({
   )
 }
 
-/** 单条左滑容器：左滑 ≥80px 露出「移到… / 移除」；与长按拖拽共存（先动者胜） */
+/** 单条左滑容器：左滑 ≥80px 露出「移到… / 移除」；与长按拖拽共存（先动者胜）。
+ *  展开态由父级受控：同一时间只允许一行展开 */
 function SwipeableActions({
   children,
   item,
   days,
+  open,
+  onOpenChange,
   onMove,
   onDelete,
   locale,
@@ -119,24 +122,28 @@ function SwipeableActions({
   children: ReactNode
   item: ItemRecord
   days: DayRecord[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onMove: (targetDayId: string | null) => void
   onDelete: () => void
   locale: SupportedLocale
 }) {
-  const [openState, setOpenState] = useState(false)
   const [dragOffset, setDragOffset] = useState<number | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
   const stateRef = useRef<SwipeState | null>(null)
+  // 刚结束一次滑动：吞掉随之而来的 click（避免滑回时顺手触发条目点击）
+  const suppressClickRef = useRef(false)
 
-  const offset = dragOffset ?? (openState ? -ACTIONS_WIDTH : 0)
-  const open = openState
+  const offset = dragOffset ?? (open ? -ACTIONS_WIDTH : 0)
 
   const close = () => {
-    setOpenState(false)
+    onOpenChange(false)
     setDragOffset(null)
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // 新手势开始：上一次滑动若没有产生 click，这里清掉吞 click 标记
+    suppressClickRef.current = false
     if (event.pointerType === 'mouse') return
     stateRef.current = {
       pointerId: event.pointerId,
@@ -170,7 +177,7 @@ function SwipeableActions({
         return
       }
     }
-    const base = openState ? -ACTIONS_WIDTH : 0
+    const base = open ? -ACTIONS_WIDTH : 0
     setDragOffset(Math.max(-ACTIONS_WIDTH, Math.min(0, base + dx)))
   }
 
@@ -178,18 +185,34 @@ function SwipeableActions({
     const state = stateRef.current
     stateRef.current = null
     if (!state || !state.swiping || event.pointerId !== state.pointerId) return
+    suppressClickRef.current = true
     const final = dragOffset ?? 0
-    if (openState) {
+    if (open) {
       // 已开：往回滑过一半才关闭
-      if (final > -ACTIONS_WIDTH / 2) setOpenState(false)
+      if (final > -ACTIONS_WIDTH / 2) onOpenChange(false)
     } else if (final <= -SWIPE_OPEN_THRESHOLD) {
-      setOpenState(true)
+      onOpenChange(true)
     }
     setDragOffset(null)
   }
 
+  // 展开时点内容区 = 收回（捕获阶段拦截，不触发条目自身的点击）；
+  // 不再盖一层遮罩按钮——遮罩会拦住反向滑回的 pointer 事件
+  const handleClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (!open) return
+    event.preventDefault()
+    event.stopPropagation()
+    close()
+  }
+
   return (
-    <div className="relative overflow-hidden rounded-2xl" data-testid="swipeable-item">
+    <div className="relative overflow-hidden rounded-2xl" data-testid="swipeable-item" data-open={open}>
       {/* 操作层（右侧露出） */}
       <div className="absolute inset-y-1 right-1 flex items-stretch gap-1" aria-hidden={!open}>
         <button
@@ -214,28 +237,19 @@ function SwipeableActions({
           {tr('routebook.mobile.remove', locale)}
         </button>
       </div>
-      {/* 内容层 */}
+      {/* 内容层：pan-y 让浏览器只接管纵向滚动，横向手势留给左滑（否则会发 pointercancel） */}
       <div
-        className="relative transition-transform duration-150 ease-out"
-        style={{ transform: offset === 0 ? undefined : `translateX(${offset}px)` }}
+        data-testid="swipeable-content"
+        className={`relative ${dragOffset === null ? 'transition-transform duration-150 ease-out' : ''}`}
+        style={{ transform: offset === 0 ? undefined : `translateX(${offset}px)`, touchAction: 'pan-y' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
+        onClickCapture={handleClickCapture}
       >
         {children}
       </div>
-      {/* 打开时点内容区收回 */}
-      {open ? (
-        <button
-          type="button"
-          aria-hidden
-          tabIndex={-1}
-          className="absolute inset-0 z-10 cursor-default"
-          style={{ transform: `translateX(${offset}px)` }}
-          onClick={close}
-        />
-      ) : null}
       <MoveToSheet
         item={item}
         days={days}
@@ -302,6 +316,8 @@ export function MobilePlanView({
   }, [legs])
 
   const staleIds = useMemo(() => new Set(legs?.staleTransitItemIds ?? []), [legs])
+  // 同一时间只允许一行左滑展开
+  const [openRowId, setOpenRowId] = useState<string | null>(null)
 
   const visitOrder = useMemo(
     () => computeVisitOrder(items, detail.places, getPointPreview),
@@ -400,6 +416,8 @@ export function MobilePlanView({
               item={item}
               days={days}
               locale={locale}
+              open={openRowId === item.id}
+              onOpenChange={(next) => setOpenRowId((prev) => (next ? item.id : prev === item.id ? null : prev))}
               onMove={(target) => onMoveItem(item.id, target)}
               onDelete={() => onDeleteItem(item.id)}
             >
