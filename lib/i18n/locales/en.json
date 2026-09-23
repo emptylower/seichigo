@@ -1231,6 +1231,31 @@
       "emptyDay": "Nothing here yet — add stops from the point pool",
       "viewDay": "View this day",
       "noLodging": "No lodging planned for this day"
+    },
+    "nav": {
+      "open": "Navigate",
+      "menuLabel": "Choose a maps app",
+      "sheetTitle": "Open in maps",
+      "google": "Google Maps",
+      "apple": "Apple Maps",
+      "amap": "Amap",
+      "endpointsOnly": "Start & end only",
+      "viaTruncated": "Too many stops, some omitted",
+      "segment": "part {n}/{total}",
+      "lodgingFallback": "Lodging"
+    },
+    "weather": {
+      "title": "Weather",
+      "ariaLabel": "Weather: high {max}°, low {min}°"
+    },
+    "export": {
+      "button": "Export",
+      "menuLabel": "Export trip",
+      "gpxAll": "GPX (whole trip)",
+      "gpxDay": "GPX (Day {n})",
+      "ics": "Calendar (ICS)",
+      "icsNeedDates": "Set trip dates to export a calendar",
+      "more": "More"
     }
   }
 }

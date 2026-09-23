@@ -5,12 +5,16 @@ import { BedDouble, ChevronDown, ChevronUp } from 'lucide-react'
 import type { DayRecord, LodgingRecord, PlaceRecord } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { tr } from '../../i18n'
+import type { WeatherDay } from '../hooks/useWeather'
+import { WeatherBadge } from './WeatherBadge'
 
 type Props = {
   day: DayRecord | null
   lodgings: LodgingRecord[]
   places: PlaceRecord[]
   onEditLodging?: (lodgingId: string) => void
+  /** B4：当天天气 */
+  weather?: WeatherDay | null
   locale?: SupportedLocale
 }
 
@@ -19,12 +23,12 @@ export function lodgingsForDay(lodgings: LodgingRecord[], dayIndex: number): Lod
   return lodgings.filter((row) => row.fromDayIndex <= dayIndex && dayIndex <= row.toDayIndex)
 }
 
-/** 地图右上可折叠浮卡：当天住宿信息（天气位留给 B4） */
-export function DayDetailCard({ day, lodgings, places, onEditLodging, locale = 'zh' }: Props) {
+/** 地图右上可折叠浮卡：当天天气 + 住宿信息 */
+export function DayDetailCard({ day, lodgings, places, onEditLodging, weather = null, locale = 'zh' }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   if (!day) return null
   const relevant = lodgingsForDay(lodgings, day.dayIndex)
-  if (relevant.length === 0) return null
+  if (relevant.length === 0 && !weather) return null
 
   return (
     <div className="pointer-events-auto absolute right-3 top-3 z-10 w-56 rounded-2xl border border-pink-100/90 bg-white/95 shadow-lg backdrop-blur-sm">
@@ -34,11 +38,14 @@ export function DayDetailCard({ day, lodgings, places, onEditLodging, locale = '
         onClick={() => setCollapsed((prev) => !prev)}
         aria-label={collapsed ? tr('routebook.dayDetail.expand', locale) : tr('routebook.dayDetail.collapse', locale)}
       >
-        <BedDouble className="h-4 w-4 shrink-0 text-brand-500" />
-        <span className="flex-1 text-xs font-semibold text-slate-800">{tr('routebook.dayDetail.lodgingTitle', locale)}</span>
+        {relevant.length > 0 ? <BedDouble className="h-4 w-4 shrink-0 text-brand-500" /> : null}
+        <span className="flex-1 text-xs font-semibold text-slate-800">
+          {relevant.length > 0 ? tr('routebook.dayDetail.lodgingTitle', locale) : tr('routebook.weather.title', locale)}
+        </span>
+        {weather ? <WeatherBadge weather={weather} locale={locale} /> : null}
         {collapsed ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" /> : <ChevronUp className="h-3.5 w-3.5 text-slate-400" />}
       </button>
-      {collapsed ? null : (
+      {collapsed || relevant.length === 0 ? null : (
         <div className="space-y-1.5 px-3 pb-2.5">
           {relevant.map((lodging) => {
             const place = places.find((row) => row.id === lodging.placeId)

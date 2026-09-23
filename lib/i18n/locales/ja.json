@@ -1231,6 +1231,31 @@
       "emptyDay": "この日にはまだ項目がありません。ポイントから追加しましょう",
       "viewDay": "この日を見る",
       "noLodging": "この日の宿泊はまだありません"
+    },
+    "nav": {
+      "open": "ナビを開く",
+      "menuLabel": "地図アプリを選択",
+      "sheetTitle": "地図アプリで開く",
+      "google": "Google マップ",
+      "apple": "Apple マップ",
+      "amap": "高徳地図（Amap）",
+      "endpointsOnly": "出発地と目的地のみ",
+      "viaTruncated": "経由地が多いため一部省略",
+      "segment": "{n}/{total} 区間",
+      "lodgingFallback": "宿泊先"
+    },
+    "weather": {
+      "title": "天気",
+      "ariaLabel": "天気：最高 {max}°、最低 {min}°"
+    },
+    "export": {
+      "button": "エクスポート",
+      "menuLabel": "旅程をエクスポート",
+      "gpxAll": "GPX（旅程全体）",
+      "gpxDay": "GPX（Day {n}）",
+      "ics": "カレンダー（ICS）",
+      "icsNeedDates": "日付が未設定のためカレンダーを書き出せません",
+      "more": "その他"
     }
   }
 }

@@ -1231,6 +1231,31 @@
       "emptyDay": "这一天还没有条目，从点位池添加吧",
       "viewDay": "查看这一天",
       "noLodging": "这一天还没有住宿安排"
+    },
+    "nav": {
+      "open": "打开导航",
+      "menuLabel": "选择地图应用",
+      "sheetTitle": "用地图应用打开",
+      "google": "Google 地图",
+      "apple": "Apple 地图",
+      "amap": "高德地图",
+      "endpointsOnly": "仅起终点",
+      "viaTruncated": "途经点过多，已截断",
+      "segment": "第 {n}/{total} 段",
+      "lodgingFallback": "住宿"
+    },
+    "weather": {
+      "title": "当天天气",
+      "ariaLabel": "天气：最高 {max}°，最低 {min}°"
+    },
+    "export": {
+      "button": "导出",
+      "menuLabel": "导出行程",
+      "gpxAll": "GPX（整个行程）",
+      "gpxDay": "GPX（Day {n}）",
+      "ics": "日历（ICS）",
+      "icsNeedDates": "行程没有日期，无法导出日历",
+      "more": "更多"
     }
   }
 }
