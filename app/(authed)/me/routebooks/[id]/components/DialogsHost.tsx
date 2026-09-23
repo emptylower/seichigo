@@ -67,6 +67,7 @@ export function useDialogsHost({
   insertDay,
   deleteDay,
   reorderDays,
+  searchNear = null,
   locale = 'zh',
 }: {
   detail: RouteBookDetail | null
@@ -80,6 +81,8 @@ export function useDialogsHost({
   insertDay: (afterDayIndex: number) => Promise<string | null>
   deleteDay: (dayId: string) => Promise<boolean>
   reorderDays: (orderedDayIds: string[]) => Promise<boolean>
+  /** 地址搜索的 near：行程几何中心 */
+  searchNear?: { lat: number; lng: number } | null
   locale?: SupportedLocale
 }): DialogsHostApi {
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -143,6 +146,7 @@ export function useDialogsHost({
           place={place}
           presetKind={dialog.presetKind}
           initialCoords={dialog.initialCoords}
+          searchNear={searchNear}
           locale={locale}
           onClose={dialog.returnToLodging ? closePlaceDialog : close}
           onSubmit={async (input) => {
@@ -263,7 +267,7 @@ export function useDialogsHost({
         }}
       />
     )
-  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging, deleteLodging, addItem, updateItem, insertDay, deleteDay, reorderDays])
+  }, [detail, dialog, locale, close, closePlaceDialog, createPlace, updatePlace, createLodging, updateLodging, deleteLodging, addItem, updateItem, insertDay, deleteDay, reorderDays, searchNear])
 
   return { host, openPlaceEditor, openLodgingEditor, openNoteEditor, openDayOrder }
 }

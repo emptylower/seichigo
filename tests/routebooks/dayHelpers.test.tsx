@@ -5,8 +5,10 @@ import {
   dayNavStops,
   dayNavTargets,
   dayStats,
+  isInJapan,
   movableCount,
   nextDayFirstStopTitle,
+  tripCenter,
 } from '@/app/(authed)/me/routebooks/[id]/utils'
 import type {
   DayLegsResult,
@@ -185,5 +187,29 @@ describe('天统计 / 导航 / 可移动点（B3 去重）', () => {
     expect(dayLabel(DAYS[0]!, 1, 'zh')).toBe(`Day 1 · ${dayDateLabel(DAYS[0]!, 'zh')}`)
     expect(dayDateLabel(DAYS[1]!, 'zh')).toBeNull()
     expect(dayLabel(DAYS[1]!, 2, 'ja')).toBe('Day 2')
+  })
+})
+
+describe('地址搜索 near（T2）', () => {
+  it('tripCenter：有坐标的 point/place 均值；无坐标/备注/缺失自定义点跳过；全无返回 null', () => {
+    const items = [
+      makeItem({ id: 'a', pointId: 'p:shrine' }),
+      makeItem({ id: 'b', pointId: 'p:no-geo' }),
+      makeItem({ id: 'c', kind: 'place', placeId: 'place-1' }),
+      makeItem({ id: 'd', kind: 'place', placeId: 'missing' }),
+      makeItem({ id: 'n', kind: 'note', title: 'memo' }),
+    ]
+    const center = tripCenter(items, [PLACE], getPointPreview)
+    expect(center?.lat).toBeCloseTo(34.885)
+    expect(center?.lng).toBeCloseTo(135.805)
+    expect(tripCenter([makeItem({ id: 'b', pointId: 'p:no-geo' })], [], getPointPreview)).toBeNull()
+  })
+
+  it('isInJapan：京都/札幌在框内，黄海与伦敦在框外，非数字为 false', () => {
+    expect(isInJapan(34.9858, 135.7588)).toBe(true)
+    expect(isInJapan(43.06, 141.35)).toBe(true)
+    expect(isInJapan(37.56, 122.5)).toBe(false)
+    expect(isInJapan(51.5, -0.12)).toBe(false)
+    expect(isInJapan(Number.NaN, 135)).toBe(false)
   })
 })

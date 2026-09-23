@@ -112,6 +112,36 @@ export function itemHasCoords(
   return false
 }
 
+/** 粗粒度日本列岛框（纬 24–46、经 122.9–146，与 lib/geo/gcj02 的 JAPAN_BOX 一致）：地址搜索是否限定 country=jp */
+export function isInJapan(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 24 && lat <= 46 && lng >= 122.9 && lng <= 146
+}
+
+/** 行程几何中心：所有有坐标的 point/place 条目的经纬度均值；一个都没有返回 null */
+export function tripCenter(
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): { lat: number; lng: number } | null {
+  let latSum = 0
+  let lngSum = 0
+  let n = 0
+  for (const item of items) {
+    let coords: [number, number] | null = null
+    if (item.kind === 'place') {
+      const place = places.find((row) => row.id === item.placeId)
+      if (place) coords = [place.lat, place.lng]
+    } else if (item.kind === 'point' && item.pointId) {
+      coords = getPointPreview(item.pointId)?.geo ?? null
+    }
+    if (!coords || !isGeoPair(coords)) continue
+    latSum += coords[0]
+    lngSum += coords[1]
+    n += 1
+  }
+  return n > 0 ? { lat: latSum / n, lng: lngSum / n } : null
+}
+
 /** 单天模式地图徽标 / 时间线序号：只数有坐标的 point/place，按 sortOrder 编 1..N */
 export function computeVisitOrder(
   dayItems: ItemRecord[],

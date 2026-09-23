@@ -103,4 +103,60 @@ describe('PlaceEditorDialog', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('地址搜索')).toHaveValue('东京都港区芝公园')
   })
+
+  it('searchNear（行程中心）优先作 near；在日本框内追加 country=jp', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, results: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <PlaceEditorDialog
+        open
+        place={makePlace({ lat: 38.767866, lng: 127.000087 })}
+        searchNear={{ lat: 34.95, lng: 135.77 }}
+        onSubmit={() => {}}
+        onClose={() => {}}
+        locale="zh"
+      />
+    )
+    fireEvent.change(screen.getByLabelText('地址搜索'), { target: { value: '京都駅' } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const url = String(fetchMock.mock.calls[0]![0])
+    expect(url).toContain('near=34.95%2C135.77')
+    expect(url).toContain('&country=jp')
+  })
+
+  it('near 不在日本（或没有 near）时不带 country', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, results: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlaceEditorDialog open searchNear={{ lat: 51.5, lng: -0.12 }} onSubmit={() => {}} onClose={() => {}} locale="zh" />)
+    fireEvent.change(screen.getByLabelText('地址搜索'), { target: { value: 'King Cross' } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const url = String(fetchMock.mock.calls[0]![0])
+    expect(url).toContain('near=51.5%2C-0.12')
+    expect(url).not.toContain('country=')
+  })
+
+  it('选中不在行程所在国家的结果给黄色提示；改选日本结果/重新输入后消失（T4）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        results: [
+          { title: '京都里', address: '京都里, 板橋郡, 江原道, 朝鲜', lat: 38.767866, lng: 127.000087, countryCode: 'kp' },
+          { title: '京都駅', address: '京都駅, 京都市, 日本', lat: 34.9858, lng: 135.7588 },
+        ],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlaceEditorDialog open searchNear={{ lat: 34.95, lng: 135.77 }} onSubmit={() => {}} onClose={() => {}} locale="zh" />)
+    const warning = '这个结果不在当前行程所在国家，请确认是否选对了地点'
+
+    fireEvent.change(screen.getByLabelText('地址搜索'), { target: { value: '京都' } })
+    fireEvent.click(await screen.findByText('京都里'))
+    expect(screen.getByText(warning)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('地址搜索'), { target: { value: '京都駅' } })
+    expect(screen.queryByText(warning)).toBeNull()
+    fireEvent.click(await screen.findByText('京都駅'))
+    expect(screen.queryByText(warning)).toBeNull()
+  })
 })

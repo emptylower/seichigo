@@ -9,7 +9,7 @@ import { useTripData } from './hooks/useTripData'
 import { useTripDnd } from './hooks/useTripDnd'
 import { useDayLegs } from './hooks/useDayLegs'
 import { useWeather } from './hooks/useWeather'
-import { dayLabel, nextDayFirstStopTitle, sequenceForImmersive } from './utils'
+import { dayLabel, nextDayFirstStopTitle, sequenceForImmersive, tripCenter } from './utils'
 import {
   DetailNav,
   NoticeBanners,
@@ -52,8 +52,13 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
   // 移动端连接行始终显示（无路线开关），legs 常拉
   const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible || isMobile)
   const weatherByDate = useWeather(detail, trip.getPointPreview)
+  const searchNear = useMemo(
+    () => (detail ? tripCenter(detail.items, detail.places, trip.getPointPreview) : null),
+    [detail, trip.getPointPreview]
+  )
   const dialogs = useDialogsHost({
     detail,
+    searchNear,
     createPlace: trip.createPlace,
     updatePlace: trip.updatePlace,
     createLodging: trip.createLodging,

@@ -1143,7 +1143,8 @@
       "lngLabel": "经度",
       "noteLabel": "备注（可选）",
       "notePlaceholder": "补充信息…",
-      "submit": "保存自定义点"
+      "submit": "保存自定义点",
+      "countryMismatch": "这个结果不在当前行程所在国家，请确认是否选对了地点"
     },
     "lodging": {
       "add": "添加住宿",

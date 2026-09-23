@@ -1143,7 +1143,8 @@
       "lngLabel": "Longitude",
       "noteLabel": "Note (optional)",
       "notePlaceholder": "Extra info…",
-      "submit": "Save place"
+      "submit": "Save place",
+      "countryMismatch": "This result is outside the country of your current trip — double-check it is the right place"
     },
     "lodging": {
       "add": "Add lodging",

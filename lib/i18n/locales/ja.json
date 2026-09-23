@@ -1143,7 +1143,8 @@
       "lngLabel": "経度",
       "noteLabel": "メモ（任意）",
       "notePlaceholder": "補足情報…",
-      "submit": "地点を保存"
+      "submit": "地点を保存",
+      "countryMismatch": "この結果は現在の旅程の国の外にあります。正しい場所か確認してください"
     },
     "lodging": {
       "add": "宿泊を追加",
