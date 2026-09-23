@@ -81,7 +81,10 @@ export function DaySummaryBar({
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
             onClick={() => setSheetOpen(false)}
           />
-          <div className="relative mb-0 w-full max-w-md rounded-t-[28px] border border-pink-100 bg-white p-4 pb-8 shadow-[0_-18px_44px_-24px_rgba(15,23,42,0.45)]">
+          <div
+            className="relative mb-0 w-full max-w-md rounded-t-[28px] border border-pink-100 bg-white p-4 shadow-[0_-18px_44px_-24px_rgba(15,23,42,0.45)]"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}
+          >
             <div className="mb-3 flex items-center justify-between px-1">
               <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
                 <BedDouble className="h-4 w-4 text-brand-500" />

@@ -393,7 +393,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
         {dialogs.host}
 
         {trip.toast ? (
-          <div className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] left-1/2 z-[110] md:bottom-6 -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">
+          <div className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] left-1/2 z-[110] min-[769px]:bottom-6 -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">
             {trip.toast}
           </div>
         ) : null}

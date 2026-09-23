@@ -56,7 +56,7 @@ describe('OpenInMapsMenu', () => {
   it('点外部 / Esc 关闭下拉', () => {
     render(<OpenInMapsMenu targets={buildDayTargets(DAY_STOPS, 'transit')} locale="zh" />)
     fireEvent.click(screen.getByRole('button', { name: '打开导航' }))
-    fireEvent.mouseDown(document.body)
+    fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('menu')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '打开导航' }))
     fireEvent.keyDown(document, { key: 'Escape' })

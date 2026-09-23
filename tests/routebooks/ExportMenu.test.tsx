@@ -33,4 +33,14 @@ describe('ExportMenu（桌面侧栏「导出 ▾」）', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: /GPX（Day 1）/ }))
     expect(screen.queryByRole('menu')).toBeNull()
   })
+
+  it('外部 pointerdown 关闭（触屏也生效，G7）', () => {
+    render(<ExportMenu routeBookId="rb1" selectedDayIndex={null} hasDates locale="zh" />)
+    fireEvent.click(screen.getByRole('button', { name: /导出/ }))
+    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.pointerDown(screen.getByRole('menu'))
+    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
 })

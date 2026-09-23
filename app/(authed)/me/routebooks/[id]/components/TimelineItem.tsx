@@ -178,7 +178,7 @@ export function TimelineItem({
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
           {preview?.image ? (
-            <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
+            <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover object-center" />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient} text-[9px] font-semibold text-white`}>
               {tr('routebook.common.noImage', locale)}
@@ -201,7 +201,9 @@ export function TimelineItem({
         item.kind === 'transit'
           ? 'border-transparent bg-slate-50/60'
           : 'border-pink-100/80 bg-white shadow-[0_10px_22px_-20px_rgba(15,23,42,0.4)]'
-      } ${isDragging ? 'z-10 border-brand-300 ring-2 ring-brand-200/70' : ''}`}
+      } ${isDragging ? 'z-10 border-brand-300 ring-2 ring-brand-200/70' : ''} ${
+        mobileDrag ? 'select-none [-webkit-touch-callout:none]' : ''
+      }`}
       {...(mobileDrag && item.kind !== 'transit' ? { ...attributes, ...listeners } : {})}
     >
       {item.kind !== 'transit' && !mobileDrag ? (

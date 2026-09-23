@@ -156,7 +156,7 @@ export function OpenInMapsMenu({
   useEffect(() => {
     if (!open || presentation !== 'dropdown') return
     const close = () => setOpen(false)
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       const target = event.target
       if (!(target instanceof Node)) return
       if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return
@@ -165,12 +165,12 @@ export function OpenInMapsMenu({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
-    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     window.addEventListener('resize', close)
     window.addEventListener('scroll', close, true)
     return () => {
-      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('resize', close)
       window.removeEventListener('scroll', close, true)
