@@ -55,3 +55,10 @@
    - `[id]/ui.tsx` 及其 components/hooks：去掉 `readClientLocale()`（line 75），全部从 prop 拿 `locale` 并透传；`<html lang>` 不用管。
    - 日期显示（`dayLabel` 里的「周六」等）按 locale 用 `Intl.DateTimeFormat`。
 3. 测试：`tests/routebooks/i18n.test.tsx`——用 `locale='en'` 渲染 `DayPlanSidebar` 与 `PointDetailCard`，断言不出现任何 CJK 字符（正则 `/[぀-ヿ㐀-鿿]/`）；`LanguageSwitcher` 在无前缀路径上调用 `router.refresh`。
+
+### A2 热路径压到 1 次往返（A1 之后追加）
+A1 实测热路径仍 ~950ms：`getDayContext`（~490ms）→ `pointCoords`（~240ms）→ 缓存读（~220ms）三次串行往返。改法：
+1. **坐标并入天上下文**：`getDayContext` 的 Prisma 查询对 `items` 用 `include: { point: { select: { id: true, geoLat: true, geoLng: true } } }`（或 `select`），`DayContext` 类型加 `pointCoords: Map<string, { lat; lng }>`（由仓储从关系字段组装，null 坐标不进 Map）；handler 不再单独调 `deps.pointCoords`。内存仓储用注入的 `pointCoords` 假实现组装同样的 Map。
+2. **缓存读与库查并行**：`GET /days/[dayId]/legs?sig=<客户端计算的顺序签名>`——`sig` 是客户端对「该天条目 id 顺序 + 当天默认方式 + 住宿 placeId」算的短哈希（任意稳定字符串，服务端只当不透明 key 用，最长 64 字符，缺省则退回现在的流程）。handler 在发起库查询的**同时**用 `dayroute-sig|<dayId>|<sig>` 读 `RouteLegCache`；命中则直接用缓存的 `dayGeometry`（跳过 Mapbox）。库查回来后正常算 legs；Mapbox 结果写入时同时写两个 key（原坐标 key 与 sig key）。sig 与实际数据不一致的风险由客户端保证（sig 变即换 key），服务端不校验。
+3. 目标：热路径（缓存命中）≈ 1 次 Neon 往返 + 极小开销；用与 A1 相同的临时脚本测三个数字（getDayContext 含坐标、并行缓存读、总耗时）写进汇报，脚本用完删。
+4. 测试：`tests/routeBook/handlers.test.ts` 加「带 sig 命中缓存时不调 Mapbox」「不带 sig 走原流程」；`repoMemory.test.ts` 的 `getDayContext` 断言含 `pointCoords`。
