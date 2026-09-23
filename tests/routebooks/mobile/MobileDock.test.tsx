@@ -81,3 +81,27 @@ describe('MobileDock 打开导航', () => {
     expect(link.getAttribute('href')).toContain('google.com/maps/dir')
   })
 })
+
+describe('MobileDock 导航 sheet 交通方式 / 无障碍文案（B3 修复）', () => {
+  it('导航 sheet 内切换当天默认交通方式调 onChangeTravelMode', () => {
+    const onChangeTravelMode = vi.fn()
+    renderDock({ onChangeTravelMode })
+    fireEvent.click(screen.getByRole('button', { name: '打开导航' }))
+    const group = screen.getByRole('radiogroup', { name: '当天默认交通方式' })
+    expect(screen.getByRole('radio', { name: '公共交通' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(screen.getByRole('radio', { name: '步行' }))
+    expect(onChangeTravelMode).toHaveBeenCalledWith('walking')
+    // 点当前方式不重复提交
+    fireEvent.click(screen.getByRole('radio', { name: '公共交通' }))
+    expect(onChangeTravelMode).toHaveBeenCalledTimes(1)
+    expect(group).toBeTruthy()
+  })
+
+  it('dock 标签与禁用原因按 locale（英文用半角括号）', () => {
+    renderDock({ selectedDay: null, locale: 'en' })
+    expect(screen.getByRole('navigation', { name: 'Trip actions' })).toBeTruthy()
+    const optimize = screen.getAllByRole('button').find((btn) => btn.hasAttribute('disabled') && btn.getAttribute('aria-label')?.includes('('))
+    expect(optimize).toBeTruthy()
+    expect(optimize?.getAttribute('aria-label')).not.toMatch(/[（）]/)
+  })
+})

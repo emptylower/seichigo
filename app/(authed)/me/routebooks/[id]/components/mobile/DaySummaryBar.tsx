@@ -1,14 +1,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BedDouble, ChevronRight, X } from 'lucide-react'
+import { BedDouble, ChevronRight, Plus, X } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord } from '../../types'
-import { toIntlLocale } from '@/lib/i18n/intlLocale'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview } from '../../types'
+import { dayDateLabel, dayStats } from '../../utils'
 import { lodgingsForDay } from '../DayDetailCard'
 import { tr } from '../../../i18n'
-
-const STOP_MINUTES_ESTIMATE = 40
 
 type Props = {
   day: DayRecord
@@ -16,26 +14,25 @@ type Props = {
   places: PlaceRecord[]
   lodgings: LodgingRecord[]
   legs?: DayLegsResult
+  getPointPreview: (pointId: string) => PointPreview
   onEditLodging?: (lodgingId: string) => void
+  /** 住宿抽屉里的「添加住宿」（预设入住日 = 当天） */
+  onAddLodging?: (dayIndex: number) => void
   locale?: SupportedLocale
 }
 
-/** 「M/D 周X」日期片段（与 dayLabel 的日期部分一致；无日期返回 null） */
-export function dayDateLabel(day: Pick<DayRecord, 'date'>, locale: SupportedLocale = 'zh'): string | null {
-  if (!day.date) return null
-  const parsed = new Date(day.date)
-  if (Number.isNaN(parsed.getTime())) return null
-  const intl = toIntlLocale(locale)
-  const weekday = new Intl.DateTimeFormat(intl, { weekday: 'short', timeZone: 'UTC' }).format(parsed)
-  if (locale === 'en') {
-    return `${new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)}, ${weekday}`
-  }
-  const md = `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`
-  return locale === 'ja' ? `${md}(${weekday})` : `${md} ${weekday}`
-}
-
 /** 天标题下一行摘要：日期 · 住宿 ·「N 站 · 约 X 小时」；点开 = 住宿详情底部抽屉 */
-export function DaySummaryBar({ day, items, places, lodgings, legs, onEditLodging, locale = 'zh' }: Props) {
+export function DaySummaryBar({
+  day,
+  items,
+  places,
+  lodgings,
+  legs,
+  getPointPreview,
+  onEditLodging,
+  onAddLodging,
+  locale = 'zh',
+}: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
 
   const relevant = lodgingsForDay(lodgings, day.dayIndex)
@@ -43,14 +40,10 @@ export function DaySummaryBar({ day, items, places, lodgings, legs, onEditLodgin
     .map((row) => places.find((place) => place.id === row.placeId)?.title)
     .filter((title): title is string => Boolean(title))
 
-  const { stopCount, totalHours } = useMemo(() => {
-    const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
-    const legMinutes = (legs?.legs ?? []).reduce((sum, leg) => sum + leg.durationSec / 60, 0)
-    return {
-      stopCount: visitable.length,
-      totalHours: (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60,
-    }
-  }, [items, legs])
+  const { stopCount, totalHours } = useMemo(
+    () => dayStats(items, legs, places, getPointPreview),
+    [getPointPreview, items, legs, places]
+  )
 
   const dateText = dayDateLabel(day, locale)
   const summaryParts: string[] = []
@@ -147,6 +140,19 @@ export function DaySummaryBar({ day, items, places, lodgings, legs, onEditLodgin
                   )
                 })
               )}
+              {onAddLodging ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-pink-200 px-3 py-2.5 text-xs font-medium text-brand-600 transition hover:bg-pink-50/60"
+                  onClick={() => {
+                    setSheetOpen(false)
+                    onAddLodging(day.dayIndex)
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {tr('routebook.lodging.add', locale)}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

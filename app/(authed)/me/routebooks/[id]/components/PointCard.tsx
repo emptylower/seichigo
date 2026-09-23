@@ -1,4 +1,5 @@
 import { useDraggable } from '@dnd-kit/core'
+import { Trash2 } from 'lucide-react'
 import { CSS } from '@dnd-kit/utilities'
 import type { PointPoolItem, PointPreview } from '../types'
 import { DRAG_SAFE_CONTROL_PROPS } from '../types'
@@ -34,6 +35,7 @@ export function PointPoolCard({
   item,
   preview,
   onAdd,
+  onRemove,
   sortable,
   isDragging,
   locale = 'zh',
@@ -41,6 +43,8 @@ export function PointPoolCard({
   item: PointPoolItem
   preview: PointPreview
   onAdd: () => void
+  /** 移动端 sheet：「从点位池删除」 */
+  onRemove?: () => void
   sortable?: boolean
   isDragging?: boolean
   locale?: SupportedLocale
@@ -71,14 +75,28 @@ export function PointPoolCard({
           </div>
           <p className="line-clamp-1 text-xs text-slate-500">{preview.subtitle}</p>
           <p className="truncate rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">{item.pointId}</p>
-          <button
-            type="button"
-            className="inline-flex min-h-8 w-full items-center justify-center rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
-            onClick={onAdd}
-            {...DRAG_SAFE_CONTROL_PROPS}
-          >
-            {tr('routebook.pool.addToMap', locale)}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="inline-flex min-h-8 w-full items-center justify-center rounded-lg border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
+              onClick={onAdd}
+              {...DRAG_SAFE_CONTROL_PROPS}
+            >
+              {tr('routebook.pool.addToMap', locale)}
+            </button>
+            {onRemove ? (
+              <button
+                type="button"
+                aria-label={tr('routebook.pool.removeFromPool', locale)}
+                title={tr('routebook.pool.removeFromPool', locale)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100"
+                onClick={onRemove}
+                {...DRAG_SAFE_CONTROL_PROPS}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </article>

@@ -6,14 +6,12 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles, StickyNote } from 'lucide-react'
 import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { buildGoogleDirectionsUrl, computeVisitOrder, dayLabel, itemDragId } from '../utils'
+import { computeVisitOrder, dayLabel, dayNavUrl, dayStats, itemDragId } from '../utils'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
 import { LegConnector } from './LegConnector'
 import { lodgingsForDay } from './DayDetailCard'
 import { tr } from '../../i18n'
-
-const STOP_MINUTES_ESTIMATE = 40
 
 type DayBlockProps = {
   routeBookId: string
@@ -98,22 +96,9 @@ export function DayBlock({
     [items, places, getPointPreview]
   )
 
-  const stats = useMemo(() => {
-    const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
-    const coordCount = visitable.filter((item) => {
-      if (item.kind === 'place') return places.some((place) => place.id === item.placeId)
-      return Boolean(item.pointId && getPointPreview(item.pointId).geo)
-    }).length
-    const legMinutes = (legs?.legs ?? []).reduce((sum, leg) => sum + leg.durationSec / 60, 0)
-    const totalHours = (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60
-    return { stopCount: visitable.length, coordCount, totalHours }
-  }, [getPointPreview, items, legs, places])
+  const stats = useMemo(() => dayStats(items, legs, places, getPointPreview), [getPointPreview, items, legs, places])
 
-  const navUrl = useMemo(() => {
-    if (!legs || legs.stops.length < 2) return null
-    const stops = legs.stops.map((stop) => `${stop.lat},${stop.lng}`)
-    return buildGoogleDirectionsUrl(stops, day.defaultTravelMode === 'driving' ? 'driving' : 'transit')
-  }, [day.defaultTravelMode, legs])
+  const navUrl = useMemo(() => dayNavUrl(day, legs), [day, legs])
 
   const showToolbar = selected && stats.coordCount >= 2
 

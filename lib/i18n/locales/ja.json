@@ -955,9 +955,6 @@
       "startDay": "Day {n} を開始",
       "startNav": "ナビを開始",
       "tabAll": "すべて",
-      "tabRoute": "ルート",
-      "tabRouteDay": "ルート · Day {n}",
-      "tabPool": "スポットプール",
       "addFromPool": "プールから追加",
       "removeFromPoolFailed": "プールからの削除に失敗しました",
       "saveFailed": "保存に失敗しました",
@@ -1216,6 +1213,10 @@
       "submit": "順序を保存"
     },
     "mobile": {
+      "dockLabel": "旅程の操作",
+      "pillsLabel": "日を選択",
+      "disabledWithReason": "{label}（{reason}）",
+      "travelModeLabel": "この日の標準の移動手段",
       "tabPlan": "計画",
       "tabMap": "地図",
       "allDays": "すべての日",

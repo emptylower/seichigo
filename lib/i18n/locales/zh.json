@@ -955,9 +955,6 @@
       "startDay": "开始 Day {n}",
       "startNav": "开始导航",
       "tabAll": "全部",
-      "tabRoute": "路线",
-      "tabRouteDay": "路线 · Day {n}",
-      "tabPool": "点位池",
       "addFromPool": "从点位池添加",
       "removeFromPoolFailed": "从点位池删除失败",
       "saveFailed": "保存失败",
@@ -1216,6 +1213,10 @@
       "submit": "保存顺序"
     },
     "mobile": {
+      "dockLabel": "行程操作",
+      "pillsLabel": "选择天数",
+      "disabledWithReason": "{label}（{reason}）",
+      "travelModeLabel": "当天默认交通方式",
       "tabPlan": "计划",
       "tabMap": "地图",
       "allDays": "全部天数",

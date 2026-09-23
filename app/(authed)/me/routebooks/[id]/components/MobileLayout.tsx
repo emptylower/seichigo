@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { DayLegsResult, DayRecord, RouteBookDetail } from '../types'
-import { buildGoogleDirectionsUrl, dayLabel } from '../utils'
+import type { DayLegsResult, DayRecord, PointPoolItem, RouteBookDetail } from '../types'
+import { dayLabel, dayNavUrl, movableCount as countMovable } from '../utils'
 import type { useTripData } from '../hooks/useTripData'
 import type { useTripDnd } from '../hooks/useTripDnd'
 import type { DialogsHostApi } from './DialogsHost'
@@ -12,6 +12,7 @@ import { DayPillTrack } from './mobile/DayPillTrack'
 import { MobilePlanView } from './mobile/MobilePlanView'
 import { DaySummaryBar } from './mobile/DaySummaryBar'
 import { MobileDock } from './mobile/MobileDock'
+import { MobilePointPoolSheet } from './MobilePointPoolSheet'
 import { tr } from '../../i18n'
 
 type Props = {
@@ -20,9 +21,14 @@ type Props = {
   days: DayRecord[]
   selectedDay: DayRecord | null
   selectedDayId: string | null
+  /** 胶囊是 tab 语义：点已选中的天保持选中（非切换）；只有「全部」清空 */
   onSelectDay: (dayId: string) => void
   onShowAll: () => void
   mapStage: ReactNode
+  /** 点位详情卡：两个 tab 下都以固定底部抽屉渲染 */
+  detailCard: ReactNode
+  /** 点位池 sheet 列表（已排除本行程本已有点位） */
+  poolItems: PointPoolItem[]
   dragOverlay: ReactNode
   dnd: ReturnType<typeof useTripDnd>
   legsByDay: Record<string, DayLegsResult>
@@ -36,7 +42,6 @@ type Props = {
   needsDayPick: boolean
   onOpenDayPicker: () => void
   onStartImmersive: () => void
-  onOpenPoolSheet: () => void
   onOpenItemDetail: (itemId: string) => void
   onMoveItem: (itemId: string, targetDayId: string | null) => void
   onEditNote: (itemId: string) => void
@@ -53,6 +58,8 @@ export function MobileLayout({
   onSelectDay,
   onShowAll,
   mapStage,
+  detailCard,
+  poolItems,
   dragOverlay,
   dnd,
   legsByDay,
@@ -65,7 +72,6 @@ export function MobileLayout({
   needsDayPick,
   onOpenDayPicker,
   onStartImmersive,
-  onOpenPoolSheet,
   onOpenItemDetail,
   onMoveItem,
   onEditNote,
@@ -73,6 +79,7 @@ export function MobileLayout({
 }: Props) {
   const [tab, setTab] = useState<'plan' | 'map'>('plan')
   const [unassignedView, setUnassignedView] = useState(false)
+  const [poolOpen, setPoolOpen] = useState(false)
 
   const dayItems = useMemo(
     () =>
@@ -88,26 +95,35 @@ export function MobileLayout({
 
   const currentLegs = selectedDay ? legsByDay[selectedDay.id] : undefined
 
-  // 优化可用性：可移动点 = 当天有坐标、非锚（locked && timeStart）的 point/place
-  const movableCount = useMemo(() => {
-    return dayItems.filter((item) => {
-      if (item.kind !== 'point' && item.kind !== 'place') return false
-      if (item.locked && item.timeStart) return false
-      if (item.kind === 'place') return detail.places.some((place) => place.id === item.placeId)
-      return Boolean(item.pointId && trip.getPointPreview(item.pointId).geo)
-    }).length
-  }, [dayItems, detail.places, trip])
+  const movableCount = useMemo(
+    () => countMovable(dayItems, detail.places, trip.getPointPreview),
+    [dayItems, detail.places, trip.getPointPreview]
+  )
 
-  const navUrl = useMemo(() => {
-    if (!selectedDay || !currentLegs || currentLegs.stops.length < 2) return null
-    const stops = currentLegs.stops.map((stop) => `${stop.lat},${stop.lng}`)
-    return buildGoogleDirectionsUrl(stops, selectedDay.defaultTravelMode === 'driving' ? 'driving' : 'transit')
-  }, [currentLegs, selectedDay])
+  const navUrl = useMemo(() => (selectedDay ? dayNavUrl(selectedDay, currentLegs) : null), [currentLegs, selectedDay])
+
+  // 切回地图 tab：地图一直挂着（hidden 切换），可见后通知 MapLibre 重算尺寸
+  useEffect(() => {
+    if (tab !== 'map') return
+    const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+    return () => window.cancelAnimationFrame(frame)
+  }, [tab])
 
   const handleSelectDay = (dayId: string) => {
     setUnassignedView(false)
     onSelectDay(dayId)
   }
+
+  // 进入「未安排」视图：同时清掉选中天（地图回到全览，不残留旧天）
+  const handleShowUnassigned = () => {
+    setUnassignedView(true)
+    onShowAll()
+  }
+
+  // 点位池加入目标：未安排视图 / 全部 → 未安排；否则选中天
+  const poolTargetDayId = unassignedView ? null : selectedDayId
+  const poolTargetDay = poolTargetDayId ? selectedDay : null
+  const poolTargetLabel = poolTargetDay ? `Day ${poolTargetDay.dayIndex}` : tr('routebook.common.unassigned', locale)
 
   return (
     <DndContext
@@ -122,7 +138,7 @@ export function MobileLayout({
     >
       <DragOverlay>{dragOverlay}</DragOverlay>
 
-      <section className="space-y-4 pb-24">
+      <section className="space-y-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         {header}
 
         <DayPillTrack
@@ -135,7 +151,7 @@ export function MobileLayout({
             setUnassignedView(false)
             onShowAll()
           }}
-          onShowUnassigned={() => setUnassignedView(true)}
+          onShowUnassigned={handleShowUnassigned}
           locale={locale}
         />
 
@@ -161,75 +177,92 @@ export function MobileLayout({
           })}
         </div>
 
-        {tab === 'map' ? (
-          mapStage
-        ) : unassignedView ? (
-          <MobilePlanView
-            mode="unassigned"
-            detail={detail}
-            days={days}
-            items={unassignedItems}
-            getPointPreview={trip.getPointPreview}
-            onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
-            onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
-            onMoveItem={onMoveItem}
-            onOpenItemDetail={onOpenItemDetail}
-            onEditNote={onEditNote}
-            locale={locale}
-          />
-        ) : selectedDay ? (
-          <div className="space-y-3">
-            <div className="px-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-base font-semibold text-slate-900">
-                  {dayLabel(selectedDay, selectedDay.dayIndex, locale)}
-                </span>
-                {selectedDay.title ? <span className="truncate text-xs text-slate-400">{selectedDay.title}</span> : null}
-              </div>
-            </div>
-            <DaySummaryBar
-              day={selectedDay}
-              items={dayItems}
-              places={detail.places}
-              lodgings={detail.lodgings}
-              legs={currentLegs}
-              onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
-              locale={locale}
-            />
+        {/* 两个视图都保持挂载（切 tab 不重建地图），非活动的 hidden */}
+        <div className={tab === 'map' ? '' : 'hidden'} data-testid="mobile-map-view">
+          {mapStage}
+        </div>
+
+        <div className={tab === 'plan' ? '' : 'hidden'} data-testid="mobile-plan-view">
+          {unassignedView ? (
             <MobilePlanView
-              mode="day"
+              mode="unassigned"
               detail={detail}
               days={days}
-              day={selectedDay}
-              items={dayItems}
+              items={unassignedItems}
               getPointPreview={trip.getPointPreview}
-              legs={currentLegs}
-              legsFailed={Boolean(legsFailedByDay[selectedDay.id])}
-              onRetryLegs={() => onRetryLegs(selectedDay.id)}
               onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
               onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
               onMoveItem={onMoveItem}
               onOpenItemDetail={onOpenItemDetail}
               onEditNote={onEditNote}
-              onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
               locale={locale}
             />
-          </div>
-        ) : (
-          <MobilePlanView
-            mode="all"
-            detail={detail}
-            days={days}
-            items={[]}
-            getPointPreview={trip.getPointPreview}
-            onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
-            onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
-            onMoveItem={onMoveItem}
-            onEnterDay={handleSelectDay}
-            locale={locale}
-          />
-        )}
+          ) : selectedDay ? (
+            <div className="space-y-3">
+              <div className="px-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-base font-semibold text-slate-900">
+                    {dayLabel(selectedDay, selectedDay.dayIndex, locale)}
+                  </span>
+                  {selectedDay.title ? <span className="truncate text-xs text-slate-400">{selectedDay.title}</span> : null}
+                </div>
+              </div>
+              <DaySummaryBar
+                day={selectedDay}
+                items={dayItems}
+                places={detail.places}
+                lodgings={detail.lodgings}
+                legs={currentLegs}
+                getPointPreview={trip.getPointPreview}
+                onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+                onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
+                locale={locale}
+              />
+              <MobilePlanView
+                mode="day"
+                detail={detail}
+                days={days}
+                day={selectedDay}
+                items={dayItems}
+                getPointPreview={trip.getPointPreview}
+                legs={currentLegs}
+                legsFailed={Boolean(legsFailedByDay[selectedDay.id])}
+                onRetryLegs={() => onRetryLegs(selectedDay.id)}
+                onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+                onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
+                onMoveItem={onMoveItem}
+                onOpenItemDetail={onOpenItemDetail}
+                onEditNote={onEditNote}
+                onAddNote={(dayId) => dialogs.openNoteEditor(dayId)}
+                locale={locale}
+              />
+            </div>
+          ) : (
+            <MobilePlanView
+              mode="all"
+              detail={detail}
+              days={days}
+              items={[]}
+              getPointPreview={trip.getPointPreview}
+              onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+              onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
+              onMoveItem={onMoveItem}
+              onEnterDay={handleSelectDay}
+              locale={locale}
+            />
+          )}
+        </div>
       </section>
+
+      {/* 点位详情卡：固定底部抽屉（dock 之上），计划 / 地图两个 tab 都可见 */}
+      {detailCard ? (
+        <div
+          data-testid="mobile-detail-drawer"
+          className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[45] h-[70dvh]"
+        >
+          {detailCard}
+        </div>
+      ) : null}
 
       <MobileDock
         selectedDay={unassignedView ? null : selectedDay}
@@ -238,13 +271,37 @@ export function MobileLayout({
         canStart={canStart}
         startLabel={startLabel}
         needsDayPick={needsDayPick || unassignedView}
-        onOpenPool={onOpenPoolSheet}
+        onOpenPool={() => setPoolOpen(true)}
         onOptimize={() => {
           if (!selectedDay) return
           void trip.optimizeDay(selectedDay.id)
         }}
         onOpenDayPicker={onOpenDayPicker}
         onStart={onStartImmersive}
+        onChangeTravelMode={(mode) => {
+          if (!selectedDay) return
+          void trip.updateDay(selectedDay.id, { defaultTravelMode: mode })
+        }}
+        locale={locale}
+      />
+
+      <MobilePointPoolSheet
+        pointPoolItems={poolItems}
+        getPointPreview={trip.getPointPreview}
+        onAddToRoute={(pointId) => {
+          void trip.addItem(poolTargetDayId, { kind: 'point', pointId })
+        }}
+        onRemoveFromPool={(pointId) => void trip.removeFromPool(pointId)}
+        detail={detail}
+        onAddPlace={(placeId) => {
+          void trip.addItem(poolTargetDayId, { kind: 'place', placeId })
+        }}
+        onCreatePlace={() => dialogs.openPlaceEditor()}
+        onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
+        onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
+        isOpen={poolOpen}
+        onClose={() => setPoolOpen(false)}
+        targetLabel={poolTargetLabel}
         locale={locale}
       />
     </DndContext>

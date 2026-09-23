@@ -40,6 +40,9 @@ type PlannerMapStageProps = {
 
 type MapPoint = { id: string; lat: number; lng: number; label: string; title?: string }
 
+/** 移动端地图 tab 的地图高度：视口减去 顶栏 + 行程本选择器 + 天胶囊 + 计划/地图切换条 + 底部 dock（约 19rem）与安全区 */
+const COMPACT_MAP_HEIGHT = 'h-[calc(100dvh-19rem-env(safe-area-inset-bottom))] min-h-[17rem]'
+
 /** 隐藏代理：marker 是命令式 DOM，借它把 marker 的 pointer 事件接进 dnd-kit。
  *  代理不能用 display:none（dnd-kit 量到 0×0，overlay/碰撞会偏移）：
  *  常态 fixed 放到屏外、opacity 0；pointerdown 时被移到 marker 的 rect 上。 */
@@ -236,27 +239,36 @@ export function PlannerMapStage({
     : tr('routebook.map.subtitleAll', locale, { n: dayCount })
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white/95 p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.38)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
-            <Navigation className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">{tr('routebook.map.title', locale)}</h2>
-            <p className="text-xs text-slate-500">{headerSubtitle}</p>
+    <section
+      className={
+        compact
+          ? 'flex min-h-0 flex-col'
+          : 'flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-white/95 p-4 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.38)]'
+      }
+    >
+      {/* 移动端：标题与「开始」按钮由天胶囊 / dock 承担，不重复 */}
+      {compact ? null : (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-pink-50 text-brand-600">
+              <Navigation className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{tr('routebook.map.title', locale)}</h2>
+              <p className="text-xs text-slate-500">{headerSubtitle}</p>
+            </div>
           </div>
+          <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-semibold text-brand-600">
+            {selectedDayId === null
+              ? tr('routebook.map.badgeAll', locale)
+              : routeVisible
+                ? tr('routebook.map.routeOn', locale)
+                : tr('routebook.map.routeOff', locale)}
+          </span>
         </div>
-        <span className="inline-flex rounded-full border border-pink-100 bg-pink-50/60 px-3 py-1 text-xs font-semibold text-brand-600">
-          {selectedDayId === null
-            ? tr('routebook.map.badgeAll', locale)
-            : routeVisible
-              ? tr('routebook.map.routeOn', locale)
-              : tr('routebook.map.routeOff', locale)}
-        </span>
-      </div>
+      )}
 
-      <div className={`relative overflow-hidden rounded-[28px] border border-pink-100/80 bg-slate-100 ${compact ? 'min-h-[17rem]' : 'min-h-0 flex-1'}`}>
+      <div className={`relative overflow-hidden rounded-[28px] border border-pink-100/80 bg-slate-100 ${compact ? COMPACT_MAP_HEIGHT : 'min-h-0 flex-1'}`}>
         {mapPoints.length > 0 ? (
           <RoutePreviewMap
             points={mapPoints}
@@ -295,17 +307,19 @@ export function PlannerMapStage({
         {detailCard}
       </div>
 
-      <div className="mt-3">
-        <button
-          type="button"
-          disabled={startDisabled}
-          className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-[24px] bg-brand-400 px-6 text-base font-semibold text-white shadow-[0_18px_34px_-22px_rgba(225,29,72,0.7)] transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-          onClick={onStartImmersive}
-        >
-          <Navigation className="h-5 w-5" />
-          {startLabel}
-        </button>
-      </div>
+      {compact ? null : (
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={startDisabled}
+            className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-[24px] bg-brand-400 px-6 text-base font-semibold text-white shadow-[0_18px_34px_-22px_rgba(225,29,72,0.7)] transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+            onClick={onStartImmersive}
+          >
+            <Navigation className="h-5 w-5" />
+            {startLabel}
+          </button>
+        </div>
+      )}
     </section>
   )
 }

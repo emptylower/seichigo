@@ -955,9 +955,6 @@
       "startDay": "Start Day {n}",
       "startNav": "Start Navigation",
       "tabAll": "All",
-      "tabRoute": "Route",
-      "tabRouteDay": "Route · Day {n}",
-      "tabPool": "Point Pool",
       "addFromPool": "Add from pool",
       "removeFromPoolFailed": "Failed to remove from pool",
       "saveFailed": "Failed to save",
@@ -1216,6 +1213,10 @@
       "submit": "Save order"
     },
     "mobile": {
+      "dockLabel": "Trip actions",
+      "pillsLabel": "Choose a day",
+      "disabledWithReason": "{label} ({reason})",
+      "travelModeLabel": "Default travel mode for this day",
       "tabPlan": "Plan",
       "tabMap": "Map",
       "allDays": "All days",

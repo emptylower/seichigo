@@ -23,7 +23,6 @@ import { buildPlannerNodes } from './components/plannerNodes'
 import { DesktopLayout } from './components/DesktopLayout'
 import { MobileLayout } from './components/MobileLayout'
 import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
-import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
 import { StartDayPickerSheet } from './components/StartDayPickerSheet'
 
 export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: string; locale?: SupportedLocale }) {
@@ -33,7 +32,6 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
   const [showImmersive, setShowImmersive] = useState(false)
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
   const [routeVisible, setRouteVisible] = useState(true)
-  const [poolSheetOpen, setPoolSheetOpen] = useState(false)
   const [focusItemId, setFocusItemId] = useState<string | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [importSummary, setImportSummary] = useState<string | null>(null)
@@ -242,6 +240,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
   if (trip.error) return <RouteBookDetailError error={trip.error} locale={locale} />
   if (!detail) return null
 
+  // 桌面侧栏：再点已选中的天回到「全部」；移动端胶囊是 tab 语义，见 MobileLayout 的 onSelectDay
   const handleSelectDay = (dayId: string) => {
     setSelectedDayId((prev) => (prev === dayId ? null : dayId))
   }
@@ -346,9 +345,11 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
             days={days}
             selectedDay={selectedDay}
             selectedDayId={selectedDayId}
-            onSelectDay={handleSelectDay}
+            onSelectDay={(dayId) => setSelectedDayId(dayId)}
             onShowAll={() => setSelectedDayId(null)}
             mapStage={nodes.mapStage}
+            detailCard={nodes.detailCard}
+            poolItems={sheetPoolItems}
             dragOverlay={
               <PlannerDragOverlay
                 activeDragId={dnd.activeDragId}
@@ -369,25 +370,12 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
             needsDayPick={isDateless || !selectedDay}
             onOpenDayPicker={() => setStartDayPickerOpen(true)}
             onStartImmersive={() => void handleStartImmersive()}
-            onOpenPoolSheet={() => setPoolSheetOpen(true)}
             onOpenItemDetail={handleOpenItemDetail}
             onMoveItem={handleMoveItem}
             onEditNote={handleEditNote}
             locale={locale}
           />
         )}
-
-        <MobilePointPoolSheet
-          pointPoolItems={sheetPoolItems}
-          getPointPreview={trip.getPointPreview}
-          onAddToRoute={(pointId) => {
-            void trip.addItem(selectedDayId ?? null, { kind: 'point', pointId })
-          }}
-          isOpen={poolSheetOpen}
-          onClose={() => setPoolSheetOpen(false)}
-          selectedDayLabel={selectedDay ? `Day ${selectedDay.dayIndex}` : null}
-          locale={locale}
-        />
 
         <StartDayPickerSheet
           open={startDayPickerOpen}
@@ -401,7 +389,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
         {dialogs.host}
 
         {trip.toast ? (
-          <div className="fixed bottom-6 left-1/2 z-[110] -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">
+          <div className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] left-1/2 z-[110] md:bottom-6 -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">
             {trip.toast}
           </div>
         ) : null}

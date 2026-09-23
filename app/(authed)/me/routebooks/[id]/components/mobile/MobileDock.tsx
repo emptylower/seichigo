@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Layers, Navigation, Play, Sparkles, X } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import type { DayRecord } from '../../types'
+import type { DayRecord, TravelMode } from '../../types'
 import { tr } from '../../../i18n'
 
 type Props = {
@@ -21,8 +21,12 @@ type Props = {
   onOptimize: () => void
   onOpenDayPicker: () => void
   onStart: () => void
+  /** 导航 action sheet 内切换当天默认交通方式（调 updateDay） */
+  onChangeTravelMode?: (mode: TravelMode) => void
   locale?: SupportedLocale
 }
+
+const TRAVEL_MODES: TravelMode[] = ['transit', 'walking', 'driving']
 
 /** 移动端固定底部 dock：点位池 / 优化 / 打开导航 / 开始 Day N */
 export function MobileDock({
@@ -36,6 +40,7 @@ export function MobileDock({
   onOptimize,
   onOpenDayPicker,
   onStart,
+  onChangeTravelMode,
   locale = 'zh',
 }: Props) {
   const [navSheetOpen, setNavSheetOpen] = useState(false)
@@ -51,7 +56,7 @@ export function MobileDock({
   return (
     <>
       <nav
-        aria-label="planner dock"
+        aria-label={tr('routebook.mobile.dockLabel', locale)}
         className="fixed inset-x-0 bottom-0 z-40 border-t border-pink-100/80 bg-white/95 backdrop-blur-md"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -70,7 +75,10 @@ export function MobileDock({
             title={optimizeTitle}
             aria-label={
               optimizeDisabled
-                ? `${tr('routebook.mobile.dockOptimize', locale)}（${optimizeTitle ?? ''}）`
+                ? tr('routebook.mobile.disabledWithReason', locale, {
+                    label: tr('routebook.mobile.dockOptimize', locale),
+                    reason: optimizeTitle ?? '',
+                  })
                 : tr('routebook.mobile.dockOptimize', locale)
             }
             className="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-2xl text-[11px] font-medium text-slate-600 transition hover:bg-pink-50 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
@@ -131,6 +139,33 @@ export function MobileDock({
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {selectedDay && onChangeTravelMode ? (
+              <div
+                role="radiogroup"
+                aria-label={tr('routebook.mobile.travelModeLabel', locale)}
+                className="mb-3 grid grid-cols-3 gap-1 rounded-2xl bg-pink-50/80 p-1"
+              >
+                {TRAVEL_MODES.map((mode) => {
+                  const active = selectedDay.defaultTravelMode === mode
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      className={`min-h-10 rounded-xl text-xs font-semibold transition ${
+                        active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                      }`}
+                      onClick={() => {
+                        if (!active) onChangeTravelMode(mode)
+                      }}
+                    >
+                      {tr(`routebook.travelMode.${mode}`, locale)}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
             <a
               href={navUrl}
               target="_blank"

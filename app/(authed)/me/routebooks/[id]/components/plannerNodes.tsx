@@ -52,7 +52,10 @@ export type PlannerNodes = {
   header: ReactNode
   sidebar: ReactNode
   mapStage: ReactNode
+  /** 桌面：null（点位池面板）；移动端点位池走 MobilePointPoolSheet，不构建 */
   poolPanel: ReactNode
+  /** 点位详情卡：桌面浮在地图内，移动端由 MobileLayout 以固定底部抽屉渲染（计划/地图两个 tab 都可见） */
+  detailCard: ReactNode
 }
 
 /** 桌面/移动端共享的面板节点拼装（纯函数，非 hook——调用点在 guards 之后） */
@@ -159,7 +162,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
       onStartImmersive={onStartImmersive}
       activePointId={input.activePointId}
       onPointSelect={input.onPointSelect}
-      detailCard={detailCard}
+      detailCard={isMobile ? null : detailCard}
       dayDetailCard={
         <DayDetailCard
           day={selectedDay}
@@ -174,7 +177,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
     />
   )
 
-  const poolPanel = (
+  const poolPanel = isMobile ? null : (
     <PlannerPointPoolPanel
       detail={detail}
       pointPoolItems={trip.pointPoolItems}
@@ -188,11 +191,10 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
       onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
       onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
       onNeedDay={() => trip.showToast(tr('routebook.pool.pickDayFirst', locale))}
-      compact={isMobile}
-      enableDrag={!isMobile}
+      enableDrag
       locale={locale}
     />
   )
 
-  return { header, sidebar, mapStage, poolPanel }
+  return { header, sidebar, mapStage, poolPanel, detailCard }
 }

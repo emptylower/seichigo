@@ -53,7 +53,7 @@ export function DayPillTrack({
     <div
       ref={trackRef}
       role="tablist"
-      aria-label={tr('routebook.mobile.tabPlan', locale)}
+      aria-label={tr('routebook.mobile.pillsLabel', locale)}
       className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <button

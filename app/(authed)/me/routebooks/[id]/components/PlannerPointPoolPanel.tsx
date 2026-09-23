@@ -224,17 +224,35 @@ function DraggablePoolEntry(props: Parameters<typeof EntryCard>[0] & { dragId: s
   )
 }
 
+/** 删除自定义点前确认：文案列出将级联删除的条目数与住宿段数（从本地 detail 算）；桌面池与移动端 sheet 共用 */
+export function confirmDeletePlace(
+  detail: Pick<RouteBookDetail, 'places' | 'items' | 'lodgings'>,
+  placeId: string,
+  locale: SupportedLocale
+): boolean {
+  const place = detail.places.find((row) => row.id === placeId)
+  const message = tr('routebook.pool.deletePlaceConfirm', locale, {
+    title: place?.title ?? '',
+    items: detail.items.filter((row) => row.placeId === placeId).length,
+    lodgings: detail.lodgings.filter((row) => row.placeId === placeId).length,
+  })
+  return window.confirm(message)
+}
+
 /** 自定义点行：标题 + 地址 + 加到选中天 / 编辑 / 删除 */
-function PlaceRow({
+export function PlaceRow({
   place,
   selectedDayId,
   onAddToDay,
   onEdit,
   onDelete,
+  addHint,
   locale,
 }: {
   place: PlaceRecord
   selectedDayId: string | null
+  /** 覆盖「+」按钮的提示文案（移动端 sheet：加到 Day N / 未安排） */
+  addHint?: string
   /** 没选天时也会传入：点击由上层提示「先选一天」 */
   onAddToDay?: () => void
   onEdit?: () => void
@@ -259,7 +277,10 @@ function PlaceRow({
         <button
           type="button"
           aria-label={tr('routebook.pool.addPlaceToDay', locale)}
-          title={selectedDayId ? tr('routebook.pool.moveToSelectedDayHint', locale) : tr('routebook.pool.pickDayFirst', locale)}
+          title={
+            addHint ??
+            (selectedDayId ? tr('routebook.pool.moveToSelectedDayHint', locale) : tr('routebook.pool.pickDayFirst', locale))
+          }
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-brand-500 hover:text-white"
           onClick={onAddToDay}
         >
@@ -322,7 +343,6 @@ type PlannerPointPoolPanelProps = {
   onDeletePlace?: (placeId: string) => void
   /** 未选中天时点「加入选中天」：由上层 toast 提示 */
   onNeedDay?: () => void
-  compact?: boolean
   enableDrag?: boolean
   locale?: SupportedLocale
 }
@@ -340,7 +360,6 @@ export function PlannerPointPoolPanel({
   onEditPlace,
   onDeletePlace,
   onNeedDay,
-  compact = false,
   enableDrag = false,
   locale = 'zh',
 }: PlannerPointPoolPanelProps) {
@@ -386,20 +405,6 @@ export function PlannerPointPoolPanel({
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((row) => row.id)
     onReorder(selectedDayId, [...dayIds, itemId])
-  }
-
-  // 删除自定义点前确认：文案列出将级联删除的条目数与住宿段数（从本地 detail 算）
-  const confirmDeletePlace = (placeId: string) => {
-    const place = detail.places.find((row) => row.id === placeId)
-    const itemCount = detail.items.filter((row) => row.placeId === placeId).length
-    const lodgingCount = detail.lodgings.filter((row) => row.placeId === placeId).length
-    const message = tr('routebook.pool.deletePlaceConfirm', locale, {
-      title: place?.title ?? '',
-      items: itemCount,
-      lodgings: lodgingCount,
-    })
-    if (!window.confirm(message)) return
-    onDeletePlace?.(placeId)
   }
 
   return (
@@ -503,7 +508,13 @@ export function PlannerPointPoolPanel({
                       onAddItem(selectedDayId, { kind: 'place', placeId: place.id })
                     }}
                     onEdit={onEditPlace ? () => onEditPlace(place.id) : undefined}
-                    onDelete={onDeletePlace ? () => confirmDeletePlace(place.id) : undefined}
+                    onDelete={
+                      onDeletePlace
+                        ? () => {
+                            if (confirmDeletePlace(detail, place.id, locale)) onDeletePlace(place.id)
+                          }
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -513,7 +524,7 @@ export function PlannerPointPoolPanel({
           </div>
         ) : null}
         {filtered.length > 0 ? (
-          <div className={`space-y-3 ${compact ? 'pb-24' : 'seichi-soft-scrollbar h-full overflow-y-auto pr-2'}`}>
+          <div className="seichi-soft-scrollbar h-full space-y-3 overflow-y-auto pr-2">
             {filtered.map((entry) => {
               const preview = getPointPreview(entry.pointId)
               const card = (
