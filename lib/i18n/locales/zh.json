@@ -1037,7 +1037,10 @@
       "minutes": "{n} 分钟",
       "hoursMinutes": "{h} 小时 {m} 分",
       "hours": "{h} 小时",
-      "estimated": "估算"
+      "estimated": "估算",
+      "useDayDefault": "用当天默认",
+      "agentChecked": "AI 已查",
+      "changeMode": "修改本段交通方式"
     },
     "map": {
       "title": "路线预览",

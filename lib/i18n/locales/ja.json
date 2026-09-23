@@ -1037,7 +1037,10 @@
       "minutes": "{n} 分",
       "hoursMinutes": "{h} 時間 {m} 分",
       "hours": "{h} 時間",
-      "estimated": "推定"
+      "estimated": "推定",
+      "useDayDefault": "当日のデフォルト",
+      "agentChecked": "AI 確認済み",
+      "changeMode": "この区間の移動手段を変更"
     },
     "map": {
       "title": "ルートプレビュー",

@@ -1037,7 +1037,10 @@
       "minutes": "{n} min",
       "hoursMinutes": "{h} h {m} min",
       "hours": "{h} h",
-      "estimated": "Estimate"
+      "estimated": "Estimate",
+      "useDayDefault": "Use day default",
+      "agentChecked": "AI checked",
+      "changeMode": "Change travel mode for this leg"
     },
     "map": {
       "title": "Route Preview",

@@ -238,7 +238,13 @@ export function DayBlock({
             {items.map((item) => (
               <div key={item.id}>
                 {legByToId.has(item.id) ? (
-                  <LegConnector leg={legByToId.get(item.id) ?? null} routeVisible={routeVisible} locale={locale} />
+                  <LegConnector
+                    leg={legByToId.get(item.id) ?? null}
+                    routeVisible={routeVisible}
+                    itemLegMode={item.legMode}
+                    onChangeLegMode={(mode) => onUpdateItem(item.id, { legMode: mode })}
+                    locale={locale}
+                  />
                 ) : null}
                 <TimelineItem
                   item={item}
