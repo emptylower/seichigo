@@ -991,7 +991,6 @@
       "routeOn": "ルート表示",
       "routeOff": "ルート非表示",
       "optimize": "最適化",
-      "openNav": "ナビを開く",
       "dayLimit": "この日は最大 25 件までです",
       "unassignedCount": "未割り当て {n} 件",
       "unassignedEmpty": "現在、未割り当ての項目はありません"
@@ -1091,7 +1090,6 @@
       "openingHours": "営業時間",
       "website": "ウェブサイト",
       "openInGoogleMaps": "Google マップで開く",
-      "googleMaps": "Google マップ",
       "viewOnMap": "巡礼マップで見る",
       "removeFromDay": "この日から削除"
     },
@@ -1223,14 +1221,12 @@
       "dockPool": "ポイント",
       "dockOptimize": "最適化",
       "dockNav": "ナビを開く",
-      "navSheetTitle": "ナビを開く",
-      "navGoogle": "Google Maps",
       "remove": "削除",
       "optimizeNeedDay": "先に日を選んでください",
       "optimizeNeedPoints": "移動できる地点が 2 つ以上必要です",
       "emptyDay": "この日にはまだ項目がありません。ポイントから追加しましょう",
-      "viewDay": "この日を見る",
-      "noLodging": "この日の宿泊はまだありません"
+      "noLodging": "この日の宿泊はまだありません",
+      "navNoStops": "この日はナビできる地点がありません"
     },
     "nav": {
       "open": "ナビを開く",
@@ -1242,7 +1238,8 @@
       "endpointsOnly": "出発地と目的地のみ",
       "viaTruncated": "経由地が多いため一部省略",
       "segment": "{n}/{total} 区間",
-      "lodgingFallback": "宿泊先"
+      "lodgingFallback": "宿泊先",
+      "webVersion": "Web版"
     },
     "weather": {
       "title": "天気",

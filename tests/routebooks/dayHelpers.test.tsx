@@ -8,7 +8,14 @@ import {
   movableCount,
   nextDayFirstStopTitle,
 } from '@/app/(authed)/me/routebooks/[id]/utils'
-import type { DayLegsResult, DayRecord, ItemRecord, PlaceRecord, RouteBookDetail } from '@/app/(authed)/me/routebooks/[id]/types'
+import type {
+  DayLegsResult,
+  DayRecord,
+  ItemRecord,
+  LodgingRecord,
+  PlaceRecord,
+  RouteBookDetail,
+} from '@/app/(authed)/me/routebooks/[id]/types'
 
 const DAYS: DayRecord[] = [
   { id: 'day1', routeBookId: 'rb1', dayIndex: 1, date: '2026-09-12T00:00:00.000Z', title: null, defaultTravelMode: 'transit' },
@@ -89,10 +96,23 @@ describe('nextDayFirstStopTitle（沉浸模式「明天从 X 开始」）', () =
     expect(nextDayFirstStopTitle(detail, DAYS[0]!, getPointPreview)).toBe('Uji Station')
   })
 
-  it('没有下一天或下一天没有可导航条目返回 null', () => {
+  it('之后各天都没有可导航条目或没有下一天返回 null', () => {
     const detail = makeDetail([makeItem({ id: 'a', pointId: 'p:no-geo' })])
     expect(nextDayFirstStopTitle(detail, DAYS[0]!, getPointPreview)).toBeNull()
     expect(nextDayFirstStopTitle(detail, DAYS[1]!, getPointPreview)).toBeNull()
+  })
+
+  it('下一天是空天时向后找第一个有站的天（G13）', () => {
+    const day3: DayRecord = { id: 'day3', routeBookId: 'rb1', dayIndex: 3, date: null, title: null, defaultTravelMode: 'transit' }
+    const detail = {
+      days: [...DAYS, day3],
+      items: [
+        makeItem({ id: 'n', dayId: 'day2', kind: 'note', title: 'memo' }),
+        makeItem({ id: 'b', dayId: 'day3', pointId: 'p:shrine' }),
+      ],
+      places: [],
+    }
+    expect(nextDayFirstStopTitle(detail, DAYS[0]!, getPointPreview)).toBe('Uji Shrine')
   })
 })
 
@@ -125,28 +145,39 @@ describe('天统计 / 导航 / 可移动点（B3 去重）', () => {
   })
 
   it('dayNavTargets：两站以上才有三家目标，交通方式跟当天默认', () => {
-    const driving = dayNavTargets(DAYS[1]!, legs, items, [PLACE], getPointPreview)
+    const driving = dayNavTargets(DAYS[1]!, legs, items, [PLACE], [], getPointPreview)
     expect(driving.map((target) => target.provider)).toEqual(['google', 'apple', 'amap'])
     expect(driving[0]!.url).toContain('travelmode=driving')
-    expect(dayNavTargets(DAYS[0]!, legs, items, [PLACE], getPointPreview)[0]!.url).toContain('travelmode=transit')
-    expect(dayNavTargets(DAYS[0]!, undefined, items, [PLACE], getPointPreview)).toEqual([])
+    expect(dayNavTargets(DAYS[0]!, legs, items, [PLACE], [], getPointPreview)[0]!.url).toContain('travelmode=transit')
+    expect(dayNavTargets(DAYS[0]!, undefined, items, [PLACE], [], getPointPreview)).toEqual([])
   })
 
-  it('dayNavStops：条目取显示名，住宿首尾按坐标匹配自定义点，匹配不到用「住宿」', () => {
+  it('dayNavStops：条目取显示名，住宿首尾按住宿区间取自定义点名（不按坐标匹配，G9）', () => {
+    const hotelA: PlaceRecord = { ...PLACE, id: 'hotel-a', kind: 'lodging', title: 'Hotel A', lat: 34.9, lng: 135.7 }
+    const hotelB: PlaceRecord = { ...PLACE, id: 'hotel-b', kind: 'lodging', title: '  ', lat: 34.95, lng: 135.75 }
+    const lodgings: LodgingRecord[] = [
+      // Day 2 退房 Hotel A，入住 Hotel B（换酒店日）
+      { id: 'l1', routeBookId: 'rb1', placeId: 'hotel-a', fromDayIndex: 1, toDayIndex: 2, checkIn: null, checkOut: null, note: null },
+      { id: 'l2', routeBookId: 'rb1', placeId: 'hotel-b', fromDayIndex: 2, toDayIndex: 3, checkIn: null, checkOut: null, note: null },
+    ]
+    // 住宿站坐标与 Uji Station 重合：旧实现会按坐标误匹配成 Uji Station
     const withLodging = {
       ...legs,
       stops: [
         { id: 'lodging:start', lat: 34.88, lng: 135.8, legMode: null },
         ...legs.stops,
-        { id: 'lodging:end', lat: 1, lng: 2, legMode: null },
+        { id: 'lodging:end', lat: 34.88, lng: 135.8, legMode: null },
       ],
     } as DayLegsResult
-    expect(dayNavStops(withLodging, items, [PLACE], getPointPreview, 'zh').map((stop) => stop.name)).toEqual([
-      'Uji Station',
+    const places = [PLACE, hotelA, hotelB]
+    expect(dayNavStops(DAYS[1]!, withLodging, items, places, lodgings, getPointPreview, 'zh').map((stop) => stop.name)).toEqual([
+      'Hotel A',
       'Uji Shrine',
       'Uji Station',
       '住宿',
     ])
+    // 没有住宿记录：住宿站一律用本地化默认名
+    expect(dayNavStops(DAYS[1]!, withLodging, items, places, [], getPointPreview, 'en')[0]!.name).toBe('Lodging')
   })
 
   it('dayDateLabel 与 dayLabel 日期片段一致', () => {

@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { OpenInMapsMenu, OpenInMapsOptions } from '@/components/navigation/OpenInMapsMenu'
-import { APP_FALLBACK_MS, detectNavPlatform, launchAppWithFallback } from '@/components/navigation/navLaunch'
+import {
+  APP_FALLBACK_MS,
+  detectNavPlatform,
+  launchAppWithFallback,
+  toAndroidIntentUrl,
+  useMaxNavWaypoints,
+} from '@/components/navigation/navLaunch'
+import { renderToString } from 'react-dom/server'
 import { buildDayTargets, buildSingleTargets } from '@/lib/route/navigationTargets'
 
 const IPHONE_UA =
@@ -100,19 +107,27 @@ describe('排序（按平台 / 语言）', () => {
     expect(providers()).toEqual(['google', 'apple', 'amap'])
   })
 
+  it('首次渲染即按平台排序（不等 effect，打开菜单不闪动，G14）', () => {
+    mockUserAgent(IPHONE_UA)
+    const html = renderToString(<OpenInMapsOptions targets={buildDayTargets(DAY_STOPS, 'transit')} locale="zh" />)
+    const order = Array.from(html.matchAll(/data-provider="(\w+)"/g)).map((m) => m[1])
+    expect(order).toEqual(['apple', 'google', 'amap'])
+  })
+
   it('detectNavPlatform：iPadOS 桌面 UA 按触点识别为 iOS', () => {
     expect(detectNavPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 5)).toEqual({ isIOS: true, isAndroid: false })
     expect(detectNavPlatform(ANDROID_UA)).toEqual({ isIOS: false, isAndroid: true })
   })
 })
 
-describe('高德 app 唤起回退', () => {
-  it('1.6 秒内页面仍可见 → 新开网页回退', () => {
+describe('高德 app 唤起回退（iOS 计时器 / Android intent，G2）', () => {
+  it('iOS：1.6 秒内页面仍可见 → 新开网页回退，settle(web)', () => {
     vi.useFakeTimers()
     mockVisibility('visible')
     const open = vi.spyOn(window, 'open').mockReturnValue({ opener: {} } as Window)
     const assign = vi.fn()
-    launchAppWithFallback('iosamap://path?x=1', 'https://ditu.amap.com/dir?x=1', { assign })
+    const onSettled = vi.fn()
+    launchAppWithFallback('iosamap://path?x=1', 'https://ditu.amap.com/dir?x=1', { assign, onSettled })
     expect(assign).toHaveBeenCalledWith('iosamap://path?x=1')
     act(() => {
       vi.advanceTimersByTime(APP_FALLBACK_MS - 1)
@@ -122,50 +137,163 @@ describe('高德 app 唤起回退', () => {
       vi.advanceTimersByTime(1)
     })
     expect(open).toHaveBeenCalledWith('https://ditu.amap.com/dir?x=1', '_blank')
+    expect(onSettled).toHaveBeenCalledWith('web')
   })
 
-  it('页面已转入后台（app 被唤起）→ 不打开网页', () => {
+  it('iOS：页面转入后台（visibilitychange→hidden）后又回到前台 → 不再打开网页版', () => {
     vi.useFakeTimers()
-    mockVisibility('hidden')
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     const assign = vi.fn()
-    launchAppWithFallback('amapuri://route/plan/?x=1', 'https://ditu.amap.com/dir?x=1', { assign })
+    const onSettled = vi.fn()
+    launchAppWithFallback('iosamap://path?x=1', 'https://ditu.amap.com/dir?x=1', { assign, onSettled })
+    visibility.mockReturnValue('hidden')
     act(() => {
-      vi.advanceTimersByTime(APP_FALLBACK_MS)
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    visibility.mockReturnValue('visible')
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      vi.advanceTimersByTime(APP_FALLBACK_MS * 2)
     })
     expect(open).not.toHaveBeenCalled()
     expect(assign).toHaveBeenCalledTimes(1)
+    expect(onSettled).toHaveBeenCalledTimes(1)
+    expect(onSettled).toHaveBeenCalledWith('app')
   })
 
-  it('新窗口被拦截 → 当前页打开网页回退', () => {
+  it('iOS：pagehide / blur 同样清除计时器', () => {
+    vi.useFakeTimers()
+    mockVisibility('visible')
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    launchAppWithFallback('iosamap://a', 'https://ditu.amap.com/dir?a=1', { assign: vi.fn() })
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    launchAppWithFallback('iosamap://b', 'https://ditu.amap.com/dir?b=1', { assign: vi.fn() })
+    act(() => {
+      window.dispatchEvent(new Event('blur'))
+      vi.advanceTimersByTime(APP_FALLBACK_MS)
+    })
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('iOS：新窗口被拦截 → 不在当前 tab 跳转，settle(blocked)', () => {
     vi.useFakeTimers()
     mockVisibility('visible')
     vi.spyOn(window, 'open').mockReturnValue(null)
     const assign = vi.fn()
-    launchAppWithFallback('amapuri://x', 'https://ditu.amap.com/dir?y=1', { assign })
+    const onSettled = vi.fn()
+    launchAppWithFallback('iosamap://x', 'https://ditu.amap.com/dir?y=1', { assign, onSettled })
     act(() => {
       vi.advanceTimersByTime(APP_FALLBACK_MS)
     })
-    expect(assign).toHaveBeenLastCalledWith('https://ditu.amap.com/dir?y=1')
+    expect(assign).toHaveBeenCalledTimes(1)
+    expect(assign).not.toHaveBeenCalledWith('https://ditu.amap.com/dir?y=1')
+    expect(onSettled).toHaveBeenCalledWith('blocked')
   })
 
-  it('Android 上点高德项：不走默认链接，先唤起 app，超时后开网页', () => {
+  it('Android：改用 intent URL（带包名与 browser_fallback_url），不起计时器', () => {
+    vi.useFakeTimers()
+    mockVisibility('visible')
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const assign = vi.fn()
+    const onSettled = vi.fn()
+    const web = 'https://ditu.amap.com/dir?from[lnglat]=1,2&type=bus'
+    launchAppWithFallback('amapuri://route/plan/?sourceApplication=seichigo&dlat=1', web, { assign, onSettled })
+    expect(assign).toHaveBeenCalledWith(
+      `intent://route/plan/?sourceApplication=seichigo&dlat=1#Intent;scheme=amapuri;package=com.autonavi.minimap;S.browser_fallback_url=${encodeURIComponent(web)};end`
+    )
+    expect(onSettled).toHaveBeenCalledWith('app')
+    act(() => {
+      vi.advanceTimersByTime(APP_FALLBACK_MS * 2)
+    })
+    expect(open).not.toHaveBeenCalled()
+    expect(assign).toHaveBeenCalledTimes(1)
+    expect(toAndroidIntentUrl('iosamap://path', web)).toBeNull()
+  })
+
+  it('Android 上点高德项：不走默认链接、不开网页，点完即收起', () => {
     vi.useFakeTimers()
     mockUserAgent(ANDROID_UA)
     mockVisibility('visible')
     const open = vi.spyOn(window, 'open').mockReturnValue({ opener: {} } as Window)
-    // jsdom 不实现 scheme 跳转，静默它的 not-implemented 报错
+    // jsdom 不实现 intent 跳转，静默它的 not-implemented 报错
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    render(<OpenInMapsOptions targets={buildDayTargets(DAY_STOPS, 'transit')} locale="zh" />)
+    const onPicked = vi.fn()
+    render(<OpenInMapsOptions targets={buildDayTargets(DAY_STOPS, 'transit')} locale="zh" onPicked={onPicked} />)
     const amap = screen.getByRole('link', { name: /高德地图/ })
     const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true })
     act(() => {
       amap.dispatchEvent(clickEvent)
     })
     expect(clickEvent.defaultPrevented).toBe(true)
+    expect(onPicked).toHaveBeenCalledTimes(1)
     act(() => {
       vi.advanceTimersByTime(APP_FALLBACK_MS)
     })
-    expect(open).toHaveBeenCalledWith(amap.getAttribute('href'), '_blank')
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('iOS 上点高德项：网页回退被拦截 → 列表里出现「网页版」一行，点它才收起', () => {
+    vi.useFakeTimers()
+    mockUserAgent(IPHONE_UA)
+    mockVisibility('visible')
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const onPicked = vi.fn()
+    render(<OpenInMapsOptions targets={buildDayTargets(DAY_STOPS, 'transit')} locale="zh" onPicked={onPicked} />)
+    const amap = screen.getByRole('link', { name: /^高德地图$/ })
+    act(() => {
+      amap.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    expect(onPicked).not.toHaveBeenCalled()
+    expect(screen.queryByRole('link', { name: /网页版/ })).toBeNull()
+    act(() => {
+      vi.advanceTimersByTime(APP_FALLBACK_MS)
+    })
+    const web = screen.getByRole('link', { name: '高德地图 · 网页版' })
+    expect(web.getAttribute('href')).toBe(amap.getAttribute('href'))
+    expect(web.getAttribute('target')).toBe('_blank')
+    web.addEventListener('click', (event) => event.preventDefault())
+    fireEvent.click(web)
+    expect(onPicked).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useMaxNavWaypoints（G6）', () => {
+  function mockCoarse(matches: boolean) {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(pointer: coarse)' ? matches : false,
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as MediaQueryList
+    )
+  }
+
+  it('桌面（细指针 + 桌面 UA）→ 9', () => {
+    mockCoarse(false)
+    const { result } = renderHook(() => useMaxNavWaypoints())
+    expect(result.current).toBe(9)
+  })
+
+  it('触屏（pointer: coarse）→ 3', () => {
+    mockCoarse(true)
+    const { result } = renderHook(() => useMaxNavWaypoints())
+    expect(result.current).toBe(3)
+  })
+
+  it('移动 UA（即使 matchMedia 报细指针）→ 3', () => {
+    mockCoarse(false)
+    mockUserAgent(ANDROID_UA)
+    const { result } = renderHook(() => useMaxNavWaypoints())
+    expect(result.current).toBe(3)
   })
 })

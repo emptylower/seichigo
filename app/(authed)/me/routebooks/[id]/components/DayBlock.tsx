@@ -9,6 +9,7 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import { computeVisitOrder, dayLabel, dayNavTargets, dayStats, itemDragId } from '../utils'
 import type { WeatherDay } from '../hooks/useWeather'
 import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
+import { useMaxNavWaypoints } from '@/components/navigation/navLaunch'
 import { WeatherBadge } from './WeatherBadge'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
@@ -104,9 +105,10 @@ export function DayBlock({
 
   const stats = useMemo(() => dayStats(items, legs, places, getPointPreview), [getPointPreview, items, legs, places])
 
+  const maxWaypoints = useMaxNavWaypoints()
   const navTargets = useMemo(
-    () => dayNavTargets(day, legs, items, places, getPointPreview, locale),
-    [day, getPointPreview, items, legs, locale, places]
+    () => dayNavTargets(day, legs, items, places, lodgings, getPointPreview, locale, maxWaypoints),
+    [day, getPointPreview, items, legs, locale, lodgings, maxWaypoints, places]
   )
 
   const showToolbar = selected && stats.coordCount >= 2
@@ -302,7 +304,7 @@ export function DayBlock({
                 {tr('routebook.sidebar.optimize', locale)}
               </button>
               {navTargets.length > 0 ? (
-                <OpenInMapsMenu targets={navTargets} locale={locale} label={tr('routebook.sidebar.openNav', locale)} />
+                <OpenInMapsMenu targets={navTargets} locale={locale} label={tr('routebook.nav.open', locale)} />
               ) : null}
               <span className="mx-1 h-4 w-px bg-pink-200/70" />
               {(['transit', 'walking', 'driving'] as const).map((mode) => (

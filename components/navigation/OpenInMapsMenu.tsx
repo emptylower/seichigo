@@ -73,10 +73,14 @@ type OptionsProps = {
   asMenu?: boolean
 }
 
-/** 三家地图选项列表（已按平台/语言排序）；高德有 appUrl 时先唤起 app、超时回退网页 */
+/**
+ * 三家地图选项列表（已按平台/语言排序）。高德有 appUrl 时先唤起 app：成功才收起；
+ * iOS 回退网页的新窗口被拦截时，在列表里补一行「网页版」让用户手动点。
+ */
 export function OpenInMapsOptions({ targets, locale, onPicked, asMenu = false }: OptionsProps) {
   const ordered = useOrderedNavTargets(targets, locale)
   const rows = toRows(ordered, locale)
+  const [blocked, setBlocked] = useState<OptionRow | null>(null)
 
   return (
     <div className="space-y-1.5">
@@ -90,11 +94,18 @@ export function OpenInMapsOptions({ targets, locale, onPicked, asMenu = false }:
           data-provider={row.provider}
           className="flex w-full items-center gap-3 rounded-2xl border border-pink-100/80 bg-white px-3.5 py-2.5 text-left no-underline transition hover:border-brand-200 hover:bg-pink-50/60"
           onClick={(event) => {
-            if (row.appUrl) {
-              event.preventDefault()
-              launchAppWithFallback(row.appUrl, row.url)
+            if (!row.appUrl) {
+              onPicked?.()
+              return
             }
-            onPicked?.()
+            event.preventDefault()
+            setBlocked(null)
+            launchAppWithFallback(row.appUrl, row.url, {
+              onSettled: (outcome) => {
+                if (outcome === 'blocked') setBlocked(row)
+                else onPicked?.()
+              },
+            })
           }}
         >
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${PROVIDER_DOT[row.provider]}`} aria-hidden="true" />
@@ -106,6 +117,26 @@ export function OpenInMapsOptions({ targets, locale, onPicked, asMenu = false }:
           ) : null}
         </a>
       ))}
+      {blocked ? (
+        <a
+          href={blocked.url}
+          target="_blank"
+          rel="noreferrer"
+          role={asMenu ? 'menuitem' : undefined}
+          data-provider={blocked.provider}
+          data-fallback="web"
+          className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-brand-200 bg-pink-50/60 px-3.5 py-2.5 text-left no-underline transition hover:bg-pink-50"
+          onClick={() => {
+            setBlocked(null)
+            onPicked?.()
+          }}
+        >
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${PROVIDER_DOT[blocked.provider]}`} aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+            {`${blocked.label} · ${tx('webVersion', locale)}`}
+          </span>
+        </a>
+      ) : null}
     </div>
   )
 }
@@ -232,7 +263,7 @@ export function OpenInMapsSheet({
   targets: NavTarget[]
   locale: SupportedLocale
   onClose: () => void
-  /** 列表上方的附加内容（如当天交通方式切换） */
+  /** 列表上方的附加内容（如当天交通方式切换）；targets 为空时只渲染它 */
   children?: ReactNode
 }) {
   // 挂到 body：祖先的 backdrop-filter / overflow 会让 fixed 失效或被裁
@@ -262,7 +293,7 @@ export function OpenInMapsSheet({
           </button>
         </div>
         {children}
-        <OpenInMapsOptions targets={targets} locale={locale} onPicked={onClose} />
+        {targets.length > 0 ? <OpenInMapsOptions targets={targets} locale={locale} onPicked={onClose} /> : null}
       </div>
     </div>,
     document.body

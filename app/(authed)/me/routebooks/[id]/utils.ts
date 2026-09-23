@@ -4,6 +4,7 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import { tr } from '../i18n'
 import { buildDayTargets, type NavStop, type NavTarget } from '@/lib/route/navigationTargets'
+import { resolveDayAnchorStops } from '@/lib/routeBook/anchors'
 
 export function groupItemsByDay(
   items: ItemRecord[],
@@ -63,7 +64,6 @@ export function applyReorderLocal(
   return next
 }
 
-/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
 /** 「M/D 周X」日期片段（dayLabel 的日期部分；无日期或非法返回 null） */
 export function dayDateLabel(day: Pick<DayRecord, 'date'>, locale: SupportedLocale = 'zh'): string | null {
   if (!day.date) return null
@@ -78,6 +78,7 @@ export function dayDateLabel(day: Pick<DayRecord, 'date'>, locale: SupportedLoca
   return locale === 'ja' ? `${md}(${weekday})` : `${md} ${weekday}`
 }
 
+/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
 export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
   const base = `Day ${index}`
   const date = dayDateLabel(day, locale)
@@ -148,39 +149,48 @@ export function dayStats(
 
 /**
  * 当天导航站点（含住宿首尾）：legs.stops 顺序 + 名称。条目站取显示名；住宿首尾
- * （lodging:start/end）按坐标匹配自定义点标题，匹配不到用「住宿」。
+ * （lodging:start/end）按 resolveDayAnchorStops 的同一套住宿规则取对应自定义点标题，
+ * 取不到或无标题用「住宿」。
  */
 export function dayNavStops(
+  day: Pick<DayRecord, 'dayIndex'>,
   legs: DayLegsResult | undefined,
   items: ItemRecord[],
   places: PlaceRecord[],
+  lodgings: LodgingRecord[],
   getPointPreview: (pointId: string) => PointPreview,
   locale: SupportedLocale = 'zh'
 ): NavStop[] {
   if (!legs) return []
   const itemsById = new Map(items.map((item) => [item.id, item]))
+  const anchors = resolveDayAnchorStops(day.dayIndex, lodgings, places)
+  const lodgingName = (anchor: { placeId: string } | undefined): string => {
+    const title = anchor ? places.find((row) => row.id === anchor.placeId)?.title?.trim() : ''
+    return title || tr('routebook.nav.lodgingFallback', locale)
+  }
   return legs.stops.map((stop) => {
     const item = itemsById.get(stop.id)
     if (item) {
       const preview = item.pointId ? getPointPreview(item.pointId) : null
       return { lat: stop.lat, lng: stop.lng, name: itemDisplayTitle(item, preview, places, locale) }
     }
-    const place = places.find((row) => Math.abs(row.lat - stop.lat) < 1e-6 && Math.abs(row.lng - stop.lng) < 1e-6)
-    return { lat: stop.lat, lng: stop.lng, name: place?.title ?? tr('routebook.nav.lodgingFallback', locale) }
+    const anchor = stop.id === 'lodging:start' ? anchors.start : stop.id === 'lodging:end' ? anchors.end : undefined
+    return { lat: stop.lat, lng: stop.lng, name: lodgingName(anchor) }
   })
 }
 
 /** 当天「打开导航」三家目标：legs 站点 ≥2 才有；交通方式取当天默认 */
 export function dayNavTargets(
-  day: Pick<DayRecord, 'defaultTravelMode'>,
+  day: Pick<DayRecord, 'dayIndex' | 'defaultTravelMode'>,
   legs: DayLegsResult | undefined,
   items: ItemRecord[],
   places: PlaceRecord[],
+  lodgings: LodgingRecord[],
   getPointPreview: (pointId: string) => PointPreview,
   locale: SupportedLocale = 'zh',
   maxWaypoints?: number
 ): NavTarget[] {
-  const stops = dayNavStops(legs, items, places, getPointPreview, locale)
+  const stops = dayNavStops(day, legs, items, places, lodgings, getPointPreview, locale)
   if (stops.length < 2) return []
   return buildDayTargets(stops, day.defaultTravelMode, maxWaypoints ? { maxWaypoints } : {})
 }
@@ -198,24 +208,29 @@ export function movableCount(
   }).length
 }
 
-/** 「明天从 X 开始」的 X：下一天第一个有坐标的条目名（无坐标条目导航无意义）；没有下一天或无可导航条目返回 null */
+/**
+ * 「明天从 X 开始」的 X：之后各天里第一个有站的天（跳过空天）的第一个有坐标条目名
+ * （无坐标条目导航无意义）；之后都没有可导航条目返回 null
+ */
 export function nextDayFirstStopTitle(
   detail: Pick<RouteBookDetail, 'days' | 'items' | 'places'>,
   selectedDay: Pick<DayRecord, 'dayIndex'>,
   getPointPreview: (pointId: string) => Pick<PointPreview, 'geo' | 'title'>
 ): string | null {
-  const nextDay = [...detail.days]
+  const laterDays = [...detail.days]
     .sort((a, b) => a.dayIndex - b.dayIndex)
-    .find((day) => day.dayIndex > selectedDay.dayIndex)
-  if (!nextDay) return null
-  const first = sequenceForImmersive(detail.items, nextDay.id).find((item) =>
-    itemHasCoords(item, detail.places, getPointPreview)
-  )
-  if (!first) return null
-  if (first.kind === 'place') {
-    return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
+    .filter((day) => day.dayIndex > selectedDay.dayIndex)
+  for (const day of laterDays) {
+    const first = sequenceForImmersive(detail.items, day.id).find((item) =>
+      itemHasCoords(item, detail.places, getPointPreview)
+    )
+    if (!first) continue
+    if (first.kind === 'place') {
+      return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
+    }
+    return first.pointId ? getPointPreview(first.pointId).title : first.title ?? null
   }
-  return first.pointId ? getPointPreview(first.pointId).title : first.title ?? null
+  return null
 }
 
 /** 沉浸模式序列：当天 point/place 条目按 sortOrder */

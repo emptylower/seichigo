@@ -83,15 +83,28 @@ describe('MobileDock 开始按钮', () => {
 })
 
 describe('MobileDock 打开导航', () => {
-  it('无导航目标禁用；有目标打开 action sheet，含 Google / Apple / 高德三项', () => {
-    const { rerender, props } = renderDock({ navTargets: [] })
+  it('未选天禁用；选了天有目标时 sheet 含 Google / Apple / 高德三项', () => {
+    const { rerender, props } = renderDock({ selectedDay: null, navTargets: [] })
     expect(screen.getByRole('button', { name: '打开导航' })).toBeDisabled()
 
-    rerender(<MobileDock {...props} navTargets={NAV_TARGETS} />)
+    rerender(<MobileDock {...props} selectedDay={DAY} navTargets={NAV_TARGETS} />)
     fireEvent.click(screen.getByRole('button', { name: '打开导航' }))
     expect(screen.getByRole('link', { name: /Google 地图/ }).getAttribute('href')).toContain('google.com/maps/dir')
     expect(screen.getByRole('link', { name: /Apple 地图/ }).getAttribute('href')).toContain('maps.apple.com')
     expect(screen.getByRole('link', { name: /高德地图/ }).getAttribute('href')).toContain('amap.com')
+  })
+
+  it('选了天但当天无导航目标：仍可打开 sheet 切换交通方式，不列地图（G5）', () => {
+    const onChangeTravelMode = vi.fn()
+    renderDock({ navTargets: [], onChangeTravelMode })
+    const trigger = screen.getByRole('button', { name: '打开导航' })
+    expect(trigger).not.toBeDisabled()
+    fireEvent.click(trigger)
+    expect(screen.getByRole('radiogroup', { name: '当天默认交通方式' })).toBeTruthy()
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+    expect(screen.getByText('这一天还没有可导航的站点')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: '步行' }))
+    expect(onChangeTravelMode).toHaveBeenCalledWith('walking')
   })
 })
 

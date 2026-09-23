@@ -991,7 +991,6 @@
       "routeOn": "路线开",
       "routeOff": "路线关",
       "optimize": "优化",
-      "openNav": "打开导航",
       "dayLimit": "这一天最多 25 个点",
       "unassignedCount": "{n} 条待分配",
       "unassignedEmpty": "暂时没有待安排的条目"
@@ -1091,7 +1090,6 @@
       "openingHours": "营业时间",
       "website": "网站",
       "openInGoogleMaps": "在 Google 地图打开",
-      "googleMaps": "Google 地图",
       "viewOnMap": "在巡礼地图查看",
       "removeFromDay": "从当天移除"
     },
@@ -1223,14 +1221,12 @@
       "dockPool": "点位池",
       "dockOptimize": "优化",
       "dockNav": "打开导航",
-      "navSheetTitle": "打开导航",
-      "navGoogle": "Google Maps",
       "remove": "移除",
       "optimizeNeedDay": "先选择一天",
       "optimizeNeedPoints": "至少 2 个可移动点才能优化",
       "emptyDay": "这一天还没有条目，从点位池添加吧",
-      "viewDay": "查看这一天",
-      "noLodging": "这一天还没有住宿安排"
+      "noLodging": "这一天还没有住宿安排",
+      "navNoStops": "这一天还没有可导航的站点"
     },
     "nav": {
       "open": "打开导航",
@@ -1242,7 +1238,8 @@
       "endpointsOnly": "仅起终点",
       "viaTruncated": "途经点过多，已截断",
       "segment": "第 {n}/{total} 段",
-      "lodgingFallback": "住宿"
+      "lodgingFallback": "住宿",
+      "webVersion": "网页版"
     },
     "weather": {
       "title": "当天天气",

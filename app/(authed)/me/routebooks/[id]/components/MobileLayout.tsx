@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayLegsResult, DayRecord, PointPoolItem, RouteBookDetail } from '../types'
 import { dayLabel, dayNavTargets, movableCount as countMovable } from '../utils'
-import { defaultMaxNavigationWaypoints } from '@/lib/route/navigationTargets'
+import { useMaxNavWaypoints } from '@/components/navigation/navLaunch'
 import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 import type { useTripData } from '../hooks/useTripData'
 import type { useTripDnd } from '../hooks/useTripDnd'
@@ -105,18 +105,23 @@ export function MobileLayout({
     [dayItems, detail.places, trip.getPointPreview]
   )
 
-  // Google waypoints 上限：移动端 3（effect 里读 matchMedia，首屏按桌面 9 避免 hydration 差异）
-  const [maxWaypoints, setMaxWaypoints] = useState(9)
-  useEffect(() => {
-    setMaxWaypoints(defaultMaxNavigationWaypoints())
-  }, [])
+  const maxWaypoints = useMaxNavWaypoints()
 
   const navTargets = useMemo(
     () =>
       selectedDay
-        ? dayNavTargets(selectedDay, currentLegs, dayItems, detail.places, trip.getPointPreview, locale, maxWaypoints)
+        ? dayNavTargets(
+            selectedDay,
+            currentLegs,
+            dayItems,
+            detail.places,
+            detail.lodgings,
+            trip.getPointPreview,
+            locale,
+            maxWaypoints
+          )
         : [],
-    [currentLegs, dayItems, detail.places, locale, maxWaypoints, selectedDay, trip.getPointPreview]
+    [currentLegs, dayItems, detail.lodgings, detail.places, locale, maxWaypoints, selectedDay, trip.getPointPreview]
   )
   const hasDates = days.some((day) => Boolean(day.date))
 

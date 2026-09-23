@@ -991,7 +991,6 @@
       "routeOn": "Route on",
       "routeOff": "Route off",
       "optimize": "Optimize",
-      "openNav": "Open navigation",
       "dayLimit": "Up to 25 stops per day",
       "unassignedCount": "{n} items to assign",
       "unassignedEmpty": "Nothing to assign right now"
@@ -1091,7 +1090,6 @@
       "openingHours": "Opening hours",
       "website": "Website",
       "openInGoogleMaps": "Open in Google Maps",
-      "googleMaps": "Google Maps",
       "viewOnMap": "View on pilgrimage map",
       "removeFromDay": "Remove from day"
     },
@@ -1223,14 +1221,12 @@
       "dockPool": "Points",
       "dockOptimize": "Optimize",
       "dockNav": "Navigate",
-      "navSheetTitle": "Open navigation",
-      "navGoogle": "Google Maps",
       "remove": "Remove",
       "optimizeNeedDay": "Pick a day first",
       "optimizeNeedPoints": "Needs at least 2 movable stops",
       "emptyDay": "Nothing here yet — add stops from the point pool",
-      "viewDay": "View this day",
-      "noLodging": "No lodging planned for this day"
+      "noLodging": "No lodging planned for this day",
+      "navNoStops": "No stops to navigate for this day"
     },
     "nav": {
       "open": "Navigate",
@@ -1242,7 +1238,8 @@
       "endpointsOnly": "Start & end only",
       "viaTruncated": "Too many stops, some omitted",
       "segment": "part {n}/{total}",
-      "lodgingFallback": "Lodging"
+      "lodgingFallback": "Lodging",
+      "webVersion": "Web version"
     },
     "weather": {
       "title": "Weather",

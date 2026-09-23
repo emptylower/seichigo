@@ -15,7 +15,7 @@ type Props = {
   selectedDay: DayRecord | null
   /** 当前天可移动点数（有坐标、非锚的 point/place）；< 2 时优化禁用 */
   movableCount: number
-  /** 当天三家导航目标（Google / Apple / 高德）；空数组禁用 */
+  /** 当天三家导航目标（Google / Apple / 高德）；为空时 sheet 仍可打开切换交通方式，只是不列地图 */
   navTargets: NavTarget[]
   /** 「更多」里的导出入口 */
   routeBookId: string
@@ -65,7 +65,8 @@ export function MobileDock({
     : movableCount < 2
       ? tr('routebook.mobile.optimizeNeedPoints', locale)
       : undefined
-  const navDisabled = navTargets.length === 0
+  // 只要选了天就能打开导航 sheet：交通方式切换始终可用，三家地图列表只在有目标时渲染
+  const navDisabled = !selectedDay
 
   return (
     <>
@@ -138,7 +139,7 @@ export function MobileDock({
         <div className="h-2" />
       </nav>
 
-      {navSheetOpen && navTargets.length > 0 ? (
+      {navSheetOpen && selectedDay ? (
         <OpenInMapsSheet targets={navTargets} locale={locale} onClose={() => setNavSheetOpen(false)}>
           {selectedDay && onChangeTravelMode ? (
             <div
@@ -165,6 +166,11 @@ export function MobileDock({
                   </button>
                 )
               })}
+            </div>
+          ) : null}
+          {navTargets.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-center text-xs text-slate-400">
+              {tr('routebook.mobile.navNoStops', locale)}
             </div>
           ) : null}
         </OpenInMapsSheet>
