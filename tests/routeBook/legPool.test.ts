@@ -33,6 +33,16 @@ describe('createLegPoolResolver', () => {
     expect(upstream).toHaveBeenCalledWith(A, B, 'walking', { skipCacheRead: true })
   })
 
+  it('startedAt（B2 修复 A5）：截止时间从 handler 入口起算——已超时的段直接 null，不调上游', async () => {
+    const upstream = vi.fn(async () => ({ durationSec: 1, distanceM: 1, polyline: null, source: 'google' as const }))
+    const pool = await createLegPoolResolver(upstream as unknown as LegResolver, [A, B], 'walking', {
+      startedAt: Date.now() - 9_000,
+      deadlineMs: 8_000,
+    })
+    await expect(pool.resolve(A, B, 'walking')).resolves.toBeNull()
+    expect(upstream).not.toHaveBeenCalled()
+  })
+
   it('isCached 反映批量读命中情况', async () => {
     const raw = googleLegCacheRawKey('walking', A, B)
     legCacheBatches.set(routeLegCacheKey(raw), { durationSec: 321, distanceM: 654, polyline: null, source: 'google' })

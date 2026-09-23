@@ -18,7 +18,7 @@ const LEG_POOL_DEADLINE_MS = 8_000
 
 type ResolvedLeg = Omit<Leg, 'fromId' | 'toId' | 'mode'>
 
-export type LegPoolOptions = { concurrency?: number; deadlineMs?: number }
+export type LegPoolOptions = { concurrency?: number; deadlineMs?: number; startedAt?: number }
 
 /** 池句柄：resolve 供 resolveDayLegs 调用；isCached 供 handler 判断
  *  「该 raw key 是否已批量读命中」（限流只计真正会外呼的段）。 */
@@ -55,8 +55,8 @@ export async function createLegPoolResolver(
     if (read) cachedByRaw.set(raw, read)
   }
 
-  // 3. 信号量 + 截止
-  const startAt = Date.now()
+  // 3. 信号量 + 截止（B2 修复 A5：8 秒从 handler 入口起算，可经 startedAt 注入）
+  const startAt = opts?.startedAt ?? Date.now()
   const memo = new Map<string, Promise<ResolvedLeg | null>>()
   let active = 0
   const waiters: Array<() => void> = []

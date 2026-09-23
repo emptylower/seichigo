@@ -54,6 +54,7 @@ export function createLegHandlers(
 ) {
   return {
     async GET(req: Request, ctx: { params: Promise<{ id: string; dayId?: string }> }) {
+      const startedAt = Date.now() // B2 修复 A5：整天 8 秒截止从 handler 入口起算
       const session = await deps.getSession()
       const userId = session?.user?.id
       if (!userId) return NextResponse.json({ error: '请先登录' }, { status: 401 })
@@ -84,7 +85,7 @@ export function createLegHandlers(
         // 池的上游经间接引用包装：限流降级时可以换成 nullResolver（只读缓存 + heuristic）
         let upstream: LegResolver | null = baseResolver
         const pool = baseResolver
-          ? await createLegPoolResolver((from, to, mode, callOpts) => upstream!(from, to, mode, callOpts), stops, day.defaultTravelMode)
+          ? await createLegPoolResolver((from, to, mode, callOpts) => upstream!(from, to, mode, callOpts), stops, day.defaultTravelMode, { startedAt })
           : null
         const legResolver: LegResolver = pool ? pool.resolve : nullResolver
 
