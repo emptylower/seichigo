@@ -22,15 +22,23 @@ import {
 } from './routePreviewPopup'
 import {
   applyMarkerActive,
-  buildMarkerLayouts,
-  createNumberedMarker,
-  markerOptionsFor,
   distanceMeters,
   type MarkerLayout,
+  type MarkerVariant,
   type RoutePreviewPoint,
 } from './routePreviewMarkers'
-
-type PreviewLineKind = 'route' | 'schematic' | 'jump'
+import { rebuildRouteMarkers, type RouteMarkerEntry } from './routePreviewMarkersRebuild'
+import {
+  buildPreviewData,
+  buildRenderSignature,
+  fitMapToPreview,
+  syncPreviewSources,
+  PREVIEW_DEFAULT_CENTER,
+  ROUTE_SPREAD_HINT_METERS,
+  type RoutePreviewLeg,
+} from './routePreviewLayers'
+import { bindMapContextMenu } from './routePreviewContextMenu'
+import { createRoutePreviewMap } from './routePreviewMapInit'
 
 export interface RoutePreviewMapProps {
   /**
@@ -64,234 +72,22 @@ export interface RoutePreviewMapProps {
    * doubleClickZoom 仍禁用，避免劫持页面滚动。
    */
   interactive?: boolean
+  /**
+   * 行程本按天分段（可选）：传入时忽略 routeGeometry 逐段画线；
+   * coordinates 为 GeoJSON 顺序 [lng, lat]，dashed 段用虚线（估算段）。
+   */
+  legs?: RoutePreviewLeg[]
+  /** marker 外观变体（可选）：key 为 point id；徽标文本覆盖与 active/muted/hollow 强调 */
+  markerVariants?: Record<string, MarkerVariant>
+  /** marker pointerdown（可选）：行程本把事件转发给 dnd-kit 代理做拖入某天 */
+  onMarkerPointerDown?: (pointKey: string, event: PointerEvent) => void
+  /** 右键 / 触屏长按 500ms（可选）：B2 自定义点创建入口 */
+  onMapContextMenu?: (pos: { lat: number; lng: number; x: number; y: number }) => void
 }
 
-type PreviewLineProperties = {
-  kind: PreviewLineKind
-}
+type MarkerEntry = RouteMarkerEntry
 
-type PreviewLabelProperties = {
-  label: string
-}
-
-type PreviewData = {
-  lineCollection: GeoJSON.FeatureCollection<GeoJSON.LineString, PreviewLineProperties>
-  labelCollection: GeoJSON.FeatureCollection<GeoJSON.Point, PreviewLabelProperties>
-  hasFallback: boolean
-  hasLongJump: boolean
-}
-
-type MarkerEntry = { id: string; marker: maplibregl.Marker; el: HTMLDivElement }
-
-const DEFAULT_CENTER: [number, number] = [139.767125, 35.681236]
-const LINE_SOURCE_ID = 'route-preview-lines'
-const LABEL_SOURCE_ID = 'route-preview-labels'
-const ROUTE_LAYER_ID = 'route-preview-route-line'
-const SCHEMATIC_LAYER_ID = 'route-preview-schematic-line'
-const JUMP_LAYER_ID = 'route-preview-jump-line'
-const JUMP_LABEL_LAYER_ID = 'route-preview-jump-label'
-const ROUTE_SPREAD_HINT_METERS = 120_000
-const ROUTE_LONG_JUMP_METERS = 80_000
 const MARKER_COLOR = '#e11d48'
-
-function toLngLat(point: { lat: number; lng: number }): [number, number] {
-  return [point.lng, point.lat]
-}
-
-function buildPreviewData(
-  points: RoutePreviewPoint[],
-  routeGeometry: RoutePreviewMapProps['routeGeometry'],
-): PreviewData {
-  if (routeGeometry && routeGeometry.coordinates.length >= 2) {
-    return {
-      lineCollection: {
-        type: 'FeatureCollection',
-        features: [
-          {
-            type: 'Feature',
-            properties: { kind: 'route' },
-            geometry: routeGeometry,
-          },
-        ],
-      },
-      labelCollection: { type: 'FeatureCollection', features: [] },
-      hasFallback: false,
-      hasLongJump: false,
-    }
-  }
-
-  const lineFeatures: Array<GeoJSON.Feature<GeoJSON.LineString, PreviewLineProperties>> = []
-  const labelFeatures: Array<GeoJSON.Feature<GeoJSON.Point, PreviewLabelProperties>> = []
-  let hasLongJump = false
-
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const start = points[index]!
-    const end = points[index + 1]!
-    const startCoord = toLngLat(start)
-    const endCoord = toLngLat(end)
-    const longJump = distanceMeters(startCoord, endCoord) >= ROUTE_LONG_JUMP_METERS
-    hasLongJump ||= longJump
-
-    lineFeatures.push({
-      type: 'Feature',
-      properties: { kind: longJump ? 'jump' : 'schematic' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [startCoord, endCoord],
-      },
-    })
-
-    if (longJump) {
-      labelFeatures.push({
-        type: 'Feature',
-        properties: { label: `${start.label}→${end.label}` },
-        geometry: {
-          type: 'Point',
-          coordinates: [
-            (startCoord[0] + endCoord[0]) / 2,
-            (startCoord[1] + endCoord[1]) / 2,
-          ],
-        },
-      })
-    }
-  }
-
-  return {
-    lineCollection: { type: 'FeatureCollection', features: lineFeatures },
-    labelCollection: { type: 'FeatureCollection', features: labelFeatures },
-    hasFallback: lineFeatures.length > 0,
-    hasLongJump,
-  }
-}
-
-function buildRenderSignature(
-  points: RoutePreviewPoint[],
-  routeGeometry: RoutePreviewMapProps['routeGeometry'],
-): string {
-  const pointsSignature = points.map((point) => `${point.id}:${point.label}:${point.lat.toFixed(5)},${point.lng.toFixed(5)}`).join('|')
-  if (!routeGeometry?.coordinates.length) return `${pointsSignature}|nogeometry`
-  const first = routeGeometry.coordinates[0]!
-  const last = routeGeometry.coordinates[routeGeometry.coordinates.length - 1]!
-  return `${pointsSignature}|geometry:${routeGeometry.coordinates.length}:${first.join(',')}:${last.join(',')}`
-}
-
-function buildBounds(points: RoutePreviewPoint[], routeGeometry: RoutePreviewMapProps['routeGeometry']) {
-  const coords = routeGeometry?.coordinates.length
-    ? [...routeGeometry.coordinates, ...points.map(toLngLat)]
-    : points.map(toLngLat)
-  if (!coords.length) return null
-  const bounds = new maplibregl.LngLatBounds(coords[0], coords[0])
-  for (const coord of coords.slice(1)) bounds.extend(coord)
-  return bounds
-}
-
-function fitMap(map: maplibregl.Map, points: RoutePreviewPoint[], routeGeometry: RoutePreviewMapProps['routeGeometry'], compact: boolean) {
-  const bounds = buildBounds(points, routeGeometry)
-  if (!bounds) {
-    map.jumpTo({ center: DEFAULT_CENTER, zoom: 5 })
-    return
-  }
-
-  map.fitBounds(bounds, {
-    padding: compact ? 24 : 48,
-    duration: 0,
-    maxZoom: 14,
-  })
-}
-
-function syncPreviewSources(map: maplibregl.Map, previewData: PreviewData) {
-  const lineSource = map.getSource(LINE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-  if (lineSource) lineSource.setData(previewData.lineCollection)
-  else {
-    map.addSource(LINE_SOURCE_ID, {
-      type: 'geojson',
-      data: previewData.lineCollection,
-    })
-  }
-
-  const labelSource = map.getSource(LABEL_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-  if (labelSource) labelSource.setData(previewData.labelCollection)
-  else {
-    map.addSource(LABEL_SOURCE_ID, {
-      type: 'geojson',
-      data: previewData.labelCollection,
-    })
-  }
-
-  if (!map.getLayer(ROUTE_LAYER_ID)) {
-    map.addLayer({
-      id: ROUTE_LAYER_ID,
-      type: 'line',
-      source: LINE_SOURCE_ID,
-      filter: ['==', ['get', 'kind'], 'route'],
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-      paint: {
-        'line-color': '#e11d48',
-        'line-width': 4,
-      },
-    })
-  }
-
-  if (!map.getLayer(SCHEMATIC_LAYER_ID)) {
-    map.addLayer({
-      id: SCHEMATIC_LAYER_ID,
-      type: 'line',
-      source: LINE_SOURCE_ID,
-      filter: ['==', ['get', 'kind'], 'schematic'],
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-      paint: {
-        'line-color': '#e11d48',
-        'line-width': 3,
-        'line-opacity': 0.48,
-        'line-dasharray': [2, 2],
-      },
-    })
-  }
-
-  if (!map.getLayer(JUMP_LAYER_ID)) {
-    map.addLayer({
-      id: JUMP_LAYER_ID,
-      type: 'line',
-      source: LINE_SOURCE_ID,
-      filter: ['==', ['get', 'kind'], 'jump'],
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-      paint: {
-        'line-color': '#fb7185',
-        'line-width': 3,
-        'line-opacity': 0.78,
-        'line-dasharray': [1, 2.2],
-      },
-    })
-  }
-
-  if (!map.getLayer(JUMP_LABEL_LAYER_ID)) {
-    map.addLayer({
-      id: JUMP_LABEL_LAYER_ID,
-      type: 'symbol',
-      source: LABEL_SOURCE_ID,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': 11,
-        'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-        'text-allow-overlap': false,
-      },
-      paint: {
-        'text-color': '#be123c',
-        'text-halo-color': '#ffffff',
-        'text-halo-width': 1.5,
-      },
-    })
-  }
-}
 
 export function RoutePreviewMap({
   points,
@@ -304,6 +100,10 @@ export function RoutePreviewMap({
   onPopupClosed,
   popupControlsRef,
   interactive = true,
+  legs,
+  markerVariants,
+  onMarkerPointerDown,
+  onMapContextMenu,
 }: RoutePreviewMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -316,6 +116,8 @@ export function RoutePreviewMap({
   const onPointSelectRef = useRef(onPointSelect)
   const renderPopupRef = useRef(renderPopup)
   const onPopupClosedRef = useRef(onPopupClosed)
+  const onMarkerPointerDownRef = useRef(onMarkerPointerDown)
+  const onMapContextMenuRef = useRef(onMapContextMenu)
   const userInteractedRef = useRef(false)
   const signatureRef = useRef('')
   // WebGL 不可用等环境性失败：降级为占位，不冒泡卸载整个时间线
@@ -328,12 +130,28 @@ export function RoutePreviewMap({
     [points],
   )
 
-  const latestStateRef = useRef({ points: normalizedPoints, routeGeometry, compact })
-  latestStateRef.current = { points: normalizedPoints, routeGeometry, compact }
+  const variantsSignature = useMemo(
+    () =>
+      markerVariants
+        ? Object.entries(markerVariants)
+            .map(([key, variant]) => `${key}:${variant.badge ?? ''}:${variant.emphasis}`)
+            .sort()
+            .join('|')
+        : '',
+    [markerVariants],
+  )
+
+  const latestStateRef = useRef({ points: normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact })
+  latestStateRef.current = { points: normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact }
   activePointIdRef.current = activePointId
   onPointSelectRef.current = onPointSelect
   renderPopupRef.current = renderPopup
   onPopupClosedRef.current = onPopupClosed
+  onMarkerPointerDownRef.current = onMarkerPointerDown
+  onMapContextMenuRef.current = onMapContextMenu
+
+  const computeSignature = (state: { points: RoutePreviewPoint[]; routeGeometry: typeof routeGeometry; legs: typeof legs; variantsSignature: string }) =>
+    `${buildRenderSignature(state.points, state.routeGeometry, state.legs)}|v:${state.variantsSignature}`
 
   // M3：Popup 统一生命周期——closeButton + offset 14；内容优先 renderPopup 自定义
   // 元素（含「查看条目」按钮），缺省/返回 null 回退标题文本；同一时刻只保留一个
@@ -369,9 +187,6 @@ export function RoutePreviewMap({
   }
 
   // 「在地图上看」Popup 补开：active 点在场而当前 Popup 未对齐时 openPopupFor。
-  // 地图/marker 未就绪（DayMap 刚挂载、地图未 load）时不动——那时开的 Popup 会被
-  // rebuildMarkers 关掉；就绪后的补开由 rebuild 完成路径（syncAllWithLatest /
-  // props 同步 effect）调用本函数兜底。
   const syncActivePopup = () => {
     const activeId = activePointIdRef.current
     if (
@@ -410,39 +225,12 @@ export function RoutePreviewMap({
     // 卸载整个聊天时间线
     let map: maplibregl.Map
     try {
-      map = new maplibregl.Map({
+      map = createRoutePreviewMap({
         container: containerRef.current,
         style: styleFailover.current.style,
-        center: DEFAULT_CENTER,
-        zoom: 5,
-        interactive: true,
-        attributionControl: false,
-        dragRotate: false,
-        touchPitch: false,
-        pitchWithRotate: false,
-        // inline 嵌入态：协作手势防滚动劫持（Ctrl/⌘+滚轮缩放，单指拖动归页面）；
-        // 全交互态（展开）不传，保持原生手势
-        ...(interactive
-          ? {}
-          : {
-              cooperativeGestures: true,
-              locale: {
-                'CooperativeGesturesHandler.WindowsHelpText': '按住 Ctrl 并滚动可缩放地图',
-                'CooperativeGesturesHandler.MacHelpText': '按住 ⌘ 并滚动可缩放地图',
-                'CooperativeGesturesHandler.MobileHelpText': '双指操作地图',
-              },
-            }),
+        center: PREVIEW_DEFAULT_CENTER,
+        interactive,
       })
-
-      // inline 态仍禁用与页面/缩放冲突的手势；dragPan/scrollZoom 由协作手势接管
-      if (!interactive) {
-        map.boxZoom.disable()
-        map.doubleClickZoom.disable()
-        map.keyboard.disable()
-      }
-
-      // 两种模式都给 ± 缩放按钮：PC inline 态无需按键即可缩放
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }), 'top-right')
     } catch (error) {
       if (!initWarnedRef.current) {
         initWarnedRef.current = true
@@ -467,21 +255,15 @@ export function RoutePreviewMap({
       // M4：marker 重建/切天时先关闭 Popup（避免悬空 Popup 指向已移除的 marker）
       popupLifecycle.close()
       for (const entry of markerEntriesRef.current) entry.marker.remove()
-      markerEntriesRef.current = []
       // L15：无 onPointSelect/renderPopup 的调用方（如路书页）marker 不可点、无 Popup
       const clickable = Boolean(onPointSelectRef.current || renderPopupRef.current)
-      const layouts = buildMarkerLayouts(targetPoints)
-      layouts.forEach((layout) => {
-        const el = createNumberedMarker(layout, {
-          color: MARKER_COLOR,
-          active: layout.id === activePointIdRef.current,
-          clickable,
-        })
-        if (clickable) el.addEventListener('click', onMarkerClick(layout))
-        const marker = new maplibregl.Marker({ element: el, ...markerOptionsFor(layout) })
-          .setLngLat([layout.lng, layout.lat])
-          .addTo(map)
-        markerEntriesRef.current.push({ id: layout.id, marker, el })
+      markerEntriesRef.current = rebuildRouteMarkers(map, targetPoints, {
+        color: MARKER_COLOR,
+        activeId: activePointIdRef.current,
+        clickable,
+        variants: latestStateRef.current.markerVariants,
+        onClick: clickable ? onMarkerClick : undefined,
+        onPointerDown: onMarkerPointerDownRef.current,
       })
     }
     rebuildMarkersRef.current = rebuildMarkers
@@ -492,14 +274,14 @@ export function RoutePreviewMap({
       if (disposed || syncing) return
       syncing = true
       try {
-        const { points: latestPoints, routeGeometry: latestGeometry, compact: latestCompact } = latestStateRef.current
-        syncPreviewSources(map, buildPreviewData(latestPoints, latestGeometry))
-        rebuildMarkers(latestPoints)
+        const latest = latestStateRef.current
+        syncPreviewSources(map, buildPreviewData(latest.points, latest.routeGeometry, latest.legs))
+        rebuildMarkers(latest.points)
         // rebuild 关 Popup 后补开 active 点（「在地图上看」先于地图 load 生效的场景）
         syncActivePopup()
-        signatureRef.current = buildRenderSignature(latestPoints, latestGeometry)
+        signatureRef.current = computeSignature(latest)
         if (options?.forceFit || !userInteractedRef.current) {
-          fitMap(map, latestPoints, latestGeometry, latestCompact)
+          fitMapToPreview(map, latest.points, latest.routeGeometry, latest.legs, latest.compact)
         }
       } finally {
         syncing = false
@@ -514,6 +296,9 @@ export function RoutePreviewMap({
     map.on('zoomstart', markInteracted)
     // 点击地图空白关闭 Popup
     map.on('click', closePopup)
+
+    // 右键 / 触屏长按 500ms → onMapContextMenu（行程本自定义点入口，B2）
+    const unbindContextMenu = bindMapContextMenu(map, () => onMapContextMenuRef.current, () => disposed)
 
     const clearFailoverTimer = () => {
       if (failoverTimer != null) {
@@ -551,17 +336,15 @@ export function RoutePreviewMap({
       switchToNextStyleProvider()
     }
 
-    // setStyle 会移除全部自定义 source/layer。
-    // `style.load` 在每次 style JSON 就绪后触发（setStyle 后同样触发；此时 isStyleLoaded() 可能
-    // 仍为 false，不能作为前置条件），是 fallback 后重挂载的可靠事件；styledata 作为兜底。
-    // 初次挂载：inline style 的 style.load/styledata 在 Map 构造器内同步触发、早于监听器注册，
-    // 因此初次同步仍由 load 事件（强制 fit）负责。
+    // setStyle 会移除全部自定义 source/layer。`style.load` 在 style JSON 就绪后触发
+    // （setStyle 后同样触发），是 fallback 后重挂载的可靠事件；styledata 兜底。
+    // 初次挂载的 style.load/styledata 早于监听器注册，初次同步仍由 load 事件（强制 fit）负责。
     const maybeResyncAfterStyleEvent = (event: RouteStyleResyncEvent, options?: { forceFit?: boolean }) => {
       if (
         !shouldResyncRoutePreviewOnStyleEvent({
           event,
           styleLoaded: map.isStyleLoaded() === true,
-          layersPresent: Boolean(map.getLayer(ROUTE_LAYER_ID)),
+          layersPresent: Boolean(map.getLayer('route-preview-route-line')),
           syncing,
           disposed,
         })
@@ -601,6 +384,7 @@ export function RoutePreviewMap({
     return () => {
       disposed = true
       clearFailoverTimer()
+      unbindContextMenu()
       map.off('error', onStyleProviderError)
       map.off('idle', onMapIdle)
       map.off('style.load', onStyleLoad)
@@ -625,29 +409,27 @@ export function RoutePreviewMap({
       const map = mapRef.current
       if (!map) return
 
-      const nextSignature = buildRenderSignature(normalizedPoints, routeGeometry)
+      const nextSignature = computeSignature(latestStateRef.current)
       const routeChanged = signatureRef.current !== nextSignature
       if (routeChanged) {
         signatureRef.current = nextSignature
         userInteractedRef.current = false
       }
 
-      syncPreviewSources(map, buildPreviewData(normalizedPoints, routeGeometry))
-      rebuildMarkersRef.current?.(normalizedPoints)
+      const latest = latestStateRef.current
+      syncPreviewSources(map, buildPreviewData(latest.points, latest.routeGeometry, latest.legs))
+      rebuildMarkersRef.current?.(latest.points)
       // rebuild 关 Popup 后补开 active 点（挂起的 props 同步补执行时同样兜底）
       syncActivePopup()
 
       if (!userInteractedRef.current) {
-        fitMap(map, normalizedPoints, routeGeometry, compact)
+        fitMapToPreview(map, latest.points, latest.routeGeometry, latest.legs, latest.compact)
       }
     })
-  }, [normalizedPoints, routeGeometry, compact])
+  }, [normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact])
 
-  // activePointId 变化：只切换 marker 高亮（不重建）；该点不在视口内时 easeTo；
-  // M3：条目侧「在地图上看」后自动打开该点 Popup。地图未 ready 时 effect 的
-  // Popup 部分直接返回（markersReady 判定在 syncActivePopup 内），marker 就绪
-  // 由 rebuild 完成后的 syncActivePopup 兜底——修复 DayMap 刚挂载时 effect 先于
-  // 地图 load 运行、Popup 先开又被 rebuildMarkers 关掉不再打开的问题
+  // activePointId 变化：只切 marker 高亮（不重建）；不在视口内时 easeTo 并补开 Popup。
+  // 地图未 ready 时 Popup 部分由 markersReady 判定跳过，marker 就绪后由 rebuild 兜底。
   useEffect(() => {
     for (const entry of markerEntriesRef.current) {
       applyMarkerActive(entry.el, entry.id === activePointId)
@@ -668,12 +450,12 @@ export function RoutePreviewMap({
     syncActivePopup()
   }, [activePointId, normalizedPoints])
 
-  const previewData = buildPreviewData(normalizedPoints, routeGeometry)
+  const previewData = buildPreviewData(normalizedPoints, routeGeometry, legs)
   const hasWideSpread = (() => {
     if (normalizedPoints.length < 2) return false
     let maxLegDistance = 0
     for (let index = 0; index < normalizedPoints.length - 1; index += 1) {
-      maxLegDistance = Math.max(maxLegDistance, distanceMeters(toLngLat(normalizedPoints[index]!), toLngLat(normalizedPoints[index + 1]!)))
+      maxLegDistance = Math.max(maxLegDistance, distanceMeters([normalizedPoints[index]!.lng, normalizedPoints[index]!.lat], [normalizedPoints[index + 1]!.lng, normalizedPoints[index + 1]!.lat]))
     }
     return maxLegDistance >= ROUTE_SPREAD_HINT_METERS
   })()

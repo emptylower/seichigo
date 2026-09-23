@@ -13,6 +13,12 @@
 
 export type RoutePreviewPoint = { id: string; lat: number; lng: number; label: string; title?: string }
 
+/**
+ * marker 外观变体（行程本按天）：badge 覆盖序号文本；
+ * emphasis = active 默认 / muted 半透 / hollow 虚线空心（未安排）。
+ */
+export type MarkerVariant = { badge?: string; emphasis: 'active' | 'muted' | 'hollow' }
+
 export type MarkerLayout = RoutePreviewPoint & {
   offsetX: number
   offsetY: number
@@ -109,9 +115,25 @@ export function applyMarkerActive(el: HTMLElement, active: boolean): void {
   inner.style.color = active ? '#ffffff' : color
 }
 
+/** 外观变体：在 applyMarkerActive 之后调用，只改透明度/空心/徽标文本，不碰根 transform */
+export function applyMarkerVariant(el: HTMLElement, variant: MarkerVariant | undefined): void {
+  if (!variant) return
+  const inner = markerInnerElement(el)
+  if (variant.emphasis === 'muted') {
+    el.style.opacity = '0.45'
+  } else if (variant.emphasis === 'hollow') {
+    inner.style.backgroundColor = 'transparent'
+    inner.style.border = '2px dashed #94a3b8'
+    inner.style.color = '#94a3b8'
+  }
+  if (variant.badge && inner.textContent !== variant.badge) {
+    inner.textContent = variant.badge
+  }
+}
+
 export function createNumberedMarker(
   layout: MarkerLayout,
-  options: { color: string; active?: boolean; clickable?: boolean },
+  options: { color: string; active?: boolean; clickable?: boolean; variant?: MarkerVariant },
 ): HTMLDivElement {
   const size = layout.overlapCount > 1 ? '28px' : '24px'
   const el = document.createElement('div')
@@ -132,11 +154,12 @@ export function createNumberedMarker(
   inner.style.width = '100%'
   inner.style.height = '100%'
   inner.style.border = `2px solid ${options.color}`
-  inner.style.fontSize = '12px'
+  inner.style.fontSize = options.variant?.badge && options.variant.badge.length > 2 ? '10px' : '12px'
   inner.style.boxShadow = layout.overlapCount > 1 ? '0 6px 18px rgba(15,23,42,0.16)' : '0 4px 12px rgba(15,23,42,0.12)'
-  inner.textContent = layout.label
+  inner.textContent = options.variant?.badge ?? layout.label
   el.appendChild(inner)
 
   applyMarkerActive(el, options.active ?? false)
+  applyMarkerVariant(el, options.variant)
   return el
 }
