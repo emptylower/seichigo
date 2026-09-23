@@ -10,8 +10,14 @@ import { routeBookErrorResponse } from './errors'
  * GET /api/me/routebooks/[id]/export.ics → text/calendar 附件；无日期行程 → 400
  */
 
+/** RFC 5987：encodeURIComponent 之外再编码 `'()*!`（attr-char 不允许）；标题为空用 routebook */
+function encodeFilenameValue(value: string): string {
+  return encodeURIComponent(value).replace(/['()*!]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`)
+}
+
 function contentDisposition(title: string, ext: 'gpx' | 'ics'): string {
-  return `attachment; filename="routebook.${ext}"; filename*=UTF-8''${encodeURIComponent(title)}.${ext}`
+  const name = title.trim() || 'routebook'
+  return `attachment; filename="routebook.${ext}"; filename*=UTF-8''${encodeFilenameValue(name)}.${ext}`
 }
 
 type ResolvedBook =

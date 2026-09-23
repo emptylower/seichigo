@@ -1,7 +1,8 @@
 /**
  * ICS（RFC 5545）导出（纯函数）：
  * - 每个有日期的天一个全天 VEVENT（SUMMARY = 天标题或 Day N，DESCRIPTION = 当天条目清单）
- * - 每条有 timeStart 的条目一个定时 VEVENT（DTSTART;TZID=Asia/Tokyo，timeEnd 缺省 +60 分钟）
+ * - 每条有 timeStart 的条目一个定时 VEVENT（DTSTART;TZID=Asia/Tokyo，timeEnd 缺省/不晚于开始 +60 分钟）
+ * - 内嵌 Asia/Tokyo 的 VTIMEZONE（JST 无夏令时，单一 STANDARD 即可）
  * - UID = <itemId>@seichigo.com；TEXT 转义（; , \ 换行）；行按 75 字节折叠（CRLF + 空格）
  */
 
@@ -21,6 +22,19 @@ export type IcsExportInput = {
 
 const CRLF = '\r\n'
 const UID_DOMAIN = 'seichigo.com'
+
+/** Asia/Tokyo 无夏令时：单一 STANDARD（+0900）即完整定义 */
+const VTIMEZONE_LINES = [
+  'BEGIN:VTIMEZONE',
+  'TZID:Asia/Tokyo',
+  'BEGIN:STANDARD',
+  'DTSTART:19700101T000000',
+  'TZOFFSETFROM:+0900',
+  'TZOFFSETTO:+0900',
+  'TZNAME:JST',
+  'END:STANDARD',
+  'END:VTIMEZONE',
+]
 
 /** RFC 5545 TEXT 转义：反斜杠、分号、逗号、换行 */
 function escapeText(value: string): string {
@@ -90,7 +104,14 @@ export function buildIcs(input: IcsExportInput): string {
     return item.title ?? (item.kind === 'note' ? '备注' : item.kind === 'transit' ? '交通' : '条目')
   }
 
-  const lines: string[] = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Seichigo//RouteBook//ZH', 'CALSCALE:GREGORIAN']
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SeichiGo//RouteBook//ZH',
+    'CALSCALE:GREGORIAN',
+    `X-WR-CALNAME:${escapeText(input.title.trim() || '行程本')}`,
+    ...VTIMEZONE_LINES,
+  ]
 
   const pushEvent = (contentLines: string[]) => {
     lines.push('BEGIN:VEVENT', ...contentLines, 'END:VEVENT')
@@ -120,7 +141,9 @@ export function buildIcs(input: IcsExportInput): string {
       if (!item.timeStart) continue
       const startMin = hhmmToMinutes(item.timeStart)
       if (startMin === null) continue
-      const endMin = (item.timeEnd ? hhmmToMinutes(item.timeEnd) : null) ?? startMin + 60
+      const parsedEnd = item.timeEnd ? hhmmToMinutes(item.timeEnd) : null
+      // timeEnd 缺省或不晚于 timeStart（如 23:50–00:10 跨夜写反）时，统一 +60 分钟
+      const endMin = parsedEnd !== null && parsedEnd > startMin ? parsedEnd : startMin + 60
       let endDate = dateOnly
       let endMinWrapped = endMin
       if (endMinWrapped >= 1440) {

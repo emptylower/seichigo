@@ -59,8 +59,18 @@ describe('buildIcs', () => {
     expect(ics).toMatchInlineSnapshot(`
       "BEGIN:VCALENDAR
       VERSION:2.0
-      PRODID:-//Seichigo//RouteBook//ZH
+      PRODID:-//SeichiGo//RouteBook//ZH
       CALSCALE:GREGORIAN
+      X-WR-CALNAME:京都两日巡礼
+      BEGIN:VTIMEZONE
+      TZID:Asia/Tokyo
+      BEGIN:STANDARD
+      DTSTART:19700101T000000
+      TZOFFSETFROM:+0900
+      TZOFFSETTO:+0900
+      TZNAME:JST
+      END:STANDARD
+      END:VTIMEZONE
       BEGIN:VEVENT
       UID:day-1@seichigo.com
       DTSTAMP:20260923T000000Z
@@ -125,6 +135,33 @@ describe('buildIcs', () => {
     expect(ics).toContain('第一条\\n第二条')
   })
 
+  it('timeEnd 不晚于 timeStart 时按 +60 分钟导出（缺省/早于/等于）', () => {
+    const wrap = (timeEnd: string | null) =>
+      buildIcs({
+        ...baseInput,
+        items: [item({ id: 'i9', dayId: 'day-2', sortOrder: 0, kind: 'point', pointId: 'p2', timeStart: '10:00', timeEnd })],
+      })
+    for (const ics of [wrap(null), wrap('09:30'), wrap('10:00')]) {
+      expect(ics).toContain('DTSTART;TZID=Asia/Tokyo:20261006T100000')
+      expect(ics).toContain('DTEND;TZID=Asia/Tokyo:20261006T110000')
+    }
+    // 晚于 timeStart 的 timeEnd 仍按原值
+    expect(wrap('11:45')).toContain('DTEND;TZID=Asia/Tokyo:20261006T114500')
+  })
+
+  it('日历头：PRODID 为 SeichiGo、X-WR-CALNAME 为标题、CALSCALE 后跟 Asia/Tokyo VTIMEZONE', () => {
+    const ics = buildIcs(baseInput)
+    expect(ics).toContain('PRODID:-//SeichiGo//RouteBook//ZH')
+    expect(ics).toContain('X-WR-CALNAME:京都两日巡礼')
+    const calscaleIdx = ics.indexOf('CALSCALE:GREGORIAN')
+    const vtimezoneIdx = ics.indexOf('BEGIN:VTIMEZONE')
+    expect(vtimezoneIdx).toBeGreaterThan(calscaleIdx)
+    expect(ics).toContain('TZID:Asia/Tokyo')
+    expect(ics).toContain('TZOFFSETFROM:+0900')
+    expect(ics).toContain('TZOFFSETTO:+0900')
+    expect(ics).toContain('TZNAME:JST')
+  })
+
   it('每行 ≤75 字节（折叠不拆多字节字符）', () => {
     const ics = buildIcs(baseInput)
     for (const line of ics.split('\r\n')) {
@@ -138,7 +175,7 @@ describe('buildIcs', () => {
     const ics = buildIcs({ ...baseInput, days: [days[2]!] })
     expect(ics).not.toContain('BEGIN:VEVENT')
     expect(ics).toContain('BEGIN:VCALENDAR')
-    expect(ics).toContain('PRODID:-//Seichigo//RouteBook//ZH')
+    expect(ics).toContain('PRODID:-//SeichiGo//RouteBook//ZH')
   })
 })
 
@@ -251,5 +288,24 @@ describe('export handlers', () => {
     expect(body).toContain('DTSTART;TZID=Asia/Tokyo:20261005T093000')
     expect(body).toContain('DTEND;TZID=Asia/Tokyo:20261005T103000')
     expect(body).toContain('DTSTART;VALUE=DATE:20261005')
+  })
+
+  it('X10：文件名 RFC 5987 额外编码 \'()*!；标题为空时用 routebook', async () => {
+    const { repo, deps } = makeDeps()
+    const handlers = createExportHandlers(deps)
+
+    const special = await repo.create('u1', '京都(两日)!巡礼*', 'draft', { dayCount: 1 })
+    const gpx = await handlers.GET_gpx(req(`/x?scope=all`), ctx(special.id))
+    expect(gpx.status).toBe(200)
+    const disposition = gpx.headers.get('Content-Disposition')!
+    expect(disposition).toContain('filename="routebook.gpx"')
+    expect(disposition).toContain('%28%E4%B8%A4%E6%97%A5%29') // (两日)
+    expect(disposition).toContain('%21') // !
+    expect(disposition).toContain('%2A') // *
+    expect(disposition).not.toContain('京都')
+
+    const empty = await repo.create('u1', '', 'draft', { dayCount: 1 })
+    const ics = await handlers.GET_gpx(req(`/x?scope=all`), ctx(empty.id))
+    expect(ics.headers.get('Content-Disposition')).toBe(`attachment; filename="routebook.gpx"; filename*=UTF-8''routebook.gpx`)
   })
 })

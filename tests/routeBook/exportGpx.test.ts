@@ -146,4 +146,51 @@ describe('buildGpx', () => {
     expect(gpx.match(/<wpt /g)?.length).toBe(3) // p1 + p3 + 住宿
     expect(gpx.match(/<rte>/g)?.length).toBe(3) // 三个天都有有坐标条目（GPX 与日期无关）
   })
+
+  it('X8：住中日（start=end 同一酒店）输出回酒店的终点；无停靠的住中日不连续重复', () => {
+    // lodging [1,3]：day1 入住（end）、day2 住中（start=end）、day3 退房（start）
+    const stayLodgings: RouteBookLodging[] = [
+      { id: 'lg-stay', routeBookId: 'bk', placeId: 'place-hotel', fromDayIndex: 1, toDayIndex: 3, checkIn: '15:00', checkOut: '10:00', note: null },
+    ]
+    const rteptNames = (gpx: string): string[] =>
+      [...gpx.matchAll(/<rtept[^>]*>\s*<name>([^<]*)<\/name>/g)].map((m) => m[1]!)
+
+    const gpx = buildGpx({ ...baseInput, lodgings: stayLodgings, scope: { kind: 'all' } })
+    const rtes = gpx.match(/<rte>[\s\S]*?<\/rte>/g) ?? []
+    expect(rtes).toHaveLength(3)
+    // day2（住中、有停靠）：酒店 → 宇治橋 → 酒店
+    expect(rteptNames(rtes[1]!)).toEqual(['京都駅前酒店', '宇治橋', '京都駅前酒店'])
+
+    // day2 无任何有坐标条目：只输出一个酒店 rtept，不连续重复
+    const empty = buildGpx({
+      ...baseInput,
+      lodgings: stayLodgings,
+      items: items.filter((i) => i.dayId !== 'day-2'),
+      scope: { kind: 'day', dayIndex: 2 },
+    })
+    expect(rteptNames(empty)).toEqual(['京都駅前酒店'])
+  })
+
+  it('X8：无标题住宿锚点用默认名「住宿」', () => {
+    const gpx = buildGpx({
+      ...baseInput,
+      places: [{ ...places[0]!, title: '' }],
+      scope: { kind: 'day', dayIndex: 2 },
+    })
+    expect(gpx).toContain('<name>住宿</name>')
+    expect(gpx).not.toContain('京都駅前酒店')
+  })
+
+  it('X11：文本剔除 XML 非法控制字符', () => {
+    const gpx = buildGpx({
+      ...baseInput,
+      title: '京都\u0001两日',
+      previews: new Map([['p1', { title: '音羽\u0002神社', lat: 34.994856, lng: 135.785231 }]]),
+      scope: { kind: 'day', dayIndex: 1 },
+    })
+    expect(gpx).not.toContain('\u0001')
+    expect(gpx).not.toContain('\u0002')
+    expect(gpx).toContain('<name>京都两日</name>')
+    expect(gpx).toContain('<name>音羽神社</name>')
+  })
 })
