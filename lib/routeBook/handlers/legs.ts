@@ -22,6 +22,10 @@ const RATE_MAX = 10
 
 function checkRateLimit(userId: string, max: number): boolean {
   const now = Date.now()
+  // 顺带清理过期条目，避免 Map 随历史用户无界增长（B2 修复 A6）
+  for (const [key, entry] of rateLimits) {
+    if (now - entry.windowStart > RATE_WINDOW_MS) rateLimits.delete(key)
+  }
   const entry = rateLimits.get(userId)
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
     rateLimits.set(userId, { count: 1, windowStart: now })
