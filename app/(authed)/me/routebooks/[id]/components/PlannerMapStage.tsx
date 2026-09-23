@@ -26,20 +26,33 @@ type PlannerMapStageProps = {
 
 type MapPoint = { id: string; lat: number; lng: number; label: string; title?: string }
 
-/** 隐藏代理：marker 是命令式 DOM，借它把 marker 的 pointer 事件接进 dnd-kit */
+/** 隐藏代理：marker 是命令式 DOM，借它把 marker 的 pointer 事件接进 dnd-kit。
+ *  代理不能用 display:none（dnd-kit 量到 0×0，overlay/碰撞会偏移）：
+ *  常态 fixed 放到屏外、opacity 0；pointerdown 时被移到 marker 的 rect 上。 */
 function MarkerDragProxy({
   itemId,
   register,
 }: {
   itemId: string
-  register: (itemId: string, listeners: DraggableSyntheticListeners | undefined) => void
+  register: (itemId: string, listeners: DraggableSyntheticListeners | undefined, node: HTMLElement | null) => void
 }) {
   const { listeners, setNodeRef } = useDraggable({ id: markerDragId(itemId) })
+  const nodeRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    register(itemId, listeners)
-    return () => register(itemId, undefined)
+    register(itemId, listeners, nodeRef.current)
+    return () => register(itemId, undefined, null)
   }, [itemId, listeners, register])
-  return <div ref={setNodeRef} className="hidden" aria-hidden />
+  return (
+    <div
+      ref={(el) => {
+        nodeRef.current = el
+        setNodeRef(el)
+      }}
+      aria-hidden
+      className="pointer-events-none fixed opacity-0"
+      style={{ left: -9999, top: 0, width: 24, height: 24 }}
+    />
+  )
 }
 
 export function PlannerMapStage({
@@ -55,10 +68,16 @@ export function PlannerMapStage({
   activePointId = null,
 }: PlannerMapStageProps) {
   const proxyListenersRef = useRef(new Map<string, DraggableSyntheticListeners | undefined>())
-  const registerProxy = useCallback((itemId: string, listeners: DraggableSyntheticListeners | undefined) => {
-    if (listeners) proxyListenersRef.current.set(itemId, listeners)
-    else proxyListenersRef.current.delete(itemId)
-  }, [])
+  const proxyNodesRef = useRef(new Map<string, HTMLElement | null>())
+  const registerProxy = useCallback(
+    (itemId: string, listeners: DraggableSyntheticListeners | undefined, node: HTMLElement | null) => {
+      if (listeners) proxyListenersRef.current.set(itemId, listeners)
+      else proxyListenersRef.current.delete(itemId)
+      if (node) proxyNodesRef.current.set(itemId, node)
+      else proxyNodesRef.current.delete(itemId)
+    },
+    []
+  )
 
   const selectedDay = detail.days.find((day) => day.id === selectedDayId) ?? null
   const { legs } = useRouteGeometry(selectedDayId ? legsByDay[selectedDayId] : undefined, routeVisible)
@@ -115,6 +134,18 @@ export function PlannerMapStage({
   }, [detail, getPointPreview, selectedDayId])
 
   const handleMarkerPointerDown = useCallback((pointKey: string, event: PointerEvent) => {
+    // 先把代理元素贴到 marker 的 rect 上（同尺寸、不可见），再转发给 dnd-kit：
+    // 拖拽激活量到的就是 marker 位置，overlay 与碰撞检测不再偏移
+    const markerEl =
+      event.target instanceof HTMLElement ? (event.target.closest('.route-preview-marker') ?? event.target) : null
+    const proxy = proxyNodesRef.current.get(pointKey)
+    if (markerEl && proxy) {
+      const rect = markerEl.getBoundingClientRect()
+      proxy.style.left = `${rect.left}px`
+      proxy.style.top = `${rect.top}px`
+      proxy.style.width = `${rect.width}px`
+      proxy.style.height = `${rect.height}px`
+    }
     const onPointerDown = proxyListenersRef.current.get(pointKey)?.onPointerDown as
       | ((e: { nativeEvent: PointerEvent }) => void)
       | undefined

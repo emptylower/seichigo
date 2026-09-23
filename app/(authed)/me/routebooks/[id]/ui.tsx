@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -22,6 +22,7 @@ import { DayPlanSidebar } from './components/DayPlanSidebar'
 import { DayBlock } from './components/DayBlock'
 import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
+import { StartDayPickerSheet } from './components/StartDayPickerSheet'
 
 function RouteBookDetailSkeleton() {
   return (
@@ -72,8 +73,12 @@ function parseImportCounts(raw: string | null): ImportCounts | null {
   }
 }
 
+/** 与 middleware/resolveRequestLocale 同序：路径前缀（/en、/ja）优先，再读 NEXT_LOCALE cookie */
 function readClientLocale(): SupportedLocale {
-  if (typeof document === 'undefined') return 'zh'
+  if (typeof window === 'undefined') return 'zh'
+  const pathname = window.location.pathname
+  if (pathname === '/en' || pathname.startsWith('/en/')) return 'en'
+  if (pathname === '/ja' || pathname.startsWith('/ja/')) return 'ja'
   const match = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=(zh|en|ja)(?:;|$)/)
   return (match?.[1] as SupportedLocale | undefined) ?? 'zh'
 }
@@ -126,6 +131,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [poolSheetOpen, setPoolSheetOpen] = useState(false)
   const [focusItemId, setFocusItemId] = useState<string | null>(null)
   const [importSummary, setImportSummary] = useState<string | null>(null)
+  const [startDayPickerOpen, setStartDayPickerOpen] = useState(false)
+  const pendingStartRef = useRef(false)
 
   // /plan 导入跳转带回的一次性提示条：读出即清参数
   useEffect(() => {
@@ -135,14 +142,15 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     router.replace(`/me/routebooks/${id}`, { scroll: false })
   }, [id, router, searchParams])
 
-  const t = useTripData(id)
-  const detail = t.detail
-  const { legsByDay } = useDayLegs(id, detail, routeVisible)
+  const trip = useTripData(id)
+  const detail = trip.detail
+  const { legsByDay } = useDayLegs(id, detail, selectedDayId, routeVisible)
   const dnd = useTripDnd({
     items: detail?.items ?? [],
-    pointPoolItems: t.pointPoolItems,
-    reorder: t.reorder,
-    addItem: t.addItem,
+    pointPoolItems: trip.pointPoolItems,
+    reorder: trip.reorder,
+    addItem: trip.addItem,
+    onLimitBlocked: () => trip.showToast('这一天最多 25 个点'),
   })
 
   // 选中天初始化与删除后回退（pickTodayDayId：有日期匹配今天，否则第一天）
@@ -172,12 +180,12 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     if (first.kind === 'place') {
       return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
     }
-    return first.pointId ? t.getPointPreview(first.pointId).title : first.title ?? null
-  }, [detail, days, selectedDay, t])
+    return first.pointId ? trip.getPointPreview(first.pointId).title : first.title ?? null
+  }, [detail, days, selectedDay, trip])
 
   const routeBookSelectorItems = useMemo(() => {
-    if (!detail) return t.routeBooks
-    if (t.routeBooks.some((item) => item.id === detail.id)) return t.routeBooks
+    if (!detail) return trip.routeBooks
+    if (trip.routeBooks.some((item) => item.id === detail.id)) return trip.routeBooks
     return [
       {
         id: detail.id,
@@ -187,9 +195,9 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
         createdAt: detail.createdAt,
         updatedAt: detail.updatedAt,
       },
-      ...t.routeBooks,
+      ...trip.routeBooks,
     ]
-  }, [detail, t.routeBooks])
+  }, [detail, trip.routeBooks])
 
   const bookPointIds = useMemo(
     () => new Set((detail?.items ?? []).map((item) => item.pointId).filter((v): v is string => Boolean(v))),
@@ -197,19 +205,60 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   )
 
   const sheetPoolItems = useMemo(
-    () => t.pointPoolItems.filter((item) => !bookPointIds.has(item.pointId)),
-    [t.pointPoolItems, bookPointIds]
+    () => trip.pointPoolItems.filter((item) => !bookPointIds.has(item.pointId)),
+    [trip.pointPoolItems, bookPointIds]
   )
+
+  // 无日期行程：点「开始」先弹选天 sheet，选中后再进沉浸模式
+  const isDateless = Boolean(detail && !detail.startDate)
+  const canStart = detail
+    ? isDateless
+      ? detail.days.some((day) => sequenceForImmersive(detail.items, day.id).length > 0)
+      : immersiveSequence.length > 0
+    : false
 
   const startLabel = selectedDay ? `开始 Day ${selectedDay.dayIndex}` : '开始导航'
 
-  const handleStartImmersive = async () => {
-    if (!detail || !selectedDay || !immersiveSequence.length) return
+  const beginImmersive = async () => {
+    if (!detail) return
     if (detail.status === 'draft') {
-      await t.patchBook({ status: 'in_progress' })
+      await trip.patchBook({ status: 'in_progress' })
     }
     setShowImmersive(true)
   }
+
+  const handleStartImmersive = async () => {
+    if (!detail || !canStart) return
+    if (isDateless) {
+      setStartDayPickerOpen(true)
+      return
+    }
+    if (!selectedDay || !immersiveSequence.length) return
+    await beginImmersive()
+  }
+
+  const handlePickStartDay = (dayId: string) => {
+    setStartDayPickerOpen(false)
+    pendingStartRef.current = true
+    setSelectedDayId(dayId)
+  }
+
+  // 选天后等 selectedDayId/immersiveSequence 生效再开始；选到空天提示并取消
+  useEffect(() => {
+    if (!pendingStartRef.current) return
+    if (!detail) {
+      pendingStartRef.current = false
+      return
+    }
+    if (!immersiveSequence.length) {
+      pendingStartRef.current = false
+      trip.showToast('这一天还没有站点')
+      return
+    }
+    pendingStartRef.current = false
+    void beginImmersive()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, immersiveSequence])
 
   const handleFocusPoint = (pointId: string) => {
     if (!detail) return
@@ -225,7 +274,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((row) => row.id)
       .filter((rowId) => rowId !== itemId)
-    void t.reorder(targetDayId, [...orderedIds, itemId])
+    void trip.reorder(targetDayId, [...orderedIds, itemId])
   }
 
   const dragOverlay = useMemo(() => {
@@ -238,25 +287,25 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       return (
         <ItemDragOverlayCard
           item={item}
-          preview={item.pointId ? t.getPointPreview(item.pointId) : null}
+          preview={item.pointId ? trip.getPointPreview(item.pointId) : null}
           places={detail.places}
         />
       )
     }
     const poolId = parseDragRecordId(dnd.activeDragId, POOL_DND_PREFIX)
     if (poolId) {
-      const poolItem = t.pointPoolItems.find((row) => row.id === poolId)
+      const poolItem = trip.pointPoolItems.find((row) => row.id === poolId)
       if (!poolItem) return null
-      return <PlannerPointPoolDragOverlay preview={t.getPointPreview(poolItem.pointId)} />
+      return <PlannerPointPoolDragOverlay preview={trip.getPointPreview(poolItem.pointId)} />
     }
     return null
-  }, [dnd.activeDragId, detail, t])
+  }, [dnd.activeDragId, detail, trip])
 
-  if (t.loading) return <RouteBookDetailSkeleton />
-  if (t.error) {
+  if (trip.loading) return <RouteBookDetailSkeleton />
+  if (trip.error) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl bg-rose-50 p-4 text-rose-700">{t.error}</div>
+        <div className="rounded-2xl bg-rose-50 p-4 text-rose-700">{trip.error}</div>
         <a href="/me/routebooks" className="text-sm text-brand-600 hover:underline">
           返回地图列表
         </a>
@@ -270,20 +319,21 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       detail={detail}
       selectedDayId={selectedDayId}
       onSelectDay={setSelectedDayId}
-      getPointPreview={t.getPointPreview}
+      getPointPreview={trip.getPointPreview}
       legsByDay={legsByDay}
       routeVisible={routeVisible}
       onToggleRoute={() => setRouteVisible((prev) => !prev)}
-      onOptimize={(dayId) => void t.optimizeDay(dayId)}
-      onUndo={() => void t.undo()}
-      undoLabel={t.undoLabel}
-      onAddItem={(dayId, input, index) => void t.addItem(dayId, input, index)}
-      onUpdateItem={(itemId, data) => void t.updateItem(itemId, data)}
-      onDeleteItem={(itemId) => void t.deleteItem(itemId)}
-      onReorder={(dayId, ids) => void t.reorder(dayId, ids)}
-      onUpdateDay={(dayId, data) => void t.updateDay(dayId, data)}
-      onInsertDay={(after) => void t.insertDay(after)}
-      onDeleteDay={(dayId) => void t.deleteDay(dayId)}
+      onOptimize={(dayId) => void trip.optimizeDay(dayId)}
+      onUndo={() => void trip.undo()}
+      undoLabel={trip.undoLabel}
+      onAddItem={(dayId, input, index) => void trip.addItem(dayId, input, index)}
+      onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+      onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
+      onReorder={(dayId, ids) => void trip.reorder(dayId, ids)}
+      onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
+      onInsertDay={(after) => void trip.insertDay(after)}
+      onDeleteDay={(dayId) => void trip.deleteDay(dayId)}
+      limitBlockedDayId={dnd.limitBlockedDayId}
     />
   )
 
@@ -291,12 +341,12 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     <PlannerMapStage
       detail={detail}
       selectedDayId={selectedDayId}
-      getPointPreview={t.getPointPreview}
+      getPointPreview={trip.getPointPreview}
       legsByDay={legsByDay}
       routeVisible={routeVisible}
       compact={isMobile}
       startLabel={startLabel}
-      startDisabled={!immersiveSequence.length}
+      startDisabled={!canStart}
       onStartImmersive={() => void handleStartImmersive()}
       activePointId={focusItemId}
     />
@@ -305,13 +355,13 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const poolPanel = (
     <PlannerPointPoolPanel
       detail={detail}
-      pointPoolItems={t.pointPoolItems}
+      pointPoolItems={trip.pointPoolItems}
       selectedDayId={selectedDayId}
-      getPointPreview={t.getPointPreview}
-      onAddItem={(dayId, input) => void t.addItem(dayId, input)}
-      onReorder={(dayId, ids) => void t.reorder(dayId, ids)}
+      getPointPreview={trip.getPointPreview}
+      onAddItem={(dayId, input) => void trip.addItem(dayId, input)}
+      onReorder={(dayId, ids) => void trip.reorder(dayId, ids)}
       onFocusPoint={handleFocusPoint}
-      onRemoveFromPool={(pointId) => void t.removeFromPool(pointId)}
+      onRemoveFromPool={(pointId) => void trip.removeFromPool(pointId)}
       compact={isMobile}
       enableDrag={!isMobile}
     />
@@ -370,10 +420,10 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             places={detail.places}
             dayLabel={dayLabel(selectedDay, selectedDay.dayIndex)}
             nextDayFirstTitle={nextDayFirstTitle}
-            checkedInPointIds={t.checkedInPointIds}
-            getPointPreview={t.getPointPreview}
-            onCheckInSuccess={t.markPointCheckedIn}
-            onUndoCheckIn={t.unmarkPointCheckedIn}
+            checkedInPointIds={trip.checkedInPointIds}
+            getPointPreview={trip.getPointPreview}
+            onCheckInSuccess={trip.markPointCheckedIn}
+            onUndoCheckIn={trip.unmarkPointCheckedIn}
             onClose={() => setShowImmersive(false)}
           />
         ) : null}
@@ -383,6 +433,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             sensors={dnd.sensors}
             collisionDetection={closestCenter}
             onDragStart={dnd.handleDragStart}
+            onDragOver={dnd.handleDragOver}
             onDragEnd={(event) => {
               void dnd.handleDragEnd(event)
             }}
@@ -456,15 +507,15 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     days={days}
                     selected
                     onSelect={() => {}}
-                    getPointPreview={t.getPointPreview}
+                    getPointPreview={trip.getPointPreview}
                     legs={legsByDay[selectedDay.id]}
                     routeVisible={routeVisible}
                     onToggleRoute={() => setRouteVisible((prev) => !prev)}
-                    onOptimize={() => void t.optimizeDay(selectedDay.id)}
-                    onUpdateItem={(itemId, data) => void t.updateItem(itemId, data)}
-                    onDeleteItem={(itemId) => void t.deleteItem(itemId)}
+                    onOptimize={() => void trip.optimizeDay(selectedDay.id)}
+                    onUpdateItem={(itemId, data) => void trip.updateItem(itemId, data)}
+                    onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
                     onMoveItem={handleMoveItem}
-                    onUpdateDay={(dayId, data) => void t.updateDay(dayId, data)}
+                    onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
                     expanded
                     onToggleExpanded={() => {}}
                   />
@@ -484,7 +535,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
           </section>
         )}
 
-        {isMobile && immersiveSequence.length > 0 ? (
+        {isMobile && canStart ? (
           <div className="fixed inset-x-4 bottom-4 z-40">
             <button
               type="button"
@@ -501,18 +552,26 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
         <MobilePointPoolSheet
           pointPoolItems={sheetPoolItems}
-          getPointPreview={t.getPointPreview}
+          getPointPreview={trip.getPointPreview}
           onAddToRoute={(pointId) => {
-            void t.addItem(selectedDayId ?? null, { kind: 'point', pointId })
+            void trip.addItem(selectedDayId ?? null, { kind: 'point', pointId })
           }}
           isOpen={poolSheetOpen}
           onClose={() => setPoolSheetOpen(false)}
           selectedDayLabel={selectedDay ? `Day ${selectedDay.dayIndex}` : null}
         />
 
-        {t.toast ? (
+        <StartDayPickerSheet
+          open={startDayPickerOpen}
+          days={detail.days}
+          items={detail.items}
+          onPick={handlePickStartDay}
+          onClose={() => setStartDayPickerOpen(false)}
+        />
+
+        {trip.toast ? (
           <div className="fixed bottom-6 left-1/2 z-[110] -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">
-            {t.toast}
+            {trip.toast}
           </div>
         ) : null}
       </div>

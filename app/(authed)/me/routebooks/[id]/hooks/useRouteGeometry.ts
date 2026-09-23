@@ -7,14 +7,15 @@ import type { RoutePreviewLeg } from '@/components/route/routePreviewLayers'
 /**
  * 把某天 legs 结果换算成 RoutePreviewMap 的分段线（GeoJSON 顺序 [lng, lat]）。
  * B1 全是 heuristic：polyline 为空 → 站点直连虚线；agent/google 段（B2）有折线时实线。
- * enabled=false（路线开关关闭）返回 undefined，地图回退到无分段渲染。
+ * enabled=false（路线开关关闭）或 legs 未到返回 []： legs !== undefined 时地图才走
+ * 分段渲染，返回 undefined 会让地图回退到旧的全点虚线链。
  */
 export function useRouteGeometry(
   dayLegs: DayLegsResult | undefined,
   enabled: boolean
-): { legs: RoutePreviewLeg[] | undefined } {
-  const legs = useMemo<RoutePreviewLeg[] | undefined>(() => {
-    if (!enabled || !dayLegs) return undefined
+): { legs: RoutePreviewLeg[] } {
+  const legs = useMemo<RoutePreviewLeg[]>(() => {
+    if (!enabled || !dayLegs) return []
     const stopById = new Map(dayLegs.stops.map((stop) => [stop.id, stop]))
     const out: RoutePreviewLeg[] = []
     for (const leg of dayLegs.legs) {

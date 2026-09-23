@@ -22,6 +22,7 @@ import {
 } from './routePreviewPopup'
 import {
   applyMarkerActive,
+  applyMarkerVariant,
   distanceMeters,
   type MarkerLayout,
   type MarkerVariant,
@@ -433,6 +434,8 @@ export function RoutePreviewMap({
   useEffect(() => {
     for (const entry of markerEntriesRef.current) {
       applyMarkerActive(entry.el, entry.id === activePointId)
+      // active 高亮会重写内层底色/描边：补一次 variant，未安排的空心等样式不被覆盖
+      applyMarkerVariant(entry.el, latestStateRef.current.markerVariants?.[entry.id])
     }
     if (!activePointId) return
     const map = mapRef.current

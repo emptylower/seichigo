@@ -83,13 +83,15 @@ export function useTripData(id: string) {
   }, [parsePointPoolItems])
 
   const undoRing = useUndoRing()
+  // useUndoRing 每次渲染返回新对象，load 只能依赖稳定的 clear（useCallback 空依赖）
+  const clearUndo = undoRing.clear
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     setCheckedInPointIds(new Set())
     setPointPoolItems([])
-    undoRing.clear()
+    clearUndo()
     void loadRouteBooks()
     try {
       const rbRes = await fetch(`/api/me/routebooks/${id}`)
@@ -129,7 +131,7 @@ export function useTripData(id: string) {
       setError('加载失败')
       setLoading(false)
     }
-  }, [id, loadRouteBooks, parsePointPoolItems, undoRing])
+  }, [id, loadRouteBooks, parsePointPoolItems, clearUndo])
 
   useEffect(() => {
     void load()
@@ -264,6 +266,7 @@ export function useTripData(id: string) {
     loading,
     error,
     toast,
+    showToast,
     reload,
 
     pointPoolItems,

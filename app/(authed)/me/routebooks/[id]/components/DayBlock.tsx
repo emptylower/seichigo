@@ -32,6 +32,8 @@ type DayBlockProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   expanded: boolean
   onToggleExpanded: () => void
+  /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
+  dropBlocked?: boolean
 }
 
 export function DayBlock({
@@ -53,6 +55,7 @@ export function DayBlock({
   onUpdateDay,
   expanded,
   onToggleExpanded,
+  dropBlocked = false,
 }: DayBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${day.id}` })
 
@@ -89,8 +92,13 @@ export function DayBlock({
       aria-label={dayLabel(day, day.dayIndex)}
       className={`rounded-[24px] border transition ${
         selected ? 'border-brand-200 bg-white shadow-[0_20px_36px_-30px_rgba(225,29,72,0.4)]' : 'border-pink-100/80 bg-white/80'
-      } ${isOver ? 'ring-2 ring-brand-300/70' : ''}`}
+      } ${isOver ? 'ring-2 ring-brand-300/70' : ''} ${dropBlocked ? 'opacity-50 saturate-50' : ''}`}
     >
+      {dropBlocked ? (
+        <div className="mx-2 mt-2 rounded-xl bg-slate-100 px-3 py-1.5 text-center text-[11px] font-medium text-slate-500">
+          这一天最多 25 个点
+        </div>
+      ) : null}
       <div
         role="button"
         tabIndex={0}

@@ -31,6 +31,8 @@ type DayPlanSidebarProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   onInsertDay: (afterDayIndex: number) => void
   onDeleteDay: (dayId: string) => void
+  /** 拖拽悬停超限置灰的天（useTripDnd.limitBlockedDayId） */
+  limitBlockedDayId?: string | null
 }
 
 function readExpandedMap(routeBookId: string): Record<string, boolean> {
@@ -74,6 +76,7 @@ export function DayPlanSidebar({
   onUpdateDay,
   onInsertDay,
   onDeleteDay,
+  limitBlockedDayId = null,
 }: DayPlanSidebarProps) {
   const days = useMemo(() => [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex), [detail.days])
   const { byDay, unassigned } = useMemo(
@@ -184,6 +187,7 @@ export function DayPlanSidebar({
             onUpdateDay={onUpdateDay}
             expanded={isExpanded(day.id)}
             onToggleExpanded={() => toggleDay(day.id)}
+            dropBlocked={limitBlockedDayId === day.id}
           />
         ))}
 

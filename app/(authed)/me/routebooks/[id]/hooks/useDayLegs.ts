@@ -21,75 +21,61 @@ function daySignature(detail: RouteBookDetail, dayId: string): string {
   return `${day?.defaultTravelMode ?? 'transit'}|${itemsSig}|${lodgingSig}|${placeSig}`
 }
 
-export function useDayLegs(routeBookId: string, detail: RouteBookDetail | null, enabled: boolean) {
+/** 只拉选中天的 legs（服务端按天计算坐标）；切天再拉，按 dayId + 顺序签名缓存 */
+export function useDayLegs(
+  routeBookId: string,
+  detail: RouteBookDetail | null,
+  selectedDayId: string | null,
+  enabled: boolean
+) {
   const [legsByDay, setLegsByDay] = useState<Record<string, DayLegsResult>>({})
   const cacheRef = useRef(new Map<string, DayLegsResult>())
 
-  const signatures = useMemo(() => {
-    if (!detail) return new Map<string, string>()
-    return new Map(detail.days.map((day) => [day.id, daySignature(detail, day.id)]))
-  }, [detail])
+  const signature = useMemo(() => {
+    if (!detail || !selectedDayId) return null
+    if (!detail.days.some((day) => day.id === selectedDayId)) return null
+    return daySignature(detail, selectedDayId)
+  }, [detail, selectedDayId])
 
   useEffect(() => {
-    if (!detail || !enabled) return
-    let cancelled = false
+    if (!detail || !enabled || !selectedDayId || !signature) return
+    const dayId = selectedDayId
+    const cacheKey = `${dayId}|${signature}`
 
-    const fromCache: Record<string, DayLegsResult> = {}
-    const toFetch: string[] = []
-    for (const [dayId, sig] of signatures) {
-      const cached = cacheRef.current.get(`${dayId}|${sig}`)
-      if (cached) fromCache[dayId] = cached
-      else toFetch.push(dayId)
+    const cached = cacheRef.current.get(cacheKey)
+    if (cached) {
+      setLegsByDay((prev) => (prev[dayId] === cached ? prev : { ...prev, [dayId]: cached }))
+      return
     }
 
-    setLegsByDay((prev) => {
-      const next: Record<string, DayLegsResult> = {}
-      for (const dayId of signatures.keys()) {
-        const data = fromCache[dayId] ?? prev[dayId]
-        if (data) next[dayId] = data
-      }
-      return next
-    })
-
-    if (!toFetch.length) return
-
+    let cancelled = false
     void (async () => {
-      const results = await Promise.all(
-        toFetch.map(async (dayId) => {
-          try {
-            const res = await fetch(`/api/me/routebooks/${routeBookId}/days/${dayId}/legs`)
-            const data = (await res.json().catch(() => null)) as
-              | { ok?: boolean; stops?: DayLegsResult['stops']; legs?: DayLegsResult['legs']; staleTransitItemIds?: string[] }
-              | null
-            if (!res.ok || !data?.ok) return [dayId, null] as const
-            const result: DayLegsResult = {
-              stops: Array.isArray(data.stops) ? data.stops : [],
-              legs: Array.isArray(data.legs) ? data.legs : [],
-              staleTransitItemIds: Array.isArray(data.staleTransitItemIds) ? data.staleTransitItemIds : [],
-            }
-            return [dayId, result] as const
-          } catch {
-            return [dayId, null] as const
+      let result: DayLegsResult | null = null
+      try {
+        const res = await fetch(`/api/me/routebooks/${routeBookId}/days/${dayId}/legs`)
+        const data = (await res.json().catch(() => null)) as
+          | { ok?: boolean; stops?: DayLegsResult['stops']; legs?: DayLegsResult['legs']; staleTransitItemIds?: string[] }
+          | null
+        if (res.ok && data?.ok) {
+          result = {
+            stops: Array.isArray(data.stops) ? data.stops : [],
+            legs: Array.isArray(data.legs) ? data.legs : [],
+            staleTransitItemIds: Array.isArray(data.staleTransitItemIds) ? data.staleTransitItemIds : [],
           }
-        })
-      )
-      if (cancelled) return
-      setLegsByDay((prev) => {
-        const next = { ...prev }
-        for (const [dayId, result] of results) {
-          if (!result) continue
-          const sig = signatures.get(dayId)
-          if (sig) cacheRef.current.set(`${dayId}|${sig}`, result)
-          next[dayId] = result
         }
-        return next
-      })
+      } catch {
+        result = null
+      }
+      if (cancelled || !result) return
+      const finalResult = result
+      cacheRef.current.set(cacheKey, finalResult)
+      setLegsByDay((prev) => ({ ...prev, [dayId]: finalResult }))
     })()
 
     return () => {
       cancelled = true
     }
-  }, [detail, enabled, routeBookId, signatures])
+  }, [detail, enabled, routeBookId, selectedDayId, signature])
 
   return { legsByDay }
 }

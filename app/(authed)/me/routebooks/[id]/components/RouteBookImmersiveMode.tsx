@@ -119,6 +119,9 @@ export function RouteBookImmersiveMode({
     : null
   const currentOrdinal = currentStop ? Math.max(1, stops.findIndex((stop) => stop.item.id === currentStop.item.id) + 1) : checkedCount
   const lastCheckedPreview = lastCheckedPointId ? getPointPreview(lastCheckedPointId) : null
+  // 最后一站是自定义点（无打卡）时也要有明确的「完成今天」出口
+  const isLastRemaining = remainingStops.length > 0 && currentIndex >= remainingStops.length - 1
+  const isFinalPlaceStop = Boolean(currentStop && currentStop.item.kind === 'place' && isLastRemaining)
 
   useEffect(() => {
     if (!('geolocation' in navigator)) return
@@ -368,10 +371,14 @@ export function RouteBookImmersiveMode({
                   <button
                     type="button"
                     onClick={handleSkip}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900 py-3.5 font-bold text-white hover:bg-slate-800 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    className={`flex items-center justify-center gap-2 rounded-2xl py-3.5 font-bold active:scale-95 focus-visible:outline-none ${
+                      isFinalPlaceStop
+                        ? 'bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-300/60'
+                        : 'border border-white/10 bg-slate-900 text-white hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-white/20'
+                    }`}
                   >
-                    <SkipForward size={18} />
-                    跳过
+                    {isFinalPlaceStop ? <CheckCircle2 size={18} /> : <SkipForward size={18} />}
+                    {isFinalPlaceStop ? '完成今天' : '跳过'}
                   </button>
                 </div>
               </>
