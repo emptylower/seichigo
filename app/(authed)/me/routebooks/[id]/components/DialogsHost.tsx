@@ -57,7 +57,7 @@ export function useDialogsHost({
   updateLodging: (lodgingId: string, input: Partial<LodgingInput>) => Promise<boolean>
   addItem: (dayId: string | null, input: CreateItemInput) => Promise<string | null>
   updateItem: (itemId: string, data: UpdateItemInput) => Promise<boolean>
-  insertDay: (afterDayIndex: number) => Promise<boolean>
+  insertDay: (afterDayIndex: number) => Promise<string | null>
   deleteDay: (dayId: string) => Promise<boolean>
   reorderDays: (orderedDayIds: string[]) => Promise<boolean>
   locale?: SupportedLocale
@@ -170,7 +170,7 @@ export function useDialogsHost({
           locale={locale}
           onClose={close}
           onSubmit={(orderedDayIds) => reorderDays(orderedDayIds)}
-          onInsertDay={(afterDayIndex) => void insertDay(afterDayIndex)}
+          onInsertDay={(afterVisualIndex) => insertDay(afterVisualIndex)}
           onDeleteDay={(dayId) => void deleteDay(dayId)}
         />
       )

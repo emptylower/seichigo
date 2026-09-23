@@ -2,8 +2,9 @@
 
 import { useCallback } from 'react'
 import type { DayRecord, RouteBookDetail, RouteBookStatus, TravelMode } from '../types'
-import { JSON_HEADERS } from './tripDataApi'
+import { JSON_HEADERS, stripBookUpdatedAt } from './tripDataApi'
 import { useMutationBase, type MutationDeps } from './useMutationBase'
+import { applyDayDeleteLocal, applyDayInsertLocal } from '../utils'
 import { tr } from '../../i18n'
 import type { PatchBookInput } from './tripDataTypes'
 
@@ -69,19 +70,31 @@ export function useDayMutations({
   )
 
   const insertDay = useCallback(
-    async (afterDayIndex: number): Promise<boolean> => {
-      const result = await api<{ day?: DayRecord & { bookUpdatedAt?: string } }>(
+    async (afterDayIndex: number): Promise<string | null> => {
+      const result = await api<{ day?: DayRecord & { bookUpdatedAt?: string }; bookUpdatedAt?: string }>(
         `/api/me/routebooks/${id}/days`,
         { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ afterDayIndex }) }
       )
-      if (!result.ok) {
-        handleFailure(result, null, tr('routebook.detail.addFailed', localeRef.current))
-        return false
+      if (!result.ok || !result.data.day) {
+        handleFailure(
+          result.ok === false
+            ? result
+            : { ok: false, status: 500, error: tr('routebook.detail.addFailed', localeRef.current) },
+          null,
+          tr('routebook.detail.addFailed', localeRef.current)
+        )
+        return null
       }
-      await load()
-      return true
+      const day = stripBookUpdatedAt(result.data.day)
+      const bookUpdatedAt =
+        typeof result.data.bookUpdatedAt === 'string'
+          ? result.data.bookUpdatedAt
+          : (result.data.day.bookUpdatedAt ?? null)
+      // 不整页重载：按与服务端一致的重编规则本地插入（天顺序弹窗依赖弹窗不关闭）
+      setDetail((cur) => (cur ? applyDayInsertLocal(cur, day, bookUpdatedAt) : cur))
+      return day.id
     },
-    [api, handleFailure, id, load, localeRef]
+    [api, handleFailure, id, localeRef, setDetail]
   )
 
   const updateDay = useCallback(
@@ -110,17 +123,19 @@ export function useDayMutations({
 
   const deleteDay = useCallback(
     async (dayId: string): Promise<boolean> => {
-      const result = await api<{ ok?: boolean }>(`/api/me/routebooks/${id}/days/${dayId}`, {
+      const result = await api<{ ok?: boolean; bookUpdatedAt?: string }>(`/api/me/routebooks/${id}/days/${dayId}`, {
         method: 'DELETE',
       })
       if (!result.ok) {
         handleFailure(result, null, tr('routebook.detail.deleteFailed', localeRef.current))
         return false
       }
-      await load()
+      const bookUpdatedAt = typeof result.data.bookUpdatedAt === 'string' ? result.data.bookUpdatedAt : null
+      // 不整页重载：本地删掉该天并重编后续 dayIndex/住宿（规则与服务端一致）
+      setDetail((cur) => (cur ? (applyDayDeleteLocal(cur, dayId, bookUpdatedAt) ?? cur) : cur))
       return true
     },
-    [api, handleFailure, id, load, localeRef]
+    [api, handleFailure, id, localeRef, setDetail]
   )
 
   const reorderDays = useCallback(

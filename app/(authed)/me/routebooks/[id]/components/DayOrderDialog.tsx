@@ -16,16 +16,34 @@ type Props = {
   /** 每天条目数（任何 kind 都算）：空天才可删 */
   itemCountByDay: Record<string, number>
   onSubmit: (orderedDayIds: string[]) => Promise<boolean | void> | boolean | void
-  onInsertDay: (afterDayIndex: number) => void
+  /** 按可视位置插入（1 基）：返回新天 id 时弹窗把新天插到点击处的下一位 */
+  onInsertDay: (afterVisualIndex: number) => Promise<string | null> | string | null
   onDeleteDay: (dayId: string) => void
   onClose: () => void
   locale?: SupportedLocale
+}
+
+/** 服务端天列表并入本地已拖顺序：保留 prev 里仍存在的顺序，新增天追加到末尾（插入场景随后由 insertOrderAfter 归位） */
+export function mergeDayOrder(prev: string[], serverIds: string[]): string[] {
+  if (prev.length === 0) return serverIds
+  const alive = prev.filter((id) => serverIds.includes(id))
+  const added = serverIds.filter((id) => !alive.includes(id))
+  return [...alive, ...added]
+}
+
+/** 把 newId 插到 anchorId 的下一位（已存在则先挪走）；anchor 不存在时追加到末尾 */
+export function insertOrderAfter(prev: string[], anchorId: string, newId: string): string[] {
+  const without = prev.filter((id) => id !== newId)
+  const at = without.indexOf(anchorId)
+  if (at < 0) return [...without, newId]
+  return [...without.slice(0, at + 1), newId, ...without.slice(at + 1)]
 }
 
 function SortableDayRow({
   day,
   count,
   deletable,
+  inserting,
   onInsertBelow,
   onDelete,
   locale,
@@ -33,6 +51,7 @@ function SortableDayRow({
   day: DayRecord
   count: number
   deletable: boolean
+  inserting: boolean
   onInsertBelow: () => void
   onDelete: () => void
   locale: SupportedLocale
@@ -64,7 +83,8 @@ function SortableDayRow({
         type="button"
         aria-label={tr('routebook.dayOrder.insertBelow', locale)}
         title={tr('routebook.dayOrder.insertBelow', locale)}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-pink-50 hover:text-brand-600"
+        disabled={inserting}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-pink-50 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-35"
         onClick={onInsertBelow}
       >
         <Plus className="h-4 w-4" />
@@ -96,17 +116,13 @@ export function DayOrderDialog({
 }: Props) {
   const [order, setOrder] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [inserting, setInserting] = useState(false)
 
-  // 打开时按当前顺序初始化；打开期间插入/删除天后合并进本地顺序
+  // 打开时按当前顺序初始化；打开期间插入/删除天后合并进本地顺序（保留已拖出的顺序）
   useEffect(() => {
     if (!open) return
     const serverIds = [...days].sort((a, b) => a.dayIndex - b.dayIndex).map((day) => day.id)
-    setOrder((prev) => {
-      if (prev.length === 0) return serverIds
-      const alive = prev.filter((id) => serverIds.includes(id))
-      const added = serverIds.filter((id) => !alive.includes(id))
-      return [...alive, ...added]
-    })
+    setOrder((prev) => mergeDayOrder(prev, serverIds))
   }, [open, days])
 
   if (!open) return null
@@ -123,6 +139,18 @@ export function DayOrderDialog({
       if (from < 0 || to < 0) return prev
       return arrayMove(prev, from, to)
     })
+  }
+
+  // 「在下方插入」用可视位置（本地可能已拖出与服务端不同的顺序）；
+  // 拿到新天 id 后插到锚点下一位，弹窗保持打开
+  const handleInsertBelow = async (anchorId: string, visualIndex: number) => {
+    if (inserting || submitting) return
+    setInserting(true)
+    const newId = await onInsertDay(visualIndex + 1)
+    setInserting(false)
+    if (typeof newId === 'string' && newId) {
+      setOrder((prev) => insertOrderAfter(prev, anchorId, newId))
+    }
   }
 
   const handleSubmit = async () => {
@@ -161,13 +189,14 @@ export function DayOrderDialog({
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedDays.map((day) => day.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
-              {orderedDays.map((day) => (
+              {orderedDays.map((day, index) => (
                 <SortableDayRow
                   key={day.id}
                   day={day}
                   count={itemCountByDay[day.id] ?? 0}
                   deletable={(itemCountByDay[day.id] ?? 0) === 0 && orderedDays.length > 1}
-                  onInsertBelow={() => onInsertDay(day.dayIndex)}
+                  inserting={inserting}
+                  onInsertBelow={() => void handleInsertBelow(day.id, index)}
                   onDelete={() => onDeleteDay(day.id)}
                   locale={locale}
                 />

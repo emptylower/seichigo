@@ -1,4 +1,4 @@
-import type { DayRecord, ItemRecord, PlaceRecord, PointPreview, NavMode } from './types'
+import type { DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail, NavMode } from './types'
 import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
@@ -145,6 +145,88 @@ export function formatDate(value: string, locale: SupportedLocale = 'zh'): strin
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return tr('routebook.common.recentlyUpdated', locale)
   return parsed.toLocaleDateString(toIntlLocale(locale))
+}
+
+/** 与 lib/routeBook/rules.ts computeDayDate 一致：date = startDate + (dayIndex-1) 天（ISO 字符串版） */
+export function computeDayDateIso(startDate: string | null, dayIndex: number): string | null {
+  if (!startDate) return null
+  const base = Date.parse(startDate)
+  if (Number.isNaN(base)) return null
+  return new Date(base + (dayIndex - 1) * 86_400_000).toISOString()
+}
+
+/** 与 shiftLodgingForInsert 一致：afterDayIndex 之后的区间端点 +1 */
+export function shiftLodgingAfterInsert<T extends { fromDayIndex: number; toDayIndex: number }>(
+  lodging: T,
+  afterDayIndex: number
+): T {
+  return {
+    ...lodging,
+    fromDayIndex: lodging.fromDayIndex > afterDayIndex ? lodging.fromDayIndex + 1 : lodging.fromDayIndex,
+    toDayIndex: lodging.toDayIndex > afterDayIndex ? lodging.toDayIndex + 1 : lodging.toDayIndex,
+  }
+}
+
+/** 与 shiftLodgingForDelete 一致：返回 null 表示整段被删掉 */
+export function shiftLodgingAfterDelete<T extends { fromDayIndex: number; toDayIndex: number }>(
+  lodging: T,
+  delDayIndex: number
+): T | null {
+  const fromDayIndex = lodging.fromDayIndex > delDayIndex ? lodging.fromDayIndex - 1 : lodging.fromDayIndex
+  const toDayIndex = lodging.toDayIndex >= delDayIndex ? lodging.toDayIndex - 1 : lodging.toDayIndex
+  if (toDayIndex < fromDayIndex) return null
+  return { ...lodging, fromDayIndex, toDayIndex }
+}
+
+/** 插入天后的本地重编：之后的天 dayIndex/date +1，新天入列，dayCount+1，住宿顺移（与服务端 insertDayTx 一致） */
+export function applyDayInsertLocal(
+  detail: RouteBookDetail,
+  day: DayRecord,
+  updatedAt: string | null
+): RouteBookDetail {
+  const afterDayIndex = day.dayIndex - 1
+  return {
+    ...detail,
+    dayCount: detail.dayCount + 1,
+    updatedAt: updatedAt ?? detail.updatedAt,
+    days: [
+      ...detail.days.map((row) =>
+        row.dayIndex > afterDayIndex
+          ? { ...row, dayIndex: row.dayIndex + 1, date: computeDayDateIso(detail.startDate, row.dayIndex + 1) }
+          : row
+      ),
+      day,
+    ],
+    lodgings: detail.lodgings.map((row) => shiftLodgingAfterInsert(row, afterDayIndex)),
+  }
+}
+
+/** 删除天后的本地重编：删该天，之后的天 dayIndex/date -1，住宿顺移/整段删除（与服务端 deleteDayTx 一致） */
+export function applyDayDeleteLocal(
+  detail: RouteBookDetail,
+  dayId: string,
+  updatedAt: string | null
+): RouteBookDetail | null {
+  const target = detail.days.find((row) => row.id === dayId)
+  if (!target) return null
+  const delIndex = target.dayIndex
+  return {
+    ...detail,
+    dayCount: detail.dayCount - 1,
+    updatedAt: updatedAt ?? detail.updatedAt,
+    days: detail.days
+      .filter((row) => row.id !== dayId)
+      .map((row) =>
+        row.dayIndex > delIndex
+          ? { ...row, dayIndex: row.dayIndex - 1, date: computeDayDateIso(detail.startDate, row.dayIndex - 1) }
+          : row
+      ),
+    // 服务端只允许删空天；这里的 dayId→null 只是兜底
+    items: detail.items.map((row) => (row.dayId === dayId ? { ...row, dayId: null } : row)),
+    lodgings: detail.lodgings
+      .map((row) => shiftLodgingAfterDelete(row, delIndex))
+      .filter((row): row is LodgingRecord => row !== null),
+  }
 }
 
 export function parseBangumiId(pointId: string): number | null {
