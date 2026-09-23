@@ -1,4 +1,3 @@
-import crypto from 'node:crypto'
 import {
   DAY_COUNT_MAX,
   PLACE_LIMIT,
@@ -6,23 +5,18 @@ import {
   assertAnchorOrder,
   assertDayLimit,
   assertLodgingNoOverlap,
-  computeDayDate,
   normalizeTransitItems,
-  shiftLodgingForDelete,
-  shiftLodgingForInsert,
 } from './rules'
+import { RouteBookMemoryDays, type RouteBookMemoryDaysOptions } from './repoMemoryDays'
 import type {
   DayContext,
-  DayReorderResult,
   ItemCreateInput,
   ItemCreateResult,
-  ItemKind,
   ItemListResult,
   ItemUpdateInput,
   LodgingInput,
   PlaceInput,
   RouteBook,
-  RouteBookDay,
   RouteBookDetail,
   RouteBookItem,
   RouteBookListItem,
@@ -33,53 +27,33 @@ import type {
   RouteBookRepo,
   RouteBookStatus,
   RouteBookUpdateInput,
-  TravelMode,
   WriteReceipt,
   WithBookUpdatedAt,
 } from './repo'
 
-type Options = {
-  now?: () => Date
-  idFactory?: () => string
+type Options = RouteBookMemoryDaysOptions & {
   pointBangumiMap?: Map<string, number>
   /** A2：getDayContext 组装 pointCoords 用的假实现（与 api.ts 的 deps.pointCoords 同契约）；缺省空 Map */
   pointCoords?: (pointIds: string[]) => Promise<Map<string, { lat: number; lng: number }>>
 }
 
-export class InMemoryRouteBookRepo implements RouteBookRepo {
-  private readonly now: () => Date
-  private readonly idFactory: () => string
+export class InMemoryRouteBookRepo extends RouteBookMemoryDays implements RouteBookRepo {
   private readonly pointBangumiMap: Map<string, number>
   private readonly pointCoordsLookup: Options['pointCoords']
 
   private readonly byId = new Map<string, RouteBook>()
-  private readonly daysById = new Map<string, RouteBookDay>()
-  private readonly itemsById = new Map<string, RouteBookItem>()
   private readonly placesById = new Map<string, RouteBookPlace>()
-  private readonly lodgingsById = new Map<string, RouteBookLodging>()
 
   constructor(options?: Options) {
-    this.now = options?.now ?? (() => new Date())
-    this.idFactory = options?.idFactory ?? (() => crypto.randomUUID())
+    super(options)
     this.pointBangumiMap = options?.pointBangumiMap ?? new Map()
     this.pointCoordsLookup = options?.pointCoords
   }
 
-  private requireBook(routeBookId: string, userId: string): RouteBook {
+  protected requireBook(routeBookId: string, userId: string): RouteBook {
     const book = this.byId.get(routeBookId)
     if (!book || book.userId !== userId) throw new RouteBookRuleError('not_found', '行程不存在')
     return book
-  }
-
-  private bookDays(routeBookId: string): RouteBookDay[] {
-    return Array.from(this.daysById.values())
-      .filter((day) => day.routeBookId === routeBookId)
-      .sort((a, b) => a.dayIndex - b.dayIndex)
-  }
-
-  private dayIndexOf(routeBookId: string, dayId: string | null): number {
-    if (dayId === null) return Number.MAX_SAFE_INTEGER
-    return this.daysById.get(dayId)?.dayIndex ?? Number.MAX_SAFE_INTEGER
   }
 
   private listBookItems(routeBookId: string): RouteBookItem[] {
@@ -95,13 +69,8 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       })
   }
 
-  private dayItems(routeBookId: string, dayId: string | null): RouteBookItem[] {
+  protected dayItems(routeBookId: string, dayId: string | null): RouteBookItem[] {
     return this.listBookItems(routeBookId).filter((item) => item.dayId === dayId)
-  }
-
-  private touch(book: RouteBook): Date {
-    book.updatedAt = this.now()
-    return book.updatedAt
   }
 
   /** 天（或未安排区）内重编 sortOrder 并执行 transit 附着规则 */
@@ -112,26 +81,6 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     normalized.items.forEach((item, index) => {
       this.itemsById.set(item.id, item.sortOrder === index ? item : { ...item, sortOrder: index })
     })
-  }
-
-  private createDays(book: RouteBook, fromIndex: number, toIndex: number): void {
-    for (let dayIndex = fromIndex; dayIndex <= toIndex; dayIndex++) {
-      const day: RouteBookDay = {
-        id: this.idFactory(),
-        routeBookId: book.id,
-        dayIndex,
-        date: computeDayDate(book.startDate, dayIndex),
-        title: null,
-        defaultTravelMode: 'transit',
-      }
-      this.daysById.set(day.id, day)
-    }
-  }
-
-  private recomputeDayDates(book: RouteBook): void {
-    for (const day of this.bookDays(book.id)) {
-      day.date = computeDayDate(book.startDate, day.dayIndex)
-    }
   }
 
   private assertStale(book: RouteBook, expectedUpdatedAt?: Date): void {
@@ -254,112 +203,6 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       .filter((b) => !filters?.status || b.status === filters.status)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       .map((b) => ({ ...b, firstPointImage: null }))
-  }
-
-  private requireDay(routeBookId: string, dayId: string): RouteBookDay {
-    const day = this.daysById.get(dayId)
-    if (!day || day.routeBookId !== routeBookId) throw new RouteBookRuleError('invalid', '目标天不存在')
-    return day
-  }
-
-  async insertDay(routeBookId: string, userId: string, afterDayIndex: number): Promise<WithBookUpdatedAt<RouteBookDay>> {
-    const book = this.requireBook(routeBookId, userId)
-    if (afterDayIndex < 0 || afterDayIndex > book.dayCount) {
-      throw new RouteBookRuleError('invalid', '插入位置无效')
-    }
-    if (book.dayCount + 1 > DAY_COUNT_MAX) {
-      throw new RouteBookRuleError('invalid', `天数最多 ${DAY_COUNT_MAX}`)
-    }
-
-    for (const day of this.bookDays(routeBookId)) {
-      if (day.dayIndex > afterDayIndex) day.dayIndex += 1
-    }
-    for (const lodging of this.lodgingsById.values()) {
-      if (lodging.routeBookId !== routeBookId) continue
-      const shifted = shiftLodgingForInsert(lodging, afterDayIndex)
-      lodging.fromDayIndex = shifted.fromDayIndex
-      lodging.toDayIndex = shifted.toDayIndex
-    }
-
-    const day: RouteBookDay = {
-      id: this.idFactory(),
-      routeBookId,
-      dayIndex: afterDayIndex + 1,
-      date: computeDayDate(book.startDate, afterDayIndex + 1),
-      title: null,
-      defaultTravelMode: 'transit',
-    }
-    this.daysById.set(day.id, day)
-    book.dayCount += 1
-    this.recomputeDayDates(book)
-    const bookUpdatedAt = this.touch(book)
-    return { ...day, bookUpdatedAt }
-  }
-
-  async updateDay(
-    routeBookId: string,
-    userId: string,
-    dayId: string,
-    data: { title?: string | null; defaultTravelMode?: TravelMode }
-  ): Promise<WithBookUpdatedAt<RouteBookDay> | null> {
-    const book = this.requireBook(routeBookId, userId)
-    const day = this.daysById.get(dayId)
-    if (!day || day.routeBookId !== routeBookId) return null
-
-    if (data.title !== undefined) day.title = data.title
-    if (data.defaultTravelMode !== undefined) day.defaultTravelMode = data.defaultTravelMode
-    const bookUpdatedAt = this.touch(book)
-    return { ...day, bookUpdatedAt }
-  }
-
-  async deleteDay(routeBookId: string, userId: string, dayId: string): Promise<WriteReceipt | null> {
-    const book = this.requireBook(routeBookId, userId)
-    const day = this.daysById.get(dayId)
-    if (!day || day.routeBookId !== routeBookId) return null
-
-    if (book.dayCount <= 1) {
-      throw new RouteBookRuleError('invalid', '至少要保留一天')
-    }
-    if (this.dayItems(routeBookId, dayId).length > 0) {
-      throw new RouteBookRuleError('day_not_empty', '先清空这一天再删除')
-    }
-
-    const delIndex = day.dayIndex
-    this.daysById.delete(dayId)
-    for (const other of this.bookDays(routeBookId)) {
-      if (other.dayIndex > delIndex) other.dayIndex -= 1
-    }
-    for (const lodging of Array.from(this.lodgingsById.values())) {
-      if (lodging.routeBookId !== routeBookId) continue
-      const shifted = shiftLodgingForDelete(lodging, delIndex)
-      if (!shifted) this.lodgingsById.delete(lodging.id)
-      else {
-        lodging.fromDayIndex = shifted.fromDayIndex
-        lodging.toDayIndex = shifted.toDayIndex
-      }
-    }
-    book.dayCount -= 1
-    this.recomputeDayDates(book)
-    const bookUpdatedAt = this.touch(book)
-    return { bookUpdatedAt }
-  }
-
-  async reorderDays(routeBookId: string, userId: string, orderedDayIds: string[]): Promise<DayReorderResult> {
-    const book = this.requireBook(routeBookId, userId)
-    const days = this.bookDays(routeBookId)
-    const currentIds = new Set(days.map((day) => day.id))
-    const orderedSet = new Set(orderedDayIds)
-    if (orderedDayIds.length !== currentIds.size || orderedDayIds.some((id) => !currentIds.has(id)) || orderedSet.size !== orderedDayIds.length) {
-      throw new RouteBookRuleError('invalid', '列表与当前天数不一致，请刷新')
-    }
-
-    orderedDayIds.forEach((id, index) => {
-      const day = this.daysById.get(id)
-      if (day) day.dayIndex = index + 1
-    })
-    this.recomputeDayDates(book)
-    const bookUpdatedAt = this.touch(book)
-    return { days: this.bookDays(routeBookId), bookUpdatedAt }
   }
 
   async createItem(routeBookId: string, userId: string, input: ItemCreateInput): Promise<ItemCreateResult> {
