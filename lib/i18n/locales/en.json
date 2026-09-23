@@ -1245,6 +1245,15 @@
       "title": "Weather",
       "ariaLabel": "Weather: high {max}°, low {min}°"
     },
+    "dates": {
+      "button": "Dates",
+      "aria": "Edit trip dates",
+      "title": "Trip dates",
+      "startLabel": "Start date",
+      "hint": "Each day's date follows on from the start date",
+      "save": "Save",
+      "clear": "Clear dates"
+    },
     "export": {
       "button": "Export",
       "menuLabel": "Export trip",

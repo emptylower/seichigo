@@ -251,6 +251,8 @@ export function MobileLayout({
                   onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
                   onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
                   weather={weatherForDay(weatherByDate, selectedDay)}
+                  startDate={detail.startDate}
+                  onSaveStartDate={(startDate) => trip.patchBook({ startDate })}
                   locale={locale}
                 />
                 <MobilePlanView

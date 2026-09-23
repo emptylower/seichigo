@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BedDouble, ChevronRight, Plus, X } from 'lucide-react'
+import { BedDouble, CalendarDays, ChevronRight, Plus, X } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview } from '../../types'
 import { dayDateLabel, dayStats } from '../../utils'
@@ -9,6 +9,7 @@ import { lodgingsForDay } from '../DayDetailCard'
 import { tr } from '../../../i18n'
 import type { WeatherDay } from '../../hooks/useWeather'
 import { WeatherBadge } from '../WeatherBadge'
+import { TripDatesForm } from '../TripDates'
 
 type Props = {
   day: DayRecord
@@ -22,6 +23,9 @@ type Props = {
   onAddLodging?: (dayIndex: number) => void
   /** B4：当天天气 */
   weather?: WeatherDay | null
+  /** S4：抽屉里编辑行程开始日期 */
+  startDate?: string | null
+  onSaveStartDate?: (startDate: string | null) => Promise<boolean>
   locale?: SupportedLocale
 }
 
@@ -36,6 +40,8 @@ export function DaySummaryBar({
   onEditLodging,
   onAddLodging,
   weather = null,
+  startDate = null,
+  onSaveStartDate,
   locale = 'zh',
 }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -163,6 +169,20 @@ export function DaySummaryBar({
                 </button>
               ) : null}
             </div>
+            {onSaveStartDate ? (
+              <div className="mt-4 border-t border-pink-100/80 px-1 pt-3">
+                <h3 className="mb-2 flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <CalendarDays className="h-4 w-4 text-brand-500" />
+                  {tr('routebook.dates.title', locale)}
+                </h3>
+                <TripDatesForm
+                  startDate={startDate}
+                  onSave={onSaveStartDate}
+                  onDone={() => setSheetOpen(false)}
+                  locale={locale}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -1245,6 +1245,15 @@
       "title": "当天天气",
       "ariaLabel": "天气：最高 {max}°，最低 {min}°"
     },
+    "dates": {
+      "button": "日期",
+      "aria": "编辑行程日期",
+      "title": "行程日期",
+      "startLabel": "开始日期",
+      "hint": "各天日期按开始日期依次顺延",
+      "save": "保存",
+      "clear": "清除日期"
+    },
     "export": {
       "button": "导出",
       "menuLabel": "导出行程",

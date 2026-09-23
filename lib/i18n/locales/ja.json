@@ -1245,6 +1245,15 @@
       "title": "天気",
       "ariaLabel": "天気：最高 {max}°、最低 {min}°"
     },
+    "dates": {
+      "button": "日程",
+      "aria": "旅程の日付を編集",
+      "title": "旅程の日付",
+      "startLabel": "開始日",
+      "hint": "各日の日付は開始日から順に設定されます",
+      "save": "保存",
+      "clear": "日付をクリア"
+    },
     "export": {
       "button": "エクスポート",
       "menuLabel": "旅程をエクスポート",

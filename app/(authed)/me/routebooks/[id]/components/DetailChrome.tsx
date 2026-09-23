@@ -8,6 +8,7 @@ import { itemDisplayTitle, parseDragRecordId } from '../utils'
 import { ITEM_DND_PREFIX, MARKER_DND_PREFIX, POOL_DND_PREFIX } from '../types'
 import type { ItemRecord, PlaceRecord, PointPoolItem, PointPreview, RouteBookDetail } from '../types'
 import { PlannerPointPoolDragOverlay } from './PlannerPointPoolPanel'
+import { TripDatesButton } from './TripDates'
 import { tr } from '../../i18n'
 
 /** 装载失败态：错误信息 + 返回列表 */
@@ -158,6 +159,8 @@ export function DetailNav({
   onSave,
   onStartEdit,
   onCancelEdit,
+  startDate,
+  onSaveStartDate,
   locale,
 }: {
   title: string
@@ -167,6 +170,9 @@ export function DetailNav({
   onSave: () => void
   onStartEdit: () => void
   onCancelEdit: () => void
+  /** 行程开始日期 + 保存（S4：标题旁「日期」入口） */
+  startDate?: string | null
+  onSaveStartDate?: (startDate: string | null) => Promise<boolean>
   locale: SupportedLocale
 }) {
   return (
@@ -203,6 +209,7 @@ export function DetailNav({
             <Pencil className="h-3 w-3 shrink-0 text-slate-300 transition group-hover:text-brand-500" />
           </button>
         )}
+        {onSaveStartDate ? <TripDatesButton startDate={startDate ?? null} onSave={onSaveStartDate} locale={locale} /> : null}
       </div>
     </nav>
   )

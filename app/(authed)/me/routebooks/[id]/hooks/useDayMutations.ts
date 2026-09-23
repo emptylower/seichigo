@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import type { DayRecord, RouteBookDetail, RouteBookStatus, TravelMode } from '../types'
 import { JSON_HEADERS, stripBookUpdatedAt } from './tripDataApi'
 import { useMutationBase, type MutationDeps } from './useMutationBase'
-import { applyDayDeleteLocal, applyDayInsertLocal } from '../utils'
+import { applyDayDeleteLocal, applyDayInsertLocal, computeDayDateIso } from '../utils'
 import { tr } from '../../i18n'
 import type { PatchBookInput } from './tripDataTypes'
 
@@ -42,13 +42,29 @@ export function useDayMutations({
         handleFailure(result, prev, tr('routebook.detail.saveFailed', localeRef.current))
         return false
       }
-      if (input.startDate !== undefined || input.dayCount !== undefined) {
-        // 服务端会重算各天 date / 补建天，整份重拉
+      if (input.dayCount !== undefined) {
+        // 服务端会补建天，整份重拉
         await load()
         return true
       }
       const updated = result.data.routeBook
       const bookUpdatedAt = result.data.bookUpdatedAt
+      if (input.startDate !== undefined) {
+        // 只改开始日期：服务端按 computeDayDate（start + (dayIndex-1) 天）重算各天 date；
+        // PATCH 响应不带 days，本地按同一规则更新，避免整页重拉（骨架闪烁 + 清空撤销栈）
+        const startDate = typeof updated?.startDate === 'string' ? updated.startDate : input.startDate
+        setDetail((cur) =>
+          cur
+            ? {
+                ...cur,
+                startDate,
+                days: cur.days.map((day) => ({ ...day, date: computeDayDateIso(startDate, day.dayIndex) })),
+                updatedAt: typeof bookUpdatedAt === 'string' ? bookUpdatedAt : cur.updatedAt,
+              }
+            : cur
+        )
+        return true
+      }
       setDetail((cur) =>
         cur
           ? {

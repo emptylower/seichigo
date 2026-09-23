@@ -296,6 +296,8 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
           trip.setTitleDraft(detail.title)
           trip.setEditingTitle(false)
         }}
+        startDate={detail.startDate}
+        onSaveStartDate={(startDate) => trip.patchBook({ startDate })}
         locale={locale}
       />
 
