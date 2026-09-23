@@ -272,7 +272,8 @@ describe('MobileLayout 视图与抽屉（B3 修复 F4/F6/F8）', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: '加入选中天' }))
     expect(trip.addItem).toHaveBeenCalledWith('day1', { kind: 'place', placeId: 'place-1' })
     fireEvent.click(within(sheet).getByRole('button', { name: '添加自定义点' }))
-    expect(dialogs.openPlaceEditor).toHaveBeenCalledWith()
+    // S3：新建自定义点带上当前加入目标天（保存后自动加入该天）
+    expect(dialogs.openPlaceEditor).toHaveBeenCalledWith({ targetDayId: 'day1' })
     fireEvent.click(within(sheet).getByRole('button', { name: '编辑自定义点' }))
     expect(dialogs.openPlaceEditor).toHaveBeenCalledWith({ placeId: 'place-1' })
     fireEvent.click(within(sheet).getByRole('button', { name: '从点位池删除' }))
