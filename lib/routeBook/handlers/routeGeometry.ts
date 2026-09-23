@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { fetchMapboxRoute, readMapboxToken } from '@/lib/routeBook/mapboxRoute'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,17 +80,8 @@ function parsePoints(raw: string): { lng: number; lat: number }[] | null {
 }
 
 // ---------------------------------------------------------------------------
-// Mapbox Directions API types
+// Mapbox Directions：核心请求在 lib/routeBook/mapboxRoute.ts（A1 抽出共用）
 // ---------------------------------------------------------------------------
-
-type MapboxDirectionsBody = {
-  code?: string
-  routes?: Array<{
-    geometry?: GeoJSONLineString
-    distance?: number
-    duration?: number
-  }>
-}
 
 const MAPBOX_PROFILES: Record<string, string> = {
   walking: 'walking',
@@ -160,9 +152,7 @@ export function createRouteGeometryHandler() {
       }
 
       // Check Mapbox token
-      const token =
-        process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-        process.env.MAPBOX_DIRECTIONS_TOKEN
+      const token = readMapboxToken()
       if (!token) {
         return NextResponse.json(
           { ok: false, error: '路线预览服务未配置' },
@@ -170,61 +160,40 @@ export function createRouteGeometryHandler() {
         )
       }
 
-      // Build Mapbox Directions API URL
-      const profile = MAPBOX_PROFILES[mode]
-      const coordinates = points.map((p) => `${p.lng},${p.lat}`).join(';')
-      const apiUrl = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}?geometries=geojson&overview=full&access_token=${token}`
-
-      // Fetch from Mapbox
-      let mapboxRes: Response
-      try {
-        mapboxRes = await fetch(apiUrl, { signal: AbortSignal.timeout(10_000) })
-      } catch {
-        console.error('[routeGeometry] Mapbox API fetch failed')
-        return NextResponse.json(
-          { ok: false, error: '路线服务请求超时' },
-          { status: 502 },
-        )
-      }
-
-      if (!mapboxRes.ok) {
-        console.error('[routeGeometry] Mapbox API HTTP error', mapboxRes.status)
+      const result = await fetchMapboxRoute(points, MAPBOX_PROFILES[mode] as 'walking' | 'driving', { token })
+      if (!result.ok) {
+        if (result.reason === 'fetch') {
+          console.error('[routeGeometry] Mapbox API fetch failed')
+          return NextResponse.json(
+            { ok: false, error: '路线服务请求超时' },
+            { status: 502 },
+          )
+        }
+        if (result.reason === 'no_route') {
+          return NextResponse.json(
+            { ok: false, error: '未找到路线' },
+            { status: 400 },
+          )
+        }
+        console.error('[routeGeometry] Mapbox API error', result.reason)
         return NextResponse.json(
           { ok: false, error: '路线获取失败' },
           { status: 502 },
         )
       }
 
-      const body = (await mapboxRes.json().catch(() => null)) as MapboxDirectionsBody | null
-
-      if (!body || body.code !== 'Ok') {
-        console.error('[routeGeometry] Mapbox API code', body?.code)
-        return NextResponse.json(
-          { ok: false, error: '路线获取失败' },
-          { status: 502 },
-        )
-      }
-
-      const route = body.routes?.[0]
-      if (!route?.geometry) {
-        return NextResponse.json(
-          { ok: false, error: '未找到路线' },
-          { status: 400 },
-        )
-      }
-
-      const result: RouteGeometryResponse & { ok: true } = {
+      const resultPayload: RouteGeometryResponse & { ok: true } = {
         ok: true,
-        geometry: route.geometry,
-        distance: route.distance ?? 0,
-        duration: route.duration ?? 0,
+        geometry: result.geometry,
+        distance: result.distance,
+        duration: result.duration,
         mode,
       }
 
       // Cache result
-      setCache(key, result)
+      setCache(key, resultPayload)
 
-      return NextResponse.json(result)
+      return NextResponse.json(resultPayload)
     },
   }
 }

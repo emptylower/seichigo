@@ -222,7 +222,7 @@ describe('resolveDayLegs', () => {
 })
 
 describe('legs handler', () => {
-  it('GET 返回 stops/legs/staleTransitItemIds（B1 全 heuristic）', async () => {
+  function makeLegDeps(overrides?: Partial<RouteBookApiDeps>) {
     const pointBangumiMap = new Map([['p-near-a', 1], ['p-near-b', 1]])
     const repo = new InMemoryRouteBookRepo({ pointBangumiMap })
     const deps: RouteBookApiDeps = {
@@ -238,28 +238,64 @@ describe('legs handler', () => {
         }
         return map
       },
+      ...overrides,
     }
+    return { repo, deps }
+  }
 
+  async function seedTwoPointDay(repo: InMemoryRouteBookRepo): Promise<{ bookId: string; dayId: string }> {
     const book = await repo.create('u1', '本', 'draft')
     const dayRow = (await repo.getById(book.id, 'u1'))!.days[0]!
-    const a = (await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })).item
+    await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
     await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
-    await repo.createItem(book.id, 'u1', {
-      dayId: dayRow.id,
-      kind: 'transit',
-      title: '交通',
-      index: 1,
-      payload: { transitBetween: { prevItemId: a.id, nextItemId: 'missing' }, transport: { mode: 'walk', durationMin: 5, distanceKm: 0.3 } },
-    })
+    return { bookId: book.id, dayId: dayRow.id }
+  }
 
-    const handlers = createLegHandlers(deps)
-    const res = await handlers.GET(new Request('http://localhost/x'), {
-      params: Promise.resolve({ id: book.id, dayId: dayRow.id }),
+  it('dayGeometry 有：注入整天几何后随响应返回（停靠序列与默认 mode 透传）', async () => {
+    const calls: Array<{ stops: { lat: number; lng: number }[]; mode: string }> = []
+    const geometry = { type: 'LineString' as const, coordinates: [[135.0, 35.0], [135.001, 35.0027]] as [number, number][] }
+    const { repo, deps } = makeLegDeps({
+      fetchDayGeometry: async (stops, mode) => {
+        calls.push({ stops, mode })
+        return geometry
+      },
+    })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { stops: { id: string }[]; legs: { source: string }[]; staleTransitItemIds: string[] }
-    expect(body.stops.map((s) => s.id)).toHaveLength(2)
-    expect(body.legs.every((leg) => leg.source === 'heuristic')).toBe(true)
-    expect(body.staleTransitItemIds.length).toBe(1)
+    const body = (await res.json()) as { dayGeometry: typeof geometry | null; legs: unknown[] }
+    expect(body.dayGeometry).toEqual(geometry)
+    expect(body.legs).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.mode).toBe('transit')
+    expect(calls[0]!.stops.map((s) => `${s.lat},${s.lng}`)).toEqual(['35,135', '35.0027,135'])
+  })
+
+  it('dayGeometry 无：未注入或 fetchDayGeometry 抛错 → null，不影响 legs', async () => {
+    const plain = makeLegDeps()
+    const { bookId, dayId } = await seedTwoPointDay(plain.repo)
+    const plainRes = await createLegHandlers(plain.deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    const plainBody = (await plainRes.json()) as { dayGeometry: unknown; legs: unknown[] }
+    expect(plainBody.dayGeometry).toBeNull()
+    expect(plainBody.legs).toHaveLength(1)
+
+    const broken = makeLegDeps({
+      fetchDayGeometry: async () => {
+        throw new Error('mapbox down')
+      },
+    })
+    const { bookId: bookId2, dayId: dayId2 } = await seedTwoPointDay(broken.repo)
+    const brokenRes = await createLegHandlers(broken.deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId2, dayId: dayId2 }),
+    })
+    expect(brokenRes.status).toBe(200)
+    const brokenBody = (await brokenRes.json()) as { dayGeometry: unknown; legs: unknown[] }
+    expect(brokenBody.dayGeometry).toBeNull()
+    expect(brokenBody.legs).toHaveLength(1)
   })
 })

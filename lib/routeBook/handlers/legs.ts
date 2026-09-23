@@ -29,7 +29,20 @@ export function createLegHandlers(deps: RouteBookApiDeps, resolver: LegResolver 
         const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, detail.items, detail.places, detail.lodgings, pointCoords)
         const legs = await resolveDayLegs(stops, agentLegs, day.defaultTravelMode, resolver)
 
-        return NextResponse.json({ ok: true, stops, legs, staleTransitItemIds })
+        // A1：整天真实道路几何（含住宿首尾，同一停靠序列）；失败不影响 legs
+        let dayGeometry: { type: 'LineString'; coordinates: [number, number][] } | null = null
+        if (deps.fetchDayGeometry) {
+          try {
+            dayGeometry = await deps.fetchDayGeometry(
+              stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+              day.defaultTravelMode
+            )
+          } catch {
+            dayGeometry = null
+          }
+        }
+
+        return NextResponse.json({ ok: true, stops, legs, staleTransitItemIds, dayGeometry })
       } catch (err) {
         return routeBookErrorResponse(err)
       }

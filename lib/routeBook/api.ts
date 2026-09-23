@@ -1,5 +1,5 @@
 import type { Session } from 'next-auth'
-import type { RouteBookRepo } from '@/lib/routeBook/repo'
+import type { RouteBookRepo, TravelMode } from '@/lib/routeBook/repo'
 import type { PointPoolRepo } from '@/lib/pointPool/repo'
 
 export type RouteBookApiDeps = {
@@ -9,6 +9,11 @@ export type RouteBookApiDeps = {
   now: () => Date
   /** 批量取 AnitabiPoint 坐标（null 坐标不进 Map）；optimize/legs 用 */
   pointCoords: (pointIds: string[]) => Promise<Map<string, { lat: number; lng: number }>>
+  /** A1：整天真实道路几何（Mapbox + RouteLegCache）；缺省/失败返回 null */
+  fetchDayGeometry?: (
+    stops: { lat: number; lng: number }[],
+    mode: TravelMode
+  ) => Promise<{ type: 'LineString'; coordinates: [number, number][] } | null>
 }
 
 let cached: RouteBookApiDeps | null = null
@@ -16,12 +21,14 @@ let cached: RouteBookApiDeps | null = null
 export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
   if (cached) return cached
 
-  const [{ PrismaRouteBookRepo }, { PrismaPointPoolRepo }, { getServerAuthSession }, { prisma }] = await Promise.all([
-    import('@/lib/routeBook/repoPrisma'),
-    import('@/lib/pointPool/repoPrisma'),
-    import('@/lib/auth/session'),
-    import('@/lib/db/prisma'),
-  ])
+  const [{ PrismaRouteBookRepo }, { PrismaPointPoolRepo }, { getServerAuthSession }, { prisma }, { resolveDayGeometry }] =
+    await Promise.all([
+      import('@/lib/routeBook/repoPrisma'),
+      import('@/lib/pointPool/repoPrisma'),
+      import('@/lib/auth/session'),
+      import('@/lib/db/prisma'),
+      import('@/lib/routeBook/dayGeometry'),
+    ])
 
   cached = {
     repo: new PrismaRouteBookRepo(),
@@ -41,6 +48,7 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
       }
       return map
     },
+    fetchDayGeometry: resolveDayGeometry,
   }
 
   return cached
