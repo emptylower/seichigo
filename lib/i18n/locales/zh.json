@@ -382,22 +382,10 @@
       "guestSidebarHint": "登录后这里会显示你的最近对话",
       "guestSidebarLogin": "登录",
       "suggestions": [
-        {
-          "emoji": "⛩",
-          "text": "东京 5 天，把《你的名字。》的取景地走一遍"
-        },
-        {
-          "emoji": "🎺",
-          "text": "京都、宇治两天，《吹响！上低音号》圣地巡礼"
-        },
-        {
-          "emoji": "🏕",
-          "text": "山梨三天自驾，跟着《摇曳露营△》去富士五湖"
-        },
-        {
-          "emoji": "🎲",
-          "text": "我只有一个周末，从东京出发帮我挑一条"
-        }
+        { "emoji": "⛩", "text": "东京 5 天，把《你的名字。》的取景地走一遍" },
+        { "emoji": "🎺", "text": "京都、宇治两天，《吹响！上低音号》圣地巡礼" },
+        { "emoji": "🏕", "text": "山梨三天自驾，跟着《摇曳露营△》去富士五湖" },
+        { "emoji": "🎲", "text": "我只有一个周末，从东京出发帮我挑一条" }
       ],
       "errorCreate": "创建失败，请稍后再试",
       "errorNetwork": "网络错误，请稍后再试"
@@ -873,22 +861,10 @@
     "tabs": {
       "sectionTitle": "用户中心",
       "sectionHint": "账户与内容管理",
-      "plan": {
-        "label": "我的计划",
-        "hint": "AI 规划的多日巡礼行程"
-      },
-      "settings": {
-        "label": "个人信息",
-        "hint": "头像、昵称与社交账号"
-      },
-      "favorites": {
-        "label": "我的收藏",
-        "hint": "查看保存的文章"
-      },
-      "routebooks": {
-        "label": "我的地图",
-        "hint": "管理巡礼路线"
-      }
+      "plan": { "label": "我的计划", "hint": "AI 规划的多日巡礼行程" },
+      "settings": { "label": "个人信息", "hint": "头像、昵称与社交账号" },
+      "favorites": { "label": "我的收藏", "hint": "查看保存的文章" },
+      "routebooks": { "label": "我的地图", "hint": "管理巡礼路线" }
     }
   },
   "routebook": {

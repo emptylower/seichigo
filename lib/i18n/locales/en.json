@@ -382,22 +382,10 @@
       "guestSidebarHint": "Sign in to see your recent plans here",
       "guestSidebarLogin": "Sign in",
       "suggestions": [
-        {
-          "emoji": "⛩",
-          "text": "5 days in Tokyo, visiting every Your Name filming spot"
-        },
-        {
-          "emoji": "🎺",
-          "text": "Two days in Kyoto and Uji for a Sound! Euphonium pilgrimage"
-        },
-        {
-          "emoji": "🏕",
-          "text": "A 3-day Yamanashi road trip, following Laid-Back Camp around the Fuji Five Lakes"
-        },
-        {
-          "emoji": "🎲",
-          "text": "I only have one weekend — pick a route from Tokyo for me"
-        }
+        { "emoji": "⛩", "text": "5 days in Tokyo, visiting every Your Name filming spot" },
+        { "emoji": "🎺", "text": "Two days in Kyoto and Uji for a Sound! Euphonium pilgrimage" },
+        { "emoji": "🏕", "text": "A 3-day Yamanashi road trip, following Laid-Back Camp around the Fuji Five Lakes" },
+        { "emoji": "🎲", "text": "I only have one weekend — pick a route from Tokyo for me" }
       ],
       "errorCreate": "Could not create the plan. Please try again.",
       "errorNetwork": "Network error. Please try again."
@@ -873,22 +861,10 @@
     "tabs": {
       "sectionTitle": "Account",
       "sectionHint": "Account & content",
-      "plan": {
-        "label": "My Plans",
-        "hint": "Multi-day itineraries planned by AI"
-      },
-      "settings": {
-        "label": "Profile",
-        "hint": "Avatar, name & social accounts"
-      },
-      "favorites": {
-        "label": "Favorites",
-        "hint": "Your saved articles"
-      },
-      "routebooks": {
-        "label": "My Maps",
-        "hint": "Manage pilgrimage routes"
-      }
+      "plan": { "label": "My Plans", "hint": "Multi-day itineraries planned by AI" },
+      "settings": { "label": "Profile", "hint": "Avatar, name & social accounts" },
+      "favorites": { "label": "Favorites", "hint": "Your saved articles" },
+      "routebooks": { "label": "My Maps", "hint": "Manage pilgrimage routes" }
     }
   },
   "routebook": {
