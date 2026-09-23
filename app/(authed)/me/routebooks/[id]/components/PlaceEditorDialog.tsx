@@ -50,6 +50,8 @@ export function PlaceEditorDialog({
   const [kind, setKind] = useState<PlaceKind>('other')
   const [title, setTitle] = useState('')
   const [address, setAddress] = useState('')
+  /** 搜索触发词：只在用户输入时更新；初始化/选中结果只改 address 不碰它 */
+  const [query, setQuery] = useState('')
   const [latText, setLatText] = useState('')
   const [lngText, setLngText] = useState('')
   const [note, setNote] = useState('')
@@ -58,13 +60,17 @@ export function PlaceEditorDialog({
   const [submitting, setSubmitting] = useState(false)
   const searchTimerRef = useRef<number | null>(null)
   const searchSeqRef = useRef(0)
+  /** 最新表单坐标（near 参数用；渲染期同步，避免拖进搜索 effect 依赖） */
+  const coordsRef = useRef<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  coordsRef.current = { lat: parseCoordInput(latText), lng: parseCoordInput(lngText) }
 
-  // 打开时按模式初始化表单
+  // 打开时按模式初始化表单（不触发搜索：query 保持空）
   useEffect(() => {
     if (!open) return
     setKind(place?.kind ?? presetKind ?? 'other')
     setTitle(place?.title ?? '')
     setAddress(place?.address ?? '')
+    setQuery('')
     setLatText(place ? String(place.lat) : initialCoords ? String(Number(initialCoords.lat.toFixed(6))) : '')
     setLngText(place ? String(place.lng) : initialCoords ? String(Number(initialCoords.lng.toFixed(6))) : '')
     setNote(place?.note ?? '')
@@ -73,11 +79,11 @@ export function PlaceEditorDialog({
     setSubmitting(false)
   }, [open, place, presetKind, initialCoords])
 
-  // 地址搜索：400ms 防抖，过期响应丢弃；无结果/失败都静默为空列表
+  // 地址搜索：只在用户输入（query 变化）时触发；400ms 防抖，过期响应丢弃；无结果/失败静默为空列表
   useEffect(() => {
     if (!open) return
-    const query = address.trim()
-    if (query.length < 2) {
+    const q = query.trim()
+    if (q.length < 2) {
       setResults([])
       setSearching(false)
       return
@@ -86,7 +92,12 @@ export function PlaceEditorDialog({
     setSearching(true)
     searchTimerRef.current = window.setTimeout(() => {
       const seq = ++searchSeqRef.current
-      fetch(`/api/geocode/search?q=${encodeURIComponent(query)}&lang=${locale}`)
+      const { lat, lng } = coordsRef.current
+      const nearParam =
+        lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+          ? `&near=${encodeURIComponent(`${lat},${lng}`)}`
+          : ''
+      fetch(`/api/geocode/search?q=${encodeURIComponent(q)}&lang=${locale}${nearParam}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { ok?: boolean; results?: GeocodeResult[] } | null) => {
           if (seq !== searchSeqRef.current) return
@@ -102,7 +113,7 @@ export function PlaceEditorDialog({
     return () => {
       if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current)
     }
-  }, [address, open, locale])
+  }, [query, open, locale])
 
   if (!open) return null
 
@@ -111,7 +122,9 @@ export function PlaceEditorDialog({
   const valid = title.trim().length > 0 && lat !== null && lat >= -90 && lat <= 90 && lng !== null && lng >= -180 && lng <= 180
 
   const pickResult = (row: GeocodeResult) => {
+    // 选中结果不回填 query：地址变了也不再触发搜索
     setAddress(row.address || row.title)
+    setQuery('')
     setLatText(String(Number(row.lat.toFixed(6))))
     setLngText(String(Number(row.lng.toFixed(6))))
     if (!title.trim()) setTitle(row.title)
@@ -197,7 +210,10 @@ export function PlaceEditorDialog({
                 <input
                   type="text"
                   value={address}
-                  onChange={(event) => setAddress(event.target.value)}
+                  onChange={(event) => {
+                    setAddress(event.target.value)
+                    setQuery(event.target.value)
+                  }}
                   placeholder={tr('routebook.place.addressPlaceholder', locale)}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:bg-white"
                 />

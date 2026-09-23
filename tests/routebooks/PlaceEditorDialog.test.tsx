@@ -74,4 +74,33 @@ describe('PlaceEditorDialog', () => {
     expect(screen.getByLabelText('纬度')).toHaveValue(35.0116)
     expect(screen.getByLabelText('经度')).toHaveValue(135.7681)
   })
+
+  it('搜索只在用户输入时触发：编辑初始化/选中结果都不触发，请求带 near', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        results: [{ title: '东京塔', address: '东京都港区芝公园', lat: 35.6586, lng: 139.7454 }],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PlaceEditorDialog open place={makePlace()} onSubmit={() => {}} onClose={() => {}} locale="zh" />)
+
+    // 编辑模式初始化预填了地址，但不触发搜索
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // 用户输入触发搜索，且带上当前表单坐标作 near
+    fireEvent.change(screen.getByLabelText('地址搜索'), { target: { value: '东京塔' } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const url = String(fetchMock.mock.calls[0]![0])
+    expect(url).toContain('/api/geocode/search?q=')
+    expect(url).toContain('near=34.8892%2C135.8075')
+
+    // 选中结果：地址回填但不再触发搜索
+    fireEvent.click(await screen.findByText('东京塔'))
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('地址搜索')).toHaveValue('东京都港区芝公园')
+  })
 })
