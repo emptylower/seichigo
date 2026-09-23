@@ -847,5 +847,14 @@
     "toastImageCopiedPasteInPost": "画像をコピーしました。投稿に貼り付けてください",
     "toastImageDownloadedDragIntoPost": "画像を保存しました。投稿にドラッグしてください",
     "toastSavedAndCopiedOpenApp": "画像を保存し、テキストをコピーしました。{app}を開いて貼り付けてください"
+  },
+  "og": {
+    "kindPost": "記事",
+    "kindAnime": "作品",
+    "kindCity": "都市",
+    "kindSite": "公式サイト",
+    "tagline": "5万+ アニメ聖地 · AI巡礼プラン",
+    "siteTitle": "アニメ聖地巡礼ガイド",
+    "siteSubtitle": "ルート計画 · スポットナビ · 撮影アドバイス"
   }
 }

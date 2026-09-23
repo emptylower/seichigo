@@ -90,13 +90,17 @@ describe('buildMapShareImageUrl 三级回退', () => {
     expect(resolveMirrorPublicUrlMock).toHaveBeenCalledWith('https://lain.bgm.tv/c.jpg', { kind: 'cover' })
   })
 
-  it('都算不出时退回站点默认 OG', async () => {
+  it('都算不出时退回站点默认 OG（页面卡片 site/home）', async () => {
     getBangumiDetailMock.mockResolvedValue(detail(null, null))
-    await expect(buildMapShareImageUrl('en', { b: 101, p: null })).resolves.toMatch(/\/opengraph-image$/)
+    await expect(buildMapShareImageUrl('en', { b: 101, p: null })).resolves.toMatch(
+      /\/api\/og\/site\/home\/en\.jpg$/,
+    )
   })
 
-  it('没有 b 参数时不查库，直接站点默认 OG', async () => {
-    await expect(buildMapShareImageUrl('en', { b: null, p: null })).resolves.toMatch(/\/opengraph-image$/)
+  it('没有 b 参数时不查库，直接站点默认 OG（页面卡片 site/home）', async () => {
+    await expect(buildMapShareImageUrl('en', { b: null, p: null })).resolves.toMatch(
+      /\/api\/og\/site\/home\/en\.jpg$/,
+    )
     expect(getBangumiDetailMock).not.toHaveBeenCalled()
   })
 })

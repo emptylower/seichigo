@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getResourceRouteGroups } from '@/lib/resources/aggregateRoutes'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import RouteDirectory from '@/components/resources/RouteDirectory'
@@ -14,14 +15,14 @@ export const metadata: Metadata = {
     title: 'リソース',
     description:
       '公開記事から抽出されたグループ化されたルートマップ。各ルートとスポットは参照・共有用にリンク可能です。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'リソース',
     description:
       '公開記事から抽出されたグループ化されたルートマップ。各ルートとスポットは参照・共有用にリンク可能です。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
 }
 

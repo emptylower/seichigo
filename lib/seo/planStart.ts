@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { SiteLocale } from '@/components/layout/SiteShell'
 import { buildHreflangAlternates } from '@/lib/seo/alternates'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { t } from '@/lib/i18n'
 
 const PATHS: Record<SiteLocale, string> = {
@@ -29,7 +30,18 @@ export function buildPlanStartMetadata(locale: SiteLocale): Metadata {
       enPath: PATHS.en,
       jaPath: PATHS.ja,
     }),
-    openGraph: { type: 'website', url, title, description, images: ['/opengraph-image'] },
-    twitter: { card: 'summary_large_image', title, description, images: ['/twitter-image'] },
+    openGraph: {
+      type: 'website',
+      url,
+      title,
+      description,
+      images: [pageCardImage('site', 'home', locale, title)],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [pageCardImage('site', 'home', locale, title)],
+    },
   }
 }

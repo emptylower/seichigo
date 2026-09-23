@@ -9,6 +9,7 @@ import { buildCitySeoTitle } from '@/lib/seo/titleBuilder'
 import { buildBreadcrumbListJsonLd, serializeJsonLd } from '@/lib/seo/jsonld'
 import { buildTouristAttractionJsonLd } from '@/lib/seo/touristAttractionJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { t } from '@/lib/i18n'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import BookCover from '@/components/bookstore/BookCover'
@@ -109,11 +110,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: seoTitle.absolute,
       description,
       url: `/city/${encodeURIComponent(city.slug)}`,
+      images: [pageCardImage('city', city.slug, 'zh', city.name_zh)],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
+      images: [pageCardImage('city', city.slug, 'zh', city.name_zh)],
     },
   }
 }

@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import LegalDocument from '@/components/legal/LegalDocument'
 import { getLegalDocument } from '@/lib/legal/content'
@@ -14,13 +15,13 @@ export const metadata: Metadata = {
     url: '/ja/terms',
     title: '利用規約｜SeichiGo',
     description: 'SeichiGo の利用規約です。アカウント利用、投稿、モデレーション、責任制限などを定めています。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: '利用規約｜SeichiGo',
     description: 'SeichiGo の利用規約です。アカウント利用、投稿、モデレーション、責任制限などを定めています。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
 }
 

@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
@@ -16,14 +17,14 @@ export const metadata: Metadata = {
     title: 'アニメ聖地巡礼｜作品一覧',
     description:
       'アニメ聖地巡礼の作品別ガイド：実写ロケ地、巡礼ルート、スポットリスト、撮影のコツを集約した各作品ページで、日本のアニメツーリズムを計画できます。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'アニメ聖地巡礼｜作品一覧',
     description:
       'アニメ聖地巡礼の作品別ガイド：実写ロケ地、巡礼ルート、スポットリスト、撮影のコツを集約した各作品ページで、日本のアニメツーリズムを計画できます。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
 }
 

@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
@@ -55,13 +56,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title,
       description,
       url: `/resources/${encodeURIComponent(asset.id)}`,
-      images: ['/opengraph-image'],
+      images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/twitter-image'],
+      images: [pageCardImage('site', 'home', 'zh', 'SeichiGo 动漫圣地巡礼')],
     },
   }
 }

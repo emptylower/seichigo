@@ -1,6 +1,7 @@
 import HomePageTemplate from '@/components/home/HomePageTemplate'
 import { getHomePortalData } from '@/lib/home/getHomePortalData'
 import { buildZhAlternates } from '@/lib/seo/alternates'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 
 const TITLE = 'SeichiGo | 动漫圣地巡礼攻略 · AI 规划 + 全球巡礼点位地图'
@@ -16,13 +17,13 @@ export const metadata: Metadata = {
     url: '/',
     title: TITLE,
     description: DESCRIPTION,
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'zh', TITLE)],
   },
   twitter: {
     card: 'summary_large_image',
     title: TITLE,
     description: DESCRIPTION,
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'zh', TITLE)],
   },
 }
 

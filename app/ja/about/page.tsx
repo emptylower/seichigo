@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import { buildJaAlternates } from '@/lib/seo/alternates'
 import { t } from '@/lib/i18n'
@@ -14,14 +15,14 @@ export const metadata: Metadata = {
     title: 'SeichiGoについて',
     description:
       'SeichiGoは「1作品×1ルート」の聖地巡礼ガイドを提供：ナビ可能なスポットリスト、交通・撮影アドバイス、地域住民への配慮と持続可能な巡礼文化を重視。',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'SeichiGoについて',
     description:
       'SeichiGoは「1作品×1ルート」の聖地巡礼ガイドを提供：ナビ可能なスポットリスト、交通・撮影アドバイス、地域住民への配慮と持続可能な巡礼文化を重視。',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'ja', 'SeichiGo アニメ聖地巡礼')],
   },
 }
 

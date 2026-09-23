@@ -160,8 +160,9 @@ async function openOriginal(
   return bytes ? { bytes } : null
 }
 
-/** 需要完整字节的回落路径（SVG 加固、转换失败兜底）：只保留一份 Uint8Array */
-async function loadOriginalBytes(
+/** 需要完整字节的回落路径（SVG 加固、转换失败兜底）：只保留一份 Uint8Array。
+ *  lib/og/siteAsset.ts 的站内封面直读也复用这条（R2 原图 → DB bytes 回落）。 */
+export async function loadOriginalBytes(
   asset: Asset,
   store: AssetStore | null,
   assetRepo: AssetRepo,
@@ -171,6 +172,37 @@ async function loadOriginalBytes(
     if (original) return streamToUint8Array(original.body)
   }
   return assetRepo.findBytesById(asset.id)
+}
+
+/**
+ * `/assets/<id>?w=` 缩放路径的字节版：R2 变体命中直接读；未命中读原图经并发闸门
+ * 转成 webp，后台回写变体。lib/og/siteAsset.ts 的页面卡片封面复用这条，拿到的是
+ * 与站内 `?w=` 请求同一份变体。不可转换（SVG/GIF/非图片）或读不到原图返回 null。
+ */
+export async function loadVariantBytes(
+  asset: Asset,
+  store: AssetStore | null,
+  assetRepo: AssetRepo,
+  variant: { width: number; quality: number },
+): Promise<Uint8Array | null> {
+  const isImage = (asset.contentType || '').startsWith('image/')
+  if (!isImage || isSvgContentType(asset.contentType) || isGifContentType(asset.contentType)) return null
+  if (store) {
+    const hit = await store.getVariant(asset.id, variant.width, variant.quality).catch(() => null)
+    if (hit) return streamToUint8Array(hit.body)
+  }
+  const release = await acquireTransformSlot()
+  try {
+    const source = await openOriginal(asset, store, assetRepo)
+    if (!source) return null
+    const rendered = await renderWebpVariant(source, variant)
+    if (store) {
+      await runBackground(store.putVariant(asset.id, variant.width, variant.quality, rendered))
+    }
+    return rendered
+  } finally {
+    release()
+  }
 }
 
 // ---- Images 绑定辅助 ----

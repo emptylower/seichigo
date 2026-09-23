@@ -9,6 +9,7 @@ import { buildPostFallbackTitle } from '@/lib/seo/titleBuilder'
 import { buildFAQPageJsonLd } from '@/lib/seo/faqJsonLd'
 import PlaceJsonLd from '@/lib/seo/placeJsonLd'
 import { getSiteOrigin } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import PostMeta from '@/components/blog/PostMeta'
 import CommentSection from '@/components/comments/CommentSection'
 import ArticleShareButtons from '@/components/content/ArticleShareButtons'
@@ -139,11 +140,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: seoTitle.absolute,
       description,
       url: `/posts/${encodeSlugForPath(frontmatter.slug)}`,
+      images: [pageCardImage('post', frontmatter.slug, 'zh', String(frontmatter.title || 'SeichiGo'))],
     },
     twitter: {
       card: 'summary_large_image',
       title: seoTitle.absolute,
       description,
+      images: [pageCardImage('post', frontmatter.slug, 'zh', String(frontmatter.title || 'SeichiGo'))],
     },
   }
 }

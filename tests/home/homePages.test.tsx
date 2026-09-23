@@ -80,7 +80,11 @@ describe('首页 metadata', () => {
   ] as const)('%s 保留 alternates/hreflang 与 OG 图', (_locale, metadata) => {
     expect(metadata.alternates?.languages).toBeTruthy()
     expect(metadata.alternates?.canonical).toBeTruthy()
-    expect(metadata.openGraph?.images).toEqual(['/opengraph-image'])
+    // OG 图换成 Browser Run 渲染的 /api/og/site/home/<locale>.jpg（绝对 URL）
+    const ogImage = (metadata.openGraph?.images as { url: string; width: number; height: number }[])[0]
+    expect(ogImage?.url).toMatch(/\/api\/og\/site\/home\/(zh|en|ja)\.jpg$/)
+    expect(ogImage?.width).toBe(1200)
+    expect(ogImage?.height).toBe(630)
     // OG/twitter 文案与 metadata 主体保持一致，不留旧版描述
     expect(metadata.openGraph?.description).toBe(metadata.description)
   })

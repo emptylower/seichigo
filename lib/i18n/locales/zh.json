@@ -847,5 +847,14 @@
     "toastImageCopiedPasteInPost": "图片已复制，在推文里粘贴",
     "toastImageDownloadedDragIntoPost": "图片已下载，拖进推文即可",
     "toastSavedAndCopiedOpenApp": "图片已保存、文案已复制，打开{app}粘贴"
+  },
+  "og": {
+    "kindPost": "文章",
+    "kindAnime": "作品",
+    "kindCity": "城市",
+    "kindSite": "官网",
+    "tagline": "5 万+ 动画取景地 · AI 巡礼行程",
+    "siteTitle": "动漫圣地巡礼攻略",
+    "siteSubtitle": "路线规划 · 点位导航 · 机位建议"
   }
 }

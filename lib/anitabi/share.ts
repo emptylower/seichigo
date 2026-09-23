@@ -3,7 +3,7 @@ import type { AnitabiPointDTO } from '@/lib/anitabi/types'
 import { getAnitabiApiDeps } from '@/lib/anitabi/api'
 import { getBangumiDetail } from '@/lib/anitabi/read'
 import { normalizeText } from '@/lib/anitabi/utils'
-import { getSiteOrigin } from '@/lib/seo/site'
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { resolveMirrorPublicUrl } from '@/lib/anitabi/imageProxy'
 
 export type SearchParamsInput = Record<string, string | string[] | undefined>
@@ -103,7 +103,8 @@ export async function buildMapShareImageUrl(
   locale: SupportedLocale,
   query: MapShareQuery,
 ): Promise<string> {
-  const fallback = `${getSiteOrigin()}/opengraph-image`
+  // 默认兜底从 /opengraph-image（SVG 时代地址）换成页面卡片接口的 site/home 图
+  const fallback = pageCardImage('site', 'home', locale, 'SeichiGo').url
   if (query.b == null) return fallback
 
   const snapshot = await resolveMapShareSnapshot(locale, query)

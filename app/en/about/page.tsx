@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import { buildEnAlternates } from '@/lib/seo/alternates'
 import { t } from '@/lib/i18n'
@@ -14,14 +15,14 @@ export const metadata: Metadata = {
     title: 'About SeichiGo',
     description:
       'SeichiGo publishes long-form anime pilgrimage guides with practical routes, navigation-ready spot lists, and photography tips — built to be useful on the ground.',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'About SeichiGo',
     description:
       'SeichiGo publishes long-form anime pilgrimage guides with practical routes, navigation-ready spot lists, and photography tips — built to be useful on the ground.',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
 }
 

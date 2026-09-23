@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import type { Metadata } from 'next'
 import LegalDocument from '@/components/legal/LegalDocument'
 import { getHelpDocument } from '@/lib/help/content'
@@ -12,8 +13,8 @@ export const metadata: Metadata = {
   title,
   description,
   alternates: buildEnAlternates({ zhPath: '/help' }),
-  openGraph: { type: 'website', url: '/en/help', title, description, images: ['/opengraph-image'] },
-  twitter: { card: 'summary_large_image', title, description, images: ['/twitter-image'] },
+  openGraph: { type: 'website', url: '/en/help', title, description, images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')] },
+  twitter: { card: 'summary_large_image', title, description, images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')] },
 }
 
 export const revalidate = 86400

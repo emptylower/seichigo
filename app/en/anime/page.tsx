@@ -1,3 +1,4 @@
+import { pageCardImage } from '@/lib/og/pageCardUrl'
 import { getAllAnime } from '@/lib/anime/getAllAnime'
 import { getAllPublicPosts } from '@/lib/posts/getAllPublicPosts'
 import { isSeoSpokePost } from '@/lib/posts/visibility'
@@ -16,14 +17,14 @@ export const metadata: Metadata = {
     title: 'Anime Pilgrimage Index',
     description:
       'Browse anime pilgrimage guides by title: each work page aggregates real-world filming locations, route maps, spot lists, and photography tips for Japan anime tourism.',
-    images: ['/opengraph-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Anime Pilgrimage Index',
     description:
       'Browse anime pilgrimage guides by title: each work page aggregates real-world filming locations, route maps, spot lists, and photography tips for Japan anime tourism.',
-    images: ['/twitter-image'],
+    images: [pageCardImage('site', 'home', 'en', 'SeichiGo Anime Pilgrimage')],
   },
 }
 
