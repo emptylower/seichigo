@@ -335,7 +335,7 @@ export function MobileLayout({
         onAddPlace={(placeId) => {
           void trip.addItem(poolTargetDayId, { kind: 'place', placeId })
         }}
-        onCreatePlace={() => dialogs.openPlaceEditor()}
+        onCreatePlace={() => dialogs.openPlaceEditor({ targetDayId: poolTargetDayId })}
         onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
         onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
         isOpen={poolOpen}

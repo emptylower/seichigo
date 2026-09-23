@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { PlaceKind, RouteBookDetail } from '../types'
+import type { ItemRecord, PlaceKind, RouteBookDetail } from '../types'
+import { DAY_ITEM_LIMIT } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { CreateItemInput, LodgingInput, PlaceInput, UpdateItemInput } from '../hooks/tripDataTypes'
 import { dayLabel } from '../utils'
@@ -10,6 +11,10 @@ import { LodgingDialog } from './LodgingDialog'
 import { NoteEditorDialog } from './NoteEditorDialog'
 import { DayOrderDialog } from './DayOrderDialog'
 
+function dayPointCount(items: ItemRecord[], dayId: string): number {
+  return items.filter((row) => row.dayId === dayId && (row.kind === 'point' || row.kind === 'place')).length
+}
+
 type PlaceDialogState = {
   type: 'place'
   placeId: string | null
@@ -17,6 +22,8 @@ type PlaceDialogState = {
   initialCoords: { lat: number; lng: number } | null
   /** 从住宿弹窗跳来新建：建好后自动回到住宿弹窗并预选新点 */
   returnToLodging: boolean
+  /** 新建成功后自动加一条 place 条目的目标天（null = 未安排） */
+  targetDayId: string | null
 }
 
 type LodgingDialogState = {
@@ -34,7 +41,13 @@ type DialogState =
 
 export type DialogsHostApi = {
   host: ReactNode
-  openPlaceEditor: (opts?: { placeId?: string; presetKind?: PlaceKind; initialCoords?: { lat: number; lng: number } }) => void
+  /** 新建时 targetDayId 为保存后自动加入的天（缺省 / null = 未安排）；编辑模式忽略 */
+  openPlaceEditor: (opts?: {
+    placeId?: string
+    presetKind?: PlaceKind
+    initialCoords?: { lat: number; lng: number }
+    targetDayId?: string | null
+  }) => void
   openLodgingEditor: (opts?: { lodgingId?: string; presetDayIndex?: number; presetPlaceId?: string }) => void
   /** 新建备注：传 dayId；编辑备注：再传 itemId（dayId 仅用于标题栏展示） */
   openNoteEditor: (dayId: string | null, itemId?: string) => void
@@ -83,6 +96,7 @@ export function useDialogsHost({
       presetKind: opts?.presetKind,
       initialCoords: opts?.initialCoords ?? null,
       returnToLodging: false,
+      targetDayId: opts?.targetDayId ?? null,
     })
   }, [])
 
@@ -134,8 +148,17 @@ export function useDialogsHost({
           onSubmit={async (input) => {
             if (place) return updatePlace(place.id, input)
             const newId = await createPlace(input)
-            if (newId && dialog.returnToLodging) returnPlaceIdRef.current = newId
-            return Boolean(newId)
+            if (!newId) return false
+            if (dialog.returnToLodging) {
+              // 住宿流程：新点交给住宿弹窗预选，不另建条目
+              returnPlaceIdRef.current = newId
+              return true
+            }
+            // 新建即上地图：加到目标天末尾（该天点位已满 → 未安排）；条目失败由 addItem 自行 toast，点已建成
+            const targetDayId =
+              dialog.targetDayId && dayPointCount(detail.items, dialog.targetDayId) < DAY_ITEM_LIMIT ? dialog.targetDayId : null
+            await addItem(targetDayId, { kind: 'place', placeId: newId })
+            return true
           }}
         />
       )
@@ -216,7 +239,14 @@ export function useDialogsHost({
         onClose={close}
         onRequestNewPlace={() => {
           returnPresetDayIndexRef.current = dialog.presetDayIndex
-          setDialog({ type: 'place', placeId: null, presetKind: 'lodging', initialCoords: null, returnToLodging: true })
+          setDialog({
+            type: 'place',
+            placeId: null,
+            presetKind: 'lodging',
+            initialCoords: null,
+            returnToLodging: true,
+            targetDayId: null,
+          })
         }}
         onDelete={
           lodging

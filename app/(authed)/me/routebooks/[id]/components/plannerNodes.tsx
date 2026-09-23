@@ -178,7 +178,9 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
           locale={locale}
         />
       }
-      onMapContextMenu={(pos) => dialogs.openPlaceEditor({ initialCoords: { lat: pos.lat, lng: pos.lng } })}
+      onMapContextMenu={(pos) =>
+        dialogs.openPlaceEditor({ initialCoords: { lat: pos.lat, lng: pos.lng }, targetDayId: selectedDayId })
+      }
       locale={locale}
     />
   )
@@ -193,7 +195,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
       onReorder={(dayId, ids) => void trip.reorder(dayId, ids)}
       onFocusPoint={onFocusPoint}
       onRemoveFromPool={(pointId) => void trip.removeFromPool(pointId)}
-      onCreatePlace={() => dialogs.openPlaceEditor()}
+      onCreatePlace={() => dialogs.openPlaceEditor({ targetDayId: selectedDayId })}
       onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
       onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
       onNeedDay={() => trip.showToast(tr('routebook.pool.pickDayFirst', locale))}
