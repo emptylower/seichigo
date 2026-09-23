@@ -42,12 +42,15 @@ type Options = {
   now?: () => Date
   idFactory?: () => string
   pointBangumiMap?: Map<string, number>
+  /** A2：getDayContext 组装 pointCoords 用的假实现（与 api.ts 的 deps.pointCoords 同契约）；缺省空 Map */
+  pointCoords?: (pointIds: string[]) => Promise<Map<string, { lat: number; lng: number }>>
 }
 
 export class InMemoryRouteBookRepo implements RouteBookRepo {
   private readonly now: () => Date
   private readonly idFactory: () => string
   private readonly pointBangumiMap: Map<string, number>
+  private readonly pointCoordsLookup: Options['pointCoords']
 
   private readonly byId = new Map<string, RouteBook>()
   private readonly daysById = new Map<string, RouteBookDay>()
@@ -59,6 +62,7 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     this.now = options?.now ?? (() => new Date())
     this.idFactory = options?.idFactory ?? (() => crypto.randomUUID())
     this.pointBangumiMap = options?.pointBangumiMap ?? new Map()
+    this.pointCoordsLookup = options?.pointCoords
   }
 
   private requireBook(routeBookId: string, userId: string): RouteBook {
@@ -227,11 +231,20 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
     const day = this.daysById.get(dayId)
     if (!day || day.routeBookId !== routeBookId) return null
 
+    const items = this.dayItems(routeBookId, dayId)
+    const pointIds = items
+      .map((item) => item.pointId)
+      .filter((pointId): pointId is string => Boolean(pointId))
+    const pointCoords = this.pointCoordsLookup
+      ? await this.pointCoordsLookup(pointIds)
+      : new Map<string, { lat: number; lng: number }>()
+
     return {
       day,
-      items: this.dayItems(routeBookId, dayId),
+      items,
       places: Array.from(this.placesById.values()).filter((place) => place.routeBookId === routeBookId),
       lodgings: Array.from(this.lodgingsById.values()).filter((lodging) => lodging.routeBookId === routeBookId),
+      pointCoords,
     }
   }
 

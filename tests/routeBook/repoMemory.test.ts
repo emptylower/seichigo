@@ -386,8 +386,24 @@ describe('InMemoryRouteBookRepo', () => {
     expect(again.bookUpdatedAt.getTime()).toBeGreaterThanOrEqual(res.bookUpdatedAt.getTime())
   })
 
-  it('getDayContext：目标天条目 + 本级 places/lodgings；外本天/外人/不存在 → null', async () => {
-    const { repo } = makeRepo(['p1', 'p2'])
+  it('getDayContext：目标天条目 + 本级 places/lodgings + pointCoords；外本天/外人/不存在 → null', async () => {
+    // A2：坐标并入天上下文；p2 故意不提供坐标（null 坐标不进 Map）
+    const pointCoordsTable = new Map([['p1', { lat: 35.01, lng: 135.76 }]])
+    let seq = 0
+    let tick = 0
+    const repo = new InMemoryRouteBookRepo({
+      idFactory: () => `id-${++seq}`,
+      now: () => new Date(Date.parse('2026-09-23T00:00:00.000Z') + tick++ * 1000),
+      pointBangumiMap: new Map([['p1', 1], ['p2', 2]]),
+      pointCoords: async (ids) => {
+        const map = new Map<string, { lat: number; lng: number }>()
+        for (const id of ids) {
+          const coords = pointCoordsTable.get(id)
+          if (coords) map.set(id, coords)
+        }
+        return map
+      },
+    })
     const book = await repo.create('u1', '本', 'draft', { dayCount: 2 })
     const detail = (await repo.getById(book.id, 'u1'))!
     const day1 = detail.days[0]!
@@ -404,6 +420,8 @@ describe('InMemoryRouteBookRepo', () => {
     expect(ctx?.items.map((i) => i.pointId)).toEqual(['p1'])
     expect(ctx?.places.map((p) => p.id)).toEqual([stay.id])
     expect(ctx?.lodgings.map((l) => l.placeId)).toEqual([stay.id])
+    expect(ctx?.pointCoords.get('p1')).toEqual({ lat: 35.01, lng: 135.76 })
+    expect(ctx?.pointCoords.has('p2')).toBe(false)
 
     const other = await repo.create('u1', '另一本', 'draft')
     const otherDay = (await repo.getById(other.id, 'u1'))!.days[0]!

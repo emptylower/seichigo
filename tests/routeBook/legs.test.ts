@@ -224,20 +224,22 @@ describe('resolveDayLegs', () => {
 describe('legs handler', () => {
   function makeLegDeps(overrides?: Partial<RouteBookApiDeps>) {
     const pointBangumiMap = new Map([['p-near-a', 1], ['p-near-b', 1]])
-    const repo = new InMemoryRouteBookRepo({ pointBangumiMap })
+    const pointCoordsFake = async (ids: string[]) => {
+      const map = new Map<string, { lat: number; lng: number }>()
+      for (const id of ids) {
+        const coords = POINT_COORDS.get(id)
+        if (coords) map.set(id, coords)
+      }
+      return map
+    }
+    // A2：坐标并入 getDayContext，内存仓储注入同样的假实现
+    const repo = new InMemoryRouteBookRepo({ pointBangumiMap, pointCoords: pointCoordsFake })
     const deps: RouteBookApiDeps = {
       repo,
       pointPoolRepo: new InMemoryPointPoolRepo({ pointBangumiMap }),
       getSession: async () => ({ user: { id: 'u1' } } as Session),
       now: () => new Date('2026-09-23T00:00:00.000Z'),
-      pointCoords: async (ids) => {
-        const map = new Map<string, { lat: number; lng: number }>()
-        for (const id of ids) {
-          const coords = POINT_COORDS.get(id)
-          if (coords) map.set(id, coords)
-        }
-        return map
-      },
+      pointCoords: pointCoordsFake,
       ...overrides,
     }
     return { repo, deps }
@@ -315,5 +317,85 @@ describe('legs handler', () => {
     expect((await get(strangerBook.id, strangerDay.id)).status).toBe(404)
     expect((await get(mine.bookId, 'day-不存在')).status).toBe(404)
     expect((await get('rb-不存在', mine.dayId)).status).toBe(404)
+  })
+
+  it('带 sig 命中缓存：直接用缓存的 dayGeometry，不再调 Mapbox 路径', async () => {
+    const geometry = { type: 'LineString' as const, coordinates: [[135.0, 35.0], [135.001, 35.0027]] as [number, number][] }
+    const geometryCalls: unknown[] = []
+    const sigCalls: Array<{ dayId: string; sig: string }> = []
+    const { repo, deps } = makeLegDeps({
+      readDayGeometryBySig: async (dayId, sig) => {
+        sigCalls.push({ dayId, sig })
+        return geometry
+      },
+      fetchDayGeometry: async () => {
+        geometryCalls.push('should-not-happen')
+        return null
+      },
+    })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request(`http://localhost/x?sig=abc123`), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { dayGeometry: typeof geometry | null; legs: unknown[] }
+    expect(body.dayGeometry).toEqual(geometry)
+    expect(body.legs).toHaveLength(1)
+    expect(sigCalls).toEqual([{ dayId, sig: 'abc123' }])
+    expect(geometryCalls).toHaveLength(0)
+  })
+
+  it('不带 sig 走原流程：不读 sig 缓存，fetchDayGeometry 收到 sigCache=undefined', async () => {
+    const geometry = { type: 'LineString' as const, coordinates: [[135.0, 35.0], [135.001, 35.0027]] as [number, number][] }
+    const sigCalls: unknown[] = []
+    const geometrySigCaches: Array<{ dayId: string; sig: string } | undefined> = []
+    const { repo, deps } = makeLegDeps({
+      readDayGeometryBySig: async () => {
+        sigCalls.push('should-not-happen')
+        return geometry
+      },
+      fetchDayGeometry: async (_stops, _mode, sigCache) => {
+        geometrySigCaches.push(sigCache)
+        return geometry
+      },
+    })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { dayGeometry: typeof geometry | null }
+    expect(body.dayGeometry).toEqual(geometry)
+    expect(sigCalls).toHaveLength(0)
+    expect(geometrySigCaches).toEqual([undefined])
+  })
+
+  it('带 sig 未命中：走 fetchDayGeometry 并透传 sigCache（供双 key 回填）；sig 截 64 字符', async () => {
+    const geometry = { type: 'LineString' as const, coordinates: [[135.0, 35.0], [135.001, 35.0027]] as [number, number][] }
+    const sigCalls: Array<{ dayId: string; sig: string }> = []
+    const geometrySigCaches: Array<{ dayId: string; sig: string } | undefined> = []
+    const { repo, deps } = makeLegDeps({
+      readDayGeometryBySig: async (dayId, sig) => {
+        sigCalls.push({ dayId, sig })
+        return null
+      },
+      fetchDayGeometry: async (_stops, _mode, sigCache) => {
+        geometrySigCaches.push(sigCache)
+        return geometry
+      },
+    })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+    const longSig = 'x'.repeat(80)
+
+    const res = await createLegHandlers(deps).GET(new Request(`http://localhost/x?sig=${longSig}`), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { dayGeometry: typeof geometry | null }
+    expect(body.dayGeometry).toEqual(geometry)
+    expect(sigCalls).toEqual([{ dayId, sig: 'x'.repeat(64) }])
+    expect(geometrySigCaches).toEqual([{ dayId, sig: 'x'.repeat(64) }])
   })
 })

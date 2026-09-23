@@ -87,12 +87,17 @@ export type RouteBookDetail = RouteBook & {
   lodgings: RouteBookLodging[]
 }
 
-/** 单天上下文（legs 接口瘦身用）：天 + 仅该天条目 + 本级 places/lodgings */
+/**
+ * 单天上下文（legs 接口瘦身用）：天 + 仅该天条目 + 本级 places/lodgings。
+ * A2 起 point 条目坐标随同一条查询返回（pointCoords，null 坐标不进 Map），
+ * legs handler 不再单独往返取坐标。
+ */
 export type DayContext = {
   day: RouteBookDay
   items: RouteBookItem[]
   places: RouteBookPlace[]
   lodgings: RouteBookLodging[]
+  pointCoords: Map<string, { lat: number; lng: number }>
 }
 
 export type RouteBookUpdateInput = {
