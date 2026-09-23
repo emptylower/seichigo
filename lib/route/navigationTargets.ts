@@ -165,7 +165,7 @@ function buildAmapSingleUrl(stop: NavStop): string {
 }
 
 /** Android：amapuri://route/plan/；途经点 ≤16 个（vialons/vialats/vianames 逗号分隔） */
-function buildAmapAndroidUrl(stops: NavStop[], mode: NavMode): string {
+function buildAmapAndroidUrl(stops: AmapStop[], mode: NavMode): string {
   const via = stops.slice(1, -1).slice(0, AMAP_VIA_MAX)
   const dest = stops[stops.length - 1]!
   const parts = [
@@ -185,7 +185,7 @@ function buildAmapAndroidUrl(stops: NavStop[], mode: NavMode): string {
 }
 
 /** iOS：iosamap://path；途经点参数同 Android */
-function buildAmapIosUrl(stops: NavStop[], mode: NavMode): string {
+function buildAmapIosUrl(stops: AmapStop[], mode: NavMode): string {
   const via = stops.slice(1, -1).slice(0, AMAP_VIA_MAX)
   const dest = stops[stops.length - 1]!
   const parts = [

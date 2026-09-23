@@ -26,7 +26,7 @@ function openMeteoBody(overrides: Partial<Record<'time' | 'weather_code' | 'temp
 
 describe('fetchDailyForecast', () => {
   it('解析 daily 数组并保留 1 位小数', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(openMeteoBody()))
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => jsonResponse(openMeteoBody()))
     const days = await fetchDailyForecast(
       { lat: 35.01, lng: 135.76, from: TODAY, to: '2026-09-24' },
       { now: () => NOW, fetchImpl: fetchImpl as unknown as typeof fetch },
@@ -36,7 +36,7 @@ describe('fetchDailyForecast', () => {
       { date: '2026-09-24', tMax: 21, tMin: 15, code: 61 },
     ])
 
-    const url = fetchImpl.mock.calls[0]![0] as string
+    const url = String(fetchImpl.mock.calls[0]![0])
     expect(url).toContain('https://api.open-meteo.com/v1/forecast?latitude=35.01&longitude=135.76')
     expect(url).toContain('daily=weather_code,temperature_2m_max,temperature_2m_min')
     expect(url).toContain('timezone=Asia%2FTokyo')
@@ -72,12 +72,12 @@ describe('fetchDailyForecast', () => {
   })
 
   it('日期裁剪：from 提前到今天、to 封顶今天+15', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(openMeteoBody()))
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => jsonResponse(openMeteoBody()))
     await fetchDailyForecast(
       { lat: 35, lng: 135, from: '2026-09-01', to: '2026-12-31' },
       { now: () => NOW, fetchImpl: fetchImpl as unknown as typeof fetch },
     )
-    const url = fetchImpl.mock.calls[0]![0] as string
+    const url = String(fetchImpl.mock.calls[0]![0])
     expect(url).toContain('start_date=2026-09-23')
     expect(url).toContain('end_date=2026-10-08')
   })
