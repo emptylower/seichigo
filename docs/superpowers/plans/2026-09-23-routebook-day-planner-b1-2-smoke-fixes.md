@@ -65,3 +65,6 @@ A1 实测热路径仍 ~950ms：`getDayContext`（~490ms）→ `pointCoords`（~2
 
 ### B5 前端接线 `?sig=`（A2 之后追加，B1–B4 提交后单独执行）
 `hooks/useDayLegs.ts` 已经为每天算了一个顺序签名（用于缓存/失效）。把它作为 `?sig=<signature>` 追加到 `GET /api/me/routebooks/[id]/days/[dayId]/legs` 的请求 URL 上（`encodeURIComponent`，≤64 字符——若现有签名更长，用一个简单稳定的 32 位哈希如 FNV-1a 转 hex）。签名输入必须至少包含：该天有坐标条目的 id 顺序、`day.defaultTravelMode`、覆盖该天的住宿 `placeId`（首尾锚点变了几何就变）。服务端对 sig 只当不透明 key（见 A2），命中时跳过 Mapbox。jsdom 测试：`tests/routebooks/useDayLegs.test.tsx` 断言请求 URL 含 `sig=` 且同一顺序两次签名相同、顺序变化签名不同。
+
+### A3 行数预算（追加）
+`lib/routeBook/repoMemory.ts` 已 753 行，超过 750 上限，`npm test` 的 line-budget 检查会失败。把「天」相关方法（insertDay/updateDay/deleteDay/reorderDays 及其辅助）抽到 `lib/routeBook/repoMemoryDays.ts`（导出纯函数或一个 mixin，主类调用），主文件降到 ≤ 650 行，行为与测试不变；**不要**改 `line-budget.allowlist.json`。跑 `npm test`（含 line-budget）必须通过。只碰 `lib/routeBook/**`。
