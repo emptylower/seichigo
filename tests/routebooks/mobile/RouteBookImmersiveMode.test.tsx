@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { RouteBookImmersiveMode } from '@/app/(authed)/me/routebooks/[id]/components/RouteBookImmersiveMode'
 import type { ItemRecord, PlaceRecord } from '@/app/(authed)/me/routebooks/[id]/types'
 
@@ -155,5 +156,102 @@ describe('RouteBookImmersiveMode [place, point] 序列（B3 修复 F3）', () =>
     expect(screen.getByRole('heading', { name: 'Uji Tea House' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '完成今天' }))
     expect(screen.getByText('Day 1 完成')).toBeTruthy()
+  })
+})
+
+describe('RouteBookImmersiveMode 撤销打卡（G15）', () => {
+  const TITLES: Record<string, string> = { 'p:a': 'Spot A', 'p:b': 'Spot B' }
+  const previewById = (pointId: string) => ({
+    title: TITLES[pointId] ?? pointId,
+    subtitle: '',
+    image: null,
+    geo: [34.88, 135.8] as [number, number],
+  })
+  const pointItem = (id: string, pointId: string, sortOrder: number) =>
+    makeItem({ id, kind: 'point', pointId, placeId: null, sortOrder })
+
+  /** 与 ui.tsx 一致：打卡集合在父级，打卡成功/撤销时回灌 */
+  function StatefulHarness({
+    sequence,
+    undoResult = true,
+    onUndo,
+  }: {
+    sequence: ItemRecord[]
+    undoResult?: boolean
+    onUndo: (pointId: string) => void
+  }) {
+    const [checked, setChecked] = useState<Set<string>>(() => new Set())
+    return (
+      <RouteBookImmersiveMode
+        routeBookTitle="Test Trip"
+        sequence={sequence}
+        places={[]}
+        dayLabel="Day 1"
+        checkedInPointIds={checked}
+        getPointPreview={previewById}
+        onCheckInSuccess={(pointId) => setChecked((prev) => new Set(prev).add(pointId))}
+        onUndoCheckIn={async (pointId) => {
+          onUndo(pointId)
+          if (!undoResult) return false
+          setChecked((prev) => {
+            const next = new Set(prev)
+            next.delete(pointId)
+            return next
+          })
+          return true
+        }}
+        onClose={() => {}}
+        locale="zh"
+      />
+    )
+  }
+
+  function checkInCurrent() {
+    fireEvent.click(screen.getByRole('button', { name: '导航' }))
+    fireEvent.click(screen.getByRole('button', { name: '导航完成并打卡' }))
+    fireEvent.click(screen.getByRole('button', { name: 'mock-checkin-success' }))
+  }
+
+  it('中间站打卡后撤销：回到该站，撤销条消失', async () => {
+    const onUndo = vi.fn()
+    render(<StatefulHarness sequence={[pointItem('i-a', 'p:a', 0), pointItem('i-b', 'p:b', 1)]} onUndo={onUndo} />)
+    enterCards()
+    expect(screen.getByRole('heading', { name: 'Spot A' })).toBeTruthy()
+    checkInCurrent()
+    expect(screen.getByRole('heading', { name: 'Spot B' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '撤销打卡' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Spot A' })).toBeTruthy())
+    expect(onUndo).toHaveBeenCalledWith('p:a')
+    expect(screen.queryByRole('button', { name: '撤销打卡' })).toBeNull()
+  })
+
+  it('最后一站打卡进入完成态后撤销：离开完成态，回到最后一站', async () => {
+    const onUndo = vi.fn()
+    render(<StatefulHarness sequence={[pointItem('i-a', 'p:a', 0)]} onUndo={onUndo} />)
+    enterCards()
+    checkInCurrent()
+    expect(screen.getByText('Day 1 完成')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '撤销打卡' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Spot A' })).toBeTruthy())
+    expect(screen.queryByText('Day 1 完成')).toBeNull()
+    expect(onUndo).toHaveBeenCalledWith('p:a')
+    // 撤销后可以重新打卡并再次完成
+    checkInCurrent()
+    expect(screen.getByText('Day 1 完成')).toBeTruthy()
+  })
+
+  it('撤销失败：保留当前进度并提示', async () => {
+    const onUndo = vi.fn()
+    render(
+      <StatefulHarness sequence={[pointItem('i-a', 'p:a', 0), pointItem('i-b', 'p:b', 1)]} undoResult={false} onUndo={onUndo} />
+    )
+    enterCards()
+    checkInCurrent()
+    fireEvent.click(screen.getByRole('button', { name: '撤销打卡' }))
+    await waitFor(() => expect(screen.getByText('撤销失败，请稍后重试。')).toBeTruthy())
+    expect(screen.getByRole('heading', { name: 'Spot B' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '撤销打卡' })).toBeTruthy()
   })
 })
