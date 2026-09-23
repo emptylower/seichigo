@@ -1,7 +1,22 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DayLegsResult, RouteBookDetail } from '../types'
+import type { DayGeometry, DayLegsResult, RouteBookDetail } from '../types'
+
+function parseDayGeometry(raw: unknown): DayGeometry | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  if (row.type !== 'LineString' || !Array.isArray(row.coordinates)) return null
+  const coordinates: [number, number][] = []
+  for (const pair of row.coordinates) {
+    if (!Array.isArray(pair) || pair.length < 2) return null
+    const lng = Number(pair[0])
+    const lat = Number(pair[1])
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
+    coordinates.push([lng, lat])
+  }
+  return coordinates.length >= 2 ? { type: 'LineString', coordinates } : null
+}
 
 /** items 顺序 + 交通方式 + 住宿 + 自定义点坐标签名；内容没变就命中缓存 */
 function daySignature(detail: RouteBookDetail, dayId: string): string {
@@ -54,13 +69,20 @@ export function useDayLegs(
       try {
         const res = await fetch(`/api/me/routebooks/${routeBookId}/days/${dayId}/legs`)
         const data = (await res.json().catch(() => null)) as
-          | { ok?: boolean; stops?: DayLegsResult['stops']; legs?: DayLegsResult['legs']; staleTransitItemIds?: string[] }
+          | {
+              ok?: boolean
+              stops?: DayLegsResult['stops']
+              legs?: DayLegsResult['legs']
+              staleTransitItemIds?: string[]
+              dayGeometry?: unknown
+            }
           | null
         if (res.ok && data?.ok) {
           result = {
             stops: Array.isArray(data.stops) ? data.stops : [],
             legs: Array.isArray(data.legs) ? data.legs : [],
             staleTransitItemIds: Array.isArray(data.staleTransitItemIds) ? data.staleTransitItemIds : [],
+            dayGeometry: parseDayGeometry(data.dayGeometry),
           }
         }
       } catch {

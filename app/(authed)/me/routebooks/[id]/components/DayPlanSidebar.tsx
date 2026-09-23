@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronsDownUp, ChevronsUpDown, Plus, Undo2 } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, Plus, Undo2 } from 'lucide-react'
 import type {
   DayLegsResult,
   PointPreview,
@@ -16,7 +16,10 @@ import { UnassignedBlock } from './UnassignedBlock'
 type DayPlanSidebarProps = {
   detail: RouteBookDetail
   selectedDayId: string | null
+  /** 点某天标题行：选中该天；再点同一天 → 回到全部模式（由父组件 toggle） */
   onSelectDay: (dayId: string) => void
+  /** 工具栏「显示全部」按钮：回到全部模式（等价于再点一次已选天） */
+  onShowAll: () => void
   getPointPreview: (pointId: string) => PointPreview
   legsByDay: Record<string, DayLegsResult>
   routeVisible: boolean
@@ -31,6 +34,8 @@ type DayPlanSidebarProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   onInsertDay: (afterDayIndex: number) => void
   onDeleteDay: (dayId: string) => void
+  /** B4：点时间线条目（point/place）打开详情卡 */
+  onOpenItemDetail?: (itemId: string) => void
   /** 拖拽悬停超限置灰的天（useTripDnd.limitBlockedDayId） */
   limitBlockedDayId?: string | null
 }
@@ -63,6 +68,7 @@ export function DayPlanSidebar({
   detail,
   selectedDayId,
   onSelectDay,
+  onShowAll,
   getPointPreview,
   legsByDay,
   routeVisible,
@@ -76,6 +82,7 @@ export function DayPlanSidebar({
   onUpdateDay,
   onInsertDay,
   onDeleteDay,
+  onOpenItemDetail,
   limitBlockedDayId = null,
 }: DayPlanSidebarProps) {
   const days = useMemo(() => [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex), [detail.days])
@@ -154,6 +161,17 @@ export function DayPlanSidebar({
           {allExpanded ? <ChevronsDownUp className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
           {allExpanded ? '折叠' : '展开'}
         </button>
+        {selectedDayId !== null ? (
+          <button
+            type="button"
+            title="显示全部天的点位"
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-50 px-2.5 text-xs font-semibold text-brand-600 shadow-sm transition hover:bg-brand-100"
+            onClick={onShowAll}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            显示全部
+          </button>
+        ) : null}
         <span className="flex-1" />
         <button
           type="button"
@@ -185,6 +203,7 @@ export function DayPlanSidebar({
             onDeleteItem={onDeleteItem}
             onMoveItem={handleMoveItem}
             onUpdateDay={onUpdateDay}
+            onOpenItemDetail={onOpenItemDetail}
             expanded={isExpanded(day.id)}
             onToggleExpanded={() => toggleDay(day.id)}
             dropBlocked={limitBlockedDayId === day.id}

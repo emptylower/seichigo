@@ -1,21 +1,32 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { DayLegsResult } from '../types'
+import type { DayGeometry, DayLegsResult } from '../types'
 import type { RoutePreviewLeg } from '@/components/route/routePreviewLayers'
 
 /**
- * 把某天 legs 结果换算成 RoutePreviewMap 的分段线（GeoJSON 顺序 [lng, lat]）。
- * B1 全是 heuristic：polyline 为空 → 站点直连虚线；agent/google 段（B2）有折线时实线。
- * enabled=false（路线开关关闭）或 legs 未到返回 []： legs !== undefined 时地图才走
- * 分段渲染，返回 undefined 会让地图回退到旧的全点虚线链。
+ * 把某天 legs 结果换算成 RoutePreviewMap 的渲染输入：
+ * - 服务端给了 dayGeometry（整天真实道路几何，含住宿首尾）→ 作为单条实线 LineString
+ *   走 routeGeometry 通道（亮芯+暗壳样式，与 /plan 一致）；
+ * - 没给（无 token / 站点不足）→ 回退到 legs 分段：polyline 段（agent/google）实线，
+ *   heuristic 段（两点直连）虚线。
+ * enabled=false（路线开关关闭）或 legs 未到：两者都为 null/[]，地图不画线。
  */
 export function useRouteGeometry(
   dayLegs: DayLegsResult | undefined,
   enabled: boolean
-): { legs: RoutePreviewLeg[] } {
+): { dayGeometry: DayGeometry | null; legs: RoutePreviewLeg[] } {
+  const dayGeometry = useMemo<DayGeometry | null>(() => {
+    if (!enabled || !dayLegs) return null
+    const geometry = dayLegs.dayGeometry
+    if (!geometry || geometry.coordinates.length < 2) return null
+    return geometry
+  }, [dayLegs, enabled])
+
   const legs = useMemo<RoutePreviewLeg[]>(() => {
     if (!enabled || !dayLegs) return []
+    // dayGeometry 在场时由 routeGeometry 通道渲染，分段 legs 只作连接行数据源
+    if (dayGeometry) return []
     const stopById = new Map(dayLegs.stops.map((stop) => [stop.id, stop]))
     const out: RoutePreviewLeg[] = []
     for (const leg of dayLegs.legs) {
@@ -37,7 +48,7 @@ export function useRouteGeometry(
       }
     }
     return out
-  }, [dayLegs, enabled])
+  }, [dayLegs, dayGeometry, enabled])
 
-  return { legs }
+  return { dayGeometry, legs }
 }

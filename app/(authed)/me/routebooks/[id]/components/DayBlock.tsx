@@ -30,6 +30,8 @@ type DayBlockProps = {
   onDeleteItem: (itemId: string) => void
   onMoveItem: (itemId: string, targetDayId: string | null) => void
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
+  /** B4：点时间线条目（point/place）打开详情卡 */
+  onOpenItemDetail?: (itemId: string) => void
   expanded: boolean
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
@@ -53,6 +55,7 @@ export function DayBlock({
   onDeleteItem,
   onMoveItem,
   onUpdateDay,
+  onOpenItemDetail,
   expanded,
   onToggleExpanded,
   dropBlocked = false,
@@ -150,6 +153,11 @@ export function DayBlock({
                   onUpdate={(data) => onUpdateItem(item.id, data)}
                   onDelete={() => onDeleteItem(item.id)}
                   onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
+                  onOpenDetail={
+                    (item.kind === 'point' || item.kind === 'place') && onOpenItemDetail
+                      ? () => onOpenItemDetail(item.id)
+                      : undefined
+                  }
                 />
               </div>
             ))}

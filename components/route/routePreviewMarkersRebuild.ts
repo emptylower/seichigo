@@ -22,6 +22,8 @@ export function rebuildRouteMarkers(
     activeId: string | null
     clickable: boolean
     variants?: Record<string, MarkerVariant>
+    /** B3：可选封面缩略图（key 为 point id）；未传或值为 null 时保持序号/icon 样式 */
+    images?: Record<string, string | null>
     onClick?: (layout: MarkerLayout) => (event: MouseEvent) => void
     onPointerDown?: (pointKey: string, event: PointerEvent) => void
   },
@@ -34,6 +36,7 @@ export function rebuildRouteMarkers(
       active: layout.id === options.activeId,
       clickable: options.clickable,
       variant: options.variants?.[layout.id],
+      image: options.images?.[layout.id] ?? null,
     })
     if (options.clickable && options.onClick) el.addEventListener('click', options.onClick(layout))
     if (options.onPointerDown) {

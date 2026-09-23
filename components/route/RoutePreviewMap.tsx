@@ -80,6 +80,8 @@ export interface RoutePreviewMapProps {
   legs?: RoutePreviewLeg[]
   /** marker 外观变体（可选）：key 为 point id；徽标文本覆盖与 active/muted/hollow 强调 */
   markerVariants?: Record<string, MarkerVariant>
+  /** B3：可选封面缩略图（key 为 point id，值为图片 URL 或 null）；未传时样式与现状一致 */
+  markerImages?: Record<string, string | null>
   /** marker pointerdown（可选）：行程本把事件转发给 dnd-kit 代理做拖入某天 */
   onMarkerPointerDown?: (pointKey: string, event: PointerEvent) => void
   /** 右键 / 触屏长按 500ms（可选）：B2 自定义点创建入口 */
@@ -103,6 +105,7 @@ export function RoutePreviewMap({
   interactive = true,
   legs,
   markerVariants,
+  markerImages,
   onMarkerPointerDown,
   onMapContextMenu,
 }: RoutePreviewMapProps) {
@@ -135,15 +138,26 @@ export function RoutePreviewMap({
     () =>
       markerVariants
         ? Object.entries(markerVariants)
-            .map(([key, variant]) => `${key}:${variant.badge ?? ''}:${variant.emphasis}`)
+            .map(([key, variant]) => `${key}:${variant.badge ?? ''}:${variant.emphasis}:${variant.placeKind ?? ''}`)
             .sort()
             .join('|')
         : '',
     [markerVariants],
   )
 
-  const latestStateRef = useRef({ points: normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact })
-  latestStateRef.current = { points: normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact }
+  const imagesSignature = useMemo(
+    () =>
+      markerImages
+        ? Object.entries(markerImages)
+            .map(([key, url]) => `${key}:${url ?? ''}`)
+            .sort()
+            .join('|')
+        : '',
+    [markerImages],
+  )
+
+  const latestStateRef = useRef({ points: normalizedPoints, routeGeometry, legs, markerVariants, markerImages, variantsSignature, imagesSignature, compact })
+  latestStateRef.current = { points: normalizedPoints, routeGeometry, legs, markerVariants, markerImages, variantsSignature, imagesSignature, compact }
   activePointIdRef.current = activePointId
   onPointSelectRef.current = onPointSelect
   renderPopupRef.current = renderPopup
@@ -151,8 +165,8 @@ export function RoutePreviewMap({
   onMarkerPointerDownRef.current = onMarkerPointerDown
   onMapContextMenuRef.current = onMapContextMenu
 
-  const computeSignature = (state: { points: RoutePreviewPoint[]; routeGeometry: typeof routeGeometry; legs: typeof legs; variantsSignature: string }) =>
-    `${buildRenderSignature(state.points, state.routeGeometry, state.legs)}|v:${state.variantsSignature}`
+  const computeSignature = (state: { points: RoutePreviewPoint[]; routeGeometry: typeof routeGeometry; legs: typeof legs; variantsSignature: string; imagesSignature: string }) =>
+    `${buildRenderSignature(state.points, state.routeGeometry, state.legs)}|v:${state.variantsSignature}|i:${state.imagesSignature}`
 
   // M3：Popup 统一生命周期——closeButton + offset 14；内容优先 renderPopup 自定义
   // 元素（含「查看条目」按钮），缺省/返回 null 回退标题文本；同一时刻只保留一个
@@ -263,6 +277,7 @@ export function RoutePreviewMap({
         activeId: activePointIdRef.current,
         clickable,
         variants: latestStateRef.current.markerVariants,
+        images: latestStateRef.current.markerImages,
         onClick: clickable ? onMarkerClick : undefined,
         onPointerDown: onMarkerPointerDownRef.current,
       })
@@ -427,7 +442,7 @@ export function RoutePreviewMap({
         fitMapToPreview(map, latest.points, latest.routeGeometry, latest.legs, latest.compact)
       }
     })
-  }, [normalizedPoints, routeGeometry, legs, markerVariants, variantsSignature, compact])
+  }, [normalizedPoints, routeGeometry, legs, markerVariants, markerImages, variantsSignature, imagesSignature, compact])
 
   // activePointId 变化：只切 marker 高亮（不重建）；不在视口内时 easeTo 并补开 Popup。
   // 地图未 ready 时 Popup 部分由 markersReady 判定跳过，marker 就绪后由 rebuild 兜底。

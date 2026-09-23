@@ -42,6 +42,8 @@ export type PlaceRecord = {
   lat: number
   lng: number
   note: string | null
+  /** B1.1：自定义点携带的谷歌 placeId（有则可拉 intro） */
+  googlePlaceId?: string | null
   createdAt: string
 }
 
@@ -122,10 +124,13 @@ export type NavMode = 'transit' | 'driving'
 /** 当天段数据（与 lib/routeBook/legs.ts 的 Leg/LegStop 同形） */
 export type DayLeg = Leg
 export type DayLegStop = LegStop
+/** 整天真实道路几何（GeoJSON 顺序 [lng, lat]，含住宿首尾）；后端无 token / 站点不足时为 null */
+export type DayGeometry = { type: 'LineString'; coordinates: [number, number][] }
 export type DayLegsResult = {
   stops: DayLegStop[]
   legs: DayLeg[]
   staleTransitItemIds: string[]
+  dayGeometry?: DayGeometry | null
 }
 
 export const DAY_ITEM_LIMIT = 25

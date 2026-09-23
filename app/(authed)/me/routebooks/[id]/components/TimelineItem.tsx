@@ -86,6 +86,8 @@ type TimelineItemProps = {
   onUpdate: (data: UpdateItemInput) => void
   onDelete: () => void
   onMoveItem: (targetDayId: string | null) => void
+  /** B4：point/place 条目点击正文打开详情卡（不影响拖拽与右侧操作按钮） */
+  onOpenDetail?: () => void
 }
 
 export function TimelineItem({
@@ -97,6 +99,7 @@ export function TimelineItem({
   onUpdate,
   onDelete,
   onMoveItem,
+  onOpenDetail,
 }: TimelineItemProps) {
   const [editingTime, setEditingTime] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -205,7 +208,18 @@ export function TimelineItem({
       )}
 
       <div className="min-w-0 flex-1">
-        {body}
+        {onOpenDetail && (item.kind === 'point' || item.kind === 'place') ? (
+          <button
+            type="button"
+            aria-label={`查看 ${title}`}
+            className="block w-full cursor-pointer rounded-lg text-left transition hover:bg-pink-50/60"
+            onClick={onOpenDetail}
+          >
+            {body}
+          </button>
+        ) : (
+          body
+        )}
         {item.kind !== 'transit' ? (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <TimeBadge item={item} />

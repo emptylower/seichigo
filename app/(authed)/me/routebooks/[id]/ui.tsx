@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Navigation, Plus, X } from 'lucide-react'
+import { ChevronRight, Navigation, Pencil, Plus, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
@@ -14,23 +13,22 @@ import { useTripDnd } from './hooks/useTripDnd'
 import { useDayLegs } from './hooks/useDayLegs'
 import { ITEM_DND_PREFIX, MARKER_DND_PREFIX, POOL_DND_PREFIX } from './types'
 import type { ItemRecord, PlaceRecord, PointPreview } from './types'
-import { dayLabel, itemDisplayTitle, parseDragRecordId, pickTodayDayId, sequenceForImmersive } from './utils'
+import { dayLabel, itemDisplayTitle, parseDragRecordId, sequenceForImmersive } from './utils'
 import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
 import { PlannerMapStage } from './components/PlannerMapStage'
 import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel } from './components/PlannerPointPoolPanel'
 import { DayPlanSidebar } from './components/DayPlanSidebar'
 import { DayBlock } from './components/DayBlock'
+import { PointDetailCard } from './components/PointDetailCard'
 import { RouteBookImmersiveMode } from './components/RouteBookImmersiveMode'
 import { MobilePointPoolSheet } from './components/MobilePointPoolSheet'
 import { StartDayPickerSheet } from './components/StartDayPickerSheet'
 
 function RouteBookDetailSkeleton() {
   return (
-    <div data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
-      <section className="border-b border-pink-100/80 bg-white/80 px-4 py-4 backdrop-blur-md sm:px-6">
-        <div className="mx-auto h-14 max-w-[1920px] animate-pulse rounded-[28px] bg-white/80 shadow-sm" />
-      </section>
+    <div data-layout-wide="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        <div className="h-5 w-48 animate-pulse rounded-full bg-pink-100/70" />
         <section className="hidden gap-5 lg:grid lg:grid-cols-[420px_minmax(0,1fr)_420px]">
           <div className="h-[74vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
           <div className="h-[74vh] animate-pulse rounded-[32px] border border-pink-100/90 bg-white/90 shadow-sm" />
@@ -83,6 +81,11 @@ function readClientLocale(): SupportedLocale {
   return (match?.[1] as SupportedLocale | undefined) ?? 'zh'
 }
 
+/** 详情接口的 lang 参数（与 lib/googlePlaces/details.ts 的 PlaceIntroLang 对齐） */
+function placeIntroLang(locale: SupportedLocale): 'zh-CN' | 'en' | 'ja' {
+  return locale === 'en' ? 'en' : locale === 'ja' ? 'ja' : 'zh-CN'
+}
+
 function formatImportSummary(counts: ImportCounts, locale: SupportedLocale): string {
   const base = t('routebook.importSummary', locale)
     .split('{days}')
@@ -130,6 +133,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   const [routeVisible, setRouteVisible] = useState(true)
   const [poolSheetOpen, setPoolSheetOpen] = useState(false)
   const [focusItemId, setFocusItemId] = useState<string | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [importSummary, setImportSummary] = useState<string | null>(null)
   const [startDayPickerOpen, setStartDayPickerOpen] = useState(false)
   const pendingStartRef = useRef(false)
@@ -153,11 +157,13 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     onLimitBlocked: () => trip.showToast('这一天最多 25 个点'),
   })
 
-  // 选中天初始化与删除后回退（pickTodayDayId：有日期匹配今天，否则第一天）
+  // 初始进入为「全部」模式：selectedDayId 保持 null，由用户点击某天进入单天视图。
+  // 仅在已选天被删除等场景下回退到 null。
   useEffect(() => {
     if (!detail) return
-    if (selectedDayId && detail.days.some((day) => day.id === selectedDayId)) return
-    setSelectedDayId(pickTodayDayId(detail.days, new Date()))
+    if (selectedDayId && !detail.days.some((day) => day.id === selectedDayId)) {
+      setSelectedDayId(null)
+    }
   }, [detail, selectedDayId])
 
   const days = useMemo(
@@ -209,10 +215,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     [trip.pointPoolItems, bookPointIds]
   )
 
-  // 无日期行程：点「开始」先弹选天 sheet，选中后再进沉浸模式
+  // 无日期行程：点「开始」先弹选天 sheet，选中后再进沉浸模式；
+  // 全部模式（未选天）也走同一弹层，由用户挑天开始
   const isDateless = Boolean(detail && !detail.startDate)
   const canStart = detail
-    ? isDateless
+    ? isDateless || selectedDayId === null
       ? detail.days.some((day) => sequenceForImmersive(detail.items, day.id).length > 0)
       : immersiveSequence.length > 0
     : false
@@ -229,11 +236,11 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
 
   const handleStartImmersive = async () => {
     if (!detail || !canStart) return
-    if (isDateless) {
+    if (isDateless || !selectedDay) {
       setStartDayPickerOpen(true)
       return
     }
-    if (!selectedDay || !immersiveSequence.length) return
+    if (!immersiveSequence.length) return
     await beginImmersive()
   }
 
@@ -266,6 +273,43 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
     const onSelected = candidates.find((row) => row.dayId === selectedDayId)
     setFocusItemId((onSelected ?? candidates[0])?.id ?? null)
   }
+
+  // B4：点位详情卡——marker/时间线条目共用一个选中 id；再点同一 marker 关闭
+  const handleSelectItem = (itemId: string) => {
+    setSelectedItemId((prev) => (prev === itemId ? null : itemId))
+    setFocusItemId(itemId)
+  }
+
+  const handleOpenItemDetail = (itemId: string) => {
+    setSelectedItemId(itemId)
+    setFocusItemId(itemId)
+  }
+
+  const handleCloseItemDetail = () => {
+    setSelectedItemId(null)
+  }
+
+  // 切天/删除条目后关掉已失效的详情卡
+  useEffect(() => {
+    if (!selectedItemId) return
+    if (!detail) return
+    const item = detail.items.find((row) => row.id === selectedItemId)
+    if (!item) {
+      setSelectedItemId(null)
+      return
+    }
+    if (selectedDayId !== null && item.dayId !== selectedDayId) {
+      setSelectedItemId(null)
+    }
+  }, [detail, selectedDayId, selectedItemId])
+
+  const selectedItem = useMemo(() => {
+    if (!selectedItemId || !detail) return null
+    const item = detail.items.find((row) => row.id === selectedItemId)
+    if (!item) return null
+    if (item.kind !== 'point' && item.kind !== 'place') return null
+    return item
+  }, [detail, selectedItemId])
 
   const handleMoveItem = (itemId: string, targetDayId: string | null) => {
     if (!detail) return
@@ -314,11 +358,16 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   }
   if (!detail) return null
 
+  const handleSelectDay = (dayId: string) => {
+    setSelectedDayId((prev) => (prev === dayId ? null : dayId))
+  }
+
   const sidebar = (
     <DayPlanSidebar
       detail={detail}
       selectedDayId={selectedDayId}
-      onSelectDay={setSelectedDayId}
+      onSelectDay={handleSelectDay}
+      onShowAll={() => setSelectedDayId(null)}
       getPointPreview={trip.getPointPreview}
       legsByDay={legsByDay}
       routeVisible={routeVisible}
@@ -333,9 +382,31 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
       onInsertDay={(after) => void trip.insertDay(after)}
       onDeleteDay={(dayId) => void trip.deleteDay(dayId)}
+      onOpenItemDetail={handleOpenItemDetail}
       limitBlockedDayId={dnd.limitBlockedDayId}
     />
   )
+
+  const detailCard = selectedItem ? (
+    <PointDetailCard
+      routeBookId={detail.id}
+      item={selectedItem}
+      preview={selectedItem.pointId ? trip.getPointPreview(selectedItem.pointId) : null}
+      place={selectedItem.placeId ? detail.places.find((row) => row.id === selectedItem.placeId) ?? null : null}
+      days={days}
+      lang={placeIntroLang(readClientLocale())}
+      compact={isMobile}
+      onClose={handleCloseItemDetail}
+      onDelete={() => {
+        void trip.deleteItem(selectedItem.id)
+        setSelectedItemId(null)
+      }}
+      onMoveItem={(targetDayId) => {
+        handleMoveItem(selectedItem.id, targetDayId)
+        setSelectedItemId(null)
+      }}
+    />
+  ) : null
 
   const mapStage = (
     <PlannerMapStage
@@ -349,6 +420,8 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       startDisabled={!canStart}
       onStartImmersive={() => void handleStartImmersive()}
       activePointId={focusItemId}
+      onPointSelect={handleSelectItem}
+      detailCard={detailCard}
     />
   )
 
@@ -368,36 +441,48 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
   )
 
   return (
-    <div data-layout-wide="true" data-layout-immersive="true" className="min-h-dvh bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
-      <section className="border-b border-pink-100/80 bg-white/82 px-4 py-4 backdrop-blur-md sm:px-6">
-        <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" prefetch={false} className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm no-underline">
-              <Image
-                src="/brand/app-logo-64.png?v=2"
-                alt="SeichiGo"
-                width={40}
-                height={40}
-                className="h-10 w-10 rounded-xl object-cover"
-                unoptimized
-              />
-            </Link>
-            <div className="min-w-0">
-              <div className="text-lg font-semibold tracking-tight text-slate-900">SeichiGo</div>
-              <div className="text-sm text-slate-500">我的地图 · 按天行程</div>
-            </div>
-          </div>
-
-          <Link
-            href="/me/routebooks"
-            prefetch={false}
-            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-pink-100 bg-white/90 px-4 text-sm font-medium text-slate-700 no-underline shadow-sm transition hover:bg-pink-50/70"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            返回我的地图
+    <div data-layout-wide="true" className="min-h-[70dvh] bg-[linear-gradient(180deg,#fffafc_0%,#fff5f9_100%)]">
+      <nav
+        aria-label="面包屑"
+        className="border-b border-pink-100/70 bg-white/70 px-4 py-2.5 backdrop-blur-md sm:px-6"
+      >
+        <div className="mx-auto flex max-w-[1920px] items-center gap-1.5 text-sm text-slate-500">
+          <Link href="/me/routebooks" prefetch={false} className="font-medium text-slate-600 no-underline transition hover:text-brand-600">
+            我的地图
           </Link>
+          <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+          {trip.editingTitle ? (
+            <input
+              autoFocus
+              value={trip.titleDraft}
+              onChange={(event) => trip.setTitleDraft(event.target.value)}
+              onBlur={() => void trip.handleTitleSave()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+                if (event.key === 'Escape') {
+                  trip.setTitleDraft(detail.title)
+                  trip.setEditingTitle(false)
+                }
+              }}
+              aria-label="行程标题"
+              className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-2 py-1 text-sm font-semibold text-slate-900 outline-none focus:border-brand-400 sm:max-w-md"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                trip.setTitleDraft(detail.title)
+                trip.setEditingTitle(true)
+              }}
+              title="点击改名"
+              className="group inline-flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left font-semibold text-slate-900 transition hover:bg-pink-50"
+            >
+              <span className="truncate">《{detail.title}》</span>
+              <Pencil className="h-3 w-3 shrink-0 text-slate-300 transition group-hover:text-brand-500" />
+            </button>
+          )}
         </div>
-      </section>
+      </nav>
 
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
         {importSummary ? (
@@ -455,6 +540,17 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
             <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} />
 
             <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <button
+                type="button"
+                className={`inline-flex min-h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium transition ${
+                  selectedDayId === null
+                    ? 'border-brand-500 bg-brand-500 text-white'
+                    : 'border-pink-100 bg-white text-slate-600'
+                }`}
+                onClick={() => setSelectedDayId(null)}
+              >
+                全部
+              </button>
               {days.map((day) => {
                 const active = day.id === selectedDayId
                 return (
@@ -464,7 +560,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     className={`inline-flex min-h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium transition ${
                       active ? 'border-brand-500 bg-brand-500 text-white' : 'border-pink-100 bg-white text-slate-600'
                     }`}
-                    onClick={() => setSelectedDayId(day.id)}
+                    onClick={() => handleSelectDay(day.id)}
                   >
                     {dayLabel(day, day.dayIndex)}
                   </button>
@@ -516,6 +612,7 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
                     onDeleteItem={(itemId) => void trip.deleteItem(itemId)}
                     onMoveItem={handleMoveItem}
                     onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
+                    onOpenItemDetail={handleOpenItemDetail}
                     expanded
                     onToggleExpanded={() => {}}
                   />
