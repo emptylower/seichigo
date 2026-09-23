@@ -48,6 +48,18 @@ describe('S4 行程日期入口', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '行程日期' })).toBeNull())
   })
 
+  it('日期弹层挂在 document.body 下（fixed + 高 z-index），不被地图舞台盖住/裁切', () => {
+    renderNav(null)
+    fireEvent.click(screen.getByRole('button', { name: '编辑行程日期' }))
+    const dialog = screen.getByRole('dialog', { name: '行程日期' })
+    expect(dialog.parentElement).toBe(document.body)
+    expect(dialog.style.position).toBe('fixed')
+    expect(dialog.className).toContain('z-[130]')
+    // 点弹层内部不关闭
+    fireEvent.pointerDown(screen.getByLabelText('开始日期'))
+    expect(screen.getByRole('dialog', { name: '行程日期' })).toBeTruthy()
+  })
+
   it('已有日期：预填并可「清除日期」→ 回调收到 null', async () => {
     const onSave = renderNav('2026-09-15T00:00:00.000Z')
     fireEvent.click(screen.getByRole('button', { name: '编辑行程日期' }))

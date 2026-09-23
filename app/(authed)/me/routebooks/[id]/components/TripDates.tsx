@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CalendarDays } from 'lucide-react'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { dayDateLabel } from '../utils'
@@ -73,6 +74,18 @@ export function TripDatesForm({
   )
 }
 
+const POPOVER_WIDTH = 256
+
+type PopoverPos = { left: number; top: number; width: number }
+
+/** 弹层挂到 body（fixed 定位），盖在地图舞台与详情卡之上，不被祖先 overflow 裁切；宽度不超过视口 */
+function computePopoverPos(trigger: HTMLElement): PopoverPos {
+  const rect = trigger.getBoundingClientRect()
+  const width = Math.min(POPOVER_WIDTH, window.innerWidth - 16)
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+  return { left, top: rect.bottom + 6, width }
+}
+
 /** 面包屑标题旁的「日期」按钮 + 小弹窗 */
 export function TripDatesButton({
   startDate,
@@ -84,49 +97,71 @@ export function TripDatesButton({
   locale?: SupportedLocale
 }) {
   const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<PopoverPos | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && event.target instanceof Node && !rootRef.current.contains(event.target)) setOpen(false)
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
     }
+    // 视口变化（含移动端软键盘弹出）时重新定位，而不是关闭——否则输入日期时弹层会消失
+    const reposition = () => {
+      if (triggerRef.current) setPos(computePopoverPos(triggerRef.current))
+    }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
     }
   }, [open])
 
   const label = startDate ? dayDateLabel({ date: startDate }, locale) : null
 
   return (
-    <div ref={rootRef} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={tr('routebook.dates.aria', locale)}
         className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs font-medium text-slate-500 transition hover:bg-pink-50 hover:text-brand-600"
-        onClick={() => setOpen((cur) => !cur)}
+        onClick={() => {
+          if (!open && triggerRef.current) setPos(computePopoverPos(triggerRef.current))
+          setOpen((cur) => !cur)
+        }}
       >
         <CalendarDays className="h-3.5 w-3.5" />
         <span>{label ?? tr('routebook.dates.button', locale)}</span>
       </button>
-      {open ? (
-        <div
-          role="dialog"
-          aria-label={tr('routebook.dates.title', locale)}
-          className="absolute left-0 top-full z-[60] mt-1.5 w-64 rounded-2xl border border-pink-100 bg-white p-3 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.45)]"
-        >
-          <div className="mb-2 text-sm font-semibold text-slate-900">{tr('routebook.dates.title', locale)}</div>
-          <TripDatesForm startDate={startDate} onSave={onSave} onDone={() => setOpen(false)} locale={locale} />
-        </div>
-      ) : null}
+      {open && pos
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              role="dialog"
+              aria-label={tr('routebook.dates.title', locale)}
+              style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width }}
+              className="z-[130] rounded-2xl border border-pink-100 bg-white p-3 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.45)]"
+            >
+              <div className="mb-2 text-sm font-semibold text-slate-900">{tr('routebook.dates.title', locale)}</div>
+              <TripDatesForm startDate={startDate} onSave={onSave} onDone={() => setOpen(false)} locale={locale} />
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }
