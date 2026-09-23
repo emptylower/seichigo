@@ -847,5 +847,9 @@
     "toastImageCopiedPasteInPost": "图片已复制，在推文里粘贴",
     "toastImageDownloadedDragIntoPost": "图片已下载，拖进推文即可",
     "toastSavedAndCopiedOpenApp": "图片已保存、文案已复制，打开{app}粘贴"
+  },
+  "routebook": {
+    "importSummary": "已按 {days} 天导入：{points} 个点位、{transits} 条交通、{lodgings} 个住宿",
+    "importDegraded": "，{n} 条作为备注导入"
   }
 }

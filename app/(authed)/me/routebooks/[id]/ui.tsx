@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, Navigation, Plus } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft, Navigation, Plus, X } from 'lucide-react'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useTripData } from './hooks/useTripData'
 import { useTripDnd } from './hooks/useTripDnd'
@@ -42,6 +45,55 @@ function RouteBookDetailSkeleton() {
   )
 }
 
+type ImportCounts = {
+  days: number
+  points: number
+  transits: number
+  lodgings: number
+  degradedToNote: number
+}
+
+function parseImportCounts(raw: string | null): ImportCounts | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const row = parsed as Record<string, unknown>
+    const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+    return {
+      days: num(row.days),
+      points: num(row.points),
+      transits: num(row.transits),
+      lodgings: num(row.lodgings),
+      degradedToNote: num(row.degradedToNote),
+    }
+  } catch {
+    return null
+  }
+}
+
+function readClientLocale(): SupportedLocale {
+  if (typeof document === 'undefined') return 'zh'
+  const match = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=(zh|en|ja)(?:;|$)/)
+  return (match?.[1] as SupportedLocale | undefined) ?? 'zh'
+}
+
+function formatImportSummary(counts: ImportCounts, locale: SupportedLocale): string {
+  const base = t('routebook.importSummary', locale)
+    .split('{days}')
+    .join(String(counts.days))
+    .split('{points}')
+    .join(String(counts.points))
+    .split('{transits}')
+    .join(String(counts.transits))
+    .split('{lodgings}')
+    .join(String(counts.lodgings))
+  if (counts.degradedToNote > 0) {
+    return base + t('routebook.importDegraded', locale).split('{n}').join(String(counts.degradedToNote))
+  }
+  return base
+}
+
 function ItemDragOverlayCard({
   item,
   preview,
@@ -65,12 +117,23 @@ function ItemDragOverlayCard({
 
 export default function RouteBookDetailClient({ id }: { id: string }) {
   const isMobile = useIsMobile()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [mobileTab, setMobileTab] = useState<'route' | 'pool'>('route')
   const [showImmersive, setShowImmersive] = useState(false)
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
   const [routeVisible, setRouteVisible] = useState(true)
   const [poolSheetOpen, setPoolSheetOpen] = useState(false)
   const [focusItemId, setFocusItemId] = useState<string | null>(null)
+  const [importSummary, setImportSummary] = useState<string | null>(null)
+
+  // /plan 导入跳转带回的一次性提示条：读出即清参数
+  useEffect(() => {
+    const counts = parseImportCounts(searchParams.get('imported'))
+    if (!counts) return
+    setImportSummary(formatImportSummary(counts, readClientLocale()))
+    router.replace(`/me/routebooks/${id}`, { scroll: false })
+  }, [id, router, searchParams])
 
   const t = useTripData(id)
   const detail = t.detail
@@ -287,6 +350,19 @@ export default function RouteBookDetailClient({ id }: { id: string }) {
       </section>
 
       <div className="mx-auto max-w-[1920px] space-y-5 px-4 py-5 sm:px-6">
+        {importSummary ? (
+          <div className="flex items-center justify-between gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800 shadow-sm">
+            <span>{importSummary}</span>
+            <button
+              type="button"
+              aria-label="关闭提示"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-100"
+              onClick={() => setImportSummary(null)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
         {showImmersive && selectedDay ? (
           <RouteBookImmersiveMode
             routeBookTitle={detail.title}

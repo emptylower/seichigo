@@ -847,5 +847,9 @@
     "toastImageCopiedPasteInPost": "Image copied — paste it into your post",
     "toastImageDownloadedDragIntoPost": "Image downloaded — drag it into your post",
     "toastSavedAndCopiedOpenApp": "Image saved and caption copied — open {app} and paste"
+  },
+  "routebook": {
+    "importSummary": "Imported across {days} days: {points} points, {transits} transits, {lodgings} lodgings",
+    "importDegraded": ", {n} imported as notes"
   }
 }

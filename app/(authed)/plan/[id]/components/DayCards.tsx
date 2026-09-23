@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { List, Loader2, Map as MapIcon, MessageSquarePlus, Navigation } from 'lucide-react'
 import { useDragToScroll } from '@/lib/hooks/useDragToScroll'
 import { track } from '@/lib/analytics/track'
@@ -29,6 +28,7 @@ import { buildDayNavigationUrls, buildPointNavigationUrl, defaultMaxNavigationWa
 import { planTextFor, type PlanTextFn } from '../lib/planText'
 import { useClientFormattedTime } from '../hooks/useClientFormattedTime'
 import { useDayAutoRotate } from '../hooks/useDayAutoRotate'
+import { useSaveToMyMap } from '../hooks/useSaveToMyMap'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DaymapMessagePayload, TripPlanDayView, TripPlanItemView } from '@/lib/tripPlan/view'
 
@@ -341,12 +341,9 @@ export function DayCards(props: {
     locale = 'zh',
   } = props
   const tx = planTextFor(locale)
-  const router = useRouter()
   const [view, setView] = useState<'list' | 'map'>('list')
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [savedRouteBookId, setSavedRouteBookId] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const { saveState, saveError, handleSave } = useSaveToMyMap(planId, tx)
   // marker ↔ 列表条目联动：activePointId 共享给地图高亮；flashPointId 触发 1.5s 高亮环
   const [activePointId, setActivePointId] = useState<string | null>(null)
   const [flashPointId, setFlashPointId] = useState<string | null>(null)
@@ -427,32 +424,6 @@ export function DayCards(props: {
   function handleShowOnMap(id: string) {
     setActivePointId(id)
     setView('map')
-  }
-
-  async function handleSave() {
-    if (saveState === 'saving') return
-    if (saveState === 'saved' && savedRouteBookId) {
-      router.push(`/me/routebooks/${savedRouteBookId}`)
-      return
-    }
-    setSaveState('saving')
-    setSaveError(null)
-    try {
-      const res = await fetch(`/api/me/plans/${planId}/export-routebook`, { method: 'POST' })
-      const data = (await res.json().catch(() => null)) as
-        | { ok?: boolean; routeBookId?: string; error?: string }
-        | null
-      if (res.ok && data?.ok && typeof data.routeBookId === 'string') {
-        setSavedRouteBookId(data.routeBookId)
-        setSaveState('saved')
-      } else {
-        setSaveState('idle')
-        setSaveError(data?.error ?? tx('day.saveFailed'))
-      }
-    } catch {
-      setSaveState('idle')
-      setSaveError(tx('day.networkError'))
-    }
   }
 
   if (!days.length) {

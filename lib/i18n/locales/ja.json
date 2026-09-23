@@ -847,5 +847,9 @@
     "toastImageCopiedPasteInPost": "画像をコピーしました。投稿に貼り付けてください",
     "toastImageDownloadedDragIntoPost": "画像を保存しました。投稿にドラッグしてください",
     "toastSavedAndCopiedOpenApp": "画像を保存し、テキストをコピーしました。{app}を開いて貼り付けてください"
+  },
+  "routebook": {
+    "importSummary": "{days} 日分を取り込みました：{points} 件のスポット、{transits} 件の移動、{lodgings} 件の宿泊",
+    "importDegraded": "、うち {n} 件はメモとして取り込み"
   }
 }
