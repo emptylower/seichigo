@@ -33,6 +33,13 @@ describe('isOutsideChina', () => {
     expect(isOutsideChina(40, 72.003)).toBe(true)
     expect(isOutsideChina(40, 137.8348)).toBe(true)
   })
+
+  it('日本与韩国排除框：落框内直接视为境外（含与中国矩形重叠的日本西部）', () => {
+    expect(isOutsideChina(35.0116, 135.7681)).toBe(true) // 京都
+    expect(isOutsideChina(36.2381, 137.1866)).toBe(true) // 飞驒古川
+    expect(isOutsideChina(37.5665, 126.978)).toBe(true) // 首尔
+    expect(isOutsideChina(34.6937, 135.5013)).toBe(true) // 大阪
+  })
 })
 
 describe('wgs84ToGcj02 / gcj02ToWgs84', () => {
@@ -41,6 +48,16 @@ describe('wgs84ToGcj02 / gcj02ToWgs84', () => {
     expect(out).toEqual({ lat: 35.6762, lng: 139.6503 })
     const back = gcj02ToWgs84(35.6762, 139.6503)
     expect(back).toEqual({ lat: 35.6762, lng: 139.6503 })
+  })
+
+  it('日本西部（京都/飞驒）不偏移', () => {
+    for (const [lat, lng] of [
+      [35.0116, 135.7681],
+      [36.2381, 137.1866],
+    ]) {
+      expect(wgs84ToGcj02(lat, lng)).toEqual({ lat, lng })
+      expect(gcj02ToWgs84(lat, lng)).toEqual({ lat, lng })
+    }
   })
 
   it('上海往返误差 < 1m', () => {

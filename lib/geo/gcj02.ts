@@ -2,7 +2,9 @@
  * WGS-84 ⇄ GCJ-02（火星坐标系）换算——按公开公式自写，不参考任何 AGPL 项目实现。
  * - `wgs84ToGcj02`：中国境外原样返回。
  * - `gcj02ToWgs84`：迭代反解（≤30 次至 1e-7 度）。
- * - `isOutsideChina`：粗矩形边界（经度 72.004–137.8347、纬度 0.8293–55.8271）。
+ * - `isOutsideChina`：粗矩形边界（经度 72.004–137.8347、纬度 0.8293–55.8271），
+ *   但先排除日本（纬 24–46、经 122.9–146）与韩国（纬 33–38.7、经 124.5–131）——
+ *   日本西部（京都/大阪/飞驒）落在中国矩形内，不排除会被偏移 ~500m。
  */
 
 export type LatLng = { lat: number; lng: number }
@@ -10,7 +12,15 @@ export type LatLng = { lat: number; lng: number }
 const SEMI_MAJOR_A = 6378245.0 // 克拉索夫斯基椭球长半轴
 const EE = 0.00669342162296594323 // 第一偏心率平方
 
+function inBox(lat: number, lng: number, box: { latMin: number; latMax: number; lngMin: number; lngMax: number }): boolean {
+  return lat >= box.latMin && lat <= box.latMax && lng >= box.lngMin && lng <= box.lngMax
+}
+
+const JAPAN_BOX = { latMin: 24, latMax: 46, lngMin: 122.9, lngMax: 146 }
+const KOREA_BOX = { latMin: 33, latMax: 38.7, lngMin: 124.5, lngMax: 131 }
+
 export function isOutsideChina(lat: number, lng: number): boolean {
+  if (inBox(lat, lng, JAPAN_BOX) || inBox(lat, lng, KOREA_BOX)) return true
   return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
 }
 
