@@ -1,21 +1,59 @@
-import type { RouteBookStatus, RouteBookZone } from '@/lib/routeBook/repo'
+import type { ItemKind, PlaceKind, RouteBookStatus, TravelMode } from '@/lib/routeBook/repo'
+import type { Leg, LegStop } from '@/lib/routeBook/legs'
 
-export type { RouteBookStatus, RouteBookZone }
+export type { ItemKind, PlaceKind, RouteBookStatus, TravelMode }
 
-export type PointRecord = {
+/** 与 lib/routeBook/repo.ts 同形的前端 DTO（Date → ISO string） */
+export type DayRecord = {
   id: string
   routeBookId: string
-  pointId: string
+  dayIndex: number
+  date: string | null
+  title: string | null
+  defaultTravelMode: TravelMode
+}
+
+export type ItemRecord = {
+  id: string
+  routeBookId: string
+  dayId: string | null
   sortOrder: number
-  zone: RouteBookZone
+  kind: ItemKind
+  pointId: string | null
+  placeId: string | null
+  title: string | null
+  note: string | null
+  timeStart: string | null
+  timeEnd: string | null
+  locked: boolean
+  icon: string | null
+  color: string | null
+  legMode: TravelMode | null
+  payload: unknown | null
   createdAt: string
 }
 
-export type PointPoolItem = {
+export type PlaceRecord = {
   id: string
-  pointId: string
+  routeBookId: string
+  kind: PlaceKind
+  title: string
+  address: string | null
+  lat: number
+  lng: number
+  note: string | null
   createdAt: string
-  updatedAt: string
+}
+
+export type LodgingRecord = {
+  id: string
+  routeBookId: string
+  placeId: string
+  fromDayIndex: number
+  toDayIndex: number
+  checkIn: string | null
+  checkOut: string | null
+  note: string | null
 }
 
 export type RouteBookDetail = {
@@ -23,9 +61,14 @@ export type RouteBookDetail = {
   title: string
   status: RouteBookStatus
   metadata: unknown | null
+  startDate: string | null
+  dayCount: number
   createdAt: string
   updatedAt: string
-  points: PointRecord[]
+  days: DayRecord[]
+  items: ItemRecord[]
+  places: PlaceRecord[]
+  lodgings: LodgingRecord[]
 }
 
 export type RouteBookSummary = {
@@ -37,13 +80,12 @@ export type RouteBookSummary = {
   updatedAt: string
 }
 
-export type DetailResponse =
-  | { ok: true; routeBook?: RouteBookDetail; item?: RouteBookDetail }
-  | { error: string }
-
-export type RouteBookListResponse =
-  | { ok: true; items: RouteBookSummary[] }
-  | { error: string }
+export type PointPoolItem = {
+  id: string
+  pointId: string
+  createdAt: string
+  updatedAt: string
+}
 
 export type PointPreview = {
   title: string
@@ -67,12 +109,28 @@ export type BangumiResponse = {
   }>
 }
 
+export type DetailResponse =
+  | { ok: true; routeBook?: RouteBookDetail; item?: RouteBookDetail }
+  | { error: string }
+
+export type RouteBookListResponse =
+  | { ok: true; items: RouteBookSummary[] }
+  | { error: string }
+
 export type NavMode = 'transit' | 'driving'
 
-export const SORTED_LIMIT = 25
+/** 当天段数据（与 lib/routeBook/legs.ts 的 Leg/LegStop 同形） */
+export type DayLeg = Leg
+export type DayLegStop = LegStop
+export type DayLegsResult = {
+  stops: DayLegStop[]
+  legs: DayLeg[]
+  staleTransitItemIds: string[]
+}
+
+export const DAY_ITEM_LIMIT = 25
 export const PREVIEW_POINT_BATCH_SIZE = 28
 export const PREVIEW_FETCH_IDLE_TIMEOUT = 1200
-export const ROUTE_PREVIEW_URL_SYNC_DEBOUNCE_MS = 900
 
 export const STATUS_LABEL: Record<RouteBookStatus, string> = {
   draft: '草稿',
@@ -102,17 +160,23 @@ export const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
   driving: 'driving',
 }
 
+export const TRAVEL_MODE_LABEL: Record<TravelMode, string> = {
+  transit: '公共交通',
+  walking: '步行',
+  driving: '驾车',
+}
+
 export const DRAG_SAFE_CONTROL_PROPS = {
   onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   onMouseDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   onTouchStart: (event: { stopPropagation: () => void }) => event.stopPropagation(),
 }
 
-export const SORTED_ZONE_ID = 'zone:sorted'
-export const UNSORTED_ZONE_ID = 'zone:unsorted'
-export const SORTED_DND_PREFIX = 'sorted:'
-export const UNSORTED_DND_PREFIX = 'unsorted:'
+export const ITEM_DND_PREFIX = 'item:'
 export const POOL_DND_PREFIX = 'pool:'
+export const MARKER_DND_PREFIX = 'marker:'
+export const DAY_DROP_PREFIX = 'day:'
+export const UNASSIGNED_DROP_ID = 'day:unassigned'
 
 export const POINT_FALLBACK_GRADIENTS = [
   'from-sky-500/85 via-cyan-400/80 to-brand-300/80',
