@@ -139,7 +139,15 @@ function nearestStopId(
   return null
 }
 
-export type LegResolver = (from: LatLng, to: LatLng, mode: TravelMode) => Promise<Omit<Leg, 'fromId' | 'toId' | 'mode'> | null>
+/** 段解析器调用选项（B2 修复 A4：池已批量读缓存时可跳过逐段读） */
+export type LegResolverCallOptions = { skipCacheRead?: boolean }
+
+export type LegResolver = (
+  from: LatLng,
+  to: LatLng,
+  mode: TravelMode,
+  opts?: LegResolverCallOptions
+) => Promise<Omit<Leg, 'fromId' | 'toId' | 'mode'> | null>
 
 /** 相邻停靠对（B2 修复：显式 legMode 的段覆盖 agent 数据，mode 永远按 legMode 算） */
 export type LegPair = {

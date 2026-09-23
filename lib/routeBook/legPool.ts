@@ -99,7 +99,8 @@ export async function createLegPoolResolver(
                 timer = setTimeout(() => resolveNull(null), remaining)
               })
               try {
-                return await Promise.race([resolver(from, to, mode), timeout])
+                // B2 修复 A4：池已批量读过缓存，上游跳过逐段读
+                return await Promise.race([resolver(from, to, mode, { skipCacheRead: true }), timeout])
               } catch {
                 return null
               }

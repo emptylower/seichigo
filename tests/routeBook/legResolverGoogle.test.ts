@@ -214,4 +214,16 @@ describe('createGoogleLegResolver', () => {
     expect(resolved).toMatchObject({ source: 'google' })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  it('skipCacheRead：池已批量读过缓存，跳过逐段读，缓存命中也照调上游', async () => {
+    const { routeLegCacheKey } = await import('@/lib/routeBook/legCache')
+    const key = routeLegCacheKey(googleLegCacheRawKey('walking', TOKYO_A, TOKYO_B))
+    cachePayloads.set(key, { durationSec: 500, distanceM: 900, polyline: null, source: 'google' })
+
+    const fetchImpl = makeFetch([{ status: 200, body: googleOkBody() }])
+    const resolver = createGoogleLegResolver({ apiKey: 'g-key', fetchImpl: fetchImpl as unknown as typeof fetch })
+    const resolved = await resolver(TOKYO_A, TOKYO_B, 'walking', { skipCacheRead: true })
+    expect(resolved).toMatchObject({ source: 'google', durationSec: 734 })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
 })

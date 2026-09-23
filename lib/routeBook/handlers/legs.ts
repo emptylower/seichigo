@@ -84,7 +84,7 @@ export function createLegHandlers(
         // 池的上游经间接引用包装：限流降级时可以换成 nullResolver（只读缓存 + heuristic）
         let upstream: LegResolver | null = baseResolver
         const pool = baseResolver
-          ? await createLegPoolResolver((from, to, mode) => upstream!(from, to, mode), stops, day.defaultTravelMode)
+          ? await createLegPoolResolver((from, to, mode, callOpts) => upstream!(from, to, mode, callOpts), stops, day.defaultTravelMode)
           : null
         const legResolver: LegResolver = pool ? pool.resolve : nullResolver
 

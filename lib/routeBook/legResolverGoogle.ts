@@ -60,14 +60,17 @@ export function createGoogleLegResolver(opts?: { apiKey?: string; fetchImpl?: ty
   const apiKey = opts?.apiKey ?? (process.env.GOOGLE_DIRECTIONS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '')
   const fetchImpl = opts?.fetchImpl
 
-  return async (from, to, mode) => {
+  return async (from, to, mode, callOpts) => {
     if (mode !== 'walking' && mode !== 'driving') return null
     if (!isWithinJapan(from.lat, from.lng) || !isWithinJapan(to.lat, to.lng)) return null
 
     const key = routeLegCacheKey(googleLegCacheRawKey(mode, from, to))
-    const cached = await getCachedRoutePayload(key)
-    const cachedRead = cached === null ? null : readCachedGoogleLegPayload(cached)
-    if (cachedRead) return cachedRead
+    // B2 修复 A4：池路径已批量读过缓存（skipCacheRead），跳过逐段重复读
+    if (!callOpts?.skipCacheRead) {
+      const cached = await getCachedRoutePayload(key)
+      const cachedRead = cached === null ? null : readCachedGoogleLegPayload(cached)
+      if (cachedRead) return cachedRead
+    }
     if (!apiKey) return null
 
     let result: Awaited<ReturnType<typeof fetchGoogleDirections>>
