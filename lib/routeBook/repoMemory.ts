@@ -12,6 +12,7 @@ import {
   shiftLodgingForInsert,
 } from './rules'
 import type {
+  DayContext,
   DayReorderResult,
   ItemCreateInput,
   ItemCreateResult,
@@ -217,6 +218,20 @@ export class InMemoryRouteBookRepo implements RouteBookRepo {
       items: this.listBookItems(id),
       places: Array.from(this.placesById.values()).filter((place) => place.routeBookId === id),
       lodgings: Array.from(this.lodgingsById.values()).filter((lodging) => lodging.routeBookId === id),
+    }
+  }
+
+  async getDayContext(routeBookId: string, userId: string, dayId: string): Promise<DayContext | null> {
+    const book = this.byId.get(routeBookId)
+    if (!book || book.userId !== userId) return null
+    const day = this.daysById.get(dayId)
+    if (!day || day.routeBookId !== routeBookId) return null
+
+    return {
+      day,
+      items: this.dayItems(routeBookId, dayId),
+      places: Array.from(this.placesById.values()).filter((place) => place.routeBookId === routeBookId),
+      lodgings: Array.from(this.lodgingsById.values()).filter((lodging) => lodging.routeBookId === routeBookId),
     }
   }
 

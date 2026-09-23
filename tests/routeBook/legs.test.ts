@@ -266,6 +266,7 @@ describe('legs handler', () => {
       params: Promise.resolve({ id: bookId, dayId }),
     })
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('private, max-age=0')
     const body = (await res.json()) as { dayGeometry: typeof geometry | null; legs: unknown[] }
     expect(body.dayGeometry).toEqual(geometry)
     expect(body.legs).toHaveLength(1)
@@ -297,5 +298,22 @@ describe('legs handler', () => {
     const brokenBody = (await brokenRes.json()) as { dayGeometry: unknown; legs: unknown[] }
     expect(brokenBody.dayGeometry).toBeNull()
     expect(brokenBody.legs).toHaveLength(1)
+  })
+
+  it('getDayContext：外本 dayId / 别人的本 / 不存在的天或本 → 404', async () => {
+    const { repo, deps } = makeLegDeps()
+    const mine = await seedTwoPointDay(repo)
+    const otherBook = await repo.create('u1', '另一本', 'draft')
+    const otherDay = (await repo.getById(otherBook.id, 'u1'))!.days[0]!
+    const strangerBook = await repo.create('u2', '别人的本', 'draft')
+    const strangerDay = (await repo.getById(strangerBook.id, 'u2'))!.days[0]!
+
+    const get = (id: string, dayId: string) =>
+      createLegHandlers(deps).GET(new Request('http://localhost/x'), { params: Promise.resolve({ id, dayId }) })
+
+    expect((await get(mine.bookId, otherDay.id)).status).toBe(404)
+    expect((await get(strangerBook.id, strangerDay.id)).status).toBe(404)
+    expect((await get(mine.bookId, 'day-不存在')).status).toBe(404)
+    expect((await get('rb-不存在', mine.dayId)).status).toBe(404)
   })
 })

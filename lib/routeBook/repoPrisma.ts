@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma'
 import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { DAY_COUNT_MAX, RouteBookRuleError, computeDayDate } from './rules'
 import type {
+  DayContext,
   DayReorderResult,
   ItemCreateInput,
   ItemCreateResult,
@@ -168,6 +169,32 @@ export class PrismaRouteBookRepo implements RouteBookRepo {
     return {
       ...toBook(found),
       days: found.days.map(toDay),
+      items: found.items.map(toItem),
+      places: found.places.map(toPlace),
+      lodgings: found.lodgings.map(toLodging),
+    }
+  }
+
+  /**
+   * A1 瘦身：一条 findFirst 拿齐单天上下文（天 + 仅该天条目 + 本级 places/lodgings）。
+   * 以 routeBook 为父行、关系全部按 dayId 过滤——关系加载只有一层（实测比嵌套
+   * routeBook select 少一个串行批次），且不拉其它天的条目。
+   */
+  async getDayContext(routeBookId: string, userId: string, dayId: string): Promise<DayContext | null> {
+    const found = await prisma.routeBook.findFirst({
+      where: { id: routeBookId, userId, days: { some: { id: dayId } } },
+      include: {
+        days: { where: { id: dayId } },
+        items: { where: { dayId }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] },
+        places: { orderBy: { createdAt: 'asc' } },
+        lodgings: { orderBy: { fromDayIndex: 'asc' } },
+      },
+    })
+    const day = found?.days[0]
+    if (!found || !day) return null
+
+    return {
+      day: toDay(day),
       items: found.items.map(toItem),
       places: found.places.map(toPlace),
       lodgings: found.lodgings.map(toLodging),

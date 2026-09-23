@@ -87,6 +87,14 @@ export type RouteBookDetail = RouteBook & {
   lodgings: RouteBookLodging[]
 }
 
+/** 单天上下文（legs 接口瘦身用）：天 + 仅该天条目 + 本级 places/lodgings */
+export type DayContext = {
+  day: RouteBookDay
+  items: RouteBookItem[]
+  places: RouteBookPlace[]
+  lodgings: RouteBookLodging[]
+}
+
 export type RouteBookUpdateInput = {
   title?: string
   status?: RouteBookStatus
@@ -181,6 +189,8 @@ export interface RouteBookRepo {
   update(id: string, userId: string, data: RouteBookUpdateInput, expectedUpdatedAt?: Date): Promise<RouteBook | null>
   delete(id: string, userId: string): Promise<RouteBook | null>
   getById(id: string, userId: string): Promise<RouteBookDetail | null>
+  /** 单天上下文，一条查询拿齐；book/user/day 任一不匹配返回 null */
+  getDayContext(routeBookId: string, userId: string, dayId: string): Promise<DayContext | null>
   listByUser(userId: string, filters?: RouteBookListFilters): Promise<RouteBookListItem[]>
 
   insertDay(routeBookId: string, userId: string, afterDayIndex: number): Promise<WithBookUpdatedAt<RouteBookDay>>

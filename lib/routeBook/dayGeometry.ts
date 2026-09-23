@@ -44,6 +44,7 @@ export async function resolveDayGeometry(
   const result = await fetchMapboxRoute(stops, profile, { token })
   if (!result.ok) return null
 
-  await setCachedRoutePayload(key, result.geometry as Prisma.InputJsonValue)
+  // A1：缓存写入不阻塞响应，失败静默（下次未命中重写）
+  void setCachedRoutePayload(key, result.geometry as Prisma.InputJsonValue).catch(() => {})
   return result.geometry
 }

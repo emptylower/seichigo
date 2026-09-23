@@ -385,4 +385,31 @@ describe('InMemoryRouteBookRepo', () => {
     const again = await repo.reorderItems(book.id, 'u1', null, [created.item.id])
     expect(again.bookUpdatedAt.getTime()).toBeGreaterThanOrEqual(res.bookUpdatedAt.getTime())
   })
+
+  it('getDayContext：目标天条目 + 本级 places/lodgings；外本天/外人/不存在 → null', async () => {
+    const { repo } = makeRepo(['p1', 'p2'])
+    const book = await repo.create('u1', '本', 'draft', { dayCount: 2 })
+    const detail = (await repo.getById(book.id, 'u1'))!
+    const day1 = detail.days[0]!
+    const day2 = detail.days[1]!
+
+    const stay = await repo.createPlace(book.id, 'u1', { kind: 'lodging', title: '酒店', lat: 35, lng: 135 })
+    await repo.createLodging(book.id, 'u1', { placeId: stay.id, fromDayIndex: 1, toDayIndex: 2 })
+    await repo.createItem(book.id, 'u1', { dayId: day1.id, kind: 'point', pointId: 'p1' })
+    await repo.createItem(book.id, 'u1', { dayId: day2.id, kind: 'point', pointId: 'p2' })
+    await repo.createItem(book.id, 'u1', { dayId: null, kind: 'note', title: '未安排' })
+
+    const ctx = await repo.getDayContext(book.id, 'u1', day1.id)
+    expect(ctx?.day.id).toBe(day1.id)
+    expect(ctx?.items.map((i) => i.pointId)).toEqual(['p1'])
+    expect(ctx?.places.map((p) => p.id)).toEqual([stay.id])
+    expect(ctx?.lodgings.map((l) => l.placeId)).toEqual([stay.id])
+
+    const other = await repo.create('u1', '另一本', 'draft')
+    const otherDay = (await repo.getById(other.id, 'u1'))!.days[0]!
+    expect(await repo.getDayContext(book.id, 'u1', otherDay.id)).toBeNull()
+    expect(await repo.getDayContext(book.id, 'u2', day1.id)).toBeNull()
+    expect(await repo.getDayContext(book.id, 'u1', 'day-不存在')).toBeNull()
+    expect(await repo.getDayContext('rb-不存在', 'u1', day1.id)).toBeNull()
+  })
 })

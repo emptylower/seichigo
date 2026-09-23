@@ -15,34 +15,35 @@ export function createLegHandlers(deps: RouteBookApiDeps, resolver: LegResolver 
       if (!dayId) return NextResponse.json({ error: '缺少 dayId' }, { status: 400 })
 
       try {
-        const detail = await deps.repo.getById(routeBookId, userId)
-        if (!detail) return NextResponse.json({ error: '行程不存在' }, { status: 404 })
-        const day = detail.days.find((row) => row.id === dayId)
-        if (!day) return NextResponse.json({ error: '天不存在' }, { status: 404 })
+        // A1 瘦身：一条查询拿齐单天上下文（不再 getById 拉整本）；book/天不匹配统一 404
+        const dayContext = await deps.repo.getDayContext(routeBookId, userId, dayId)
+        if (!dayContext) {
+          return NextResponse.json({ error: '行程或该天不存在', reason: 'day_not_found' }, { status: 404 })
+        }
+        const { day, items, places, lodgings } = dayContext
 
-        const dayItemPointIds = detail.items
-          .filter((item) => item.dayId === dayId)
+        const dayItemPointIds = items
           .map((item) => item.pointId)
           .filter((pointId): pointId is string => Boolean(pointId))
         const pointCoords = await deps.pointCoords(dayItemPointIds)
 
-        const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, detail.items, detail.places, detail.lodgings, pointCoords)
-        const legs = await resolveDayLegs(stops, agentLegs, day.defaultTravelMode, resolver)
+        const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, items, places, lodgings, pointCoords)
 
-        // A1：整天真实道路几何（含住宿首尾，同一停靠序列）；失败不影响 legs
-        let dayGeometry: { type: 'LineString'; coordinates: [number, number][] } | null = null
-        if (deps.fetchDayGeometry) {
-          try {
-            dayGeometry = await deps.fetchDayGeometry(
-              stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
-              day.defaultTravelMode
-            )
-          } catch {
-            dayGeometry = null
-          }
-        }
+        // A1：legs 计算与整天真实道路几何（缓存读取 → Mapbox）并行；几何失败不影响 legs
+        const [legs, dayGeometry] = await Promise.all([
+          resolveDayLegs(stops, agentLegs, day.defaultTravelMode, resolver),
+          deps.fetchDayGeometry
+            ? deps.fetchDayGeometry(
+                stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+                day.defaultTravelMode
+              ).catch(() => null)
+            : Promise.resolve(null),
+        ])
 
-        return NextResponse.json({ ok: true, stops, legs, staleTransitItemIds, dayGeometry })
+        return NextResponse.json(
+          { ok: true, stops, legs, staleTransitItemIds, dayGeometry },
+          { headers: { 'Cache-Control': 'private, max-age=0' } }
+        )
       } catch (err) {
         return routeBookErrorResponse(err)
       }
