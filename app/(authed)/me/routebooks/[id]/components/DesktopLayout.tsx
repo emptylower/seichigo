@@ -1,8 +1,8 @@
 'use client'
 
-import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
-import type { useTripDnd } from '../hooks/useTripDnd'
+import { tripCollisionDetection, type useTripDnd } from '../hooks/useTripDnd'
 
 type Props = {
   header: ReactNode
@@ -18,7 +18,7 @@ export function DesktopLayout({ header, sidebar, mapStage, poolPanel, dragOverla
   return (
     <DndContext
       sensors={dnd.sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={tripCollisionDetection}
       onDragStart={dnd.handleDragStart}
       onDragOver={dnd.handleDragOver}
       onDragEnd={(event) => {

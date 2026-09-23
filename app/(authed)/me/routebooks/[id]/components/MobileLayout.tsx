@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayLegsResult, DayRecord, PointPoolItem, RouteBookDetail } from '../types'
 import { dayLabel, dayNavTargets, movableCount as countMovable } from '../utils'
 import { useMaxNavWaypoints } from '@/components/navigation/navLaunch'
 import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 import type { useTripData } from '../hooks/useTripData'
-import type { useTripDnd } from '../hooks/useTripDnd'
+import { tripCollisionDetection, type useTripDnd } from '../hooks/useTripDnd'
 import type { DialogsHostApi } from './DialogsHost'
 import { DayPillTrack } from './mobile/DayPillTrack'
 import { MobilePlanView } from './mobile/MobilePlanView'
@@ -156,7 +156,7 @@ export function MobileLayout({
   return (
     <DndContext
       sensors={dnd.sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={tripCollisionDetection}
       onDragStart={dnd.handleDragStart}
       onDragOver={dnd.handleDragOver}
       onDragEnd={(event) => {
