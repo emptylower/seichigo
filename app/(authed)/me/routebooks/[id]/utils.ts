@@ -1,113 +1,150 @@
-import type { PointRecord, PointPreview, NavMode, RouteBookZone } from './types'
-import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, SORTED_DND_PREFIX, UNSORTED_DND_PREFIX, POOL_DND_PREFIX } from './types'
+import type { DayRecord, ItemRecord, PlaceRecord, PointPreview, NavMode } from './types'
+import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { toIntlLocale } from '@/lib/i18n/intlLocale'
+import { tr } from '../i18n'
 
-export function isPointRecord(value: unknown): value is PointRecord {
-  if (!value || typeof value !== 'object') return false
-  const row = value as Record<string, unknown>
-  return (
-    typeof row.id === 'string' &&
-    typeof row.routeBookId === 'string' &&
-    typeof row.pointId === 'string' &&
-    typeof row.sortOrder === 'number' &&
-    (row.zone === 'sorted' || row.zone === 'unsorted') &&
-    typeof row.createdAt === 'string'
-  )
-}
+export function groupItemsByDay(
+  items: ItemRecord[],
+  days: DayRecord[]
+): { byDay: Map<string, ItemRecord[]>; unassigned: ItemRecord[] } {
+  const byDay = new Map<string, ItemRecord[]>()
+  for (const day of days) byDay.set(day.id, [])
+  const unassigned: ItemRecord[] = []
 
-export function getSortedPoints(points: PointRecord[]): PointRecord[] {
-  return points
-    .filter((point) => point.zone === 'sorted')
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-}
-
-export function getUnsortedPoints(points: PointRecord[]): PointRecord[] {
-  return points
-    .filter((point) => point.zone === 'unsorted')
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-}
-
-export function rebuildPoints(sorted: PointRecord[], unsorted: PointRecord[]): PointRecord[] {
-  const normalizedSorted = sorted.map((point, index) => ({ ...point, zone: 'sorted' as const, sortOrder: index }))
-  const normalizedUnsorted = unsorted.map((point, index) => ({ ...point, zone: 'unsorted' as const, sortOrder: index }))
-  return [...normalizedSorted, ...normalizedUnsorted]
-}
-
-export function reorderSortedInPoints(points: PointRecord[], sortedPointIds: string[]): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const byPointId = new Map(sorted.map((point) => [point.pointId, point]))
-
-  const reordered: PointRecord[] = []
-  for (const pointId of sortedPointIds) {
-    const matched = byPointId.get(pointId)
-    if (!matched) continue
-    reordered.push({ ...matched, zone: 'sorted' })
-    byPointId.delete(pointId)
-  }
-
-  for (const point of sorted) {
-    if (byPointId.has(point.pointId)) {
-      reordered.push({ ...point, zone: 'sorted' })
+  for (const item of items) {
+    if (item.dayId && byDay.has(item.dayId)) {
+      byDay.get(item.dayId)!.push(item)
+    } else {
+      unassigned.push(item)
     }
   }
 
-  return rebuildPoints(reordered, unsorted)
+  for (const list of byDay.values()) list.sort((a, b) => a.sortOrder - b.sortOrder)
+  unassigned.sort((a, b) => a.sortOrder - b.sortOrder)
+  return { byDay, unassigned }
 }
 
-export function movePointToZoneInPoints(
-  points: PointRecord[],
-  pointId: string,
-  targetZone: RouteBookZone,
-  targetSortedIndex?: number
-): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const source = sorted.find((point) => point.pointId === pointId) || unsorted.find((point) => point.pointId === pointId)
-  if (!source) return points
+/**
+ * 乐观更新：与服务端 reorderItems 的重编规则一致——目标天按 orderedItemIds
+ * 重排（不在目标天的视为移入），其余各组保持相对顺序并从 0 重编 sortOrder。
+ */
+export function applyReorderLocal(
+  items: ItemRecord[],
+  targetDayId: string | null,
+  orderedItemIds: string[]
+): ItemRecord[] {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const movedIds = new Set(orderedItemIds)
+  const next: ItemRecord[] = []
 
-  const nextSorted = sorted.filter((point) => point.id !== source.id)
-  const nextUnsorted = unsorted.filter((point) => point.id !== source.id)
+  orderedItemIds.forEach((id, index) => {
+    const item = byId.get(id)
+    if (!item) return
+    next.push({ ...item, dayId: targetDayId, sortOrder: index })
+  })
 
-  if (targetZone === 'sorted') {
-    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : nextSorted.length, nextSorted.length))
-    nextSorted.splice(insertAt, 0, { ...source, zone: 'sorted' })
-    return rebuildPoints(nextSorted, nextUnsorted)
+  const remainingGroups = new Map<string | null, ItemRecord[]>()
+  for (const item of items) {
+    if (movedIds.has(item.id)) continue
+    const list = remainingGroups.get(item.dayId) ?? []
+    list.push(item)
+    remainingGroups.set(item.dayId, list)
+  }
+  for (const [dayId, list] of remainingGroups) {
+    list
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach((item, index) => {
+        next.push({ ...item, dayId, sortOrder: index })
+      })
   }
 
-  nextUnsorted.push({ ...source, zone: 'unsorted' })
-  return rebuildPoints(nextSorted, nextUnsorted)
+  return next
 }
 
-export function addPointToZoneInPoints(
-  points: PointRecord[],
-  created: PointRecord,
-  targetZone: RouteBookZone,
-  targetSortedIndex?: number
-): PointRecord[] {
-  const sorted = getSortedPoints(points)
-  const unsorted = getUnsortedPoints(points)
-  const sanitized = { ...created, zone: targetZone }
-
-  if (targetZone === 'sorted') {
-    const insertAt = Math.max(0, Math.min(typeof targetSortedIndex === 'number' ? targetSortedIndex : sorted.length, sorted.length))
-    sorted.splice(insertAt, 0, sanitized)
-    return rebuildPoints(sorted, unsorted)
+/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
+export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
+  const base = `Day ${index}`
+  if (!day.date) return base
+  const parsed = new Date(day.date)
+  if (Number.isNaN(parsed.getTime())) return base
+  const intl = toIntlLocale(locale)
+  const weekday = new Intl.DateTimeFormat(intl, { weekday: 'short', timeZone: 'UTC' }).format(parsed)
+  if (locale === 'en') {
+    const md = new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)
+    return `${base} · ${md}, ${weekday}`
   }
-
-  unsorted.push(sanitized)
-  return rebuildPoints(sorted, unsorted)
+  const md = `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`
+  return locale === 'ja' ? `${base} · ${md}(${weekday})` : `${base} · ${md} ${weekday}`
 }
 
-export function formatGoogleStop(point: PointRecord, preview: PointPreview): string {
-  if (isGeoPair(preview.geo)) return `${preview.geo[0]},${preview.geo[1]}`
-  return preview.title || point.pointId
+export function itemDisplayTitle(
+  item: Pick<ItemRecord, 'kind' | 'title' | 'placeId'>,
+  preview: PointPreview | null | undefined,
+  places: Pick<PlaceRecord, 'id' | 'title'>[],
+  locale: SupportedLocale = 'zh'
+): string {
+  if (item.kind === 'point') {
+    return preview?.title || item.title || tr('routebook.common.pointFallback', locale)
+  }
+  if (item.kind === 'place') {
+    const place = places.find((row) => row.id === item.placeId)
+    return place?.title || item.title || tr('routebook.common.placeFallback', locale)
+  }
+  return item.title || tr(item.kind === 'transit' ? 'routebook.common.transitFallback' : 'routebook.common.noteFallback', locale)
 }
 
+/** 单天模式地图徽标 / 时间线序号：只数有坐标的 point/place，按 sortOrder 编 1..N */
+export function computeVisitOrder(
+  dayItems: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => PointPreview
+): Map<string, number> {
+  const map = new Map<string, number>()
+  const sorted = [...dayItems].sort((a, b) => a.sortOrder - b.sortOrder)
+  let n = 0
+  for (const item of sorted) {
+    if (item.kind !== 'point' && item.kind !== 'place') continue
+    const hasCoord =
+      item.kind === 'place'
+        ? places.some((place) => place.id === item.placeId)
+        : Boolean(item.pointId && getPointPreview(item.pointId).geo)
+    if (!hasCoord) continue
+    n += 1
+    map.set(item.id, n)
+  }
+  return map
+}
 
-export function formatDate(value: string): string {
+/** 沉浸模式序列：当天 point/place 条目按 sortOrder */
+export function sequenceForImmersive(items: ItemRecord[], dayId: string): ItemRecord[] {
+  return items
+    .filter((item) => item.dayId === dayId && (item.kind === 'point' || item.kind === 'place'))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+/** 有日期匹配今天（本地日历日）则返回该天，否则第一天；无天返回 null */
+export function pickTodayDayId(days: DayRecord[], now: Date): string | null {
+  if (!days.length) return null
+  const sorted = [...days].sort((a, b) => a.dayIndex - b.dayIndex)
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const d = now.getDate()
+  for (const day of sorted) {
+    if (!day.date) continue
+    const parsed = new Date(day.date)
+    if (Number.isNaN(parsed.getTime())) continue
+    if (parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m && parsed.getUTCDate() === d) {
+      return day.id
+    }
+  }
+  return sorted[0]!.id
+}
+
+export function formatDate(value: string, locale: SupportedLocale = 'zh'): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '最近更新'
-  return parsed.toLocaleDateString('zh-CN')
+  if (Number.isNaN(parsed.getTime())) return tr('routebook.common.recentlyUpdated', locale)
+  return parsed.toLocaleDateString(toIntlLocale(locale))
 }
 
 export function parseBangumiId(pointId: string): number | null {
@@ -151,10 +188,13 @@ export function pickPointGradient(seed: string): string {
   return POINT_FALLBACK_GRADIENTS[value % POINT_FALLBACK_GRADIENTS.length]
 }
 
-export function buildFallbackPreview(pointId: string): PointPreview {
+export function buildFallbackPreview(pointId: string, locale: SupportedLocale = 'zh'): PointPreview {
+  const bangumiId = parseBangumiId(pointId)
   return {
-    title: `点位 ${parsePointKey(pointId)}`,
-    subtitle: `番剧 #${parseBangumiId(pointId) || '未知'}`,
+    title: tr('routebook.common.pointFallback', locale) + ` ${parsePointKey(pointId)}`,
+    subtitle: bangumiId
+      ? tr('routebook.common.bangumiWork', locale, { id: bangumiId })
+      : tr('routebook.common.bangumiWork', locale, { id: tr('routebook.common.unknown', locale) }),
     image: null,
     geo: null,
   }
@@ -193,17 +233,6 @@ export function buildGoogleDirectionsUrl(stops: string[], mode?: NavMode): strin
   return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
-
-export function buildGoogleLegDirectionsUrl(fromStop: string, toStop: string, mode: NavMode): string {
-  const params = new URLSearchParams({
-    api: '1',
-    origin: fromStop,
-    destination: toStop,
-    travelmode: NAV_MODE_PARAM[mode],
-  })
-  return `https://www.google.com/maps/dir/?${params.toString()}`
-}
-
 export function isGeoPair(value: unknown): value is [number, number] {
   if (!Array.isArray(value) || value.length < 2) return false
   const lat = Number(value[0])
@@ -213,20 +242,32 @@ export function isGeoPair(value: unknown): value is [number, number] {
   return true
 }
 
-export function sortedDragId(recordId: string): string {
-  return `${SORTED_DND_PREFIX}${recordId}`
-}
-
-export function unsortedDragId(recordId: string): string {
-  return `${UNSORTED_DND_PREFIX}${recordId}`
+export function itemDragId(itemId: string): string {
+  return `${ITEM_DND_PREFIX}${itemId}`
 }
 
 export function poolDragId(poolItemId: string): string {
   return `${POOL_DND_PREFIX}${poolItemId}`
 }
 
+export function markerDragId(itemId: string): string {
+  return `${MARKER_DND_PREFIX}${itemId}`
+}
+
+export function dayDropId(dayId: string | null): string {
+  return dayId === null ? UNASSIGNED_DROP_ID : `${DAY_DROP_PREFIX}${dayId}`
+}
+
 export function parseDragRecordId(rawId: string, prefix: string): string | null {
   if (!rawId.startsWith(prefix)) return null
   const value = rawId.slice(prefix.length)
   return value || null
+}
+
+/** over.id → 目标天（day:<dayId> / day:unassigned），非天投放返回 undefined */
+export function parseDayDropId(rawId: string): string | null | undefined {
+  if (rawId === UNASSIGNED_DROP_ID) return null
+  if (!rawId.startsWith(DAY_DROP_PREFIX)) return undefined
+  const value = rawId.slice(DAY_DROP_PREFIX.length)
+  return value || undefined
 }

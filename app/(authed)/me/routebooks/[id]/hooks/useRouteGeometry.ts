@@ -1,138 +1,70 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import type { PointPreview, PointRecord } from '../types'
+import { useMemo } from 'react'
+import type { DayGeometry, DayLegsResult } from '../types'
+import type { RoutePreviewLeg } from '@/components/route/routePreviewLayers'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type GeoJSONLineString = {
-  type: 'LineString'
-  coordinates: [number, number][]
-}
-
-type RouteBookGeo = [number, number]
-
-export type UseRouteGeometryResult = {
-  geometry: GeoJSONLineString | null
-  loading: boolean
-  error: string | null
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Build a cache key from geolocated points (lng,lat pairs joined by |). */
-function computeSignature(
-  sortedPoints: PointRecord[],
-  getGeo: (pointId: string) => RouteBookGeo | null,
-): string {
-  return sortedPoints
-    .map((p) => getGeo(p.pointId))
-    .filter((g): g is RouteBookGeo => g != null)
-    .map(([lat, lng]) => `${lng},${lat}`)
-    .join('|')
-}
-
-/** Extract geolocated coordinate pairs from sorted points. */
-function resolveGeoPoints(
-  sortedPoints: PointRecord[],
-  getGeo: (pointId: string) => RouteBookGeo | null,
-): [number, number][] {
-  const result: [number, number][] = []
-  for (const p of sortedPoints) {
-    const geo = getGeo(p.pointId)
-    if (geo) result.push([geo[1], geo[0]])
-  }
-  return result
-}
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
-const DEBOUNCE_MS = 800
+export type FallbackStop = { lat: number; lng: number }
 
 /**
- * Fetches route geometry from the server proxy when sorted points change.
- *
- * - Debounces 800 ms to avoid spamming during drag-and-drop reordering.
- * - Caches results keyed by coordinate signature.
- * - Returns null geometry for < 2 geolocated points.
+ * 把某天 legs 结果换算成 RoutePreviewMap 的渲染输入：
+ * - 服务端给了 dayGeometry（整天真实道路几何，含住宿首尾）→ 作为单条实线 LineString
+ *   走 routeGeometry 通道（亮芯+暗壳样式，与 /plan 一致）；
+ * - 没给（无 token / 站点不足）→ 回退到 legs 分段：polyline 段（agent/google）实线，
+ *   heuristic 段（两点直连）虚线；
+ * - legs 未回 / stale / 加载失败 → 用 fallbackStops（本地 detail 算出的站点顺序）
+ *   立刻画一条虚线雏形，用户永远能先看到路线轮廓。
+ * enabled=false（路线开关关闭）：两者都为 null/[]，地图不画线。
  */
 export function useRouteGeometry(
-  routeBookId: string,
-  sortedPoints: PointRecord[],
-  getPointPreview: (pointId: string) => PointPreview,
-): UseRouteGeometryResult {
-  const [geometry, setGeometry] = useState<GeoJSONLineString | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  dayLegs: DayLegsResult | undefined,
+  enabled: boolean,
+  fallbackStops: FallbackStop[] = []
+): { dayGeometry: DayGeometry | null; legs: RoutePreviewLeg[] } {
+  const fallbackLegs = useMemo<RoutePreviewLeg[]>(() => {
+    if (!enabled || fallbackStops.length < 2) return []
+    return [
+      {
+        coordinates: fallbackStops.map((stop) => [stop.lng, stop.lat] as [number, number]),
+        dashed: true,
+      },
+    ]
+  }, [enabled, fallbackStops])
 
-  const cacheRef = useRef<Map<string, GeoJSONLineString>>(new Map())
+  const dayGeometry = useMemo<DayGeometry | null>(() => {
+    if (!enabled || !dayLegs) return null
+    const geometry = dayLegs.dayGeometry
+    if (!geometry || geometry.coordinates.length < 2) return null
+    return geometry
+  }, [dayLegs, enabled])
 
-  // Stable getter: extract geo from PointPreview
-  const getGeo = (pointId: string): RouteBookGeo | null => {
-    return getPointPreview(pointId).geo
-  }
-
-  useEffect(() => {
-    if (!routeBookId) {
-      setGeometry(null)
-      setLoading(false)
-      return
-    }
-
-    const sig = computeSignature(sortedPoints, getGeo)
-    const geoPoints = resolveGeoPoints(sortedPoints, getGeo)
-
-    // < 2 geolocated points: clear geometry
-    if (geoPoints.length < 2) {
-      setGeometry(null)
-      setLoading(false)
-      setError(null)
-      return
-    }
-
-    // Cache hit: use cached result immediately
-    const cached = cacheRef.current.get(sig)
-    if (cached) {
-      setGeometry(cached)
-      setLoading(false)
-      setError(null)
-      return
-    }
-
-    // Debounce: wait before fetching
-    setLoading(true)
-    const timer = window.setTimeout(async () => {
-      try {
-        const pointsParam = geoPoints.map(([lng, lat]) => `${lng},${lat}`).join('|')
-        const res = await fetch(
-          `/api/me/routebooks/${routeBookId}/route-geometry?points=${encodeURIComponent(pointsParam)}&mode=walking`,
-        )
-        const data = await res.json()
-        if (data.ok && data.geometry) {
-          cacheRef.current.set(sig, data.geometry as GeoJSONLineString)
-          setGeometry(data.geometry as GeoJSONLineString)
-          setError(null)
-        } else {
-          setError((data.error as string) || '路线获取失败')
-          setGeometry(null)
+  const legs = useMemo<RoutePreviewLeg[]>(() => {
+    if (!enabled) return []
+    // dayGeometry 在场时由 routeGeometry 通道渲染，分段 legs 只作连接行数据源
+    if (dayGeometry) return []
+    if (!dayLegs) return fallbackLegs
+    const stopById = new Map(dayLegs.stops.map((stop) => [stop.id, stop]))
+    const out: RoutePreviewLeg[] = []
+    for (const leg of dayLegs.legs) {
+      let coordinates: [number, number][] = []
+      if (leg.polyline && leg.polyline.length >= 2) {
+        coordinates = leg.polyline.map(([lat, lng]) => [lng, lat])
+      } else {
+        const from = stopById.get(leg.fromId)
+        const to = stopById.get(leg.toId)
+        if (from && to) {
+          coordinates = [
+            [from.lng, from.lat],
+            [to.lng, to.lat],
+          ]
         }
-      } catch {
-        setError('网络错误')
-        setGeometry(null)
-      } finally {
-        setLoading(false)
       }
-    }, DEBOUNCE_MS)
+      if (coordinates.length >= 2) {
+        out.push({ coordinates, dashed: leg.source === 'heuristic' })
+      }
+    }
+    return out.length ? out : fallbackLegs
+  }, [dayLegs, dayGeometry, enabled, fallbackLegs])
 
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedPoints, routeBookId, getPointPreview])
-
-  return { geometry, loading, error }
+  return { dayGeometry, legs }
 }

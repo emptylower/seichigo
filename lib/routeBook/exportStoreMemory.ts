@@ -15,15 +15,11 @@ export class MemoryRouteBookExportStore implements RouteBookExportStore {
     return found ? { id: found.id } : null
   }
 
-  async createWithPoints(input: RouteBookExportCreateInput): Promise<{ id: string }> {
+  async createFromPlan(input: RouteBookExportCreateInput): Promise<{ id: string }> {
     this.seq += 1
     const record: MemoryRouteBookExportRecord = {
       id: `rb-${this.seq}`,
-      userId: input.userId,
-      title: input.title,
-      status: input.status,
-      metadata: structuredClone(input.metadata),
-      points: structuredClone(input.points),
+      ...structuredClone(input),
     }
     this.books.push(record)
     return { id: record.id }

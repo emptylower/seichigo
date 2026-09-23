@@ -53,14 +53,20 @@ export default function LanguageSwitcher({ locale }: Props) {
     e.preventDefault()
     setLocaleCookie(targetLocale)
 
+    // /me、/admin 等无前缀路径：URL 不变，cookie 已写，刷新服务端渲染即可
+    const pushOrRefresh = (path: string) => {
+      if (path === pathname) router.refresh()
+      else router.push(path)
+    }
+
     if (!isArticlePage(pathname)) {
-      router.push(prefixPath(pathname, targetLocale))
+      pushOrRefresh(prefixPath(pathname, targetLocale))
       return
     }
 
     const slug = extractSlugFromPathname(pathname)
     if (!slug) {
-      router.push(prefixPath(pathname, targetLocale))
+      pushOrRefresh(prefixPath(pathname, targetLocale))
       return
     }
 
@@ -68,9 +74,9 @@ export default function LanguageSwitcher({ locale }: Props) {
 
     if (translatedSlug) {
       const targetPath = targetLocale === 'zh' ? `/posts/${translatedSlug}` : `/${targetLocale}/posts/${translatedSlug}`
-      router.push(targetPath)
+      pushOrRefresh(targetPath)
     } else {
-      router.push(prefixPath(pathname, targetLocale))
+      pushOrRefresh(prefixPath(pathname, targetLocale))
     }
   }
 

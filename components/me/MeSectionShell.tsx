@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { CalendarRange, Heart, Map, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { t } from '@/lib/i18n'
+import type { SupportedLocale } from '@/lib/i18n/types'
 
 type MeTabKey = 'plan' | 'settings' | 'favorites' | 'routebooks'
 
@@ -10,27 +12,28 @@ type Props = {
   description: string
   children: React.ReactNode
   wide?: boolean
+  locale?: SupportedLocale
 }
 
-const tabs: Array<{ key: MeTabKey; label: string; hint: string; href: string; icon: LucideIcon }> = [
-  { key: 'plan', label: '我的计划', hint: 'AI 规划的多日巡礼行程', href: '/plan', icon: CalendarRange },
-  { key: 'settings', label: '个人信息', hint: '头像、昵称与社交账号', href: '/me/settings', icon: User },
-  { key: 'favorites', label: '我的收藏', hint: '查看保存的文章', href: '/me/favorites', icon: Heart },
-  { key: 'routebooks', label: '我的地图', hint: '管理巡礼路线', href: '/me/routebooks', icon: Map },
+const tabs: Array<{ key: MeTabKey; href: string; icon: LucideIcon }> = [
+  { key: 'plan', href: '/plan', icon: CalendarRange },
+  { key: 'settings', href: '/me/settings', icon: User },
+  { key: 'favorites', href: '/me/favorites', icon: Heart },
+  { key: 'routebooks', href: '/me/routebooks', icon: Map },
 ]
 
-export default function MeSectionShell({ activeTab, title, description, children, wide = false }: Props) {
+export default function MeSectionShell({ activeTab, title, description, children, wide = false, locale = 'zh' }: Props) {
   return (
     <section data-layout-wide="true" className={`mx-auto w-full ${wide ? 'max-w-7xl' : 'max-w-6xl'} overflow-x-hidden px-4 sm:px-6 lg:px-8`}>
       <div className="grid gap-5 lg:grid-cols-[252px_minmax(0,1fr)] lg:gap-8">
         <aside className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
           <div className="rounded-3xl border border-slate-200/90 bg-[radial-gradient(120%_120%_at_0%_0%,#fff1f7_0%,#ffffff_45%,#ffffff_100%)] p-3.5 shadow-[0_22px_40px_-32px_rgba(15,23,42,0.62)]">
             <div className="px-2 pb-2">
-              <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">用户中心</p>
-              <p className="mt-1 text-xs text-slate-400">账户与内容管理</p>
+              <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">{t('me.tabs.sectionTitle', locale)}</p>
+              <p className="mt-1 text-xs text-slate-400">{t('me.tabs.sectionHint', locale)}</p>
             </div>
             <nav
-              aria-label="用户中心导航"
+              aria-label={t('me.tabs.sectionTitle', locale)}
               className="flex flex-col gap-2.5 lg:flex-col lg:gap-2.5"
             >
               {tabs.map((tab) => {
@@ -58,9 +61,9 @@ export default function MeSectionShell({ activeTab, title, description, children
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold leading-none">{tab.label}</span>
+                      <span className="block text-sm font-semibold leading-none">{t(`me.tabs.${tab.key}.label`, locale)}</span>
                       <span className={`mt-1 block text-xs ${active ? 'text-slate-500' : 'text-slate-400 group-hover:text-slate-500'}`}>
-                        {tab.hint}
+                        {t(`me.tabs.${tab.key}.hint`, locale)}
                       </span>
                     </span>
                   </Link>

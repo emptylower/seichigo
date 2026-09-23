@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { RouteBookApiDeps } from '@/lib/routeBook/api'
 import type { RouteBookListFilters, RouteBookStatus, RouteBookUpdateInput } from '@/lib/routeBook/repo'
+import { routeBookErrorResponse } from './errors'
 
 const statusSchema = z.enum(['draft', 'in_progress', 'completed'])
 
@@ -40,6 +41,8 @@ function isJsonValue(value: unknown, depth = 0): boolean {
 const createBodySchema = z.object({
   title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }),
   status: statusSchema.optional(),
+  startDate: z.string().datetime().nullable().optional(),
+  dayCount: z.number().int().min(1).max(30).optional(),
 })
 
 const patchBodySchema = z
@@ -47,6 +50,9 @@ const patchBodySchema = z
     title: z.string().min(1).refine((v) => v.trim().length > 0, { message: '标题不能为空' }).optional(),
     status: statusSchema.optional(),
     metadata: z.unknown().nullable().optional(),
+    startDate: z.string().datetime().nullable().optional(),
+    dayCount: z.number().int().min(1).max(30).optional(),
+    updatedAt: z.string().datetime().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需要更新一个字段' })
 
@@ -104,8 +110,15 @@ export function createHandlers(deps: RouteBookApiDeps) {
       const title = parsed.data.title.trim()
       const status = parsed.data.status ?? 'draft'
 
-      const created = await deps.repo.create(session.user.id, title, status)
-      return NextResponse.json({ ok: true, routeBook: created, item: created })
+      try {
+        const created = await deps.repo.create(session.user.id, title, status, {
+          startDate: parsed.data.startDate != null ? new Date(parsed.data.startDate) : null,
+          dayCount: parsed.data.dayCount,
+        })
+        return NextResponse.json({ ok: true, routeBook: created, item: created })
+      } catch (err) {
+        return routeBookErrorResponse(err)
+      }
     },
 
     async PATCH(req: Request, ctx: { params?: Promise<{ id: string }> }) {
@@ -128,6 +141,10 @@ export function createHandlers(deps: RouteBookApiDeps) {
       const update: RouteBookUpdateInput = {}
       if (parsed.data.title !== undefined) update.title = parsed.data.title.trim()
       if (parsed.data.status !== undefined) update.status = parsed.data.status
+      if (parsed.data.dayCount !== undefined) update.dayCount = parsed.data.dayCount
+      if (parsed.data.startDate !== undefined) {
+        update.startDate = parsed.data.startDate != null ? new Date(parsed.data.startDate) : null
+      }
 
       if (parsed.data.metadata !== undefined) {
         if (parsed.data.metadata !== null && !isJsonValue(parsed.data.metadata)) {
@@ -136,12 +153,21 @@ export function createHandlers(deps: RouteBookApiDeps) {
         update.metadata = parsed.data.metadata as RouteBookUpdateInput['metadata']
       }
 
-      const updated = await deps.repo.update(id, session.user.id, update)
-      if (!updated) {
-        return NextResponse.json({ error: '未找到地图' }, { status: 404 })
-      }
+      try {
+        const updated = await deps.repo.update(
+          id,
+          session.user.id,
+          update,
+          parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : undefined
+        )
+        if (!updated) {
+          return NextResponse.json({ error: '未找到地图' }, { status: 404 })
+        }
 
-      return NextResponse.json({ ok: true, routeBook: updated, item: updated })
+        return NextResponse.json({ ok: true, routeBook: updated, item: updated, bookUpdatedAt: updated.updatedAt.toISOString() })
+      } catch (err) {
+        return routeBookErrorResponse(err)
+      }
     },
 
     async DELETE(_req: Request, ctx: { params?: Promise<{ id: string }> }) {

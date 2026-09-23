@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { RouteBookStatus } from '@/lib/routeBook/repo'
+import type { SupportedLocale } from '@/lib/i18n/types'
+import { toIntlLocale } from '@/lib/i18n/intlLocale'
+import { tr } from './i18n'
 
 type RouteBookItem = {
   id: string
@@ -27,22 +30,22 @@ type RouteBookMetadata = {
   city?: string
 }
 
-const STATUS_LABEL: Record<RouteBookStatus, string> = {
-  draft: '草稿',
-  in_progress: '进行中',
-  completed: '已完成',
-}
-
 const STATUS_STYLE: Record<RouteBookStatus, string> = {
   draft: 'bg-white/80 text-slate-700',
   in_progress: 'bg-sky-500/85 text-white',
   completed: 'bg-emerald-500/85 text-white',
 }
 
-const STATUS_DESC: Record<RouteBookStatus, string> = {
-  draft: '先收集点位，逐步补全路线。',
-  in_progress: '正在巡礼中，可持续打卡推进进度。',
-  completed: '这张地图已完成，可随时回看复盘。',
+const STATUS_DESC_KEY: Record<RouteBookStatus, string> = {
+  draft: 'routebook.status.draftDesc',
+  in_progress: 'routebook.status.inProgressDesc',
+  completed: 'routebook.status.completedDesc',
+}
+
+const STATUS_LABEL_KEY: Record<RouteBookStatus, string> = {
+  draft: 'routebook.status.draft',
+  in_progress: 'routebook.status.inProgress',
+  completed: 'routebook.status.completed',
 }
 
 const ROUTEBOOK_FALLBACK_GRADIENTS = [
@@ -68,13 +71,13 @@ function parseMetadata(input: unknown): RouteBookMetadata {
   }
 }
 
-function formatDate(value: string): string {
+function formatDate(value: string, locale: SupportedLocale): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '最近更新'
-  return parsed.toLocaleDateString('zh-CN')
+  if (Number.isNaN(parsed.getTime())) return tr('routebook.common.recentlyUpdated', locale)
+  return parsed.toLocaleDateString(toIntlLocale(locale))
 }
 
-export default function RouteBooksClient() {
+export default function RouteBooksClient({ locale = 'zh' }: { locale?: SupportedLocale }) {
   const [items, setItems] = useState<RouteBookItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -89,16 +92,16 @@ export default function RouteBooksClient() {
       const res = await fetch('/api/me/routebooks')
       const data = (await res.json().catch(() => ({}))) as ListResponse
       if (!res.ok || 'error' in data) {
-        setError(('error' in data && data.error) || '加载失败')
+        setError(('error' in data && data.error) || tr('routebook.common.loadFailed', locale))
         return
       }
       setItems(data.items || [])
     } catch {
-      setError('加载失败')
+      setError(tr('routebook.common.loadFailed', locale))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [locale])
 
   useEffect(() => {
     void load()
@@ -116,7 +119,7 @@ export default function RouteBooksClient() {
     const data = (await res.json().catch(() => ({}))) as CreateResponse
     setCreating(false)
     if (!res.ok || 'error' in data) {
-      setError(('error' in data && data.error) || '创建失败')
+      setError(('error' in data && data.error) || tr('routebook.list.createFailed', locale))
       return
     }
     setCreateTitle('')
@@ -168,7 +171,7 @@ export default function RouteBooksClient() {
           className="mt-3 inline-flex rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-100"
           onClick={() => void load()}
         >
-          重新加载
+          {tr('routebook.common.reload', locale)}
         </button>
       </div>
     )
@@ -178,23 +181,23 @@ export default function RouteBooksClient() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium">
         <span className="inline-flex rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-pink-700">
-          共 {items.length} 张地图
+          {tr('routebook.list.total', locale, { n: items.length })}
         </span>
         <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
-          草稿 {statusCount.draft}
+          {tr('routebook.status.draft', locale)} {statusCount.draft}
         </span>
         <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
-          进行中 {statusCount.in_progress}
+          {tr('routebook.status.inProgress', locale)} {statusCount.in_progress}
         </span>
         <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
-          已完成 {statusCount.completed}
+          {tr('routebook.status.completed', locale)} {statusCount.completed}
         </span>
         <button
           type="button"
           className="ml-auto inline-flex min-h-10 items-center rounded-full bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand-600"
           onClick={() => setShowCreate(true)}
         >
-          新建地图
+          {tr('routebook.list.newMap', locale)}
         </button>
       </div>
 
@@ -204,17 +207,17 @@ export default function RouteBooksClient() {
           <div className="pointer-events-none absolute -left-12 bottom-0 h-24 w-24 rounded-full bg-cyan-200/50 blur-2xl" />
 
           <div className="relative space-y-1">
-            <h2 className="text-base font-semibold text-slate-900">创建新地图</h2>
-            <p className="text-sm text-slate-500">用于整理想去点位、排序路线与导出导航。</p>
+            <h2 className="text-base font-semibold text-slate-900">{tr('routebook.list.createTitle', locale)}</h2>
+            <p className="text-sm text-slate-500">{tr('routebook.list.createDesc', locale)}</p>
           </div>
           <label className="relative mt-4 block text-sm font-medium text-slate-700">
-            地图标题
+            {tr('routebook.list.nameLabel', locale)}
           </label>
           <input
             type="text"
             value={createTitle}
             onChange={(e) => setCreateTitle(e.target.value)}
-            placeholder="例：东京圣地巡礼地图"
+            placeholder={tr('routebook.list.namePlaceholder', locale)}
             maxLength={100}
             className="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
             onKeyDown={(e) => {
@@ -229,14 +232,14 @@ export default function RouteBooksClient() {
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50"
               onClick={() => void handleCreate()}
             >
-              {creating ? '创建中…' : '创建'}
+              {creating ? tr('routebook.list.creating', locale) : tr('routebook.list.create', locale)}
             </button>
             <button
               type="button"
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
               onClick={() => { setShowCreate(false); setCreateTitle('') }}
             >
-              取消
+              {tr('routebook.common.cancel', locale)}
             </button>
           </div>
         </div>
@@ -249,8 +252,8 @@ export default function RouteBooksClient() {
             const resolvedCover = metadata.cover || item.firstPointImage || null
             const cover = resolvedCover || '/images/home/chopper-map-base.webp'
             const fallbackGradient = pickRouteBookGradient(`${item.id}:${item.title}`)
-            const description = metadata.description || STATUS_DESC[item.status]
-            const chips = [metadata.city, `创建于 ${formatDate(item.createdAt)}`].filter(Boolean)
+            const description = metadata.description || tr(STATUS_DESC_KEY[item.status], locale)
+            const chips = [metadata.city, tr('routebook.common.createdAt', locale, { date: formatDate(item.createdAt, locale) })].filter(Boolean)
             const prioritizeCover = index < 2
 
             return (
@@ -285,10 +288,10 @@ export default function RouteBooksClient() {
 
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(2,6,23,0.78)_10%,rgba(2,6,23,0.08)_55%,rgba(255,255,255,0)_100%)]" />
                   <div className={`absolute left-3 top-3 inline-flex rounded-full border border-white/50 px-2.5 py-1 text-[11px] font-semibold backdrop-blur-sm ${STATUS_STYLE[item.status]}`}>
-                    {STATUS_LABEL[item.status]}
+                    {tr(STATUS_LABEL_KEY[item.status], locale)}
                   </div>
                   <div className="absolute right-3 top-3 inline-flex rounded-full border border-white/50 bg-black/25 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
-                    更新于 {formatDate(item.updatedAt)}
+                    {tr('routebook.common.updatedAt', locale, { date: formatDate(item.updatedAt, locale) })}
                   </div>
                   <div className="absolute bottom-3 left-3 right-3">
                     <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-white drop-shadow-sm">
@@ -313,14 +316,14 @@ export default function RouteBooksClient() {
                       href={`/me/routebooks/${item.id}`}
                       className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 no-underline transition hover:border-pink-200 hover:text-pink-700"
                     >
-                      进入
+                      {tr('routebook.list.enter', locale)}
                     </a>
                     <button
                       type="button"
                       className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-rose-200 hover:text-rose-600"
                       onClick={() => void handleDelete(item.id)}
                     >
-                      删除
+                      {tr('routebook.common.delete', locale)}
                     </button>
                   </div>
                 </div>
@@ -335,9 +338,11 @@ export default function RouteBooksClient() {
               <path d="M12 3c-4.97 0-9 3.58-9 8 0 3.1 1.98 5.79 4.88 7.13.3.14.52.42.57.74l.43 2.78a1 1 0 0 0 1.62.66l2.44-1.94a1 1 0 0 1 .73-.22c4.5.2 8.33-3.16 8.33-7.15 0-4.42-4.03-8-9-8z" />
             </svg>
           </div>
-          <p className="text-gray-700">还没有地图。</p>
+          <p className="text-gray-700">{tr('routebook.list.emptyTitle', locale)}</p>
           <p className="mt-1 text-sm text-gray-500">
-            去<a href="/anitabi" className="text-brand-600 hover:underline">圣地地图</a>标记想去的地点，然后创建地图规划你的巡礼路线。
+            {tr('routebook.list.emptyPre', locale)}
+            <a href="/anitabi" className="mx-1 text-brand-600 hover:underline">{tr('routebook.list.emptyLink', locale)}</a>
+            {tr('routebook.list.emptyPost', locale)}
           </p>
         </div>
       )}

@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { Check, ChevronDown, MapPinned, Plus } from 'lucide-react'
-import type { RouteBookSummary } from '../types'
-import { STATUS_LABEL, STATUS_STYLE } from '../types'
+import type { RouteBookStatus, RouteBookSummary } from '../types'
+import { STATUS_STYLE } from '../types'
+import type { SupportedLocale } from '@/lib/i18n/types'
 import { formatDate } from '../utils'
+import { tr } from '../../i18n'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,12 +15,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+const STATUS_LABEL_KEY: Record<RouteBookStatus, string> = {
+  draft: 'routebook.status.draft',
+  in_progress: 'routebook.status.inProgress',
+  completed: 'routebook.status.completed',
+}
+
 interface RouteBookSelectorProps {
   items: RouteBookSummary[]
   currentId: string
+  locale?: SupportedLocale
 }
 
-export function RouteBookSelector({ items, currentId }: RouteBookSelectorProps) {
+export function RouteBookSelector({ items, currentId, locale = 'zh' }: RouteBookSelectorProps) {
   const current = items.find((item) => item.id === currentId) || null
 
   return (
@@ -34,10 +43,12 @@ export function RouteBookSelector({ items, currentId }: RouteBookSelectorProps) 
             </span>
             <span className="min-w-0">
               <span className="block truncate text-base font-semibold text-slate-900">
-                {current?.title || '选择地图'}
+                {current?.title || tr('routebook.selector.choose', locale)}
               </span>
               <span className="block text-xs text-slate-500">
-                {current ? `更新于 ${formatDate(current.updatedAt)}` : '切换当前规划地图'}
+                {current
+                  ? tr('routebook.common.updatedAt', locale, { date: formatDate(current.updatedAt, locale) })
+                  : tr('routebook.selector.switchHint', locale)}
               </span>
             </span>
           </span>
@@ -64,9 +75,9 @@ export function RouteBookSelector({ items, currentId }: RouteBookSelectorProps) 
                   <span className="line-clamp-1 text-sm font-semibold text-slate-900">{item.title}</span>
                   <span className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                     <span className={`inline-flex rounded-full px-2 py-0.5 font-medium ${STATUS_STYLE[item.status]}`}>
-                      {STATUS_LABEL[item.status]}
+                      {tr(STATUS_LABEL_KEY[item.status], locale)}
                     </span>
-                    <span>更新于 {formatDate(item.updatedAt)}</span>
+                    <span>{tr('routebook.common.updatedAt', locale, { date: formatDate(item.updatedAt, locale) })}</span>
                   </span>
                 </span>
               </Link>
@@ -79,7 +90,7 @@ export function RouteBookSelector({ items, currentId }: RouteBookSelectorProps) 
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
               <Plus className="h-4 w-4" />
             </span>
-            去地图列表新建或管理
+            {tr('routebook.selector.goList', locale)}
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
