@@ -197,22 +197,21 @@ export function DayPlanSidebar({
           <button
             type="button"
             title={tr('routebook.dayOrder.hint', locale)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-semibold text-brand-600 shadow-sm ring-1 ring-brand-200/70 transition hover:bg-brand-50"
             onClick={onOpenDayOrder}
           >
             <ListOrdered className="h-3.5 w-3.5" />
             {tr('routebook.dayOrder.button', locale)}
           </button>
-        ) : (
-          <button
-            type="button"
-            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
-            onClick={() => onInsertDay(lastDayIndex)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {tr('routebook.sidebar.addDay', locale)}
-          </button>
-        )}
+        ) : null}
+        <button
+          type="button"
+          className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+          onClick={() => onInsertDay(lastDayIndex)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {tr('routebook.sidebar.addDay', locale)}
+        </button>
       </div>
 
       <div className="seichi-soft-scrollbar min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
