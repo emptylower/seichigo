@@ -9,6 +9,7 @@ import { createHandlers as createPointsHandlers } from '@/lib/routeBook/handlers
 import { createItemHandlers } from '@/lib/routeBook/handlers/items'
 import { createDayHandlers } from '@/lib/routeBook/handlers/days'
 import { createPlaceHandlers } from '@/lib/routeBook/handlers/places'
+import { createPlaceIntroHandlers } from '@/lib/routeBook/handlers/placeIntro'
 import { createLodgingHandlers } from '@/lib/routeBook/handlers/lodgings'
 import { createOptimizeHandlers } from '@/lib/routeBook/handlers/optimize'
 
@@ -345,6 +346,117 @@ describe('routebook days/places/lodgings handlers', () => {
     const updated = (await freshRes.json()) as { routeBook: { title: string; dayCount: number } }
     expect(updated.routeBook).toMatchObject({ title: '改名', dayCount: 3 })
     expect((await deps.repo.getById(detail.id, 'u1'))!.days).toHaveLength(3)
+  })
+})
+
+describe('placeIntro handler', () => {
+  it('未登录 401；行程本不存在 404；place 不属于本 404；无 googlePlaceId 404（该地点暂无谷歌信息）', async () => {
+    const { deps } = makeDeps()
+    const detail = await setupBook(deps)
+    const placeHandlers = createPlaceHandlers(deps)
+    const created = await placeHandlers.POST(
+      req('/x', 'POST', { kind: 'other', title: '手工点', lat: 35, lng: 135 }),
+      ctx({ id: detail.id })
+    )
+    const placeId = ((await created.json()) as { place: { id: string } }).place.id
+
+    const anon = createPlaceIntroHandlers({ ...deps, getSession: async () => null })
+    const unauthorized = await anon.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(unauthorized.status).toBe(401)
+    expect(await unauthorized.json()).toEqual({ error: '请先登录' })
+
+    const handlers = createPlaceIntroHandlers(deps)
+    const noBook = await handlers.GET(req('/x', 'GET'), ctx({ id: 'nope', placeId }))
+    expect(noBook.status).toBe(404)
+    expect(await noBook.json()).toEqual({ error: '行程不存在' })
+
+    const noPlace = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId: 'nope' }))
+    expect(noPlace.status).toBe(404)
+    expect(await noPlace.json()).toEqual({ error: '自定义点不存在' })
+
+    const noGoogle = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(noGoogle.status).toBe(404)
+    expect(await noGoogle.json()).toEqual({ error: '该地点暂无谷歌信息' })
+  })
+
+  it('上游无结果 404；成功 200 返回 intro；lang 缺省 zh-CN、非法 lang 400', async () => {
+    const { deps } = makeDeps()
+    const detail = await setupBook(deps)
+    const placeHandlers = createPlaceHandlers(deps)
+    const created = await placeHandlers.POST(
+      req('/x', 'POST', { kind: 'restaurant', title: '食堂', lat: 35, lng: 135, googlePlaceId: 'gp-1' }),
+      ctx({ id: detail.id })
+    )
+    const placeId = ((await created.json()) as { place: { id: string; googlePlaceId: string | null } }).place.id
+    const missCreated = await placeHandlers.POST(
+      req('/x', 'POST', { kind: 'other', title: '无介绍点', lat: 35, lng: 135, googlePlaceId: 'gp-miss' }),
+      ctx({ id: detail.id })
+    )
+    const missPlaceId = ((await missCreated.json()) as { place: { id: string } }).place.id
+
+    const calls: Array<{ placeId: string; lang: string }> = []
+    const handlers = createPlaceIntroHandlers({
+      ...deps,
+      placeIntro: async (googlePlaceId, lang) => {
+        calls.push({ placeId: googlePlaceId, lang })
+        if (googlePlaceId !== 'gp-1') return null
+        return {
+          name: '宇治食堂',
+          address: '京都府宇治市',
+          rating: 4.3,
+          userRatingsTotal: 1234,
+          summary: '抹茶名店',
+          openingHours: ['星期一: 10:00 – 18:00'],
+          website: null,
+          mapsUrl: 'https://maps.google.com/?cid=1',
+        }
+      },
+    })
+
+    const miss = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId: missPlaceId }))
+    expect(miss.status).toBe(404)
+    expect(await miss.json()).toEqual({ error: '该地点暂无谷歌信息' })
+
+    const badLang = await handlers.GET(req('/x?lang=fr', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(badLang.status).toBe(400)
+
+    const ok = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(ok.status).toBe(200)
+    const body = (await ok.json()) as { ok: boolean; intro: { name: string; rating: number } }
+    expect(body.ok).toBe(true)
+    expect(body.intro).toMatchObject({ name: '宇治食堂', rating: 4.3 })
+    expect(calls).toEqual([
+      { placeId: 'gp-miss', lang: 'zh-CN' },
+      { placeId: 'gp-1', lang: 'zh-CN' },
+    ])
+
+    const en = await handlers.GET(req('/x?lang=en', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(en.status).toBe(200)
+    expect(calls.at(-1)).toEqual({ placeId: 'gp-1', lang: 'en' })
+  })
+
+  it('每用户每分钟 30 次限流，超出 429', async () => {
+    const { deps } = makeDeps('u-rate')
+    const book = await deps.repo.create('u-rate', '本', 'draft')
+    const detail = (await deps.repo.getById(book.id, 'u-rate'))!
+    const placeHandlers = createPlaceHandlers(deps)
+    const created = await placeHandlers.POST(
+      req('/x', 'POST', { kind: 'other', title: '点', lat: 35, lng: 135, googlePlaceId: 'gp-1' }),
+      ctx({ id: detail.id })
+    )
+    const placeId = ((await created.json()) as { place: { id: string } }).place.id
+    const handlers = createPlaceIntroHandlers({
+      ...deps,
+      placeIntro: async () => ({ name: 'x', address: null, rating: null, userRatingsTotal: null, summary: null, openingHours: [], website: null, mapsUrl: null }),
+    })
+
+    for (let i = 0; i < 30; i++) {
+      const res = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId }))
+      expect(res.status).toBe(200)
+    }
+    const limited = await handlers.GET(req('/x', 'GET'), ctx({ id: detail.id, placeId }))
+    expect(limited.status).toBe(429)
+    expect(await limited.json()).toEqual({ error: '请求过于频繁，请稍后再试' })
   })
 })
 

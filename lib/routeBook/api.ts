@@ -1,4 +1,5 @@
 import type { Session } from 'next-auth'
+import type { PlaceIntro } from '@/lib/googlePlaces/details'
 import type { RouteBookRepo, TravelMode } from '@/lib/routeBook/repo'
 import type { PointPoolRepo } from '@/lib/pointPool/repo'
 
@@ -14,6 +15,8 @@ export type RouteBookApiDeps = {
     stops: { lat: number; lng: number }[],
     mode: TravelMode
   ) => Promise<{ type: 'LineString'; coordinates: [number, number][] } | null>
+  /** A3：谷歌点位介绍（Place Details + 缓存）；缺省/上游无结果返回 null */
+  placeIntro?: (googlePlaceId: string, lang: 'zh-CN' | 'en' | 'ja') => Promise<PlaceIntro | null>
 }
 
 let cached: RouteBookApiDeps | null = null
@@ -21,14 +24,21 @@ let cached: RouteBookApiDeps | null = null
 export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
   if (cached) return cached
 
-  const [{ PrismaRouteBookRepo }, { PrismaPointPoolRepo }, { getServerAuthSession }, { prisma }, { resolveDayGeometry }] =
-    await Promise.all([
-      import('@/lib/routeBook/repoPrisma'),
-      import('@/lib/pointPool/repoPrisma'),
-      import('@/lib/auth/session'),
-      import('@/lib/db/prisma'),
-      import('@/lib/routeBook/dayGeometry'),
-    ])
+  const [
+    { PrismaRouteBookRepo },
+    { PrismaPointPoolRepo },
+    { getServerAuthSession },
+    { prisma },
+    { resolveDayGeometry },
+    { createPlaceIntroLookup },
+  ] = await Promise.all([
+    import('@/lib/routeBook/repoPrisma'),
+    import('@/lib/pointPool/repoPrisma'),
+    import('@/lib/auth/session'),
+    import('@/lib/db/prisma'),
+    import('@/lib/routeBook/dayGeometry'),
+    import('@/lib/routeBook/placeIntro'),
+  ])
 
   cached = {
     repo: new PrismaRouteBookRepo(),
@@ -49,6 +59,7 @@ export async function getRouteBookApiDeps(): Promise<RouteBookApiDeps> {
       return map
     },
     fetchDayGeometry: resolveDayGeometry,
+    placeIntro: createPlaceIntroLookup(),
   }
 
   return cached
