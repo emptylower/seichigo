@@ -3,13 +3,14 @@
 import { useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles } from 'lucide-react'
-import type { DayLegsResult, DayRecord, ItemRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
+import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles } from 'lucide-react'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { buildGoogleDirectionsUrl, computeVisitOrder, dayLabel, itemDragId } from '../utils'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
 import { LegConnector } from './LegConnector'
+import { lodgingsForDay } from './DayDetailCard'
 import { tr } from '../../i18n'
 
 const STOP_MINUTES_ESTIMATE = 40
@@ -33,6 +34,10 @@ type DayBlockProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   /** B4：点时间线条目（point/place）打开详情卡 */
   onOpenItemDetail?: (itemId: string) => void
+  /** B2：住宿徽标 + 「添加住宿」 */
+  lodgings?: LodgingRecord[]
+  onAddLodging?: (dayIndex: number) => void
+  onEditLodging?: (lodgingId: string) => void
   expanded: boolean
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
@@ -61,6 +66,9 @@ export function DayBlock({
   onMoveItem,
   onUpdateDay,
   onOpenItemDetail,
+  lodgings = [],
+  onAddLodging,
+  onEditLodging,
   expanded,
   onToggleExpanded,
   dropBlocked = false,
@@ -102,6 +110,21 @@ export function DayBlock({
   }, [day.defaultTravelMode, legs])
 
   const showToolbar = selected && stats.coordCount >= 2
+
+  // 住宿徽标：入住日绿 / 退房日红 / 住中灰（from==to 当天锚同时显示入住+退房）
+  const lodgingBadges = useMemo(() => {
+    const rows: { id: string; placeTitle: string; badgeKey: 'badgeCheckIn' | 'badgeCheckOut' | 'badgeStaying' }[] = []
+    for (const lodging of lodgingsForDay(lodgings, day.dayIndex)) {
+      const placeTitle =
+        places.find((row) => row.id === lodging.placeId)?.title ?? tr('routebook.common.placeFallback', locale)
+      if (lodging.fromDayIndex === day.dayIndex) rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeCheckIn' })
+      if (lodging.fromDayIndex < day.dayIndex && day.dayIndex < lodging.toDayIndex)
+        rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeStaying' })
+      if (lodging.toDayIndex === day.dayIndex && lodging.toDayIndex !== lodging.fromDayIndex)
+        rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeCheckOut' })
+    }
+    return rows
+  }, [day.dayIndex, locale, lodgings, places])
 
   return (
     <section
@@ -148,7 +171,48 @@ export function DayBlock({
             {tr('routebook.common.stopCount', locale, { n: stats.stopCount })}
             {stats.stopCount > 0 ? tr('routebook.sidebar.dayStatsHours', locale, { h: stats.totalHours.toFixed(1) }) : ''}
           </div>
+          {lodgingBadges.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {lodgingBadges.map((badge) => (
+                <button
+                  key={`${badge.id}:${badge.badgeKey}`}
+                  type="button"
+                  disabled={!onEditLodging}
+                  title={badge.placeTitle}
+                  className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-default ${
+                    badge.badgeKey === 'badgeCheckIn'
+                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200/70'
+                      : badge.badgeKey === 'badgeCheckOut'
+                        ? 'bg-rose-100 text-rose-600 hover:bg-rose-200/70'
+                        : 'bg-slate-200/70 text-slate-500 hover:bg-slate-300/60'
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onEditLodging?.(badge.id)
+                  }}
+                >
+                  <BedDouble className="h-3 w-3" />
+                  {tr(`routebook.lodging.${badge.badgeKey}`, locale)}
+                  <span className="max-w-24 truncate font-normal">{badge.placeTitle}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
+        {onAddLodging ? (
+          <button
+            type="button"
+            aria-label={tr('routebook.lodging.add', locale)}
+            title={tr('routebook.lodging.add', locale)}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-emerald-50 hover:text-emerald-600"
+            onClick={(event) => {
+              event.stopPropagation()
+              onAddLodging(day.dayIndex)
+            }}
+          >
+            <BedDouble className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
 
       {expanded ? (

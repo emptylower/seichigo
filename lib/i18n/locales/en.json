@@ -382,10 +382,22 @@
       "guestSidebarHint": "Sign in to see your recent plans here",
       "guestSidebarLogin": "Sign in",
       "suggestions": [
-        { "emoji": "⛩", "text": "5 days in Tokyo, visiting every Your Name filming spot" },
-        { "emoji": "🎺", "text": "Two days in Kyoto and Uji for a Sound! Euphonium pilgrimage" },
-        { "emoji": "🏕", "text": "A 3-day Yamanashi road trip, following Laid-Back Camp around the Fuji Five Lakes" },
-        { "emoji": "🎲", "text": "I only have one weekend — pick a route from Tokyo for me" }
+        {
+          "emoji": "⛩",
+          "text": "5 days in Tokyo, visiting every Your Name filming spot"
+        },
+        {
+          "emoji": "🎺",
+          "text": "Two days in Kyoto and Uji for a Sound! Euphonium pilgrimage"
+        },
+        {
+          "emoji": "🏕",
+          "text": "A 3-day Yamanashi road trip, following Laid-Back Camp around the Fuji Five Lakes"
+        },
+        {
+          "emoji": "🎲",
+          "text": "I only have one weekend — pick a route from Tokyo for me"
+        }
       ],
       "errorCreate": "Could not create the plan. Please try again.",
       "errorNetwork": "Network error. Please try again."
@@ -861,10 +873,22 @@
     "tabs": {
       "sectionTitle": "Account",
       "sectionHint": "Account & content",
-      "plan": { "label": "My Plans", "hint": "Multi-day itineraries planned by AI" },
-      "settings": { "label": "Profile", "hint": "Avatar, name & social accounts" },
-      "favorites": { "label": "Favorites", "hint": "Your saved articles" },
-      "routebooks": { "label": "My Maps", "hint": "Manage pilgrimage routes" }
+      "plan": {
+        "label": "My Plans",
+        "hint": "Multi-day itineraries planned by AI"
+      },
+      "settings": {
+        "label": "Profile",
+        "hint": "Avatar, name & social accounts"
+      },
+      "favorites": {
+        "label": "Favorites",
+        "hint": "Your saved articles"
+      },
+      "routebooks": {
+        "label": "My Maps",
+        "hint": "Manage pilgrimage routes"
+      }
     }
   },
   "routebook": {
@@ -1061,7 +1085,13 @@
       "sheetSearchPlaceholder": "Search point name or subtitle...",
       "globalBadge": "Wishlist",
       "dragIntoRoute": "Drag into route",
-      "addToMap": "Add to this map"
+      "addToMap": "Add to this map",
+      "placesTitle": "Custom places ({n})",
+      "addPlace": "Add custom place",
+      "addPlaceToDay": "Add to selected day",
+      "editPlace": "Edit custom place",
+      "deletePlace": "Delete custom place",
+      "placesEmpty": "Right-click the map, or use the button above"
     },
     "selector": {
       "choose": "Choose a map",
@@ -1122,6 +1152,41 @@
       "undoCheckIn": "Undo check-in",
       "undoFailed": "Undo failed — please try again.",
       "checkInNext": "Check in & next stop"
+    },
+    "place": {
+      "dialogCreate": "Add custom place",
+      "dialogEdit": "Edit custom place",
+      "kindLabel": "Type",
+      "titleLabel": "Name",
+      "titlePlaceholder": "e.g. hotel, station, restaurant…",
+      "addressLabel": "Address search",
+      "addressPlaceholder": "Search an address or place name",
+      "latLabel": "Latitude",
+      "lngLabel": "Longitude",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "Extra info…",
+      "submit": "Save place"
+    },
+    "lodging": {
+      "add": "Add lodging",
+      "edit": "Edit lodging",
+      "placeLabel": "Lodging place",
+      "newPlace": "New lodging place",
+      "noPlaceHint": "No “lodging” custom place yet — create one first",
+      "fromLabel": "Check-in day",
+      "toLabel": "Check-out day",
+      "checkInLabel": "Check-in time (optional)",
+      "checkOutLabel": "Check-out time (optional)",
+      "noteLabel": "Note (optional)",
+      "submit": "Save lodging",
+      "badgeCheckIn": "Check-in",
+      "badgeCheckOut": "Check-out",
+      "badgeStaying": "Staying"
+    },
+    "dayDetail": {
+      "lodgingTitle": "Lodging for the day",
+      "collapse": "Collapse",
+      "expand": "Expand"
     }
   }
 }

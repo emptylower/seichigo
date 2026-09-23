@@ -382,10 +382,22 @@
       "guestSidebarHint": "ログインすると最近のプランがここに表示されます",
       "guestSidebarLogin": "ログイン",
       "suggestions": [
-        { "emoji": "⛩", "text": "東京 5 日間、『君の名は。』の舞台を全部巡る" },
-        { "emoji": "🎺", "text": "京都・宇治の 2 日間、『響け！ユーフォニアム』聖地巡礼" },
-        { "emoji": "🏕", "text": "山梨 3 日間のドライブ、『ゆるキャン△』と富士五湖へ" },
-        { "emoji": "🎲", "text": "週末しかないので、東京発のおすすめを選んでほしい" }
+        {
+          "emoji": "⛩",
+          "text": "東京 5 日間、『君の名は。』の舞台を全部巡る"
+        },
+        {
+          "emoji": "🎺",
+          "text": "京都・宇治の 2 日間、『響け！ユーフォニアム』聖地巡礼"
+        },
+        {
+          "emoji": "🏕",
+          "text": "山梨 3 日間のドライブ、『ゆるキャン△』と富士五湖へ"
+        },
+        {
+          "emoji": "🎲",
+          "text": "週末しかないので、東京発のおすすめを選んでほしい"
+        }
       ],
       "errorCreate": "プランを作成できませんでした。時間をおいて再試行してください。",
       "errorNetwork": "通信エラーです。時間をおいて再試行してください。"
@@ -861,10 +873,22 @@
     "tabs": {
       "sectionTitle": "ユーザーセンター",
       "sectionHint": "アカウントとコンテンツ管理",
-      "plan": { "label": "マイプラン", "hint": "AI が提案する多日巡礼プラン" },
-      "settings": { "label": "プロフィール", "hint": "アバター・ニックネーム・SNS" },
-      "favorites": { "label": "お気に入り", "hint": "保存した記事を見る" },
-      "routebooks": { "label": "マイマップ", "hint": "巡礼ルートを管理" }
+      "plan": {
+        "label": "マイプラン",
+        "hint": "AI が提案する多日巡礼プラン"
+      },
+      "settings": {
+        "label": "プロフィール",
+        "hint": "アバター・ニックネーム・SNS"
+      },
+      "favorites": {
+        "label": "お気に入り",
+        "hint": "保存した記事を見る"
+      },
+      "routebooks": {
+        "label": "マイマップ",
+        "hint": "巡礼ルートを管理"
+      }
     }
   },
   "routebook": {
@@ -1061,7 +1085,13 @@
       "sheetSearchPlaceholder": "スポット名やサブタイトルで検索...",
       "globalBadge": "行きたい",
       "dragIntoRoute": "ルートにドラッグ",
-      "addToMap": "このマップに追加"
+      "addToMap": "このマップに追加",
+      "placesTitle": "カスタム地点（{n}）",
+      "addPlace": "カスタム地点を追加",
+      "addPlaceToDay": "選択した日に追加",
+      "editPlace": "カスタム地点を編集",
+      "deletePlace": "カスタム地点を削除",
+      "placesEmpty": "地図を右クリックするか、上のボタンから新規作成"
     },
     "selector": {
       "choose": "マップを選択",
@@ -1122,6 +1152,41 @@
       "undoCheckIn": "チェックインを取り消す",
       "undoFailed": "取り消しに失敗しました。もう一度お試しください。",
       "checkInNext": "チェックインして次へ"
+    },
+    "place": {
+      "dialogCreate": "カスタム地点を追加",
+      "dialogEdit": "カスタム地点を編集",
+      "kindLabel": "種類",
+      "titleLabel": "名称",
+      "titlePlaceholder": "例：ホテル・駅・レストラン…",
+      "addressLabel": "住所検索",
+      "addressPlaceholder": "住所や地名を検索",
+      "latLabel": "緯度",
+      "lngLabel": "経度",
+      "noteLabel": "メモ（任意）",
+      "notePlaceholder": "補足情報…",
+      "submit": "地点を保存"
+    },
+    "lodging": {
+      "add": "宿泊を追加",
+      "edit": "宿泊を編集",
+      "placeLabel": "宿泊地点",
+      "newPlace": "宿泊地点を新規作成",
+      "noPlaceHint": "「宿泊」タイプのカスタム地点がまだありません。先に作成してください",
+      "fromLabel": "チェックイン日",
+      "toLabel": "チェックアウト日",
+      "checkInLabel": "チェックイン時刻（任意）",
+      "checkOutLabel": "チェックアウト時刻（任意）",
+      "noteLabel": "メモ（任意）",
+      "submit": "宿泊を保存",
+      "badgeCheckIn": "チェックイン",
+      "badgeCheckOut": "チェックアウト",
+      "badgeStaying": "連泊"
+    },
+    "dayDetail": {
+      "lodgingTitle": "当日の宿泊",
+      "collapse": "折りたたむ",
+      "expand": "展開"
     }
   }
 }

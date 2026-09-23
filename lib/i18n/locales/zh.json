@@ -382,10 +382,22 @@
       "guestSidebarHint": "登录后这里会显示你的最近对话",
       "guestSidebarLogin": "登录",
       "suggestions": [
-        { "emoji": "⛩", "text": "东京 5 天，把《你的名字。》的取景地走一遍" },
-        { "emoji": "🎺", "text": "京都、宇治两天，《吹响！上低音号》圣地巡礼" },
-        { "emoji": "🏕", "text": "山梨三天自驾，跟着《摇曳露营△》去富士五湖" },
-        { "emoji": "🎲", "text": "我只有一个周末，从东京出发帮我挑一条" }
+        {
+          "emoji": "⛩",
+          "text": "东京 5 天，把《你的名字。》的取景地走一遍"
+        },
+        {
+          "emoji": "🎺",
+          "text": "京都、宇治两天，《吹响！上低音号》圣地巡礼"
+        },
+        {
+          "emoji": "🏕",
+          "text": "山梨三天自驾，跟着《摇曳露营△》去富士五湖"
+        },
+        {
+          "emoji": "🎲",
+          "text": "我只有一个周末，从东京出发帮我挑一条"
+        }
       ],
       "errorCreate": "创建失败，请稍后再试",
       "errorNetwork": "网络错误，请稍后再试"
@@ -861,10 +873,22 @@
     "tabs": {
       "sectionTitle": "用户中心",
       "sectionHint": "账户与内容管理",
-      "plan": { "label": "我的计划", "hint": "AI 规划的多日巡礼行程" },
-      "settings": { "label": "个人信息", "hint": "头像、昵称与社交账号" },
-      "favorites": { "label": "我的收藏", "hint": "查看保存的文章" },
-      "routebooks": { "label": "我的地图", "hint": "管理巡礼路线" }
+      "plan": {
+        "label": "我的计划",
+        "hint": "AI 规划的多日巡礼行程"
+      },
+      "settings": {
+        "label": "个人信息",
+        "hint": "头像、昵称与社交账号"
+      },
+      "favorites": {
+        "label": "我的收藏",
+        "hint": "查看保存的文章"
+      },
+      "routebooks": {
+        "label": "我的地图",
+        "hint": "管理巡礼路线"
+      }
     }
   },
   "routebook": {
@@ -1061,7 +1085,13 @@
       "sheetSearchPlaceholder": "搜索点位名称或副标题...",
       "globalBadge": "全局想去",
       "dragIntoRoute": "拖入路线",
-      "addToMap": "加入当前地图"
+      "addToMap": "加入当前地图",
+      "placesTitle": "自定义点（{n}）",
+      "addPlace": "添加自定义点",
+      "addPlaceToDay": "加入选中天",
+      "editPlace": "编辑自定义点",
+      "deletePlace": "删除自定义点",
+      "placesEmpty": "右键地图空白处，或点上方按钮新建"
     },
     "selector": {
       "choose": "选择地图",
@@ -1122,6 +1152,41 @@
       "undoCheckIn": "撤销打卡",
       "undoFailed": "撤销失败，请稍后重试。",
       "checkInNext": "打卡并下一站"
+    },
+    "place": {
+      "dialogCreate": "添加自定义点",
+      "dialogEdit": "编辑自定义点",
+      "kindLabel": "类型",
+      "titleLabel": "名称",
+      "titlePlaceholder": "例：酒店、车站、餐厅…",
+      "addressLabel": "地址搜索",
+      "addressPlaceholder": "输入地址或地名搜索",
+      "latLabel": "纬度",
+      "lngLabel": "经度",
+      "noteLabel": "备注（可选）",
+      "notePlaceholder": "补充信息…",
+      "submit": "保存自定义点"
+    },
+    "lodging": {
+      "add": "添加住宿",
+      "edit": "编辑住宿",
+      "placeLabel": "住宿点",
+      "newPlace": "新建住宿点",
+      "noPlaceHint": "还没有「住宿」类型的自定义点，先新建一个",
+      "fromLabel": "入住日",
+      "toLabel": "退房日",
+      "checkInLabel": "入住时间（可选）",
+      "checkOutLabel": "退房时间（可选）",
+      "noteLabel": "备注（可选）",
+      "submit": "保存住宿",
+      "badgeCheckIn": "入住",
+      "badgeCheckOut": "退房",
+      "badgeStaying": "续住"
+    },
+    "dayDetail": {
+      "lodgingTitle": "当天住宿",
+      "collapse": "收起",
+      "expand": "展开"
     }
   }
 }

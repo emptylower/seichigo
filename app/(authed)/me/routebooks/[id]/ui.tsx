@@ -22,6 +22,8 @@ import {
   placeIntroLang,
 } from './components/DetailChrome'
 import { RouteBookPlannerHeader } from './components/RouteBookPlannerHeader'
+import { DayDetailCard } from './components/DayDetailCard'
+import { useDialogsHost } from './components/DialogsHost'
 import { PlannerMapStage } from './components/PlannerMapStage'
 import { PlannerPointPoolDragOverlay, PlannerPointPoolPanel } from './components/PlannerPointPoolPanel'
 import { DayPlanSidebar } from './components/DayPlanSidebar'
@@ -57,6 +59,14 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
   const trip = useTripData(id, locale)
   const detail = trip.detail
   const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible)
+  const dialogs = useDialogsHost({
+    detail,
+    createPlace: trip.createPlace,
+    updatePlace: trip.updatePlace,
+    createLodging: trip.createLodging,
+    updateLodging: trip.updateLodging,
+    locale,
+  })
   const dnd = useTripDnd({
     items: detail?.items ?? [],
     pointPoolItems: trip.pointPoolItems,
@@ -294,6 +304,8 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onInsertDay={(after) => void trip.insertDay(after)}
       onDeleteDay={(dayId) => void trip.deleteDay(dayId)}
       onOpenItemDetail={handleOpenItemDetail}
+      onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
+      onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
       limitBlockedDayId={dnd.limitBlockedDayId}
       legsFailedByDay={failedDayIds}
       onRetryLegs={retryDay}
@@ -339,6 +351,16 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       activePointId={focusItemId}
       onPointSelect={handleSelectItem}
       detailCard={detailCard}
+      dayDetailCard={
+        <DayDetailCard
+          day={selectedDay}
+          lodgings={detail.lodgings}
+          places={detail.places}
+          onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+          locale={locale}
+        />
+      }
+      onMapContextMenu={(pos) => dialogs.openPlaceEditor({ initialCoords: { lat: pos.lat, lng: pos.lng } })}
       locale={locale}
     />
   )
@@ -353,6 +375,9 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
       onReorder={(dayId, ids) => void trip.reorder(dayId, ids)}
       onFocusPoint={handleFocusPoint}
       onRemoveFromPool={(pointId) => void trip.removeFromPool(pointId)}
+      onCreatePlace={() => dialogs.openPlaceEditor()}
+      onEditPlace={(placeId) => dialogs.openPlaceEditor({ placeId })}
+      onDeletePlace={(placeId) => void trip.deletePlace(placeId)}
       compact={isMobile}
       enableDrag={!isMobile}
       locale={locale}
@@ -535,6 +560,9 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
                     onMoveItem={handleMoveItem}
                     onUpdateDay={(dayId, data) => void trip.updateDay(dayId, data)}
                     onOpenItemDetail={handleOpenItemDetail}
+                    lodgings={detail.lodgings}
+                    onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
+                    onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
                     expanded
                     onToggleExpanded={() => {}}
                     legsFailed={Boolean(failedDayIds[selectedDay.id])}
@@ -592,6 +620,8 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
           onClose={() => setStartDayPickerOpen(false)}
           locale={locale}
         />
+
+        {dialogs.host}
 
         {trip.toast ? (
           <div className="fixed bottom-6 left-1/2 z-[110] -translate-x-1/2 rounded-2xl bg-slate-900/92 px-4 py-2.5 text-sm font-medium text-white shadow-[0_18px_36px_-20px_rgba(15,23,42,0.6)]">

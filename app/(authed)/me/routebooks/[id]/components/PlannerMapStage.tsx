@@ -31,6 +31,10 @@ type PlannerMapStageProps = {
   onPointSelect?: (itemId: string) => void
   /** B4：地图左下角（移动端底部抽屉）点位详情卡，由 ui.tsx 组装 */
   detailCard?: React.ReactNode
+  /** B2：地图右上住宿卡（DayDetailCard），由 ui.tsx 组装 */
+  dayDetailCard?: React.ReactNode
+  /** B2：右键/长按地图空白 → 在该坐标新建自定义点 */
+  onMapContextMenu?: (pos: { lat: number; lng: number }) => void
   locale?: SupportedLocale
 }
 
@@ -85,6 +89,8 @@ export function PlannerMapStage({
   activePointId = null,
   onPointSelect,
   detailCard,
+  dayDetailCard,
+  onMapContextMenu,
   locale = 'zh',
 }: PlannerMapStageProps) {
   const proxyListenersRef = useRef(new Map<string, DraggableSyntheticListeners | undefined>())
@@ -259,6 +265,7 @@ export function PlannerMapStage({
             markerVariants={markerVariants}
             markerImages={markerImages}
             onMarkerPointerDown={handleMarkerPointerDown}
+            onMapContextMenu={onMapContextMenu}
             activePointId={activePointId}
             onPointSelect={onPointSelect}
             className="absolute inset-0 h-full w-full"
@@ -280,6 +287,9 @@ export function PlannerMapStage({
         {mapPoints.map((point) => (
           <MarkerDragProxy key={point.id} itemId={point.id} register={registerProxy} />
         ))}
+
+        {/* B2：当天住宿卡（地图右上，可折叠） */}
+        {dayDetailCard}
 
         {/* B4：点位详情卡（浮在地图左下角 / 移动端底部抽屉） */}
         {detailCard}
