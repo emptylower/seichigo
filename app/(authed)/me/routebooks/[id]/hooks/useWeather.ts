@@ -9,7 +9,9 @@ export type WeatherByDate = Record<string, WeatherDay>
 
 type WeatherSource = Pick<RouteBookDetail, 'id' | 'days' | 'items' | 'places' | 'lodgings'>
 
-const CACHE_TTL_MS = 60 * 60 * 1000
+export const CACHE_TTL_MS = 60 * 60 * 1000
+/** 空结果（上游暂无数据）只缓存 5 分钟，避免一次空响应压住一小时 */
+export const EMPTY_CACHE_TTL_MS = 5 * 60 * 1000
 /** 预报窗口（今天..今天+15）外留一天余量，时区差不至于误杀 */
 const FORECAST_DAYS = 16
 
@@ -64,7 +66,8 @@ function addDaysKey(key: string, delta: number): string {
 
 /**
  * 行程本每天天气（按 YYYY-MM-DD 索引）。只有带日期的行程才请求；日期整段落在
- * 预报窗口外也不请求；结果按行程本在内存缓存 1 小时（坐标/日期范围变了才重拉）。
+ * 预报窗口外也不请求；结果按行程本在内存缓存 1 小时（空结果 5 分钟；坐标/日期范围变了才重拉）。
+ * 请求失败（!res.ok）清掉旧数据，不留上一次的天气。
  */
 export function useWeather(
   detail: WeatherSource | null,
@@ -103,7 +106,8 @@ export function useWeather(
       return
     }
     const cached = cache.get(request.routeBookId)
-    if (cached && cached.key === request.key && Date.now() - cached.at < CACHE_TTL_MS) {
+    const ttl = cached && cached.days.length === 0 ? EMPTY_CACHE_TTL_MS : CACHE_TTL_MS
+    if (cached && cached.key === request.key && Date.now() - cached.at < ttl) {
       setDays(cached.days)
       return
     }
@@ -113,7 +117,11 @@ export function useWeather(
     void (async () => {
       try {
         const res = await fetch(`/api/weather?${params.toString()}`)
-        if (!res.ok) return
+        if (!res.ok) {
+          cache.delete(request.routeBookId)
+          if (!cancelled) setDays([])
+          return
+        }
         const data = (await res.json().catch(() => null)) as { ok?: boolean; days?: WeatherDay[] } | null
         const next = data?.ok && Array.isArray(data.days) ? data.days : []
         cache.set(request.routeBookId, { at: Date.now(), key: request.key, days: next })

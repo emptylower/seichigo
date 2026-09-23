@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import {
+  CACHE_TTL_MS,
+  EMPTY_CACHE_TTL_MS,
   clearWeatherCache,
   useWeather,
   weatherAnchor,
@@ -71,6 +73,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('useWeather', () => {
@@ -117,6 +120,85 @@ describe('useWeather', () => {
     const second = renderHook(() => useWeather(source, getPointPreview))
     await waitFor(() => expect(second.result.current[d1]).toBeTruthy())
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useWeather 缓存 TTL / 重取（G10）', () => {
+  const d1 = isoDay(1).slice(0, 10)
+  const okWith = (days: unknown[]) => ({ ok: true, json: async () => ({ ok: true, days }) })
+
+  it('非空结果缓存 1 小时：未过期不重取，过期后重取', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    fetchMock.mockResolvedValue(okWith([{ date: d1, tMax: 22, tMin: 15, code: 2 }]))
+    const source = makeSource([makeDay('d1', 1, isoDay(1))])
+    const first = renderHook(() => useWeather(source, getPointPreview))
+    await waitFor(() => expect(first.result.current[d1]).toBeTruthy())
+    first.unmount()
+
+    now.mockReturnValue(1_000_000 + CACHE_TTL_MS - 1)
+    const second = renderHook(() => useWeather(source, getPointPreview))
+    await waitFor(() => expect(second.result.current[d1]).toBeTruthy())
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    second.unmount()
+
+    now.mockReturnValue(1_000_000 + CACHE_TTL_MS + 1)
+    renderHook(() => useWeather(source, getPointPreview))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  })
+
+  it('空结果只缓存 5 分钟', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    fetchMock.mockResolvedValue(okWith([]))
+    const source = makeSource([makeDay('d1', 1, isoDay(1))])
+    const first = renderHook(() => useWeather(source, getPointPreview))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    first.unmount()
+
+    now.mockReturnValue(1_000_000 + EMPTY_CACHE_TTL_MS - 1)
+    const second = renderHook(() => useWeather(source, getPointPreview))
+    await Promise.resolve()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    second.unmount()
+
+    now.mockReturnValue(1_000_000 + EMPTY_CACHE_TTL_MS + 1)
+    renderHook(() => useWeather(source, getPointPreview))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  })
+
+  it('锚点坐标变化时重取（缓存按参数失效）', async () => {
+    fetchMock.mockResolvedValue(okWith([{ date: d1, tMax: 22, tMin: 15, code: 2 }]))
+    const tokyo = makeSource([makeDay('d1', 1, isoDay(1))])
+    const kyoto = makeSource([makeDay('d1', 1, isoDay(1))], {
+      items: [makeItem({ kind: 'place', pointId: null, placeId: 'hotel' })],
+      places: [HOTEL],
+    })
+    const { result, rerender } = renderHook(({ source }) => useWeather(source, getPointPreview), {
+      initialProps: { source: tokyo },
+    })
+    await waitFor(() => expect(result.current[d1]).toBeTruthy())
+    rerender({ source: kyoto })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const url = new URL(String(fetchMock.mock.calls[1]![0]), 'http://localhost')
+    expect(url.searchParams.get('lat')).toBe('34.98')
+    expect(url.searchParams.get('lng')).toBe('135.75')
+  })
+
+  it('请求失败（!res.ok）清掉旧天气', async () => {
+    fetchMock.mockResolvedValueOnce(okWith([{ date: d1, tMax: 22, tMin: 15, code: 2 }]))
+    fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+    const tokyo = makeSource([makeDay('d1', 1, isoDay(1))])
+    const kyoto = makeSource([makeDay('d1', 1, isoDay(1))], {
+      items: [makeItem({ kind: 'place', pointId: null, placeId: 'hotel' })],
+      places: [HOTEL],
+    })
+    const { result, rerender } = renderHook(({ source }) => useWeather(source, getPointPreview), {
+      initialProps: { source: tokyo },
+    })
+    await waitFor(() => expect(result.current[d1]).toBeTruthy())
+    rerender({ source: kyoto })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current).toEqual({}))
   })
 })
 
