@@ -13,6 +13,8 @@ import { groupItemsByDay } from '../utils'
 import type { CreateItemInput, UpdateItemInput } from '../hooks/useTripData'
 import { DayBlock } from './DayBlock'
 import { UnassignedBlock } from './UnassignedBlock'
+import { ExportMenu } from './ExportMenu'
+import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 import { tr } from '../../i18n'
 
 type DayPlanSidebarProps = {
@@ -52,6 +54,8 @@ type DayPlanSidebarProps = {
   /** B1.2：每天 legs 加载失败标记 + 手动重试 */
   legsFailedByDay?: Record<string, boolean>
   onRetryLegs?: (dayId: string) => void
+  /** B4：按 YYYY-MM-DD 的天气 */
+  weatherByDate?: WeatherByDate
   locale?: SupportedLocale
 }
 
@@ -106,6 +110,7 @@ export function DayPlanSidebar({
   limitBlockedDayId = null,
   legsFailedByDay,
   onRetryLegs,
+  weatherByDate,
   locale = 'zh',
 }: DayPlanSidebarProps) {
   const days = useMemo(() => [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex), [detail.days])
@@ -161,10 +166,12 @@ export function DayPlanSidebar({
   )
 
   const lastDayIndex = days.length ? days[days.length - 1]!.dayIndex : 0
+  const selectedDayIndex = days.find((day) => day.id === selectedDayId)?.dayIndex ?? null
+  const hasDates = days.some((day) => Boolean(day.date))
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,250,0.9))] p-3 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
-      <div className="flex items-center gap-1.5 px-1 pb-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2.5">
         <button
           type="button"
           disabled={!undoLabel}
@@ -196,6 +203,7 @@ export function DayPlanSidebar({
           </button>
         ) : null}
         <span className="flex-1" />
+        <ExportMenu routeBookId={detail.id} selectedDayIndex={selectedDayIndex} hasDates={hasDates} locale={locale} />
         {onOpenDayOrder ? (
           <button
             type="button"
@@ -248,6 +256,7 @@ export function DayPlanSidebar({
             dropBlocked={limitBlockedDayId === day.id}
             legsFailed={Boolean(legsFailedByDay?.[day.id])}
             onRetryLegs={onRetryLegs ? () => onRetryLegs(day.id) : undefined}
+            weather={weatherByDate ? weatherForDay(weatherByDate, day) : null}
             locale={locale}
           />
         ))}

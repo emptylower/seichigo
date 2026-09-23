@@ -6,6 +6,8 @@ import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayRecord } from '../../types'
 import { dayLabel } from '../../utils'
 import { tr } from '../../../i18n'
+import { weatherForDay, type WeatherByDate } from '../../hooks/useWeather'
+import { WeatherBadge } from '../WeatherBadge'
 
 type Props = {
   days: DayRecord[]
@@ -17,6 +19,8 @@ type Props = {
   onSelectDay: (dayId: string) => void
   onShowAll: () => void
   onShowUnassigned: () => void
+  /** B4：胶囊上的小天气 emoji（可选） */
+  weatherByDate?: WeatherByDate
   locale?: SupportedLocale
 }
 
@@ -34,6 +38,7 @@ export function DayPillTrack({
   onSelectDay,
   onShowAll,
   onShowUnassigned,
+  weatherByDate,
   locale = 'zh',
 }: Props) {
   const trackRef = useRef<HTMLDivElement | null>(null)
@@ -68,6 +73,7 @@ export function DayPillTrack({
       </button>
       {sorted.map((day) => {
         const active = day.id === selectedDayId && !unassignedSelected
+        const weather = weatherByDate ? weatherForDay(weatherByDate, day) : null
         return (
           <button
             key={day.id}
@@ -79,6 +85,7 @@ export function DayPillTrack({
             onClick={() => onSelectDay(day.id)}
           >
             {dayLabel(day, day.dayIndex, locale)}
+            {weather ? <WeatherBadge weather={weather} locale={locale} compact className="text-sm" /> : null}
           </button>
         )
       })}

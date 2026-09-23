@@ -14,6 +14,7 @@ import { PlannerPointPoolPanel } from './PlannerPointPoolPanel'
 import { DayPlanSidebar } from './DayPlanSidebar'
 import { PointDetailCard } from './PointDetailCard'
 import { tr } from '../../i18n'
+import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 
 export type PlannerNodesInput = {
   locale: SupportedLocale
@@ -46,6 +47,8 @@ export type PlannerNodesInput = {
   onMoveItem: (itemId: string, targetDayId: string | null) => void
   onFocusPoint: (pointId: string) => void
   onEditNote: (itemId: string) => void
+  /** B4：按 YYYY-MM-DD 的天气 */
+  weatherByDate: WeatherByDate
 }
 
 export type PlannerNodes = {
@@ -88,6 +91,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
     onMoveItem,
     onFocusPoint,
     onEditNote,
+    weatherByDate,
   } = input
 
   const header = <RouteBookPlannerHeader routeBookId={detail.id} routeBooks={routeBookSelectorItems} locale={locale} />
@@ -121,6 +125,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
       limitBlockedDayId={dnd.limitBlockedDayId}
       legsFailedByDay={legsFailedByDay}
       onRetryLegs={onRetryLegs}
+      weatherByDate={weatherByDate}
       locale={locale}
     />
   )
@@ -169,6 +174,7 @@ export function buildPlannerNodes(input: PlannerNodesInput): PlannerNodes {
           lodgings={detail.lodgings}
           places={detail.places}
           onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
+          weather={weatherForDay(weatherByDate, selectedDay)}
           locale={locale}
         />
       }

@@ -119,8 +119,6 @@ export type RouteBookListResponse =
   | { ok: true; items: RouteBookSummary[] }
   | { error: string }
 
-export type NavMode = 'transit' | 'driving'
-
 /** 当天段数据（与 lib/routeBook/legs.ts 的 Leg/LegStop 同形） */
 export type DayLeg = Leg
 export type DayLegStop = LegStop
@@ -147,11 +145,6 @@ export const STATUS_ACTION_CLASS: Record<RouteBookStatus, string> = {
   draft: 'bg-blue-500 hover:bg-blue-600 text-white',
   in_progress: 'bg-green-500 hover:bg-green-600 text-white',
   completed: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-}
-
-export const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
-  transit: 'transit',
-  driving: 'driving',
 }
 
 export const DRAG_SAFE_CONTROL_PROPS = {

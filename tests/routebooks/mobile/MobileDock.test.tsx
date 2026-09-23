@@ -2,6 +2,15 @@ import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MobileDock } from '@/app/(authed)/me/routebooks/[id]/components/mobile/MobileDock'
 import type { DayRecord } from '@/app/(authed)/me/routebooks/[id]/types'
+import { buildDayTargets, type NavTarget } from '@/lib/route/navigationTargets'
+
+const NAV_TARGETS = buildDayTargets(
+  [
+    { lat: 35.68, lng: 139.76, name: 'A' },
+    { lat: 35.69, lng: 139.7, name: 'B' },
+  ],
+  'transit'
+)
 
 const DAY: DayRecord = {
   id: 'day1',
@@ -16,7 +25,10 @@ function renderDock(overrides: Partial<Parameters<typeof MobileDock>[0]> = {}) {
   const props = {
     selectedDay: DAY as DayRecord | null,
     movableCount: 3,
-    navUrl: 'https://www.google.com/maps/dir/?api=1&origin=1,2&destination=3,4' as string | null,
+    navTargets: NAV_TARGETS as NavTarget[],
+    routeBookId: 'rb1',
+    selectedDayIndex: 1 as number | null,
+    hasDates: true,
     canStart: true,
     startLabel: '开始 Day 1',
     needsDayPick: false,
@@ -71,14 +83,37 @@ describe('MobileDock 开始按钮', () => {
 })
 
 describe('MobileDock 打开导航', () => {
-  it('无 navUrl 禁用；有 navUrl 打开 action sheet 且含 Google 链接', () => {
-    const { rerender, props } = renderDock({ navUrl: null })
+  it('无导航目标禁用；有目标打开 action sheet，含 Google / Apple / 高德三项', () => {
+    const { rerender, props } = renderDock({ navTargets: [] })
     expect(screen.getByRole('button', { name: '打开导航' })).toBeDisabled()
 
-    rerender(<MobileDock {...props} navUrl="https://www.google.com/maps/dir/?api=1&origin=1,2&destination=3,4" />)
+    rerender(<MobileDock {...props} navTargets={NAV_TARGETS} />)
     fireEvent.click(screen.getByRole('button', { name: '打开导航' }))
-    const link = screen.getByRole('link', { name: /Google Maps/ })
-    expect(link.getAttribute('href')).toContain('google.com/maps/dir')
+    expect(screen.getByRole('link', { name: /Google 地图/ }).getAttribute('href')).toContain('google.com/maps/dir')
+    expect(screen.getByRole('link', { name: /Apple 地图/ }).getAttribute('href')).toContain('maps.apple.com')
+    expect(screen.getByRole('link', { name: /高德地图/ }).getAttribute('href')).toContain('amap.com')
+  })
+})
+
+describe('MobileDock 更多：导出', () => {
+  it('更多 sheet 给 GPX 整程 / 当天 / ICS 下载链接', () => {
+    renderDock()
+    fireEvent.click(screen.getByRole('button', { name: '更多' }))
+    expect(screen.getByRole('link', { name: /GPX（整个行程）/ }).getAttribute('href')).toBe(
+      '/api/me/routebooks/rb1/export.gpx?scope=all'
+    )
+    expect(screen.getByRole('link', { name: /GPX（Day 1）/ }).getAttribute('href')).toBe(
+      '/api/me/routebooks/rb1/export.gpx?scope=day&dayIndex=1'
+    )
+    expect(screen.getByRole('link', { name: /日历（ICS）/ })).toHaveAttribute('download')
+  })
+
+  it('无日期行程 ICS 不可点并提示；未选天不给当天 GPX', () => {
+    renderDock({ hasDates: false, selectedDayIndex: null })
+    fireEvent.click(screen.getByRole('button', { name: '更多' }))
+    expect(screen.queryByRole('link', { name: /日历/ })).toBeNull()
+    expect(screen.getByText('行程没有日期，无法导出日历')).toBeTruthy()
+    expect(screen.queryByText(/GPX（Day/)).toBeNull()
   })
 })
 

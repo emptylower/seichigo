@@ -8,6 +8,7 @@ import { useIsMobile } from '@/lib/hooks/useMediaQuery'
 import { useTripData } from './hooks/useTripData'
 import { useTripDnd } from './hooks/useTripDnd'
 import { useDayLegs } from './hooks/useDayLegs'
+import { useWeather } from './hooks/useWeather'
 import { dayLabel, nextDayFirstStopTitle, sequenceForImmersive } from './utils'
 import {
   DetailNav,
@@ -50,6 +51,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
   const detail = trip.detail
   // 移动端连接行始终显示（无路线开关），legs 常拉
   const { legsByDay, staleDayIds, failedDayIds, retryDay } = useDayLegs(id, detail, selectedDayId, routeVisible || isMobile)
+  const weatherByDate = useWeather(detail, trip.getPointPreview)
   const dialogs = useDialogsHost({
     detail,
     createPlace: trip.createPlace,
@@ -275,6 +277,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
     onMoveItem: handleMoveItem,
     onFocusPoint: handleFocusPoint,
     onEditNote: handleEditNote,
+    weatherByDate,
   })
 
   return (
@@ -373,6 +376,7 @@ export default function RouteBookDetailClient({ id, locale = 'zh' }: { id: strin
             onOpenItemDetail={handleOpenItemDetail}
             onMoveItem={handleMoveItem}
             onEditNote={handleEditNote}
+            weatherByDate={weatherByDate}
             locale={locale}
           />
         )}

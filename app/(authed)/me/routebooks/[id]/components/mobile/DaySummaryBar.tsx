@@ -7,6 +7,8 @@ import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, 
 import { dayDateLabel, dayStats } from '../../utils'
 import { lodgingsForDay } from '../DayDetailCard'
 import { tr } from '../../../i18n'
+import type { WeatherDay } from '../../hooks/useWeather'
+import { WeatherBadge } from '../WeatherBadge'
 
 type Props = {
   day: DayRecord
@@ -18,6 +20,8 @@ type Props = {
   onEditLodging?: (lodgingId: string) => void
   /** 住宿抽屉里的「添加住宿」（预设入住日 = 当天） */
   onAddLodging?: (dayIndex: number) => void
+  /** B4：当天天气 */
+  weather?: WeatherDay | null
   locale?: SupportedLocale
 }
 
@@ -31,6 +35,7 @@ export function DaySummaryBar({
   getPointPreview,
   onEditLodging,
   onAddLodging,
+  weather = null,
   locale = 'zh',
 }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -63,6 +68,7 @@ export function DaySummaryBar({
         className="flex w-full items-center gap-2 rounded-2xl border border-pink-100/80 bg-white/90 px-3 py-2 text-left shadow-sm transition hover:border-brand-200"
         onClick={() => setSheetOpen(true)}
       >
+        {weather ? <WeatherBadge weather={weather} locale={locale} className="shrink-0" /> : null}
         <span className="min-w-0 flex-1 truncate text-xs text-slate-600">{summaryParts.join(' · ')}</span>
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
       </button>

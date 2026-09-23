@@ -1,8 +1,9 @@
-import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail, NavMode } from './types'
-import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail } from './types'
+import { POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import { tr } from '../i18n'
+import { buildDayTargets, type NavStop, type NavTarget } from '@/lib/route/navigationTargets'
 
 export function groupItemsByDay(
   items: ItemRecord[],
@@ -145,11 +146,43 @@ export function dayStats(
   return { stopCount: visitable.length, coordCount, totalHours }
 }
 
-/** 当天「打开导航」Google 链接：legs 站点 ≥2 才有；驾车以外一律公交 */
-export function dayNavUrl(day: Pick<DayRecord, 'defaultTravelMode'>, legs: DayLegsResult | undefined): string | null {
-  if (!legs || legs.stops.length < 2) return null
-  const stops = legs.stops.map((stop) => `${stop.lat},${stop.lng}`)
-  return buildGoogleDirectionsUrl(stops, day.defaultTravelMode === 'driving' ? 'driving' : 'transit')
+/**
+ * 当天导航站点（含住宿首尾）：legs.stops 顺序 + 名称。条目站取显示名；住宿首尾
+ * （lodging:start/end）按坐标匹配自定义点标题，匹配不到用「住宿」。
+ */
+export function dayNavStops(
+  legs: DayLegsResult | undefined,
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => PointPreview,
+  locale: SupportedLocale = 'zh'
+): NavStop[] {
+  if (!legs) return []
+  const itemsById = new Map(items.map((item) => [item.id, item]))
+  return legs.stops.map((stop) => {
+    const item = itemsById.get(stop.id)
+    if (item) {
+      const preview = item.pointId ? getPointPreview(item.pointId) : null
+      return { lat: stop.lat, lng: stop.lng, name: itemDisplayTitle(item, preview, places, locale) }
+    }
+    const place = places.find((row) => Math.abs(row.lat - stop.lat) < 1e-6 && Math.abs(row.lng - stop.lng) < 1e-6)
+    return { lat: stop.lat, lng: stop.lng, name: place?.title ?? tr('routebook.nav.lodgingFallback', locale) }
+  })
+}
+
+/** 当天「打开导航」三家目标：legs 站点 ≥2 才有；交通方式取当天默认 */
+export function dayNavTargets(
+  day: Pick<DayRecord, 'defaultTravelMode'>,
+  legs: DayLegsResult | undefined,
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => PointPreview,
+  locale: SupportedLocale = 'zh',
+  maxWaypoints?: number
+): NavTarget[] {
+  const stops = dayNavStops(legs, items, places, getPointPreview, locale)
+  if (stops.length < 2) return []
+  return buildDayTargets(stops, day.defaultTravelMode, maxWaypoints ? { maxWaypoints } : {})
 }
 
 /** 优化可用性：可移动点 = 有坐标、非锚（locked && timeStart）的 point/place */
@@ -349,39 +382,6 @@ export function buildFallbackPreview(pointId: string, locale: SupportedLocale = 
     image: null,
     geo: null,
   }
-}
-
-export function buildGoogleDirectionsUrl(stops: string[], mode?: NavMode): string | null {
-  if (!stops.length) return null
-
-  if (stops.length === 1) {
-    const params = new URLSearchParams({
-      api: '1',
-      destination: stops[0],
-    })
-    if (mode) {
-      params.set('travelmode', NAV_MODE_PARAM[mode])
-    }
-    return `https://www.google.com/maps/dir/?${params.toString()}`
-  }
-
-  const origin = stops[0]
-  const destination = stops[stops.length - 1]
-  if (!origin || !destination) return null
-
-  const params = new URLSearchParams({
-    api: '1',
-    origin,
-    destination,
-  })
-  if (mode) {
-    params.set('travelmode', NAV_MODE_PARAM[mode])
-  }
-  const waypoints = stops.slice(1, -1)
-  if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.join('|'))
-  }
-  return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
 export function isGeoPair(value: unknown): value is [number, number] {

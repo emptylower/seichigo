@@ -8,6 +8,8 @@ import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { NavModeToggle } from '@/components/navigation/NavModeToggle'
 import { EMBED_API_KEY, resolveEmbedNavUrl, travelModeLabel } from '@/lib/route/embedNavigation'
 import type { GoogleMapsTravelMode } from '@/lib/route/google'
+import { buildSingleTargets, type NavMode } from '@/lib/route/navigationTargets'
+import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { ItemRecord, PlaceRecord, PointPreview } from '../types'
 import { tr } from '../../i18n'
@@ -126,6 +128,11 @@ export function RouteBookImmersiveMode({
   const currentNavigationUrl = currentGeo
     ? resolveEmbedNavUrl({ lat: currentGeo[0], lng: currentGeo[1] }, userLocation, travelMode)
     : null
+  // 外部地图 app 深链（单点）：Google 的骑行在三家里没有对应，按步行
+  const currentNavMode: NavMode = travelMode === 'bicycling' ? 'walking' : travelMode
+  const currentNavTargets = currentStop && currentGeo
+    ? buildSingleTargets({ lat: currentGeo[0], lng: currentGeo[1], name: currentStop.title }, currentNavMode)
+    : []
   const currentOrdinal = currentStop ? Math.max(1, stops.findIndex((stop) => stop.item.id === currentStop.item.id) + 1) : checkedCount
   const lastCheckedPreview = lastCheckedPointId ? getPointPreview(lastCheckedPointId) : null
   // 最后一站是自定义点（无打卡）时也要有明确的「完成今天」出口
@@ -299,7 +306,18 @@ export function RouteBookImmersiveMode({
 
             {navigatingById[currentStop.item.id] ? (
               <>
-                <NavModeToggle value={travelMode} onChange={setTravelMode} className="mb-3 self-start" />
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <NavModeToggle value={travelMode} onChange={setTravelMode} />
+                  {currentNavTargets.length > 0 ? (
+                    <OpenInMapsMenu
+                      targets={currentNavTargets}
+                      locale={locale}
+                      presentation="dropdown"
+                      triggerClassName="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-slate-900/70 px-3 text-xs font-medium text-slate-200 ring-1 ring-white/10 transition hover:text-white"
+                      icon={<Navigation size={14} />}
+                    />
+                  ) : null}
+                </div>
 
                 <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
                   {currentNavigationUrl ? (

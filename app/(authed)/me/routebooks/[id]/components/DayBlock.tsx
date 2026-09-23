@@ -3,10 +3,13 @@
 import { useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles, StickyNote } from 'lucide-react'
+import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Sparkles, StickyNote } from 'lucide-react'
 import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { computeVisitOrder, dayLabel, dayNavUrl, dayStats, itemDragId } from '../utils'
+import { computeVisitOrder, dayLabel, dayNavTargets, dayStats, itemDragId } from '../utils'
+import type { WeatherDay } from '../hooks/useWeather'
+import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
+import { WeatherBadge } from './WeatherBadge'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
 import { LegConnector } from './LegConnector'
@@ -47,6 +50,8 @@ type DayBlockProps = {
   /** B1.2：该天 legs 两次加载失败：连接行显示「加载失败 · 重试」 */
   legsFailed?: boolean
   onRetryLegs?: () => void
+  /** B4：当天天气（有日期且在预报范围内才有） */
+  weather?: WeatherDay | null
   locale?: SupportedLocale
 }
 
@@ -78,6 +83,7 @@ export function DayBlock({
   dropBlocked = false,
   legsFailed = false,
   onRetryLegs,
+  weather = null,
   locale = 'zh',
 }: DayBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${day.id}` })
@@ -98,7 +104,10 @@ export function DayBlock({
 
   const stats = useMemo(() => dayStats(items, legs, places, getPointPreview), [getPointPreview, items, legs, places])
 
-  const navUrl = useMemo(() => dayNavUrl(day, legs), [day, legs])
+  const navTargets = useMemo(
+    () => dayNavTargets(day, legs, items, places, getPointPreview, locale),
+    [day, getPointPreview, items, legs, locale, places]
+  )
 
   const showToolbar = selected && stats.coordCount >= 2
 
@@ -157,6 +166,7 @@ export function DayBlock({
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold text-slate-900">{dayLabel(day, day.dayIndex, locale)}</span>
             {day.title ? <span className="truncate text-xs text-slate-400">{day.title}</span> : null}
+            {weather ? <WeatherBadge weather={weather} locale={locale} className="ml-auto shrink-0" /> : null}
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
             {tr('routebook.common.stopCount', locale, { n: stats.stopCount })}
@@ -291,16 +301,8 @@ export function DayBlock({
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" />
                 {tr('routebook.sidebar.optimize', locale)}
               </button>
-              {navUrl ? (
-                <a
-                  href={navUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-8 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-medium text-slate-600 no-underline transition hover:bg-pink-100/60"
-                >
-                  <Navigation className="h-3.5 w-3.5 text-brand-500" />
-                  {tr('routebook.sidebar.openNav', locale)}
-                </a>
+              {navTargets.length > 0 ? (
+                <OpenInMapsMenu targets={navTargets} locale={locale} label={tr('routebook.sidebar.openNav', locale)} />
               ) : null}
               <span className="mx-1 h-4 w-px bg-pink-200/70" />
               {(['transit', 'walking', 'driving'] as const).map((mode) => (

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   dayDateLabel,
   dayLabel,
-  dayNavUrl,
+  dayNavStops,
+  dayNavTargets,
   dayStats,
   movableCount,
   nextDayFirstStopTitle,
@@ -123,10 +124,29 @@ describe('天统计 / 导航 / 可移动点（B3 去重）', () => {
     expect(movableCount(items, [PLACE], getPointPreview)).toBe(1)
   })
 
-  it('dayNavUrl：两站以上才有链接，驾车天用 driving', () => {
-    expect(dayNavUrl(DAYS[1]!, legs)).toContain('travelmode=driving')
-    expect(dayNavUrl(DAYS[0]!, legs)).toContain('travelmode=transit')
-    expect(dayNavUrl(DAYS[0]!, undefined)).toBeNull()
+  it('dayNavTargets：两站以上才有三家目标，交通方式跟当天默认', () => {
+    const driving = dayNavTargets(DAYS[1]!, legs, items, [PLACE], getPointPreview)
+    expect(driving.map((target) => target.provider)).toEqual(['google', 'apple', 'amap'])
+    expect(driving[0]!.url).toContain('travelmode=driving')
+    expect(dayNavTargets(DAYS[0]!, legs, items, [PLACE], getPointPreview)[0]!.url).toContain('travelmode=transit')
+    expect(dayNavTargets(DAYS[0]!, undefined, items, [PLACE], getPointPreview)).toEqual([])
+  })
+
+  it('dayNavStops：条目取显示名，住宿首尾按坐标匹配自定义点，匹配不到用「住宿」', () => {
+    const withLodging = {
+      ...legs,
+      stops: [
+        { id: 'lodging:start', lat: 34.88, lng: 135.8, legMode: null },
+        ...legs.stops,
+        { id: 'lodging:end', lat: 1, lng: 2, legMode: null },
+      ],
+    } as DayLegsResult
+    expect(dayNavStops(withLodging, items, [PLACE], getPointPreview, 'zh').map((stop) => stop.name)).toEqual([
+      'Uji Station',
+      'Uji Shrine',
+      'Uji Station',
+      '住宿',
+    ])
   })
 
   it('dayDateLabel 与 dayLabel 日期片段一致', () => {

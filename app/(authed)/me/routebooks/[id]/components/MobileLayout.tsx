@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { DayLegsResult, DayRecord, PointPoolItem, RouteBookDetail } from '../types'
-import { dayLabel, dayNavUrl, movableCount as countMovable } from '../utils'
+import { dayLabel, dayNavTargets, movableCount as countMovable } from '../utils'
+import { defaultMaxNavigationWaypoints } from '@/lib/route/navigationTargets'
+import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 import type { useTripData } from '../hooks/useTripData'
 import type { useTripDnd } from '../hooks/useTripDnd'
 import type { DialogsHostApi } from './DialogsHost'
@@ -45,6 +47,8 @@ type Props = {
   onOpenItemDetail: (itemId: string) => void
   onMoveItem: (itemId: string, targetDayId: string | null) => void
   onEditNote: (itemId: string) => void
+  /** B4：按 YYYY-MM-DD 的天气 */
+  weatherByDate?: WeatherByDate
   locale: SupportedLocale
 }
 
@@ -75,6 +79,7 @@ export function MobileLayout({
   onOpenItemDetail,
   onMoveItem,
   onEditNote,
+  weatherByDate = {},
   locale,
 }: Props) {
   const [tab, setTab] = useState<'plan' | 'map'>('plan')
@@ -100,7 +105,20 @@ export function MobileLayout({
     [dayItems, detail.places, trip.getPointPreview]
   )
 
-  const navUrl = useMemo(() => (selectedDay ? dayNavUrl(selectedDay, currentLegs) : null), [currentLegs, selectedDay])
+  // Google waypoints 上限：移动端 3（effect 里读 matchMedia，首屏按桌面 9 避免 hydration 差异）
+  const [maxWaypoints, setMaxWaypoints] = useState(9)
+  useEffect(() => {
+    setMaxWaypoints(defaultMaxNavigationWaypoints())
+  }, [])
+
+  const navTargets = useMemo(
+    () =>
+      selectedDay
+        ? dayNavTargets(selectedDay, currentLegs, dayItems, detail.places, trip.getPointPreview, locale, maxWaypoints)
+        : [],
+    [currentLegs, dayItems, detail.places, locale, maxWaypoints, selectedDay, trip.getPointPreview]
+  )
+  const hasDates = days.some((day) => Boolean(day.date))
 
   // 切回地图 tab：地图一直挂着（hidden 切换），可见后通知 MapLibre 重算尺寸
   useEffect(() => {
@@ -152,6 +170,7 @@ export function MobileLayout({
             onShowAll()
           }}
           onShowUnassigned={handleShowUnassigned}
+          weatherByDate={weatherByDate}
           locale={locale}
         />
 
@@ -216,6 +235,7 @@ export function MobileLayout({
                 getPointPreview={trip.getPointPreview}
                 onEditLodging={(lodgingId) => dialogs.openLodgingEditor({ lodgingId })}
                 onAddLodging={(dayIndex) => dialogs.openLodgingEditor({ presetDayIndex: dayIndex })}
+                weather={weatherForDay(weatherByDate, selectedDay)}
                 locale={locale}
               />
               <MobilePlanView
@@ -267,7 +287,10 @@ export function MobileLayout({
       <MobileDock
         selectedDay={unassignedView ? null : selectedDay}
         movableCount={movableCount}
-        navUrl={unassignedView ? null : navUrl}
+        navTargets={unassignedView ? [] : navTargets}
+        routeBookId={detail.id}
+        selectedDayIndex={unassignedView ? null : selectedDay?.dayIndex ?? null}
+        hasDates={hasDates}
         canStart={canStart}
         startLabel={startLabel}
         needsDayPick={needsDayPick || unassignedView}
