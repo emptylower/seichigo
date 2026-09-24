@@ -33,6 +33,7 @@ describe('generatedHomeFiles (static import readers)', () => {
       expect(entry.label).toBeTruthy()
     }
     expect(heroDemo.map?.src).toBe('/images/home/hero-phone-map.webp')
+    expect(heroDemo.map?.routePath).toMatch(/^M [\d.]+ [\d.]+( L [\d.]+ [\d.]+)+$/)
     expect(heroDemo.map?.markers.map((marker) => marker.itemId)).toEqual(heroDemo.day.items.map((item) => item.id))
   })
 

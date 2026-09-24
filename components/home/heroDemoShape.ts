@@ -40,6 +40,8 @@ export type HeroDemoMapLike = {
   height: number
   markers: HeroDemoMarker[]
   attribution: string
+  /** 真实步行路线的 SVG path `d`（与 markers 同一像素空间）；旧 JSON 没有 */
+  routePath?: string
 }
 
 export type HomeHeroDemoLike = {

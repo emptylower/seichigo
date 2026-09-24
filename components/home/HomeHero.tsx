@@ -7,7 +7,6 @@ import HomeEntryCards from './HomeEntryCards'
 import HomeHeroBackground from './HomeHeroBackground'
 import HomeHeroComposer from './HomeHeroComposer'
 import HomeHeroPhone from './HomeHeroPhone'
-import HomeHeroRoute from './HomeHeroRoute'
 import HomeWorksTicker from './HomeWorksTicker'
 import type { HomeHeroDemoLike } from './heroDemoShape'
 import { t } from '@/lib/i18n'
@@ -83,7 +82,6 @@ export default function HomeHero({
   return (
     <section className="relative flex flex-col overflow-hidden pt-8 lg:min-h-[calc(100svh-var(--site-header-h))]">
       <HomeHeroBackground />
-      <HomeHeroRoute />
 
       {/* `grid-cols-1` 不是装饰：默认的 auto 轨道会被作品名滚动条的 max-content 撑到 1100+px，
           首屏通栏后没有外层 max-width 兜底，移动端标题与输入框会被 overflow-hidden 切掉 */}
