@@ -127,11 +127,11 @@ describe('HomeHero', () => {
     }
   })
 
-  it('插画背景与路线层铺在首屏最底下，点阵与光斑已经不在了', () => {
+  it('插画背景铺在首屏最底下，装饰路线层、点阵与光斑已经不在了', () => {
     const { container } = renderHero('zh')
 
     expect(screen.getByTestId('hero-background')).toBeInTheDocument()
-    expect(container.querySelector('[data-hero-route]')).not.toBeNull()
+    expect(container.querySelector('[data-hero-route]')).toBeNull()
     expect(container.querySelector('[data-testid="hero-backdrop"]')).toBeNull()
     expect(container.querySelectorAll('[data-hero-glow]')).toHaveLength(0)
     expect(container.querySelectorAll('[data-hero-dots-box]')).toHaveLength(0)

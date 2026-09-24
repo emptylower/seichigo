@@ -54,7 +54,7 @@ function round(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-/** 相邻两个图钉之间一段二次贝塞尔，控制点取中点再往上抬一点，避免压住图钉 */
+/** 兜底连线（JSON 缺 routePath 时）：相邻两个图钉之间一段二次贝塞尔，控制点取中点再往上抬一点，避免压住图钉 */
 function mapRoutePath(markers: readonly HeroDemoMarker[]): string {
   const [first, ...rest] = markers
   if (!first) return ''
@@ -141,6 +141,8 @@ export default function HomeHeroPhone({ locale, demo }: { locale: SiteLocale; de
   const transits = heroDemoTransits(demo)
   const markers = heroDemoMarkers(demo)
   const map = demo?.map && markers.length ? demo.map : null
+  // 生成时烘焙的真实步行路线优先；旧 JSON 没有 routePath 时退回图钉间的贝塞尔连线
+  const routePath = map?.routePath || mapRoutePath(markers)
   const walkMinutes = heroWalkMinutes(transits)
 
   const summary = t('pages.home.v2.heroDemoSummary', locale)
@@ -224,17 +226,31 @@ export default function HomeHeroPhone({ locale, demo }: { locale: SiteLocale; de
               focusable="false"
               className="absolute inset-0 h-full w-full"
             >
+              {/* 白色衬底比粉线宽一圈、同一套描线动画，粉线压在上面，图钉再压在两条线上 */}
+              <path
+                data-phone-route-casing
+                className={drawing ? 'seichigo-phone-route' : undefined}
+                d={routePath}
+                pathLength={1}
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth={5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={showItems ? 0.9 : 0}
+              />
               <path
                 data-phone-route
                 data-shown={showItems ? 'true' : 'false'}
                 data-drawing={drawing ? 'true' : 'false'}
                 className={drawing ? 'seichigo-phone-route' : undefined}
-                d={mapRoutePath(markers)}
+                d={routePath}
                 pathLength={1}
                 fill="none"
                 stroke="#ec4899"
                 strokeWidth={3}
                 strokeLinecap="round"
+                strokeLinejoin="round"
                 opacity={showItems ? 0.9 : 0}
               />
               {markers.map((marker, index) => (

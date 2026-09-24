@@ -11,7 +11,13 @@
  * style（NEXT_PUBLIC_MAPTILER_KEY，.env.local），视口 320×240、deviceScale
  * Factor 2，fitBounds 三点 padding 36，等 idle 后截屏；map.project 得到三点
  * 的 CSS 像素坐标。截图经 sharp 转 WebP q80（≤ 60 KB，超预算非零退出，
- * 不落盘），map 块（src/尺寸/markers/attribution）写回 JSON。
+ * 不落盘），map 块（src/尺寸/markers/attribution/routePath）写回 JSON。
+ *
+ * 真实步行路线：截图前按 items 顺序请求 Mapbox Directions（walking，
+ * MAPBOX_DIRECTIONS_TOKEN，.env.local），fitBounds 同时框进三点与路线全部顶点；
+ * 顶点用同一个 map.project 投影到 CSS 像素，Douglas-Peucker（0.75px）抽稀、
+ * 保留两位小数后拼成 SVG path `d` 写入 map.routePath。首页只读这份烘焙结果，
+ * 运行时不请求任何路线接口。
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -19,6 +25,7 @@ import { chromium } from '@playwright/test'
 import sharp from 'sharp'
 import { loadEnvLocal, flagValue } from './homeEnv'
 import { parseHomeHeroDemo } from '@/lib/home/heroDemo'
+import { fetchMapboxRoute, readMapboxToken } from '@/lib/routeBook/mapboxRoute'
 
 const MAP_WIDTH = 320
 const MAP_HEIGHT = 240
@@ -28,6 +35,8 @@ const MAP_IMAGE_MAX_BYTES = 60 * 1024
 const MAPTILER_STYLE_ID = 'dataviz'
 const MAP_ATTRIBUTION = '© MapTiler © OpenStreetMap contributors'
 const IDLE_TIMEOUT_MS = 90_000
+/** 路线抽稀容差（CSS 像素）：肉眼看不出差别，顶点压到几十个 */
+const ROUTE_SIMPLIFY_TOLERANCE_PX = 0.75
 /** headless 无 GPU 环境渲染 WebGL 地图必需（maplibre 官方 e2e 同款参数） */
 const CHROMIUM_LAUNCH_ARGS = [
   '--use-angle=swiftshader',
@@ -40,6 +49,58 @@ function parseArgs(argv: string[]): { jsonPath: string; outPath: string } {
   const jsonPath = flagValue(argv, '--json') || 'content/generated/home-hero-demo.json'
   const outPath = flagValue(argv, '--out') || 'public/images/home/hero-phone-map.webp'
   return { jsonPath, outPath }
+}
+
+type PixelPoint = { x: number; y: number }
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/** 点到线段 ab 的距离（像素） */
+function segmentDistance(p: PixelPoint, a: PixelPoint, b: PixelPoint): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lengthSq = dx * dx + dy * dy
+  const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSq))
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+}
+
+/** Douglas-Peucker（栈式，避免长折线递归过深），首尾点恒保留 */
+function simplifyPath(points: PixelPoint[], tolerance: number): PixelPoint[] {
+  if (points.length <= 2) return points.slice()
+  const keep = new Array<boolean>(points.length).fill(false)
+  keep[0] = true
+  keep[points.length - 1] = true
+  const stack: Array<[number, number]> = [[0, points.length - 1]]
+  while (stack.length) {
+    const [start, end] = stack.pop()!
+    let maxDistance = 0
+    let maxIndex = -1
+    for (let i = start + 1; i < end; i += 1) {
+      const distance = segmentDistance(points[i]!, points[start]!, points[end]!)
+      if (distance > maxDistance) {
+        maxDistance = distance
+        maxIndex = i
+      }
+    }
+    if (maxIndex >= 0 && maxDistance > tolerance) {
+      keep[maxIndex] = true
+      stack.push([start, maxIndex], [maxIndex, end])
+    }
+  }
+  return points.filter((_, index) => keep[index])
+}
+
+/** 抽稀后的像素折线 → `M x y L x y …`，相邻重复点（两位小数后）去掉 */
+function buildRoutePath(points: PixelPoint[]): { d: string; count: number } {
+  const rounded = points.map((point) => ({ x: round2(point.x), y: round2(point.y) }))
+  const deduped = rounded.filter((point, index) => {
+    const prev = rounded[index - 1]
+    return !prev || prev.x !== point.x || prev.y !== point.y
+  })
+  const d = deduped.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+  return { d, count: deduped.length }
 }
 
 /** 内联 maplibre-gl js/css 的最小宿主页（无外链资源，离线于本项目静态资产） */
@@ -82,6 +143,21 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  const mapboxToken = readMapboxToken()
+  if (!mapboxToken) {
+    console.error('Mapbox token is not set: need MAPBOX_DIRECTIONS_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN) in env/.env.local to fetch the walking route')
+    process.exit(1)
+  }
+  const route = await fetchMapboxRoute(points, 'walking', { token: mapboxToken })
+  if (!route.ok) {
+    console.error(`Mapbox walking route failed (reason: ${route.reason}); JSON and image left untouched`)
+    process.exit(1)
+  }
+  const routeCoords = route.geometry.coordinates
+  console.log(
+    `[hero-map] walking route: ${routeCoords.length} vertices, ${Math.round(route.distance)} m, ${Math.round(route.duration / 60)} min`
+  )
+
   const maplibreJs = await readFile(path.join(process.cwd(), 'node_modules/maplibre-gl/dist/maplibre-gl.js'), 'utf8')
   const maplibreCss = await readFile(path.join(process.cwd(), 'node_modules/maplibre-gl/dist/maplibre-gl.css'), 'utf8')
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${encodeURIComponent(maptilerKey)}`
@@ -99,7 +175,7 @@ async function main(): Promise<void> {
     await page.evaluate('window.__name = (fn) => fn')
 
     await page.evaluate(
-      ({ points: pts, styleUrl: url, padding }) => {
+      ({ points: pts, routeCoords: line, styleUrl: url, padding }) => {
         const state = { phase: 'loading' as string, error: '' }
         ;(window as unknown as Record<string, unknown>).__heroState = state
         const fail = (event: { error?: { message?: string } }) => {
@@ -123,11 +199,13 @@ async function main(): Promise<void> {
         map.on('load', () => {
           const bounds = new window.maplibregl.LngLatBounds()
           for (const point of pts) bounds.extend([point.lng, point.lat])
+          // 路线可能绕出三点的外接框，一并框进去，避免叠加层画出图外被裁
+          for (const coord of line) bounds.extend(coord)
           map.fitBounds(bounds, { padding, duration: 0 })
           fitted = true
         })
       },
-      { points, styleUrl, padding: FIT_BOUNDS_PADDING }
+      { points, routeCoords, styleUrl, padding: FIT_BOUNDS_PADDING }
     )
 
     await page.waitForFunction(
@@ -140,13 +218,33 @@ async function main(): Promise<void> {
       { timeout: IDLE_TIMEOUT_MS }
     )
 
-    const projected = await page.evaluate((pts: Array<{ id: string; lat: number; lng: number }>) => {
-      const map = (window as unknown as { __heroMap: { project: (lngLat: [number, number]) => { x: number; y: number } } }).__heroMap
-      return pts.map((point) => {
-        const { x, y } = map.project([point.lng, point.lat])
-        return { itemId: point.id, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
-      })
-    }, points)
+    // 图钉与路线顶点在同一个 map 实例、同一次 evaluate 里投影，保证同一像素空间
+    const { projected, routePixels } = await page.evaluate(
+      ({ pts, line }: { pts: Array<{ id: string; lat: number; lng: number }>; line: [number, number][] }) => {
+        const map = (window as unknown as { __heroMap: { project: (lngLat: [number, number]) => { x: number; y: number } } }).__heroMap
+        return {
+          projected: pts.map((point) => {
+            const { x, y } = map.project([point.lng, point.lat])
+            return { itemId: point.id, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
+          }),
+          routePixels: line.map((coord) => {
+            const { x, y } = map.project(coord)
+            return { x, y }
+          }),
+        }
+      },
+      { pts: points, line: routeCoords }
+    )
+
+    const simplified = simplifyPath(routePixels, ROUTE_SIMPLIFY_TOLERANCE_PX)
+    const routePath = buildRoutePath(simplified)
+    const xs = simplified.map((point) => point.x)
+    const ys = simplified.map((point) => point.y)
+    const bbox = { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
+    if (bbox.minX < 0 || bbox.minY < 0 || bbox.maxX > MAP_WIDTH || bbox.maxY > MAP_HEIGHT) {
+      console.error(`walking route pokes outside the ${MAP_WIDTH}x${MAP_HEIGHT} image: ${JSON.stringify(bbox)}`)
+      process.exit(1)
+    }
 
     const screenshot = await page.screenshot({
       clip: { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT },
@@ -171,6 +269,7 @@ async function main(): Promise<void> {
         height: MAP_HEIGHT,
         markers: projected,
         attribution: MAP_ATTRIBUTION,
+        routePath: routePath.d,
       },
     }
     if (!parseHomeHeroDemo(nextPayload)) {
@@ -181,6 +280,14 @@ async function main(): Promise<void> {
 
     console.log(`[hero-map] ${outPath} ${webp.byteLength}B (budget ${MAP_IMAGE_MAX_BYTES}B)`)
     console.log(`[hero-map] markers: ${JSON.stringify(projected)}`)
+    console.log(
+      `[hero-map] routePath: ${routePixels.length} -> ${routePath.count} points, bbox ${JSON.stringify({
+        minX: round2(bbox.minX),
+        minY: round2(bbox.minY),
+        maxX: round2(bbox.maxX),
+        maxY: round2(bbox.maxY),
+      })}`
+    )
     console.log(`[hero-map] map block written back to ${jsonPath}`)
   } finally {
     await browser.close()

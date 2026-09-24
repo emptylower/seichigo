@@ -190,6 +190,36 @@ describe('HomeHeroPhone（手机壳里的规划师演示）', () => {
     expect(document.querySelector('[data-phone-route]')!.getAttribute('data-drawing')).toBe('false')
   })
 
+  it('地图路线：有 routePath 时粉线与白色衬底都用它，并共用描线动画', () => {
+    const routePath = 'M 62 88 L 80 120 L 158 142 L 200 90 L 246 74'
+    render(<HomeHeroPhone locale="zh" demo={{ ...demo, map: { ...demo.map!, routePath } }} />)
+    step(2)
+
+    const route = document.querySelector('[data-phone-route]')!
+    const casing = document.querySelector('[data-phone-route-casing]')!
+    expect(route.getAttribute('d')).toBe(routePath)
+    expect(casing.getAttribute('d')).toBe(routePath)
+    expect(route.getAttribute('stroke')).toBe('#ec4899')
+    expect(route.getAttribute('stroke-width')).toBe('3')
+    expect(route.getAttribute('stroke-linejoin')).toBe('round')
+    expect(casing.getAttribute('stroke')).toBe('#ffffff')
+    expect(casing.getAttribute('stroke-width')).toBe('5')
+    expect(route.getAttribute('class')).toBe('seichigo-phone-route')
+    expect(casing.getAttribute('class')).toBe('seichigo-phone-route')
+    // 叠放顺序：衬底 → 粉线 → 图钉
+    const layers = [...document.querySelectorAll('[data-hero-phone] svg > *')]
+    expect(layers.indexOf(casing)).toBeLessThan(layers.indexOf(route))
+    expect(layers.indexOf(route)).toBeLessThan(layers.indexOf(pins()[0]!))
+  })
+
+  it('地图路线：旧 JSON 没有 routePath 时退回图钉间的贝塞尔连线', () => {
+    render(<HomeHeroPhone locale="zh" demo={demo} />)
+
+    const d = document.querySelector('[data-phone-route]')!.getAttribute('d')
+    expect(d).toBe('M 62 88 Q 110 97 158 142 Q 202 90 246 74')
+    expect(document.querySelector('[data-phone-route-casing]')!.getAttribute('d')).toBe(d)
+  })
+
   it('map 缺省（A 未落盘）时退化为无地图的列表演示，其余照常', () => {
     const legacy = heroDemoLegacyFixture()
     render(<HomeHeroPhone locale="zh" demo={legacy} />)

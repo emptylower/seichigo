@@ -52,6 +52,8 @@ export type HomeHeroDemoMap = {
   /** 在 src 图上的 CSS 像素坐标 */
   markers: Array<{ itemId: string; x: number; y: number }>
   attribution: string
+  /** 真实步行路线投影到同一像素空间后的 SVG path `d`（生成时烘焙）；缺省时前端退回贝塞尔连线 */
+  routePath?: string
 }
 
 export type HomeHeroDemo = {
@@ -324,12 +326,15 @@ function parseHeroDemoMap(map: unknown): HomeHeroDemoMap | null | undefined {
     if (!Number.isFinite(marker.x) || !Number.isFinite(marker.y)) return null
     markers.push({ itemId: marker.itemId, x: marker.x as number, y: marker.y as number })
   }
+  // routePath 可选：非空字符串才保留，其余一律丢弃（不因它拒掉整个 map 块）
+  const routePath = typeof map.routePath === 'string' && map.routePath.trim() ? map.routePath : undefined
   return {
     src: map.src,
     width: map.width as number,
     height: map.height as number,
     markers,
     attribution: map.attribution,
+    ...(routePath ? { routePath } : {}),
   }
 }
 

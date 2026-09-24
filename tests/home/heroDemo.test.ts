@@ -217,6 +217,20 @@ describe('parseHomeHeroDemo（§0 形状校验，第十四轮）', () => {
     expect(parseHomeHeroDemo({ ...valid, map: { ...valid.map, markers: [{ itemId: 'a', x: 1 }] } })).toBeNull()
     expect(parseHomeHeroDemo({ ...valid, map: { ...valid.map, attribution: 42 } })).toBeNull()
   })
+
+  it('keeps a non-empty map.routePath and passes it through', () => {
+    const routePath = 'M 48.5 120 L 90 101.25 L 160 88.5'
+    const parsed = parseHomeHeroDemo({ ...valid, map: { ...valid.map, routePath } })
+    expect(parsed?.map?.routePath).toBe(routePath)
+  })
+
+  it('drops an invalid map.routePath without rejecting the map block', () => {
+    for (const routePath of ['', '   ', 42, null, { d: 'M 0 0' }]) {
+      const parsed = parseHomeHeroDemo({ ...valid, map: { ...valid.map, routePath } })
+      expect(parsed?.map).toEqual(valid.map)
+      expect(parsed?.map && 'routePath' in parsed.map).toBe(false)
+    }
+  })
 })
 
 describe('pickHeroDemo（选取规则，第十四轮 §0）', () => {
