@@ -14,6 +14,7 @@ import { tr } from '../../i18n'
 import { usePointPreviews } from './usePointPreviews'
 import { useUndoRing } from './useUndoRing'
 import { useTripMutations } from './useTripMutations'
+import type { SetDetail } from './useMutationBase'
 
 export type {
   CreateItemInput,
@@ -24,7 +25,7 @@ export type {
 } from './tripDataTypes'
 
 export function useTripData(id: string, locale: SupportedLocale = 'zh') {
-  const [detail, setDetail] = useState<RouteBookDetail | null>(null)
+  const [detail, setDetailState] = useState<RouteBookDetail | null>(null)
   const [routeBooks, setRouteBooks] = useState<RouteBookSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -34,9 +35,21 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const [checkInTarget, setCheckInTarget] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  /** 409 stale：顶部提示条「行程已在别处修改」+ 手动刷新（不再自动 reload） */
+  const [staleNotice, setStaleNotice] = useState(false)
 
   const detailRef = useRef<RouteBookDetail | null>(null)
   detailRef.current = detail
+  /**
+   * 写 state 的同时同步写 detailRef：写操作链式调用（如 addItem → updateItem）时，
+   * 下一步读 detailRef 必须看到上一步的结果，而不是等重渲染后才更新的旧快照；
+   * 否则下一步的乐观 setDetail({...prev}) 会用旧快照把服务端替换覆盖回去（冒烟 #11 残留 temp id）
+   */
+  const setDetail = useCallback<SetDetail>((value) => {
+    const next = typeof value === 'function' ? value(detailRef.current) : value
+    detailRef.current = next
+    setDetailState(next)
+  }, [])
   const toastTimerRef = useRef<number | null>(null)
 
   const showToast = useCallback((message: string) => {
@@ -87,10 +100,14 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
   const undoRing = useUndoRing()
   // useUndoRing 每次渲染返回新对象，load 只能依赖稳定的 clear（useCallback 空依赖）
   const clearUndo = undoRing.clear
+  const undoCountRef = useRef(0)
+  undoCountRef.current = undoRing.undoCount
+  const getUndoCount = useCallback(() => undoCountRef.current, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setStaleNotice(false)
     setCheckedInPointIds(new Set())
     setPointPoolItems([])
     clearUndo()
@@ -143,14 +160,15 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     (result: ApiFail, prev: RouteBookDetail | null, fallback: string) => {
       if (prev) setDetail(prev)
       if (result.reason === 'stale') {
-        showToast(tr('routebook.detail.staleRefreshed', locale))
-        void load()
+        setStaleNotice(true)
         return
       }
       showToast(result.error || fallback)
     },
-    [load, showToast, locale]
+    [showToast]
   )
+
+  const dismissStale = useCallback(() => setStaleNotice(false), [])
 
   // ---------------------------------------------------------------------------
   // 预览 / 写操作
@@ -178,6 +196,8 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     setDetail,
     handleFailure,
     pushUndo: undoRing.push,
+    clearUndo,
+    getUndoCount,
     refreshPointPool,
     showToast,
     load,
@@ -271,6 +291,8 @@ export function useTripData(id: string, locale: SupportedLocale = 'zh') {
     toast,
     showToast,
     reload,
+    staleNotice,
+    dismissStale,
 
     pointPoolItems,
     getPointPreview,

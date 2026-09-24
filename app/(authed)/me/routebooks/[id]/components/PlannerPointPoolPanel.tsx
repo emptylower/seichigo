@@ -1,11 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Check, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
+import { Check, MapPin, MapPinPlus, Pencil, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import AttributionLink, { resolveAnitabiAttributionHref } from '@/components/anitabi/AttributionLink'
-import type { PointPoolItem, PointPreview, RouteBookDetail } from '../types'
+import type { PlaceRecord, PointPoolItem, PointPreview, RouteBookDetail } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { poolDragId } from '../utils'
 import type { CreateItemInput } from '../hooks/useTripData'
@@ -197,7 +197,7 @@ function EntryCard({
         </div>
         {preview.image ? (
           <div className="mt-2">
-            <AttributionLink href={resolveAnitabiAttributionHref(preview.image)} className="text-[11px] text-slate-500" />
+            <AttributionLink href={resolveAnitabiAttributionHref(preview.imageSource, preview.image)} className="text-[11px] text-slate-500" />
           </div>
         ) : null}
       </button>
@@ -221,6 +221,93 @@ function DraggablePoolEntry(props: Parameters<typeof EntryCard>[0] & { dragId: s
     >
       <EntryCard {...props} />
     </div>
+  )
+}
+
+/** 删除自定义点前确认：文案列出将级联删除的条目数与住宿段数（从本地 detail 算）；桌面池与移动端 sheet 共用 */
+export function confirmDeletePlace(
+  detail: Pick<RouteBookDetail, 'places' | 'items' | 'lodgings'>,
+  placeId: string,
+  locale: SupportedLocale
+): boolean {
+  const place = detail.places.find((row) => row.id === placeId)
+  const message = tr('routebook.pool.deletePlaceConfirm', locale, {
+    title: place?.title ?? '',
+    items: detail.items.filter((row) => row.placeId === placeId).length,
+    lodgings: detail.lodgings.filter((row) => row.placeId === placeId).length,
+  })
+  return window.confirm(message)
+}
+
+/** 自定义点行：标题 + 地址 + 加到选中天 / 编辑 / 删除 */
+export function PlaceRow({
+  place,
+  selectedDayId,
+  onAddToDay,
+  onEdit,
+  onDelete,
+  addHint,
+  locale,
+}: {
+  place: PlaceRecord
+  selectedDayId: string | null
+  /** 覆盖「+」按钮的提示文案（移动端 sheet：加到 Day N / 未安排） */
+  addHint?: string
+  /** 没选天时也会传入：点击由上层提示「先选一天」 */
+  onAddToDay?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  locale: SupportedLocale
+}) {
+  return (
+    <article className="flex items-center gap-2.5 rounded-[20px] border border-slate-200 bg-white px-3 py-2.5">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+        <MapPin className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-slate-900">{place.title}</span>
+          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+            {tr(`routebook.placeKind.${place.kind}`, locale)}
+          </span>
+        </div>
+        {place.address ? <div className="mt-0.5 truncate text-[11px] text-slate-400">{place.address}</div> : null}
+      </div>
+      {onAddToDay ? (
+        <button
+          type="button"
+          aria-label={tr('routebook.pool.addPlaceToDay', locale)}
+          title={
+            addHint ??
+            (selectedDayId ? tr('routebook.pool.moveToSelectedDayHint', locale) : tr('routebook.pool.pickDayFirst', locale))
+          }
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/85 text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-brand-500 hover:text-white"
+          onClick={onAddToDay}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      ) : null}
+      {onEdit ? (
+        <button
+          type="button"
+          aria-label={tr('routebook.pool.editPlace', locale)}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          onClick={onEdit}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      ) : null}
+      {onDelete ? (
+        <button
+          type="button"
+          aria-label={tr('routebook.pool.deletePlace', locale)}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          onClick={onDelete}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      ) : null}
+    </article>
   )
 }
 
@@ -250,7 +337,12 @@ type PlannerPointPoolPanelProps = {
   onReorder: (targetDayId: string | null, orderedIds: string[]) => void
   onFocusPoint: (pointId: string) => void
   onRemoveFromPool: (pointId: string) => void
-  compact?: boolean
+  /** B2：自定义点新建/编辑/删除（由 DialogsHost 与 mutations 编排） */
+  onCreatePlace?: () => void
+  onEditPlace?: (placeId: string) => void
+  onDeletePlace?: (placeId: string) => void
+  /** 未选中天时点「加入选中天」：由上层 toast 提示 */
+  onNeedDay?: () => void
   enableDrag?: boolean
   locale?: SupportedLocale
 }
@@ -264,7 +356,10 @@ export function PlannerPointPoolPanel({
   onReorder,
   onFocusPoint,
   onRemoveFromPool,
-  compact = false,
+  onCreatePlace,
+  onEditPlace,
+  onDeletePlace,
+  onNeedDay,
   enableDrag = false,
   locale = 'zh',
 }: PlannerPointPoolPanelProps) {
@@ -380,8 +475,56 @@ export function PlannerPointPoolPanel({
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
+        {onCreatePlace || onEditPlace || onDeletePlace ? (
+          <div className="mb-3 rounded-[24px] border border-pink-100/70 bg-white/80 p-3">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="text-xs font-semibold text-slate-600">
+                {tr('routebook.pool.placesTitle', locale, { n: detail.places.length })}
+              </span>
+              {onCreatePlace ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-8 items-center gap-1 rounded-xl bg-brand-50 px-2.5 text-xs font-semibold text-brand-600 transition hover:bg-brand-100"
+                  onClick={onCreatePlace}
+                >
+                  <MapPinPlus className="h-3.5 w-3.5" />
+                  {tr('routebook.pool.addPlace', locale)}
+                </button>
+              ) : null}
+            </div>
+            {detail.places.length > 0 ? (
+              <div className="space-y-2">
+                {detail.places.map((place) => (
+                  <PlaceRow
+                    key={place.id}
+                    place={place}
+                    selectedDayId={selectedDayId}
+                    locale={locale}
+                    onAddToDay={() => {
+                      if (!selectedDayId) {
+                        onNeedDay?.()
+                        return
+                      }
+                      onAddItem(selectedDayId, { kind: 'place', placeId: place.id })
+                    }}
+                    onEdit={onEditPlace ? () => onEditPlace(place.id) : undefined}
+                    onDelete={
+                      onDeletePlace
+                        ? () => {
+                            if (confirmDeletePlace(detail, place.id, locale)) onDeletePlace(place.id)
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="px-1 pb-1 text-[11px] text-slate-400">{tr('routebook.pool.placesEmpty', locale)}</p>
+            )}
+          </div>
+        ) : null}
         {filtered.length > 0 ? (
-          <div className={`space-y-3 ${compact ? 'pb-24' : 'seichi-soft-scrollbar h-full overflow-y-auto pr-2'}`}>
+          <div className="seichi-soft-scrollbar h-full space-y-3 overflow-y-auto pr-2">
             {filtered.map((entry) => {
               const preview = getPointPreview(entry.pointId)
               const card = (

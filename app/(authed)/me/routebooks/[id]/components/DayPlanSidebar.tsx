@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, Plus, Undo2 } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, ListOrdered, Plus, Undo2 } from 'lucide-react'
 import type {
   DayLegsResult,
   PointPreview,
@@ -13,6 +13,8 @@ import { groupItemsByDay } from '../utils'
 import type { CreateItemInput, UpdateItemInput } from '../hooks/useTripData'
 import { DayBlock } from './DayBlock'
 import { UnassignedBlock } from './UnassignedBlock'
+import { ExportMenu } from './ExportMenu'
+import { weatherForDay, type WeatherByDate } from '../hooks/useWeather'
 import { tr } from '../../i18n'
 
 type DayPlanSidebarProps = {
@@ -36,13 +38,24 @@ type DayPlanSidebarProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   onInsertDay: (afterDayIndex: number) => void
   onDeleteDay: (dayId: string) => void
+  /** B2：工具栏「调整天顺序」打开 DayOrderDialog（插入/删除/排序都在弹窗里） */
+  onOpenDayOrder?: () => void
   /** B4：点时间线条目（point/place）打开详情卡 */
   onOpenItemDetail?: (itemId: string) => void
+  /** B2：住宿徽标编辑 / 「添加住宿」 */
+  onAddLodging?: (dayIndex: number) => void
+  onEditLodging?: (lodgingId: string) => void
+  /** B2：「+ 备注」 */
+  onAddNote?: (dayId: string) => void
+  /** B2 修复：note 卡片「编辑」入口 */
+  onEditNote?: (itemId: string) => void
   /** 拖拽悬停超限置灰的天（useTripDnd.limitBlockedDayId） */
   limitBlockedDayId?: string | null
   /** B1.2：每天 legs 加载失败标记 + 手动重试 */
   legsFailedByDay?: Record<string, boolean>
   onRetryLegs?: (dayId: string) => void
+  /** B4：按 YYYY-MM-DD 的天气 */
+  weatherByDate?: WeatherByDate
   locale?: SupportedLocale
 }
 
@@ -88,10 +101,16 @@ export function DayPlanSidebar({
   onUpdateDay,
   onInsertDay,
   onDeleteDay,
+  onOpenDayOrder,
   onOpenItemDetail,
+  onAddLodging,
+  onEditLodging,
+  onAddNote,
+  onEditNote,
   limitBlockedDayId = null,
   legsFailedByDay,
   onRetryLegs,
+  weatherByDate,
   locale = 'zh',
 }: DayPlanSidebarProps) {
   const days = useMemo(() => [...detail.days].sort((a, b) => a.dayIndex - b.dayIndex), [detail.days])
@@ -147,10 +166,12 @@ export function DayPlanSidebar({
   )
 
   const lastDayIndex = days.length ? days[days.length - 1]!.dayIndex : 0
+  const selectedDayIndex = days.find((day) => day.id === selectedDayId)?.dayIndex ?? null
+  const hasDates = days.some((day) => Boolean(day.date))
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-[32px] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,250,0.9))] p-3 shadow-[0_24px_44px_-34px_rgba(15,23,42,0.42)]">
-      <div className="flex items-center gap-1.5 px-1 pb-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2.5">
         <button
           type="button"
           disabled={!undoLabel}
@@ -182,6 +203,18 @@ export function DayPlanSidebar({
           </button>
         ) : null}
         <span className="flex-1" />
+        <ExportMenu routeBookId={detail.id} selectedDayIndex={selectedDayIndex} hasDates={hasDates} locale={locale} />
+        {onOpenDayOrder ? (
+          <button
+            type="button"
+            title={tr('routebook.dayOrder.hint', locale)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-semibold text-brand-600 shadow-sm ring-1 ring-brand-200/70 transition hover:bg-brand-50"
+            onClick={onOpenDayOrder}
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+            {tr('routebook.dayOrder.button', locale)}
+          </button>
+        ) : null}
         <button
           type="button"
           className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-brand-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
@@ -213,11 +246,17 @@ export function DayPlanSidebar({
             onMoveItem={handleMoveItem}
             onUpdateDay={onUpdateDay}
             onOpenItemDetail={onOpenItemDetail}
+            lodgings={detail.lodgings}
+            onAddLodging={onAddLodging}
+            onEditLodging={onEditLodging}
+            onAddNote={onAddNote}
+            onEditNote={onEditNote}
             expanded={isExpanded(day.id)}
             onToggleExpanded={() => toggleDay(day.id)}
             dropBlocked={limitBlockedDayId === day.id}
             legsFailed={Boolean(legsFailedByDay?.[day.id])}
             onRetryLegs={onRetryLegs ? () => onRetryLegs(day.id) : undefined}
+            weather={weatherByDate ? weatherForDay(weatherByDate, day) : null}
             locale={locale}
           />
         ))}
@@ -230,6 +269,7 @@ export function DayPlanSidebar({
           onUpdateItem={onUpdateItem}
           onDeleteItem={onDeleteItem}
           onMoveItem={handleMoveItem}
+          onEditNote={onEditNote}
           locale={locale}
         />
       </div>

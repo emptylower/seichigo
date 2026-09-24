@@ -13,6 +13,7 @@ import {
   Lock,
   LockOpen,
   MapPin,
+  Pencil,
   ShoppingBag,
   Star,
   Ticket,
@@ -83,8 +84,14 @@ type TimelineItemProps = {
   onMoveItem: (targetDayId: string | null) => void
   /** B4：point/place 条目点击正文打开详情卡（不影响拖拽与右侧操作按钮） */
   onOpenDetail?: () => void
+  /** B2 修复：note 卡片的「编辑」入口（打开备注编辑弹窗） */
+  onEditNote?: () => void
   /** B1.2：当天游览顺序（有坐标的 point/place 才有），与地图徽标一致 */
   seq?: number
+  /** B3 移动端：整卡长按拖拽（隐藏小手柄，listeners 贴到根节点，配合 TouchSensor delay:200） */
+  mobileDrag?: boolean
+  /** B3 移动端不提供锁定（timeStart 固定保留） */
+  hideLockButton?: boolean
   locale?: SupportedLocale
 }
 
@@ -98,7 +105,10 @@ export function TimelineItem({
   onDelete,
   onMoveItem,
   onOpenDetail,
+  onEditNote,
   seq,
+  mobileDrag = false,
+  hideLockButton = false,
   locale = 'zh',
 }: TimelineItemProps) {
   const [editingTime, setEditingTime] = useState(false)
@@ -168,7 +178,7 @@ export function TimelineItem({
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
           {preview?.image ? (
-            <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
+            <img src={preview.image} alt={preview.title} loading="lazy" decoding="async" draggable={false} className="h-full w-full object-cover object-center" />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient} text-[9px] font-semibold text-white`}>
               {tr('routebook.common.noImage', locale)}
@@ -191,9 +201,12 @@ export function TimelineItem({
         item.kind === 'transit'
           ? 'border-transparent bg-slate-50/60'
           : 'border-pink-100/80 bg-white shadow-[0_10px_22px_-20px_rgba(15,23,42,0.4)]'
-      } ${isDragging ? 'z-10 border-brand-300 ring-2 ring-brand-200/70' : ''}`}
+      } ${isDragging ? 'z-10 border-brand-300 ring-2 ring-brand-200/70' : ''} ${
+        mobileDrag ? 'select-none [-webkit-touch-callout:none]' : ''
+      }`}
+      {...(mobileDrag && item.kind !== 'transit' ? { ...attributes, ...listeners } : {})}
     >
-      {item.kind !== 'transit' ? (
+      {item.kind !== 'transit' && !mobileDrag ? (
         <button
           type="button"
           aria-label={tr('routebook.timeline.dragSort', locale)}
@@ -225,6 +238,16 @@ export function TimelineItem({
           >
             {body}
           </button>
+        ) : mobileDrag && item.kind === 'note' && onEditNote ? (
+          // 移动端没有操作条：点备注本体即编辑
+          <button
+            type="button"
+            aria-label={tr('routebook.note.edit', locale)}
+            className="block w-full cursor-pointer rounded-lg text-left"
+            onClick={onEditNote}
+          >
+            {body}
+          </button>
         ) : (
           body
         )}
@@ -235,82 +258,99 @@ export function TimelineItem({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-        {editingTime ? (
-          <input
-            type="time"
-            defaultValue={item.timeStart ?? ''}
-            autoFocus
-            className="h-8 rounded-lg border border-pink-200 bg-white px-1.5 text-xs text-slate-700 outline-none focus:border-brand-400"
-            onBlur={(event) => {
+      {/* 移动端不渲染悬停操作条（opacity-0 仍可被误触、并吞掉左滑起点）；操作走左滑 / 详情卡 */}
+      {mobileDrag ? null : (
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+          {editingTime ? (
+            <input
+              type="time"
+              defaultValue={item.timeStart ?? ''}
+              autoFocus
+              className="h-8 rounded-lg border border-pink-200 bg-white px-1.5 text-xs text-slate-700 outline-none focus:border-brand-400"
+              onBlur={(event) => {
+                const value = event.target.value
+                setEditingTime(false)
+                if (value) onUpdate({ timeStart: value, locked: true })
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+                if (event.key === 'Escape') setEditingTime(false)
+              }}
+              {...DRAG_SAFE_CONTROL_PROPS}
+            />
+          ) : (
+            <button
+              type="button"
+              aria-label={tr('routebook.timeline.setTime', locale)}
+              title={tr('routebook.timeline.setTimeHint', locale)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              onClick={() => setEditingTime(true)}
+              {...DRAG_SAFE_CONTROL_PROPS}
+            >
+              <Clock className="h-4 w-4" />
+            </button>
+          )}
+          {hideLockButton ? null : (
+            <button
+              type="button"
+              aria-label={item.locked ? tr('routebook.timeline.unlock', locale) : tr('routebook.timeline.lock', locale)}
+              title={item.locked ? tr('routebook.timeline.unlockHint', locale) : tr('routebook.timeline.lockHint', locale)}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-slate-100 ${
+                item.locked ? 'text-brand-500' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              onClick={() => onUpdate({ locked: !item.locked })}
+              {...DRAG_SAFE_CONTROL_PROPS}
+            >
+              {item.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+            </button>
+          )}
+          <select
+            aria-label={tr('routebook.common.moveTo', locale)}
+            title={tr('routebook.common.moveTo', locale)}
+            value=""
+            className="h-8 w-8 cursor-pointer rounded-lg border-none bg-transparent text-slate-400 outline-none transition hover:bg-slate-100 hover:text-slate-600"
+            onChange={(event) => {
               const value = event.target.value
-              setEditingTime(false)
-              if (value) onUpdate({ timeStart: value, locked: true })
+              if (!value) return
+              onMoveItem(value === 'unassigned' ? null : value)
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-              if (event.key === 'Escape') setEditingTime(false)
-            }}
-            {...DRAG_SAFE_CONTROL_PROPS}
-          />
-        ) : (
-          <button
-            type="button"
-            aria-label={tr('routebook.timeline.setTime', locale)}
-            title={tr('routebook.timeline.setTimeHint', locale)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-            onClick={() => setEditingTime(true)}
             {...DRAG_SAFE_CONTROL_PROPS}
           >
-            <Clock className="h-4 w-4" />
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label={item.locked ? tr('routebook.timeline.unlock', locale) : tr('routebook.timeline.lock', locale)}
-          title={item.locked ? tr('routebook.timeline.unlockHint', locale) : tr('routebook.timeline.lockHint', locale)}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-slate-100 ${
-            item.locked ? 'text-brand-500' : 'text-slate-400 hover:text-slate-600'
-          }`}
-          onClick={() => onUpdate({ locked: !item.locked })}
-          {...DRAG_SAFE_CONTROL_PROPS}
-        >
-          {item.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-        </button>
-        <select
-          aria-label={tr('routebook.common.moveTo', locale)}
-          title={tr('routebook.common.moveTo', locale)}
-          value=""
-          className="h-8 w-8 cursor-pointer rounded-lg border-none bg-transparent text-slate-400 outline-none transition hover:bg-slate-100 hover:text-slate-600"
-          onChange={(event) => {
-            const value = event.target.value
-            if (!value) return
-            onMoveItem(value === 'unassigned' ? null : value)
-          }}
-          {...DRAG_SAFE_CONTROL_PROPS}
-        >
-          <option value="" disabled>
-            ⇄
-          </option>
-          {days.map((day) => (
-            <option key={day.id} value={day.id} disabled={day.id === item.dayId}>
-              {dayLabel(day, day.dayIndex, locale)}
+            <option value="" disabled>
+              ⇄
             </option>
-          ))}
-          <option value="unassigned" disabled={item.dayId === null}>
-            {tr('routebook.common.unassigned', locale)}
-          </option>
-        </select>
-        <button
-          type="button"
-          aria-label={tr('routebook.common.delete', locale)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-          onClick={onDelete}
-          {...DRAG_SAFE_CONTROL_PROPS}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
+            {days.map((day) => (
+              <option key={day.id} value={day.id} disabled={day.id === item.dayId}>
+                {dayLabel(day, day.dayIndex, locale)}
+              </option>
+            ))}
+            <option value="unassigned" disabled={item.dayId === null}>
+              {tr('routebook.common.unassigned', locale)}
+            </option>
+          </select>
+          {item.kind === 'note' && onEditNote ? (
+            <button
+              type="button"
+              aria-label={tr('routebook.note.edit', locale)}
+              title={tr('routebook.note.edit', locale)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              onClick={onEditNote}
+              {...DRAG_SAFE_CONTROL_PROPS}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={tr('routebook.common.delete', locale)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+            onClick={onDelete}
+            {...DRAG_SAFE_CONTROL_PROPS}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

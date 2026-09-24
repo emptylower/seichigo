@@ -1,0 +1,8 @@
+# 按天行程本 复测遗留修复（2026-09-24）
+
+> 执行者须知：先读主计划 `docs/superpowers/plans/2026-09-23-routebook-day-planner.md` 顶部硬约束。证据：`scratch/codex-smoke-routebook/evidence-retest.json` 与 `shots-retest/`。可改 `app/(authed)/me/routebooks/**`、`lib/share/geocodeSearch.ts`、`lib/share/handlers/geocodeSearch.ts`、`app/api/geocode/search/**`、`lib/i18n/locales/*.json`、`tests/routebooks/**`、`tests/share/**`。不 push、不 migrate。完成标准：typecheck 0 错；`npx vitest run --project jsdom tests/routebooks`、`npx vitest run tests/share tests/i18n` 全绿；`npm test` 全绿；简短中文汇报。
+
+- **T1 行程日期弹层被地图盖住**：`shots-retest/R14-save-obstructed.png` + `evidence.R14.saveHitTest`：面包屑旁「日期」弹层的「保存」按钮命中测试落在 `maplibregl-canvas` 上（弹层 z-index 低于地图舞台 / 被 `overflow` 裁切）。改 `components/TripDates.tsx`：弹层用 portal 挂到 `document.body` + `fixed` 定位（与 `OpenInMapsMenu` 同做法），z-index 高于地图与详情卡；宽度不超过视口。jsdom 测试：弹层节点是 `document.body` 的直接子节点。
+- **T2 地址搜索结果偏到朝鲜**：搜「京都駅」首条是「京都里, 板橋郡, 江原道, 朝鲜」（`evidence.R9.stationSearch`）。改 `lib/share/geocodeSearch.ts` / handler：① 支持 `country` 参数（MapTiler `country=jp` 等，逗号分隔，最多 3 个）；② 前端 `PlaceEditorDialog` 调用时传 `near`=当前行程有坐标条目的几何中心（或地图中心），并在该中心位于日本框内（`lib/geo/gcj02.ts` 已有日本框判断的话复用其常量，否则在前端写一个 `isInJapan(lat,lng)`）时传 `country=jp`；③ 结果列表按与 `near` 的距离排序（服务端做），前端结果行显示国家/地区文字（已有）。测试：`tests/share/geocodeSearch.test.ts` 加 country 参数与距离排序；`PlaceEditorDialog.test.tsx` 断言请求含 `near` 与 `country=jp`。
+- **T3 天摘要小时数离谱**：R14 头部出现「4 站 · 约 114.8 小时」——住宿在新宿而当天点位在宇治，首尾段几百公里的估算时长把总数撑爆。改 `utils.ts dayStats`：段时长超过 6 小时的不计入「约 X 小时」而是标记 `farLeg: true`；摘要显示为「4 站 · 约 3.2 小时 · 含远距离段」（三语文案 `routebook.day.farLeg`）；`DaySummaryBar`/`DayBlock` 同步。测试：一个 500 km 段的用例。
+- **T4 [nit] 自定义点地址行显示**：R9 车站的地址「京都里, 板橋郡, 江原道, 朝鲜」被完整写进 `address`；T2 修好后无需额外改，但 `PlaceEditorDialog` 选中结果时若 `address` 含国家名与 `near` 所在国不一致，给一行黄色提示「这个结果不在当前行程所在国家」。

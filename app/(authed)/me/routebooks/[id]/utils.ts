@@ -1,8 +1,10 @@
-import type { DayRecord, ItemRecord, PlaceRecord, PointPreview, NavMode } from './types'
-import { NAV_MODE_PARAM, POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, RouteBookDetail } from './types'
+import { POINT_FALLBACK_GRADIENTS, ITEM_DND_PREFIX, POOL_DND_PREFIX, MARKER_DND_PREFIX, DAY_DROP_PREFIX, UNASSIGNED_DROP_ID } from './types'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import { tr } from '../i18n'
+import { buildDayTargets, type NavStop, type NavTarget } from '@/lib/route/navigationTargets'
+import { resolveDayAnchorStops } from '@/lib/routeBook/anchors'
 
 export function groupItemsByDay(
   items: ItemRecord[],
@@ -62,20 +64,25 @@ export function applyReorderLocal(
   return next
 }
 
-/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
-export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
-  const base = `Day ${index}`
-  if (!day.date) return base
+/** 「M/D 周X」日期片段（dayLabel 的日期部分；无日期或非法返回 null） */
+export function dayDateLabel(day: Pick<DayRecord, 'date'>, locale: SupportedLocale = 'zh'): string | null {
+  if (!day.date) return null
   const parsed = new Date(day.date)
-  if (Number.isNaN(parsed.getTime())) return base
+  if (Number.isNaN(parsed.getTime())) return null
   const intl = toIntlLocale(locale)
   const weekday = new Intl.DateTimeFormat(intl, { weekday: 'short', timeZone: 'UTC' }).format(parsed)
   if (locale === 'en') {
-    const md = new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)
-    return `${base} · ${md}, ${weekday}`
+    return `${new Intl.DateTimeFormat(intl, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed)}, ${weekday}`
   }
   const md = `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`
-  return locale === 'ja' ? `${base} · ${md}(${weekday})` : `${base} · ${md} ${weekday}`
+  return locale === 'ja' ? `${md}(${weekday})` : `${md} ${weekday}`
+}
+
+/** `Day N`，有日期时追加本地化日期与星期（按 UTC 读，存的就是 UTC 00:00） */
+export function dayLabel(day: Pick<DayRecord, 'date'>, index: number, locale: SupportedLocale = 'zh'): string {
+  const base = `Day ${index}`
+  const date = dayDateLabel(day, locale)
+  return date ? `${base} · ${date}` : base
 }
 
 export function itemDisplayTitle(
@@ -94,6 +101,47 @@ export function itemDisplayTitle(
   return item.title || tr(item.kind === 'transit' ? 'routebook.common.transitFallback' : 'routebook.common.noteFallback', locale)
 }
 
+/** point/place 条目是否有坐标（place 以所属自定义点存在为准，point 以预览 geo 为准） */
+export function itemHasCoords(
+  item: ItemRecord,
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): boolean {
+  if (item.kind === 'place') return places.some((place) => place.id === item.placeId)
+  if (item.kind === 'point') return Boolean(item.pointId && getPointPreview(item.pointId)?.geo)
+  return false
+}
+
+/** 粗粒度日本列岛框（纬 24–46、经 122.9–146，与 lib/geo/gcj02 的 JAPAN_BOX 一致）：地址搜索是否限定 country=jp */
+export function isInJapan(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 24 && lat <= 46 && lng >= 122.9 && lng <= 146
+}
+
+/** 行程几何中心：所有有坐标的 point/place 条目的经纬度均值；一个都没有返回 null */
+export function tripCenter(
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): { lat: number; lng: number } | null {
+  let latSum = 0
+  let lngSum = 0
+  let n = 0
+  for (const item of items) {
+    let coords: [number, number] | null = null
+    if (item.kind === 'place') {
+      const place = places.find((row) => row.id === item.placeId)
+      if (place) coords = [place.lat, place.lng]
+    } else if (item.kind === 'point' && item.pointId) {
+      coords = getPointPreview(item.pointId)?.geo ?? null
+    }
+    if (!coords || !isGeoPair(coords)) continue
+    latSum += coords[0]
+    lngSum += coords[1]
+    n += 1
+  }
+  return n > 0 ? { lat: latSum / n, lng: lngSum / n } : null
+}
+
 /** 单天模式地图徽标 / 时间线序号：只数有坐标的 point/place，按 sortOrder 编 1..N */
 export function computeVisitOrder(
   dayItems: ItemRecord[],
@@ -105,15 +153,125 @@ export function computeVisitOrder(
   let n = 0
   for (const item of sorted) {
     if (item.kind !== 'point' && item.kind !== 'place') continue
-    const hasCoord =
-      item.kind === 'place'
-        ? places.some((place) => place.id === item.placeId)
-        : Boolean(item.pointId && getPointPreview(item.pointId).geo)
-    if (!hasCoord) continue
+    if (!itemHasCoords(item, places, getPointPreview)) continue
     n += 1
     map.set(item.id, n)
   }
   return map
+}
+
+/** 每站预估停留分钟（天统计「约 X 小时」用） */
+export const STOP_MINUTES_ESTIMATE = 40
+
+/** 单段超过这个时长（秒）视为远距离段（如住宿在新宿、当天点位在宇治），不计入「约 X 小时」 */
+export const FAR_LEG_SECONDS = 6 * 3600
+
+/**
+ * 天统计：站数（point/place）、有坐标站数、预计小时（段时长 + 每站停留）。
+ * 超过 FAR_LEG_SECONDS 的段不计入小时数，改为 farLeg: true，由摘要追加「含远距离段」。
+ */
+export function dayStats(
+  items: ItemRecord[],
+  legs: DayLegsResult | undefined,
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): { stopCount: number; coordCount: number; totalHours: number; farLeg: boolean } {
+  const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
+  const coordCount = visitable.filter((item) => itemHasCoords(item, places, getPointPreview)).length
+  let farLeg = false
+  let legMinutes = 0
+  for (const leg of legs?.legs ?? []) {
+    if (leg.durationSec > FAR_LEG_SECONDS) farLeg = true
+    else legMinutes += leg.durationSec / 60
+  }
+  const totalHours = (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60
+  return { stopCount: visitable.length, coordCount, totalHours, farLeg }
+}
+
+/**
+ * 当天导航站点（含住宿首尾）：legs.stops 顺序 + 名称。条目站取显示名；住宿首尾
+ * （lodging:start/end）按 resolveDayAnchorStops 的同一套住宿规则取对应自定义点标题，
+ * 取不到或无标题用「住宿」。
+ */
+export function dayNavStops(
+  day: Pick<DayRecord, 'dayIndex'>,
+  legs: DayLegsResult | undefined,
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  lodgings: LodgingRecord[],
+  getPointPreview: (pointId: string) => PointPreview,
+  locale: SupportedLocale = 'zh'
+): NavStop[] {
+  if (!legs) return []
+  const itemsById = new Map(items.map((item) => [item.id, item]))
+  const anchors = resolveDayAnchorStops(day.dayIndex, lodgings, places)
+  const lodgingName = (anchor: { placeId: string } | undefined): string => {
+    const title = anchor ? places.find((row) => row.id === anchor.placeId)?.title?.trim() : ''
+    return title || tr('routebook.nav.lodgingFallback', locale)
+  }
+  return legs.stops.map((stop) => {
+    const item = itemsById.get(stop.id)
+    if (item) {
+      const preview = item.pointId ? getPointPreview(item.pointId) : null
+      return { lat: stop.lat, lng: stop.lng, name: itemDisplayTitle(item, preview, places, locale) }
+    }
+    const anchor = stop.id === 'lodging:start' ? anchors.start : stop.id === 'lodging:end' ? anchors.end : undefined
+    return { lat: stop.lat, lng: stop.lng, name: lodgingName(anchor) }
+  })
+}
+
+/** 当天「打开导航」三家目标：legs 站点 ≥2 才有；交通方式取当天默认 */
+export function dayNavTargets(
+  day: Pick<DayRecord, 'dayIndex' | 'defaultTravelMode'>,
+  legs: DayLegsResult | undefined,
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  lodgings: LodgingRecord[],
+  getPointPreview: (pointId: string) => PointPreview,
+  locale: SupportedLocale = 'zh',
+  maxWaypoints?: number
+): NavTarget[] {
+  const stops = dayNavStops(day, legs, items, places, lodgings, getPointPreview, locale)
+  if (stops.length < 2) return []
+  return buildDayTargets(stops, day.defaultTravelMode, maxWaypoints ? { maxWaypoints } : {})
+}
+
+/** 优化可用性：可移动点 = 有坐标、非锚（locked && timeStart）的 point/place */
+export function movableCount(
+  items: ItemRecord[],
+  places: PlaceRecord[],
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo'> | null
+): number {
+  return items.filter((item) => {
+    if (item.kind !== 'point' && item.kind !== 'place') return false
+    if (item.locked && item.timeStart) return false
+    return itemHasCoords(item, places, getPointPreview)
+  }).length
+}
+
+/**
+ * 「明天从 X 开始」的 X：之后各天里第一个有站的天（跳过空天）的第一个有坐标条目名
+ * （无坐标条目导航无意义）；之后都没有可导航条目返回 null
+ */
+export function nextDayFirstStopTitle(
+  detail: Pick<RouteBookDetail, 'days' | 'items' | 'places'>,
+  selectedDay: Pick<DayRecord, 'dayIndex'>,
+  getPointPreview: (pointId: string) => Pick<PointPreview, 'geo' | 'title'>
+): string | null {
+  const laterDays = [...detail.days]
+    .sort((a, b) => a.dayIndex - b.dayIndex)
+    .filter((day) => day.dayIndex > selectedDay.dayIndex)
+  for (const day of laterDays) {
+    const first = sequenceForImmersive(detail.items, day.id).find((item) =>
+      itemHasCoords(item, detail.places, getPointPreview)
+    )
+    if (!first) continue
+    if (first.kind === 'place') {
+      return detail.places.find((place) => place.id === first.placeId)?.title ?? first.title ?? null
+    }
+    return first.pointId ? getPointPreview(first.pointId).title : first.title ?? null
+  }
+  return null
 }
 
 /** 沉浸模式序列：当天 point/place 条目按 sortOrder */
@@ -145,6 +303,88 @@ export function formatDate(value: string, locale: SupportedLocale = 'zh'): strin
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return tr('routebook.common.recentlyUpdated', locale)
   return parsed.toLocaleDateString(toIntlLocale(locale))
+}
+
+/** 与 lib/routeBook/rules.ts computeDayDate 一致：date = startDate + (dayIndex-1) 天（ISO 字符串版） */
+export function computeDayDateIso(startDate: string | null, dayIndex: number): string | null {
+  if (!startDate) return null
+  const base = Date.parse(startDate)
+  if (Number.isNaN(base)) return null
+  return new Date(base + (dayIndex - 1) * 86_400_000).toISOString()
+}
+
+/** 与 shiftLodgingForInsert 一致：afterDayIndex 之后的区间端点 +1 */
+export function shiftLodgingAfterInsert<T extends { fromDayIndex: number; toDayIndex: number }>(
+  lodging: T,
+  afterDayIndex: number
+): T {
+  return {
+    ...lodging,
+    fromDayIndex: lodging.fromDayIndex > afterDayIndex ? lodging.fromDayIndex + 1 : lodging.fromDayIndex,
+    toDayIndex: lodging.toDayIndex > afterDayIndex ? lodging.toDayIndex + 1 : lodging.toDayIndex,
+  }
+}
+
+/** 与 shiftLodgingForDelete 一致：返回 null 表示整段被删掉 */
+export function shiftLodgingAfterDelete<T extends { fromDayIndex: number; toDayIndex: number }>(
+  lodging: T,
+  delDayIndex: number
+): T | null {
+  const fromDayIndex = lodging.fromDayIndex > delDayIndex ? lodging.fromDayIndex - 1 : lodging.fromDayIndex
+  const toDayIndex = lodging.toDayIndex >= delDayIndex ? lodging.toDayIndex - 1 : lodging.toDayIndex
+  if (toDayIndex < fromDayIndex) return null
+  return { ...lodging, fromDayIndex, toDayIndex }
+}
+
+/** 插入天后的本地重编：之后的天 dayIndex/date +1，新天入列，dayCount+1，住宿顺移（与服务端 insertDayTx 一致） */
+export function applyDayInsertLocal(
+  detail: RouteBookDetail,
+  day: DayRecord,
+  updatedAt: string | null
+): RouteBookDetail {
+  const afterDayIndex = day.dayIndex - 1
+  return {
+    ...detail,
+    dayCount: detail.dayCount + 1,
+    updatedAt: updatedAt ?? detail.updatedAt,
+    days: [
+      ...detail.days.map((row) =>
+        row.dayIndex > afterDayIndex
+          ? { ...row, dayIndex: row.dayIndex + 1, date: computeDayDateIso(detail.startDate, row.dayIndex + 1) }
+          : row
+      ),
+      day,
+    ],
+    lodgings: detail.lodgings.map((row) => shiftLodgingAfterInsert(row, afterDayIndex)),
+  }
+}
+
+/** 删除天后的本地重编：删该天，之后的天 dayIndex/date -1，住宿顺移/整段删除（与服务端 deleteDayTx 一致） */
+export function applyDayDeleteLocal(
+  detail: RouteBookDetail,
+  dayId: string,
+  updatedAt: string | null
+): RouteBookDetail | null {
+  const target = detail.days.find((row) => row.id === dayId)
+  if (!target) return null
+  const delIndex = target.dayIndex
+  return {
+    ...detail,
+    dayCount: detail.dayCount - 1,
+    updatedAt: updatedAt ?? detail.updatedAt,
+    days: detail.days
+      .filter((row) => row.id !== dayId)
+      .map((row) =>
+        row.dayIndex > delIndex
+          ? { ...row, dayIndex: row.dayIndex - 1, date: computeDayDateIso(detail.startDate, row.dayIndex - 1) }
+          : row
+      ),
+    // 服务端只允许删空天；这里的 dayId→null 只是兜底
+    items: detail.items.map((row) => (row.dayId === dayId ? { ...row, dayId: null } : row)),
+    lodgings: detail.lodgings
+      .map((row) => shiftLodgingAfterDelete(row, delIndex))
+      .filter((row): row is LodgingRecord => row !== null),
+  }
 }
 
 export function parseBangumiId(pointId: string): number | null {
@@ -198,39 +438,6 @@ export function buildFallbackPreview(pointId: string, locale: SupportedLocale = 
     image: null,
     geo: null,
   }
-}
-
-export function buildGoogleDirectionsUrl(stops: string[], mode?: NavMode): string | null {
-  if (!stops.length) return null
-
-  if (stops.length === 1) {
-    const params = new URLSearchParams({
-      api: '1',
-      destination: stops[0],
-    })
-    if (mode) {
-      params.set('travelmode', NAV_MODE_PARAM[mode])
-    }
-    return `https://www.google.com/maps/dir/?${params.toString()}`
-  }
-
-  const origin = stops[0]
-  const destination = stops[stops.length - 1]
-  if (!origin || !destination) return null
-
-  const params = new URLSearchParams({
-    api: '1',
-    origin,
-    destination,
-  })
-  if (mode) {
-    params.set('travelmode', NAV_MODE_PARAM[mode])
-  }
-  const waypoints = stops.slice(1, -1)
-  if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.join('|'))
-  }
-  return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
 export function isGeoPair(value: unknown): value is [number, number] {

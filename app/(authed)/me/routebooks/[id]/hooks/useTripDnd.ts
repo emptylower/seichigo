@@ -1,19 +1,30 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
+  closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
   type DragStartEvent,
+  type PointerSensorOptions,
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { ItemRecord, PointPoolItem } from '../types'
-import { DAY_ITEM_LIMIT, ITEM_DND_PREFIX, MARKER_DND_PREFIX, POOL_DND_PREFIX } from '../types'
+import {
+  DAY_DROP_PREFIX,
+  DAY_ITEM_LIMIT,
+  ITEM_DND_PREFIX,
+  MARKER_DND_PREFIX,
+  POOL_DND_PREFIX,
+  UNASSIGNED_DROP_ID,
+} from '../types'
 import { parseDayDropId, parseDragRecordId } from '../utils'
 
 type AddItemFn = (
@@ -29,6 +40,59 @@ type UseTripDndOptions = {
   addItem: AddItemFn
   /** 目标天 point/place 已满（25 条上限）时提示；未安排区不限 */
   onLimitBlocked?: (dayId: string) => void
+}
+
+/** 只响应鼠标/笔的 PointerSensor：触屏的 pointerdown 交给 TouchSensor（长按 200ms），
+ *  否则 PointerSensor 会先于 TouchSensor 激活，长按失效且任何 6px 移动都会变成拖拽、与滚动打架 */
+export class MousePointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: (event: ReactPointerEvent, options: PointerSensorOptions): boolean => {
+        if (event.nativeEvent.pointerType === 'touch') return false
+        return PointerSensor.activators[0]?.handler(event, options) ?? false
+      },
+    },
+  ]
+}
+
+function isDayContainerId(id: string | number): boolean {
+  return String(id).startsWith(DAY_DROP_PREFIX)
+}
+
+type Rect = { top: number; left: number; bottom: number; right: number }
+
+function rectContains(outer: Rect, inner: Rect): boolean {
+  return inner.top >= outer.top && inner.bottom <= outer.bottom && inner.left >= outer.left && inner.right <= outer.right
+}
+
+/**
+ * 跨容器碰撞：指针所在的容器优先（pointerWithin），其内再挑最近条目；
+ * closestCenter 只做兜底（键盘拖拽 / 指针在容器间隙），且兜底时不选「未安排」容器——
+ * 否则把条目拖到折叠天中心时，形状更近的「未安排」块会被 closestCenter 选中（冒烟 #5 dayId=null）。
+ */
+export const tripCollisionDetection: CollisionDetection = (args) => {
+  if (!args.pointerCoordinates) return closestCenter(args)
+  const within = pointerWithin(args)
+  if (within.length === 0) {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((row) => row.id !== UNASSIGNED_DROP_ID),
+    })
+  }
+  const itemHit = within.find((row) => !isDayContainerId(row.id))
+  if (itemHit) return [itemHit]
+  const container = within[0]
+  const containerRect = container ? args.droppableRects.get(container.id) : undefined
+  if (!container || !containerRect) return within
+  // 指针在容器内但不在任何条目上（条目间隙 / 天标题）：取该容器内最近的条目；折叠天没有条目 → 容器本身（末尾）
+  const inner = args.droppableContainers.filter((row) => {
+    if (isDayContainerId(row.id)) return false
+    const rect = args.droppableRects.get(row.id)
+    return rect ? rectContains(containerRect, rect) : false
+  })
+  if (inner.length === 0) return [container]
+  return closestCenter({ ...args, droppableContainers: inner })
 }
 
 function dayItemIds(items: ItemRecord[], dayId: string | null): string[] {
@@ -66,7 +130,7 @@ export function useTripDnd({ items, pointPoolItems, reorder, addItem, onLimitBlo
   const [limitBlockedDayId, setLimitBlockedDayId] = useState<string | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MousePointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )

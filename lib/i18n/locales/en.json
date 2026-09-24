@@ -955,9 +955,6 @@
       "startDay": "Start Day {n}",
       "startNav": "Start Navigation",
       "tabAll": "All",
-      "tabRoute": "Route",
-      "tabRouteDay": "Route · Day {n}",
-      "tabPool": "Point Pool",
       "addFromPool": "Add from pool",
       "removeFromPoolFailed": "Failed to remove from pool",
       "saveFailed": "Failed to save",
@@ -972,7 +969,9 @@
       "undoDeleteItem": "Delete item",
       "undoReorder": "Reorder",
       "undoOptimize": "Optimize order",
-      "legsFailed": "Route failed to load"
+      "legsFailed": "Route failed to load",
+      "staleConflict": "This trip was edited elsewhere",
+      "undoCleared": "Undo history cleared"
     },
     "sidebar": {
       "undo": "Undo",
@@ -992,7 +991,6 @@
       "routeOn": "Route on",
       "routeOff": "Route off",
       "optimize": "Optimize",
-      "openNav": "Open navigation",
       "dayLimit": "Up to 25 stops per day",
       "unassignedCount": "{n} items to assign",
       "unassignedEmpty": "Nothing to assign right now"
@@ -1013,7 +1011,11 @@
       "minutes": "{n} min",
       "hoursMinutes": "{h} h {m} min",
       "hours": "{h} h",
-      "estimated": "Estimate"
+      "estimated": "Estimate",
+      "useDayDefault": "Use day default",
+      "agentChecked": "AI checked",
+      "changeMode": "Change travel mode for this leg",
+      "overrideAgent": "This overrides the AI result"
     },
     "map": {
       "title": "Route Preview",
@@ -1061,7 +1063,14 @@
       "sheetSearchPlaceholder": "Search point name or subtitle...",
       "globalBadge": "Wishlist",
       "dragIntoRoute": "Drag into route",
-      "addToMap": "Add to this map"
+      "addToMap": "Add to this map",
+      "placesTitle": "Custom places ({n})",
+      "addPlace": "Add custom place",
+      "addPlaceToDay": "Add to selected day",
+      "editPlace": "Edit custom place",
+      "deletePlace": "Delete custom place",
+      "placesEmpty": "Right-click the map, or use the button above",
+      "deletePlaceConfirm": "Delete \"{title}\"? This will also remove {items} item(s) and {lodgings} lodging(s)."
     },
     "selector": {
       "choose": "Choose a map",
@@ -1081,7 +1090,6 @@
       "openingHours": "Opening hours",
       "website": "Website",
       "openInGoogleMaps": "Open in Google Maps",
-      "googleMaps": "Google Maps",
       "viewOnMap": "View on pilgrimage map",
       "removeFromDay": "Remove from day"
     },
@@ -1104,7 +1112,7 @@
       "distance": "Distance",
       "mode": "Travel mode",
       "navDoneCheckIn": "Arrived — check in",
-      "arrived": "I'm here",
+      "arrived": "Arrived · Next stop",
       "exitNav": "Exit navigation",
       "customPlace": "Custom place · {title}",
       "noImage": "No reference image",
@@ -1113,7 +1121,7 @@
       "skip": "Skip",
       "dayDone": "{day} complete",
       "tomorrowStart": "Tomorrow starts at {title}",
-      "allDone": "You've finished every visitable stop today.",
+      "allDone": "All done",
       "checkedLabel": "Checked in",
       "totalLabel": "Total stops",
       "backToTrip": "Back to trip",
@@ -1122,6 +1130,142 @@
       "undoCheckIn": "Undo check-in",
       "undoFailed": "Undo failed — please try again.",
       "checkInNext": "Check in & next stop"
+    },
+    "place": {
+      "dialogCreate": "Add custom place",
+      "dialogEdit": "Edit custom place",
+      "kindLabel": "Type",
+      "titleLabel": "Name",
+      "titlePlaceholder": "e.g. hotel, station, restaurant…",
+      "addressLabel": "Address search",
+      "addressPlaceholder": "Search an address or place name",
+      "latLabel": "Latitude",
+      "lngLabel": "Longitude",
+      "noteLabel": "Note (optional)",
+      "notePlaceholder": "Extra info…",
+      "submit": "Save place",
+      "countryMismatch": "This result is outside the country of your current trip — double-check it is the right place"
+    },
+    "lodging": {
+      "add": "Add lodging",
+      "edit": "Edit lodging",
+      "placeLabel": "Lodging place",
+      "newPlace": "New lodging place",
+      "noPlaceHint": "No “lodging” custom place yet — create one first",
+      "fromLabel": "Check-in day",
+      "toLabel": "Check-out day",
+      "checkInLabel": "Check-in time (optional)",
+      "checkOutLabel": "Check-out time (optional)",
+      "noteLabel": "Note (optional)",
+      "submit": "Save lodging",
+      "badgeCheckIn": "Check-in",
+      "badgeCheckOut": "Check-out",
+      "badgeStaying": "Staying",
+      "delete": "Delete lodging",
+      "deleteConfirm": "Delete this lodging stay?"
+    },
+    "dayDetail": {
+      "lodgingTitle": "Lodging for the day",
+      "collapse": "Collapse",
+      "expand": "Expand"
+    },
+    "note": {
+      "add": "Note",
+      "edit": "Edit note",
+      "dialogTitle": "Add note",
+      "titleLabel": "Title",
+      "titlePlaceholder": "e.g. meeting point, ticket reminder…",
+      "detailLabel": "Details (optional)",
+      "iconLabel": "Icon",
+      "colorLabel": "Color",
+      "timeLabel": "Time (optional)",
+      "submit": "Add note",
+      "submitEdit": "Save note",
+      "icon": {
+        "info": "Info",
+        "clock": "Time",
+        "train": "Train",
+        "utensils": "Food",
+        "ticket": "Ticket",
+        "camera": "Photo",
+        "shopping-bag": "Shopping",
+        "alert": "Alert",
+        "star": "Star",
+        "bookmark": "Bookmark"
+      },
+      "color": {
+        "gray": "Gray",
+        "pink": "Pink",
+        "amber": "Amber",
+        "green": "Green",
+        "sky": "Sky",
+        "violet": "Violet"
+      }
+    },
+    "dayOrder": {
+      "button": "Reorder days",
+      "title": "Reorder days",
+      "hint": "Drag to reorder, tap “+” to insert a day below; only empty days can be deleted",
+      "insertBelow": "Insert a day below",
+      "deleteDay": "Delete this day",
+      "deleteBlocked": "Only empty days can be deleted (and the last day cannot)",
+      "submit": "Save order"
+    },
+    "mobile": {
+      "dockLabel": "Trip actions",
+      "pillsLabel": "Choose a day",
+      "disabledWithReason": "{label} ({reason})",
+      "travelModeLabel": "Default travel mode for this day",
+      "tabPlan": "Plan",
+      "tabMap": "Map",
+      "allDays": "All days",
+      "dockPool": "Points",
+      "dockOptimize": "Optimize",
+      "dockNav": "Navigate",
+      "remove": "Remove",
+      "optimizeNeedDay": "Pick a day first",
+      "optimizeNeedPoints": "Needs at least 2 movable stops",
+      "emptyDay": "Nothing here yet — add stops from the point pool",
+      "noLodging": "No lodging planned for this day",
+      "navNoStops": "No stops to navigate for this day"
+    },
+    "nav": {
+      "open": "Navigate",
+      "menuLabel": "Choose a maps app",
+      "sheetTitle": "Open in maps",
+      "google": "Google Maps",
+      "apple": "Apple Maps",
+      "amap": "Amap",
+      "endpointsOnly": "Start & end only",
+      "viaTruncated": "Too many stops, some omitted",
+      "segment": "part {n}/{total}",
+      "lodgingFallback": "Lodging",
+      "webVersion": "Web version"
+    },
+    "weather": {
+      "title": "Weather",
+      "ariaLabel": "Weather: high {max}°, low {min}°"
+    },
+    "dates": {
+      "button": "Dates",
+      "aria": "Edit trip dates",
+      "title": "Trip dates",
+      "startLabel": "Start date",
+      "hint": "Each day's date follows on from the start date",
+      "save": "Save",
+      "clear": "Clear dates"
+    },
+    "day": {
+      "farLeg": " · incl. long-distance leg"
+    },
+    "export": {
+      "button": "Export",
+      "menuLabel": "Export trip",
+      "gpxAll": "GPX (whole trip)",
+      "gpxDay": "GPX (Day {n})",
+      "ics": "Calendar (ICS)",
+      "icsNeedDates": "Set trip dates to export a calendar",
+      "more": "More"
     }
   }
 }

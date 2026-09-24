@@ -8,6 +8,8 @@ import { resolveAnitabiAssetUrl } from '@/lib/anitabi/utils'
 import { NavModeToggle } from '@/components/navigation/NavModeToggle'
 import { EMBED_API_KEY, resolveEmbedNavUrl, travelModeLabel } from '@/lib/route/embedNavigation'
 import type { GoogleMapsTravelMode } from '@/lib/route/google'
+import { buildSingleTargets, type NavMode } from '@/lib/route/navigationTargets'
+import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
 import type { SupportedLocale } from '@/lib/i18n/types'
 import type { ItemRecord, PlaceRecord, PointPreview } from '../types'
 import { tr } from '../../i18n'
@@ -36,6 +38,8 @@ type StopView = {
   title: string
   subtitle: string
   image: string | null
+  /** 原始 anitabi 图片 URL（署名链接用） */
+  imageSource?: string | null
   geo: [number, number] | null
   /** 打卡只对 kind=point 可用 */
   checkInPointId: string | null
@@ -82,6 +86,8 @@ export function RouteBookImmersiveMode({
   const [isExiting, setIsExiting] = useState(false)
   const [userLocation, setUserLocation] = useState<UserLocation>(null)
   const [travelMode, setTravelMode] = useState<GoogleMapsTravelMode>('walking')
+  // 已经过的站（打卡成功 / 到达 · 下一站 / 跳过）：从剩余站剔除，避免 place 站（无打卡）被 clamp 回来卡住
+  const [passedIds, setPassedIds] = useState<Set<string>>(() => new Set())
 
   const stops = useMemo<StopView[]>(() => {
     return sequence.map((item) => {
@@ -102,6 +108,7 @@ export function RouteBookImmersiveMode({
         title: preview?.title ?? item.title ?? tr('routebook.common.pointFallback', locale),
         subtitle: preview?.subtitle ?? '',
         image: preview?.image ?? null,
+        imageSource: preview?.imageSource ?? null,
         geo: preview?.geo ?? null,
         checkInPointId: item.pointId,
       }
@@ -109,8 +116,11 @@ export function RouteBookImmersiveMode({
   }, [getPointPreview, places, sequence, locale])
 
   const remainingStops = useMemo(() => {
-    return stops.filter((stop) => !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)))
-  }, [checkedInPointIds, stops])
+    return stops.filter(
+      (stop) =>
+        !passedIds.has(stop.item.id) && !(stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId))
+    )
+  }, [checkedInPointIds, passedIds, stops])
 
   const totalStops = stops.length
   const checkedCount = stops.filter((stop) => stop.checkInPointId && checkedInPointIds.has(stop.checkInPointId)).length
@@ -121,6 +131,11 @@ export function RouteBookImmersiveMode({
   const currentNavigationUrl = currentGeo
     ? resolveEmbedNavUrl({ lat: currentGeo[0], lng: currentGeo[1] }, userLocation, travelMode)
     : null
+  // 外部地图 app 深链（单点）：Google 的骑行在三家里没有对应，按步行
+  const currentNavMode: NavMode = travelMode === 'bicycling' ? 'walking' : travelMode
+  const currentNavTargets = currentStop && currentGeo
+    ? buildSingleTargets({ lat: currentGeo[0], lng: currentGeo[1], name: currentStop.title }, currentNavMode)
+    : []
   const currentOrdinal = currentStop ? Math.max(1, stops.findIndex((stop) => stop.item.id === currentStop.item.id) + 1) : checkedCount
   const lastCheckedPreview = lastCheckedPointId ? getPointPreview(lastCheckedPointId) : null
   // 最后一站是自定义点（无打卡）时也要有明确的「完成今天」出口
@@ -144,8 +159,9 @@ export function RouteBookImmersiveMode({
       setStep('summary')
       return
     }
+    // 越过最后一个剩余站 = 今天走完，不再 clamp 回前面的站
     if (currentIndex >= remainingStops.length) {
-      setCurrentIndex(remainingStops.length - 1)
+      setStep('summary')
     }
   }, [currentIndex, remainingStops.length, step])
 
@@ -163,12 +179,22 @@ export function RouteBookImmersiveMode({
     window.setTimeout(onClose, 240)
   }
 
+  const markPassed = (itemId: string) => {
+    setPassedIds((prev) => {
+      if (prev.has(itemId)) return prev
+      const next = new Set(prev)
+      next.add(itemId)
+      return next
+    })
+  }
+
+  // 到达 · 下一站 / 跳过：当前站记为已过；剔除后同一 currentIndex 即下一站，剔空后 effect 进 summary
   const handleSkip = () => {
-    if (currentIndex < remainingStops.length - 1) {
-      setCurrentIndex((prev) => prev + 1)
+    if (!currentStop) {
+      setStep('summary')
       return
     }
-    setStep('summary')
+    markPassed(currentStop.item.id)
   }
 
   const handleUndoCheckIn = async () => {
@@ -179,6 +205,13 @@ export function RouteBookImmersiveMode({
       setUndoState('error')
       return
     }
+    // 撤销打卡：该站重新回到剩余站
+    const restoredIds = stops.filter((stop) => stop.checkInPointId === lastCheckedPointId).map((stop) => stop.item.id)
+    setPassedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of restoredIds) next.delete(id)
+      return next
+    })
     setPendingRestorePointId(lastCheckedPointId)
     setLastCheckedPointId(null)
     setUndoState('idle')
@@ -239,7 +272,7 @@ export function RouteBookImmersiveMode({
                 {firstStop?.image ? (
                   <div className="mt-2">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(firstStop.image)}
+                      href={resolveAnitabiAttributionHref(firstStop.imageSource, firstStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -276,7 +309,18 @@ export function RouteBookImmersiveMode({
 
             {navigatingById[currentStop.item.id] ? (
               <>
-                <NavModeToggle value={travelMode} onChange={setTravelMode} className="mb-3 self-start" />
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <NavModeToggle value={travelMode} onChange={setTravelMode} />
+                  {currentNavTargets.length > 0 ? (
+                    <OpenInMapsMenu
+                      targets={currentNavTargets}
+                      locale={locale}
+                      presentation="dropdown"
+                      triggerClassName="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-slate-900/70 px-3 text-xs font-medium text-slate-200 ring-1 ring-white/10 transition hover:text-white"
+                      icon={<Navigation size={14} />}
+                    />
+                  ) : null}
+                </div>
 
                 <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 shadow-2xl">
                   {currentNavigationUrl ? (
@@ -361,7 +405,7 @@ export function RouteBookImmersiveMode({
                 {currentStop.image ? (
                   <div className="mt-3 mx-auto w-full max-w-3xl">
                     <AttributionLink
-                      href={resolveAnitabiAttributionHref(currentStop.image)}
+                      href={resolveAnitabiAttributionHref(currentStop.imageSource, currentStop.image)}
                       className="text-xs text-slate-400 hover:text-white"
                     />
                   </div>
@@ -452,7 +496,10 @@ export function RouteBookImmersiveMode({
           pointId={checkInTargetPointId}
           pointName={getPointPreview(checkInTargetPointId)?.title || checkInTargetPointId}
           referenceImageUrl={resolveAnitabiAssetUrl(getPointPreview(checkInTargetPointId)?.image || null)}
-          attributionHref={resolveAnitabiAttributionHref(getPointPreview(checkInTargetPointId)?.image || null)}
+          attributionHref={resolveAnitabiAttributionHref(
+            getPointPreview(checkInTargetPointId)?.imageSource,
+            getPointPreview(checkInTargetPointId)?.image
+          )}
           pointGeo={(() => {
             const geo = getPointPreview(checkInTargetPointId)?.geo
             if (!geo) return null
@@ -466,6 +513,7 @@ export function RouteBookImmersiveMode({
             setUndoState('idle')
             setCheckInTargetPointId(null)
             if (currentStop?.checkInPointId === checkedPointId) {
+              markPassed(currentStop.item.id)
               setNavigatingById((prev) => {
                 const next = { ...prev }
                 delete next[currentStop.item.id]

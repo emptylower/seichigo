@@ -92,7 +92,10 @@ export type PointPoolItem = {
 export type PointPreview = {
   title: string
   subtitle: string
+  /** 浏览器展示用 URL（R2 公共域 → 同源代理，与 /map 同一套解析；不再直连 image.anitabi.cn，会被 ORB 拦） */
   image: string | null
+  /** 接口返回的原始 anitabi 图片 URL：署名链接用 */
+  imageSource?: string | null
   geo: [number, number] | null
 }
 
@@ -118,8 +121,6 @@ export type DetailResponse =
 export type RouteBookListResponse =
   | { ok: true; items: RouteBookSummary[] }
   | { error: string }
-
-export type NavMode = 'transit' | 'driving'
 
 /** 当天段数据（与 lib/routeBook/legs.ts 的 Leg/LegStop 同形） */
 export type DayLeg = Leg
@@ -147,11 +148,6 @@ export const STATUS_ACTION_CLASS: Record<RouteBookStatus, string> = {
   draft: 'bg-blue-500 hover:bg-blue-600 text-white',
   in_progress: 'bg-green-500 hover:bg-green-600 text-white',
   completed: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-}
-
-export const NAV_MODE_PARAM: Record<NavMode, 'transit' | 'driving'> = {
-  transit: 'transit',
-  driving: 'driving',
 }
 
 export const DRAG_SAFE_CONTROL_PROPS = {

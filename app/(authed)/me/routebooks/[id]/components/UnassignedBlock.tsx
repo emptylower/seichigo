@@ -19,6 +19,8 @@ type UnassignedBlockProps = {
   onUpdateItem: (itemId: string, data: UpdateItemInput) => void
   onDeleteItem: (itemId: string) => void
   onMoveItem: (itemId: string, targetDayId: string | null) => void
+  /** B2 修复：note 卡片「编辑」入口 */
+  onEditNote?: (itemId: string) => void
   locale?: SupportedLocale
 }
 
@@ -30,6 +32,7 @@ export function UnassignedBlock({
   onUpdateItem,
   onDeleteItem,
   onMoveItem,
+  onEditNote,
   locale = 'zh',
 }: UnassignedBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: UNASSIGNED_DROP_ID })
@@ -65,6 +68,7 @@ export function UnassignedBlock({
               onUpdate={(data) => onUpdateItem(item.id, data)}
               onDelete={() => onDeleteItem(item.id)}
               onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
+              onEditNote={item.kind === 'note' && onEditNote ? () => onEditNote(item.id) : undefined}
               locale={locale}
             />
           ))}

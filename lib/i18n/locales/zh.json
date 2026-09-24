@@ -955,9 +955,6 @@
       "startDay": "开始 Day {n}",
       "startNav": "开始导航",
       "tabAll": "全部",
-      "tabRoute": "路线",
-      "tabRouteDay": "路线 · Day {n}",
-      "tabPool": "点位池",
       "addFromPool": "从点位池添加",
       "removeFromPoolFailed": "从点位池删除失败",
       "saveFailed": "保存失败",
@@ -972,7 +969,9 @@
       "undoDeleteItem": "删除条目",
       "undoReorder": "调整顺序",
       "undoOptimize": "优化顺序",
-      "legsFailed": "路线加载失败"
+      "legsFailed": "路线加载失败",
+      "staleConflict": "行程已在别处修改",
+      "undoCleared": "撤销历史已清空"
     },
     "sidebar": {
       "undo": "撤销",
@@ -992,7 +991,6 @@
       "routeOn": "路线开",
       "routeOff": "路线关",
       "optimize": "优化",
-      "openNav": "打开导航",
       "dayLimit": "这一天最多 25 个点",
       "unassignedCount": "{n} 条待分配",
       "unassignedEmpty": "暂时没有待安排的条目"
@@ -1013,7 +1011,11 @@
       "minutes": "{n} 分钟",
       "hoursMinutes": "{h} 小时 {m} 分",
       "hours": "{h} 小时",
-      "estimated": "估算"
+      "estimated": "估算",
+      "useDayDefault": "用当天默认",
+      "agentChecked": "AI 已查",
+      "changeMode": "修改本段交通方式",
+      "overrideAgent": "将覆盖 AI 查询结果"
     },
     "map": {
       "title": "路线预览",
@@ -1061,7 +1063,14 @@
       "sheetSearchPlaceholder": "搜索点位名称或副标题...",
       "globalBadge": "全局想去",
       "dragIntoRoute": "拖入路线",
-      "addToMap": "加入当前地图"
+      "addToMap": "加入当前地图",
+      "placesTitle": "自定义点（{n}）",
+      "addPlace": "添加自定义点",
+      "addPlaceToDay": "加入选中天",
+      "editPlace": "编辑自定义点",
+      "deletePlace": "删除自定义点",
+      "placesEmpty": "右键地图空白处，或点上方按钮新建",
+      "deletePlaceConfirm": "删除「{title}」将同时删除 {items} 条条目与 {lodgings} 段住宿，确定删除吗？"
     },
     "selector": {
       "choose": "选择地图",
@@ -1081,7 +1090,6 @@
       "openingHours": "营业时间",
       "website": "网站",
       "openInGoogleMaps": "在 Google 地图打开",
-      "googleMaps": "Google 地图",
       "viewOnMap": "在巡礼地图查看",
       "removeFromDay": "从当天移除"
     },
@@ -1104,7 +1112,7 @@
       "distance": "距离",
       "mode": "出行方式",
       "navDoneCheckIn": "导航完成并打卡",
-      "arrived": "已到这一站",
+      "arrived": "到达 · 下一站",
       "exitNav": "退出导航",
       "customPlace": "自定义地点 · {title}",
       "noImage": "暂无参考图",
@@ -1113,7 +1121,7 @@
       "skip": "跳过",
       "dayDone": "{day} 完成",
       "tomorrowStart": "明天从 {title} 开始",
-      "allDone": "你已完成这一天可巡礼的站点。",
+      "allDone": "全部完成",
       "checkedLabel": "已打卡",
       "totalLabel": "总站点",
       "backToTrip": "返回行程",
@@ -1122,6 +1130,142 @@
       "undoCheckIn": "撤销打卡",
       "undoFailed": "撤销失败，请稍后重试。",
       "checkInNext": "打卡并下一站"
+    },
+    "place": {
+      "dialogCreate": "添加自定义点",
+      "dialogEdit": "编辑自定义点",
+      "kindLabel": "类型",
+      "titleLabel": "名称",
+      "titlePlaceholder": "例：酒店、车站、餐厅…",
+      "addressLabel": "地址搜索",
+      "addressPlaceholder": "输入地址或地名搜索",
+      "latLabel": "纬度",
+      "lngLabel": "经度",
+      "noteLabel": "备注（可选）",
+      "notePlaceholder": "补充信息…",
+      "submit": "保存自定义点",
+      "countryMismatch": "这个结果不在当前行程所在国家，请确认是否选对了地点"
+    },
+    "lodging": {
+      "add": "添加住宿",
+      "edit": "编辑住宿",
+      "placeLabel": "住宿点",
+      "newPlace": "新建住宿点",
+      "noPlaceHint": "还没有「住宿」类型的自定义点，先新建一个",
+      "fromLabel": "入住日",
+      "toLabel": "退房日",
+      "checkInLabel": "入住时间（可选）",
+      "checkOutLabel": "退房时间（可选）",
+      "noteLabel": "备注（可选）",
+      "submit": "保存住宿",
+      "badgeCheckIn": "入住",
+      "badgeCheckOut": "退房",
+      "badgeStaying": "续住",
+      "delete": "删除住宿",
+      "deleteConfirm": "确定删除这段住宿吗？"
+    },
+    "dayDetail": {
+      "lodgingTitle": "当天住宿",
+      "collapse": "收起",
+      "expand": "展开"
+    },
+    "note": {
+      "add": "备注",
+      "edit": "编辑备注",
+      "dialogTitle": "添加备注",
+      "titleLabel": "标题",
+      "titlePlaceholder": "例：集合地点、取票提醒…",
+      "detailLabel": "详情（可选）",
+      "iconLabel": "图标",
+      "colorLabel": "颜色",
+      "timeLabel": "时间（可选）",
+      "submit": "添加备注",
+      "submitEdit": "保存备注",
+      "icon": {
+        "info": "信息",
+        "clock": "时间",
+        "train": "电车",
+        "utensils": "餐饮",
+        "ticket": "票券",
+        "camera": "拍照",
+        "shopping-bag": "购物",
+        "alert": "注意",
+        "star": "收藏",
+        "bookmark": "书签"
+      },
+      "color": {
+        "gray": "灰色",
+        "pink": "粉色",
+        "amber": "琥珀",
+        "green": "绿色",
+        "sky": "天蓝",
+        "violet": "紫色"
+      }
+    },
+    "dayOrder": {
+      "button": "调整天顺序",
+      "title": "调整天顺序",
+      "hint": "拖动排序，点「+」在这天下方插入新的一天；只有空天可以删除",
+      "insertBelow": "在下方插入一天",
+      "deleteDay": "删除这一天",
+      "deleteBlocked": "只有空天可以删除（最后一天不可删）",
+      "submit": "保存顺序"
+    },
+    "mobile": {
+      "dockLabel": "行程操作",
+      "pillsLabel": "选择天数",
+      "disabledWithReason": "{label}（{reason}）",
+      "travelModeLabel": "当天默认交通方式",
+      "tabPlan": "计划",
+      "tabMap": "地图",
+      "allDays": "全部天数",
+      "dockPool": "点位池",
+      "dockOptimize": "优化",
+      "dockNav": "打开导航",
+      "remove": "移除",
+      "optimizeNeedDay": "先选择一天",
+      "optimizeNeedPoints": "至少 2 个可移动点才能优化",
+      "emptyDay": "这一天还没有条目，从点位池添加吧",
+      "noLodging": "这一天还没有住宿安排",
+      "navNoStops": "这一天还没有可导航的站点"
+    },
+    "nav": {
+      "open": "打开导航",
+      "menuLabel": "选择地图应用",
+      "sheetTitle": "用地图应用打开",
+      "google": "Google 地图",
+      "apple": "Apple 地图",
+      "amap": "高德地图",
+      "endpointsOnly": "仅起终点",
+      "viaTruncated": "途经点过多，已截断",
+      "segment": "第 {n}/{total} 段",
+      "lodgingFallback": "住宿",
+      "webVersion": "网页版"
+    },
+    "weather": {
+      "title": "当天天气",
+      "ariaLabel": "天气：最高 {max}°，最低 {min}°"
+    },
+    "dates": {
+      "button": "日期",
+      "aria": "编辑行程日期",
+      "title": "行程日期",
+      "startLabel": "开始日期",
+      "hint": "各天日期按开始日期依次顺延",
+      "save": "保存",
+      "clear": "清除日期"
+    },
+    "day": {
+      "farLeg": " · 含远距离段"
+    },
+    "export": {
+      "button": "导出",
+      "menuLabel": "导出行程",
+      "gpxAll": "GPX（整个行程）",
+      "gpxDay": "GPX（Day {n}）",
+      "ics": "日历（ICS）",
+      "icsNeedDates": "行程没有日期，无法导出日历",
+      "more": "更多"
     }
   }
 }

@@ -3,16 +3,19 @@
 import { useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CalendarDays, ChevronDown, ChevronRight, Navigation, Sparkles } from 'lucide-react'
-import type { DayLegsResult, DayRecord, ItemRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
+import { BedDouble, CalendarDays, ChevronDown, ChevronRight, Sparkles, StickyNote } from 'lucide-react'
+import type { DayLegsResult, DayRecord, ItemRecord, LodgingRecord, PlaceRecord, PointPreview, TravelMode } from '../types'
 import type { SupportedLocale } from '@/lib/i18n/types'
-import { buildGoogleDirectionsUrl, computeVisitOrder, dayLabel, itemDragId } from '../utils'
+import { computeVisitOrder, dayLabel, dayNavTargets, dayStats, itemDragId } from '../utils'
+import type { WeatherDay } from '../hooks/useWeather'
+import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
+import { useMaxNavWaypoints } from '@/components/navigation/navLaunch'
+import { WeatherBadge } from './WeatherBadge'
 import type { UpdateItemInput } from '../hooks/useTripData'
 import { TimelineItem } from './TimelineItem'
 import { LegConnector } from './LegConnector'
+import { lodgingsForDay } from './DayDetailCard'
 import { tr } from '../../i18n'
-
-const STOP_MINUTES_ESTIMATE = 40
 
 type DayBlockProps = {
   routeBookId: string
@@ -33,6 +36,14 @@ type DayBlockProps = {
   onUpdateDay: (dayId: string, data: { defaultTravelMode?: TravelMode }) => void
   /** B4：点时间线条目（point/place）打开详情卡 */
   onOpenItemDetail?: (itemId: string) => void
+  /** B2：住宿徽标 + 「添加住宿」 */
+  lodgings?: LodgingRecord[]
+  onAddLodging?: (dayIndex: number) => void
+  onEditLodging?: (lodgingId: string) => void
+  /** B2：「+ 备注」打开备注编辑弹窗 */
+  onAddNote?: (dayId: string) => void
+  /** B2 修复：note 卡片「编辑」入口 */
+  onEditNote?: (itemId: string) => void
   expanded: boolean
   onToggleExpanded: () => void
   /** 拖拽悬停时这一天 point/place 已达 25 条上限：置灰提示不可投放 */
@@ -40,6 +51,8 @@ type DayBlockProps = {
   /** B1.2：该天 legs 两次加载失败：连接行显示「加载失败 · 重试」 */
   legsFailed?: boolean
   onRetryLegs?: () => void
+  /** B4：当天天气（有日期且在预报范围内才有） */
+  weather?: WeatherDay | null
   locale?: SupportedLocale
 }
 
@@ -61,11 +74,17 @@ export function DayBlock({
   onMoveItem,
   onUpdateDay,
   onOpenItemDetail,
+  lodgings = [],
+  onAddLodging,
+  onEditLodging,
+  onAddNote,
+  onEditNote,
   expanded,
   onToggleExpanded,
   dropBlocked = false,
   legsFailed = false,
   onRetryLegs,
+  weather = null,
   locale = 'zh',
 }: DayBlockProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${day.id}` })
@@ -84,24 +103,30 @@ export function DayBlock({
     [items, places, getPointPreview]
   )
 
-  const stats = useMemo(() => {
-    const visitable = items.filter((item) => item.kind === 'point' || item.kind === 'place')
-    const coordCount = visitable.filter((item) => {
-      if (item.kind === 'place') return places.some((place) => place.id === item.placeId)
-      return Boolean(item.pointId && getPointPreview(item.pointId).geo)
-    }).length
-    const legMinutes = (legs?.legs ?? []).reduce((sum, leg) => sum + leg.durationSec / 60, 0)
-    const totalHours = (legMinutes + visitable.length * STOP_MINUTES_ESTIMATE) / 60
-    return { stopCount: visitable.length, coordCount, totalHours }
-  }, [getPointPreview, items, legs, places])
+  const stats = useMemo(() => dayStats(items, legs, places, getPointPreview), [getPointPreview, items, legs, places])
 
-  const navUrl = useMemo(() => {
-    if (!legs || legs.stops.length < 2) return null
-    const stops = legs.stops.map((stop) => `${stop.lat},${stop.lng}`)
-    return buildGoogleDirectionsUrl(stops, day.defaultTravelMode === 'driving' ? 'driving' : 'transit')
-  }, [day.defaultTravelMode, legs])
+  const maxWaypoints = useMaxNavWaypoints()
+  const navTargets = useMemo(
+    () => dayNavTargets(day, legs, items, places, lodgings, getPointPreview, locale, maxWaypoints),
+    [day, getPointPreview, items, legs, locale, lodgings, maxWaypoints, places]
+  )
 
   const showToolbar = selected && stats.coordCount >= 2
+
+  // 住宿徽标：入住日绿 / 退房日红 / 住中灰（from==to 当天锚同时显示入住+退房）
+  const lodgingBadges = useMemo(() => {
+    const rows: { id: string; placeTitle: string; badgeKey: 'badgeCheckIn' | 'badgeCheckOut' | 'badgeStaying' }[] = []
+    for (const lodging of lodgingsForDay(lodgings, day.dayIndex)) {
+      const placeTitle =
+        places.find((row) => row.id === lodging.placeId)?.title ?? tr('routebook.common.placeFallback', locale)
+      if (lodging.fromDayIndex === day.dayIndex) rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeCheckIn' })
+      if (lodging.fromDayIndex < day.dayIndex && day.dayIndex < lodging.toDayIndex)
+        rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeStaying' })
+      if (lodging.toDayIndex === day.dayIndex && lodging.toDayIndex !== lodging.fromDayIndex)
+        rows.push({ id: lodging.id, placeTitle, badgeKey: 'badgeCheckOut' })
+    }
+    return rows
+  }, [day.dayIndex, locale, lodgings, places])
 
   return (
     <section
@@ -143,12 +168,55 @@ export function DayBlock({
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold text-slate-900">{dayLabel(day, day.dayIndex, locale)}</span>
             {day.title ? <span className="truncate text-xs text-slate-400">{day.title}</span> : null}
+            {weather ? <WeatherBadge weather={weather} locale={locale} className="ml-auto shrink-0" /> : null}
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
             {tr('routebook.common.stopCount', locale, { n: stats.stopCount })}
             {stats.stopCount > 0 ? tr('routebook.sidebar.dayStatsHours', locale, { h: stats.totalHours.toFixed(1) }) : ''}
+            {stats.stopCount > 0 && stats.farLeg ? tr('routebook.day.farLeg', locale) : ''}
           </div>
+          {lodgingBadges.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {lodgingBadges.map((badge) => (
+                <button
+                  key={`${badge.id}:${badge.badgeKey}`}
+                  type="button"
+                  disabled={!onEditLodging}
+                  title={badge.placeTitle}
+                  className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-default ${
+                    badge.badgeKey === 'badgeCheckIn'
+                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200/70'
+                      : badge.badgeKey === 'badgeCheckOut'
+                        ? 'bg-rose-100 text-rose-600 hover:bg-rose-200/70'
+                        : 'bg-slate-200/70 text-slate-500 hover:bg-slate-300/60'
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onEditLodging?.(badge.id)
+                  }}
+                >
+                  <BedDouble className="h-3 w-3" />
+                  {tr(`routebook.lodging.${badge.badgeKey}`, locale)}
+                  <span className="max-w-24 truncate font-normal">{badge.placeTitle}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
+        {onAddLodging ? (
+          <button
+            type="button"
+            aria-label={tr('routebook.lodging.add', locale)}
+            title={tr('routebook.lodging.add', locale)}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-emerald-50 hover:text-emerald-600"
+            onClick={(event) => {
+              event.stopPropagation()
+              onAddLodging(day.dayIndex)
+            }}
+          >
+            <BedDouble className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
 
       {expanded ? (
@@ -171,7 +239,13 @@ export function DayBlock({
             {items.map((item) => (
               <div key={item.id}>
                 {legByToId.has(item.id) ? (
-                  <LegConnector leg={legByToId.get(item.id) ?? null} routeVisible={routeVisible} locale={locale} />
+                  <LegConnector
+                    leg={legByToId.get(item.id) ?? null}
+                    routeVisible={routeVisible}
+                    itemLegMode={item.legMode}
+                    onChangeLegMode={(mode) => onUpdateItem(item.id, { legMode: mode })}
+                    locale={locale}
+                  />
                 ) : null}
                 <TimelineItem
                   item={item}
@@ -183,6 +257,7 @@ export function DayBlock({
                   onUpdate={(data) => onUpdateItem(item.id, data)}
                   onDelete={() => onDeleteItem(item.id)}
                   onMoveItem={(targetDayId) => onMoveItem(item.id, targetDayId)}
+                  onEditNote={item.kind === 'note' && onEditNote ? () => onEditNote(item.id) : undefined}
                   onOpenDetail={
                     (item.kind === 'point' || item.kind === 'place') && onOpenItemDetail
                       ? () => onOpenItemDetail(item.id)
@@ -198,6 +273,17 @@ export function DayBlock({
               </div>
             ) : null}
           </SortableContext>
+
+          {onAddNote ? (
+            <button
+              type="button"
+              className="mt-1 inline-flex min-h-8 items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-slate-500 transition hover:bg-pink-100/60 hover:text-slate-700"
+              onClick={() => onAddNote(day.id)}
+            >
+              <StickyNote className="h-3.5 w-3.5 text-brand-400" />
+              {tr('routebook.note.add', locale)}
+            </button>
+          ) : null}
 
           {showToolbar ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl border border-pink-100/70 bg-pink-50/40 px-2 py-1.5">
@@ -218,16 +304,8 @@ export function DayBlock({
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" />
                 {tr('routebook.sidebar.optimize', locale)}
               </button>
-              {navUrl ? (
-                <a
-                  href={navUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-8 items-center gap-1 rounded-xl bg-white px-2.5 text-xs font-medium text-slate-600 no-underline transition hover:bg-pink-100/60"
-                >
-                  <Navigation className="h-3.5 w-3.5 text-brand-500" />
-                  {tr('routebook.sidebar.openNav', locale)}
-                </a>
+              {navTargets.length > 0 ? (
+                <OpenInMapsMenu targets={navTargets} locale={locale} label={tr('routebook.nav.open', locale)} />
               ) : null}
               <span className="mx-1 h-4 w-px bg-pink-200/70" />
               {(['transit', 'walking', 'driving'] as const).map((mode) => (

@@ -5,7 +5,9 @@ import { BedDouble, ChevronDown, ChevronUp, ExternalLink, MapPin, Navigation, St
 import type { SupportedLocale } from '@/lib/i18n/types'
 import { toIntlLocale } from '@/lib/i18n/intlLocale'
 import type { DayRecord, ItemRecord, PlaceKind, PlaceRecord, PointPreview } from '../types'
-import { buildGoogleDirectionsUrl, dayLabel, pickPointGradient } from '../utils'
+import { dayLabel, pickPointGradient } from '../utils'
+import { buildSingleTargets } from '@/lib/route/navigationTargets'
+import { OpenInMapsMenu } from '@/components/navigation/OpenInMapsMenu'
 import { tr } from '../../i18n'
 
 export type PlaceIntro = {
@@ -121,10 +123,8 @@ export function PointDetailCard({
   const address = isPoint ? null : place?.address ?? null
   const lat = isPoint ? preview?.geo?.[0] : place?.lat
   const lng = isPoint ? preview?.geo?.[1] : place?.lng
-  const googleMapsUrl =
-    typeof lat === 'number' && typeof lng === 'number'
-      ? buildGoogleDirectionsUrl([`${lat},${lng}`])
-      : null
+  const navTargets =
+    typeof lat === 'number' && typeof lng === 'number' ? buildSingleTargets({ lat, lng, name: title }, 'transit') : []
   const pointMapUrl = isPoint && item.pointId ? `/map?p=${encodeURIComponent(item.pointId)}` : null
   const gradient = pickPointGradient(item.pointId ?? item.id)
   const KindIcon = place ? PLACE_KIND_ICON[place.kind] : MapPin
@@ -262,16 +262,13 @@ export function PointDetailCard({
               {tr('routebook.card.viewOnMap', locale)}
             </a>
           ) : null}
-          {googleMapsUrl ? (
-            <a
-              href={googleMapsUrl}
-              target="_blank"
-              rel="noreferrer"
-              className={`${ACTION_CLASS} border border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50`}
-            >
-              <Navigation className="h-3.5 w-3.5 text-brand-500" />
-              {tr('routebook.card.googleMaps', locale)}
-            </a>
+          {navTargets.length > 0 ? (
+            <OpenInMapsMenu
+              targets={navTargets}
+              locale={locale}
+              presentation={compact ? 'sheet' : 'dropdown'}
+              triggerClassName={`${ACTION_CLASS} border border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50`}
+            />
           ) : null}
           <select
             aria-label={tr('routebook.common.moveTo', locale)}

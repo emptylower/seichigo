@@ -955,9 +955,6 @@
       "startDay": "Day {n} を開始",
       "startNav": "ナビを開始",
       "tabAll": "すべて",
-      "tabRoute": "ルート",
-      "tabRouteDay": "ルート · Day {n}",
-      "tabPool": "スポットプール",
       "addFromPool": "プールから追加",
       "removeFromPoolFailed": "プールからの削除に失敗しました",
       "saveFailed": "保存に失敗しました",
@@ -972,7 +969,9 @@
       "undoDeleteItem": "項目を削除",
       "undoReorder": "順序を調整",
       "undoOptimize": "順序を最適化",
-      "legsFailed": "ルートの読み込みに失敗しました"
+      "legsFailed": "ルートの読み込みに失敗しました",
+      "staleConflict": "別の場所で変更されました",
+      "undoCleared": "取り消し履歴をクリアしました"
     },
     "sidebar": {
       "undo": "取り消し",
@@ -992,7 +991,6 @@
       "routeOn": "ルート表示",
       "routeOff": "ルート非表示",
       "optimize": "最適化",
-      "openNav": "ナビを開く",
       "dayLimit": "この日は最大 25 件までです",
       "unassignedCount": "未割り当て {n} 件",
       "unassignedEmpty": "現在、未割り当ての項目はありません"
@@ -1013,7 +1011,11 @@
       "minutes": "{n} 分",
       "hoursMinutes": "{h} 時間 {m} 分",
       "hours": "{h} 時間",
-      "estimated": "推定"
+      "estimated": "推定",
+      "useDayDefault": "当日のデフォルト",
+      "agentChecked": "AI 確認済み",
+      "changeMode": "この区間の移動手段を変更",
+      "overrideAgent": "AI の検索結果を上書きします"
     },
     "map": {
       "title": "ルートプレビュー",
@@ -1061,7 +1063,14 @@
       "sheetSearchPlaceholder": "スポット名やサブタイトルで検索...",
       "globalBadge": "行きたい",
       "dragIntoRoute": "ルートにドラッグ",
-      "addToMap": "このマップに追加"
+      "addToMap": "このマップに追加",
+      "placesTitle": "カスタム地点（{n}）",
+      "addPlace": "カスタム地点を追加",
+      "addPlaceToDay": "選択した日に追加",
+      "editPlace": "カスタム地点を編集",
+      "deletePlace": "カスタム地点を削除",
+      "placesEmpty": "地図を右クリックするか、上のボタンから新規作成",
+      "deletePlaceConfirm": "「{title}」を削除しますか？{items} 件の項目と {lodgings} 件の宿泊も一緒に削除されます。"
     },
     "selector": {
       "choose": "マップを選択",
@@ -1081,7 +1090,6 @@
       "openingHours": "営業時間",
       "website": "ウェブサイト",
       "openInGoogleMaps": "Google マップで開く",
-      "googleMaps": "Google マップ",
       "viewOnMap": "巡礼マップで見る",
       "removeFromDay": "この日から削除"
     },
@@ -1104,7 +1112,7 @@
       "distance": "距離",
       "mode": "移動手段",
       "navDoneCheckIn": "到着してチェックイン",
-      "arrived": "このスポットに到着",
+      "arrived": "到着 · 次の駅へ",
       "exitNav": "ナビを終了",
       "customPlace": "カスタム地点 · {title}",
       "noImage": "参考画像なし",
@@ -1113,7 +1121,7 @@
       "skip": "スキップ",
       "dayDone": "{day} 完了",
       "tomorrowStart": "明日は {title} から",
-      "allDone": "今日巡れるスポットをすべて完了しました。",
+      "allDone": "すべて完了",
       "checkedLabel": "チェックイン済み",
       "totalLabel": "総スポット数",
       "backToTrip": "旅程に戻る",
@@ -1122,6 +1130,142 @@
       "undoCheckIn": "チェックインを取り消す",
       "undoFailed": "取り消しに失敗しました。もう一度お試しください。",
       "checkInNext": "チェックインして次へ"
+    },
+    "place": {
+      "dialogCreate": "カスタム地点を追加",
+      "dialogEdit": "カスタム地点を編集",
+      "kindLabel": "種類",
+      "titleLabel": "名称",
+      "titlePlaceholder": "例：ホテル・駅・レストラン…",
+      "addressLabel": "住所検索",
+      "addressPlaceholder": "住所や地名を検索",
+      "latLabel": "緯度",
+      "lngLabel": "経度",
+      "noteLabel": "メモ（任意）",
+      "notePlaceholder": "補足情報…",
+      "submit": "地点を保存",
+      "countryMismatch": "この結果は現在の旅程の国の外にあります。正しい場所か確認してください"
+    },
+    "lodging": {
+      "add": "宿泊を追加",
+      "edit": "宿泊を編集",
+      "placeLabel": "宿泊地点",
+      "newPlace": "宿泊地点を新規作成",
+      "noPlaceHint": "「宿泊」タイプのカスタム地点がまだありません。先に作成してください",
+      "fromLabel": "チェックイン日",
+      "toLabel": "チェックアウト日",
+      "checkInLabel": "チェックイン時刻（任意）",
+      "checkOutLabel": "チェックアウト時刻（任意）",
+      "noteLabel": "メモ（任意）",
+      "submit": "宿泊を保存",
+      "badgeCheckIn": "チェックイン",
+      "badgeCheckOut": "チェックアウト",
+      "badgeStaying": "連泊",
+      "delete": "宿泊を削除",
+      "deleteConfirm": "この宿泊を削除しますか？"
+    },
+    "dayDetail": {
+      "lodgingTitle": "当日の宿泊",
+      "collapse": "折りたたむ",
+      "expand": "展開"
+    },
+    "note": {
+      "add": "メモ",
+      "edit": "メモを編集",
+      "dialogTitle": "メモを追加",
+      "titleLabel": "タイトル",
+      "titlePlaceholder": "例：集合場所・チケット受取…",
+      "detailLabel": "詳細（任意）",
+      "iconLabel": "アイコン",
+      "colorLabel": "色",
+      "timeLabel": "時刻（任意）",
+      "submit": "メモを追加",
+      "submitEdit": "メモを保存",
+      "icon": {
+        "info": "情報",
+        "clock": "時刻",
+        "train": "電車",
+        "utensils": "食事",
+        "ticket": "チケット",
+        "camera": "撮影",
+        "shopping-bag": "買い物",
+        "alert": "注意",
+        "star": "お気に入り",
+        "bookmark": "ブックマーク"
+      },
+      "color": {
+        "gray": "グレー",
+        "pink": "ピンク",
+        "amber": "アンバー",
+        "green": "緑",
+        "sky": "空色",
+        "violet": "紫"
+      }
+    },
+    "dayOrder": {
+      "button": "日の順序を調整",
+      "title": "日の順序を調整",
+      "hint": "ドラッグで並べ替え、「+」でこの日の下に新しい日を挿入。空の日のみ削除できます",
+      "insertBelow": "下に日を挿入",
+      "deleteDay": "この日を削除",
+      "deleteBlocked": "空の日のみ削除できます（最後の1日は削除不可）",
+      "submit": "順序を保存"
+    },
+    "mobile": {
+      "dockLabel": "旅程の操作",
+      "pillsLabel": "日を選択",
+      "disabledWithReason": "{label}（{reason}）",
+      "travelModeLabel": "この日の標準の移動手段",
+      "tabPlan": "計画",
+      "tabMap": "地図",
+      "allDays": "すべての日",
+      "dockPool": "ポイント",
+      "dockOptimize": "最適化",
+      "dockNav": "ナビを開く",
+      "remove": "削除",
+      "optimizeNeedDay": "先に日を選んでください",
+      "optimizeNeedPoints": "移動できる地点が 2 つ以上必要です",
+      "emptyDay": "この日にはまだ項目がありません。ポイントから追加しましょう",
+      "noLodging": "この日の宿泊はまだありません",
+      "navNoStops": "この日はナビできる地点がありません"
+    },
+    "nav": {
+      "open": "ナビを開く",
+      "menuLabel": "地図アプリを選択",
+      "sheetTitle": "地図アプリで開く",
+      "google": "Google マップ",
+      "apple": "Apple マップ",
+      "amap": "高徳地図（Amap）",
+      "endpointsOnly": "出発地と目的地のみ",
+      "viaTruncated": "経由地が多いため一部省略",
+      "segment": "{n}/{total} 区間",
+      "lodgingFallback": "宿泊先",
+      "webVersion": "Web版"
+    },
+    "weather": {
+      "title": "天気",
+      "ariaLabel": "天気：最高 {max}°、最低 {min}°"
+    },
+    "dates": {
+      "button": "日程",
+      "aria": "旅程の日付を編集",
+      "title": "旅程の日付",
+      "startLabel": "開始日",
+      "hint": "各日の日付は開始日から順に設定されます",
+      "save": "保存",
+      "clear": "日付をクリア"
+    },
+    "day": {
+      "farLeg": " · 長距離区間あり"
+    },
+    "export": {
+      "button": "エクスポート",
+      "menuLabel": "旅程をエクスポート",
+      "gpxAll": "GPX（旅程全体）",
+      "gpxDay": "GPX（Day {n}）",
+      "ics": "カレンダー（ICS）",
+      "icsNeedDates": "日付が未設定のためカレンダーを書き出せません",
+      "more": "その他"
     }
   }
 }

@@ -1,11 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from 'next-auth'
-import { buildDayStops, resolveDayLegs, LODGING_END_STOP_ID, LODGING_START_STOP_ID, type LegStop } from '@/lib/routeBook/legs'
+import type { Prisma } from '@prisma/client'
+import { buildDayStops, resolveDayLegs, LODGING_END_STOP_ID, LODGING_START_STOP_ID, type LegResolver, type LegStop } from '@/lib/routeBook/legs'
 import { createLegHandlers } from '@/lib/routeBook/handlers/legs'
+import { googleLegCacheRawKey } from '@/lib/routeBook/legResolverGoogle'
+import { routeLegCacheKey } from '@/lib/routeBook/legCache'
 import { InMemoryRouteBookRepo } from '@/lib/routeBook/repoMemory'
 import { InMemoryPointPoolRepo } from '@/lib/pointPool/repoMemory'
 import type { RouteBookApiDeps, } from '@/lib/routeBook/api'
 import type { RouteBookItem, RouteBookLodging, RouteBookPlace } from '@/lib/routeBook/repo'
+
+// B2 A2：批量缓存读替换为可控内存实现（routeLegCacheKey 保持真实 sha256）
+const legCacheBatches = vi.hoisted(() => new Map<string, Prisma.JsonValue>())
+vi.mock('@/lib/routeBook/legCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/routeBook/legCache')>()
+  return {
+    ...actual,
+    getCachedLegs: vi.fn(async (keys: string[]) => {
+      const out = new Map<string, Prisma.JsonValue>()
+      for (const key of keys) {
+        const hit = legCacheBatches.get(key)
+        if (hit !== undefined) out.set(key, hit)
+      }
+      return out
+    }),
+  }
+})
 
 function item(overrides: Partial<RouteBookItem> & { id: string }): RouteBookItem {
   return {
@@ -45,6 +65,37 @@ const HOTEL_PLACE: RouteBookPlace = { id: 'pl-hotel', routeBookId: 'rb-1', kind:
 const HOTEL_B_PLACE: RouteBookPlace = { id: 'pl-hotel-b', routeBookId: 'rb-1', kind: 'lodging', title: '酒店B', address: null, lat: 35.0300, lng: 135.0400, note: null, createdAt: new Date() }
 
 const day = { id: 'd1', dayIndex: 2 }
+
+function makeLegDeps(overrides?: Partial<RouteBookApiDeps>) {
+  const pointBangumiMap = new Map([['p-near-a', 1], ['p-near-b', 1]])
+  const pointCoordsFake = async (ids: string[]) => {
+    const map = new Map<string, { lat: number; lng: number }>()
+    for (const id of ids) {
+      const coords = POINT_COORDS.get(id)
+      if (coords) map.set(id, coords)
+    }
+    return map
+  }
+  // A2：坐标并入 getDayContext，内存仓储注入同样的假实现
+  const repo = new InMemoryRouteBookRepo({ pointBangumiMap, pointCoords: pointCoordsFake })
+  const deps: RouteBookApiDeps = {
+    repo,
+    pointPoolRepo: new InMemoryPointPoolRepo({ pointBangumiMap }),
+    getSession: async () => ({ user: { id: 'u1' } } as Session),
+    now: () => new Date('2026-09-23T00:00:00.000Z'),
+    pointCoords: pointCoordsFake,
+    ...overrides,
+  }
+  return { repo, deps }
+}
+
+async function seedTwoPointDay(repo: InMemoryRouteBookRepo): Promise<{ bookId: string; dayId: string }> {
+  const book = await repo.create('u1', '本', 'draft')
+  const dayRow = (await repo.getById(book.id, 'u1'))!.days[0]!
+  await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
+  await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
+  return { bookId: book.id, dayId: dayRow.id }
+}
 
 describe('buildDayStops 住宿首尾', () => {
   const items = [
@@ -148,6 +199,29 @@ describe('buildDayStops transit 接管与失效', () => {
     expect(staleTransitItemIds).toEqual([])
   })
 
+  it('A3：目标停靠点显式设置 legMode → agent 段不被采用，transit 条目进 stale', () => {
+    const items = [
+      item({ id: 'i-a', pointId: 'p-near-a', sortOrder: 0 }),
+      item({
+        id: 'i-t',
+        kind: 'transit',
+        title: '公交',
+        sortOrder: 1,
+        payload: {
+          transitBetween: { prevItemId: 'i-a', nextItemId: 'i-b' },
+          transport: { mode: 'transit', durationMin: 20, distanceKm: 5 },
+        },
+      }),
+      item({ id: 'i-b', pointId: 'p-near-b', sortOrder: 2, legMode: 'walking' }),
+    ]
+
+    const { stops, agentLegs, staleTransitItemIds } = buildDayStops(day, items, [], [], POINT_COORDS)
+    expect(stops.map((s) => s.id)).toEqual(['i-a', 'i-b'])
+    expect(stops[1]).toMatchObject({ id: 'i-b', legMode: 'walking' })
+    expect(agentLegs.size).toBe(0)
+    expect(staleTransitItemIds).toEqual(['i-t'])
+  })
+
   it('无坐标点位不进停靠序列，也不参与 transit 邻居判定', () => {
     const items = [
       item({ id: 'i-ghost', pointId: 'p-unknown', sortOrder: 0 }),
@@ -219,40 +293,46 @@ describe('resolveDayLegs', () => {
     expect(transit).toMatchObject({ mode: 'transit', source: 'heuristic' })
     expect(transit!.durationSec).toBeGreaterThanOrEqual(10 * 60)
   })
+
+  it('A2：显式 legMode 不被启发式改写——远距 walking 保持 walking（按 4.5km/h 估算）', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'c', ...COORDS.farC, legMode: 'walking' },
+    ]
+    const modes: string[] = []
+    const legs = await resolveDayLegs(stops, new Map(), 'transit', async (_from, _to, mode) => {
+      modes.push(mode)
+      return null
+    })
+    expect(modes).toEqual(['walking'])
+    // nearA→farC 约 6.3km：步行估算 ≈ 84 分钟；若被启发式改写成 transit 只有约 27 分钟
+    expect(legs[0]).toMatchObject({ mode: 'walking', source: 'heuristic', toId: 'c' })
+    expect(legs[0]!.durationSec).toBeGreaterThan(60 * 60)
+  })
+
+  it('A2：显式 legMode transit 近距也保持 transit（25km/h + 12 分钟换乘）', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'b', ...COORDS.nearB, legMode: 'transit' },
+    ]
+    const legs = await resolveDayLegs(stops, new Map(), 'walking', async () => null)
+    expect(legs[0]).toMatchObject({ mode: 'transit', source: 'heuristic', toId: 'b' })
+    expect(legs[0]!.durationSec).toBeGreaterThanOrEqual(12 * 60)
+  })
+
+  it('A3：显式 legMode 覆盖 agent 数据——agentLegs 有该段也不用', async () => {
+    const stops: LegStop[] = [
+      { id: 'a', ...COORDS.nearA, legMode: null },
+      { id: 'b', ...COORDS.nearB, legMode: 'walking' },
+    ]
+    const agentLegs = new Map([['b', { mode: 'transit', durationMin: 20, distanceKm: 5 }]])
+    const legs = await resolveDayLegs(stops, agentLegs, 'transit', async () => null)
+    expect(legs[0]).toMatchObject({ mode: 'walking', source: 'heuristic', toId: 'b' })
+    expect(legs[0]!.durationSec).toBeLessThan(20 * 60)
+  })
 })
 
 describe('legs handler', () => {
-  function makeLegDeps(overrides?: Partial<RouteBookApiDeps>) {
-    const pointBangumiMap = new Map([['p-near-a', 1], ['p-near-b', 1]])
-    const pointCoordsFake = async (ids: string[]) => {
-      const map = new Map<string, { lat: number; lng: number }>()
-      for (const id of ids) {
-        const coords = POINT_COORDS.get(id)
-        if (coords) map.set(id, coords)
-      }
-      return map
-    }
-    // A2：坐标并入 getDayContext，内存仓储注入同样的假实现
-    const repo = new InMemoryRouteBookRepo({ pointBangumiMap, pointCoords: pointCoordsFake })
-    const deps: RouteBookApiDeps = {
-      repo,
-      pointPoolRepo: new InMemoryPointPoolRepo({ pointBangumiMap }),
-      getSession: async () => ({ user: { id: 'u1' } } as Session),
-      now: () => new Date('2026-09-23T00:00:00.000Z'),
-      pointCoords: pointCoordsFake,
-      ...overrides,
-    }
-    return { repo, deps }
-  }
-
-  async function seedTwoPointDay(repo: InMemoryRouteBookRepo): Promise<{ bookId: string; dayId: string }> {
-    const book = await repo.create('u1', '本', 'draft')
-    const dayRow = (await repo.getById(book.id, 'u1'))!.days[0]!
-    await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
-    await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
-    return { bookId: book.id, dayId: dayRow.id }
-  }
-
   it('dayGeometry 有：注入整天几何后随响应返回（停靠序列与默认 mode 透传）', async () => {
     const calls: Array<{ stops: { lat: number; lng: number }[]; mode: string }> = []
     const geometry = { type: 'LineString' as const, coordinates: [[135.0, 35.0], [135.001, 35.0027]] as [number, number][] }
@@ -397,5 +477,224 @@ describe('legs handler', () => {
     expect(body.dayGeometry).toEqual(geometry)
     expect(sigCalls).toEqual([{ dayId, sig: 'x'.repeat(64) }])
     expect(geometrySigCaches).toEqual([{ dayId, sig: 'x'.repeat(64) }])
+  })
+})
+
+describe('legs handler B2 A2（Google 段池）', () => {
+  const GOOGLE_LEG = { durationSec: 421, distanceM: 812, polyline: [[35.0, 135.0]] as [number, number][], source: 'google' as const }
+
+  /** 用 place 造 n 个停靠点（坐标任意，不受点位表约束） */
+  async function seedPlaceDay(repo: InMemoryRouteBookRepo, count: number): Promise<{ bookId: string; dayId: string }> {
+    const book = await repo.create('u1', '本', 'draft')
+    const dayRow = (await repo.getById(book.id, 'u1'))!.days[0]!
+    for (let i = 0; i < count; i++) {
+      const place = await repo.createPlace(book.id, 'u1', {
+        kind: 'other',
+        title: `地点${i}`,
+        lat: 35 + i * 0.003,
+        lng: 135 + i * 0.003,
+      })
+      await repo.createItem(book.id, 'u1', { dayId: dayRow.id, kind: 'place', placeId: place.id })
+    }
+    return { bookId: book.id, dayId: dayRow.id }
+  }
+
+  function flushMicrotasks() {
+    return Promise.resolve().then(async () => {
+      for (let i = 0; i < 30; i++) await Promise.resolve()
+    })
+  }
+
+  it('deps.legResolver 默认接线：createLegHandlers(deps) 不传 resolver 也走 deps 注入的实现', async () => {
+    const calls: number[] = []
+    const { repo, deps } = makeLegDeps({
+      legResolver: async (_from, _to, mode) => {
+        calls.push(1)
+        expect(mode).toBe('transit')
+        return GOOGLE_LEG
+      },
+    })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { legs: Array<typeof GOOGLE_LEG & { fromId: string; toId: string; mode: string }> }
+    expect(body.legs).toHaveLength(1)
+    expect(body.legs[0]).toMatchObject({ ...GOOGLE_LEG, mode: 'transit' })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('批量缓存命中：不再调 Google resolver，直接用缓存段', async () => {
+    const raw = googleLegCacheRawKey('transit', COORDS.nearA, COORDS.nearB)
+    legCacheBatches.set(routeLegCacheKey(raw), { durationSec: 321, distanceM: 654, polyline: null, source: 'google' })
+    const resolver = vi.fn(async () => GOOGLE_LEG) as unknown as LegResolver
+    const { repo, deps } = makeLegDeps({ legResolver: resolver })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { legs: Array<{ durationSec: number; source: string }> }
+    expect(body.legs[0]).toMatchObject({ durationSec: 321, distanceM: 654, source: 'google' })
+    expect(resolver).not.toHaveBeenCalled()
+  })
+
+  it('缓存里的脏 payload（source 非 google）按未命中：照常调 resolver', async () => {
+    const raw = googleLegCacheRawKey('transit', COORDS.nearA, COORDS.nearB)
+    legCacheBatches.set(routeLegCacheKey(raw), { durationSec: 1, distanceM: 1, source: 'heuristic' })
+    const { repo, deps } = makeLegDeps({ legResolver: async () => GOOGLE_LEG })
+    const { bookId, dayId } = await seedTwoPointDay(repo)
+
+    const res = await createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    const body = (await res.json()) as { legs: Array<{ source: string }> }
+    expect(body.legs[0]).toMatchObject({ source: 'google', durationSec: 421 })
+  })
+
+  it('未命中的段并发上限 4：第 5 段要等前面释放槽位才进入', async () => {
+    const gates: Array<() => void> = []
+    let started = 0
+    const legResolver: LegResolver = () => {
+      started++
+      return new Promise((resolve) => {
+        gates.push(() => resolve(GOOGLE_LEG))
+      })
+    }
+    const { repo, deps } = makeLegDeps({ legResolver })
+    const { bookId, dayId } = await seedPlaceDay(repo, 6) // 6 站 → 5 段
+
+    const promise = createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+      params: Promise.resolve({ id: bookId, dayId }),
+    })
+    await flushMicrotasks()
+    expect(started).toBe(4)
+
+    gates[0]!()
+    await flushMicrotasks()
+    expect(started).toBe(5)
+
+    for (const gate of gates.slice(1)) gate()
+    const res = await promise
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { legs: Array<{ source: string }> }
+    expect(body.legs).toHaveLength(5)
+    expect(body.legs.every((leg) => leg.source === 'google')).toBe(true)
+  })
+
+  it('整体 8 秒截止：超时的段降级 heuristic', async () => {
+    vi.useFakeTimers()
+    try {
+      const never: LegResolver = () => new Promise(() => {})
+      const { repo, deps } = makeLegDeps({ legResolver: never })
+      const { bookId, dayId } = await seedTwoPointDay(repo)
+
+      const promise = createLegHandlers(deps).GET(new Request('http://localhost/x'), {
+        params: Promise.resolve({ id: bookId, dayId }),
+      })
+      await flushMicrotasks()
+      vi.advanceTimersByTime(8_000)
+      const res = await promise
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { legs: Array<{ source: string; mode: string }> }
+      expect(body.legs).toHaveLength(1)
+      expect(body.legs[0]).toMatchObject({ source: 'heuristic' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('legs handler 限流降级（B2 修复 A1）', () => {
+  const GOOGLE_LEG = { durationSec: 421, distanceM: 812, polyline: [[35.0, 135.0]] as [number, number][], source: 'google' as const }
+
+  beforeEach(() => {
+    legCacheBatches.clear()
+  })
+
+  /** 两个点位 + 第二点显式 legMode=walking → 段按 walking 计算，会计入 Google 限流 */
+  async function seedWalkingDay(repo: InMemoryRouteBookRepo, userId: string): Promise<{ bookId: string; dayId: string }> {
+    const book = await repo.create(userId, '本', 'draft')
+    const dayRow = (await repo.getById(book.id, userId))!.days[0]!
+    await repo.createItem(book.id, userId, { dayId: dayRow.id, kind: 'point', pointId: 'p-near-a' })
+    const second = await repo.createItem(book.id, userId, { dayId: dayRow.id, kind: 'point', pointId: 'p-near-b' })
+    await repo.updateItem(book.id, userId, second.item.id, { legMode: 'walking' })
+    return { bookId: book.id, dayId: dayRow.id }
+  }
+
+  it('超过 10 次/分钟：返回 200 + degraded，该次不调 resolver，source 无 google', async () => {
+    const resolverCalls: number[] = []
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-degrade' } } as Session),
+      legResolver: async () => {
+        resolverCalls.push(1)
+        return GOOGLE_LEG
+      },
+    })
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-degrade')
+    const handlers = createLegHandlers(deps)
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
+
+    for (let i = 0; i < 10; i++) {
+      const res = await get()
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string }
+      expect(body.degraded).toBeUndefined()
+    }
+    expect(resolverCalls).toHaveLength(10)
+
+    const limited = await get()
+    expect(limited.status).toBe(200)
+    const body = (await limited.json()) as { degraded?: string; legs: Array<{ source: string }> }
+    expect(body.degraded).toBe('rate_limited')
+    expect(body.legs).toHaveLength(1)
+    expect(body.legs[0]).toMatchObject({ source: 'heuristic' })
+    expect(resolverCalls).toHaveLength(10)
+  })
+
+  it('纯缓存命中不计数：超过 10 次也不降级，且不调 resolver', async () => {
+    const raw = googleLegCacheRawKey('walking', COORDS.nearA, COORDS.nearB)
+    legCacheBatches.set(routeLegCacheKey(raw), { durationSec: 321, distanceM: 654, polyline: null, source: 'google' })
+    const resolver = vi.fn(async () => GOOGLE_LEG) as unknown as LegResolver
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-cache' } } as Session),
+      legResolver: resolver,
+    })
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-cache')
+    const handlers = createLegHandlers(deps)
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
+
+    for (let i = 0; i < 12; i++) {
+      const res = await get()
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string; legs: Array<{ source: string; durationSec: number }> }
+      expect(body.degraded).toBeUndefined()
+      expect(body.legs[0]).toMatchObject({ source: 'google', durationSec: 321 })
+    }
+    expect(resolver).not.toHaveBeenCalled()
+  })
+
+  it('无 walking/driving 段的请求不计数：transit 段再多请求也不降级', async () => {
+    const { repo, deps } = makeLegDeps({
+      getSession: async () => ({ user: { id: 'u-a1-transit' } } as Session),
+    })
+    const { bookId, dayId } = await seedWalkingDay(repo, 'u-a1-transit')
+    // 去掉显式 legMode，回到默认 transit 段
+    const dayItems = (await repo.getDayContext(bookId, 'u-a1-transit', dayId))!.items
+    for (const it of dayItems) {
+      if (it.legMode) await repo.updateItem(bookId, 'u-a1-transit', it.id, { legMode: null })
+    }
+    const handlers = createLegHandlers(deps)
+    const get = () => handlers.GET(new Request('http://localhost/x'), { params: Promise.resolve({ id: bookId, dayId }) })
+
+    for (let i = 0; i < 12; i++) {
+      const res = await get()
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { degraded?: string }
+      expect(body.degraded).toBeUndefined()
+    }
   })
 })
