@@ -163,7 +163,7 @@ export function useAnitabiSelection(ctx: any) {
     }
     if (selectedPointId === reportedPointIdRef.current) return
     reportedPointIdRef.current = selectedPointId
-    track('map_point_open', { bangumi_id: selectedBangumiId ?? undefined, source: source ?? 'url' })
+    track('map_point_open', { bangumi_id: selectedBangumiId ?? undefined, open_source: source ?? 'url' })
   }, [selectedBangumiId, selectedPointId])
 
   const openBangumi = useCallback(
