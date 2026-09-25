@@ -20,7 +20,16 @@ export type AnalyticsEvent =
   | 'share'
   | 'begin_checkout'
 
-export type AnalyticsParams = Record<string, string | number | boolean | undefined>
+// source/medium/campaign 等是 GA4 会话流量归因的保留参数名：事件一旦带上它们，
+// 该访客的会话来源会被改写成这些值（报表里出现 marker / (not set) 这类假来源），类型层面直接禁掉
+export type AnalyticsParams = Record<string, string | number | boolean | undefined> & {
+  source?: never
+  medium?: never
+  campaign?: never
+  campaign_id?: never
+  term?: never
+  content?: never
+}
 
 /** GA4 measurement id：track.ts 与 app/layout.tsx 的内联 config 共用同一份，改一处即可 */
 export const GA_MEASUREMENT_ID = 'G-F7E894BEWR'

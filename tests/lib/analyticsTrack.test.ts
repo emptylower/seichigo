@@ -129,6 +129,14 @@ describe('track（GA4 自定义事件上报）', () => {
     expect(params.days).toBe(7)
   })
 
+  it('GA 归因保留参数名（source/medium/campaign 等）在类型层面被禁掉', () => {
+    const fake = setWindow('seichigo.com')
+    // @ts-expect-error source 是 GA4 会话流量归因的保留参数名，AnalyticsParams 类型护栏应报错
+    track('map_point_open', { bangumi_id: 1, source: 'marker' })
+    // 运行时护栏只挡类型不挡执行：误传了也照常上报，不抛错
+    expect((lastPushed(fake)[2] as Record<string, unknown>).source).toBe('marker')
+  })
+
   it('按路径前缀自动带上 locale，调用方传了以调用方为准', () => {
     const cases: Array<[string, string]> = [
       ['/', 'zh'],

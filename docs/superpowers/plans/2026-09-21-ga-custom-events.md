@@ -41,6 +41,8 @@ export function track(event: AnalyticsEvent, params?: Record<string, string | nu
 
 事件名与参数名一律 snake_case。能用 GA4 推荐事件名的就用推荐名（sign_up / login / share / begin_checkout）。
 
+注意：`source`/`medium`/`campaign` 等是 GA4 流量归因保留参数，事件参数不能用这些名字（`track.ts` 的 `AnalyticsParams` 已加类型护栏拦掉，需要类似语义时换名，如 `open_source`）。
+
 | 事件 | 触发时机 | 参数 | 已知位置（自行确认，可能不全） |
 |---|---|---|---|
 | `plan_start` | 用户提交一次规划请求（发起 agent run 的那一下，请求发出前） | `entry`: `start_page`\|`plan_page`；`suggestion`: 是否点的建议行（boolean） | `app/(authed)/plan/[id]/ui.tsx` 里 POST `/api/me/plans/${planId}/agent`；`/plan/start` 的 PlanStartView |
@@ -48,7 +50,7 @@ export function track(event: AnalyticsEvent, params?: Record<string, string | nu
 | `plan_generated` | 一次 agent run 正常结束并产出结果（观察流收到完成帧） | `points_count`（数字，拿得到才传）、`days`（同） | plan 页的观察流 / SSE 完成处理 |
 | `sign_up` | 邮箱验证码注册成功 | `method`: `email_code` | `app/auth/signup/ui.tsx`、`components/auth/useEmailCodeLogin.ts` |
 | `login` | 登录成功 | `method`: `email_code`\|`credentials` | `app/auth/signin/ui.tsx`、`components/auth/useEmailCodeLogin.ts` |
-| `map_point_open` | 地图上选中一个点位（打开点位详情/面板） | `bangumi_id`（数字）、`source`: `marker`\|`list`\|`overlay`\|`url` 能区分就传，分不清传 `unknown` | `features/map/anitabi/useAnitabiSelection.ts` 的 setSelectedPointId 路径；`components/map/*Overlay.tsx` 的 onPointClick |
+| `map_point_open` | 地图上选中一个点位（打开点位详情/面板） | `bangumi_id`（数字）、`open_source`: `marker`\|`list`\|`overlay`\|`url` 能区分就传，分不清传 `unknown`（不能用 `source`，那是 GA4 归因保留参数） | `features/map/anitabi/useAnitabiSelection.ts` 的 setSelectedPointId 路径；`components/map/*Overlay.tsx` 的 onPointClick |
 | `map_anime_select` | 地图上选中一部作品 | `bangumi_id` | 同上 selection hook |
 | `outbound_navigation` | 点击跳到 Google Maps / Apple Maps 等外部导航 | `surface`: `map`\|`plan`\|`article`\|`resource`；`provider`: `google`\|`apple`\|`other`；`kind`: `place`\|`directions`\|`streetview` | `features/map/anitabi/media.ts`（生成链接处的使用方）、`app/(authed)/plan/[id]/components/DayPointCard.tsx`、`TransitConnector.tsx`、`lib/navigationLinks.ts` 的使用方、`components/resources/MapAssetView.tsx`、`RouteDirectory.tsx` |
 | `share` | 分享/复制链接成功 | `method`: `native`\|`copy`；`content_type`: `article`\|`point`\|`route`\|`comparison`\|`resource` | `components/content/ArticleShareButtons.tsx`、`components/share/shareClient.ts`、`components/share/RouteBookCard.tsx`、`components/resources/CopyLinkButton.tsx`、`components/comparison/ComparisonImageGenerator.tsx` |
@@ -57,7 +59,7 @@ export function track(event: AnalyticsEvent, params?: Record<string, string | nu
 细则：
 
 - `map_point_open`：同一个点位重复设置（渲染抖动、URL 同步回写）不要重复上报——只在 pointId 真的变化且非 null 时发一次。
-  页面首次加载时由 URL 参数恢复出来的选中也算一次，`source` 传 `url`。不要在 effect 里因依赖变化反复触发。
+  页面首次加载时由 URL 参数恢复出来的选中也算一次，`open_source` 传 `url`。不要在 effect 里因依赖变化反复触发。
 - `outbound_navigation`：链接是 `<a target="_blank">` 的，加 onClick 即可，不要 preventDefault，不要改成 JS 跳转。
   服务端组件里的链接如果要埋，抽一个极小的 client 组件包一层 `<a>`，不要把整个父组件改成 client。
   如果某处改动代价明显偏大（要把大块服务端组件客户端化），跳过并在汇报里列出来。
