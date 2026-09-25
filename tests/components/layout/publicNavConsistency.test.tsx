@@ -72,9 +72,9 @@ const FOOTER_PRODUCT_EXPECT: Record<Locale, { label: string; href: string }[]> =
 }
 
 const ENTRY_CARD_TITLE_EXPECT: Record<Locale, string[]> = {
-  zh: ['AI 规划', '巡礼地图', '巡礼攻略'],
-  en: ['AI Planner', 'Pilgrimage Map', 'Pilgrimage Guides'],
-  ja: ['AIプランナー', '巡礼マップ', '巡礼ガイド'],
+  zh: ['巡礼地图', '巡礼攻略'],
+  en: ['Pilgrimage Map', 'Pilgrimage Guides'],
+  ja: ['巡礼マップ', '巡礼ガイド'],
 }
 
 const FOOTER_PRODUCT_TITLE: Record<Locale, string> = {
@@ -125,7 +125,7 @@ describe.each(['zh', 'en', 'ja'] as const)('公共导航一致性（%s）', (loc
     const { container } = render(<HomeEntryCards locale={locale} />)
 
     const cards = Array.from(container.querySelectorAll('.grid a'))
-    expect(cards).toHaveLength(3)
+    expect(cards).toHaveLength(2)
     const titles = cards.map((a) => a.querySelector('span.font-semibold')?.textContent)
 
     expect(titles).toEqual(ENTRY_CARD_TITLE_EXPECT[locale])

@@ -29,7 +29,7 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     expect(screen.getByPlaceholderText('例如：圣诞周去东京 8 天，想巡礼《天气之子》和《你的名字》')).toBeInTheDocument()
 
     const order = [
-      'AI 规划',
+      '巡礼地图',
       '全球圣地点位数据库',
       '定制专属巡礼行程',
       '来自真实旅行者的',
@@ -42,10 +42,11 @@ describe('HomePageTemplate（第十二轮信息架构）', () => {
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
   })
 
-  it('三个入口卡只由首屏渲染一次（不再单独成段重复出现）', () => {
+  it('两个入口卡只由首屏渲染一次（不再单独成段重复出现，AI 规划不再单列）', () => {
     render(<HomePageTemplate locale="zh" data={portalDataFixture()} />)
 
-    expect(screen.getAllByRole('link', { name: /AI 规划/ })).toHaveLength(1)
+    // 首屏主输入框就是规划入口，不再有独立的 AI 规划卡
+    expect(screen.queryByRole('link', { name: /AI 规划/ })).toBeNull()
     expect(screen.getAllByRole('link', { name: /巡礼地图/ })).toHaveLength(1)
     // 「巡礼攻略」四个字在攻略段里也有，这里用入口卡自己的描述句定位
     expect(screen.getAllByRole('link', { name: /读一遍别人走过的路线再出发/ })).toHaveLength(1)
