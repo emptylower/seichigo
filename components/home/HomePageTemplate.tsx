@@ -43,7 +43,6 @@ export default function HomePageTemplate({ locale, data }: { locale: SiteLocale;
         points={data.stats?.points}
         works={heroWorkNames(data.popularAnime, locale)}
         demo={data.heroDemo}
-        stats={data.stats}
       />
 
       {/* 首屏之外的各段：宽度与上线版本（外壳 max-w-5xl + px-4）完全一致，不因通栏而变宽。

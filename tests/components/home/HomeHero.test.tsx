@@ -29,7 +29,6 @@ function renderHero(locale: 'zh' | 'en' | 'ja' = 'zh') {
       points={statsFixture.points}
       works={['你的名字。', '孤独摇滚']}
       demo={heroDemoFixture()}
-      stats={statsFixture}
     />,
   )
 }
@@ -161,7 +160,7 @@ describe('HomeHero', () => {
     }
   })
 
-  it('slogan 排在入口卡与滚动提示之间，只在 lg 以上显示', () => {
+  it('slogan 与滚动提示排在首屏收尾行（lg 起显示），入口卡已挪到左栏', () => {
     const { container } = renderHero('zh')
     const slogan = container.querySelector('[data-hero-slogan]') as HTMLElement
 
@@ -174,11 +173,13 @@ describe('HomeHero', () => {
 
     const footer = container.querySelector('[data-hero-footer]')!
     const nodes = [...footer.children]
-    const cardsIndex = nodes.findIndex((el) => el.querySelector('a[href="/plan/start"]'))
     const sloganIndex = nodes.indexOf(slogan)
     const hintIndex = nodes.findIndex((el) => el.getAttribute('href') === '#home-showcase')
-    expect(cardsIndex).toBeLessThan(sloganIndex)
+    expect(sloganIndex).toBeGreaterThanOrEqual(0)
     expect(sloganIndex).toBeLessThan(hintIndex)
+    // 第十六轮起收尾行不再有入口卡
+    expect(footer.querySelector('a[href="/map"]')).toBeNull()
+    expect(footer.querySelector('a[href="/posts"]')).toBeNull()
   })
 
   it('slogan 两侧各一枝镜像的月桂枝，不再用 ❝❞ 文字符号', () => {
@@ -197,9 +198,6 @@ describe('HomeHero', () => {
     // 右侧那枝是左侧的镜像
     expect(laurels[0]!.querySelector('g')!.getAttribute('transform')).toBeNull()
     expect(laurels[1]!.querySelector('g')!.getAttribute('transform')).toContain('scale(-1, 1)')
-
-    // 与上面的入口卡之间留 20px
-    expect(slogan.className).toContain('mt-5')
   })
 
   it('手机演示替换了原来的演示卡（外壳 + 步骤 chip 在首屏右栏）', () => {
@@ -232,12 +230,26 @@ describe('HomeHero', () => {
     expect(section.innerHTML).not.toContain('max-w-6xl')
   })
 
-  it('传入 stats 时首屏底部收尾出现三个入口链接', () => {
-    renderHero('zh')
-    expect(screen.getByRole('link', { name: /AI 规划/ })).toHaveAttribute('href', '/plan/start')
+  it('第十六轮：两个入口链接挪到左栏作品滚动条之后（不再带统计数字）', () => {
+    const { container } = renderHero('zh')
+
     expect(screen.getByRole('link', { name: /巡礼地图/ })).toHaveAttribute('href', '/map')
     expect(screen.getByRole('link', { name: /巡礼攻略/ })).toHaveAttribute('href', '/posts')
-    expect(screen.getByText('128,456 个巡礼点位')).toBeInTheDocument()
+    // AI 规划不再单列，统计数字也不再在首屏出现
+    expect(screen.queryByRole('link', { name: /AI 规划/ })).toBeNull()
+    expect(screen.queryByText('128,456 个巡礼点位')).toBeNull()
+
+    // 入口卡必须落在左栏（min-w-0 space-y-4 那一列）、且在作品滚动条之后
+    const main = container.querySelector('[data-hero-main]')!
+    const leftCol = main.querySelector('.min-w-0.space-y-4')!
+    const mapLink = leftCol.querySelector('a[href="/map"]')
+    const postsLink = leftCol.querySelector('a[href="/posts"]')
+    expect(mapLink).not.toBeNull()
+    expect(postsLink).not.toBeNull()
+    const ticker = leftCol.querySelector('[data-ticker-track]')!
+    expect(ticker).not.toBeNull()
+    const tickerPos = ticker.compareDocumentPosition(mapLink!)
+    expect(tickerPos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('入口卡下方是指向第二屏的滚动提示（lg 以上显示）', () => {

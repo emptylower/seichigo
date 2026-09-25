@@ -1,7 +1,6 @@
 import { preload } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import type { SiteLocale } from '@/components/layout/SiteShell'
-import type { HomeStats } from '@/lib/home/types'
 import HeroLaurel from './HeroLaurel'
 import HomeEntryCards from './HomeEntryCards'
 import HomeHeroBackground from './HomeHeroBackground'
@@ -50,9 +49,11 @@ function heroSubtitle(locale: SiteLocale, points: number | undefined): string {
  * 右栏手机里的规划师演示、整屏插画背景 + 压在插画上的巡礼路线、下方作品名滚动条。
  *
  * 第十三轮起首屏在 `lg` 以上锁一整屏（视口高减页眉）：主体网格垂直居中，
- * 三个入口卡收进底部当收尾行，下面一句 slogan，再加一个指向第二屏的滚动提示；
  * 移动端不锁高，按内容流式排。第十四轮把点阵与光斑换成一张插画背景
  * （`HomeHeroBackground`），入口卡改成压在插画上的半透明毛玻璃。
+ * 第十六轮把底部那排三张小入口卡撤掉（AI 规划就是主输入框，不再单列），
+ * 改在左栏作品滚动条下放两张更大的「巡礼地图 / 巡礼攻略」卡填补左栏空白；
+ * 首屏收尾行只剩一句 slogan 与指向第二屏的滚动提示。
  *
  * 数据全部来自页面已有的 HomePortalData（演示计划 / 热门作品），首屏不额外发请求；
  * 所有动效都尊重 `prefers-reduced-motion`。
@@ -62,13 +63,11 @@ export default function HomeHero({
   points,
   works = [],
   demo,
-  stats,
 }: {
   locale: SiteLocale
   points?: number
   works?: string[]
   demo?: HomeHeroDemoLike
-  stats?: HomeStats
 }) {
   // 手机演示地图是移动端 LCP 候选；背景插画由 HomeHeroBackground 按断点预载。
   if (demo?.map) preload(demo.map.src, { as: 'image', fetchPriority: 'high' })
@@ -102,14 +101,17 @@ export default function HomeHero({
           />
 
           <HomeWorksTicker names={works} label={t('pages.home.v2.heroWorksLabel', locale)} />
+
+          {/* 第十六轮：两张大入口卡（地图 / 攻略）跟在滚动条后面，填补 lg 左栏的纵向空白 */}
+          <HomeEntryCards locale={locale} />
         </div>
 
         <HomeHeroPhone locale={locale} demo={demo} />
       </div>
 
-      {/* 首屏收尾行：三个入口卡 + 指向第二屏的滚动提示，让折叠线正好落在这里 */}
+      {/* 首屏收尾行：一句 slogan + 指向第二屏的滚动提示，让折叠线正好落在这里。
+          第十六轮起入口卡挪到左栏滚动条下，不再出现在这里 */}
       <div data-hero-footer className="relative mx-auto mt-auto w-full max-w-5xl px-4 pb-4 pt-5">
-        <HomeEntryCards locale={locale} stats={stats} />
         <style>{`
           @keyframes seichigo-hero-scroll-hint {
             0%, 100% { transform: translateY(0); }
@@ -118,10 +120,10 @@ export default function HomeHero({
           .seichigo-hero-scroll-hint { animation: seichigo-hero-scroll-hint 2s ease-in-out infinite; }
           @media (prefers-reduced-motion: reduce) { .seichigo-hero-scroll-hint { animation: none; } }
         `}</style>
-        {/* 一句 slogan 压在入口卡下，两侧各一枝月桂枝：桌面首屏才有，移动端首屏本来就不锁一屏 */}
+        {/* 一句 slogan 压在首屏底，两侧各一枝月桂枝：桌面首屏才有，移动端首屏本来就不锁一屏 */}
         <p
           data-hero-slogan
-          className="mt-5 hidden items-center justify-center gap-3 text-center text-sm tracking-wide text-gray-500 lg:flex"
+          className="hidden items-center justify-center gap-3 text-center text-sm tracking-wide text-gray-500 lg:flex"
         >
           <HeroLaurel className="shrink-0 text-gray-400" />
           {t('pages.home.v2.heroSlogan', locale)}
