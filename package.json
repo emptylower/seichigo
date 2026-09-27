@@ -48,7 +48,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@seichigo/prisma-client-runtime": "file:packages/prisma-client-runtime",
-    "@sentry/nextjs": "^10.38.0",
+    "@sentry/nextjs": "^11.0.0",
     "@tiptap/extension-image": "^3.13.0",
     "@tiptap/extension-link": "^3.13.0",
     "@tiptap/extension-placeholder": "^3.13.0",
