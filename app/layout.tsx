@@ -63,6 +63,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh" className={inter.variable}>
+      <head>
+        <script
+          defer
+          src="https://www.pvuv.ai/f.js"
+          data-site="Hy4iEaRn"
+          data-api="https://in.pvuv.ai"
+        />
+      </head>
       <body>
         {/* 放在 body 最前面：补丁要早于任何会更新 DOM 的组件跑起来 */}
         <TranslateGuard />
